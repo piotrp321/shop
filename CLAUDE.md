@@ -10,10 +10,12 @@ Monorepo e-commerce. Przed planowaniem jakiejkolwiek funkcji przeczytaj `docs/vi
 ## Struktura
 
 - `apps/api` – Symfony 8, PHP 8.5, Doctrine, PostgreSQL. DDD + hexagonal.
-- `apps/store` – Next.js (App Router), React, TypeScript. Sklep, strony katalogu renderowane na serwerze pod SEO.
+- `apps/store` – Next.js (App Router), React, TypeScript, Tailwind CSS 4, shadcn/ui. Sklep, strony katalogu
+  renderowane na serwerze pod SEO.
 - `apps/admin` – Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue. Panel administracyjny.
 - `infra` – Docker Compose i konfiguracja usług
-  (Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, MinIO, imgproxy, Varnish, Mailpit).
+  (Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Varnish, Mailpit).
+- `e2e` – testy end-to-end (Playwright) na pełnym stosie, uruchamiane przez `make e2e`.
 - `docs` – wizja, ADR-y (`docs/adr/`), specyfikacje i plany funkcji (`docs/features/`).
 
 Każda aplikacja ma własny `CLAUDE.md` z zasadami tylko dla niej. Przeczytaj go przed pracą w tej aplikacji.
@@ -34,14 +36,16 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 
 ## Kontrakt API
 
-- Źródłem prawdy jest OpenAPI wyeksportowane do `apps/api/openapi.json`.
-- Po każdej zmianie endpointu lub DTO w API: wyeksportuj specyfikację (`make -C apps/api openapi`)
+- Źródłem prawdy jest OpenAPI wyeksportowane do dwóch plików: `apps/api/openapi.json` (sklep: endpointy
+  publiczne i klienta) i `apps/api/openapi-admin.json` (panel: `/api/v1/admin`). Klient TS sklepu jest generowany
+  tylko z pierwszego, klient panelu tylko z drugiego.
+- Po każdej zmianie endpointu lub DTO w API: wyeksportuj specyfikacje (`make -C apps/api openapi`)
   i wygeneruj klientów TS (`make api-client`). Commituj te zmiany razem ze zmianą w API.
 - Fronty używają wyłącznie wygenerowanego klienta. Nie pisz ręcznie typów odpowiedzi API.
 
 ## Obrazy
 
-- Oryginały zdjęć są w MinIO (prywatny bucket), serwowane wyłącznie przez imgproxy.
+- Oryginały zdjęć są w Garage (prywatny bucket), serwowane wyłącznie przez imgproxy.
 - Podpisane adresy imgproxy buduje API. Klucz podpisu nigdy nie trafia do frontów.
 - Rozmiary obrazów są zdefiniowane w jednym miejscu. Nie dodawaj nowego rozmiaru w komponencie, dopisz go do listy.
 
@@ -56,6 +60,20 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   `check` i testy wszystkich tych aplikacji.
 - Nie dodawaj nowych zależności bez pytania.
 - Jeśli zasada z tego pliku koliduje z tym, czego wymaga zadanie, zatrzymaj się i zapytaj, zamiast ją obchodzić.
+
+## Claude Code
+
+- Wspólna konfiguracja jest w `.claude/settings.json`: hooki i włączony plugin superpowers. Skrypty hooków są
+  w `.claude/hooks/`. Lokalne ustawienia trzymaj w `.claude/settings.local.json` (poza repo).
+- Po każdej edycji pliku (`Edit`, `MultiEdit`, `Write`) hook uruchamia szybkie sprawdzenie tylko aplikacji,
+  do której należy plik, w jej kontenerze:
+  - `apps/api`: PHPStan na zmienionym pliku i PHP CS Fixer w trybie sprawdzania (hook nie zmienia pliku),
+  - `apps/store`, `apps/admin`: ESLint na zmienionym pliku.
+- Na koniec tury hook `Stop` uruchamia testy jednostkowe aplikacji zmienionych w tej turze (api i store:
+  `test-unit`, admin: `test`). Gdy nie przechodzą, tura się nie kończy, a wynik wraca do agenta.
+- Problemy zgłoszone przez hooki popraw, zanim przejdziesz dalej. Nie obchodź ich i nie wyłączaj hooków.
+- Hooki wymagają działającego stosu (`make up`) i `jq` na hoście. Gdy kontener nie działa, sprawdzenie jest pomijane.
+- Hooki nie zastępują `make check` ani pełnych testów przed zakończeniem zadania.
 
 ## Dokumentacja
 

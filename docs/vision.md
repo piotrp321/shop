@@ -3,6 +3,8 @@
 ## Co budujemy
 
 Platformę e-commerce w monorepo: API w Symfony, sklep dla klientów i panel administracyjny.
+Branża: sport i outdoor, szeroki asortyment w kilku działach. Robocza nazwa sklepu: „Rytm”.
+
 Projekt ma dwa cele:
 
 1. Działający sklep z realistyczną domeną (katalog, ceny, koszyk, checkout, zamówienia, płatności,
@@ -15,9 +17,9 @@ Projekt ma dwa cele:
 | Aplikacja | Stos | Rola |
 |---|---|---|
 | `apps/api` | PHP 8.5, Symfony 8, Doctrine ORM, PostgreSQL | REST API, cała logika biznesowa |
-| `apps/store` | Next.js (App Router), React, TypeScript | Sklep dla klientów, SSR/ISR pod SEO |
+| `apps/store` | Next.js (App Router), React, TypeScript, Tailwind CSS 4, shadcn/ui | Sklep dla klientów, SSR/ISR pod SEO |
 | `apps/admin` | Vue 3, Vite, TypeScript, Pinia, Vue Router, PrimeVue | Panel dla obsługi sklepu |
-| `infra` | Docker Compose | Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, MinIO, imgproxy, Varnish, Mailpit |
+| `infra` | Docker Compose | Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Varnish, Mailpit |
 
 Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
 
@@ -30,10 +32,10 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
   indeksowanie w ES, e-maile, rewalidacja stron sklepu.
 - **Keycloak** – tożsamość użytkowników w dwóch osobnych realmach (szczegóły w sekcji „Klienci i pracownicy”).
   API tylko waliduje tokeny JWT i mapuje role, nigdy nie przechowuje haseł.
-- **MinIO** – magazyn plików zgodny z S3. Przechowuje oryginały zdjęć produktów w prywatnym buckecie.
+- **Garage** – magazyn plików zgodny z S3. Przechowuje oryginały zdjęć produktów w prywatnym buckecie.
   API zapisuje przez Flysystem, więc w produkcji wystarczy podmienić adapter na prawdziwe S3.
-- **imgproxy** – serwuje zdjęcia: czyta oryginał z MinIO i na żądanie skaluje, przycina i konwertuje
-  do WebP/AVIF. Adresy są podpisane (HMAC), więc nikt z zewnątrz nie wygeneruje dowolnych rozmiarów
+- **imgproxy** – serwuje zdjęcia: czyta oryginał z Garage i na żądanie skaluje, przycina i konwertuje
+  do formatu wskazanego w adresie (AVIF albo WebP). Adresy są podpisane (HMAC), więc nikt z zewnątrz nie wygeneruje dowolnych rozmiarów
   i nie obciąży serwera. W produkcji przed imgproxy stoi CDN, który cache'uje wyniki.
 - **Varnish** – HTTP cache przed publicznymi endpointami odczytu API (katalog, wyszukiwarka, filtry).
   Odciąża API i Elasticsearch przy stronach wyszukiwarki renderowanych przez SSR, gdzie te same zapytania
@@ -42,14 +44,19 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
 
 ## Zdjęcia produktów
 
-- Panel wysyła oryginał do API, API waliduje (typ, rozmiar, wymiary) i zapisuje w MinIO. Oryginał nie jest
-  nigdy serwowany bezpośrednio.
+- Panel wysyła oryginał do API, API waliduje (typ, rozmiar, wymiary) i zapisuje w Garage pod kluczem wyliczonym
+  z treści pliku, więc adres obrazu o danej treści nigdy się nie zmienia. Oryginał nie jest nigdy serwowany
+  bezpośrednio.
 - Zestaw rozmiarów jest zamknięty i zdefiniowany w jednym miejscu w API (miniatura, lista, karta produktu, zoom),
   każdy w kilku szerokościach dla `srcset`.
-- API w odpowiedziach zwraca gotowe, podpisane adresy imgproxy dla każdego rozmiaru i szerokości.
+- API w odpowiedziach zwraca gotowe, podpisane adresy imgproxy dla każdego rozmiaru, szerokości i formatu.
   Podpisuje jeden serwis po stronie API, klucz podpisu nigdy nie trafia do frontów.
-- Sklep używa `next/image` z własnym loaderem, który wybiera gotowy adres z odpowiedzi API dla żądanej
-  szerokości. Wbudowana optymalizacja obrazów Next.js jest wyłączona, żeby obrazy nie były przetwarzane dwa razy.
+- Format (AVIF, WebP) jest częścią podpisanego adresu. imgproxy nie wybiera go po nagłówku `Accept`, bo przed
+  imgproxy stoi darmowy Cloudflare, który nie obsługuje Vary for Images. Każdy wariant musi mieć jednoznaczny
+  adres dla CDN.
+- Sklep składa `<picture>` ze źródłami AVIF i WebP przez `getImageProps()` z `next/image` z loaderem, który wybiera
+  gotowy adres z odpowiedzi API dla żądanej szerokości. Wbudowana optymalizacja obrazów Next.js jest wyłączona,
+  żeby obrazy nie były przetwarzane dwa razy.
 
 ## Klienci i pracownicy
 
@@ -95,12 +102,13 @@ Trzy warstwy cache, każda z jasną rolą:
 ## Kontrakt API między aplikacjami
 
 - Źródłem prawdy jest specyfikacja OpenAPI generowana z kodu API (NelmioApiDocBundle).
-- Specyfikacja jest eksportowana do pliku w repo (`apps/api/openapi.json`) i commitowana, więc każda zmiana
-  kontraktu jest widoczna w diffie PR.
-- Z tego pliku generowany jest typowany klient TypeScript dla `store` i `admin` (`openapi-typescript`).
-  Fronty nie piszą ręcznie typów odpowiedzi API.
+- Specyfikacja jest eksportowana do dwóch plików w repo i commitowana, więc każda zmiana kontraktu jest widoczna
+  w diffie PR: `apps/api/openapi.json` (sklep: endpointy publiczne i klienta) oraz `apps/api/openapi-admin.json`
+  (panel: `/api/v1/admin`).
+- Z tych plików generowane są typowane klienty TypeScript (`openapi-typescript`): dla `store` tylko z pierwszego,
+  dla `admin` tylko z drugiego. Fronty nie piszą ręcznie typów odpowiedzi API.
 - Zmiana w API, która łamie front, kończy się błędem `tsc` w CI, a nie błędem na produkcji.
-- CI sprawdza, czy wyeksportowany plik jest aktualny względem kodu.
+- CI sprawdza, czy wyeksportowane pliki są aktualne względem kodu.
 
 ## Sklep: renderowanie i SEO (apps/store)
 
@@ -119,6 +127,21 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - **Przyjazne adresy**: `/p/<slug>`, `/c/<slug-kategorii>`, przekierowania 301 przy zmianie sluga.
 - **Wydajność**: Core Web Vitals jako wymaganie (obrazy z imgproxy w WebP/AVIF z `srcset`,
   `priority` dla głównego zdjęcia produktu, minimum JavaScriptu po stronie klienta). Pomiar przez Lighthouse w CI.
+
+## Wygląd sklepu (apps/store)
+
+- Kierunek: outdoor premium w duchu arcteryx.com. Zdjęcia w terenie na całą szerokość, stonowana paleta
+  (czerń, grafit, złamana biel i jeden akcent), prosta i pewna typografia, dużo przestrzeni.
+- Struktura dużego katalogu jak w decathlon.pl: mega menu dla wielu działów, filtry, breadcrumby.
+- Inspiracja, nie kopia: własna marka, bez logotypów, nazw i elementów identyfikacji Arc'teryx i Decathlona.
+  Nazwę sklepu przed publicznym demo sprawdzamy w bazach znaków towarowych (UPRP, EUIPO).
+- Komponenty na shadcn/ui (Tailwind CSS 4, motyw na zmiennych CSS). Tokeny (paleta i warstwa semantyczna) są
+  w jednym miejscu, a kolory „na sztywno” blokuje ESLint.
+- Baza układów: github.com/vercel/shop (MIT). Przenosimy komponenty i układy z zachowaniem informacji o licencji,
+  ale dane pochodzą wyłącznie z naszego API przez wygenerowanego klienta, bez Shopify.
+- Nie korzystamy z gotowych szablonów komercyjnych (np. z ThemeForest).
+- Kolejność prac: najpierw pełne makiety strony głównej, listingu i karty produktu ze zdjęciami, dopiero potem
+  docelowe tokeny. Do tego czasu sklep ma tymczasowy, neutralny motyw na tych samych tokenach.
 
 ## Bounded contexty (api)
 
@@ -140,7 +163,9 @@ context ma własne value objecty.
 ## Reguły domenowe, które obowiązują od początku
 
 - **Ceny brutto i VAT**: klient widzi ceny brutto. Cena przechowuje netto, stawkę VAT i brutto,
-  liczone w groszach z jawną regułą zaokrąglania. Stawka VAT jest przypisana do produktu (23%, 8%, 5%, 0%).
+  liczone w groszach z jawną regułą zaokrąglania. Produkt w Catalog ma kategorię podatkową (`taxCategory`:
+  np. standardowa, żywność, suplementy diety, publikacje drukowane), a nie stawkę. Pricing wyznacza stawkę
+  (23%, 8%, 5%, 0%) z kategorii podatkowej i okresu obowiązywania stawki.
 - **Omnibus**: każda zmiana ceny jest zapisywana w historii. Przy promocji sklep pokazuje najniższą cenę
   z 30 dni przed jej rozpoczęciem.
 - **Stany magazynowe**: sprzedaż ponad stan jest niemożliwa, także przy równoległych zakupach.
@@ -170,7 +195,7 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 **Bezpieczeństwo**
 - Rate limiting (Symfony RateLimiter, Redis) na logowaniu, checkout i webhookach.
 - Walidacja wejścia na granicy API (DTO + Symfony Validator). Domena dodatkowo pilnuje swoich niezmienników.
-- CORS tylko dla domen `store` i `admin`.
+- CORS tylko dla domeny panelu (`admin`). Sklep woła API wyłącznie z serwera, więc nie potrzebuje CORS.
 - Uprawnienia w panelu sprawdzane w API (votery), nie tylko ukrywane w UI.
 - Upload plików: walidacja typu po zawartości (nie po rozszerzeniu), limit rozmiaru i wymiarów,
   bucket z oryginałami niedostępny publicznie.
@@ -178,8 +203,8 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 ## Testy
 
 - **Jednostkowe** (domena i aplikacja): adaptery in-memory, bez Postgresa, Elasticsearch i RabbitMQ.
-  Trwają sekundy, więc hooki uruchamiają je po każdej zmianie.
-- **Integracyjne**: repozytoria Doctrine, indeksowanie w ES, Messenger na RabbitMQ, zapis w MinIO,
+  Trwają sekundy, więc hook uruchamia je na koniec każdej tury agenta dla aplikacji zmienionych w tej turze.
+- **Integracyjne**: repozytoria Doctrine, indeksowanie w ES, Messenger na RabbitMQ, zapis w Garage,
   na prawdziwych usługach.
 - **Funkcjonalne API**: każdy endpoint, w tym przypadki bez autoryzacji i z błędnymi danymi.
 - **Frontend**: testy komponentów (Vitest) dla logiki w store i admin.
@@ -190,8 +215,9 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 
 ## Dane demo
 
-Komenda ładująca realistyczny katalog: kilkaset produktów w kilku kategoriach, z wariantami, zdjęciami
-(wgrywanymi do MinIO), cenami w różnych stawkach VAT, stanami magazynowymi i kilkoma aktywnymi promocjami.
+Komenda ładująca realistyczny katalog sportowo-outdoorowy: kilkaset produktów w drzewie kategorii, z wariantami,
+zdjęciami (prawdziwe zdjęcia „w terenie” w spójnej tonacji, wgrywane do Garage), cenami w różnych stawkach VAT,
+stanami magazynowymi i kilkoma aktywnymi promocjami.
 Do tego konta testowe w Keycloak: klient w realmie `shop`, pracownicy z każdą rolą w realmie `backoffice`. Po `make up` i `make seed`
 sklep ma wyglądać jak prawdziwy.
 
@@ -200,15 +226,18 @@ sklep ma wyglądać jak prawdziwy.
 1. Szkielet (walking skeleton): wszystkie usługi startują jedną komendą, logowanie przez Keycloak
    w sklepie i panelu, lista produktów ze zdjęciami przechodzi drogę Postgres → API → Elasticsearch → sklep
    (obrazy przez imgproxy), wygenerowany klient TS używany w obu frontach, pierwsza wersja danych demo.
-2. Zarządzanie katalogiem w panelu (z uploadem zdjęć), wyszukiwarka i strona produktu w sklepie (SSR/ISR, SEO),
+2. Pełne CI: cały stos w GitHub Actions, testy integracyjne i E2E.
+3. Projekt wizualny sklepu (kierunek w sekcji „Wygląd sklepu”): makiety strony głównej, listingu i karty produktu
+   ze zdjęciami, potem docelowe tokeny i komponenty.
+4. Zarządzanie katalogiem w panelu (z uploadem zdjęć), wyszukiwarka i strona produktu w sklepie (SSR/ISR, SEO),
    Varnish przed endpointami katalogu z unieważnianiem po tagach.
-3. Ceny: netto/VAT/brutto, historia cen.
-4. Koszyk i checkout (gość i zalogowany klient).
-5. Zamówienia ze statusami: nowe → opłacone → wysłane → dostarczone, plus anulowanie i zwrot.
+5. Ceny: netto/VAT/brutto, historia cen.
+6. Koszyk i checkout (gość i zalogowany klient).
+7. Zamówienia ze statusami: nowe → opłacone → wysłane → dostarczone, plus anulowanie i zwrot.
    E-mail z potwierdzeniem (Mailpit).
-6. Płatności: dwóch udawanych dostawców za jednym interfejsem, webhooki z podpisem.
-7. Rezerwacja stanów bez sprzedaży ponad stan przy równoległych zakupach.
-8. Promocje i kody rabatowe, z ceną Omnibus.
+8. Płatności: dwóch udawanych dostawców za jednym interfejsem, webhooki z podpisem.
+9. Rezerwacja stanów bez sprzedaży ponad stan przy równoległych zakupach.
+10. Promocje i kody rabatowe, z ceną Omnibus.
 
 ## Po MVP: publiczne środowisko demo
 
@@ -251,7 +280,11 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
 - ISR z rewalidacją na żądanie zamiast SSR przy każdym żądaniu dla stron katalogu.
 - Varnish z tagami (xkey) tylko przed publicznymi odczytami API; trzy warstwy cache i ich unieważnianie.
 - Optimistic locking i klucze idempotencji zamiast blokad pesymistycznych.
-- MinIO + imgproxy (przetwarzanie obrazów na żądanie) zamiast generowania miniatur przy uploadzie.
+- Garage jako magazyn S3 i imgproxy (przetwarzanie obrazów na żądanie, format w podpisanym adresie) zamiast
+  generowania miniatur przy uploadzie.
+- Drzewo kategorii jako lista sąsiedztwa (`parent_id`, źródło prawdy) ze zmaterializowaną ścieżką do zapytań
+  o poddrzewo, bez nested set i Gedmo Tree.
+- Kategoria podatkowa produktu w Catalog zamiast stawki VAT; stawkę wyznacza Pricing.
 - SPX zamiast Blackfire do profilowania (darmowe, wystarczające przy tej skali).
 - k3s + Argo CD na jednym serwerze; Grafana Cloud i Sentry SaaS zamiast hostowania obserwowalności u siebie.
 
@@ -262,6 +295,11 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
 - Dokumentacja zawsze opisuje stan obecny, bez dziennika zmian. To, co usuwamy z projektu,
   usuwamy też z dokumentacji.
 - Granice architektury pilnują narzędzia (Deptrac, PHPStan, ESLint, tsc) w hookach i CI, a nie zaufanie do modelu.
+- Konfiguracja Claude Code jest w repo: `.claude/settings.json` (hooki, włączony plugin superpowers) i skrypty
+  hooków w `.claude/hooks/`. Po każdej edycji pliku hook uruchamia szybkie sprawdzenie tylko aplikacji, do której
+  należy plik (api: PHPStan na zmienionym pliku i PHP CS Fixer; store i admin: ESLint na pliku), a wynik wraca
+  do agenta, zanim pójdzie dalej. Na koniec tury agenta hook uruchamia testy jednostkowe aplikacji zmienionych
+  w tej turze; gdy nie przechodzą, agent nie kończy pracy.
 - Agenci pracują lokalnie, na pełnym stosie w Dockerze.
 - Zasady wspólne są w głównym `CLAUDE.md`, zasady konkretnej aplikacji w jej własnym `CLAUDE.md`,
   żeby agent pracujący nad frontem nie dostawał w kontekście zasad Doctrine i odwrotnie.
