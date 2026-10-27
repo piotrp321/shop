@@ -28,8 +28,8 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
 - **Redis** – cache (odczyty katalogu, koszyki gości), limity dla rate limitera.
 - **RabbitMQ** – komunikaty asynchroniczne przez Symfony Messenger: zdarzenia domenowe między contextami,
   indeksowanie w ES, e-maile, rewalidacja stron sklepu.
-- **Keycloak** – tożsamość użytkowników. Dwa klienty: `store` (klienci, Authorization Code + PKCE)
-  i `admin` (obsługa). API tylko waliduje tokeny JWT i mapuje role, nigdy nie przechowuje haseł.
+- **Keycloak** – tożsamość użytkowników w dwóch osobnych realmach (szczegóły w sekcji „Klienci i pracownicy”).
+  API tylko waliduje tokeny JWT i mapuje role, nigdy nie przechowuje haseł.
 - **MinIO** – magazyn plików zgodny z S3. Przechowuje oryginały zdjęć produktów w prywatnym buckecie.
   API zapisuje przez Flysystem, więc w produkcji wystarczy podmienić adapter na prawdziwe S3.
 - **imgproxy** – serwuje zdjęcia: czyta oryginał z MinIO i na żądanie skaluje, przycina i konwertuje
@@ -50,6 +50,29 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
   Podpisuje jeden serwis po stronie API, klucz podpisu nigdy nie trafia do frontów.
 - Sklep używa `next/image` z własnym loaderem, który wybiera gotowy adres z odpowiedzi API dla żądanej
   szerokości. Wbudowana optymalizacja obrazów Next.js jest wyłączona, żeby obrazy nie były przetwarzane dwa razy.
+
+## Klienci i pracownicy
+
+Klient sklepu (`Customer`) i pracownik obsługujący panel (`Staff`) to dwa osobne byty, bez wspólnej klasy
+`User`. Mają inne cykle życia, inne wymagania bezpieczeństwa i nigdy nie dzielą konta.
+
+| | Klient (`Customer`) | Pracownik (`Staff`) |
+|---|---|---|
+| Realm Keycloak | `shop` | `backoffice` |
+| Klient OIDC | `store` (Authorization Code + PKCE) | `admin` (Authorization Code + PKCE) |
+| Rejestracja | samodzielna, w sklepie | tylko zakładany przez administratora |
+| Uwierzytelnianie | hasło, opcjonalnie logowanie społecznościowe | hasło + obowiązkowe 2FA (TOTP) |
+| Sesja | długa (zapamiętaj mnie) | krótka, wygasa po bezczynności |
+| Role | brak (klient ma dostęp tylko do swoich danych) | `admin`, `support`, `warehouse`, `marketing` |
+| Usunięcie | na żądanie klienta (RODO), dane zamówień anonimizowane | dezaktywacja konta, historia działań zostaje |
+| Context w API | Customer (profil, adresy) | brak osobnego contextu; tożsamość i role z tokena |
+
+- API ma dwa firewalle. `/api/v1/...` przyjmuje tylko tokeny z realmu `shop`, `/api/v1/admin/...` tylko z realmu
+  `backoffice` (sprawdzany wystawca tokena). Token klienta nie przejdzie przez firewall panelu, niezależnie od ról.
+- Uprawnienia pracowników sprawdzane w voterach na podstawie ról z tokena.
+- Zmiany wykonane w panelu zapisują identyfikator pracownika (z tokena), żeby było wiadomo, kto zmienił
+  cenę, stan czy status zamówienia.
+- Ta sama osoba jako klient i jako pracownik ma dwa osobne konta. To świadoma decyzja.
 
 ## Cache HTTP i unieważnianie
 
@@ -169,7 +192,7 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 
 Komenda ładująca realistyczny katalog: kilkaset produktów w kilku kategoriach, z wariantami, zdjęciami
 (wgrywanymi do MinIO), cenami w różnych stawkach VAT, stanami magazynowymi i kilkoma aktywnymi promocjami.
-Do tego konta testowe w Keycloak (klient, obsługa, administrator). Po `make up` i `make seed`
+Do tego konta testowe w Keycloak: klient w realmie `shop`, pracownicy z każdą rolą w realmie `backoffice`. Po `make up` i `make seed`
 sklep ma wyglądać jak prawdziwy.
 
 ## Zakres MVP
@@ -220,6 +243,7 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
 - REST zamiast GraphQL/gRPC dla tych klientów.
 - OpenAPI jako kontrakt i generowany klient TS zamiast ręcznie pisanych typów.
 - Keycloak zamiast własnego serwera OAuth.
+- Klienci i pracownicy jako osobne byty w osobnych realmach Keycloak, z osobnymi firewallami w API.
 - Mapowanie Doctrine poza domeną (XML w Infrastructure).
 - Osobne value objecty w każdym contexcie zamiast wspólnej klasy bazowej.
 - Transactional outbox dla zdarzeń domenowych.

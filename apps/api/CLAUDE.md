@@ -36,7 +36,13 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - REST, JSON, wersjonowane pod `/api/v1`.
 - Wejście przez DTO z Symfony Validator. Domena dodatkowo pilnuje swoich niezmienników.
 - Dokumentacja OpenAPI z kodu (NelmioApiDocBundle). Każdy endpoint ma opisane żądanie, odpowiedzi i błędy.
-- Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Uprawnienia w voterach.
+- Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Dwa firewalle:
+  `/api/v1/admin/...` przyjmuje tylko tokeny z realmu `backoffice` (pracownicy, `Staff`),
+  reszta API tylko z realmu `shop` (klienci, `Customer`). Sprawdzany jest wystawca tokena.
+- Nie twórz wspólnej klasy `User` dla klientów i pracowników. To osobne byty.
+- Uprawnienia w voterach. Pracownik: na podstawie ról z tokena (`admin`, `support`, `warehouse`, `marketing`).
+  Klient: tylko własne dane (właściciel zasobu = `sub` z tokena).
+- Zmiany z panelu zapisują identyfikator pracownika (`sub` z tokena realmu `backoffice`).
 - Błędy w formacie RFC 9457 (problem details).
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności) wymagają nagłówka `Idempotency-Key`.
 - Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
