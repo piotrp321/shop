@@ -1,0 +1,23 @@
+###> IDE ###
+.idea
+###< IDE ###
+
+###> Claude Code ###
+# Only the shared project configuration is versioned: skills, subagent definitions
+# and settings.json. Everything else in .claude/ stays local and private
+# (settings.local.json, worktrees/, agent memory and other per-user files).
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+!.claude/agents/
+###< Claude Code ###
+
+###> Docker Compose ###
+# Local Compose profile, e.g. an isolated project of an agent working in a worktree
+# (COMPOSE_PROJECT_NAME, IMAGES_PREFIX, ports). Never committed.
+/.env
+###< Docker Compose ###
+
+###> node ###
+node_modules/
+###< node ###
