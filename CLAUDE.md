@@ -1,0 +1,76 @@
+# CLAUDE.md
+
+Monorepo e-commerce. Przed planowaniem jakiejkolwiek funkcji przeczytaj `docs/vision.md`.
+
+## Język
+
+- Dokumentacja, specyfikacje, plany i rozmowa: po polsku.
+- Kod po angielsku: nazwy klas, metod, zmiennych, komentarze, komunikaty commitów.
+
+## Struktura
+
+- `apps/api` – Symfony 8, PHP 8.5, Doctrine, PostgreSQL. DDD + hexagonal.
+- `apps/store` – Next.js (App Router), React, TypeScript. Sklep, strony katalogu renderowane na serwerze pod SEO.
+- `apps/admin` – Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue. Panel administracyjny.
+- `infra` – Docker Compose i konfiguracja usług
+  (Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, MinIO, imgproxy, Varnish, Mailpit).
+- `docs` – wizja, ADR-y (`docs/adr/`), specyfikacje i plany funkcji (`docs/features/`).
+
+Każda aplikacja ma własny `CLAUDE.md` z zasadami tylko dla niej. Przeczytaj go przed pracą w tej aplikacji.
+Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm create vite`) zachowaj istniejący
+`CLAUDE.md` w jej katalogu.
+
+## Środowisko
+
+- Wszystko działa w Dockerze. Nigdy nie uruchamiaj `php`, `composer`, `npm` ani `node` bezpośrednio na hoście.
+- Komendy uruchamiaj przez Makefile, który opakowuje `docker compose exec`:
+  - Główny `Makefile` zarządza stosem i uruchamia wszystkie aplikacje:
+    `make up` / `make down` / `make logs`, `make seed`, `make check`, `make test`, `make e2e`.
+  - Każda aplikacja ma własny `Makefile` z tymi samymi podstawowymi celami (`check`, `test`)
+    oraz swoimi (np. `make migrate` w api). Pracując w jednej aplikacji, używaj jej Makefile:
+    `make -C apps/api check`.
+  - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc).
+- `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.
+
+## Kontrakt API
+
+- Źródłem prawdy jest OpenAPI wyeksportowane do `apps/api/openapi.json`.
+- Po każdej zmianie endpointu lub DTO w API: wyeksportuj specyfikację (`make -C apps/api openapi`)
+  i wygeneruj klientów TS (`make api-client`). Commituj te zmiany razem ze zmianą w API.
+- Fronty używają wyłącznie wygenerowanego klienta. Nie pisz ręcznie typów odpowiedzi API.
+
+## Obrazy
+
+- Oryginały zdjęć są w MinIO (prywatny bucket), serwowane wyłącznie przez imgproxy.
+- Podpisane adresy imgproxy buduje API. Klucz podpisu nigdy nie trafia do frontów.
+- Rozmiary obrazów są zdefiniowane w jednym miejscu. Nie dodawaj nowego rozmiaru w komponencie, dopisz go do listy.
+
+## Sposób pracy
+
+- Nie ma kodu bez planu. Przy wszystkim większym niż drobna poprawka: napisz lub zaktualizuj specyfikację
+  w `docs/features/<funkcja>/`, zaproponuj plan, poczekaj na akceptację.
+- Pracuj małymi krokami. Jedna logiczna zmiana na commit, format Conventional Commits.
+- Zadanie jest skończone dopiero, gdy przechodzą `make check` i testy aplikacji, której dotyczy zmiana.
+  Pokaż wynik, nie deklaruj.
+- Zmiana dotykająca kilku aplikacji (np. nowy endpoint i ekran w panelu) jest skończona, gdy przechodzą
+  `check` i testy wszystkich tych aplikacji.
+- Nie dodawaj nowych zależności bez pytania.
+- Jeśli zasada z tego pliku koliduje z tym, czego wymaga zadanie, zatrzymaj się i zapytaj, zamiast ją obchodzić.
+
+## Dokumentacja
+
+- Dokumentacja opisuje wyłącznie stan obecny. Nie prowadzimy dzienników zmian, historii decyzji
+  ani sekcji „wcześniej było…”. Historia jest w gicie.
+- Zmiana architektury, zasady lub działania funkcji = aktualizacja dokumentacji w tym samym commicie co kod.
+- Gdy coś usuwamy z projektu (usługę, funkcję, decyzję), usuwamy to też ze wszystkich dokumentów:
+  `docs/vision.md`, `CLAUDE.md` (główny i aplikacji), `docs/adr/`, `docs/features/`.
+- `docs/adr/` – jeden plik na obowiązującą decyzję: kontekst, decyzja, uzasadnienie, konsekwencje.
+  Zmiana decyzji to edycja pliku, porzucenie decyzji to usunięcie pliku. Bez statusów „zastąpiona” ani „wycofana”.
+- `docs/features/<funkcja>/spec.md` – opisuje, jak funkcja działa teraz. Utrzymywana razem z kodem.
+- Plan implementacji jest dokumentem roboczym. Po ukończeniu funkcji usuń go.
+
+## Czego nie robić
+
+- Nie umieszczaj logiki biznesowej we frontendzie. Fronty wyświetlają to, co policzy API (ceny, sumy, dostępność).
+- Nie commituj sekretów. Lokalna konfiguracja trafia do `.env.local`, który jest w `.gitignore`.
+- Nie wyłączaj reguł lintera, PHPStana ani Deptraca, żeby przeszedł `check`. Popraw kod albo zapytaj.
