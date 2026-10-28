@@ -58,8 +58,12 @@ Po ukończeniu Task 7 kolejne zadania wykonuje się w nowej sesji Claude Code, �
 Plan jest realizowany etapami. Każdy etap kończy się osobnym PR do `main` z opisem: co zawiera, jak to sprawdzić
 lokalnie (`make up`, `make check`, `make test`), decyzje podjęte w trakcie i odłożone uwagi. Agent nie merguje PR.
 
-- Etap „Infrastruktura i narzędzia”: Task 1–8.
-- Granice kolejnych etapów ustala użytkownik przed ich rozpoczęciem.
+- Etap 1: Task 1–8 (PR #1)
+- Etap 2: Task 9–11, domena katalogu – wykonuje interaktywnie użytkownik
+- Etap 3: Task 12–15, obrazy, wyszukiwarka, zdarzenia
+- Etap 4: Task 16–18, dane demo i sklep
+- Etap 5: Task 19–23, tożsamość; Task 22 wykonuje interaktywnie użytkownik
+- Etap 6: Task 24–26, E2E, CI, odbiór
 
 ## Na co patrzeć w review
 
@@ -284,9 +288,12 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   - Dla pliku w aplikacji `check-changed-file.sh` dopisuje nazwę aplikacji (`api`, `store`, `admin`) do
     `.claude/state/changed-apps-<session_id>` (`session_id` z JSON hooka), także gdy sprawdzenie zgłosiło błędy.
   - `run-unit-tests.sh` (hook `Stop`, `timeout` 300 s) działa zgodnie ze specyfikacją („Konfiguracja Claude Code”):
-    testy jednostkowe aplikacji z pliku stanu; kod 2 i końcówka wyniku na stderr przy błędach; licznik kolejnych
-    blokad w `.claude/state/stop-blocks-<session_id>`, a po 3 blokadach kod 0; czyszczenie stanu i licznika po
-    zaliczonych testach.
+    testy jednostkowe aplikacji z pliku stanu, dla api także `vendor/bin/deptrac analyse --no-progress`
+    (wszystko uruchamiane razem); kod 2 i końcówka wyniku na stderr przy błędach testów lub Deptraca oraz gdy
+    kontener zmienionej aplikacji nie działa albo brak `docker` (komunikat: `make up` albo powiedz użytkownikowi);
+    wspólny licznik kolejnych blokad w `.claude/state/stop-blocks-<session_id>`, po 3 blokadach czwarte
+    uruchomienie to kod 0; czyszczenie stanu i licznika po zaliczonych sprawdzeniach. `check-changed-file.sh`
+    nadal kończy się kodem 0 przy niedziałającym kontenerze.
 
 - [ ] **Krok 1: Test** `check-changed-file.test.sh` (czysty bash, podaje skryptowi JSON hooka):
   - plik PHP w `apps/api/src` z błędem typu: kod 2, stderr zawiera komunikat PHPStana;
@@ -304,8 +311,16 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   - brak pliku stanu: kod 0, komenda testów nie została wywołana;
   - stan `api` i zaliczone testy: kod 0, wywołane tylko testy api, plik stanu usunięty;
   - stan `api store` i nieudane testy store: kod 2, stderr zawiera wynik testów store, plik stanu zostaje;
-  - po trzech kolejnych blokadach (kod 2) czwarte uruchomienie w tej samej sesji: kod 0 i informacja o nieprzechodzących testach;
-  - zaliczone testy po blokadach zerują licznik.
+  - po trzech kolejnych blokadach (kod 2) czwarte uruchomienie w tej samej sesji: kod 0 i informacja o tym, co nie przeszło;
+  - zaliczone testy po blokadach zerują licznik;
+  - Deptrac nie przechodzi, testy tak: kod 2, wynik Deptraca na stderr; testy nie przechodzą, Deptrac tak: kod 2;
+    oba nie przechodzą: kod 2 i oba wyniki; Deptrac nie jest uruchamiany, gdy zmieniły się tylko store lub admin;
+    blokady Deptraca liczą się do limitu 3;
+  - niedziałający kontener zmienionej aplikacji albo brak `docker`: kod 2, komunikat z `make up` i nazwą aplikacji,
+    plik stanu zostaje; jedna aplikacja sprawdzona i zaliczona, druga z niedziałającym kontenerem: kod 2;
+  - obejścia: pusty plik stanu (kod 0), nieznana nazwa lub `../x` w pliku stanu (ignorowane z informacją),
+    licznik z innej sesji nie wpływa na bieżącą, kontener zatrzymany między sprawdzeniem a uruchomieniem
+    (nieudane `exec` to porażka), pusta wartość zmiennej podstawiającej komendę nie liczy się jako ustawiona.
 - [ ] **Krok 3: Uruchom oba testy (`bash .claude/hooks/tests/*.test.sh`), oczekiwany FAIL.**
 - [ ] **Krok 4: Zaimplementuj skrypty i `settings.json`.** Dokładny identyfikator pluginu (`<plugin>@<marketplace>`)
   i marketplace weź z instalacji użytkownika (`claude plugin list` albo `~/.claude/settings.json`), nie zgaduj.

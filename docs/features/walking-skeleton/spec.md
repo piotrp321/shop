@@ -617,13 +617,23 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
   `.claude/state/changed-apps-<session_id>` (poza repo).
 - Hook `Stop` (`.claude/hooks/run-unit-tests.sh`, limit 300 s) na koniec tury agenta uruchamia testy jednostkowe
   tylko aplikacji z pliku stanu: `make -C apps/api test-unit`, `make -C apps/store test-unit`,
-  `make -C apps/admin test`.
+  `make -C apps/admin test`. Dla api (każda zmiana pod `apps/api`) uruchamia też Deptrac
+  (`vendor/bin/deptrac analyse --no-progress` w kontenerze `api`). Testy i Deptrac są uruchamiane razem,
+  a wyniki zgłaszane łącznie.
   - Testy przechodzą: plik stanu i licznik blokad są czyszczone, kod 0.
-  - Testy nie przechodzą: końcówka wyniku na stderr i kod 2, więc agent nie kończy tury i poprawia błąd.
-    Plik stanu zostaje, więc kolejny `Stop` uruchomi testy ponownie.
-  - Ochrona przed pętlą: po 3 kolejnych blokadach w tej samej sesji hook kończy się kodem 0 z informacją
-    o nieprzechodzących testach. Plik stanu zostaje.
-  - Brak pliku stanu albo niedziałający kontener: kod 0 bez uruchamiania testów.
+  - Testy lub Deptrac nie przechodzą: końcówka wyniku na stderr i kod 2, więc agent nie kończy tury i poprawia
+    błąd. Plik stanu zostaje, więc kolejny `Stop` uruchomi sprawdzenia ponownie.
+  - Kontener zmienionej aplikacji nie działa albo brak `docker` na hoście: kod 2 z komunikatem po angielsku, co się
+    stało (zmieniona aplikacja, brak kontenera, testy i sprawdzenia nie zostały uruchomione) i że agent ma uruchomić
+    stos (`make up`) albo wprost powiedzieć użytkownikowi, że nie może. Aplikacje z działającymi kontenerami są
+    sprawdzane normalnie, a wszystko trafia do jednego komunikatu. Plik stanu zostaje.
+  - Ochrona przed pętlą: wszystkie powody blokady (testy, Deptrac, niedziałający kontener) dzielą jeden licznik
+    kolejnych blokad w sesji. Po 3 blokadach (kod 2) czwarte uruchomienie kończy się kodem 0 z informacją, co nie
+    przeszło lub nie zostało uruchomione. Plik stanu zostaje.
+  - Brak pliku stanu (albo pusty): kod 0 bez uruchamiania czegokolwiek. Nieznana nazwa aplikacji w pliku stanu
+    (np. `../x`) jest ignorowana z informacją na stderr i niczego nie uruchamia.
+  - Hook `PostToolUse` (po każdej edycji) nadal pomija sprawdzenie, gdy kontener nie działa (kod 0). Blokuje dopiero
+    hook `Stop`.
 - Hooki nie zastępują `make check` ani pełnych testów przed zakończeniem zadania.
 
 ## CI

@@ -80,9 +80,11 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - `apps/api`: PHPStan na zmienionym pliku i PHP CS Fixer w trybie sprawdzania (hook nie zmienia pliku),
   - `apps/store`, `apps/admin`: ESLint na zmienionym pliku.
 - Na koniec tury hook `Stop` uruchamia testy jednostkowe aplikacji zmienionych w tej turze (api i store:
-  `test-unit`, admin: `test`). Gdy nie przechodzą, tura się nie kończy, a wynik wraca do agenta.
+  `test-unit`, admin: `test`), a dla api także Deptrac. Gdy testy lub Deptrac nie przechodzą albo kontener zmienionej
+  aplikacji nie działa (wtedy nic nie zostało sprawdzone), tura się nie kończy, a wynik wraca do agenta.
+  W takim przypadku uruchom stos (`make up`) albo wprost powiedz użytkownikowi, że nie możesz.
 - Problemy zgłoszone przez hooki popraw, zanim przejdziesz dalej. Nie obchodź ich i nie wyłączaj hooków.
-- Hooki wymagają działającego stosu (`make up`) i `jq` na hoście. Gdy kontener nie działa, sprawdzenie jest pomijane.
+- Hooki wymagają działającego stosu (`make up`) i `jq` na hoście. Gdy kontener nie działa, pomijane jest tylko sprawdzenie po edycji pliku; hook `Stop` w takiej sytuacji blokuje.
 - Hooki nie zastępują `make check` ani pełnych testów przed zakończeniem zadania.
 
 ## Dokumentacja
