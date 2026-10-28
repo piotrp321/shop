@@ -198,7 +198,28 @@ services:
       timeout: 5s
       retries: 10
 
+  api:
+    build:
+      context: ./apps/api
+      target: dev
+    environment:
+      APP_ENV: dev
+    volumes:
+      - ./apps/api:/app
+      # Dependencies live in a volume, not on the host.
+      - api-vendor:/app/vendor
+    ports:
+      - "${API_PORT:-8000}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost/health | grep -q '\"status\":\"ok\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # The entrypoint runs `composer install` on first start.
+      start_period: 120s
+
 volumes:
+  api-vendor:
   postgres-data:
   redis-data:
   elasticsearch-data:
