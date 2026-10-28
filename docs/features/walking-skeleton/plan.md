@@ -1,7 +1,7 @@
 # Walking skeleton – plan implementacji
 
-> **Dla agentów:** wymagany skill `superpowers:subagent-driven-development`. Stan prac jest wyłącznie w sekcji
-> „Status”. Czytaj zadanie, które realizujesz (skrypt `task-brief` ze skilla), a nie cały plan.
+> **Dla agentów:** wymagany skill `superpowers:subagent-driven-development`. Zacznij od sekcji „Status”, a z zadań
+> czytaj tylko to, które realizujesz (skrypt `task-brief` ze skilla), a nie cały plan.
 
 **Cel:** po `make up` i `make seed` działa cały stos: katalog ze zdjęciami przechodzi drogę
 Postgres → outbox → RabbitMQ → Elasticsearch → API → sklep, a klient i pracownik logują się przez Keycloak.
@@ -18,8 +18,8 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-Aktualnie: domena katalogu. Następne zadanie: **Task 9**. Blokery: brak (Task 9–11 mają punkt zatrzymania
-na decyzje DDD, opisany niżej).
+W toku: nic. Następne zadanie: **Task 9** (domena katalogu). Blokery: brak; Task 9–11 mają punkt zatrzymania
+na decyzje DDD, opisany niżej.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
@@ -42,13 +42,14 @@ na decyzje DDD, opisany niżej).
 - Wiersz to jeden PR z jedną logiczną zmianą, a kolejność wierszy to kolejność prac (wynika z zależności
   „Konsumuje” w zadaniach, nie z numeracji). Task 12 jest przed Task 15, bo endpoint zwraca podpisane warianty
   zdjęć, a seed zapisuje zdjęcia w Garage.
+- Jedno uruchomienie `subagent-driven-development` realizuje jeden wiersz i kończy się otwarciem PR. Kolejny
+  wiersz zaczyna się po decyzji użytkownika o merge.
 - Orkiestrator oznacza wiersz jako ✅ w PR, który go realizuje, a numer PR dopisuje po jego otwarciu, w tym
-  samym PR. To jedyne miejsce ze stanem prac: ledger SDD jest pamięcią roboczą jednego worktree, a lista zadań
-  w aplikacji tylko widokiem.
+  samym PR. Ledger SDD jest tylko pamięcią roboczą jednego worktree, a lista zadań w aplikacji tylko widokiem.
 
 Wznowienie pracy w nowej sesji:
 
-1. Przeczytaj „Status” i „Ograniczenia globalne”.
+1. Przeczytaj „Status”, „Ograniczenia globalne” i „Punkty zatrzymania”.
 2. Sprawdź pracę w toku: `gh pr list` i `git log --oneline origin/main..HEAD`.
 3. W tym samym worktree, w którym zaczęto wiersz, ledger SDD (`.superpowers/sdd/plan/progress.md`) pokazuje
    zadania już zrobione w tym wierszu.
@@ -69,7 +70,6 @@ Wznowienie pracy w nowej sesji:
   w `src/styles/tokens.css`).
 - Pracując w `apps/store`, przestrzegaj `apps/store/CLAUDE.md`, w tym zasad przenoszenia kodu z vercel/shop.
 - Zadanie jest skończone, gdy przechodzą `check` i testy dotkniętych aplikacji. W raporcie pokaż wynik komend.
-- Testy na usługach stosu trafiają do CI w tym samym PR co kod, razem z uruchomieniem usług, których potrzebują.
 - Zadania ustawiające reguły (lint, Deptrac, CORS i podobne) sprawdzają też próby obejścia (sondy negatywne),
   nie tylko przypadek podstawowy.
 - Po `composer require` z Fleksem przejrzyj zmiany przepisów i usuń zbędne (sekrety w `.env`, `AGENTS.md`,

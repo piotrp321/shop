@@ -82,16 +82,18 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 - Wspólna konfiguracja jest w `.claude/settings.json`: włączony plugin superpowers. Lokalne ustawienia trzymaj
   w `.claude/settings.local.json` (poza repo).
 - Zadania z planu realizujemy przez `superpowers:subagent-driven-development`: orkiestrator prowadzi plan,
-  subagenci implementują i robią review. Nie dokładamy własnej orkiestracji ani hooków. Równolegle pracują tylko
-  subagenci przy zadaniach naprawdę niezależnych, z ustalonym kontraktem.
+  subagenci implementują i robią review. Nie dokładamy własnej orkiestracji ani hooków. Implementerzy pracują
+  po kolei, jak w skillu; równolegle tylko przy zadaniach naprawdę niezależnych, z ustalonym kontraktem, bez
+  wspólnych plików i każdy we własnym worktree.
 - Orkiestrator sam rozstrzyga szczegóły implementacji (wpis `Ruling:` w ledgerze). Istotne decyzje DDD (agregaty,
   value objecty, granice modułów, persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury
   przedstawia użytkownikowi przed implementacją.
 - Reviewer sprawdza zgodność ze specyfikacją, błędy logiczne, architekturę, przypadki brzegowe, testy (także
   przebieg TDD na podstawie wyników obu uruchomień) i zbędną złożoność. Brak prawdziwej fazy RED w zadaniu z TDD
   to problem Important.
-- PR obejmujący kilka zadań albo większą zmianę przechodzi też końcowy przegląd całości
-  (`superpowers:requesting-code-review`). Dodatkowych reviewerów ani modeli nie uruchamiamy bez powodu.
+- PR realizowany przez SDD kończy się przeglądem całej zmiany (krok skilla). Inny PR z większą zmianą przechodzi
+  taki przegląd przez `superpowers:requesting-code-review`. Dodatkowych reviewerów ani modeli nie uruchamiamy
+  bez powodu.
 - Raport po PR: zakres, subagenci i ich role, wynik review, wykryte i naprawione problemy, uruchomione testy
   z wynikami, link do PR i CI, czas pracy i zużycie modelu. Zwięźle, bez pełnych logów.
 - Stan prac jest wyłącznie w sekcji „Status” planu funkcji (`docs/features/<funkcja>/plan.md`).
