@@ -23,6 +23,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Brak wspólnych value objectów między contextami. Każdy context ma własne (np. `Price` w Pricing i `Amount` w Payment).
 - Deptrac pilnuje tych granic. Jeśli Deptrac zgłasza błąd, popraw projekt, nie edytuj `deptrac.yaml`.
 
+## Przepisy Fleksa
+
+- Przepis `symfony/framework-bundle` tworzy `AGENTS.md`, a `symfony.lock` go wymienia. Nie commituj tego pliku:
+  zasady dla agenta są w tym `CLAUDE.md`. Po `composer require`, `composer update` i `composer recipes:update`
+  sprawdź `git status` i usuń odtworzony `AGENTS.md`.
+
 ## Reguły modelu
 
 - Pieniądze zawsze jako liczba całkowita w groszach plus waluta, nigdy float. Zaokrąglanie VAT jawnie, w jednym miejscu.
