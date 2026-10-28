@@ -9,7 +9,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `check` – PHPStan, Deptrac, PHP CS Fixer
 - `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ)
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
-- `openapi` – eksport specyfikacji do `openapi.json`
+- `openapi` – eksport specyfikacji do `openapi.json` (sklep: endpointy publiczne i klienta)
+  oraz `openapi-admin.json` (panel: `/api/v1/admin`)
 
 ## Architektura
 
@@ -56,7 +57,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Nowy publiczny endpoint katalogu = tagi w odpowiedzi + unieważnianie w konsumencie zdarzeń. Bez tego
   zmiana danych nie będzie widoczna w sklepie.
 
-- Pliki (zdjęcia produktów) przez Flysystem na MinIO, prywatny bucket. Nigdy na lokalny dysk kontenera.
+- Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
 - Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
@@ -68,8 +69,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## Testy
 
 - Logika domeny i aplikacji: testy jednostkowe z adapterami in-memory. Mają być szybkie,
-  bo hooki uruchamiają je po każdej zmianie.
-- Infrastruktura (Doctrine, Elasticsearch, RabbitMQ, MinIO): testy integracyjne na prawdziwych usługach.
+  bo hook `Stop` uruchamia je na koniec każdej tury agenta, która zmieniła kod api.
+- Infrastruktura (Doctrine, Elasticsearch, RabbitMQ, Garage): testy integracyjne na prawdziwych usługach.
 - Każdy endpoint: co najmniej jeden test funkcjonalny, w tym przypadek bez autoryzacji i z błędnymi danymi.
 - Dane testowe przez fabryki (Foundry), a nie tablice budowane ręcznie w każdym teście.
 - Poprawka błędu zaczyna się od testu, który ten błąd odtwarza i nie przechodzi.
