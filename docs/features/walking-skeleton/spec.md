@@ -56,11 +56,22 @@ są przypięte w pliku compose.
 | `admin` | Node 24, `vite dev` | panel | `GET /` |
 | `e2e` | obraz Playwright, profil `e2e` | testy E2E, uruchamiany tylko przez `make e2e` | — |
 
-Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init`, który uruchamia potem przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd).
+Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init`, który uruchamia potem przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd). Na końcu `make up` wywołuje krok inicjalizacji (niżej).
 
 Obraz API zawiera rozszerzenia `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, a target `dev` dodatkowo SPX.
-Entrypoint `api` w trybie dev instaluje zależności, jeśli zmienił się lock, uruchamia migracje i tworzy indeks
-Elasticsearch, jeśli go nie ma (`catalog:search-index:setup`, idempotentne).
+Entrypoint `api` w trybie dev instaluje tylko zależności, jeśli zmienił się lock.
+
+### Inicjalizacja bazy i indeksu
+
+Migracje i indeks Elasticsearch nie powstają przy starcie kontenera (`api` ani `worker`). Robi to osobny,
+idempotentny krok, uruchamiany jawnie:
+
+| Gdzie | Krok |
+|---|---|
+| lokalnie | `make up` na końcu wywołuje `make -C apps/api init`: `doctrine:migrations:migrate` i `catalog:search-index:setup` |
+| testy na usługach stosu | `make -C apps/api init-test`: te same komendy w środowisku `test` (baza `shop_test`, alias `test_products`) |
+| CI | `init-test` przed testami, które potrzebują Postgresa lub Elasticsearch |
+| wdrożenie (Kubernetes) | osobny Job z tymi samymi komendami co `init`, przed wdrożeniem nowej wersji aplikacji |
 
 `node_modules` i `vendor` są w wolumenach Dockera.
 
@@ -102,7 +113,7 @@ całego stosu.
 | Makefile | Cele |
 |---|---|
 | główny | `up`, `down`, `logs`, `ps`, `seed`, `check`, `test`, `e2e`, `api-client`, `keycloak-reset` |
-| `apps/api` | `check`, `test`, `test-unit`, `migrate`, `migration`, `openapi`, `shell` |
+| `apps/api` | `check`, `test`, `test-unit`, `init`, `init-test`, `migrate`, `migration`, `openapi`, `shell` |
 | `apps/store` | `check`, `test`, `test-unit`, `shell` |
 | `apps/admin` | `check`, `test`, `shell` |
 

@@ -255,6 +255,7 @@ realistyczny deployment przy kosztach rzędu kilkudziesięciu euro miesięcznie.
 - **Błędy**: Sentry SaaS (darmowy plan) dla API, store i admin.
 - **Brzeg sieci**: Cloudflare (darmowy plan) – DNS, TLS, cache obrazów z imgproxy.
 - **Sekrety**: nigdy w repo w postaci jawnej (Sealed Secrets albo SOPS).
+- **Migracje i indeks**: osobny Job przed wdrożeniem nowej wersji, nigdy przy starcie kontenera aplikacji.
 - **Tryb demo**: dane resetowane co noc z danych demo, konta demo podane na stronie logowania,
   płatności udawane, e-maile nie wychodzą na zewnątrz.
 - **Świadomie bez Ranchera**: przy jednym klastrze to narzut bez korzyści.

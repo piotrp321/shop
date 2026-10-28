@@ -179,8 +179,10 @@ w zadaniu, do którego należy kod.
   `migrations/Version…CreateCatalog.php`, `tests/Factory/{CategoryFactory,ProductFactory}.php`,
   `tests/Integration/Catalog/Persistence/{DoctrineCategoryRepositoryTest,DoctrineProductRepositoryTest}.php`
 - Modyfikuj: `config/packages/test/dama_doctrine_test_bundle.yaml`, `phpunit.dist.xml` (rozszerzenie dama),
-  `phpstan.dist.neon` (`objectManagerLoader` rozszerzenia doctrine),
-  `.github/workflows/ci.yml` (usługa `postgres` przed testami)
+  `phpstan.dist.neon` (`objectManagerLoader` rozszerzenia doctrine), `apps/api/Makefile` (`init`: migracje;
+  `init-test`: migracje w środowisku `test`), `Makefile` (`up` na końcu wywołuje `make -C apps/api init`),
+  `apps/api/CLAUDE.md` (cele `init` i `init-test`), `.github/workflows/ci.yml` (usługa `postgres`
+  i `make -C apps/api init-test` przed testami)
 
 **Interfejsy:**
 - Konsumuje: interfejsy repozytoriów z zadania 9.
@@ -196,7 +198,10 @@ w zadaniu, do którego należy kod.
 - **Krok 2: FAIL. Krok 3: mapowanie, typy, repozytoria, migracja (`make -C apps/api migration`).**
 - **Krok 4: PASS**: `make -C apps/api check test`; `bin/console doctrine:schema:validate` w kontenerze
   przechodzi.
-- **Krok 5: Commit** `feat(api): persist catalog with Doctrine XML mapping`
+- **Krok 5: Sprawdź inicjalizację**: `make up` na pustej bazie tworzy schemat, a drugie `make up` kończy się kodem 0
+  bez nowych migracji; `docker compose restart api` nie uruchamia migracji (logi `api`); `make -C apps/api init`
+  przy zatrzymanym Postgresie kończy się kodem różnym od 0.
+- **Krok 6: Commit** `feat(api): persist catalog with Doctrine XML mapping`
 
 ### Task 12: Obrazy – Garage i imgproxy
 
@@ -244,7 +249,7 @@ w zadaniu, do którego należy kod.
   `src/Catalog/UI/Console/{SetupSearchIndexCommand,ReindexCommand}.php`,
   `tests/Integration/Catalog/Search/{ProductSearchTest,SearchIndexMaintenanceTest}.php`,
   `tests/Unit/Catalog/Search/ProductDocumentBuilderTest.php`
-- Modyfikuj: `apps/api/docker/entrypoint.sh` (wywołanie `catalog:search-index:setup`),
+- Modyfikuj: `apps/api/Makefile` (`init` i `init-test` wywołują też `catalog:search-index:setup`),
   `.github/workflows/ci.yml` (usługa `elasticsearch` przed testami)
 
 **Interfejsy:**
