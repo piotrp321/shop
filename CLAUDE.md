@@ -55,7 +55,11 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 
 - Nie ma kodu bez planu. Przy wszystkim większym niż drobna poprawka: napisz lub zaktualizuj specyfikację
   w `docs/features/<funkcja>/`, zaproponuj plan, poczekaj na akceptację.
+- Testy przed kodem obowiązują dla logiki domeny i aplikacji oraz poprawek błędów. Konfigurację i infrastrukturę
+  weryfikujemy komendami z planu, bez sztucznego odtwarzania fazy RED.
 - Pracuj małymi krokami. Jedna logiczna zmiana na commit, format Conventional Commits.
+- Zadania ustawiające reguły (lint, Deptrac, hooki, CORS i podobne) sprawdzają też próby obejścia, nie tylko
+  przypadek podstawowy.
 - Zadanie jest skończone dopiero, gdy przechodzą `make check` i testy aplikacji, której dotyczy zmiana.
   Pokaż wynik, nie deklaruj.
 - Zmiana dotykająca kilku aplikacji (np. nowy endpoint i ekran w panelu) jest skończona, gdy przechodzą
@@ -63,6 +67,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 - Skrypty, komendy i cele Makefile testujemy także na ścieżce błędu (brak pliku, błąd narzędzia, niedziałająca
   usługa, brak zależności), nie tylko na poprawnej. Pokazujemy wynik obu ścieżek.
 - Nie dodawaj nowych zależności bez pytania.
+- Po `composer require` z Fleksem przejrzyj zmiany wprowadzone przez przepisy i usuń zbędne: sekrety w `.env`,
+  `AGENTS.md`, pliki konfiguracji, których zadanie nie potrzebuje.
 - Jeśli zasada z tego pliku koliduje z tym, czego wymaga zadanie, zatrzymaj się i zapytaj, zamiast ją obchodzić.
 
 ## Claude Code

@@ -33,6 +33,10 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
   w `src/styles/tokens.css`).
 - Pracując w `apps/store`, przestrzegaj `apps/store/CLAUDE.md`, w tym zasad przenoszenia kodu z vercel/shop.
 - Zadanie jest skończone, gdy przechodzą `check` i testy dotkniętych aplikacji. W raporcie pokaż wynik komend.
+- Zadania ustawiające reguły (lint, Deptrac, hooki, CORS i podobne) sprawdzają też próby obejścia (sondy negatywne),
+  nie tylko przypadek podstawowy.
+- Po `composer require` z Fleksem przejrzyj zmiany przepisów i usuń zbędne (sekrety w `.env`, `AGENTS.md`,
+  nieużywaną konfigurację).
 
 ## Punkty zatrzymania
 
@@ -45,6 +49,9 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 Zadania wykonuje się w kolejności numerów, z wyjątkiem Task 7, który idzie przed Task 5 i Task 6 (hooki działają
 od pierwszego kodu frontów).
+
+Po ukończeniu Task 7 kolejne zadania wykonuje się w nowej sesji Claude Code, żeby wczytały się hooki z
+`.claude/settings.json`. Pierwszy krok tej sesji to sprawdzenie `/hooks` i blokady tury (krok 6 Task 7).
 
 ## Na co patrzeć w review
 
@@ -719,9 +726,10 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   `src/Backoffice/Infrastructure/Security/{StaffUser,StaffUserProvider}.php`,
   `src/Backoffice/UI/Http/{StaffMeController,StaffMeResponse}.php`,
   `src/Shared/Infrastructure/Security/{ProblemAuthenticationEntryPoint,ProblemAuthenticationFailureHandler}.php`,
+  `src/Shared/Infrastructure/Http/ProblemDetailsSubscriber.php` (mapowanie wyjątków bezpieczeństwa),
   `tests/Support/Security/TestTokenFactory.php`,
   `tests/Functional/Customer/MeEndpointTest.php`, `tests/Functional/Backoffice/StaffMeEndpointTest.php`,
-  `tests/Functional/Shared/InvalidTokenOnPublicEndpointTest.php`, `tests/Unit/Backoffice/Security/StaffUserProviderTest.php`,
+  `tests/Functional/Shared/InvalidTokenOnPublicEndpointTest.php`, `tests/Functional/Shared/SecurityProblemDetailsTest.php`, `tests/Unit/Backoffice/Security/StaffUserProviderTest.php`,
   `tests/Integration/Shared/Security/KeycloakDiscoveryTest.php`
 - Modyfikuj: `tests/bootstrap.php` (para kluczy RSA w pamięci, `OIDC_TEST_JWKS`), `apps/api/openapi.json`,
   `apps/api/openapi-admin.json`
@@ -731,7 +739,9 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   `TestTokenFactory::staff(list<string> $roles, array $claims = []): string`,
   `TestTokenFactory::forRealm(string $realm, array $claims): string` (domyślnie poprawne `iss`, `aud`, `sub`,
   `exp = now + 300`); `StaffUser` z `id()`, `username()`, `staffRoles(): list<string>`; `CustomerUser` z `id()`,
-  `email()`, `name()`.
+  `email()`, `name()`. `ProblemDetailsSubscriber` mapuje `AuthenticationException` na 401 z `WWW-Authenticate: Bearer`
+  i `AccessDeniedException` na 403, oba jako problem details z ogólnym `detail` (nigdy komunikat wyjątku), także gdy
+  wyjątek poleci poza listenerem firewalla.
 
 - [ ] **Krok 1: Testy**
   - `MeEndpointTest`: brak tokena daje 401, problem details i `WWW-Authenticate: Bearer`; token pracownika
@@ -739,6 +749,10 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
     poprawny token daje 200 z `{id, email, name}` i `Cache-Control: no-store, private`.
   - `StaffMeEndpointTest`: ta sama macierz, w tym token klienta → 401; role
     `[admin, offline_access, uma_authorization]` dają `roles === ['admin']`.
+  - `SecurityProblemDetailsTest` (trasy testowe w `tests/Support`): `AuthenticationException` rzucony z kontrolera
+    daje 401 z `WWW-Authenticate: Bearer`, `AccessDeniedException` rzucony z kontrolera lub votera daje 403;
+    oba jako `application/problem+json`, bez komunikatu wyjątku w treści i bez 500. Sondy obejścia: wyjątek
+    bezpieczeństwa opakowany w zwykły wyjątek daje 500 bez `detail` (zasada „decyduje rzucony wyjątek”).
   - `InvalidTokenOnPublicEndpointTest`: `GET /api/v1/products` z `Bearer garbage` daje 401.
   - `StaffUserProviderTest`: role przycięte do czterech znanych, `ROLE_STAFF` zawsze obecne.
   - `KeycloakDiscoveryTest` (prawdziwy Keycloak): discovery z `http://keycloak:8080/realms/backoffice` zwraca
