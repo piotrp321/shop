@@ -45,6 +45,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Klient: tylko własne dane (właściciel zasobu = `sub` z tokena).
 - Zmiany z panelu zapisują identyfikator pracownika (`sub` z tokena realmu `backoffice`).
 - Błędy w formacie RFC 9457 (problem details).
+- `detail` w błędzie ma tylko wyjątek projektu (implementuje `App\Shared\Domain\Exception\ProblemException`,
+  komunikat bez danych wewnętrznych). Wyjątki frameworka dostają stały ogólny opis, nigdy własny komunikat.
+  Nowy wyjątek domenowy lub aplikacyjny pokazywany klientowi implementuje ten interfejs.
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności) wymagają nagłówka `Idempotency-Key`.
 - Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.

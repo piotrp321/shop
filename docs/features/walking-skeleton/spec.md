@@ -365,6 +365,16 @@ w tej kolejności:
 
 - Błędy w formacie RFC 9457 (`application/problem+json`: `type`, `title`, `status`, `detail`; dla 400 także
   `violations` z `propertyPath` i `title`).
+- `detail` zależy od rodzaju wyjątku, a decyduje wyłącznie wyjątek rzucony, nie jego łańcuch `previous`:
+  - wyjątek projektu (interfejs `App\Shared\Domain\Exception\ProblemException`, który zwraca własny status):
+    `detail` to jego komunikat, napisany dla klienta po angielsku, bez danych wewnętrznych,
+  - wyjątek frameworka (`HttpExceptionInterface`: 404 routera, 405, `MapQueryString` itp.): status i nagłówki
+    (np. `Allow`) są zachowane, a `detail` to stały angielski opis zależny od statusu, nigdy komunikat wyjątku
+    (komunikaty routera zawierają żądany adres),
+  - `ValidationFailedException` (także w łańcuchu `previous`): 400 z `violations`,
+  - każdy inny wyjątek, także projektowy opakowany w wyjątek frameworka i frameworkowy opakowany w zwykły:
+    pierwszy dostaje ogólny opis frameworka, drugi 500 bez `detail`,
+  - 5xx nigdy nie ma `detail`.
 - Każda odpowiedź z `Cache-Control: public` ma `Vary: Origin` (ustawia jeden subscriber).
 - CORS (NelmioCorsBundle) dla `^/api/v1` tylko z `ADMIN_URL`. Sklep woła API wyłącznie z serwera, więc jego
   domena nie dostaje CORS.
