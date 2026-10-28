@@ -610,7 +610,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - [ ] **Krok 5: Eksport**: `make -C apps/api openapi`; `openapi.json` zawiera `/api/v1/products` i
   `/api/v1/categories` z odpowiedziami 200, 400 i 503, a nie zawiera `/health` ani `/api/v1/admin`.
 - [ ] **Krok 6: Commit** `feat(api): add product list and category tree endpoints`
-- [ ] **Krok 7: Aktualność kontraktu w CI**: w `.github/workflows/ci.yml` po testach jednostkowych krok
+- [ ] **Krok 7: Aktualność kontraktu w CI**: w `.github/workflows/ci.yml` po kroku testów krok
   „Contract freshness”: `make -C apps/api openapi RUN="$CI_RUN"`, potem
   `git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json`. Ten sam krok sprawdza później klientów
   TS: zadania 18 i 23, które tworzą `make api-client`, dopisują do niego generowanie i swój `schema.d.ts`.
@@ -969,7 +969,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   zadania przekazują jako `RUN` w swoich krokach (zadania 15, 18 i 23 dopisują krok „Contract freshness”).
 
 - [ ] **Krok 1: Workflow** zgodny ze specyfikacją („CI”):
-  - uruchamiany przy `pull_request` i pushu na `main`, `paths-ignore` dla `docs/**` i `**/*.md`;
+  - uruchamiany przy każdym `pull_request` (także ze zmianami wyłącznie w dokumentacji) i pushu na `main`;
   - `concurrency` z grupą na numer PR (albo ref) i `cancel-in-progress: true`; `permissions: contents: read`;
   - akcje przypięte do SHA commitu z wersją w komentarzu;
   - `infra/scripts/init-env.sh`, potem budowa obrazów `api` (target `dev`), `store` i `admin` przez buildx
@@ -977,7 +977,8 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
     (`COMPOSE_PROJECT_NAME=shop`, więc `shop-api`, `shop-store`, `shop-admin`);
   - instalacja zależności do wolumenów jak lokalnie (`api true` uruchamia entrypoint z `composer install`,
     `npm ci` w `store` i `admin`);
-  - `make check` i testy jednostkowe trzech aplikacji z `RUN="$CI_RUN"`;
+  - `make check` i testy z `RUN="$CI_RUN"`: wszystkie suity api (`make -C apps/api test`), jednostkowe store
+    (`test-unit`) i admin (`test`);
   - testy skryptów hooków: `docker compose up -d --no-deps --wait api store admin`, potem oba
     `.claude/hooks/tests/*.test.sh`; pominięty przypadek (`skipped` różne od 0) to w CI błąd.
 - [ ] **Krok 2: Sprawdź lokalnie**: przy zatrzymanym stosie (`make down`) te same komendy na świeżym projekcie

@@ -1,17 +1,12 @@
-# Light CI: static analysis and unit tests of the three apps, plus the Claude Code hook tests.
+# Light CI: static analysis and tests of the three apps, plus the Claude Code hook tests.
 # Runs without the full stack: app containers start with --no-deps and no backing service is needed.
+# Runs for every change, documentation included, so the `checks` job can be a required status check.
 name: CI
 
 on:
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
   push:
     branches: [main]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -75,9 +70,11 @@ jobs:
       - name: make check
         run: make check RUN="$CI_RUN"
 
-      - name: Unit tests
+      # All api suites: none of them needs a backing service yet. Store keeps to unit tests,
+      # its integration tests need Redis.
+      - name: Tests
         run: |
-          make -C apps/api test-unit RUN="$CI_RUN"
+          make -C apps/api test RUN="$CI_RUN"
           make -C apps/store test-unit RUN="$CI_RUN"
           make -C apps/admin test RUN="$CI_RUN"
 
