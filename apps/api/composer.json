@@ -9,13 +9,15 @@
         "ext-iconv": "*",
         "symfony/console": "8.1.*",
         "symfony/dotenv": "8.1.*",
+        "symfony/flex": "^2",
         "symfony/framework-bundle": "8.1.*",
         "symfony/runtime": "8.1.*",
         "symfony/yaml": "8.1.*"
     },
     "config": {
         "allow-plugins": {
-            "symfony/runtime": true
+            "symfony/runtime": true,
+            "symfony/flex": true
         },
         "sort-packages": true
     },
@@ -39,5 +41,11 @@
         "phpstan/phpstan-symfony": "^2.1",
         "phpunit/phpunit": "^13.4",
         "symfony/browser-kit": "^8.1"
+    },
+    "scripts": {
+        "auto-scripts": {
+            "cache:clear": "symfony-cmd",
+            "assets:install %PUBLIC_DIR%": "symfony-cmd"
+        }
     }
 }
