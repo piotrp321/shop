@@ -157,9 +157,13 @@ pochodzą z tokena.
 
 Reguły Deptrac:
 
-- `Domain` modułu zależy tylko od `Shared\Domain`.
-- `Application` zależy od własnego `Domain` i `Shared\Domain`.
-- `Infrastructure` i `UI` zależą od własnego `Application` i `Domain` oraz `Shared\Infrastructure`.
+- Klasy wbudowane PHP (rdzeń i rozszerzenia, np. `\DateTimeImmutable`, `\InvalidArgumentException`) są dozwolone
+  w każdej warstwie, także w `Domain` (warstwa `Native`).
+- `Domain` modułu zależy tylko od `Shared\Domain` (poza klasami wbudowanymi PHP). Nie używa żadnego frameworka
+  ani biblioteki.
+- `Application` zależy od własnego `Domain` i `Shared\Domain`. Może używać atrybutów i interfejsów Symfony
+  Messenger (warstwa `Vendor`).
+- `Infrastructure` i `UI` zależą od własnego `Application` i `Domain` oraz `Shared\Domain` i `Shared\Infrastructure`.
 - Jedyna dozwolona zależność między modułami: `X\Infrastructure` → `Y\Application` (np. adapter portu
   `CatalogStatistics` w `Backoffice` woła zapytanie `GetCatalogStatistics` z `Catalog`). Nikt nie importuje
   cudzego `Domain`.

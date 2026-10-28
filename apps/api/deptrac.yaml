@@ -1,5 +1,5 @@
 # Module boundaries, see docs/features/walking-skeleton/spec.md ("Reguły Deptrac").
-# Layers are <Module>_<Layer>. Domain is pure PHP: it may only use Shared_Domain and never Vendor.
+# Layers are <Module>_<Layer>. Domain is pure PHP: it may only use Native and Shared_Domain, never Vendor.
 deptrac:
   cache_file: var/.deptrac.cache
   paths:
@@ -97,6 +97,7 @@ deptrac:
       - Native
       - Catalog_Application
       - Catalog_Domain
+      - Shared_Domain
       - Shared_Infrastructure
       - Vendor
       - Customer_Application
@@ -105,6 +106,7 @@ deptrac:
       - Native
       - Catalog_Application
       - Catalog_Domain
+      - Shared_Domain
       - Shared_Infrastructure
       - Vendor
     Customer_Domain:
@@ -119,6 +121,7 @@ deptrac:
       - Native
       - Customer_Application
       - Customer_Domain
+      - Shared_Domain
       - Shared_Infrastructure
       - Vendor
       - Catalog_Application
@@ -127,6 +130,7 @@ deptrac:
       - Native
       - Customer_Application
       - Customer_Domain
+      - Shared_Domain
       - Shared_Infrastructure
       - Vendor
     Backoffice_Domain:
@@ -141,6 +145,7 @@ deptrac:
       - Native
       - Backoffice_Application
       - Backoffice_Domain
+      - Shared_Domain
       - Shared_Infrastructure
       - Vendor
       - Catalog_Application
@@ -149,6 +154,7 @@ deptrac:
       - Native
       - Backoffice_Application
       - Backoffice_Domain
+      - Shared_Domain
       - Shared_Infrastructure
       - Vendor
     Shared_Domain:
