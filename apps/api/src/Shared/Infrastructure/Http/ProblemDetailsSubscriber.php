@@ -22,7 +22,7 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
  *
  * Only the thrown exception itself decides about `detail`, its `previous` chain is never inspected for it.
  * The one exception: a Messenger HandlerFailedException that wraps exactly one exception is replaced by that
- * exception, because a sync bus wraps whatever a handler throws.
+ * exception, repeatedly for nested buses, because a sync bus wraps whatever a handler throws.
  * - {@see ProblemException}: status by kind (see PROBLEM_STATUSES), message as `detail` (written for clients).
  *   If a class is also an HttpExceptionInterface, the ProblemException rules win and its headers are ignored,
  * - framework HTTP exceptions: status and headers are kept, `detail` is a fixed text per status, never the message
@@ -39,6 +39,8 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
         Conflict::class => Response::HTTP_CONFLICT,
         InvalidInput::class => Response::HTTP_UNPROCESSABLE_ENTITY,
     ];
+
+    private const MAX_UNWRAP_DEPTH = 10;
 
     private const FALLBACK_DETAIL = 'The request could not be processed.';
 
@@ -118,13 +120,19 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
         return Response::HTTP_UNPROCESSABLE_ENTITY;
     }
 
+    /**
+     * Follows chains of HandlerFailedException that each wrap exactly one exception (nested buses). Anything else,
+     * including more than one wrapped exception or a chain deeper than MAX_UNWRAP_DEPTH, is left as it is and ends up
+     * as a 500 without detail.
+     */
     private function unwrapHandlerFailure(\Throwable $exception): \Throwable
     {
-        if ($exception instanceof HandlerFailedException) {
+        for ($depth = 0; $depth < self::MAX_UNWRAP_DEPTH && $exception instanceof HandlerFailedException; ++$depth) {
             $wrapped = $exception->getWrappedExceptions();
-            if (1 === \count($wrapped)) {
-                return reset($wrapped);
+            if (1 !== \count($wrapped)) {
+                break;
             }
+            $exception = reset($wrapped);
         }
 
         return $exception;
@@ -133,6 +141,10 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
     private function findValidationFailure(\Throwable $exception): ?ValidationFailedException
     {
         for ($current = $exception; null !== $current; $current = $current->getPrevious()) {
+            if ($current instanceof HandlerFailedException) {
+                // Not unwrapped, so it wraps several exceptions or is too deep: never trust what is inside.
+                return null;
+            }
             if ($current instanceof ValidationFailedException) {
                 return $current;
             }

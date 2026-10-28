@@ -13,6 +13,8 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\ConstraintViolation;
 use Symfony\Component\Validator\ConstraintViolationList;
@@ -103,5 +105,13 @@ final class TestErrorController
         $project = new class('Product not found.') extends \RuntimeException implements NotFound {};
 
         throw new BadRequestHttpException('internal secret', $project);
+    }
+
+    #[Route('/_test/handler-multiple-failures', methods: ['GET'])]
+    public function handlerMultipleFailures(): Response
+    {
+        $validation = new ValidationFailedException('input', new ConstraintViolationList([new ConstraintViolation('Name is required.', null, [], 'input', 'name', null)]));
+
+        throw new HandlerFailedException(new Envelope(new \stdClass()), [$validation, new \RuntimeException('internal secret')]);
     }
 }

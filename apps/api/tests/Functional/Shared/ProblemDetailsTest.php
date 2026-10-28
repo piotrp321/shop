@@ -134,6 +134,38 @@ final class ProblemDetailsTest extends WebTestCase
         self::assertSame('Category not found.', $this->problem($client->getResponse())['detail']);
     }
 
+    public function testProjectExceptionFromNestedBusHandlerKeepsItsStatusAndMessage(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/_test/handler/nested-nested-project');
+
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame('Category not found.', $this->problem($client->getResponse())['detail']);
+    }
+
+    public function testFrameworkExceptionFromNestedBusHandlerGetsGenericDetail(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/_test/handler/nested-framework');
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertStringNotContainsString('internal secret', (string) $client->getResponse()->getContent());
+        self::assertSame('The request is invalid.', $this->problem($client->getResponse())['detail']);
+    }
+
+    public function testSeveralWrappedExceptionsGiveOpaque500EvenIfFirstIsValidationFailure(): void
+    {
+        $client = static::createClient();
+        $client->catchExceptions(true);
+        $client->request('GET', '/_test/handler-multiple-failures');
+
+        self::assertResponseStatusCodeSame(500);
+        $problem = $this->problem($client->getResponse());
+        self::assertArrayNotHasKey('detail', $problem);
+        self::assertArrayNotHasKey('violations', $problem);
+        self::assertStringNotContainsString('internal secret', (string) $client->getResponse()->getContent());
+    }
+
     public function testFrameworkExceptionFromBusHandlerGetsGenericDetail(): void
     {
         $client = static::createClient();

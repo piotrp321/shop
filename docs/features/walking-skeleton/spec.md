@@ -377,9 +377,11 @@ w tej kolejności:
     (komunikaty routera zawierają żądany adres),
   - `ValidationFailedException` (także w łańcuchu `previous`): 400 z `violations`. Komunikaty naruszeń (także
     własnych constraintów) nie zawierają wejścia użytkownika ani danych wewnętrznych,
-  - `HandlerFailedException` Messengera (szyna synchroniczna opakowuje wyjątek handlera) z dokładnie jednym
-    opakowanym wyjątkiem jest zastępowana tym wyjątkiem i obowiązują powyższe reguły. To jedyny wyjątek od zasady,
-    że łańcuch `previous` nie jest przeglądany. Przy wielu opakowanych wyjątkach: 500 bez `detail`,
+  - `HandlerFailedException` Messengera (szyna synchroniczna opakowuje wyjątek handlera): łańcuch takich wyjątków,
+    z których każdy opakowuje dokładnie jeden wyjątek (zagnieżdżone szyny), jest rozwijany do wyjątku wewnętrznego
+    i obowiązują dla niego powyższe reguły. Rozwijanie ma limit głębokości 10. To jedyny wyjątek od zasady, że łańcuch
+    `previous` nie jest przeglądany. Gdy któryś poziom opakowuje więcej niż jeden wyjątek albo limit zostanie
+    przekroczony: 500 bez `detail` i bez `violations`, także gdy pierwszy opakowany wyjątek to `ValidationFailedException`,
   - każdy inny wyjątek, także projektowy opakowany w wyjątek frameworka i frameworkowy opakowany w zwykły:
     pierwszy dostaje ogólny opis frameworka, drugi 500 bez `detail`,
   - 5xx nigdy nie ma `detail`.
