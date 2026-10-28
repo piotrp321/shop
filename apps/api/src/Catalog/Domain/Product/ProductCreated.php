@@ -8,7 +8,7 @@ use App\Shared\Domain\Event\DomainEvent;
 
 final readonly class ProductCreated implements DomainEvent
 {
-    public function __construct(public string $productId, private \DateTimeImmutable $occurredAt)
+    public function __construct(public string $productId, public \DateTimeImmutable $occurredAt)
     {
     }
 

@@ -20,13 +20,18 @@ final class ProductTest extends TestCase
 {
     public function testCreateRecordsSingleProductCreatedEvent(): void
     {
+        $before = new \DateTimeImmutable();
         $product = $this->product();
+        $after = new \DateTimeImmutable();
 
         $events = $product->releaseEvents();
 
         self::assertCount(1, $events);
         self::assertInstanceOf(ProductCreated::class, $events[0]);
         self::assertSame('11111111-1111-4111-8111-111111111111', $events[0]->productId);
+        self::assertGreaterThanOrEqual($before, $events[0]->occurredAt());
+        self::assertLessThanOrEqual($after, $events[0]->occurredAt());
+        self::assertGreaterThanOrEqual($before, $events[0]->occurredAt);
     }
 
     public function testEventsAreReleasedOnlyOnce(): void

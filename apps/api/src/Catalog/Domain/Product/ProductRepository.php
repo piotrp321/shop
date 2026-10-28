@@ -11,6 +11,9 @@ interface ProductRepository
      */
     public function save(Product $product): void;
 
+    /**
+     * @throws ProductNotFound
+     */
     public function get(ProductId $id): Product;
 
     /**
