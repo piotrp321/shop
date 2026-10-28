@@ -237,9 +237,29 @@ services:
       # `npm ci` runs on first start before the dev server is up.
       start_period: 180s
 
+  admin:
+    build:
+      context: ./apps/admin
+    # Dependencies are installed into the node_modules volume when package-lock.json is newer than the install.
+    command: ["sh", "-c", "[ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; exec npm run dev"]
+    volumes:
+      - ./apps/admin:/app
+      # Dependencies live in a volume, not on the host.
+      - admin-node-modules:/app/node_modules
+    ports:
+      - "127.0.0.1:${ADMIN_PORT:-5173}:5173"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5173/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # `npm ci` runs on first start before the dev server is up.
+      start_period: 180s
+
 volumes:
   api-vendor:
   store-node-modules:
+  admin-node-modules:
   postgres-data:
   redis-data:
   elasticsearch-data:

@@ -18,11 +18,12 @@ logs:
 ps:
 	docker compose ps
 
-# admin joins in its own task.
 check:
 	$(MAKE) -C apps/api check
 	$(MAKE) -C apps/store check
+	$(MAKE) -C apps/admin check
 
 test:
 	$(MAKE) -C apps/api test
 	$(MAKE) -C apps/store test
+	$(MAKE) -C apps/admin test
