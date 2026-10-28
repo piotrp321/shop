@@ -165,7 +165,7 @@ w aplikacji uwierzytelniającej.
 | `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; porty `ProductSearch`, `ProductIndexer`, `ProductImageStorage`, `ImageUrlGenerator`; lista rozmiarów `ImageSize` | Doctrine (mapowanie XML), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, loader danych demo | `GET /api/v1/products`, `GET /api/v1/categories`, komendy konsoli |
 | `Customer` | — | — | `CustomerUser` i `CustomerUserProvider` (z tokena realmu `shop`) | `GET /api/v1/me` |
 | `Backoffice` | — | zapytanie `GetDashboard`; porty `CatalogStatistics`, `SystemHealth`, `MessagingStatistics` | `StaffUser` i `StaffUserProvider` (z tokena realmu `backoffice`), `DashboardVoter`, adaptery portów | `GET /api/v1/admin/me`, `GET /api/v1/admin/dashboard` |
-| `Shared` | interfejs-znacznik `DomainEvent`, interfejsy-znaczniki wyjątków `ProblemException`, `NotFound`, `Conflict`, `InvalidInput` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
+| `Shared` | interfejs `DomainEvent` (`occurredAt()`), port `DomainEventPublisher`, interfejsy-znaczniki wyjątków `ProblemException`, `NotFound`, `Conflict`, `InvalidInput` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
 
 `Backoffice` to moduł funkcji panelu, a nie context domenowy: pracownik nie ma własnego modelu, tożsamość i role
 pochodzą z tokena.
@@ -195,15 +195,34 @@ Reguły Deptrac:
 
 **`Product`** (agregat)
 - `ProductId` (UUID), `ProductName` (niepusta, do 200 znaków), `Slug` (`^[a-z0-9]+(-[a-z0-9]+)*$`, do 200 znaków,
-  unikalny), `ShortDescription` (do 500 znaków), `categoryId` (`CategoryId`, jedna kategoria główna),
-  `TaxCategory`, lista `ProductImage`.
+  unikalny), `ShortDescription` (do 500 znaków, może być pusty), `ProductCategories`, `TaxCategory`,
+  `ProductImages`.
+- `ProductCategories`: dokładnie jedna kategoria główna i dowolnie wiele dodatkowych, wszystkie jako
+  `CategoryId`. Kategoria nie powtarza się na liście, a główna nie jest jednocześnie dodatkową. `all()` zwraca
+  główną, a po niej dodatkowe w kolejności podania.
+- `Product` i `Category` to niezależne agregaty. Odwołują się do siebie wyłącznie przez identyfikatory.
 - `TaxCategory`: `standard`, `food`, `food_supplement`, `printed_publication`. Produkt ma kategorię podatkową,
   a nie stawkę.
-- `ProductImage`: `ImageKey` (klucz oryginału w magazynie), `alt` (niepusty), pozycja. Najwyżej 10 zdjęć,
-  pozycje ciągłe od 0. Pierwsze zdjęcie jest główne. W bazie lista zdjęć to kolumna JSONB.
+- `ProductImages`: lista `ProductImage` (`ImageKey` – klucz oryginału w magazynie, `alt` niepusty, pozycja).
+  Najwyżej 10 zdjęć, pozycja zdjęcia równa jego indeksowi na liście (ciągła od 0), bez powtórzonego `ImageKey`.
+  Pierwsze zdjęcie jest główne.
 - `Product::create(...)` zapisuje w agregacie zdarzenie `ProductCreated(productId, occurredAt)`.
-- Handler `CreateProduct` sprawdza, że kategoria istnieje, a slug jest wolny. Unikalność sluga gwarantuje też
-  ograniczenie w bazie.
+- Naruszenie niezmiennika value objectu rzuca `\InvalidArgumentException`. To strażnik spójności modelu: dane
+  od klienta API waliduje wcześniej warstwa aplikacji.
+- Identyfikatory (`CategoryId`, `ProductId`) domena sprawdza formatem UUID w czystym PHP i zapisuje małymi
+  literami.
+
+Persystencja:
+
+- `catalog_category`: `id`, `parent_id` (FK), `name`, `path` (tekst z indeksem `text_pattern_ops`).
+- `catalog_product`: `id`, `slug` (ograniczenie unikalności), `name`, `short_description`, `main_category_id`
+  (FK), `category_ids` (JSONB: wszystkie kategorie produktu, główna pierwsza), `tax_category`, `images` (JSONB).
+  Dodatkowe kategorie nie mają klucza obcego. Istnienie wszystkich kategorii sprawdza handler `CreateProduct`,
+  a kategorii nie da się usunąć.
+- Unikalność sluga gwarantuje baza. `ProductRepository::save()` zapisuje od razu (flush w transakcji szyny
+  komend) i zamienia naruszenie ograniczenia unikalności sluga na `SlugAlreadyTaken` (409). Nie ma osobnego
+  sprawdzania sluga przed zapisem.
+- Handler `CreateProduct` sprawdza, że istnieją wszystkie kategorie produktu (`CategoryNotFound`, 404).
 
 Identyfikatory nadaje wywołujący komendę (komendy przyjmują `id`). Domena nigdy nie wylicza identyfikatora
 z innych pól. Seed używa UUID v5 ze sluga (opis niżej), przyszłe kontrolery będą nadawać UUID v7.
@@ -235,16 +254,17 @@ Przepływ:
    a odbiorcy nigdy przy konsumpcji z `outbox`, więc nie ma pętli ani podwójnej obsługi.
 5. Ponowienia: 3 próby z opóźnieniem 1 s i mnożnikiem 3, potem transport `failed`.
 
-Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` czyta aktualny stan produktu i przodków jego kategorii
-z Postgresa i robi upsert dokumentu po `id`, więc jest idempotentny i niezależny od kolejności zdarzeń.
+Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` czyta aktualny stan produktu i wszystkich jego kategorii
+(z przodkami) z Postgresa i robi upsert dokumentu po `id`, więc jest idempotentny i niezależny od kolejności zdarzeń.
 
 ### Indeks Elasticsearch
 
 - Alias `products` wskazuje na fizyczny indeks `products_<znacznik czasu>`. Elasticsearch jest wyłącznie
   modelem odczytu.
 - Dokument: `id`, `name` (text oraz pole `name.sort` typu keyword z normalizerem lowercase + asciifolding),
-  `slug`, `short_description` (nieindeksowane), `category_id`, `category_ancestor_ids` (keyword, zawiera
-  własną kategorię i wszystkich przodków), `main_image` (`key`, `alt`; nieindeksowane).
+  `slug`, `short_description` (nieindeksowane), `main_category_id`, `category_ids` (keyword, wszystkie kategorie
+  produktu), `category_ancestor_ids` (keyword, suma kategorii produktu i wszystkich ich przodków, bez
+  powtórzeń), `main_image` (`key`, `alt`; nieindeksowane).
 - `catalog:reindex` odbudowuje indeks z Postgresa: nowy indeks fizyczny, zasilenie, przepięcie aliasu, usunięcie
   starego.
 - `catalog:search-index:setup` tworzy indeks i alias, jeśli nie istnieją.
@@ -286,7 +306,8 @@ Wszystkie pod `/api/v1`, JSON, opisane w OpenAPI (żądanie, odpowiedzi, błędy
 
 **`GET /api/v1/products`**
 - Parametry: `category` (UUID, opcjonalny), `page` (≥ 1, domyślnie 1), `perPage` (1–48, domyślnie 24).
-- Filtr `category` obejmuje kategorię i wszystkie jej podkategorie (`category_ancestor_ids`). Nieistniejąca
+- Filtr `category` obejmuje produkty przypisane do kategorii (jako głównej lub dodatkowej) i do wszystkich jej
+  podkategorii (`category_ancestor_ids`). Nieistniejąca
   kategoria daje 200 i pustą listę (API nie odpytuje Postgresa przy odczycie z modelu odczytu).
 - Sortowanie po nazwie (`name.sort`), potem po `id`.
 - Strona poza zakresem (np. `page=999`) daje 200, pustą listę `items` i prawdziwe `total`.
@@ -537,7 +558,8 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 - Branża: sport i outdoor. Drzewo kategorii na 3–4 poziomy z kategoriami głównymi: bieganie, rower, turystyka,
   sporty zimowe, fitness, sporty wodne, sporty drużynowe.
 - `apps/api/fixtures/catalog.yaml` definiuje drzewo kategorii oraz szablony produktów dla kategorii: fikcyjne marki
-  własne sklepu, modele, kolory, szablony opisów, kategorię podatkową i pulę zdjęć.
+  własne sklepu, modele, kolory, szablony opisów, kategorię podatkową, pulę zdjęć i opcjonalne kategorie
+  dodatkowe (część szablonów ma kategorię dodatkową w innej gałęzi drzewa).
 - Część asortymentu ma obniżoną kategorię podatkową: żywność sportowa (`food`), suplementy (`food_supplement`),
   przewodniki i mapy (`printed_publication`).
 - `catalog:seed-demo` rozwija szablony deterministycznie (iloczyn kombinacji w ustalonej kolejności, bez losowości)
