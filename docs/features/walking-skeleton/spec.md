@@ -199,7 +199,7 @@ Reguły Deptrac:
   `ProductImages`.
 - `ProductCategories`: dokładnie jedna kategoria główna i dowolnie wiele dodatkowych, wszystkie jako
   `CategoryId`. Kategoria nie powtarza się na liście, a główna nie jest jednocześnie dodatkową. `all()` zwraca
-  główną, a po niej dodatkowe w kolejności podania.
+  główną, a po niej dodatkowe. Kolejność dodatkowych nie ma znaczenia biznesowego.
 - `Product` i `Category` to niezależne agregaty. Odwołują się do siebie wyłącznie przez identyfikatory.
 - `TaxCategory`: `standard`, `food`, `food_supplement`, `printed_publication`. Produkt ma kategorię podatkową,
   a nie stawkę.
@@ -215,10 +215,16 @@ Reguły Deptrac:
 Persystencja:
 
 - `catalog_category`: `id`, `parent_id` (FK), `name`, `path` (tekst z indeksem `text_pattern_ops`).
-- `catalog_product`: `id`, `slug` (ograniczenie unikalności), `name`, `short_description`, `main_category_id`
-  (FK), `category_ids` (JSONB: wszystkie kategorie produktu, główna pierwsza), `tax_category`, `images` (JSONB).
-  Dodatkowe kategorie nie mają klucza obcego. Istnienie wszystkich kategorii sprawdza handler `CreateProduct`,
-  a kategorii nie da się usunąć.
+- `catalog_product`: `id`, `slug` (ograniczenie unikalności), `name`, `short_description`, `primary_category_id`
+  (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB).
+- `catalog_product_category`: dodatkowe kategorie produktu. `product_id` (FK do `catalog_product`, `ON DELETE
+  CASCADE`) i `category_id` (FK do `catalog_category`), klucz główny (`product_id`, `category_id`) i indeks na
+  `category_id` do wyszukiwania produktów po kategorii. Kategoria główna nie trafia do tej tabeli (niezmiennik
+  `ProductCategories`). Kolejność kategorii dodatkowych nie jest zapisywana: odczyt zwraca je posortowane po
+  `category_id`.
+- Agregaty nie odwołują się do siebie przez obiekty Doctrine. Mapowanie `Product` nie ma asocjacji do `Category`,
+  a kolumny identyfikatorów kategorii są zwykłymi polami. Przypisania dodatkowe zapisuje i odczytuje
+  `DoctrineProductRepository` w tej samej transakcji co produkt.
 - Unikalność sluga gwarantuje baza. `ProductRepository::save()` zapisuje od razu (flush w transakcji szyny
   komend) i zamienia naruszenie ograniczenia unikalności sluga na `SlugAlreadyTaken` (409). Nie ma osobnego
   sprawdzania sluga przed zapisem.

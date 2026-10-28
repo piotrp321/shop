@@ -80,9 +80,11 @@ Wznowienie pracy w nowej sesji:
 ## Punkty zatrzymania
 
 - **Task 11:** zanim implementer zacznie, przedstaw użytkownikowi istotne decyzje persystencji z zadania
-  (mapowanie, typy Doctrine i schemat bazy) i poczekaj na akceptację. Użytkownik ma potwierdzić w tym punkcie
-  zapis kategorii dodatkowych: JSONB `category_ids` bez klucza obcego (jak w specyfikacji) albo tabela łącząca
-  z kluczem obcym. Decyzje DDD z Task 9 i 10 są zaakceptowane i zapisane w specyfikacji.
+  (mapowanie, typy Doctrine i schemat bazy) i poczekaj na akceptację. Schemat tabel jest ustalony
+  w specyfikacji. Do przedstawienia zostaje, jak mapowanie odtwarza `ProductCategories` z `primary_category_id`
+  i `catalog_product_category` bez zmiany API domeny oraz jak klucze obce i indeksy bez asocjacji Doctrine
+  trafiają do schematu porównywanego przez `doctrine:schema:validate`. Decyzje DDD z Task 9 i 10 są
+  zaakceptowane i zapisane w specyfikacji.
 - **Task 16:** drzewo kategorii, szablony produktów i lista zdjęć z linkami czekają na akceptację,
   zanim cokolwiek zostanie pobrane.
 - **Task 26:** plan zostaje usunięty dopiero po akceptacji całości przez użytkownika.
@@ -200,17 +202,21 @@ w zadaniu, do którego należy kod.
 
 **Interfejsy:**
 - Konsumuje: interfejsy repozytoriów z zadania 9.
-- Produkuje: tabele `catalog_category` i `catalog_product` jak w sekcji „Persystencja” specyfikacji;
-  `DoctrineProductRepository::save()` robi flush i zamienia naruszenie ograniczenia unikalności sluga
-  na `SlugAlreadyTaken`; fabryki Foundry `CategoryFactory` (z opcją rodzica) i `ProductFactory`.
+- Produkuje: tabele `catalog_category`, `catalog_product` i `catalog_product_category` jak w sekcji
+  „Persystencja” specyfikacji, bez asocjacji Doctrine między agregatami; `DoctrineProductRepository::save()`
+  zapisuje produkt i jego przypisania dodatkowe w jednej transakcji, robi flush i zamienia naruszenie ograniczenia
+  unikalności sluga na `SlugAlreadyTaken`; fabryki Foundry `CategoryFactory` (z opcją rodzica) i `ProductFactory`.
 
 - **Krok 1: Testy**
   - `DoctrineCategoryRepositoryTest`: zapis i odczyt zachowuje ścieżkę i rodzica; `get` nieznanego id rzuca
     `CategoryNotFound`; `count()`.
-  - `DoctrineProductRepositoryTest`: zapis i odczyt zachowuje kolejność zdjęć, kategorię główną, kolejność
-    kategorii dodatkowych i `TaxCategory`; `count()`; `countWithoutImages()`; zapis drugiego produktu z tym samym
-    slugiem rzuca `SlugAlreadyTaken`, a w tabeli zostaje jeden produkt; produkt z nieistniejącą kategorią główną
-    narusza klucz obcy.
+  - `DoctrineProductRepositoryTest`: zapis i odczyt zachowuje kolejność zdjęć, kategorię główną, zbiór kategorii
+    dodatkowych (posortowany po id) i `TaxCategory`; produkt bez kategorii dodatkowych nie ma wierszy
+    w `catalog_product_category`; kategoria główna nie ma tam wiersza; `count()`; `countWithoutImages()`; zapis
+    drugiego produktu z tym samym slugiem rzuca `SlugAlreadyTaken`, a w tabelach nie ma jego wierszy; produkt
+    z nieistniejącą kategorią główną albo dodatkową narusza klucz obcy.
+  - Schemat: `catalog_product.primary_category_id` jest `NOT NULL`; istnieją indeksy na
+    `catalog_product.primary_category_id` i `catalog_product_category.category_id` (odczyt z `pg_indexes`).
 - **Krok 2: FAIL. Krok 3: mapowanie, typy, repozytoria, migracja (`make -C apps/api migration`).**
 - **Krok 4: PASS**: `make -C apps/api check test`; `bin/console doctrine:schema:validate` w kontenerze
   przechodzi.
