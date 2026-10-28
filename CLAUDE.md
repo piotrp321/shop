@@ -55,9 +55,15 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 
 - Nie ma kodu bez planu. Przy wszystkim większym niż drobna poprawka: napisz lub zaktualizuj specyfikację
   w `docs/features/<funkcja>/`, zaproponuj plan, poczekaj na akceptację.
-- Testy przed kodem obowiązują dla logiki domeny i aplikacji oraz poprawek błędów. Konfigurację i infrastrukturę
-  weryfikujemy komendami z planu, bez sztucznego odtwarzania fazy RED.
+- Testy przed kodem (TDD) obowiązują dla logiki domeny i aplikacji oraz poprawek błędów: test uruchomiony przed
+  implementacją nie przechodzi, po implementacji przechodzi. Raport zawiera komendy i wyniki obu uruchomień.
+  Nie odtwarzaj fazy RED po implementacji. Gdy TDD nie zastosowano, napisz to wprost w raporcie.
+  Konfigurację i infrastrukturę weryfikujemy komendami z planu, bez sztucznego odtwarzania fazy RED.
 - Pracuj małymi krokami. Jedna logiczna zmiana na commit, format Conventional Commits.
+- Jeden PR to jedna logiczna, weryfikowalna zmiana. Powiązane, niewielkie zadania planu mogą trafić do jednego PR.
+  PR przechodzi CI i review. Nie merguj bez zgody użytkownika.
+- CI (`.github/workflows/ci.yml`) uruchamia `make check` i testy wszystkich aplikacji przy każdym PR. Testy na
+  usługach stosu trafiają do CI w tym samym PR co kod, razem z uruchomieniem usług, których potrzebują.
 - Zadania ustawiające reguły (lint, Deptrac, CORS i podobne) sprawdzają też próby obejścia, nie tylko
   przypadek podstawowy.
 - Zadanie jest skończone dopiero, gdy przechodzą `make check` i testy aplikacji, której dotyczy zmiana.
@@ -71,10 +77,24 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   `AGENTS.md`, pliki konfiguracji, których zadanie nie potrzebuje.
 - Jeśli zasada z tego pliku koliduje z tym, czego wymaga zadanie, zatrzymaj się i zapytaj, zamiast ją obchodzić.
 
-## Claude Code
+## Claude Code i Superpowers
 
 - Wspólna konfiguracja jest w `.claude/settings.json`: włączony plugin superpowers. Lokalne ustawienia trzymaj
   w `.claude/settings.local.json` (poza repo).
+- Zadania z planu realizujemy przez `superpowers:subagent-driven-development`: orkiestrator prowadzi plan,
+  subagenci implementują i robią review. Nie dokładamy własnej orkiestracji ani hooków. Równolegle pracują tylko
+  subagenci przy zadaniach naprawdę niezależnych, z ustalonym kontraktem.
+- Orkiestrator sam rozstrzyga szczegóły implementacji (wpis `Ruling:` w ledgerze). Istotne decyzje DDD (agregaty,
+  value objecty, granice modułów, persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury
+  przedstawia użytkownikowi przed implementacją.
+- Reviewer sprawdza zgodność ze specyfikacją, błędy logiczne, architekturę, przypadki brzegowe, testy (także
+  przebieg TDD na podstawie wyników obu uruchomień) i zbędną złożoność. Brak prawdziwej fazy RED w zadaniu z TDD
+  to problem Important.
+- PR obejmujący kilka zadań albo większą zmianę przechodzi też końcowy przegląd całości
+  (`superpowers:requesting-code-review`). Dodatkowych reviewerów ani modeli nie uruchamiamy bez powodu.
+- Raport po PR: zakres, subagenci i ich role, wynik review, wykryte i naprawione problemy, uruchomione testy
+  z wynikami, link do PR i CI, czas pracy i zużycie modelu. Zwięźle, bez pełnych logów.
+- Stan prac jest wyłącznie w sekcji „Status” planu funkcji (`docs/features/<funkcja>/plan.md`).
 
 ## Dokumentacja
 
