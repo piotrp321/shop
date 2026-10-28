@@ -18,14 +18,14 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: **Task 9** (domena katalogu). Następne zadanie: **Task 11** (persystencja). Blokery: brak; Task 11 ma
-punkt zatrzymania na decyzje persystencji, opisany niżej.
+W toku: nic. Następne zadanie: **Task 11** (persystencja). Blokery: brak; Task 11 ma punkt zatrzymania
+na decyzje persystencji, opisany niżej.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
 | [#1](https://github.com/piotrp321/shop/pull/1) | 1–8 | dokumentacja API, stos usług, obraz API z SPX, narzędzia jakości API, szkielety sklepu i panelu, konfiguracja Claude Code, wspólne zachowanie HTTP w API | ✅ |
 | [#2](https://github.com/piotrp321/shop/pull/2), [#3](https://github.com/piotrp321/shop/pull/3) | 25 | lekkie CI | ✅ |
-| | 9 | domena Catalog | w toku |
+| | 9 | domena Catalog | ✅ |
 | | 11 | persystencja Catalog (Doctrine, PostgreSQL) | |
 | | 12 | obrazy w API (Garage, imgproxy) | |
 | | 13 | indeks Elasticsearch i adapter wyszukiwania | |
