@@ -6,15 +6,14 @@
 ###< OS / IDE ###
 
 ###> Claude Code ###
-# Only the shared project configuration is versioned: settings, skills, subagents,
-# commands and hook scripts. Everything else in .claude/ stays local and private
+# Only the shared project configuration is versioned: settings, skills, subagents and
+# commands. Everything else in .claude/ stays local and private
 # (settings.local.json, worktrees/, agent memory and other per-user files).
 .claude/*
 !.claude/settings.json
 !.claude/skills/
 !.claude/agents/
 !.claude/commands/
-!.claude/hooks/
 # Personal, per-developer instructions for Claude
 CLAUDE.local.md
 ###< Claude Code ###

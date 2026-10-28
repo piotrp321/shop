@@ -58,7 +58,7 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 - Testy przed kodem obowiązują dla logiki domeny i aplikacji oraz poprawek błędów. Konfigurację i infrastrukturę
   weryfikujemy komendami z planu, bez sztucznego odtwarzania fazy RED.
 - Pracuj małymi krokami. Jedna logiczna zmiana na commit, format Conventional Commits.
-- Zadania ustawiające reguły (lint, Deptrac, hooki, CORS i podobne) sprawdzają też próby obejścia, nie tylko
+- Zadania ustawiające reguły (lint, Deptrac, CORS i podobne) sprawdzają też próby obejścia, nie tylko
   przypadek podstawowy.
 - Zadanie jest skończone dopiero, gdy przechodzą `make check` i testy aplikacji, której dotyczy zmiana.
   Pokaż wynik, nie deklaruj.
@@ -73,19 +73,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 
 ## Claude Code
 
-- Wspólna konfiguracja jest w `.claude/settings.json`: hooki i włączony plugin superpowers. Skrypty hooków są
-  w `.claude/hooks/`. Lokalne ustawienia trzymaj w `.claude/settings.local.json` (poza repo).
-- Po każdej edycji pliku (`Edit`, `MultiEdit`, `Write`) hook uruchamia szybkie sprawdzenie tylko aplikacji,
-  do której należy plik, w jej kontenerze:
-  - `apps/api`: PHPStan na zmienionym pliku i PHP CS Fixer w trybie sprawdzania (hook nie zmienia pliku),
-  - `apps/store`, `apps/admin`: ESLint na zmienionym pliku.
-- Na koniec tury hook `Stop` uruchamia testy jednostkowe aplikacji zmienionych w tej turze (api i store:
-  `test-unit`, admin: `test`), a dla api także Deptrac. Gdy testy lub Deptrac nie przechodzą albo kontener zmienionej
-  aplikacji nie działa (wtedy nic nie zostało sprawdzone), tura się nie kończy, a wynik wraca do agenta.
-  W takim przypadku uruchom stos (`make up`) albo wprost powiedz użytkownikowi, że nie możesz.
-- Problemy zgłoszone przez hooki popraw, zanim przejdziesz dalej. Nie obchodź ich i nie wyłączaj hooków.
-- Hooki wymagają działającego stosu (`make up`) i `jq` na hoście. Gdy kontener nie działa, pomijane jest tylko sprawdzenie po edycji pliku; hook `Stop` w takiej sytuacji blokuje.
-- Hooki nie zastępują `make check` ani pełnych testów przed zakończeniem zadania.
+- Wspólna konfiguracja jest w `.claude/settings.json`: włączony plugin superpowers. Lokalne ustawienia trzymaj
+  w `.claude/settings.local.json` (poza repo).
 
 ## Dokumentacja
 

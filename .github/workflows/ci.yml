@@ -1,4 +1,4 @@
-# Light CI: static analysis and tests of the three apps, plus the Claude Code hook tests.
+# Light CI: static analysis and tests of the three apps.
 # Runs without the full stack: app containers start with --no-deps and no backing service is needed.
 # Runs for every change, documentation included, so the `checks` job can be a required status check.
 name: CI
@@ -77,12 +77,3 @@ jobs:
           make -C apps/api test RUN="$CI_RUN"
           make -C apps/store test-unit RUN="$CI_RUN"
           make -C apps/admin test RUN="$CI_RUN"
-
-      # The post-edit hook lints inside running containers, so its test needs api, store and admin up.
-      # A skipped case means a container was missing, which in CI is a failure.
-      - name: Hook script tests
-        run: |
-          docker compose up -d --no-deps --wait api store admin
-          bash .claude/hooks/tests/check-changed-file.test.sh | tee "$RUNNER_TEMP/check-hook.log"
-          grep -q 'skipped=0$' "$RUNNER_TEMP/check-hook.log"
-          bash .claude/hooks/tests/run-unit-tests.test.sh

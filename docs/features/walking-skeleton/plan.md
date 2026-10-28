@@ -70,7 +70,7 @@ Wznowienie pracy w nowej sesji:
 - Pracując w `apps/store`, przestrzegaj `apps/store/CLAUDE.md`, w tym zasad przenoszenia kodu z vercel/shop.
 - Zadanie jest skończone, gdy przechodzą `check` i testy dotkniętych aplikacji. W raporcie pokaż wynik komend.
 - Testy na usługach stosu trafiają do CI w tym samym PR co kod, razem z uruchomieniem usług, których potrzebują.
-- Zadania ustawiające reguły (lint, Deptrac, hooki, CORS i podobne) sprawdzają też próby obejścia (sondy negatywne),
+- Zadania ustawiające reguły (lint, Deptrac, CORS i podobne) sprawdzają też próby obejścia (sondy negatywne),
   nie tylko przypadek podstawowy.
 - Po `composer require` z Fleksem przejrzyj zmiany przepisów i usuń zbędne (sekrety w `.env`, `AGENTS.md`,
   nieużywaną konfigurację).
@@ -716,7 +716,7 @@ w zadaniu, do którego należy kod.
   Minimum to szczyt sumy zaokrąglony w górę do pełnego GB plus 1 GB zapasu. Zalecana wartość to minimum plus 2 GB.
 - **Krok 3: Uzupełnij `README.md`**:
   - start (`make up`, `make seed`, adresy),
-  - wymagania (Docker, zmierzona pamięć dla Docker Desktop, `jq` na hoście dla hooka Claude Code),
+  - wymagania (Docker, zmierzona pamięć dla Docker Desktop),
   - porty i kilka stosów przez `.env`,
   - konta demo: hasła oraz sekrety TOTP w base32 z URI `otpauth://`, opisane jako dane demo,
   - komendy Makefile,

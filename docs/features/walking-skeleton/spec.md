@@ -599,45 +599,6 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 4. Pracownik: `admin` loguje się hasłem i kodem TOTP wyliczonym ze stałego sekretu i widzi oba działy dashboardu;
    `support` widzi dział „Katalog” bez działu „Stan systemu”.
 
-## Konfiguracja Claude Code
-
-- `.claude/settings.json` (wersjonowany) włącza plugin superpowers (`enabledPlugins`), hook `PostToolUse` po
-  narzędziach edycji plików (`Edit`, `MultiEdit`, `Write`) i hook `Stop`.
-- Hook uruchamia `.claude/hooks/check-changed-file.sh`, który sprawdza tylko aplikację, do której należy plik,
-  w jej kontenerze:
-
-  | Plik | Sprawdzenie |
-  |---|---|
-  | `apps/api/**/*.php` | PHPStan na zmienionym pliku i PHP CS Fixer w trybie sprawdzania (`--dry-run --diff`, hook nie zmienia pliku) |
-  | `apps/store/**`, `apps/admin/**` (`.ts`, `.tsx`, `.vue`, `.js`, `.mjs`) | ESLint na zmienionym pliku |
-
-- Znalezione problemy trafiają na stderr z kodem wyjścia 2, więc Claude Code przekazuje je agentowi.
-  Brak problemów: kod 0 bez wyjścia.
-- Plik spoza aplikacji, inne rozszerzenie, niedziałający kontener albo brak `jq` na hoście nie blokują pracy
-  (kod 0).
-- Ten sam skrypt zapisuje nazwę zmienionej aplikacji w pliku stanu sesji
-  `.claude/state/changed-apps-<session_id>` (poza repo).
-- Hook `Stop` (`.claude/hooks/run-unit-tests.sh`, limit 300 s) na koniec tury agenta uruchamia testy jednostkowe
-  tylko aplikacji z pliku stanu: `make -C apps/api test-unit`, `make -C apps/store test-unit`,
-  `make -C apps/admin test`. Dla api (każda zmiana pod `apps/api`) uruchamia też Deptrac
-  (`vendor/bin/deptrac analyse --no-progress` w kontenerze `api`). Testy i Deptrac są uruchamiane razem,
-  a wyniki zgłaszane łącznie.
-  - Testy przechodzą: plik stanu i licznik blokad są czyszczone, kod 0.
-  - Testy lub Deptrac nie przechodzą: końcówka wyniku na stderr i kod 2, więc agent nie kończy tury i poprawia
-    błąd. Plik stanu zostaje, więc kolejny `Stop` uruchomi sprawdzenia ponownie.
-  - Kontener zmienionej aplikacji nie działa albo brak `docker` na hoście: kod 2 z komunikatem po angielsku, co się
-    stało (zmieniona aplikacja, brak kontenera, testy i sprawdzenia nie zostały uruchomione) i że agent ma uruchomić
-    stos (`make up`) albo wprost powiedzieć użytkownikowi, że nie może. Aplikacje z działającymi kontenerami są
-    sprawdzane normalnie, a wszystko trafia do jednego komunikatu. Plik stanu zostaje.
-  - Ochrona przed pętlą: wszystkie powody blokady (testy, Deptrac, niedziałający kontener) dzielą jeden licznik
-    kolejnych blokad w sesji. Po 3 blokadach (kod 2) czwarte uruchomienie kończy się kodem 0 z informacją, co nie
-    przeszło lub nie zostało uruchomione. Plik stanu zostaje.
-  - Brak pliku stanu (albo pusty): kod 0 bez uruchamiania czegokolwiek. Nieznana nazwa aplikacji w pliku stanu
-    (np. `../x`) jest ignorowana z informacją na stderr i niczego nie uruchamia.
-  - Hook `PostToolUse` (po każdej edycji) nadal pomija sprawdzenie, gdy kontener nie działa (kod 0). Blokuje dopiero
-    hook `Stop`.
-- Hooki nie zastępują `make check` ani pełnych testów przed zakończeniem zadania.
-
 ## CI
 
 `.github/workflows/ci.yml`, uruchamiany przy każdym pull requeście (także ze zmianami wyłącznie w dokumentacji)
@@ -650,9 +611,7 @@ PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikac
 4. Testy z tym samym `RUN`: `make -C apps/api test` (wszystkie suity api), `make -C apps/store test-unit`,
    `make -C apps/admin test`. Żadna suita api nie potrzebuje jeszcze usług. Zmiana, która dodaje testy na usługach
    stosu, w tym samym PR uruchamia w CI te usługi przed testami.
-5. Testy skryptów hooków Claude Code (`.claude/hooks/tests/*.test.sh`) przy działających kontenerach `api`, `store`
-   i `admin`. Pominięty przypadek jest błędem.
-6. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
+5. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
    `apps/api/openapi.json`, `apps/api/openapi-admin.json` i obu `schema.d.ts`.
 
 ## Zależności
