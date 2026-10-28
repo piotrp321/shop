@@ -12,7 +12,7 @@ lint:
 	$(RUN) store npx eslint .
 
 typecheck:
-	$(RUN) store npx tsc --noEmit
+	$(RUN) store npm run typecheck
 
 test:
 	$(RUN) store npx vitest run

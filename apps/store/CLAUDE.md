@@ -13,7 +13,7 @@ Przed pisaniem kodu przeczytaj odpowiedni przewodnik w `node_modules/next/dist/d
 ## Komendy
 
 Uruchamiaj z katalogu głównego przez `make -C apps/store <cel>`:
-- `check` – ESLint i `tsc --noEmit`
+- `check` – ESLint i `tsc --noEmit` (po `next typegen`, który generuje typy tras do `.next/types`)
 - `test` – wszystkie testy (Vitest), także integracyjne na usługach stosu
 - `test-unit` – tylko testy jednostkowe, bez usług
 - `shell` – powłoka w kontenerze `store`
