@@ -25,9 +25,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 
 ## Przepisy Fleksa
 
-- Przepis `symfony/framework-bundle` tworzy `AGENTS.md`, a `symfony.lock` go wymienia. Nie commituj tego pliku:
-  zasady dla agenta są w tym `CLAUDE.md`. Po `composer require`, `composer update` i `composer recipes:update`
-  sprawdź `git status` i usuń odtworzony `AGENTS.md`.
+- Przepis `symfony/framework-bundle` tworzy `AGENTS.md`, a `symfony.lock` go wymienia. Plik jest w `.gitignore`
+  (nie da się go zacommitować przez pomyłkę), a zasady dla agenta są w tym `CLAUDE.md`. Po `composer require`,
+  `composer update` i `composer recipes:update` usuń odtworzony `AGENTS.md` i przejrzyj resztę zmian przepisów.
 
 ## Reguły modelu
 
@@ -51,9 +51,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Klient: tylko własne dane (właściciel zasobu = `sub` z tokena).
 - Zmiany z panelu zapisują identyfikator pracownika (`sub` z tokena realmu `backoffice`).
 - Błędy w formacie RFC 9457 (problem details).
-- `detail` w błędzie ma tylko wyjątek projektu (implementuje `App\Shared\Domain\Exception\ProblemException`,
-  komunikat bez danych wewnętrznych). Wyjątki frameworka dostają stały ogólny opis, nigdy własny komunikat.
-  Nowy wyjątek domenowy lub aplikacyjny pokazywany klientowi implementuje ten interfejs.
+- `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
+  (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Domena nie zna statusów
+  HTTP, mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
+  (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
+  Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności) wymagają nagłówka `Idempotency-Key`.
 - Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.

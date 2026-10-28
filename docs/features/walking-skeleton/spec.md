@@ -152,7 +152,7 @@ w aplikacji uwierzytelniającej.
 | `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; porty `ProductSearch`, `ProductIndexer`, `ProductImageStorage`, `ImageUrlGenerator`; lista rozmiarów `ImageSize` | Doctrine (mapowanie XML), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, loader danych demo | `GET /api/v1/products`, `GET /api/v1/categories`, komendy konsoli |
 | `Customer` | — | — | `CustomerUser` i `CustomerUserProvider` (z tokena realmu `shop`) | `GET /api/v1/me` |
 | `Backoffice` | — | zapytanie `GetDashboard`; porty `CatalogStatistics`, `SystemHealth`, `MessagingStatistics` | `StaffUser` i `StaffUserProvider` (z tokena realmu `backoffice`), `DashboardVoter`, adaptery portów | `GET /api/v1/admin/me`, `GET /api/v1/admin/dashboard` |
-| `Shared` | interfejs-znacznik `DomainEvent` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
+| `Shared` | interfejs-znacznik `DomainEvent`, interfejsy-znaczniki wyjątków `ProblemException`, `NotFound`, `Conflict`, `InvalidInput` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
 
 `Backoffice` to moduł funkcji panelu, a nie context domenowy: pracownik nie ma własnego modelu, tożsamość i role
 pochodzą z tokena.
@@ -366,12 +366,20 @@ w tej kolejności:
 - Błędy w formacie RFC 9457 (`application/problem+json`: `type`, `title`, `status`, `detail`; dla 400 także
   `violations` z `propertyPath` i `title`).
 - `detail` zależy od rodzaju wyjątku, a decyduje wyłącznie wyjątek rzucony, nie jego łańcuch `previous`:
-  - wyjątek projektu (interfejs `App\Shared\Domain\Exception\ProblemException`, który zwraca własny status):
-    `detail` to jego komunikat, napisany dla klienta po angielsku, bez danych wewnętrznych,
+  - wyjątek projektu (interfejs `App\Shared\Domain\Exception\ProblemException`): `detail` to jego komunikat,
+    napisany dla klienta po angielsku, bez danych wewnętrznych i wejścia użytkownika. Interfejs nie niesie statusu
+    HTTP. Rodzaj problemu wyrażają interfejsy-znaczniki `NotFound` (404), `Conflict` (409) i `InvalidInput` (422);
+    mapowanie na status jest w `Shared\Infrastructure\Http` (pierwsze dopasowanie wygrywa). `ProblemException`
+    bez znanego rodzaju daje 422. Klasa będąca jednocześnie `HttpExceptionInterface` jest traktowana jako wyjątek
+    projektu, jej status i nagłówki HTTP są ignorowane,
   - wyjątek frameworka (`HttpExceptionInterface`: 404 routera, 405, `MapQueryString` itp.): status i nagłówki
     (np. `Allow`) są zachowane, a `detail` to stały angielski opis zależny od statusu, nigdy komunikat wyjątku
     (komunikaty routera zawierają żądany adres),
-  - `ValidationFailedException` (także w łańcuchu `previous`): 400 z `violations`,
+  - `ValidationFailedException` (także w łańcuchu `previous`): 400 z `violations`. Komunikaty naruszeń (także
+    własnych constraintów) nie zawierają wejścia użytkownika ani danych wewnętrznych,
+  - `HandlerFailedException` Messengera (szyna synchroniczna opakowuje wyjątek handlera) z dokładnie jednym
+    opakowanym wyjątkiem jest zastępowana tym wyjątkiem i obowiązują powyższe reguły. To jedyny wyjątek od zasady,
+    że łańcuch `previous` nie jest przeglądany. Przy wielu opakowanych wyjątkach: 500 bez `detail`,
   - każdy inny wyjątek, także projektowy opakowany w wyjątek frameworka i frameworkowy opakowany w zwykły:
     pierwszy dostaje ogólny opis frameworka, drugi 500 bez `detail`,
   - 5xx nigdy nie ma `detail`.

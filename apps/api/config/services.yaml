@@ -10,5 +10,9 @@ services:
 
 when@test:
     services:
+        _defaults:
+            autowire: true
+            autoconfigure: true
+
         App\Tests\Support\:
             resource: '../tests/Support/'

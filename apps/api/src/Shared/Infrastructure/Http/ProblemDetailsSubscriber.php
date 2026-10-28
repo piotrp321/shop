@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Shared\Infrastructure\Http;
 
+use App\Shared\Domain\Exception\Conflict;
+use App\Shared\Domain\Exception\InvalidInput;
+use App\Shared\Domain\Exception\NotFound;
 use App\Shared\Domain\Exception\ProblemException;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -11,19 +14,32 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 
 /**
  * Renders every exception as an RFC 9457 problem details document.
  *
- * Only the thrown exception itself decides about `detail`, its `previous` chain is never inspected for it:
- * - {@see ProblemException}: its own status and message (the message is written for clients),
+ * Only the thrown exception itself decides about `detail`, its `previous` chain is never inspected for it.
+ * The one exception: a Messenger HandlerFailedException that wraps exactly one exception is replaced by that
+ * exception, because a sync bus wraps whatever a handler throws.
+ * - {@see ProblemException}: status by kind (see PROBLEM_STATUSES), message as `detail` (written for clients).
+ *   If a class is also an HttpExceptionInterface, the ProblemException rules win and its headers are ignored,
  * - framework HTTP exceptions: status and headers are kept, `detail` is a fixed text per status, never the message
  *   (router messages contain the requested URL),
  * - anything else: a 500 without `detail`, so messages, classes and paths never leak, also in debug mode.
  */
 final class ProblemDetailsSubscriber implements EventSubscriberInterface
 {
+    /**
+     * Kind of project exception to HTTP status, first match wins. A ProblemException of no known kind is invalid input.
+     */
+    private const PROBLEM_STATUSES = [
+        NotFound::class => Response::HTTP_NOT_FOUND,
+        Conflict::class => Response::HTTP_CONFLICT,
+        InvalidInput::class => Response::HTTP_UNPROCESSABLE_ENTITY,
+    ];
+
     private const FALLBACK_DETAIL = 'The request could not be processed.';
 
     /** Fixed texts for framework exceptions, they never depend on the exception message. */
@@ -48,7 +64,7 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
 
     public function onException(ExceptionEvent $event): void
     {
-        $exception = $event->getThrowable();
+        $exception = $this->unwrapHandlerFailure($event->getThrowable());
         $problem = ['type' => 'about:blank'];
         $headers = [];
 
@@ -65,7 +81,7 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
                 ];
             }
         } elseif ($exception instanceof ProblemException) {
-            $status = $exception->problemStatus();
+            $status = $this->problemStatus($exception);
             $problem['title'] = Response::$statusTexts[$status] ?? 'Error';
             $problem['status'] = $status;
             if ($status < 500 && '' !== $exception->getMessage()) {
@@ -89,6 +105,29 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
         $response->headers->set('Content-Type', 'application/problem+json');
 
         $event->setResponse($response);
+    }
+
+    private function problemStatus(ProblemException $exception): int
+    {
+        foreach (self::PROBLEM_STATUSES as $kind => $status) {
+            if ($exception instanceof $kind) {
+                return $status;
+            }
+        }
+
+        return Response::HTTP_UNPROCESSABLE_ENTITY;
+    }
+
+    private function unwrapHandlerFailure(\Throwable $exception): \Throwable
+    {
+        if ($exception instanceof HandlerFailedException) {
+            $wrapped = $exception->getWrappedExceptions();
+            if (1 === \count($wrapped)) {
+                return reset($wrapped);
+            }
+        }
+
+        return $exception;
     }
 
     private function findValidationFailure(\Throwable $exception): ?ValidationFailedException

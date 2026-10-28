@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Shared;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 final class ProblemDetailsTest extends WebTestCase
@@ -91,15 +92,67 @@ final class ProblemDetailsTest extends WebTestCase
         self::assertStringNotContainsString('No route found', (string) $client->getResponse()->getContent());
     }
 
-    public function testProjectExceptionExposesItsMessageAndStatus(): void
+    /**
+     * @return iterable<string, array{string, int, string}>
+     */
+    public static function projectExceptions(): iterable
+    {
+        yield 'not found' => ['/_test/project-exception', 404, 'Product not found.'];
+        yield 'conflict' => ['/_test/project-conflict', 409, 'Slug is already taken.'];
+        yield 'invalid input' => ['/_test/project-invalid', 422, 'Price must be positive.'];
+        yield 'no known kind' => ['/_test/project-bare', 422, 'Something is wrong.'];
+    }
+
+    #[DataProvider('projectExceptions')]
+    public function testProjectExceptionExposesItsMessageWithStatusOfItsKind(string $path, int $status, string $detail): void
     {
         $client = static::createClient();
-        $client->request('GET', '/_test/project-exception');
+        $client->request('GET', $path);
 
-        self::assertResponseStatusCodeSame(409);
+        self::assertResponseStatusCodeSame($status);
         $problem = $this->problem($client->getResponse());
-        self::assertSame(409, $problem['status']);
-        self::assertSame('Product is out of stock.', $problem['detail']);
+        self::assertSame($status, $problem['status']);
+        self::assertSame($detail, $problem['detail']);
+    }
+
+    public function testProjectExceptionThatIsAlsoAnHttpExceptionUsesProjectRules(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/_test/project-and-http');
+
+        self::assertResponseStatusCodeSame(404);
+        self::assertFalse($client->getResponse()->headers->has('X-Leak'));
+        self::assertSame('Product not found.', $this->problem($client->getResponse())['detail']);
+    }
+
+    public function testProjectExceptionFromBusHandlerKeepsItsStatusAndMessage(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/_test/handler/project');
+
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame('Category not found.', $this->problem($client->getResponse())['detail']);
+    }
+
+    public function testFrameworkExceptionFromBusHandlerGetsGenericDetail(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/_test/handler/framework');
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertStringNotContainsString('internal secret', (string) $client->getResponse()->getContent());
+        self::assertSame('The request is invalid.', $this->problem($client->getResponse())['detail']);
+    }
+
+    public function testPlainExceptionFromBusHandlerIsAnOpaque500(): void
+    {
+        $client = static::createClient();
+        $client->catchExceptions(true);
+        $client->request('GET', '/_test/handler/plain');
+
+        self::assertResponseStatusCodeSame(500);
+        self::assertArrayNotHasKey('detail', $this->problem($client->getResponse()));
+        self::assertStringNotContainsString('internal secret', (string) $client->getResponse()->getContent());
     }
 
     public function testFrameworkExceptionMessageIsNeverExposed(): void
