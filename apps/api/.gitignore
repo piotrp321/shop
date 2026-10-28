@@ -1,0 +1,5 @@
+/vendor/
+/var/
+
+# Written by the symfony/framework-bundle Flex recipe, guidance lives in CLAUDE.md
+/AGENTS.md

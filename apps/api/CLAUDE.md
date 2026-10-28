@@ -9,7 +9,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `check` – PHPStan, Deptrac, PHP CS Fixer
 - `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ)
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
-- `openapi` – eksport specyfikacji do `openapi.json`
+- `openapi` – eksport specyfikacji do `openapi.json` (sklep: endpointy publiczne i klienta)
+  oraz `openapi-admin.json` (panel: `/api/v1/admin`)
 
 ## Architektura
 
@@ -21,6 +22,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
 - Brak wspólnych value objectów między contextami. Każdy context ma własne (np. `Price` w Pricing i `Amount` w Payment).
 - Deptrac pilnuje tych granic. Jeśli Deptrac zgłasza błąd, popraw projekt, nie edytuj `deptrac.yaml`.
+
+## Przepisy Fleksa
+
+- Przepis `symfony/framework-bundle` tworzy `AGENTS.md`, a `symfony.lock` go wymienia. Plik jest w `.gitignore`
+  (nie da się go zacommitować przez pomyłkę), a zasady dla agenta są w tym `CLAUDE.md`. Po `composer require`,
+  `composer update` i `composer recipes:update` usuń odtworzony `AGENTS.md` i przejrzyj resztę zmian przepisów.
 
 ## Reguły modelu
 
@@ -44,6 +51,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Klient: tylko własne dane (właściciel zasobu = `sub` z tokena).
 - Zmiany z panelu zapisują identyfikator pracownika (`sub` z tokena realmu `backoffice`).
 - Błędy w formacie RFC 9457 (problem details).
+- `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
+  (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Domena nie zna statusów
+  HTTP, mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
+  (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
+  Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności) wymagają nagłówka `Idempotency-Key`.
 - Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
@@ -56,7 +68,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Nowy publiczny endpoint katalogu = tagi w odpowiedzi + unieważnianie w konsumencie zdarzeń. Bez tego
   zmiana danych nie będzie widoczna w sklepie.
 
-- Pliki (zdjęcia produktów) przez Flysystem na MinIO, prywatny bucket. Nigdy na lokalny dysk kontenera.
+- Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
 - Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
@@ -68,8 +80,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## Testy
 
 - Logika domeny i aplikacji: testy jednostkowe z adapterami in-memory. Mają być szybkie,
-  bo hooki uruchamiają je po każdej zmianie.
-- Infrastruktura (Doctrine, Elasticsearch, RabbitMQ, MinIO): testy integracyjne na prawdziwych usługach.
+  bo hook `Stop` uruchamia je na koniec każdej tury agenta, która zmieniła kod api.
+- Infrastruktura (Doctrine, Elasticsearch, RabbitMQ, Garage): testy integracyjne na prawdziwych usługach.
 - Każdy endpoint: co najmniej jeden test funkcjonalny, w tym przypadek bez autoryzacji i z błędnymi danymi.
 - Dane testowe przez fabryki (Foundry), a nie tablice budowane ręcznie w każdym teście.
 - Poprawka błędu zaczyna się od testu, który ten błąd odtwarza i nie przechodzi.

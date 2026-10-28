@@ -1,0 +1,84 @@
+/*
+ * The only place where appearance is defined. Two layers:
+ * 1. The raw palette in @theme under `--palette-*`, a namespace that Tailwind does not turn into utilities, so
+ *    classes like bg-gray-500 do not exist. `--color-*: initial` removes the default Tailwind palette.
+ * 2. The semantic layer: shadcn/ui theme variables that point at the palette. Components use only these.
+ * This file is also the entry point of the Tailwind class check in ESLint, so it imports Tailwind itself.
+ * The current theme is temporary and neutral: shades of grey, one accent, the system font.
+ */
+
+@import "tailwindcss";
+
+@theme static {
+  --color-*: initial;
+
+  --palette-white: oklch(1 0 0);
+  --palette-gray-50: oklch(0.985 0 0);
+  --palette-gray-100: oklch(0.97 0 0);
+  --palette-gray-200: oklch(0.922 0 0);
+  --palette-gray-300: oklch(0.87 0 0);
+  --palette-gray-400: oklch(0.708 0 0);
+  --palette-gray-500: oklch(0.556 0 0);
+  --palette-gray-900: oklch(0.205 0 0);
+  --palette-gray-950: oklch(0.145 0 0);
+  --palette-brand-600: oklch(0.55 0.2 260);
+  --palette-brand-50: oklch(0.97 0.02 260);
+  --palette-danger-600: oklch(0.577 0.245 27);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+:root {
+  --background: var(--palette-white);
+  --foreground: var(--palette-gray-950);
+  --card: var(--palette-white);
+  --card-foreground: var(--palette-gray-950);
+  --primary: var(--palette-brand-600);
+  --primary-foreground: var(--palette-brand-50);
+  --secondary: var(--palette-gray-100);
+  --secondary-foreground: var(--palette-gray-900);
+  --muted: var(--palette-gray-100);
+  --muted-foreground: var(--palette-gray-500);
+  --accent: var(--palette-gray-100);
+  --accent-foreground: var(--palette-gray-900);
+  --destructive: var(--palette-danger-600);
+  --border: var(--palette-gray-200);
+  --input: var(--palette-gray-200);
+  --ring: var(--palette-gray-400);
+  --radius: 0.625rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}

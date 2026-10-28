@@ -1,0 +1,176 @@
+# Module boundaries, see docs/features/walking-skeleton/spec.md ("Reguły Deptrac").
+# Layers are <Module>_<Layer>. Domain is pure PHP: it may only use Native and Shared_Domain, never Vendor.
+deptrac:
+  cache_file: var/.deptrac.cache
+  paths:
+    - src
+  layers:
+    - name: Catalog_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Catalog\\Domain\\#'
+    - name: Catalog_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Catalog\\Application\\#'
+    - name: Catalog_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Catalog\\Infrastructure\\#'
+    - name: Catalog_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Catalog\\UI\\#'
+    - name: Customer_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Customer\\Domain\\#'
+    - name: Customer_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Customer\\Application\\#'
+    - name: Customer_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Customer\\Infrastructure\\#'
+    - name: Customer_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Customer\\UI\\#'
+    - name: Backoffice_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Backoffice\\Domain\\#'
+    - name: Backoffice_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Backoffice\\Application\\#'
+    - name: Backoffice_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Backoffice\\Infrastructure\\#'
+    - name: Backoffice_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Backoffice\\UI\\#'
+    - name: Shared_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Shared\\Domain\\#'
+    - name: Shared_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Shared\\Application\\#'
+    - name: Shared_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Shared\\Infrastructure\\#'
+    - name: Shared_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Shared\\UI\\#'
+    # PHP built-ins (DateTimeImmutable, InvalidArgumentException, BackedEnum, ...) are plain PHP, allowed everywhere.
+    - name: Native
+      collectors:
+        - type: php_internal
+          value: '.*'
+    # Everything outside App\ that is not a PHP built-in: Symfony, Doctrine, other libraries.
+    - name: Vendor
+      collectors:
+        - type: bool
+          must:
+            - type: classNameRegex
+              value: '#^(?!App\\)#'
+          must_not:
+            - type: php_internal
+              value: '.*'
+  ruleset:
+    Catalog_Domain:
+      - Native
+      - Shared_Domain
+    Catalog_Application:
+      - Native
+      - Catalog_Domain
+      - Shared_Domain
+      - Vendor
+    Catalog_Infrastructure:
+      - Native
+      - Catalog_Application
+      - Catalog_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      - Customer_Application
+      - Backoffice_Application
+    Catalog_UI:
+      - Native
+      - Catalog_Application
+      - Catalog_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+    Customer_Domain:
+      - Native
+      - Shared_Domain
+    Customer_Application:
+      - Native
+      - Customer_Domain
+      - Shared_Domain
+      - Vendor
+    Customer_Infrastructure:
+      - Native
+      - Customer_Application
+      - Customer_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      - Catalog_Application
+      - Backoffice_Application
+    Customer_UI:
+      - Native
+      - Customer_Application
+      - Customer_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+    Backoffice_Domain:
+      - Native
+      - Shared_Domain
+    Backoffice_Application:
+      - Native
+      - Backoffice_Domain
+      - Shared_Domain
+      - Vendor
+    Backoffice_Infrastructure:
+      - Native
+      - Backoffice_Application
+      - Backoffice_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      - Catalog_Application
+      - Customer_Application
+    Backoffice_UI:
+      - Native
+      - Backoffice_Application
+      - Backoffice_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+    Shared_Domain:
+      - Native
+    Shared_Application:
+      - Native
+      - Shared_Domain
+      - Vendor
+    Shared_Infrastructure:
+      - Native
+      - Shared_Domain
+      - Shared_Application
+      - Vendor
+    Shared_UI:
+      - Native
+      - Shared_Domain
+      - Shared_Application
+      - Shared_Infrastructure
+      - Vendor

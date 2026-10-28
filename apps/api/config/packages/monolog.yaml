@@ -1,0 +1,36 @@
+# Logs are JSON lines on stderr (silenced in test).
+monolog:
+    channels:
+        - deprecation
+
+when@dev:
+    monolog:
+        handlers:
+            stderr:
+                type: stream
+                path: php://stderr
+                level: debug
+                formatter: monolog.formatter.json
+                channels: ['!event']
+
+when@test:
+    monolog:
+        handlers:
+            'null':
+                type: 'null'
+
+when@prod:
+    monolog:
+        handlers:
+            stderr:
+                type: fingers_crossed
+                action_level: error
+                handler: stderr_json
+                excluded_http_codes: [404, 405]
+                channels: ['!event']
+                buffer_size: 50
+            stderr_json:
+                type: stream
+                path: php://stderr
+                level: debug
+                formatter: monolog.formatter.json

@@ -1,0 +1,6 @@
+# Entry point: `docker compose` works from the repo root and reads the optional `.env` from here.
+# project_directory keeps relative paths in the included file relative to the repo root
+# (and makes the included file read the same `.env`).
+include:
+  - path: infra/docker-compose.yml
+    project_directory: .

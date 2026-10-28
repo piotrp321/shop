@@ -46,7 +46,7 @@ są przypięte w pliku compose.
 | `rabbitmq` | RabbitMQ 4 z wtyczką management | transport `events` Messengera; vhost `/` dla dev, vhost `test` dla testów | `rabbitmq-diagnostics ping` |
 | `rabbitmq-init` | jednorazowy | idempotentnie, przez Management API: vhost `test` i uprawnienia użytkownika aplikacji | kończy się kodem 0 |
 | `keycloak` | Keycloak 26, `start-dev --import-realm`, baza `keycloak` w Postgresie, ograniczony heap | realmy `shop` i `backoffice` | `/health/ready` na porcie zarządzania |
-| `garage` | Garage 2 | bucket `product-images` (i `product-images-test`) z oryginałami zdjęć | admin API `/health` |
+| `garage` | Garage 2 | bucket `product-images` (i `product-images-test`) z oryginałami zdjęć | `garage status` (obraz nie ma powłoki ani curl, a admin API `/health` zwraca 503 do czasu zastosowania układu przez `garage-init`) |
 | `garage-init` | Garage 2 (jednorazowy) | idempotentnie: układ węzła, import klucza z `.env.local`, buckety, uprawnienia | kończy się kodem 0 |
 | `imgproxy` | imgproxy 3, źródło S3 → Garage | przetwarzanie obrazów na żądanie | `imgproxy health` |
 | `mailpit` | Mailpit | SMTP dla realmu `shop` (weryfikacja e-mail, reset hasła) | `/readyz` |
@@ -56,7 +56,7 @@ są przypięte w pliku compose.
 | `admin` | Node 24, `vite dev` | panel | `GET /` |
 | `e2e` | obraz Playwright, profil `e2e` | testy E2E, uruchamiany tylko przez `make e2e` | — |
 
-Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait`.
+Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init`, który uruchamia potem przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd).
 
 Obraz API zawiera rozszerzenia `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, a target `dev` dodatkowo SPX.
 Entrypoint `api` w trybie dev instaluje zależności, jeśli zmienił się lock, uruchamia migracje i tworzy indeks
@@ -72,7 +72,7 @@ Elasticsearch, jeśli go nie ma (`catalog:search-index:setup`, idempotentne).
   kod na token przez `http://keycloak:8080`.
 - API sprawdza `iss` z publicznym adresem Keycloak i buduje adresy obrazów z publicznym adresem imgproxy.
 - Domyślne porty na hoście: sklep 3000, panel 5173, API 8000, Keycloak 8080, imgproxy 8081, Mailpit 8025,
-  RabbitMQ management 15672. Każdy port jest zmienną w `.env`.
+  RabbitMQ management 15672. Każdy port jest zmienną w `.env` i jest wystawiony tylko na `127.0.0.1`.
 
 ### Profile i sekrety
 
@@ -84,6 +84,8 @@ Elasticsearch, jeśli go nie ma (`catalog:search-index:setup`, idempotentne).
   sekret sesji sklepu, hasło administratora Keycloak, hasła do Postgresa i RabbitMQ.
 - Usługi, które potrzebują sekretów, wczytują go przez `env_file: {path: .env.local, required: true}`.
   Plik compose nie podstawia sekretów przez `${...}`. Brak pliku kończy się błędem Compose, a nie pustą wartością.
+- Lokalnie jeden `.env.local` trafia do wszystkich usług, które potrzebują sekretów. Podział sekretów per usługa
+  (np. klucz i sól imgproxy tylko dla `api` i `imgproxy`) obowiązuje przy wdrożeniu (Kubernetes), nie lokalnie.
 - W repo nie ma żadnego sekretu. Hasła i sekrety TOTP kont demo są jawnymi danymi demo opisanymi w README.
 
 ### Wymagania sprzętowe
@@ -150,16 +152,20 @@ w aplikacji uwierzytelniającej.
 | `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; porty `ProductSearch`, `ProductIndexer`, `ProductImageStorage`, `ImageUrlGenerator`; lista rozmiarów `ImageSize` | Doctrine (mapowanie XML), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, loader danych demo | `GET /api/v1/products`, `GET /api/v1/categories`, komendy konsoli |
 | `Customer` | — | — | `CustomerUser` i `CustomerUserProvider` (z tokena realmu `shop`) | `GET /api/v1/me` |
 | `Backoffice` | — | zapytanie `GetDashboard`; porty `CatalogStatistics`, `SystemHealth`, `MessagingStatistics` | `StaffUser` i `StaffUserProvider` (z tokena realmu `backoffice`), `DashboardVoter`, adaptery portów | `GET /api/v1/admin/me`, `GET /api/v1/admin/dashboard` |
-| `Shared` | interfejs-znacznik `DomainEvent` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
+| `Shared` | interfejs-znacznik `DomainEvent`, interfejsy-znaczniki wyjątków `ProblemException`, `NotFound`, `Conflict`, `InvalidInput` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
 
 `Backoffice` to moduł funkcji panelu, a nie context domenowy: pracownik nie ma własnego modelu, tożsamość i role
 pochodzą z tokena.
 
 Reguły Deptrac:
 
-- `Domain` modułu zależy tylko od `Shared\Domain`.
-- `Application` zależy od własnego `Domain` i `Shared\Domain`.
-- `Infrastructure` i `UI` zależą od własnego `Application` i `Domain` oraz `Shared\Infrastructure`.
+- Klasy wbudowane PHP (rdzeń i rozszerzenia, np. `\DateTimeImmutable`, `\InvalidArgumentException`) są dozwolone
+  w każdej warstwie, także w `Domain` (warstwa `Native`).
+- `Domain` modułu zależy tylko od `Shared\Domain` (poza klasami wbudowanymi PHP). Nie używa żadnego frameworka
+  ani biblioteki.
+- `Application` zależy od własnego `Domain` i `Shared\Domain`. Może używać atrybutów i interfejsów Symfony
+  Messenger (warstwa `Vendor`).
+- `Infrastructure` i `UI` zależą od własnego `Application` i `Domain` oraz `Shared\Domain` i `Shared\Infrastructure`.
 - Jedyna dozwolona zależność między modułami: `X\Infrastructure` → `Y\Application` (np. adapter portu
   `CatalogStatistics` w `Backoffice` woła zapytanie `GetCatalogStatistics` z `Catalog`). Nikt nie importuje
   cudzego `Domain`.
@@ -246,8 +252,9 @@ z Postgresa i robi upsert dokumentu po `id`, więc jest idempotentny i niezależ
 - Format jest częścią podpisanego adresu (rozszerzenie w ścieżce imgproxy). Każda para format × szerokość ma
   osobny, jednoznaczny adres. imgproxy nie negocjuje formatu po nagłówku `Accept`, bo CDN przed nim
   (darmowy Cloudflare) nie obsługuje Vary for Images.
-- Adresy podpisuje HMAC-em jeden serwis w API (implementacja portu `ImageUrlGenerator`). Klucz i sól imgproxy
-  znają tylko `api` i `imgproxy`.
+- Adresy podpisuje HMAC-em jeden serwis w API (implementacja portu `ImageUrlGenerator`). Podział sekretów
+  per usługa (klucz i sól imgproxy tylko dla `api` i `imgproxy`) obowiązuje przy wdrożeniu, lokalnie opisuje go
+  sekcja „Profile i sekrety”.
 - imgproxy czyta wyłącznie z `s3://product-images/` (`IMGPROXY_ALLOWED_SOURCES`) i zwraca długi `Cache-Control`,
   bo adresy są niezmienne.
 
@@ -358,6 +365,26 @@ w tej kolejności:
 
 - Błędy w formacie RFC 9457 (`application/problem+json`: `type`, `title`, `status`, `detail`; dla 400 także
   `violations` z `propertyPath` i `title`).
+- `detail` zależy od rodzaju wyjątku, a decyduje wyłącznie wyjątek rzucony, nie jego łańcuch `previous`:
+  - wyjątek projektu (interfejs `App\Shared\Domain\Exception\ProblemException`): `detail` to jego komunikat,
+    napisany dla klienta po angielsku, bez danych wewnętrznych i wejścia użytkownika. Interfejs nie niesie statusu
+    HTTP. Rodzaj problemu wyrażają interfejsy-znaczniki `NotFound` (404), `Conflict` (409) i `InvalidInput` (422);
+    mapowanie na status jest w `Shared\Infrastructure\Http` (pierwsze dopasowanie wygrywa). `ProblemException`
+    bez znanego rodzaju daje 422. Klasa będąca jednocześnie `HttpExceptionInterface` jest traktowana jako wyjątek
+    projektu, jej status i nagłówki HTTP są ignorowane,
+  - wyjątek frameworka (`HttpExceptionInterface`: 404 routera, 405, `MapQueryString` itp.): status i nagłówki
+    (np. `Allow`) są zachowane, a `detail` to stały angielski opis zależny od statusu, nigdy komunikat wyjątku
+    (komunikaty routera zawierają żądany adres),
+  - `ValidationFailedException` (także w łańcuchu `previous`): 400 z `violations`. Komunikaty naruszeń (także
+    własnych constraintów) nie zawierają wejścia użytkownika ani danych wewnętrznych,
+  - `HandlerFailedException` Messengera (szyna synchroniczna opakowuje wyjątek handlera): łańcuch takich wyjątków,
+    z których każdy opakowuje dokładnie jeden wyjątek (zagnieżdżone szyny), jest rozwijany do wyjątku wewnętrznego
+    i obowiązują dla niego powyższe reguły. Rozwijanie ma limit głębokości 10. To jedyny wyjątek od zasady, że łańcuch
+    `previous` nie jest przeglądany. Gdy któryś poziom opakowuje więcej niż jeden wyjątek albo limit zostanie
+    przekroczony: 500 bez `detail` i bez `violations`, także gdy pierwszy opakowany wyjątek to `ValidationFailedException`,
+  - każdy inny wyjątek, także projektowy opakowany w wyjątek frameworka i frameworkowy opakowany w zwykły:
+    pierwszy dostaje ogólny opis frameworka, drugi 500 bez `detail`,
+  - 5xx nigdy nie ma `detail`.
 - Każda odpowiedź z `Cache-Control: public` ma `Vary: Origin` (ustawia jeden subscriber).
 - CORS (NelmioCorsBundle) dla `^/api/v1` tylko z `ADMIN_URL`. Sklep woła API wyłącznie z serwera, więc jego
   domena nie dostaje CORS.
@@ -395,8 +422,9 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
 - Komponenty na shadcn/ui, style w Tailwind CSS 4. W szkielecie z shadcn/ui pochodzą `button`, `card`
   i `pagination` w `src/components/ui/`. Tryb ciemny nie jest obsługiwany.
 - Tokeny są w jednym miejscu, w `src/styles/tokens.css`. Na ten plik wskazuje też `components.json` shadcn/ui.
-  - Paleta: surowe wartości kolorów w `@theme`, poprzedzone `--color-*: initial`, więc domyślna paleta Tailwinda
-    nie istnieje.
+  - Paleta: surowe wartości kolorów w `@theme` pod przestrzenią `--palette-*`, której Tailwind nie zamienia
+    na klasy (nie ma `bg-gray-500`). `--color-*: initial` usuwa domyślną paletę Tailwinda. Na klasy `--color-*`
+    mapowane są tylko zmienne semantyczne.
   - Warstwa semantyczna: zmienne motywu shadcn/ui (`--background`, `--foreground`, `--card`, `--card-foreground`,
     `--primary`, `--primary-foreground`, `--secondary`, `--secondary-foreground`, `--muted`, `--muted-foreground`,
     `--accent`, `--accent-foreground`, `--destructive`, `--border`, `--input`, `--ring`, `--radius`) zdefiniowane
@@ -589,13 +617,23 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
   `.claude/state/changed-apps-<session_id>` (poza repo).
 - Hook `Stop` (`.claude/hooks/run-unit-tests.sh`, limit 300 s) na koniec tury agenta uruchamia testy jednostkowe
   tylko aplikacji z pliku stanu: `make -C apps/api test-unit`, `make -C apps/store test-unit`,
-  `make -C apps/admin test`.
+  `make -C apps/admin test`. Dla api (każda zmiana pod `apps/api`) uruchamia też Deptrac
+  (`vendor/bin/deptrac analyse --no-progress` w kontenerze `api`). Testy i Deptrac są uruchamiane razem,
+  a wyniki zgłaszane łącznie.
   - Testy przechodzą: plik stanu i licznik blokad są czyszczone, kod 0.
-  - Testy nie przechodzą: końcówka wyniku na stderr i kod 2, więc agent nie kończy tury i poprawia błąd.
-    Plik stanu zostaje, więc kolejny `Stop` uruchomi testy ponownie.
-  - Ochrona przed pętlą: po 3 kolejnych blokadach w tej samej sesji hook kończy się kodem 0 z informacją
-    o nieprzechodzących testach. Plik stanu zostaje.
-  - Brak pliku stanu albo niedziałający kontener: kod 0 bez uruchamiania testów.
+  - Testy lub Deptrac nie przechodzą: końcówka wyniku na stderr i kod 2, więc agent nie kończy tury i poprawia
+    błąd. Plik stanu zostaje, więc kolejny `Stop` uruchomi sprawdzenia ponownie.
+  - Kontener zmienionej aplikacji nie działa albo brak `docker` na hoście: kod 2 z komunikatem po angielsku, co się
+    stało (zmieniona aplikacja, brak kontenera, testy i sprawdzenia nie zostały uruchomione) i że agent ma uruchomić
+    stos (`make up`) albo wprost powiedzieć użytkownikowi, że nie może. Aplikacje z działającymi kontenerami są
+    sprawdzane normalnie, a wszystko trafia do jednego komunikatu. Plik stanu zostaje.
+  - Ochrona przed pętlą: wszystkie powody blokady (testy, Deptrac, niedziałający kontener) dzielą jeden licznik
+    kolejnych blokad w sesji. Po 3 blokadach (kod 2) czwarte uruchomienie kończy się kodem 0 z informacją, co nie
+    przeszło lub nie zostało uruchomione. Plik stanu zostaje.
+  - Brak pliku stanu (albo pusty): kod 0 bez uruchamiania czegokolwiek. Nieznana nazwa aplikacji w pliku stanu
+    (np. `../x`) jest ignorowana z informacją na stderr i niczego nie uruchamia.
+  - Hook `PostToolUse` (po każdej edycji) nadal pomija sprawdzenie, gdy kontener nie działa (kod 0). Blokuje dopiero
+    hook `Stop`.
 - Hooki nie zastępują `make check` ani pełnych testów przed zakończeniem zadania.
 
 ## CI
@@ -614,7 +652,7 @@ Akceptacja tej specyfikacji jest zgodą na poniższą listę. Każda inna zależ
 
 | Gdzie | Produkcyjne | Deweloperskie |
 |---|---|---|
-| api (Composer) | `symfony/framework-bundle`, `symfony/runtime`, `symfony/console`, `symfony/dotenv`, `symfony/yaml`, `symfony/security-bundle`, `symfony/messenger`, `symfony/amqp-messenger`, `symfony/doctrine-messenger`, `symfony/serializer`, `symfony/property-access`, `symfony/property-info`, `symfony/validator`, `symfony/uid`, `symfony/http-client`, `symfony/monolog-bundle`, `doctrine/doctrine-bundle`, `doctrine/orm`, `doctrine/doctrine-migrations-bundle`, `nelmio/api-doc-bundle`, `nelmio/cors-bundle`, `web-token/jwt-library`, `league/flysystem-bundle`, `league/flysystem-async-aws-s3`, `elasticsearch/elasticsearch` | `phpunit/phpunit`, `symfony/browser-kit`, `phpstan/phpstan`, `phpstan/phpstan-symfony`, `phpstan/phpstan-doctrine`, `phpstan/phpstan-phpunit`, `deptrac/deptrac`, `friendsofphp/php-cs-fixer`, `zenstruck/foundry`, `dama/doctrine-test-bundle` |
+| api (Composer) | `symfony/flex`, `symfony/framework-bundle`, `symfony/runtime`, `symfony/console`, `symfony/dotenv`, `symfony/yaml`, `symfony/security-bundle`, `symfony/messenger`, `symfony/amqp-messenger`, `symfony/doctrine-messenger`, `symfony/serializer`, `symfony/property-access`, `symfony/property-info`, `symfony/validator`, `symfony/uid`, `symfony/http-client`, `symfony/monolog-bundle`, `doctrine/doctrine-bundle`, `doctrine/orm`, `doctrine/doctrine-migrations-bundle`, `nelmio/api-doc-bundle`, `nelmio/cors-bundle`, `web-token/jwt-library`, `league/flysystem-bundle`, `league/flysystem-async-aws-s3`, `elasticsearch/elasticsearch` | `phpunit/phpunit`, `symfony/browser-kit`, `phpstan/phpstan`, `phpstan/phpstan-symfony`, `phpstan/phpstan-doctrine`, `phpstan/phpstan-phpunit`, `deptrac/deptrac`, `friendsofphp/php-cs-fixer`, `zenstruck/foundry`, `dama/doctrine-test-bundle` |
 | api (rozszerzenia PHP) | `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache` | `spx` |
 | store (npm) | `next`, `react`, `react-dom`, `openid-client`, `redis`, `openapi-fetch`, `radix-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` | `typescript`, `@types/node`, `@types/react`, `@types/react-dom`, `tailwindcss`, `@tailwindcss/postcss`, `tw-animate-css`, `eslint`, `eslint-config-next`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vitejs/plugin-react`, `@testing-library/react`, `jsdom` |
 | admin (npm) | `vue`, `vue-router`, `pinia`, `primevue`, `@primeuix/themes`, `primeicons`, `oidc-client-ts`, `openapi-fetch` | `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint`, `typescript-eslint`, `eslint-plugin-vue`, `openapi-typescript`, `vitest`, `@vue/test-utils`, `jsdom` |

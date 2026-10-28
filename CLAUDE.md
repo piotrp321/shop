@@ -33,6 +33,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
     `make -C apps/api check`.
   - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc).
 - `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.
+- Każdy worktree ma lokalny `.env` (poza repo) z własnym `COMPOSE_PROJECT_NAME` i wolnymi portami, żeby stosy
+  z różnych worktree nie kolidowały ze sobą ani z innymi projektami.
 
 ## Kontrakt API
 
@@ -53,12 +55,20 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 
 - Nie ma kodu bez planu. Przy wszystkim większym niż drobna poprawka: napisz lub zaktualizuj specyfikację
   w `docs/features/<funkcja>/`, zaproponuj plan, poczekaj na akceptację.
+- Testy przed kodem obowiązują dla logiki domeny i aplikacji oraz poprawek błędów. Konfigurację i infrastrukturę
+  weryfikujemy komendami z planu, bez sztucznego odtwarzania fazy RED.
 - Pracuj małymi krokami. Jedna logiczna zmiana na commit, format Conventional Commits.
+- Zadania ustawiające reguły (lint, Deptrac, hooki, CORS i podobne) sprawdzają też próby obejścia, nie tylko
+  przypadek podstawowy.
 - Zadanie jest skończone dopiero, gdy przechodzą `make check` i testy aplikacji, której dotyczy zmiana.
   Pokaż wynik, nie deklaruj.
 - Zmiana dotykająca kilku aplikacji (np. nowy endpoint i ekran w panelu) jest skończona, gdy przechodzą
   `check` i testy wszystkich tych aplikacji.
+- Skrypty, komendy i cele Makefile testujemy także na ścieżce błędu (brak pliku, błąd narzędzia, niedziałająca
+  usługa, brak zależności), nie tylko na poprawnej. Pokazujemy wynik obu ścieżek.
 - Nie dodawaj nowych zależności bez pytania.
+- Po `composer require` z Fleksem przejrzyj zmiany wprowadzone przez przepisy i usuń zbędne: sekrety w `.env`,
+  `AGENTS.md`, pliki konfiguracji, których zadanie nie potrzebuje.
 - Jeśli zasada z tego pliku koliduje z tym, czego wymaga zadanie, zatrzymaj się i zapytaj, zamiast ją obchodzić.
 
 ## Claude Code
@@ -70,9 +80,11 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - `apps/api`: PHPStan na zmienionym pliku i PHP CS Fixer w trybie sprawdzania (hook nie zmienia pliku),
   - `apps/store`, `apps/admin`: ESLint na zmienionym pliku.
 - Na koniec tury hook `Stop` uruchamia testy jednostkowe aplikacji zmienionych w tej turze (api i store:
-  `test-unit`, admin: `test`). Gdy nie przechodzą, tura się nie kończy, a wynik wraca do agenta.
+  `test-unit`, admin: `test`), a dla api także Deptrac. Gdy testy lub Deptrac nie przechodzą albo kontener zmienionej
+  aplikacji nie działa (wtedy nic nie zostało sprawdzone), tura się nie kończy, a wynik wraca do agenta.
+  W takim przypadku uruchom stos (`make up`) albo wprost powiedz użytkownikowi, że nie możesz.
 - Problemy zgłoszone przez hooki popraw, zanim przejdziesz dalej. Nie obchodź ich i nie wyłączaj hooków.
-- Hooki wymagają działającego stosu (`make up`) i `jq` na hoście. Gdy kontener nie działa, sprawdzenie jest pomijane.
+- Hooki wymagają działającego stosu (`make up`) i `jq` na hoście. Gdy kontener nie działa, pomijane jest tylko sprawdzenie po edycji pliku; hook `Stop` w takiej sytuacji blokuje.
 - Hooki nie zastępują `make check` ani pełnych testów przed zakończeniem zadania.
 
 ## Dokumentacja
