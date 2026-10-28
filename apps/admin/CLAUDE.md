@@ -19,7 +19,6 @@ Na razie istnieją `src/router/` (bez guardu), `src/views/` i `src/primevue.ts`.
 (`src/api/`, `src/auth/`, `src/stores/`, `src/layout/`, `src/dashboard/`, `src/composables/`, guard, `oidc-client-ts`,
 `InMemoryWebStorage`, `useIdleLogout`) są docelowe i powstają w kolejnych zadaniach.
 
-
 - `src/api/` – `client.ts` (jedyne miejsce rozmowy z API) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
 - `src/auth/` – logowanie OIDC (`oidc-client-ts`), tokeny w pamięci.
 - `src/stores/` – store'y Pinia (np. `auth` z pracownikiem z `GET /api/v1/admin/me`).

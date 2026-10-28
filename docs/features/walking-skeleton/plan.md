@@ -312,15 +312,18 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 ### Task 8: Wspólne zachowanie HTTP w API
 
 **Pliki:**
-- Utwórz: `src/Shared/Infrastructure/Http/ProblemDetailsSubscriber.php`,
+- Utwórz: `src/Shared/Domain/Exception/{ProblemException,NotFound,Conflict,InvalidInput}.php`,
+  `src/Shared/Infrastructure/Http/ProblemDetailsSubscriber.php`,
   `src/Shared/Infrastructure/Http/PublicCacheVarySubscriber.php`, `config/packages/nelmio_cors.yaml`,
   `config/packages/monolog.yaml`, `tests/Unit/Shared/Http/PublicCacheVarySubscriberTest.php`,
   `tests/Functional/Shared/ProblemDetailsTest.php`, `tests/Functional/Shared/CorsTest.php`
 
 **Interfejsy:**
-- Produkuje: mapowanie wyjątków na problem details: `HttpExceptionInterface` → jego status;
-  `ValidationFailedException` → 400 z `violations`; `ServiceUnavailableHttpException` → 503; każdy inny → 500
-  bez `detail`.
+- Produkuje: mapowanie wyjątków na problem details: wyjątek projektu (`ProblemException`) → status wg znacznika
+  (`NotFound` 404, `Conflict` 409, `InvalidInput` 422, bez rodzaju 422) i komunikat w `detail`;
+  `HttpExceptionInterface` frameworka → jego status i nagłówki, `detail` ogólny, stały dla statusu;
+  `ValidationFailedException` → 400 z `violations`; `HandlerFailedException` z jednym wyjątkiem → reguły dla tego
+  wyjątku; każdy inny → 500 bez `detail`. Znaczniki w `src/Shared/Domain/Exception/`.
 
 - [ ] **Krok 1: Testy**
   - `PublicCacheVarySubscriberTest`: odpowiedź `public, max-age=60` dostaje `Vary: Origin`; istniejące
@@ -345,6 +348,9 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 
 **Interfejsy:**
 - Produkuje:
+  - `CategoryNotFound` implementuje `Shared\Domain\Exception\NotFound` (404), `SlugAlreadyTaken` implementuje
+    `Shared\Domain\Exception\Conflict` (409). Komunikaty bez danych wewnętrznych i bez wejścia użytkownika
+    (stałe teksty, bez wartości sluga).
   - `DomainEvent { occurredAt(): DateTimeImmutable }`; `DomainEventPublisher { publish(DomainEvent ...$events): void }`
   - `Category::createRoot(CategoryId $id, CategoryName $name): self`,
     `Category::createChild(CategoryId $id, CategoryName $name, Category $parent): self`, `id()`, `name()`,
@@ -569,6 +575,9 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
     nagłówki `Cache-Control: max-age=60, public` i `Vary` zawierające `Origin`; `ProductSearch` podmieniony na
     rzucający `SearchUnavailable` daje 503 jako problem details, a treść nie zawiera komunikatu wyjątku.
   - `CategoriesEndpointTest`: zagnieżdżone drzewo; nagłówki cache jak wyżej.
+  - Test end-to-end przez prawdziwą szynę synchroniczną: handler rzucający wyjątek projektu (`NotFound`) daje
+    odpowiedź ze statusem 404 i `detail` równym komunikatowi (a nie 500, mimo opakowania w `HandlerFailedException`);
+    handler rzucający zwykły `RuntimeException` daje 500 bez `detail`.
 - [ ] **Krok 2: FAIL. Krok 3: zapytania, kontrolery, DTO z ograniczeniami Validatora, atrybuty OpenAPI.**
 - [ ] **Krok 4: PASS (`make -C apps/api check test`).**
 - [ ] **Krok 5: Eksport**: `make -C apps/api openapi`; `openapi.json` zawiera `/api/v1/products` i
@@ -726,12 +735,12 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   `src/Backoffice/Infrastructure/Security/{StaffUser,StaffUserProvider}.php`,
   `src/Backoffice/UI/Http/{StaffMeController,StaffMeResponse}.php`,
   `src/Shared/Infrastructure/Security/{ProblemAuthenticationEntryPoint,ProblemAuthenticationFailureHandler}.php`,
-  `src/Shared/Infrastructure/Http/ProblemDetailsSubscriber.php` (mapowanie wyjątków bezpieczeństwa),
   `tests/Support/Security/TestTokenFactory.php`,
   `tests/Functional/Customer/MeEndpointTest.php`, `tests/Functional/Backoffice/StaffMeEndpointTest.php`,
   `tests/Functional/Shared/InvalidTokenOnPublicEndpointTest.php`, `tests/Functional/Shared/SecurityProblemDetailsTest.php`, `tests/Unit/Backoffice/Security/StaffUserProviderTest.php`,
   `tests/Integration/Shared/Security/KeycloakDiscoveryTest.php`
-- Modyfikuj: `tests/bootstrap.php` (para kluczy RSA w pamięci, `OIDC_TEST_JWKS`), `apps/api/openapi.json`,
+- Modyfikuj: `src/Shared/Infrastructure/Http/ProblemDetailsSubscriber.php` (mapowanie wyjątków bezpieczeństwa),
+  `tests/bootstrap.php` (para kluczy RSA w pamięci, `OIDC_TEST_JWKS`), `apps/api/openapi.json`,
   `apps/api/openapi-admin.json`
 
 **Interfejsy:**
@@ -752,7 +761,8 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   - `SecurityProblemDetailsTest` (trasy testowe w `tests/Support`): `AuthenticationException` rzucony z kontrolera
     daje 401 z `WWW-Authenticate: Bearer`, `AccessDeniedException` rzucony z kontrolera lub votera daje 403;
     oba jako `application/problem+json`, bez komunikatu wyjątku w treści i bez 500. Sondy obejścia: wyjątek
-    bezpieczeństwa opakowany w zwykły wyjątek daje 500 bez `detail` (zasada „decyduje rzucony wyjątek”).
+    bezpieczeństwa opakowany w zwykły wyjątek, rzucony poza firewallem, daje 500 bez `detail` (zasada „decyduje
+    rzucony wyjątek”). W firewallu `ExceptionListener` bezpieczeństwa Symfony przegląda `previous` i nadal daje 401/403.
   - `InvalidTokenOnPublicEndpointTest`: `GET /api/v1/products` z `Bearer garbage` daje 401.
   - `StaffUserProviderTest`: role przycięte do czterech znanych, `ROLE_STAFF` zawsze obecne.
   - `KeycloakDiscoveryTest` (prawdziwy Keycloak): discovery z `http://keycloak:8080/realms/backoffice` zwraca
