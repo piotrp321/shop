@@ -307,8 +307,8 @@ Wszystkie pod `/api/v1`, JSON, opisane w OpenAPI (żądanie, odpowiedzi, błędy
 **`GET /api/v1/products`**
 - Parametry: `category` (UUID, opcjonalny), `page` (≥ 1, domyślnie 1), `perPage` (1–48, domyślnie 24).
 - Filtr `category` obejmuje produkty przypisane do kategorii (jako głównej lub dodatkowej) i do wszystkich jej
-  podkategorii (`category_ancestor_ids`). Nieistniejąca
-  kategoria daje 200 i pustą listę (API nie odpytuje Postgresa przy odczycie z modelu odczytu).
+  podkategorii (`category_ancestor_ids`). Nieistniejąca kategoria
+  daje 200 i pustą listę (API nie odpytuje Postgresa przy odczycie z modelu odczytu).
 - Sortowanie po nazwie (`name.sort`), potem po `id`.
 - Strona poza zakresem (np. `page=999`) daje 200, pustą listę `items` i prawdziwe `total`.
 - Błędne parametry: 400 jako problem details z listą naruszeń.
@@ -555,7 +555,7 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 
 ## Dane demo
 
-- Branża: sport i outdoor. Drzewo kategorii na 3–4 poziomy z kategoriami głównymi: bieganie, rower, turystyka,
+- Branża: sport i outdoor. Drzewo kategorii na 3–4 poziomy z kategoriami najwyższego poziomu: bieganie, rower, turystyka,
   sporty zimowe, fitness, sporty wodne, sporty drużynowe.
 - `apps/api/fixtures/catalog.yaml` definiuje drzewo kategorii oraz szablony produktów dla kategorii: fikcyjne marki
   własne sklepu, modele, kolory, szablony opisów, kategorię podatkową, pulę zdjęć i opcjonalne kategorie

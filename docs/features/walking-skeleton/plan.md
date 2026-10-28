@@ -80,8 +80,9 @@ Wznowienie pracy w nowej sesji:
 ## Punkty zatrzymania
 
 - **Task 11:** zanim implementer zacznie, przedstaw użytkownikowi istotne decyzje persystencji z zadania
-  (mapowanie, typy Doctrine i schemat bazy) i poczekaj na akceptację. Decyzje DDD z Task 9 i 10 są
-  zaakceptowane i zapisane w specyfikacji.
+  (mapowanie, typy Doctrine i schemat bazy) i poczekaj na akceptację. Użytkownik ma potwierdzić w tym punkcie
+  zapis kategorii dodatkowych: JSONB `category_ids` bez klucza obcego (jak w specyfikacji) albo tabela łącząca
+  z kluczem obcym. Decyzje DDD z Task 9 i 10 są zaakceptowane i zapisane w specyfikacji.
 - **Task 16:** drzewo kategorii, szablony produktów i lista zdjęć z linkami czekają na akceptację,
   zanim cokolwiek zostanie pobrane.
 - **Task 26:** plan zostaje usunięty dopiero po akceptacji całości przez użytkownika.
@@ -285,7 +286,8 @@ w zadaniu, do którego należy kod.
     jako stringi, bez powtórzeń (dwie kategorie we wspólnym poddrzewie); `categoryIds` zaczyna się od głównej;
     `mainImage` jest `null` bez zdjęć.
   - `ProductSearchTest` (drzewo R > C > L i osobny korzeń X; produkty w L, w C i w X, a produkt z L ma też
-    kategorię dodatkową X): `search(R)` daje 2, `search(L)` daje 1, `search(X)` daje 2, `search(null)` daje 3; nazwy `Żel`, `buty`, `Ajax` sortują się jako `Ajax`, `buty`, `Żel`;
+    kategorię dodatkową X): `search(R)` daje 2, `search(L)` daje 1, `search(X)` daje 2, `search(null)` daje 3;
+    nazwy `Żel`, `buty`, `Ajax` sortują się jako `Ajax`, `buty`, `Żel`;
     `perPage=2, page=2` daje 1 element i `total=3`; `page=99` daje `[]` i `total=3`; dwukrotne `index` tego samego
     dokumentu daje `countDocuments() === 1`; klient z hostem nieosiągalnym rzuca `SearchUnavailable` w czasie
     poniżej 2 s.
@@ -366,7 +368,7 @@ w zadaniu, do którego należy kod.
   - `GetCategoryTreeHandlerTest`: drzewo zagnieżdżone; rodzeństwo posortowane po nazwie z polską kolacją
     (`Collator('pl_PL')`: `Łyżwy` po `Lody`).
   - `ProductsEndpointTest` (Foundry, dokumenty w indeksie testowym): kształt odpowiedzi jak w specyfikacji; filtr
-    po kategorii głównej obejmuje produkty z podkategorii; `page=999` daje 200, `items === []` i prawdziwe `total`;
+    po kategorii najwyższego poziomu obejmuje produkty z podkategorii; `page=999` daje 200, `items === []` i prawdziwe `total`;
     `category=abc` daje 400 z `violations[0].propertyPath === 'category'`; `perPage=0` i `perPage=49` dają 400;
     nagłówki `Cache-Control: max-age=60, public` i `Vary` zawierające `Origin`; `ProductSearch` podmieniony na
     rzucający `SearchUnavailable` daje 503 jako problem details, a treść nie zawiera komunikatu wyjątku.
@@ -411,7 +413,7 @@ w zadaniu, do którego należy kod.
   ```
   Nazwa produktu to `{productType} {brand} {model} {color}`, a slug to transliteracja nazwy (bez polskich znaków).
 
-- **Krok 1: Przygotuj szkic `catalog.yaml`**: 7 kategorii głównych ze specyfikacji, drzewo na 3–4 poziomy
+- **Krok 1: Przygotuj szkic `catalog.yaml`**: 7 kategorii najwyższego poziomu ze specyfikacji, drzewo na 3–4 poziomy
   (około 35 kategorii), szablony dla kategorii-liści. Szablony z `food`, `food_supplement` (np. odżywki)
   i `printed_publication` (przewodniki z ISBN, mapy) są wśród nich. Marki fikcyjne, bez nazw istniejących marek
   sportowych. Policz, że rozwinięcie daje 300–500 produktów.
