@@ -41,6 +41,37 @@ describe("colours only from tokens", () => {
     expect(errors[0].ruleId).toBe("better-tailwindcss/no-unknown-classes");
   });
 
+  it.each([["bg-gray-500"], ["bg-white"], ["text-brand-600"]])("rejects the raw palette class %s", async (className) => {
+    const errors = await lint(jsx(className), tsx);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].ruleId).toBe("better-tailwindcss/no-unknown-classes");
+  });
+
+  it.each([
+    ["named colour", arbitrary("bg", "red")],
+    ["named colour with a type hint", arbitrary("text", "color:red")],
+    ["three-digit hex", arbitrary("bg", "#abc")],
+    ["dark variant", ["dark", "bg-primary"].join(":")],
+  ])("rejects %s", async (_name, className) => {
+    const errors = await lint(jsx(className), tsx);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].ruleId).toBe("no-restricted-syntax");
+  });
+
+  it("rejects an arbitrary colour inside cn()", async () => {
+    const code = `import { cn } from "@/lib/utils";\nexport const A = () => <div className={cn("p-2", "${arbitrary("bg", "#fff")}")} />;\n`;
+    const errors = await lint(code, tsx);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].ruleId).toBe("no-restricted-syntax");
+  });
+
+  it("rejects an arbitrary colour inside a template literal", async () => {
+    const code = "export const A = ({ x }: { x: string }) => <div className={`p-2 " + arbitrary("bg", "#abc") + " ${x}`} />;\n";
+    const errors = await lint(code, tsx);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].ruleId).toBe("no-restricted-syntax");
+  });
+
   it.each([["bg-background text-foreground border-border"], ["bg-primary/90"], ["text-muted-foreground rounded-lg"]])(
     "accepts the semantic classes %s",
     async (className) => {
@@ -56,6 +87,16 @@ describe("fetch boundary", () => {
     const errors = await lint(code, "src/catalog/x.ts");
     expect(errors).toHaveLength(1);
     expect(errors[0].ruleId).toBe("no-restricted-globals");
+  });
+
+  it.each([["globalThis"], ["window"], ["self"]])("rejects %s.fetch outside the API client", async (object) => {
+    const errors = await lint(`export const load = () => ${object}.fetch("/x");\n`, "src/catalog/a.ts");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].ruleId).toBe("no-restricted-properties");
+  });
+
+  it.each([["globalThis"], ["window"], ["self"]])("allows %s.fetch in src/api/client.ts", async (object) => {
+    expect(await lint(`export const load = () => ${object}.fetch("/x");\n`, "src/api/client.ts")).toHaveLength(0);
   });
 
   it("allows global fetch in src/api/client.ts", async () => {

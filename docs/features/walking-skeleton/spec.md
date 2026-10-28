@@ -402,8 +402,9 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
 - Komponenty na shadcn/ui, style w Tailwind CSS 4. W szkielecie z shadcn/ui pochodzą `button`, `card`
   i `pagination` w `src/components/ui/`. Tryb ciemny nie jest obsługiwany.
 - Tokeny są w jednym miejscu, w `src/styles/tokens.css`. Na ten plik wskazuje też `components.json` shadcn/ui.
-  - Paleta: surowe wartości kolorów w `@theme`, poprzedzone `--color-*: initial`, więc domyślna paleta Tailwinda
-    nie istnieje.
+  - Paleta: surowe wartości kolorów w `@theme` pod przestrzenią `--palette-*`, której Tailwind nie zamienia
+    na klasy (nie ma `bg-gray-500`). `--color-*: initial` usuwa domyślną paletę Tailwinda. Na klasy `--color-*`
+    mapowane są tylko zmienne semantyczne.
   - Warstwa semantyczna: zmienne motywu shadcn/ui (`--background`, `--foreground`, `--card`, `--card-foreground`,
     `--primary`, `--primary-foreground`, `--secondary`, `--secondary-foreground`, `--muted`, `--muted-foreground`,
     `--accent`, `--accent-foreground`, `--destructive`, `--border`, `--input`, `--ring`, `--radius`) zdefiniowane
