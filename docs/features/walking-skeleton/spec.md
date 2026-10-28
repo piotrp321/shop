@@ -46,7 +46,7 @@ są przypięte w pliku compose.
 | `rabbitmq` | RabbitMQ 4 z wtyczką management | transport `events` Messengera; vhost `/` dla dev, vhost `test` dla testów | `rabbitmq-diagnostics ping` |
 | `rabbitmq-init` | jednorazowy | idempotentnie, przez Management API: vhost `test` i uprawnienia użytkownika aplikacji | kończy się kodem 0 |
 | `keycloak` | Keycloak 26, `start-dev --import-realm`, baza `keycloak` w Postgresie, ograniczony heap | realmy `shop` i `backoffice` | `/health/ready` na porcie zarządzania |
-| `garage` | Garage 2 | bucket `product-images` (i `product-images-test`) z oryginałami zdjęć | admin API `/health` |
+| `garage` | Garage 2 | bucket `product-images` (i `product-images-test`) z oryginałami zdjęć | `garage status` (obraz nie ma powłoki ani curl, a admin API `/health` zwraca 503 do czasu zastosowania układu przez `garage-init`) |
 | `garage-init` | Garage 2 (jednorazowy) | idempotentnie: układ węzła, import klucza z `.env.local`, buckety, uprawnienia | kończy się kodem 0 |
 | `imgproxy` | imgproxy 3, źródło S3 → Garage | przetwarzanie obrazów na żądanie | `imgproxy health` |
 | `mailpit` | Mailpit | SMTP dla realmu `shop` (weryfikacja e-mail, reset hasła) | `/readyz` |
@@ -56,7 +56,7 @@ są przypięte w pliku compose.
 | `admin` | Node 24, `vite dev` | panel | `GET /` |
 | `e2e` | obraz Playwright, profil `e2e` | testy E2E, uruchamiany tylko przez `make e2e` | — |
 
-Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait`.
+Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init`, który uruchamia potem przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd).
 
 Obraz API zawiera rozszerzenia `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, a target `dev` dodatkowo SPX.
 Entrypoint `api` w trybie dev instaluje zależności, jeśli zmienił się lock, uruchamia migracje i tworzy indeks
