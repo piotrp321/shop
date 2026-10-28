@@ -18,18 +18,18 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: nic. Następne zadanie: **Task 9** (domena katalogu). Blokery: brak; Task 9–11 mają punkt zatrzymania
-na decyzje DDD, opisany niżej.
+W toku: nic. Następne zadanie: **Task 11** (persystencja). Blokery: brak; Task 11 ma punkt zatrzymania
+na decyzje persystencji, opisany niżej.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
 | [#1](https://github.com/piotrp321/shop/pull/1) | 1–8 | dokumentacja API, stos usług, obraz API z SPX, narzędzia jakości API, szkielety sklepu i panelu, konfiguracja Claude Code, wspólne zachowanie HTTP w API | ✅ |
 | [#2](https://github.com/piotrp321/shop/pull/2), [#3](https://github.com/piotrp321/shop/pull/3) | 25 | lekkie CI | ✅ |
-| | 9, 10 | domena Catalog i komendy tworzenia kategorii i produktów | następne |
+| [#5](https://github.com/piotrp321/shop/pull/5) | 9 | domena Catalog | ✅ |
 | | 11 | persystencja Catalog (Doctrine, PostgreSQL) | |
-| | 13 | indeks Elasticsearch i adapter wyszukiwania | |
-| | 14 | transactional outbox, RabbitMQ, worker, indeksowanie | |
 | | 12 | obrazy w API (Garage, imgproxy) | |
+| | 13 | indeks Elasticsearch i adapter wyszukiwania | |
+| | 10, 14 | komendy tworzenia kategorii i produktów, transactional outbox, RabbitMQ, worker, indeksowanie | |
 | | 15 | endpointy katalogu i OpenAPI sklepu | |
 | | 16, 17 | dane demo i seed | |
 | | 18 | strona katalogu w sklepie | |
@@ -41,7 +41,9 @@ na decyzje DDD, opisany niżej.
 
 - Wiersz to jeden PR z jedną logiczną zmianą, a kolejność wierszy to kolejność prac (wynika z zależności
   „Konsumuje” w zadaniach, nie z numeracji). Task 12 jest przed Task 15, bo endpoint zwraca podpisane warianty
-  zdjęć, a seed zapisuje zdjęcia w Garage.
+  zdjęć, a seed zapisuje zdjęcia w Garage. Task 10 jest w jednym PR z Task 14: handlery komend są usługami
+  kontenera i potrzebują szyny `command.bus` oraz implementacji `DomainEventPublisher` z Task 14 i repozytoriów
+  z Task 11, inaczej kontener się nie kompiluje.
 - Jedno uruchomienie `subagent-driven-development` realizuje jeden wiersz i kończy się otwarciem PR. Kolejny
   wiersz zaczyna się po decyzji użytkownika o merge.
 - Orkiestrator oznacza wiersz jako ✅ w PR, który go realizuje, a numer PR dopisuje po jego otwarciu, w tym
@@ -77,8 +79,12 @@ Wznowienie pracy w nowej sesji:
 
 ## Punkty zatrzymania
 
-- **Task 9–11:** zanim implementer zacznie, przedstaw użytkownikowi istotne decyzje DDD i persystencji z zadania
-  (agregaty, value objecty, granice modułów, mapowanie i schemat bazy) i poczekaj na akceptację.
+- **Task 11:** zanim implementer zacznie, przedstaw użytkownikowi istotne decyzje persystencji z zadania
+  (mapowanie, typy Doctrine i schemat bazy) i poczekaj na akceptację. Schemat tabel jest ustalony
+  w specyfikacji. Do przedstawienia zostaje, jak mapowanie odtwarza `ProductCategories` z `primary_category_id`
+  i `catalog_product_category` bez zmiany API domeny oraz jak klucze obce i indeksy bez asocjacji Doctrine
+  trafiają do schematu porównywanego przez `doctrine:schema:validate`. Decyzje DDD z Task 9 i 10 są
+  zaakceptowane i zapisane w specyfikacji.
 - **Task 16:** drzewo kategorii, szablony produktów i lista zdjęć z linkami czekają na akceptację,
   zanim cokolwiek zostanie pobrane.
 - **Task 26:** plan zostaje usunięty dopiero po akceptacji całości przez użytkownika.
@@ -105,7 +111,7 @@ w zadaniu, do którego należy kod.
 **Pliki:**
 - Utwórz: `src/Shared/Domain/Event/DomainEvent.php`, `src/Shared/Domain/Event/DomainEventPublisher.php`,
   `src/Catalog/Domain/Category/{Category,CategoryId,CategoryName,CategoryPath,CategoryRepository,CategoryNotFound}.php`,
-  `src/Catalog/Domain/Product/{Product,ProductId,ProductName,Slug,ShortDescription,TaxCategory,ProductImage,ProductImages,ImageKey,ProductRepository,ProductCreated,SlugAlreadyTaken}.php`,
+  `src/Catalog/Domain/Product/{Product,ProductId,ProductName,Slug,ShortDescription,ProductCategories,TaxCategory,ProductImage,ProductImages,ImageKey,ProductRepository,ProductCreated,SlugAlreadyTaken}.php`,
   testy w `tests/Unit/Catalog/Domain/`
 
 **Interfejsy:**
@@ -121,13 +127,16 @@ w zadaniu, do którego należy kod.
     `ancestorIds(): list<CategoryId>` (od korzenia, z własnym id), `toString(): string` (`/a/b/`),
     `fromString(string $path): self`
   - `CategoryRepository { save(Category $c): void; get(CategoryId $id): Category; all(): list<Category>; count(): int }`
-  - `Product::create(ProductId, ProductName, Slug, ShortDescription, CategoryId, TaxCategory, ProductImages): self`,
-    `releaseEvents(): list<DomainEvent>`, gettery pól, `images(): ProductImages`
+  - `Product::create(ProductId, ProductName, Slug, ShortDescription, ProductCategories, TaxCategory, ProductImages): self`,
+    `releaseEvents(): list<DomainEvent>`, gettery pól, `categories(): ProductCategories`, `images(): ProductImages`
+  - `ProductCategories::create(CategoryId $main, list<CategoryId> $additional = []): self`, `main(): CategoryId`,
+    `additional(): list<CategoryId>`, `all(): list<CategoryId>` (główna pierwsza)
   - `ProductImages::fromList(list<ProductImage>)`, `main(): ?ProductImage`, `isEmpty(): bool`, `toList()`
   - `ProductImage(ImageKey $key, string $alt, int $position)`; `ImageKey::fromString(string)` wymaga
     `^originals/[a-f0-9]{64}\.jpg$`
   - `TaxCategory` (enum string): `standard`, `food`, `food_supplement`, `printed_publication`
-  - `ProductRepository { save(Product $p): void; get(ProductId $id): Product; all(): iterable<Product>; slugExists(Slug $s): bool; count(): int; countWithoutImages(): int }`
+  - `ProductRepository { save(Product $p): void; get(ProductId $id): Product; all(): iterable<Product>; count(): int; countWithoutImages(): int }`;
+    `save` deklaruje w PHPDoc `@throws SlugAlreadyTaken`
   - `ProductCreated(string $productId, DateTimeImmutable $occurredAt)` implementuje `DomainEvent`
 
 - **Krok 1: Testy**
@@ -136,11 +145,16 @@ w zadaniu, do którego należy kod.
     `InvalidArgumentException`.
   - `ProductTest`: `create` zapisuje dokładnie jedno `ProductCreated` z tym samym `productId`; drugie
     `releaseEvents()` zwraca `[]`; nazwa pusta i o długości 201 są odrzucane; `ShortDescription` o długości 501
-    jest odrzucany.
+    jest odrzucany, a pusty przechodzi.
+  - `ProductCategoriesTest`: sama główna daje `all() == [main]`; główna z dwiema dodatkowymi daje `all()`
+    w kolejności główna, dodatkowe; 10 dodatkowych przechodzi, 11 jest odrzucanych; powtórzona dodatkowa i główna
+    podana też jako dodatkowa są odrzucane.
   - `SlugTest`: `buty-puls-2` jest poprawny; `Buty`, `-a`, `a-`, `a--b`, `a b` i slug o długości 201 są odrzucane.
-  - `ProductImagesTest`: 11 zdjęć jest odrzucanych; pozycje `[0, 2]` są odrzucane; pusty `alt` jest odrzucany;
+  - `ProductImagesTest`: 11 zdjęć jest odrzucanych; pozycje `[0, 2]` i `[1, 0]` są odrzucane; dwa zdjęcia z tym
+    samym `ImageKey` są odrzucane; pusty `alt` jest odrzucany;
     `main()` zwraca pozycję 0; pusta lista daje `isEmpty() === true` i `main() === null`.
   - `ImageKeyTest`: poprawny klucz przechodzi; `originals/abc.jpg` i `../x.jpg` są odrzucane.
+  - `CategoryIdTest`: UUID wielkimi literami jest zapisywany małymi; `abc` jest odrzucany.
   - `TaxCategoryTest`: `TaxCategory::from('food')` działa, `from('luxury')` rzuca `ValueError`.
 - **Krok 2: Uruchom `make -C apps/api test-unit`, oczekiwany FAIL.**
 - **Krok 3: Zaimplementuj model.**
@@ -155,17 +169,20 @@ w zadaniu, do którego należy kod.
   `tests/Unit/Catalog/Application/{CreateCategoryHandlerTest,CreateProductHandlerTest}.php`
 
 **Interfejsy:**
-- Konsumuje: zadanie 9.
+- Konsumuje: zadanie 9. Realizowane w jednym PR z zadaniem 14 (szyny Messengera i `DomainEventPublisher`),
+  po zadaniu 11 (repozytoria).
 - Produkuje: `CreateCategory(string $id, string $name, ?string $parentId)`;
-  `CreateProduct(string $id, string $name, string $slug, string $shortDescription, string $categoryId, string $taxCategory, list<array{key: string, alt: string}> $images)`.
-  Handlery jako `#[AsMessageHandler(bus: 'command.bus')]`. `CreateProductHandler` publikuje zdarzenia agregatu
-  przez `DomainEventPublisher` po `save`.
+  `CreateProduct(string $id, string $name, string $slug, string $shortDescription, string $mainCategoryId, list<string> $additionalCategoryIds, string $taxCategory, list<array{key: string, alt: string}> $images)`.
+  Handlery jako `#[AsMessageHandler(bus: 'command.bus')]`. `CreateProductHandler` sprawdza istnienie wszystkich
+  kategorii produktu i publikuje zdarzenia agregatu przez `DomainEventPublisher` po `save`.
+  `InMemoryProductRepository::save` rzuca `SlugAlreadyTaken` przy zajętym slugu, jak ograniczenie w bazie.
 
 - **Krok 1: Testy**
   - `CreateCategoryHandlerTest`: korzeń zapisany; dziecko ma ścieżkę rodzica plus własne id; nieznany
     `parentId` rzuca `CategoryNotFound`.
-  - `CreateProductHandlerTest`: produkt zapisany, opublikowane dokładnie jedno `ProductCreated`; nieznana
-    kategoria rzuca `CategoryNotFound`; zajęty slug rzuca `SlugAlreadyTaken` i nic nie jest publikowane.
+  - `CreateProductHandlerTest`: produkt z kategorią główną i dodatkową zapisany, opublikowane dokładnie jedno
+    `ProductCreated`; nieznana kategoria główna i nieznana dodatkowa rzucają `CategoryNotFound`; zajęty slug
+    rzuca `SlugAlreadyTaken` i nic nie jest publikowane.
 - **Krok 2: FAIL. Krok 3: implementacja. Krok 4: PASS (`make -C apps/api check test-unit`).**
 - **Krok 5: Commit** `feat(api): add commands for creating categories and products`
 
@@ -186,15 +203,21 @@ w zadaniu, do którego należy kod.
 
 **Interfejsy:**
 - Konsumuje: interfejsy repozytoriów z zadania 9.
-- Produkuje: tabele `catalog_category` (`id`, `parent_id` z FK, `name`, `path` text z indeksem
-  `text_pattern_ops`) i `catalog_product` (`id`, `slug` unikalny, `name`, `short_description`, `category_id`
-  z FK, `tax_category`, `images` JSONB); fabryki Foundry `CategoryFactory` (z opcją rodzica) i `ProductFactory`.
+- Produkuje: tabele `catalog_category`, `catalog_product` i `catalog_product_category` jak w sekcji
+  „Persystencja” specyfikacji, bez asocjacji Doctrine między agregatami; `DoctrineProductRepository::save()`
+  zapisuje produkt i jego przypisania dodatkowe w jednej transakcji, robi flush i zamienia naruszenie ograniczenia
+  unikalności sluga na `SlugAlreadyTaken`; fabryki Foundry `CategoryFactory` (z opcją rodzica) i `ProductFactory`.
 
 - **Krok 1: Testy**
   - `DoctrineCategoryRepositoryTest`: zapis i odczyt zachowuje ścieżkę i rodzica; `get` nieznanego id rzuca
     `CategoryNotFound`; `count()`.
-  - `DoctrineProductRepositoryTest`: zapis i odczyt zachowuje kolejność zdjęć i `TaxCategory`; `slugExists`;
-    `count()`; `countWithoutImages()`; zapis drugiego produktu z tym samym slugiem rzuca `SlugAlreadyTaken`.
+  - `DoctrineProductRepositoryTest`: zapis i odczyt zachowuje kolejność zdjęć, kategorię główną, zbiór kategorii
+    dodatkowych (posortowany po id) i `TaxCategory`; produkt bez kategorii dodatkowych nie ma wierszy
+    w `catalog_product_category`; kategoria główna nie ma tam wiersza; `count()`; `countWithoutImages()`; zapis
+    drugiego produktu z tym samym slugiem rzuca `SlugAlreadyTaken`, a w tabelach nie ma jego wierszy; produkt
+    z nieistniejącą kategorią główną albo dodatkową narusza klucz obcy.
+  - Schemat: `catalog_product.primary_category_id` jest `NOT NULL`; istnieją indeksy na
+    `catalog_product.primary_category_id` i `catalog_product_category.category_id` (odczyt z `pg_indexes`).
 - **Krok 2: FAIL. Krok 3: mapowanie, typy, repozytoria, migracja (`make -C apps/api migration`).**
 - **Krok 4: PASS**: `make -C apps/api check test`; `bin/console doctrine:schema:validate` w kontenerze
   przechodzi.
@@ -255,8 +278,9 @@ w zadaniu, do którego należy kod.
 
 **Interfejsy:**
 - Produkuje:
-  - `ProductDocument(string $id, string $name, string $slug, string $shortDescription, string $categoryId, list<string> $categoryAncestorIds, ?array{key: string, alt: string} $mainImage)`
-  - `ProductDocumentBuilder::build(Product $product, Category $category): ProductDocument`
+  - `ProductDocument(string $id, string $name, string $slug, string $shortDescription, string $mainCategoryId, list<string> $categoryIds, list<string> $categoryAncestorIds, ?array{key: string, alt: string} $mainImage)`
+  - `ProductDocumentBuilder::build(Product $product, list<Category> $categories): ProductDocument`, gdzie
+    `$categories` to wszystkie kategorie produktu
   - `ProductIndexer { index(ProductDocument $d): void; countDocuments(): int }`
   - `ProductSearch { search(?string $categoryId, int $page, int $perPage): SearchResult }`;
     `SearchResult(list<ProductDocument> $items, int $total)`
@@ -265,10 +289,12 @@ w zadaniu, do którego należy kod.
   - nazwa aliasu z parametru (`products` w dev, `test_products` w testach)
 
 - **Krok 1: Testy**
-  - `ProductDocumentBuilderTest`: `categoryAncestorIds` to `ancestorIds()` kategorii jako stringi; `mainImage`
-    jest `null` bez zdjęć.
-  - `ProductSearchTest` (drzewo R > C > L, produkty w L, w C i w innej gałęzi): `search(R)` daje 2, `search(L)`
-    daje 1, `search(null)` daje 3; nazwy `Żel`, `buty`, `Ajax` sortują się jako `Ajax`, `buty`, `Żel`;
+  - `ProductDocumentBuilderTest`: `categoryAncestorIds` to suma `ancestorIds()` wszystkich kategorii produktu
+    jako stringi, bez powtórzeń (dwie kategorie we wspólnym poddrzewie); `categoryIds` zaczyna się od głównej;
+    `mainImage` jest `null` bez zdjęć.
+  - `ProductSearchTest` (drzewo R > C > L i osobny korzeń X; produkty w L, w C i w X, a produkt z L ma też
+    kategorię dodatkową X): `search(R)` daje 2, `search(L)` daje 1, `search(X)` daje 2, `search(null)` daje 3;
+    nazwy `Żel`, `buty`, `Ajax` sortują się jako `Ajax`, `buty`, `Żel`;
     `perPage=2, page=2` daje 1 element i `total=3`; `page=99` daje `[]` i `total=3`; dwukrotne `index` tego samego
     dokumentu daje `countDocuments() === 1`; klient z hostem nieosiągalnym rzuca `SearchUnavailable` w czasie
     poniżej 2 s.
@@ -294,7 +320,8 @@ w zadaniu, do którego należy kod.
   `query.bus` i `event.bus`), `symfony.lock` (wpis `config/packages/messenger.yaml` odpowiada wtedy istniejącemu plikowi)
 
 **Interfejsy:**
-- Konsumuje: `DomainEventPublisher` (zadanie 9), `ProductIndexer` i `ProductDocumentBuilder` (zadanie 13).
+- Konsumuje: `DomainEventPublisher` (zadanie 9), komendy (zadanie 10, w tym samym PR), `ProductIndexer`
+  i `ProductDocumentBuilder` (zadanie 13). `IndexProduct` wczytuje wszystkie kategorie produktu.
 - Produkuje: szyny i transporty ze specyfikacji; routing `DomainEvent` → `outbox`;
   `RelayDomainEventToBroker` z `#[AsMessageHandler(bus: 'event.bus', fromTransport: 'outbox')]`, który ponownie
   wysyła zdarzenie z `TransportNamesStamp(['events'])`; `IndexProduct` z
@@ -348,7 +375,7 @@ w zadaniu, do którego należy kod.
   - `GetCategoryTreeHandlerTest`: drzewo zagnieżdżone; rodzeństwo posortowane po nazwie z polską kolacją
     (`Collator('pl_PL')`: `Łyżwy` po `Lody`).
   - `ProductsEndpointTest` (Foundry, dokumenty w indeksie testowym): kształt odpowiedzi jak w specyfikacji; filtr
-    po kategorii głównej obejmuje produkty z podkategorii; `page=999` daje 200, `items === []` i prawdziwe `total`;
+    po kategorii najwyższego poziomu obejmuje produkty z podkategorii; `page=999` daje 200, `items === []` i prawdziwe `total`;
     `category=abc` daje 400 z `violations[0].propertyPath === 'category'`; `perPage=0` i `perPage=49` dają 400;
     nagłówki `Cache-Control: max-age=60, public` i `Vary` zawierające `Origin`; `ProductSearch` podmieniony na
     rzucający `SearchUnavailable` daje 503 jako problem details, a treść nie zawiera komunikatu wyjątku.
@@ -382,7 +409,8 @@ w zadaniu, do którego należy kod.
   categories:                # tree, 3–4 levels
     - { name: Bieganie, slug: bieganie, children: [ … ] }
   templates:
-    - category: bieganie/buty/szosowe     # slug path
+    - category: bieganie/buty/szosowe     # slug path of the main category
+      additionalCategories: [ … ]          # optional slug paths, other branches
       productType: Buty do biegania
       taxCategory: standard
       brands: [ … ]                        # fictional house brands
@@ -392,7 +420,7 @@ w zadaniu, do którego należy kod.
   ```
   Nazwa produktu to `{productType} {brand} {model} {color}`, a slug to transliteracja nazwy (bez polskich znaków).
 
-- **Krok 1: Przygotuj szkic `catalog.yaml`**: 7 kategorii głównych ze specyfikacji, drzewo na 3–4 poziomy
+- **Krok 1: Przygotuj szkic `catalog.yaml`**: 7 kategorii najwyższego poziomu ze specyfikacji, drzewo na 3–4 poziomy
   (około 35 kategorii), szablony dla kategorii-liści. Szablony z `food`, `food_supplement` (np. odżywki)
   i `printed_publication` (przewodniki z ISBN, mapy) są wśród nich. Marki fikcyjne, bez nazw istniejących marek
   sportowych. Policz, że rozwinięcie daje 300–500 produktów.
@@ -416,7 +444,7 @@ w zadaniu, do którego należy kod.
 - Modyfikuj: `Makefile` (`seed`: `$(RUN) api bin/console catalog:seed-demo`)
 
 **Interfejsy:**
-- Konsumuje: `CreateCategory` i `CreateProduct` (zadanie 10), `ProductImageStorage` (zadanie 12),
+- Konsumuje: `CreateCategory` i `CreateProduct` (zadanie 10, z kategoriami dodatkowymi), `ProductImageStorage` (zadanie 12),
   `SearchIndexMaintenance` i `ProductIndexer` (zadanie 13).
 - Produkuje:
   - `DemoCatalogExpander::expand(DemoCatalogDefinition $d): DemoCatalog` z kategoriami w kolejności „rodzic przed
@@ -430,7 +458,9 @@ w zadaniu, do którego należy kod.
 - **Krok 1: Testy**
   - `DemoCatalogExpanderTest` (mały fixture): dwa rozwinięcia są identyczne; id produktu równa się
     `Uuid::v5(ns, 'product:' . slug)`; zduplikowany slug rzuca wyjątek z tym slugiem; co `imagelessEvery`-ty
-    produkt nie ma zdjęć, a pozostałe dostają zdjęcie z puli `pool[index % count]`; rodzic występuje przed dzieckiem.
+    produkt nie ma zdjęć, a pozostałe dostają zdjęcie z puli `pool[index % count]`; rodzic występuje przed dzieckiem;
+    kategorie dodatkowe szablonu trafiają do produktów jako id kategorii, a nieznana ścieżka kategorii dodatkowej
+    rzuca wyjątek z tą ścieżką.
   - `RealDemoCatalogTest` (`apps/api/fixtures/catalog.yaml`): liczba produktów w przedziale 300–500; głębokość
     drzewa 3–4; każdy plik z puli istnieje w `fixtures/images`; co najmniej jeden produkt z każdej kategorii
     podatkowej `food`, `food_supplement` i `printed_publication`.
