@@ -147,7 +147,8 @@ w zadaniu, do którego należy kod.
     `releaseEvents()` zwraca `[]`; nazwa pusta i o długości 201 są odrzucane; `ShortDescription` o długości 501
     jest odrzucany, a pusty przechodzi.
   - `ProductCategoriesTest`: sama główna daje `all() == [main]`; główna z dwiema dodatkowymi daje `all()`
-    w kolejności główna, dodatkowe; powtórzona dodatkowa i główna podana też jako dodatkowa są odrzucane.
+    w kolejności główna, dodatkowe; 10 dodatkowych przechodzi, 11 jest odrzucanych; powtórzona dodatkowa i główna
+    podana też jako dodatkowa są odrzucane.
   - `SlugTest`: `buty-puls-2` jest poprawny; `Buty`, `-a`, `a-`, `a--b`, `a b` i slug o długości 201 są odrzucane.
   - `ProductImagesTest`: 11 zdjęć jest odrzucanych; pozycje `[0, 2]` i `[1, 0]` są odrzucane; dwa zdjęcia z tym
     samym `ImageKey` są odrzucane; pusty `alt` jest odrzucany;

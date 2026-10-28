@@ -46,4 +46,34 @@ final class ProductCategoriesTest extends TestCase
 
         ProductCategories::create(CategoryId::fromString('11111111-1111-4111-8111-111111111111'), [CategoryId::fromString('11111111-1111-4111-8111-111111111111')]);
     }
+
+    public function testTenAdditionalCategoriesAreAccepted(): void
+    {
+        $main = CategoryId::fromString('11111111-1111-4111-8111-111111111111');
+
+        $categories = ProductCategories::create($main, $this->additionalIds(10));
+
+        self::assertCount(11, $categories->all());
+        self::assertSame($main, $categories->all()[0]);
+    }
+
+    public function testElevenAdditionalCategoriesAreRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        ProductCategories::create(CategoryId::fromString('11111111-1111-4111-8111-111111111111'), $this->additionalIds(11));
+    }
+
+    /**
+     * @return list<CategoryId>
+     */
+    private function additionalIds(int $count): array
+    {
+        $ids = [];
+        for ($i = 1; $i <= $count; ++$i) {
+            $ids[] = CategoryId::fromString(\sprintf('00000000-0000-4000-8000-%012d', $i));
+        }
+
+        return $ids;
+    }
 }

@@ -8,6 +8,8 @@ use App\Catalog\Domain\Category\CategoryId;
 
 final readonly class ProductCategories
 {
+    private const int MAX_ADDITIONAL = 10;
+
     /**
      * @param list<CategoryId> $additional
      */
@@ -20,6 +22,10 @@ final readonly class ProductCategories
      */
     public static function create(CategoryId $main, array $additional = []): self
     {
+        if (\count($additional) > self::MAX_ADDITIONAL) {
+            throw new \InvalidArgumentException('A product can have at most '.self::MAX_ADDITIONAL.' additional categories.');
+        }
+
         $seen = [$main->toString() => true];
         foreach ($additional as $id) {
             if (isset($seen[$id->toString()])) {

@@ -197,7 +197,7 @@ Reguły Deptrac:
 - `ProductId` (UUID), `ProductName` (niepusta, do 200 znaków), `Slug` (`^[a-z0-9]+(-[a-z0-9]+)*$`, do 200 znaków,
   unikalny), `ShortDescription` (do 500 znaków, może być pusty), `ProductCategories`, `TaxCategory`,
   `ProductImages`.
-- `ProductCategories`: dokładnie jedna kategoria główna i dowolnie wiele dodatkowych, wszystkie jako
+- `ProductCategories`: dokładnie jedna kategoria główna i najwyżej 10 dodatkowych, wszystkie jako
   `CategoryId`. Kategoria nie powtarza się na liście, a główna nie jest jednocześnie dodatkową. `all()` zwraca
   główną, a po niej dodatkowe. Kolejność dodatkowych nie ma znaczenia biznesowego.
 - `Product` i `Category` to niezależne agregaty. Odwołują się do siebie wyłącznie przez identyfikatory.
