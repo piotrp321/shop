@@ -1,4 +1,4 @@
-.PHONY: up down logs ps
+.PHONY: up down logs ps check test
 
 # One-shot services that nothing waits on yet. `docker compose up --wait` reports a service that
 # exited as an error unless a dependent service waits for it, so these run separately.
@@ -17,3 +17,10 @@ logs:
 
 ps:
 	docker compose ps
+
+# store and admin join in their own tasks.
+check:
+	$(MAKE) -C apps/api check
+
+test:
+	$(MAKE) -C apps/api test
