@@ -53,6 +53,14 @@ od pierwszego kodu frontów).
 Po ukończeniu Task 7 kolejne zadania wykonuje się w nowej sesji Claude Code, żeby wczytały się hooki z
 `.claude/settings.json`. Pierwszy krok tej sesji to sprawdzenie `/hooks` i blokady tury (krok 6 Task 7).
 
+## Etapy i PR
+
+Plan jest realizowany etapami. Każdy etap kończy się osobnym PR do `main` z opisem: co zawiera, jak to sprawdzić
+lokalnie (`make up`, `make check`, `make test`), decyzje podjęte w trakcie i odłożone uwagi. Agent nie merguje PR.
+
+- Etap „Infrastruktura i narzędzia”: Task 1–8.
+- Granice kolejnych etapów ustala użytkownik przed ich rozpoczęciem.
+
 ## Na co patrzeć w review
 
 Przypadki, których specyfikacja nie stawia na pierwszym planie, a które najłatwiej zepsuć. Każdy ma test
