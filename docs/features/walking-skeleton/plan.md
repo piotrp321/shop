@@ -289,7 +289,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   - brak pliku stanu: kod 0, komenda testów nie została wywołana;
   - stan `api` i zaliczone testy: kod 0, wywołane tylko testy api, plik stanu usunięty;
   - stan `api store` i nieudane testy store: kod 2, stderr zawiera wynik testów store, plik stanu zostaje;
-  - trzecia kolejna blokada w tej samej sesji: kod 0 i informacja o nieprzechodzących testach;
+  - po trzech kolejnych blokadach (kod 2) czwarte uruchomienie w tej samej sesji: kod 0 i informacja o nieprzechodzących testach;
   - zaliczone testy po blokadach zerują licznik.
 - [ ] **Krok 3: Uruchom oba testy (`bash .claude/hooks/tests/*.test.sh`), oczekiwany FAIL.**
 - [ ] **Krok 4: Zaimplementuj skrypty i `settings.json`.** Dokładny identyfikator pluginu (`<plugin>@<marketplace>`)

@@ -36,7 +36,7 @@ skip() { SKIPPED=$((SKIPPED + 1)); echo "SKIP: $1"; }
 run_hook() {
   local json="$1"
   shift
-  OUT="$(printf '%s' "$json" | env CLAUDE_PROJECT_DIR="$ROOT" HOOK_STATE_DIR="$STATE_DIR" "$@" /bin/bash "$HOOK" 2>"$TMP/stderr")"
+  OUT="$(printf '%s' "$json" | env CLAUDE_PROJECT_DIR="$ROOT" SHOP_HOOK_STATE_DIR="$STATE_DIR" "$@" /bin/bash "$HOOK" 2>"$TMP/stderr")"
   RC=$?
   ERR="$(cat "$TMP/stderr")"
 }

@@ -4,10 +4,14 @@
 # Failing tests: tail of the output on stderr and exit 2, so the agent keeps working. After 3 consecutive
 # failing runs in one session the hook gives up (exit 0) so a hard failure cannot loop forever.
 # Tests pass: state file and counter are removed. No state file, no jq, container not running: exit 0.
-# UNIT_TEST_CMD replaces the real test command (called as `$UNIT_TEST_CMD <app>`); used by the hook tests.
+# Test-only overrides (used by the hook tests, never set in normal use):
+#   SHOP_HOOK_STATE_DIR              state directory instead of .claude/state
+#   SHOP_HOOK_UNIT_TEST_CMD          replaces the real test command, called as `<cmd> <app>`
+#   SHOP_HOOK_CONTAINER_RUNNING_CMD  replaces the "is the container running" check, called as `<cmd> <app>`
+# An app whose container is not running is skipped (with a notice); it never hides failures of other apps.
 # Works with bash 3.2 and BSD tools.
 
-MAX_FAILED_RUNS=3
+MAX_BLOCKS=3
 TAIL_LINES=40
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -16,7 +20,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
-STATE_DIR="${HOOK_STATE_DIR:-$PROJECT_DIR/.claude/state}"
+STATE_DIR="${SHOP_HOOK_STATE_DIR:-$PROJECT_DIR/.claude/state}"
 
 if ! SESSION_ID="$(jq -r '.session_id // empty' 2>/dev/null)"; then
   echo "run-unit-tests: invalid hook JSON on stdin, skipping the tests" >&2
@@ -32,6 +36,14 @@ COUNTER_FILE="$STATE_DIR/stop-blocks-$SESSION_ID"
 
 cd "$PROJECT_DIR" || exit 0
 
+container_running() {
+  if [ -n "${SHOP_HOOK_CONTAINER_RUNNING_CMD:-}" ]; then
+    "$SHOP_HOOK_CONTAINER_RUNNING_CMD" "$1"
+  else
+    command -v docker >/dev/null 2>&1 && docker compose ps --status running --services 2>/dev/null | grep -qx "$1"
+  fi
+}
+
 # Default commands run through the app Makefiles; -T because a hook has no TTY.
 default_tests() {
   case "$1" in
@@ -44,6 +56,7 @@ default_tests() {
 OUTPUT=""
 FAILED=0
 RAN=0
+SKIPPED=0
 while IFS= read -r APP; do
   case "$APP" in
     api | store | admin) ;;
@@ -53,19 +66,14 @@ while IFS= read -r APP; do
       continue
       ;;
   esac
-  if [ -z "${UNIT_TEST_CMD:-}" ]; then
-    if ! command -v docker >/dev/null 2>&1; then
-      echo "run-unit-tests: docker not found on the host, skipping the tests" >&2
-      exit 0
-    fi
-    if ! docker compose ps --status running --services 2>/dev/null | grep -qx "$APP"; then
-      echo "run-unit-tests: container $APP is not running (make up), skipping the tests" >&2
-      exit 0
-    fi
+  if ! container_running "$APP"; then
+    echo "run-unit-tests: container $APP is not running (make up), skipping its tests" >&2
+    SKIPPED=1
+    continue
   fi
   RAN=1
-  if [ -n "${UNIT_TEST_CMD:-}" ]; then
-    OUT="$("$UNIT_TEST_CMD" "$APP" </dev/null 2>&1)"
+  if [ -n "${SHOP_HOOK_UNIT_TEST_CMD:-}" ]; then
+    OUT="$("$SHOP_HOOK_UNIT_TEST_CMD" "$APP" </dev/null 2>&1)"
   else
     OUT="$(default_tests "$APP" </dev/null 2>&1)"
   fi
@@ -80,19 +88,20 @@ if [ "$RAN" -eq 0 ]; then
 fi
 
 if [ "$FAILED" -eq 0 ]; then
+  # Keep the state when an app was skipped, so its tests still run once its container is back.
+  [ "$SKIPPED" -eq 0 ] || exit 0
   rm -f "$STATE_FILE" "$COUNTER_FILE"
   exit 0
 fi
 
-COUNT=0
-[ -f "$COUNTER_FILE" ] && COUNT="$(cat "$COUNTER_FILE" 2>/dev/null)"
-case "$COUNT" in '' | *[!0-9]*) COUNT=0 ;; esac
-COUNT=$((COUNT + 1))
-mkdir -p "$STATE_DIR" && echo "$COUNT" >"$COUNTER_FILE"
+BLOCKS=0
+[ -f "$COUNTER_FILE" ] && BLOCKS="$(cat "$COUNTER_FILE" 2>/dev/null)"
+case "$BLOCKS" in '' | *[!0-9]*) BLOCKS=0 ;; esac
 
 printf '%s' "$OUTPUT" >&2
-if [ "$COUNT" -ge "$MAX_FAILED_RUNS" ]; then
-  echo "run-unit-tests: unit tests are still not passing after $COUNT consecutive runs; not blocking the stop again. Tell the user the tests do not pass." >&2
+if [ "$BLOCKS" -ge "$MAX_BLOCKS" ]; then
+  echo "run-unit-tests: unit tests are still not passing after $BLOCKS consecutive blocks; not blocking the stop again. Tell the user the tests do not pass." >&2
   exit 0
 fi
+mkdir -p "$STATE_DIR" && echo $((BLOCKS + 1)) >"$COUNTER_FILE"
 exit 2

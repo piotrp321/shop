@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for ../run-unit-tests.sh. The real suites are never run: UNIT_TEST_CMD substitutes the test command.
-# The substitute is called as `$UNIT_TEST_CMD <app>`, logs the app to $CALL_LOG and fails for apps in $FAIL_APPS.
+# Tests for ../run-unit-tests.sh. The real suites are never run: SHOP_HOOK_UNIT_TEST_CMD substitutes the test command.
+# The substitute is called as `$SHOP_HOOK_UNIT_TEST_CMD <app>`, logs the app to $CALL_LOG and fails for apps in $FAIL_APPS.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -21,7 +21,14 @@ case " $FAIL_APPS " in
 esac
 exit 0
 SH
-chmod +x "$TMP/fake-tests.sh"
+cat >"$TMP/fake-running.sh" <<'SH'
+#!/usr/bin/env bash
+case " ${DOWN_APPS:-} " in
+  *" $1 "*) exit 1 ;;
+esac
+exit 0
+SH
+chmod +x "$TMP/fake-tests.sh" "$TMP/fake-running.sh"
 
 PASS=0
 FAIL=0
@@ -38,8 +45,8 @@ run_stop() {
   if [ "$sid" = "-" ]; then json='{"hook_event_name":"Stop","stop_hook_active":false}'
   else json="{\"session_id\":\"$sid\",\"hook_event_name\":\"Stop\",\"stop_hook_active\":false}"; fi
   : >"$CALL_LOG"
-  printf '%s' "$json" | env CLAUDE_PROJECT_DIR="$ROOT" HOOK_STATE_DIR="$STATE_DIR" UNIT_TEST_CMD="$TMP/fake-tests.sh" \
-    CALL_LOG="$CALL_LOG" FAIL_APPS="${FAIL_APPS:-}" "$@" /bin/bash "$HOOK" 2>"$TMP/stderr" >"$TMP/stdout"
+  printf '%s' "$json" | env CLAUDE_PROJECT_DIR="$ROOT" SHOP_HOOK_STATE_DIR="$STATE_DIR" SHOP_HOOK_UNIT_TEST_CMD="$TMP/fake-tests.sh" \
+    SHOP_HOOK_CONTAINER_RUNNING_CMD="$TMP/fake-running.sh" DOWN_APPS="${DOWN_APPS:-}" CALL_LOG="$CALL_LOG" FAIL_APPS="${FAIL_APPS:-}" "$@" /bin/bash "$HOOK" 2>"$TMP/stderr" >"$TMP/stdout"
   RC=$?
   ERR="$(cat "$TMP/stderr")"
   echo "  rc=$RC calls=[$(tr '\n' ' ' <"$CALL_LOG")]"
@@ -48,7 +55,7 @@ run_stop() {
 
 calls() { tr '\n' ' ' <"$CALL_LOG" | sed 's/ $//'; }
 set_state() { mkdir -p "$STATE_DIR"; printf '%s\n' "${@:2}" >"$STATE_DIR/changed-apps-$1"; }
-reset() { rm -rf "$STATE_DIR"; mkdir -p "$STATE_DIR"; FAIL_APPS=""; }
+reset() { rm -rf "$STATE_DIR"; mkdir -p "$STATE_DIR"; FAIL_APPS=""; DOWN_APPS=""; }
 
 echo "== no state file =="
 reset
@@ -70,17 +77,18 @@ if [ "$RC" = 2 ] && [ "$(calls)" = "api store" ] && printf '%s' "$ERR" | grep -q
   pass "rc 2, stderr has store output, state kept"
 else fail "store failure case"; fi
 
-echo "== third consecutive block =="
-run_stop s3
-r2=$RC
-run_stop s3
-if [ "$r2" = 2 ] && [ "$RC" = 0 ] && printf '%s' "$ERR" | grep -qi "not passing" && [ -e "$STATE_DIR/changed-apps-s3" ]; then
-  pass "second failure rc 2, third rc 0 with notice, state kept"
-else fail "loop guard (second rc=$r2, third rc=$RC)"; fi
+echo "== three consecutive blocks, the fourth failing run exits 0 (run 1 was the block above) =="
+run_stop s3; r2=$RC
+run_stop s3; r3=$RC
+run_stop s3; r4=$RC
+if [ "$r2" = 2 ] && [ "$r3" = 2 ] && [ "$r4" = 0 ] && printf '%s' "$ERR" | grep -qi "not passing" \
+  && [ -e "$STATE_DIR/changed-apps-s3" ]; then
+  pass "runs 2 and 3 block (rc 2), run 4 rc 0 with notice, state kept"
+else fail "loop guard (rc2=$r2 rc3=$r3 rc4=$r4)"; fi
 
 echo "== passing tests reset the counter =="
 reset; set_state s4 api store; FAIL_APPS="store"
-run_stop s4; run_stop s4          # counter = 2
+run_stop s4; run_stop s4; run_stop s4   # counter = 3
 FAIL_APPS=""
 run_stop s4                       # pass -> counter reset, state removed
 c_after="$(ls "$STATE_DIR" | grep -c stop-blocks)"
@@ -94,6 +102,28 @@ run_stop sA; run_stop sA; run_stop sA
 run_stop sB
 if [ "$RC" = 2 ]; then pass "other session's counter unaffected"; else fail "session isolation (rc=$RC)"; fi
 
+echo "== one app fails, another app's container is down =="
+reset; set_state s9 api store; FAIL_APPS="api"; DOWN_APPS="store"
+run_stop s9
+if [ "$RC" = 2 ] && [ "$(calls)" = "api" ] && printf '%s' "$ERR" | grep -q "test of api broke" \
+  && printf '%s' "$ERR" | grep -q "container store is not running" && [ -e "$STATE_DIR/changed-apps-s9" ]; then
+  pass "api failure is not hidden by the down store container: rc 2, api output, state kept"
+else fail "failure hidden by down container (rc=$RC)"; fi
+
+echo "== one app passes, another app's container is down =="
+reset; set_state s10 api store; DOWN_APPS="store"
+run_stop s10
+if [ "$RC" = 0 ] && [ "$(calls)" = "api" ] && [ -e "$STATE_DIR/changed-apps-s10" ]; then
+  pass "rc 0, state kept for the skipped app"
+else fail "pass + down container (rc=$RC)"; fi
+
+echo "== all containers down =="
+reset; set_state s11 api store; DOWN_APPS="api store"
+run_stop s11
+if [ "$RC" = 0 ] && [ -z "$(calls)" ] && [ -e "$STATE_DIR/changed-apps-s11" ]; then
+  pass "no runnable apps: rc 0, tests not called, state kept"
+else fail "all down (rc=$RC)"; fi
+
 echo "== error paths =="
 reset; set_state s5 api
 run_stop -
@@ -103,16 +133,16 @@ if [ "$RC" = 0 ] && [ -z "$(calls)" ]; then pass "unsafe session_id -> rc 0, tes
 reset; set_state s6 bogus
 run_stop s6
 if [ "$RC" = 0 ] && [ -z "$(calls)" ] && printf '%s' "$ERR" | grep -q "bogus"; then pass "unknown app in state ignored with notice"; else fail "unknown app"; fi
-printf 'garbage' | env CLAUDE_PROJECT_DIR="$ROOT" HOOK_STATE_DIR="$STATE_DIR" UNIT_TEST_CMD="$TMP/fake-tests.sh" /bin/bash "$HOOK" 2>"$TMP/stderr"
+printf 'garbage' | env CLAUDE_PROJECT_DIR="$ROOT" SHOP_HOOK_STATE_DIR="$STATE_DIR" SHOP_HOOK_UNIT_TEST_CMD="$TMP/fake-tests.sh" /bin/bash "$HOOK" 2>"$TMP/stderr"
 rc=$?; echo "  rc=$rc stderr: $(cat "$TMP/stderr")"
 if [ "$rc" = 0 ]; then pass "malformed JSON -> rc 0"; else fail "malformed JSON"; fi
-rc=$(printf '{"session_id":"s7"}' | env PATH=/var/empty CLAUDE_PROJECT_DIR="$ROOT" HOOK_STATE_DIR="$STATE_DIR" /bin/bash "$HOOK" 2>"$TMP/stderr" >/dev/null; echo $?)
+rc=$(printf '{"session_id":"s7"}' | env PATH=/var/empty CLAUDE_PROJECT_DIR="$ROOT" SHOP_HOOK_STATE_DIR="$STATE_DIR" /bin/bash "$HOOK" 2>"$TMP/stderr" >/dev/null; echo $?)
 echo "  rc=$rc stderr: $(cat "$TMP/stderr")"
 if [ "$rc" = 0 ] && grep -q jq "$TMP/stderr"; then pass "no jq -> rc 0 with notice"; else fail "no jq"; fi
 
 echo "== container not running (real default command path, no suite is started) =="
 reset; set_state s8 api
-printf '{"session_id":"s8"}' | env CLAUDE_PROJECT_DIR="$ROOT" HOOK_STATE_DIR="$STATE_DIR" COMPOSE_PROJECT_NAME=hook-test-no-such-project /bin/bash "$HOOK" 2>"$TMP/stderr" >/dev/null
+printf '{"session_id":"s8"}' | env CLAUDE_PROJECT_DIR="$ROOT" SHOP_HOOK_STATE_DIR="$STATE_DIR" COMPOSE_PROJECT_NAME=hook-test-no-such-project /bin/bash "$HOOK" 2>"$TMP/stderr" >/dev/null
 rc=$?; echo "  rc=$rc stderr: $(cat "$TMP/stderr")"
 if [ "$rc" = 0 ] && grep -q "not running" "$TMP/stderr" && [ -e "$STATE_DIR/changed-apps-s8" ]; then
   pass "container down -> rc 0, notice, state kept"

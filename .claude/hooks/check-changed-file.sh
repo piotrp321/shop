@@ -3,6 +3,7 @@
 # Reads the hook JSON from stdin. Findings go to stderr with exit code 2 (Claude Code hands them to the
 # agent). Everything that is not a finding (file outside an app, other extension, no jq, container down,
 # bad input) exits 0. Also records the app in .claude/state/changed-apps-<session_id> for the Stop hook.
+# Test-only override: SHOP_HOOK_STATE_DIR (state directory instead of .claude/state), never set in normal use.
 # Works with bash 3.2 and BSD tools.
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -11,7 +12,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
-STATE_DIR="${HOOK_STATE_DIR:-$PROJECT_DIR/.claude/state}"
+STATE_DIR="${SHOP_HOOK_STATE_DIR:-$PROJECT_DIR/.claude/state}"
 
 INPUT="$(cat)"
 if ! FILE="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)"; then
@@ -81,7 +82,7 @@ run() { # run <command...>: runs in the app container, appends output on failure
 }
 
 if [ "$APP" = api ]; then
-  run vendor/bin/phpstan analyse --no-progress --error-format=raw "$IN_APP"
+  run vendor/bin/phpstan analyse --memory-limit=1G --no-progress --error-format=raw "$IN_APP"
   run vendor/bin/php-cs-fixer fix --dry-run --diff --show-progress=none --no-interaction "$IN_APP"
 else
   run npx eslint "$IN_APP"
