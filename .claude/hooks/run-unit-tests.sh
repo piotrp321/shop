@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Stop hook: runs the unit tests of the apps changed in this session (listed in
-# .claude/state/changed-apps-<session_id>, written by check-changed-file.sh).
-# Failing tests: tail of the output on stderr and exit 2, so the agent keeps working. After 3 consecutive
-# failing runs in one session the hook gives up (exit 0) so a hard failure cannot loop forever.
-# Tests pass: state file and counter are removed. No state file, no jq, container not running: exit 0.
-# Test-only overrides (used by the hook tests, never set in normal use):
+# .claude/state/changed-apps-<session_id>, written by check-changed-file.sh). For api it also runs Deptrac.
+# Everything is run and reported together, nothing stops at the first failure.
+# Blocks (tail of the output on stderr, exit 2) when tests or Deptrac fail, and when a changed app's container
+# is not running (or docker is missing), because then nothing was verified; the message tells the agent to run
+# `make up` or to tell the user it cannot. All block reasons share one counter per session: the first 3
+# consecutive blocks exit 2, the 4th exits 0 with a notice so an agent that cannot fix the problem is not
+# looped forever. The state file is kept on every block; a clean run removes state and counter.
+# No state file (or an empty one), no jq, unusable session_id: exit 0. Unknown app names in the state file
+# (e.g. "../x") are ignored with a notice and never run anything.
+# Test-only overrides (used by the hook tests, never set in normal use; an empty value counts as unset):
 #   SHOP_HOOK_STATE_DIR              state directory instead of .claude/state
 #   SHOP_HOOK_UNIT_TEST_CMD          replaces the real test command, called as `<cmd> <app>`
+#   SHOP_HOOK_DEPTRAC_CMD            replaces the real Deptrac command, called without arguments
 #   SHOP_HOOK_CONTAINER_RUNNING_CMD  replaces the "is the container running" check, called as `<cmd> <app>`
-# An app whose container is not running is skipped (with a notice); it never hides failures of other apps.
 # Works with bash 3.2 and BSD tools.
 
 MAX_BLOCKS=3
@@ -53,10 +58,22 @@ default_tests() {
   esac
 }
 
+tail_block() { # tail_block <title> <output>
+  printf '%s\n%s\n' "--- $1 (last $TAIL_LINES lines) ---" "$(printf '%s\n' "$2" | tail -n "$TAIL_LINES")"
+}
+
+run_deptrac() {
+  if [ -n "${SHOP_HOOK_DEPTRAC_CMD:-}" ]; then
+    "$SHOP_HOOK_DEPTRAC_CMD"
+  else
+    docker compose exec -T api vendor/bin/deptrac analyse --no-progress
+  fi
+}
+
 OUTPUT=""
 FAILED=0
-RAN=0
-SKIPPED=0
+VALID=0
+NOT_RUNNING=""
 while IFS= read -r APP; do
   case "$APP" in
     api | store | admin) ;;
@@ -66,12 +83,11 @@ while IFS= read -r APP; do
       continue
       ;;
   esac
+  VALID=1
   if ! container_running "$APP"; then
-    echo "run-unit-tests: container $APP is not running (make up), skipping its tests" >&2
-    SKIPPED=1
+    NOT_RUNNING="$NOT_RUNNING $APP"
     continue
   fi
-  RAN=1
   if [ -n "${SHOP_HOOK_UNIT_TEST_CMD:-}" ]; then
     OUT="$("$SHOP_HOOK_UNIT_TEST_CMD" "$APP" </dev/null 2>&1)"
   else
@@ -79,20 +95,27 @@ while IFS= read -r APP; do
   fi
   if [ $? -ne 0 ]; then
     FAILED=1
-    OUTPUT="$OUTPUT--- unit tests of $APP failed (last $TAIL_LINES lines) ---"$'\n'"$(printf '%s\n' "$OUT" | tail -n "$TAIL_LINES")"$'\n'
+    OUTPUT="$OUTPUT$(tail_block "unit tests of $APP failed" "$OUT")"$'\n'
+  fi
+  if [ "$APP" = api ]; then
+    OUT="$(run_deptrac </dev/null 2>&1)"
+    if [ $? -ne 0 ]; then
+      FAILED=1
+      OUTPUT="$OUTPUT$(tail_block "Deptrac failed" "$OUT")"$'\n'
+    fi
   fi
 done <"$STATE_FILE"
 
-if [ "$RAN" -eq 0 ]; then
-  exit 0
-fi
+[ "$VALID" -eq 1 ] || exit 0
 
-if [ "$FAILED" -eq 0 ]; then
-  # Keep the state when an app was skipped, so its tests still run once its container is back.
-  [ "$SKIPPED" -eq 0 ] || exit 0
+if [ "$FAILED" -eq 0 ] && [ -z "$NOT_RUNNING" ]; then
   rm -f "$STATE_FILE" "$COUNTER_FILE"
   exit 0
 fi
+
+for APP in $NOT_RUNNING; do
+  OUTPUT="$OUTPUT""Changed app: $APP. Its container is not running (or docker is unavailable), so its unit tests and checks did not run. Start the stack with \`make up\` and finish again, or tell the user explicitly that you cannot start it."$'\n'
+done
 
 BLOCKS=0
 [ -f "$COUNTER_FILE" ] && BLOCKS="$(cat "$COUNTER_FILE" 2>/dev/null)"
@@ -100,7 +123,7 @@ case "$BLOCKS" in '' | *[!0-9]*) BLOCKS=0 ;; esac
 
 printf '%s' "$OUTPUT" >&2
 if [ "$BLOCKS" -ge "$MAX_BLOCKS" ]; then
-  echo "run-unit-tests: unit tests are still not passing after $BLOCKS consecutive blocks; not blocking the stop again. Tell the user the tests do not pass." >&2
+  echo "run-unit-tests: tests or checks are still failing or could not run after $BLOCKS consecutive blocks; not blocking the stop again. Tell the user exactly what did not pass or did not run." >&2
   exit 0
 fi
 mkdir -p "$STATE_DIR" && echo $((BLOCKS + 1)) >"$COUNTER_FILE"
