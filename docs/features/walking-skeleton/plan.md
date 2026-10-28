@@ -47,8 +47,10 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Kolejność
 
-Zadania wykonuje się w kolejności numerów, z wyjątkiem Task 7, który idzie przed Task 5 i Task 6 (hooki działają
-od pierwszego kodu frontów).
+Zadania wykonuje się w kolejności numerów, z dwoma wyjątkami:
+
+- Task 7 idzie przed Task 5 i Task 6 (hooki działają od pierwszego kodu frontów).
+- Task 25 (lekkie CI) idzie po Task 8, przed Task 9, żeby każdy kolejny PR był sprawdzany w CI.
 
 Po ukończeniu Task 7 kolejne zadania wykonuje się w nowej sesji Claude Code, żeby wczytały się hooki z
 `.claude/settings.json`. Pierwszy krok tej sesji to sprawdzenie `/hooks` i blokady tury (krok 6 Task 7).
@@ -59,11 +61,12 @@ Plan jest realizowany etapami. Każdy etap kończy się osobnym PR do `main` z o
 lokalnie (`make up`, `make check`, `make test`), decyzje podjęte w trakcie i odłożone uwagi. Agent nie merguje PR.
 
 - Etap 1: Task 1–8 (PR #1)
+- Etap CI: Task 25, lekkie CI
 - Etap 2: Task 9–11, domena katalogu – wykonuje interaktywnie użytkownik
 - Etap 3: Task 12–15, obrazy, wyszukiwarka, zdarzenia
 - Etap 4: Task 16–18, dane demo i sklep
 - Etap 5: Task 19–23, tożsamość; Task 22 wykonuje interaktywnie użytkownik
-- Etap 6: Task 24–26, E2E, CI, odbiór
+- Etap 6: Task 24 i 26, E2E i odbiór
 
 ## Na co patrzeć w review
 
@@ -576,7 +579,8 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   `tests/Unit/Catalog/Application/{ListProductsHandlerTest,GetCategoryTreeHandlerTest}.php`,
   `tests/Functional/Catalog/{ProductsEndpointTest,CategoriesEndpointTest}.php`, `apps/api/openapi.json`,
   `apps/api/openapi-admin.json`
-- Modyfikuj: `apps/api/Makefile` (`openapi`: `nelmio:apidoc:dump --area=default` i `--area=admin`)
+- Modyfikuj: `apps/api/Makefile` (`openapi`: `nelmio:apidoc:dump --area=default` i `--area=admin`),
+  `.github/workflows/ci.yml` (krok aktualności kontraktu)
 
 **Interfejsy:**
 - Konsumuje: `ProductSearch` (zadanie 13), `ImageUrlGenerator` i `ImageSize` (zadanie 12), `CategoryRepository`.
@@ -606,6 +610,13 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - [ ] **Krok 5: Eksport**: `make -C apps/api openapi`; `openapi.json` zawiera `/api/v1/products` i
   `/api/v1/categories` z odpowiedziami 200, 400 i 503, a nie zawiera `/health` ani `/api/v1/admin`.
 - [ ] **Krok 6: Commit** `feat(api): add product list and category tree endpoints`
+- [ ] **Krok 7: Aktualność kontraktu w CI**: w `.github/workflows/ci.yml` po testach jednostkowych krok
+  „Contract freshness”: `make -C apps/api openapi RUN="$CI_RUN"`, potem
+  `git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json`. Ten sam krok sprawdza później klientów
+  TS: zadania 18 i 23, które tworzą `make api-client`, dopisują do niego generowanie i swój `schema.d.ts`.
+  Sprawdź lokalnie z `CI_RUN="docker compose run --rm --no-deps -T"` (bez Postgresa, Elasticsearch i RabbitMQ):
+  na czystym drzewie krok przechodzi; zmiana opisu endpointu w atrybucie OpenAPI bez eksportu daje niezerowy
+  kod wyjścia (sonda negatywna). Commit `ci: check that exported OpenAPI files are up to date`.
 
 ### Task 16: Dane demo – propozycja, akceptacja, zdjęcia (punkt zatrzymania)
 
@@ -694,7 +705,9 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - Modyfikuj: `apps/store/app/page.tsx`, `apps/store/next.config.ts` (`images.loader: 'custom'`,
   `loaderFile: './src/images/forbidden-loader.ts'`), `infra/docker-compose.yml` (montowanie
   `apps/api/openapi.json` tylko do odczytu w `/contract/openapi.json`, `API_INTERNAL_URL`), `Makefile`
-  (`api-client`: generowanie dla sklepu)
+  (`api-client`: generowanie dla sklepu, komendy przez `$(RUN)` jak w Makefile aplikacji),
+  `.github/workflows/ci.yml` (krok „Contract freshness”: `make api-client RUN="$CI_RUN"`
+  i `apps/store/src/api/schema.d.ts` w `git diff --exit-code`)
 
 **Interfejsy:**
 - Konsumuje: `openapi.json` (zadanie 15).
@@ -717,6 +730,8 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   kolumny, `sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"`). `ProductTile` na `Card`,
   `Pagination` na komponencie `pagination` z `src/components/ui`.**
 - [ ] **Krok 5: PASS**: `make -C apps/store check test`; ponowne `make api-client` nie zmienia `git diff`.
+  Krok „Contract freshness” z CI uruchomiony lokalnie przechodzi, a ręcznie zmieniony `schema.d.ts` daje
+  niezerowy kod wyjścia.
 - [ ] **Krok 6: Sprawdź w przeglądarce** (wbudowana przeglądarka, `localhost:3000`):
   - siatka ze zdjęciami, w zakładce sieci żądania `.avif` do imgproxy,
   - kliknięcie kategorii zawęża listę razem z podkategoriami, paginacja działa,
@@ -890,7 +905,8 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   `apps/admin/src/dashboard/{CatalogStats,SystemStatus}.vue`, `apps/admin/src/dashboard/useDashboard.ts`,
   testy w `apps/admin/tests/`
 - Modyfikuj: `infra/docker-compose.yml` (montowanie `openapi-admin.json` w `/contract/openapi-admin.json`, env
-  `VITE_API_URL`, `VITE_KEYCLOAK_URL`, `VITE_ADMIN_URL`), `Makefile` (`api-client`: generowanie dla panelu)
+  `VITE_API_URL`, `VITE_KEYCLOAK_URL`, `VITE_ADMIN_URL`), `Makefile` (`api-client`: generowanie dla panelu),
+  `.github/workflows/ci.yml` (`apps/admin/src/api/schema.d.ts` w `git diff --exit-code` kroku „Contract freshness”)
 
 **Interfejsy:**
 - Konsumuje: `openapi-admin.json` (zadania 20 i 21).
@@ -912,6 +928,8 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - [ ] **Krok 3: FAIL. Krok 4: implementacja (`InMemoryWebStorage`, `automaticSilentRenew`, `useIdleLogout`
   z `timeoutMs: 900000` w `AppLayout`).**
 - [ ] **Krok 5: PASS**: `make -C apps/admin check test`; ponowne `make api-client` nie zmienia `git diff`.
+  Krok „Contract freshness” z CI uruchomiony lokalnie przechodzi, a ręcznie zmieniony `schema.d.ts` panelu daje
+  niezerowy kod wyjścia.
 - [ ] **Krok 6: Sprawdź w przeglądarce**: `localhost:5173` przekierowuje na logowanie realmu `backoffice`.
   Pełne logowanie z TOTP sprawdza zadanie 24.
 - [ ] **Krok 7: Commit** `feat(admin): add login, layout and dashboard`
@@ -940,19 +958,33 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   uruchomienie też przechodzi.
 - [ ] **Krok 3: Commit** `test(e2e): add Playwright smoke tests for catalog and logins`
 
-### Task 25: CI
+### Task 25: Lekkie CI (wykonywane po Task 8)
 
 **Pliki:**
 - Utwórz: `.github/workflows/ci.yml`
 
-- [ ] **Krok 1: Workflow** zgodny ze specyfikacją („CI”). Najpierw `infra/scripts/init-env.sh`, potem budowa
-  obrazów `api`, `store` i `admin` przez buildx z cache `type=gha`. Dalej `make check RUN="docker compose run --rm --no-deps -T"`,
-  testy jednostkowe trzech aplikacji z tym samym `RUN`, `make -C apps/api openapi`, `make api-client`
-  i `git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json apps/store/src/api/schema.d.ts apps/admin/src/api/schema.d.ts`.
-- [ ] **Krok 2: Sprawdź lokalnie**: przy zatrzymanym stosie (`make down`) te same komendy z tym `RUN` przechodzą;
-  `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest` nie zgłasza błędów.
-- [ ] **Krok 3: Commit** `ci: add workflow for checks, unit tests and contract freshness`
-- [ ] **Krok 4: Po pushu** (za zgodą użytkownika) workflow przechodzi na PR.
+**Interfejsy:**
+- Konsumuje: cele `check`, `test-unit` i `test` z Makefile aplikacji (zadania 4–6), testy hooków (zadanie 7).
+- Produkuje: workflow `CI` z jednym jobem; zmienna `CI_RUN="docker compose run --rm --no-deps -T"`, którą kolejne
+  zadania przekazują jako `RUN` w swoich krokach (zadania 15, 18 i 23 dopisują krok „Contract freshness”).
+
+- [ ] **Krok 1: Workflow** zgodny ze specyfikacją („CI”):
+  - uruchamiany przy `pull_request` i pushu na `main`, `paths-ignore` dla `docs/**` i `**/*.md`;
+  - `concurrency` z grupą na numer PR (albo ref) i `cancel-in-progress: true`; `permissions: contents: read`;
+  - akcje przypięte do SHA commitu z wersją w komentarzu;
+  - `infra/scripts/init-env.sh`, potem budowa obrazów `api` (target `dev`), `store` i `admin` przez buildx
+    z cache `type=gha` (osobny `scope` na aplikację), z tagami zgodnymi z nazwami obrazów Compose
+    (`COMPOSE_PROJECT_NAME=shop`, więc `shop-api`, `shop-store`, `shop-admin`);
+  - instalacja zależności do wolumenów jak lokalnie (`api true` uruchamia entrypoint z `composer install`,
+    `npm ci` w `store` i `admin`);
+  - `make check` i testy jednostkowe trzech aplikacji z `RUN="$CI_RUN"`;
+  - testy skryptów hooków: `docker compose up -d --no-deps --wait api store admin`, potem oba
+    `.claude/hooks/tests/*.test.sh`; pominięty przypadek (`skipped` różne od 0) to w CI błąd.
+- [ ] **Krok 2: Sprawdź lokalnie**: przy zatrzymanym stosie (`make down`) te same komendy na świeżym projekcie
+  Compose (inny `COMPOSE_PROJECT_NAME`, puste wolumeny) przechodzą;
+  `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.8` nie zgłasza błędów.
+- [ ] **Krok 3: Commit** `ci: add light workflow for checks, unit tests and hook tests`
+- [ ] **Krok 4: PR** (etap CI): workflow przechodzi; w opisie PR czas pierwszego uruchomienia i drugiego (z cache).
 
 ### Task 26: README, pomiar pamięci i odbiór
 
