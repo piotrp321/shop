@@ -96,7 +96,7 @@ po `make up`, `make seed` i `make e2e`.
 ### Makefile
 
 Wszystkie cele uruchamiają komendy przez zmienną `RUN ?= docker compose exec`. CI nadpisuje ją na
-`docker compose run --rm --no-deps`, więc analiza statyczna i testy jednostkowe działają bez całego stosu.
+`docker compose run --rm --no-deps -T`, więc analiza statyczna i testy jednostkowe działają bez całego stosu.
 
 | Makefile | Cele |
 |---|---|
@@ -638,12 +638,18 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 
 ## CI
 
-`.github/workflows/ci.yml`, uruchamiany przy pull requestach i pushu na `main`:
+`.github/workflows/ci.yml`, uruchamiany przy pull requestach i pushu na `main`. Zmiany wyłącznie w `docs/**`
+i plikach `*.md` go nie uruchamiają. Nowe uruchomienie dla tego samego PR (albo refu) przerywa poprzednie.
+Działa bez całego stosu: kontenery aplikacji startują z `--no-deps`.
 
-1. Budowa obrazów deweloperskich z cache buildx.
-2. `make check` z `RUN="docker compose run --rm --no-deps"`.
-3. Testy jednostkowe: `make -C apps/api test-unit`, `make -C apps/store test-unit`, `make -C apps/admin test`.
-4. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
+1. Budowa obrazów deweloperskich `api`, `store` i `admin` z cache buildx (`type=gha`).
+2. Instalacja zależności do wolumenów, jak lokalnie.
+3. `make check` z `RUN="docker compose run --rm --no-deps -T"`.
+4. Testy jednostkowe z tym samym `RUN`: `make -C apps/api test-unit`, `make -C apps/store test-unit`,
+   `make -C apps/admin test`.
+5. Testy skryptów hooków Claude Code (`.claude/hooks/tests/*.test.sh`) przy działających kontenerach `api`, `store`
+   i `admin`. Pominięty przypadek jest błędem.
+6. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
    `apps/api/openapi.json`, `apps/api/openapi-admin.json` i obu `schema.d.ts`.
 
 ## Zależności
