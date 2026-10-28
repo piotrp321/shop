@@ -10,7 +10,8 @@ Projekt ma dwa cele:
 1. Działający sklep z realistyczną domeną (katalog, ceny, koszyk, checkout, zamówienia, płatności,
    stany magazynowe), zbudowany tak, jak buduje się system produkcyjny.
 2. Powtarzalny workflow pracy z AI: większość kodu piszą agenci Claude Code, prowadzeni przez specyfikacje,
-   zasady projektu, hooki i review. Katalog `.claude/` jest równie ważnym rezultatem jak sam kod.
+   zasady projektu, niezależne review i CI. Zasady pracy z agentami (`CLAUDE.md`, `.claude/`) są równie ważnym
+   rezultatem jak sam kod.
 
 ## Aplikacje
 
@@ -203,7 +204,7 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 ## Testy
 
 - **Jednostkowe** (domena i aplikacja): adaptery in-memory, bez Postgresa, Elasticsearch i RabbitMQ.
-  Trwają sekundy, więc hook uruchamia je na koniec każdej tury agenta dla aplikacji zmienionych w tej turze.
+  Trwają sekundy, więc uruchamia się je przy każdej zmianie.
 - **Integracyjne**: repozytoria Doctrine, indeksowanie w ES, Messenger na RabbitMQ, zapis w Garage,
   na prawdziwych usługach.
 - **Funkcjonalne API**: każdy endpoint, w tym przypadki bez autoryzacji i z błędnymi danymi.
@@ -254,6 +255,7 @@ realistyczny deployment przy kosztach rzędu kilkudziesięciu euro miesięcznie.
 - **Błędy**: Sentry SaaS (darmowy plan) dla API, store i admin.
 - **Brzeg sieci**: Cloudflare (darmowy plan) – DNS, TLS, cache obrazów z imgproxy.
 - **Sekrety**: nigdy w repo w postaci jawnej (Sealed Secrets albo SOPS).
+- **Migracje i indeks**: osobny Job przed wdrożeniem nowej wersji, nigdy przy starcie kontenera aplikacji.
 - **Tryb demo**: dane resetowane co noc z danych demo, konta demo podane na stronie logowania,
   płatności udawane, e-maile nie wychodzą na zewnątrz.
 - **Świadomie bez Ranchera**: przy jednym klastrze to narzut bez korzyści.
@@ -290,17 +292,16 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
 
 ## Praca z agentami AI
 
-- Każda funkcja przechodzi drogę: specyfikacja → plan → implementacja → review. Specyfikacja zostaje
+- Każda funkcja przechodzi drogę: specyfikacja → plan → implementacja → review → CI. Specyfikacja zostaje
   w `docs/features/` i opisuje aktualne działanie funkcji, plan jest usuwany po jej ukończeniu.
 - Dokumentacja zawsze opisuje stan obecny, bez dziennika zmian. To, co usuwamy z projektu,
   usuwamy też z dokumentacji.
-- Granice architektury pilnują narzędzia (Deptrac, PHPStan, ESLint, tsc) w hookach i CI, a nie zaufanie do modelu.
-- Konfiguracja Claude Code jest w repo: `.claude/settings.json` (hooki, włączony plugin superpowers) i skrypty
-  hooków w `.claude/hooks/`. Po każdej edycji pliku hook uruchamia szybkie sprawdzenie tylko aplikacji, do której
-  należy plik (api: PHPStan na zmienionym pliku i PHP CS Fixer; store i admin: ESLint na pliku), a wynik wraca
-  do agenta, zanim pójdzie dalej. Na koniec tury agenta hook uruchamia testy jednostkowe aplikacji zmienionych
-  w tej turze; gdy nie przechodzą, agent nie kończy pracy.
+- Granic architektury pilnują narzędzia (Deptrac, PHPStan, ESLint, tsc) w `make check` i w CI, a nie zaufanie
+  do modelu.
+- Zadania z planu realizują subagenci Claude Code prowadzeni przez plugin Superpowers: każde zadanie ma
+  implementację i niezależne review, a PR przechodzi CI. Konfiguracja jest w repo (`.claude/settings.json`),
+  zasady pracy w `CLAUDE.md`.
 - Agenci pracują lokalnie, na pełnym stosie w Dockerze.
 - Zasady wspólne są w głównym `CLAUDE.md`, zasady konkretnej aplikacji w jej własnym `CLAUDE.md`,
   żeby agent pracujący nad frontem nie dostawał w kontekście zasad Doctrine i odwrotnie.
-- Przy każdej funkcji zapisujemy czas pracy i zużycie modelu, żeby koszt pracy z AI był widoczny.
+- Raport z każdego PR podaje czas pracy i zużycie modelu, żeby koszt pracy z AI był widoczny.

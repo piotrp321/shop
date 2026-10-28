@@ -79,8 +79,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 
 ## Testy
 
-- Logika domeny i aplikacji: testy jednostkowe z adapterami in-memory. Mają być szybkie,
-  bo hook `Stop` uruchamia je na koniec każdej tury agenta, która zmieniła kod api.
+- Logika domeny i aplikacji: testy jednostkowe z adapterami in-memory. Mają być szybkie (sekundy),
+  bo uruchamiasz je przy każdej zmianie.
 - Infrastruktura (Doctrine, Elasticsearch, RabbitMQ, Garage): testy integracyjne na prawdziwych usługach.
 - Każdy endpoint: co najmniej jeden test funkcjonalny, w tym przypadek bez autoryzacji i z błędnymi danymi.
 - Dane testowe przez fabryki (Foundry), a nie tablice budowane ręcznie w każdym teście.
