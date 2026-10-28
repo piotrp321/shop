@@ -36,10 +36,15 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Punkty zatrzymania
 
-- **Zadanie 3:** jeśli SPX jest niestabilny na FrankenPHP (ZTS), zatrzymaj się i przedstaw alternatywy.
-- **Zadanie 16:** drzewo kategorii, szablony produktów i lista zdjęć z linkami czekają na akceptację,
+- **Task 3:** jeśli SPX jest niestabilny na FrankenPHP (ZTS), zatrzymaj się i przedstaw alternatywy.
+- **Task 16:** drzewo kategorii, szablony produktów i lista zdjęć z linkami czekają na akceptację,
   zanim cokolwiek zostanie pobrane.
-- **Zadanie 26:** plan zostaje usunięty dopiero po akceptacji całości przez użytkownika.
+- **Task 26:** plan zostaje usunięty dopiero po akceptacji całości przez użytkownika.
+
+## Kolejność
+
+Zadania wykonuje się w kolejności numerów, z wyjątkiem Task 7, który idzie przed Task 5 i Task 6 (hooki działają
+od pierwszego kodu frontów).
 
 ## Na co patrzeć w review
 
@@ -58,7 +63,7 @@ w zadaniu, do którego należy kod.
 
 ---
 
-### Zadanie 1: Dokumentacja
+### Task 1: Dokumentacja
 
 `docs/vision.md`, główny `CLAUDE.md` i `apps/store/CLAUDE.md` zostały zaktualizowane na etapie planowania
 i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumentację API.
@@ -74,7 +79,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   Expected: brak wyników.
 - [ ] **Krok 3: Commit** `docs(api): describe Garage storage and two OpenAPI files`
 
-### Zadanie 2: Stos usług infrastruktury
+### Task 2: Stos usług infrastruktury
 
 **Pliki:**
 - Utwórz: `compose.yaml`, `infra/docker-compose.yml`, `.env.example`, `infra/scripts/init-env.sh`,
@@ -94,16 +99,22 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   required: true}` w usługach z sekretami; `ES_JAVA_OPTS=-Xms512m -Xmx512m`; ograniczony heap Keycloaka;
   `imgproxy` zależy od `garage-init` (`service_completed_successfully`); skrypt Postgresa tworzy bazy `shop`,
   `shop_test` i `keycloak`; `garage-init` idempotentnie przypisuje układ węzła, importuje klucz, tworzy buckety
-  `product-images` i `product-images-test` i nadaje uprawnienia; `rabbitmq-init` (jednorazowy, po zdrowym
+  `product-images` i `product-images-test` i nadaje uprawnienia; health check Garage to `garage status`; `rabbitmq-init` (jednorazowy, po zdrowym
   `rabbitmq`) przez Management API idempotentnie tworzy vhost `test` i nadaje użytkownikowi aplikacji pełne
   uprawnienia na nim.
-- [ ] **Krok 3: `Makefile`**: `up` uruchamia `init-env.sh`, potem `docker compose up -d --wait`.
+- [ ] **Krok 3: `Makefile`**: `up` uruchamia `init-env.sh`, potem `docker compose up -d --wait` dla wszystkich usług
+  poza `rabbitmq-init`, który uruchamia na końcu przez `docker compose run --rm` (`up --wait` traktuje zakończoną
+  usługę jednorazową, na którą nic nie czeka, jako błąd).
 - [ ] **Krok 4: Sprawdź**
   - `make up` kończy się kodem 0, a `docker compose ps --format '{{.Name}} {{.Health}}'` pokazuje `healthy`
     przy każdej usłudze z health checkiem.
   - `docker compose exec imgproxy printenv IMGPROXY_KEY` zwraca niepustą wartość.
-  - Po `mv .env.local .env.local.bak` komenda `docker compose config` kończy się błędem wskazującym `.env.local`.
-    Potem przywróć plik.
+  - Po `mv .env.local .env.local.bak` komenda `docker compose config --quiet` kończy się błędem wskazującym
+    `.env.local`. Potem przywróć plik. (Bez `--quiet` `docker compose config` wypisuje sekrety.)
+  - Świeży klon bez `.env`: `git archive HEAD` rozpakowany do katalogu tymczasowego, w nim
+    `docker compose config --quiet` kończy się kodem 0.
+  - `init-env.sh` z nieudanym `openssl` (atrapa `openssl` zwracająca błąd, na początku `PATH`) kończy się kodem
+    różnym od 0 i nie zostawia `.env.local`.
   - Suma kontrolna `.env.local` jest taka sama przed drugim `make up` i po nim.
   - `docker compose run --rm garage-init` kończy się kodem 0 drugi raz z rzędu, a lista bucketów w Garage
     zawiera oba buckety.
@@ -112,7 +123,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
     drugi raz z rzędu kończy się kodem 0.
 - [ ] **Krok 5: Commit** `build(infra): add compose stack with health checks and generated local secrets`
 
-### Zadanie 3: Obraz API i weryfikacja SPX (punkt zatrzymania)
+### Task 3: Obraz API i weryfikacja SPX (punkt zatrzymania)
 
 **Pliki:**
 - Utwórz: `apps/api/Dockerfile` (targety `base` i `dev`), `apps/api/docker/frankenphp/Caddyfile`,
@@ -132,7 +143,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   Run: `curl -si localhost:8000/health`
   Expected: `200`, `{"status":"ok"}`, nagłówek `no-store`.
 - [ ] **Krok 3: Sprawdź SPX**
-  - `docker compose exec api php -r 'var_dump(PHP_ZTS, extension_loaded("spx"));'` daje `int(1)` i `bool(true)`.
+  - `docker compose exec api php -r 'var_dump(PHP_ZTS, extension_loaded("spx"));'` daje `bool(true)` dla `PHP_ZTS` i `bool(true)` dla `spx`.
   - Profil HTTP: `curl -b 'SPX_ENABLED=1; SPX_KEY=dev; SPX_REPORT=full' localhost:8000/health`, a raport pojawia
     się na liście w UI SPX (`localhost:8000/?SPX_KEY=dev&SPX_UI_URI=/`) z flame graphem.
   - Profil CLI: `docker compose exec -e SPX_ENABLED=1 -e SPX_REPORT=full api bin/console about`, a nowy raport
@@ -144,7 +155,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   i przedstaw użytkownikowi alternatywy. Nie idź dalej bez jego decyzji.
 - [ ] **Krok 5: Commit** `build(api): add FrankenPHP image with SPX profiling in dev target`
 
-### Zadanie 4: Narzędzia jakości API
+### Task 4: Narzędzia jakości API
 
 **Pliki:**
 - Utwórz: `apps/api/phpstan.dist.neon` (poziom `max` z rozszerzeniami symfony, doctrine i phpunit),
@@ -155,17 +166,20 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 
 **Interfejsy:**
 - Produkuje: warstwy Deptrac `<Moduł>_Domain`, `<Moduł>_Application`, `<Moduł>_Infrastructure`, `<Moduł>_UI`
-  dla `Catalog`, `Customer`, `Backoffice`, `Shared` oraz warstwę `Vendor` (Symfony, Doctrine, biblioteki), z
+  dla `Catalog`, `Customer`, `Backoffice`, `Shared` oraz warstwy `Native` (klasy wbudowane PHP) i `Vendor` (Symfony, Doctrine, biblioteki), z
   regułami ze specyfikacji („Reguły Deptrac”); `Domain` nie może używać `Vendor`.
 
 - [ ] **Krok 1: Test** `HealthTest::testHealthReturnsOk`: 200, `status === 'ok'`, `Cache-Control` zawiera `no-store`.
 - [ ] **Krok 2: Konfiguracja narzędzi i celów Makefile.** `test-unit` uruchamia tylko suitę `unit`.
 - [ ] **Krok 3: Sprawdź**: `make -C apps/api check` i `make -C apps/api test` przechodzą.
 - [ ] **Krok 4: Sprawdź, że Deptrac łapie naruszenie**: tymczasowy `src/Catalog/Domain/Probe.php` z
-  `use Symfony\Component\HttpFoundation\Request;` powoduje błąd `make -C apps/api check`. Potem usuń plik.
+  `use Symfony\Component\HttpFoundation\Request;` powoduje błąd `make -C apps/api check`. Sonda negatywna: klasa
+  w `Domain` używająca tylko `\DateTimeImmutable` i `\InvalidArgumentException` nie daje naruszeń; klasa w
+  `Catalog\Infrastructure` używająca `App\Shared\Domain\…` też nie. Sondy uruchamiaj na kopii w kontenerze
+  (kopia `src` i `deptrac.yaml` poza `/app`), nie w repo.
 - [ ] **Krok 5: Commit** `build(api): add PHPStan, Deptrac, PHP CS Fixer and PHPUnit suites`
 
-### Zadanie 5: Szkielet sklepu
+### Task 5: Szkielet sklepu
 
 **Pliki:**
 - Utwórz: `apps/store/` (Next.js 16, App Router, TS strict), `apps/store/Dockerfile`, `apps/store/Makefile`
@@ -201,10 +215,11 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   `better-tailwindcss/no-unregistered-classes` z plikiem wejściowym `src/styles/tokens.css`. `layout.tsx` pokazuje
   nazwę „Rytm”.
 - [ ] **Krok 5: Sprawdź**: `make -C apps/store check test` przechodzi, w tym na kodzie `src/components/ui`;
-  `make up` pokazuje `store` jako `healthy`; `curl -s localhost:3000` zawiera „Rytm”.
+  `make up` pokazuje `store` jako `healthy`; `curl -s localhost:3000` zawiera „Rytm”;
+  `bash .claude/hooks/tests/check-changed-file.test.sh` przechodzi, a przypadki dla `apps/store` nie są już pomijane.
 - [ ] **Krok 6: Commit** `feat(store): scaffold Next.js app with shadcn/ui, design tokens and lint rules`
 
-### Zadanie 6: Szkielet panelu
+### Task 6: Szkielet panelu
 
 **Pliki:**
 - Utwórz: `apps/admin/` (Vite, Vue 3, TS, Pinia, Vue Router, PrimeVue 4 z Aura, PrimeIcons),
@@ -221,10 +236,11 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   front tylko ukrywa elementy; tokeny wyłącznie w pamięci; komponenty PrimeVue zamiast własnych odpowiedników;
   brak logiki biznesowej; konwencje testów.
 - [ ] **Krok 4: Sprawdź**: `make -C apps/admin check test` przechodzi; `admin` jest `healthy`; `make check`
-  i `make test` w korzeniu uruchamiają cele trzech aplikacji.
+  i `make test` w korzeniu uruchamiają cele trzech aplikacji;
+  `bash .claude/hooks/tests/check-changed-file.test.sh` przechodzi, a przypadki dla `apps/admin` nie są już pomijane.
 - [ ] **Krok 5: Commit** `feat(admin): scaffold Vue app with PrimeVue`
 
-### Zadanie 7: Konfiguracja Claude Code
+### Task 7: Konfiguracja Claude Code
 
 **Pliki:**
 - Utwórz: `.claude/settings.json`, `.claude/hooks/check-changed-file.sh`, `.claude/hooks/run-unit-tests.sh`,
@@ -232,7 +248,8 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   `.claude/hooks/tests/fixtures/` (pliki z celowymi błędami)
 
 **Interfejsy:**
-- Konsumuje: cele i kontenery z zadań 3–6 (`api`, `store`, `admin`, w każdym katalog aplikacji jako `/app`).
+- Konsumuje: cele i kontener `api` z zadań 3 i 4. Kontenery `store` i `admin` oraz ich cele powstają w Task 5
+  i Task 6, więc tu jeszcze ich nie ma (w każdym katalog aplikacji jako `/app`).
 - Produkuje:
   - `settings.json`: hook `PostToolUse` z matcherem `Edit|MultiEdit|Write`, komenda
     `"$CLAUDE_PROJECT_DIR"/.claude/hooks/check-changed-file.sh`, `timeout` 60 s; `enabledPlugins` z superpowers
@@ -264,6 +281,8 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
     z globalnym `fetch`;
   - `docs/vision.md` i `apps/api/CLAUDE.md`: kod 0;
   - zatrzymany kontener `store` (`docker compose stop store`): kod 0. Potem `docker compose start store`.
+  - przypadki dla `apps/store` i `apps/admin` (ESLint na `.tsx` i `.vue`, zatrzymany kontener `store`) są w teście
+    od początku, ale gdy aplikacji lub kontenera jeszcze nie ma, test wypisuje `SKIP: …` zamiast błędu.
   - plik w `apps/api` dopisuje `api` do pliku stanu sesji; dwa pliki w `apps/api` dają jeden wpis.
 - [ ] **Krok 2: Test** `run-unit-tests.test.sh` (z podstawioną komendą testów przez zmienną środowiskową, żeby nie
   uruchamiać prawdziwych suit):
@@ -283,7 +302,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   w `docs/vision.md` (zaktualizowane na etapie planowania) zgadzają się z implementacją.
 - [ ] **Krok 8: Commit** `chore(claude): add lint and unit test hooks, enable superpowers plugin`
 
-### Zadanie 8: Wspólne zachowanie HTTP w API
+### Task 8: Wspólne zachowanie HTTP w API
 
 **Pliki:**
 - Utwórz: `src/Shared/Infrastructure/Http/ProblemDetailsSubscriber.php`,
@@ -309,7 +328,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - [ ] **Krok 4: Uruchom `make -C apps/api check test`, oczekiwany PASS.**
 - [ ] **Krok 5: Commit** `feat(api): add problem details, CORS and public cache headers`
 
-### Zadanie 9: Domena Catalog
+### Task 9: Domena Catalog
 
 **Pliki:**
 - Utwórz: `src/Shared/Domain/Event/DomainEvent.php`, `src/Shared/Domain/Event/DomainEventPublisher.php`,
@@ -353,7 +372,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - [ ] **Krok 4: Uruchom `make -C apps/api check test-unit`, oczekiwany PASS.**
 - [ ] **Krok 5: Commit** `feat(api): add catalog domain model`
 
-### Zadanie 10: Komendy Catalog
+### Task 10: Komendy Catalog
 
 **Pliki:**
 - Utwórz: `src/Catalog/Application/Command/{CreateCategory,CreateCategoryHandler,CreateProduct,CreateProductHandler}.php`,
@@ -375,7 +394,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - [ ] **Krok 2: FAIL. Krok 3: implementacja. Krok 4: PASS (`make -C apps/api check test-unit`).**
 - [ ] **Krok 5: Commit** `feat(api): add commands for creating categories and products`
 
-### Zadanie 11: Persystencja Catalog
+### Task 11: Persystencja Catalog
 
 **Pliki:**
 - Utwórz: `config/packages/doctrine.yaml` (mapowanie XML z `src/*/Infrastructure/Persistence/Doctrine/mapping`),
@@ -402,7 +421,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   przechodzi.
 - [ ] **Krok 5: Commit** `feat(api): persist catalog with Doctrine XML mapping`
 
-### Zadanie 12: Obrazy – Garage i imgproxy
+### Task 12: Obrazy – Garage i imgproxy
 
 **Pliki:**
 - Utwórz: `src/Catalog/Application/Image/{ImageSize,ImageFormat}.php`,
@@ -438,7 +457,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - [ ] **Krok 2: FAIL. Krok 3: implementacja. Krok 4: PASS (`make -C apps/api check test`).**
 - [ ] **Krok 5: Commit** `feat(api): store product originals in Garage and sign imgproxy URLs`
 
-### Zadanie 13: Indeks Elasticsearch
+### Task 13: Indeks Elasticsearch
 
 **Pliki:**
 - Utwórz: `src/Catalog/Application/Search/{ProductDocument,SearchResult,ProductDocumentBuilder,SearchUnavailable}.php`,
@@ -473,7 +492,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - [ ] **Krok 2: FAIL. Krok 3: implementacja i komendy konsoli. Krok 4: PASS (`make -C apps/api check test`).**
 - [ ] **Krok 5: Commit** `feat(api): add Elasticsearch read model for products`
 
-### Zadanie 14: Outbox, Messenger i indeksowanie
+### Task 14: Outbox, Messenger i indeksowanie
 
 **Pliki:**
 - Utwórz: `config/packages/messenger.yaml`, `config/packages/test/messenger.yaml` (transporty `in-memory://`),
@@ -512,7 +531,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   `rabbitmqctl list_queues -p /` nie zmienia się w trakcie testów.
 - [ ] **Krok 6: Commit** `feat(api): publish domain events through transactional outbox and index products`
 
-### Zadanie 15: Endpointy katalogu i OpenAPI sklepu
+### Task 15: Endpointy katalogu i OpenAPI sklepu
 
 **Pliki:**
 - Utwórz: `src/Catalog/Application/Query/{ListProducts,ListProductsHandler,ProductPage,ProductListItem,ImageView,GetCategoryTree,GetCategoryTreeHandler,CategoryNode}.php`,
@@ -549,7 +568,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   `/api/v1/categories` z odpowiedziami 200, 400 i 503, a nie zawiera `/health` ani `/api/v1/admin`.
 - [ ] **Krok 6: Commit** `feat(api): add product list and category tree endpoints`
 
-### Zadanie 16: Dane demo – propozycja, akceptacja, zdjęcia (punkt zatrzymania)
+### Task 16: Dane demo – propozycja, akceptacja, zdjęcia (punkt zatrzymania)
 
 **Pliki:**
 - Utwórz: `apps/api/fixtures/catalog.yaml`, `apps/api/fixtures/images/*.jpg`, `apps/api/fixtures/images/CREDITS.md`
@@ -587,7 +606,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   puli; dłuższy bok ma 1600 px (`sips -g pixelWidth -g pixelHeight`); każdy plik ma najwyżej 600 KB.
 - [ ] **Krok 6: Commit** `chore(api): add demo catalog definition and photos`
 
-### Zadanie 17: Seed danych demo
+### Task 17: Seed danych demo
 
 **Pliki:**
 - Utwórz: `src/Catalog/Infrastructure/Demo/{DemoCatalogDefinition,DemoCatalogExpander,DemoCatalog,DemoCategory,DemoProduct,DemoCatalogLoader,CatalogReset}.php`,
@@ -628,7 +647,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
     Potem `docker compose start worker` i ponowny `make seed`.
 - [ ] **Krok 6: Commit** `feat(api): add deterministic demo catalog seed`
 
-### Zadanie 18: Strona katalogu w sklepie
+### Task 18: Strona katalogu w sklepie
 
 **Pliki:**
 - Utwórz: `apps/store/src/api/{client.ts,schema.d.ts}`, `apps/store/src/catalog/{load-catalog.ts,picture.ts,ProductPicture.tsx,ProductTile.tsx,ProductGrid.tsx,CategoryTree.tsx,Pagination.tsx}`,
@@ -665,7 +684,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   - przy `docker compose stop elasticsearch` sklep pokazuje stronę błędu. Potem `docker compose start elasticsearch`.
 - [ ] **Krok 7: Commit** `feat(store): show category tree and product grid from API`
 
-### Zadanie 19: Realmy Keycloak
+### Task 19: Realmy Keycloak
 
 **Pliki:**
 - Utwórz: `infra/keycloak/realms/shop.json`, `infra/keycloak/realms/backoffice.json`
@@ -691,7 +710,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   - `redirectUris` klientów zawierają podstawione adresy, bez `${`.
 - [ ] **Krok 3: Commit** `feat(infra): add Keycloak realms for customers and staff`
 
-### Zadanie 20: Uwierzytelnianie w API
+### Task 20: Uwierzytelnianie w API
 
 **Pliki:**
 - Utwórz: `config/packages/security.yaml`, `config/packages/test/security.yaml` (`keyset: '%env(OIDC_TEST_JWKS)%'`),
@@ -731,7 +750,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   przechodzi we wszystkich aplikacjach.
 - [ ] **Krok 6: Commit** `feat(api): validate Keycloak tokens for customers and staff`
 
-### Zadanie 21: Dashboard w API
+### Task 21: Dashboard w API
 
 **Pliki:**
 - Utwórz: `src/Catalog/Application/Query/{GetCatalogStatistics,GetCatalogStatisticsHandler,CatalogStatisticsView}.php`,
@@ -776,7 +795,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - [ ] **Krok 5: Eksport**: `make -C apps/api openapi` i `make api-client`.
 - [ ] **Krok 6: Commit** `feat(api): add staff dashboard with catalog stats and system status`
 
-### Zadanie 22: Logowanie w sklepie (BFF)
+### Task 22: Logowanie w sklepie (BFF)
 
 **Pliki:**
 - Utwórz: `apps/store/src/auth/{config.ts,oidc.ts,return-to.ts,session-store.ts,refresh.ts,cookies.ts}.ts`,
@@ -815,7 +834,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   wylogowanie przywraca „Zaloguj się”.
 - [ ] **Krok 6: Commit** `feat(store): add server-side login with Keycloak and Redis sessions`
 
-### Zadanie 23: Panel – logowanie, layout, dashboard
+### Task 23: Panel – logowanie, layout, dashboard
 
 **Pliki:**
 - Utwórz: `apps/admin/src/api/{client.ts,schema.d.ts}`, `apps/admin/src/auth/{config.ts,userManager.ts}`,
@@ -850,7 +869,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   Pełne logowanie z TOTP sprawdza zadanie 24.
 - [ ] **Krok 7: Commit** `feat(admin): add login, layout and dashboard`
 
-### Zadanie 24: Testy E2E
+### Task 24: Testy E2E
 
 **Pliki:**
 - Utwórz: `e2e/Dockerfile` (obraz Playwright + `socat`), `e2e/entrypoint.sh`, `e2e/package.json`, `e2e/tsconfig.json`,
@@ -874,7 +893,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
   uruchomienie też przechodzi.
 - [ ] **Krok 3: Commit** `test(e2e): add Playwright smoke tests for catalog and logins`
 
-### Zadanie 25: CI
+### Task 25: CI
 
 **Pliki:**
 - Utwórz: `.github/workflows/ci.yml`
@@ -888,7 +907,7 @@ i trafiają do repo razem ze specyfikacją i planem. To zadanie domyka dokumenta
 - [ ] **Krok 3: Commit** `ci: add workflow for checks, unit tests and contract freshness`
 - [ ] **Krok 4: Po pushu** (za zgodą użytkownika) workflow przechodzi na PR.
 
-### Zadanie 26: README, pomiar pamięci i odbiór
+### Task 26: README, pomiar pamięci i odbiór
 
 **Pliki:**
 - Utwórz: `README.md`
