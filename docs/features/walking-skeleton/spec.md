@@ -72,7 +72,7 @@ Elasticsearch, jeśli go nie ma (`catalog:search-index:setup`, idempotentne).
   kod na token przez `http://keycloak:8080`.
 - API sprawdza `iss` z publicznym adresem Keycloak i buduje adresy obrazów z publicznym adresem imgproxy.
 - Domyślne porty na hoście: sklep 3000, panel 5173, API 8000, Keycloak 8080, imgproxy 8081, Mailpit 8025,
-  RabbitMQ management 15672. Każdy port jest zmienną w `.env`.
+  RabbitMQ management 15672. Każdy port jest zmienną w `.env` i jest wystawiony tylko na `127.0.0.1`.
 
 ### Profile i sekrety
 
@@ -84,6 +84,8 @@ Elasticsearch, jeśli go nie ma (`catalog:search-index:setup`, idempotentne).
   sekret sesji sklepu, hasło administratora Keycloak, hasła do Postgresa i RabbitMQ.
 - Usługi, które potrzebują sekretów, wczytują go przez `env_file: {path: .env.local, required: true}`.
   Plik compose nie podstawia sekretów przez `${...}`. Brak pliku kończy się błędem Compose, a nie pustą wartością.
+- Lokalnie jeden `.env.local` trafia do wszystkich usług, które potrzebują sekretów. Podział sekretów per usługa
+  (np. klucz i sól imgproxy tylko dla `api` i `imgproxy`) obowiązuje przy wdrożeniu (Kubernetes), nie lokalnie.
 - W repo nie ma żadnego sekretu. Hasła i sekrety TOTP kont demo są jawnymi danymi demo opisanymi w README.
 
 ### Wymagania sprzętowe
@@ -250,8 +252,9 @@ z Postgresa i robi upsert dokumentu po `id`, więc jest idempotentny i niezależ
 - Format jest częścią podpisanego adresu (rozszerzenie w ścieżce imgproxy). Każda para format × szerokość ma
   osobny, jednoznaczny adres. imgproxy nie negocjuje formatu po nagłówku `Accept`, bo CDN przed nim
   (darmowy Cloudflare) nie obsługuje Vary for Images.
-- Adresy podpisuje HMAC-em jeden serwis w API (implementacja portu `ImageUrlGenerator`). Klucz i sól imgproxy
-  znają tylko `api` i `imgproxy`.
+- Adresy podpisuje HMAC-em jeden serwis w API (implementacja portu `ImageUrlGenerator`). Podział sekretów
+  per usługa (klucz i sól imgproxy tylko dla `api` i `imgproxy`) obowiązuje przy wdrożeniu, lokalnie opisuje go
+  sekcja „Profile i sekrety”.
 - imgproxy czyta wyłącznie z `s3://product-images/` (`IMGPROXY_ALLOWED_SOURCES`) i zwraca długi `Cache-Control`,
   bo adresy są niezmienne.
 
