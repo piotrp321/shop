@@ -96,7 +96,8 @@ po `make up`, `make seed` i `make e2e`.
 ### Makefile
 
 Wszystkie cele uruchamiają komendy przez zmienną `RUN ?= docker compose exec`. CI nadpisuje ją na
-`docker compose run --rm --no-deps -T`, więc analiza statyczna i testy jednostkowe działają bez całego stosu.
+`docker compose run --rm --no-deps -T`, więc analiza statyczna i testy, które nie potrzebują usług, działają bez
+całego stosu.
 
 | Makefile | Cele |
 |---|---|
@@ -106,7 +107,8 @@ Wszystkie cele uruchamiają komendy przez zmienną `RUN ?= docker compose exec`.
 | `apps/admin` | `check`, `test`, `shell` |
 
 - Główne `check` i `test` uruchamiają cele wszystkich trzech aplikacji.
-- `test` wymaga postawionego stosu. `test-unit` nie wymaga żadnej usługi.
+- `test` uruchamia wszystkie testy aplikacji, także te, które potrzebują usług stosu. `test-unit` nie wymaga żadnej
+  usługi.
 - `e2e` wymaga wcześniejszego `make up` i `make seed`.
 - `keycloak-reset` usuwa bazę `keycloak` i restartuje Keycloak, który importuje realmy od nowa.
 
@@ -638,15 +640,16 @@ przeglądarka testowa używa tych samych adresów co przeglądarka na hoście (z
 
 ## CI
 
-`.github/workflows/ci.yml`, uruchamiany przy pull requestach i pushu na `main`. Zmiany wyłącznie w `docs/**`
-i plikach `*.md` go nie uruchamiają. Nowe uruchomienie dla tego samego PR (albo refu) przerywa poprzednie.
-Działa bez całego stosu: kontenery aplikacji startują z `--no-deps`.
+`.github/workflows/ci.yml`, uruchamiany przy każdym pull requeście (także ze zmianami wyłącznie w dokumentacji)
+i pushu na `main`, więc job `checks` może być wymaganym checkiem gałęzi `main`. Nowe uruchomienie dla tego samego
+PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikacji startują z `--no-deps`.
 
 1. Budowa obrazów deweloperskich `api`, `store` i `admin` z cache buildx (`type=gha`).
 2. Instalacja zależności do wolumenów, jak lokalnie.
 3. `make check` z `RUN="docker compose run --rm --no-deps -T"`.
-4. Testy jednostkowe z tym samym `RUN`: `make -C apps/api test-unit`, `make -C apps/store test-unit`,
-   `make -C apps/admin test`.
+4. Testy z tym samym `RUN`: `make -C apps/api test` (wszystkie suity api), `make -C apps/store test-unit`,
+   `make -C apps/admin test`. Żadna suita api nie potrzebuje jeszcze usług. Zmiana, która dodaje testy na usługach
+   stosu, w tym samym PR uruchamia w CI te usługi przed testami.
 5. Testy skryptów hooków Claude Code (`.claude/hooks/tests/*.test.sh`) przy działających kontenerach `api`, `store`
    i `admin`. Pominięty przypadek jest błędem.
 6. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
