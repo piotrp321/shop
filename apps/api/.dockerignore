@@ -1,2 +1,7 @@
 vendor
 var
+.env.local
+.env.*.local
+.git
+*.pem
+*.key
