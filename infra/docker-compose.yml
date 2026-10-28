@@ -218,8 +218,28 @@ services:
       # The entrypoint runs `composer install` on first start.
       start_period: 120s
 
+  store:
+    build:
+      context: ./apps/store
+    # Dependencies are installed into the node_modules volume when package-lock.json is newer than the install.
+    command: ["sh", "-c", "[ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; exec npm run dev"]
+    volumes:
+      - ./apps/store:/app
+      # Dependencies live in a volume, not on the host.
+      - store-node-modules:/app/node_modules
+    ports:
+      - "127.0.0.1:${STORE_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # `npm ci` runs on first start before the dev server is up.
+      start_period: 180s
+
 volumes:
   api-vendor:
+  store-node-modules:
   postgres-data:
   redis-data:
   elasticsearch-data:
