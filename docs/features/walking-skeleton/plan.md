@@ -180,9 +180,9 @@ w zadaniu, do którego należy kod.
   `tests/Integration/Catalog/Persistence/{DoctrineCategoryRepositoryTest,DoctrineProductRepositoryTest}.php`
 - Modyfikuj: `config/packages/test/dama_doctrine_test_bundle.yaml`, `phpunit.dist.xml` (rozszerzenie dama),
   `phpstan.dist.neon` (`objectManagerLoader` rozszerzenia doctrine), `apps/api/Makefile` (`init`: migracje;
-  `init-test`: migracje w środowisku `test`), `Makefile` (`up` na końcu wywołuje `make -C apps/api init`),
-  `apps/api/CLAUDE.md` (cele `init` i `init-test`), `.github/workflows/ci.yml` (usługa `postgres`
-  i `make -C apps/api init-test` przed testami)
+  `init-test`: migracje w środowisku `test`; `test` wywołuje najpierw `init-test`), `Makefile` (`up` po starcie
+  usług wywołuje `make -C apps/api init`), `apps/api/CLAUDE.md` (cele `init` i `init-test`),
+  `.github/workflows/ci.yml` (usługa `postgres` przed testami)
 
 **Interfejsy:**
 - Konsumuje: interfejsy repozytoriów z zadania 9.
@@ -198,7 +198,8 @@ w zadaniu, do którego należy kod.
 - **Krok 2: FAIL. Krok 3: mapowanie, typy, repozytoria, migracja (`make -C apps/api migration`).**
 - **Krok 4: PASS**: `make -C apps/api check test`; `bin/console doctrine:schema:validate` w kontenerze
   przechodzi.
-- **Krok 5: Sprawdź inicjalizację**: `make up` na pustej bazie tworzy schemat, a drugie `make up` kończy się kodem 0
+- **Krok 5: Sprawdź inicjalizację**: na świeżym projekcie Compose (inny `COMPOSE_PROJECT_NAME`, puste wolumeny)
+  `make up` tworzy schemat, a `make test` przechodzi bez ręcznych kroków; drugie `make up` kończy się kodem 0
   bez nowych migracji; `docker compose restart api` nie uruchamia migracji (logi `api`); `make -C apps/api init`
   przy zatrzymanym Postgresie kończy się kodem różnym od 0.
 - **Krok 6: Commit** `feat(api): persist catalog with Doctrine XML mapping`
@@ -287,7 +288,7 @@ w zadaniu, do którego należy kod.
   `tests/Unit/Shared/Messaging/MessengerRoutingTest.php`,
   `tests/Integration/Shared/Messaging/{OutboxAtomicityTest,EventFlowTest}.php`
 - Modyfikuj: `infra/docker-compose.yml` (usługa `worker`: `bin/console messenger:consume outbox events`,
-  health check procesu, `restart: unless-stopped`), `config/bundles.php` (bundle testowe także w `test_messaging`),
+  health check procesu, `restart: unless-stopped`), `Makefile` (`up` startuje `worker` dopiero po `init`), `config/bundles.php` (bundle testowe także w `test_messaging`),
   `.github/workflows/ci.yml` (usługa `rabbitmq` i jednorazowy `rabbitmq-init` przed testami),
   `tests/Support/TestMessengerController.php` (jawna szyna zamiast domyślnej, gdy powstaną `command.bus`,
   `query.bus` i `event.bus`), `symfony.lock` (wpis `config/packages/messenger.yaml` odpowiada wtedy istniejącemu plikowi)
@@ -313,7 +314,9 @@ w zadaniu, do którego należy kod.
     `messenger:consume outbox events --limit=2 --time-limit=10`, a dokument produktu jest w indeksie testowym.
     Przed testem kolejka `events` na vhoście `test` jest czyszczona.
 - **Krok 2: FAIL. Krok 3: konfiguracja, przekaźnik, handler, migracja. Krok 4: PASS (`make -C apps/api check test`).**
-- **Krok 5: Sprawdź**: `worker` jest `healthy`, a `docker compose logs worker` nie pokazuje błędów. Przy
+- **Krok 5: Sprawdź**: na świeżym projekcie Compose (puste wolumeny) `make up` kończy się kodem 0, `worker` jest
+  `healthy`, `doctrine:migrations:status` nie pokazuje brakujących migracji, a `docker compose logs worker` nie
+  pokazuje błędów. Przy
   działającym `worker` uruchom testy integracyjne: logi `worker` nie pokazują żadnej obsłużonej wiadomości, a
   `rabbitmqctl list_queues -p /` nie zmienia się w trakcie testów.
 - **Krok 6: Commit** `feat(api): publish domain events through transactional outbox and index products`
