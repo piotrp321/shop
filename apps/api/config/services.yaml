@@ -7,3 +7,8 @@ services:
         resource: '../src/'
         exclude:
             - '../src/Kernel.php'
+
+when@test:
+    services:
+        App\Tests\Support\:
+            resource: '../tests/Support/'

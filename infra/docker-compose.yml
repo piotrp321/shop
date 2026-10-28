@@ -204,6 +204,9 @@ services:
       target: dev
     environment:
       APP_ENV: dev
+      # Public browser-facing URLs (not secrets). Only the admin origin gets CORS.
+      ADMIN_URL: http://localhost:${ADMIN_PORT:-5173}
+      STORE_URL: http://localhost:${STORE_PORT:-3000}
     volumes:
       - ./apps/api:/app
       # Dependencies live in a volume, not on the host.

@@ -1,3 +1,8 @@
 controllers:
     resource: ../src/
     type: attribute
+
+when@test:
+    test_controllers:
+        resource: ../tests/Support/
+        type: attribute
