@@ -33,6 +33,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
     `make -C apps/api check`.
   - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc).
 - `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.
+- Każdy worktree ma lokalny `.env` (poza repo) z własnym `COMPOSE_PROJECT_NAME` i wolnymi portami, żeby stosy
+  z różnych worktree nie kolidowały ze sobą ani z innymi projektami.
 
 ## Kontrakt API
 
@@ -58,6 +60,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   Pokaż wynik, nie deklaruj.
 - Zmiana dotykająca kilku aplikacji (np. nowy endpoint i ekran w panelu) jest skończona, gdy przechodzą
   `check` i testy wszystkich tych aplikacji.
+- Skrypty, komendy i cele Makefile testujemy także na ścieżce błędu (brak pliku, błąd narzędzia, niedziałająca
+  usługa, brak zależności), nie tylko na poprawnej. Pokazujemy wynik obu ścieżek.
 - Nie dodawaj nowych zależności bez pytania.
 - Jeśli zasada z tego pliku koliduje z tym, czego wymaga zadanie, zatrzymaj się i zapytaj, zamiast ją obchodzić.
 
