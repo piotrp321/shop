@@ -1,0 +1,91 @@
+# Light CI: static analysis and unit tests of the three apps, plus the Claude Code hook tests.
+# Runs without the full stack: app containers start with --no-deps and no backing service is needed.
+name: CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Compose names the images <project>-<service>; the build steps below tag them to match.
+  COMPOSE_PROJECT_NAME: shop
+  CI_RUN: docker compose run --rm --no-deps -T
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Generate .env.local
+        run: sh infra/scripts/init-env.sh
+
+      - name: Build api image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/api
+          target: dev
+          tags: shop-api
+          load: true
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build store image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/store
+          tags: shop-store
+          load: true
+          cache-from: type=gha,scope=store
+          cache-to: type=gha,mode=max,scope=store
+
+      - name: Build admin image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/admin
+          tags: shop-admin
+          load: true
+          cache-from: type=gha,scope=admin
+          cache-to: type=gha,mode=max,scope=admin
+
+      # Dependencies go into the named volumes, as in local development.
+      - name: Install dependencies
+        run: |
+          $CI_RUN api true
+          $CI_RUN store npm ci --no-audit --no-fund
+          $CI_RUN admin npm ci --no-audit --no-fund
+
+      - name: make check
+        run: make check RUN="$CI_RUN"
+
+      - name: Unit tests
+        run: |
+          make -C apps/api test-unit RUN="$CI_RUN"
+          make -C apps/store test-unit RUN="$CI_RUN"
+          make -C apps/admin test RUN="$CI_RUN"
+
+      # The post-edit hook lints inside running containers, so its test needs api, store and admin up.
+      # A skipped case means a container was missing, which in CI is a failure.
+      - name: Hook script tests
+        run: |
+          docker compose up -d --no-deps --wait api store admin
+          bash .claude/hooks/tests/check-changed-file.test.sh | tee "$RUNNER_TEMP/check-hook.log"
+          grep -q 'skipped=0$' "$RUNNER_TEMP/check-hook.log"
+          bash .claude/hooks/tests/run-unit-tests.test.sh
