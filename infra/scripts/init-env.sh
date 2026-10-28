@@ -11,30 +11,29 @@ fi
 
 command -v openssl >/dev/null 2>&1 || { echo "openssl is required to generate .env.local" >&2; exit 1; }
 
-hex() {
-  out="$(openssl rand -hex "$1")"
-  [ -n "$out" ] || { echo "openssl rand failed" >&2; exit 1; }
-  printf '%s' "$out"
-}
-
 umask 077
 tmp="$(mktemp "$dir/.env.local.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 
-{
-  echo "POSTGRES_PASSWORD=$(hex 16)"
-  echo "KEYCLOAK_DB_PASSWORD=$(hex 16)"
-  echo "RABBITMQ_DEFAULT_PASS=$(hex 16)"
-  echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$(hex 16)"
-  echo "GARAGE_RPC_SECRET=$(hex 32)"
-  echo "GARAGE_ADMIN_TOKEN=$(hex 32)"
-  echo "GARAGE_ACCESS_KEY_ID=GK$(hex 12)"
-  echo "GARAGE_SECRET_ACCESS_KEY=$(hex 32)"
-  echo "IMGPROXY_KEY=$(hex 32)"
-  echo "IMGPROXY_SALT=$(hex 32)"
-  echo "STORE_CLIENT_SECRET=$(hex 24)"
-  echo "STORE_SESSION_SECRET=$(hex 32)"
-} > "$tmp"
+# Appends KEY=<random hex> to the temp file. Runs at top level so a failing openssl aborts the script.
+add() {
+  value="$(openssl rand -hex "$3")" || exit 1
+  [ "${#value}" -eq "$(( $3 * 2 ))" ] || { echo "openssl rand returned unexpected output" >&2; exit 1; }
+  printf '%s=%s%s\n' "$1" "$2" "$value" >> "$tmp"
+}
+
+add POSTGRES_PASSWORD "" 16
+add KEYCLOAK_DB_PASSWORD "" 16
+add RABBITMQ_DEFAULT_PASS "" 16
+add KC_BOOTSTRAP_ADMIN_PASSWORD "" 16
+add GARAGE_RPC_SECRET "" 32
+add GARAGE_ADMIN_TOKEN "" 32
+add GARAGE_ACCESS_KEY_ID GK 12
+add GARAGE_SECRET_ACCESS_KEY "" 32
+add IMGPROXY_KEY "" 32
+add IMGPROXY_SALT "" 32
+add STORE_CLIENT_SECRET "" 24
+add STORE_SESSION_SECRET "" 32
 
 mv "$tmp" "$target"
 trap - EXIT
