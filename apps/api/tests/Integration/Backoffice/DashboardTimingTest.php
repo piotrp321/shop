@@ -103,6 +103,29 @@ final class DashboardTimingTest extends KernelTestCase
         self::assertLessThan(1.5, $elapsed);
     }
 
+    public function testRedisLatencyIsItsOwnWhileAnotherServiceHangs(): void
+    {
+        self::bootKernel();
+        $redis = self::getContainer()->get('test.App\\Shared\\Infrastructure\\Health\\Probe\\RedisProbe');
+        self::assertInstanceOf(ServiceProbe::class, $redis);
+        $hanging = new ElasticsearchProbe(HttpClient::create(), $this->hangingUrl());
+
+        $started = microtime(true);
+        $statuses = (new ProbingSystemHealth([$redis, $hanging]))->start()();
+        $elapsed = microtime(true) - $started;
+
+        $byName = [];
+        foreach ($statuses as $status) {
+            $byName[$status->name] = $status;
+        }
+        // The hanging service holds the collection for its whole limit, but Redis answered long before.
+        self::assertGreaterThan(0.9, $elapsed);
+        self::assertTrue($byName['redis']->up);
+        self::assertNotNull($byName['redis']->latencyMs);
+        self::assertLessThan(200, $byName['redis']->latencyMs);
+        self::assertFalse($byName['elasticsearch']->up);
+    }
+
     public function testASlowCatalogDelaysOnlyTheCatalogNotTheSystemSection(): void
     {
         self::bootKernel();
