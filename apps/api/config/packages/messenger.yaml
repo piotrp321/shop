@@ -16,15 +16,22 @@ framework:
                     allow_no_handlers: true
 
         transports:
-            # Same connection as the aggregates, so the row joins the command's transaction.
+            # Same connection as the aggregates, so the row joins the command's transaction. The worker polls it
+            # (no NOTIFY trigger). A row taken by a worker that died before the ack is retaken after
+            # redeliver_timeout; relaying takes milliseconds plus at most the confirm timeout.
             outbox:
-                dsn: 'doctrine://default?queue_name=outbox&auto_setup=false'
+                dsn: 'doctrine://default?queue_name=outbox&auto_setup=false&redeliver_timeout=300'
+                options:
+                    use_notify: false
+                # Relaying fails only when RabbitMQ does, so it keeps trying for about 25 minutes (1, 2, 4 … 32 s,
+                # then every 60 s) before the event goes to `failed`.
                 retry_strategy:
-                    max_retries: 3
+                    max_retries: 30
                     delay: 1000
-                    multiplier: 3
+                    multiplier: 2
+                    max_delay: 60000
             events:
-                dsn: 'amqp://%env(RABBITMQ_USER)%:%env(RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/%env(urlencode:RABBITMQ_VHOST)%/events'
+                dsn: 'amqp://%env(urlencode:RABBITMQ_USER)%:%env(urlencode:RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/%env(urlencode:RABBITMQ_VHOST)%/events'
                 serializer: messenger.transport.symfony_serializer
                 options:
                     # Wait for the broker to confirm the publish, so the relay acks the outbox row
@@ -34,7 +41,10 @@ framework:
                     max_retries: 3
                     delay: 1000
                     multiplier: 3
-            failed: 'doctrine://default?queue_name=failed&auto_setup=false'
+            failed:
+                dsn: 'doctrine://default?queue_name=failed&auto_setup=false'
+                options:
+                    use_notify: false
 
         routing:
             App\Shared\Domain\Event\DomainEvent: outbox

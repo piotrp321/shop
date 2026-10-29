@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: **Task 13** (indeks Elasticsearch) i równolegle **Task 14** (outbox, Messenger, RabbitMQ). Blokery: brak.
+W toku: **Task 13** (indeks Elasticsearch). Następne zadanie: **Task 10 i 27** (po Task 13). Blokery: brak.
 
 Po wydaniu stabilnego Symfony 8.2: zastąpić `RelayDomainEventToBroker` wbudowaną opcją `outbox` transportu
 Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy z Task 14 zostają bez zmian.
@@ -365,7 +365,7 @@ w zadaniu, do którego należy kod.
   `src/Shared/Infrastructure/Messaging/{MessengerDomainEventPublisher,RelayDomainEventToBroker}.php`,
   `migrations/Version…CreateMessengerTables.php`, `tests/Unit/Shared/Messaging/MessengerRoutingTest.php`,
   `tests/Integration/Shared/Messaging/{MessagingKernelTestCase,OutboxAtomicityTest,OutboxRelayTest}.php`
-- Modyfikuj: `infra/docker-compose.yml` (zmienne RabbitMQ w `api`; usługa `worker`:
+- Modyfikuj: `Dockerfile` (rozszerzenie `pcntl`), `infra/docker-compose.yml` (zmienne RabbitMQ w `api`; usługa `worker`:
   `bin/console messenger:consume outbox events`, health check procesu, `restart: unless-stopped`), `Makefile`
   (`up` startuje `worker` dopiero po `init`), `config/bundles.php` (bundle testowe także w `test_messaging`),
   `config/packages/{framework,doctrine,monolog}.yaml` i `config/services.yaml` (`when@test_messaging` jak
@@ -377,7 +377,8 @@ w zadaniu, do którego należy kod.
 - Produkuje: szyny i transporty ze specyfikacji; routing `DomainEvent` → `outbox`; `DomainEventPublisher`
   → `MessengerDomainEventPublisher`; `RelayDomainEventToBroker` z
   `#[AsMessageHandler(bus: 'event.bus', fromTransport: 'outbox')]`, który ponownie wysyła zdarzenie
-  z `TransportNamesStamp(['events'])`; ponowienia 3 × (1 s, mnożnik 3), transport `failed`; `worker`.
+  z `TransportNamesStamp(['events'])`; ponowienia `events` 3 × (1 s, mnożnik 3), `outbox` 30 × (1 s, mnożnik 2,
+  najwyżej 60 s), transport `failed`; `worker`.
 
 - **Krok 1: Testy**
   - `MessengerRoutingTest` (kernel testowy, transporty in-memory): publikacja `ProductCreated` daje 1 wiadomość
@@ -388,15 +389,17 @@ w zadaniu, do którego należy kod.
     bez wyjątku jest 1 produkt, 1 wiersz i nadal 0 wiadomości w RabbitMQ.
   - `OutboxRelayTest` (kernel `test_messaging`, kolejka `events` czyszczona przed testem): konsumpcja `outbox`
     publikuje zdarzenie w RabbitMQ i usuwa wiersz; przy nieosiągalnym brokerze każda próba zostawia jeden wiersz
-    z kolejnym licznikiem ponowień i opóźnieniem 1, 3, 9 s, czwarta przenosi zdarzenie do `failed`, a
-    `messenger:failed:retry` po powrocie brokera publikuje je w RabbitMQ; przekaźnik, który padł po publikacji,
-    a przed ackiem, publikuje zdarzenie drugi raz po upływie `redeliver_timeout`.
+    z kolejnym licznikiem ponowień i opóźnieniem 1, 2, 4 … 32 s, potem 60 s, 31. próba przenosi zdarzenie do
+    `failed`, a `messenger:failed:retry` po powrocie brokera publikuje je w RabbitMQ; publikacja odrzucona przez
+    brokera (polityka kolejki `reject-publish`, nack) zostawia wiersz z ponowieniem; przekaźnik, który padł po
+    publikacji, a przed ackiem, publikuje zdarzenie drugi raz po upływie `redeliver_timeout`.
 - **Krok 2: FAIL. Krok 3: konfiguracja, publisher, przekaźnik, migracja. Krok 4: PASS (`make -C apps/api check test`).**
 - **Krok 5: Sprawdź**: `make up` kończy się kodem 0, `worker` jest `healthy`, `doctrine:migrations:status` nie
   pokazuje brakujących migracji. Przy działającym `worker` uruchom testy integracyjne: logi `worker` nie pokazują
   żadnej obsłużonej wiadomości, a `rabbitmqctl list_queues -p /` nie zmienia się w trakcie testów. Ścieżki błędu:
   nieudany `init` (`make up RUN=false`) kończy `make up` kodem różnym od 0 bez startu `worker`; zatrzymany RabbitMQ
-  restartuje `worker`, który po powrocie brokera znów jest `healthy`.
+  restartuje `worker`, który po powrocie brokera znów jest `healthy`; `docker compose stop worker` kończy się
+  w kilka sekund kodem 0 (SIGTERM, bez SIGKILL).
 - **Krok 6: Commit** `feat(api): publish domain events through a transactional outbox`
 
 ### Task 15: Endpointy katalogu i OpenAPI sklepu

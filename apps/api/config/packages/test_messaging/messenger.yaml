@@ -4,4 +4,4 @@ framework:
     messenger:
         transports:
             events:
-                dsn: 'amqp://%env(RABBITMQ_USER)%:%env(RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/test/events'
+                dsn: 'amqp://%env(urlencode:RABBITMQ_USER)%:%env(urlencode:RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/test/events'

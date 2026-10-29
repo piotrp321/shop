@@ -22,7 +22,8 @@ final class OutboxRelayTest extends MessagingKernelTestCase
 {
     private const string PRODUCT_ID = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
 
-    private ?string $rabbitMqHost = null;
+    private bool $brokerBroken = false;
+    private mixed $rabbitMqHost = null;
 
     protected function tearDown(): void
     {
@@ -45,19 +46,21 @@ final class OutboxRelayTest extends MessagingKernelTestCase
         $this->publisher()->publish($this->event());
         $this->breakBroker();
 
-        // Every failed attempt replaces the row with a copy delayed by the retry strategy: 1 s, 3 s, 9 s, each
-        // ±10 % jitter and rounded up to the second precision of available_at.
-        foreach ([1 => 1, 2 => 3, 3 => 9] as $retry => $delay) {
+        // Every failed attempt replaces the row with a copy delayed by the retry strategy: 1, 2, 4 … 32 s, then
+        // 60 s, about 25 minutes in all, so a broker restart does not push events to `failed`. Each delay has ±10 %
+        // jitter; available_at is rounded up to the second, created_at truncated.
+        for ($retry = 1; $retry <= 30; ++$retry) {
+            $delay = min(2 ** ($retry - 1), 60);
             $this->consume('outbox');
 
             self::assertSame(1, $this->rows('outbox'));
             self::assertSame($retry, $this->outboxEnvelope()->last(RedeliveryStamp::class)?->getRetryCount());
             self::assertGreaterThanOrEqual((int) floor($delay * 0.9), $this->outboxDelay());
-            self::assertLessThanOrEqual((int) ceil($delay * 1.1) + 1, $this->outboxDelay());
+            self::assertLessThanOrEqual(min((int) ceil($delay * 1.1), 60) + 1, $this->outboxDelay());
             $this->elapseOutboxDelay();
         }
 
-        // The fourth failure exhausts the retries: the event moves to `failed` instead of being lost.
+        // The 31st failure exhausts the retries: the event moves to `failed` instead of being lost.
         $this->consume('outbox');
         self::assertSame(0, $this->rows('outbox'));
         self::assertSame(1, $this->rows('failed'));
@@ -67,6 +70,24 @@ final class OutboxRelayTest extends MessagingKernelTestCase
 
         self::assertSame(0, $this->rows('failed'));
         self::assertEquals([$this->event()], $this->drainEvents());
+    }
+
+    public function testEventRejectedByTheBrokerStaysInTheOutbox(): void
+    {
+        $this->publisher()->publish($this->event());
+        // A full queue that rejects publishes: the broker answers with a nack instead of storing the message.
+        $this->setEventsQueuePolicy(['max-length' => 0, 'overflow' => 'reject-publish']);
+
+        try {
+            $this->consume('outbox');
+        } finally {
+            $this->setEventsQueuePolicy(null);
+        }
+
+        // Without publisher confirms the relay would not see the nack: it would ack the row and the event would be gone.
+        self::assertSame(1, $this->rows('outbox'));
+        self::assertSame(1, $this->outboxEnvelope()->last(RedeliveryStamp::class)?->getRetryCount());
+        self::assertSame(0, $this->eventsInQueue());
     }
 
     public function testRelayThatDiesBeforeTheAckPublishesTheEventTwice(): void
@@ -80,13 +101,13 @@ final class OutboxRelayTest extends MessagingKernelTestCase
         $this->eventBus()->dispatch($envelopes[0]->with(new ReceivedStamp('outbox')));
         self::assertSame(1, $this->eventsInQueue());
 
-        // The row is marked as delivered, so another worker skips it until redeliver_timeout (3600 s) passes.
+        // The row is marked as delivered, so another worker skips it until redeliver_timeout (300 s) passes.
         $this->consume('outbox', timeLimit: 1);
         self::assertSame(1, $this->rows('outbox'));
         self::assertSame(1, $this->eventsInQueue());
 
         $this->connection()->executeStatement(
-            "UPDATE messenger_messages SET delivered_at = delivered_at - interval '3601 seconds' WHERE queue_name = 'outbox'",
+            "UPDATE messenger_messages SET delivered_at = delivered_at - interval '301 seconds' WHERE queue_name = 'outbox'",
         );
         $this->consume('outbox');
 
@@ -143,19 +164,76 @@ final class OutboxRelayTest extends MessagingKernelTestCase
      */
     private function breakBroker(): void
     {
-        $this->rabbitMqHost = \is_string($_SERVER['RABBITMQ_HOST'] ?? null) ? $_SERVER['RABBITMQ_HOST'] : null;
+        $this->rabbitMqHost = $_SERVER['RABBITMQ_HOST'] ?? null;
+        $this->brokerBroken = true;
         $_SERVER['RABBITMQ_HOST'] = $_ENV['RABBITMQ_HOST'] = '127.0.0.1';
         self::bootMessagingKernel();
     }
 
     private function restoreBroker(): void
     {
-        if (null === $this->rabbitMqHost) {
+        if (!$this->brokerBroken) {
             return;
         }
-        $_SERVER['RABBITMQ_HOST'] = $_ENV['RABBITMQ_HOST'] = $this->rabbitMqHost;
-        $this->rabbitMqHost = null;
+        if (null === $this->rabbitMqHost) {
+            unset($_SERVER['RABBITMQ_HOST'], $_ENV['RABBITMQ_HOST']);
+        } else {
+            $_SERVER['RABBITMQ_HOST'] = $_ENV['RABBITMQ_HOST'] = $this->rabbitMqHost;
+        }
+        $this->brokerBroken = false;
         self::bootMessagingKernel();
+    }
+
+    /**
+     * Sets (or with null removes) a policy on the `events` queue of the `test` vhost through the Management API,
+     * and waits until the queue applies it.
+     *
+     * @param array<string, int|string>|null $definition
+     */
+    private function setEventsQueuePolicy(?array $definition): void
+    {
+        $this->managementApi(null === $definition ? 'DELETE' : 'PUT', '/api/policies/test/reject-events', null === $definition ? null : [
+            'pattern' => '^events$',
+            'apply-to' => 'queues',
+            'definition' => $definition,
+        ]);
+
+        $deadline = microtime(true) + 5;
+        do {
+            // Without disable_stats the policy shows up only with the next statistics refresh, seconds later.
+            $queue = json_decode($this->managementApi('GET', '/api/queues/test/events?disable_stats=true'), true, flags: \JSON_THROW_ON_ERROR);
+            self::assertIsArray($queue);
+            $applied = null === $definition ? !isset($queue['policy']) : 'reject-events' === ($queue['policy'] ?? null);
+            if ($applied) {
+                return;
+            }
+            usleep(100_000);
+        } while (microtime(true) < $deadline);
+
+        self::fail('The queue policy was not applied in 5 s.');
+    }
+
+    /**
+     * @param array<string, mixed>|null $body
+     */
+    private function managementApi(string $method, string $path, ?array $body = null): string
+    {
+        $host = $_SERVER['RABBITMQ_HOST'] ?? null;
+        $user = $_SERVER['RABBITMQ_USER'] ?? null;
+        $password = $_SERVER['RABBITMQ_DEFAULT_PASS'] ?? null;
+        self::assertIsString($host);
+        self::assertIsString($user);
+        self::assertIsString($password);
+
+        $response = file_get_contents('http://'.$host.':15672'.$path, false, stream_context_create(['http' => [
+            'method' => $method,
+            'header' => ['Authorization: Basic '.base64_encode($user.':'.$password), 'Content-Type: application/json'],
+            'content' => null === $body ? '' : json_encode($body, \JSON_THROW_ON_ERROR),
+            'timeout' => 5,
+        ]]));
+        self::assertIsString($response, $method.' '.$path.' failed.');
+
+        return $response;
     }
 
     private function retryFailed(): void

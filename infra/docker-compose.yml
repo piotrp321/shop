@@ -264,8 +264,8 @@ services:
       - ./apps/api:/app
       - api-vendor:/app/vendor
     healthcheck:
-      # The consumer is the main process; it is healthy while PID 1 is still the consumer.
-      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q 'messenger:consume outbox events'"]
+      # Healthy once PID 1 is the consumer itself, not the entrypoint that may still be installing dependencies.
+      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events'"]
       interval: 10s
       timeout: 3s
       retries: 3
