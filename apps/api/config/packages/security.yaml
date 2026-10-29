@@ -1,0 +1,5 @@
+# No authentication yet: every route is outside security until the access token firewalls are added.
+security:
+    firewalls:
+        main:
+            security: false
