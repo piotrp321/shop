@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Backoffice;
 
 use App\Tests\Support\Security\TestTokenFactory;
+use Jose\Component\Core\JWK;
+use Jose\Component\Core\Util\RSAKey;
 use Jose\Component\KeyManagement\JWKFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -86,9 +88,17 @@ final class StaffMeEndpointTest extends WebTestCase
         yield 'backoffice audience with shop issuer' => [TestTokenFactory::staff(['admin'], ['iss' => TestTokenFactory::issuer('shop')])];
         yield 'expired' => [TestTokenFactory::staff(['admin'], ['iat' => time() - 600, 'exp' => time() - 1])];
         yield 'not yet valid' => [TestTokenFactory::staff(['admin'], ['nbf' => time() + 600])];
+        yield 'issued in the future' => [TestTokenFactory::staff(['admin'], ['iat' => time() + 600])];
+        yield 'no expiry' => [TestTokenFactory::staff(['admin'], ['exp' => null])];
+        yield 'no audience' => [TestTokenFactory::staff(['admin'], ['aud' => null])];
+        yield 'no issued-at' => [TestTokenFactory::staff(['admin'], ['iat' => null])];
+        yield 'no issuer' => [TestTokenFactory::staff(['admin'], ['iss' => null])];
+        yield 'audience list without the backoffice audience' => [TestTokenFactory::staff(['admin'], ['aud' => ['account', 'admin']])];
+        yield 'empty audience list' => [TestTokenFactory::staff(['admin'], ['aud' => []])];
         yield 'no username' => [TestTokenFactory::staff(['admin'], ['preferred_username' => null])];
         yield 'no subject' => [TestTokenFactory::staff(['admin'], ['sub' => null])];
         yield 'garbage' => ['abc'];
+        yield 'three garbage segments' => ['abc.def.ghi'];
     }
 
     #[DataProvider('invalidTokens')]
@@ -103,6 +113,83 @@ final class StaffMeEndpointTest extends WebTestCase
         $claims = TestTokenFactory::claimsFor('backoffice', ['preferred_username' => 'admin', 'realm_access' => ['roles' => ['admin']]]);
 
         $this->assertUnauthorized($this->requestStaffMe(TestTokenFactory::sign($claims, $foreign))->getResponse());
+    }
+
+    public function testHmacTokenSignedWithThePublicKeyIsUnauthorized(): void
+    {
+        // Algorithm confusion: HS256 keyed with the public key, which anyone can read from the JWKS.
+        $pem = RSAKey::createFromJWK(TestTokenFactory::signingKey()->toPublic())->toPEM();
+        $secret = new JWK(['kty' => 'oct', 'k' => rtrim(strtr(base64_encode($pem), '+/', '-_'), '=')]);
+
+        $this->assertUnauthorized($this->requestStaffMe(TestTokenFactory::sign($this->staffClaims(), $secret, 'HS256'))->getResponse());
+    }
+
+    public function testUnsignedTokenIsUnauthorized(): void
+    {
+        $encode = static fn (array $part): string => rtrim(strtr(base64_encode(json_encode($part, \JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
+        $token = $encode(['alg' => 'none', 'typ' => 'JWT']).'.'.$encode($this->staffClaims()).'.';
+
+        $this->assertUnauthorized($this->requestStaffMe($token)->getResponse());
+    }
+
+    public function testTamperedPayloadIsUnauthorized(): void
+    {
+        [$header, , $signature] = explode('.', TestTokenFactory::staff(['support']));
+        $claims = TestTokenFactory::claimsFor('backoffice', ['preferred_username' => 'admin', 'realm_access' => ['roles' => ['admin']]]);
+        $payload = rtrim(strtr(base64_encode(json_encode($claims, \JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
+
+        $this->assertUnauthorized($this->requestStaffMe($header.'.'.$payload.'.'.$signature)->getResponse());
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function acceptedAudienceLists(): iterable
+    {
+        yield 'backoffice audience first' => [['backoffice-api', 'account']];
+        yield 'backoffice audience last' => [['account', 'backoffice-api']];
+    }
+
+    /**
+     * @param list<string> $audience
+     */
+    #[DataProvider('acceptedAudienceLists')]
+    public function testAudienceListContainingTheBackofficeAudienceIsAccepted(array $audience): void
+    {
+        $client = $this->requestStaffMe(TestTokenFactory::staff(['admin'], ['aud' => $audience]));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(TestTokenFactory::STAFF_ID, $this->json($client->getResponse())['id']);
+    }
+
+    /**
+     * Same extractor rules as on the shop firewall: only "Bearer" with exact case, whitespace and a token that ends
+     * the header is a token; anything else is anonymous.
+     *
+     * @return iterable<string, array{string, int}>
+     */
+    public static function authorizationHeaders(): iterable
+    {
+        $token = TestTokenFactory::staff(['admin']);
+
+        yield 'exact scheme' => ['Bearer '.$token, 200];
+        yield 'two spaces' => ['Bearer  '.$token, 200];
+        yield 'tab separator' => ["Bearer\t".$token, 200];
+        yield 'lower case scheme' => ['bearer '.$token, 401];
+        yield 'trailing space' => ['Bearer '.$token.' ', 401];
+        yield 'token only' => [$token, 401];
+    }
+
+    #[DataProvider('authorizationHeaders')]
+    public function testAuthorizationHeaderSyntaxIsMatchedAsTheExtractorDefines(string $header, int $status): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/api/v1/admin/me', server: ['HTTP_AUTHORIZATION' => $header]);
+
+        self::assertResponseStatusCodeSame($status);
+        if (401 === $status) {
+            $this->assertUnauthorized($client->getResponse());
+        }
     }
 
     /**
@@ -126,6 +213,14 @@ final class StaffMeEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame($status);
         self::assertStringNotContainsString(TestTokenFactory::CUSTOMER_ID, (string) $client->getResponse()->getContent());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function staffClaims(): array
+    {
+        return TestTokenFactory::claimsFor('backoffice', ['preferred_username' => 'admin', 'realm_access' => ['roles' => ['admin']]]);
     }
 
     private function requestStaffMe(string $token): KernelBrowser

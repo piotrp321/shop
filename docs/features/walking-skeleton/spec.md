@@ -589,6 +589,9 @@ w tej kolejności:
   jawnie publicznymi `GET` (`products`, `categories`) z `PUBLIC_ACCESS`. Nowy endpoint publiczny trzeba tam dopisać.
 - Przesłanie nieprawidłowego tokena do endpointu publicznego też daje 401. Nagłówek `Authorization` z innym
   schematem niż `Bearer` (albo z wartością spoza składni tokena) jest traktowany jak brak tokena.
+  Rozpoznawany jest tylko schemat `Bearer` z dokładną wielkością liter, po nim dowolna liczba białych znaków (spacje,
+  tabulator) i token, który kończy nagłówek. Nagłówek w innej formie (`bearer`, `BEARER`, spacja po tokenie, brak
+  separatora, sam token) to brak tokena, więc endpoint publiczny odpowiada jak anonimowemu klientowi, a chroniony 401.
 - Brak tokena, zły wystawca (w tym token z drugiego realmu), zła audience, wygasły, jeszcze nieważny lub uszkodzony
   token, zły podpis lub algorytm: 401 jako problem details z nagłówkiem `WWW-Authenticate: Bearer` i stałym `detail`,
   bez powodu odrzucenia.

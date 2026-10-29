@@ -68,6 +68,10 @@ final class MeEndpointTest extends WebTestCase
         yield 'not yet valid' => [TestTokenFactory::customer(['nbf' => time() + 600])];
         yield 'issued in the future' => [TestTokenFactory::customer(['iat' => time() + 600])];
         yield 'no expiry' => [TestTokenFactory::customer(['exp' => null])];
+        yield 'no issued-at' => [TestTokenFactory::customer(['iat' => null])];
+        yield 'no issuer' => [TestTokenFactory::customer(['iss' => null])];
+        yield 'audience list without the shop audience' => [TestTokenFactory::customer(['aud' => ['account', 'store']])];
+        yield 'empty audience list' => [TestTokenFactory::customer(['aud' => []])];
         yield 'no subject' => [TestTokenFactory::customer(['sub' => null])];
         yield 'no email' => [TestTokenFactory::customer(['email' => null])];
         yield 'garbage' => ['abc'];
@@ -78,6 +82,59 @@ final class MeEndpointTest extends WebTestCase
     public function testInvalidTokenIsUnauthorized(string $token): void
     {
         $this->assertUnauthorized($this->requestMe($token)->getResponse());
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function acceptedAudienceLists(): iterable
+    {
+        yield 'shop audience first' => [['shop-api', 'account']];
+        yield 'shop audience last' => [['account', 'shop-api']];
+    }
+
+    /**
+     * @param list<string> $audience
+     */
+    #[DataProvider('acceptedAudienceLists')]
+    public function testAudienceListContainingTheShopAudienceIsAccepted(array $audience): void
+    {
+        $client = $this->requestMe(TestTokenFactory::customer(['aud' => $audience]));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(TestTokenFactory::CUSTOMER_ID, $this->json($client->getResponse())['id']);
+    }
+
+    /**
+     * What Symfony's header extractor recognises: "Bearer" with exact case followed by whitespace and a token that
+     * ends the header. Anything else is no token at all, so a protected endpoint answers 401 as for an anonymous call.
+     *
+     * @return iterable<string, array{string, int}>
+     */
+    public static function authorizationHeaders(): iterable
+    {
+        $token = TestTokenFactory::customer();
+
+        yield 'exact scheme' => ['Bearer '.$token, 200];
+        yield 'two spaces' => ['Bearer  '.$token, 200];
+        yield 'tab separator' => ["Bearer\t".$token, 200];
+        yield 'lower case scheme' => ['bearer '.$token, 401];
+        yield 'upper case scheme' => ['BEARER '.$token, 401];
+        yield 'trailing space' => ['Bearer '.$token.' ', 401];
+        yield 'no separator' => ['Bearer'.$token, 401];
+        yield 'token only' => [$token, 401];
+    }
+
+    #[DataProvider('authorizationHeaders')]
+    public function testAuthorizationHeaderSyntaxIsMatchedAsTheExtractorDefines(string $header, int $status): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/api/v1/me', server: ['HTTP_AUTHORIZATION' => $header]);
+
+        self::assertResponseStatusCodeSame($status);
+        if (401 === $status) {
+            $this->assertUnauthorized($client->getResponse());
+        }
     }
 
     public function testTokenSignedWithAnotherKeyIsUnauthorized(): void
