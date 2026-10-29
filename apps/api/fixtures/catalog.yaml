@@ -1,0 +1,861 @@
+namespace: "3f6c9a52-7d1e-4b8a-9c40-5e2a1d7b6f83"
+imagelessEvery: 50
+categories:
+  - name: "Bieganie"
+    slug: "bieganie"
+    children:
+      - name: "Buty biegowe"
+        slug: "buty"
+        children:
+          - name: "Buty szosowe"
+            slug: "szosowe"
+          - name: "Buty trailowe"
+            slug: "trailowe"
+      - name: "Odzież biegowa"
+        slug: "odziez"
+      - name: "Akcesoria biegowe"
+        slug: "akcesoria"
+  - name: "Rower"
+    slug: "rower"
+    children:
+      - name: "Rowery"
+        slug: "rowery"
+        children:
+          - name: "Rowery górskie"
+            slug: "gorskie"
+          - name: "Rowery elektryczne"
+            slug: "elektryczne"
+      - name: "Kaski i ochraniacze"
+        slug: "kaski-i-ochraniacze"
+      - name: "Akcesoria rowerowe"
+        slug: "akcesoria"
+  - name: "Turystyka"
+    slug: "turystyka"
+    children:
+      - name: "Plecaki"
+        slug: "plecaki"
+      - name: "Biwak"
+        slug: "biwak"
+        children:
+          - name: "Namioty"
+            slug: "namioty"
+          - name: "Sprzęt do spania"
+            slug: "spanie"
+            children:
+              - name: "Śpiwory"
+                slug: "spiwory"
+              - name: "Maty"
+                slug: "maty"
+      - name: "Nawigacja i literatura"
+        slug: "nawigacja"
+        children:
+          - name: "Przewodniki"
+            slug: "przewodniki"
+          - name: "Mapy"
+            slug: "mapy"
+      - name: "Żywność turystyczna"
+        slug: "zywnosc"
+  - name: "Sporty zimowe"
+    slug: "sporty-zimowe"
+    children:
+      - name: "Narty"
+        slug: "narty"
+      - name: "Kaski narciarskie"
+        slug: "kaski"
+      - name: "Odzież zimowa"
+        slug: "odziez"
+  - name: "Fitness"
+    slug: "fitness"
+    children:
+      - name: "Trening"
+        slug: "trening"
+      - name: "Odżywki"
+        slug: "odzywki"
+        children:
+          - name: "Żywność sportowa"
+            slug: "zywnosc-sportowa"
+          - name: "Suplementy"
+            slug: "suplementy"
+  - name: "Sporty wodne"
+    slug: "sporty-wodne"
+    children:
+      - name: "Deski SUP"
+        slug: "sup"
+      - name: "Kajaki"
+        slug: "kajaki"
+      - name: "Pływanie"
+        slug: "plywanie"
+  - name: "Sporty drużynowe"
+    slug: "sporty-druzynowe"
+    children:
+      - name: "Piłki"
+        slug: "pilki"
+        children:
+          - name: "Piłka nożna"
+            slug: "nozna"
+          - name: "Piłki halowe"
+            slug: "halowe"
+templates:
+  - category: "bieganie/buty/szosowe"
+    productType: "Buty szosowe"
+    taxCategory: standard
+    brands:
+      - "Tarvik"
+      - "Norvane"
+    models:
+      - name: "Asfalt 200"
+        description: "Lekkie buty na asfalt i ścieżki rowerowe z amortyzującą piankową podeszwą i oddychającą siatką."
+      - name: "Dystans 400"
+        description: "Buty na długie wybiegania z podwyższoną amortyzacją i stabilną piętą."
+      - name: "Tempo 600"
+        description: "Dynamiczne buty startowe o niskiej masie i sprężystej podeszwie na szybkie treningi."
+    colors:
+      - "czarne"
+      - "niebieskie"
+    images:
+      - file: "runner-country-road.jpg"
+        alt: "Biegacz na wiejskiej drodze wśród łąk"
+      - file: "runner-road-fitz-roy.jpg"
+        alt: "Biegacz na pustej asfaltowej drodze z górami w tle"
+  - category: "bieganie/buty/trailowe"
+    productType: "Buty trailowe"
+    taxCategory: standard
+    brands:
+      - "Tarvik"
+      - "Norvane"
+    models:
+      - name: "Grań 300"
+        description: "Buty w teren z agresywnym bieżnikiem i wzmocnioną osłoną czubka przed kamieniami."
+      - name: "Hala 500"
+        description: "Wszechstronne buty na szlaki górskie z membraną odporną na wilgoć i przyczepną podeszwą."
+      - name: "Przełęcz 700"
+        description: "Stabilne buty na długie górskie dystanse z ochroną śródstopia."
+    colors:
+      - "czarne"
+      - "zielone"
+      - "pomarańczowe"
+    images:
+      - file: "trail-runner-mountain-ridge-italy.jpg"
+        alt: "Biegacz na górskim szlaku w słoneczny dzień"
+      - file: "runner-mountain-edge-trail.jpg"
+        alt: "Biegacz na ścieżce wzdłuż górskiej grani"
+  - category: "bieganie/odziez"
+    additionalCategories:
+      - "sporty-zimowe/odziez"
+    productType: "Kurtka biegowa"
+    taxCategory: standard
+    brands:
+      - "Tarvik"
+      - "Norvane"
+    models:
+      - name: "Wiatr 100"
+        description: "Ultralekka wiatrówka składana do kieszeni, chroni przed wiatrem i lekkim deszczem."
+      - name: "Mgła 300"
+        description: "Kurtka softshell z elastycznymi panelami i odblaskowymi elementami na zimne poranki."
+    colors:
+      - "czarna"
+      - "granatowa"
+      - "limonkowa"
+    images:
+      - file: "runner-mountain-edge-trail.jpg"
+        alt: "Biegacz na ścieżce wzdłuż górskiej grani"
+      - file: "trail-runner-mountain-ridge-italy.jpg"
+        alt: "Biegacz na górskim szlaku w słoneczny dzień"
+  - category: "bieganie/odziez"
+    productType: "Koszulka biegowa"
+    taxCategory: standard
+    brands:
+      - "Tarvik"
+      - "Norvane"
+    models:
+      - name: "Oddech 100"
+        description: "Szybkoschnąca koszulka z siatkowymi wstawkami wentylacyjnymi i płaskimi szwami."
+      - name: "Merino 200"
+        description: "Koszulka z mieszanki wełny merino, neutralna zapachowo i przyjemna w dotyku."
+    colors:
+      - "biała"
+      - "szara"
+      - "turkusowa"
+    images:
+      - file: "runner-country-road.jpg"
+        alt: "Biegacz na wiejskiej drodze wśród łąk"
+      - file: "runner-road-fitz-roy.jpg"
+        alt: "Biegacz na pustej asfaltowej drodze z górami w tle"
+  - category: "bieganie/akcesoria"
+    additionalCategories:
+      - "turystyka/plecaki"
+    productType: "Plecak biegowy"
+    taxCategory: standard
+    brands:
+      - "Tarvik"
+      - "Norvane"
+    models:
+      - name: "Sprint 8"
+        description: "Plecak biegowy 8 l z kieszeniami na bidony miękkie i dostępem do telefonu bez zdejmowania."
+      - name: "Ultra 12"
+        description: "Plecak biegowy 12 l na zawody górskie, z uchwytem na kijki i systemem nawadniającym."
+    colors:
+      - "czarny"
+      - "pomarańczowy"
+    images:
+      - file: "trail-runner-mountain-ridge-italy.jpg"
+        alt: "Biegacz na górskim szlaku w słoneczny dzień"
+      - file: "runner-mountain-edge-trail.jpg"
+        alt: "Biegacz na ścieżce wzdłuż górskiej grani"
+  - category: "bieganie/akcesoria"
+    additionalCategories:
+      - "turystyka/biwak"
+    productType: "Latarka czołowa"
+    taxCategory: standard
+    brands:
+      - "Tarvik"
+      - "Hallen"
+    models:
+      - name: "Świt 250"
+        description: "Lekka czołówka 250 lumenów z regulowanym kątem świecenia i ładowaniem przez USB."
+      - name: "Zmierzch 600"
+        description: "Czołówka 600 lumenów z trybem czerwonym i akumulatorem na do 40 godzin pracy."
+    colors:
+      - "czarna"
+      - "szara"
+    images:
+      - file: "headlamp-hiker-chamonix.jpg"
+        alt: "Samotny turysta z czołówką na górskiej ścieżce o zmierzchu"
+  - category: "rower/rowery/gorskie"
+    productType: "Rower górski"
+    taxCategory: standard
+    brands:
+      - "Zolvia"
+      - "Dravik"
+    models:
+      - name: "Singiel 29"
+        description: "Hardtail z aluminiową ramą, amortyzatorem 120 mm i napędem 1x12."
+      - name: "Trawers 29"
+        description: "Rower trailowy z amortyzowanym tyłem 130 mm i hydraulicznymi hamulcami tarczowymi."
+      - name: "Zjazd 27,5"
+        description: "Zwrotny rower enduro z amortyzacją 150 mm do agresywnej jazdy po szlakach."
+    colors:
+      - "grafitowy"
+      - "zielony"
+      - "pomarańczowy"
+    images:
+      - file: "bikepacker-rocky-trail-pines.jpg"
+        alt: "Rowerzysta z sakwami bikepackingowymi na skalistym szlaku wśród sosen"
+      - file: "bikepacking-bike-mountain-trail.jpg"
+        alt: "Rower z sakwami bikepackingowymi na górskim szlaku"
+      - file: "cyclist-dirt-road-british-columbia.jpg"
+        alt: "Rowerzysta w niebieskiej kurtce na szutrowej drodze w górach"
+  - category: "rower/rowery/elektryczne"
+    productType: "Rower elektryczny"
+    taxCategory: standard
+    brands:
+      - "Zolvia"
+      - "Dravik"
+    models:
+      - name: "Dolina E"
+        description: "Rower trekkingowy z silnikiem centralnym 85 Nm i akumulatorem o zasięgu do 110 km."
+      - name: "Szlak E"
+        description: "Elektryczny rower górski z silnikiem w osi korby i amortyzowanym przodem."
+    colors:
+      - "czarny"
+      - "grafitowy"
+      - "niebieski"
+    images:
+      - file: "cyclist-path-canadian-rockies.jpg"
+        alt: "Rowerzysta na ścieżce w pobliżu gór"
+      - file: "cyclist-mountain-road-romania.jpg"
+        alt: "Rowerzysta na drodze z widokiem na góry"
+  - category: "rower/kaski-i-ochraniacze"
+    productType: "Kask rowerowy"
+    taxCategory: standard
+    brands:
+      - "Zolvia"
+      - "Dravik"
+    models:
+      - name: "Wiatr"
+        description: "Lekki kask szosowy z dużą liczbą otworów wentylacyjnych i regulacją obwodu pokrętłem."
+      - name: "Korona"
+        description: "Kask MTB z wydłużonym tyłem, daszkiem i siatką przeciw owadom."
+    colors:
+      - "czarny"
+      - "biały"
+      - "czerwony"
+    images:
+      - file: "cyclist-dirt-road-british-columbia.jpg"
+        alt: "Rowerzysta w niebieskiej kurtce na szutrowej drodze w górach"
+      - file: "cyclist-mountain-road-romania.jpg"
+        alt: "Rowerzysta na drodze z widokiem na góry"
+  - category: "rower/akcesoria"
+    productType: "Torba rowerowa"
+    taxCategory: standard
+    brands:
+      - "Zolvia"
+      - "Hallen"
+    models:
+      - name: "Rama 4"
+        description: "Wodoodporna torba pod ramę o pojemności 4 l na narzędzia i prowiant."
+      - name: "Kierownica 10"
+        description: "Torba na kierownicę 10 l do bikepackingu, z szybkim systemem mocowania."
+    colors:
+      - "czarna"
+      - "oliwkowa"
+    images:
+      - file: "bikepacking-bike-mountain-trail.jpg"
+        alt: "Rower z sakwami bikepackingowymi na górskim szlaku"
+      - file: "bikepacker-rocky-trail-pines.jpg"
+        alt: "Rowerzysta z sakwami bikepackingowymi na skalistym szlaku wśród sosen"
+  - category: "rower/akcesoria"
+    productType: "Bidon termiczny"
+    taxCategory: standard
+    brands:
+      - "Zolvia"
+      - "Dravik"
+    models:
+      - name: "Kropla 500"
+        description: "Bidon 500 ml z podwójną ścianką, który utrzymuje temperaturę napoju przez kilka godzin."
+      - name: "Źródło 750"
+        description: "Bidon 750 ml z zaworem do picia jedną ręką i szeroką szyjką do mycia."
+    colors:
+      - "czarny"
+      - "srebrny"
+      - "niebieski"
+    images:
+      - file: "cyclist-path-canadian-rockies.jpg"
+        alt: "Rowerzysta na ścieżce w pobliżu gór"
+      - file: "cyclist-dirt-road-british-columbia.jpg"
+        alt: "Rowerzysta w niebieskiej kurtce na szutrowej drodze w górach"
+  - category: "turystyka/plecaki"
+    productType: "Plecak trekkingowy"
+    taxCategory: standard
+    brands:
+      - "Hallen"
+      - "Norvane"
+    models:
+      - name: "Wierch 45"
+        description: "Plecak 45 l na weekendowe wyprawy z regulacją długości pleców i pokrowcem przeciwdeszczowym."
+      - name: "Dolina 55"
+        description: "Plecak 55 l z wentylowanymi plecami i dolnym dostępem do śpiwora."
+      - name: "Przełęcz 65"
+        description: "Plecak 65 l na wielodniowe trekkingi, z usztywnionym pasem biodrowym."
+    colors:
+      - "zielony"
+      - "szary"
+    images:
+      - file: "hiker-yellow-backpack-meadow.jpg"
+        alt: "Turysta z żółtym plecakiem na górskiej łące"
+      - file: "hikers-trail-toward-peaks-chile.jpg"
+        alt: "Turyści z plecakami idący szlakiem w stronę szczytów"
+      - file: "women-hiking-crested-butte.jpg"
+        alt: "Turystki z plecakami na górskim szlaku"
+  - category: "turystyka/plecaki"
+    productType: "Plecak dzienny"
+    taxCategory: standard
+    brands:
+      - "Hallen"
+      - "Norvane"
+    models:
+      - name: "Spacer 20"
+        description: "Plecak 20 l na jednodniowe wycieczki, z kieszenią na bukłak i uchwytami na kijki."
+      - name: "Szlak 28"
+        description: "Plecak 28 l z kieszeniami bocznymi, wentylowanymi plecami i uchwytem na kask."
+    colors:
+      - "czarny"
+      - "granatowy"
+      - "pomarańczowy"
+    images:
+      - file: "hikers-trail-switzerland.jpg"
+        alt: "Dwoje turystów z plecakami na szlaku wśród drzew"
+      - file: "hikers-mountain-trail-group.jpg"
+        alt: "Grupa turystów na górskim szlaku"
+  - category: "turystyka/biwak/namioty"
+    productType: "Namiot turystyczny"
+    taxCategory: standard
+    brands:
+      - "Norvane"
+      - "Hallen"
+    models:
+      - name: "Biwak 2"
+        description: "Dwuosobowy namiot kopułowy o masie poniżej 2 kg, z podwójnym dachem i dwoma wejściami."
+      - name: "Dolina 3"
+        description: "Trzyosobowy namiot z dużą absydą na bagaż i szczelną podłogą."
+      - name: "Halny 4"
+        description: "Czteroosobowy namiot na każdą pogodę, ze wzmocnionym stelażem."
+    colors:
+      - "zielony"
+      - "pomarańczowy"
+    images:
+      - file: "dome-tent-summit-sunset.jpg"
+        alt: "Namiot na górskim szczycie o zachodzie słońca"
+      - file: "orange-tent-turquoise-lake.jpg"
+        alt: "Pomarańczowy namiot nad turkusowym górskim jeziorem"
+  - category: "turystyka/biwak/spanie/spiwory"
+    productType: "Śpiwór"
+    taxCategory: standard
+    brands:
+      - "Norvane"
+      - "Hallen"
+      - "Tarvik"
+    models:
+      - name: "Noc -5"
+        description: "Śpiwór puchowy o temperaturze komfortu 0 stopni i dolnej granicy minus 5 stopni."
+      - name: "Letni +10"
+        description: "Lekki syntetyczny śpiwór na ciepłe noce, mieści się w niewielkim worku kompresyjnym."
+    colors:
+      - "niebieski"
+      - "oliwkowy"
+    images:
+      - file: "sleeping-bag-alpine-meadow.jpg"
+        alt: "Niebieski śpiwór rozłożony na alpejskiej łące"
+      - file: "dome-tent-summit-sunset.jpg"
+        alt: "Namiot na górskim szczycie o zachodzie słońca"
+  - category: "turystyka/biwak/spanie/maty"
+    productType: "Mata samopompująca"
+    taxCategory: standard
+    brands:
+      - "Norvane"
+      - "Hallen"
+    models:
+      - name: "Sen 3"
+        description: "Mata o grubości 3 cm, która napełnia się powietrzem po otwarciu zaworu."
+      - name: "Sen 5"
+        description: "Mata o grubości 5 cm z wysoką izolacją, wygodna także na twardym podłożu."
+    colors:
+      - "pomarańczowa"
+      - "zielona"
+    images:
+      - file: "sleeping-bag-alpine-meadow.jpg"
+        alt: "Niebieski śpiwór rozłożony na alpejskiej łące"
+      - file: "orange-tent-turquoise-lake.jpg"
+        alt: "Pomarańczowy namiot nad turkusowym górskim jeziorem"
+  - category: "turystyka/nawigacja/przewodniki"
+    productType: "Przewodnik"
+    taxCategory: printed_publication
+    brands:
+      - "Tarvik Press"
+      - "Norvane Atlas"
+    models:
+      - name: "Tatry Zachodnie"
+        description: "Przewodnik po szlakach Tatr Zachodnich: 60 opisanych tras, profile wysokościowe i uwagi o bezpieczeństwie. ISBN 978-83-99001-01-3."
+      - name: "Bieszczady"
+        description: "Przewodnik po Bieszczadach z opisem połonin, schronisk i tras jednodniowych. ISBN 978-83-99001-02-0."
+      - name: "Karkonosze"
+        description: "Przewodnik po Karkonoszach z trasami pieszymi i rowerowymi oraz opisem atrakcji. ISBN 978-83-99001-03-7."
+      - name: "Beskid Żywiecki"
+        description: "Przewodnik po Beskidzie Żywieckim z 45 trasami i mapkami szlaków. ISBN 978-83-99001-04-4."
+    colors:
+      - "oprawa miękka"
+      - "oprawa twarda"
+    images:
+      - file: "hiker-reading-map.jpg"
+        alt: "Turysta z papierową mapą w dłoniach"
+      - file: "hikers-mountain-trail-group.jpg"
+        alt: "Grupa turystów na górskim szlaku"
+  - category: "turystyka/nawigacja/mapy"
+    productType: "Mapa turystyczna"
+    taxCategory: printed_publication
+    brands:
+      - "Tarvik Press"
+      - "Norvane Atlas"
+    models:
+      - name: "Tatry 1:30 000"
+        description: "Mapa turystyczna Tatr w skali 1:30 000 z zaznaczonymi szlakami, schroniskami i punktami widokowymi."
+      - name: "Bieszczady 1:50 000"
+        description: "Mapa turystyczna Bieszczadów w skali 1:50 000 z kolorowymi szlakami i wysokościami."
+      - name: "Karkonosze 1:35 000"
+        description: "Mapa Karkonoszy w skali 1:35 000 z trasami narciarskimi i rowerowymi."
+      - name: "Gorce 1:40 000"
+        description: "Mapa Gorców w skali 1:40 000 z siecią szlaków i polan."
+    colors:
+      - "składana"
+      - "laminowana"
+    images:
+      - file: "hiker-reading-map.jpg"
+        alt: "Turysta z papierową mapą w dłoniach"
+      - file: "hikers-trail-switzerland.jpg"
+        alt: "Dwoje turystów z plecakami na szlaku wśród drzew"
+  - category: "turystyka/zywnosc"
+    productType: "Danie liofilizowane"
+    taxCategory: food
+    brands:
+      - "Pyrko"
+      - "Hallen"
+    models:
+      - name: "Gulasz wołowy"
+        description: "Liofilizowany gulasz wołowy z warzywami, wystarczy zalać wrzątkiem i odczekać 10 minut."
+      - name: "Makaron z warzywami"
+        description: "Liofilizowany makaron w sosie pomidorowym z warzywami, danie wegetariańskie."
+      - name: "Kasza z kurczakiem"
+        description: "Liofilizowana kasza gryczana z kurczakiem i pieczarkami, lekka i sycąca."
+      - name: "Owsianka jagodowa"
+        description: "Liofilizowana owsianka z jagodami na szybkie śniadanie na szlaku."
+    colors:
+      - "porcja jednoosobowa"
+      - "porcja dwuosobowa"
+    images:
+      - file: "dome-tent-summit-sunset.jpg"
+        alt: "Namiot na górskim szczycie o zachodzie słońca"
+      - file: "hikers-trail-switzerland.jpg"
+        alt: "Dwoje turystów z plecakami na szlaku wśród drzew"
+      - file: "orange-tent-turquoise-lake.jpg"
+        alt: "Pomarańczowy namiot nad turkusowym górskim jeziorem"
+  - category: "sporty-zimowe/narty"
+    productType: "Narty zjazdowe"
+    taxCategory: standard
+    brands:
+      - "Stavro"
+      - "Vilmar"
+    models:
+      - name: "Stok 80"
+        description: "Wszechstronne narty zjazdowe o szerokości 80 mm pod butem, na przygotowane trasy."
+      - name: "Carving 72"
+        description: "Wąskie narty typu carving do dynamicznych skrętów na twardym śniegu."
+      - name: "Freeride 100"
+        description: "Szerokie narty do jazdy poza trasą, z rockerem w przodzie."
+    colors:
+      - "grafitowe"
+      - "czerwone"
+    images:
+      - file: "skier-val-disere.jpg"
+        alt: "Narciarz w pomarańczowej kurtce na ośnieżonym stoku"
+      - file: "ski-hikers-snowy-trail.jpg"
+        alt: "Turyści idący zaśnieżonym szlakiem w słońcu"
+  - category: "sporty-zimowe/narty"
+    productType: "Narty skiturowe"
+    taxCategory: standard
+    brands:
+      - "Stavro"
+      - "Vilmar"
+    models:
+      - name: "Wejście 88"
+        description: "Lekkie narty skiturowe z rdzeniem z drewna paulowni, na podejścia i zjazdy."
+      - name: "Grań 95"
+        description: "Narty skiturowe o szerokości 95 mm z rdzeniem kompozytowym do zmiennego śniegu."
+    colors:
+      - "niebieskie"
+      - "pomarańczowe"
+    images:
+      - file: "ski-touring-steep-slope.jpg"
+        alt: "Dwie osoby na skiturach na stromym śnieżnym stoku"
+      - file: "ski-hikers-snowy-trail.jpg"
+        alt: "Turyści idący zaśnieżonym szlakiem w słońcu"
+  - category: "sporty-zimowe/kaski"
+    additionalCategories:
+      - "rower/kaski-i-ochraniacze"
+    productType: "Kask wielosportowy"
+    taxCategory: standard
+    brands:
+      - "Stavro"
+      - "Dravik"
+    models:
+      - name: "Zima 1"
+        description: "Kask do narciarstwa i jazdy na rowerze z wymienną wyściółką i regulowaną wentylacją."
+      - name: "Zima 2"
+        description: "Kask z lekką skorupą, certyfikowany do narciarstwa, snowboardu i jazdy na rowerze."
+      - name: "Zima 3"
+        description: "Kask z mocowaniem na gogle i odpinanymi nausznikami."
+    colors:
+      - "czarny"
+      - "biały"
+      - "niebieski"
+    images:
+      - file: "skier-val-disere.jpg"
+        alt: "Narciarz w pomarańczowej kurtce na ośnieżonym stoku"
+      - file: "ski-touring-steep-slope.jpg"
+        alt: "Dwie osoby na skiturach na stromym śnieżnym stoku"
+  - category: "sporty-zimowe/odziez"
+    productType: "Kurtka narciarska"
+    taxCategory: standard
+    brands:
+      - "Stavro"
+      - "Vilmar"
+    models:
+      - name: "Śnieg 10"
+        description: "Kurtka z membraną 10 000 mm i taśmowanymi szwami, ocieplona syntetycznym puchem."
+      - name: "Lawina 15"
+        description: "Kurtka z membraną 15 000 mm, kapturem na kask i kieszenią na karnet."
+      - name: "Szczyt 20"
+        description: "Kurtka skiturowa o wysokiej oddychalności z wentylacją pod pachami."
+    colors:
+      - "czerwona"
+      - "granatowa"
+      - "czarna"
+    images:
+      - file: "skier-val-disere.jpg"
+        alt: "Narciarz w pomarańczowej kurtce na ośnieżonym stoku"
+      - file: "ski-hikers-snowy-trail.jpg"
+        alt: "Turyści idący zaśnieżonym szlakiem w słońcu"
+  - category: "fitness/trening"
+    productType: "Mata do ćwiczeń"
+    taxCategory: standard
+    brands:
+      - "Lumora"
+      - "Dravik"
+    models:
+      - name: "Podłoże 6"
+        description: "Mata o grubości 6 mm z antypoślizgową powierzchnią do jogi i ćwiczeń na podłodze."
+      - name: "Podłoże 10"
+        description: "Gruba mata 10 mm chroniąca kolana i kręgosłup podczas ćwiczeń siłowych."
+    colors:
+      - "fioletowa"
+      - "zielona"
+      - "szara"
+    images:
+      - file: "yoga-park-sunset.jpg"
+        alt: "Grupa ćwicząca jogę w parku o zachodzie słońca"
+      - file: "yoga-rock-mountains.jpg"
+        alt: "Osoba ćwicząca jogę na skale z widokiem na góry"
+  - category: "fitness/trening"
+    productType: "Hantle regulowane"
+    taxCategory: standard
+    brands:
+      - "Lumora"
+      - "Dravik"
+    models:
+      - name: "Para 10"
+        description: "Para hantli z regulacją obciążenia do 10 kg każdy, z wygodnym chwytem."
+      - name: "Para 24"
+        description: "Para hantli z regulacją obciążenia do 24 kg każdy, w stojaku."
+    colors:
+      - "czarne"
+      - "grafitowe"
+    images:
+      - file: "yoga-park-sunset.jpg"
+        alt: "Grupa ćwicząca jogę w parku o zachodzie słońca"
+      - file: "yoga-rock-mountains.jpg"
+        alt: "Osoba ćwicząca jogę na skale z widokiem na góry"
+  - category: "fitness/odzywki/zywnosc-sportowa"
+    productType: "Baton energetyczny"
+    taxCategory: food
+    brands:
+      - "Pyrko"
+      - "Lumora"
+    models:
+      - name: "Owsiany"
+        description: "Baton owsiany z orzechami i miodem, szybkie źródło energii przed treningiem."
+      - name: "Daktylowy"
+        description: "Baton z daktyli i migdałów bez dodatku cukru."
+      - name: "Proteinowy"
+        description: "Baton z dużą zawartością białka i niską zawartością cukrów, 50 g."
+    colors:
+      - "czekoladowy"
+      - "orzechowy"
+      - "owocowy"
+    images:
+      - file: "runner-country-road.jpg"
+        alt: "Biegacz na wiejskiej drodze wśród łąk"
+      - file: "cyclist-dirt-road-british-columbia.jpg"
+        alt: "Rowerzysta w niebieskiej kurtce na szutrowej drodze w górach"
+  - category: "fitness/odzywki/zywnosc-sportowa"
+    additionalCategories:
+      - "bieganie/akcesoria"
+      - "rower/akcesoria"
+    productType: "Żel energetyczny"
+    taxCategory: food
+    brands:
+      - "Pyrko"
+      - "Lumora"
+    models:
+      - name: "Start"
+        description: "Żel z węglowodanami o szybkim wchłanianiu, saszetka 40 g, do spożycia w trakcie wysiłku."
+      - name: "Dystans"
+        description: "Żel z dodatkiem sodu i kofeiny na długie wysiłki, saszetka 60 g."
+    colors:
+      - "cytrynowy"
+      - "malinowy"
+      - "pomarańczowy"
+    images:
+      - file: "runner-road-fitz-roy.jpg"
+        alt: "Biegacz na pustej asfaltowej drodze z górami w tle"
+      - file: "cyclist-mountain-road-romania.jpg"
+        alt: "Rowerzysta na drodze z widokiem na góry"
+  - category: "fitness/odzywki/suplementy"
+    productType: "Odżywka białkowa"
+    taxCategory: food_supplement
+    brands:
+      - "Lumora"
+      - "Pyrko"
+    models:
+      - name: "Serwatka 900"
+        description: "Koncentrat białka serwatkowego, opakowanie 900 g, około 30 porcji."
+      - name: "Roślinna 750"
+        description: "Odżywka białkowa z grochu i ryżu, opakowanie 750 g, bez laktozy."
+    colors:
+      - "czekoladowa"
+      - "waniliowa"
+      - "truskawkowa"
+    images:
+      - file: "yoga-park-sunset.jpg"
+        alt: "Grupa ćwicząca jogę w parku o zachodzie słońca"
+      - file: "runner-country-road.jpg"
+        alt: "Biegacz na wiejskiej drodze wśród łąk"
+  - category: "fitness/odzywki/suplementy"
+    productType: "Elektrolity w tabletkach"
+    taxCategory: food_supplement
+    brands:
+      - "Lumora"
+      - "Pyrko"
+    models:
+      - name: "Nawodnienie 20"
+        description: "Tabletki musujące z elektrolitami, 20 sztuk w tubie, uzupełniają sód i magnez."
+      - name: "Nawodnienie 40"
+        description: "Tabletki musujące z elektrolitami i witaminą C, 40 sztuk w dwóch tubach."
+    colors:
+      - "cytrynowe"
+      - "pomarańczowe"
+    images:
+      - file: "cyclist-path-canadian-rockies.jpg"
+        alt: "Rowerzysta na ścieżce w pobliżu gór"
+      - file: "runner-road-fitz-roy.jpg"
+        alt: "Biegacz na pustej asfaltowej drodze z górami w tle"
+  - category: "sporty-wodne/sup"
+    productType: "Deska SUP"
+    taxCategory: standard
+    brands:
+      - "Vilmar"
+      - "Dravik"
+    models:
+      - name: "Jezioro 10"
+        description: "Pompowana deska 10 stóp do spokojnych wycieczek, w zestawie pompka i plecak."
+      - name: "Jezioro 11"
+        description: "Stabilna deska 11 stóp o większej nośności, na dłuższe trasy."
+      - name: "Wyścig 12"
+        description: "Wąska deska 12 stóp o dobrym ślizgu, na szybkie przepłynięcia."
+    colors:
+      - "niebieska"
+      - "turkusowa"
+    images:
+      - file: "paddleboards-lake-wanaka.jpg"
+        alt: "Dwie osoby na deskach SUP na górskim jeziorze"
+      - file: "kayak-lake-mountains.jpg"
+        alt: "Dwie osoby w kajaku na spokojnym jeziorze wśród gór"
+  - category: "sporty-wodne/kajaki"
+    productType: "Kajak turystyczny"
+    taxCategory: standard
+    brands:
+      - "Vilmar"
+      - "Dravik"
+    models:
+      - name: "Rzeka 1"
+        description: "Jednoosobowy pompowany kajak turystyczny, stabilny i odporny na przetarcia."
+      - name: "Rzeka 2"
+        description: "Dwuosobowy kajak pompowany z dwoma siedziskami i bagażnikiem na dziobie."
+    colors:
+      - "pomarańczowy"
+      - "zielony"
+    images:
+      - file: "kayak-lake-mountains.jpg"
+        alt: "Dwie osoby w kajaku na spokojnym jeziorze wśród gór"
+      - file: "paddleboards-lake-wanaka.jpg"
+        alt: "Dwie osoby na deskach SUP na górskim jeziorze"
+  - category: "sporty-wodne/plywanie"
+    productType: "Okulary pływackie"
+    taxCategory: standard
+    brands:
+      - "Vilmar"
+      - "Lumora"
+    models:
+      - name: "Basen"
+        description: "Okulary treningowe z powłoką przeciwmgielną i regulowanym mostkiem."
+      - name: "Jezioro"
+        description: "Okulary do pływania na otwartej wodzie z szerokim polem widzenia i polaryzacją."
+      - name: "Sprint"
+        description: "Niskoprofilowe okulary startowe o niskim oporze wody."
+    colors:
+      - "czarne"
+      - "niebieskie"
+      - "przydymione"
+    images:
+      - file: "open-water-swimmer-lake.jpg"
+        alt: "Pływak w jeziorze"
+  - category: "sporty-wodne/plywanie"
+    productType: "Pianka pływacka"
+    taxCategory: standard
+    brands:
+      - "Vilmar"
+      - "Lumora"
+    models:
+      - name: "Cieplej 3"
+        description: "Pianka neoprenowa 3 mm do pływania w chłodnych jeziorach, z elastycznymi ramionami."
+      - name: "Cieplej 5"
+        description: "Gruba pianka 5 mm na zimną wodę, z uszczelnionymi mankietami."
+    colors:
+      - "czarna"
+      - "grafitowa"
+    images:
+      - file: "open-water-swimmer-lake.jpg"
+        alt: "Pływak w jeziorze"
+  - category: "sporty-druzynowe/pilki/nozna"
+    productType: "Piłka nożna"
+    taxCategory: standard
+    brands:
+      - "Dravik"
+      - "Stavro"
+      - "Lumora"
+    models:
+      - name: "Trening 5"
+        description: "Piłka treningowa rozmiar 5, odporna na przetarcia, do gry na trawie i sztucznej nawierzchni."
+      - name: "Mecz 5"
+        description: "Piłka meczowa rozmiar 5 ze zgrzewanymi panelami o stałym odbiciu."
+      - name: "Junior 4"
+        description: "Piłka rozmiar 4 dla młodzieży do 12 lat."
+    colors:
+      - "biała"
+      - "pomarańczowa"
+    images:
+      - file: "soccer-ball-grass.jpg"
+        alt: "Piłka nożna na trawie boiska"
+  - category: "sporty-druzynowe/pilki/nozna"
+    productType: "Buty piłkarskie"
+    taxCategory: standard
+    brands:
+      - "Dravik"
+      - "Stavro"
+    models:
+      - name: "Murawa"
+        description: "Korki na naturalną trawę z lekkim, elastycznym zapiętkiem."
+      - name: "Orlik"
+        description: "Buty na sztuczną nawierzchnię z gumową podeszwą i licznymi nopami."
+      - name: "Hala"
+        description: "Buty halowe z płaską podeszwą antypoślizgową."
+    colors:
+      - "czarne"
+      - "niebieskie"
+    images:
+      - file: "soccer-ball-grass.jpg"
+        alt: "Piłka nożna na trawie boiska"
+  - category: "sporty-druzynowe/pilki/halowe"
+    productType: "Piłka siatkowa"
+    taxCategory: standard
+    brands:
+      - "Dravik"
+      - "Stavro"
+    models:
+      - name: "Plaża"
+        description: "Piłka do siatkówki plażowej, odporna na wilgoć i piasek, o miękkim chwycie."
+      - name: "Hala"
+        description: "Piłka halowa ze zszywanymi panelami, rozmiar 5, do treningów klubowych."
+    colors:
+      - "biało-niebieska"
+      - "żółto-niebieska"
+    images:
+      - file: "beach-volleyball-game.jpg"
+        alt: "Mecz siatkówki plażowej w słoneczny dzień"
+  - category: "sporty-druzynowe/pilki/halowe"
+    productType: "Piłka koszykowa"
+    taxCategory: standard
+    brands:
+      - "Dravik"
+      - "Stavro"
+    models:
+      - name: "Boisko 7"
+        description: "Piłka rozmiar 7 do gry na zewnątrz, ze wzmocnioną kompozytową powłoką."
+      - name: "Hala 6"
+        description: "Piłka rozmiar 6 do gry w hali, o dobrej przyczepności."
+    colors:
+      - "pomarańczowa"
+      - "brązowa"
+    images:
+      - file: "beach-volleyball-game.jpg"
+        alt: "Mecz siatkówki plażowej w słoneczny dzień"
+      - file: "soccer-ball-grass.jpg"
+        alt: "Piłka nożna na trawie boiska"
