@@ -70,9 +70,10 @@ jobs:
       - name: make check
         run: make check RUN="$CI_RUN"
 
-      # The api integration tests need PostgreSQL (database shop_test, created by its init script).
-      - name: Start PostgreSQL
-        run: docker compose up -d --wait postgres
+      # The api integration tests need PostgreSQL (database shop_test, created by its init script)
+      # and the image services: Garage (buckets created by garage-init) and imgproxy.
+      - name: Start PostgreSQL, Garage and imgproxy
+        run: docker compose up -d --wait postgres garage imgproxy
 
       # All api suites; `test` migrates shop_test first. Store keeps to unit tests,
       # its integration tests need Redis.

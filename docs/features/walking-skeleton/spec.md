@@ -12,7 +12,7 @@ Na czystym klonie repozytorium, z zainstalowanym tylko Dockerem:
 1. `make up` stawia cały stos i kończy się dopiero, gdy wszystkie usługi są zdrowe.
 2. `make seed` ładuje dane demo (300–500 produktów sport/outdoor w drzewie kategorii, 20–30 zdjęć) i kończy się,
    gdy indeks w Elasticsearch jest zgodny z Postgresem.
-3. Sklep pokazuje drzewo kategorii i siatkę produktów ze zdjęciami (AVIF/WebP z imgproxy). Kliknięcie kategorii
+3. Sklep pokazuje drzewo kategorii i siatkę produktów ze zdjęciami (WebP z imgproxy). Kliknięcie kategorii
    zawęża listę razem z podkategoriami.
 4. Klient loguje się w sklepie (realm `shop`), może się zarejestrować z weryfikacją e-mail (Mailpit), widzi
    „Zalogowany jako …” i może się wylogować.
@@ -209,6 +209,8 @@ Reguły Deptrac:
 - `TaxCategory`: `standard`, `food`, `food_supplement`, `printed_publication`. Produkt ma kategorię podatkową,
   a nie stawkę.
 - `ProductImages`: lista `ProductImage` (`ImageKey` – klucz oryginału w magazynie, `alt` niepusty, pozycja).
+  `ImageKey` ma postać `originals/<sha256>.<rozszerzenie>`, gdzie rozszerzenie pochodzi z enumu
+  `OriginalImageType` (`jpg`, `png`, `webp`, `avif`, `heic`).
   Najwyżej 10 zdjęć, pozycja zdjęcia równa jego indeksowi na liście (ciągła od 0), bez powtórzonego `ImageKey`.
   Pierwsze zdjęcie jest główne.
 - `Product::create(...)` zapisuje w agregacie zdarzenie `ProductCreated(productId, occurredAt)`.
@@ -303,23 +305,36 @@ Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` czyta aktualny stan
 
 - Oryginały są w prywatnym buckecie `product-images` w Garage, zapisywane przez port `ProductImageStorage`
   (Flysystem z adapterem S3).
-- Klucz oryginału zależy od treści: `originals/<sha256>.jpg`. Adres obrazu dla danej treści i rozmiaru nigdy się
-  nie zmienia, a to samo zdjęcie jest zapisane raz.
+- Formaty wejściowe: JPEG, PNG, WebP, AVIF i HEIC (imgproxy dekoduje wszystkie jako źródło). SVG nie jest
+  przyjmowany, bo może zawierać skrypty. Typ rozpoznaje `finfo` (rozszerzenie `fileinfo`, libmagic) po zawartości,
+  nigdy po rozszerzeniu ani nazwie pliku.
+- Klucz oryginału zależy od treści: `originals/<sha256>.<rozszerzenie wykrytego typu>` (`jpg`, `png`, `webp`,
+  `avif`, `heic`). Adres obrazu dla danej treści i rozmiaru nigdy się nie zmienia, a to samo zdjęcie jest zapisane
+  raz.
+- `ProductImageStorage::store` przed zapisem odrzuca (`InvalidImage`) plik większy niż 64 MB, typ spoza listy
+  i obraz o rozdzielczości powyżej 50 MP (wymiary z nagłówka przez `getimagesizefromstring`, bez dekodowania).
+  Odrzucony plik nie trafia do bucketu.
+- imgproxy jest drugą linią obrony z tymi samymi limitami: `IMGPROXY_MAX_SRC_FILE_SIZE` (64 MB)
+  i `IMGPROXY_MAX_SRC_RESOLUTION` (50 MP); za duży oryginał daje 422.
 - Lista rozmiarów jest zamknięta i zdefiniowana w jednym miejscu: enum `ImageSize` w `Catalog\Application`.
-  Każdy rozmiar określa proporcje, sposób skalowania, szerokości i formaty. W szkielecie istnieje jeden rozmiar:
+  Każdy rozmiar określa proporcje, sposób skalowania, szerokości i formaty wyjściowe. W szkielecie istnieje jeden rozmiar:
 
   | Rozmiar | Proporcje | Skalowanie | Szerokości | Formaty |
   |---|---|---|---|---|
-  | `listing` | 1:1 | `fill`, gravity `sm` | 256, 384, 512, 768 | AVIF, WebP |
+  | `listing` | 1:1 | `fill`, gravity `sm` | 256, 384, 512, 768 | WebP |
 
+- Wyjście jest wyłącznie w WebP. Kodowanie AVIF na żądanie mocno obciąża CPU na małym serwerze demo; AVIF można
+  dodać później jako kolejny format w `ImageSize`, bez zmiany kształtu odpowiedzi API (warianty są pogrupowane
+  po formacie).
 - Format jest częścią podpisanego adresu (rozszerzenie w ścieżce imgproxy). Każda para format × szerokość ma
   osobny, jednoznaczny adres. imgproxy nie negocjuje formatu po nagłówku `Accept`, bo CDN przed nim
   (darmowy Cloudflare) nie obsługuje Vary for Images.
 - Adresy podpisuje HMAC-em jeden serwis w API (implementacja portu `ImageUrlGenerator`). Podział sekretów
   per usługa (klucz i sól imgproxy tylko dla `api` i `imgproxy`) obowiązuje przy wdrożeniu, lokalnie opisuje go
   sekcja „Profile i sekrety”.
-- imgproxy czyta wyłącznie z `s3://product-images/` (`IMGPROXY_ALLOWED_SOURCES`) i zwraca długi `Cache-Control`,
-  bo adresy są niezmienne.
+- imgproxy czyta wyłącznie z bucketów zdjęć (`IMGPROXY_ALLOWED_SOURCES`) i zwraca długi `Cache-Control`,
+  bo adresy są niezmienne. Lokalnie lista to `s3://product-images/` i `s3://product-images-test/` (bucket testów
+  integracyjnych), w demo i produkcji tylko `s3://product-images/`.
 
 ### Endpointy
 
@@ -357,7 +372,6 @@ Wszystkie pod `/api/v1`, JSON, opisane w OpenAPI (żądanie, odpowiedzi, błędy
         "size": "listing",
         "aspectRatio": "1:1",
         "variants": {
-          "avif": [{ "width": 256, "url": "http://localhost:8081/…" }, { "width": 384, "url": "…" }],
           "webp": [{ "width": 256, "url": "http://localhost:8081/…" }, { "width": 384, "url": "…" }]
         }
       }
@@ -504,7 +518,7 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
 - Motyw w szkielecie jest tymczasowy i neutralny: odcienie szarości, jeden akcent, systemowy krój pisma.
   Docelowy wygląd (kierunek w `docs/vision.md`, sekcja „Wygląd sklepu”) to osobny krok MVP.
 - Komponenty i układy przenoszone później z vercel/shop podlegają zasadom z `apps/store/CLAUDE.md`
-  (informacja o licencji MIT, dane tylko z naszego API, obrazy przez `ProductPicture`).
+  (informacja o licencji MIT, dane tylko z naszego API, obrazy przez `ProductPhoto`).
 
 ### Strona `/`
 
@@ -520,12 +534,11 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
 
 ### Obrazy
 
-- `ProductPicture` składa `<picture>`: `<source type="image/avif">` i `<source type="image/webp">` ze `srcset`
-  z wariantów API, `<img>` z wariantem WebP jako fallback, atrybut `sizes` zgodny z siatką.
-- Atrybuty powstają przez `getImageProps()` z `next/image` z loaderem, który wybiera gotowy adres z wariantów
-  dla żądanej szerokości. Front niczego nie podpisuje ani nie dobiera rozmiarów spoza odpowiedzi API.
-- Globalny loader obrazów Next.js (`images.loader: 'custom'`) rzuca błąd, więc użycie `<Image>` bez loadera
-  wariantów jest niemożliwe, a wbudowana optymalizacja nigdy nie przetwarza obrazów.
+- `ProductPhoto` renderuje zwykły `<img>` ze `srcset` z wariantów WebP z API, `src` z największym wariantem,
+  atrybutem `sizes` zgodnym z siatką oraz `width`/`height` z proporcji rozmiaru. Nie ma `<picture>`, bo API
+  zwraca jeden format.
+- Front niczego nie podpisuje ani nie dobiera rozmiarów spoza odpowiedzi API.
+- Globalny loader obrazów Next.js (`images.loader: 'custom'`) rzuca błąd, więc użycie `<Image>` jest niemożliwe, a wbudowana optymalizacja nigdy nie przetwarza obrazów.
 
 ### Logowanie (BFF)
 
@@ -612,7 +625,7 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 | Aplikacja | Testy jednostkowe (bez usług) | Testy integracyjne i funkcjonalne (na stosie) |
 |---|---|---|
 | api | domena: ścieżka kategorii, niezmienniki produktu, `TaxCategory`, `Slug`; handlery z adapterami in-memory; routing Messengera na transportach `in-memory://` | repozytoria Doctrine; atomowość outboxa; adapter ES (filtr po przodkach, sortowanie, paginacja); zapis do Garage; podpis imgproxy na żywym imgproxy; droga seed → outbox → RabbitMQ → ES; sondy usług; testy funkcjonalne endpointów |
-| store | reguły ESLint (kolory, klasy spoza tokenów, `fetch`); walidacja `returnTo`; budowa `<picture>` z wariantów; `CategoryTree`; `ProductGrid` | blokada odświeżania na prawdziwym Redisie |
+| store | reguły ESLint (kolory, klasy spoza tokenów, `fetch`); walidacja `returnTo`; budowa `srcset` z wariantów; `CategoryTree`; `ProductGrid` | blokada odświeżania na prawdziwym Redisie |
 | admin | dashboard; `useIdleLogout`; 401 → `signinRedirect`; guard routera | — |
 
 Wymagane przypadki:
@@ -621,7 +634,11 @@ Wymagane przypadki:
   `IndexProduct`; konsumpcja `events` wywołuje `IndexProduct` raz i nie umieszcza niczego na `outbox` ani `events`.
 - **Atomowość outboxa:** wyjątek po zapisaniu zdarzenia, a przed commitem, zostawia zero produktów i zero wierszy
   w outboxie; udany commit zostawia jeden produkt i jeden wiersz.
-- **imgproxy:** podpisane adresy AVIF i WebP zwracają 200 z właściwym typem; zmieniony adres zwraca 403.
+- **imgproxy:** podpisany adres WebP zwraca 200 i `image/webp` dla oryginału w każdym formacie wejściowym (JPEG,
+  PNG, WebP, AVIF, HEIC); zmieniony podpis zwraca 403; oryginał powyżej 50 MP wgrany bezpośrednio do bucketu
+  zwraca 422.
+- **Upload:** typ rozpoznany po treści (PNG z rozszerzeniem `.jpg` dostaje klucz `.png`); SVG, HTML, pusta treść,
+  plik ponad limit rozmiaru i obraz ponad limit rozdzielczości dają `InvalidImage` i nie trafiają do bucketu.
 - **Endpointy:** każdy ma test funkcjonalny. Endpointy chronione: brak tokena, token z drugiego realmu, zła
   audience, wygasły token, poprawny token. Endpointy publiczne: nagłówki `Cache-Control` i `Vary: Origin`, błędne
   parametry (400 z naruszeniami). Dashboard: rola `support` dostaje `system: null`, rola `admin` dostaje `system`.

@@ -1,0 +1,7 @@
+flysystem:
+    storages:
+        product_images.storage:
+            adapter: 'asyncaws'
+            options:
+                client: 'app.s3_client'
+                bucket: '%app.images_bucket%'
