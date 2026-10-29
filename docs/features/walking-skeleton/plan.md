@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: **Task 13A** (wersja produktu i odczyt paczkami). Następne zadanie: Task 13B. Blokery: brak.
+W toku: nic. Następne zadanie: **Task 13B** (indeks Elasticsearch, po merge'u 13A). Blokery: brak.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
@@ -27,7 +27,7 @@ W toku: **Task 13A** (wersja produktu i odczyt paczkami). Następne zadanie: Tas
 | [#5](https://github.com/piotrp321/shop/pull/5) | 9 | domena Catalog | ✅ |
 | [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | ✅ |
 | [#8](https://github.com/piotrp321/shop/pull/8) | 12 | obrazy w API (Garage, imgproxy) | ✅ |
-| | 13A | wersja produktu i odczyt produktów paczkami do indeksu | |
+| [#9](https://github.com/piotrp321/shop/pull/9) | 13A | wersja produktu i odczyt produktów paczkami do indeksu | ✅ |
 | | 13B | indeks Elasticsearch, adaptery, przebudowa synchroniczna z przepięciem aliasu | |
 | | 10, 14 | komendy tworzenia kategorii i produktów, transactional outbox, RabbitMQ, worker, indeksowanie | |
 | | 15 | endpointy katalogu i OpenAPI sklepu | |
