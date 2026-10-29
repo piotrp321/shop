@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Catalog\Application\Port;
 
+use App\Catalog\Application\Search\ActivationResult;
 use App\Catalog\Application\Search\BulkResult;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
@@ -60,4 +61,25 @@ interface SearchIndexMaintenance
      * @throws SearchUnavailable when the whole request fails transiently
      */
     public function write(string $index, array $documents): BulkResult;
+
+    /**
+     * Refreshes the index and checks that it exists, has healthy shards, the current definition and the expected
+     * number of documents.
+     *
+     * @throws SearchIndexError  when any check fails
+     * @throws SearchUnavailable
+     */
+    public function verify(string $index, int $expectedDocuments): void;
+
+    /**
+     * Switches the alias from $expectedCurrent to $index in one request, then reads back where the alias points.
+     * Never throws for search failures: an ambiguous result is {@see ActivationResult::Unknown}.
+     */
+    public function activate(string $index, string $expectedCurrent): ActivationResult;
+
+    /**
+     * @throws SearchIndexError  when the alias points to the index (or that cannot be ruled out), or the deletion fails
+     * @throws SearchUnavailable
+     */
+    public function deleteIndex(string $index): void;
 }

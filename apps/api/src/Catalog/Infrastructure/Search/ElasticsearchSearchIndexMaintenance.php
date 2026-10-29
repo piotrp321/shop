@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Catalog\Infrastructure\Search;
 
 use App\Catalog\Application\Port\SearchIndexMaintenance;
+use App\Catalog\Application\Search\ActivationResult;
 use App\Catalog\Application\Search\BulkResult;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
@@ -113,6 +114,81 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
         }
 
         return new BulkResult($indexed, $stale, $transient, $permanent);
+    }
+
+    public function verify(string $index, int $expectedDocuments): void
+    {
+        if (!$this->indexExists($index)) {
+            throw new SearchIndexError(\sprintf('The index "%s" does not exist.', $index));
+        }
+
+        $this->request('refresh index', fn () => $this->longRequestClient->indices()->refresh(['index' => $index]));
+
+        // Healthy: every primary shard assigned (yellow or green). A timed-out wait answers 408.
+        $health = $this->request('check index health', fn () => $this->client->cluster()->health([
+            'index' => $index,
+            'wait_for_status' => 'yellow',
+            'timeout' => '1s',
+        ]), [408])->asArray();
+        if (true === ($health['timed_out'] ?? true) || !\in_array($health['status'] ?? null, ['yellow', 'green'], true)) {
+            throw new SearchIndexError(\sprintf('The index "%s" has unassigned primary shards.', $index));
+        }
+
+        $count = $this->request('count documents', fn () => $this->client->count(['index' => $index]))->asArray()['count'] ?? null;
+        if ($count !== $expectedDocuments) {
+            throw new SearchIndexError(\sprintf('The index "%s" holds %s documents, %d were written.', $index, \is_int($count) ? (string) $count : 'an unknown number of', $expectedDocuments));
+        }
+
+        $this->assertCurrentDefinition($index);
+    }
+
+    public function activate(string $index, string $expectedCurrent): ActivationResult
+    {
+        try {
+            $targets = $this->aliasTargets();
+        } catch (SearchUnavailable|SearchIndexError) {
+            return ActivationResult::NotActivated;
+        }
+        // Elasticsearch has no compare-and-swap for aliases. The rebuild lock, this check of the exact target and
+        // the must_exist remove in the same atomic request together stand in for it.
+        if ([$expectedCurrent] !== $targets) {
+            return ActivationResult::NotActivated;
+        }
+
+        try {
+            $this->request('switch alias', fn () => $this->client->indices()->updateAliases(['body' => ['actions' => [
+                ['remove' => ['index' => $expectedCurrent, 'alias' => $this->alias, 'must_exist' => true]],
+                ['add' => ['index' => $index, 'alias' => $this->alias]],
+            ]]]));
+        } catch (SearchUnavailable|SearchIndexError) {
+            // A timeout or a dropped connection leaves the outcome open; a rejection leaves the alias as it was.
+            // Either way the alias state read below decides.
+        }
+
+        try {
+            $targets = $this->aliasTargets();
+        } catch (SearchUnavailable|SearchIndexError) {
+            return ActivationResult::Unknown;
+        }
+
+        return match ($targets) {
+            [$index] => ActivationResult::Activated,
+            [$expectedCurrent] => ActivationResult::NotActivated,
+            default => ActivationResult::Unknown,
+        };
+    }
+
+    public function deleteIndex(string $index): void
+    {
+        if (!str_starts_with($index, $this->alias.'_')) {
+            throw new SearchIndexError(\sprintf('Refusing to delete "%s": it is not an index of the alias "%s".', $index, $this->alias));
+        }
+        // Fails when the alias cannot be read: an index the alias might point to is never deleted.
+        if (\in_array($index, $this->aliasTargets(), true)) {
+            throw new SearchIndexError(\sprintf('Refusing to delete "%s": the alias "%s" points to it.', $index, $this->alias));
+        }
+
+        $this->request('delete index', fn () => $this->longRequestClient->indices()->delete(['index' => $index]));
     }
 
     private function create(bool $withAlias): string
