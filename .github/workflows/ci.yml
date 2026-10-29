@@ -74,9 +74,10 @@ jobs:
       # the image services: Garage (buckets created by garage-init) and imgproxy, RabbitMQ with the
       # `test` vhost (created by the one-shot rabbitmq-init), Elasticsearch (the test index is created by
       # init-test, which `make -C apps/api test` runs first) and Keycloak with the imported realms (discovery tests).
-      - name: Start PostgreSQL, Garage, imgproxy, RabbitMQ, Elasticsearch and Keycloak
+      # The dashboard probes (ProbesTest and the dashboard endpoint test) reach all of them, plus Redis and Mailpit.
+      - name: Start PostgreSQL, Redis, Garage, imgproxy, RabbitMQ, Elasticsearch, Keycloak and Mailpit
         run: |
-          docker compose up -d --wait postgres garage imgproxy rabbitmq elasticsearch keycloak
+          docker compose up -d --wait postgres redis garage imgproxy rabbitmq elasticsearch keycloak mailpit
           docker compose run --rm rabbitmq-init
 
       # All api suites; `test` migrates shop_test first. Store keeps to unit tests,

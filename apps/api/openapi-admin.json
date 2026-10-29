@@ -6,6 +6,53 @@
         "version": "1.0.0"
     },
     "paths": {
+        "/api/v1/admin/dashboard": {
+            "get": {
+                "tags": [
+                    "Staff"
+                ],
+                "summary": "Dashboard",
+                "description": "Catalogue numbers for every staff member. The system status (services, outbox, queues, search index) only for administrators; for other roles `system` is null. A service that is down, a broker whose management API does not answer (`queues` is null) or a search index that cannot be counted (`indexedProducts` is null, `inSync` is false) does not fail the request.",
+                "operationId": "getDashboard",
+                "responses": {
+                    "200": {
+                        "description": "The dashboard.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DashboardResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The database is unavailable, or the keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
         "/api/v1/admin/me": {
             "get": {
                 "tags": [
@@ -100,6 +147,180 @@
                             },
                             "type": "object"
                         }
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardCatalogResponse": {
+                "description": "Catalogue numbers, from the database.",
+                "required": [
+                    "productCount",
+                    "categoryCount",
+                    "productsWithoutImages"
+                ],
+                "properties": {
+                    "productCount": {
+                        "type": "integer",
+                        "example": 412
+                    },
+                    "categoryCount": {
+                        "type": "integer",
+                        "example": 36
+                    },
+                    "productsWithoutImages": {
+                        "description": "Products with no image.",
+                        "type": "integer",
+                        "example": 8
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardServiceResponse": {
+                "description": "The state of one service of the stack.",
+                "required": [
+                    "name",
+                    "status",
+                    "latencyMs"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "example": "postgres"
+                    },
+                    "status": {
+                        "type": "string",
+                        "example": "up",
+                        "enum": [
+                            "up",
+                            "down"
+                        ]
+                    },
+                    "latencyMs": {
+                        "description": "How long the service took to answer, in milliseconds. Null when it is down.",
+                        "type": "integer",
+                        "example": 3,
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardOutboxResponse": {
+                "description": "The outbox of domain events.",
+                "required": [
+                    "pending"
+                ],
+                "properties": {
+                    "pending": {
+                        "description": "Events waiting to be relayed to the broker.",
+                        "type": "integer",
+                        "example": 0
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardQueueResponse": {
+                "description": "A queue of the message broker.",
+                "required": [
+                    "name",
+                    "messages",
+                    "consumers"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "example": "events"
+                    },
+                    "messages": {
+                        "description": "Messages in the queue.",
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "consumers": {
+                        "description": "Consumers subscribed to the queue.",
+                        "type": "integer",
+                        "example": 1
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardSearchIndexResponse": {
+                "description": "The search index compared with the catalogue.",
+                "required": [
+                    "indexedProducts",
+                    "catalogProducts",
+                    "inSync"
+                ],
+                "properties": {
+                    "indexedProducts": {
+                        "description": "Documents in the index. Null when the index cannot be counted.",
+                        "type": "integer",
+                        "example": 412,
+                        "nullable": true
+                    },
+                    "catalogProducts": {
+                        "description": "Products in the database.",
+                        "type": "integer",
+                        "example": 412
+                    },
+                    "inSync": {
+                        "description": "Whether both numbers are equal. False when the index cannot be counted.",
+                        "type": "boolean",
+                        "example": true
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardSystemResponse": {
+                "description": "The state of the system, for administrators.",
+                "required": [
+                    "services",
+                    "outbox",
+                    "queues",
+                    "searchIndex"
+                ],
+                "properties": {
+                    "services": {
+                        "description": "Always in this order: postgres, redis, elasticsearch, rabbitmq, keycloak, garage, imgproxy, mailpit. A service that does not answer within 1 s is down.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/DashboardServiceResponse"
+                        }
+                    },
+                    "outbox": {
+                        "$ref": "#/components/schemas/DashboardOutboxResponse"
+                    },
+                    "queues": {
+                        "description": "Queues of the broker. Null when its management API does not answer.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/DashboardQueueResponse"
+                        },
+                        "nullable": true
+                    },
+                    "searchIndex": {
+                        "$ref": "#/components/schemas/DashboardSearchIndexResponse"
+                    }
+                },
+                "type": "object"
+            },
+            "DashboardResponse": {
+                "description": "What the admin dashboard shows.",
+                "required": [
+                    "catalog",
+                    "system"
+                ],
+                "properties": {
+                    "catalog": {
+                        "$ref": "#/components/schemas/DashboardCatalogResponse"
+                    },
+                    "system": {
+                        "description": "Null unless the staff member is an administrator.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/DashboardSystemResponse"
+                            }
+                        ]
                     }
                 },
                 "type": "object"

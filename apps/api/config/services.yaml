@@ -11,6 +11,8 @@ parameters:
     app.oidc.backoffice.discovery_url: '%env(KEYCLOAK_INTERNAL_URL)%/realms/backoffice/'
     app.oidc.shop.issuer: '%env(KEYCLOAK_PUBLIC_URL)%/realms/shop'
     app.oidc.shop.discovery_url: '%env(KEYCLOAK_INTERNAL_URL)%/realms/shop/'
+    # Vhost of the `events` transport, whose queues the dashboard lists (the tests use their own, see below).
+    app.rabbitmq.vhost: '%env(RABBITMQ_VHOST)%'
     # Products per bulk request in catalog:reindex (overridden by --batch-size).
     app.search.batch_size: 500
     # The client never retries; timeouts are in seconds.
@@ -103,6 +105,41 @@ services:
         decorates: security.access_token_handler.admin
         arguments: ['@.inner']
 
+    # Health probes of the dashboard. Each service is reached at the address containers use among themselves.
+    App\Shared\Infrastructure\Health\Probe\RedisProbe:
+        arguments:
+            $host: '%env(REDIS_HOST)%'
+    App\Shared\Infrastructure\Health\Probe\ElasticsearchProbe:
+        arguments:
+            $baseUrl: '%env(ELASTICSEARCH_URL)%'
+    App\Shared\Infrastructure\Health\Probe\RabbitMqProbe:
+        arguments:
+            $baseUrl: '%env(RABBITMQ_MANAGEMENT_URL)%'
+            $user: '%env(RABBITMQ_USER)%'
+            $password: '%env(RABBITMQ_DEFAULT_PASS)%'
+    App\Shared\Infrastructure\Health\Probe\KeycloakProbe:
+        arguments:
+            $baseUrl: '%env(KEYCLOAK_MANAGEMENT_URL)%'
+    App\Shared\Infrastructure\Health\Probe\GarageProbe:
+        arguments:
+            $baseUrl: '%env(GARAGE_ADMIN_URL)%'
+    App\Shared\Infrastructure\Health\Probe\ImgproxyProbe:
+        arguments:
+            $baseUrl: '%env(IMGPROXY_INTERNAL_URL)%'
+    App\Shared\Infrastructure\Health\Probe\MailpitProbe:
+        arguments:
+            $baseUrl: '%env(MAILPIT_INTERNAL_URL)%'
+
+    App\Backoffice\Infrastructure\MessagingStatisticsAdapter:
+        arguments:
+            $managementUrl: '%env(RABBITMQ_MANAGEMENT_URL)%'
+            $user: '%env(RABBITMQ_USER)%'
+            $password: '%env(RABBITMQ_DEFAULT_PASS)%'
+            $vhost: '%app.rabbitmq.vhost%'
+
+    App\Backoffice\Application\Port\CatalogStatisticsProvider: '@App\Backoffice\Infrastructure\QueryBusCatalogStatisticsProvider'
+    App\Backoffice\Application\Port\SystemHealth: '@App\Backoffice\Infrastructure\ProbingSystemHealth'
+    App\Backoffice\Application\Port\MessagingStatistics: '@App\Backoffice\Infrastructure\MessagingStatisticsAdapter'
     App\Catalog\Application\Port\ProductImageStorage: '@App\Catalog\Infrastructure\Image\FlysystemProductImageStorage'
     App\Catalog\Application\Port\ImageUrlGenerator: '@App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator'
     App\Catalog\Application\Port\ProductSearchSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource'
@@ -120,6 +157,8 @@ when@test: &test
         app.images_bucket: 'product-images-test'
         # Test indexes are prefixed with test_, the alias is recreated by `make -C apps/api init-test`.
         app.search.alias: test_products
+        # The `events` transport of the tests runs on its own vhost (config/packages/test_messaging/messenger.yaml).
+        app.rabbitmq.vhost: test
 
     services:
         _defaults:
@@ -169,6 +208,38 @@ when@test: &test
                 $client: '@app.search.client'
                 $alias: '%app.search.alias%'
         App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource:
+            public: true
+        # Fetched by the tests of the dashboard; the provider can be replaced by a stub that fails.
+        App\Backoffice\Application\Port\CatalogStatisticsProvider:
+            alias: App\Backoffice\Infrastructure\QueryBusCatalogStatisticsProvider
+            public: true
+        App\Backoffice\Application\Port\MessagingStatistics:
+            alias: App\Backoffice\Infrastructure\MessagingStatisticsAdapter
+            public: true
+        # The probes are fetched one by one by ProbesTest.
+        test.App\Shared\Infrastructure\Health\Probe\PostgresProbe:
+            alias: App\Shared\Infrastructure\Health\Probe\PostgresProbe
+            public: true
+        test.App\Shared\Infrastructure\Health\Probe\RedisProbe:
+            alias: App\Shared\Infrastructure\Health\Probe\RedisProbe
+            public: true
+        test.App\Shared\Infrastructure\Health\Probe\ElasticsearchProbe:
+            alias: App\Shared\Infrastructure\Health\Probe\ElasticsearchProbe
+            public: true
+        test.App\Shared\Infrastructure\Health\Probe\RabbitMqProbe:
+            alias: App\Shared\Infrastructure\Health\Probe\RabbitMqProbe
+            public: true
+        test.App\Shared\Infrastructure\Health\Probe\KeycloakProbe:
+            alias: App\Shared\Infrastructure\Health\Probe\KeycloakProbe
+            public: true
+        test.App\Shared\Infrastructure\Health\Probe\GarageProbe:
+            alias: App\Shared\Infrastructure\Health\Probe\GarageProbe
+            public: true
+        test.App\Shared\Infrastructure\Health\Probe\ImgproxyProbe:
+            alias: App\Shared\Infrastructure\Health\Probe\ImgproxyProbe
+            public: true
+        test.App\Shared\Infrastructure\Health\Probe\MailpitProbe:
+            alias: App\Shared\Infrastructure\Health\Probe\MailpitProbe
             public: true
         App\Tests\Support\StatementCounter:
             public: true
