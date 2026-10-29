@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: nic. Następne zadanie: **Task 12** (obrazy w API). Blokery: brak.
+W toku: **Task 12** (obrazy w API). Blokery: brak.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
@@ -126,7 +126,7 @@ w zadaniu, do którego należy kod.
     `additional(): list<CategoryId>`, `all(): list<CategoryId>` (główna pierwsza)
   - `ProductImages::fromList(list<ProductImage>)`, `main(): ?ProductImage`, `isEmpty(): bool`, `toList()`
   - `ProductImage(ImageKey $key, string $alt, int $position)`; `ImageKey::fromString(string)` wymaga
-    `^originals/[a-f0-9]{64}\.jpg$`
+    `^originals/[a-f0-9]{64}\.(jpg|png|webp|avif|heic)$`, a rozszerzenia pochodzą z enumu `OriginalImageType`
   - `TaxCategory` (enum string): `standard`, `food`, `food_supplement`, `printed_publication`
   - `ProductRepository { save(Product $p): void; get(ProductId $id): Product; all(): iterable<Product>; count(): int; countWithoutImages(): int }`;
     `save` deklaruje w PHPDoc `@throws SlugAlreadyTaken`
@@ -245,39 +245,72 @@ w zadaniu, do którego należy kod.
 ### Task 12: Obrazy – Garage i imgproxy
 
 **Pliki:**
-- Utwórz: `src/Catalog/Application/Image/{ImageSize,ImageFormat}.php`,
+- Utwórz: `src/Catalog/Domain/Product/OriginalImageType.php`,
+  `src/Catalog/Application/Image/{ImageSize,ImageFormat}.php`,
   `src/Catalog/Application/Port/{ImageUrlGenerator,ProductImageStorage}.php`,
   `src/Catalog/Infrastructure/Image/{ImgproxyUrlGenerator,FlysystemProductImageStorage,InvalidImage}.php`,
   `config/packages/flysystem.yaml`, `tests/Unit/Catalog/Image/{ImageSizeTest,ImgproxyUrlGeneratorTest}.php`,
   `tests/Integration/Catalog/Image/{FlysystemProductImageStorageTest,ImgproxySigningTest}.php`,
-  `tests/Fixtures/images/sample.jpg` (mały JPEG), `tests/Fixtures/images/sample.png`
-- Modyfikuj: `infra/docker-compose.yml` (env `api`: `IMGPROXY_PUBLIC_URL`, `IMAGES_BUCKET`, endpoint Garage),
+  `tests/Fixtures/images/{sample.jpg,sample.png,sample.webp,sample.avif,sample.heic,sample.svg,oversized.webp}`,
+  `tests/Fixtures/images/README.md` (komenda odtworzenia fixtures)
+- Modyfikuj: `src/Catalog/Domain/Product/ImageKey.php`, `tests/Unit/Catalog/Domain/ImageKeyTest.php`,
+  `infra/docker-compose.yml` (env `api`: `IMGPROXY_PUBLIC_URL`, `IMAGES_BUCKET`, endpoint Garage; env `imgproxy`:
+  `IMGPROXY_ALLOWED_SOURCES` z obu bucketów, `IMGPROXY_MAX_SRC_FILE_SIZE`, `IMGPROXY_MAX_SRC_RESOLUTION`),
   `.github/workflows/ci.yml` (usługi `garage`, `garage-init` i `imgproxy` przed testami)
 
 **Interfejsy:**
 - Produkuje:
+  - `OriginalImageType` (enum string w domenie, wartość to rozszerzenie): `jpg`, `png`, `webp`, `avif`, `heic`;
+    wzorzec `ImageKey` budowany z jego przypadków: `^originals/[a-f0-9]{64}\.(jpg|png|webp|avif|heic)$`
   - `ImageSize::Listing` z `aspectRatio(): string` (`'1:1'`), `widths(): list<int>` (`[256, 384, 512, 768]`),
-    `formats(): list<ImageFormat>` (`[Avif, Webp]`), `resize(): string` (`'fill'`), `gravity(): string` (`'sm'`)
-  - `ImageFormat` (enum string): `avif`, `webp`
+    `formats(): list<ImageFormat>` (`[Webp]`), `resize(): string` (`'fill'`), `gravity(): string` (`'sm'`)
+  - `ImageFormat` (enum string): `webp` (wyjście; AVIF można dopisać później)
   - `ImageUrlGenerator { url(string $imageKey, ImageSize $size, int $width, ImageFormat $format): string }`;
     szerokość spoza `widths()` rzuca `InvalidArgumentException`
-  - `ProductImageStorage { store(string $contents): string /* ImageKey */; purge(): void }`; treść inna niż
-    JPEG (sprawdzana po zawartości) rzuca `InvalidImage`
+  - `ProductImageStorage { store(string $contents): string /* ImageKey */; purge(): void }`. `store` sprawdza
+    po kolei: rozmiar (powyżej limitu → `InvalidImage`, zanim cokolwiek innego), typ przez
+    `finfo(FILEINFO_MIME_TYPE)->buffer()` z zamkniętą mapą `image/jpeg|png|webp|avif|heic` → `OriginalImageType`
+    (inny typ → `InvalidImage`), rozdzielczość z `getimagesizefromstring` (brak wymiarów albo
+    szerokość × wysokość powyżej limitu → `InvalidImage`). Odrzucona treść nie trafia do bucketu.
+  - Limity są parametrami konstruktora adaptera ustawionymi w konfiguracji kontenera: 64 MB (`67108864` B)
+    i 50 MP (`50000000` px). imgproxy ma te same limity (`IMGPROXY_MAX_SRC_FILE_SIZE=67108864`,
+    `IMGPROXY_MAX_SRC_RESOLUTION=50`).
 - Ścieżka imgproxy: `/{signature}/rs:fill:{w}:{h}/g:sm/{base64url("s3://{bucket}/{key}")}.{format}`, gdzie
-  podpis to base64url z HMAC-SHA256(klucz, sól + ścieżka), zgodnie z dokumentacją imgproxy.
+  podpis to base64url bez paddingu z HMAC-SHA256(klucz, sól + ścieżka); klucz i sól są w `.env.local` jako hex.
+- Wektor z dokumentacji imgproxy („Signing a URL”): klucz `736563726574`, sól `68656C6C6F`, ścieżka
+  `/rs:fill:300:400:0/g:sm/aHR0cDovL2V4YW1w/bGUuY29tL2ltYWdl/cy9jdXJpb3NpdHku/anBn.png`, podpis
+  `oKfUtW34Dvo2BGQehJFR4Nr0_rIjOtdtzJ3QFsUcXH8`. Szerokość 300 jest spoza `ImageSize`, więc wektor sprawdza samą
+  funkcję podpisującą ścieżkę.
+- Fixtures (każdy poniżej 3 KB) generuje jednorazowy kontener `alpine:3.22` z `vips-tools` i `vips-heif`:
+  obraz 64×48 sRGB zapisany jako JPEG, PNG, WebP, AVIF (`heifsave --compression av1`) i HEIC
+  (`heifsave --compression hevc`), wszystko z `strip`; `oversized.webp` to bezstratny czarny obraz 8000×7000
+  (56 MP); `sample.svg` to minimalny SVG z prologiem XML. Testy używają tylko plików z repo, bez macOS i `sips`.
 
-- **Krok 1: Testy**
+- **Krok 1: `ImageKey` (osobny commit, TDD)**
+  - `ImageKeyTest`: klucz z każdym z rozszerzeń `jpg`, `png`, `webp`, `avif`, `heic` przechodzi; `.jpeg`, `.svg`,
+    `.gif` i dotychczasowe przypadki (krótki hash, traversal, nowa linia, wielkie litery) są odrzucane.
+  - FAIL (`make -C apps/api test-unit`), implementacja `OriginalImageType` i `ImageKey`, PASS
+    (`make -C apps/api check test-unit`).
+  - Commit `feat(api): accept PNG, WebP, AVIF and HEIC original image keys`
+- **Krok 2: Testy**
   - `ImageSizeTest`: wartości `Listing` jak wyżej.
-  - `ImgproxyUrlGeneratorTest`: wektor testowy podpisu z dokumentacji imgproxy (rozdział „Signing a URL”) daje
-    udokumentowany podpis; dla `Listing`, 384 i AVIF adres zawiera `rs:fill:384:384/g:sm/` i kończy się `.avif`;
-    ten sam klucz w WebP daje inny adres; szerokość 300 rzuca wyjątek; adres zaczyna się od `IMGPROXY_PUBLIC_URL`.
-  - `FlysystemProductImageStorageTest` (bucket `product-images-test`): `store(sample.jpg)` zwraca
-    `originals/<sha256>.jpg` i plik istnieje; dwa zapisy tej samej treści dają ten sam klucz; PNG rzuca `InvalidImage`.
-  - `ImgproxySigningTest`: dla zapisanego zdjęcia adresy AVIF i WebP (z bazą podmienioną na `http://imgproxy:8080`)
-    zwracają 200 z `Content-Type` odpowiednio `image/avif` i `image/webp`; adres ze zmienionym znakiem podpisu
-    zwraca 403.
-- **Krok 2: FAIL. Krok 3: implementacja. Krok 4: PASS (`make -C apps/api check test`).**
-- **Krok 5: Commit** `feat(api): store product originals in Garage and sign imgproxy URLs`
+  - `ImgproxyUrlGeneratorTest`: wektor z dokumentacji daje udokumentowany podpis; dla `Listing`, 384 i WebP adres
+    zawiera `rs:fill:384:384/g:sm/` i kończy się `.webp`; inna szerokość daje inny adres; szerokość 300 rzuca
+    wyjątek; adres zaczyna się od `IMGPROXY_PUBLIC_URL`.
+  - `FlysystemProductImageStorageTest` (bucket `product-images-test`): każdy z pięciu fixtures daje
+    `originals/<sha256>.<rozszerzenie>` i plik istnieje; dwa zapisy tej samej treści dają ten sam klucz; treść PNG
+    z pliku o nazwie `.jpg` dostaje klucz `.png`; SVG z prologiem i bez, HTML i pusta treść rzucają `InvalidImage`;
+    przy wstrzykniętym małym limicie rozmiaru treść o długości limitu przechodzi, a o 1 B dłuższa jest odrzucana;
+    przy wstrzykniętym limicie rozdzielczości poniżej 64×48 `sample.png` jest odrzucany; `oversized.webp` przy
+    limicie z kontenera jest odrzucany; po każdym odrzuceniu bucket nie ma nowego pliku; `purge()` usuwa zapisane
+    oryginały; usługa z kontenera ma limity 64 MB i 50 MP.
+  - `ImgproxySigningTest` (baza podmieniona na `http://imgproxy:8080`): dla każdego z pięciu typów źródła
+    podpisany adres WebP zwraca 200 i `Content-Type: image/webp`; adres ze zmienionym znakiem podpisu zwraca 403;
+    `oversized.webp` wgrany bezpośrednio do bucketu (z pominięciem `store`) zwraca 422.
+- **Krok 3: FAIL. Krok 4: implementacja. Krok 5: PASS (`make -C apps/api check test`).** Limit
+  `IMGPROXY_MAX_SRC_FILE_SIZE` nie ma testu na żywo (wymagałby pliku 64 MB); sprawdź go w `docker compose config`.
+  Odpowiedź 422 z imgproxy w nieoczekiwanym miejscu najpierw diagnozuj z pola `error` w logach `imgproxy`.
+- **Krok 6: Commit** `feat(api): store product originals in Garage and sign imgproxy URLs`
 
 ### Task 13: Indeks Elasticsearch
 
@@ -385,7 +418,7 @@ w zadaniu, do którego należy kod.
 
 - **Krok 1: Testy**
   - `ListProductsHandlerTest`: produkt bez zdjęcia ma `image === null`; ze zdjęciem: `size === 'listing'`,
-    `aspectRatio === '1:1'`, klucze `variants` to `avif` i `webp`, każdy z szerokościami `[256, 384, 512, 768]`
+    `aspectRatio === '1:1'`, jedyny klucz `variants` to `webp`, z szerokościami `[256, 384, 512, 768]`
     rosnąco.
   - `GetCategoryTreeHandlerTest`: drzewo zagnieżdżone; rodzeństwo posortowane po nazwie z polską kolacją
     (`Collator('pl_PL')`: `Łyżwy` po `Lody`).
@@ -496,7 +529,7 @@ w zadaniu, do którego należy kod.
 ### Task 18: Strona katalogu w sklepie
 
 **Pliki:**
-- Utwórz: `apps/store/src/api/{client.ts,schema.d.ts}`, `apps/store/src/catalog/{load-catalog.ts,picture.ts,ProductPicture.tsx,ProductTile.tsx,ProductGrid.tsx,CategoryTree.tsx,Pagination.tsx}`,
+- Utwórz: `apps/store/src/api/{client.ts,schema.d.ts}`, `apps/store/src/catalog/{load-catalog.ts,image-props.ts,ProductPhoto.tsx,ProductTile.tsx,ProductGrid.tsx,CategoryTree.tsx,Pagination.tsx}`,
   `apps/store/src/images/forbidden-loader.ts`, `apps/store/app/error.tsx`, testy obok plików (`*.test.ts(x)`)
 - Modyfikuj: `apps/store/app/page.tsx`, `apps/store/next.config.ts` (`images.loader: 'custom'`,
   `loaderFile: './src/images/forbidden-loader.ts'`), `infra/docker-compose.yml` (montowanie
@@ -508,14 +541,15 @@ w zadaniu, do którego należy kod.
 **Interfejsy:**
 - Konsumuje: `openapi.json` (zadanie 15).
 - Produkuje: `createApiClient(options: { baseUrl: string; accessToken?: string }): Client<paths>`;
-  `buildPicture(image: components['schemas']['ProductImage'], sizes: string): { avifSrcSet: string; webpSrcSet: string; img: { src: string; srcSet: string; sizes: string; alt: string; width: number; height: number } }`;
+  `buildImageProps(image: components['schemas']['ProductImage'], sizes: string): { src: string; srcSet: string; sizes: string; alt: string; width: number; height: number }`
+  (zwykły `<img srcset>`, bez `<picture>`);
   `loadCatalog(params: { category?: string; page?: string }): Promise<{ kind: 'ok'; categories; products } | { kind: 'invalid-filter' }>`
   (inne błędy rzuca dalej, więc obsługuje je `error.tsx`).
 
 - **Krok 1: Wygeneruj klienta**: `make api-client` tworzy `src/api/schema.d.ts`.
 - **Krok 2: Testy**
-  - `picture.test.ts`: `avifSrcSet === 'u256 256w, u384 384w, u512 512w, u768 768w'` (analogicznie WebP);
-    `img.src` to wariant WebP 768; `sizes` i `alt` przekazane bez zmian.
+  - `image-props.test.ts`: `srcSet === 'u256 256w, u384 384w, u512 512w, u768 768w'` z wariantów WebP;
+    `src` to wariant 768; `sizes` i `alt` przekazane bez zmian; `width`/`height` z `aspectRatio`.
   - `CategoryTree.test.tsx`: aktywna kategoria ma `aria-current="page"`; jej przodkowie są rozwinięci, inna
     gałąź jest zwinięta; linki mają postać `?category=<id>`.
   - `ProductGrid.test.tsx`: jeden kafel na produkt; `image === null` daje placeholder z `role="img"`
@@ -529,7 +563,7 @@ w zadaniu, do którego należy kod.
   Krok „Contract freshness” z CI uruchomiony lokalnie przechodzi, a ręcznie zmieniony `schema.d.ts` daje
   niezerowy kod wyjścia.
 - **Krok 6: Sprawdź w przeglądarce** (wbudowana przeglądarka, `localhost:3000`):
-  - siatka ze zdjęciami, w zakładce sieci żądania `.avif` do imgproxy,
+  - siatka ze zdjęciami, w zakładce sieci żądania `.webp` do imgproxy,
   - kliknięcie kategorii zawęża listę razem z podkategoriami, paginacja działa,
   - przy `docker compose stop elasticsearch` sklep pokazuje stronę błędu. Potem `docker compose start elasticsearch`.
 - **Krok 7: Commit** `feat(store): show category tree and product grid from API`

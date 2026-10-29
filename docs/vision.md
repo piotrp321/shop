@@ -36,7 +36,7 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
 - **Garage** – magazyn plików zgodny z S3. Przechowuje oryginały zdjęć produktów w prywatnym buckecie.
   API zapisuje przez Flysystem, więc w produkcji wystarczy podmienić adapter na prawdziwe S3.
 - **imgproxy** – serwuje zdjęcia: czyta oryginał z Garage i na żądanie skaluje, przycina i konwertuje
-  do formatu wskazanego w adresie (AVIF albo WebP). Adresy są podpisane (HMAC), więc nikt z zewnątrz nie wygeneruje dowolnych rozmiarów
+  do formatu wskazanego w adresie (WebP). Adresy są podpisane (HMAC), więc nikt z zewnątrz nie wygeneruje dowolnych rozmiarów
   i nie obciąży serwera. W produkcji przed imgproxy stoi CDN, który cache'uje wyniki.
 - **Varnish** – HTTP cache przed publicznymi endpointami odczytu API (katalog, wyszukiwarka, filtry).
   Odciąża API i Elasticsearch przy stronach wyszukiwarki renderowanych przez SSR, gdzie te same zapytania
@@ -45,19 +45,20 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
 
 ## Zdjęcia produktów
 
-- Panel wysyła oryginał do API, API waliduje (typ, rozmiar, wymiary) i zapisuje w Garage pod kluczem wyliczonym
-  z treści pliku, więc adres obrazu o danej treści nigdy się nie zmienia. Oryginał nie jest nigdy serwowany
-  bezpośrednio.
+- Panel wysyła oryginał (JPEG, PNG, WebP, AVIF albo HEIC; bez SVG) do API, API waliduje typ po zawartości,
+  rozmiar i rozdzielczość i zapisuje w Garage pod kluczem wyliczonym z treści pliku, więc adres obrazu o danej
+  treści nigdy się nie zmienia. Oryginał nie jest nigdy serwowany bezpośrednio.
 - Zestaw rozmiarów jest zamknięty i zdefiniowany w jednym miejscu w API (miniatura, lista, karta produktu, zoom),
   każdy w kilku szerokościach dla `srcset`.
 - API w odpowiedziach zwraca gotowe, podpisane adresy imgproxy dla każdego rozmiaru, szerokości i formatu.
   Podpisuje jeden serwis po stronie API, klucz podpisu nigdy nie trafia do frontów.
-- Format (AVIF, WebP) jest częścią podpisanego adresu. imgproxy nie wybiera go po nagłówku `Accept`, bo przed
+- Zdjęcia wychodzą w WebP. AVIF nie jest generowany, bo jego kodowanie na żądanie mocno obciąża CPU małego
+  serwera; można go dodać później jako kolejny format w liście rozmiarów.
+- Format jest częścią podpisanego adresu. imgproxy nie wybiera go po nagłówku `Accept`, bo przed
   imgproxy stoi darmowy Cloudflare, który nie obsługuje Vary for Images. Każdy wariant musi mieć jednoznaczny
   adres dla CDN.
-- Sklep składa `<picture>` ze źródłami AVIF i WebP przez `getImageProps()` z `next/image` z loaderem, który wybiera
-  gotowy adres z odpowiedzi API dla żądanej szerokości. Wbudowana optymalizacja obrazów Next.js jest wyłączona,
-  żeby obrazy nie były przetwarzane dwa razy.
+- Sklep renderuje zwykły `<img srcset>` z gotowych adresów WebP z odpowiedzi API. Wbudowana optymalizacja
+  obrazów Next.js jest wyłączona, żeby obrazy nie były przetwarzane dwa razy.
 
 ## Klienci i pracownicy
 
@@ -126,7 +127,7 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - **Dane strukturalne**: JSON-LD `Product` (cena, dostępność, zdjęcia), `BreadcrumbList`, `Organization`.
 - **Mapa strony i robots**: `sitemap.xml` generowana z katalogu, `robots.txt`.
 - **Przyjazne adresy**: `/p/<slug>`, `/c/<slug-kategorii>`, przekierowania 301 przy zmianie sluga.
-- **Wydajność**: Core Web Vitals jako wymaganie (obrazy z imgproxy w WebP/AVIF z `srcset`,
+- **Wydajność**: Core Web Vitals jako wymaganie (obrazy z imgproxy w WebP z `srcset`,
   `priority` dla głównego zdjęcia produktu, minimum JavaScriptu po stronie klienta). Pomiar przez Lighthouse w CI.
 
 ## Wygląd sklepu (apps/store)

@@ -74,4 +74,4 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - Vitest i Testing Library. `*.test.ts(x)` to testy jednostkowe bez usług, `*.integration.test.ts` działają
   na usługach stosu (Redis).
-- Logika w komponentach (np. budowa `<picture>`, aktywna kategoria) i cały `src/auth/` mają testy.
+- Logika w komponentach (np. budowa `srcset`, aktywna kategoria) i cały `src/auth/` mają testy.
