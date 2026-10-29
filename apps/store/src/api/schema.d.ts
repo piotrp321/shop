@@ -44,6 +44,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current customer
+         * @description The customer identified by the access token of the `shop` realm.
+         */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -135,6 +155,21 @@ export interface components {
             name: string;
             children: components["schemas"]["CategoryNode"][];
         };
+        /** @description The customer identified by the access token. */
+        MeResponse: {
+            /**
+             * @description Customer id, the `sub` of the token.
+             * @example 58276b79-2248-4817-8b28-5dbbb4f343ab
+             */
+            id: string;
+            /** @example jan.kowalski@example.com */
+            email: string;
+            /**
+             * @description Full name, empty when the account has none.
+             * @example Jan Kowalski
+             */
+            name: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -160,6 +195,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CategoryNode"][];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -198,7 +251,54 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The search service is unavailable (problem details without technical details). */
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The search service is unavailable, or a token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The customer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
                     [name: string]: unknown;

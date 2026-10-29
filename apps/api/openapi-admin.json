@@ -5,8 +5,142 @@
         "description": "Endpoints used by the admin panel.",
         "version": "1.0.0"
     },
-    "paths": {},
+    "paths": {
+        "/api/v1/admin/me": {
+            "get": {
+                "tags": [
+                    "Staff"
+                ],
+                "summary": "Current staff member",
+                "description": "The staff member identified by the access token of the `backoffice` realm, with any staff role.",
+                "operationId": "getStaffMe",
+                "responses": {
+                    "200": {
+                        "description": "The staff member.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StaffMeResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        }
+    },
     "components": {
+        "schemas": {
+            "Problem": {
+                "description": "Problem details (RFC 9457), `application/problem+json`.",
+                "required": [
+                    "type",
+                    "title",
+                    "status"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "example": "about:blank"
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Bad Request"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "example": 400
+                    },
+                    "detail": {
+                        "description": "Present only for 4xx errors, never for 5xx.",
+                        "type": "string"
+                    },
+                    "violations": {
+                        "description": "Present only for 400 caused by invalid input.",
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "propertyPath",
+                                "title"
+                            ],
+                            "properties": {
+                                "propertyPath": {
+                                    "type": "string",
+                                    "example": "category"
+                                },
+                                "title": {
+                                    "type": "string",
+                                    "example": "This is not a valid UUID."
+                                }
+                            },
+                            "type": "object"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "StaffMeResponse": {
+                "description": "The staff member identified by the access token.",
+                "required": [
+                    "id",
+                    "username",
+                    "roles"
+                ],
+                "properties": {
+                    "id": {
+                        "description": "Staff member id, the `sub` of the token.",
+                        "type": "string",
+                        "example": "f05dcc92-3f9f-41ba-a905-5325ece4a239"
+                    },
+                    "username": {
+                        "type": "string",
+                        "example": "admin"
+                    },
+                    "roles": {
+                        "description": "Staff roles, without any other realm role.",
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "admin",
+                                "support",
+                                "warehouse",
+                                "marketing"
+                            ]
+                        },
+                        "example": [
+                            "admin"
+                        ]
+                    }
+                },
+                "type": "object"
+            }
+        },
         "securitySchemes": {
             "backoffice": {
                 "type": "http",
@@ -15,5 +149,11 @@
                 "scheme": "bearer"
             }
         }
-    }
+    },
+    "tags": [
+        {
+            "name": "Staff",
+            "description": "Staff"
+        }
+    ]
 }

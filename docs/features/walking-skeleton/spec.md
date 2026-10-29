@@ -83,6 +83,7 @@ idempotentny krok, uruchamiany jawnie:
   tokenów (`iss`) jest zawsze adresem publicznym, a API i serwer sklepu pobierają discovery, JWKS i wymieniają
   kod na token przez `http://keycloak:8080`.
 - API sprawdza `iss` z publicznym adresem Keycloak i buduje adresy obrazów z publicznym adresem imgproxy.
+  Adresy Keycloak dostaje z env: `KEYCLOAK_PUBLIC_URL` (wystawca) i `KEYCLOAK_INTERNAL_URL` (discovery i JWKS).
 - Domyślne porty na hoście: sklep 3000, panel 5173, API 8000, Keycloak 8080, imgproxy 8081, Mailpit 8025,
   RabbitMQ management 15672. Każdy port jest zmienną w `.env` i jest wystawiony tylko na `127.0.0.1`.
 
@@ -167,8 +168,8 @@ w aplikacji uwierzytelniającej.
 | Moduł | Domain | Application | Infrastructure | UI |
 |---|---|---|---|---|
 | `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; przebudowa indeksu `ProductSearchIndexRebuilder`; porty `ProductSearch`, `ProductIndexer`, `ProductSearchSource`, `SearchIndexMaintenance`, `SearchIndexRebuildLock`, `ProductImageStorage`, `ImageUrlGenerator`, `DemoCatalogSource`, `CatalogReset`; ładowanie danych demo `DemoCatalogLoader` (przez `command.bus`); lista rozmiarów `ImageSize` | Doctrine (rekordy z atrybutami), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, źródło danych demo z `catalog.yaml` (parsowanie, rozwijanie szablonów, UUID v5) i `CatalogReset` | `GET /api/v1/products`, `GET /api/v1/categories`, komendy konsoli |
-| `Customer` | — | — | `CustomerUser` i `CustomerUserProvider` (z tokena realmu `shop`) | `GET /api/v1/me` |
-| `Backoffice` | — | zapytanie `GetDashboard`; porty `CatalogStatistics`, `SystemHealth`, `MessagingStatistics` | `StaffUser` i `StaffUserProvider` (z tokena realmu `backoffice`), `DashboardVoter`, adaptery portów | `GET /api/v1/admin/me`, `GET /api/v1/admin/dashboard` |
+| `Customer` | — | interfejs `AuthenticatedCustomer` (klient z tokena) | `CustomerUser` (implementuje `AuthenticatedCustomer`) i `CustomerUserProvider` (z tokena realmu `shop`) | `GET /api/v1/me` |
+| `Backoffice` | — | zapytanie `GetDashboard`; porty `CatalogStatistics`, `SystemHealth`, `MessagingStatistics`; interfejs `AuthenticatedStaffMember` (pracownik z tokena) | `StaffUser` (implementuje `AuthenticatedStaffMember`) i `StaffUserProvider` (z tokena realmu `backoffice`), `DashboardVoter`, adaptery portów | `GET /api/v1/admin/me`, `GET /api/v1/admin/dashboard` |
 | `Shared` | interfejs `DomainEvent` (`occurredAt()`), port `DomainEventPublisher`, interfejsy-znaczniki wyjątków `ProblemException`, `NotFound`, `Conflict`, `InvalidInput` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
 
 `Backoffice` to moduł funkcji panelu, a nie context domenowy: pracownik nie ma własnego modelu, tożsamość i role
@@ -569,19 +570,35 @@ w tej kolejności:
 
 | Firewall | Ścieżki | Discovery / JWKS | Wymagany `iss` | Wymagane `aud` | Użytkownik |
 |---|---|---|---|---|---|
-| `admin` | `^/api/v1/admin` | `http://keycloak:8080/realms/backoffice` | `${KEYCLOAK_PUBLIC_URL}/realms/backoffice` | `backoffice-api` | `StaffUser` |
-| `shop` | `^/api/v1` | `http://keycloak:8080/realms/shop` | `${KEYCLOAK_PUBLIC_URL}/realms/shop` | `shop-api` | `CustomerUser` |
+| `admin` | `^/api/v1/admin(/\|$)` | `${KEYCLOAK_INTERNAL_URL}/realms/backoffice/` (`http://keycloak:8080`) | `${KEYCLOAK_PUBLIC_URL}/realms/backoffice` | `backoffice-api` | `StaffUser` |
+| `shop` | `^/api/v1(/\|$)` | `${KEYCLOAK_INTERNAL_URL}/realms/shop/` | `${KEYCLOAK_PUBLIC_URL}/realms/shop` | `shop-api` | `CustomerUser` |
 
-- Tylko RS256. Discovery i JWKS są cache'owane.
+- Tylko RS256. Wymagane `iat`, `exp`, `aud` i `iss`, sprawdzane też `nbf`, bez tolerancji czasu. Adres discovery
+  kończy się ukośnikiem, bo ścieżki discovery są rozwiązywane względem niego.
+- Discovery i JWKS są w puli cache `cache.oidc` przez czas z nagłówków JWKS. Keycloak ich nie podaje, więc obowiązuje
+  domyślna 1 h. Klucz po rotacji (nowy `kid`) jest odrzucany do wygaśnięcia cache, najdłużej 1 h.
+- Klient HTTP API ma limit 2 s na połączenie i odpowiedź oraz 5 s na całe żądanie, więc zawieszony Keycloak nie
+  blokuje żądań.
 - `StaffUser`: `sub`, `preferred_username`, role z `realm_access.roles` przycięte do `admin`, `support`,
-  `warehouse`, `marketing`; dostaje `ROLE_STAFF`.
-- `CustomerUser`: `sub`, `email`, `name`; dostaje `ROLE_CUSTOMER`.
-- `StaffUser` i `CustomerUser` to osobne klasy, bez wspólnej klasy bazowej.
-- Endpointy publiczne mają `PUBLIC_ACCESS`. Przesłanie nieprawidłowego tokena do endpointu publicznego też daje 401.
-- Brak tokena, zły wystawca (w tym token z drugiego realmu), zła audience, wygasły lub uszkodzony token:
-  401 jako problem details z nagłówkiem `WWW-Authenticate: Bearer`.
+  `warehouse`, `marketing` (w tej kolejności); dostaje `ROLE_STAFF`.
+- `CustomerUser`: `sub`, `email`, `name` (pusty, gdy go nie ma); dostaje `ROLE_CUSTOMER`. Token bez `email` daje 401.
+- `StaffUser` i `CustomerUser` to osobne klasy, bez wspólnej klasy bazowej. Implementują interfejsy z warstwy
+  Application swoich modułów (`AuthenticatedStaffMember`, `AuthenticatedCustomer`), a kontrolery dostają je przez
+  `#[CurrentUser]`. Dzięki temu UI nie zależy od Infrastructure.
+- `access_control` domyślnie odmawia: `/api/v1/admin` wymaga `ROLE_STAFF`, reszta `/api/v1` `ROLE_CUSTOMER`, poza
+  jawnie publicznymi `GET` (`products`, `categories`) z `PUBLIC_ACCESS`. Nowy endpoint publiczny trzeba tam dopisać.
+- Przesłanie nieprawidłowego tokena do endpointu publicznego też daje 401. Nagłówek `Authorization` z innym
+  schematem niż `Bearer` (albo z wartością spoza składni tokena) jest traktowany jak brak tokena.
+- Brak tokena, zły wystawca (w tym token z drugiego realmu), zła audience, wygasły, jeszcze nieważny lub uszkodzony
+  token, zły podpis lub algorytm: 401 jako problem details z nagłówkiem `WWW-Authenticate: Bearer` i stałym `detail`,
+  bez powodu odrzucenia.
+- Keycloak nieosiągalny albo odpowiadający błędem przy pobieraniu discovery lub JWKS: 503 jako problem details
+  bez `detail` i bez `WWW-Authenticate`. Tokena nie da się wtedy ocenić, więc to awaria, a nie zły token. Sklep na 503
+  z `GET /api/v1/me` nie usuwa sesji. Żądanie bez tokena nie potrzebuje kluczy i nadal daje 401.
 - Środowisko `test`: handler `oidc` dostaje stały `keyset` z env zamiast discovery. Bootstrap testów generuje
   w pamięci parę kluczy RSA, a `TestTokenFactory` podpisuje nią tokeny obu realmów. W repo nie ma kluczy.
+  Środowisko `test_oidc` pobiera klucze przez discovery jak dev i prod (cache tylko w pamięci); używają go testy
+  awarii Keycloak.
 
 ### Wspólne zachowanie HTTP
 
@@ -797,7 +814,8 @@ Wymagane przypadki:
   sprawdzeniem stanu i nie usuwa nowego indeksu; nieudana weryfikacja nie zmienia aliasu; druga przebudowa przy
   zajętej blokadzie odmawia; zwykły indeks o nazwie aliasu jest wykryty przez `setup` i odrzucony przy zapisie.
 - **Endpointy:** każdy ma test funkcjonalny. Endpointy chronione: brak tokena, token z drugiego realmu, zła
-  audience, wygasły token, poprawny token. Endpointy publiczne: nagłówki `Cache-Control` i `Vary: Origin`, błędne
+  audience, wygasły token, poprawny token. Uwierzytelnianie: zły podpis, `alg: none`, HS256 z kluczem publicznym,
+  zmieniona treść; nieosiągalne discovery daje 503, a zły token przy osiągalnym Keycloak 401. Endpointy publiczne: nagłówki `Cache-Control` i `Vary: Origin`, błędne
   parametry (400 z naruszeniami). Dashboard: rola `support` dostaje `system: null`, rola `admin` dostaje `system`.
 - **Odświeżanie w sklepie:** 5 równoległych żądań z wygasającym tokenem daje dokładnie jedno wywołanie endpointu
   tokenów, a wszystkie żądania dostają nowy token.

@@ -86,7 +86,7 @@ nelmio_api_doc:
                                                 url:
                                                     type: string
                                                     example: http://localhost:8081/signature/rs:fill:256:256/g:sm/czM6Ly9idWNrZXQva2V5/plain.webp
-                        Problem:
+                        Problem: &problem
                             type: object
                             description: Problem details (RFC 9457), `application/problem+json`.
                             required: [type, title, status]
@@ -132,6 +132,9 @@ nelmio_api_doc:
                     description: Endpoints used by the admin panel.
                     version: 1.0.0
                 components:
+                    schemas:
+                        # The same document as in the default area.
+                        Problem: *problem
                     securitySchemes:
                         backoffice:
                             type: http

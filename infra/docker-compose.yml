@@ -238,6 +238,9 @@ services:
       RABBITMQ_VHOST: /
       # Elasticsearch has security disabled locally; the URL carries no credentials.
       ELASTICSEARCH_URL: http://elasticsearch:9200
+      # Keycloak: tokens carry the public URL as issuer, discovery and JWKS are fetched through the internal one.
+      KEYCLOAK_PUBLIC_URL: http://localhost:${KEYCLOAK_PORT:-8080}
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
     volumes:
       - ./apps/api:/app
       # Dependencies live in a volume, not on the host.

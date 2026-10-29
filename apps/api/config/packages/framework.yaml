@@ -4,9 +4,29 @@ framework:
     php_errors:
         log: true
 
+    # Bounds every request of the shared HTTP client, e.g. the OIDC discovery: a hanging Keycloak must not hold
+    # API requests for the PHP default of 60 s.
+    http_client:
+        default_options:
+            timeout: 2
+            max_duration: 5
+    cache:
+        pools:
+            # Discovery documents and JWKS of the Keycloak realms (TTL from the JWKS response, at most 1 h by default).
+            cache.oidc: ~
+
 when@test: &test
     framework:
         test: true
 
 # Kernel of the tests that run messages through the real transports (Doctrine outbox, RabbitMQ).
 when@test_messaging: *test
+
+# Kernel of the functional tests that fetch the keys through discovery; the keys are cached for one kernel only.
+when@test_oidc:
+    framework:
+        test: true
+        cache:
+            pools:
+                cache.oidc:
+                    adapter: cache.adapter.array

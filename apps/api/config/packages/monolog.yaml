@@ -21,6 +21,8 @@ when@test: &test
 
 when@test_messaging: *test
 
+when@test_oidc: *test
+
 when@prod:
     monolog:
         handlers:

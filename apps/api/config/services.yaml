@@ -5,6 +5,12 @@ parameters:
     app.search.alias: products
     app.search.shards: 1
     app.search.replicas: 0
+    # Keycloak realms: tokens carry the public URL as issuer, keys are discovered through the internal URL
+    # (the trailing slash is needed, discovery paths are resolved relative to it).
+    app.oidc.backoffice.issuer: '%env(KEYCLOAK_PUBLIC_URL)%/realms/backoffice'
+    app.oidc.backoffice.discovery_url: '%env(KEYCLOAK_INTERNAL_URL)%/realms/backoffice/'
+    app.oidc.shop.issuer: '%env(KEYCLOAK_PUBLIC_URL)%/realms/shop'
+    app.oidc.shop.discovery_url: '%env(KEYCLOAK_INTERNAL_URL)%/realms/shop/'
     # Products per bulk request in catalog:reindex (overridden by --batch-size).
     app.search.batch_size: 500
     # The client never retries; timeouts are in seconds.
@@ -86,6 +92,16 @@ services:
     App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock:
         arguments:
             $alias: '%app.search.alias%'
+
+    # A key source that cannot be read is a 503, not a 401 (see the class).
+    app.security.shop_token_handler:
+        class: App\Shared\Infrastructure\Security\KeySourceOutageTokenHandler
+        decorates: security.access_token_handler.shop
+        arguments: ['@.inner']
+    app.security.admin_token_handler:
+        class: App\Shared\Infrastructure\Security\KeySourceOutageTokenHandler
+        decorates: security.access_token_handler.admin
+        arguments: ['@.inner']
 
     App\Catalog\Application\Port\ProductImageStorage: '@App\Catalog\Infrastructure\Image\FlysystemProductImageStorage'
     App\Catalog\Application\Port\ImageUrlGenerator: '@App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator'

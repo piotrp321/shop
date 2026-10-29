@@ -34,6 +34,16 @@ final class CategoryTreeController
                 description: 'Root categories with their descendants. An empty catalogue gives an empty array.',
                 content: new OA\JsonContent(type: 'array', items: new OA\Items(ref: new Model(type: CategoryNode::class))),
             ),
+            new OA\Response(
+                response: 401,
+                description: 'An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.',
+                content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
+            ),
+            new OA\Response(
+                response: 503,
+                description: 'A token was sent and the keys of its issuer cannot be fetched (problem details without detail).',
+                content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
+            ),
         ],
     )]
     public function __invoke(): JsonResponse
