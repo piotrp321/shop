@@ -35,8 +35,23 @@ Jeśli `make up` zgłosi brak klucza w `.env.local` (nowy sekret, np. hasło rol
 trzeba odtworzyć: usunąć `.env.local` i wolumeny projektu Compose (`make down` i `docker compose down -v` dla
 właściwego `COMPOSE_PROJECT_NAME`). Skrypt inicjalizacji Postgresa tworzy role i bazy tylko na pustym wolumenie.
 
+`make keycloak-reset` usuwa bazę Keycloak i importuje realmy od nowa z `infra/keycloak/realms/` (znikają konta
+założone w sklepie i zmiany z konsoli Keycloak).
+
 Porty i nazwę projektu Compose można zmienić w `.env` (wzór w `.env.example`), np. żeby uruchomić kilka stosów
 naraz z różnych worktree.
+
+## Konta demo
+
+Jawne dane demo, nie sekrety. Kod TOTP panelu: SHA1, 6 cyfr, 30 s; sekret w base32 do aplikacji uwierzytelniającej.
+
+| Realm | Login | Hasło | TOTP (base32) |
+|---|---|---|---|
+| `shop` | `jan.kowalski@example.com`, `anna.nowak@example.com` | `Klient-Demo-1` | — |
+| `backoffice` | `admin` | `Pracownik-Demo-1` | `MRSW23ZNORXXI4BNMFSG22LOFUYDAMBR` |
+| `backoffice` | `support` | `Pracownik-Demo-1` | `MRSW23ZNORXXI4BNON2XA4DPOJ2C2MBR` |
+| `backoffice` | `warehouse` | `Pracownik-Demo-1` | `MRSW23ZNORXXI4BNO5QXEZLIN52XGZJR` |
+| `backoffice` | `marketing` | `Pracownik-Demo-1` | `MRSW23ZNORXXI4BNNVQXE23FORUW4ZZR` |
 
 ## Testy i kontrola jakości
 
@@ -51,7 +66,8 @@ przy każdym pull requeście.
 
 ## Co działa teraz
 
-- Wszystkie usługi startują jedną komendą, każda z health checkiem. Keycloak nie ma jeszcze realmów.
+- Wszystkie usługi startują jedną komendą, każda z health checkiem. Keycloak ma realmy `shop` (klienci)
+  i `backoffice` (pracownicy, hasło i TOTP) z kontami demo.
 - API: `GET /health`, błędy w formacie problem details (RFC 9457), CORS tylko dla panelu, logi w JSON.
 - Sklep i panel: szkielety aplikacji. Sklep ma tokeny wyglądu i reguły ESLint blokujące kolory spoza tokenów,
   oba fronty mają regułę blokującą `fetch` poza klientem API.

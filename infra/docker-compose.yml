@@ -103,16 +103,24 @@ services:
       KC_DB_USERNAME: keycloak
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_HEALTH_ENABLED: "true"
+      # Tokens are always issued for the public URL; containers reach Keycloak at http://keycloak:8080.
       KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8080}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       JAVA_OPTS_KC_HEAP: -Xms256m -Xmx768m
+      # Public browser-facing URLs (not secrets), substituted into the realm files on import.
+      # STORE_CLIENT_SECRET comes from .env.local.
+      ADMIN_URL: http://localhost:${ADMIN_PORT:-5173}
+      STORE_URL: http://localhost:${STORE_PORT:-3000}
     # Maps our secret name to the one Keycloak expects.
     entrypoint:
       - /bin/bash
       - -c
       - 'export KC_DB_PASSWORD="$$KEYCLOAK_DB_PASSWORD"; exec /opt/keycloak/bin/kc.sh "$$@"'
       - kc
-    command: ["start-dev"]
+    # Imports the realms that do not exist yet; `make keycloak-reset` drops the database to import them anew.
+    command: ["start-dev", "--import-realm"]
+    volumes:
+      - ./infra/keycloak/realms:/opt/keycloak/data/import:ro
     ports:
       - "127.0.0.1:${KEYCLOAK_PORT:-8080}:8080"
     healthcheck:
