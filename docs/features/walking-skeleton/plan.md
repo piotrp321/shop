@@ -28,7 +28,7 @@ W toku: nic. Następne zadanie: **Task 13B** (indeks Elasticsearch, po merge'u 1
 | [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | ✅ |
 | [#8](https://github.com/piotrp321/shop/pull/8) | 12 | obrazy w API (Garage, imgproxy) | ✅ |
 | [#9](https://github.com/piotrp321/shop/pull/9) | 13A | wersja produktu i odczyt produktów paczkami do indeksu | ✅ |
-| | 15 (część 1) | drzewo kategorii, OpenAPI sklepu i panelu, kontrola aktualności kontraktu | ✅ |
+| [#11](https://github.com/piotrp321/shop/pull/11) | 15 (część 1) | drzewo kategorii, OpenAPI sklepu i panelu, kontrola aktualności kontraktu | ✅ |
 | | 13B | indeks Elasticsearch, adaptery, przebudowa synchroniczna z przepięciem aliasu | |
 | | 15 (część 2) | lista produktów (po 13B) | |
 | | 10, 14 | komendy tworzenia kategorii i produktów, transactional outbox, RabbitMQ, worker, indeksowanie | |
