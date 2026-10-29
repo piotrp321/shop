@@ -891,6 +891,9 @@ PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikac
 5. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
    `apps/api/openapi.json`, `apps/api/openapi-admin.json` i obu `schema.d.ts`.
 
+Osobny job `e2e` uruchamia pełny stos (`make up`, `make seed`) i `make e2e`. Przy porażce wypisuje logi usług
+i zapisuje ślady Playwrighta (`e2e/test-results`) jako artefakt.
+
 ## Zależności
 
 Akceptacja tej specyfikacji jest zgodą na poniższą listę. Każda inna zależność wymaga osobnego pytania.
