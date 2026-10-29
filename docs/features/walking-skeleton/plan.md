@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: nic. Następne zadanie: **Task 13** (indeks Elasticsearch). Blokery: brak.
+W toku: nic. Następne zadanie: **Task 13B** (indeks Elasticsearch, po merge'u 13A). Blokery: brak.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
@@ -27,7 +27,8 @@ W toku: nic. Następne zadanie: **Task 13** (indeks Elasticsearch). Blokery: bra
 | [#5](https://github.com/piotrp321/shop/pull/5) | 9 | domena Catalog | ✅ |
 | [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | ✅ |
 | [#8](https://github.com/piotrp321/shop/pull/8) | 12 | obrazy w API (Garage, imgproxy) | ✅ |
-| | 13 | indeks Elasticsearch i adapter wyszukiwania | |
+| [#9](https://github.com/piotrp321/shop/pull/9) | 13A | wersja produktu i odczyt produktów paczkami do indeksu | ✅ |
+| | 13B | indeks Elasticsearch, adaptery, przebudowa synchroniczna z przepięciem aliasu | |
 | | 10, 14 | komendy tworzenia kategorii i produktów, transactional outbox, RabbitMQ, worker, indeksowanie | |
 | | 15 | endpointy katalogu i OpenAPI sklepu | |
 | | 16, 17 | dane demo i seed | |
@@ -96,6 +97,9 @@ w zadaniu, do którego należy kod.
    bez 500 (zadanie 22).
 5. Dashboard przy częściowej awarii: niedostępne Management API RabbitMQ daje `queues: null`, niedostępny ES
    daje `indexedProducts: null` i `inSync: false`, niedostępny Postgres daje 503 (zadanie 21).
+6. Odczyt paczkami: `LIMIT` liczy produkty, a nie wiersze po złączeniu z kategoriami dodatkowymi (zadanie 13A).
+7. Niejednoznaczny wynik przepięcia aliasu: przebudowa czyta rzeczywisty cel aliasu i nigdy nie usuwa indeksu,
+   na który alias może wskazywać (zadanie 13B).
 
 ---
 
@@ -312,44 +316,158 @@ w zadaniu, do którego należy kod.
   Odpowiedź 422 z imgproxy w nieoczekiwanym miejscu najpierw diagnozuj z pola `error` w logach `imgproxy`.
 - **Krok 6: Commit** `feat(api): store product originals in Garage and sign imgproxy URLs`
 
-### Task 13: Indeks Elasticsearch
+### Task 13A: Wersja produktu i odczyt paczkami
+
+Osobny PR przed 13B. Bez Elasticsearch i bez nowych zależności. Zasady wersji i odczytu są w sekcjach
+„Persystencja” i „Indeks Elasticsearch → Odczyt produktów do indeksu” specyfikacji.
 
 **Pliki:**
-- Utwórz: `src/Catalog/Application/Search/{ProductDocument,SearchResult,ProductDocumentBuilder,SearchUnavailable}.php`,
-  `src/Catalog/Application/Port/{ProductIndexer,ProductSearch,SearchIndexMaintenance}.php`,
-  `src/Catalog/Infrastructure/Search/{ElasticsearchClientFactory,ProductIndexDefinition,ElasticsearchProductIndexer,ElasticsearchProductSearch,ElasticsearchSearchIndexMaintenance}.php`,
-  `src/Catalog/UI/Console/{SetupSearchIndexCommand,ReindexCommand}.php`,
-  `tests/Integration/Catalog/Search/{ProductSearchTest,SearchIndexMaintenanceTest}.php`,
-  `tests/Unit/Catalog/Search/ProductDocumentBuilderTest.php`
-- Modyfikuj: `apps/api/Makefile` (`init` i `init-test` wywołują też `catalog:search-index:setup`),
-  `.github/workflows/ci.yml` (usługa `elasticsearch` przed testami)
+- Utwórz: `src/Catalog/Domain/Product/ProductModifiedConcurrently.php` (`Conflict`),
+  `src/Catalog/Application/Port/ProductSearchSource.php`, `src/Catalog/Application/Search/ProductSearchSnapshot.php`,
+  `src/Catalog/Infrastructure/Persistence/Doctrine/DbalProductSearchSource.php`,
+  `migrations/Version…AddCatalogProductVersion.php`,
+  `tests/Integration/Catalog/Persistence/{ProductVersionTest,DbalProductSearchSourceTest}.php`
+- Modyfikuj: `src/Catalog/Infrastructure/Persistence/Doctrine/Record/ProductRecord.php` (`#[ORM\Version]`),
+  `src/Catalog/Infrastructure/Persistence/Doctrine/DoctrineProductRepository.php`,
+  `src/Catalog/Domain/Product/ProductRepository.php` (`@throws ProductModifiedConcurrently`), `config/services.yaml`
 
 **Interfejsy:**
 - Produkuje:
-  - `ProductDocument(string $id, string $name, string $slug, string $shortDescription, string $mainCategoryId, list<string> $categoryIds, list<string> $categoryAncestorIds, ?array{key: string, alt: string} $mainImage)`
-  - `ProductDocumentBuilder::build(Product $product, list<Category> $categories): ProductDocument`, gdzie
-    `$categories` to wszystkie kategorie produktu
-  - `ProductIndexer { index(ProductDocument $d): void; countDocuments(): int }`
-  - `ProductSearch { search(?string $categoryId, int $page, int $perPage): SearchResult }`;
-    `SearchResult(list<ProductDocument> $items, int $total)`
-  - `SearchIndexMaintenance { setup(): void; rebuild(iterable<ProductDocument> $documents): int; reset(): void }`
-  - każda metoda adaptera rzuca `SearchUnavailable`, gdy ES nie odpowiada (limit połączenia 1 s)
-  - nazwa aliasu z parametru (`products` w dev, `test_products` w testach)
+  - `ProductSearchSnapshot(string $id, int $version, string $name, string $slug, string $shortDescription, string $mainCategoryId, list<string> $additionalCategoryIds, list<list<string>> $categoryPaths, ?array{key: string, alt: string} $mainImage)`;
+    `categoryPaths` to ścieżki (id od korzenia do kategorii włącznie) kategorii głównej i dodatkowych
+  - `ProductSearchSource { page(?string $afterId, int $limit): list<ProductSearchSnapshot> }`
+  - `ProductModifiedConcurrently` rzucany przez `DoctrineProductRepository::save()`
 
 - **Krok 1: Testy**
-  - `ProductDocumentBuilderTest`: `categoryAncestorIds` to suma `ancestorIds()` wszystkich kategorii produktu
-    jako stringi, bez powtórzeń (dwie kategorie we wspólnym poddrzewie); `categoryIds` zaczyna się od głównej;
-    `mainImage` jest `null` bez zdjęć.
-  - `ProductSearchTest` (drzewo R > C > L i osobny korzeń X; produkty w L, w C i w X, a produkt z L ma też
-    kategorię dodatkową X): `search(R)` daje 2, `search(L)` daje 1, `search(X)` daje 2, `search(null)` daje 3;
-    nazwy `Żel`, `buty`, `Ajax` sortują się jako `Ajax`, `buty`, `Żel`;
-    `perPage=2, page=2` daje 1 element i `total=3`; `page=99` daje `[]` i `total=3`; dwukrotne `index` tego samego
-    dokumentu daje `countDocuments() === 1`; klient z hostem nieosiągalnym rzuca `SearchUnavailable` w czasie
-    poniżej 2 s.
-  - `SearchIndexMaintenanceTest`: `setup()` dwa razy bez błędu; po `rebuild()` alias wskazuje nowy indeks,
-    stary nie istnieje, dokumenty są dostępne.
-- **Krok 2: FAIL. Krok 3: implementacja i komendy konsoli. Krok 4: PASS (`make -C apps/api check test`).**
-- **Krok 5: Commit** `feat(api): add Elasticsearch read model for products`
+  - `ProductVersionTest`:
+    - nowy produkt ma wersję 1;
+    - zmiana nazwy daje 2;
+    - zmiana wyłącznie kategorii dodatkowych zwiększa wersję (to sprawdza, czy wystarczy `#[ORM\Version]`);
+    - zapis bez zmian nie tworzy nowego stanu pod starą wersją.
+    - Równoległe zapisy, na dwóch osobnych połączeniach poza transakcją dama i z własnym sprzątaniem: oba
+      odczytują wersję 1, pierwszy commituje zmianę kategorii, drugi zapisuje inną zmianę. Drugi dostaje
+      `ProductModifiedConcurrently`, a wiersz i `catalog_product_category` zawierają wyłącznie stan pierwszego
+      z wersją 2. Po konflikcie kolejna operacja na repozytorium działa.
+  - `DbalProductSearchSourceTest`:
+    - 7 produktów i `limit=3` dają paczki 3, 3, 1, potem pustą;
+    - 6 produktów i `limit=3` dają 3, 3 i pustą;
+    - pusty katalog daje pustą listę;
+    - każdy id występuje dokładnie raz, rosnąco;
+    - produkty z 10 kategoriami dodatkowymi przy `limit=2` dają dokładnie 2 produkty z kompletem kategorii
+      (LIMIT na produktach, nie na wierszach złączenia);
+    - wersja i pola zgodne z zapisem; produkt bez zdjęć ma `mainImage === null`;
+    - liczba zapytań SQL na paczkę jest stała (middleware DBAL albo logger zapytań);
+    - 5000 produktów wstawionych przez SQL z `limit=500`: przyrost szczytu pamięci po przejściu wszystkich paczek
+      mieści się w ustalonym limicie (wartość w teście z komentarzem) i nie rośnie z liczbą paczek.
+- **Krok 2: FAIL. Krok 3: migracja (`make -C apps/api migration`), rekord, repozytorium, port i implementacja DBAL
+  (jedno zapytanie z CTE: najpierw `LIMIT` na `catalog_product`, potem złączenia i agregacja).
+  Krok 4: PASS (`make -C apps/api check test`).**
+- **Krok 5: Commity** `feat(api): version catalog products` i
+  `feat(api): read products for the search index in id-ordered pages`
+
+### Task 13B: Indeks Elasticsearch
+
+Po merge'u 13A. Zachowanie opisuje sekcja „Indeks Elasticsearch” specyfikacji, razem z ograniczeniami
+przebudowy synchronicznej. Zależności z sekcji „Zależności” specyfikacji; `php-http/discovery` z
+`allow-plugins: false`, a `Psr18Client` wstrzyknięty jawnie.
+
+**Pliki:**
+- Utwórz:
+  `src/Catalog/Application/Search/{ProductDocument,ProductDocumentBuilder,SearchResult,IndexOutcome,BulkResult,ActivationResult,RebuildReport,SearchUnavailable,SearchIndexError,ProductSearchIndexRebuilder}.php`,
+  `src/Catalog/Application/Port/{ProductIndexer,ProductSearch,SearchIndexMaintenance,SearchIndexRebuildLock}.php`,
+  `src/Catalog/Infrastructure/Search/{ElasticsearchClientFactory,ElasticsearchErrorClassifier,ProductIndexDefinition,ElasticsearchProductIndexer,ElasticsearchProductSearch,ElasticsearchSearchIndexMaintenance}.php`,
+  `src/Catalog/Infrastructure/Persistence/Doctrine/PostgresSearchIndexRebuildLock.php`,
+  `src/Catalog/UI/Console/{SetupSearchIndexCommand,ReindexCommand}.php`,
+  `tests/Unit/Catalog/Search/{ProductDocumentBuilderTest,ProductSearchIndexRebuilderTest}.php`,
+  `tests/Integration/Catalog/Search/{ElasticsearchClientTest,SearchIndexSetupTest,ProductIndexerTest,ProductSearchTest,SearchIndexMaintenanceTest,SearchIndexRebuildTest}.php`,
+  `tests/Support/Search/ResponseDroppingHttpClient.php` (dekorator PSR-18: wysyła żądanie, potem zgłasza błąd sieci)
+- Modyfikuj: `composer.json`, `composer.lock`, `config/services.yaml` (parametry: alias, shardy, repliki, paczka,
+  limity czasu), `infra/docker-compose.yml` (env `api`: `ELASTICSEARCH_URL`), `apps/api/Makefile` (`init`:
+  `catalog:search-index:setup`; `init-test`: `catalog:search-index:setup --recreate`), `apps/api/CLAUDE.md`
+  (cele `init` i `init-test`), `.github/workflows/ci.yml` (usługa `elasticsearch` przed testami)
+
+**Interfejsy:**
+- Konsumuje: `ProductSearchSource` i `ProductSearchSnapshot` (zadanie 13A).
+- Produkuje:
+  - `ProductDocument(string $id, int $version, string $name, string $slug, string $shortDescription, string $mainCategoryId, list<string> $categoryIds, list<string> $categoryAncestorIds, ?array{key: string, alt: string} $mainImage)`
+  - `ProductDocumentBuilder::build(ProductSearchSnapshot $s): ProductDocument`
+  - `ProductIndexer { index(ProductDocument $d): IndexOutcome; countDocuments(): int }`; `IndexOutcome`:
+    `Indexed`, `Stale`
+  - `ProductSearch { search(?string $categoryId, int $page, int $perPage): SearchResult }`;
+    `SearchResult(list<ProductDocument> $items, int $total)`
+  - `SearchIndexMaintenance`:
+    - `setup(): list<string>` zwraca osierocone indeksy;
+    - `recreate(): void`;
+    - `activeIndex(): string`;
+    - `createIndex(): string`;
+    - `write(string $index, list<ProductDocument> $documents): BulkResult` z wynikiem każdej pozycji;
+    - `verify(string $index, int $expectedDocuments): void` rzuca `SearchIndexError`;
+    - `activate(string $index, string $expectedCurrent): ActivationResult` (`Activated`, `NotActivated`, `Unknown`);
+    - `deleteIndex(string $index): void` odmawia dla celu aliasu.
+  - `SearchIndexRebuildLock { tryAcquire(): bool; release(): void }`
+  - `ProductSearchIndexRebuilder { rebuild(int $batchSize): RebuildReport; reset(): void }`
+  - wyjątki `SearchUnavailable` (przejściowy) i `SearchIndexError` (trwały)
+
+- **Krok 1: Testy**
+  - `ProductDocumentBuilderTest`:
+    - `categoryAncestorIds` to suma ścieżek bez powtórzeń (dwie kategorie we wspólnym poddrzewie);
+    - `categoryIds` zaczyna się od głównej;
+    - wersja przepisana ze snapshotu;
+    - `mainImage` jest `null` bez zdjęć.
+  - `ProductSearchIndexRebuilderTest` (fake'i portów):
+    - zajęta blokada: brak zmian;
+    - błąd paczki, wynik `Stale` albo nieudana weryfikacja: usunięty nowy indeks, brak przepięcia, raport
+      nieudany;
+    - `NotActivated`: usunięty nowy indeks;
+    - `Unknown`: nic nie usunięte, raport nieznany;
+    - `Activated` z błędem usunięcia starego indeksu: sukces z ostrzeżeniem;
+    - paczki czytane kursorem `afterId` do pustej listy;
+    - blokada zwalniana w każdej ścieżce;
+    - `reset()` przepina na pusty indeks.
+  - `ElasticsearchClientTest`:
+    - nieosiągalny host daje `SearchUnavailable` w czasie poniżej 2 s;
+    - klasyfikacja odpowiedzi 429, 503 i 400 (przejściowy, przejściowy, trwały).
+  - `SearchIndexSetupTest`:
+    - `setup()` dwa razy bez błędu;
+    - zwykły indeks o nazwie aliasu daje błąd bez zmian;
+    - alias na dwóch indeksach daje błąd;
+    - inny `definition_hash` daje błąd z instrukcją;
+    - osierocony indeks jest zgłoszony, a nie usunięty;
+    - `recreate()` czyści i tworzy od nowa.
+  - `ProductIndexerTest`:
+    - `index` z wersją 2, potem 1: zostaje 2, wynik `Stale`;
+    - dwa razy ta sama wersja: `countDocuments() === 1`, drugi `Stale`, bez wyjątku;
+    - zapis bez aliasu jest odrzucony i nie tworzy indeksu (`require_alias`);
+    - bulk z jedną pozycją z błędem trwałym (np. slug ponad limit termu keyword) i pozostałymi poprawnymi daje
+      wyniki per pozycja, a poprawne dokumenty są zapisane.
+  - `ProductSearchTest`, drzewo R > C > L i osobny korzeń X; produkty w L, w C i w X, a produkt z L ma też
+    kategorię dodatkową X:
+    - `search(R)` daje 2, `search(L)` daje 1, `search(X)` daje 2, `search(null)` daje 3;
+    - nazwy `Żel`, `buty`, `Ajax` sortują się jako `Ajax`, `buty`, `Żel`;
+    - `perPage=2, page=2` daje 1 element i `total=3`; `page=99` daje `[]` i `total=3`;
+    - przypadki okna wyników: `from` na końcu okna oraz `from + size` przekraczające okno (na indeksie testowym
+      z obniżonym `max_result_window`).
+  - `SearchIndexMaintenanceTest`:
+    - `activate` przy aliasie wskazującym inny indeks niż oczekiwany daje `NotActivated` bez zmian;
+    - `activate` z `ResponseDroppingHttpClient` daje `Activated` po odczycie stanu, a nowy indeks istnieje;
+    - `deleteIndex` celu aliasu odmawia;
+    - `verify` przy złej liczbie dokumentów albo innym hashu rzuca `SearchIndexError`.
+  - `SearchIndexRebuildTest`, prawdziwe ES i Postgres:
+    - 7 produktów i `--batch-size=3`: alias na nowym indeksie, stary usunięty, 7 dokumentów z wersjami;
+    - druga przebudowa przy blokadzie wziętej na osobnym połączeniu kończy się kodem 1 bez zmian;
+    - `catalog:reindex` zwraca kod 0, 1 i 2 w odpowiednich przypadkach.
+- **Krok 2: FAIL. Krok 3: zależności, implementacja, komendy, Makefile, compose i CI.
+  Krok 4: PASS (`make -C apps/api check test`).**
+- **Krok 5: Sprawdź na stosie:**
+  - świeży projekt Compose: `make up` tworzy alias i indeks;
+  - drugie `make up` nic nie zmienia;
+  - `make -C apps/api init` przy zatrzymanym ES kończy się kodem różnym od 0 w czasie kilku sekund;
+  - ręcznie utworzony zwykły indeks `products` przed `init` daje czytelny błąd.
+- **Krok 6: Commity** (po jednej zmianie logicznej):
+  - `build(api): add the Elasticsearch client`;
+  - `feat(api): define the product search index`;
+  - `feat(api): index and search product documents`;
+  - `feat(api): rebuild the product search index with an alias switch`.
 
 ### Task 14: Outbox, Messenger i indeksowanie
 
@@ -368,8 +486,11 @@ w zadaniu, do którego należy kod.
   `query.bus` i `event.bus`), `symfony.lock` (wpis `config/packages/messenger.yaml` odpowiada wtedy istniejącemu plikowi)
 
 **Interfejsy:**
-- Konsumuje: `DomainEventPublisher` (zadanie 9), komendy (zadanie 10, w tym samym PR), `ProductIndexer`
-  i `ProductDocumentBuilder` (zadanie 13). `IndexProduct` wczytuje wszystkie kategorie produktu.
+- Konsumuje: `DomainEventPublisher` (zadanie 9), komendy (zadanie 10, w tym samym PR), `ProductSearchSource`
+  (zadanie 13A), `ProductIndexer` i `ProductDocumentBuilder` (zadanie 13B). `IndexProduct` czyta produkt
+  z wersją przez `ProductSearchSource`, do którego to zadanie dodaje odczyt po id tym samym zapytaniem co `page`.
+  `IndexOutcome::Stale` kończy obsługę bez ponowienia, `SearchUnavailable` jest ponawiany, a `SearchIndexError`
+  trafia od razu do `failed` (`UnrecoverableMessageHandlingException`).
 - Produkuje: szyny i transporty ze specyfikacji; routing `DomainEvent` → `outbox`;
   `RelayDomainEventToBroker` z `#[AsMessageHandler(bus: 'event.bus', fromTransport: 'outbox')]`, który ponownie
   wysyła zdarzenie z `TransportNamesStamp(['events'])`; `IndexProduct` z
@@ -409,7 +530,7 @@ w zadaniu, do którego należy kod.
   `.github/workflows/ci.yml` (krok aktualności kontraktu)
 
 **Interfejsy:**
-- Konsumuje: `ProductSearch` (zadanie 13), `ImageUrlGenerator` i `ImageSize` (zadanie 12), `CategoryRepository`.
+- Konsumuje: `ProductSearch` i `SearchIndexError` (zadanie 13B), `ImageUrlGenerator` i `ImageSize` (zadanie 12), `CategoryRepository`.
 - Produkuje: `ListProducts(?string $categoryId, int $page, int $perPage)` → `ProductPage(list<ProductListItem> $items, int $page, int $perPage, int $total)`;
   `ImageView(string $alt, string $size, string $aspectRatio, array<string, list<array{width: int, url: string}>> $variants)`;
   `GetCategoryTree` → `list<CategoryNode(string $id, string $name, list<CategoryNode> $children)>`; schematy
@@ -493,7 +614,7 @@ w zadaniu, do którego należy kod.
 
 **Interfejsy:**
 - Konsumuje: `CreateCategory` i `CreateProduct` (zadanie 10, z kategoriami dodatkowymi), `ProductImageStorage` (zadanie 12),
-  `SearchIndexMaintenance` i `ProductIndexer` (zadanie 13).
+  `ProductSearchIndexRebuilder::reset()` i `ProductIndexer` (zadanie 13B).
 - Produkuje:
   - `DemoCatalogExpander::expand(DemoCatalogDefinition $d): DemoCatalog` z kategoriami w kolejności „rodzic przed
     dzieckiem” i produktami w kolejności rozwijania (szablony w kolejności z pliku, potem marki, modele, kolory)

@@ -69,7 +69,7 @@ idempotentny krok, uruchamiany jawnie:
 | Gdzie | Krok |
 |---|---|
 | lokalnie | `make up` po starcie usług, a przed startem `worker`, wywołuje `make -C apps/api init`: `doctrine:migrations:migrate` i `catalog:search-index:setup` |
-| testy na usługach stosu | `make -C apps/api init-test`: te same komendy w środowisku `test` (baza `shop_test`, alias `test_products`); cel `test` api wywołuje go przed testami |
+| testy na usługach stosu | `make -C apps/api init-test`: te same komendy w środowisku `test` (baza `shop_test`, alias `test_products`), przy czym indeks testowy powstaje od nowa (`catalog:search-index:setup --recreate`); cel `test` api wywołuje go przed testami |
 | CI | usługi potrzebne testom startują przed `make -C apps/api test`, który sam wywołuje `init-test` |
 | wdrożenie (Kubernetes) | osobny Job z tymi samymi komendami co `init`, przed wdrożeniem nowej wersji aplikacji |
 
@@ -165,7 +165,7 @@ w aplikacji uwierzytelniającej.
 
 | Moduł | Domain | Application | Infrastructure | UI |
 |---|---|---|---|---|
-| `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; porty `ProductSearch`, `ProductIndexer`, `ProductImageStorage`, `ImageUrlGenerator`; lista rozmiarów `ImageSize` | Doctrine (rekordy z atrybutami), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, loader danych demo | `GET /api/v1/products`, `GET /api/v1/categories`, komendy konsoli |
+| `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; przebudowa indeksu `ProductSearchIndexRebuilder`; porty `ProductSearch`, `ProductIndexer`, `ProductSearchSource`, `SearchIndexMaintenance`, `SearchIndexRebuildLock`, `ProductImageStorage`, `ImageUrlGenerator`; lista rozmiarów `ImageSize` | Doctrine (rekordy z atrybutami), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, loader danych demo | `GET /api/v1/products`, `GET /api/v1/categories`, komendy konsoli |
 | `Customer` | — | — | `CustomerUser` i `CustomerUserProvider` (z tokena realmu `shop`) | `GET /api/v1/me` |
 | `Backoffice` | — | zapytanie `GetDashboard`; porty `CatalogStatistics`, `SystemHealth`, `MessagingStatistics` | `StaffUser` i `StaffUserProvider` (z tokena realmu `backoffice`), `DashboardVoter`, adaptery portów | `GET /api/v1/admin/me`, `GET /api/v1/admin/dashboard` |
 | `Shared` | interfejs `DomainEvent` (`occurredAt()`), port `DomainEventPublisher`, interfejsy-znaczniki wyjątków `ProblemException`, `NotFound`, `Conflict`, `InvalidInput` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
@@ -225,7 +225,7 @@ Persystencja:
 
 - `catalog_category`: `id`, `parent_id` (FK), `name`, `path` (tekst z indeksem `text_pattern_ops`).
 - `catalog_product`: `id`, `slug` (ograniczenie unikalności), `name`, `short_description`, `primary_category_id`
-  (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB).
+  (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB), `version` (BIGINT NOT NULL).
 - `catalog_product_category`: dodatkowe kategorie produktu. `product_id` (FK do `catalog_product`, `ON DELETE
   CASCADE`) i `category_id` (FK do `catalog_category`), klucz główny (`product_id`, `category_id`) i indeks na
   `category_id` do wyszukiwania produktów po kategorii. Kategoria główna nie trafia do tej tabeli (niezmiennik
@@ -255,6 +255,23 @@ Persystencja:
   `CategoryAlreadyExists` i `ProductAlreadyExists` (`Conflict`, 409). Gdy dwa równoczesne utworzenia z tym samym id
   oba przejdą sprawdzenie, repozytorium zamienia naruszenie klucza głównego na ten sam wyjątek.
 - Handler `CreateProduct` sprawdza, że istnieją wszystkie kategorie produktu (`CategoryNotFound`, 404).
+- Wersja produktu (`catalog_product.version`) należy do persystencji, nie do domeny: `Product` jej nie zna.
+  Nowy produkt ma wersję 1. Każdy zapis, który zmienia wiersz produktu albo jego kategorie dodatkowe, zwiększa ją
+  o 1 w tej samej transakcji. Wersję pilnuje `#[ORM\Version]` na `ProductRecord`. Doctrine nie zwiększa wersji
+  przy zmianie wyłącznie kolekcji ManyToMany, więc robi to repozytorium w tej samej transakcji zapytaniem
+  `UPDATE catalog_product SET version = version + 1 WHERE id = :id AND version = :expected`. Porównywana jest wersja
+  odczytana w tej samej jednostce pracy (`get()`, a potem `save()` w jednym handlerze albo jednej transakcji).
+  Zapis, w którym ten odczyt jest nieaktualny (równoległy zapis tego samego produktu), rzuca
+  `ProductModifiedConcurrently` (`Conflict`, 409) i nie zmienia ani `catalog_product`, ani
+  `catalog_product_category`. Stan odczytany we wcześniejszym żądaniu nie jest wykrywany, bo `Product` nie niesie
+  wersji. Ochrona między żądaniami wymagałaby wersji w komendzie i nie jest teraz w zakresie. Dwa różne stany produktu nigdy nie
+  mają tej samej wersji.
+- Wersja chroni tylko dane z wiersza produktu i jego przypisań do kategorii. Pola dokumentu wyszukiwarki pochodzące
+  z innych agregatów (ścieżki kategorii, w przyszłości ceny, dostępność, atrybuty) nie są nią objęte. Wymaga to
+  osobnego wersjonowania całej projekcji wyszukiwania. Do tego czasu zmiana drzewa kategorii wymaga pełnej
+  przebudowy indeksu (w szkielecie drzewo się nie zmienia).
+- Wersje mogą się cofnąć tylko przy wyczyszczeniu albo odtworzeniu bazy. Seed zawsze resetuje też indeks, a po
+  odtworzeniu bazy z kopii obowiązuje pełna przebudowa indeksu.
 
 Identyfikatory nadaje wywołujący komendę (komendy przyjmują `id`). Domena nigdy nie wylicza identyfikatora
 z innych pól. Seed używa UUID v5 ze sluga (opis niżej), przyszłe kontrolery będą nadawać UUID v7.
@@ -286,20 +303,122 @@ Przepływ:
    a odbiorcy nigdy przy konsumpcji z `outbox`, więc nie ma pętli ani podwójnej obsługi.
 5. Ponowienia: 3 próby z opóźnieniem 1 s i mnożnikiem 3, potem transport `failed`.
 
-Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` czyta aktualny stan produktu i wszystkich jego kategorii
-(z przodkami) z Postgresa i robi upsert dokumentu po `id`, więc jest idempotentny i niezależny od kolejności zdarzeń.
+Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` czyta aktualny stan produktu z wersją przez
+`ProductSearchSource` i zapisuje dokument z tą wersją. Starszy albo powtórzony zapis Elasticsearch odrzuca, a handler
+traktuje to jako obsłużoną wiadomość, bez ponowienia. Handler jest więc idempotentny i niezależny od kolejności
+zdarzeń.
 
 ### Indeks Elasticsearch
 
-- Alias `products` wskazuje na fizyczny indeks `products_<znacznik czasu>`. Elasticsearch jest wyłącznie
-  modelem odczytu.
-- Dokument: `id`, `name` (text oraz pole `name.sort` typu keyword z normalizerem lowercase + asciifolding),
-  `slug`, `short_description` (nieindeksowane), `main_category_id`, `category_ids` (keyword, wszystkie kategorie
-  produktu), `category_ancestor_ids` (keyword, suma kategorii produktu i wszystkich ich przodków, bez
-  powtórzeń), `main_image` (`key`, `alt`; nieindeksowane).
-- `catalog:reindex` odbudowuje indeks z Postgresa: nowy indeks fizyczny, zasilenie, przepięcie aliasu, usunięcie
-  starego.
-- `catalog:search-index:setup` tworzy indeks i alias, jeśli nie istnieją.
+Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
+
+**Indeksy i alias**
+- Aplikacja czyta i zapisuje przez alias (`products` w dev, `test_products` w testach, z parametru). Alias wskazuje
+  dokładnie jeden fizyczny indeks `<alias>_<UTC rrrrmmddggmmssmmm>_<6 znaków hex>`, więc kolejne przebudowy nie
+  kolidują nazwami.
+- `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy i repliki pochodzą z parametrów
+  (domyślnie 1 i 0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
+  shardów i replik), z którym porównujemy indeks przy `setup` i przed przepięciem.
+- Mapping ma `dynamic: strict`. Pola: `id` (keyword), `version` (long), `name` (text oraz `name.sort` typu
+  keyword z normalizerem lowercase + asciifolding), `slug` (keyword), `short_description` (text, `index: false`),
+  `main_category_id`, `category_ids` (keyword, wszystkie kategorie produktu, główna pierwsza),
+  `category_ancestor_ids` (keyword, suma kategorii produktu i wszystkich ich przodków, bez powtórzeń),
+  `main_image` (obiekt z `enabled: false`: `key`, `alt`).
+
+**Zapis**
+- Każdy zapis ma `version` dokumentu równe wersji produktu i `version_type=external`. Elasticsearch odrzuca zapis
+  z wersją nie większą niż zapisana (409). To wynik „przestarzały”, a nie błąd: dotyczy zarówno starszego stanu,
+  jak i powtórzenia tej samej wersji.
+- Pojedynczy zapis (`ProductIndexer`) idzie przez alias z `require_alias=true`, więc nigdy nie utworzy indeksu
+  o nazwie aliasu. Zapis paczki przy przebudowie idzie bulkiem bezpośrednio do wskazanego indeksu fizycznego.
+- Wynik bulka jest sprawdzany pozycja po pozycji: zapisany, przestarzały, błąd przejściowy albo błąd trwały.
+- Zapisy nie wymuszają odświeżenia indeksu.
+
+**Wyszukiwanie**
+- Filtr `term` na `category_ancestor_ids` w kontekście `filter`, sortowanie po `name.sort`, potem po `id`,
+  `track_total_hits: true`.
+- Okno wyników ES ma 10 000 pozycji. Gdy `from` sięga końca okna, zapytanie ma `size: 0` i zwraca pustą listę
+  z prawdziwym `total`. Gdy `from + size` przekracza okno, `size` jest przycinany do końca okna.
+
+**Błędy**
+- `SearchUnavailable`: błąd przejściowy, czyli brak połączenia, przekroczony czas, 429, 502, 503, 504, odrzucenie
+  z braku zasobów (`es_rejected_execution_exception`). Endpoint mapuje go na 503, a worker ponawia.
+- `SearchIndexError`: błąd trwały, czyli pozostałe 4xx, odrzucony mapping, brak aliasu albo stan indeksów
+  niezgodny z oczekiwanym. To błąd programisty albo konfiguracji: 500 w API, bez ponowień w workerze.
+- Klient nie ponawia żądań. Limit połączenia 1 s. Limit odpowiedzi z parametrów: 2 s dla wyszukiwania,
+  liczenia, pojedynczych zapisów i operacji na aliasach; 30 s dla bulka, tworzenia indeksu i odświeżania.
+
+**`catalog:search-index:setup`**
+- Gdy nie ma aliasu ani indeksu o jego nazwie: tworzy indeks fizyczny i alias. Wywołany drugi raz nie robi nic.
+- Kończy się błędem (kod 1, komunikat z instrukcją) i niczego nie zmienia, gdy: istnieje zwykły indeks o nazwie
+  aliasu, alias wskazuje inną liczbę indeksów niż jeden albo `definition_hash` indeksu różni się od definicji
+  (instrukcja: `catalog:reindex`).
+- Wypisuje ostrzeżenie z listą indeksów `<alias>_*`, na które nie wskazuje alias. Nie usuwa ich.
+- `--recreate` usuwa alias i wszystkie indeksy `<alias>_*`, potem tworzy je od nowa. Przy `APP_ENV=prod` odmawia
+  (kod 1). Używa go `init-test`, bo indeks testowy jest jednorazowy.
+
+**`catalog:reindex` (przebudowa synchroniczna)**
+
+`ProductSearchIndexRebuilder` w warstwie aplikacji, kolejno:
+
+1. Bierze blokadę przebudowy (`SearchIndexRebuildLock`: sesyjna blokada doradcza Postgresa, zwalniana też
+   przy awarii procesu). Gdy blokada jest zajęta, kończy się kodem 1, nic nie zmieniając. Tej samej blokady
+   używa `setup`.
+2. Odczytuje aktualny cel aliasu. Musi to być dokładnie jeden indeks.
+3. Tworzy nowy indeks fizyczny z aktualną definicją.
+4. Czyta produkty paczkami (`ProductSearchSource::page`, domyślnie po 500, z parametru i opcji
+   `--batch-size`) i zapisuje każdą paczkę bulkiem. Pierwszy błąd przejściowy, trwały albo wynik „przestarzały”
+   (w nowym indeksie nie powinien wystąpić) przerywa przebudowę.
+5. Weryfikuje: odświeżenie, liczba dokumentów równa liczbie zapisanych, `definition_hash` zgodny, indeks
+   istnieje i ma zdrowe shardy. Liczba dokumentów to dodatkowy test, a nie dowód pełnej spójności.
+6. Przepina alias jednym żądaniem `_aliases`: `remove` starego celu z `must_exist: true` i `add` nowego.
+   Elasticsearch nie ma porównania i zamiany aliasu, więc poprawność zapewniają razem: blokada przebudowy,
+   sprawdzenie dokładnego celu przed żądaniem, atomowość akcji w jednym żądaniu (`remove` nie przejdzie, gdy
+   alias nie wskazuje już starego celu) i sprawdzenie po żądaniu, że alias wskazuje dokładnie nowy indeks.
+7. Przy niejednoznacznym wyniku (przekroczony czas, zerwane połączenie) czyta rzeczywisty cel aliasu:
+   - dokładnie nowy indeks: przepięcie się udało;
+   - dokładnie stary: przepięcie się nie udało;
+   - inny stan albo brak odpowiedzi: stan nieznany.
+8. Po udanym przepięciu usuwa stary indeks. Nieudane usunięcie to ostrzeżenie, a nie porażka przebudowy:
+   stary indeks zostaje na liście osieroconych w `setup`.
+9. Po nieudanej przebudowie, czyli błąd w krokach 3–5 albo przepięcie, które się nie udało, usuwa nowy indeks
+   i kończy się kodem 1. Alias zostaje przy starym indeksie.
+10. Przy stanie nieznanym niczego nie usuwa i kończy się kodem 2 z nazwami obu indeksów.
+
+Usunięcie indeksu zawsze najpierw sprawdza, że alias na niego nie wskazuje, i odmawia w przeciwnym razie.
+
+`ProductSearchIndexRebuilder::reset()` (używany przez seed) tworzy pusty indeks, przepina na niego alias
+i usuwa stary, tak jak przebudowa, tylko bez zasilania. Alias nie znika ani na chwilę.
+
+**Ograniczenia tej przebudowy**
+
+To świadome ograniczenia szkieletu, a nie docelowe rozwiązanie dla katalogu rzędu 10 mln produktów:
+
+- To nie jest przebudowa online. Zapisy przyrostowe w trakcie przebudowy (`IndexProduct`) trafiają przez alias
+  do starego indeksu. Produkt zmieniony po tym, jak przebudowa minęła jego pozycję, nie trafi do nowego indeksu.
+  Poprawny wynik wymaga braku równoległych zapisów katalogu (w szkielecie zapisuje tylko seed, który używa
+  `reset()`).
+- Brak checkpointów i wznowienia: przerwana przebudowa zaczyna się od początku. Indeks osierocony po awarii
+  procesu zostaje i jest wypisywany przez `setup`.
+- Brak równoległego zasilania przez wielu consumerów, okresu retencji starego indeksu i rollbacku.
+
+Port odczytu paczkami (`page(afterId, limit)`), zapis paczki do wskazanego indeksu z wynikiem każdej pozycji
+i osobne operacje utworzenia, weryfikacji i przepięcia indeksu są podstawą pod przyszłą przebudowę online
+z wieloma consumerami, która zastąpi pętlę w `ProductSearchIndexRebuilder`.
+
+**Odczyt produktów do indeksu**
+- `ProductSearchSource` (port w `Application`, implementacja na DBAL, bez hydratacji agregatów) zwraca
+  `page(?afterId, limit)`: najwyżej `limit` produktów o `id > afterId`, posortowanych po `id`. Pusta lista oznacza
+  koniec. `afterId` musi być UUID (wielkość liter bez znaczenia, wartość jest normalizowana do małych liter) albo
+  `null`, w przeciwnym razie metoda rzuca `\InvalidArgumentException`. `limit` musi wynosić co najmniej 1.
+- Jedno zapytanie SQL na paczkę, czyli jeden spójny snapshot. Najpierw CTE wybiera identyfikatory paczki
+  z `LIMIT` na `catalog_product`, dopiero potem zapytanie dołącza kategorie dodatkowe i ścieżki kategorii
+  i agreguje je dla każdego produktu. `LIMIT` nigdy nie działa na wierszach po złączeniu.
+  Pierwsza paczka nie ma warunku kursora, kolejne mają `WHERE id > :after`, dzięki czemu kursor pozostaje warunkiem
+  indeksu klucza głównego także w planie generycznym (test przypina to przez `EXPLAIN`).
+- Wynik dla produktu: id, wersja, pola dokumentu, id kategorii głównej, posortowane id kategorii dodatkowych
+  i ścieżki wszystkich kategorii produktu. Przodków liczymy ze ścieżek, bez wczytywania kategorii nadrzędnych.
+- Pamięć zależy od rozmiaru paczki, a nie od wielkości katalogu.
 
 ### Obrazy
 
@@ -472,8 +591,8 @@ w tej kolejności:
 
 | Komenda | Działanie |
 |---|---|
-| `catalog:search-index:setup` | tworzy indeks i alias `products`, jeśli nie istnieją |
-| `catalog:reindex` | odbudowuje indeks z Postgresa z przepięciem aliasu |
+| `catalog:search-index:setup [--recreate]` | tworzy indeks i alias `products`, jeśli nie istnieją, i sprawdza ich stan (sekcja „Indeks Elasticsearch”) |
+| `catalog:reindex [--batch-size=N]` | przebudowa synchroniczna z Postgresa z przepięciem aliasu; kod 0 po przepięciu, 1 gdy alias zostaje przy starym indeksie, 2 gdy stan aliasu jest nieznany |
 | `catalog:seed-demo` | resetuje dane katalogu (tabele, outbox, indeks, bucket) i ładuje dane demo (opis niżej); przy `APP_ENV=prod` odmawia działania (kod 1, bez zmian w danych), chyba że dostanie flagę `--force-reset` |
 
 ## Kontrakt API i klienci TS
@@ -624,7 +743,7 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 
 | Aplikacja | Testy jednostkowe (bez usług) | Testy integracyjne i funkcjonalne (na stosie) |
 |---|---|---|
-| api | domena: ścieżka kategorii, niezmienniki produktu, `TaxCategory`, `Slug`; handlery z adapterami in-memory; routing Messengera na transportach `in-memory://` | repozytoria Doctrine; atomowość outboxa; adapter ES (filtr po przodkach, sortowanie, paginacja); zapis do Garage; podpis imgproxy na żywym imgproxy; droga seed → outbox → RabbitMQ → ES; sondy usług; testy funkcjonalne endpointów |
+| api | domena: ścieżka kategorii, niezmienniki produktu, `TaxCategory`, `Slug`; handlery z adapterami in-memory; budowa dokumentu wyszukiwarki; przebieg przebudowy indeksu na fake'ach portów; routing Messengera na transportach `in-memory://` | repozytoria Doctrine (z wersją produktu); odczyt paczkami; adapter ES (filtr po przodkach, sortowanie, paginacja, wersje, bulk, alias); zapis do Garage; podpis imgproxy na żywym imgproxy; droga seed → outbox → RabbitMQ → ES; sondy usług; testy funkcjonalne endpointów |
 | store | reguły ESLint (kolory, klasy spoza tokenów, `fetch`); walidacja `returnTo`; budowa `srcset` z wariantów; `CategoryTree`; `ProductGrid` | blokada odświeżania na prawdziwym Redisie |
 | admin | dashboard; `useIdleLogout`; 401 → `signinRedirect`; guard routera | — |
 
@@ -639,6 +758,16 @@ Wymagane przypadki:
   zwraca 422.
 - **Upload:** typ rozpoznany po treści (PNG z rozszerzeniem `.jpg` dostaje klucz `.png`); SVG, HTML, pusta treść,
   plik ponad limit rozmiaru i obraz ponad limit rozdzielczości dają `InvalidImage` i nie trafiają do bucketu.
+- **Wersja produktu:** zmiana pól i zmiana samych kategorii dodatkowych zwiększają wersję; dwa zapisy oparte na
+  tym samym odczycie (drugi po commicie pierwszego, na osobnych połączeniach) dają konflikt drugiego bez zmian
+  w tabelach.
+- **Odczyt paczkami:** kilka paczek, granica paczki na ostatnim produkcie, pusty katalog, każdy produkt dokładnie
+  raz, poprawne kategorie dodatkowe przy produktach z wieloma kategoriami (paczka liczy produkty, nie wiersze
+  złączenia), stała liczba zapytań na paczkę, szczyt pamięci przy kilku tysiącach produktów w ustalonym limicie.
+- **Indeks:** starsza wersja i powtórzenie nie nadpisują dokumentu; częściowy błąd bulka jest wykryty;
+  zerwana odpowiedź po wykonanym przepięciu aliasu (prawdziwy ES, dekorator klienta HTTP) kończy się
+  sprawdzeniem stanu i nie usuwa nowego indeksu; nieudana weryfikacja nie zmienia aliasu; druga przebudowa przy
+  zajętej blokadzie odmawia; zwykły indeks o nazwie aliasu jest wykryty przez `setup` i odrzucony przy zapisie.
 - **Endpointy:** każdy ma test funkcjonalny. Endpointy chronione: brak tokena, token z drugiego realmu, zła
   audience, wygasły token, poprawny token. Endpointy publiczne: nagłówki `Cache-Control` i `Vary: Origin`, błędne
   parametry (400 z naruszeniami). Dashboard: rola `support` dostaje `system: null`, rola `admin` dostaje `system`.
@@ -701,7 +830,7 @@ Akceptacja tej specyfikacji jest zgodą na poniższą listę. Każda inna zależ
 
 | Gdzie | Produkcyjne | Deweloperskie |
 |---|---|---|
-| api (Composer) | `symfony/flex`, `symfony/framework-bundle`, `symfony/runtime`, `symfony/console`, `symfony/dotenv`, `symfony/yaml`, `symfony/security-bundle`, `symfony/messenger`, `symfony/amqp-messenger`, `symfony/doctrine-messenger`, `symfony/serializer`, `symfony/property-access`, `symfony/property-info`, `symfony/validator`, `symfony/uid`, `symfony/http-client`, `symfony/monolog-bundle`, `doctrine/doctrine-bundle`, `doctrine/orm`, `doctrine/doctrine-migrations-bundle`, `nelmio/api-doc-bundle`, `nelmio/cors-bundle`, `web-token/jwt-library`, `league/flysystem-bundle`, `league/flysystem-async-aws-s3`, `elasticsearch/elasticsearch` | `phpunit/phpunit`, `symfony/browser-kit`, `phpstan/phpstan`, `phpstan/phpstan-symfony`, `phpstan/phpstan-doctrine`, `phpstan/phpstan-phpunit`, `deptrac/deptrac`, `friendsofphp/php-cs-fixer`, `zenstruck/foundry`, `dama/doctrine-test-bundle` |
+| api (Composer) | `symfony/flex`, `symfony/framework-bundle`, `symfony/runtime`, `symfony/console`, `symfony/dotenv`, `symfony/yaml`, `symfony/security-bundle`, `symfony/messenger`, `symfony/amqp-messenger`, `symfony/doctrine-messenger`, `symfony/serializer`, `symfony/property-access`, `symfony/property-info`, `symfony/validator`, `symfony/uid`, `symfony/http-client`, `symfony/monolog-bundle`, `doctrine/doctrine-bundle`, `doctrine/orm`, `doctrine/doctrine-migrations-bundle`, `nelmio/api-doc-bundle`, `nelmio/cors-bundle`, `web-token/jwt-library`, `league/flysystem-bundle`, `league/flysystem-async-aws-s3`, `elasticsearch/elasticsearch` (wraz z zależnościami przechodnimi: `elastic/transport`, `nyholm/psr7`, `psr/http-client`, `psr/http-factory`, `psr/http-message`, `php-http/httplug`, `php-http/promise`, `php-http/discovery` jako plugin Composera wyłączony w `allow-plugins`, `open-telemetry/api`, `open-telemetry/context`, `symfony/polyfill-php82`; klient HTTP to `symfony/http-client` przez `Psr18Client`) | `phpunit/phpunit`, `symfony/browser-kit`, `phpstan/phpstan`, `phpstan/phpstan-symfony`, `phpstan/phpstan-doctrine`, `phpstan/phpstan-phpunit`, `deptrac/deptrac`, `friendsofphp/php-cs-fixer`, `zenstruck/foundry`, `dama/doctrine-test-bundle` |
 | api (rozszerzenia PHP) | `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache` | `spx` |
 | store (npm) | `next`, `react`, `react-dom`, `openid-client`, `redis`, `openapi-fetch`, `radix-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` | `typescript`, `@types/node`, `@types/react`, `@types/react-dom`, `tailwindcss`, `@tailwindcss/postcss`, `tw-animate-css`, `eslint`, `eslint-config-next`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vitejs/plugin-react`, `@testing-library/react`, `jsdom` |
 | admin (npm) | `vue`, `vue-router`, `pinia`, `primevue`, `@primeuix/themes`, `primeicons`, `oidc-client-ts`, `openapi-fetch` | `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint`, `typescript-eslint`, `eslint-plugin-vue`, `openapi-typescript`, `vitest`, `@vue/test-utils`, `jsdom` |
