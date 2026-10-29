@@ -211,7 +211,7 @@ services:
     env_file:
       - path: ./.env.local
         required: true
-    environment:
+    environment: &api-environment
       APP_ENV: dev
       # Database connection (not secrets); the password is SHOP_DB_PASSWORD from .env.local.
       SHOP_DB_HOST: postgres
@@ -224,6 +224,10 @@ services:
       GARAGE_S3_ENDPOINT: http://garage:3900
       IMAGES_BUCKET: product-images
       IMGPROXY_PUBLIC_URL: http://localhost:${IMGPROXY_PORT:-8081}
+      # RabbitMQ connection (not secrets); the password is RABBITMQ_DEFAULT_PASS from .env.local.
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: shop
+      RABBITMQ_VHOST: /
     volumes:
       - ./apps/api:/app
       # Dependencies live in a volume, not on the host.
@@ -237,6 +241,35 @@ services:
       retries: 10
       # The entrypoint runs `composer install` on first start.
       start_period: 120s
+
+  # Consumes the outbox (relay to RabbitMQ) before events. `make up` starts it last, once the migrations have
+  # created the outbox table.
+  worker:
+    build:
+      context: ./apps/api
+      target: dev
+    depends_on:
+      # The api entrypoint installs the shared vendor volume; the worker must not race it.
+      api:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - path: ./.env.local
+        required: true
+    environment: *api-environment
+    command: ["bin/console", "messenger:consume", "outbox", "events"]
+    restart: unless-stopped
+    volumes:
+      - ./apps/api:/app
+      - api-vendor:/app/vendor
+    healthcheck:
+      # Healthy once PID 1 is the consumer itself, not the entrypoint that may still be installing dependencies.
+      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events'"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   store:
     build:
