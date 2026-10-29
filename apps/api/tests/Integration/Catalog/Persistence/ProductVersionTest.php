@@ -115,6 +115,21 @@ final class ProductVersionTest extends KernelTestCase
         self::assertSame([$b->id()->toString()], $this->assignedCategoryIds($product));
     }
 
+    public function testChangingAnImageAltBetweenNumericallyEqualStringsIsPersisted(): void
+    {
+        [$main] = $this->savedCategories(1);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'imageAlts' => ['10']]);
+        $this->products->save($product);
+        $this->entityManager->clear();
+
+        $this->products->save($this->changed($product, $main, [], [], ['1e1']));
+
+        self::assertSame(2, $this->version($product));
+        self::assertSame('1e1', $this->products->get($product->id())->images()->toList()[0]->alt());
+        $this->entityManager->clear();
+        self::assertSame('1e1', $this->products->get($product->id())->images()->toList()[0]->alt());
+    }
+
     public function testSavingUnchangedProductKeepsVersionAndAssignments(): void
     {
         [$main, $a, $b] = $this->savedCategories(3);

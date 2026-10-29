@@ -102,8 +102,12 @@ final readonly class DoctrineProductRepository implements ProductRepository
             static fn (ProductImage $image): array => ['key' => $image->key()->toString(), 'alt' => $image->alt()],
             $product->images()->toList(),
         );
-        // Loose comparison on purpose: JSONB returns object keys in its own order, which is not a change.
-        if (null === $existing || $record->images != $images) {
+        // JSONB returns object keys in its own order, so compare the stored entries rebuilt in our key order, strictly.
+        $stored = null === $existing ? null : array_map(
+            static fn (array $image): array => ['key' => $image['key'], 'alt' => $image['alt']],
+            $record->images,
+        );
+        if ($stored !== $images) {
             $record->images = $images;
         }
 
