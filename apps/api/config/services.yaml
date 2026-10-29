@@ -1,3 +1,7 @@
+parameters:
+    app.images_bucket: '%env(IMAGES_BUCKET)%'
+    app.imgproxy_public_url: '%env(IMGPROXY_PUBLIC_URL)%'
+
 services:
     _defaults:
         autowire: true
@@ -8,6 +12,32 @@ services:
         exclude:
             - '../src/Kernel.php'
 
+    app.s3_client:
+        class: AsyncAws\S3\S3Client
+        arguments:
+            -
+                endpoint: '%env(GARAGE_S3_ENDPOINT)%'
+                region: garage
+                pathStyleEndpoint: true
+                accessKeyId: '%env(GARAGE_ACCESS_KEY_ID)%'
+                accessKeySecret: '%env(GARAGE_SECRET_ACCESS_KEY)%'
+
+    App\Catalog\Infrastructure\Image\FlysystemProductImageStorage:
+        arguments:
+            $filesystem: '@product_images.storage'
+            $maxBytes: 67108864 # 64 MB
+            $maxPixels: 50000000 # 50 MP
+
+    App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator:
+        arguments:
+            $publicUrl: '%app.imgproxy_public_url%'
+            $key: '%env(IMGPROXY_KEY)%'
+            $salt: '%env(IMGPROXY_SALT)%'
+            $bucket: '%app.images_bucket%'
+
+    App\Catalog\Application\Port\ProductImageStorage: '@App\Catalog\Infrastructure\Image\FlysystemProductImageStorage'
+    App\Catalog\Application\Port\ImageUrlGenerator: '@App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator'
+
 when@test:
     services:
         _defaults:
@@ -16,3 +46,14 @@ when@test:
 
         App\Tests\Support\:
             resource: '../tests/Support/'
+
+        # Unused by application code yet; public so the integration tests can fetch them.
+        App\Catalog\Application\Port\ProductImageStorage:
+            alias: App\Catalog\Infrastructure\Image\FlysystemProductImageStorage
+            public: true
+        App\Catalog\Application\Port\ImageUrlGenerator:
+            alias: App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator
+            public: true
+        test.product_images.storage:
+            alias: product_images.storage
+            public: true

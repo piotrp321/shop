@@ -172,7 +172,11 @@ services:
       IMGPROXY_USE_S3: "true"
       IMGPROXY_S3_ENDPOINT: http://garage:3900
       IMGPROXY_S3_REGION: garage
-      IMGPROXY_ALLOWED_SOURCES: s3://product-images/
+      # Both buckets: the second one is used by the integration tests.
+      IMGPROXY_ALLOWED_SOURCES: s3://product-images/,s3://product-images-test/
+      # Same limits as ProductImageStorage (64 MB, 50 MP); imgproxy is the second line of defence.
+      IMGPROXY_MAX_SRC_FILE_SIZE: "67108864"
+      IMGPROXY_MAX_SRC_RESOLUTION: "50"
     # Maps our secret names to the AWS names read by the S3 client.
     entrypoint:
       - /bin/sh
@@ -214,6 +218,10 @@ services:
       # Public browser-facing URLs (not secrets). Only the admin origin gets CORS.
       ADMIN_URL: http://localhost:${ADMIN_PORT:-5173}
       STORE_URL: http://localhost:${STORE_PORT:-3000}
+      # Images: Garage S3 endpoint, bucket and the browser-facing imgproxy URL (not secrets).
+      GARAGE_S3_ENDPOINT: http://garage:3900
+      IMAGES_BUCKET: product-images
+      IMGPROXY_PUBLIC_URL: http://localhost:${IMGPROXY_PORT:-8081}
     volumes:
       - ./apps/api:/app
       # Dependencies live in a volume, not on the host.

@@ -1,0 +1,12 @@
+flysystem:
+    storages:
+        product_images.storage:
+            adapter: 'asyncaws'
+            options:
+                client: 'app.s3_client'
+                bucket: '%app.images_bucket%'
+
+when@test:
+    parameters:
+        # Integration tests use their own bucket, like the `_test` database.
+        app.images_bucket: 'product-images-test'

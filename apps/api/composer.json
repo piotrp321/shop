@@ -6,10 +6,13 @@
     "require": {
         "php": ">=8.5",
         "ext-ctype": "*",
+        "ext-fileinfo": "*",
         "ext-iconv": "*",
         "doctrine/doctrine-bundle": "^3.3",
         "doctrine/doctrine-migrations-bundle": "^4.0",
         "doctrine/orm": "^3.7",
+        "league/flysystem-async-aws-s3": "^3.31",
+        "league/flysystem-bundle": "^3.7",
         "nelmio/cors-bundle": "^2.6",
         "symfony/console": "8.1.*",
         "symfony/dotenv": "8.1.*",
