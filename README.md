@@ -69,11 +69,13 @@ przy każdym pull requeście.
 - Wszystkie usługi startują jedną komendą, każda z health checkiem. Keycloak ma realmy `shop` (klienci)
   i `backoffice` (pracownicy, hasło i TOTP) z kontami demo.
 - API: `GET /health`, błędy w formacie problem details (RFC 9457), CORS tylko dla panelu, logi w JSON.
-- Sklep i panel: szkielety aplikacji. Sklep ma tokeny wyglądu i reguły ESLint blokujące kolory spoza tokenów,
-  oba fronty mają regułę blokującą `fetch` poza klientem API.
+- Sklep: szkielet aplikacji z tokenami wyglądu i regułami ESLint blokującymi kolory spoza tokenów.
+- Panel: logowanie przez Keycloak (realm `backoffice`, hasło i TOTP), layout i dashboard (sekcja „Stan systemu”
+  tylko dla roli `admin`), wylogowanie po 15 minutach bezczynności. Oba fronty mają regułę blokującą `fetch`
+  poza klientem API.
 - CI: analiza statyczna i testy trzech aplikacji.
 
-Katalogu produktów, logowania, danych demo ani klientów API jeszcze nie ma.
+Katalogu produktów, logowania klientów sklepu, danych demo ani klienta API sklepu jeszcze nie ma.
 
 ## Najbliższe etapy
 

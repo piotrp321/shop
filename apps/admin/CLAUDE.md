@@ -13,20 +13,17 @@ Uruchamiaj z katalogu głównego przez `make -C apps/admin <cel>`:
 
 Klienta API generuje `make api-client` z katalogu głównego.
 
-## Struktura docelowa
-
-Na razie istnieją `src/router/` (bez guardu), `src/views/` i `src/primevue.ts`. Pozostałe katalogi i elementy
-(`src/api/`, `src/auth/`, `src/stores/`, `src/layout/`, `src/dashboard/`, `src/composables/`, guard, `oidc-client-ts`,
-`InMemoryWebStorage`, `useIdleLogout`) są docelowe i powstają w kolejnych zadaniach.
+## Struktura
 
 - `src/api/` – `client.ts` (jedyne miejsce rozmowy z API) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
-- `src/auth/` – logowanie OIDC (`oidc-client-ts`), tokeny w pamięci.
-- `src/stores/` – store'y Pinia (np. `auth` z pracownikiem z `GET /api/v1/admin/me`).
-- `src/router/` – trasy i guard wymagający zalogowania.
-- `src/layout/` – menu boczne i topbar.
+- `src/auth/` – logowanie OIDC (`oidc-client-ts`): `config.ts` (ustawienia z env `VITE_*`), `userManager.ts`
+  (tokeny w pamięci).
+- `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`).
+- `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania.
+- `src/layout/` – menu boczne, topbar i `AppLayout` (uruchamia `useIdleLogout`, 15 min).
 - `src/views/` – widoki przypisane do tras.
-- `src/dashboard/` – komponenty i ładowanie danych dashboardu.
-- `src/composables/` – współdzielona logika reaktywna (np. `useIdleLogout`).
+- `src/dashboard/` – komponenty i ładowanie danych dashboardu (`useDashboard`).
+- `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`).
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 
 ## Dane i API
@@ -41,6 +38,9 @@ Na razie istnieją `src/router/` (bez guardu), `src/views/` i `src/primevue.ts`.
 
 - Tokeny OIDC trzymaj wyłącznie w pamięci (`InMemoryWebStorage`). Nigdy w `localStorage`, `sessionStorage`
   ani w ciasteczkach.
+- Poza pamięcią (w `sessionStorage` karty) jest tylko stan trwającego żądania logowania (state i weryfikator PKCE).
+  Musi przetrwać przekierowanie do Keycloak i z powrotem, nie zawiera tokenów, a biblioteka usuwa go po callbacku.
+- Po przeładowaniu strony pamięć jest pusta, a guard routera loguje przez aktywną sesję SSO w Keycloak.
 
 ## Wygląd
 
