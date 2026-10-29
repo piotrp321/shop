@@ -277,7 +277,11 @@ services:
     env_file:
       - path: ./.env.local
         required: true
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      # Its own compiled container: with the cache on the shared bind mount, a rebuild by the api (after a code
+      # change) deletes the container files this long-running process still loads lazily, and the worker crashes.
+      APP_CACHE_DIR: /tmp/cache
     command: ["bin/console", "messenger:consume", "outbox", "events"]
     restart: unless-stopped
     volumes:

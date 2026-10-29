@@ -51,12 +51,12 @@ są przypięte w pliku compose.
 | `imgproxy` | imgproxy 3, źródło S3 → Garage | przetwarzanie obrazów na żądanie | `imgproxy health` |
 | `mailpit` | Mailpit | SMTP dla realmu `shop` (weryfikacja e-mail, reset hasła) | `/readyz` |
 | `api` | własny obraz FrankenPHP, PHP 8.5, target `dev` (z SPX) | HTTP API | `GET /health` |
-| `worker` | obraz z tego samego Dockerfile i targetu co `api` | `messenger:consume outbox events` | proces konsumenta działa |
+| `worker` | obraz z tego samego Dockerfile i targetu co `api`, własny katalog cache (`APP_CACHE_DIR=/tmp/cache`) | `messenger:consume outbox events` | proces konsumenta działa |
 | `store` | Node 24, `next dev` | sklep | `GET /` |
 | `admin` | Node 24, `vite dev` | panel | `GET /` |
 | `e2e` | obraz Playwright, profil `e2e` | testy E2E, uruchamiany tylko przez `make e2e` | — |
 
-Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init` i `worker`. Potem uruchamia `rabbitmq-init` przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd), krok inicjalizacji (niżej) i dopiero na końcu `worker`, bo bez migracji nie ma tabel transportu `outbox`.
+Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init` i `worker`. Potem uruchamia `rabbitmq-init` przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd), krok inicjalizacji (niżej) i dopiero na końcu `worker`, bo bez migracji nie ma tabel transportu `outbox`. `worker` jest tworzony od nowa przy każdym `make up` (`--force-recreate`), więc działa na kodzie i konfiguracji skompilowanych przez `init`. Ma własny katalog cache poza bind mountem: gdy `api` przebudowuje kontener DI we wspólnym `var/cache` (po zmianie kodu), usuwa pliki, które długo działający worker wczytuje leniwie, a worker kończy się błędem na pierwszej wiadomości, której nie przetworzy przed `redeliver_timeout` (300 s).
 
 Obraz API zawiera rozszerzenia `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, `pcntl` (worker kończy bieżącą
 wiadomość i zatrzymuje się na SIGTERM), a target `dev` dodatkowo SPX.
