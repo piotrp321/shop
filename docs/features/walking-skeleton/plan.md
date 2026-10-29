@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: stos PR-ów od 13B do 24 (każdy PR do gałęzi poprzedniego wiersza). Następne zadanie: **Task 18**. Blokery: brak.
+W toku: stos PR-ów od 13B do 24 (każdy PR do gałęzi poprzedniego wiersza). Następne zadanie: **Task 19 i 20**. Blokery: brak.
 
 Po wydaniu stabilnego Symfony 8.2: zastąpić `RelayDomainEventToBroker` wbudowaną opcją `outbox` transportu
 Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy z Task 14 zostają bez zmian.
@@ -37,7 +37,7 @@ Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy 
 | [#10](https://github.com/piotrp321/shop/pull/10) | 14 | transactional outbox, szyny Messengera, RabbitMQ, worker | ✅ |
 | [#14](https://github.com/piotrp321/shop/pull/14) | 10, 27 | komendy tworzenia kategorii i produktów, indeksowanie produktu po zdarzeniu | ✅ |
 | [#15](https://github.com/piotrp321/shop/pull/15) | 16, 17 | dane demo i seed | ✅ |
-| | 18 | strona katalogu w sklepie | |
+| [#16](https://github.com/piotrp321/shop/pull/16) | 18 | strona katalogu w sklepie | ✅ |
 | | 19, 20 | realmy Keycloak i uwierzytelnianie w API | |
 | | 21 | dashboard w API | |
 | | 22 | logowanie w sklepie | |
