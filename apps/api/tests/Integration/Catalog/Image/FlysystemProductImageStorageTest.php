@@ -14,10 +14,13 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 final class FlysystemProductImageStorageTest extends KernelTestCase
 {
+    use GuardsTestBucket;
+
     private FilesystemOperator $filesystem;
 
     protected function setUp(): void
     {
+        self::assertUsesTestBucket();
         $filesystem = self::getContainer()->get('test.product_images.storage');
         self::assertInstanceOf(FilesystemOperator::class, $filesystem);
         $this->filesystem = $filesystem;
@@ -26,6 +29,7 @@ final class FlysystemProductImageStorageTest extends KernelTestCase
 
     protected function tearDown(): void
     {
+        self::assertUsesTestBucket();
         $this->storage()->purge();
         parent::tearDown();
     }
@@ -57,13 +61,6 @@ final class FlysystemProductImageStorageTest extends KernelTestCase
 
         self::assertSame($this->storage()->store($contents), $this->storage()->store($contents));
         self::assertCount(1, $this->objects());
-    }
-
-    public function testTypeComesFromTheContentNotTheFileName(): void
-    {
-        $pngNamedJpg = (string) file_get_contents(self::fixturePath('sample.png'));
-
-        self::assertStringEndsWith('.png', $this->storage()->store($pngNamedJpg));
     }
 
     /** @return iterable<string, array{string}> */

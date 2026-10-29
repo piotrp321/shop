@@ -68,6 +68,13 @@ final class ImgproxyUrlGeneratorTest extends TestCase
         $this->generator()->url(self::KEY, ImageSize::Listing, 300, ImageFormat::Webp);
     }
 
+    public function testInvalidImageKeyIsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->generator()->url('../x.jpg', ImageSize::Listing, 384, ImageFormat::Webp);
+    }
+
     private function generator(): ImgproxyUrlGenerator
     {
         return new ImgproxyUrlGenerator('http://localhost:8081', '736563726574', '68656C6C6F', 'product-images');

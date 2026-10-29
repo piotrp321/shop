@@ -7,6 +7,7 @@ namespace App\Catalog\Infrastructure\Image;
 use App\Catalog\Application\Image\ImageFormat;
 use App\Catalog\Application\Image\ImageSize;
 use App\Catalog\Application\Port\ImageUrlGenerator;
+use App\Catalog\Domain\Product\ImageKey;
 
 final readonly class ImgproxyUrlGenerator implements ImageUrlGenerator
 {
@@ -27,6 +28,8 @@ final readonly class ImgproxyUrlGenerator implements ImageUrlGenerator
 
     public function url(string $imageKey, ImageSize $size, int $width, ImageFormat $format): string
     {
+        $imageKey = ImageKey::fromString($imageKey)->toString();
+
         if (!\in_array($width, $size->widths(), true)) {
             throw new \InvalidArgumentException('Width is not defined for the image size.');
         }

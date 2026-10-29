@@ -15,6 +15,8 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 final class ImgproxySigningTest extends KernelTestCase
 {
+    use GuardsTestBucket;
+
     private const string IMGPROXY_URL = 'http://imgproxy:8080';
 
     private FilesystemOperator $filesystem;
@@ -22,6 +24,7 @@ final class ImgproxySigningTest extends KernelTestCase
 
     protected function setUp(): void
     {
+        self::assertUsesTestBucket();
         $filesystem = self::getContainer()->get('test.product_images.storage');
         self::assertInstanceOf(FilesystemOperator::class, $filesystem);
         $storage = self::getContainer()->get(ProductImageStorage::class);
@@ -34,6 +37,7 @@ final class ImgproxySigningTest extends KernelTestCase
 
     protected function tearDown(): void
     {
+        self::assertUsesTestBucket();
         $this->storage->purge();
         parent::tearDown();
     }
