@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: stos PR-ów od 13B do 24 (każdy PR do gałęzi poprzedniego wiersza). Następne zadanie: **Task 26** (odbiór). Blokery: brak.
+W toku: nic. Następne zadanie: **Task 26** (README, pomiar pamięci i odbiór całości). Blokery: brak.
 
 Po wydaniu stabilnego Symfony 8.2: zastąpić `RelayDomainEventToBroker` wbudowaną opcją `outbox` transportu
 Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy z Task 14 zostają bez zmian.
