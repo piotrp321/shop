@@ -51,6 +51,17 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 - Podpisane adresy imgproxy buduje API. Klucz podpisu nigdy nie trafia do frontów.
 - Rozmiary obrazów są zdefiniowane w jednym miejscu. Nie dodawaj nowego rozmiaru w komponencie, dopisz go do listy.
 
+## Docelowa skala
+
+Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjonalne”).
+
+- Uwzględniaj ją przy istotnych decyzjach architektonicznych. Preferuj rozwiązania, które pozwalają później
+  skalować horyzontalnie.
+- Nie wybieraj rozwiązań, które z definicji się nie skalują (np. ładowanie całego katalogu do pamięci).
+- Decyzje i kompromisy, które mogą istotnie ograniczyć skalowalność, zgłaszaj użytkownikowi.
+- Nie wprowadzaj przedwcześnie złożonych optymalizacji, dodatkowych usług ani abstrakcji bez rzeczywistej potrzeby.
+- Nie twierdź, że system spełnia wymagania wydajnościowe, dopóki nie potwierdzą tego testy obciążeniowe.
+
 ## Sposób pracy
 
 - Nie ma kodu bez planu. Przy wszystkim większym niż drobna poprawka: napisz lub zaktualizuj specyfikację

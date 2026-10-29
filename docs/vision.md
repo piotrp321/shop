@@ -178,6 +178,12 @@ context ma własne value objecty.
 
 Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których dotyczą, a nie w szkielecie.
 
+**Skala docelowa**
+- Katalog do 10 milionów produktów.
+- Do 60 tysięcy jednocześnie aktywnych użytkowników.
+- To cele, do których architektura ma być przygotowana, a nie deklaracja obecnej wydajności. Takiego obciążenia
+  nie uruchamiamy lokalnie ani w środowisku demo.
+
 **Spójność i współbieżność**
 - Optimistic locking (wersja) na agregatach, które mogą być edytowane równolegle (zamówienie, stan magazynowy, cena).
 - `Idempotency-Key` na operacjach, które nie mogą się wykonać dwa razy: złożenie zamówienia, rozpoczęcie płatności.
