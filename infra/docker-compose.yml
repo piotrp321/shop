@@ -290,7 +290,8 @@ services:
     ports:
       - "127.0.0.1:${STORE_PORT:-3000}:3000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/"]
+      # A static route: `/` renders the catalog from the API, which has no tables or index yet when `make up` waits.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/favicon.ico"]
       interval: 10s
       timeout: 5s
       retries: 10
