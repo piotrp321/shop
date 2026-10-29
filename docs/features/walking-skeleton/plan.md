@@ -161,6 +161,9 @@ w zadaniu, do którego należy kod.
   `src/Catalog/Domain/Category/CategoryAlreadyExists.php`, `src/Catalog/Domain/Product/ProductAlreadyExists.php`,
   `tests/Support/InMemory/{InMemoryCategoryRepository,InMemoryProductRepository,RecordingDomainEventPublisher}.php`,
   `tests/Unit/Catalog/Application/{CreateCategoryHandlerTest,CreateProductHandlerTest}.php`
+- Modyfikuj: `src/Catalog/Infrastructure/Persistence/Doctrine/{DoctrineCategoryRepository,DoctrineProductRepository}.php`
+  (naruszenie klucza głównego → `CategoryAlreadyExists` / `ProductAlreadyExists`),
+  `tests/Integration/Catalog/Persistence/{DoctrineCategoryRepositoryTest,DoctrineProductRepositoryTest}.php`
 
 **Interfejsy:**
 - Konsumuje: zadanie 9. Realizowane w jednym PR z zadaniem 14 (szyny Messengera i `DomainEventPublisher`),
@@ -169,7 +172,8 @@ w zadaniu, do którego należy kod.
   `CreateProduct(string $id, string $name, string $slug, string $shortDescription, string $mainCategoryId, list<string> $additionalCategoryIds, string $taxCategory, list<array{key: string, alt: string}> $images)`.
   Handlery jako `#[AsMessageHandler(bus: 'command.bus')]`. Oba handlery odrzucają istniejące id
   (`CategoryAlreadyExists`, `ProductAlreadyExists` w domenie, implementują `Conflict`), bo `save()` repozytoriów
-  nadpisuje agregat o tym samym id. `CreateProductHandler` sprawdza istnienie wszystkich kategorii produktu i publikuje zdarzenia agregatu przez `DomainEventPublisher` po `save`.
+  nadpisuje agregat o tym samym id. Wyścig dwóch równoczesnych utworzeń, które oba przejdą sprawdzenie, kończy się
+  naruszeniem klucza głównego; repozytoria zamieniają je na te same wyjątki (409). `CreateProductHandler` sprawdza istnienie wszystkich kategorii produktu i publikuje zdarzenia agregatu przez `DomainEventPublisher` po `save`.
   `InMemoryProductRepository::save` rzuca `SlugAlreadyTaken` przy zajętym slugu, jak ograniczenie w bazie.
 
 - **Krok 1: Testy**
@@ -180,7 +184,10 @@ w zadaniu, do którego należy kod.
     `ProductCreated`; nieznana kategoria główna i nieznana dodatkowa rzucają `CategoryNotFound`; zajęty slug
     rzuca `SlugAlreadyTaken` i nic nie jest publikowane; istniejące id rzuca `ProductAlreadyExists`, zapisany
     produkt się nie zmienia i nic nie jest publikowane.
-- **Krok 2: FAIL. Krok 3: implementacja. Krok 4: PASS (`make -C apps/api check test-unit`).**
+  - `DoctrineCategoryRepositoryTest`, `DoctrineProductRepositoryTest`: naruszenie klucza głównego przy zapisie
+    (wiersz o tym samym id wstawiony drugim połączeniem po odczycie w repozytorium) rzuca `CategoryAlreadyExists`
+    / `ProductAlreadyExists`.
+- **Krok 2: FAIL. Krok 3: implementacja. Krok 4: PASS (`make -C apps/api check test`).**
 - **Krok 5: Commit** `feat(api): add commands for creating categories and products`
 
 ### Task 11: Persystencja Catalog

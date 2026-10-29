@@ -243,9 +243,8 @@ Persystencja:
   ani kolejnej wiadomości.
 - `save()` w obu repozytoriach zapisuje agregat jako nowy albo nadpisuje istniejący o tym samym id (upsert).
   Tworzenia pilnują handlery: `CreateCategory` i `CreateProduct` odrzucają istniejące id wyjątkami
-  `CategoryAlreadyExists` i `ProductAlreadyExists` (`Conflict`, 409). Dwa równoczesne utworzenia z tym samym id
-  mogą oba przejść sprawdzenie; drugie kończy się wtedy naruszeniem klucza głównego (500). W szkielecie to
-  akceptujemy.
+  `CategoryAlreadyExists` i `ProductAlreadyExists` (`Conflict`, 409). Gdy dwa równoczesne utworzenia z tym samym id
+  oba przejdą sprawdzenie, repozytorium zamienia naruszenie klucza głównego na ten sam wyjątek.
 - Handler `CreateProduct` sprawdza, że istnieją wszystkie kategorie produktu (`CategoryNotFound`, 404).
 
 Identyfikatory nadaje wywołujący komendę (komendy przyjmują `id`). Domena nigdy nie wylicza identyfikatora
