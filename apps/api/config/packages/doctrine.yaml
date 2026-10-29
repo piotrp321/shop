@@ -1,7 +1,12 @@
 doctrine:
     dbal:
-        # The password comes from .env.local (env_file of the api service); compose does not interpolate secrets.
-        url: 'postgresql://postgres:%env(urlencode:POSTGRES_PASSWORD)%@postgres:5432/shop?serverVersion=18&charset=utf8'
+        driver: pdo_pgsql
+        host: '%env(SHOP_DB_HOST)%'
+        dbname: '%env(SHOP_DB_NAME)%'
+        user: '%env(SHOP_DB_USER)%'
+        password: '%env(SHOP_DB_PASSWORD)%'
+        server_version: '18'
+        charset: utf8
     orm:
         naming_strategy: doctrine.orm.naming_strategy.underscore
         auto_mapping: false

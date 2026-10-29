@@ -40,7 +40,7 @@ są przypięte w pliku compose.
 
 | Usługa | Obraz | Rola | Health check |
 |---|---|---|---|
-| `postgres` | PostgreSQL 18 | bazy `shop`, `shop_test` (API) i `keycloak` | `pg_isready` |
+| `postgres` | PostgreSQL 18 | bazy `shop`, `shop_test` (API, właścicielem jest rola `shop`) i `keycloak` | `pg_isready` |
 | `redis` | Redis 8 | sesje sklepu; sonda w dashboardzie | `redis-cli ping` |
 | `elasticsearch` | Elasticsearch 9, jeden węzeł, security wyłączone lokalnie, `ES_JAVA_OPTS=-Xms512m -Xmx512m` | indeks `products` | `_cluster/health` (yellow lub green) |
 | `rabbitmq` | RabbitMQ 4 z wtyczką management | transport `events` Messengera; vhost `/` dla dev, vhost `test` dla testów | `rabbitmq-diagnostics ping` |
@@ -92,7 +92,10 @@ idempotentny krok, uruchamiany jawnie:
   w `.env.example`.
 - `.env.local` (w `.gitignore`) zawiera sekrety lokalne. Tworzy go `infra/scripts/init-env.sh` przy pierwszym
   `make up`, jeśli plik nie istnieje: klucz i sól imgproxy, klucz dostępu i sekret Garage, sekret klienta `store`,
-  sekret sesji sklepu, hasło administratora Keycloak, hasła do Postgresa i RabbitMQ.
+  sekret sesji sklepu, hasło administratora Keycloak, hasła do Postgresa (superużytkownik, role `keycloak` i `shop`)
+  i RabbitMQ. Gdy plik istnieje, skrypt sprawdza, że ma wszystkie klucze; brakujący klucz kończy `make up` błędem
+  z jego nazwą i instrukcją odtworzenia stosu (usunąć `.env.local` i wolumeny projektu Compose). Skrypt niczego
+  nie dopisuje, bo nowy sekret zwykle wymaga też nowego wolumenu (np. rola `shop` w Postgresie).
 - Usługi, które potrzebują sekretów, wczytują go przez `env_file: {path: .env.local, required: true}`.
   Plik compose nie podstawia sekretów przez `${...}`. Brak pliku kończy się błędem Compose, a nie pustą wartością.
 - Lokalnie jeden `.env.local` trafia do wszystkich usług, które potrzebują sekretów. Podział sekretów per usługa
@@ -226,6 +229,10 @@ Persystencja:
   `category_id` do wyszukiwania produktów po kategorii. Kategoria główna nie trafia do tej tabeli (niezmiennik
   `ProductCategories`). Kolejność kategorii dodatkowych nie jest zapisywana: odczyt zwraca je posortowane po
   `category_id`.
+- API łączy się z bazą jako rola `shop`, właściciel baz `shop` i `shop_test`, nigdy jako superużytkownik
+  `postgres`. Rolę i bazy tworzy skrypt inicjalizacji Postgresa przy pierwszym starcie pustego wolumenu. Połączenie
+  składa się ze zmiennych: `SHOP_DB_HOST`, `SHOP_DB_NAME`, `SHOP_DB_USER` (jawne, w `environment` usługi `api`)
+  i `SHOP_DB_PASSWORD` (`.env.local`). Testy używają tej samej roli i bazy `shop_test`.
 - Domena nie jest mapowana przez Doctrine. Model persystencji to rekordy `CategoryRecord` i `ProductRecord`
   w `Catalog/Infrastructure/Persistence/Doctrine/Record`, mapowane atrybutami Doctrine, z identyfikatorami jako
   tekst UUID. Rekordy mają relacje między sobą: `CategoryRecord::parent` (ManyToOne do `CategoryRecord`),

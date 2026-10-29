@@ -31,6 +31,10 @@ make down
 | http://localhost:15672 | RabbitMQ (panel zarządzania) |
 | http://localhost:8080 | Keycloak |
 
+Jeśli `make up` zgłosi brak klucza w `.env.local` (nowy sekret, np. hasło roli `shop` w Postgresie), stos
+trzeba odtworzyć: usunąć `.env.local` i wolumeny projektu Compose (`make down` i `docker compose down -v` dla
+właściwego `COMPOSE_PROJECT_NAME`). Skrypt inicjalizacji Postgresa tworzy role i bazy tylko na pustym wolumenie.
+
 Porty i nazwę projektu Compose można zmienić w `.env` (wzór w `.env.example`), np. żeby uruchomić kilka stosów
 naraz z różnych worktree.
 
