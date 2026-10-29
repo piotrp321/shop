@@ -14,7 +14,14 @@ final readonly class DemoCatalog
     public function __construct(
         public array $categories,
         public array $products,
-        public array $photoPaths = [],
+        public array $photoPaths,
     ) {
+        foreach ($products as $product) {
+            foreach ($product->images as $image) {
+                if (!isset($photoPaths[$image['file']])) {
+                    throw new \InvalidArgumentException(\sprintf('No path for the photo "%s" of the product "%s".', $image['file'], $product->slug));
+                }
+            }
+        }
     }
 }

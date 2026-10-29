@@ -20,12 +20,12 @@ abstract class SeedCommandTestCase extends TestCase
     protected RecordingMessageBus $bus;
     protected SpyCatalogReset $reset;
 
-    protected function tester(ProductIndexer $indexer, string $environment = 'test'): CommandTester
+    protected function tester(ProductIndexer $indexer, string $environment = 'test', string $definition = __DIR__.'/../../../Fixtures/demo/catalog.yaml'): CommandTester
     {
         $this->bus = new RecordingMessageBus();
         $this->reset = new SpyCatalogReset();
         $source = new YamlDemoCatalogSource(
-            __DIR__.'/../../../Fixtures/demo/catalog.yaml',
+            $definition,
             __DIR__.'/../../../Fixtures/images',
         );
         $loader = new DemoCatalogLoader($this->bus, new InMemoryProductImageStorage());

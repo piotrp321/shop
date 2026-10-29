@@ -15,6 +15,7 @@ use Symfony\Component\Yaml\Yaml;
 final class DemoCatalogExpanderTest extends TestCase
 {
     private const string FIXTURE = __DIR__.'/../../../Fixtures/demo/catalog.yaml';
+    private const string IMAGES = '/images';
     private const string NAMESPACE = '11111111-2222-4333-8444-555555555555';
 
     public function testTwoExpansionsAreIdentical(): void
@@ -22,8 +23,8 @@ final class DemoCatalogExpanderTest extends TestCase
         $definition = DemoCatalogDefinition::fromFile(self::FIXTURE);
 
         self::assertEquals(
-            new DemoCatalogExpander()->expand($definition),
-            new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromFile(self::FIXTURE)),
+            new DemoCatalogExpander()->expand($definition, self::IMAGES),
+            new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromFile(self::FIXTURE), self::IMAGES),
         );
     }
 
@@ -72,7 +73,7 @@ final class DemoCatalogExpanderTest extends TestCase
         $data = $this->with(['templates', 0, 'colors'], ['czarne', 'Czarne']);
 
         try {
-            new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data));
+            new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES);
             self::fail('A duplicate slug must be rejected.');
         } catch (\InvalidArgumentException $e) {
             self::assertStringContainsString('buty-tarvik-asfalt-200-czarne', $e->getMessage());
@@ -133,7 +134,7 @@ final class DemoCatalogExpanderTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('rower/nie-ma');
 
-        new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data));
+        new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES);
     }
 
     public function testUnknownMainCategoryPathThrowsWithThatPath(): void
@@ -143,7 +144,7 @@ final class DemoCatalogExpanderTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('turystyka/namioty');
 
-        new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data));
+        new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES);
     }
 
     public function testDuplicateCategoryPathThrows(): void
@@ -153,10 +154,10 @@ final class DemoCatalogExpanderTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('bieganie');
 
-        new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data));
+        new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES);
     }
 
-    public function testDefinitionWithoutImagelessEveryIsRejected(): void
+    public function testImagelessEveryOfZeroIsRejected(): void
     {
         $data = $this->with(['imagelessEvery'], 0);
 
@@ -164,6 +165,28 @@ final class DemoCatalogExpanderTest extends TestCase
         $this->expectExceptionMessage('imagelessEvery');
 
         DemoCatalogDefinition::fromArray($data);
+    }
+
+    public function testMissingImagelessEveryIsRejected(): void
+    {
+        $data = Yaml::parseFile(self::FIXTURE);
+        self::assertIsArray($data);
+        unset($data['imagelessEvery']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('imagelessEvery');
+
+        DemoCatalogDefinition::fromArray($data);
+    }
+
+    public function testCatalogWithoutAPathForAUsedPhotoCannotBeBuilt(): void
+    {
+        $product = $this->expand()->products[0];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('sample.jpg');
+
+        new DemoCatalog([], [$product], []);
     }
 
     public function testMissingFileIsReportedWithItsPath(): void
@@ -176,7 +199,7 @@ final class DemoCatalogExpanderTest extends TestCase
 
     private function expand(): DemoCatalog
     {
-        return new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromFile(self::FIXTURE));
+        return new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromFile(self::FIXTURE), self::IMAGES);
     }
 
     /**

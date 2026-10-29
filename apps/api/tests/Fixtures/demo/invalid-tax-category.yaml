@@ -1,0 +1,45 @@
+namespace: "11111111-2222-4333-8444-555555555555"
+imagelessEvery: 3
+categories:
+  - name: "Bieganie"
+    slug: "bieganie"
+    children:
+      - name: "Buty"
+        slug: "buty"
+        children:
+          - name: "Szosowe"
+            slug: "szosowe"
+  - name: "Turystyka"
+    slug: "turystyka"
+    children:
+      - name: "Plecaki"
+        slug: "plecaki"
+templates:
+  - category: "bieganie/buty/szosowe"
+    additionalCategories:
+      - "turystyka/plecaki"
+    productType: "Buty"
+    taxCategory: standard
+    brands: ["Tarvik", "Norvane"]
+    models:
+      - name: "Asfalt 200"
+        description: "Lekkie buty na asfalt."
+      - name: "Dystans 400"
+        description: "Buty na długie dystanse."
+    colors: ["czarne", "białe"]
+    images:
+      - file: "sample.jpg"
+        alt: "Biegacz na drodze"
+      - file: "sample.png"
+        alt: "Biegacz w lesie"
+  - category: "turystyka/plecaki"
+    productType: "Plecak"
+    taxCategory: reduced
+    brands: ["Tarvik"]
+    models:
+      - name: "Ząb 20"
+        description: "Plecak dzienny."
+    colors: ["żółty", "zielony"]
+    images:
+      - file: "sample.jpg"
+        alt: "Plecak na szlaku"

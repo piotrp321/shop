@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Catalog\Demo;
 
 use App\Catalog\Application\Demo\DemoCatalog;
-use App\Catalog\Application\Demo\DemoCategory;
 use App\Catalog\Infrastructure\Demo\DemoCatalogDefinition;
 use App\Catalog\Infrastructure\Demo\DemoCatalogExpander;
+use App\Catalog\Infrastructure\Demo\YamlDemoCatalogSource;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -22,7 +22,7 @@ final class RealDemoCatalogTest extends TestCase
 
     public static function setUpBeforeClass(): void
     {
-        self::$catalog = new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromFile(self::FIXTURES.'/catalog.yaml'));
+        self::$catalog = new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromFile(self::FIXTURES.'/catalog.yaml'), self::FIXTURES.'/images');
     }
 
     public function testExpandsToThreeHundredToFiveHundredProducts(): void
@@ -31,15 +31,26 @@ final class RealDemoCatalogTest extends TestCase
         self::assertLessThanOrEqual(500, \count(self::$catalog->products));
     }
 
-    public function testCategoryTreeIsThreeToFourLevelsDeep(): void
+    public function testEveryTopLevelBranchIsThreeToFourLevelsDeep(): void
     {
-        $depth = max(0, ...array_map(
-            static fn (DemoCategory $category): int => substr_count($category->slugPath, '/') + 1,
-            self::$catalog->categories,
-        ));
+        $depthByRoot = [];
+        foreach (self::$catalog->categories as $category) {
+            $root = explode('/', $category->slugPath)[0];
+            $depthByRoot[$root] = max($depthByRoot[$root] ?? 0, substr_count($category->slugPath, '/') + 1);
+        }
 
-        self::assertGreaterThanOrEqual(3, $depth);
-        self::assertLessThanOrEqual(4, $depth);
+        self::assertCount(7, $depthByRoot);
+        foreach ($depthByRoot as $root => $depth) {
+            self::assertGreaterThanOrEqual(3, $depth, $root);
+            self::assertLessThanOrEqual(4, $depth, $root);
+        }
+    }
+
+    public function testSourceAcceptsTheRealDefinitionAndPhotos(): void
+    {
+        $catalog = new YamlDemoCatalogSource(self::FIXTURES.'/catalog.yaml', self::FIXTURES.'/images')->load();
+
+        self::assertCount(\count(self::$catalog->products), $catalog->products);
     }
 
     public function testEveryPooledImageFileExists(): void

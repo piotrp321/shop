@@ -39,4 +39,20 @@ final class SeedProdGuardTest extends SeedCommandTestCase
         self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
         self::assertSame(1, $this->reset->resets);
     }
+
+    public function testInvalidDefinitionFailsBeforeAnyChange(): void
+    {
+        $tester = $this->tester(
+            new FixedCountProductIndexer([10]),
+            definition: __DIR__.'/../../../Fixtures/demo/invalid-tax-category.yaml',
+        );
+
+        $exitCode = $tester->execute([]);
+
+        self::assertSame(Command::FAILURE, $exitCode);
+        self::assertStringContainsString('reduced', $tester->getDisplay());
+        self::assertStringContainsString('Nothing was changed', preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '');
+        self::assertSame(0, $this->reset->resets);
+        self::assertSame([], $this->bus->dispatched);
+    }
 }

@@ -18,8 +18,7 @@ final class SeedWaitTest extends SeedCommandTestCase
         self::assertSame(Command::FAILURE, $exitCode);
         $display = preg_replace('/\s+/', ' ', $tester->getDisplay());
         self::assertIsString($display);
-        self::assertStringContainsString('10', $display);
-        self::assertStringContainsString('3', $display);
+        self::assertStringContainsString('10 products in the database, 3 documents in the index', $display);
         self::assertStringContainsString('worker', $display);
         self::assertStringNotContainsString('indexed: 10', $display);
     }

@@ -23,9 +23,11 @@ final readonly class DemoCatalogExpander
     ];
 
     /**
+     * The photo paths are $imagesDir/<file>; whether the files exist is not checked here.
+     *
      * @throws \InvalidArgumentException on a duplicated category path or product slug, or an unknown category path
      */
-    public function expand(DemoCatalogDefinition $definition): DemoCatalog
+    public function expand(DemoCatalogDefinition $definition, string $imagesDir): DemoCatalog
     {
         $namespace = Uuid::fromString($definition->namespace);
 
@@ -68,7 +70,14 @@ final readonly class DemoCatalogExpander
             }
         }
 
-        return new DemoCatalog($categories, $products);
+        $photoPaths = [];
+        foreach ($products as $product) {
+            foreach ($product->images as $image) {
+                $photoPaths[$image['file']] ??= rtrim($imagesDir, '/').'/'.$image['file'];
+            }
+        }
+
+        return new DemoCatalog($categories, $products, $photoPaths);
     }
 
     /**
