@@ -18,7 +18,7 @@ services:
             -
                 endpoint: '%env(GARAGE_S3_ENDPOINT)%'
                 region: garage
-                pathStyleEndpoint: true
+                pathStyleEndpoint: 'true'
                 accessKeyId: '%env(GARAGE_ACCESS_KEY_ID)%'
                 accessKeySecret: '%env(GARAGE_SECRET_ACCESS_KEY)%'
 
@@ -39,6 +39,10 @@ services:
     App\Catalog\Application\Port\ImageUrlGenerator: '@App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator'
 
 when@test:
+    parameters:
+        # Integration tests use their own bucket, like the `_test` database.
+        app.images_bucket: 'product-images-test'
+
     services:
         _defaults:
             autowire: true
