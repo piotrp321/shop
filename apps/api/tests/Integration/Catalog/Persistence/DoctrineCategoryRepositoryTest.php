@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Catalog\Persistence;
 
+use App\Catalog\Domain\Category\CategoryAlreadyExists;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
@@ -16,6 +17,7 @@ use Zenstruck\Foundry\Test\Factories;
 
 final class DoctrineCategoryRepositoryTest extends KernelTestCase
 {
+    use CommitsRowsOnSecondConnection;
     use Factories;
 
     private EntityManagerInterface $entityManager;
@@ -93,5 +95,24 @@ final class DoctrineCategoryRepositoryTest extends KernelTestCase
         $this->expectException(ForeignKeyConstraintViolationException::class);
 
         $this->repository->save($orphan);
+    }
+
+    public function testPrimaryKeyViolationOnInsertThrowsCategoryAlreadyExists(): void
+    {
+        $category = CategoryFactory::createOne();
+        // The competing request commits the same id after this repository read the id and found nothing.
+        $this->commitRowBeforeNextInsert($this->entityManager, 'catalog_category', [
+            'id' => $category->id()->toString(),
+            'name' => 'Competing',
+            'path' => $category->path()->toString(),
+        ]);
+
+        try {
+            $this->repository->save($category);
+            self::fail('Expected CategoryAlreadyExists.');
+        } catch (CategoryAlreadyExists) {
+        }
+
+        self::assertSame('Competing', $this->committedValue($this->entityManager, 'SELECT name FROM catalog_category WHERE id = ?', $category->id()->toString()));
     }
 }

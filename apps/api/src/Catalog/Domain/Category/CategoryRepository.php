@@ -6,6 +6,11 @@ namespace App\Catalog\Domain\Category;
 
 interface CategoryRepository
 {
+    /**
+     * Inserts the category or overwrites the one with the same id.
+     *
+     * @throws CategoryAlreadyExists when a concurrent insert of the same id wins the race
+     */
     public function save(Category $category): void;
 
     /**

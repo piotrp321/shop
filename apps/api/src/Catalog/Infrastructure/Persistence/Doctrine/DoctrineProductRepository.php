@@ -7,6 +7,7 @@ namespace App\Catalog\Infrastructure\Persistence\Doctrine;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductAlreadyExists;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImage;
@@ -42,6 +43,9 @@ final readonly class DoctrineProductRepository implements ProductRepository
         } catch (UniqueConstraintViolationException $e) {
             if (str_contains($e->getMessage(), ProductRecord::SLUG_CONSTRAINT)) {
                 throw new SlugAlreadyTaken();
+            }
+            if (str_contains($e->getMessage(), ProductRecord::PRIMARY_KEY_CONSTRAINT)) {
+                throw new ProductAlreadyExists();
             }
 
             throw $e;

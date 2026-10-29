@@ -19,6 +19,8 @@ use Doctrine\ORM\Mapping as ORM;
 class ProductRecord
 {
     public const string SLUG_CONSTRAINT = 'catalog_product_slug_key';
+    /** PostgreSQL's default name of the primary key constraint of the table. */
+    public const string PRIMARY_KEY_CONSTRAINT = 'catalog_product_pkey';
 
     #[ORM\Column(length: 200)]
     public string $slug;

@@ -10,6 +10,7 @@ use App\Catalog\Application\Query\GetCategoryTreeHandler;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
+use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use PHPUnit\Framework\TestCase;
 
 final class GetCategoryTreeHandlerTest extends TestCase

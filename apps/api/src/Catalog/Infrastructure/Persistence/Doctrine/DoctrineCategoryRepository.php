@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Catalog\Infrastructure\Persistence\Doctrine;
 
 use App\Catalog\Domain\Category\Category;
+use App\Catalog\Domain\Category\CategoryAlreadyExists;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategoryPath;
 use App\Catalog\Domain\Category\CategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\CategoryRecord;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 
 final readonly class DoctrineCategoryRepository implements CategoryRepository
@@ -19,6 +21,9 @@ final readonly class DoctrineCategoryRepository implements CategoryRepository
     {
     }
 
+    /**
+     * @throws CategoryAlreadyExists when a concurrent request inserted a category with this id after the read below
+     */
     public function save(Category $category): void
     {
         $id = $category->id()->toString();
@@ -30,8 +35,16 @@ final readonly class DoctrineCategoryRepository implements CategoryRepository
         $record->name = $category->name()->value();
         $record->path = $category->path()->toString();
 
-        $this->entityManager->persist($record);
-        $this->entityManager->flush();
+        try {
+            $this->entityManager->persist($record);
+            $this->entityManager->flush();
+        } catch (UniqueConstraintViolationException $e) {
+            if (str_contains($e->getMessage(), CategoryRecord::PRIMARY_KEY_CONSTRAINT)) {
+                throw new CategoryAlreadyExists();
+            }
+
+            throw $e;
+        }
     }
 
     public function get(CategoryId $id): Category
