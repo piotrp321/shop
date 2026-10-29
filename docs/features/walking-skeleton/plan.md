@@ -18,8 +18,11 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: nic. Następne zadanie: **Task 11** (persystencja). Blokery: brak; decyzje persystencji Task 11
-są zaakceptowane i zapisane w specyfikacji.
+W toku: **Task 11** (persystencja) na gałęzi `claude/task-11-pair-programming-8460a1`, bez PR. Kod, testy, `init`,
+CI z PostgreSQL i PHPStan z `objectManagerLoader` są zrobione. Przed zakończeniem Task 11:
+- CI na GitHubie z PostgreSQL przechodzi (PR otwieramy dopiero wtedy, gdy CI i krok 5 przechodzą);
+- zweryfikować indeks `catalog_product_category.product_id` tworzony przez Doctrine dla tabeli łączącej: dubluje
+  prefiks klucza głównego, a jego usunięcie z migracji rozjeżdża `doctrine:schema:validate`.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
@@ -186,7 +189,8 @@ w zadaniu, do którego należy kod.
 - Utwórz: `config/packages/doctrine.yaml` (mapowanie atrybutami z `src/Catalog/Infrastructure/Persistence/Doctrine/Record`),
   `src/Catalog/Infrastructure/Persistence/Doctrine/Record/{CategoryRecord,ProductRecord}.php` (`images` w JSONB),
   `src/Catalog/Infrastructure/Persistence/Doctrine/{DoctrineCategoryRepository,DoctrineProductRepository}.php`,
-  `migrations/Version…CreateCatalog.php`, `tests/Factory/{CategoryFactory,ProductFactory}.php`,
+  `migrations/Version…CreateCatalogCategory.php`, `migrations/Version…CreateCatalogProduct.php`,
+  `tests/object-manager.php` (loader PHPStana), `tests/Factory/{CategoryFactory,ProductFactory}.php`,
   `tests/Integration/Catalog/Persistence/{DoctrineCategoryRepositoryTest,DoctrineProductRepositoryTest}.php`
 - Modyfikuj: `src/Catalog/Domain/Category/Category.php`, `src/Catalog/Domain/Product/Product.php` (`reconstitute()`),
   `tests/Unit/Catalog/Domain/{CategoryTest,ProductTest}.php`, `infra/docker-compose.yml` (`env_file` dla `api`),
