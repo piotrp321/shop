@@ -60,6 +60,11 @@ categories:
     children:
       - name: "Narty"
         slug: "narty"
+        children:
+          - name: "Narty zjazdowe"
+            slug: "zjazdowe"
+          - name: "Narty skiturowe"
+            slug: "skiturowe"
       - name: "Kaski narciarskie"
         slug: "kaski"
       - name: "Odzież zimowa"
@@ -85,6 +90,11 @@ categories:
         slug: "kajaki"
       - name: "Pływanie"
         slug: "plywanie"
+        children:
+          - name: "Okulary pływackie"
+            slug: "okulary"
+          - name: "Pianki pływackie"
+            slug: "pianki"
   - name: "Sporty drużynowe"
     slug: "sporty-druzynowe"
     children:
@@ -384,8 +394,8 @@ templates:
       - "zielony"
       - "pomarańczowy"
     images:
-      - file: "dome-tent-summit-sunset.jpg"
-        alt: "Namiot na górskim szczycie o zachodzie słońca"
+      - file: "tent-orange-forest-mountain.jpg"
+        alt: "Pomarańczowy namiot w lesie, w tle ośnieżony górski grzbiet"
       - file: "orange-tent-turquoise-lake.jpg"
         alt: "Pomarańczowy namiot nad turkusowym górskim jeziorem"
   - category: "turystyka/biwak/spanie/spiwory"
@@ -406,8 +416,8 @@ templates:
     images:
       - file: "sleeping-bag-alpine-meadow.jpg"
         alt: "Niebieski śpiwór rozłożony na alpejskiej łące"
-      - file: "dome-tent-summit-sunset.jpg"
-        alt: "Namiot na górskim szczycie o zachodzie słońca"
+      - file: "tent-orange-forest-mountain.jpg"
+        alt: "Pomarańczowy namiot w lesie, w tle ośnieżony górski grzbiet"
   - category: "turystyka/biwak/spanie/maty"
     productType: "Mata samopompująca"
     taxCategory: standard
@@ -492,13 +502,13 @@ templates:
       - "porcja jednoosobowa"
       - "porcja dwuosobowa"
     images:
-      - file: "dome-tent-summit-sunset.jpg"
-        alt: "Namiot na górskim szczycie o zachodzie słońca"
+      - file: "tent-orange-forest-mountain.jpg"
+        alt: "Pomarańczowy namiot w lesie, w tle ośnieżony górski grzbiet"
       - file: "hikers-trail-switzerland.jpg"
         alt: "Dwoje turystów z plecakami na szlaku wśród drzew"
       - file: "orange-tent-turquoise-lake.jpg"
         alt: "Pomarańczowy namiot nad turkusowym górskim jeziorem"
-  - category: "sporty-zimowe/narty"
+  - category: "sporty-zimowe/narty/zjazdowe"
     productType: "Narty zjazdowe"
     taxCategory: standard
     brands:
@@ -519,7 +529,7 @@ templates:
         alt: "Narciarz w pomarańczowej kurtce na ośnieżonym stoku"
       - file: "ski-hikers-snowy-trail.jpg"
         alt: "Turyści idący zaśnieżonym szlakiem w słońcu"
-  - category: "sporty-zimowe/narty"
+  - category: "sporty-zimowe/narty/skiturowe"
     productType: "Narty skiturowe"
     taxCategory: standard
     brands:
@@ -747,7 +757,7 @@ templates:
         alt: "Dwie osoby w kajaku na spokojnym jeziorze wśród gór"
       - file: "paddleboards-lake-wanaka.jpg"
         alt: "Dwie osoby na deskach SUP na górskim jeziorze"
-  - category: "sporty-wodne/plywanie"
+  - category: "sporty-wodne/plywanie/okulary"
     productType: "Okulary pływackie"
     taxCategory: standard
     brands:
@@ -767,7 +777,7 @@ templates:
     images:
       - file: "open-water-swimmer-lake.jpg"
         alt: "Pływak w jeziorze"
-  - category: "sporty-wodne/plywanie"
+  - category: "sporty-wodne/plywanie/pianki"
     productType: "Pianka pływacka"
     taxCategory: standard
     brands:
@@ -802,8 +812,8 @@ templates:
       - "biała"
       - "pomarańczowa"
     images:
-      - file: "soccer-ball-grass.jpg"
-        alt: "Piłka nożna na trawie boiska"
+      - file: "soccer-ball-field-blue.jpg"
+        alt: "Piłka nożna na murawie boiska"
   - category: "sporty-druzynowe/pilki/nozna"
     productType: "Buty piłkarskie"
     taxCategory: standard
@@ -821,8 +831,8 @@ templates:
       - "czarne"
       - "niebieskie"
     images:
-      - file: "soccer-ball-grass.jpg"
-        alt: "Piłka nożna na trawie boiska"
+      - file: "soccer-ball-field-blue.jpg"
+        alt: "Piłka nożna na murawie boiska"
   - category: "sporty-druzynowe/pilki/halowe"
     productType: "Piłka siatkowa"
     taxCategory: standard
@@ -830,16 +840,16 @@ templates:
       - "Dravik"
       - "Stavro"
     models:
-      - name: "Plaża"
-        description: "Piłka do siatkówki plażowej, odporna na wilgoć i piasek, o miękkim chwycie."
+      - name: "Trening"
+        description: "Piłka do siatkówki na treningi i gry rekreacyjne, odporna na wilgoć, o miękkim chwycie."
       - name: "Hala"
         description: "Piłka halowa ze zszywanymi panelami, rozmiar 5, do treningów klubowych."
     colors:
       - "biało-niebieska"
       - "żółto-niebieska"
     images:
-      - file: "beach-volleyball-game.jpg"
-        alt: "Mecz siatkówki plażowej w słoneczny dzień"
+      - file: "volleyball-indoor-sports-hall.jpg"
+        alt: "Mecz siatkówki w hali sportowej"
   - category: "sporty-druzynowe/pilki/halowe"
     productType: "Piłka koszykowa"
     taxCategory: standard
@@ -855,7 +865,7 @@ templates:
       - "pomarańczowa"
       - "brązowa"
     images:
-      - file: "beach-volleyball-game.jpg"
-        alt: "Mecz siatkówki plażowej w słoneczny dzień"
-      - file: "soccer-ball-grass.jpg"
-        alt: "Piłka nożna na trawie boiska"
+      - file: "basketball-outdoor-court-park.jpg"
+        alt: "Koszykarze na boisku miejskim wśród drzew"
+      - file: "volleyball-indoor-sports-hall.jpg"
+        alt: "Hala sportowa z koszami do koszykówki i siatką do siatkówki"
