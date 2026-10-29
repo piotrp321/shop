@@ -18,16 +18,14 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: **Task 11** (persystencja) na gałęzi `claude/task-11-pair-programming-8460a1`, draft PR #6. Kod, testy, `init`,
-CI z PostgreSQL i PHPStan z `objectManagerLoader` są zrobione. Przed zakończeniem Task 11 CI na GitHubie
-z PostgreSQL musi przejść.
+W toku: nic. Następne zadanie: **Task 12** (obrazy w API). Blokery: brak.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
 | [#1](https://github.com/piotrp321/shop/pull/1) | 1–8 | dokumentacja API, stos usług, obraz API z SPX, narzędzia jakości API, szkielety sklepu i panelu, konfiguracja Claude Code, wspólne zachowanie HTTP w API | ✅ |
 | [#2](https://github.com/piotrp321/shop/pull/2), [#3](https://github.com/piotrp321/shop/pull/3) | 25 | lekkie CI | ✅ |
 | [#5](https://github.com/piotrp321/shop/pull/5) | 9 | domena Catalog | ✅ |
-| [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | |
+| [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | ✅ |
 | | 12 | obrazy w API (Garage, imgproxy) | |
 | | 13 | indeks Elasticsearch i adapter wyszukiwania | |
 | | 10, 14 | komendy tworzenia kategorii i produktów, transactional outbox, RabbitMQ, worker, indeksowanie | |
