@@ -87,8 +87,10 @@ jobs:
           make -C apps/store test-unit RUN="$CI_RUN"
           make -C apps/admin test RUN="$CI_RUN"
 
-      # The committed OpenAPI files must equal a fresh export (no services needed, so --no-deps works).
+      # The committed OpenAPI files and generated clients must equal a fresh export and generation
+      # (no services needed, so --no-deps works).
       - name: Contract freshness
         run: |
           make -C apps/api openapi RUN="$CI_RUN"
-          git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json
+          make api-client RUN="$CI_RUN"
+          git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json apps/store/src/api/schema.d.ts

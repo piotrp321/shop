@@ -1,4 +1,4 @@
-.PHONY: up down logs ps seed check test
+.PHONY: up down logs ps seed check test api-client
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -38,3 +38,7 @@ test:
 	$(MAKE) -C apps/api test
 	$(MAKE) -C apps/store test
 	$(MAKE) -C apps/admin test
+
+# Generates the TypeScript API client types of the store from the committed OpenAPI file.
+api-client:
+	$(RUN) store npx openapi-typescript /contract/openapi.json -o src/api/schema.d.ts

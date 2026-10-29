@@ -278,14 +278,20 @@ services:
       context: ./apps/store
     # Dependencies are installed into the node_modules volume when package-lock.json is newer than the install.
     command: ["sh", "-c", "[ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; exec npm run dev"]
+    environment:
+      # The server calls the API over the compose network, never through the browser-facing port.
+      API_INTERNAL_URL: http://api
     volumes:
       - ./apps/store:/app
       # Dependencies live in a volume, not on the host.
       - store-node-modules:/app/node_modules
+      # Only the store's own API specification, read-only: `make api-client` generates src/api/schema.d.ts from it.
+      - ./apps/api/openapi.json:/contract/openapi.json:ro
     ports:
       - "127.0.0.1:${STORE_PORT:-3000}:3000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/"]
+      # A static route: `/` renders the catalog from the API, which has no tables or index yet when `make up` waits.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/favicon.ico"]
       interval: 10s
       timeout: 5s
       retries: 10
