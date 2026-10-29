@@ -1,5 +1,5 @@
-// Control characters (C0 and DEL) and backslashes, which browsers treat like a slash.
-const FORBIDDEN = /[\u0000-\u001f\u007f\\]/;
+// Control characters (C0, DEL and C1) and backslashes, which browsers treat like a slash.
+const FORBIDDEN = /[\u0000-\u001f\u007f-\u009f\\]/;
 
 /**
  * Accepts `value` only as a path within the store: a single leading `/` (not `//`), no backslash, no control

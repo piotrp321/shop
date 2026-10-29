@@ -44,8 +44,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - Tokeny OIDC nigdy nie trafiają do przeglądarki. Są tylko w sesji w Redisie, a ciasteczko zawiera wyłącznie
   id sesji podpisane kluczem `STORE_SESSION_SECRET`.
-- Route handlery `/auth/*` dostają zależności (Redis, OIDC, API) z `getAuthDeps()` w `src/auth/deps.ts`; testy
-  podmieniają je dublerami z `src/auth/test-support.ts`.
+- Route handlery `/auth/*` są owinięte w `withAuthDeps` (`src/auth/responses.ts`), które daje im zależności
+  (Redis, OIDC, API) z `getAuthDeps()` w `src/auth/deps.ts`, a przy ich braku odpowiada 503 z `no-store`. Testy
+  podmieniają zależności dublerami z `src/auth/test-support.ts`.
 - Nie loguj obiektów błędów openid-client (ich `cause` zawiera odpowiedzi z tokenami). Użyj `logFailure`.
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.
 - Odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`.

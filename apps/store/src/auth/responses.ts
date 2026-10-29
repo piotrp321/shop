@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { cookieOptions, LOGIN_COOKIE, loginCookieOptions, SESSION_COOKIE } from "./cookies";
+import { type AuthDeps, getAuthDeps } from "./deps";
 
 /** Every `/auth/*` response is personal and must never be stored by a browser or a proxy. */
 export function noStore<T extends Response>(response: T): T {
@@ -33,4 +34,21 @@ export function logFailure(context: string, error: unknown) {
   }
   const code = "code" in error ? ` [${String(error.code)}]` : "";
   console.error(`${context}: ${error.name}${code}: ${error.message}`);
+}
+
+/**
+ * Runs a `/auth/*` handler with its dependencies. When they cannot be set up (missing configuration, for
+ * example) the answer is still a 503 with `no-store` instead of Next's bare 500.
+ */
+export function withAuthDeps(handler: (request: NextRequest, deps: AuthDeps) => Promise<Response>) {
+  return async (request: NextRequest): Promise<Response> => {
+    let deps: AuthDeps;
+    try {
+      deps = await getAuthDeps();
+    } catch (error) {
+      logFailure("Login is not configured", error);
+      return noStore(new Response(null, { status: 503 }));
+    }
+    return handler(request, deps);
+  };
 }

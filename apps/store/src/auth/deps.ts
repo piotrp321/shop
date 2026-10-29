@@ -1,7 +1,7 @@
 import { type AuthConfig, readAuthConfig } from "./config";
 import { fetchMe, type MeResult } from "./me";
 import { createOidcClient, discoverOidc, type OidcClient } from "./oidc";
-import { createRedisClient } from "./redis";
+import { createRedisClient, type RedisClient } from "./redis";
 import { getFreshAccessToken } from "./refresh";
 import {
   createRedisLoginTransactionStore,
@@ -25,14 +25,28 @@ export type AuthDeps = {
 
 const CONNECT_WAIT_MS = 2000;
 
+type SharedRedis = { url: string; client: RedisClient; connected: Promise<void> };
+
+// The connection is kept on globalThis so that `next dev` reloads reuse it. Only the connection: the rest is
+// rebuilt with the reloaded code.
+const holder = globalThis as typeof globalThis & { storeAuthRedis?: SharedRedis };
+
+function sharedRedis(url: string): SharedRedis {
+  if (holder.storeAuthRedis?.url !== url) {
+    const client = createRedisClient(url);
+    // Connects in the background and reconnects on its own. Until then commands fail fast (see createRedisClient).
+    const connected = client.connect().then(
+      () => undefined,
+      () => undefined,
+    );
+    holder.storeAuthRedis = { url, client, connected };
+  }
+  return holder.storeAuthRedis;
+}
+
 function createAuthDeps(): AuthDeps {
   const config = readAuthConfig();
-  const redis = createRedisClient(config.redisUrl);
-  // Connects in the background and reconnects on its own. Until then commands fail fast (see createRedisClient).
-  const connected = redis.connect().then(
-    () => undefined,
-    () => undefined,
-  );
+  const { client: redis, connected } = sharedRedis(config.redisUrl);
   const ready = () =>
     redis.isReady ? Promise.resolve() : Promise.race([connected, new Promise((r) => setTimeout(r, CONNECT_WAIT_MS))]);
 
@@ -71,6 +85,7 @@ function createAuthDeps(): AuthDeps {
       getFreshAccessToken(sessionId, {
         store: sessions,
         redis,
+        prepareRefresh: getOidc,
         refresh: async (refreshToken) => (await getOidc()).refresh(refreshToken),
       }),
     ),
@@ -78,10 +93,10 @@ function createAuthDeps(): AuthDeps {
   };
 }
 
-// One instance per server process; kept on globalThis so that `next dev` reloads do not open new connections.
-const holder = globalThis as typeof globalThis & { storeAuthDeps?: AuthDeps };
+let deps: AuthDeps | undefined;
 
+/** One instance per server process (per module load in `next dev`). */
 export async function getAuthDeps(): Promise<AuthDeps> {
-  holder.storeAuthDeps ??= createAuthDeps();
-  return holder.storeAuthDeps;
+  deps ??= createAuthDeps();
+  return deps;
 }

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SESSION_COOKIE, signValue } from "@/auth/cookies";
 import { getAuthDeps } from "@/auth/deps";
+import { RefreshUnavailableError } from "@/auth/refresh";
 import { sessionData, signedSessionCookie, testDeps } from "@/auth/test-support";
 import { GET } from "./route";
 
@@ -103,6 +104,17 @@ describe("GET /auth/session", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(setup.sessions.has(id)).toBe(true);
+  });
+
+  it("keeps the session and answers 503 when the token cannot be refreshed right now", async () => {
+    const id = await setup.deps.sessions.create(sessionData());
+    setup.deps.freshAccessToken.mockRejectedValue(new RefreshUnavailableError());
+    const response = await session(signedSessionCookie(id));
+
+    expect(response.status).toBe(503);
+    expect(setup.sessions.has(id)).toBe(true);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(setup.deps.fetchMe).not.toHaveBeenCalled();
   });
 
   it("deletes the session and returns null when no fresh access token can be had", async () => {

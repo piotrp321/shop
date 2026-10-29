@@ -21,8 +21,18 @@ const clearedSessionCookie = (response: Response) =>
   response.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=;`) && c.includes("Max-Age=0"));
 
 describe("POST /auth/logout", () => {
-  it("is the only method: GET is not handled", () => {
-    expect(Object.keys(route)).toEqual(["POST"]);
+  it("answers GET with 405, Allow: POST and no-store, and keeps the session", async () => {
+    const id = await setup.deps.sessions.create(sessionData());
+    const response = await route.GET();
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(setup.sessions.has(id)).toBe(true);
+  });
+
+  it("only handles GET (405) and POST", () => {
+    expect(Object.keys(route).sort()).toEqual(["GET", "POST"]);
   });
 
   it("deletes the session and the cookie and ends the Keycloak session with id_token_hint", async () => {
@@ -57,6 +67,35 @@ describe("POST /auth/logout", () => {
     expect(response.headers.get("location")).toBe(`${testConfig.storeUrl}/`);
     expect(setup.sessions.has(id)).toBe(false);
     expect(clearedSessionCookie(response)).toBeDefined();
+  });
+
+  it("allows a request without Origin and Sec-Fetch-Site (the session cookie is SameSite=Lax)", async () => {
+    const id = await setup.deps.sessions.create(sessionData());
+    const response = await logout({ cookie: signedSessionCookie(id) });
+
+    expect(response.status).toBe(303);
+    expect(setup.sessions.has(id)).toBe(false);
+  });
+
+  it.each([["same-origin"], ["none"]])("allows a request without Origin and with Sec-Fetch-Site: %s", async (site) => {
+    const id = await setup.deps.sessions.create(sessionData());
+    const response = await logout({ cookie: signedSessionCookie(id), "sec-fetch-site": site });
+
+    expect(response.status).toBe(303);
+    expect(setup.sessions.has(id)).toBe(false);
+  });
+
+  it.each([
+    ["cross-site without Origin", { "sec-fetch-site": "cross-site" }],
+    ["same-site without Origin (another port of the same host, e.g. the admin panel)", { "sec-fetch-site": "same-site" }],
+    ["cross-site with the store's Origin", { "sec-fetch-site": "cross-site", origin: testConfig.storeUrl }],
+  ])("refuses a request that is %s", async (_name, headers) => {
+    const id = await setup.deps.sessions.create(sessionData());
+    const response = await logout({ cookie: signedSessionCookie(id), ...headers });
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(setup.sessions.has(id)).toBe(true);
   });
 
   it.each([["https://evil.com"], ["null"], ["http://localhost:3001"]])(

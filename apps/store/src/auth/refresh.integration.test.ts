@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { RedisClient } from "./redis";
 import { connectTestRedis } from "./test-support";
-import { getFreshAccessToken, RefreshRejectedError, type TokenSet } from "./refresh";
+import { getFreshAccessToken, RefreshRejectedError, RefreshUnavailableError, type TokenSet } from "./refresh";
 import { createRedisSessionStore, type SessionData, type SessionStore } from "./session-store";
 
 let redis: RedisClient;
@@ -112,6 +112,87 @@ describe("getFreshAccessToken on Redis", () => {
     await expect(getFreshAccessToken(id, { store, redis, refresh })).rejects.toThrow("ECONNREFUSED");
     expect((await store.get(id))?.accessToken).toBe("old-access");
     expect(await redis.exists(`lock:refresh:${id}`)).toBe(0);
+  });
+
+  it("lets the waiters fail with a retryable error, not null, when the winner's refresh fails transiently", async () => {
+    const id = await store.create(sessionExpiringIn(10_000));
+    const refresh = vi.fn(async () => {
+      await sleep(150);
+      throw new Error("connect ECONNREFUSED");
+    });
+    const started = Date.now();
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, () => getFreshAccessToken(id, { store, redis, refresh, pollIntervalMs: 50 })),
+    );
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    const reasons = results.map((result) => (result.status === "rejected" ? result.reason : result.value));
+    expect(reasons.filter((reason) => reason instanceof RefreshUnavailableError)).toHaveLength(4);
+    expect(reasons.filter((reason) => reason instanceof Error && reason.message.includes("ECONNREFUSED"))).toHaveLength(1);
+    // The waiters notice the released lock instead of waiting out the 5 s limit.
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect((await store.get(id))?.accessToken).toBe("old-access");
+  });
+
+  it("refreshes a token that expires in 29 s", async () => {
+    const id = await store.create(sessionExpiringIn(29_000));
+    const refresh = vi.fn(async () => newTokens);
+
+    expect(await getFreshAccessToken(id, { store, redis, refresh })).toBe("new-access");
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refresh a token that expires in 31 s", async () => {
+    const id = await store.create(sessionExpiringIn(31_000));
+    const refresh = vi.fn(async () => newTokens);
+
+    expect(await getFreshAccessToken(id, { store, redis, refresh })).toBe("old-access");
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("prepares the refresh (OIDC discovery) before taking the lock, and only when a refresh is due", async () => {
+    const due = await store.create(sessionExpiringIn(10_000));
+    const fresh = await store.create(sessionExpiringIn(300_000));
+    const lockDuringPrepare: number[] = [];
+    const prepareRefresh = vi.fn(async () => {
+      lockDuringPrepare.push(await redis.exists(`lock:refresh:${due}`));
+    });
+
+    await getFreshAccessToken(fresh, { store, redis, refresh: vi.fn(async () => newTokens), prepareRefresh });
+    expect(prepareRefresh).not.toHaveBeenCalled();
+
+    await getFreshAccessToken(due, { store, redis, refresh: vi.fn(async () => newTokens), prepareRefresh });
+    expect(prepareRefresh).toHaveBeenCalledTimes(1);
+    expect(lockDuringPrepare).toEqual([0]);
+  });
+
+  it("keeps the session and takes no lock when preparing the refresh fails", async () => {
+    const id = await store.create(sessionExpiringIn(10_000));
+    const prepareRefresh = vi.fn(async () => {
+      throw new Error("discovery failed");
+    });
+    const refresh = vi.fn(async () => newTokens);
+
+    await expect(getFreshAccessToken(id, { store, redis, refresh, prepareRefresh })).rejects.toThrow("discovery failed");
+    expect(refresh).not.toHaveBeenCalled();
+    expect(await redis.exists(`lock:refresh:${id}`)).toBe(0);
+    expect((await store.get(id))?.accessToken).toBe("old-access");
+  });
+
+  it("still returns the new token when releasing the lock fails", async () => {
+    const id = await store.create(sessionExpiringIn(10_000));
+    const release = vi.spyOn(redis, "eval").mockRejectedValueOnce(new Error("Socket closed unexpectedly"));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      expect(await getFreshAccessToken(id, { store, redis, refresh: vi.fn(async () => newTokens) })).toBe("new-access");
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("Socket closed unexpectedly"));
+    } finally {
+      release.mockRestore();
+      error.mockRestore();
+      await redis.del(`lock:refresh:${id}`);
+    }
   });
 
   it("keeps the previous id token when the refresh response has none", async () => {

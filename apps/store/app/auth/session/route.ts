@@ -1,15 +1,13 @@
-import type { NextRequest } from "next/server";
 import type { AccountSession } from "@/api/client";
 import { readSignedValue, SESSION_COOKIE } from "@/auth/cookies";
-import { getAuthDeps } from "@/auth/deps";
-import { clearSessionCookie, json, logFailure } from "@/auth/responses";
+import { clearSessionCookie, json, logFailure, withAuthDeps } from "@/auth/responses";
 
 /**
  * `{ name }` of the signed-in customer or `null`, from `GET /api/v1/me` called with the session's (refreshed)
- * access token. Only a bad token ends the session; an API or Redis failure answers 503 and keeps it.
+ * access token. Only a bad or unrefreshable token ends the session; an API, Redis or Keycloak failure (also a
+ * refresh that cannot be done right now) answers 503 and keeps it.
  */
-export async function GET(request: NextRequest) {
-  const { config, sessions, freshAccessToken, fetchMe } = await getAuthDeps();
+export const GET = withAuthDeps(async (request, { config, sessions, freshAccessToken, fetchMe }) => {
   const signedOut = () => clearSessionCookie(json(null satisfies AccountSession), config.storeUrl);
 
   const cookie = request.cookies.get(SESSION_COOKIE)?.value;
@@ -42,4 +40,4 @@ export async function GET(request: NextRequest) {
     logFailure("Session check failed", error);
     return json(null, 503);
   }
-}
+});

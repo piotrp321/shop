@@ -19,6 +19,8 @@ describe("sanitizeReturnTo", () => {
     ["tab", "/\t/evil.com"],
     ["NUL", "/a\u0000b"],
     ["DEL", "/a\u007fb"],
+    ["C1 control NEL", "/a\u0085b"],
+    ["C1 control CSI", "/a\u009bb"],
     ["backslash later in the path", "/a\\b"],
     ["relative path", "konto"],
     ["encoded slashes without the leading slash", "%2F%2Fevil.com"],
@@ -38,6 +40,13 @@ describe("sanitizeReturnTo", () => {
     expect(new URL(result, STORE_URL).origin).toBe(STORE_URL);
     expect(result.startsWith("//")).toBe(false);
     expect(result).not.toContain("\\");
+  });
+
+  // A fullwidth solidus is not a separator: it is percent-encoded into a path segment on the store.
+  it("keeps a fullwidth solidus on the store origin, encoded", () => {
+    const result = sanitizeReturnTo("/\uff0fevil.com", STORE_URL);
+    expect(result).toBe("/%EF%BC%8Fevil.com");
+    expect(new URL(result, STORE_URL).origin).toBe(STORE_URL);
   });
 
   it("normalises dot segments within the store", () => {

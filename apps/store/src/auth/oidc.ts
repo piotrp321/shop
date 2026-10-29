@@ -32,8 +32,9 @@ export interface OidcClient {
   endSessionUrl(idToken: string): URL;
 }
 
-// Seconds; keeps a refresh well inside the 5 s refresh lock.
-const HTTP_TIMEOUT_SECONDS = 4;
+// Seconds, per request. A refresh under the 5 s lock is the token request plus, after a restart, one JWKS
+// request for the id_token signature; discovery happens before the lock is taken.
+const HTTP_TIMEOUT_SECONDS = 2;
 
 function toTokenSet(response: TokenEndpointResponse): TokenSet {
   if (!response.refresh_token || typeof response.expires_in !== "number") {

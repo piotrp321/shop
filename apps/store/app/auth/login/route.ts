@@ -1,15 +1,12 @@
-import type { NextRequest } from "next/server";
 import { LOGIN_COOKIE, loginCookieOptions, signValue } from "@/auth/cookies";
-import { getAuthDeps } from "@/auth/deps";
-import { logFailure, noStore, redirectTo } from "@/auth/responses";
+import { logFailure, noStore, redirectTo, withAuthDeps } from "@/auth/responses";
 import { sanitizeReturnTo } from "@/auth/return-to";
 
 /**
  * Starts the login: state, nonce and PKCE verifier go into a single-use Redis transaction (10 min), its signed id
  * into a short cookie for the callback, and the browser to Keycloak's public authorization endpoint.
  */
-export async function GET(request: NextRequest) {
-  const { config, oidc, transactions } = await getAuthDeps();
+export const GET = withAuthDeps(async (request, { config, oidc, transactions }) => {
   try {
     const login = await (await oidc()).startLogin();
     const returnTo = sanitizeReturnTo(request.nextUrl.searchParams.get("returnTo"), config.storeUrl);
@@ -32,4 +29,4 @@ export async function GET(request: NextRequest) {
       }),
     );
   }
-}
+});

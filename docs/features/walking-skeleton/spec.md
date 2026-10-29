@@ -721,10 +721,10 @@ Tokeny nigdy nie trafiają do przeglądarki. Serwer sklepu jest klientem confide
 | `GET /auth/login?returnTo=…` | generuje `state`, `nonce` i weryfikator PKCE; zapisuje je w Redisie pod jednorazowym kluczem (TTL 10 min), którego id trafia do krótkiego ciasteczka; przekierowuje do Keycloak (adres publiczny) |
 | `GET /auth/callback` | sprawdza `state`; wymienia kod na tokeny przez `http://keycloak:8080`; waliduje `id_token`; tworzy sesję i przekierowuje na `returnTo` |
 | `GET /auth/session` | zwraca `{ "name": "…" }` albo `null`; dane z `GET /api/v1/me` wołanego z tokenem z sesji; 401 z API usuwa sesję, a inny błąd API, Redisa albo Keycloak daje 503 bez usuwania sesji |
-| `POST /auth/logout` | tylko POST; żądanie z obcym nagłówkiem `Origin` dostaje 403; usuwa sesję i ciasteczko; przekierowuje do `end_session` Keycloak z `id_token_hint` i `post_logout_redirect_uri` |
+| `POST /auth/logout` | tylko POST (`GET` dostaje 405 z `Allow: POST`); żądanie z obcym nagłówkiem `Origin` albo z `Sec-Fetch-Site` równym `cross-site` lub `same-site` dostaje 403, a żądanie bez obu nagłówków przechodzi; usuwa sesję i ciasteczko; przekierowuje do `end_session` Keycloak z `id_token_hint` i `post_logout_redirect_uri` |
 
 - `returnTo` jest akceptowany tylko jako ścieżka w obrębie sklepu: zaczyna się od pojedynczego `/`, nie od `//`,
-  nie zawiera `\` ani znaków sterujących, a `new URL(returnTo, STORE_URL).origin` równa się `STORE_URL`.
+  nie zawiera `\` ani znaków sterujących (C0, DEL, C1), a `new URL(returnTo, STORE_URL).origin` równa się `STORE_URL`.
   Każda inna wartość (także brak) daje przekierowanie na `/`.
 - Sesja: klucz `session:<losowe id>` w Redisie z `sub`, tokenami i czasem wygaśnięcia access tokena; TTL równy
   czasowi życia refresh tokena. Ciasteczko `store_session` zawiera tylko id: `HttpOnly`, `SameSite=Lax`,
@@ -735,10 +735,13 @@ Tokeny nigdy nie trafiają do przeglądarki. Serwer sklepu jest klientem confide
   jak brak ciasteczka, bez odczytu z Redisa.
 - Odświeżanie: gdy access token wygasa za mniej niż 30 s, serwer odświeża go pod blokadą
   `SET lock:refresh:<id sesji> <losowy token> NX PX 5000`. Zwycięzca odświeża tokeny, zapisuje sesję i zwalnia
-  blokadę (usunięcie tylko przy zgodnym tokenie). Pozostałe żądania co 100 ms czytają sesję, aż zmieni się
-  czas wygaśnięcia, i używają nowego tokena. Jeśli przez 5 s nic się nie zmieni, sesja jest traktowana jak
-  wylogowana. Ciasteczko się nie zmienia.
-- Wszystkie odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`.
+  blokadę (usunięcie tylko przy zgodnym tokenie). Discovery OIDC odbywa się przed założeniem blokady, a każde
+  żądanie HTTP do Keycloak ma limit 2 s. Pozostałe żądania co 100 ms czytają sesję, aż zmieni się czas
+  wygaśnięcia, i używają nowego tokena. Gdy blokada zniknęła, a sesja się nie zmieniła (zwycięzca nie odświeżył,
+  np. Keycloak nieosiągalny), dostają 503 bez usuwania sesji, tak jak sam zwycięzca. Odrzucony refresh token
+  (`invalid_grant`) usuwa sesję. Jeśli blokada nadal istnieje, a przez 5 s nic się nie zmieni, sesja jest
+  traktowana jak wylogowana. Ciasteczko się nie zmienia.
+- Wszystkie odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`, także 503, gdy brakuje konfiguracji.
 - Komponent konta w nagłówku to Client Component, który woła `/auth/session` i pokazuje „Zaloguj się” albo
   „Zalogowany jako …” z przyciskiem wylogowania. HTML katalogu nie zależy od sesji.
 
@@ -879,8 +882,8 @@ PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikac
 2. Instalacja zależności do wolumenów, jak lokalnie.
 3. `make check` z `RUN="docker compose run --rm --no-deps -T"`.
 4. Testy z tym samym `RUN`: `make -C apps/api test` (wszystkie suity api), `make -C apps/store test`
-   (z Redisem), `make -C apps/admin test`. Żadna suita api nie potrzebuje jeszcze usług. Zmiana, która dodaje
-   testy na usługach stosu, w tym samym PR uruchamia w CI te usługi przed testami.
+   (z Redisem), `make -C apps/admin test`. Zmiana, która dodaje testy na usługach stosu, w tym samym PR
+   uruchamia w CI te usługi przed testami.
 5. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
    `apps/api/openapi.json`, `apps/api/openapi-admin.json` i obu `schema.d.ts`.
 

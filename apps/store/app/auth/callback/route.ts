@@ -1,16 +1,13 @@
-import type { NextRequest } from "next/server";
 import { cookieOptions, LOGIN_COOKIE, readSignedValue, SESSION_COOKIE, signValue } from "@/auth/cookies";
-import { getAuthDeps } from "@/auth/deps";
 import { sessionFromTokens } from "@/auth/refresh";
-import { clearLoginCookie, logFailure, redirectTo } from "@/auth/responses";
+import { clearLoginCookie, logFailure, redirectTo, withAuthDeps } from "@/auth/responses";
 import { sanitizeReturnTo } from "@/auth/return-to";
 
 /**
  * Finishes the login: takes the transaction (once), checks state, exchanges the code and validates the id_token,
  * then starts a new session under a new id and returns to `returnTo`. Any failure lands on `/` without a session.
  */
-export async function GET(request: NextRequest) {
-  const { config, oidc, sessions, transactions } = await getAuthDeps();
+export const GET = withAuthDeps(async (request, { config, oidc, sessions, transactions }) => {
   const home = new URL("/", config.storeUrl);
   const query = request.nextUrl.searchParams;
 
@@ -38,4 +35,4 @@ export async function GET(request: NextRequest) {
     logFailure("Login callback failed", error);
     return clearLoginCookie(redirectTo(home), config.storeUrl);
   }
-}
+});

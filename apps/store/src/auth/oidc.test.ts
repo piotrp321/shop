@@ -1,3 +1,4 @@
+import { generateKeyPairSync, type KeyObject, sign } from "node:crypto";
 import { customFetch } from "openid-client";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createOidcClient, discoverOidc } from "./oidc";
@@ -154,5 +155,62 @@ describe("discoverOidc", () => {
     await expect(discoverOidc(testConfig, { fetch: async () => json(metadata(issuer)) })).rejects.toThrow(
       /expected http:\/\/localhost:8080\/realms\/shop/,
     );
+  });
+});
+
+describe("id_token signature check of the discovered configuration", () => {
+  const signingKey = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const otherKey = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const jwk = { ...signingKey.publicKey.export({ format: "jwk" }), kid: "key-1", alg: "RS256", use: "sig" };
+
+  const signedIdToken = (privateKey: KeyObject, claims: Record<string, unknown> = {}) => {
+    const now = Math.floor(Date.now() / 1000);
+    const header = base64url({ alg: "RS256", typ: "JWT", kid: "key-1" });
+    const payload = base64url({ iss: realm, aud: "store", sub: "user-7", iat: now, exp: now + 300, nonce: "nonce-1", ...claims });
+    const signature = sign("sha256", Buffer.from(`${header}.${payload}`), privateKey).toString("base64url");
+    return `${header}.${payload}.${signature}`;
+  };
+
+  async function exchangeWith(idToken: string) {
+    const internal = `${testConfig.keycloakInternalUrl}/realms/shop`;
+    const configuration = await discoverOidc(testConfig, {
+      fetch: async (url) => {
+        const href = String(url);
+        if (href.endsWith("/.well-known/openid-configuration")) {
+          return json({
+            issuer: realm,
+            authorization_endpoint: `${realm}/protocol/openid-connect/auth`,
+            token_endpoint: `${internal}/protocol/openid-connect/token`,
+            jwks_uri: `${internal}/protocol/openid-connect/certs`,
+            end_session_endpoint: `${realm}/protocol/openid-connect/logout`,
+          });
+        }
+        if (href.endsWith("/certs")) {
+          return json({ keys: [jwk] });
+        }
+        return json({
+          access_token: "access-1",
+          refresh_token: "refresh-1",
+          id_token: idToken,
+          token_type: "Bearer",
+          expires_in: 300,
+        });
+      },
+    });
+    return createOidcClient(configuration, testConfig).exchangeCode(new URLSearchParams("code=abc&state=state-1"), checks);
+  }
+
+  it("accepts an id_token signed with the realm's key", async () => {
+    expect((await exchangeWith(signedIdToken(signingKey.privateKey))).sub).toBe("user-7");
+  });
+
+  it("rejects an id_token signed with another key", async () => {
+    await expect(exchangeWith(signedIdToken(otherKey.privateKey))).rejects.toThrow();
+  });
+
+  it("rejects an id_token whose payload was changed after signing", async () => {
+    const [header, , signature] = signedIdToken(signingKey.privateKey).split(".");
+    const forged = base64url({ iss: realm, aud: "store", sub: "admin", iat: 0, exp: 9_999_999_999, nonce: "nonce-1" });
+    await expect(exchangeWith(`${header}.${forged}.${signature}`)).rejects.toThrow();
   });
 });
