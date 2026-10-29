@@ -16,7 +16,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 
 - Kod jest podzielony na bounded contexty: `src/<Context>/{Domain,Application,Infrastructure,UI}`.
 - Domain nie zależy od Symfony, Doctrine ani żadnego frameworka. Tylko czysty PHP.
-- Mapowanie Doctrine w XML w `Infrastructure`, nigdy atrybuty na klasach domenowych.
+- Domena nie jest mapowana przez Doctrine. Persystencja przez rekordy w `<Context>/Infrastructure/Persistence/Doctrine`
+  mapowane atrybutami, z relacjami między rekordami. Repozytoria mapują agregat ↔ rekord, a agregat odtwarzają
+  przez `reconstitute()`, które nie zapisuje zdarzeń.
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.

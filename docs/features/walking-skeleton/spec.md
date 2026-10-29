@@ -162,7 +162,7 @@ w aplikacji uwierzytelniającej.
 
 | Moduł | Domain | Application | Infrastructure | UI |
 |---|---|---|---|---|
-| `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; porty `ProductSearch`, `ProductIndexer`, `ProductImageStorage`, `ImageUrlGenerator`; lista rozmiarów `ImageSize` | Doctrine (mapowanie XML), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, loader danych demo | `GET /api/v1/products`, `GET /api/v1/categories`, komendy konsoli |
+| `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; porty `ProductSearch`, `ProductIndexer`, `ProductImageStorage`, `ImageUrlGenerator`; lista rozmiarów `ImageSize` | Doctrine (rekordy z atrybutami), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, loader danych demo | `GET /api/v1/products`, `GET /api/v1/categories`, komendy konsoli |
 | `Customer` | — | — | `CustomerUser` i `CustomerUserProvider` (z tokena realmu `shop`) | `GET /api/v1/me` |
 | `Backoffice` | — | zapytanie `GetDashboard`; porty `CatalogStatistics`, `SystemHealth`, `MessagingStatistics` | `StaffUser` i `StaffUserProvider` (z tokena realmu `backoffice`), `DashboardVoter`, adaptery portów | `GET /api/v1/admin/me`, `GET /api/v1/admin/dashboard` |
 | `Shared` | interfejs `DomainEvent` (`occurredAt()`), port `DomainEventPublisher`, interfejsy-znaczniki wyjątków `ProblemException`, `NotFound`, `Conflict`, `InvalidInput` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
@@ -192,6 +192,8 @@ Reguły Deptrac:
   `/<id-korzenia>/…/<id>/` z indeksem `text_pattern_ops`. Poddrzewo: `path LIKE '/…/<id>/%'`.
 - Tworzenie: `Category::createRoot(id, name)` albo `Category::createChild(id, name, parent)`. Ścieżkę liczy
   domena z ścieżki rodzica.
+- Odtworzenie z zapisanego stanu: `Category::reconstitute(id, name, parentId, path)`. Odrzuca stan niespójny:
+  ścieżka nie kończy się własnym id, rodzic nie jest przedostatnim elementem ścieżki albo korzeń ma rodzica.
 
 **`Product`** (agregat)
 - `ProductId` (UUID), `ProductName` (niepusta, do 200 znaków), `Slug` (`^[a-z0-9]+(-[a-z0-9]+)*$`, do 200 znaków,
@@ -207,6 +209,8 @@ Reguły Deptrac:
   Najwyżej 10 zdjęć, pozycja zdjęcia równa jego indeksowi na liście (ciągła od 0), bez powtórzonego `ImageKey`.
   Pierwsze zdjęcie jest główne.
 - `Product::create(...)` zapisuje w agregacie zdarzenie `ProductCreated(productId, occurredAt)`.
+- `Product::reconstitute(...)` przyjmuje te same argumenty co `create` i odtwarza produkt z zapisanego stanu bez
+  zapisywania zdarzeń.
 - Naruszenie niezmiennika value objectu rzuca `\InvalidArgumentException`. To strażnik spójności modelu: dane
   od klienta API waliduje wcześniej warstwa aplikacji.
 - Identyfikatory (`CategoryId`, `ProductId`) domena sprawdza formatem UUID w czystym PHP i zapisuje małymi
@@ -222,12 +226,19 @@ Persystencja:
   `category_id` do wyszukiwania produktów po kategorii. Kategoria główna nie trafia do tej tabeli (niezmiennik
   `ProductCategories`). Kolejność kategorii dodatkowych nie jest zapisywana: odczyt zwraca je posortowane po
   `category_id`.
-- Agregaty nie odwołują się do siebie przez obiekty Doctrine. Mapowanie `Product` nie ma asocjacji do `Category`,
-  a kolumny identyfikatorów kategorii są zwykłymi polami. Przypisania dodatkowe zapisuje i odczytuje
-  `DoctrineProductRepository` w tej samej transakcji co produkt.
+- Domena nie jest mapowana przez Doctrine. Model persystencji to rekordy `CategoryRecord` i `ProductRecord`
+  w `Catalog/Infrastructure/Persistence/Doctrine/Record`, mapowane atrybutami Doctrine, z identyfikatorami jako
+  tekst UUID. Rekordy mają relacje między sobą: `CategoryRecord::parent` (ManyToOne do `CategoryRecord`),
+  `ProductRecord::primaryCategory` (ManyToOne) i `ProductRecord::additionalCategories` (ManyToMany przez
+  `catalog_product_category`). Klucze obce, tabelę łączącą i indeksy tworzy z tego Doctrine. Jedynym elementem
+  schematu spoza mapowania jest klasa operatorów `text_pattern_ops` indeksu `path`, dopisana w migracji.
+- Agregaty w domenie odwołują się do siebie wyłącznie przez identyfikatory. `DoctrineCategoryRepository`
+  i `DoctrineProductRepository` mapują agregat na rekord przy zapisie, a przy odczycie odtwarzają agregat przez
+  `reconstitute()`.
 - Unikalność sluga gwarantuje baza. `ProductRepository::save()` zapisuje od razu (flush w transakcji szyny
   komend) i zamienia naruszenie ograniczenia unikalności sluga na `SlugAlreadyTaken` (409). Nie ma osobnego
-  sprawdzania sluga przed zapisem.
+  sprawdzania sluga przed zapisem. Zamknięty po tym błędzie EntityManager nie przechodzi do kolejnego żądania
+  ani kolejnej wiadomości.
 - Handler `CreateProduct` sprawdza, że istnieją wszystkie kategorie produktu (`CategoryNotFound`, 404).
 
 Identyfikatory nadaje wywołujący komendę (komendy przyjmują `id`). Domena nigdy nie wylicza identyfikatora
@@ -608,7 +619,8 @@ Wymagane przypadki:
 - **Bezczynność w panelu:** fake timers; wylogowanie po 15 min bez aktywności; aktywność w innej karcie
   (przez `BroadcastChannel`) odsuwa wylogowanie.
 
-Dane testowe w API przez fabryki Foundry. `dama/doctrine-test-bundle` wycofuje transakcję po każdym teście.
+Dane testowe w API przez fabryki Foundry. Fabryki agregatów Catalog budują obiekty domenowe przez ich metody
+fabryczne, a test zapisuje je przez repozytorium. `dama/doctrine-test-bundle` wycofuje transakcję po każdym teście.
 
 Izolacja od środowiska deweloperskiego: testy integracyjne używają bazy `shop_test`, indeksów z prefiksem `test_`,
 bucketu `product-images-test` i vhosta RabbitMQ `test`. Deweloperski `worker` (baza `shop`, vhost `/`) nigdy
