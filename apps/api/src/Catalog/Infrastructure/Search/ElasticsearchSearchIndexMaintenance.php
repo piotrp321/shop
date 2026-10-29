@@ -19,6 +19,9 @@ use Elastic\Elasticsearch\Response\Elasticsearch;
  */
 final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexMaintenance
 {
+    private const string ALIAS_SWITCH_MASTER_TIMEOUT = '1s';
+    private const string ALIAS_SWITCH_ACK_TIMEOUT = '1s';
+
     public function __construct(
         private Client $client,
         private Client $longRequestClient,
@@ -156,10 +159,17 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
         }
 
         try {
-            $this->request('switch alias', fn () => $this->client->indices()->updateAliases(['body' => ['actions' => [
-                ['remove' => ['index' => $expectedCurrent, 'alias' => $this->alias, 'must_exist' => true]],
-                ['add' => ['index' => $index, 'alias' => $this->alias]],
-            ]]]));
+            // Both limits stay below the client's response timeout (app.search.request_timeout, 2 s): a switch still
+            // queued on the master when the client gives up is dropped by Elasticsearch instead of being applied
+            // after the read-back below, when the rebuild may already have deleted the new index.
+            $this->request('switch alias', fn () => $this->client->indices()->updateAliases([
+                'master_timeout' => self::ALIAS_SWITCH_MASTER_TIMEOUT,
+                'timeout' => self::ALIAS_SWITCH_ACK_TIMEOUT,
+                'body' => ['actions' => [
+                    ['remove' => ['index' => $expectedCurrent, 'alias' => $this->alias, 'must_exist' => true]],
+                    ['add' => ['index' => $index, 'alias' => $this->alias]],
+                ]],
+            ]));
         } catch (SearchUnavailable|SearchIndexError) {
             // A timeout or a dropped connection leaves the outcome open; a rejection leaves the alias as it was.
             // Either way the alias state read below decides.

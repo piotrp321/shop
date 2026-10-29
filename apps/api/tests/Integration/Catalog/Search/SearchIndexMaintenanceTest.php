@@ -10,6 +10,9 @@ use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
 use App\Tests\Support\Search\ResponseDroppingHttpClient;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
 
 final class SearchIndexMaintenanceTest extends TestCase
 {
@@ -41,6 +44,40 @@ final class SearchIndexMaintenanceTest extends TestCase
         self::assertSame(ActivationResult::NotActivated, $this->maintenance()->activate($new, $other));
 
         self::assertSame([$this->current], $this->aliasTargets());
+    }
+
+    public function testAliasSwitchIsBoundedByAMasterTimeoutBelowTheClientTimeout(): void
+    {
+        // A switch still queued on the master when the 2 s client gives up could be applied after the read-back
+        // saw the old target, and after the rebuild deleted the new index. master_timeout below the client timeout
+        // makes Elasticsearch drop an unexecuted switch before the client stops waiting.
+        $new = $this->maintenance()->createIndex();
+        $http = new class(self::clientFactory()->httpClient(2.0)) implements ClientInterface {
+            /** @var list<RequestInterface> */
+            public array $requests = [];
+
+            public function __construct(private readonly ClientInterface $inner)
+            {
+            }
+
+            public function sendRequest(RequestInterface $request): ResponseInterface
+            {
+                $this->requests[] = $request;
+
+                return $this->inner->sendRequest($request);
+            }
+        };
+
+        self::assertSame(ActivationResult::Activated, $this->maintenance($http)->activate($new, $this->current));
+
+        $switches = array_values(array_filter(
+            $http->requests,
+            static fn (RequestInterface $r): bool => 'POST' === $r->getMethod() && '/_aliases' === $r->getUri()->getPath(),
+        ));
+        self::assertCount(1, $switches);
+        parse_str($switches[0]->getUri()->getQuery(), $query);
+        self::assertSame('1s', $query['master_timeout'] ?? null);
+        self::assertSame('1s', $query['timeout'] ?? null);
     }
 
     public function testDroppedResponseOfAnExecutedSwitchIsActivatedAfterReadingTheState(): void
