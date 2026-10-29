@@ -38,6 +38,21 @@ final class Product
     }
 
     /**
+     * Restores a stored product without recording events.
+     */
+    public static function reconstitute(
+        ProductId $id,
+        ProductName $name,
+        Slug $slug,
+        ShortDescription $shortDescription,
+        ProductCategories $categories,
+        TaxCategory $taxCategory,
+        ProductImages $images,
+    ): self {
+        return new self($id, $name, $slug, $shortDescription, $categories, $taxCategory, $images);
+    }
+
+    /**
      * @return list<DomainEvent>
      */
     public function releaseEvents(): array

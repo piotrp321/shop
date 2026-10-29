@@ -40,7 +40,7 @@ są przypięte w pliku compose.
 
 | Usługa | Obraz | Rola | Health check |
 |---|---|---|---|
-| `postgres` | PostgreSQL 18 | bazy `shop`, `shop_test` (API) i `keycloak` | `pg_isready` |
+| `postgres` | PostgreSQL 18 | bazy `shop`, `shop_test` (API, właścicielem jest rola `shop`) i `keycloak` | `pg_isready` |
 | `redis` | Redis 8 | sesje sklepu; sonda w dashboardzie | `redis-cli ping` |
 | `elasticsearch` | Elasticsearch 9, jeden węzeł, security wyłączone lokalnie, `ES_JAVA_OPTS=-Xms512m -Xmx512m` | indeks `products` | `_cluster/health` (yellow lub green) |
 | `rabbitmq` | RabbitMQ 4 z wtyczką management | transport `events` Messengera; vhost `/` dla dev, vhost `test` dla testów | `rabbitmq-diagnostics ping` |
@@ -92,7 +92,10 @@ idempotentny krok, uruchamiany jawnie:
   w `.env.example`.
 - `.env.local` (w `.gitignore`) zawiera sekrety lokalne. Tworzy go `infra/scripts/init-env.sh` przy pierwszym
   `make up`, jeśli plik nie istnieje: klucz i sól imgproxy, klucz dostępu i sekret Garage, sekret klienta `store`,
-  sekret sesji sklepu, hasło administratora Keycloak, hasła do Postgresa i RabbitMQ.
+  sekret sesji sklepu, hasło administratora Keycloak, hasła do Postgresa (superużytkownik, role `keycloak` i `shop`)
+  i RabbitMQ. Gdy plik istnieje, skrypt sprawdza, że ma wszystkie klucze; brakujący klucz kończy `make up` błędem
+  z jego nazwą i instrukcją odtworzenia stosu (usunąć `.env.local` i wolumeny projektu Compose). Skrypt niczego
+  nie dopisuje, bo nowy sekret zwykle wymaga też nowego wolumenu (np. rola `shop` w Postgresie).
 - Usługi, które potrzebują sekretów, wczytują go przez `env_file: {path: .env.local, required: true}`.
   Plik compose nie podstawia sekretów przez `${...}`. Brak pliku kończy się błędem Compose, a nie pustą wartością.
 - Lokalnie jeden `.env.local` trafia do wszystkich usług, które potrzebują sekretów. Podział sekretów per usługa
@@ -162,7 +165,7 @@ w aplikacji uwierzytelniającej.
 
 | Moduł | Domain | Application | Infrastructure | UI |
 |---|---|---|---|---|
-| `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; porty `ProductSearch`, `ProductIndexer`, `ProductImageStorage`, `ImageUrlGenerator`; lista rozmiarów `ImageSize` | Doctrine (mapowanie XML), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, loader danych demo | `GET /api/v1/products`, `GET /api/v1/categories`, komendy konsoli |
+| `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; porty `ProductSearch`, `ProductIndexer`, `ProductImageStorage`, `ImageUrlGenerator`; lista rozmiarów `ImageSize` | Doctrine (rekordy z atrybutami), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, loader danych demo | `GET /api/v1/products`, `GET /api/v1/categories`, komendy konsoli |
 | `Customer` | — | — | `CustomerUser` i `CustomerUserProvider` (z tokena realmu `shop`) | `GET /api/v1/me` |
 | `Backoffice` | — | zapytanie `GetDashboard`; porty `CatalogStatistics`, `SystemHealth`, `MessagingStatistics` | `StaffUser` i `StaffUserProvider` (z tokena realmu `backoffice`), `DashboardVoter`, adaptery portów | `GET /api/v1/admin/me`, `GET /api/v1/admin/dashboard` |
 | `Shared` | interfejs `DomainEvent` (`occurredAt()`), port `DomainEventPublisher`, interfejsy-znaczniki wyjątków `ProblemException`, `NotFound`, `Conflict`, `InvalidInput` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
@@ -192,6 +195,8 @@ Reguły Deptrac:
   `/<id-korzenia>/…/<id>/` z indeksem `text_pattern_ops`. Poddrzewo: `path LIKE '/…/<id>/%'`.
 - Tworzenie: `Category::createRoot(id, name)` albo `Category::createChild(id, name, parent)`. Ścieżkę liczy
   domena z ścieżki rodzica.
+- Odtworzenie z zapisanego stanu: `Category::reconstitute(id, name, parentId, path)`. Odrzuca stan niespójny:
+  ścieżka nie kończy się własnym id, rodzic nie jest przedostatnim elementem ścieżki albo korzeń ma rodzica.
 
 **`Product`** (agregat)
 - `ProductId` (UUID), `ProductName` (niepusta, do 200 znaków), `Slug` (`^[a-z0-9]+(-[a-z0-9]+)*$`, do 200 znaków,
@@ -207,6 +212,8 @@ Reguły Deptrac:
   Najwyżej 10 zdjęć, pozycja zdjęcia równa jego indeksowi na liście (ciągła od 0), bez powtórzonego `ImageKey`.
   Pierwsze zdjęcie jest główne.
 - `Product::create(...)` zapisuje w agregacie zdarzenie `ProductCreated(productId, occurredAt)`.
+- `Product::reconstitute(...)` przyjmuje te same argumenty co `create` i odtwarza produkt z zapisanego stanu bez
+  zapisywania zdarzeń.
 - Naruszenie niezmiennika value objectu rzuca `\InvalidArgumentException`. To strażnik spójności modelu: dane
   od klienta API waliduje wcześniej warstwa aplikacji.
 - Identyfikatory (`CategoryId`, `ProductId`) domena sprawdza formatem UUID w czystym PHP i zapisuje małymi
@@ -222,12 +229,29 @@ Persystencja:
   `category_id` do wyszukiwania produktów po kategorii. Kategoria główna nie trafia do tej tabeli (niezmiennik
   `ProductCategories`). Kolejność kategorii dodatkowych nie jest zapisywana: odczyt zwraca je posortowane po
   `category_id`.
-- Agregaty nie odwołują się do siebie przez obiekty Doctrine. Mapowanie `Product` nie ma asocjacji do `Category`,
-  a kolumny identyfikatorów kategorii są zwykłymi polami. Przypisania dodatkowe zapisuje i odczytuje
-  `DoctrineProductRepository` w tej samej transakcji co produkt.
+- API łączy się z bazą jako rola `shop`, właściciel baz `shop` i `shop_test`, nigdy jako superużytkownik
+  `postgres`. Rolę i bazy tworzy skrypt inicjalizacji Postgresa przy pierwszym starcie pustego wolumenu. Połączenie
+  składa się ze zmiennych: `SHOP_DB_HOST`, `SHOP_DB_NAME`, `SHOP_DB_USER` (jawne, w `environment` usługi `api`)
+  i `SHOP_DB_PASSWORD` (`.env.local`). Testy używają tej samej roli i bazy `shop_test`.
+- Domena nie jest mapowana przez Doctrine. Model persystencji to rekordy `CategoryRecord` i `ProductRecord`
+  w `Catalog/Infrastructure/Persistence/Doctrine/Record`, mapowane atrybutami Doctrine, z identyfikatorami jako
+  tekst UUID. Rekordy mają relacje między sobą: `CategoryRecord::parent` (ManyToOne do `CategoryRecord`),
+  `ProductRecord::primaryCategory` (ManyToOne) i `ProductRecord::additionalCategories` (ManyToMany przez
+  `catalog_product_category`). Klucze obce, tabelę łączącą i indeksy tworzy z tego Doctrine. Indeksy kluczy obcych
+  tworzone automatycznie przez Doctrine zostają, także pokryty przez klucz główny indeks na
+  `catalog_product_category.product_id`. Jedynym elementem schematu spoza mapowania jest klasa operatorów
+  `text_pattern_ops` indeksu `path`, dopisana w migracji.
+- Agregaty w domenie odwołują się do siebie wyłącznie przez identyfikatory. `DoctrineCategoryRepository`
+  i `DoctrineProductRepository` mapują agregat na rekord przy zapisie, a przy odczycie odtwarzają agregat przez
+  `reconstitute()`.
 - Unikalność sluga gwarantuje baza. `ProductRepository::save()` zapisuje od razu (flush w transakcji szyny
   komend) i zamienia naruszenie ograniczenia unikalności sluga na `SlugAlreadyTaken` (409). Nie ma osobnego
-  sprawdzania sluga przed zapisem.
+  sprawdzania sluga przed zapisem. Zamknięty po tym błędzie EntityManager nie przechodzi do kolejnego żądania
+  ani kolejnej wiadomości.
+- `save()` w obu repozytoriach zapisuje agregat jako nowy albo nadpisuje istniejący o tym samym id (upsert).
+  Tworzenia pilnują handlery: `CreateCategory` i `CreateProduct` odrzucają istniejące id wyjątkami
+  `CategoryAlreadyExists` i `ProductAlreadyExists` (`Conflict`, 409). Gdy dwa równoczesne utworzenia z tym samym id
+  oba przejdą sprawdzenie, repozytorium zamienia naruszenie klucza głównego na ten sam wyjątek.
 - Handler `CreateProduct` sprawdza, że istnieją wszystkie kategorie produktu (`CategoryNotFound`, 404).
 
 Identyfikatory nadaje wywołujący komendę (komendy przyjmują `id`). Domena nigdy nie wylicza identyfikatora
@@ -608,7 +632,8 @@ Wymagane przypadki:
 - **Bezczynność w panelu:** fake timers; wylogowanie po 15 min bez aktywności; aktywność w innej karcie
   (przez `BroadcastChannel`) odsuwa wylogowanie.
 
-Dane testowe w API przez fabryki Foundry. `dama/doctrine-test-bundle` wycofuje transakcję po każdym teście.
+Dane testowe w API przez fabryki Foundry. Fabryki agregatów Catalog budują obiekty domenowe przez ich metody
+fabryczne, a test zapisuje je przez repozytorium. `dama/doctrine-test-bundle` wycofuje transakcję po każdym teście.
 
 Izolacja od środowiska deweloperskiego: testy integracyjne używają bazy `shop_test`, indeksów z prefiksem `test_`,
 bucketu `product-images-test` i vhosta RabbitMQ `test`. Deweloperski `worker` (baza `shop`, vhost `/`) nigdy

@@ -24,6 +24,24 @@ final class Category
         return new self($id, $name, $parent->id, $parent->path->child($id));
     }
 
+    public static function reconstitute(CategoryId $id, CategoryName $name, ?CategoryId $parentId, CategoryPath $path): self
+    {
+        $ancestorIds = $path->ancestorIds();
+        if (!$id->equals($ancestorIds[\count($ancestorIds) - 1])) {
+            throw new \InvalidArgumentException('CategoryPath must end with the category id.');
+        }
+
+        $expectedParentId = $ancestorIds[\count($ancestorIds) - 2] ?? null;
+        $parentMatches = null === $parentId || null === $expectedParentId
+            ? $parentId === $expectedParentId
+            : $parentId->equals($expectedParentId);
+        if (!$parentMatches) {
+            throw new \InvalidArgumentException('Category parent must be the penultimate CategoryPath element.');
+        }
+
+        return new self($id, $name, $parentId, $path);
+    }
+
     public function id(): CategoryId
     {
         return $this->id;

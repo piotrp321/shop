@@ -275,7 +275,10 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
 - OpenAPI jako kontrakt i generowany klient TS zamiast ręcznie pisanych typów.
 - Keycloak zamiast własnego serwera OAuth.
 - Klienci i pracownicy jako osobne byty w osobnych realmach Keycloak, z osobnymi firewallami w API.
-- Mapowanie Doctrine poza domeną (XML w Infrastructure).
+- Domena bez mapowania Doctrine: osobny model persystencji (rekordy z atrybutami w Infrastructure) i jawne
+  mapowanie agregat ↔ rekord w repozytoriach. To założenie początkowe, nie ostateczna decyzja: po walking
+  skeleton ocenimy, czy osobny model persystencji daje korzyści warte kosztu utrzymania. Jeśli okaże się zbędny,
+  rozważymy bezpośrednie mapowanie agregatów przez Doctrine w XML.
 - Osobne value objecty w każdym contexcie zamiast wspólnej klasy bazowej.
 - Transactional outbox dla zdarzeń domenowych.
 - Elasticsearch wyłącznie jako model odczytu.

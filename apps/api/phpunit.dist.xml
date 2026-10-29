@@ -14,8 +14,6 @@
         <env name="KERNEL_CLASS" value="App\Kernel" force="true"/>
         <env name="APP_ENV" value="test" force="true"/>
         <env name="APP_DEBUG" value="0" force="true"/>
-        <!-- Placeholder: integration tests will use this database once Doctrine is installed. -->
-        <env name="TEST_DATABASE_NAME" value="shop_test" force="true"/>
     </php>
 
     <testsuites>
@@ -29,6 +27,10 @@
             <directory>tests/Functional</directory>
         </testsuite>
     </testsuites>
+
+    <extensions>
+        <bootstrap class="DAMA\DoctrineTestBundle\PHPUnit\PHPUnitExtension"/>
+    </extensions>
 
     <source>
         <include>

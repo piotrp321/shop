@@ -18,15 +18,14 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: nic. Następne zadanie: **Task 11** (persystencja). Blokery: brak; Task 11 ma punkt zatrzymania
-na decyzje persystencji, opisany niżej.
+W toku: nic. Następne zadanie: **Task 12** (obrazy w API). Blokery: brak.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
 | [#1](https://github.com/piotrp321/shop/pull/1) | 1–8 | dokumentacja API, stos usług, obraz API z SPX, narzędzia jakości API, szkielety sklepu i panelu, konfiguracja Claude Code, wspólne zachowanie HTTP w API | ✅ |
 | [#2](https://github.com/piotrp321/shop/pull/2), [#3](https://github.com/piotrp321/shop/pull/3) | 25 | lekkie CI | ✅ |
 | [#5](https://github.com/piotrp321/shop/pull/5) | 9 | domena Catalog | ✅ |
-| | 11 | persystencja Catalog (Doctrine, PostgreSQL) | |
+| [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | ✅ |
 | | 12 | obrazy w API (Garage, imgproxy) | |
 | | 13 | indeks Elasticsearch i adapter wyszukiwania | |
 | | 10, 14 | komendy tworzenia kategorii i produktów, transactional outbox, RabbitMQ, worker, indeksowanie | |
@@ -64,7 +63,7 @@ Wznowienie pracy w nowej sesji:
 - Jedna logiczna zmiana na commit, Conventional Commits, stopka `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Zależności wyłącznie z sekcji „Zależności” specyfikacji. Każda inna wymaga pytania.
 - Nie wyłączamy reguł PHPStana, Deptraca ani ESLinta i nie edytujemy `deptrac.yaml`, żeby `check` przeszedł.
-- `Domain` to czysty PHP. Mapowanie Doctrine w XML w `Infrastructure`.
+- `Domain` to czysty PHP, bez mapowania Doctrine. Persystencja przez rekordy z atrybutami w `Infrastructure`.
 - Wersje główne jak w „Stosie”. Dokładne wersje przypięte w Dockerfile, compose i lockfile'ach.
 - Sekrety wyłącznie w `.env.local`. Plik compose nie podstawia sekretów przez `${…}`.
 - Po zmianie endpointu lub DTO: `make -C apps/api openapi` i `make api-client` w tym samym commicie.
@@ -79,12 +78,6 @@ Wznowienie pracy w nowej sesji:
 
 ## Punkty zatrzymania
 
-- **Task 11:** zanim implementer zacznie, przedstaw użytkownikowi istotne decyzje persystencji z zadania
-  (mapowanie, typy Doctrine i schemat bazy) i poczekaj na akceptację. Schemat tabel jest ustalony
-  w specyfikacji. Do przedstawienia zostaje, jak mapowanie odtwarza `ProductCategories` z `primary_category_id`
-  i `catalog_product_category` bez zmiany API domeny oraz jak klucze obce i indeksy bez asocjacji Doctrine
-  trafiają do schematu porównywanego przez `doctrine:schema:validate`. Decyzje DDD z Task 9 i 10 są
-  zaakceptowane i zapisane w specyfikacji.
 - **Task 16:** drzewo kategorii, szablony produktów i lista zdjęć z linkami czekają na akceptację,
   zanim cokolwiek zostanie pobrane.
 - **Task 26:** plan zostaje usunięty dopiero po akceptacji całości przez użytkownika.
@@ -165,37 +158,50 @@ w zadaniu, do którego należy kod.
 
 **Pliki:**
 - Utwórz: `src/Catalog/Application/Command/{CreateCategory,CreateCategoryHandler,CreateProduct,CreateProductHandler}.php`,
+  `src/Catalog/Domain/Category/CategoryAlreadyExists.php`, `src/Catalog/Domain/Product/ProductAlreadyExists.php`,
   `tests/Support/InMemory/{InMemoryCategoryRepository,InMemoryProductRepository,RecordingDomainEventPublisher}.php`,
   `tests/Unit/Catalog/Application/{CreateCategoryHandlerTest,CreateProductHandlerTest}.php`
+- Modyfikuj: `src/Catalog/Infrastructure/Persistence/Doctrine/{DoctrineCategoryRepository,DoctrineProductRepository}.php`
+  (naruszenie klucza głównego → `CategoryAlreadyExists` / `ProductAlreadyExists`),
+  `tests/Integration/Catalog/Persistence/{DoctrineCategoryRepositoryTest,DoctrineProductRepositoryTest}.php`
 
 **Interfejsy:**
 - Konsumuje: zadanie 9. Realizowane w jednym PR z zadaniem 14 (szyny Messengera i `DomainEventPublisher`),
   po zadaniu 11 (repozytoria).
 - Produkuje: `CreateCategory(string $id, string $name, ?string $parentId)`;
   `CreateProduct(string $id, string $name, string $slug, string $shortDescription, string $mainCategoryId, list<string> $additionalCategoryIds, string $taxCategory, list<array{key: string, alt: string}> $images)`.
-  Handlery jako `#[AsMessageHandler(bus: 'command.bus')]`. `CreateProductHandler` sprawdza istnienie wszystkich
-  kategorii produktu i publikuje zdarzenia agregatu przez `DomainEventPublisher` po `save`.
+  Handlery jako `#[AsMessageHandler(bus: 'command.bus')]`. Oba handlery odrzucają istniejące id
+  (`CategoryAlreadyExists`, `ProductAlreadyExists` w domenie, implementują `Conflict`), bo `save()` repozytoriów
+  nadpisuje agregat o tym samym id. Wyścig dwóch równoczesnych utworzeń, które oba przejdą sprawdzenie, kończy się
+  naruszeniem klucza głównego; repozytoria zamieniają je na te same wyjątki (409). `CreateProductHandler` sprawdza istnienie wszystkich kategorii produktu i publikuje zdarzenia agregatu przez `DomainEventPublisher` po `save`.
   `InMemoryProductRepository::save` rzuca `SlugAlreadyTaken` przy zajętym slugu, jak ograniczenie w bazie.
 
 - **Krok 1: Testy**
   - `CreateCategoryHandlerTest`: korzeń zapisany; dziecko ma ścieżkę rodzica plus własne id; nieznany
-    `parentId` rzuca `CategoryNotFound`.
+    `parentId` rzuca `CategoryNotFound`; istniejące id rzuca `CategoryAlreadyExists`, a zapisana kategoria się
+    nie zmienia.
   - `CreateProductHandlerTest`: produkt z kategorią główną i dodatkową zapisany, opublikowane dokładnie jedno
     `ProductCreated`; nieznana kategoria główna i nieznana dodatkowa rzucają `CategoryNotFound`; zajęty slug
-    rzuca `SlugAlreadyTaken` i nic nie jest publikowane.
-- **Krok 2: FAIL. Krok 3: implementacja. Krok 4: PASS (`make -C apps/api check test-unit`).**
+    rzuca `SlugAlreadyTaken` i nic nie jest publikowane; istniejące id rzuca `ProductAlreadyExists`, zapisany
+    produkt się nie zmienia i nic nie jest publikowane.
+  - `DoctrineCategoryRepositoryTest`, `DoctrineProductRepositoryTest`: naruszenie klucza głównego przy zapisie
+    (wiersz o tym samym id wstawiony drugim połączeniem po odczycie w repozytorium) rzuca `CategoryAlreadyExists`
+    / `ProductAlreadyExists`.
+- **Krok 2: FAIL. Krok 3: implementacja. Krok 4: PASS (`make -C apps/api check test`).**
 - **Krok 5: Commit** `feat(api): add commands for creating categories and products`
 
 ### Task 11: Persystencja Catalog
 
 **Pliki:**
-- Utwórz: `config/packages/doctrine.yaml` (mapowanie XML z `src/*/Infrastructure/Persistence/Doctrine/mapping`),
-  `src/Catalog/Infrastructure/Persistence/Doctrine/mapping/{Category,Product}.orm.xml`,
-  `src/Catalog/Infrastructure/Persistence/Doctrine/Type/{CategoryIdType,ProductIdType,SlugType,CategoryPathType,ProductImagesType}.php`
-  (`ProductImagesType` w JSONB), `src/Catalog/Infrastructure/Persistence/Doctrine/{DoctrineCategoryRepository,DoctrineProductRepository}.php`,
-  `migrations/Version…CreateCatalog.php`, `tests/Factory/{CategoryFactory,ProductFactory}.php`,
+- Utwórz: `config/packages/doctrine.yaml` (mapowanie atrybutami z `src/Catalog/Infrastructure/Persistence/Doctrine/Record`),
+  `src/Catalog/Infrastructure/Persistence/Doctrine/Record/{CategoryRecord,ProductRecord}.php` (`images` w JSONB),
+  `src/Catalog/Infrastructure/Persistence/Doctrine/{DoctrineCategoryRepository,DoctrineProductRepository}.php`,
+  `migrations/Version…CreateCatalogCategory.php`, `migrations/Version…CreateCatalogProduct.php`,
+  `tests/object-manager.php` (loader PHPStana), `tests/Factory/{CategoryFactory,ProductFactory}.php`,
   `tests/Integration/Catalog/Persistence/{DoctrineCategoryRepositoryTest,DoctrineProductRepositoryTest}.php`
-- Modyfikuj: `config/packages/test/dama_doctrine_test_bundle.yaml`, `phpunit.dist.xml` (rozszerzenie dama),
+- Modyfikuj: `src/Catalog/Domain/Category/Category.php`, `src/Catalog/Domain/Product/Product.php` (`reconstitute()`),
+  `tests/Unit/Catalog/Domain/{CategoryTest,ProductTest}.php`, `infra/docker-compose.yml` (`env_file` dla `api`),
+  `config/packages/test/dama_doctrine_test_bundle.yaml`, `phpunit.dist.xml` (rozszerzenie dama),
   `phpstan.dist.neon` (`objectManagerLoader` rozszerzenia doctrine), `apps/api/Makefile` (`init`: migracje;
   `init-test`: migracje w środowisku `test`; `test` wywołuje najpierw `init-test`), `Makefile` (`up` po starcie
   usług wywołuje `make -C apps/api init`), `apps/api/CLAUDE.md` (cele `init` i `init-test`),
@@ -204,28 +210,37 @@ w zadaniu, do którego należy kod.
 **Interfejsy:**
 - Konsumuje: interfejsy repozytoriów z zadania 9.
 - Produkuje: tabele `catalog_category`, `catalog_product` i `catalog_product_category` jak w sekcji
-  „Persystencja” specyfikacji, bez asocjacji Doctrine między agregatami; `DoctrineProductRepository::save()`
-  zapisuje produkt i jego przypisania dodatkowe w jednej transakcji, robi flush i zamienia naruszenie ograniczenia
-  unikalności sluga na `SlugAlreadyTaken`; fabryki Foundry `CategoryFactory` (z opcją rodzica) i `ProductFactory`.
+  „Persystencja” specyfikacji, z relacjami między rekordami i bez mapowania domeny; `Category::reconstitute()`
+  i `Product::reconstitute()`; `DoctrineProductRepository::save()` zapisuje produkt i jego przypisania dodatkowe
+  w jednej transakcji, robi flush i zamienia naruszenie ograniczenia unikalności sluga na `SlugAlreadyTaken`;
+  fabryki Foundry `CategoryFactory` (z opcją rodzica) i `ProductFactory` budują obiekty domenowe.
 
 - **Krok 1: Testy**
+  - `CategoryTest`: `reconstitute` odtwarza id, nazwę, rodzica i ścieżkę; odrzuca ścieżkę niekończącą się własnym
+    id, rodzica innego niż przedostatni element ścieżki i korzeń z rodzicem.
+  - `ProductTest`: `reconstitute` odtwarza pola i nie zapisuje zdarzeń (`releaseEvents() === []`).
   - `DoctrineCategoryRepositoryTest`: zapis i odczyt zachowuje ścieżkę i rodzica; `get` nieznanego id rzuca
     `CategoryNotFound`; `count()`.
   - `DoctrineProductRepositoryTest`: zapis i odczyt zachowuje kolejność zdjęć, kategorię główną, zbiór kategorii
     dodatkowych (posortowany po id) i `TaxCategory`; produkt bez kategorii dodatkowych nie ma wierszy
     w `catalog_product_category`; kategoria główna nie ma tam wiersza; `count()`; `countWithoutImages()`; zapis
-    drugiego produktu z tym samym slugiem rzuca `SlugAlreadyTaken`, a w tabelach nie ma jego wierszy; produkt
-    z nieistniejącą kategorią główną albo dodatkową narusza klucz obcy.
-  - Schemat: `catalog_product.primary_category_id` jest `NOT NULL`; istnieją indeksy na
+    drugiego produktu z tym samym slugiem rzuca `SlugAlreadyTaken`, a w tabelach nie ma jego wierszy; po
+    `SlugAlreadyTaken` kolejna operacja na repozytorium (nowe żądanie albo kolejna wiadomość) działa, czyli
+    zamknięty EntityManager nie przechodzi dalej; produkt z nieistniejącą kategorią główną albo dodatkową narusza
+    klucz obcy; usunięcie produktu usuwa jego wiersze z `catalog_product_category`, a usunięcie przypisanej
+    kategorii jest odrzucane.
+  - Deptrac: sonda z atrybutem Doctrine na klasie w `Catalog/Domain` kończy `make -C apps/api check` błędem.
+  - Schemat: `catalog_product.primary_category_id` jest `NOT NULL`; indeks `path` ma `text_pattern_ops`; istnieją indeksy na
     `catalog_product.primary_category_id` i `catalog_product_category.category_id` (odczyt z `pg_indexes`).
-- **Krok 2: FAIL. Krok 3: mapowanie, typy, repozytoria, migracja (`make -C apps/api migration`).**
+- **Krok 2: FAIL. Krok 3: `reconstitute()`, rekordy, repozytoria, migracja (`make -C apps/api migration`,
+  `text_pattern_ops` dopisany ręcznie).**
 - **Krok 4: PASS**: `make -C apps/api check test`; `bin/console doctrine:schema:validate` w kontenerze
   przechodzi.
 - **Krok 5: Sprawdź inicjalizację**: na świeżym projekcie Compose (inny `COMPOSE_PROJECT_NAME`, puste wolumeny)
   `make up` tworzy schemat, a `make test` przechodzi bez ręcznych kroków; drugie `make up` kończy się kodem 0
   bez nowych migracji; `docker compose restart api` nie uruchamia migracji (logi `api`); `make -C apps/api init`
   przy zatrzymanym Postgresie kończy się kodem różnym od 0.
-- **Krok 6: Commit** `feat(api): persist catalog with Doctrine XML mapping`
+- **Krok 6: Commit** `feat(api): persist catalog with Doctrine records`
 
 ### Task 12: Obrazy – Garage i imgproxy
 
