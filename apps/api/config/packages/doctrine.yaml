@@ -17,10 +17,12 @@ doctrine:
                 dir: '%kernel.project_dir%/src/Catalog/Infrastructure/Persistence/Doctrine/Record'
                 prefix: 'App\Catalog\Infrastructure\Persistence\Doctrine\Record'
 
-when@test:
+when@test: &test
     doctrine:
         dbal:
             dbname_suffix: '_test'
+
+when@test_messaging: *test
 
 when@prod:
     doctrine:

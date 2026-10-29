@@ -9,7 +9,7 @@ COPY --from=composer:2.10.3 /usr/bin/composer /usr/local/bin/composer
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git unzip \
     && rm -rf /var/lib/apt/lists/* \
-    && install-php-extensions pdo_pgsql amqp redis intl opcache
+    && install-php-extensions pdo_pgsql amqp redis intl opcache pcntl
 
 ENV COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_HOME=/tmp/composer

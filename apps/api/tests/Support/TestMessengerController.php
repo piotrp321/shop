@@ -10,19 +10,19 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
- * Dispatches on the real (sync) bus, so the exceptions reach the subscriber wrapped in HandlerFailedException.
+ * Dispatches on the real (sync) command bus, so the exceptions reach the subscriber wrapped in HandlerFailedException.
  */
 #[AsController]
 final readonly class TestMessengerController
 {
-    public function __construct(private MessageBusInterface $bus)
+    public function __construct(private MessageBusInterface $commandBus)
     {
     }
 
     #[Route('/_test/handler/{failure}', methods: ['GET'])]
     public function dispatch(string $failure): Response
     {
-        $this->bus->dispatch(new TestMessage($failure));
+        $this->commandBus->dispatch(new TestMessage($failure));
 
         return new Response();
     }

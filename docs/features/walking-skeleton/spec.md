@@ -51,14 +51,15 @@ są przypięte w pliku compose.
 | `imgproxy` | imgproxy 3, źródło S3 → Garage | przetwarzanie obrazów na żądanie | `imgproxy health` |
 | `mailpit` | Mailpit | SMTP dla realmu `shop` (weryfikacja e-mail, reset hasła) | `/readyz` |
 | `api` | własny obraz FrankenPHP, PHP 8.5, target `dev` (z SPX) | HTTP API | `GET /health` |
-| `worker` | ten sam obraz co `api` | `messenger:consume outbox events` | proces konsumenta działa |
+| `worker` | obraz z tego samego Dockerfile i targetu co `api` | `messenger:consume outbox events` | proces konsumenta działa |
 | `store` | Node 24, `next dev` | sklep | `GET /` |
 | `admin` | Node 24, `vite dev` | panel | `GET /` |
 | `e2e` | obraz Playwright, profil `e2e` | testy E2E, uruchamiany tylko przez `make e2e` | — |
 
 Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init` i `worker`. Potem uruchamia `rabbitmq-init` przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd), krok inicjalizacji (niżej) i dopiero na końcu `worker`, bo bez migracji nie ma tabel transportu `outbox`.
 
-Obraz API zawiera rozszerzenia `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, a target `dev` dodatkowo SPX.
+Obraz API zawiera rozszerzenia `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, `pcntl` (worker kończy bieżącą
+wiadomość i zatrzymuje się na SIGTERM), a target `dev` dodatkowo SPX.
 Entrypoint `api` w trybie dev instaluje tylko zależności, jeśli zmienił się lock.
 
 ### Inicjalizacja bazy i indeksu
@@ -280,15 +281,21 @@ W szkielecie katalog nie ma edycji ani usuwania, istnieje tylko tworzenie.
 
 ### Zdarzenia: outbox → RabbitMQ → handler
 
-Szyny Messengera: `command.bus` (middleware walidacji i `doctrine_transaction`), `query.bus`, `event.bus`.
+Szyny Messengera: `command.bus` (middleware walidacji i `doctrine_transaction`, szyna domyślna), `query.bus`,
+`event.bus` (zdarzenie bez odbiorcy nie jest błędem: `allow_no_handlers`).
 
 Transporty:
 
 | Transport | DSN | Rola |
 |---|---|---|
 | `outbox` | Doctrine, to samo połączenie co agregaty, `queue_name=outbox` | transactional outbox |
-| `events` | AMQP (RabbitMQ), serializer JSON | dystrybucja zdarzeń do odbiorców |
+| `events` | AMQP (RabbitMQ), exchange i kolejka `events`, serializer JSON, `confirm_timeout` 5 s | dystrybucja zdarzeń do odbiorców |
 | `failed` | Doctrine, `queue_name=failed` | wiadomości po wyczerpaniu ponowień |
+
+`outbox` i `failed` dzielą tabelę `messenger_messages`, którą tworzy migracja (`auto_setup=false`). Worker odpytuje
+je co sekundę (`use_notify: false`, migracja nie tworzy wyzwalacza NOTIFY). Połączenie
+z RabbitMQ składa się ze zmiennych `RABBITMQ_HOST`, `RABBITMQ_USER`, `RABBITMQ_VHOST` (jawne, w `environment`
+usług `api` i `worker`) oraz `RABBITMQ_DEFAULT_PASS` (`.env.local`).
 
 Przepływ:
 
@@ -296,12 +303,25 @@ Przepływ:
    kierowany na transport `outbox`, więc wiersz w outboxie powstaje w tej samej transakcji co agregat.
    Wycofanie transakcji usuwa oba.
 2. `worker` konsumuje `outbox`. Jedyny handler z `from_transport: outbox` to przekaźnik, który wysyła to samo
-   zdarzenie dalej z `TransportNamesStamp(['events'])`.
+   zdarzenie dalej z `TransportNamesStamp(['events'])`. Transport `events` czeka na potwierdzenie publikacji
+   przez brokera (publisher confirms), więc wiersz outboxa dostaje ack dopiero, gdy RabbitMQ ma wiadomość.
+   Nieudana publikacja to wyjątek przekaźnika i ponowienie wiersza outboxa.
 3. `worker` konsumuje `events`. Handlery odbiorców mają `from_transport: events`, w szkielecie jest to
    `IndexProduct` dla `ProductCreated`.
 4. Każdy handler zdarzenia ma jawny `from_transport`. Przekaźnik nigdy nie działa przy konsumpcji z `events`,
    a odbiorcy nigdy przy konsumpcji z `outbox`, więc nie ma pętli ani podwójnej obsługi.
-5. Ponowienia: 3 próby z opóźnieniem 1 s i mnożnikiem 3, potem transport `failed`.
+5. Ponowienia (z domyślnym jitterem ±10 %), potem transport `failed`, gdzie zdarzenie czeka na
+   `messenger:failed:retry`:
+   - `events`: 3 próby z opóźnieniem 1 s i mnożnikiem 3,
+   - `outbox`: 30 prób z opóźnieniem 1 s, mnożnikiem 2 i najwyżej 60 s, razem około 25 minut. Błąd przekaźnika to
+     zawsze niedostępny albo odrzucający broker, więc restart RabbitMQ nie przenosi zdarzeń do `failed`.
+     Ponowienie to nowy wiersz z późniejszym `available_at`.
+
+Gwarancja dostarczenia to at-least-once. Pobrany wiersz outboxa ma `delivered_at` i zostaje w tabeli do ack.
+Gdy przekaźnik padnie po publikacji, a przed ackiem, wiersz wraca po `redeliver_timeout` (300 s; przekazanie trwa
+milisekundy plus najwyżej 5 s oczekiwania na potwierdzenie) i zdarzenie trafia
+do RabbitMQ drugi raz. Tak samo RabbitMQ doręcza ponownie wiadomość bez ack odbiorcy. Kilka workerów nie bierze
+tego samego wiersza (`SELECT … FOR UPDATE SKIP LOCKED`), ale kolejność zdarzeń nie jest gwarantowana.
 
 Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` czyta aktualny stan produktu z wersją przez
 `ProductSearchSource` i zapisuje dokument z tą wersją. Starszy albo powtórzony zapis Elasticsearch odrzuca, a handler
@@ -751,8 +771,11 @@ Wymagane przypadki:
 
 - **Routing Messengera:** konsumpcja `outbox` umieszcza dokładnie jedną wiadomość na `events` i nie wywołuje
   `IndexProduct`; konsumpcja `events` wywołuje `IndexProduct` raz i nie umieszcza niczego na `outbox` ani `events`.
-- **Atomowość outboxa:** wyjątek po zapisaniu zdarzenia, a przed commitem, zostawia zero produktów i zero wierszy
-  w outboxie; udany commit zostawia jeden produkt i jeden wiersz.
+- **Atomowość outboxa:** wyjątek po zapisaniu zdarzenia, a przed commitem, zostawia zero produktów, zero wierszy
+  w outboxie i zero wiadomości w RabbitMQ; udany commit zostawia jeden produkt i jeden wiersz.
+- **Przekaźnik outboxa:** nieosiągalny broker zostawia zdarzenie w outboxie z kolejnymi ponowieniami, potem
+  w `failed`, skąd `messenger:failed:retry` publikuje je po powrocie brokera; publikacja odrzucona przez brokera
+  (nack) zostawia zdarzenie w outboxie; przekaźnik, który padł przed ackiem, publikuje zdarzenie drugi raz.
 - **imgproxy:** podpisany adres WebP zwraca 200 i `image/webp` dla oryginału w każdym formacie wejściowym (JPEG,
   PNG, WebP, AVIF, HEIC); zmieniony podpis zwraca 403; oryginał powyżej 50 MP wgrany bezpośrednio do bucketu
   zwraca 422.
@@ -831,7 +854,7 @@ Akceptacja tej specyfikacji jest zgodą na poniższą listę. Każda inna zależ
 | Gdzie | Produkcyjne | Deweloperskie |
 |---|---|---|
 | api (Composer) | `symfony/flex`, `symfony/framework-bundle`, `symfony/runtime`, `symfony/console`, `symfony/dotenv`, `symfony/yaml`, `symfony/security-bundle`, `symfony/messenger`, `symfony/amqp-messenger`, `symfony/doctrine-messenger`, `symfony/serializer`, `symfony/property-access`, `symfony/property-info`, `symfony/validator`, `symfony/uid`, `symfony/http-client`, `symfony/monolog-bundle`, `doctrine/doctrine-bundle`, `doctrine/orm`, `doctrine/doctrine-migrations-bundle`, `nelmio/api-doc-bundle`, `nelmio/cors-bundle`, `web-token/jwt-library`, `league/flysystem-bundle`, `league/flysystem-async-aws-s3`, `elasticsearch/elasticsearch` (wraz z zależnościami przechodnimi: `elastic/transport`, `nyholm/psr7`, `psr/http-client`, `psr/http-factory`, `psr/http-message`, `php-http/httplug`, `php-http/promise`, `php-http/discovery` jako plugin Composera wyłączony w `allow-plugins`, `open-telemetry/api`, `open-telemetry/context`, `symfony/polyfill-php82`; klient HTTP to `symfony/http-client` przez `Psr18Client`) | `phpunit/phpunit`, `symfony/browser-kit`, `phpstan/phpstan`, `phpstan/phpstan-symfony`, `phpstan/phpstan-doctrine`, `phpstan/phpstan-phpunit`, `deptrac/deptrac`, `friendsofphp/php-cs-fixer`, `zenstruck/foundry`, `dama/doctrine-test-bundle` |
-| api (rozszerzenia PHP) | `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache` | `spx` |
+| api (rozszerzenia PHP) | `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, `pcntl` | `spx` |
 | store (npm) | `next`, `react`, `react-dom`, `openid-client`, `redis`, `openapi-fetch`, `radix-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` | `typescript`, `@types/node`, `@types/react`, `@types/react-dom`, `tailwindcss`, `@tailwindcss/postcss`, `tw-animate-css`, `eslint`, `eslint-config-next`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vitejs/plugin-react`, `@testing-library/react`, `jsdom` |
 | admin (npm) | `vue`, `vue-router`, `pinia`, `primevue`, `@primeuix/themes`, `primeicons`, `oidc-client-ts`, `openapi-fetch` | `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint`, `typescript-eslint`, `eslint-plugin-vue`, `openapi-typescript`, `vitest`, `@vue/test-utils`, `jsdom` |
 | e2e (npm) | — | `@playwright/test`, `otpauth`, `typescript` |

@@ -4,6 +4,9 @@ framework:
     php_errors:
         log: true
 
-when@test:
+when@test: &test
     framework:
         test: true
+
+# Kernel of the tests that run messages through the real transports (Doctrine outbox, RabbitMQ).
+when@test_messaging: *test

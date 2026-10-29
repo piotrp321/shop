@@ -13,11 +13,13 @@ when@dev:
                 formatter: monolog.formatter.json
                 channels: ['!event']
 
-when@test:
+when@test: &test
     monolog:
         handlers:
             'null':
                 type: 'null'
+
+when@test_messaging: *test
 
 when@prod:
     monolog:

@@ -1,0 +1,9 @@
+# The `test` kernel keeps every message in memory. Tests of the real route (Doctrine outbox, RabbitMQ) boot the
+# `test_messaging` kernel instead.
+framework:
+    messenger:
+        transports:
+            outbox: 'in-memory://'
+            # Serialized, so the JSON serializer of `events` is exercised.
+            events: 'in-memory://?serialize=true'
+            failed: 'in-memory://'
