@@ -6,6 +6,7 @@ namespace App\Catalog\Infrastructure\Persistence\Doctrine\Record;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
@@ -43,7 +44,7 @@ class ProductRecord
     public string $taxCategory;
 
     /** @var list<array{key: string, alt: string}> in position order */
-    #[ORM\Column(type: 'json', options: ['jsonb' => true])]
+    #[ORM\Column(type: Types::JSONB)]
     public array $images;
 
     public function __construct(
