@@ -124,6 +124,10 @@ when@test: &test
         test.product_images.storage:
             alias: product_images.storage
             public: true
+        # Tests switch the search backend (a temporary index, a failing stub) through this service.
+        App\Tests\Support\SwitchableProductSearch:
+            public: true
+        App\Catalog\Application\Port\ProductSearch: '@App\Tests\Support\SwitchableProductSearch'
         App\Catalog\Application\Port\ProductSearchSource:
             alias: App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource
             public: true

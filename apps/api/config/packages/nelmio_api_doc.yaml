@@ -1,5 +1,8 @@
 # Two OpenAPI documents, exported by `make -C apps/api openapi`. No Swagger UI or JSON routes are exposed.
 nelmio_api_doc:
+    models:
+        names:
+            - { alias: ProductImage, type: App\Catalog\Application\Query\ImageView, areas: [default] }
     areas:
         default:
             path_patterns:
@@ -11,6 +14,37 @@ nelmio_api_doc:
                     description: Public and customer endpoints used by the store.
                     version: 1.0.0
                 components:
+                    schemas:
+                        Problem:
+                            type: object
+                            description: Problem details (RFC 9457), `application/problem+json`.
+                            required: [type, title, status]
+                            properties:
+                                type:
+                                    type: string
+                                    example: about:blank
+                                title:
+                                    type: string
+                                    example: Bad Request
+                                status:
+                                    type: integer
+                                    example: 400
+                                detail:
+                                    type: string
+                                    description: Present only for 4xx errors, never for 5xx.
+                                violations:
+                                    type: array
+                                    description: Present only for 400 caused by invalid input.
+                                    items:
+                                        type: object
+                                        required: [propertyPath, title]
+                                        properties:
+                                            propertyPath:
+                                                type: string
+                                                example: category
+                                            title:
+                                                type: string
+                                                example: This is not a valid UUID.
                     securitySchemes:
                         shop:
                             type: http
