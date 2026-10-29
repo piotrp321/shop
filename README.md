@@ -59,10 +59,11 @@ Jawne dane demo, nie sekrety. Kod TOTP panelu: SHA1, 6 cyfr, 30 s; sekret w base
 make check   # PHPStan, Deptrac, PHP CS Fixer; ESLint i TypeScript w sklepie i panelu
 make test    # PHPUnit i Vitest wszystkich aplikacji
 make -C apps/api test   # jedna aplikacja: make -C apps/<api|store|admin> <cel>
+make e2e     # testy Playwright na działającym stosie (najpierw make up i make seed)
 ```
 
-Komendy działają w kontenerach postawionych przez `make up`. CI (GitHub Actions) uruchamia `make check` i testy
-przy każdym pull requeście.
+Komendy działają w kontenerach postawionych przez `make up`. CI (GitHub Actions) uruchamia `make check`, testy
+i testy E2E na pełnym stosie przy każdym pull requeście.
 
 ## Co działa teraz
 
@@ -80,12 +81,13 @@ przy każdym pull requeście.
   minutach bezczynności.
 - Kontrakt: OpenAPI sklepu i panelu eksportowane do plików, z nich generowani klienci TypeScript obu frontów
   (`make api-client`); reguła ESLint blokuje `fetch` poza klientem API.
-- CI: analiza statyczna, testy trzech aplikacji i kontrola aktualności kontraktu.
+- Testy E2E (Playwright, `make e2e`): katalog, logowanie klienta, rejestracja z weryfikacją e-maila, logowanie
+  pracownika z TOTP.
+- CI: analiza statyczna, testy trzech aplikacji, kontrola aktualności kontraktu i testy E2E na pełnym stosie.
 
 ## Najbliższe etapy
 
-1. Testy E2E na pełnym stosie.
-2. Odbiór szkieletu i pełny README.
+1. Odbiór szkieletu i pełny README.
 
 Kolejność i stan prac: sekcja „Status” w [planie](docs/features/walking-skeleton/plan.md).
 
