@@ -102,6 +102,31 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         self::assertSame([], $this->assignedCategoryIds($withoutAdditional));
     }
 
+    public function testSavingExistingProductReplacesItsAdditionalCategories(): void
+    {
+        [$main, $kept, $removed, $added] = $this->savedCategories(4);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$kept, $removed]]);
+        $this->products->save($product);
+        $this->entityManager->clear();
+
+        $this->products->save(ProductFactory::createOne([
+            'id' => $product->id()->toString(),
+            'slug' => $product->slug()->value(),
+            'mainCategory' => $main,
+            'additionalCategories' => [$kept, $added],
+        ]));
+        $this->entityManager->clear();
+
+        $expected = [$kept->id()->toString(), $added->id()->toString()];
+        sort($expected);
+        self::assertSame($expected, $this->assignedCategoryIds($product));
+        self::assertSame($expected, array_map(
+            static fn ($id): string => $id->toString(),
+            $this->products->get($product->id())->categories()->additional(),
+        ));
+        self::assertSame(1, $this->products->count());
+    }
+
     public function testGetOfUnknownIdThrowsProductNotFound(): void
     {
         $this->expectException(ProductNotFound::class);
