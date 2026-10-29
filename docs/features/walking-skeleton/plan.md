@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: **Task 12** (obrazy w API). Blokery: brak.
+W toku: nic. Następne zadanie: **Task 13** (indeks Elasticsearch). Blokery: brak.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
@@ -26,7 +26,7 @@ W toku: **Task 12** (obrazy w API). Blokery: brak.
 | [#2](https://github.com/piotrp321/shop/pull/2), [#3](https://github.com/piotrp321/shop/pull/3) | 25 | lekkie CI | ✅ |
 | [#5](https://github.com/piotrp321/shop/pull/5) | 9 | domena Catalog | ✅ |
 | [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | ✅ |
-| | 12 | obrazy w API (Garage, imgproxy) | |
+| [#8](https://github.com/piotrp321/shop/pull/8) | 12 | obrazy w API (Garage, imgproxy) | ✅ |
 | | 13 | indeks Elasticsearch i adapter wyszukiwania | |
 | | 10, 14 | komendy tworzenia kategorii i produktów, transactional outbox, RabbitMQ, worker, indeksowanie | |
 | | 15 | endpointy katalogu i OpenAPI sklepu | |
