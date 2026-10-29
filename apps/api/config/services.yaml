@@ -1,6 +1,12 @@
 parameters:
     app.images_bucket: '%env(IMAGES_BUCKET)%'
     app.imgproxy_public_url: '%env(IMGPROXY_PUBLIC_URL)%'
+    # Search index (spec: "Indeks Elasticsearch"). The client never retries; timeouts are in seconds.
+    app.search.connect_timeout: 1.0
+    # Search, count, single writes and alias operations.
+    app.search.request_timeout: 2.0
+    # Bulk writes, index creation and refresh.
+    app.search.long_request_timeout: 30.0
 
 services:
     _defaults:
@@ -34,6 +40,21 @@ services:
             $key: '%env(IMGPROXY_KEY)%'
             $salt: '%env(IMGPROXY_SALT)%'
             $bucket: '%app.images_bucket%'
+
+    App\Catalog\Infrastructure\Search\ElasticsearchClientFactory:
+        arguments:
+            $url: '%env(ELASTICSEARCH_URL)%'
+            $connectTimeout: '%app.search.connect_timeout%'
+
+    app.search.client:
+        class: Elastic\Elasticsearch\Client
+        factory: ['@App\Catalog\Infrastructure\Search\ElasticsearchClientFactory', 'create']
+        arguments: ['%app.search.request_timeout%']
+
+    app.search.long_request_client:
+        class: Elastic\Elasticsearch\Client
+        factory: ['@App\Catalog\Infrastructure\Search\ElasticsearchClientFactory', 'create']
+        arguments: ['%app.search.long_request_timeout%']
 
     App\Catalog\Application\Port\ProductImageStorage: '@App\Catalog\Infrastructure\Image\FlysystemProductImageStorage'
     App\Catalog\Application\Port\ImageUrlGenerator: '@App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator'
