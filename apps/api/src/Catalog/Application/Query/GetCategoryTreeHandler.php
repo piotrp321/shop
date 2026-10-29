@@ -8,7 +8,7 @@ use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
-#[AsMessageHandler]
+#[AsMessageHandler(bus: 'query.bus')]
 final readonly class GetCategoryTreeHandler
 {
     public function __construct(private CategoryRepository $categories)
