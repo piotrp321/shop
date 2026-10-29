@@ -16,8 +16,9 @@ can_connect() {
   timeout 3 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null
 }
 
-# Fail fast with a readable message instead of letting every test time out.
-for entry in "${SERVICES[@]}"; do
+# Fail fast with a readable message instead of letting every test time out. Mailpit has no forwarder: the tests
+# read its API directly over the Compose network.
+for entry in "${SERVICES[@]}" "mailpit - mailpit 8025"; do
   read -r name _ host port <<<"$entry"
   if ! can_connect "$host" "$port"; then
     echo "e2e: $name is not reachable at $host:$port. Start the stack first: make up && make seed" >&2

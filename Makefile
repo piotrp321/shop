@@ -1,4 +1,4 @@
-.PHONY: up down logs ps seed check test e2e api-client keycloak-reset
+.PHONY: up down logs ps seed check test e2e e2e-check api-client keycloak-reset
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -40,11 +40,19 @@ test:
 	$(MAKE) -C apps/store test
 	$(MAKE) -C apps/admin test
 
+# Extra `docker compose run` flags for the e2e targets; CI passes -T (no terminal).
+E2E_FLAGS ?=
+
 # Playwright tests against the running stack (`make up` and `make seed` first). `--build` keeps the image in step
 # with e2e/package-lock.json (cached when nothing changed); a failing test or an unreachable service fails the target.
 e2e:
 	mkdir -p e2e/test-results
-	docker compose --profile e2e run --rm --build e2e
+	docker compose --profile e2e run --rm --build $(E2E_FLAGS) e2e
+
+# Type-checks the e2e package. Needs no running services, only the e2e image (not part of `check`, which would pull
+# the Playwright image for every developer; CI runs it in the e2e job).
+e2e-check:
+	docker compose --profile e2e run --rm --build --no-deps $(E2E_FLAGS) --entrypoint npx e2e tsc --noEmit
 
 # Generates the TypeScript API client types of the store and of the admin panel from the committed OpenAPI files.
 api-client:

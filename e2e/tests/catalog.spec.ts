@@ -7,12 +7,13 @@ const pageIndicator = (page: Page) => page.getByText(/^Strona \d+ z \d+$/);
 /** Product names of every page of the current listing, following "next page" until it disappears. */
 async function allProductNames(page: Page): Promise<string[]> {
   const names: string[] = [];
-  for (;;) {
+  for (let current = 1; ; current++) {
+    // A single-page listing has no indicator; after "next" the indicator must show the incremented page.
+    if (current > 1) await expect(pageIndicator(page)).toHaveText(new RegExp(`^Strona ${current} z \\d+$`));
     names.push(...(await productNames(page)));
     const next = page.getByRole("link", { name: "Przejdź do następnej strony" });
     if ((await next.count()) === 0) return names;
     await next.click();
-    await page.waitForURL(/page=\d+/);
   }
 }
 

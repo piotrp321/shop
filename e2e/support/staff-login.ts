@@ -22,9 +22,12 @@ export async function loginStaff(page: Page, account: StaffAccount): Promise<voi
   for (let attempt = 0; attempt < 2; attempt++) {
     await page.locator("#otp").fill(await totp(account.totpSecret));
     await page.locator("#kc-login").click();
-    const accepted = await page
-      .waitForURL(/^http:\/\/localhost:\d+\/(?!realms\/)/, { timeout: 10_000 })
-      .then(() => true, () => false);
+    // Accepted: the browser leaves Keycloak for the panel. Rejected: the OTP form comes back with an error message.
+    const rejection = page.locator("#input-error-otp");
+    const accepted = await Promise.race([
+      page.waitForURL(/^http:\/\/localhost:\d+\/(?!realms\/)/, { timeout: 15_000 }).then(() => true),
+      rejection.waitFor({ timeout: 15_000 }).then(() => false),
+    ]);
     if (accepted) return;
     // Rejected (reused code): the next code differs only in the next window.
     await page.waitForTimeout(OTP_PERIOD_MS - (Date.now() % OTP_PERIOD_MS) + 200);
