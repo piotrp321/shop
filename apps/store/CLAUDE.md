@@ -58,7 +58,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Obrazy
 
-- Zdjęcia wyłącznie z wariantów zwróconych przez API (`image.variants`), przez komponent `ProductPicture`.
+- Zdjęcia wyłącznie z wariantów zwróconych przez API (`image.variants`), przez komponent `ProductPhoto`.
   Sklep nie podpisuje adresów i nie dodaje rozmiarów. Nowy rozmiar dopisuje się do listy w API.
 - `<Image>` z `next/image` bez loadera wariantów nie zadziała: globalny loader celowo rzuca błąd.
 
@@ -68,7 +68,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Każdy przeniesiony plik ma w nagłówku komentarz `// Adapted from vercel/shop (MIT): <ścieżka w repo źródłowym>`.
   `THIRD_PARTY_NOTICES.md` w tym katalogu zawiera pełny tekst licencji MIT i listę przeniesionych plików.
 - Przy przenoszeniu: dane tylko z naszego API przez wygenerowanego klienta, bez kodu, typów i zapytań Shopify;
-  obrazy przez `ProductPicture` zamiast `next/image` z CDN Shopify; kolory i odstępy przepisane na nasze tokeny.
+  obrazy przez `ProductPhoto` zamiast `next/image` z CDN Shopify; kolory i odstępy przepisane na nasze tokeny.
 
 ## Testy
 

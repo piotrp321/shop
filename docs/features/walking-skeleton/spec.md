@@ -518,7 +518,7 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
 - Motyw w szkielecie jest tymczasowy i neutralny: odcienie szarości, jeden akcent, systemowy krój pisma.
   Docelowy wygląd (kierunek w `docs/vision.md`, sekcja „Wygląd sklepu”) to osobny krok MVP.
 - Komponenty i układy przenoszone później z vercel/shop podlegają zasadom z `apps/store/CLAUDE.md`
-  (informacja o licencji MIT, dane tylko z naszego API, obrazy przez `ProductPicture`).
+  (informacja o licencji MIT, dane tylko z naszego API, obrazy przez `ProductPhoto`).
 
 ### Strona `/`
 
