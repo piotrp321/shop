@@ -27,6 +27,26 @@
                                 }
                             }
                         }
+                    },
+                    "401": {
+                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -95,8 +115,18 @@
                             }
                         }
                     },
+                    "401": {
+                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
                     "503": {
-                        "description": "The search service is unavailable (problem details without technical details).",
+                        "description": "The search service is unavailable, or a token was sent and the keys of its issuer cannot be fetched (problem details without technical details).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -106,6 +136,53 @@
                         }
                     }
                 }
+            }
+        },
+        "/api/v1/me": {
+            "get": {
+                "tags": [
+                    "Customer"
+                ],
+                "summary": "Current customer",
+                "description": "The customer identified by the access token of the `shop` realm.",
+                "operationId": "getMe",
+                "responses": {
+                    "200": {
+                        "description": "The customer.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MeResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "shop": []
+                    }
+                ]
             }
         }
     },
@@ -321,6 +398,31 @@
                     }
                 },
                 "type": "object"
+            },
+            "MeResponse": {
+                "description": "The customer identified by the access token.",
+                "required": [
+                    "id",
+                    "email",
+                    "name"
+                ],
+                "properties": {
+                    "id": {
+                        "description": "Customer id, the `sub` of the token.",
+                        "type": "string",
+                        "example": "58276b79-2248-4817-8b28-5dbbb4f343ab"
+                    },
+                    "email": {
+                        "type": "string",
+                        "example": "jan.kowalski@example.com"
+                    },
+                    "name": {
+                        "description": "Full name, empty when the account has none.",
+                        "type": "string",
+                        "example": "Jan Kowalski"
+                    }
+                },
+                "type": "object"
             }
         },
         "securitySchemes": {
@@ -336,6 +438,10 @@
         {
             "name": "Catalog",
             "description": "Catalog"
+        },
+        {
+            "name": "Customer",
+            "description": "Customer"
         }
     ]
 }

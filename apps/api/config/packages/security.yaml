@@ -1,0 +1,66 @@
+# Access tokens of Keycloak (spec: "Uwierzytelnianie i uprawnienia"). Two stateless firewalls, the first matching
+# pattern wins: /api/v1/admin takes only tokens of the `backoffice` realm (staff), the rest of /api/v1 only tokens of
+# the `shop` realm (customers). Each checks the RS256 signature, the issuer (public URL of its realm), the audience,
+# exp, nbf and iat. Where the keys come from depends on the environment: discovery below, a fixed keyset in tests.
+security:
+    providers:
+        staff:
+            id: App\Backoffice\Infrastructure\Security\StaffUserProvider
+        customers:
+            id: App\Customer\Infrastructure\Security\CustomerUserProvider
+
+    firewalls:
+        admin:
+            pattern: ^/api/v1/admin(/|$)
+            stateless: true
+            provider: staff
+            entry_point: App\Shared\Infrastructure\Security\ProblemAuthenticationEntryPoint
+            access_token:
+                token_handler:
+                    oidc:
+                        audience: backoffice-api
+                        issuers: ['%app.oidc.backoffice.issuer%']
+                        algorithms: ['RS256']
+                failure_handler: App\Shared\Infrastructure\Security\ProblemAuthenticationFailureHandler
+        shop:
+            pattern: ^/api/v1(/|$)
+            stateless: true
+            provider: customers
+            entry_point: App\Shared\Infrastructure\Security\ProblemAuthenticationEntryPoint
+            access_token:
+                token_handler:
+                    oidc:
+                        audience: shop-api
+                        issuers: ['%app.oidc.shop.issuer%']
+                        algorithms: ['RS256']
+                failure_handler: App\Shared\Infrastructure\Security\ProblemAuthenticationFailureHandler
+
+    # First match wins. Everything under /api/v1 needs a token unless it is listed as public here.
+    access_control:
+        - { path: ^/api/v1/admin(/|$), roles: ROLE_STAFF }
+        - { path: ^/api/v1/(products|categories)$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
+        - { path: ^/api/v1(/|$), roles: ROLE_CUSTOMER }
+
+# Keys from the discovery document and JWKS of each realm, fetched through the internal URL and cached.
+when@dev: &discovery
+    security:
+        firewalls:
+            admin:
+                access_token:
+                    token_handler:
+                        oidc:
+                            discovery:
+                                base_uri: '%app.oidc.backoffice.discovery_url%'
+                                cache: { id: cache.oidc }
+            shop:
+                access_token:
+                    token_handler:
+                        oidc:
+                            discovery:
+                                base_uri: '%app.oidc.shop.discovery_url%'
+                                cache: { id: cache.oidc }
+
+when@prod: *discovery
+
+# Functional tests of the discovery itself (KeycloakOutageTest).
+when@test_oidc: *discovery

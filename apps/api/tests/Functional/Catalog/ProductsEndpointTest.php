@@ -247,8 +247,8 @@ final class ProductsEndpointTest extends WebTestCase
         $operation = $path['get'];
         self::assertIsArray($operation);
         self::assertIsArray($operation['responses']);
-        self::assertEqualsCanonicalizing(['200', '400', '503'], array_keys($operation['responses']));
-        foreach (['400', '503'] as $status) {
+        self::assertEqualsCanonicalizing(['200', '400', '401', '503'], array_keys($operation['responses']));
+        foreach (['400', '401', '503'] as $status) {
             $response = $operation['responses'][$status];
             self::assertIsArray($response);
             self::assertIsArray($response['content']);

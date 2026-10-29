@@ -1,0 +1,14 @@
+# Same fixed keyset as the `test` kernel (see config/packages/test/security.yaml): without it the firewalls have
+# neither discovery nor keys and the kernel cannot be built.
+security:
+    firewalls:
+        admin:
+            access_token:
+                token_handler:
+                    oidc:
+                        keyset: '%env(OIDC_TEST_JWKS)%'
+        shop:
+            access_token:
+                token_handler:
+                    oidc:
+                        keyset: '%env(OIDC_TEST_JWKS)%'

@@ -15,6 +15,8 @@ use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
+use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 
 /**
@@ -27,6 +29,12 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
  *   If a class is also an HttpExceptionInterface, the ProblemException rules win and its headers are ignored,
  * - framework HTTP exceptions: status and headers are kept, `detail` is a fixed text per status, never the message
  *   (router messages contain the requested URL),
+ * - security exceptions that no firewall handled (thrown outside a firewall): AuthenticationException is a 401 with
+ *   `WWW-Authenticate: Bearer`, AccessDeniedException a 403, both with the fixed text. The framework's ErrorListener
+ *   usually turns them into HTTP exceptions first (their #[WithHttpStatus]); a handler's one arrives unwrapped from
+ *   HandlerFailedException. Inside a firewall the security ExceptionListener handles them before this subscriber
+ *   (and follows their `previous` chain, that is Symfony's rule): ProblemAuthenticationEntryPoint gives the 401,
+ *   an AccessDeniedHttpException the 403,
  * - anything else: a 500 without `detail`, so messages, classes and paths never leak, also in debug mode.
  */
 final class ProblemDetailsSubscriber implements EventSubscriberInterface
@@ -67,46 +75,74 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
     public function onException(ExceptionEvent $event): void
     {
         $exception = $this->unwrapHandlerFailure($event->getThrowable());
-        $problem = ['type' => 'about:blank'];
-        $headers = [];
 
         $validation = $this->findValidationFailure($exception);
-        if (null !== $validation) {
-            $status = Response::HTTP_BAD_REQUEST;
-            $problem['title'] = Response::$statusTexts[$status];
-            $problem['status'] = $status;
-            $problem['violations'] = [];
-            foreach ($validation->getViolations() as $violation) {
-                $problem['violations'][] = [
-                    'propertyPath' => $violation->getPropertyPath(),
-                    'title' => (string) $violation->getMessage(),
-                ];
-            }
-        } elseif ($exception instanceof ProblemException) {
-            $status = $this->problemStatus($exception);
-            $problem['title'] = Response::$statusTexts[$status] ?? 'Error';
-            $problem['status'] = $status;
-            if ($status < 500 && '' !== $exception->getMessage()) {
-                $problem['detail'] = $exception->getMessage();
-            }
-        } elseif ($exception instanceof HttpExceptionInterface) {
-            $status = $exception->getStatusCode();
-            $headers = $exception->getHeaders();
-            $problem['title'] = Response::$statusTexts[$status] ?? 'Error';
-            $problem['status'] = $status;
-            if ($status < 500) {
-                $problem['detail'] = self::GENERIC_DETAILS[$status] ?? self::FALLBACK_DETAIL;
-            }
-        } else {
-            $status = Response::HTTP_INTERNAL_SERVER_ERROR;
-            $problem['title'] = Response::$statusTexts[$status];
-            $problem['status'] = $status;
+        $response = match (true) {
+            null !== $validation => $this->validationProblem($validation),
+            $exception instanceof ProblemException => $this->projectProblem($exception),
+            $exception instanceof AuthenticationException => self::genericProblem(Response::HTTP_UNAUTHORIZED),
+            $exception instanceof AccessDeniedException => self::genericProblem(Response::HTTP_FORBIDDEN),
+            $exception instanceof HttpExceptionInterface => self::genericProblem($exception->getStatusCode(), $exception->getHeaders()),
+            default => self::genericProblem(Response::HTTP_INTERNAL_SERVER_ERROR),
+        };
+
+        $event->setResponse($response);
+    }
+
+    /**
+     * A problem document whose `detail` is the fixed text of the status (none for 5xx), never an exception message.
+     * A 401 always names the scheme the API accepts (`WWW-Authenticate: Bearer`) unless the exception gave one.
+     *
+     * @param array<mixed> $headers
+     */
+    public static function genericProblem(int $status, array $headers = []): JsonResponse
+    {
+        $problem = ['type' => 'about:blank', 'title' => Response::$statusTexts[$status] ?? 'Error', 'status' => $status];
+        if ($status < 500) {
+            $problem['detail'] = self::GENERIC_DETAILS[$status] ?? self::FALLBACK_DETAIL;
+        }
+        if (Response::HTTP_UNAUTHORIZED === $status && !\array_key_exists('www-authenticate', array_change_key_case($headers))) {
+            $headers['WWW-Authenticate'] = 'Bearer';
         }
 
+        return self::problemResponse($problem, $status, $headers);
+    }
+
+    private function validationProblem(ValidationFailedException $validation): JsonResponse
+    {
+        $status = Response::HTTP_BAD_REQUEST;
+        $problem = ['type' => 'about:blank', 'title' => Response::$statusTexts[$status], 'status' => $status, 'violations' => []];
+        foreach ($validation->getViolations() as $violation) {
+            $problem['violations'][] = [
+                'propertyPath' => $violation->getPropertyPath(),
+                'title' => (string) $violation->getMessage(),
+            ];
+        }
+
+        return self::problemResponse($problem, $status);
+    }
+
+    private function projectProblem(ProblemException $exception): JsonResponse
+    {
+        $status = $this->problemStatus($exception);
+        $problem = ['type' => 'about:blank', 'title' => Response::$statusTexts[$status] ?? 'Error', 'status' => $status];
+        if ($status < 500 && '' !== $exception->getMessage()) {
+            $problem['detail'] = $exception->getMessage();
+        }
+
+        return self::problemResponse($problem, $status);
+    }
+
+    /**
+     * @param array<string, mixed> $problem
+     * @param array<mixed>         $headers
+     */
+    private static function problemResponse(array $problem, int $status, array $headers = []): JsonResponse
+    {
         $response = new JsonResponse($problem, $status, $headers);
         $response->headers->set('Content-Type', 'application/problem+json');
 
-        $event->setResponse($response);
+        return $response;
     }
 
     private function problemStatus(ProblemException $exception): int

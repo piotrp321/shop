@@ -1,0 +1,91 @@
+{
+  "realm": "shop",
+  "displayName": "Sklep",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": false,
+  "verifyEmail": true,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "bruteForceProtected": true,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionIdleTimeoutRememberMe": 2592000,
+  "ssoSessionMaxLifespanRememberMe": 2592000,
+  "internationalizationEnabled": true,
+  "supportedLocales": ["pl"],
+  "defaultLocale": "pl",
+  "smtpServer": {
+    "host": "mailpit",
+    "port": "1025",
+    "from": "sklep@example.com",
+    "fromDisplayName": "Sklep",
+    "auth": "false",
+    "ssl": "false",
+    "starttls": "false"
+  },
+  "clients": [
+    {
+      "clientId": "store",
+      "name": "Sklep",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${STORE_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${STORE_URL}/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${STORE_URL}/",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "shop-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "shop-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "jan.kowalski@example.com",
+      "email": "jan.kowalski@example.com",
+      "emailVerified": true,
+      "firstName": "Jan",
+      "lastName": "Kowalski",
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "Klient-Demo-1", "temporary": false }
+      ]
+    },
+    {
+      "username": "anna.nowak@example.com",
+      "email": "anna.nowak@example.com",
+      "emailVerified": true,
+      "firstName": "Anna",
+      "lastName": "Nowak",
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "Klient-Demo-1", "temporary": false }
+      ]
+    }
+  ]
+}

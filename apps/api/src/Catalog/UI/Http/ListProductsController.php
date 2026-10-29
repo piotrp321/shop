@@ -51,8 +51,14 @@ final class ListProductsController
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
             new OA\Response(
+                response: 401,
+                description: 'An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.',
+                content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
+            ),
+            new OA\Response(
                 response: 503,
-                description: 'The search service is unavailable (problem details without technical details).',
+                description: 'The search service is unavailable, or a token was sent and the keys of its issuer cannot be fetched '
+                    .'(problem details without technical details).',
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
         ],
