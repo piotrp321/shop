@@ -336,10 +336,17 @@ services:
       context: ./apps/admin
     # Dependencies are installed into the node_modules volume when package-lock.json is newer than the install.
     command: ["sh", "-c", "[ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; exec npm run dev"]
+    environment:
+      # Browser-facing URLs (not secrets): the panel runs in the browser and talks to the API and Keycloak directly.
+      VITE_API_URL: http://localhost:${API_PORT:-8000}
+      VITE_KEYCLOAK_URL: http://localhost:${KEYCLOAK_PORT:-8080}
+      VITE_ADMIN_URL: http://localhost:${ADMIN_PORT:-5173}
     volumes:
       - ./apps/admin:/app
       # Dependencies live in a volume, not on the host.
       - admin-node-modules:/app/node_modules
+      # Only the admin API specification, read-only: `make api-client` generates src/api/schema.d.ts from it.
+      - ./apps/api/openapi-admin.json:/contract/openapi-admin.json:ro
     ports:
       - "127.0.0.1:${ADMIN_PORT:-5173}:5173"
     healthcheck:

@@ -39,9 +39,10 @@ test:
 	$(MAKE) -C apps/store test
 	$(MAKE) -C apps/admin test
 
-# Generates the TypeScript API client types of the store from the committed OpenAPI file.
+# Generates the TypeScript API client types of the store and of the admin panel from the committed OpenAPI files.
 api-client:
 	$(RUN) store npx openapi-typescript /contract/openapi.json -o src/api/schema.d.ts
+	$(RUN) admin npx openapi-typescript /contract/openapi-admin.json -o src/api/schema.d.ts
 
 # Drops the Keycloak database and restarts Keycloak, which imports the realms from infra/keycloak/realms anew.
 # Every Keycloak session, user and change made in the admin console is lost.
