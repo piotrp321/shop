@@ -78,10 +78,8 @@ final readonly class DoctrineProductRepository implements ProductRepository
             ->orderBy('product.slug')
             ->getQuery()
             ->getResult();
-        \assert(\is_array($records));
 
         foreach ($records as $record) {
-            \assert($record instanceof ProductRecord);
             yield $this->toDomain($record);
         }
     }

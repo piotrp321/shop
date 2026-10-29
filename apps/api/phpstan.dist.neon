@@ -9,3 +9,5 @@ parameters:
         - src
         - tests
     tmpDir: var/phpstan
+    doctrine:
+        objectManagerLoader: tests/object-manager.php
