@@ -1,5 +1,5 @@
 # Light CI: static analysis and tests of the three apps.
-# Runs without the full stack: app containers start with --no-deps and no backing service is needed.
+# Runs without the full stack: app containers start with --no-deps; only the services the tests need are started.
 # Runs for every change, documentation included, so the `checks` job can be a required status check.
 name: CI
 
@@ -70,7 +70,11 @@ jobs:
       - name: make check
         run: make check RUN="$CI_RUN"
 
-      # All api suites: none of them needs a backing service yet. Store keeps to unit tests,
+      # The api integration tests need PostgreSQL (database shop_test, created by its init script).
+      - name: Start PostgreSQL
+        run: docker compose up -d --wait postgres
+
+      # All api suites; `test` migrates shop_test first. Store keeps to unit tests,
       # its integration tests need Redis.
       - name: Tests
         run: |
