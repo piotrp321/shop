@@ -57,7 +57,9 @@ services:
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # Runs as the server user: as root, an early probe on a fresh volume creates a root-owned
+      # .erlang.cookie that the server (uid 999) then cannot read.
+      test: ["CMD", "gosu", "rabbitmq", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 10s
       retries: 20
