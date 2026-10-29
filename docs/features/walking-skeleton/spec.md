@@ -43,7 +43,7 @@ są przypięte w pliku compose.
 | `postgres` | PostgreSQL 18 | bazy `shop`, `shop_test` (API, właścicielem jest rola `shop`) i `keycloak` | `pg_isready` |
 | `redis` | Redis 8 | sesje sklepu; sonda w dashboardzie | `redis-cli ping` |
 | `elasticsearch` | Elasticsearch 9, jeden węzeł, security wyłączone lokalnie, `ES_JAVA_OPTS=-Xms512m -Xmx512m` | indeks `products` | `_cluster/health` (yellow lub green) |
-| `rabbitmq` | RabbitMQ 4 z wtyczką management | transport `events` Messengera; vhost `/` dla dev, vhost `test` dla testów | `rabbitmq-diagnostics ping` |
+| `rabbitmq` | RabbitMQ 4 z wtyczką management | transport `events` Messengera; vhost `/` dla dev, vhost `test` dla testów | `rabbitmq-diagnostics ping` jako użytkownik `rabbitmq` (sonda jako root tworzy na świeżym wolumenie `.erlang.cookie`, którego serwer nie może odczytać) |
 | `rabbitmq-init` | jednorazowy | idempotentnie, przez Management API: vhost `test` i uprawnienia użytkownika aplikacji | kończy się kodem 0 |
 | `keycloak` | Keycloak 26, `start-dev --import-realm`, baza `keycloak` w Postgresie, ograniczony heap | realmy `shop` i `backoffice` | `/health/ready` na porcie zarządzania |
 | `garage` | Garage 2 | bucket `product-images` (i `product-images-test`) z oryginałami zdjęć | `garage status` (obraz nie ma powłoki ani curl, a admin API `/health` zwraca 503 do czasu zastosowania układu przez `garage-init`) |
