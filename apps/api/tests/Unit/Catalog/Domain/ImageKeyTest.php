@@ -10,9 +10,20 @@ use PHPUnit\Framework\TestCase;
 
 final class ImageKeyTest extends TestCase
 {
-    public function testValidKeyIsAccepted(): void
+    #[DataProvider('validExtensions')]
+    public function testValidKeyIsAccepted(string $extension): void
     {
-        self::assertSame('originals/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg', ImageKey::fromString('originals/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg')->toString());
+        $key = 'originals/'.str_repeat('a', 64).'.'.$extension;
+
+        self::assertSame($key, ImageKey::fromString($key)->toString());
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function validExtensions(): iterable
+    {
+        foreach (['jpg', 'png', 'webp', 'avif', 'heic'] as $extension) {
+            yield $extension => [$extension];
+        }
     }
 
     #[DataProvider('invalidKeys')]
@@ -30,6 +41,8 @@ final class ImageKeyTest extends TestCase
         yield 'traversal' => ['../x.jpg'];
         yield 'trailing newline' => ['originals/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg'."\n"];
         yield 'uppercase hash' => ['originals/'.str_repeat('A', 64).'.jpg'];
-        yield 'wrong extension' => ['originals/'.str_repeat('a', 64).'.png'];
+        yield 'jpeg extension' => ['originals/'.str_repeat('a', 64).'.jpeg'];
+        yield 'svg extension' => ['originals/'.str_repeat('a', 64).'.svg'];
+        yield 'gif extension' => ['originals/'.str_repeat('a', 64).'.gif'];
     }
 }
