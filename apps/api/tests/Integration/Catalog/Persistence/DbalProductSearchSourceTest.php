@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Catalog\Persistence;
 use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
 use App\Catalog\Domain\Category\Category;
+use App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -252,6 +253,30 @@ final class DbalProductSearchSourceTest extends KernelTestCase
 
         // Pages of 2, 2, 1 products and the final empty page.
         self::assertSame([1, 1, 1, 1], $perPage);
+    }
+
+    public function testCursorPageUsesAnIndexConditionOnTheKeyEvenUnderAGenericPlan(): void
+    {
+        $this->connection->executeStatement('SET plan_cache_mode = force_generic_plan');
+        // The test table is tiny, so without this the planner would pick a sequential scan whatever the predicate.
+        $this->connection->executeStatement('SET enable_seqscan = off');
+        try {
+            // $1 is the cursor, $2 the limit; the generic plan is built without knowing either value.
+            $sql = str_replace([':after', ':limit'], ['$1', '$2'], DbalProductSearchSource::pageSql(true));
+            $this->connection->executeStatement('PREPARE cursor_page (text, int) AS '.$sql);
+            try {
+                /** @var list<string> $lines */
+                $lines = $this->connection->fetchFirstColumn("EXPLAIN EXECUTE cursor_page('00000000-0000-4000-8000-000000000000', 10)");
+                $plan = implode("\n", $lines);
+            } finally {
+                $this->connection->executeStatement('DEALLOCATE cursor_page');
+            }
+        } finally {
+            $this->connection->executeStatement('RESET plan_cache_mode');
+            $this->connection->executeStatement('RESET enable_seqscan');
+        }
+
+        self::assertMatchesRegularExpression('/Index Cond: .*\bid > /', $plan, $plan);
     }
 
     public function testMemoryDependsOnThePageSizeNotOnTheCatalogSize(): void

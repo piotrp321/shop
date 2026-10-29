@@ -414,6 +414,8 @@ z wieloma consumerami, która zastąpi pętlę w `ProductSearchIndexRebuilder`.
 - Jedno zapytanie SQL na paczkę, czyli jeden spójny snapshot. Najpierw CTE wybiera identyfikatory paczki
   z `LIMIT` na `catalog_product`, dopiero potem zapytanie dołącza kategorie dodatkowe i ścieżki kategorii
   i agreguje je dla każdego produktu. `LIMIT` nigdy nie działa na wierszach po złączeniu.
+  Pierwsza paczka nie ma warunku kursora, kolejne mają `WHERE id > :after`, dzięki czemu kursor pozostaje warunkiem
+  indeksu klucza głównego także w planie generycznym (test przypina to przez `EXPLAIN`).
 - Wynik dla produktu: id, wersja, pola dokumentu, id kategorii głównej, posortowane id kategorii dodatkowych
   i ścieżki wszystkich kategorii produktu. Przodków liczymy ze ścieżek, bez wczytywania kategorii nadrzędnych.
 - Pamięć zależy od rozmiaru paczki, a nie od wielkości katalogu.
