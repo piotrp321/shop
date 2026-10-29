@@ -12,7 +12,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `init-test` – migracje bazy `shop_test`; wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
 - `openapi` – eksport specyfikacji do `openapi.json` (sklep: endpointy publiczne i klienta)
-  oraz `openapi-admin.json` (panel: `/api/v1/admin`)
+  oraz `openapi-admin.json` (panel: `/api/v1/admin`). Zrzut idzie przez pliki tymczasowe, więc nieudany eksport
+  kończy się błędem i nie zmienia ani nie obcina plików. CI sprawdza, że commitowane pliki są aktualne
 
 ## Architektura
 

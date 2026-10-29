@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: nic. Następne zadanie: **Task 13B** (indeks Elasticsearch, po merge'u 13A). Blokery: brak.
+W toku: nic. Następne zadanie: **Task 13B** (indeks Elasticsearch, po merge'u 13A); potem Task 15 (część 2). Blokery: brak.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
@@ -28,9 +28,10 @@ W toku: nic. Następne zadanie: **Task 13B** (indeks Elasticsearch, po merge'u 1
 | [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | ✅ |
 | [#8](https://github.com/piotrp321/shop/pull/8) | 12 | obrazy w API (Garage, imgproxy) | ✅ |
 | [#9](https://github.com/piotrp321/shop/pull/9) | 13A | wersja produktu i odczyt produktów paczkami do indeksu | ✅ |
+| | 15 (część 1) | drzewo kategorii, OpenAPI sklepu i panelu, kontrola aktualności kontraktu | ✅ |
 | | 13B | indeks Elasticsearch, adaptery, przebudowa synchroniczna z przepięciem aliasu | |
+| | 15 (część 2) | lista produktów (po 13B) | |
 | | 10, 14 | komendy tworzenia kategorii i produktów, transactional outbox, RabbitMQ, worker, indeksowanie | |
-| | 15 | endpointy katalogu i OpenAPI sklepu | |
 | | 16, 17 | dane demo i seed | |
 | | 18 | strona katalogu w sklepie | |
 | | 19, 20 | realmy Keycloak i uwierzytelnianie w API | |
@@ -518,6 +519,10 @@ przebudowy synchronicznej. Zależności z sekcji „Zależności” specyfikacji
 - **Krok 6: Commit** `feat(api): publish domain events through transactional outbox and index products`
 
 ### Task 15: Endpointy katalogu i OpenAPI sklepu
+
+Zadanie jest realizowane w dwóch PR-ach. Część 1 obejmuje drzewo kategorii (`GET /api/v1/categories`), konfigurację
+OpenAPI z obszarami `default` i `admin`, cel `openapi` i krok „Contract freshness” w CI. Część 2 to endpoint
+listy produktów (`ProductSearch` z zadania 13B), który dopisuje do wyeksportowanej specyfikacji `/api/v1/products`.
 
 **Pliki:**
 - Utwórz: `src/Catalog/Application/Query/{ListProducts,ListProductsHandler,ProductPage,ProductListItem,ImageView,GetCategoryTree,GetCategoryTreeHandler,CategoryNode}.php`,
