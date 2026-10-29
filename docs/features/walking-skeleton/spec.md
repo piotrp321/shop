@@ -230,8 +230,10 @@ Persystencja:
   w `Catalog/Infrastructure/Persistence/Doctrine/Record`, mapowane atrybutami Doctrine, z identyfikatorami jako
   tekst UUID. Rekordy mają relacje między sobą: `CategoryRecord::parent` (ManyToOne do `CategoryRecord`),
   `ProductRecord::primaryCategory` (ManyToOne) i `ProductRecord::additionalCategories` (ManyToMany przez
-  `catalog_product_category`). Klucze obce, tabelę łączącą i indeksy tworzy z tego Doctrine. Jedynym elementem
-  schematu spoza mapowania jest klasa operatorów `text_pattern_ops` indeksu `path`, dopisana w migracji.
+  `catalog_product_category`). Klucze obce, tabelę łączącą i indeksy tworzy z tego Doctrine. Indeksy kluczy obcych
+  tworzone automatycznie przez Doctrine zostają, także pokryty przez klucz główny indeks na
+  `catalog_product_category.product_id`. Jedynym elementem schematu spoza mapowania jest klasa operatorów
+  `text_pattern_ops` indeksu `path`, dopisana w migracji.
 - Agregaty w domenie odwołują się do siebie wyłącznie przez identyfikatory. `DoctrineCategoryRepository`
   i `DoctrineProductRepository` mapują agregat na rekord przy zapisie, a przy odczycie odtwarzają agregat przez
   `reconstitute()`.
