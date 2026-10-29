@@ -23,7 +23,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Struktura
 
 - `app/` – trasy App Router, w tym route handlery logowania w `app/auth/`.
-- `src/api/` – `client.ts` (jedyne miejsce rozmowy z API) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
+- `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne wywołanie `/auth/session` z przeglądarki)
+  i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
+- `src/account/` – komponent konta w nagłówku (Client Component).
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
 - `src/catalog/` – komponenty i ładowanie danych katalogu.
 - `src/components/ui/` – komponenty shadcn/ui.
@@ -41,7 +43,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Logowanie
 
 - Tokeny OIDC nigdy nie trafiają do przeglądarki. Są tylko w sesji w Redisie, a ciasteczko zawiera wyłącznie
-  id sesji.
+  id sesji podpisane kluczem `STORE_SESSION_SECRET`.
+- Route handlery `/auth/*` dostają zależności (Redis, OIDC, API) z `getAuthDeps()` w `src/auth/deps.ts`; testy
+  podmieniają je dublerami z `src/auth/test-support.ts`.
+- Nie loguj obiektów błędów openid-client (ich `cause` zawiera odpowiedzi z tokenami). Użyj `logFailure`.
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.
 - Odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`.
 

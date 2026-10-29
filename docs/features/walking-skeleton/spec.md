@@ -720,15 +720,19 @@ Tokeny nigdy nie trafiają do przeglądarki. Serwer sklepu jest klientem confide
 |---|---|
 | `GET /auth/login?returnTo=…` | generuje `state`, `nonce` i weryfikator PKCE; zapisuje je w Redisie pod jednorazowym kluczem (TTL 10 min), którego id trafia do krótkiego ciasteczka; przekierowuje do Keycloak (adres publiczny) |
 | `GET /auth/callback` | sprawdza `state`; wymienia kod na tokeny przez `http://keycloak:8080`; waliduje `id_token`; tworzy sesję i przekierowuje na `returnTo` |
-| `GET /auth/session` | zwraca `{ "name": "…" }` albo `null`; dane z `GET /api/v1/me` wołanego z tokenem z sesji; 401 z API usuwa sesję |
-| `POST /auth/logout` | usuwa sesję i ciasteczko; przekierowuje do `end_session` Keycloak z `id_token_hint` i `post_logout_redirect_uri` |
+| `GET /auth/session` | zwraca `{ "name": "…" }` albo `null`; dane z `GET /api/v1/me` wołanego z tokenem z sesji; 401 z API usuwa sesję, a inny błąd API, Redisa albo Keycloak daje 503 bez usuwania sesji |
+| `POST /auth/logout` | tylko POST; żądanie z obcym nagłówkiem `Origin` dostaje 403; usuwa sesję i ciasteczko; przekierowuje do `end_session` Keycloak z `id_token_hint` i `post_logout_redirect_uri` |
 
 - `returnTo` jest akceptowany tylko jako ścieżka w obrębie sklepu: zaczyna się od pojedynczego `/`, nie od `//`,
   nie zawiera `\` ani znaków sterujących, a `new URL(returnTo, STORE_URL).origin` równa się `STORE_URL`.
   Każda inna wartość (także brak) daje przekierowanie na `/`.
 - Sesja: klucz `session:<losowe id>` w Redisie z `sub`, tokenami i czasem wygaśnięcia access tokena; TTL równy
   czasowi życia refresh tokena. Ciasteczko `store_session` zawiera tylko id: `HttpOnly`, `SameSite=Lax`,
-  `Path=/`, `Secure` poza `localhost`.
+  `Path=/`, `Secure` poza `localhost`, bez `Max-Age` (o czasie życia sesji decyduje Redis). Każde logowanie
+  tworzy nową sesję pod nowym id i usuwa sesję, z którą przyszła przeglądarka.
+- Wartości ciasteczek sklepu (`store_session` i ciasteczka transakcji logowania `store_login`, `Path=/auth/callback`,
+  10 min) są podpisane HMAC-SHA256 kluczem `STORE_SESSION_SECRET`. Wartość bez poprawnego podpisu jest traktowana
+  jak brak ciasteczka, bez odczytu z Redisa.
 - Odświeżanie: gdy access token wygasa za mniej niż 30 s, serwer odświeża go pod blokadą
   `SET lock:refresh:<id sesji> <losowy token> NX PX 5000`. Zwycięzca odświeża tokeny, zapisuje sesję i zwalnia
   blokadę (usunięcie tylko przy zgodnym tokenie). Pozostałe żądania co 100 ms czytają sesję, aż zmieni się
@@ -874,9 +878,9 @@ PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikac
 1. Budowa obrazów deweloperskich `api`, `store` i `admin` z cache buildx (`type=gha`).
 2. Instalacja zależności do wolumenów, jak lokalnie.
 3. `make check` z `RUN="docker compose run --rm --no-deps -T"`.
-4. Testy z tym samym `RUN`: `make -C apps/api test` (wszystkie suity api), `make -C apps/store test-unit`,
-   `make -C apps/admin test`. Żadna suita api nie potrzebuje jeszcze usług. Zmiana, która dodaje testy na usługach
-   stosu, w tym samym PR uruchamia w CI te usługi przed testami.
+4. Testy z tym samym `RUN`: `make -C apps/api test` (wszystkie suity api), `make -C apps/store test`
+   (z Redisem), `make -C apps/admin test`. Żadna suita api nie potrzebuje jeszcze usług. Zmiana, która dodaje
+   testy na usługach stosu, w tym samym PR uruchamia w CI te usługi przed testami.
 5. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
    `apps/api/openapi.json`, `apps/api/openapi-admin.json` i obu `schema.d.ts`.
 
