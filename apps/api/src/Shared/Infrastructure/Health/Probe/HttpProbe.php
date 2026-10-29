@@ -44,6 +44,12 @@ abstract class HttpProbe implements ConcurrentServiceProbe
                 'timeout' => self::LIMIT_SECONDS,
                 'max_duration' => self::LIMIT_SECONDS,
             ]);
+            // The transfer only begins once the client is driven: do it now, so that the clock of the limit and the
+            // connection start together with the request and not when its answer is awaited.
+            foreach ($this->client->stream($response, 0.0) as $chunk) {
+                $chunk->isTimeout(); // throws when the request has already failed
+                break;
+            }
         } catch (ExceptionInterface) {
             return static fn (): ProbeResult => ProbeResult::down();
         }

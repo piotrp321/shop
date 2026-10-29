@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Backoffice\Application;
 
+use App\Backoffice\Application\Port\CatalogCounts;
 use App\Backoffice\Application\Port\CatalogStatistics;
-use App\Backoffice\Application\Port\CatalogStatisticsProvider;
 use App\Backoffice\Application\Port\MessagingStatistics;
 use App\Backoffice\Application\Port\SystemHealth;
 use App\Backoffice\Application\Query\CatalogSection;
@@ -25,7 +25,7 @@ final class GetDashboardHandlerTest extends TestCase
         $health = new RecordingSystemHealth([]);
         $messaging = new FakeMessagingStatistics(5, []);
 
-        $dashboard = $this->handler(new CatalogStatistics(10, 3, 2, 10), $health, $messaging)(new GetDashboard(includeSystem: false));
+        $dashboard = $this->handler(new CatalogCounts(10, 3, 2, 10), $health, $messaging)(new GetDashboard(includeSystem: false));
 
         self::assertEquals(new CatalogSection(10, 3, 2), $dashboard->catalog);
         self::assertNull($dashboard->system);
@@ -41,7 +41,7 @@ final class GetDashboardHandlerTest extends TestCase
             $shuffled,
         ));
 
-        $dashboard = $this->handler(new CatalogStatistics(1, 1, 0, 1), $health, new FakeMessagingStatistics(0, []))(new GetDashboard(true));
+        $dashboard = $this->handler(new CatalogCounts(1, 1, 0, 1), $health, new FakeMessagingStatistics(0, []))(new GetDashboard(true));
 
         self::assertNotNull($dashboard->system);
         self::assertSame(self::SPEC_ORDER, array_map(static fn (ServiceStatus $service): string => $service->name, $dashboard->system->services));
@@ -51,7 +51,7 @@ final class GetDashboardHandlerTest extends TestCase
     {
         $health = new RecordingSystemHealth([new ServiceStatus('redis', false, null), new ServiceStatus('postgres', true, 4)]);
 
-        $dashboard = $this->handler(new CatalogStatistics(1, 1, 0, 1), $health, new FakeMessagingStatistics(0, []))(new GetDashboard(true));
+        $dashboard = $this->handler(new CatalogCounts(1, 1, 0, 1), $health, new FakeMessagingStatistics(0, []))(new GetDashboard(true));
 
         self::assertNotNull($dashboard->system);
         self::assertEquals([new ServiceStatus('postgres', true, 4), new ServiceStatus('redis', false, null)], $dashboard->system->services);
@@ -61,7 +61,7 @@ final class GetDashboardHandlerTest extends TestCase
     {
         $queues = [new QueueStatus('events', 2, 1)];
 
-        $dashboard = $this->handler(new CatalogStatistics(1, 1, 0, 1), new RecordingSystemHealth([]), new FakeMessagingStatistics(7, $queues))(new GetDashboard(true));
+        $dashboard = $this->handler(new CatalogCounts(1, 1, 0, 1), new RecordingSystemHealth([]), new FakeMessagingStatistics(7, $queues))(new GetDashboard(true));
 
         self::assertNotNull($dashboard->system);
         self::assertSame(7, $dashboard->system->outboxPending);
@@ -70,7 +70,7 @@ final class GetDashboardHandlerTest extends TestCase
 
     public function testUnavailableQueueStatisticsGiveNullQueues(): void
     {
-        $dashboard = $this->handler(new CatalogStatistics(1, 1, 0, 1), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, null))(new GetDashboard(true));
+        $dashboard = $this->handler(new CatalogCounts(1, 1, 0, 1), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, null))(new GetDashboard(true));
 
         self::assertNotNull($dashboard->system);
         self::assertNull($dashboard->system->queues);
@@ -79,7 +79,7 @@ final class GetDashboardHandlerTest extends TestCase
 
     public function testUnknownIndexedCountIsNeverInSync(): void
     {
-        $dashboard = $this->handler(new CatalogStatistics(0, 0, 0, null), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, []))(new GetDashboard(true));
+        $dashboard = $this->handler(new CatalogCounts(0, 0, 0, null), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, []))(new GetDashboard(true));
 
         self::assertNotNull($dashboard->system);
         self::assertEquals(new SearchIndexStatus(null, 0, false), $dashboard->system->searchIndex);
@@ -87,7 +87,7 @@ final class GetDashboardHandlerTest extends TestCase
 
     public function testEqualCountsAreInSync(): void
     {
-        $dashboard = $this->handler(new CatalogStatistics(412, 36, 8, 412), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, []))(new GetDashboard(true));
+        $dashboard = $this->handler(new CatalogCounts(412, 36, 8, 412), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, []))(new GetDashboard(true));
 
         self::assertNotNull($dashboard->system);
         self::assertEquals(new SearchIndexStatus(412, 412, true), $dashboard->system->searchIndex);
@@ -95,21 +95,21 @@ final class GetDashboardHandlerTest extends TestCase
 
     public function testDifferentCountsAreNotInSync(): void
     {
-        $dashboard = $this->handler(new CatalogStatistics(412, 36, 8, 400), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, []))(new GetDashboard(true));
+        $dashboard = $this->handler(new CatalogCounts(412, 36, 8, 400), new RecordingSystemHealth([]), new FakeMessagingStatistics(0, []))(new GetDashboard(true));
 
         self::assertNotNull($dashboard->system);
         self::assertEquals(new SearchIndexStatus(400, 412, false), $dashboard->system->searchIndex);
     }
 
-    private function handler(CatalogStatistics $statistics, SystemHealth $health, MessagingStatistics $messaging): GetDashboardHandler
+    private function handler(CatalogCounts $statistics, SystemHealth $health, MessagingStatistics $messaging): GetDashboardHandler
     {
         return new GetDashboardHandler(
-            new class($statistics) implements CatalogStatisticsProvider {
-                public function __construct(private readonly CatalogStatistics $statistics)
+            new class($statistics) implements CatalogStatistics {
+                public function __construct(private readonly CatalogCounts $statistics)
                 {
                 }
 
-                public function statistics(): CatalogStatistics
+                public function counts(): CatalogCounts
                 {
                     return $this->statistics;
                 }

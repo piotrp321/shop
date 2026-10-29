@@ -137,7 +137,7 @@ services:
             $password: '%env(RABBITMQ_DEFAULT_PASS)%'
             $vhost: '%app.rabbitmq.vhost%'
 
-    App\Backoffice\Application\Port\CatalogStatisticsProvider: '@App\Backoffice\Infrastructure\QueryBusCatalogStatisticsProvider'
+    App\Backoffice\Application\Port\CatalogStatistics: '@App\Backoffice\Infrastructure\QueryBusCatalogStatistics'
     App\Backoffice\Application\Port\SystemHealth: '@App\Backoffice\Infrastructure\ProbingSystemHealth'
     App\Backoffice\Application\Port\MessagingStatistics: '@App\Backoffice\Infrastructure\MessagingStatisticsAdapter'
     App\Catalog\Application\Port\ProductImageStorage: '@App\Catalog\Infrastructure\Image\FlysystemProductImageStorage'
@@ -209,12 +209,15 @@ when@test: &test
                 $alias: '%app.search.alias%'
         App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource:
             public: true
-        # Fetched by the tests of the dashboard; the provider can be replaced by a stub that fails.
-        App\Backoffice\Application\Port\CatalogStatisticsProvider:
-            alias: App\Backoffice\Infrastructure\QueryBusCatalogStatisticsProvider
+        # Replaced by a test that makes the database fail under the statistics query.
+        App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository:
             public: true
+        # Fetched by the tests of the dashboard.
         App\Backoffice\Application\Port\MessagingStatistics:
             alias: App\Backoffice\Infrastructure\MessagingStatisticsAdapter
+            public: true
+        App\Backoffice\Application\Port\SystemHealth:
+            alias: App\Backoffice\Infrastructure\ProbingSystemHealth
             public: true
         # The probes are fetched one by one by ProbesTest.
         test.App\Shared\Infrastructure\Health\Probe\PostgresProbe:

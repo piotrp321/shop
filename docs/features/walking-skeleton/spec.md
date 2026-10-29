@@ -548,7 +548,7 @@ Wszystkie pod `/api/v1`, JSON, opisane w OpenAPI (żądanie, odpowiedzi, błędy
   "system": {
     "services": [{ "name": "postgres", "status": "up", "latencyMs": 3 }],
     "outbox": { "pending": 0 },
-    "queues": [{ "name": "events", "messages": 0, "consumers": 1 }],
+    "queues": [{ "name": "events", "messages": 0, "consumers": 0 }],
     "searchIndex": { "indexedProducts": 412, "catalogProducts": 412, "inSync": true }
   }
 }
@@ -556,11 +556,18 @@ Wszystkie pod `/api/v1`, JSON, opisane w OpenAPI (żądanie, odpowiedzi, błędy
 
 - `system` jest `null`, gdy `DashboardVoter` odmówi atrybutu `VIEW_SYSTEM_STATUS` (wymaga roli `admin`).
 - `services` zawsze w tej kolejności: `postgres`, `redis`, `elasticsearch`, `rabbitmq`, `keycloak`, `garage`,
-  `imgproxy`, `mailpit`. Sondy działają równolegle, każda z limitem 1 s. Niedostępna usługa ma `status: "down"`
-  i `latencyMs: null`; endpoint nadal zwraca 200.
-- `queues` pochodzi z Management API RabbitMQ, `outbox.pending` z tabeli transportu `outbox`.
-- Częściowa awaria nie psuje dashboardu: niedostępne Management API RabbitMQ daje `queues: null`, niedostępny
-  Elasticsearch daje `searchIndex.indexedProducts: null` i `inSync: false`. Niedostępny Postgres (źródło sekcji
+  `imgproxy`, `mailpit`. Każda sonda ma limit 1 s, liczony od wysłania żądania. Żądania sond HTTP, połączenie z Redisem
+  i żądanie o kolejki do Management API są wysyłane razem, a odpowiedzi zbierane razem, więc sekcja `system` kosztuje
+  około jednego limitu (najwyżej 1 s), a nie sumę limitów. Sekcja `system` jest zbierana przed odczytem katalogu
+  (liczenie dokumentów w Elasticsearchu ma własny limit 2 s), więc wolne liczenie nie psuje wyników sond. Niedostępna
+  usługa ma `status: "down"` i `latencyMs: null`; endpoint nadal zwraca 200.
+- `queues` pochodzi z Management API RabbitMQ (vhost transportu `events`), `outbox.pending` z tabeli transportu `outbox`.
+  `consumers` to liczba subskrybentów AMQP (`basic.consume`) raportowana przez RabbitMQ. Worker Messengera odbiera
+  wiadomości przez `basic.get` (odpytywanie), więc kolejka `events` ma `consumers: 0` także wtedy, gdy worker działa.
+  Stanu workera nie wolno z tego wnioskować.
+- Częściowa awaria nie psuje dashboardu: niedostępne Management API RabbitMQ daje `queues: null`, a Elasticsearch,
+  którego dokumentów nie da się policzyć (niedostępny, `SearchUnavailable`, albo błąd trwały, np. brak aliasu,
+  `SearchIndexError`), daje `searchIndex.indexedProducts: null` i `inSync: false`. Niedostępny Postgres (źródło sekcji
   `catalog`) daje 503 jako problem details.
 
 ### Uwierzytelnianie i uprawnienia

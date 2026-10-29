@@ -18,10 +18,10 @@ final class RecordingSystemHealth implements SystemHealth
     {
     }
 
-    public function services(): array
+    public function start(): \Closure
     {
         ++$this->calls;
 
-        return $this->services;
+        return fn (): array => $this->services;
     }
 }

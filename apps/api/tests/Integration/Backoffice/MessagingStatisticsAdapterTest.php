@@ -37,16 +37,17 @@ final class MessagingStatisticsAdapterTest extends MessagingKernelTestCase
         self::assertSame($before, $this->statistics()->outboxPending());
     }
 
-    public function testQueuesListsTheEventsQueueWithItsConsumers(): void
+    public function testQueuesListsTheEventsQueueWithoutSubscribers(): void
     {
-        $queues = $this->statistics()->queues();
+        $queues = $this->queues($this->statistics());
 
         self::assertNotNull($queues);
         $events = array_values(array_filter($queues, static fn (QueueStatus $queue): bool => 'events' === $queue->name));
         self::assertCount(1, $events);
         self::assertGreaterThanOrEqual(0, $events[0]->messages);
-        // Messenger polls the queue (basic.get) instead of subscribing, so RabbitMQ counts no consumer for its worker.
-        self::assertGreaterThanOrEqual(0, $events[0]->consumers);
+        // `consumers` is what RabbitMQ counts: AMQP subscribers (basic.consume). Messenger's worker polls with
+        // basic.get, so nothing subscribes to the queue, in the tests and with the dev worker alike.
+        self::assertSame(0, $events[0]->consumers);
     }
 
     public function testQueuesReflectTheMessagesInTheQueue(): void
@@ -56,7 +57,7 @@ final class MessagingStatisticsAdapterTest extends MessagingKernelTestCase
         // The Management API reports what the broker published at its last statistics interval (5 s by default).
         $messages = null;
         for ($attempt = 0; $attempt < 30 && 1 !== $messages; ++$attempt) {
-            foreach ($this->statistics()->queues() ?? [] as $queue) {
+            foreach ($this->queues($this->statistics()) ?? [] as $queue) {
                 if ('events' === $queue->name) {
                     $messages = $queue->messages;
                 }
@@ -73,26 +74,34 @@ final class MessagingStatisticsAdapterTest extends MessagingKernelTestCase
     {
         $adapter = $this->adapterWith('http://127.0.0.1:1');
 
-        self::assertNull($adapter->queues());
+        self::assertNull($this->queues($adapter));
     }
 
     public function testQueuesAreNullWhenTheManagementApiRejectsTheCredentials(): void
     {
         $adapter = $this->adapterWith($this->managementUrl(), password: 'wrong');
 
-        self::assertNull($adapter->queues());
+        self::assertNull($this->queues($adapter));
     }
 
     public function testQueuesAreNullForAVhostThatDoesNotExist(): void
     {
         $adapter = $this->adapterWith($this->managementUrl(), vhost: 'no-such-vhost');
 
-        self::assertNull($adapter->queues());
+        self::assertNull($this->queues($adapter));
     }
 
     public function testOutboxPendingStillWorksWhenTheManagementApiIsDown(): void
     {
         self::assertGreaterThanOrEqual(0, $this->adapterWith('http://127.0.0.1:1')->outboxPending());
+    }
+
+    /**
+     * @return list<QueueStatus>|null
+     */
+    private function queues(MessagingStatistics $statistics): ?array
+    {
+        return ($statistics->startQueues())();
     }
 
     private function statistics(): MessagingStatistics

@@ -25,10 +25,10 @@ final class FakeMessagingStatistics implements MessagingStatistics
         return $this->outboxPending;
     }
 
-    public function queues(): ?array
+    public function startQueues(): \Closure
     {
         ++$this->calls;
 
-        return $this->queues;
+        return fn (): ?array => $this->queues;
     }
 }

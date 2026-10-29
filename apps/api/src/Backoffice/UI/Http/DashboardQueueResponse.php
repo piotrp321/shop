@@ -15,7 +15,11 @@ final readonly class DashboardQueueResponse
         public string $name,
         #[OA\Property(description: 'Messages in the queue.', example: 0)]
         public int $messages,
-        #[OA\Property(description: 'Consumers subscribed to the queue.', example: 1)]
+        #[OA\Property(
+            description: 'Number of AMQP subscribers (basic.consume) of the queue, as reported by RabbitMQ. The Messenger worker '
+                .'polls with basic.get instead of subscribing, so this is 0 even while the worker runs: it says nothing about the worker.',
+            example: 0,
+        )]
         public int $consumers,
     ) {
     }

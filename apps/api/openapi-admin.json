@@ -236,9 +236,9 @@
                         "example": 0
                     },
                     "consumers": {
-                        "description": "Consumers subscribed to the queue.",
+                        "description": "Number of AMQP subscribers (basic.consume) of the queue, as reported by RabbitMQ. The Messenger worker polls with basic.get instead of subscribing, so this is 0 even while the worker runs: it says nothing about the worker.",
                         "type": "integer",
-                        "example": 1
+                        "example": 0
                     }
                 },
                 "type": "object"

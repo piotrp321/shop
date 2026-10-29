@@ -4,17 +4,19 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Backoffice;
 
-use App\Backoffice\Application\Port\CatalogStatistics;
-use App\Backoffice\Application\Port\CatalogStatisticsProvider;
 use App\Catalog\Application\Port\ProductIndexer;
 use App\Catalog\Application\Search\IndexOutcome;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchUnavailable;
+use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductId;
+use App\Catalog\Domain\Product\ProductRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
+use App\Tests\Support\InMemory\FixedCountProductIndexer;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\DBAL\Driver\Exception as DriverException;
 use Doctrine\DBAL\Exception\ConnectionException;
@@ -54,6 +56,7 @@ final class DashboardEndpointTest extends WebTestCase
     {
         $client = static::createClient();
         $this->seedCatalog();
+        $this->useIndexedDocuments(2);
 
         $this->get($client, TestTokenFactory::staff(['admin']));
 
@@ -77,10 +80,34 @@ final class DashboardEndpointTest extends WebTestCase
         self::assertIsInt($system['outbox']['pending']);
         self::assertIsArray($system['queues']);
         self::assertIsArray($system['searchIndex']);
-        self::assertSame(3, $system['searchIndex']['catalogProducts']);
+        self::assertSame(['indexedProducts' => 2, 'catalogProducts' => 3, 'inSync' => false], $system['searchIndex']);
+    }
+
+    public function testSearchIndexWithAsManyDocumentsAsProductsIsInSync(): void
+    {
+        $client = static::createClient();
+        $this->seedCatalog();
+        $this->useIndexedDocuments(3);
+
+        $this->get($client, TestTokenFactory::staff(['admin']));
+
+        self::assertResponseStatusCodeSame(200);
+        $system = $this->json($client->getResponse())['system'];
+        self::assertIsArray($system);
+        self::assertSame(['indexedProducts' => 3, 'catalogProducts' => 3, 'inSync' => true], $system['searchIndex']);
+    }
+
+    public function testRealSearchIndexIsCounted(): void
+    {
+        $client = static::createClient();
+
+        $this->get($client, TestTokenFactory::staff(['admin']));
+
+        self::assertResponseStatusCodeSame(200);
+        $system = $this->json($client->getResponse())['system'];
+        self::assertIsArray($system);
+        self::assertIsArray($system['searchIndex']);
         self::assertIsInt($system['searchIndex']['indexedProducts']);
-        // Products created through the repository are not indexed here, so the index lags behind.
-        self::assertFalse($system['searchIndex']['inSync']);
     }
 
     public function testAdminWithOtherRolesStillGetsTheSystemSection(): void
@@ -153,11 +180,31 @@ final class DashboardEndpointTest extends WebTestCase
         $this->assertUnauthorized($client->getResponse());
     }
 
-    public function testDatabaseConnectionFailureIsAServiceUnavailableProblem(): void
+    /**
+     * Through the real provider and both query buses: the failure of the repository is wrapped by the handler's bus,
+     * by the provider's bus, and must still come out as a 503.
+     */
+    #[DataProvider('staffRoles')]
+    public function testLostDatabaseConnectionIsAServiceUnavailableProblem(string $role): void
     {
         $client = static::createClient();
-        self::getContainer()->set(CatalogStatisticsProvider::class, new class implements CatalogStatisticsProvider {
-            public function statistics(): CatalogStatistics
+        self::getContainer()->set(DoctrineProductRepository::class, new class implements ProductRepository {
+            public function save(Product $product): void
+            {
+                throw new \LogicException('Not used.');
+            }
+
+            public function get(ProductId $id): Product
+            {
+                throw new \LogicException('Not used.');
+            }
+
+            public function all(): iterable
+            {
+                throw new \LogicException('Not used.');
+            }
+
+            public function count(): int
             {
                 $driverFailure = new class('SQLSTATE[08006] connection to server at "postgres" failed') extends \Exception implements DriverException {
                     public function getSQLState(): string
@@ -168,15 +215,28 @@ final class DashboardEndpointTest extends WebTestCase
 
                 throw new ConnectionException($driverFailure, null);
             }
+
+            public function countWithoutImages(): int
+            {
+                throw new \LogicException('Not used.');
+            }
         });
 
-        $this->get($client, TestTokenFactory::staff(['admin']));
+        $this->get($client, TestTokenFactory::staff([$role]));
 
         $response = $client->getResponse();
         self::assertSame(503, $response->getStatusCode());
         self::assertStringStartsWith('application/problem+json', (string) $response->headers->get('Content-Type'));
         self::assertSame(['type' => 'about:blank', 'title' => 'Service Unavailable', 'status' => 503], $this->json($response));
-        self::assertStringNotContainsString('postgres', (string) $response->getContent());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function staffRoles(): iterable
+    {
+        yield 'admin' => ['admin'];
+        yield 'support' => ['support'];
     }
 
     public function testUnreachableSearchIndexGivesNullIndexedProductsAndNoSync(): void
@@ -227,6 +287,11 @@ final class DashboardEndpointTest extends WebTestCase
         self::assertIsArray($system['properties']);
         self::assertIsArray($body['system']);
         self::assertEqualsCanonicalizing(array_keys($system['properties']), array_keys($body['system']));
+    }
+
+    private function useIndexedDocuments(int $count): void
+    {
+        self::getContainer()->set(ElasticsearchProductIndexer::class, new FixedCountProductIndexer([$count]));
     }
 
     private function seedCatalog(): void

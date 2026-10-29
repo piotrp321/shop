@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Backoffice\Infrastructure;
 
+use App\Backoffice\Application\Port\CatalogCounts;
 use App\Backoffice\Application\Port\CatalogStatistics;
-use App\Backoffice\Application\Port\CatalogStatisticsProvider;
 use App\Catalog\Application\Query\CatalogStatisticsView;
 use App\Catalog\Application\Query\GetCatalogStatistics;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -16,7 +16,7 @@ use Symfony\Component\Messenger\MessageBusInterface;
 /**
  * Asks the Catalog module for its statistics through the query bus, the one dependency between the modules.
  */
-final class QueryBusCatalogStatisticsProvider implements CatalogStatisticsProvider
+final class QueryBusCatalogStatistics implements CatalogStatistics
 {
     use HandleTrait;
 
@@ -25,7 +25,7 @@ final class QueryBusCatalogStatisticsProvider implements CatalogStatisticsProvid
         $this->messageBus = $queryBus;
     }
 
-    public function statistics(): CatalogStatistics
+    public function counts(): CatalogCounts
     {
         try {
             /** @var CatalogStatisticsView $view */
@@ -37,6 +37,6 @@ final class QueryBusCatalogStatisticsProvider implements CatalogStatisticsProvid
             throw 1 === \count($wrapped) ? $wrapped[array_key_first($wrapped)] : $failure;
         }
 
-        return new CatalogStatistics($view->productCount, $view->categoryCount, $view->productsWithoutImages, $view->indexedProducts);
+        return new CatalogCounts($view->productCount, $view->categoryCount, $view->productsWithoutImages, $view->indexedProducts);
     }
 }

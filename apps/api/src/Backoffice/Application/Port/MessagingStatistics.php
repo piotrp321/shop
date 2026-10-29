@@ -14,9 +14,10 @@ interface MessagingStatistics
     public function outboxPending(): int;
 
     /**
-     * Queues of the broker, null when its management API does not answer.
+     * Sends the request for the queues of the broker and returns what waits for the answer (at most 1 s from the
+     * start), so that it can wait together with other requests.
      *
-     * @return list<QueueStatus>|null
+     * @return \Closure(): ?list<QueueStatus> the queues, null when the management API does not answer
      */
-    public function queues(): ?array;
+    public function startQueues(): \Closure;
 }
