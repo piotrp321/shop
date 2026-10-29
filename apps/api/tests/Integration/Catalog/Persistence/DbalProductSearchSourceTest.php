@@ -174,6 +174,63 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         $this->source->page('abc', 10);
     }
 
+    public function testContinuesAfterTheCursorProductWasDeleted(): void
+    {
+        $all = $this->createProducts(7);
+        sort($all);
+        $first = $this->source->page(null, 3);
+        $cursor = $first[2]->id;
+        $this->connection->executeStatement('DELETE FROM catalog_product WHERE id = ?', [$cursor]);
+
+        $ids = array_map(static fn (ProductSearchSnapshot $s): string => $s->id, $first);
+        foreach ($this->pages(3, 4, $cursor) as $page) {
+            foreach ($page as $snapshot) {
+                $ids[] = $snapshot->id;
+            }
+        }
+
+        // Nothing is skipped and nothing is repeated: the deleted cursor product was already read.
+        self::assertSame($all, $ids);
+    }
+
+    public function testRowsInsertedWhilePagingAreSeenOnlyWhenTheirIdIsAboveTheCursor(): void
+    {
+        // This pins the documented limitation of the offline rebuild (spec "Ograniczenia tej przebudowy"): keyset
+        // paging by id cannot see a product inserted below the cursor, only one above it.
+        $this->createProducts(6);
+        $first = $this->source->page(null, 3);
+        $cursor = $first[2]->id;
+        $main = $this->savedCategory();
+        $below = $this->saveProductWithId('00000000-0000-4000-8000-000000000000', $main);
+        $above = $this->saveProductWithId('ffffffff-ffff-4fff-8fff-ffffffffffff', $main);
+
+        $later = [];
+        foreach ($this->pages(3, 4, $cursor) as $page) {
+            foreach ($page as $snapshot) {
+                $later[] = $snapshot->id;
+            }
+        }
+
+        self::assertContains($above, $later);
+        self::assertNotContains($below, $later);
+        self::assertCount(4, $later);
+    }
+
+    public function testAnUpperCaseCursorGivesTheSameResultAsALowerCaseOne(): void
+    {
+        $this->createProducts(5);
+        $cursor = $this->source->page(null, 2)[1]->id;
+
+        $lower = $this->source->page($cursor, 10);
+        $upper = $this->source->page(strtoupper($cursor), 10);
+
+        self::assertCount(3, $lower);
+        self::assertEquals($lower, $upper);
+        foreach ($upper as $snapshot) {
+            self::assertSame(strtolower($snapshot->id), $snapshot->id);
+        }
+    }
+
     public function testIssuesExactlyOneStatementPerPageRegardlessOfCategoryCount(): void
     {
         $counter = self::getContainer()->get(StatementCounter::class);
@@ -229,6 +286,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
 
         self::assertSame(5000, $count);
         self::assertCount(11, $peaks);
+        // memory_get_usage() does not include the libpq result buffer, so this measures the PHP side of a page only.
         // A page of 500 snapshots and its raw rows measures about 1.3 MB here; 4 MB leaves room for allocator and
         // PDO buffering differences while still failing if a page ever held a large part of the 5000 products.
         self::assertLessThan(4 * 1024 * 1024, max($peaks));
@@ -240,10 +298,9 @@ final class DbalProductSearchSourceTest extends KernelTestCase
     /**
      * @return list<list<ProductSearchSnapshot>>
      */
-    private function pages(int $limit, int $maxPages): array
+    private function pages(int $limit, int $maxPages, ?string $after = null): array
     {
         $pages = [];
-        $after = null;
         for ($i = 0; $i < $maxPages; ++$i) {
             $page = $this->source->page($after, $limit);
             $pages[] = $page;
@@ -270,6 +327,13 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         }
 
         return $ids;
+    }
+
+    private function saveProductWithId(string $id, Category $main): string
+    {
+        $this->products->save(ProductFactory::createOne(['id' => $id, 'mainCategory' => $main]));
+
+        return $id;
     }
 
     private function savedCategory(?Category $parent = null): Category

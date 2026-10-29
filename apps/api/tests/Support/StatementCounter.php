@@ -21,10 +21,19 @@ final class StatementCounter implements Middleware
     // Static because DAMA keeps one physical connection across tests, while every test boots a new container
     // (and so a new middleware instance); tests compare counts taken before and after an operation.
     private static int $count = 0;
+    private static int $writes = 0;
 
     public function count(): int
     {
         return self::$count;
+    }
+
+    /**
+     * Statements that modify data (INSERT, UPDATE, DELETE), counted the same way as count().
+     */
+    public function writes(): int
+    {
+        return self::$writes;
     }
 
     public function wrap(Driver $driver): Driver
@@ -47,21 +56,21 @@ final class StatementCounter implements Middleware
 
                     public function prepare(string $sql): Statement
                     {
-                        $this->counter->increment();
+                        $this->counter->increment($sql);
 
                         return parent::prepare($sql);
                     }
 
                     public function query(string $sql): Result
                     {
-                        $this->counter->increment();
+                        $this->counter->increment($sql);
 
                         return parent::query($sql);
                     }
 
                     public function exec(string $sql): int|string
                     {
-                        $this->counter->increment();
+                        $this->counter->increment($sql);
 
                         return parent::exec($sql);
                     }
@@ -70,8 +79,11 @@ final class StatementCounter implements Middleware
         };
     }
 
-    public function increment(): void
+    public function increment(string $sql = ''): void
     {
         ++self::$count;
+        if (1 === preg_match('/^\\s*(INSERT|UPDATE|DELETE)\\b/i', $sql)) {
+            ++self::$writes;
+        }
     }
 }

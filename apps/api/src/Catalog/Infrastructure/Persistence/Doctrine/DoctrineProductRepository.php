@@ -136,6 +136,7 @@ final readonly class DoctrineProductRepository implements ProductRepository
 
     private function rowChanged(ProductRecord $record): bool
     {
+        // Relies on flush() running right after it in write(): recomputeSingleEntityChangeSet is an API meant for flush listeners.
         $unitOfWork = $this->entityManager->getUnitOfWork();
         $unitOfWork->recomputeSingleEntityChangeSet($this->entityManager->getClassMetadata(ProductRecord::class), $record);
 
