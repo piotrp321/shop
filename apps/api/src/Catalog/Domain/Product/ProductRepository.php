@@ -8,6 +8,7 @@ interface ProductRepository
 {
     /**
      * @throws SlugAlreadyTaken
+     * @throws ProductModifiedConcurrently
      */
     public function save(Product $product): void;
 

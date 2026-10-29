@@ -11,6 +11,7 @@ use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
+use App\Catalog\Domain\Product\ProductModifiedConcurrently;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotFound;
 use App\Catalog\Domain\Product\ProductRepository;
@@ -22,6 +23,7 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\Record\CategoryRecord;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\ProductRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\OptimisticLockException;
 
 final readonly class DoctrineProductRepository implements ProductRepository
 {
@@ -31,25 +33,12 @@ final readonly class DoctrineProductRepository implements ProductRepository
 
     public function save(Product $product): void
     {
-        $id = $product->id()->toString();
-        $record = $this->entityManager->find(ProductRecord::class, $id) ?? new ProductRecord($id);
-        $record->slug = $product->slug()->value();
-        $record->name = $product->name()->value();
-        $record->shortDescription = $product->shortDescription()->value();
-        $record->primaryCategory = $this->categoryReference($product->categories()->main());
-        $record->additionalCategories->clear();
-        foreach ($product->categories()->additional() as $categoryId) {
-            $record->additionalCategories->add($this->categoryReference($categoryId));
-        }
-        $record->taxCategory = $product->taxCategory()->value;
-        $record->images = array_map(
-            static fn (ProductImage $image): array => ['key' => $image->key()->toString(), 'alt' => $image->alt()],
-            $product->images()->toList(),
-        );
-
-        $this->entityManager->persist($record);
         try {
-            $this->entityManager->flush();
+            $this->entityManager->wrapInTransaction(function () use ($product): void {
+                $this->write($product);
+            });
+        } catch (OptimisticLockException) {
+            throw new ProductModifiedConcurrently();
         } catch (UniqueConstraintViolationException $e) {
             if (str_contains($e->getMessage(), ProductRecord::SLUG_CONSTRAINT)) {
                 throw new SlugAlreadyTaken();
@@ -97,6 +86,68 @@ final readonly class DoctrineProductRepository implements ProductRepository
         \assert(\is_int($count));
 
         return $count;
+    }
+
+    private function write(Product $product): void
+    {
+        $id = $product->id()->toString();
+        $existing = $this->entityManager->find(ProductRecord::class, $id);
+        $record = $existing ?? new ProductRecord($id);
+        $record->slug = $product->slug()->value();
+        $record->name = $product->name()->value();
+        $record->shortDescription = $product->shortDescription()->value();
+        $record->primaryCategory = $this->categoryReference($product->categories()->main());
+        $record->taxCategory = $product->taxCategory()->value;
+        $images = array_map(
+            static fn (ProductImage $image): array => ['key' => $image->key()->toString(), 'alt' => $image->alt()],
+            $product->images()->toList(),
+        );
+        // Loose comparison on purpose: JSONB returns object keys in its own order, which is not a change.
+        if (null === $existing || $record->images != $images) {
+            $record->images = $images;
+        }
+
+        $additionalIds = array_map(static fn (CategoryId $categoryId): string => $categoryId->toString(), $product->categories()->additional());
+        sort($additionalIds);
+        $currentIds = $record->additionalCategories
+            ->map(static fn (CategoryRecord $category): string => $category->id)
+            ->toArray();
+        sort($currentIds);
+        $categoriesChanged = $additionalIds !== $currentIds;
+
+        if (null !== $existing && $categoriesChanged && !$this->rowChanged($record)) {
+            // Doctrine does not touch the version when only the many-to-many collection changes.
+            $this->incrementVersion($record);
+        }
+        if ($categoriesChanged) {
+            $record->additionalCategories->clear();
+            foreach ($additionalIds as $categoryId) {
+                $record->additionalCategories->add($this->categoryReference(CategoryId::fromString($categoryId)));
+            }
+        }
+
+        $this->entityManager->persist($record);
+        $this->entityManager->flush();
+    }
+
+    private function rowChanged(ProductRecord $record): bool
+    {
+        $unitOfWork = $this->entityManager->getUnitOfWork();
+        $unitOfWork->recomputeSingleEntityChangeSet($this->entityManager->getClassMetadata(ProductRecord::class), $record);
+
+        return [] !== $unitOfWork->getEntityChangeSet($record);
+    }
+
+    private function incrementVersion(ProductRecord $record): void
+    {
+        $affected = $this->entityManager->getConnection()->executeStatement(
+            'UPDATE catalog_product SET version = version + 1 WHERE id = :id AND version = :version',
+            ['id' => $record->id, 'version' => $record->version],
+        );
+        if (0 === $affected) {
+            throw new ProductModifiedConcurrently();
+        }
+        ++$record->version;
     }
 
     private function categoryReference(CategoryId $id): CategoryRecord
