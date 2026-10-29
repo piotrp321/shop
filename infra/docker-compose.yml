@@ -296,9 +296,24 @@ services:
       context: ./apps/store
     # Dependencies are installed into the node_modules volume when package-lock.json is newer than the install.
     command: ["sh", "-c", "[ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; exec npm run dev"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    # STORE_CLIENT_SECRET (Keycloak client `store`) and STORE_SESSION_SECRET (cookie signatures) come from .env.local.
+    env_file:
+      - path: ./.env.local
+        required: true
     environment:
       # The server calls the API over the compose network, never through the browser-facing port.
       API_INTERNAL_URL: http://api
+      # Public browser-facing URL of the store (not a secret): redirect URIs, returnTo checks, cookie flags.
+      STORE_URL: http://localhost:${STORE_PORT:-3000}
+      # Login sessions; the store's integration tests use database 1 of the same Redis.
+      REDIS_URL: redis://redis:6379
+      # Keycloak: the browser is sent to the public URL (also the token issuer), the server
+      # fetches discovery, keys and tokens through the internal one.
+      KEYCLOAK_PUBLIC_URL: http://localhost:${KEYCLOAK_PORT:-8080}
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
     volumes:
       - ./apps/store:/app
       # Dependencies live in a volume, not on the host.
