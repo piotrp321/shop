@@ -80,6 +80,24 @@ final class GetCategoryTreeHandlerTest extends TestCase
         self::assertSame(['Lampy', 'Łopaty', 'Zegary', 'Żel'], array_map(static fn (CategoryNode $node): string => $node->name, $winter->children));
     }
 
+    public function testPolishTailoringDiffersFromRootCollation(): void
+    {
+        $this->root('00000000-0000-4000-8000-000000000001', 'Śruby');
+        $this->root('00000000-0000-4000-8000-000000000002', 'Szafy');
+        $this->root('00000000-0000-4000-8000-000000000003', 'Sanki');
+        $this->root('00000000-0000-4000-8000-000000000004', 'Ćwiczenia');
+        $this->root('00000000-0000-4000-8000-000000000005', 'Czapki');
+        $this->root('00000000-0000-4000-8000-000000000006', 'Cegły');
+
+        $tree = ($this->handler)(new GetCategoryTree());
+
+        // Root/en_US collation would give Cegły, Ćwiczenia, Czapki, Sanki, Śruby, Szafy.
+        self::assertSame(
+            ['Cegły', 'Czapki', 'Ćwiczenia', 'Sanki', 'Szafy', 'Śruby'],
+            array_map(static fn (CategoryNode $node): string => $node->name, $tree),
+        );
+    }
+
     public function testSiblingsWithTheSameNameKeepAStableOrderById(): void
     {
         $this->root('00000000-0000-4000-8000-00000000000b', 'Buty');

@@ -32,8 +32,8 @@ final class CategoriesEndpointTest extends WebTestCase
         $sport = $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000001', 'name' => 'Sport']));
         $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'parent' => $sport]));
         $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'parent' => $sport]));
-        $skates = $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000004', 'name' => 'Aaa', 'parent' => $sport]));
-        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000005', 'name' => 'Deep', 'parent' => $skates]));
+        $aaa = $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000004', 'name' => 'Aaa', 'parent' => $sport]));
+        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000005', 'name' => 'Deep', 'parent' => $aaa]));
         $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000006', 'name' => 'Łaźnia']));
         $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000007', 'name' => 'Lampy']));
 
@@ -59,6 +59,22 @@ final class CategoriesEndpointTest extends WebTestCase
                 ],
             ],
         ], $this->decode($client->getResponse()->getContent()));
+    }
+
+    public function testPolishTailoringDiffersFromRootCollation(): void
+    {
+        $client = static::createClient();
+        foreach (['Śruby', 'Szafy', 'Sanki', 'Ćwiczenia', 'Czapki', 'Cegły'] as $name) {
+            $this->save(CategoryFactory::createOne(['name' => $name]));
+        }
+
+        $client->request('GET', '/api/v1/categories');
+
+        // Root/en_US collation would give Cegły, Ćwiczenia, Czapki, Sanki, Śruby, Szafy.
+        self::assertSame(
+            ['Cegły', 'Czapki', 'Ćwiczenia', 'Sanki', 'Szafy', 'Śruby'],
+            array_column($this->decode($client->getResponse()->getContent()), 'name'),
+        );
     }
 
     public function testResponseIsPubliclyCachedAndVariesOnOrigin(): void
@@ -111,7 +127,7 @@ final class CategoriesEndpointTest extends WebTestCase
         self::assertIsArray($node);
         self::assertSame('object', self::at($nodeSchema, 'type'));
         $properties = self::arrayAt($nodeSchema, 'properties');
-        self::assertSame(array_keys($properties), array_keys($node), 'Node keys must match the schema properties.');
+        self::assertEqualsCanonicalizing(array_keys($properties), array_keys($node), 'Node keys must match the schema properties.');
         self::assertEqualsCanonicalizing(self::arrayAt($nodeSchema, 'required'), array_keys($node));
         self::assertSame('string', self::at($properties, 'id', 'type'));
         self::assertIsString($node['id']);
