@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: stos PR-ów od 13B do 24 (każdy PR do gałęzi poprzedniego wiersza). Następne zadanie: **Task 15 (część 2)**. Blokery: brak.
+W toku: stos PR-ów od 13B do 24 (każdy PR do gałęzi poprzedniego wiersza). Następne zadanie: **Task 10 i 27**. Blokery: brak.
 
 Po wydaniu stabilnego Symfony 8.2: zastąpić `RelayDomainEventToBroker` wbudowaną opcją `outbox` transportu
 Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy z Task 14 zostają bez zmian.
@@ -33,7 +33,7 @@ Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy 
 | [#9](https://github.com/piotrp321/shop/pull/9) | 13A | wersja produktu i odczyt produktów paczkami do indeksu | ✅ |
 | [#11](https://github.com/piotrp321/shop/pull/11) | 15 (część 1) | drzewo kategorii, OpenAPI sklepu i panelu, kontrola aktualności kontraktu | ✅ |
 | [#12](https://github.com/piotrp321/shop/pull/12) | 13B | indeks Elasticsearch, adaptery, przebudowa synchroniczna z przepięciem aliasu | ✅ |
-| | 15 (część 2) | lista produktów (po 13B) | |
+| [#13](https://github.com/piotrp321/shop/pull/13) | 15 (część 2) | lista produktów (po 13B) | ✅ |
 | [#10](https://github.com/piotrp321/shop/pull/10) | 14 | transactional outbox, szyny Messengera, RabbitMQ, worker | ✅ |
 | | 10, 27 | komendy tworzenia kategorii i produktów, indeksowanie produktu po zdarzeniu | |
 | | 16, 17 | dane demo i seed | |
