@@ -187,6 +187,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
             self::fail('Expected SlugAlreadyTaken.');
         } catch (SlugAlreadyTaken) {
         }
+        self::assertFalse($this->entityManager->isOpen());
 
         // The kernel resets services between requests and Messenger between messages (kernel.reset).
         $resetter = self::getContainer()->get('services_resetter');
