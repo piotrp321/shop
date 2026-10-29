@@ -117,7 +117,7 @@ całego stosu.
 
 | Makefile | Cele |
 |---|---|
-| główny | `up`, `down`, `logs`, `ps`, `seed`, `check`, `test`, `e2e`, `api-client`, `keycloak-reset` |
+| główny | `up`, `down`, `logs`, `ps`, `seed`, `check`, `test`, `e2e`, `e2e-check`, `api-client`, `keycloak-reset` |
 | `apps/api` | `check`, `test`, `test-unit`, `init`, `init-test`, `migrate`, `migration`, `openapi`, `shell` |
 | `apps/store` | `check`, `test`, `test-unit`, `shell` |
 | `apps/admin` | `check`, `test`, `shell` |
@@ -126,6 +126,9 @@ całego stosu.
 - `test` uruchamia wszystkie testy aplikacji, także te, które potrzebują usług stosu. `test-unit` nie wymaga żadnej
   usługi.
 - `e2e` wymaga wcześniejszego `make up` i `make seed`.
+- `e2e-check` sprawdza typy pakietu `e2e` (`tsc --noEmit` w obrazie `e2e`, bez usług stosu). Nie wchodzi w `check`, bo wymaga
+  obrazu Playwright; uruchamia go job `e2e` w CI.
+- `e2e` i `e2e-check` przyjmują dodatkowe flagi `docker compose run` w zmiennej `E2E_FLAGS` (CI przekazuje `-T`, bo nie ma terminala).
 - `keycloak-reset` usuwa bazę `keycloak` i restartuje Keycloak, który importuje realmy od nowa.
 
 ## Keycloak
@@ -891,7 +894,8 @@ PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikac
 5. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
    `apps/api/openapi.json`, `apps/api/openapi-admin.json` i obu `schema.d.ts`.
 
-Osobny job `e2e` uruchamia pełny stos (`make up`, `make seed`) i `make e2e`. Przy porażce wypisuje logi usług
+Osobny job `e2e` najpierw sprawdza typy testów (`make e2e-check`), potem uruchamia pełny stos (`make up`, `make seed`)
+i `make e2e`. Przy porażce wypisuje logi usług
 i zapisuje ślady Playwrighta (`e2e/test-results`) jako artefakt.
 
 ## Zależności
