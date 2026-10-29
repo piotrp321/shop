@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Catalog\Persistence;
 
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductAlreadyExists;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductNotFound;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
@@ -24,6 +25,7 @@ use Zenstruck\Foundry\Test\Factories;
 
 final class DoctrineProductRepositoryTest extends KernelTestCase
 {
+    use CommitsRowsOnSecondConnection;
     use Factories;
 
     private EntityManagerInterface $entityManager;
@@ -176,6 +178,36 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
 
         self::assertSame(0, $this->connection->fetchOne('SELECT COUNT(*) FROM catalog_product WHERE id = ?', [$duplicate->id()->toString()]));
         self::assertSame([], $this->assignedCategoryIds($duplicate));
+    }
+
+    public function testPrimaryKeyViolationOnInsertThrowsProductAlreadyExistsAndLeavesTheCompetingRow(): void
+    {
+        $category = CategoryFactory::createOne();
+        $this->commitRow($this->entityManager, 'catalog_category', [
+            'id' => $category->id()->toString(),
+            'name' => 'Committed',
+            'path' => $category->path()->toString(),
+        ]);
+        $product = ProductFactory::createOne(['mainCategory' => $category, 'slug' => 'new-slug']);
+        // The competing request commits the same id after this repository read the id and found nothing.
+        $this->commitRowBeforeNextInsert($this->entityManager, 'catalog_product', [
+            'id' => $product->id()->toString(),
+            'slug' => 'competing-slug',
+            'name' => 'Competing',
+            'short_description' => '',
+            'primary_category_id' => $category->id()->toString(),
+            'tax_category' => 'standard',
+            'images' => '[]',
+            'version' => '1',
+        ]);
+
+        try {
+            $this->products->save($product);
+            self::fail('Expected ProductAlreadyExists.');
+        } catch (ProductAlreadyExists) {
+        }
+
+        self::assertSame('Competing', $this->committedValue($this->entityManager, 'SELECT name FROM catalog_product WHERE id = ?', $product->id()->toString()));
     }
 
     public function testRepositoryWorksAgainAfterSlugAlreadyTakenOnceServicesAreReset(): void

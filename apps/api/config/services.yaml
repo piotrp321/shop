@@ -143,6 +143,15 @@ when@test: &test
         test.App\Catalog\Application\Search\ProductSearchIndexRebuilder:
             alias: App\Catalog\Application\Search\ProductSearchIndexRebuilder
             public: true
+        # Public (and so never inlined), so a test can replace them with a spy or an in-memory source through
+        # the container. They repeat the production definitions.
+        App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer:
+            public: true
+            arguments:
+                $client: '@app.search.client'
+                $alias: '%app.search.alias%'
+        App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource:
+            public: true
         App\Tests\Support\StatementCounter:
             public: true
             tags: ['doctrine.middleware']

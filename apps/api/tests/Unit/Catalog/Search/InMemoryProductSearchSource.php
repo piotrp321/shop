@@ -24,6 +24,17 @@ final class InMemoryProductSearchSource implements ProductSearchSource
         $this->snapshots = $snapshots;
     }
 
+    public function find(string $id): ?ProductSearchSnapshot
+    {
+        foreach ($this->snapshots as $snapshot) {
+            if ($snapshot->id === strtolower($id)) {
+                return $snapshot;
+            }
+        }
+
+        return null;
+    }
+
     public function page(?string $afterId, int $limit): array
     {
         $this->calls[] = [$afterId, $limit];

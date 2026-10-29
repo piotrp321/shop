@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Unit\Catalog\Application;
+namespace App\Tests\Support\InMemory;
 
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
