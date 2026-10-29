@@ -55,6 +55,27 @@ final class ProductTest extends TestCase
         self::assertSame('22222222-2222-4222-8222-222222222222', $product->categories()->main()->toString());
     }
 
+    public function testReconstituteRestoresStateWithoutRecordingEvents(): void
+    {
+        $product = Product::reconstitute(
+            ProductId::fromString('11111111-1111-4111-8111-111111111111'),
+            new ProductName('Shoes'),
+            new Slug('shoes'),
+            new ShortDescription('Light'),
+            ProductCategories::create(CategoryId::fromString('22222222-2222-4222-8222-222222222222')),
+            TaxCategory::Food,
+            ProductImages::fromList([]),
+        );
+
+        self::assertSame([], $product->releaseEvents());
+        self::assertSame('11111111-1111-4111-8111-111111111111', $product->id()->toString());
+        self::assertSame('Shoes', $product->name()->value());
+        self::assertSame('shoes', $product->slug()->value());
+        self::assertSame('Light', $product->shortDescription()->value());
+        self::assertSame(TaxCategory::Food, $product->taxCategory());
+        self::assertSame('22222222-2222-4222-8222-222222222222', $product->categories()->main()->toString());
+    }
+
     public function testEmptyNameIsRejected(): void
     {
         $this->expectException(\InvalidArgumentException::class);
