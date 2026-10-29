@@ -9,4 +9,5 @@ return [
     Zenstruck\Foundry\ZenstruckFoundryBundle::class => ['dev' => true, 'test' => true],
     DAMA\DoctrineTestBundle\DAMADoctrineTestBundle::class => ['test' => true],
     League\FlysystemBundle\FlysystemBundle::class => ['all' => true],
+    Nelmio\ApiDocBundle\NelmioApiDocBundle::class => ['all' => true],
 ];

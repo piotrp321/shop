@@ -1,0 +1,19 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Shop API",
+        "description": "Public and customer endpoints used by the store.",
+        "version": "1.0.0"
+    },
+    "paths": {},
+    "components": {
+        "securitySchemes": {
+            "shop": {
+                "type": "http",
+                "description": "Access token issued by the `shop` realm (customers).",
+                "bearerFormat": "JWT",
+                "scheme": "bearer"
+            }
+        }
+    }
+}

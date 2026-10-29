@@ -1,0 +1,19 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Shop Admin API",
+        "description": "Endpoints used by the admin panel.",
+        "version": "1.0.0"
+    },
+    "paths": {},
+    "components": {
+        "securitySchemes": {
+            "backoffice": {
+                "type": "http",
+                "description": "Access token issued by the `backoffice` realm (staff).",
+                "bearerFormat": "JWT",
+                "scheme": "bearer"
+            }
+        }
+    }
+}
