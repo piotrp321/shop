@@ -1,0 +1,36 @@
+doctrine:
+    dbal:
+        # The password comes from .env.local (env_file of the api service); compose does not interpolate secrets.
+        url: 'postgresql://postgres:%env(urlencode:POSTGRES_PASSWORD)%@postgres:5432/shop?serverVersion=18&charset=utf8'
+    orm:
+        naming_strategy: doctrine.orm.naming_strategy.underscore
+        auto_mapping: false
+        mappings:
+            Catalog:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/Catalog/Infrastructure/Persistence/Doctrine/Record'
+                prefix: 'App\Catalog\Infrastructure\Persistence\Doctrine\Record'
+
+when@test:
+    doctrine:
+        dbal:
+            dbname_suffix: '_test'
+
+when@prod:
+    doctrine:
+        orm:
+            query_cache_driver:
+                type: pool
+                pool: doctrine.system_cache_pool
+            result_cache_driver:
+                type: pool
+                pool: doctrine.result_cache_pool
+
+    framework:
+        cache:
+            pools:
+                doctrine.result_cache_pool:
+                    adapter: cache.app
+                doctrine.system_cache_pool:
+                    adapter: cache.system
