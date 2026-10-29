@@ -30,10 +30,276 @@
                     }
                 }
             }
+        },
+        "/api/v1/products": {
+            "get": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Product list",
+                "description": "A page of products sorted by name, then by id. The category filter includes the products of all its subcategories; an unknown category gives an empty list. A page past the end gives an empty list with the real total.",
+                "operationId": "listProducts",
+                "parameters": [
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "description": "Category id (UUID).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "Page number, from 1.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 1,
+                            "minimum": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 24,
+                            "maximum": 48,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of products.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductPage"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The search service is unavailable (problem details without technical details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
         "schemas": {
+            "ProductPage": {
+                "required": [
+                    "items",
+                    "page",
+                    "perPage",
+                    "total"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductListItem"
+                        }
+                    },
+                    "page": {
+                        "description": "The requested page, from 1.",
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "perPage": {
+                        "description": "The requested page size.",
+                        "type": "integer",
+                        "example": 24
+                    },
+                    "total": {
+                        "description": "All products matching the filter, not only this page.",
+                        "type": "integer",
+                        "example": 412
+                    }
+                },
+                "type": "object"
+            },
+            "ProductListItem": {
+                "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "shortDescription",
+                    "image"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Buty do biegania Puls 2 granatowe"
+                    },
+                    "slug": {
+                        "type": "string",
+                        "example": "buty-do-biegania-puls-2-granatowe"
+                    },
+                    "shortDescription": {
+                        "type": "string"
+                    },
+                    "image": {
+                        "description": "The main image, null when the product has no images.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/ProductImage"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "ProductImage": {
+                "description": "A product image of one predefined size, with signed URLs of its variants grouped by output format.",
+                "required": [
+                    "alt",
+                    "size",
+                    "aspectRatio",
+                    "variants"
+                ],
+                "properties": {
+                    "alt": {
+                        "description": "Alternative text of the image.",
+                        "type": "string",
+                        "example": "Biegaczka na le\u015bnej \u015bcie\u017cce"
+                    },
+                    "size": {
+                        "description": "Name of the image size.",
+                        "type": "string",
+                        "example": "listing"
+                    },
+                    "aspectRatio": {
+                        "description": "Aspect ratio of every variant, width:height.",
+                        "type": "string",
+                        "example": "1:1"
+                    },
+                    "variants": {
+                        "description": "Variants by output format (the key is the file extension, e.g. webp), widths ascending.",
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "array",
+                            "items": {
+                                "required": [
+                                    "width",
+                                    "url"
+                                ],
+                                "properties": {
+                                    "width": {
+                                        "type": "integer",
+                                        "example": 256
+                                    },
+                                    "url": {
+                                        "type": "string",
+                                        "example": "http://localhost:8081/signature/rs:fill:256:256/g:sm/czM6Ly9idWNrZXQva2V5/plain.webp"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "Problem": {
+                "description": "Problem details (RFC 9457), `application/problem+json`.",
+                "required": [
+                    "type",
+                    "title",
+                    "status"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "example": "about:blank"
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Bad Request"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "example": 400
+                    },
+                    "detail": {
+                        "description": "Present only for 4xx errors, never for 5xx.",
+                        "type": "string"
+                    },
+                    "violations": {
+                        "description": "Present only for 400 caused by invalid input.",
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "propertyPath",
+                                "title"
+                            ],
+                            "properties": {
+                                "propertyPath": {
+                                    "type": "string",
+                                    "example": "category"
+                                },
+                                "title": {
+                                    "type": "string",
+                                    "example": "This is not a valid UUID."
+                                }
+                            },
+                            "type": "object"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "ListProductsQuery": {
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "page": {
+                        "type": "integer",
+                        "default": 1,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 24,
+                        "maximum": 48,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
             "CategoryNode": {
                 "required": [
                     "id",
