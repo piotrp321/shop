@@ -20,10 +20,12 @@ export async function loginStaff(page: Page, account: StaffAccount): Promise<voi
   await page.locator("#kc-login").click();
 
   for (let attempt = 0; attempt < 2; attempt++) {
+    const rejection = page.locator("#input-error-otp");
     await page.locator("#otp").fill(await totp(account.totpSecret));
+    // On a retry the previous rejection is still in the DOM; drop it so only a new rejection can resolve the race below.
+    await rejection.evaluateAll((elements) => elements.forEach((element) => element.remove()));
     await page.locator("#kc-login").click();
     // Accepted: the browser leaves Keycloak for the panel. Rejected: the OTP form comes back with an error message.
-    const rejection = page.locator("#input-error-otp");
     const accepted = await Promise.race([
       page.waitForURL(/^http:\/\/localhost:\d+\/(?!realms\/)/, { timeout: 15_000 }).then(() => true),
       rejection.waitFor({ timeout: 15_000 }).then(() => false),
