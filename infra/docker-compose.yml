@@ -228,6 +228,8 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: shop
       RABBITMQ_VHOST: /
+      # Elasticsearch has security disabled locally; the URL carries no credentials.
+      ELASTICSEARCH_URL: http://elasticsearch:9200
     volumes:
       - ./apps/api:/app
       # Dependencies live in a volume, not on the host.

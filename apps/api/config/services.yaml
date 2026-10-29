@@ -1,6 +1,18 @@
 parameters:
     app.images_bucket: '%env(IMAGES_BUCKET)%'
     app.imgproxy_public_url: '%env(IMGPROXY_PUBLIC_URL)%'
+    # Search index (spec: "Indeks Elasticsearch"). The application reads and writes through the alias.
+    app.search.alias: products
+    app.search.shards: 1
+    app.search.replicas: 0
+    # Products per bulk request in catalog:reindex (overridden by --batch-size).
+    app.search.batch_size: 500
+    # The client never retries; timeouts are in seconds.
+    app.search.connect_timeout: 1.0
+    # Search, count, single writes and alias operations.
+    app.search.request_timeout: 2.0
+    # Bulk writes, index creation and refresh.
+    app.search.long_request_timeout: 30.0
 
 services:
     _defaults:
@@ -35,15 +47,61 @@ services:
             $salt: '%env(IMGPROXY_SALT)%'
             $bucket: '%app.images_bucket%'
 
+    App\Catalog\Infrastructure\Search\ElasticsearchClientFactory:
+        arguments:
+            $url: '%env(ELASTICSEARCH_URL)%'
+            $connectTimeout: '%app.search.connect_timeout%'
+
+    app.search.client:
+        class: Elastic\Elasticsearch\Client
+        factory: ['@App\Catalog\Infrastructure\Search\ElasticsearchClientFactory', 'create']
+        arguments: ['%app.search.request_timeout%']
+
+    app.search.long_request_client:
+        class: Elastic\Elasticsearch\Client
+        factory: ['@App\Catalog\Infrastructure\Search\ElasticsearchClientFactory', 'create']
+        arguments: ['%app.search.long_request_timeout%']
+
+    App\Catalog\Infrastructure\Search\ProductIndexDefinition:
+        arguments:
+            $shards: '%app.search.shards%'
+            $replicas: '%app.search.replicas%'
+
+    App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance:
+        arguments:
+            $client: '@app.search.client'
+            $longRequestClient: '@app.search.long_request_client'
+            $alias: '%app.search.alias%'
+
+    App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer:
+        arguments:
+            $client: '@app.search.client'
+            $alias: '%app.search.alias%'
+
+    App\Catalog\Infrastructure\Search\ElasticsearchProductSearch:
+        arguments:
+            $client: '@app.search.client'
+            $alias: '%app.search.alias%'
+
+    App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock:
+        arguments:
+            $alias: '%app.search.alias%'
+
     App\Catalog\Application\Port\ProductImageStorage: '@App\Catalog\Infrastructure\Image\FlysystemProductImageStorage'
     App\Catalog\Application\Port\ImageUrlGenerator: '@App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator'
     App\Catalog\Application\Port\ProductSearchSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource'
+    App\Catalog\Application\Port\ProductIndexer: '@App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer'
+    App\Catalog\Application\Port\ProductSearch: '@App\Catalog\Infrastructure\Search\ElasticsearchProductSearch'
+    App\Catalog\Application\Port\SearchIndexMaintenance: '@App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance'
+    App\Catalog\Application\Port\SearchIndexRebuildLock: '@App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'
 
 when@test: &test
     parameters:
         # Integration tests use their own bucket, like the `_test` database.
         app.images_bucket: 'product-images-test'
+        # Test indexes are prefixed with test_, the alias is recreated by `make -C apps/api init-test`.
+        app.search.alias: test_products
 
     services:
         _defaults:
@@ -68,6 +126,18 @@ when@test: &test
             public: true
         App\Catalog\Application\Port\ProductSearchSource:
             alias: App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource
+            public: true
+        App\Catalog\Application\Port\SearchIndexMaintenance:
+            alias: App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance
+            public: true
+        App\Catalog\Application\Port\SearchIndexRebuildLock:
+            alias: App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock
+            public: true
+        test.App\Catalog\Infrastructure\Search\ElasticsearchClientFactory:
+            alias: App\Catalog\Infrastructure\Search\ElasticsearchClientFactory
+            public: true
+        test.App\Catalog\Application\Search\ProductSearchIndexRebuilder:
+            alias: App\Catalog\Application\Search\ProductSearchIndexRebuilder
             public: true
         App\Tests\Support\StatementCounter:
             public: true

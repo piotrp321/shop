@@ -23,13 +23,16 @@ cs-fix:
 test: init-test
 	$(RUN) api vendor/bin/phpunit
 
-# Brings the dev database schema up to date; `make up` runs it once the services are healthy.
+# Brings the dev database schema up to date and creates the search alias and index if missing (idempotent);
+# `make up` runs it once the services are healthy.
 init:
 	$(RUN) api bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+	$(RUN) api bin/console catalog:search-index:setup
 
-# Brings the test database schema up to date; `test` runs it first.
+# The same for the tests: shop_test schema, and the disposable test_products index created anew; `test` runs it first.
 init-test:
 	$(RUN) api bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration --env=test
+	$(RUN) api bin/console catalog:search-index:setup --recreate --env=test
 
 test-unit:
 	$(RUN) api vendor/bin/phpunit --testsuite unit
