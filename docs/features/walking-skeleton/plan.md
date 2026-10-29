@@ -18,7 +18,10 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: nic. Następne zadanie: **Task 13** (indeks Elasticsearch). Blokery: brak.
+W toku: **Task 13** (indeks Elasticsearch) i równolegle **Task 14** (outbox, Messenger, RabbitMQ). Blokery: brak.
+
+Po wydaniu stabilnego Symfony 8.2: zastąpić `RelayDomainEventToBroker` wbudowaną opcją `outbox` transportu
+Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy z Task 14 zostają bez zmian.
 
 | PR | Zadania | Zakres | Status |
 |---|---|---|---|
@@ -28,7 +31,8 @@ W toku: nic. Następne zadanie: **Task 13** (indeks Elasticsearch). Blokery: bra
 | [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | ✅ |
 | [#8](https://github.com/piotrp321/shop/pull/8) | 12 | obrazy w API (Garage, imgproxy) | ✅ |
 | | 13 | indeks Elasticsearch i adapter wyszukiwania | |
-| | 10, 14 | komendy tworzenia kategorii i produktów, transactional outbox, RabbitMQ, worker, indeksowanie | |
+| | 14 | transactional outbox, szyny Messengera, RabbitMQ, worker | ✅ |
+| | 10, 27 | komendy tworzenia kategorii i produktów, indeksowanie produktu po zdarzeniu | |
 | | 15 | endpointy katalogu i OpenAPI sklepu | |
 | | 16, 17 | dane demo i seed | |
 | | 18 | strona katalogu w sklepie | |
@@ -40,9 +44,10 @@ W toku: nic. Następne zadanie: **Task 13** (indeks Elasticsearch). Blokery: bra
 
 - Wiersz to jeden PR z jedną logiczną zmianą, a kolejność wierszy to kolejność prac (wynika z zależności
   „Konsumuje” w zadaniach, nie z numeracji). Task 12 jest przed Task 15, bo endpoint zwraca podpisane warianty
-  zdjęć, a seed zapisuje zdjęcia w Garage. Task 10 jest w jednym PR z Task 14: handlery komend są usługami
+  zdjęć, a seed zapisuje zdjęcia w Garage. Task 14 jest przed Task 10: handlery komend są usługami
   kontenera i potrzebują szyny `command.bus` oraz implementacji `DomainEventPublisher` z Task 14 i repozytoriów
-  z Task 11, inaczej kontener się nie kompiluje.
+  z Task 11, inaczej kontener się nie kompiluje. Task 27 jest w jednym PR z Task 10, bo test przepływu zdarzenia
+  zaczyna się od komendy `CreateProduct`.
 - Jedno uruchomienie `subagent-driven-development` realizuje jeden wiersz i kończy się otwarciem PR. Kolejny
   wiersz zaczyna się po decyzji użytkownika o merge.
 - Orkiestrator oznacza wiersz jako ✅ w PR, który go realizuje, a numer PR dopisuje po jego otwarciu, w tym
@@ -166,8 +171,8 @@ w zadaniu, do którego należy kod.
   `tests/Integration/Catalog/Persistence/{DoctrineCategoryRepositoryTest,DoctrineProductRepositoryTest}.php`
 
 **Interfejsy:**
-- Konsumuje: zadanie 9. Realizowane w jednym PR z zadaniem 14 (szyny Messengera i `DomainEventPublisher`),
-  po zadaniu 11 (repozytoria).
+- Konsumuje: zadanie 9, szyny Messengera i `DomainEventPublisher` (zadanie 14), repozytoria (zadanie 11).
+  Realizowane w jednym PR z zadaniem 27.
 - Produkuje: `CreateCategory(string $id, string $name, ?string $parentId)`;
   `CreateProduct(string $id, string $name, string $slug, string $shortDescription, string $mainCategoryId, list<string> $additionalCategoryIds, string $taxCategory, list<array{key: string, alt: string}> $images)`.
   Handlery jako `#[AsMessageHandler(bus: 'command.bus')]`. Oba handlery odrzucają istniejące id
@@ -351,50 +356,48 @@ w zadaniu, do którego należy kod.
 - **Krok 2: FAIL. Krok 3: implementacja i komendy konsoli. Krok 4: PASS (`make -C apps/api check test`).**
 - **Krok 5: Commit** `feat(api): add Elasticsearch read model for products`
 
-### Task 14: Outbox, Messenger i indeksowanie
+### Task 14: Outbox, Messenger i RabbitMQ
 
 **Pliki:**
 - Utwórz: `config/packages/messenger.yaml`, `config/packages/test/messenger.yaml` (transporty `in-memory://`),
-  `config/packages/test_messaging/messenger.yaml` i `.env.test_messaging` (środowisko kernela z prawdziwymi
+  `config/packages/test_messaging/{messenger,dama_doctrine_test_bundle}.yaml` (środowisko kernela z prawdziwymi
   transportami: `outbox` Doctrine w `shop_test`, `events` AMQP na vhoście `test`, `failed` Doctrine),
   `src/Shared/Infrastructure/Messaging/{MessengerDomainEventPublisher,RelayDomainEventToBroker}.php`,
-  `src/Catalog/Application/EventHandler/IndexProduct.php`, `migrations/Version…CreateMessengerTables.php`,
-  `tests/Unit/Shared/Messaging/MessengerRoutingTest.php`,
-  `tests/Integration/Shared/Messaging/{OutboxAtomicityTest,EventFlowTest}.php`
-- Modyfikuj: `infra/docker-compose.yml` (usługa `worker`: `bin/console messenger:consume outbox events`,
-  health check procesu, `restart: unless-stopped`), `Makefile` (`up` startuje `worker` dopiero po `init`), `config/bundles.php` (bundle testowe także w `test_messaging`),
-  `.github/workflows/ci.yml` (usługa `rabbitmq` i jednorazowy `rabbitmq-init` przed testami),
-  `tests/Support/TestMessengerController.php` (jawna szyna zamiast domyślnej, gdy powstaną `command.bus`,
-  `query.bus` i `event.bus`), `symfony.lock` (wpis `config/packages/messenger.yaml` odpowiada wtedy istniejącemu plikowi)
+  `migrations/Version…CreateMessengerTables.php`, `tests/Unit/Shared/Messaging/MessengerRoutingTest.php`,
+  `tests/Integration/Shared/Messaging/{MessagingKernelTestCase,OutboxAtomicityTest,OutboxRelayTest}.php`
+- Modyfikuj: `infra/docker-compose.yml` (zmienne RabbitMQ w `api`; usługa `worker`:
+  `bin/console messenger:consume outbox events`, health check procesu, `restart: unless-stopped`), `Makefile`
+  (`up` startuje `worker` dopiero po `init`), `config/bundles.php` (bundle testowe także w `test_messaging`),
+  `config/packages/{framework,doctrine,monolog}.yaml` i `config/services.yaml` (`when@test_messaging` jak
+  `when@test`), `.github/workflows/ci.yml` (usługa `rabbitmq` i jednorazowy `rabbitmq-init` przed testami),
+  `tests/Support/{TestMessengerController,TestMessageHandler}.php` (jawna szyna `command.bus`)
 
 **Interfejsy:**
-- Konsumuje: `DomainEventPublisher` (zadanie 9), komendy (zadanie 10, w tym samym PR), `ProductIndexer`
-  i `ProductDocumentBuilder` (zadanie 13). `IndexProduct` wczytuje wszystkie kategorie produktu.
-- Produkuje: szyny i transporty ze specyfikacji; routing `DomainEvent` → `outbox`;
-  `RelayDomainEventToBroker` z `#[AsMessageHandler(bus: 'event.bus', fromTransport: 'outbox')]`, który ponownie
-  wysyła zdarzenie z `TransportNamesStamp(['events'])`; `IndexProduct` z
-  `#[AsMessageHandler(bus: 'event.bus', fromTransport: 'events')]`; ponowienia 3 × (1 s, mnożnik 3), transport
-  `failed`.
+- Konsumuje: `DomainEventPublisher` (zadanie 9).
+- Produkuje: szyny i transporty ze specyfikacji; routing `DomainEvent` → `outbox`; `DomainEventPublisher`
+  → `MessengerDomainEventPublisher`; `RelayDomainEventToBroker` z
+  `#[AsMessageHandler(bus: 'event.bus', fromTransport: 'outbox')]`, który ponownie wysyła zdarzenie
+  z `TransportNamesStamp(['events'])`; ponowienia 3 × (1 s, mnożnik 3), transport `failed`; `worker`.
 
 - **Krok 1: Testy**
-  - `MessengerRoutingTest` (kernel testowy, transporty in-memory, `ProductIndexer` podmieniony na szpiega,
-    repozytoria in-memory): publikacja `ProductCreated` daje 1 wiadomość na `outbox` i 0 na `events`; po
-    konsumpcji `outbox` jest 1 na `events`, a szpieg nie został wywołany; po konsumpcji `events` szpieg
-    dostał dokładnie jedno wywołanie z tym `productId`, a `outbox` i `events` są puste.
+  - `MessengerRoutingTest` (kernel testowy, transporty in-memory): publikacja `ProductCreated` daje 1 wiadomość
+    na `outbox` i 0 na `events`; po konsumpcji `outbox` jest 1 na `events`, a `outbox` jest pusty; po konsumpcji
+    `events` nic nie trafia ponownie na `outbox` ani `events`, a `failed` jest pusty.
   - `OutboxAtomicityTest` (kernel `test_messaging`): w `wrapInTransaction` zapis produktu, publikacja zdarzenia
-    i wyjątek dają 0 produktów i 0 wierszy `outbox` (liczone w tym samym połączeniu); bez wyjątku jest 1 produkt
-    i 1 wiersz.
-  - `EventFlowTest` (kernel `test_messaging`, jawnie prawdziwe transporty: `outbox` Doctrine i `events` AMQP na
-    vhoście `test`, ES na żywo): `CreateProduct` na `command.bus`, potem
-    `messenger:consume outbox events --limit=2 --time-limit=10`, a dokument produktu jest w indeksie testowym.
-    Przed testem kolejka `events` na vhoście `test` jest czyszczona.
-- **Krok 2: FAIL. Krok 3: konfiguracja, przekaźnik, handler, migracja. Krok 4: PASS (`make -C apps/api check test`).**
-- **Krok 5: Sprawdź**: na świeżym projekcie Compose (puste wolumeny) `make up` kończy się kodem 0, `worker` jest
-  `healthy`, `doctrine:migrations:status` nie pokazuje brakujących migracji, a `docker compose logs worker` nie
-  pokazuje błędów. Przy
-  działającym `worker` uruchom testy integracyjne: logi `worker` nie pokazują żadnej obsłużonej wiadomości, a
-  `rabbitmqctl list_queues -p /` nie zmienia się w trakcie testów.
-- **Krok 6: Commit** `feat(api): publish domain events through transactional outbox and index products`
+    i wyjątek dają 0 produktów, 0 wierszy `outbox` (liczone w tym samym połączeniu) i 0 wiadomości w RabbitMQ;
+    bez wyjątku jest 1 produkt, 1 wiersz i nadal 0 wiadomości w RabbitMQ.
+  - `OutboxRelayTest` (kernel `test_messaging`, kolejka `events` czyszczona przed testem): konsumpcja `outbox`
+    publikuje zdarzenie w RabbitMQ i usuwa wiersz; przy nieosiągalnym brokerze każda próba zostawia jeden wiersz
+    z kolejnym licznikiem ponowień i opóźnieniem 1, 3, 9 s, czwarta przenosi zdarzenie do `failed`, a
+    `messenger:failed:retry` po powrocie brokera publikuje je w RabbitMQ; przekaźnik, który padł po publikacji,
+    a przed ackiem, publikuje zdarzenie drugi raz po upływie `redeliver_timeout`.
+- **Krok 2: FAIL. Krok 3: konfiguracja, publisher, przekaźnik, migracja. Krok 4: PASS (`make -C apps/api check test`).**
+- **Krok 5: Sprawdź**: `make up` kończy się kodem 0, `worker` jest `healthy`, `doctrine:migrations:status` nie
+  pokazuje brakujących migracji. Przy działającym `worker` uruchom testy integracyjne: logi `worker` nie pokazują
+  żadnej obsłużonej wiadomości, a `rabbitmqctl list_queues -p /` nie zmienia się w trakcie testów. Ścieżki błędu:
+  nieudany `init` (`make up RUN=false`) kończy `make up` kodem różnym od 0 bez startu `worker`; zatrzymany RabbitMQ
+  restartuje `worker`, który po powrocie brokera znów jest `healthy`.
+- **Krok 6: Commit** `feat(api): publish domain events through a transactional outbox`
 
 ### Task 15: Endpointy katalogu i OpenAPI sklepu
 
@@ -790,6 +793,29 @@ w zadaniu, do którego należy kod.
 - **Krok 2: Sprawdź**: po `make up && make seed` komenda `make e2e` daje 4 testy zaliczone; drugie
   uruchomienie też przechodzi.
 - **Krok 3: Commit** `test(e2e): add Playwright smoke tests for catalog and logins`
+
+### Task 27: Indeksowanie produktu po zdarzeniu
+
+**Pliki:**
+- Utwórz: `src/Catalog/Application/EventHandler/IndexProduct.php`,
+  `tests/Integration/Shared/Messaging/EventFlowTest.php`
+- Modyfikuj: `tests/Unit/Shared/Messaging/MessengerRoutingTest.php` (szpieg `ProductIndexer`, repozytoria
+  in-memory)
+
+**Interfejsy:**
+- Konsumuje: szyny, transporty i przekaźnik (zadanie 14), komendy (zadanie 10, w tym samym PR), `ProductIndexer`
+  i `ProductDocumentBuilder` (zadanie 13). `IndexProduct` wczytuje wszystkie kategorie produktu.
+- Produkuje: `IndexProduct` z `#[AsMessageHandler(bus: 'event.bus', fromTransport: 'events')]`.
+
+- **Krok 1: Testy**
+  - `MessengerRoutingTest`: po konsumpcji `outbox` szpieg `ProductIndexer` nie został wywołany; po konsumpcji
+    `events` szpieg dostał dokładnie jedno wywołanie z tym `productId`, a `outbox` i `events` są puste.
+  - `EventFlowTest` (kernel `test_messaging`, jawnie prawdziwe transporty: `outbox` Doctrine i `events` AMQP na
+    vhoście `test`, ES na żywo): `CreateProduct` na `command.bus`, potem
+    `messenger:consume outbox events --limit=2 --time-limit=10`, a dokument produktu jest w indeksie testowym.
+    Przed testem kolejka `events` na vhoście `test` jest czyszczona.
+- **Krok 2: FAIL. Krok 3: handler. Krok 4: PASS (`make -C apps/api check test`).**
+- **Krok 5: Commit** `feat(api): index products on ProductCreated`
 
 ### Task 26: README, pomiar pamięci i odbiór
 
