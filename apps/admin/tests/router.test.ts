@@ -1,5 +1,6 @@
 import { createMemoryHistory } from "vue-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { clearLoginProblem, loginProblem } from "@/auth/loginProblem";
 import { createAppRouter } from "@/router";
 
 function setup(user: { expired: boolean } | null) {
@@ -12,6 +13,8 @@ function setup(user: { expired: boolean } | null) {
 }
 
 describe("router guard", () => {
+  beforeEach(() => clearLoginProblem());
+
   it("starts the sign-in redirect for a visitor without a user and keeps the target path", async () => {
     const { router, userManager } = setup(null);
 
@@ -68,5 +71,26 @@ describe("router guard", () => {
     await router.push("/unknown");
 
     expect(router.currentRoute.value.name).toBe("dashboard");
+  });
+
+  it("reports a problem instead of leaving a blank page when the sign-in redirect fails", async () => {
+    const { router, userManager } = setup(null);
+    userManager.signinRedirect.mockRejectedValue(new Error("Keycloak unreachable"));
+
+    await router.push("/");
+
+    expect(loginProblem.value).toContain("serwerem logowania");
+    expect(loginProblem.value).not.toContain("unreachable");
+    expect(router.currentRoute.value.name).not.toBe("dashboard");
+  });
+
+  it("reports a problem when the user cannot be read", async () => {
+    const { router, userManager } = setup(null);
+    userManager.getUser.mockRejectedValue(new Error("boom"));
+
+    await router.push("/");
+
+    expect(loginProblem.value).not.toBeNull();
+    expect(userManager.signinRedirect).not.toHaveBeenCalled();
   });
 });

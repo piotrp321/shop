@@ -1,5 +1,6 @@
 import type { UserManager } from "oidc-client-ts";
 import { createRouter, createWebHistory, type RouterHistory } from "vue-router";
+import { LOGIN_SERVER_MESSAGE, reportLoginProblem } from "@/auth/loginProblem";
 import { getUserManager } from "@/auth/userManager";
 import AppLayout from "@/layout/AppLayout.vue";
 import AuthCallbackView from "@/views/AuthCallbackView.vue";
@@ -28,12 +29,17 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
     if (to.meta.public === true) {
       return true;
     }
-    const user = await userManager.getUser();
-    if (user && !user.expired) {
-      return true;
+    try {
+      const user = await userManager.getUser();
+      if (user && !user.expired) {
+        return true;
+      }
+      // After a reload the memory is empty; an active SSO session in Keycloak returns the user without a password.
+      await userManager.signinRedirect({ state: { returnTo: to.fullPath } });
+    } catch {
+      // Keycloak unreachable: App.vue shows the problem with a retry action instead of a blank page.
+      reportLoginProblem(LOGIN_SERVER_MESSAGE);
     }
-    // After a reload the memory is empty; an active SSO session in Keycloak returns the user without a password.
-    await userManager.signinRedirect({ state: { returnTo: to.fullPath } });
     return false;
   });
 

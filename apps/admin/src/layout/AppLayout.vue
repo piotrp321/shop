@@ -12,8 +12,20 @@ const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 const auth = useAuthStore();
 let idle: { stop(): void } | undefined;
 
+function startIdleLogout() {
+  idle = useIdleLogout({ timeoutMs: IDLE_TIMEOUT_MS, onIdle: signOutIdleUser });
+}
+
+async function signOutIdleUser() {
+  await auth.logout();
+  // useIdleLogout stops itself once it fires. If the sign-out failed the user stays here, so arm it again.
+  if (auth.logoutFailed) {
+    startIdleLogout();
+  }
+}
+
 onMounted(() => {
-  idle = useIdleLogout({ timeoutMs: IDLE_TIMEOUT_MS, onIdle: () => void auth.logout() });
+  startIdleLogout();
   void auth.load();
 });
 

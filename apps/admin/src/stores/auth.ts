@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { LOGOUT_MESSAGE, reportLoginProblem } from "@/auth/loginProblem";
 import { getUserManager } from "@/auth/userManager";
 
 export type StaffMe = components["schemas"]["StaffMeResponse"];
@@ -10,6 +11,7 @@ export const useAuthStore = defineStore("auth", () => {
   /** The signed-in staff member as the API reports them; the roles come from the API, never from the token. */
   const staff = ref<StaffMe | null>(null);
   const error = ref<string | null>(null);
+  const logoutFailed = ref(false);
 
   async function load(): Promise<void> {
     error.value = null;
@@ -26,8 +28,14 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function logout(): Promise<void> {
-    await getUserManager().signoutRedirect();
+    try {
+      await getUserManager().signoutRedirect();
+      logoutFailed.value = false;
+    } catch {
+      logoutFailed.value = true;
+      reportLoginProblem(LOGOUT_MESSAGE);
+    }
   }
 
-  return { staff, error, load, logout };
+  return { staff, error, logoutFailed, load, logout };
 });

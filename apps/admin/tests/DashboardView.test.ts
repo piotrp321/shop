@@ -225,4 +225,41 @@ describe("DashboardView", () => {
     expect(wrapper.find(".p-skeleton").exists()).toBe(false);
     expect(wrapper.text()).toContain("Katalog");
   });
+
+  it("ignores a stale response that arrives after a newer refresh", async () => {
+    vi.useFakeTimers();
+    let resolveFirst: (value: unknown) => void = () => {};
+    mocks.get.mockReturnValueOnce(new Promise((resolve) => (resolveFirst = resolve)));
+    wrapper = await mountView();
+
+    mocks.get.mockResolvedValueOnce({
+      data: dashboard({ catalog: { productCount: 2, categoryCount: 1, productsWithoutImages: 0 } }),
+      response: { status: 200 },
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(wrapper.get("[data-testid=product-count]").text()).toBe("2");
+
+    resolveFirst({
+      data: dashboard({ catalog: { productCount: 1, categoryCount: 1, productsWithoutImages: 0 } }),
+      response: { status: 200 },
+    });
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid=product-count]").text()).toBe("2");
+  });
+
+  it("ignores a stale failure that arrives after a newer successful refresh", async () => {
+    vi.useFakeTimers();
+    let rejectFirst: (reason: unknown) => void = () => {};
+    mocks.get.mockReturnValueOnce(new Promise((_resolve, reject) => (rejectFirst = reject)));
+    wrapper = await mountView();
+
+    respondWith(dashboard());
+    await vi.advanceTimersByTimeAsync(30_000);
+    rejectFirst(new TypeError("Failed to fetch"));
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid=dashboard-error]").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Katalog");
+  });
 });

@@ -13,11 +13,17 @@ export function useDashboard(intervalMs = 30000) {
   const error = ref<string | null>(null);
   const loading = ref(false);
   let timer: ReturnType<typeof setInterval> | undefined;
+  // Only the newest request may change the state; an older one that finishes late is ignored.
+  let latest = 0;
 
   async function refresh(): Promise<void> {
+    const request = ++latest;
     loading.value = true;
     try {
       const result = await getApiClient().GET("/api/v1/admin/dashboard");
+      if (request !== latest) {
+        return;
+      }
       if (result.data) {
         data.value = result.data;
         error.value = null;
@@ -25,9 +31,13 @@ export function useDashboard(intervalMs = 30000) {
         error.value = `Nie udało się pobrać danych dashboardu (HTTP ${result.response.status}).`;
       }
     } catch {
-      error.value = "Nie udało się pobrać danych dashboardu. Sprawdź połączenie z API.";
+      if (request === latest) {
+        error.value = "Nie udało się pobrać danych dashboardu. Sprawdź połączenie z API.";
+      }
     } finally {
-      loading.value = false;
+      if (request === latest) {
+        loading.value = false;
+      }
     }
   }
 
@@ -36,7 +46,10 @@ export function useDashboard(intervalMs = 30000) {
     timer = setInterval(() => void refresh(), intervalMs);
   });
 
-  onUnmounted(() => clearInterval(timer));
+  onUnmounted(() => {
+    clearInterval(timer);
+    latest++;
+  });
 
   return { data, error, loading, refresh };
 }

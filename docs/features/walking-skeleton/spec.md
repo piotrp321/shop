@@ -756,7 +756,11 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 - Każda trasa wymaga zalogowania. Po przeładowaniu strony guard routera wywołuje `signinRedirect()`; aktywna sesja
   SSO w Keycloak zwraca użytkownika bez ponownego hasła i TOTP.
 - Store Pinia `auth` trzyma pracownika z `GET /api/v1/admin/me`. Role pochodzą z API, nie z dekodowania tokena.
-- Middleware wygenerowanego klienta dodaje `Authorization: Bearer …`; odpowiedź 401 wywołuje `signinRedirect()`.
+- Middleware wygenerowanego klienta dodaje `Authorization: Bearer …`; odpowiedź 401 wywołuje `signinRedirect()`
+  najwyżej raz na cykl logowania. Przed przekierowaniem klient zapisuje w `sessionStorage` jednorazowy znacznik
+  (znacznik czasu, nigdy token), a pierwsza odpowiedź 2xx go usuwa. 401 przy ustawionym znaczniku (API odrzuca świeży
+  token) nie przekierowuje ponownie, tylko pokazuje `Message` z błędem i przyciskiem „Zaloguj ponownie”.
+- Błąd `signinRedirect()` lub `signoutRedirect()` (Keycloak niedostępny) pokazuje ten sam `Message` zamiast pustej strony.
 - Wylogowanie: `signoutRedirect()` z powrotem na `ADMIN_URL`.
 - Bezczynność: `useIdleLogout` nasłuchuje `pointerdown`, `keydown`, `wheel` i `visibilitychange` (z throttlingiem)
   i dzieli czas ostatniej aktywności między kartami przez `BroadcastChannel`. Po 15 minutach bez aktywności we

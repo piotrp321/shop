@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { clearLoginProblem, loginProblem } from "@/auth/loginProblem";
 import { useAuthStore } from "@/stores/auth";
 
 const mocks = vi.hoisted(() => ({
@@ -15,6 +16,7 @@ const staff = { id: "u1", username: "support", roles: ["support"] };
 describe("auth store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    clearLoginProblem();
     mocks.get.mockReset();
     mocks.signoutRedirect.mockReset().mockResolvedValue(undefined);
   });
@@ -60,5 +62,25 @@ describe("auth store", () => {
     await store.logout();
 
     expect(mocks.signoutRedirect).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a problem and does not throw when the sign-out redirect fails", async () => {
+    mocks.signoutRedirect.mockRejectedValue(new Error("Keycloak unreachable"));
+    const store = useAuthStore();
+
+    await expect(store.logout()).resolves.toBeUndefined();
+
+    expect(store.logoutFailed).toBe(true);
+    expect(loginProblem.value).toContain("wylogować");
+  });
+
+  it("clears the logout failure flag on a later successful logout", async () => {
+    mocks.signoutRedirect.mockRejectedValueOnce(new Error("x"));
+    const store = useAuthStore();
+    await store.logout();
+
+    await store.logout();
+
+    expect(store.logoutFailed).toBe(false);
   });
 });
