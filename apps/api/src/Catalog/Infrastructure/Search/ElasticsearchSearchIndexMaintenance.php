@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Catalog\Infrastructure\Search;
 
 use App\Catalog\Application\Port\SearchIndexMaintenance;
+use App\Catalog\Application\Search\BulkResult;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 use Elastic\Elasticsearch\Client;
@@ -77,6 +78,41 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
     public function createIndex(): string
     {
         return $this->create(withAlias: false);
+    }
+
+    public function write(string $index, array $documents): BulkResult
+    {
+        if ([] === $documents) {
+            return new BulkResult();
+        }
+
+        $body = [];
+        foreach ($documents as $document) {
+            $body[] = ['index' => ['_index' => $index, '_id' => $document->id, 'version' => $document->version, 'version_type' => 'external']];
+            $body[] = ProductIndexDefinition::source($document);
+        }
+        $items = $this->request('bulk write', fn () => $this->longRequestClient->bulk(['body' => $body]))->asArray()['items'] ?? null;
+        if (!\is_array($items) || \count($items) !== \count($documents)) {
+            throw new SearchIndexError(\sprintf('The bulk response for "%s" does not have one item per document.', $index));
+        }
+
+        $indexed = $stale = [];
+        $transient = $permanent = [];
+        foreach (array_values($items) as $position => $item) {
+            $id = $documents[$position]->id;
+            $result = self::at($item, 'index');
+            $status = self::at($result, 'status');
+            $error = self::at($result, 'error');
+            match (true) {
+                !\is_int($status) => $permanent[$id] = 'no status in the bulk response',
+                $status < 300 => $indexed[] = $id,
+                409 === $status => $stale[] = $id,
+                ElasticsearchErrorClassifier::isTransient($status, ElasticsearchErrorClassifier::errorType($error)) => $transient[$id] = ElasticsearchErrorClassifier::describe($error),
+                default => $permanent[$id] = ElasticsearchErrorClassifier::describe($error),
+            };
+        }
+
+        return new BulkResult($indexed, $stale, $transient, $permanent);
     }
 
     private function create(bool $withAlias): string

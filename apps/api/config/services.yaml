@@ -71,6 +71,16 @@ services:
             $longRequestClient: '@app.search.long_request_client'
             $alias: '%app.search.alias%'
 
+    App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer:
+        arguments:
+            $client: '@app.search.client'
+            $alias: '%app.search.alias%'
+
+    App\Catalog\Infrastructure\Search\ElasticsearchProductSearch:
+        arguments:
+            $client: '@app.search.client'
+            $alias: '%app.search.alias%'
+
     App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock:
         arguments:
             $alias: '%app.search.alias%'
@@ -78,6 +88,8 @@ services:
     App\Catalog\Application\Port\ProductImageStorage: '@App\Catalog\Infrastructure\Image\FlysystemProductImageStorage'
     App\Catalog\Application\Port\ImageUrlGenerator: '@App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator'
     App\Catalog\Application\Port\ProductSearchSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource'
+    App\Catalog\Application\Port\ProductIndexer: '@App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer'
+    App\Catalog\Application\Port\ProductSearch: '@App\Catalog\Infrastructure\Search\ElasticsearchProductSearch'
     App\Catalog\Application\Port\SearchIndexMaintenance: '@App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance'
     App\Catalog\Application\Port\SearchIndexRebuildLock: '@App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Catalog\Application\Port;
 
+use App\Catalog\Application\Search\BulkResult;
+use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 
@@ -48,4 +50,14 @@ interface SearchIndexMaintenance
      * @throws SearchUnavailable
      */
     public function createIndex(): string;
+
+    /**
+     * Writes the documents in one bulk request directly to the physical index.
+     *
+     * @param list<ProductDocument> $documents
+     *
+     * @throws SearchIndexError  when the whole request is rejected
+     * @throws SearchUnavailable when the whole request fails transiently
+     */
+    public function write(string $index, array $documents): BulkResult;
 }

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Catalog\Infrastructure\Search;
 
+use App\Catalog\Application\Search\ProductDocument;
+use App\Catalog\Application\Search\SearchIndexError;
+
 /**
  * Settings and mapping of a physical product index. The hash of the definition (mapping and analysis, without
  * shards and replicas) is stored in the index's _meta.definition_hash, so an index built from another definition
@@ -37,6 +40,66 @@ final readonly class ProductIndexDefinition
             ],
             'mappings' => ['_meta' => ['definition_hash' => $this->hash()], ...self::mappings()],
         ];
+    }
+
+    /**
+     * The _source of a document.
+     *
+     * @return array<string, mixed>
+     */
+    public static function source(ProductDocument $document): array
+    {
+        return [
+            'id' => $document->id,
+            'version' => $document->version,
+            'name' => $document->name,
+            'slug' => $document->slug,
+            'short_description' => $document->shortDescription,
+            'main_category_id' => $document->mainCategoryId,
+            'category_ids' => $document->categoryIds,
+            'category_ancestor_ids' => $document->categoryAncestorIds,
+            'main_image' => $document->mainImage,
+        ];
+    }
+
+    /**
+     * @throws SearchIndexError when the _source does not have the shape written by {@see source()}
+     */
+    public static function document(mixed $source): ProductDocument
+    {
+        if (!\is_array($source)
+            || !\is_string($source['id'] ?? null) || !\is_int($source['version'] ?? null)
+            || !\is_string($source['name'] ?? null) || !\is_string($source['slug'] ?? null)
+            || !\is_string($source['short_description'] ?? null) || !\is_string($source['main_category_id'] ?? null)
+            || !self::isStringList($source['category_ids'] ?? null) || !self::isStringList($source['category_ancestor_ids'] ?? null)
+        ) {
+            throw new SearchIndexError('A search document does not match the index definition.');
+        }
+
+        $image = $source['main_image'] ?? null;
+        $mainImage = \is_array($image) && \is_string($image['key'] ?? null) && \is_string($image['alt'] ?? null)
+            ? ['key' => $image['key'], 'alt' => $image['alt']]
+            : null;
+
+        return new ProductDocument(
+            $source['id'],
+            $source['version'],
+            $source['name'],
+            $source['slug'],
+            $source['short_description'],
+            $source['main_category_id'],
+            $source['category_ids'],
+            $source['category_ancestor_ids'],
+            $mainImage,
+        );
+    }
+
+    /**
+     * @phpstan-assert-if-true list<string> $value
+     */
+    private static function isStringList(mixed $value): bool
+    {
+        return \is_array($value) && array_is_list($value) && array_all($value, static fn (mixed $item): bool => \is_string($item));
     }
 
     /**
