@@ -39,7 +39,7 @@ services:
     App\Catalog\Application\Port\ImageUrlGenerator: '@App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'
 
-when@test:
+when@test: &test
     parameters:
         # Integration tests use their own bucket, like the `_test` database.
         app.images_bucket: 'product-images-test'
@@ -65,3 +65,5 @@ when@test:
         test.product_images.storage:
             alias: product_images.storage
             public: true
+
+when@test_messaging: *test

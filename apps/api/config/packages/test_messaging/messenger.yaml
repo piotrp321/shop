@@ -1,0 +1,7 @@
+# Real transports for the tests of the message route: the outbox in `shop_test` (doctrine.yaml) and `events` on the
+# `test` vhost, so the dev worker (database `shop`, vhost `/`) never sees test messages.
+framework:
+    messenger:
+        transports:
+            events:
+                dsn: 'amqp://%env(RABBITMQ_USER)%:%env(RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/test/events'

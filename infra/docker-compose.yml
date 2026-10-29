@@ -224,6 +224,10 @@ services:
       GARAGE_S3_ENDPOINT: http://garage:3900
       IMAGES_BUCKET: product-images
       IMGPROXY_PUBLIC_URL: http://localhost:${IMGPROXY_PORT:-8081}
+      # RabbitMQ connection (not secrets); the password is RABBITMQ_DEFAULT_PASS from .env.local.
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: shop
+      RABBITMQ_VHOST: /
     volumes:
       - ./apps/api:/app
       # Dependencies live in a volume, not on the host.
