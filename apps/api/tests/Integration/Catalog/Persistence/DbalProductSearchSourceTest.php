@@ -167,6 +167,13 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         $this->source->page(null, 0);
     }
 
+    public function testRejectsACursorThatIsNotAUuid(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->source->page('abc', 10);
+    }
+
     public function testIssuesExactlyOneStatementPerPageRegardlessOfCategoryCount(): void
     {
         $counter = self::getContainer()->get(StatementCounter::class);

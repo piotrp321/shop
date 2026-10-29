@@ -6,6 +6,7 @@ namespace App\Catalog\Infrastructure\Persistence\Doctrine;
 
 use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
+use App\Catalog\Domain\Product\ProductId;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 
@@ -44,9 +45,12 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
             throw new \InvalidArgumentException('The page limit must be at least 1.');
         }
 
+        // ProductId validates the UUID format and lower-cases it; the database never sees a malformed cursor.
+        $after = null === $afterId ? null : ProductId::fromString($afterId)->toString();
+
         $rows = $this->connection->executeQuery(
             self::PAGE_SQL,
-            ['after' => $afterId, 'limit' => $limit],
+            ['after' => $after, 'limit' => $limit],
             ['after' => ParameterType::STRING, 'limit' => ParameterType::INTEGER],
         )->fetchAllAssociative();
 
