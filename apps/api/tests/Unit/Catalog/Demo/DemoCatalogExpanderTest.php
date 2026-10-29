@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Catalog\Demo;
 
 use App\Catalog\Application\Demo\DemoCatalog;
-use App\Catalog\Application\Demo\DemoCatalogDefinition;
-use App\Catalog\Application\Demo\DemoCatalogExpander;
 use App\Catalog\Application\Demo\DemoProduct;
+use App\Catalog\Infrastructure\Demo\DemoCatalogDefinition;
+use App\Catalog\Infrastructure\Demo\DemoCatalogExpander;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Uid\Uuid;
 use Symfony\Component\Yaml\Yaml;

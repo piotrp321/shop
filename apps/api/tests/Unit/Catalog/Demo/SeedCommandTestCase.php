@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Catalog\Demo;
 
 use App\Catalog\Application\Demo\DemoCatalogLoader;
 use App\Catalog\Application\Port\ProductIndexer;
+use App\Catalog\Infrastructure\Demo\YamlDemoCatalogSource;
 use App\Catalog\UI\Console\SeedDemoCatalogCommand;
 use App\Tests\Support\InMemory\InMemoryProductImageStorage;
 use App\Tests\Support\InMemory\RecordingMessageBus;
@@ -23,14 +24,13 @@ abstract class SeedCommandTestCase extends TestCase
     {
         $this->bus = new RecordingMessageBus();
         $this->reset = new SpyCatalogReset();
-        $loader = new DemoCatalogLoader(
-            $this->bus,
-            new InMemoryProductImageStorage(),
+        $source = new YamlDemoCatalogSource(
             __DIR__.'/../../../Fixtures/demo/catalog.yaml',
             __DIR__.'/../../../Fixtures/images',
         );
+        $loader = new DemoCatalogLoader($this->bus, new InMemoryProductImageStorage());
         $application = new Application();
-        $application->addCommand(new SeedDemoCatalogCommand($loader, $this->reset, $indexer, $environment, 0.01));
+        $application->addCommand(new SeedDemoCatalogCommand($source, $loader, $this->reset, $indexer, $environment, 0.01));
 
         return new CommandTester($application->find('catalog:seed-demo'));
     }

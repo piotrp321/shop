@@ -2,8 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Catalog\Application\Demo;
+namespace App\Catalog\Infrastructure\Demo;
 
+use App\Catalog\Application\Demo\DemoCatalog;
+use App\Catalog\Application\Demo\DemoCategory;
+use App\Catalog\Application\Demo\DemoProduct;
 use Symfony\Component\Uid\Uuid;
 
 /**

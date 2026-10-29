@@ -6,6 +6,7 @@ namespace App\Catalog\UI\Console;
 
 use App\Catalog\Application\Demo\DemoCatalogLoader;
 use App\Catalog\Application\Port\CatalogReset;
+use App\Catalog\Application\Port\DemoCatalogSource;
 use App\Catalog\Application\Port\ProductIndexer;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
@@ -23,6 +24,7 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 final readonly class SeedDemoCatalogCommand
 {
     public function __construct(
+        private DemoCatalogSource $source,
         private DemoCatalogLoader $loader,
         private CatalogReset $reset,
         private ProductIndexer $indexer,
@@ -46,7 +48,7 @@ final readonly class SeedDemoCatalogCommand
         }
 
         try {
-            $catalog = $this->loader->plan();
+            $catalog = $this->source->load();
         } catch (\InvalidArgumentException $e) {
             $io->error($e->getMessage().' Nothing was changed.');
 

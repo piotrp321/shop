@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Catalog\Demo;
 
 use App\Catalog\Application\Demo\DemoCatalog;
-use App\Catalog\Application\Demo\DemoCatalogDefinition;
-use App\Catalog\Application\Demo\DemoCatalogExpander;
 use App\Catalog\Application\Demo\DemoCategory;
+use App\Catalog\Infrastructure\Demo\DemoCatalogDefinition;
+use App\Catalog\Infrastructure\Demo\DemoCatalogExpander;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 

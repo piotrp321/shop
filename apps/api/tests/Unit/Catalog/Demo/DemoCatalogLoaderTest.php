@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Catalog\Demo;
 use App\Catalog\Application\Command\CreateCategory;
 use App\Catalog\Application\Command\CreateProduct;
 use App\Catalog\Application\Demo\DemoCatalogLoader;
+use App\Catalog\Infrastructure\Demo\YamlDemoCatalogSource;
 use App\Tests\Support\InMemory\InMemoryProductImageStorage;
 use App\Tests\Support\InMemory\RecordingMessageBus;
 use PHPUnit\Framework\TestCase;
@@ -20,9 +21,9 @@ final class DemoCatalogLoaderTest extends TestCase
     {
         $bus = new RecordingMessageBus();
         $storage = new InMemoryProductImageStorage();
-        $loader = new DemoCatalogLoader($bus, $storage, self::DEFINITION, self::IMAGES);
+        $catalog = new YamlDemoCatalogSource(self::DEFINITION, self::IMAGES)->load();
 
-        $loader->load($loader->plan());
+        new DemoCatalogLoader($bus, $storage)->load($catalog);
 
         $categories = $bus->dispatchedOf(CreateCategory::class);
         $products = $bus->dispatchedOf(CreateProduct::class);
@@ -41,19 +42,21 @@ final class DemoCatalogLoaderTest extends TestCase
         self::assertSame('Biegacz na drodze', $products[0]->images[0]['alt']);
     }
 
-    public function testPlanFailsOnMissingImageFileWithoutDispatchingAnything(): void
+    public function testSourceFailsOnMissingImageFile(): void
     {
-        $bus = new RecordingMessageBus();
-        $storage = new InMemoryProductImageStorage();
-        $loader = new DemoCatalogLoader($bus, $storage, self::DEFINITION, __DIR__.'/no-such-dir');
+        $source = new YamlDemoCatalogSource(self::DEFINITION, __DIR__.'/no-such-dir');
 
-        try {
-            $loader->plan();
-            self::fail('A missing image file must be rejected.');
-        } catch (\InvalidArgumentException $e) {
-            self::assertStringContainsString('sample.jpg', $e->getMessage());
-        }
-        self::assertSame([], $bus->dispatched);
-        self::assertSame([], $storage->stored);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('sample.jpg');
+
+        $source->load();
+    }
+
+    public function testSourceFailsOnMissingDefinition(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('no-such-catalog.yaml');
+
+        new YamlDemoCatalogSource(__DIR__.'/no-such-catalog.yaml', self::IMAGES)->load();
     }
 }

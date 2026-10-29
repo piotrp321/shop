@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Catalog\Application\Demo;
+namespace App\Catalog\Infrastructure\Demo;
 
 use Symfony\Component\Uid\Uuid;
 use Symfony\Component\Yaml\Exception\ParseException;

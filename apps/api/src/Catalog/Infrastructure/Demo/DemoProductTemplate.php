@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Catalog\Application\Demo;
+namespace App\Catalog\Infrastructure\Demo;
 
 /**
  * A product template of the demo definition: the products are the product of brands, models and colors.
