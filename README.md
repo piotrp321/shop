@@ -68,19 +68,24 @@ przy każdym pull requeście.
 
 - Wszystkie usługi startują jedną komendą, każda z health checkiem. Keycloak ma realmy `shop` (klienci)
   i `backoffice` (pracownicy, hasło i TOTP) z kontami demo.
-- API: `GET /health`, błędy w formacie problem details (RFC 9457), CORS tylko dla panelu, logi w JSON.
-- Sklep i panel: szkielety aplikacji. Sklep ma tokeny wyglądu i reguły ESLint blokujące kolory spoza tokenów,
-  oba fronty mają regułę blokującą `fetch` poza klientem API.
-- CI: analiza statyczna i testy trzech aplikacji.
-
-Katalogu produktów, logowania, danych demo ani klientów API jeszcze nie ma.
+- API: katalog (domena, Postgres), transactional outbox → RabbitMQ → worker → indeks Elasticsearch, zdjęcia
+  z Garage przez imgproxy. Endpointy: `GET /api/v1/products`, `/api/v1/categories`, `/api/v1/me`,
+  `/api/v1/admin/me`, `/api/v1/admin/dashboard` (sekcja `system` tylko dla roli `admin`) i `GET /health`.
+  Tokeny Keycloak (JWT) są weryfikowane osobno dla klientów i pracowników. Błędy w formacie problem details
+  (RFC 9457), CORS tylko dla panelu.
+- Dane demo: `make seed` czyści katalog i ładuje drzewo kategorii oraz produkty ze zdjęciami.
+- Sklep: strona katalogu z drzewem kategorii i siatką produktów z API, renderowana na serwerze, oraz logowanie
+  klientów przez Keycloak (realm `shop`) z sesją po stronie serwera sklepu w Redisie.
+- Panel: logowanie przez Keycloak (realm `backoffice`, hasło i TOTP), layout i dashboard, wylogowanie po 15
+  minutach bezczynności.
+- Kontrakt: OpenAPI sklepu i panelu eksportowane do plików, z nich generowani klienci TypeScript obu frontów
+  (`make api-client`); reguła ESLint blokuje `fetch` poza klientem API.
+- CI: analiza statyczna, testy trzech aplikacji i kontrola aktualności kontraktu.
 
 ## Najbliższe etapy
 
-1. Domena katalogu i komendy tworzenia kategorii i produktów.
-2. Persystencja w PostgreSQL.
-3. Elasticsearch jako model odczytu, zasilany przez transactional outbox i RabbitMQ.
-4. Endpointy katalogu z OpenAPI, dane demo i strona katalogu w sklepie.
+1. Testy E2E na pełnym stosie.
+2. Odbiór szkieletu i pełny README.
 
 Kolejność i stan prac: sekcja „Status” w [planie](docs/features/walking-skeleton/plan.md).
 

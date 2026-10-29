@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: stos PR-ów od 13B do 24 (każdy PR do gałęzi poprzedniego wiersza). Następne zadanie: **Task 23**. Blokery: brak.
+W toku: stos PR-ów od 13B do 24 (każdy PR do gałęzi poprzedniego wiersza). Następne zadanie: **Task 24**. Blokery: brak.
 
 Po wydaniu stabilnego Symfony 8.2: zastąpić `RelayDomainEventToBroker` wbudowaną opcją `outbox` transportu
 Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy z Task 14 zostają bez zmian.
@@ -41,7 +41,7 @@ Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy 
 | [#17](https://github.com/piotrp321/shop/pull/17) | 19, 20 | realmy Keycloak i uwierzytelnianie w API | ✅ |
 | [#18](https://github.com/piotrp321/shop/pull/18) | 21 | dashboard w API | ✅ |
 | [#19](https://github.com/piotrp321/shop/pull/19) | 22 | logowanie w sklepie | ✅ |
-| | 23 | panel: logowanie, layout, dashboard | |
+| [#20](https://github.com/piotrp321/shop/pull/20) | 23 | panel: logowanie, layout, dashboard | ✅ |
 | | 24, 26 | testy E2E i odbiór | |
 
 - Wiersz to jeden PR z jedną logiczną zmianą, a kolejność wierszy to kolejność prac (wynika z zależności
