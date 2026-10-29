@@ -36,6 +36,22 @@ final class ElasticsearchClientTest extends TestCase
         self::assertLessThan(2.0, microtime(true) - $start);
     }
 
+    public function testUnreachableHostMessageNamesTheNetworkCause(): void
+    {
+        // The transport wraps the network error in "Exceeded maximum number of retries (0)", which says nothing.
+        $client = new ElasticsearchClientFactory('http://elasticsearch:9200', 1.0)->createWith(new Psr18Client(new MockHttpClient(
+            new MockResponse('', ['error' => 'Could not resolve host: elasticsearch']),
+        )));
+
+        try {
+            ElasticsearchErrorClassifier::request('ping', static fn () => $client->info());
+            self::fail('No exception for an unreachable host.');
+        } catch (SearchUnavailable $e) {
+            self::assertStringContainsString('Could not resolve host: elasticsearch', $e->getMessage());
+            self::assertStringNotContainsString('Exceeded maximum number of retries', $e->getMessage());
+        }
+    }
+
     /**
      * @return iterable<string, array{int, string, class-string<\Throwable>}>
      */

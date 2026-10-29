@@ -45,7 +45,10 @@ final class ElasticsearchErrorClassifier
 
             throw self::fromResponse($operation, $httpResponse, $e);
         } catch (NetworkExceptionInterface|NoNodeAvailableException $e) {
-            throw new SearchUnavailable(\sprintf('Elasticsearch is unreachable (%s): %s', $operation, $e->getMessage()), 0, $e);
+            // The transport wraps the network error in "Exceeded maximum number of retries"; report the cause.
+            $cause = $e instanceof NoNodeAvailableException ? ($e->getPrevious() ?? $e) : $e;
+
+            throw new SearchUnavailable(\sprintf('Elasticsearch is unreachable (%s): %s', $operation, $cause->getMessage()), 0, $e);
         } catch (SearchUnavailable|SearchIndexError $e) {
             throw $e;
         } catch (\Throwable $e) {
