@@ -31,7 +31,7 @@ Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy 
 | [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | ✅ |
 | [#8](https://github.com/piotrp321/shop/pull/8) | 12 | obrazy w API (Garage, imgproxy) | ✅ |
 | | 13 | indeks Elasticsearch i adapter wyszukiwania | |
-| | 14 | transactional outbox, szyny Messengera, RabbitMQ, worker | ✅ |
+| [#10](https://github.com/piotrp321/shop/pull/10) | 14 | transactional outbox, szyny Messengera, RabbitMQ, worker | ✅ |
 | | 10, 27 | komendy tworzenia kategorii i produktów, indeksowanie produktu po zdarzeniu | |
 | | 15 | endpointy katalogu i OpenAPI sklepu | |
 | | 16, 17 | dane demo i seed | |
