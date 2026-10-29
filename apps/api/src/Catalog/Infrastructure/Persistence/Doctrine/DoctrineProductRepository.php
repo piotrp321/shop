@@ -109,6 +109,12 @@ final readonly class DoctrineProductRepository implements ProductRepository
 
     private function toDomain(ProductRecord $record): Product
     {
+        // Sorted here, not by the mapping: a record from the identity map keeps the order it was saved in.
+        $additionalIds = $record->additionalCategories
+            ->map(static fn (CategoryRecord $category): string => $category->id)
+            ->toArray();
+        sort($additionalIds);
+
         $images = [];
         foreach ($record->images as $position => $image) {
             $images[] = new ProductImage(ImageKey::fromString($image['key']), $image['alt'], $position);
@@ -121,9 +127,7 @@ final readonly class DoctrineProductRepository implements ProductRepository
             new ShortDescription($record->shortDescription),
             ProductCategories::create(
                 CategoryId::fromString($record->primaryCategory->id),
-                array_values($record->additionalCategories->map(
-                    static fn (CategoryRecord $category): CategoryId => CategoryId::fromString($category->id),
-                )->toArray()),
+                array_map(CategoryId::fromString(...), $additionalIds),
             ),
             TaxCategory::from($record->taxCategory),
             ProductImages::fromList($images),

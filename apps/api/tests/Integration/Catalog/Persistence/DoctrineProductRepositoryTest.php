@@ -90,6 +90,22 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         );
     }
 
+    public function testGetInSameUnitOfWorkReturnsAdditionalCategoriesSortedById(): void
+    {
+        [$main] = $this->savedCategories(1);
+        $last = CategoryFactory::createOne(['id' => 'ffffffff-ffff-4fff-bfff-ffffffffffff']);
+        $first = CategoryFactory::createOne(['id' => '11111111-1111-4111-8111-111111111111']);
+        $this->categories->save($last);
+        $this->categories->save($first);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$last, $first]]);
+        $this->products->save($product);
+
+        self::assertSame(
+            [$first->id()->toString(), $last->id()->toString()],
+            array_map(static fn ($id): string => $id->toString(), $this->products->get($product->id())->categories()->additional()),
+        );
+    }
+
     public function testOnlyAdditionalCategoriesHaveAssignmentRows(): void
     {
         [$main, $additional, $otherMain] = $this->savedCategories(3);

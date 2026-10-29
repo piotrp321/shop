@@ -37,7 +37,6 @@ class ProductRecord
     #[ORM\JoinTable(name: 'catalog_product_category')]
     #[ORM\JoinColumn(name: 'product_id', referencedColumnName: 'id', onDelete: 'CASCADE')]
     #[ORM\InverseJoinColumn(name: 'category_id', referencedColumnName: 'id')]
-    #[ORM\OrderBy(['id' => 'ASC'])]
     public Collection $additionalCategories;
 
     #[ORM\Column(length: 32)]
