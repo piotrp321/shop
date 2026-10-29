@@ -257,11 +257,14 @@ Persystencja:
 - Handler `CreateProduct` sprawdza, że istnieją wszystkie kategorie produktu (`CategoryNotFound`, 404).
 - Wersja produktu (`catalog_product.version`) należy do persystencji, nie do domeny: `Product` jej nie zna.
   Nowy produkt ma wersję 1. Każdy zapis, który zmienia wiersz produktu albo jego kategorie dodatkowe, zwiększa ją
-  o 1 w tej samej transakcji. Wersję pilnuje `#[ORM\Version]` na `ProductRecord`. Jeśli Doctrine nie zwiększa
-  wersji przy zmianie wyłącznie kolekcji ManyToMany, repozytorium robi w tej samej transakcji
-  `UPDATE catalog_product SET version = version + 1 WHERE id = :id AND version = :expected`. Zapis na podstawie
-  nieaktualnego stanu (równoległy zapis tego samego produktu) rzuca `ProductModifiedConcurrently` (`Conflict`,
-  409) i nie zmienia ani `catalog_product`, ani `catalog_product_category`. Dwa różne stany produktu nigdy nie
+  o 1 w tej samej transakcji. Wersję pilnuje `#[ORM\Version]` na `ProductRecord`. Doctrine nie zwiększa wersji
+  przy zmianie wyłącznie kolekcji ManyToMany, więc robi to repozytorium w tej samej transakcji zapytaniem
+  `UPDATE catalog_product SET version = version + 1 WHERE id = :id AND version = :expected`. Porównywana jest wersja
+  odczytana w tej samej jednostce pracy (`get()`, a potem `save()` w jednym handlerze albo jednej transakcji).
+  Zapis, w którym ten odczyt jest nieaktualny (równoległy zapis tego samego produktu), rzuca
+  `ProductModifiedConcurrently` (`Conflict`, 409) i nie zmienia ani `catalog_product`, ani
+  `catalog_product_category`. Stan odczytany we wcześniejszym żądaniu nie jest wykrywany, bo `Product` nie niesie
+  wersji. Ochrona między żądaniami wymagałaby wersji w komendzie i nie jest teraz w zakresie. Dwa różne stany produktu nigdy nie
   mają tej samej wersji.
 - Wersja chroni tylko dane z wiersza produktu i jego przypisań do kategorii. Pola dokumentu wyszukiwarki pochodzące
   z innych agregatów (ścieżki kategorii, w przyszłości ceny, dostępność, atrybuty) nie są nią objęte. Wymaga to
@@ -406,7 +409,8 @@ z wieloma consumerami, która zastąpi pętlę w `ProductSearchIndexRebuilder`.
 **Odczyt produktów do indeksu**
 - `ProductSearchSource` (port w `Application`, implementacja na DBAL, bez hydratacji agregatów) zwraca
   `page(?afterId, limit)`: najwyżej `limit` produktów o `id > afterId`, posortowanych po `id`. Pusta lista oznacza
-  koniec.
+  koniec. `afterId` musi być UUID (wielkość liter bez znaczenia, wartość jest normalizowana do małych liter) albo
+  `null`, w przeciwnym razie metoda rzuca `\InvalidArgumentException`. `limit` musi wynosić co najmniej 1.
 - Jedno zapytanie SQL na paczkę, czyli jeden spójny snapshot. Najpierw CTE wybiera identyfikatory paczki
   z `LIMIT` na `catalog_product`, dopiero potem zapytanie dołącza kategorie dodatkowe i ścieżki kategorii
   i agreguje je dla każdego produktu. `LIMIT` nigdy nie działa na wierszach po złączeniu.
