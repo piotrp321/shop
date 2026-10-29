@@ -1,0 +1,40 @@
+framework:
+    messenger:
+        default_bus: command.bus
+        failure_transport: failed
+
+        buses:
+            command.bus:
+                middleware:
+                    - validation
+                    - doctrine_transaction
+            query.bus: ~
+            event.bus:
+                # An event may have no subscriber yet; that is not an error.
+                default_middleware:
+                    enabled: true
+                    allow_no_handlers: true
+
+        transports:
+            # Same connection as the aggregates, so the row joins the command's transaction.
+            outbox:
+                dsn: 'doctrine://default?queue_name=outbox&auto_setup=false'
+                retry_strategy:
+                    max_retries: 3
+                    delay: 1000
+                    multiplier: 3
+            events:
+                dsn: 'amqp://%env(RABBITMQ_USER)%:%env(RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/%env(urlencode:RABBITMQ_VHOST)%/events'
+                serializer: messenger.transport.symfony_serializer
+                options:
+                    # Wait for the broker to confirm the publish, so the relay acks the outbox row
+                    # only once RabbitMQ has the message.
+                    confirm_timeout: 5
+                retry_strategy:
+                    max_retries: 3
+                    delay: 1000
+                    multiplier: 3
+            failed: 'doctrine://default?queue_name=failed&auto_setup=false'
+
+        routing:
+            App\Shared\Domain\Event\DomainEvent: outbox
