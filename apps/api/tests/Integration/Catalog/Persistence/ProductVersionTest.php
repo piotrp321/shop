@@ -114,6 +114,22 @@ final class ProductVersionTest extends KernelTestCase
         self::assertSame($this->sortedIds([$a, $b]), $this->assignedCategoryIds($product));
     }
 
+    public function testCategoriesOnlySaveFollowedByANameChangeInTheSameEntityManagerEndsAtVersionThree(): void
+    {
+        [$main, $a, $b] = $this->savedCategories(3);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$a]]);
+        $this->products->save($product);
+        $this->entityManager->clear();
+
+        // Same EntityManager and identity map for both saves: the manual bump must not leave a stale version behind.
+        $this->products->save($this->changed($product, $main, [$a, $b]));
+        $this->products->save($this->changed($product, $main, [$a, $b], ['name' => 'Another name']));
+
+        self::assertSame(3, $this->version($product));
+        self::assertSame('Another name', $this->connection->fetchOne('SELECT name FROM catalog_product WHERE id = ?', [$product->id()->toString()]));
+        self::assertSame($this->sortedIds([$a, $b]), $this->assignedCategoryIds($product));
+    }
+
     public function testChangingFieldsAndCategoriesTogetherIncrementsTheVersionOnce(): void
     {
         [$main, $a, $b] = $this->savedCategories(3);
@@ -291,7 +307,8 @@ final class ProductVersionTest extends KernelTestCase
         );
     }
 
-    public function testSaveWaitingForARowLockHeldByAnotherProcessEndsInAConflict(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('secondWriterChanges')]
+    public function testSaveWaitingForARowLockHeldByAnotherProcessEndsInAConflict(bool $waitingWriterChangesName): void
     {
         $manager = $this->independentManager();
         $repository = new DoctrineProductRepository($manager);
@@ -310,7 +327,8 @@ final class ProductVersionTest extends KernelTestCase
 
         $started = hrtime(true);
         try {
-            $repository->save($this->changed($product, $main, [$a, $b], ['name' => 'Repository writer name']));
+            $overrides = $waitingWriterChangesName ? ['name' => 'Repository writer name'] : [];
+            $repository->save($this->changed($product, $main, [$a, $b], $overrides));
             self::fail('Expected ProductModifiedConcurrently.');
         } catch (ProductModifiedConcurrently) {
         }
