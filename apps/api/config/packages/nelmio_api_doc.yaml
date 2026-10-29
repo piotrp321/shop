@@ -1,8 +1,5 @@
 # Two OpenAPI documents, exported by `make -C apps/api openapi`. No Swagger UI or JSON routes are exposed.
 nelmio_api_doc:
-    models:
-        names:
-            - { alias: ProductImage, type: App\Catalog\Application\Query\ImageView, areas: [default] }
     areas:
         default:
             path_patterns:
@@ -15,6 +12,80 @@ nelmio_api_doc:
                     version: 1.0.0
                 components:
                     schemas:
+                        # Response schemas of the product list. They are written here, not as attributes, so the
+                        # Application layer stays free of OpenAPI; ProductsEndpointTest checks them against real responses.
+                        ProductPage:
+                            type: object
+                            required: [items, page, perPage, total]
+                            properties:
+                                items:
+                                    type: array
+                                    items:
+                                        $ref: '#/components/schemas/ProductListItem'
+                                page:
+                                    type: integer
+                                    description: The requested page, from 1.
+                                    example: 1
+                                perPage:
+                                    type: integer
+                                    description: The requested page size.
+                                    example: 24
+                                total:
+                                    type: integer
+                                    description: All products matching the filter, not only this page.
+                                    example: 412
+                        ProductListItem:
+                            type: object
+                            required: [id, name, slug, shortDescription, image]
+                            properties:
+                                id:
+                                    type: string
+                                    format: uuid
+                                name:
+                                    type: string
+                                    example: Buty do biegania Puls 2 granatowe
+                                slug:
+                                    type: string
+                                    example: buty-do-biegania-puls-2-granatowe
+                                shortDescription:
+                                    type: string
+                                image:
+                                    nullable: true
+                                    description: The main image, null when the product has no images.
+                                    allOf:
+                                        - $ref: '#/components/schemas/ProductImage'
+                        ProductImage:
+                            type: object
+                            description: A product image of one predefined size, with signed URLs of its variants grouped by output format.
+                            required: [alt, size, aspectRatio, variants]
+                            properties:
+                                alt:
+                                    type: string
+                                    description: Alternative text of the image.
+                                    example: Biegaczka na leśnej ścieżce
+                                size:
+                                    type: string
+                                    description: Name of the image size.
+                                    example: listing
+                                aspectRatio:
+                                    type: string
+                                    description: Aspect ratio of every variant, width:height.
+                                    example: '1:1'
+                                variants:
+                                    type: object
+                                    description: Variants by output format (the key is the file extension, e.g. webp), widths ascending.
+                                    additionalProperties:
+                                        type: array
+                                        items:
+                                            type: object
+                                            required: [width, url]
+                                            properties:
+                                                width:
+                                                    type: integer
+                                                    example: 256
+                                                url:
+                                                    type: string
+                                                    example: http://localhost:8081/signature/rs:fill:256:256/g:sm/czM6Ly9idWNrZXQva2V5/plain.webp
                         Problem:
                             type: object
                             description: Problem details (RFC 9457), `application/problem+json`.

@@ -88,7 +88,7 @@
                     "400": {
                         "description": "Invalid query parameters (problem details with `violations`).",
                         "content": {
-                            "application/json": {
+                            "application/problem+json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/Problem"
                                 }
@@ -98,7 +98,7 @@
                     "503": {
                         "description": "The search service is unavailable (problem details without technical details).",
                         "content": {
-                            "application/json": {
+                            "application/problem+json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/Problem"
                                 }
@@ -111,7 +111,76 @@
     },
     "components": {
         "schemas": {
+            "ProductPage": {
+                "required": [
+                    "items",
+                    "page",
+                    "perPage",
+                    "total"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductListItem"
+                        }
+                    },
+                    "page": {
+                        "description": "The requested page, from 1.",
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "perPage": {
+                        "description": "The requested page size.",
+                        "type": "integer",
+                        "example": 24
+                    },
+                    "total": {
+                        "description": "All products matching the filter, not only this page.",
+                        "type": "integer",
+                        "example": 412
+                    }
+                },
+                "type": "object"
+            },
+            "ProductListItem": {
+                "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "shortDescription",
+                    "image"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Buty do biegania Puls 2 granatowe"
+                    },
+                    "slug": {
+                        "type": "string",
+                        "example": "buty-do-biegania-puls-2-granatowe"
+                    },
+                    "shortDescription": {
+                        "type": "string"
+                    },
+                    "image": {
+                        "description": "The main image, null when the product has no images.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/ProductImage"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
             "ProductImage": {
+                "description": "A product image of one predefined size, with signed URLs of its variants grouped by output format.",
                 "required": [
                     "alt",
                     "size",
@@ -249,79 +318,6 @@
                         "items": {
                             "$ref": "#/components/schemas/CategoryNode"
                         }
-                    }
-                },
-                "type": "object"
-            },
-            "ProductListItem": {
-                "required": [
-                    "id",
-                    "name",
-                    "slug",
-                    "shortDescription"
-                ],
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "format": "uuid"
-                    },
-                    "name": {
-                        "type": "string",
-                        "example": "Buty do biegania Puls 2 granatowe"
-                    },
-                    "slug": {
-                        "type": "string",
-                        "example": "buty-do-biegania-puls-2-granatowe"
-                    },
-                    "shortDescription": {
-                        "type": "string"
-                    },
-                    "image": {
-                        "description": "The main image, null when the product has no images.",
-                        "oneOf": [
-                            {
-                                "$ref": "#/components/schemas/ProductImage"
-                            },
-                            {
-                                "type": "object",
-                                "nullable": true,
-                                "enum": [
-                                    null
-                                ]
-                            }
-                        ]
-                    }
-                },
-                "type": "object"
-            },
-            "ProductPage": {
-                "required": [
-                    "items",
-                    "page",
-                    "perPage",
-                    "total"
-                ],
-                "properties": {
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/ProductListItem"
-                        }
-                    },
-                    "page": {
-                        "description": "The requested page, from 1.",
-                        "type": "integer",
-                        "example": 1
-                    },
-                    "perPage": {
-                        "description": "The requested page size.",
-                        "type": "integer",
-                        "example": 24
-                    },
-                    "total": {
-                        "description": "All products matching the filter, not only this page.",
-                        "type": "integer",
-                        "example": 412
                     }
                 },
                 "type": "object"

@@ -67,10 +67,14 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertSame(['id', 'name', 'slug', 'shortDescription', 'image'], array_keys($items[0]));
         self::assertSame('slug-buty', $items[0]['slug']);
         self::assertNull($items[1]['image']);
+        $this->assertKeysMatchSchema($body, 'ProductPage');
+        $this->assertKeysMatchSchema($items[0], 'ProductListItem');
+        $this->assertKeysMatchSchema($items[1], 'ProductListItem');
 
         $image = $items[0]['image'];
         self::assertIsArray($image);
         self::assertSame(['alt', 'size', 'aspectRatio', 'variants'], array_keys($image));
+        $this->assertKeysMatchSchema($image, 'ProductImage');
         self::assertSame('Biegaczka na leśnej ścieżce', $image['alt']);
         self::assertSame('listing', $image['size']);
         self::assertSame('1:1', $image['aspectRatio']);
@@ -244,6 +248,17 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertIsArray($operation);
         self::assertIsArray($operation['responses']);
         self::assertEqualsCanonicalizing(['200', '400', '503'], array_keys($operation['responses']));
+        foreach (['400', '503'] as $status) {
+            $response = $operation['responses'][$status];
+            self::assertIsArray($response);
+            self::assertIsArray($response['content']);
+            self::assertSame(['application/problem+json'], array_keys($response['content']));
+            self::assertSame(['schema' => ['$ref' => '#/components/schemas/Problem']], $response['content']['application/problem+json']);
+        }
+        $ok = $operation['responses']['200'];
+        self::assertIsArray($ok);
+        self::assertIsArray($ok['content']);
+        self::assertSame(['application/json'], array_keys($ok['content']));
         self::assertIsArray($operation['parameters']);
         self::assertEqualsCanonicalizing(['category', 'page', 'perPage'], array_column($operation['parameters'], 'name'));
         self::assertIsArray($spec['components']);
@@ -251,6 +266,26 @@ final class ProductsEndpointTest extends WebTestCase
         foreach (['ProductPage', 'ProductListItem', 'ProductImage', 'Problem'] as $schema) {
             self::assertArrayHasKey($schema, $spec['components']['schemas']);
         }
+    }
+
+    /**
+     * The response object has exactly the properties of the exported schema, and every required one is present.
+     *
+     * @param array<mixed> $object
+     */
+    private function assertKeysMatchSchema(array $object, string $schemaName): void
+    {
+        $spec = json_decode((string) file_get_contents(\dirname(__DIR__, 3).'/openapi.json'), true, flags: \JSON_THROW_ON_ERROR);
+        self::assertIsArray($spec);
+        self::assertIsArray($spec['components']);
+        self::assertIsArray($spec['components']['schemas']);
+        $schema = $spec['components']['schemas'][$schemaName];
+        self::assertIsArray($schema);
+        self::assertIsArray($schema['properties']);
+        self::assertIsArray($schema['required']);
+
+        self::assertEqualsCanonicalizing(array_keys($schema['properties']), array_keys($object), $schemaName.' keys must match the schema.');
+        self::assertEqualsCanonicalizing($schema['required'], array_keys($object), $schemaName.' requires every key.');
     }
 
     private function searchService(): SwitchableProductSearch

@@ -7,7 +7,6 @@ namespace App\Catalog\UI\Http;
 use App\Catalog\Application\Query\ListProducts;
 use App\Catalog\Application\Query\ProductPage;
 use App\Catalog\Application\Search\SearchUnavailable;
-use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -44,17 +43,17 @@ final class ListProductsController
             new OA\Response(
                 response: 200,
                 description: 'A page of products.',
-                content: new OA\JsonContent(ref: new Model(type: ProductPage::class)),
+                content: new OA\JsonContent(ref: '#/components/schemas/ProductPage'),
             ),
             new OA\Response(
                 response: 400,
                 description: 'Invalid query parameters (problem details with `violations`).',
-                content: new OA\JsonContent(ref: '#/components/schemas/Problem'),
+                content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
             new OA\Response(
                 response: 503,
                 description: 'The search service is unavailable (problem details without technical details).',
-                content: new OA\JsonContent(ref: '#/components/schemas/Problem'),
+                content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
         ],
     )]
