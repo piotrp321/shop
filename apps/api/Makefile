@@ -46,12 +46,14 @@ migration:
 # Exports the OpenAPI documents: `default` (store) to openapi.json, `admin` (panel) to openapi-admin.json.
 # Each is dumped to a temporary file first, so a failing dump never leaves a truncated or empty target
 # (and never replaces the committed one); the target fails if either dump fails or is not valid JSON.
+# The target is overwritten in place (cat, not mv): its inode stays, so a file bind-mounted into a container
+# (the store reads openapi.json that way) keeps seeing the current content.
 openapi:
 	$(RUN) api sh -c ' \
 		trap "rm -f openapi.json.tmp openapi-admin.json.tmp" EXIT; \
 		dump() { \
 			bin/console nelmio:apidoc:dump --area="$$1" --no-interaction > "$$2.tmp" \
 				&& php -r "json_decode(file_get_contents(\$$argv[1]), false, 512, JSON_THROW_ON_ERROR);" "$$2.tmp" \
-				&& mv "$$2.tmp" "$$2"; \
+				&& cat "$$2.tmp" > "$$2"; \
 		}; \
 		dump default openapi.json && dump admin openapi-admin.json'
