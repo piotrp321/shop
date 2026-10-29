@@ -255,6 +255,71 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         self::assertSame([1, 1, 1, 1], $perPage);
     }
 
+    public function testFindReadsTheSameSnapshotAsThePageWithoutItsNeighbours(): void
+    {
+        $root = $this->savedCategory();
+        $main = $this->savedCategory($root);
+        $extra = $this->savedCategory();
+        $product = ProductFactory::createOne([
+            'mainCategory' => $main,
+            'additionalCategories' => [$extra],
+            'imageAlts' => ['front'],
+        ]);
+        $this->products->save($product);
+        $this->createProducts(2);
+        $id = $product->id()->toString();
+
+        $expected = array_values(array_filter(
+            $this->source->page(null, 10),
+            static fn (ProductSearchSnapshot $snapshot): bool => $snapshot->id === $id,
+        ));
+
+        self::assertCount(1, $expected);
+        self::assertEquals($expected[0], $this->source->find($id));
+    }
+
+    public function testFindReadsTheStoredVersion(): void
+    {
+        $product = ProductFactory::createOne(['mainCategory' => $this->savedCategory()]);
+        $this->products->save($product);
+        $this->connection->executeStatement('UPDATE catalog_product SET version = 7 WHERE id = ?', [$product->id()->toString()]);
+
+        self::assertSame(7, $this->source->find($product->id()->toString())?->version);
+    }
+
+    public function testFindReturnsNullForAnUnknownProduct(): void
+    {
+        $this->createProducts(2);
+
+        self::assertNull($this->source->find('00000000-0000-4000-8000-0000000000ff'));
+    }
+
+    public function testFindAcceptsAnUpperCaseId(): void
+    {
+        $id = $this->createProducts(1)[0];
+
+        self::assertSame($id, $this->source->find(strtoupper($id))?->id);
+    }
+
+    public function testFindRejectsAnIdThatIsNotAUuid(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->source->find('abc');
+    }
+
+    public function testFindIssuesOneStatement(): void
+    {
+        $counter = self::getContainer()->get(StatementCounter::class);
+        self::assertInstanceOf(StatementCounter::class, $counter);
+        $id = $this->createProducts(1)[0];
+
+        $before = $counter->count();
+        $this->source->find($id);
+
+        self::assertSame(1, $counter->count() - $before);
+    }
+
     public function testCursorPageUsesAnIndexConditionOnTheKeyEvenUnderAGenericPlan(): void
     {
         $this->connection->executeStatement('SET plan_cache_mode = force_generic_plan');

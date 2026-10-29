@@ -14,7 +14,7 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
 {
     // One statement per page. The CTE applies LIMIT to catalog_product alone; categories are joined only to
     // those rows, so LIMIT never counts joined rows. The main category is never in catalog_product_category.
-    // {cursor} is replaced with one of the two constant fragments below, never with input. The cursor is a plain
+    // {cursor} is replaced with one of the three constant fragments below, never with input. The cursor is a plain
     // "id > CAST(:after AS uuid)" so it stays an index condition under a generic (prepared, pooled) plan too; an
     // "IS NULL OR" form would not, and paging a large catalog would scan from the start on every page.
     private const string PAGE_SQL = <<<'SQL'
@@ -40,6 +40,7 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
 
     private const string FIRST_PAGE_CURSOR = '';
     private const string NEXT_PAGE_CURSOR = 'WHERE id > CAST(:after AS uuid)';
+    private const string BY_ID = 'WHERE id = CAST(:id AS uuid)';
 
     public function __construct(private Connection $connection)
     {
@@ -51,6 +52,17 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
     public static function pageSql(bool $afterCursor): string
     {
         return str_replace('{cursor}', $afterCursor ? self::NEXT_PAGE_CURSOR : self::FIRST_PAGE_CURSOR, self::PAGE_SQL);
+    }
+
+    public function find(string $id): ?ProductSearchSnapshot
+    {
+        $row = $this->connection->executeQuery(
+            str_replace('{cursor}', self::BY_ID, self::PAGE_SQL),
+            ['id' => ProductId::fromString($id)->toString(), 'limit' => 1],
+            ['id' => ParameterType::STRING, 'limit' => ParameterType::INTEGER],
+        )->fetchAssociative();
+
+        return false === $row ? null : $this->toSnapshot($row);
     }
 
     public function page(?string $afterId, int $limit): array

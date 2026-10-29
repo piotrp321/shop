@@ -19,4 +19,15 @@ interface ProductSearchSource
      * @throws \InvalidArgumentException when $limit is lower than 1 or $afterId is not a UUID
      */
     public function page(?string $afterId, int $limit): array;
+
+    /**
+     * Reads one product with the same query as page().
+     *
+     * @param string $id a UUID, case-insensitive
+     *
+     * @return ProductSearchSnapshot|null null when there is no such product
+     *
+     * @throws \InvalidArgumentException when $id is not a UUID
+     */
+    public function find(string $id): ?ProductSearchSnapshot;
 }

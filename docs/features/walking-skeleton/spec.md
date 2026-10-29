@@ -327,6 +327,9 @@ Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` czyta aktualny stan
 `ProductSearchSource` i zapisuje dokument z tą wersją. Starszy albo powtórzony zapis Elasticsearch odrzuca, a handler
 traktuje to jako obsłużoną wiadomość, bez ponowienia. Handler jest więc idempotentny i niezależny od kolejności
 zdarzeń.
+Błąd przejściowy (`SearchUnavailable`) ponawia Messenger według strategii `events`. Błąd trwały (`SearchIndexError`)
+i produkt, którego nie da się odczytać (katalog nie ma usuwania, więc to niespójność), kończą się
+`UnrecoverableMessageHandlingException`: wiadomość od razu trafia do `failed`.
 
 ### Indeks Elasticsearch
 
@@ -431,6 +434,8 @@ z wieloma consumerami, która zastąpi pętlę w `ProductSearchIndexRebuilder`.
   `page(?afterId, limit)`: najwyżej `limit` produktów o `id > afterId`, posortowanych po `id`. Pusta lista oznacza
   koniec. `afterId` musi być UUID (wielkość liter bez znaczenia, wartość jest normalizowana do małych liter) albo
   `null`, w przeciwnym razie metoda rzuca `\InvalidArgumentException`. `limit` musi wynosić co najmniej 1.
+- `find(id)` czyta jeden produkt tym samym zapytaniem co `page`, z warunkiem `WHERE id = :id` zamiast kursora, i zwraca
+  `null`, gdy produktu nie ma. `id` ma te same wymagania co `afterId`. Używa go `IndexProduct`.
 - Jedno zapytanie SQL na paczkę, czyli jeden spójny snapshot. Najpierw CTE wybiera identyfikatory paczki
   z `LIMIT` na `catalog_product`, dopiero potem zapytanie dołącza kategorie dodatkowe i ścieżki kategorii
   i agreguje je dla każdego produktu. `LIMIT` nigdy nie działa na wierszach po złączeniu.
