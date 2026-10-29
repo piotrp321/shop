@@ -1,4 +1,4 @@
-.PHONY: shell check phpstan deptrac cs-fix cs-check test test-unit init-test migrate migration
+.PHONY: shell check phpstan deptrac cs-fix cs-check test test-unit init init-test migrate migration
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -22,6 +22,10 @@ cs-fix:
 
 test: init-test
 	$(RUN) api vendor/bin/phpunit
+
+# Brings the dev database schema up to date; `make up` runs it once the services are healthy.
+init:
+	$(RUN) api bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
 
 # Brings the test database schema up to date; `test` runs it first.
 init-test:

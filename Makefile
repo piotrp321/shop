@@ -8,6 +8,7 @@ up:
 	sh infra/scripts/init-env.sh
 	docker compose up -d --wait $$(docker compose config --services | grep -vx '$(ONESHOT)')
 	docker compose run --rm $(ONESHOT)
+	$(MAKE) -C apps/api init
 
 down:
 	docker compose down

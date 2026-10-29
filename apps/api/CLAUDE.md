@@ -8,6 +8,8 @@ Zasady wspólne dla całego repo są w głównym `CLAUDE.md`, opis domeny w `doc
 Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `check` – PHPStan, Deptrac, PHP CS Fixer
 - `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ)
+- `init` – migracje bazy deweloperskiej; wywołuje go `make up` po starcie usług
+- `init-test` – migracje bazy `shop_test`; wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
 - `openapi` – eksport specyfikacji do `openapi.json` (sklep: endpointy publiczne i klienta)
   oraz `openapi-admin.json` (panel: `/api/v1/admin`)
