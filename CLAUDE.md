@@ -62,6 +62,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 - Pracuj małymi krokami. Jedna logiczna zmiana na commit, format Conventional Commits.
 - Jeden PR to jedna logiczna, weryfikowalna zmiana. Powiązane, niewielkie zadania planu mogą trafić do jednego PR.
   PR przechodzi CI i review. Nie merguj bez zgody użytkownika.
+- Każdy PR/MR mergujemy wyłącznie w trybie squash, a po merge'u usuwamy jego branch
+  (np. `gh pr merge <nr> --squash --delete-branch`).
 - CI (`.github/workflows/ci.yml`) uruchamia `make check` i testy wszystkich aplikacji przy każdym PR. Testy na
   usługach stosu trafiają do CI w tym samym PR co kod, razem z uruchomieniem usług, których potrzebują.
 - Zadania ustawiające reguły (lint, Deptrac, CORS i podobne) sprawdzają też próby obejścia, nie tylko
