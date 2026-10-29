@@ -47,6 +47,11 @@ class ProductRecord
     #[ORM\Column(type: Types::JSONB)]
     public array $images;
 
+    /** Managed by Doctrine optimistic locking; not part of the domain. */
+    #[ORM\Version]
+    #[ORM\Column(type: Types::BIGINT)]
+    public int $version = 1;
+
     public function __construct(
         #[ORM\Id]
         #[ORM\Column(type: 'guid')]

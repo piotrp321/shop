@@ -37,6 +37,7 @@ services:
 
     App\Catalog\Application\Port\ProductImageStorage: '@App\Catalog\Infrastructure\Image\FlysystemProductImageStorage'
     App\Catalog\Application\Port\ImageUrlGenerator: '@App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator'
+    App\Catalog\Application\Port\ProductSearchSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'
 
 when@test: &test
@@ -65,5 +66,11 @@ when@test: &test
         test.product_images.storage:
             alias: product_images.storage
             public: true
+        App\Catalog\Application\Port\ProductSearchSource:
+            alias: App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource
+            public: true
+        App\Tests\Support\StatementCounter:
+            public: true
+            tags: ['doctrine.middleware']
 
 when@test_messaging: *test
