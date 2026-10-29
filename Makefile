@@ -1,4 +1,7 @@
-.PHONY: up down logs ps check test
+.PHONY: up down logs ps seed check test
+
+# Override RUN to run outside Docker Compose, e.g. inside CI.
+RUN ?= docker compose exec
 
 # One-shot services that nothing waits on yet. `docker compose up --wait` reports a service that
 # exited as an error unless a dependent service waits for it, so these run separately.
@@ -21,6 +24,10 @@ logs:
 
 ps:
 	docker compose ps
+
+# Resets the catalog and loads the demo data; waits (60 s) until the worker has indexed every product.
+seed:
+	$(RUN) api bin/console catalog:seed-demo
 
 check:
 	$(MAKE) -C apps/api check

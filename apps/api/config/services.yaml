@@ -94,6 +94,7 @@ services:
     App\Catalog\Application\Port\ProductSearch: '@App\Catalog\Infrastructure\Search\ElasticsearchProductSearch'
     App\Catalog\Application\Port\SearchIndexMaintenance: '@App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance'
     App\Catalog\Application\Port\SearchIndexRebuildLock: '@App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock'
+    App\Catalog\Application\Port\CatalogReset: '@App\Catalog\Infrastructure\Demo\DbalCatalogReset'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'
 
 when@test: &test
