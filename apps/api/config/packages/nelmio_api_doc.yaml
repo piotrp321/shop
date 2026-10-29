@@ -1,0 +1,35 @@
+# Two OpenAPI documents, exported by `make -C apps/api openapi`. No Swagger UI or JSON routes are exposed.
+nelmio_api_doc:
+    areas:
+        default:
+            path_patterns:
+                - ^/api/v1(/|$)(?!admin(/|$))
+            documentation:
+                openapi: 3.0.3
+                info:
+                    title: Shop API
+                    description: Public and customer endpoints used by the store.
+                    version: 1.0.0
+                components:
+                    securitySchemes:
+                        shop:
+                            type: http
+                            scheme: bearer
+                            bearerFormat: JWT
+                            description: Access token issued by the `shop` realm (customers).
+        admin:
+            path_patterns:
+                - ^/api/v1/admin(/|$)
+            documentation:
+                openapi: 3.0.3
+                info:
+                    title: Shop Admin API
+                    description: Endpoints used by the admin panel.
+                    version: 1.0.0
+                components:
+                    securitySchemes:
+                        backoffice:
+                            type: http
+                            scheme: bearer
+                            bearerFormat: JWT
+                            description: Access token issued by the `backoffice` realm (staff).

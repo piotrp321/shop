@@ -18,7 +18,7 @@ dokumenty. Wartości (porty, nazwy, limity, kształty odpowiedzi) są w specyfik
 
 ## Status
 
-W toku: nic. Następne zadanie: **Task 13B** (indeks Elasticsearch, po merge'u 13A), potem **Task 10 i 27**. Blokery: brak.
+W toku: nic. Następne zadanie: **Task 13B** (indeks Elasticsearch, po merge'u 13A), potem **Task 15 (część 2)**, **Task 10 i 27**. Blokery: brak.
 
 Po wydaniu stabilnego Symfony 8.2: zastąpić `RelayDomainEventToBroker` wbudowaną opcją `outbox` transportu
 Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy z Task 14 zostają bez zmian.
@@ -31,10 +31,11 @@ Messengera (routing `DomainEvent` → `events`, `events.outbox: outbox`), testy 
 | [#6](https://github.com/piotrp321/shop/pull/6) | 11 | persystencja Catalog (Doctrine, PostgreSQL) | ✅ |
 | [#8](https://github.com/piotrp321/shop/pull/8) | 12 | obrazy w API (Garage, imgproxy) | ✅ |
 | [#9](https://github.com/piotrp321/shop/pull/9) | 13A | wersja produktu i odczyt produktów paczkami do indeksu | ✅ |
+| [#11](https://github.com/piotrp321/shop/pull/11) | 15 (część 1) | drzewo kategorii, OpenAPI sklepu i panelu, kontrola aktualności kontraktu | ✅ |
 | | 13B | indeks Elasticsearch, adaptery, przebudowa synchroniczna z przepięciem aliasu | |
+| | 15 (część 2) | lista produktów (po 13B) | |
 | [#10](https://github.com/piotrp321/shop/pull/10) | 14 | transactional outbox, szyny Messengera, RabbitMQ, worker | ✅ |
 | | 10, 27 | komendy tworzenia kategorii i produktów, indeksowanie produktu po zdarzeniu | |
-| | 15 | endpointy katalogu i OpenAPI sklepu | |
 | | 16, 17 | dane demo i seed | |
 | | 18 | strona katalogu w sklepie | |
 | | 19, 20 | realmy Keycloak i uwierzytelnianie w API | |
@@ -521,6 +522,10 @@ przebudowy synchronicznej. Zależności z sekcji „Zależności” specyfikacji
 - **Krok 6: Commit** `feat(api): publish domain events through a transactional outbox`
 
 ### Task 15: Endpointy katalogu i OpenAPI sklepu
+
+Zadanie jest realizowane w dwóch PR-ach. Część 1 obejmuje drzewo kategorii (`GET /api/v1/categories`), konfigurację
+OpenAPI z obszarami `default` i `admin`, cel `openapi` i krok „Contract freshness” w CI. Część 2 to endpoint
+listy produktów (`ProductSearch` z zadania 13B), który dopisuje do wyeksportowanej specyfikacji `/api/v1/products`.
 
 **Pliki:**
 - Utwórz: `src/Catalog/Application/Query/{ListProducts,ListProductsHandler,ProductPage,ProductListItem,ImageView,GetCategoryTree,GetCategoryTreeHandler,CategoryNode}.php`,

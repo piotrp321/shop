@@ -66,6 +66,9 @@
             "var/storage/.gitignore"
         ]
     },
+    "nelmio/api-doc-bundle": {
+        "version": "v5.13.1"
+    },
     "nelmio/cors-bundle": {
         "version": "2.6",
         "recipe": {

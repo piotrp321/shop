@@ -1,0 +1,75 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Shop API",
+        "description": "Public and customer endpoints used by the store.",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/api/v1/categories": {
+            "get": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Category tree",
+                "description": "The whole category tree. Siblings at every level are sorted by name (Polish collation).",
+                "operationId": "getCategoryTree",
+                "responses": {
+                    "200": {
+                        "description": "Root categories with their descendants. An empty catalogue gives an empty array.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CategoryNode"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "CategoryNode": {
+                "required": [
+                    "id",
+                    "name",
+                    "children"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "children": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CategoryNode"
+                        }
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "securitySchemes": {
+            "shop": {
+                "type": "http",
+                "description": "Access token issued by the `shop` realm (customers).",
+                "bearerFormat": "JWT",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Catalog",
+            "description": "Catalog"
+        }
+    ]
+}
