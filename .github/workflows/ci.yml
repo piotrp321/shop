@@ -71,11 +71,12 @@ jobs:
         run: make check RUN="$CI_RUN"
 
       # The api integration tests need PostgreSQL (database shop_test, created by its init script),
-      # the image services: Garage (buckets created by garage-init) and imgproxy, and RabbitMQ with the
-      # `test` vhost (created by the one-shot rabbitmq-init).
-      - name: Start PostgreSQL, Garage, imgproxy and RabbitMQ
+      # the image services: Garage (buckets created by garage-init) and imgproxy, RabbitMQ with the
+      # `test` vhost (created by the one-shot rabbitmq-init) and Elasticsearch (the test index is created by
+      # init-test, which `make -C apps/api test` runs first).
+      - name: Start PostgreSQL, Garage, imgproxy, RabbitMQ and Elasticsearch
         run: |
-          docker compose up -d --wait postgres garage imgproxy rabbitmq
+          docker compose up -d --wait postgres garage imgproxy rabbitmq elasticsearch
           docker compose run --rm rabbitmq-init
 
       # All api suites; `test` migrates shop_test first. Store keeps to unit tests,

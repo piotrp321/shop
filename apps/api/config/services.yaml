@@ -1,7 +1,11 @@
 parameters:
     app.images_bucket: '%env(IMAGES_BUCKET)%'
     app.imgproxy_public_url: '%env(IMGPROXY_PUBLIC_URL)%'
-    # Search index (spec: "Indeks Elasticsearch"). The client never retries; timeouts are in seconds.
+    # Search index (spec: "Indeks Elasticsearch"). The application reads and writes through the alias.
+    app.search.alias: products
+    app.search.shards: 1
+    app.search.replicas: 0
+    # The client never retries; timeouts are in seconds.
     app.search.connect_timeout: 1.0
     # Search, count, single writes and alias operations.
     app.search.request_timeout: 2.0
@@ -56,15 +60,34 @@ services:
         factory: ['@App\Catalog\Infrastructure\Search\ElasticsearchClientFactory', 'create']
         arguments: ['%app.search.long_request_timeout%']
 
+    App\Catalog\Infrastructure\Search\ProductIndexDefinition:
+        arguments:
+            $shards: '%app.search.shards%'
+            $replicas: '%app.search.replicas%'
+
+    App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance:
+        arguments:
+            $client: '@app.search.client'
+            $longRequestClient: '@app.search.long_request_client'
+            $alias: '%app.search.alias%'
+
+    App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock:
+        arguments:
+            $alias: '%app.search.alias%'
+
     App\Catalog\Application\Port\ProductImageStorage: '@App\Catalog\Infrastructure\Image\FlysystemProductImageStorage'
     App\Catalog\Application\Port\ImageUrlGenerator: '@App\Catalog\Infrastructure\Image\ImgproxyUrlGenerator'
     App\Catalog\Application\Port\ProductSearchSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource'
+    App\Catalog\Application\Port\SearchIndexMaintenance: '@App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance'
+    App\Catalog\Application\Port\SearchIndexRebuildLock: '@App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'
 
 when@test: &test
     parameters:
         # Integration tests use their own bucket, like the `_test` database.
         app.images_bucket: 'product-images-test'
+        # Test indexes are prefixed with test_, the alias is recreated by `make -C apps/api init-test`.
+        app.search.alias: test_products
 
     services:
         _defaults:
