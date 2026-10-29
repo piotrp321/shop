@@ -241,6 +241,11 @@ Persystencja:
   komend) i zamienia naruszenie ograniczenia unikalności sluga na `SlugAlreadyTaken` (409). Nie ma osobnego
   sprawdzania sluga przed zapisem. Zamknięty po tym błędzie EntityManager nie przechodzi do kolejnego żądania
   ani kolejnej wiadomości.
+- `save()` w obu repozytoriach zapisuje agregat jako nowy albo nadpisuje istniejący o tym samym id (upsert).
+  Tworzenia pilnują handlery: `CreateCategory` i `CreateProduct` odrzucają istniejące id wyjątkami
+  `CategoryAlreadyExists` i `ProductAlreadyExists` (`Conflict`, 409). Dwa równoczesne utworzenia z tym samym id
+  mogą oba przejść sprawdzenie; drugie kończy się wtedy naruszeniem klucza głównego (500). W szkielecie to
+  akceptujemy.
 - Handler `CreateProduct` sprawdza, że istnieją wszystkie kategorie produktu (`CategoryNotFound`, 404).
 
 Identyfikatory nadaje wywołujący komendę (komendy przyjmują `id`). Domena nigdy nie wylicza identyfikatora
