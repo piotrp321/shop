@@ -105,6 +105,11 @@ services:
         decorates: security.access_token_handler.admin
         arguments: ['@.inner']
 
+    # AMQP sends fail when the broker cannot route the message (see the class).
+    App\Shared\Infrastructure\Messaging\RoutedAmqpTransportFactory:
+        decorates: messenger.transport.amqp.factory
+        arguments: ['@.inner']
+
     # Health probes of the dashboard. Each service is reached at the address containers use among themselves.
     App\Shared\Infrastructure\Health\Probe\RedisProbe:
         arguments:
