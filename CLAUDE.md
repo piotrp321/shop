@@ -128,3 +128,8 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
 - Nie umieszczaj logiki biznesowej we frontendzie. Fronty wyświetlają to, co policzy API (ceny, sumy, dostępność).
 - Nie commituj sekretów. Lokalna konfiguracja trafia do `.env.local`, który jest w `.gitignore`.
 - Nie wyłączaj reguł lintera, PHPStana ani Deptraca, żeby przeszedł `check`. Popraw kod albo zapytaj.
+
+
+## Tymczasowe
+
+Gdy użytkownik wywołuje `/brainstorm`, stosuj wyłącznie nasz Skill `brainstorm`, zamiast `superpowers:brainstorming`. W pozostałych przypadkach obowiązują dotychczasowe zasady.
