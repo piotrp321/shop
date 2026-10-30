@@ -33,17 +33,22 @@ Ten skill zastępuje superpowers:brainstorming, gdy użytkownik wywołuje /brain
    dokumentacji albo kodu.
    Wiadomość z pytaniami zawiera krótkie podsumowanie rozumienia i pytania, bez projektu. Każde założenie biznesowe
    pokaż jako osobne pytanie z rekomendacją, nie ukrywaj go w domyślnej odpowiedzi ani w założeniach projektu.
-   Nie zawężaj zakresu funkcji bez pytania: prostota dotyczy rozwiązania, nie wymagań. Gdy nie ma otwartych decyzji, przejdź od razu do projektu. Kolejną rundę pytań zadaj
+   Nie zawężaj zakresu funkcji bez pytania, także z powodów technicznych: prostota dotyczy rozwiązania, nie wymagań.
+   Gdy ograniczenie techniczne wymaga zmiany wymagania albo kompromisu, przedstaw to jako decyzję użytkownika z rekomendacją.
+   Gdy nie ma otwartych decyzji, przejdź od razu do projektu. Kolejną rundę pytań zadaj
    tylko wtedy, gdy odpowiedzi otworzyły nową istotną decyzję.
    Kwestie techniczne (klasy, ORM, wzorce, szczegóły implementacji) rozstrzygaj sam jako jawne założenia. Pytaj o nie
    tylko wtedy, gdy zmieniają istotną decyzję biznesową albo architektoniczną (np. nowa zależność, zmiana zasady projektu).
 9. Nie wracaj do zatwierdzonych decyzji bez nowego, konkretnego powodu.
-10. Kontrola jakości przed przedstawieniem projektu. Sprawdź projekt z ustalonymi wymaganiami (każda decyzja
-    użytkownika ma odzwierciedlenie), z CLAUDE.md (głównym i aplikacji) i z rzeczywistym kodem: kontrakty i kody błędów,
+10. Kontrola jakości przed przedstawieniem projektu. Sprawdź wewnętrznie, czy każde potwierdzone wymaganie i decyzja
+    biznesowa użytkownika ma odzwierciedlenie w rozwiązaniu, API, UX albo kryteriach akceptacji; nie pomijaj żadnego
+    ustalenia. Sprawdź też projekt z CLAUDE.md (głównym i aplikacji) i z rzeczywistym kodem: kontrakty i kody błędów,
     autoryzację, granice modułów (Deptrac), wzorce, na które się powołujesz. Każde twierdzenie o kodzie sprawdź w pliku
     i podaj go przy istotnych decyzjach.
 11. Sprawdź zgodność wymagań, API, UI i testów oraz przypadki brzegowe: autoryzację, współbieżność, propagację błędów
-    aż do UI (czy UI odróżni przypadki), paginację, brakujące dane. Nie dodawaj mechanizmów dla hipotetycznych przypadków.
+    aż do UI (czy UI odróżni przypadki), paginację, brakujące dane. Przy każdej zmianie stanu danych sprawdź,
+    proporcjonalnie do ryzyka: równoległe zmiany (także z nieaktualnego widoku), cykl życia danych, innych konsumentów
+    tych danych (modele odczytu, indeksy, inne moduły) i skutki błędów. Nie dodawaj mechanizmów dla hipotetycznych przypadków.
 
 ## Rezultat
 
