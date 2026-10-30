@@ -13,6 +13,7 @@ use Symfony\Component\Messenger\Stamp\ErrorDetailsStamp;
 use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 use Symfony\Component\Messenger\Stamp\RedeliveryStamp;
 use Symfony\Component\Messenger\Transport\Receiver\ListableReceiverInterface;
+use Symfony\Component\Messenger\Transport\SetupableTransportInterface;
 
 /**
  * The relay on the real transports: what reaches RabbitMQ, what stays in the outbox when it cannot, and why a
@@ -85,6 +86,29 @@ final class OutboxRelayTest extends MessagingKernelTestCase
         }
 
         // Without publisher confirms the relay would not see the nack: it would ack the row and the event would be gone.
+        self::assertSame(1, $this->rows('outbox'));
+        self::assertSame(1, $this->outboxEnvelope()->last(RedeliveryStamp::class)?->getRetryCount());
+        self::assertSame(0, $this->eventsInQueue());
+    }
+
+    public function testEventTheBrokerCannotRouteStaysInTheOutbox(): void
+    {
+        // The first relay sets up the exchange, the queue and the binding, as a long-running worker does once.
+        $this->publisher()->publish($this->event());
+        $this->consume('outbox');
+        self::assertCount(1, $this->drainEvents());
+
+        // Without the queue the exchange has nowhere to route the event, yet the broker confirms the publish.
+        $this->managementApi('DELETE', '/api/queues/test/events');
+        try {
+            $this->publisher()->publish($this->event());
+            $this->consume('outbox');
+        } finally {
+            $events = $this->transport('events');
+            self::assertInstanceOf(SetupableTransportInterface::class, $events);
+            $events->setup();
+        }
+
         self::assertSame(1, $this->rows('outbox'));
         self::assertSame(1, $this->outboxEnvelope()->last(RedeliveryStamp::class)?->getRetryCount());
         self::assertSame(0, $this->eventsInQueue());

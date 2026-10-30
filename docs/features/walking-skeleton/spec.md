@@ -293,7 +293,7 @@ Transporty:
 | Transport | DSN | Rola |
 |---|---|---|
 | `outbox` | Doctrine, to samo połączenie co agregaty, `queue_name=outbox` | transactional outbox |
-| `events` | AMQP (RabbitMQ), exchange i kolejka `events`, serializer JSON, `confirm_timeout` 5 s | dystrybucja zdarzeń do odbiorców |
+| `events` | AMQP (RabbitMQ), exchange i kolejka `events`, serializer JSON, `confirm_timeout` 5 s, publikacja `mandatory` | dystrybucja zdarzeń do odbiorców |
 | `failed` | Doctrine, `queue_name=failed` | wiadomości po wyczerpaniu ponowień |
 
 `outbox` i `failed` dzielą tabelę `messenger_messages`, którą tworzy migracja (`auto_setup=false`). Worker odpytuje
@@ -308,8 +308,14 @@ Przepływ:
    Wycofanie transakcji usuwa oba.
 2. `worker` konsumuje `outbox`. Jedyny handler z `from_transport: outbox` to przekaźnik, który wysyła to samo
    zdarzenie dalej z `TransportNamesStamp(['events'])`. Transport `events` czeka na potwierdzenie publikacji
-   przez brokera (publisher confirms), więc wiersz outboxa dostaje ack dopiero, gdy RabbitMQ ma wiadomość.
-   Nieudana publikacja to wyjątek przekaźnika i ponowienie wiersza outboxa.
+   przez brokera (publisher confirms) i publikuje z flagą `mandatory`, więc wiersz outboxa dostaje ack dopiero,
+   gdy RabbitMQ skierował wiadomość do kolejki. Sam confirm tego nie mówi: wiadomość bez trasy (brak kolejki albo
+   bindingu) broker też potwierdza, ale z `mandatory` najpierw ją zwraca (`basic.return`). Wszystkie transporty AMQP
+   tworzy `RoutedAmqpTransportFactory` (dekorator fabryki Symfony), a jego `RoutedAmqpTransport` zamienia zwrot na
+   błąd publikacji. Publikacja, w trakcie której połączenie zostało odnowione, też jest błędem, bo zwrot mógł trafić
+   na stary kanał. Nieudana publikacja to wyjątek przekaźnika i ponowienie wiersza outboxa.
+   Kolejkę i binding transport deklaruje raz na proces. Gdy znikną, przekaźnik ponawia wiersze, a worker przy
+   pobieraniu z `events` kończy się błędem 404; po restarcie (`restart: unless-stopped`) deklaruje je od nowa.
 3. `worker` konsumuje `events`. Handlery odbiorców mają `from_transport: events`, w szkielecie jest to
    `IndexProduct` dla `ProductCreated`.
 4. Każdy handler zdarzenia ma jawny `from_transport`. Przekaźnik nigdy nie działa przy konsumpcji z `events`,
@@ -318,7 +324,8 @@ Przepływ:
    `messenger:failed:retry`:
    - `events`: 3 próby z opóźnieniem 1 s i mnożnikiem 3,
    - `outbox`: 30 prób z opóźnieniem 1 s, mnożnikiem 2 i najwyżej 60 s, razem około 25 minut. Błąd przekaźnika to
-     zawsze niedostępny albo odrzucający broker, więc restart RabbitMQ nie przenosi zdarzeń do `failed`.
+     zawsze niedostępny, odrzucający albo niemający trasy broker, więc restart RabbitMQ nie przenosi zdarzeń do
+     `failed`.
      Ponowienie to nowy wiersz z późniejszym `available_at`.
 
 Gwarancja dostarczenia to at-least-once. Pobrany wiersz outboxa ma `delivered_at` i zostaje w tabeli do ack.
@@ -821,7 +828,8 @@ Wymagane przypadki:
   w outboxie i zero wiadomości w RabbitMQ; udany commit zostawia jeden produkt i jeden wiersz.
 - **Przekaźnik outboxa:** nieosiągalny broker zostawia zdarzenie w outboxie z kolejnymi ponowieniami, potem
   w `failed`, skąd `messenger:failed:retry` publikuje je po powrocie brokera; publikacja odrzucona przez brokera
-  (nack) zostawia zdarzenie w outboxie; przekaźnik, który padł przed ackiem, publikuje zdarzenie drugi raz.
+  (nack) zostawia zdarzenie w outboxie; publikacja bez trasy (usunięta kolejka `events`) zostawia zdarzenie
+  w outboxie; przekaźnik, który padł przed ackiem, publikuje zdarzenie drugi raz.
 - **imgproxy:** podpisany adres WebP zwraca 200 i `image/webp` dla oryginału w każdym formacie wejściowym (JPEG,
   PNG, WebP, AVIF, HEIC); zmieniony podpis zwraca 403; oryginał powyżej 50 MP wgrany bezpośrednio do bucketu
   zwraca 422.

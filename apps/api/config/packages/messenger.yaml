@@ -34,8 +34,9 @@ framework:
                 dsn: 'amqp://%env(urlencode:RABBITMQ_USER)%:%env(urlencode:RABBITMQ_DEFAULT_PASS)%@%env(RABBITMQ_HOST)%:5672/%env(urlencode:RABBITMQ_VHOST)%/events'
                 serializer: messenger.transport.symfony_serializer
                 options:
-                    # Wait for the broker to confirm the publish, so the relay acks the outbox row
-                    # only once RabbitMQ has the message.
+                    # Wait for the broker to confirm the publish, so the relay acks the outbox row only once
+                    # RabbitMQ has the message. That it routed the message to a queue is checked by
+                    # RoutedAmqpTransport (mandatory publish), which every AMQP transport is.
                     confirm_timeout: 5
                 retry_strategy:
                     max_retries: 3
