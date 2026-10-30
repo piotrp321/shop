@@ -35,6 +35,8 @@ Ten skill zastępuje superpowers:brainstorming, gdy użytkownik wywołuje /brain
    pokaż jako osobne pytanie z rekomendacją, nie ukrywaj go w domyślnej odpowiedzi ani w założeniach projektu.
    Nie zawężaj zakresu funkcji bez pytania, także z powodów technicznych: prostota dotyczy rozwiązania, nie wymagań.
    Gdy ograniczenie techniczne wymaga zmiany wymagania albo kompromisu, przedstaw to jako decyzję użytkownika z rekomendacją.
+   Potwierdzonego wymagania nie usuwaj, nie odkładaj na później ani nie ograniczaj z powodu trudności technicznych
+   bez wyraźnej decyzji użytkownika.
    Gdy nie ma otwartych decyzji, przejdź od razu do projektu. Kolejną rundę pytań zadaj
    tylko wtedy, gdy odpowiedzi otworzyły nową istotną decyzję.
    Kwestie techniczne (klasy, ORM, wzorce, szczegóły implementacji) rozstrzygaj sam jako jawne założenia. Pytaj o nie
@@ -68,7 +70,8 @@ Przed akceptacją projektu nie zmieniaj żadnych plików w repozytorium.
 Po akceptacji:
 - Istotna funkcjonalność: zapisz lub zaktualizuj tylko specyfikację zgodnie z CLAUDE.md. Pozostałe zmiany dokumentacji
   (`docs/vision.md`, `CLAUDE.md` i inne) wpisz w specyfikacji jako zadania wykonywane razem z implementacją.
-  Po zapisie porównaj specyfikację z zaakceptowanym projektem. Jeśli coś zmieniasz względem niego, pokaż zmianę.
+  Przy zapisie nie zmieniaj zaakceptowanych decyzji biznesowych. Po zapisie porównaj specyfikację z zaakceptowanym
+  projektem. Jeśli coś zmieniasz względem niego, pokaż zmianę; zmiana decyzji biznesowej wymaga ponownej akceptacji.
 - Zmiana samej dokumentacji: edytuj pliki objęte zatwierdzoną zmianą.
 - Drobna zmiana: wystarczy ustalenie w rozmowie, chyba że projekt wymaga dokumentacji.
 
