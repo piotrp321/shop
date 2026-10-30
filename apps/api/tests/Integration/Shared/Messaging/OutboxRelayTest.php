@@ -110,8 +110,16 @@ final class OutboxRelayTest extends MessagingKernelTestCase
         }
 
         self::assertSame(1, $this->rows('outbox'));
-        self::assertSame(1, $this->outboxEnvelope()->last(RedeliveryStamp::class)?->getRetryCount());
+        $envelope = $this->outboxEnvelope();
+        self::assertSame(1, $envelope->last(RedeliveryStamp::class)?->getRetryCount());
+        self::assertSame('The broker could not route the message to any queue.', $envelope->last(ErrorDetailsStamp::class)?->getExceptionMessage());
         self::assertSame(0, $this->eventsInQueue());
+
+        // Once the queue is back, the retry delivers the event.
+        $this->elapseOutboxDelay();
+        $this->consume('outbox');
+        self::assertSame(0, $this->rows('outbox'));
+        self::assertEquals([$this->event()], $this->drainEvents());
     }
 
     public function testRelayThatDiesBeforeTheAckPublishesTheEventTwice(): void

@@ -312,7 +312,8 @@ Przepływ:
    gdy RabbitMQ skierował wiadomość do kolejki. Sam confirm tego nie mówi: wiadomość bez trasy (brak kolejki albo
    bindingu) broker też potwierdza, ale z `mandatory` najpierw ją zwraca (`basic.return`). Wszystkie transporty AMQP
    tworzy `RoutedAmqpTransportFactory` (dekorator fabryki Symfony), a jego `RoutedAmqpTransport` zamienia zwrot na
-   błąd publikacji. Publikacja, w trakcie której połączenie zostało odnowione, też jest błędem, bo zwrot mógł trafić
+   błąd publikacji. Fabryka odrzuca transport AMQP bez `confirm_timeout`, bo zwrot jest odczytywany tylko podczas
+   oczekiwania na potwierdzenie. Publikacja, w trakcie której połączenie zostało odnowione, też jest błędem, bo zwrot mógł trafić
    na stary kanał. Nieudana publikacja to wyjątek przekaźnika i ponowienie wiersza outboxa.
    Kolejkę i binding transport deklaruje raz na proces. Gdy znikną, przekaźnik ponawia wiersze, a worker przy
    pobieraniu z `events` kończy się błędem 404; po restarcie (`restart: unless-stopped`) deklaruje je od nowa.
