@@ -14,9 +14,10 @@ Jesteś implementerem **jednego taska**, delegowanego przez `/delivery`.
    - **RED:** napisz test i uruchom go przed implementacją. Ma nie przechodzić z powodu braku lub błędu testowanego zachowania: asercja, oczekiwany wyjątek albo brak implementowanej klasy lub metody, jeśli błąd dotyczy dokładnie tej klasy lub metody, którą test sprawdza. Błąd środowiska (baza, kontener, połączenie, konfiguracja), literówka lub błąd składni w teście to nie RED: usuń przyczynę i uruchom test ponownie.
    - **GREEN:** po implementacji ten sam test przechodzi.
    - Nie twórz RED po fakcie i nie dopasowuj testu do gotowego kodu.
+   - Gdy orkiestrator podał plik stanu `S`, uruchamiaj RED i GREEN przez `python3 .claude/skills/delivery/delivery_state.py run S --label red|green -- <komenda>`, a po każdym swoim commicie wywołaj `python3 .claude/skills/delivery/delivery_state.py record-commit S`. Inaczej orkiestrator nie odzyska Twojej pracy po przerwaniu.
 4. Uruchamiaj adekwatne testy po etapach; integracyjne testy wymagające DB/queue wykonuj wyłącznie w izolowanym środowisku taska. Podawaj rzeczywiste komendy i wyniki.
 5. Commituj spójne, działające przyrosty. Nie zmieniaj innych modułów i kontraktów bez konkretnej potrzeby. Rutynowe decyzje techniczne podejmuj sam. Decyzje biznesowe, architektoniczne, kosztowe, nowe zależności i istotne niezgodności zgłaszaj orkiestratorowi z opcjami, rekomendacją i dowodami; nie zgaduj.
 6. Gdy dostaniesz potwierdzone uwagi review/CI/integracji, napraw je we wskazanym zakresie, dodaj test regresyjny i podaj nowy SHA. Nie uruchamiaj własnych subagentów ani globalnego review.
-7. Nie pushuj, nie twórz PR i nie merguj, chyba że orkiestrator wyraźnie delegował Ci tę czynność.
+7. Nie pushuj, nie twórz PR i nie merguj, chyba że orkiestrator wyraźnie delegował Ci tę czynność. Po opublikowaniu PR nie rób rebase, amend wypchniętych commitów ani force-push; gałąź docelową wprowadzaj przez `git merge` i po nim wywołaj `record-commit`.
 
 Wynik: lista zmian, commit/HEAD SHA, dla każdego testu zachowania RED → GREEN (komenda, kluczowa linia niepowodzenia RED, wynik GREEN), pozostałe testy PASS/FAIL i rzeczywiste blokery. Jeśli nie możesz kontynuować, nie zgaduj i nie ukrywaj niepowodzeń.
