@@ -175,6 +175,22 @@ class DeliveryStateTest(unittest.TestCase):
         self.assertEqual(0, r.returncode, r.stderr)
         self.assertEqual(head, self.load()['head_sha'])
 
+    def test_merge_of_the_target_branch_moves_head_and_keeps_base_sha(self):
+        self.init_state('implementation')
+        self.commit('impl')
+        self.cli('record-commit', self.state)
+        self.cli('checkpoint', self.state, '--phase', 'pr_ci')
+        git(self.repo, 'checkout', '-q', 'main')
+        self.commit('other-task')
+        git(self.repo, 'checkout', '-q', 'feature/x')
+        git(self.repo, 'merge', '-q', '--no-ff', '--no-edit', 'main')
+        merge = git(self.repo, 'rev-parse', 'HEAD')
+        self.cli('record-commit', self.state)
+        self.assertNotEqual(0, self.cli('checkpoint', self.state, '--phase', 'fixes').returncode)
+        r = self.cli('checkpoint', self.state, '--phase', 'fixes', '--accept-head')
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual((merge, self.base), (self.load()['head_sha'], self.load()['base_sha']))
+
     def test_checkpoint_follows_recorded_commits(self):
         self.init_state('implementation')
         head = self.commit('impl')

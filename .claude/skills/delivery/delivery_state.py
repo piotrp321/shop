@@ -7,7 +7,8 @@
       Once the state exists, --set cannot change the task identity (task_id, worktree, base_sha, branch); fields
       the script computes (head_sha, evidence_file, ...) cannot be set at all.
       head_sha moves only over commits recorded in the evidence log; with status BLOCKED it stays at the last
-      trusted SHA, otherwise the checkpoint fails. --accept-head takes HEAD anyway (rebase, an answered blocker).
+      trusted SHA, otherwise the checkpoint fails. --accept-head takes HEAD anyway (rebase before the PR is published, a merge of
+      the target branch, an answered blocker).
   run STATE --label red|green -- CMD ...
       Runs CMD, passes its output and exit code through, and appends the run to the evidence log.
   record-commit STATE
