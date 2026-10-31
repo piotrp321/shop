@@ -89,6 +89,47 @@ class DeliveryStateTest(unittest.TestCase):
             self.assertNotEqual(0, r.returncode, args)
             self.assertEqual(before, open(self.state).read(), args)
 
+    def test_identity_of_an_existing_task_cannot_be_changed(self):
+        self.init_state('review')
+        other = self.commit('other')
+        git(self.repo, 'reset', '-q', '--hard', self.base)
+        before = open(self.state).read()
+        for key, value in (('base_sha', other), ('task_id', 'T-2'), ('branch', 'feature/y'), ('worktree', self.tmp.name)):
+            r = self.cli('checkpoint', self.state, '--phase', 'review', '--set', '%s=%s' % (key, json.dumps(value)))
+            self.assertEqual(2, r.returncode, key)
+            self.assertIn(key, r.stderr)
+            self.assertEqual(before, open(self.state).read(), key)
+
+    def test_identity_repeated_with_the_same_value_is_accepted(self):
+        self.init_state()
+        r = self.cli('checkpoint', self.state, '--phase', 'implementation', '--set', 'base_sha=' + json.dumps(self.base),
+                     '--set', 'task_id="T-1"', '--set', 'branch="feature/x"', '--set', 'worktree=' + json.dumps(self.repo))
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual('implementation', self.load()['phase'])
+
+    def test_fields_computed_by_the_script_cannot_be_set(self):
+        self.init_state('review')
+        foreign = self.commit('foreign')
+        before = open(self.state).read()
+        for args in (['--set', 'head_sha=' + json.dumps(foreign)],
+                     ['--status', 'BLOCKED', '--set', 'blockers=[{"id": "B1", "type": "technical"}]',
+                      '--set', 'head_sha=' + json.dumps(foreign)],
+                     ['--set', 'evidence_file="/tmp/other.jsonl"']):
+            r = self.cli('checkpoint', self.state, '--phase', 'review', *args)
+            self.assertEqual(2, r.returncode, args)
+            self.assertEqual(before, open(self.state).read(), args)
+
+    def test_operational_fields_still_change(self):
+        self.init_state()
+        head = self.commit('impl')
+        self.cli('record-commit', self.state)
+        r = self.cli('checkpoint', self.state, '--phase', 'fixes', '--set', 'risk="CRITICAL"', '--set', 'fix_rounds_used=2',
+                     '--set', 'pr_url="https://example.com/pr/1"')
+        self.assertEqual(0, r.returncode, r.stderr)
+        s = self.load()
+        self.assertEqual(('fixes', 'CRITICAL', 2, 'https://example.com/pr/1', head, self.base),
+                         (s['phase'], s['risk'], s['fix_rounds_used'], s['pr_url'], s['head_sha'], s['base_sha']))
+
     def test_new_state_without_task_identity_is_rejected(self):
         r = self.cli('checkpoint', self.state, '--phase', 'preflight')
         self.assertNotEqual(0, r.returncode)
@@ -133,6 +174,22 @@ class DeliveryStateTest(unittest.TestCase):
         r = self.cli('checkpoint', self.state, '--phase', 'review', '--accept-head')
         self.assertEqual(0, r.returncode, r.stderr)
         self.assertEqual(head, self.load()['head_sha'])
+
+    def test_merge_of_the_target_branch_moves_head_and_keeps_base_sha(self):
+        self.init_state('implementation')
+        self.commit('impl')
+        self.cli('record-commit', self.state)
+        self.cli('checkpoint', self.state, '--phase', 'pr_ci')
+        git(self.repo, 'checkout', '-q', 'main')
+        self.commit('other-task')
+        git(self.repo, 'checkout', '-q', 'feature/x')
+        git(self.repo, 'merge', '-q', '--no-ff', '--no-edit', 'main')
+        merge = git(self.repo, 'rev-parse', 'HEAD')
+        self.cli('record-commit', self.state)
+        self.assertNotEqual(0, self.cli('checkpoint', self.state, '--phase', 'fixes').returncode)
+        r = self.cli('checkpoint', self.state, '--phase', 'fixes', '--accept-head')
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual((merge, self.base), (self.load()['head_sha'], self.load()['base_sha']))
 
     def test_checkpoint_follows_recorded_commits(self):
         self.init_state('implementation')

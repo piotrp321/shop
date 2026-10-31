@@ -4,8 +4,11 @@
   checkpoint STATE --phase P [--status S] [--set KEY=JSON ...] [--accept-head]
       Atomically writes the state: keeps earlier fields, applies --set, takes head_sha from Git and
       summarises the TDD evidence. An invalid result is rejected and the file stays as it was.
+      Once the state exists, --set cannot change the task identity (task_id, worktree, base_sha, branch); fields
+      the script computes (head_sha, evidence_file, ...) cannot be set at all.
       head_sha moves only over commits recorded in the evidence log; with status BLOCKED it stays at the last
-      trusted SHA, otherwise the checkpoint fails. --accept-head takes HEAD anyway (rebase, an answered blocker).
+      trusted SHA, otherwise the checkpoint fails. --accept-head takes HEAD anyway (rebase before the PR is published, a merge of
+      the target branch, an answered blocker).
   run STATE --label red|green -- CMD ...
       Runs CMD, passes its output and exit code through, and appends the run to the evidence log.
   record-commit STATE
@@ -34,6 +37,9 @@ TDD_STATUSES = ('recorded', 'missing', 'verified', 'lost_verified_on_base', 'not
 MANUAL_TDD = ('verified', 'lost_verified_on_base', 'not_applicable')
 LABELS = ('red', 'green')
 IDENTITY = ('task_id', 'risk', 'worktree', 'base_sha', 'branch')
+# The task: fixed once the state exists. base_sha is where the task started, not the current tip of the PR target.
+IMMUTABLE = ('task_id', 'worktree', 'base_sha', 'branch')
+COMPUTED = ('schema_version', 'state_file', 'evidence_file', 'head_sha', 'updated_at')
 DEFAULTS = {
     'pr_url': None, 'fix_rounds_used': 0, 'checks': [], 'review': {'status': 'skipped', 'mode': 'FULL', 'sha': None},
     'blockers': [], 'integration_notes': [], 'changed_contracts': [], 'developer': {'agent_id': None},
@@ -162,6 +168,10 @@ def checkpoint(args):
             state[key] = json.loads(value)
         except ValueError:
             raise StateError('--set %s: value is not JSON' % key)
+        if key in COMPUTED:
+            raise StateError('--set %s: the script sets this field' % key)
+        if key in IMMUTABLE and key in previous and state[key] != previous[key]:
+            raise StateError('--set %s: the task identity cannot change (%r in the state)' % (key, previous[key]))
     state['schema_version'] = SCHEMA_VERSION
     state['phase'] = args.phase
     state['status'] = args.status
