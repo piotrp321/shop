@@ -262,4 +262,144 @@ describe("DashboardView", () => {
     expect(wrapper.find("[data-testid=dashboard-error]").exists()).toBe(false);
     expect(wrapper.text()).toContain("Katalog");
   });
+
+  describe("data freshness", () => {
+    let visibility: DocumentVisibilityState = "visible";
+
+    function setVisibility(state: DocumentVisibilityState) {
+      visibility = state;
+      document.dispatchEvent(new Event("visibilitychange"));
+    }
+
+    beforeEach(() => {
+      visibility = "visible";
+      vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 10, 1, 14, 3, 12));
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("shows the time of the last successful fetch", async () => {
+      respondWith(dashboard());
+      wrapper = await mountView();
+
+      expect(wrapper.get("[data-testid=updated-at]").text()).toBe("Dane z 14:03:12");
+    });
+
+    it("shows no fetch time before the first successful fetch", async () => {
+      mocks.get.mockResolvedValue({ error: { status: 503 }, response: { status: 503 } });
+      wrapper = await mountView();
+
+      expect(wrapper.find("[data-testid=updated-at]").exists()).toBe(false);
+    });
+
+    it("keeps the data and names its time when a refresh fails", async () => {
+      respondWith(dashboard());
+      wrapper = await mountView();
+
+      vi.setSystemTime(new Date(2026, 10, 1, 14, 3, 42));
+      mocks.get.mockResolvedValue({ error: { status: 503 }, response: { status: 503 } });
+      await wrapper.get("[data-testid=refresh]").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get("[data-testid=dashboard-error]").text()).toContain(
+        "Pokazane dane z 14:03:12 mogą być nieaktualne.",
+      );
+      expect(wrapper.get("[data-testid=updated-at]").text()).toBe("Dane z 14:03:12");
+      expect(wrapper.text()).toContain("Katalog");
+    });
+
+    it("keeps the error message unchanged when there is no earlier data", async () => {
+      mocks.get.mockRejectedValue(new TypeError("Failed to fetch"));
+      wrapper = await mountView();
+
+      const text = wrapper.get("[data-testid=dashboard-error]").text();
+      expect(text).toBe("Nie udało się pobrać danych dashboardu. Sprawdź połączenie z API.");
+    });
+
+    it("does not call the API on intervals while the tab is hidden", async () => {
+      respondWith(dashboard());
+      wrapper = await mountView();
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+
+      visibility = "hidden";
+      await vi.advanceTimersByTimeAsync(90_000);
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("refreshes once on return to the tab after at least 30 seconds", async () => {
+      respondWith(dashboard());
+      wrapper = await mountView();
+
+      visibility = "hidden";
+      await vi.advanceTimersByTimeAsync(95_000);
+      setVisibility("visible");
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(2);
+      expect(wrapper.get("[data-testid=updated-at]").text()).toBe("Dane z 14:04:47");
+    });
+
+    it("does not refresh on return to the tab after less than 30 seconds", async () => {
+      respondWith(dashboard());
+      wrapper = await mountView();
+
+      visibility = "hidden";
+      await vi.advanceTimersByTimeAsync(10_000);
+      setVisibility("visible");
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps refreshing every 30 seconds counted from the refresh on return", async () => {
+      respondWith(dashboard());
+      wrapper = await mountView();
+
+      visibility = "hidden";
+      await vi.advanceTimersByTimeAsync(75_000);
+      await vi.advanceTimersByTimeAsync(10_000);
+      setVisibility("visible");
+      await flushPromises();
+      expect(mocks.get).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(29_000);
+      expect(mocks.get).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(mocks.get).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not refresh when the tab becomes hidden", async () => {
+      respondWith(dashboard());
+      wrapper = await mountView();
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      setVisibility("hidden");
+      await flushPromises();
+
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("removes the timer and the visibilitychange listener on unmount", async () => {
+      const added = vi.spyOn(document, "addEventListener");
+      const removed = vi.spyOn(document, "removeEventListener");
+      respondWith(dashboard());
+      wrapper = await mountView();
+      expect(vi.getTimerCount()).toBe(1);
+      const listener = added.mock.calls.find(([type]) => type === "visibilitychange")?.[1];
+      expect(listener).toBeDefined();
+
+      wrapper.unmount();
+
+      expect(vi.getTimerCount()).toBe(0);
+      expect(removed).toHaveBeenCalledWith("visibilitychange", listener);
+      setVisibility("visible");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(mocks.get).toHaveBeenCalledTimes(1);
+    });
+  });
 });
