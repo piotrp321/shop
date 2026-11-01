@@ -36,6 +36,43 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
     }
 
     /**
+     * One statement, `product_id = ANY(:ids)`, straight on the connection: the rows are not entities, so nothing is
+     * taken from or left in the identity map and the result is the stored state.
+     */
+    public function findMany(array $ids): array
+    {
+        if ([] === $ids) {
+            return [];
+        }
+
+        // A PostgreSQL array literal of validated UUIDs (hex digits and dashes only), bound as one parameter.
+        $literal = '{'.implode(',', array_map(static fn (ProductId $id): string => $id->toString(), $ids)).'}';
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT product_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at
+             FROM pricing_product_price WHERE product_id = ANY(CAST(:ids AS uuid[]))',
+            ['ids' => $literal],
+        );
+
+        return array_map(static function (array $row): ProductPrice {
+            \assert(\is_string($row['product_id']) && \is_string($row['currency']) && \is_string($row['tax_class']) && \is_string($row['updated_at']));
+            \assert(\is_int($row['gross_amount']) && \is_int($row['net_amount']) && \is_int($row['vat_amount']) && \is_int($row['vat_rate_bp']) && \is_int($row['version']));
+
+            return ProductPrice::reconstitute(
+                ProductId::fromString($row['product_id']),
+                PriceBreakdown::restore(
+                    GrossPrice::of(Money::of($row['gross_amount'], Currency::from($row['currency']))),
+                    $row['net_amount'],
+                    $row['vat_amount'],
+                    VatRate::fromBasisPoints($row['vat_rate_bp']),
+                ),
+                TaxClass::fromString($row['tax_class']),
+                $row['version'],
+                new \DateTimeImmutable($row['updated_at']),
+            );
+        }, $rows);
+    }
+
+    /**
      * The price was read at version() − 1 when it has unsaved history (0 for a new one). The versioned UPDATE checks
      * that version and the primary key refuses a second first price, both inside the transaction that appends
      * the history entries. Any failure rolls the transaction back and closes the entity manager; the services

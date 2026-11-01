@@ -7,6 +7,9 @@ const json = (body: unknown, status = 200, contentType = "application/json") =>
 const problem = (status: number) => json({ type: "about:blank", title: "Error", status }, status, "application/problem+json");
 
 const PAGE = { items: [makeProduct(1)], page: 1, perPage: 24, total: 1 };
+const TWO = { items: [makeProduct(1), makeProduct(2)], page: 1, perPage: 24, total: 2 };
+const PRICE_1 = { productId: makeProduct(1).id, gross: 5490, currency: "PLN" };
+const PRICES = { items: [PRICE_1] };
 
 function stubApi(handler: (url: URL) => Response | Promise<Response>) {
   const fetchMock = vi.fn(async (input: Request | string | URL) => {
@@ -17,21 +20,74 @@ function stubApi(handler: (url: URL) => Response | Promise<Response>) {
   return fetchMock;
 }
 
-const okApi = (url: URL) => (url.pathname === "/api/v1/categories" ? json(TREE) : json(PAGE));
+const okApi = (url: URL) => {
+  if (url.pathname === "/api/v1/categories") return json(TREE);
+  if (url.pathname === "/api/v1/prices") return json(PRICES);
+  return json(PAGE);
+};
+
+const urlsOf = (fetchMock: ReturnType<typeof stubApi>) =>
+  fetchMock.mock.calls.map(([input]) => new URL(String(input instanceof Request ? input.url : input)));
 
 beforeEach(() => {
   vi.stubEnv("API_INTERNAL_URL", "http://api.test");
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
 
 describe("loadCatalog", () => {
-  it("returns the category tree and the product page", async () => {
+  it("returns the category tree, the product page and the prices by product id", async () => {
     stubApi(okApi);
-    expect(await loadCatalog({})).toEqual({ kind: "ok", categories: TREE, products: PAGE });
+    expect(await loadCatalog({})).toEqual({ kind: "ok", categories: TREE, products: PAGE, prices: { [PRICE_1.productId]: PRICE_1 } });
+  });
+
+  describe("prices", () => {
+    it("asks for the prices of the whole page with one request, the ids as a repeated key", async () => {
+      const fetchMock = stubApi((url) => (url.pathname === "/api/v1/categories" ? json(TREE) : url.pathname === "/api/v1/prices" ? json(PRICES) : json(TWO)));
+      await loadCatalog({});
+      const priceCalls = urlsOf(fetchMock).filter((url) => url.pathname === "/api/v1/prices");
+      expect(priceCalls).toHaveLength(1);
+      expect(priceCalls[0].origin).toBe("http://api.test");
+      expect(priceCalls[0].search).toBe(`?productId=${makeProduct(1).id}&productId=${makeProduct(2).id}`);
+    });
+
+    it("skips the price request for an empty page", async () => {
+      const fetchMock = stubApi((url) => (url.pathname === "/api/v1/categories" ? json(TREE) : json({ ...PAGE, items: [], total: 0 })));
+      expect(await loadCatalog({})).toEqual({ kind: "ok", categories: TREE, products: { ...PAGE, items: [], total: 0 }, prices: {} });
+      expect(urlsOf(fetchMock).some((url) => url.pathname === "/api/v1/prices")).toBe(false);
+    });
+
+    it("does not ask for prices when the product list fails", async () => {
+      const fetchMock = stubApi((url) => (url.pathname === "/api/v1/products" ? problem(404) : json(TREE)));
+      await loadCatalog({ category: "00000000-0000-4000-8000-0000000000ff" });
+      expect(urlsOf(fetchMock).some((url) => url.pathname === "/api/v1/prices")).toBe(false);
+    });
+
+    it.each([
+      ["a 400", () => problem(400)],
+      ["a 503", () => problem(503)],
+      ["a response that is not a price list", () => json({ unexpected: true })],
+    ])("keeps the list without prices and logs the failure on %s", async (_name, failure) => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      stubApi((url) => (url.pathname === "/api/v1/prices" ? failure() : okApi(url)));
+      expect(await loadCatalog({})).toEqual({ kind: "ok", categories: TREE, products: PAGE, prices: {} });
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(String(log.mock.calls[0][0])).toContain("prices");
+    });
+
+    it("keeps the list without prices and logs when the price request cannot be sent", async () => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      stubApi((url) => {
+        if (url.pathname === "/api/v1/prices") throw new TypeError("fetch failed");
+        return okApi(url);
+      });
+      expect(await loadCatalog({})).toEqual({ kind: "ok", categories: TREE, products: PAGE, prices: {} });
+      expect(log).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("fetches categories and products in parallel from the internal address", async () => {
