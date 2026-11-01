@@ -4,23 +4,32 @@ import Message from "primevue/message";
 import Skeleton from "primevue/skeleton";
 import CatalogStats from "@/dashboard/CatalogStats.vue";
 import SystemStatus from "@/dashboard/SystemStatus.vue";
-import { useDashboard } from "@/dashboard/useDashboard";
+import { formatTime, useDashboard } from "@/dashboard/useDashboard";
 
-const { data, error, loading, refresh } = useDashboard();
+const { data, error, loading, updatedAt, refresh } = useDashboard();
 </script>
 
 <template>
   <div class="dashboard">
     <div class="heading">
       <h1>Dashboard</h1>
-      <Button
-        data-testid="refresh"
-        label="Odśwież"
-        icon="pi pi-refresh"
-        severity="secondary"
-        :loading="loading"
-        @click="refresh()"
-      />
+      <div class="actions">
+        <span
+          v-if="updatedAt"
+          data-testid="updated-at"
+          class="updated-at"
+        >
+          Dane z {{ formatTime(updatedAt) }}
+        </span>
+        <Button
+          data-testid="refresh"
+          label="Odśwież"
+          icon="pi pi-refresh"
+          severity="secondary"
+          :loading="loading"
+          @click="refresh()"
+        />
+      </div>
     </div>
 
     <Message
@@ -59,6 +68,16 @@ const { data, error, loading, refresh } = useDashboard();
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.updated-at {
+  color: var(--p-text-muted-color);
 }
 
 .skeletons {

@@ -1,6 +1,6 @@
 # Świeżość danych dashboardu panelu
 
-Status: zaakceptowana do realizacji (task `DASHBOARD-DATA-FRESHNESS`). Ryzyko: FAST.
+Status: zaimplementowana (task `DASHBOARD-DATA-FRESHNESS`). Ryzyko: FAST.
 
 ## Problem
 
