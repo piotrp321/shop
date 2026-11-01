@@ -1,9 +1,11 @@
 import { flushPromises, mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import PrimeVue from "primevue/config";
 import TreeSelect from "primevue/treeselect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "@/api/schema";
 import { primeVueOptions } from "@/primevue";
+import { useAuthStore, type StaffMe } from "@/stores/auth";
 import PricesView from "@/views/PricesView.vue";
 
 type PriceList = components["schemas"]["PriceListResponse"];
@@ -11,9 +13,9 @@ type PriceListItem = components["schemas"]["PriceListItemResponse"];
 type ListedPrice = components["schemas"]["ListedPriceResponse"];
 type CategoryNode = components["schemas"]["CategoryNode"];
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
 
-vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get }) }));
+vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, PUT: mocks.put }) }));
 
 const PRICES = "/api/v1/admin/prices";
 const CATEGORIES = "/api/v1/admin/categories";
@@ -80,8 +82,16 @@ async function settle() {
   await flushPromises();
 }
 
-async function mountView() {
-  const wrapper = mount(PricesView, { global: { plugins: [[PrimeVue, primeVueOptions]] } });
+function mountOptions(roles: StaffMe["roles"]) {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  useAuthStore().staff = { id: "u1", username: "anna", roles };
+  // The dialog is teleported to <body>; rendered in place it can be found in the wrapper.
+  return { global: { plugins: [pinia, [PrimeVue, primeVueOptions]] as never[], stubs: { teleport: true } } };
+}
+
+async function mountView(roles: StaffMe["roles"] = ["admin"]) {
+  const wrapper = mount(PricesView, mountOptions(roles));
   await settle();
   return wrapper;
 }
@@ -92,6 +102,7 @@ describe("PricesView", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     mocks.get.mockReset();
+    mocks.put.mockReset();
   });
 
   afterEach(() => {
@@ -426,7 +437,7 @@ describe("PricesView", () => {
       await first;
       return { data: { items: [item("Z full list")], next: null }, response: { status: 200 } };
     });
-    wrapper = mount(PricesView, { global: { plugins: [[PrimeVue, primeVueOptions]] } });
+    wrapper = mount(PricesView, mountOptions(["admin"]));
     await settle();
 
     await wrapper.get("[data-testid=search]").setValue("ab");
@@ -436,5 +447,179 @@ describe("PricesView", () => {
     await settle();
 
     expect(wrapper.findAll("[data-testid=name]").map((cell) => cell.text())).toEqual(["Z ab"]);
+  });
+});
+
+describe("PricesView: changing a price", () => {
+  let wrapper: Awaited<ReturnType<typeof mountView>> | undefined;
+  const PRICE = "/api/v1/admin/products/{productId}/price";
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mocks.get.mockReset();
+    mocks.put.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+    vi.useRealTimers();
+  });
+
+  async function openDialog(row = 0) {
+    await wrapper!.findAll("[data-testid=change-price]")[row]!.trigger("click");
+    await settle();
+  }
+
+  async function submit(text: string) {
+    await wrapper!.get("[data-testid=gross-input]").setValue(text);
+    await wrapper!.get("[data-testid=save-price]").trigger("click");
+    await settle();
+  }
+
+  function answer(status: number, data?: ListedPrice) {
+    mocks.put.mockResolvedValue(
+      data ? { data, error: undefined, response: { status } } : { data: undefined, error: { status }, response: { status } },
+    );
+  }
+
+  it.each([[["marketing"]], [["support"]], [["warehouse"]], [["support", "warehouse", "marketing"]], [[]]] as StaffMe["roles"][][])(
+    "offers no price change to a staff member with the roles %j",
+    async (roles) => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView(roles);
+
+      expect(wrapper.findAll("[data-testid=price-row]")).toHaveLength(1);
+      expect(wrapper.find("[data-testid=change-price]").exists()).toBe(false);
+    },
+  );
+
+  it("offers an administrator the change on every row, with the rate that applies from the API", async () => {
+    serve({ pages: { "": { items: [item("A"), item("B", { price: null, applicableVatRate: 2300 })], next: null } } });
+    wrapper = await mountView(["admin"]);
+
+    expect(wrapper.findAll("[data-testid=change-price]")).toHaveLength(2);
+    await openDialog(1);
+
+    const dialog = wrapper.get("[data-testid=change-dialog]");
+    expect(dialog.text()).toContain("B");
+    expect(dialog.get("[data-testid=rate-preview]").text()).toContain("23%");
+    expect(dialog.get("[data-testid=current-gross]").text()).toContain("Brak ceny");
+    // Only the rate from the API: the panel computes no net or VAT amount for the new gross.
+    expect(dialog.text()).not.toMatch(/\d,\d{2}\s*zł/);
+  });
+
+  it("sends the gross in grosze with the version of the row and shows the saved price", async () => {
+    serve({ pages: { "": { items: [item("A", { productId: "p-1", price: price({ version: 3 }) })], next: null } } });
+    wrapper = await mountView();
+    answer(200, price({ gross: 5990, net: 5705, vat: 285, version: 4 }));
+
+    await openDialog();
+    expect(wrapper.get("[data-testid=current-gross]").text()).toMatch(/54,90\s*zł/);
+    await submit("59,90");
+
+    expect(mocks.put).toHaveBeenCalledTimes(1);
+    expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { productId: "p-1" } }, body: { gross: 5990, version: 3 } });
+    expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(false);
+    const row = wrapper.get("[data-testid=price-row]");
+    expect(row.get("[data-testid=gross]").text()).toMatch(/^59,90\s*zł$/);
+    expect(row.get("[data-testid=net]").text()).toMatch(/^57,05\s*zł$/);
+    expect(row.get("[data-testid=vat]").text()).toMatch(/^2,85\s*zł$/);
+  });
+
+  it("sends no version for a product without a price", async () => {
+    serve({ pages: { "": { items: [item("A", { productId: "p-2", price: null })], next: null } } });
+    wrapper = await mountView();
+    answer(200, price({ gross: 1200 }));
+
+    await openDialog();
+    await submit("12");
+
+    expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { productId: "p-2" } }, body: { gross: 1200, version: null } });
+  });
+
+  it("does not send an amount it cannot read and says why at the field", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+
+    await openDialog();
+    await submit("12,345");
+
+    expect(mocks.put).not.toHaveBeenCalled();
+    expect(wrapper.get("[data-testid=gross-error]").text()).toContain("2 miejsca po przecinku");
+    expect(wrapper.get("[data-testid=gross-input]").attributes("aria-invalid")).toBe("true");
+  });
+
+  it("shows a 422 of the API at the field and changes nothing", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+    answer(422);
+
+    await openDialog();
+    await submit("0");
+
+    expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { productId: "id-A" } }, body: { gross: 0, version: 1 } });
+    expect(wrapper.get("[data-testid=gross-error]").text()).toContain("od 0,01 zł do 999 999,99 zł");
+    expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(true);
+    expect(wrapper.get("[data-testid=price-row]").get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
+  });
+
+  it("on a 409 says the price was changed meanwhile and refreshes the row", async () => {
+    serve({ pages: { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B", { productId: "p-b" })], next: null } } });
+    wrapper = await mountView();
+    await wrapper.get("[data-testid=next-page]").trigger("click");
+    await settle();
+    answer(409);
+    const callsBefore = priceCalls().length;
+
+    await openDialog();
+    serve({ pages: { c1: { items: [item("B", { productId: "p-b", price: price({ gross: 7000, version: 2 }) })], next: null } } });
+    await submit("59,90");
+
+    expect(wrapper.get("[data-testid=change-conflict]").text()).toBe("Cena została w międzyczasie zmieniona – odśwież");
+    expect(priceCalls()).toHaveLength(callsBefore + 1);
+    expect(priceCalls().at(-1)).toEqual({ after: "c1" });
+    expect(wrapper.get("[data-testid=price-row]").get("[data-testid=gross]").text()).toMatch(/^70,00\s*zł$/);
+    expect(wrapper.get("[data-testid=current-gross]").text()).toMatch(/70,00\s*zł/);
+
+    answer(200, price({ gross: 5990, version: 3 }));
+    await submit("59,90");
+    expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { productId: "p-b" } }, body: { gross: 5990, version: 2 } });
+  });
+
+  it("on a 403 says the staff member may not change prices", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+    answer(403);
+
+    await openDialog();
+    await submit("59,90");
+
+    expect(wrapper.get("[data-testid=change-error]").text()).toContain("Nie masz uprawnień");
+    expect(wrapper.get("[data-testid=price-row]").get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
+  });
+
+  it("says so when the request itself fails", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+    mocks.put.mockRejectedValue(new TypeError("network down"));
+
+    await openDialog();
+    await submit("59,90");
+
+    expect(wrapper.get("[data-testid=change-error]").text()).toContain("połączenie");
+  });
+
+  it("closes without sending anything when cancelled", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+
+    await openDialog();
+    await wrapper.get("[data-testid=gross-input]").setValue("59,90");
+    await wrapper.get("[data-testid=cancel-change]").trigger("click");
+    await settle();
+
+    expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(false);
+    expect(mocks.put).not.toHaveBeenCalled();
   });
 });
