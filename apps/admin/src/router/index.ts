@@ -5,6 +5,7 @@ import { getUserManager } from "@/auth/userManager";
 import AppLayout from "@/layout/AppLayout.vue";
 import AuthCallbackView from "@/views/AuthCallbackView.vue";
 import DashboardView from "@/views/DashboardView.vue";
+import PricesView from "@/views/PricesView.vue";
 
 type SessionManager = Pick<UserManager, "getUser" | "signinRedirect">;
 
@@ -19,6 +20,7 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
         component: AppLayout,
         children: [
           { path: "", name: "dashboard", component: DashboardView },
+          { path: "prices", name: "prices", component: PricesView },
           { path: ":pathMatch(.*)*", redirect: "/" },
         ],
       },

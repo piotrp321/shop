@@ -24,6 +24,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/views/` – widoki przypisane do tras.
 - `src/dashboard/` – komponenty i ładowanie danych dashboardu (`useDashboard`).
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`).
+- `src/prices/` – lista cen (`/prices`): `usePriceList` (wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii,
+  stronicowanie po kursorach ze stosem kursorów w panelu), `useCategoryTree` (drzewo dla filtra), `format.ts`
+  (kwoty z groszy i stawki z punktów bazowych przez `Intl`, bez liczenia czegokolwiek).
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 
 ## Dane i API
