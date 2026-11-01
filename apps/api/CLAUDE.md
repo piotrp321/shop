@@ -62,7 +62,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## API
 
 - REST, JSON, wersjonowane pod `/api/v1`.
-- Wejście przez DTO z Symfony Validator. Domena dodatkowo pilnuje swoich niezmienników.
+- Wejście przez DTO z Symfony Validator. Domena dodatkowo pilnuje swoich niezmienników. Złe parametry zapytania
+  (`#[MapQueryString]`) to 400, zła treść żądania (`#[MapRequestPayload]`, tylko JSON, typy bez rzutowania) to 422;
+  oba z listą `violations`.
 - Dokumentacja OpenAPI z kodu (NelmioApiDocBundle). Każdy endpoint ma opisane żądanie, odpowiedzi i błędy.
 - Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Dwa firewalle:
   `/api/v1/admin/...` przyjmuje tylko tokeny z realmu `backoffice` (pracownicy, `Staff`),

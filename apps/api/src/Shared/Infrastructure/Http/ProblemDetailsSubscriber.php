@@ -22,6 +22,9 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
 /**
  * Renders every exception as an RFC 9457 problem details document.
  *
+ * A validation failure (also as the `previous` of an HTTP exception) lists its violations, without `detail`; its
+ * status is 400, or the client error status of the HTTP exception that wraps it (422 for a request payload).
+ *
  * Only the thrown exception itself decides about `detail`, its `previous` chain is never inspected for it.
  * The one exception: a Messenger HandlerFailedException that wraps exactly one exception is replaced by that
  * exception, repeatedly for nested buses, because a sync bus wraps whatever a handler throws.
@@ -78,7 +81,7 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
 
         $validation = $this->findValidationFailure($exception);
         $response = match (true) {
-            null !== $validation => $this->validationProblem($validation),
+            null !== $validation => $this->validationProblem($validation, self::validationStatus($exception)),
             $exception instanceof ProblemException => $this->projectProblem($exception),
             $exception instanceof AuthenticationException => self::genericProblem(Response::HTTP_UNAUTHORIZED),
             $exception instanceof AccessDeniedException => self::genericProblem(Response::HTTP_FORBIDDEN),
@@ -108,10 +111,22 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
         return self::problemResponse($problem, $status, $headers);
     }
 
-    private function validationProblem(ValidationFailedException $validation): JsonResponse
+    /**
+     * A validation failure is a 400, unless an HTTP exception that wraps it names another client error: a request
+     * payload mapped with `validationFailedStatusCode: 422` is a 422. Never a server error.
+     */
+    private static function validationStatus(\Throwable $exception): int
     {
-        $status = Response::HTTP_BAD_REQUEST;
-        $problem = ['type' => 'about:blank', 'title' => Response::$statusTexts[$status], 'status' => $status, 'violations' => []];
+        if ($exception instanceof HttpExceptionInterface && $exception->getStatusCode() >= 400 && $exception->getStatusCode() < 500) {
+            return $exception->getStatusCode();
+        }
+
+        return Response::HTTP_BAD_REQUEST;
+    }
+
+    private function validationProblem(ValidationFailedException $validation, int $status): JsonResponse
+    {
+        $problem = ['type' => 'about:blank', 'title' => Response::$statusTexts[$status] ?? 'Error', 'status' => $status, 'violations' => []];
         foreach ($validation->getViolations() as $violation) {
             $problem['violations'][] = [
                 'propertyPath' => $violation->getPropertyPath(),
