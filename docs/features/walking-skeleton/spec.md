@@ -26,9 +26,8 @@ Kolejne kroki MVP mają tylko dokładać contexty i ekrany, bez przebudowy infra
 ## Poza zakresem
 
 Varnish, koszyk, zamówienia, płatności, stany magazynowe, ceny i stawki VAT (Pricing), zarządzanie katalogiem
-w panelu i upload zdjęć, wyszukiwanie pełnotekstowe, strona produktu, SEO (metadane, JSON-LD, sitemap, adresy
-`/c/<slug>`), docelowy projekt wizualny sklepu, correlation ID, rate limiting w API, pełne CI (cały stos,
-testy integracyjne, E2E), deployment.
+w panelu i upload zdjęć, wyszukiwanie pełnotekstowe, strona produktu, SEO poza metadanymi strony katalogu (JSON-LD, sitemap, adresy
+`/c/<slug>`), docelowy projekt wizualny sklepu, correlation ID, rate limiting w API, deployment.
 
 ## Środowisko uruchomieniowe
 
@@ -118,9 +117,9 @@ całego stosu.
 | Makefile | Cele |
 |---|---|
 | główny | `up`, `down`, `logs`, `ps`, `seed`, `check`, `test`, `e2e`, `e2e-check`, `api-client`, `keycloak-reset` |
-| `apps/api` | `check`, `test`, `test-unit`, `init`, `init-test`, `migrate`, `migration`, `openapi`, `shell` |
-| `apps/store` | `check`, `test`, `test-unit`, `shell` |
-| `apps/admin` | `check`, `test`, `shell` |
+| `apps/api` | `check` (`phpstan`, `deptrac`, `cs-check`), `cs-fix`, `test`, `test-unit`, `init`, `init-test`, `migrate`, `migration`, `openapi`, `shell` |
+| `apps/store` | `check` (`lint`, `typecheck`), `test`, `test-unit`, `shell` |
+| `apps/admin` | `check` (`lint`, `typecheck`), `test`, `shell` |
 
 - Główne `check` i `test` uruchamiają cele wszystkich trzech aplikacji.
 - `test` uruchamia wszystkie testy aplikacji, także te, które potrzebują usług stosu. `test-unit` nie wymaga żadnej
@@ -161,8 +160,8 @@ Konta demo:
 | `backoffice` | `warehouse` | `warehouse` | hasło + wgrany sekret TOTP |
 | `backoffice` | `marketing` | `marketing` | hasło + wgrany sekret TOTP |
 
-Sekrety TOTP są stałe i jawne. README podaje dla każdego konta hasło, sekret i URI `otpauth://` do zeskanowania
-w aplikacji uwierzytelniającej.
+Sekrety TOTP są stałe i jawne. README podaje dla każdego konta hasło i sekret w base32 oraz wzór URI `otpauth://` do zeskanowania
+w aplikacji uwierzytelniającej. W realmie sekret jest zapisany jako zwykły tekst (`demo-totp-<konto>`), a base32 to jego kodowanie.
 
 ## API (`apps/api`)
 
@@ -714,6 +713,8 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
 - 400 z API pokazuje „Nieprawidłowy filtr” z linkiem do całego katalogu. 404 dla listy produktów (nieznana kategoria)
   daje stronę 404 (`notFound()`). Niedostępne API kończy się w `error.tsx`.
 - Nagłówek: nazwa sklepu oraz komponent konta (niżej).
+- Tytuł, opis, adres kanoniczny i `noindex` strony zależą od kategorii i numeru strony (szczegóły:
+  `docs/features/catalog-page-metadata/spec.md`).
 
 ### Obrazy
 
@@ -787,7 +788,9 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 - Sekcja „Stan systemu”, wyświetlana tylko gdy `system` nie jest `null`: usługi ze stanem (`Tag` up/down)
   i opóźnieniem, liczba zdarzeń czekających w outboxie, tabela kolejek (`DataTable`: nazwa, wiadomości,
   konsumenci), porównanie liczby dokumentów w ES z liczbą produktów w Postgresie z oznaczeniem rozbieżności.
-- `Skeleton` podczas ładowania, `Message` przy błędzie API, przycisk „Odśwież” i automatyczne odświeżanie co 30 s.
+- `Skeleton` podczas ładowania, `Message` przy błędzie API, przycisk „Odśwież” i automatyczne odświeżanie co 30 s,
+  wstrzymane w ukrytej karcie. Obok przycisku widać czas ostatniego udanego pobrania, a komunikat błędu podaje czas
+  pokazanych danych (szczegóły: `docs/features/dashboard-data-freshness/spec.md`).
 - Dashboard pokazuje wyłącznie dane z API. Nie ma danych zmockowanych ani widgetów sprzedaży.
 
 ## Dane demo

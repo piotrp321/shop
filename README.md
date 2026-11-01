@@ -13,23 +13,61 @@ z niezależnym review i CI. Cele i architektura: [docs/vision.md](docs/vision.md
 | `apps/admin` | Vue 3, Vite, TypeScript, Pinia, Vue Router, PrimeVue |
 | `infra` | Docker Compose: PostgreSQL, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Mailpit |
 
-## Uruchomienie
+## Wymagania
 
-Na hoście potrzebne są tylko Docker (z Docker Compose), `make` i `openssl`. PHP i Node działają w kontenerach.
+- Docker z Docker Compose, `make` i `openssl`. PHP i Node działają w kontenerach, na hoście ich nie instaluj.
+- Pamięć dla Docker Desktop (Settings → Resources → Memory): **minimum 5 GB, zalecane 7 GB**. Wartości wynikają
+  z pomiaru `docker stats` na pełnym stosie (12 kontenerów aplikacji): po `make up` suma wynosi około 2,3 GB
+  (Elasticsearch około 0,9 GB, Keycloak około 0,6 GB, panel około 0,3 GB), a szczyt podczas `make e2e`, razem
+  z kontenerem Playwright, około 3,6 GB (3659 MiB). Minimum to szczyt zaokrąglony w górę do pełnego GB (4 GB) plus
+  1 GB zapasu, zalecane to minimum plus 2 GB. Kilka stosów naraz wymaga odpowiednio więcej.
+- Pierwsze `make up` buduje obrazy i pobiera zależności, więc trwa dłużej niż kolejne.
+
+## Uruchomienie
 
 ```bash
 make up     # przy pierwszym uruchomieniu tworzy .env.local z sekretami; czeka, aż usługi będą zdrowe
-make down
+make seed   # czyści katalog i ładuje dane demo (kategorie, produkty ze zdjęciami); czeka na indeks
+make down   # zatrzymuje stos (dane zostają w wolumenach)
 ```
 
-| Adres | Co |
-|---|---|
-| http://localhost:8000/health | API |
-| http://localhost:3000 | sklep |
-| http://localhost:5173 | panel |
-| http://localhost:8025 | Mailpit |
-| http://localhost:15672 | RabbitMQ (panel zarządzania) |
-| http://localhost:8080 | Keycloak |
+Adresy przy domyślnych portach:
+
+| Adres | Co | Zmienna portu |
+|---|---|---|
+| http://localhost:3000 | sklep | `STORE_PORT` |
+| http://localhost:5173 | panel administracyjny | `ADMIN_PORT` |
+| http://localhost:8000/health | API (`/health`) | `API_PORT` |
+| http://localhost:8080 | Keycloak | `KEYCLOAK_PORT` |
+| http://localhost:8081 | imgproxy (adresy zdjęć podpisuje API) | `IMGPROXY_PORT` |
+| http://localhost:8025 | Mailpit (e-maile wysyłane przez Keycloak) | `MAILPIT_PORT` |
+| http://localhost:15672 | RabbitMQ, panel zarządzania | `RABBITMQ_MANAGEMENT_PORT` |
+
+Porty są wystawione tylko na `127.0.0.1`. Konsola administracyjna Keycloak: użytkownik `admin`, hasło
+`KC_BOOTSTRAP_ADMIN_PASSWORD` z wygenerowanego `.env.local`. Panel RabbitMQ: użytkownik `shop`,
+hasło `RABBITMQ_DEFAULT_PASS` z `.env.local`.
+
+### Porty i kilka stosów naraz
+
+Nazwę projektu Compose i porty zmienia się w `.env` w korzeniu repo (gitignorowany, wzór w `.env.example`). Każda
+zmienna jest opcjonalna. Dzięki temu stosy z różnych worktree nie kolidują ze sobą, np.:
+
+```bash
+# .env
+COMPOSE_PROJECT_NAME=shop-feature-x
+STORE_PORT=3100
+ADMIN_PORT=5273
+API_PORT=8100
+KEYCLOAK_PORT=8180
+IMGPROXY_PORT=8181
+MAILPIT_PORT=8125
+RABBITMQ_MANAGEMENT_PORT=15772
+```
+
+Zmiana portów wystarcza: API, Keycloak i testy E2E biorą adresy publiczne z tych samych zmiennych. Każdy stos ma
+własny `.env.local` i własne wolumeny.
+
+### Odtworzenie stosu
 
 Jeśli `make up` zgłosi brak klucza w `.env.local` (nowy sekret, np. hasło roli `shop` w Postgresie), stos
 trzeba odtworzyć: usunąć `.env.local` i wolumeny projektu Compose (`make down` i `docker compose down -v` dla
@@ -38,12 +76,17 @@ właściwego `COMPOSE_PROJECT_NAME`). Skrypt inicjalizacji Postgresa tworzy role
 `make keycloak-reset` usuwa bazę Keycloak i importuje realmy od nowa z `infra/keycloak/realms/` (znikają konta
 założone w sklepie i zmiany z konsoli Keycloak).
 
-Porty i nazwę projektu Compose można zmienić w `.env` (wzór w `.env.example`), np. żeby uruchomić kilka stosów
-naraz z różnych worktree.
+### Zmiana kodu handlerów
+
+`worker` (konsument kolejek) ładuje kod i konfigurację handlerów przy starcie. Po zmianie kodu handlerów albo
+ich konfiguracji uruchom go od nowa: `docker compose restart worker` (`make up` też tworzy go od nowa).
 
 ## Konta demo
 
-Jawne dane demo, nie sekrety. Kod TOTP panelu: SHA1, 6 cyfr, 30 s; sekret w base32 do aplikacji uwierzytelniającej.
+Jawne dane demo, nie sekrety: występują tylko w lokalnym stosie, a ich źródłem są realmy w `infra/keycloak/realms/`.
+Kod TOTP panelu: SHA1, 6 cyfr, 30 s. Sekret w base32 dodaj ręcznie w aplikacji uwierzytelniającej albo użyj URI
+`otpauth://totp/Rytm:<login>?secret=<sekret>&issuer=Rytm&algorithm=SHA1&digits=6&period=30` (np. do wygenerowania
+kodu QR).
 
 | Realm | Login | Hasło | TOTP (base32) |
 |---|---|---|---|
@@ -52,6 +95,21 @@ Jawne dane demo, nie sekrety. Kod TOTP panelu: SHA1, 6 cyfr, 30 s; sekret w base
 | `backoffice` | `support` | `Pracownik-Demo-1` | `MRSW23ZNORXXI4BNON2XA4DPOJ2C2MBR` |
 | `backoffice` | `warehouse` | `Pracownik-Demo-1` | `MRSW23ZNORXXI4BNO5QXEZLIN52XGZJR` |
 | `backoffice` | `marketing` | `Pracownik-Demo-1` | `MRSW23ZNORXXI4BNNVQXE23FORUW4ZZR` |
+
+## Komendy Makefile
+
+| Komenda | Działanie |
+|---|---|
+| `make up` / `make down` | start (z oczekiwaniem na zdrowe usługi) i zatrzymanie stosu |
+| `make logs` / `make ps` | logi (ogon 100 linii, na żywo) i stan kontenerów |
+| `make seed` | reset katalogu i dane demo |
+| `make check` | analiza statyczna i lint wszystkich aplikacji |
+| `make test` | testy wszystkich aplikacji |
+| `make e2e` | testy Playwright na działającym stosie (po `make up` i `make seed`) |
+| `make e2e-check` | kontrola typów pakietu `e2e` (bez usług stosu) |
+| `make api-client` | generowanie klientów TypeScript z OpenAPI (po `make -C apps/api openapi`) |
+| `make keycloak-reset` | import realmów Keycloak od nowa |
+| `make -C apps/<api\|store\|admin> <cel>` | cele jednej aplikacji, m.in. `check`, `test`, `shell` oraz w api `migrate`, `openapi` |
 
 ## Testy i kontrola jakości
 
@@ -62,7 +120,8 @@ make -C apps/api test   # jedna aplikacja: make -C apps/<api|store|admin> <cel>
 make e2e     # testy Playwright na działającym stosie (najpierw make up i make seed)
 ```
 
-Komendy działają w kontenerach postawionych przez `make up`. CI (GitHub Actions) uruchamia `make check`, testy
+Komendy działają w kontenerach postawionych przez `make up`. Wszystkie testy API, także te na usługach stosu,
+wymagają działającego stosu. CI (GitHub Actions) uruchamia `make check`, testy
 i testy E2E na pełnym stosie przy każdym pull requeście.
 
 ## Co działa teraz
@@ -84,12 +143,6 @@ i testy E2E na pełnym stosie przy każdym pull requeście.
 - Testy E2E (Playwright, `make e2e`): katalog, logowanie klienta, rejestracja z weryfikacją e-maila, logowanie
   pracownika z TOTP.
 - CI: analiza statyczna, testy trzech aplikacji, kontrola aktualności kontraktu i testy E2E na pełnym stosie.
-
-## Najbliższe etapy
-
-1. Odbiór szkieletu i pełny README.
-
-Kolejność i stan prac: sekcja „Status” w [planie](docs/features/walking-skeleton/plan.md).
 
 ## Dokumentacja
 
