@@ -119,7 +119,9 @@ final class SetProductPriceTest extends KernelTestCase
     }
 
     /**
-     * Both requests see no price and create one; the primary key refuses the later one.
+     * Both requests see no price and create one. The competing one commits before the request under test saves, so
+     * its write re-reads the row inside the transaction and refuses; the primary key race (commit after that read)
+     * is covered by DoctrineProductPriceRepositoryTest.
      */
     public function testConcurrentFirstPricesGiveOneSuccessAndAConflict(): void
     {

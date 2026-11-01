@@ -16,9 +16,12 @@ use App\Pricing\Domain\Tax\VatRate;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineProductPriceRepository;
 use App\Tests\Integration\Pricing\IndependentEntityManagers;
 use App\Tests\Support\StatementCounter;
+use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception as DbalException;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Event\PreFlushEventArgs;
+use Doctrine\ORM\Events;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Uid\Uuid;
@@ -170,6 +173,10 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
         yield 'inside an outer transaction' => [true];
     }
 
+    /**
+     * Both requests see no price; the first commits its price before the second saves. The second write re-reads
+     * the row inside its transaction, finds the stored price and refuses (the explicit check, not the primary key).
+     */
     public function testSecondFirstPriceOfTheSameProductIsAConflict(): void
     {
         $first = $this->independentManager();
@@ -194,6 +201,82 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
         self::assertSame(['gross_amount' => 10000, 'version' => 1], $verify->fetchAssociative('SELECT gross_amount, version FROM pricing_product_price WHERE product_id = ?', [$id->toString()]));
         self::assertSame([10000], $verify->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE product_id = ?', [$id->toString()]));
         $verify->close();
+    }
+
+    /**
+     * The competing request commits its first price after the write under test has re-read the row (no price) and
+     * before it flushes: the INSERT hits the primary key (23505 on pricing_product_price_pkey), which ends in
+     * PriceModifiedConcurrently.
+     */
+    public function testFirstPriceCommittedBetweenTheReadAndTheInsertIsRefusedByThePrimaryKey(): void
+    {
+        $underTest = $this->independentManager();
+        $competing = new DoctrineProductPriceRepository($this->independentManager());
+        $id = ProductId::fromString((string) Uuid::v4());
+        $this->committedProductIds[] = $id->toString();
+        $listener = new class(static function () use ($competing, $id): void {
+            $competing->save(ProductPrice::create($id, GrossPrice::pln(12000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-2', 'Second')));
+        }) {
+            public int $calls = 0;
+
+            public function __construct(private readonly \Closure $competingRequest)
+            {
+            }
+
+            public function preFlush(PreFlushEventArgs $args): void
+            {
+                if (1 === ++$this->calls) {
+                    ($this->competingRequest)();
+                }
+            }
+        };
+        $eventManager = $underTest->getEventManager();
+        \assert($eventManager instanceof EventManager);
+        $eventManager->addEventListener(Events::preFlush, $listener);
+
+        try {
+            new DoctrineProductPriceRepository($underTest)->save(
+                ProductPrice::create($id, GrossPrice::pln(11000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'First')),
+            );
+            self::fail('Expected PriceModifiedConcurrently.');
+        } catch (PriceModifiedConcurrently) {
+        }
+
+        self::assertSame(1, $listener->calls);
+        $verify = $this->independentConnection();
+        self::assertSame([['gross_amount' => 12000, 'version' => 1]], $verify->fetchAllAssociative('SELECT gross_amount, version FROM pricing_product_price WHERE product_id = ?', [$id->toString()]));
+        // One success, one entry.
+        self::assertSame([12000], $verify->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE product_id = ?', [$id->toString()]));
+        $verify->close();
+    }
+
+    /**
+     * Two aggregates of the same price read in one entity manager: after the first is saved, the identity map holds
+     * version 2, while the second was read at version 1. Its write must compare with version 1 and be refused,
+     * not overwrite the first change.
+     */
+    public function testStaleAggregateIsRefusedEvenWhenTheIdentityMapHoldsTheNewerVersion(): void
+    {
+        $price = $this->newPrice(10000, 'standard', PriceChangeOrigin::seed());
+        $this->prices->save($price);
+        $this->entityManager->clear();
+        $first = $this->prices->find($price->id());
+        $second = $this->prices->find($price->id());
+        self::assertNotNull($first);
+        self::assertNotNull($second);
+        $first->changeGross(GrossPrice::pln(11000), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'First'));
+        $this->prices->save($first);
+        $second->changeGross(GrossPrice::pln(12000), new PolishVatRates(), PriceChangeOrigin::staff('sub-2', 'Second'));
+
+        try {
+            $this->prices->save($second);
+            self::fail('Expected PriceModifiedConcurrently.');
+        } catch (PriceModifiedConcurrently) {
+        }
+
+        $id = $price->id()->toString();
+        self::assertSame(['gross_amount' => 11000, 'version' => 2], $this->connection->fetchAssociative('SELECT gross_amount, version FROM pricing_product_price WHERE product_id = ?', [$id]));
+        self::assertSame([10000, 11000], $this->connection->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE product_id = ? ORDER BY changed_at, id', [$id]));
     }
 
     /**

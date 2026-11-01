@@ -38,7 +38,8 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
     /**
      * The price was read at version() − 1 when it has unsaved history (0 for a new one). The versioned UPDATE checks
      * that version and the primary key refuses a second first price, both inside the transaction that appends
-     * the history entries.
+     * the history entries. Any failure rolls the transaction back and closes the entity manager; the services
+     * resetter (kernel.reset) gives the next request or message a new one.
      */
     public function save(ProductPrice $price): void
     {

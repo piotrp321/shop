@@ -12,6 +12,10 @@ interface ProductPriceRepository
      * Writes the price and appends its unsaved history entries in one transaction. A price without unsaved entries
      * is unchanged and nothing is written. History is never changed or deleted.
      *
+     * After an exception nothing is stored, but the price is spent: its history entries were already released and
+     * its version counts the unsaved change. The persistence session may be unusable too (Doctrine closes the
+     * entity manager). A retry reads the price again in a new request or message, with a fresh session.
+     *
      * @throws PriceModifiedConcurrently when the stored version is not the one the price was read with, or a price
      *                                   created concurrently was stored first
      */
