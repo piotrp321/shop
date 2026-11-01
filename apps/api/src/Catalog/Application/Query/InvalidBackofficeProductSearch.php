@@ -20,6 +20,11 @@ final class InvalidBackofficeProductSearch extends \DomainException implements I
         ));
     }
 
+    public static function termWithNul(): self
+    {
+        return new self('The search term must not contain a NUL character.');
+    }
+
     public static function perPageOutOfRange(): self
     {
         return new self(\sprintf('The page size must be between 1 and %d.', SearchBackofficeProducts::MAX_PER_PAGE));

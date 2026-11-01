@@ -34,6 +34,10 @@ final readonly class SearchBackofficeProductsHandler
             if ($length < SearchBackofficeProducts::MIN_TERM_LENGTH || $length > SearchBackofficeProducts::MAX_TERM_LENGTH) {
                 throw InvalidBackofficeProductSearch::termLengthOutOfRange();
             }
+            // The database driver cuts a parameter at a NUL, which would silently search for a different term.
+            if (str_contains($query->term, "\0")) {
+                throw InvalidBackofficeProductSearch::termWithNul();
+            }
         }
         if ($query->perPage < 1 || $query->perPage > SearchBackofficeProducts::MAX_PER_PAGE) {
             throw InvalidBackofficeProductSearch::perPageOutOfRange();

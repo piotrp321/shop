@@ -17,6 +17,8 @@ final readonly class BackofficePricesQuery
 
     public function __construct(
         #[Assert\Length(min: 2, max: 100)]
+        // PostgreSQL cannot take a NUL in a parameter: the driver would cut the term there and search for something else.
+        #[Assert\Regex(pattern: '/\0/', message: 'The search term must not contain a NUL character.', match: false)]
         public ?string $q = null,
         #[Assert\NotBlank(allowNull: true)]
         #[Assert\Uuid]

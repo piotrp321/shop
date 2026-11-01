@@ -314,6 +314,7 @@ final class SearchBackofficeProductsTest extends KernelTestCase
         yield 'one character' => ['a', null, 25];
         yield 'empty term' => ['', null, 25];
         yield 'term over 100 characters' => [str_repeat('a', 101), null, 25];
+        yield 'term with a NUL character' => ["a\0zzzz", null, 25];
         yield 'zero per page' => [null, null, 0];
         yield 'negative per page' => [null, null, -1];
         yield 'per page over 100' => [null, null, 101];

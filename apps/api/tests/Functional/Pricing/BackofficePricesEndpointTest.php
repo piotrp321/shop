@@ -189,6 +189,7 @@ final class BackofficePricesEndpointTest extends WebTestCase
         yield 'one character' => ['q=a'];
         yield 'empty term' => ['q='];
         yield 'term over 100 characters' => ['q='.str_repeat('a', 101)];
+        yield 'term with a NUL character' => ['q=a%00zzzz'];
         yield 'zero per page' => ['perPage=0'];
         yield 'per page over 100' => ['perPage=101'];
         yield 'negative per page' => ['perPage=-1'];

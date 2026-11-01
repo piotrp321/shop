@@ -318,6 +318,7 @@
                 "properties": {
                     "q": {
                         "type": "string",
+                        "pattern": "((?!\\0).)*",
                         "nullable": true,
                         "default": null,
                         "maxLength": 100,
