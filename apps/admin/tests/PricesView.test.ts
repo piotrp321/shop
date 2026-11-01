@@ -836,7 +836,7 @@ describe("PricesView: price history", () => {
     await openHistory();
 
     expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(0);
-    expect(wrapper.get("[data-testid=history-empty]").text()).toBe("Ta cena nie była jeszcze zmieniana.");
+    expect(wrapper.get("[data-testid=history-empty]").text()).toBe("Produkt nie ma jeszcze ceny.");
   });
 
   it("shows the error of the API and loads again on retry", async () => {

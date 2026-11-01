@@ -396,7 +396,7 @@ async function saveChange(): Promise<void> {
           :pt="{ bodyRow: { 'data-testid': 'history-row' } }"
         >
           <template #empty>
-            <span data-testid="history-empty">Ta cena nie była jeszcze zmieniana.</span>
+            <span data-testid="history-empty">Produkt nie ma jeszcze ceny.</span>
           </template>
           <Column header="Data zmiany">
             <template #body="{ data }">
