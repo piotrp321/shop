@@ -49,23 +49,17 @@ flowchart TB
     inbox <--> ao
     inbox <--> release
 
-    classDef done fill:#E1F5EE,stroke:#0F6E56,color:#085041
-    classDef partial fill:#FAEEDA,stroke:#854F0B,color:#633806
-    classDef missing fill:#FAECE7,stroke:#993C1D,color:#712B13
-    class brainstorm,delivery done
-    class ao partial
-    class intake,planner,backlog,integration,release,monitoring,inbox,budget,envs,metrics,learning missing
 ```
 
-Kolory: zielony – działa, żółty – częściowo, czerwony – do zbudowania. Stan poszczególnych elementów
-i kolejność prac są w [planie](../features/agentic-software-house/plan.md).
+Stan poszczególnych elementów, kolejność prac i kontrakt planu z backlogiem są
+w [planie](../features/agentic-software-house/plan.md).
 
 | Komponent | Jedna odpowiedzialność |
 |---|---|
 | Intake | Zbieranie pomysłów, bugów i incydentów w jednym miejscu |
 | `/brainstorm` | Projektowanie funkcjonalności → `spec.md` |
 | `/planner` | Dekompozycja → `plan.md` i manifest zadań |
-| Backlog | Trwałe zarządzanie zadaniami i zależnościami |
+| Backlog | Trwałe zarządzanie zadaniami i zależnościami: definicje w manifeście `plan.md`, stan w AO |
 | AO | Orkiestracja, stan i wykonywanie |
 | `/delivery` | Implementacja pojedynczego zadania do zweryfikowanego PR |
 | `/integration` | Integracja i weryfikacja całej funkcjonalności |

@@ -7,14 +7,14 @@ repozytorium.
 
 ## Status
 
-W toku: `/planner` (etap 2) w osobnej sesji. Następny krok: **decyzje z etapu 0**, w pierwszej kolejności
-kontrakt manifestu i miejsce backlogu, bo od nich zależy wynik `/planner`. Blokery: brak.
+W toku: `/planner` i `ao submit-plan` (etap 2) w osobnej sesji. Następny krok: **pozostałe decyzje z etapu 0**
+(kanał skrzynki decyzji, host, polityka autonomii). Blokery: brak.
 
 | Etap | Zakres | Repozytorium | Status |
 |---|---|---|---|
-| 0 | Decyzje wstępne | – | do zrobienia |
+| 0 | Decyzje wstępne | – | kontrakt i backlog ustalone |
 | 1 | Skrzynka decyzji i polityka autonomii | shop, AO | do zrobienia |
-| 2 | Backlog i `/planner` | shop, AO | `/planner` w toku |
+| 2 | Backlog i `/planner` | shop, AO | w toku |
 | 3 | AO jako demon 24/7 | AO | do zrobienia |
 | 4 | `/integration` | shop | do zrobienia |
 | 5 | Pula środowisk i budżet | AO, shop (`infra`) | do zrobienia |
@@ -63,10 +63,9 @@ odpowiedź rano wznawia zablokowane zadanie.
 
 Cel: zaakceptowana specyfikacja zamienia się w zadania, które AO bierze bez udziału człowieka.
 
-- Skill `/planner`: ze `spec.md` tworzy `plan.md` i manifest zadań (ID, zakres, kryteria akceptacji, zależności,
-  ryzyko) w formacie wejścia `/delivery`.
-- Manifest po akceptacji trafia do backlogu jako zadania z zależnościami.
-- AO pobiera z backlogu zadania gotowe (wszystkie zależności zmergowane) i zapisuje w nim status.
+- Skill `/planner`: ze `spec.md` tworzy `plan.md` z manifestem zadań.
+- `ao submit-plan` importuje plan z `origin/main` i zgłasza pierwszą falę.
+- AO sam zgłasza kolejne fale, gdy zależności są zmergowane (punkt 4 kontraktu).
 
 Koniec etapu: funkcja od zaakceptowanej specyfikacji do PR-ów wszystkich zadań bez ręcznego `submit`.
 
@@ -125,6 +124,30 @@ Koniec etapu: błąd ze stagingu kończy się PR z poprawką bez ręcznego zakł
 - Retro po funkcji: propozycje zmian w skillach i `CLAUDE.md`, wdrażane po evalach i akceptacji użytkownika.
 
 Koniec etapu: pierwsza zmiana skilla zaproponowana przez retro i potwierdzona benchmarkiem.
+
+## Kontrakt planu i backlogu
+
+Styk `/planner` → backlog → AO → `/delivery`. Format manifestu i jego walidator są w
+`.claude/skills/planner/` (`schema_version: 1`), import pierwszej fali to `ao submit-plan`.
+
+1. **Jedno źródło na rodzaj danych.** Definicja zadania (ID, tytuł, zakres, kryteria akceptacji, ryzyko,
+   zależności, specyfikacja) jest tylko w manifeście. Stan zadania (kolejka, próby, PR, blokery) jest tylko w AO.
+   AO nie zapisuje niczego w repozytorium, `/planner` nie zgłasza zadań do AO.
+2. **Plan wiążący = plan na `origin/main`.** Zaakceptowany plan i jego specyfikacja trafiają do `main` przed
+   zgłoszeniem zadań, więc każda gałąź zadania zawiera specyfikację. AO zapamiętuje SHA commita, z którego
+   zaimportował plan.
+3. **Zmiana planu po imporcie.** Nowy import tego samego epica z innego commita: zadania dodane są przyjmowane,
+   zadania niezgłoszone mogą się zmienić, a zmiana albo usunięcie zadania już zgłoszonego kończy się odmową
+   i decyzją w skrzynce. Plan zmieniony po akceptacji wymaga ponownej akceptacji (zasada `/planner`).
+4. **Gotowość zadania zależnego.** Zależność jest spełniona, gdy PR z gałęzi `task/<ID>` jest zmergowany do `main`.
+   AO sprawdza to w GitHubie (`gh pr view`), nie historią Gita, bo squash merge nie zostawia gałęzi w historii.
+   Bazą zadania zależnego jest aktualny `origin/main`. Gdy zależności są spełnione, AO zgłasza zadanie samo.
+5. **Wejście `/delivery`.** AO przekazuje ID zadania i ścieżkę `plan.md`. `/delivery` czyta swoje zadanie
+   z manifestu na commicie bazowym, a specyfikację z pola `spec`. `risk` z manifestu to podpowiedź, wiąże
+   klasyfikacja `/delivery`.
+6. **Wersjonowanie.** Każda zmiana pól manifestu podnosi `schema_version` i wymaga zmiany walidatora `/planner`
+   i AO w tej samej fali prac. AO odrzuca nieznaną wersję. AO sprawdza tylko pola, których używa, pełny format
+   sprawdza walidator w `shop`.
 
 ## Punkty zatrzymania
 
