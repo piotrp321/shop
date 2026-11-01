@@ -204,14 +204,14 @@ Reguły Deptrac:
 
 **`Product`** (agregat)
 - `ProductId` (UUID), `ProductName` (niepusta, do 200 znaków), `Slug` (`^[a-z0-9]+(-[a-z0-9]+)*$`, do 200 znaków,
-  unikalny), `ShortDescription` (do 500 znaków, może być pusty), `ProductCategories`, `TaxCategory`,
+  unikalny), `ShortDescription` (do 500 znaków, może być pusty), `ProductCategories`, `TaxClassCode`,
   `ProductImages`.
 - `ProductCategories`: dokładnie jedna kategoria główna i najwyżej 10 dodatkowych, wszystkie jako
   `CategoryId`. Kategoria nie powtarza się na liście, a główna nie jest jednocześnie dodatkową. `all()` zwraca
   główną, a po niej dodatkowe. Kolejność dodatkowych nie ma znaczenia biznesowego.
 - `Product` i `Category` to niezależne agregaty. Odwołują się do siebie wyłącznie przez identyfikatory.
-- `TaxCategory`: `standard`, `food`, `food_supplement`, `printed_publication`. Produkt ma kategorię podatkową,
-  a nie stawkę.
+- `TaxClassCode`: `standard`, `printed_book`, `printed_map`, `freeze_dried_meal`, `energy_bar`, `energy_gel`,
+  `protein_powder`, `electrolyte_tablet`. Produkt ma klasę podatkową (jednorodną grupę towarów), a nie stawkę.
 - `ProductImages`: lista `ProductImage` (`ImageKey` – klucz oryginału w magazynie, `alt` niepusty, pozycja).
   `ImageKey` ma postać `originals/<sha256>.<rozszerzenie>`, gdzie rozszerzenie pochodzi z enumu
   `OriginalImageType` (`jpg`, `png`, `webp`, `avif`, `heic`).
@@ -229,7 +229,7 @@ Persystencja:
 
 - `catalog_category`: `id`, `parent_id` (FK), `name`, `path` (tekst z indeksem `text_pattern_ops`).
 - `catalog_product`: `id`, `slug` (ograniczenie unikalności), `name`, `short_description`, `primary_category_id`
-  (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB), `version` (BIGINT NOT NULL).
+  (NOT NULL, FK do `catalog_category`, indeks), `tax_class`, `images` (JSONB), `version` (BIGINT NOT NULL).
 - `catalog_product_category`: dodatkowe kategorie produktu. `product_id` (FK do `catalog_product`, `ON DELETE
   CASCADE`) i `category_id` (FK do `catalog_category`), klucz główny (`product_id`, `category_id`) i indeks na
   `category_id` do wyszukiwania produktów po kategorii. Kategoria główna nie trafia do tej tabeli (niezmiennik
@@ -798,10 +798,11 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 - Branża: sport i outdoor. Drzewo kategorii na 3–4 poziomy z kategoriami najwyższego poziomu: bieganie, rower, turystyka,
   sporty zimowe, fitness, sporty wodne, sporty drużynowe.
 - `apps/api/fixtures/catalog.yaml` definiuje drzewo kategorii oraz szablony produktów dla kategorii: fikcyjne marki
-  własne sklepu, modele, kolory, szablony opisów, kategorię podatkową, pulę zdjęć i opcjonalne kategorie
+  własne sklepu, modele, kolory, szablony opisów, klasę podatkową (`taxClass`), pulę zdjęć i opcjonalne kategorie
   dodatkowe (część szablonów ma kategorię dodatkową w innej gałęzi drzewa).
-- Część asortymentu ma obniżoną kategorię podatkową: żywność sportowa (`food`), suplementy (`food_supplement`),
-  przewodniki i mapy (`printed_publication`).
+- Część asortymentu ma własną klasę podatkową: przewodniki (`printed_book`), mapy (`printed_map`), dania
+  liofilizowane (`freeze_dried_meal`), batony (`energy_bar`), żele (`energy_gel`), odżywki białkowe
+  (`protein_powder`) i elektrolity (`electrolyte_tablet`). Reszta to `standard`.
 - `catalog:seed-demo` rozwija szablony deterministycznie (iloczyn kombinacji w ustalonej kolejności, bez losowości)
   do 300–500 produktów. Zdjęcie produktu jest wybierane z puli kategorii według pozycji produktu w kolejności
   rozwijania. Reguła zapisana w pliku pozostawia kilka produktów bez zdjęć.
@@ -821,7 +822,7 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 
 | Aplikacja | Testy jednostkowe (bez usług) | Testy integracyjne i funkcjonalne (na stosie) |
 |---|---|---|
-| api | domena: ścieżka kategorii, niezmienniki produktu, `TaxCategory`, `Slug`; handlery z adapterami in-memory; budowa dokumentu wyszukiwarki; przebieg przebudowy indeksu na fake'ach portów; routing Messengera na transportach `in-memory://` | repozytoria Doctrine (z wersją produktu); odczyt paczkami; adapter ES (filtr po przodkach, sortowanie, paginacja, wersje, bulk, alias); zapis do Garage; podpis imgproxy na żywym imgproxy; droga seed → outbox → RabbitMQ → ES; sondy usług; testy funkcjonalne endpointów |
+| api | domena: ścieżka kategorii, niezmienniki produktu, `TaxClassCode`, `Slug`; handlery z adapterami in-memory; budowa dokumentu wyszukiwarki; przebieg przebudowy indeksu na fake'ach portów; routing Messengera na transportach `in-memory://` | repozytoria Doctrine (z wersją produktu); odczyt paczkami; adapter ES (filtr po przodkach, sortowanie, paginacja, wersje, bulk, alias); zapis do Garage; podpis imgproxy na żywym imgproxy; droga seed → outbox → RabbitMQ → ES; sondy usług; testy funkcjonalne endpointów |
 | store | reguły ESLint (kolory, klasy spoza tokenów, `fetch`); walidacja `returnTo`; budowa `srcset` z wariantów; `CategoryTree`; `ProductGrid` | blokada odświeżania na prawdziwym Redisie |
 | admin | dashboard; `useIdleLogout`; 401 → `signinRedirect`; guard routera | — |
 
