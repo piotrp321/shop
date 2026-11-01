@@ -188,6 +188,9 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
+      # Adapters of Pricing's ports ask Catalog through its queries on query.bus. The only dependency between the
+      # two modules, one way: Catalog depends on Pricing in no layer.
+      - Catalog_Application
     Pricing_UI:
       - Native
       - Pricing_Application
