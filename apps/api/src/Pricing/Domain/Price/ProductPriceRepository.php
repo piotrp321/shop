@@ -9,6 +9,16 @@ interface ProductPriceRepository
     public function find(ProductId $id): ?ProductPrice;
 
     /**
+     * The stored prices of the products, in one read straight from the store (no cache, no session state), in no
+     * particular order. A product without a price is absent from the result.
+     *
+     * @param list<ProductId> $ids
+     *
+     * @return list<ProductPrice>
+     */
+    public function findMany(array $ids): array;
+
+    /**
      * Writes the price and appends its unsaved history entries in one transaction. A price without unsaved entries
      * is unchanged and nothing is written. History is never changed or deleted.
      *

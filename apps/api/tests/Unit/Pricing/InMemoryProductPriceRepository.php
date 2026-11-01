@@ -29,6 +29,19 @@ final class InMemoryProductPriceRepository implements ProductPriceRepository
         return null === $stored ? null : $this->copy($stored);
     }
 
+    public function findMany(array $ids): array
+    {
+        $found = [];
+        foreach ($ids as $id) {
+            $stored = $this->prices[$id->toString()] ?? null;
+            if (null !== $stored) {
+                $found[] = $this->copy($stored);
+            }
+        }
+
+        return $found;
+    }
+
     public function save(ProductPrice $price): void
     {
         $entries = $price->releaseHistory();
