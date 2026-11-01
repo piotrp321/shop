@@ -191,6 +191,9 @@ deptrac:
       # Adapters of Pricing's ports ask Catalog through its queries on query.bus. The only dependency between the
       # two modules, one way: Catalog depends on Pricing in no layer.
       - Catalog_Application
+      # PriceVoter decides on the staff roles of AuthenticatedStaffMember: Pricing uses only the security contract
+      # of Backoffice (its Application layer), never StaffUser of Backoffice_Infrastructure.
+      - Backoffice_Application
     Pricing_UI:
       - Native
       - Pricing_Application
@@ -198,6 +201,9 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
+      # The controller of a price change takes the actor from AuthenticatedStaffMember, the security contract of
+      # Backoffice. Pricing_Domain and Pricing_Application stay free of Backoffice.
+      - Backoffice_Application
     Shared_Domain:
       - Native
     Shared_Application:

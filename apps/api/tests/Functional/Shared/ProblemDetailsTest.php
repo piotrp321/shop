@@ -67,6 +67,41 @@ final class ProblemDetailsTest extends WebTestCase
         self::assertSame([['propertyPath' => 'name', 'title' => 'Name is required.']], $problem['violations']);
     }
 
+    public function testValidationFailureOfAnHttpExceptionKeepsItsClientErrorStatus(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/_test/invalid-payload');
+
+        self::assertResponseStatusCodeSame(422);
+        $problem = $this->problem($client->getResponse());
+        self::assertSame(422, $problem['status']);
+        self::assertSame('Unprocessable Content', $problem['title']);
+        self::assertSame([['propertyPath' => 'name', 'title' => 'Name is required.']], $problem['violations']);
+        self::assertStringNotContainsString('internal secret', (string) $client->getResponse()->getContent());
+    }
+
+    public function testValidationFailureInsideAServerErrorIsStillA400(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/_test/invalid-in-server-error');
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame(400, $this->problem($client->getResponse())['status']);
+        self::assertStringNotContainsString('internal secret', (string) $client->getResponse()->getContent());
+    }
+
+    public function testValidationFailureInsideANotFoundIsA400WithViolations(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/_test/invalid-in-not-found');
+
+        self::assertResponseStatusCodeSame(400);
+        $problem = $this->problem($client->getResponse());
+        self::assertSame(400, $problem['status']);
+        self::assertSame([['propertyPath' => 'name', 'title' => 'Name is required.']], $problem['violations']);
+        self::assertStringNotContainsString('internal secret', (string) $client->getResponse()->getContent());
+    }
+
     public function testUnknownRouteDetailDoesNotLeakPathOrHost(): void
     {
         $client = static::createClient();

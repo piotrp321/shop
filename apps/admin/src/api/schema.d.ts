@@ -84,6 +84,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/products/{productId}/price": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the price of a product
+         * @description Sets the gross price; the API computes the net and the VAT at the current rate of the price's tax class (the class of the product for a first price). Administrators only. Send the `version` of the price you saw (null for a product without a price): a price changed since then is a 409 and nothing is overwritten. The same gross at the same rate changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.
+         */
+        put: operations["changePrice"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -98,7 +118,7 @@ export interface components {
             status: number;
             /** @description Present only for 4xx errors, never for 5xx. */
             detail?: string;
-            /** @description Present only for 400 caused by invalid input. */
+            /** @description Present only for 400 (invalid query parameters) or 422 (invalid request body) caused by invalid input. */
             violations?: {
                 /** @example category */
                 propertyPath: string;
@@ -115,6 +135,19 @@ export interface components {
             after: string | null;
             /** @default 25 */
             perPage: number;
+        };
+        /** @description A new gross price, based on the version of the price the staff member saw. */
+        ChangePriceRequest: {
+            /**
+             * @description Gross price (VAT included) in grosze, from 1 (0,01 zł) to 99 999 999 (999 999,99 zł).
+             * @example 5990
+             */
+            gross: number;
+            /**
+             * @description The `version` of the price the change is based on; null when the product has no price yet.
+             * @example 1
+             */
+            version: number | null;
         };
         /** @description Catalogue numbers, from the database. */
         DashboardCatalogResponse: {
@@ -462,6 +495,105 @@ export interface operations {
             };
             /** @description The `category` filter names a category that does not exist (problem details). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    changePrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Product id (UUID). */
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePriceRequest"];
+            };
+        };
+        responses: {
+            /** @description The price as saved, or as it was when nothing changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListedPriceResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is not an administrator (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The price was changed since the given version, or created since the null version (problem details). Reload it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The gross is out of range or a key is missing or of a wrong type (problem details with `violations`). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

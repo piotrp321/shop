@@ -4,6 +4,15 @@ import type { components } from "@/api/schema";
 
 export type PriceListItem = components["schemas"]["PriceListItemResponse"];
 
+/** How a price change ended; the messages are for the staff member. */
+export type PriceChange =
+  | { status: "saved" }
+  | { status: "invalid"; message: string }
+  | { status: "conflict"; message: string }
+  | { status: "failed"; message: string };
+
+export const CONFLICT_MESSAGE = "Cena została w międzyczasie zmieniona – odśwież";
+
 /** The API searches names of 2 to 100 characters (code points, as it counts them), not UTF-16 units. */
 export const MIN_SEARCH_LENGTH = 2;
 export const MAX_SEARCH_LENGTH = 100;
@@ -30,11 +39,28 @@ function failureMessage(status: number): string {
   }
 }
 
+function changeFailure(status: number): PriceChange {
+  switch (status) {
+    case 422:
+      return { status: "invalid", message: "API odrzuciło kwotę. Cena brutto musi wynosić od 0,01 zł do 999 999,99 zł." };
+    case 403:
+      return { status: "failed", message: "Nie masz uprawnień do zmiany cen." };
+    case 404:
+      return { status: "failed", message: "Ten produkt już nie istnieje." };
+    default:
+      return { status: "failed", message: `Nie udało się zapisać ceny (HTTP ${status}).` };
+  }
+}
+
 /**
  * The price list with a search by name (from two characters, after a pause in typing), a category filter and paging
  * with the cursors of the API. The panel keeps the stack of the cursors it has visited: `cursors[i]` is the `after`
  * of page i (null for the first), so "previous" is the cursor below the current one. Changing the search or the
  * category starts again from the first page. A failed request keeps the page that is shown and can be retried.
+ *
+ * `changePrice` sends a new gross (in grosze) with the version the row shows. The saved price from the API replaces
+ * the one in the row; a conflict (the price changed meanwhile) reloads the page shown, so the row has the current
+ * price and version. The API decides on the amount and the permission, the panel only shows its answer.
  */
 export function usePriceList() {
   const search = ref("");
@@ -146,6 +172,27 @@ export function usePriceList() {
     return load(attempted);
   }
 
+  async function changePrice(productId: string, gross: number, version: number | null): Promise<PriceChange> {
+    try {
+      const result = await getApiClient().PUT("/api/v1/admin/products/{productId}/price", {
+        params: { path: { productId } },
+        body: { gross, version },
+      });
+      if (result.data) {
+        const saved = result.data;
+        items.value = items.value.map((item) => (item.productId === productId ? { ...item, price: saved } : item));
+        return { status: "saved" };
+      }
+      if (result.response.status === 409) {
+        await load(cursors.value);
+        return { status: "conflict", message: CONFLICT_MESSAGE };
+      }
+      return changeFailure(result.response.status);
+    } catch {
+      return { status: "failed", message: "Nie udało się zapisać ceny. Sprawdź połączenie z API." };
+    }
+  }
+
   onMounted(() => {
     void load([null]);
   });
@@ -155,5 +202,20 @@ export function usePriceList() {
     latest++;
   });
 
-  return { search, searchTooShort, items, loading, loaded, error, hasPrevious, hasNext, pageNumber, selectCategory, goNext, goPrevious, retry };
+  return {
+    search,
+    searchTooShort,
+    items,
+    loading,
+    loaded,
+    error,
+    hasPrevious,
+    hasNext,
+    pageNumber,
+    selectCategory,
+    goNext,
+    goPrevious,
+    retry,
+    changePrice,
+  };
 }

@@ -25,8 +25,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/dashboard/` – komponenty i ładowanie danych dashboardu (`useDashboard`).
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`).
 - `src/prices/` – lista cen (`/prices`): `usePriceList` (wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii,
-  stronicowanie po kursorach ze stosem kursorów w panelu), `useCategoryTree` (drzewo dla filtra), `format.ts`
-  (kwoty z groszy i stawki z punktów bazowych przez `Intl`, bez liczenia czegokolwiek).
+  stronicowanie po kursorach ze stosem kursorów w panelu, zmiana ceny: zapisana cena z API zastępuje wiersz, 409
+  odświeża bieżącą stronę), `useCategoryTree` (drzewo dla filtra), `format.ts` (kwoty z groszy i stawki z punktów
+  bazowych przez `Intl`, bez liczenia czegokolwiek), `parseGross.ts` (tekst kwoty w złotych na grosze na cyfrach
+  tekstu, bez `float`; zakres kwoty sprawdza API). Dialog „Zmień cenę” w `PricesView` widzi tylko rola `admin`
+  (role z `/me`).
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 
 ## Dane i API

@@ -12,7 +12,9 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Routing\Attribute\Route;
@@ -42,6 +44,33 @@ final class TestErrorController
     public function invalid(): Response
     {
         throw new ValidationFailedException('input', new ConstraintViolationList([new ConstraintViolation('Name is required.', null, [], 'input', 'name', null)]));
+    }
+
+    /** What #[MapRequestPayload(validationFailedStatusCode: 422)] throws: the messages of the violations as its own. */
+    #[Route('/_test/invalid-payload', methods: ['GET'])]
+    public function invalidPayload(): Response
+    {
+        $violations = new ConstraintViolationList([new ConstraintViolation('Name is required.', null, [], 'input', 'name', null)]);
+
+        throw new UnprocessableEntityHttpException('Name is required. internal secret', new ValidationFailedException('input', $violations));
+    }
+
+    /** The same failure wrapped in a server error: its status is not a validation status. */
+    #[Route('/_test/invalid-in-server-error', methods: ['GET'])]
+    public function invalidInServerError(): Response
+    {
+        $violations = new ConstraintViolationList([new ConstraintViolation('Name is required.', null, [], 'input', 'name', null)]);
+
+        throw new ServiceUnavailableHttpException(30, 'internal secret', new ValidationFailedException('input', $violations));
+    }
+
+    /** What #[MapQueryString] throws by default (validationFailedStatusCode 404): a query failure is not a 404. */
+    #[Route('/_test/invalid-in-not-found', methods: ['GET'])]
+    public function invalidInNotFound(): Response
+    {
+        $violations = new ConstraintViolationList([new ConstraintViolation('Name is required.', null, [], 'input', 'name', null)]);
+
+        throw new NotFoundHttpException('internal secret', new ValidationFailedException('input', $violations));
     }
 
     #[Route('/_test/project-exception', methods: ['GET'])]

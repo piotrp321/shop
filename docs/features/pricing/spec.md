@@ -23,6 +23,10 @@ checkout, wiele krajów i walut, harmonogramy zmian stawek, edycja klasy podatko
 - Zależność jest jednokierunkowa: `Pricing_Infrastructure → Catalog_Application` (adaptery portów Pricing wołają
   zapytania Catalog przez `query.bus`, jak `Backoffice\Infrastructure\QueryBusCatalogStatistics`).
 - Catalog nie zależy od Pricing w żadnej warstwie. Deptrac nie ma żadnej reguły `Catalog_* → Pricing_*`.
+- Pricing zależy od Backoffice wyłącznie przez kontrakt bezpieczeństwa `AuthenticatedStaffMember` z `Backoffice_Application`:
+  `Pricing_Infrastructure` (`PriceVoter`, role pracownika) i `Pricing_UI` (aktor zmiany ceny w `ChangePriceController`).
+  `Pricing_Domain` i `Pricing_Application` nie zależą od Backoffice, a żadna warstwa Pricing nie zależy od
+  `Backoffice_Infrastructure`, `Backoffice_Domain` ani `Backoffice_UI`.
 - Domena Pricing ma własne value objecty (`ProductId`, `TaxClass` jako kod tekstowy) i nie importuje kodu Catalog.
   Adapter mapuje kod klasy z Catalog na `TaxClass` Pricing.
 - Odczyt cen (`GetCurrentPrices`) czyta wyłącznie tabele Pricing, bez odczytu z Catalog.
@@ -183,6 +187,10 @@ z tokenem realmu `shop`: 401):
 - Uprawnienie do zmiany ceny sprawdza `PriceVoter` w `Pricing_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `marketing`, `support` i `warehouse` dostają 403.
 - Aktor (`sub` i nazwa) pochodzi z tokena, nigdy z treści żądania.
+- `PUT` ceny: oba klucze są wymagane, a typy ścisłe (liczba w napisie, ułamek, także `100.0`, to 422, bez
+  rzutowania). Uprawnienie jest sprawdzane przed treścią i produktem. Identyfikator, który nie jest UUID: 404;
+  treść, która nie jest poprawnym JSON-em: 400; treść inna niż JSON: 415. Odpowiedź 200 to cena zwrócona przez
+  `SetProductPrice` po zapisie (z wersją zapisu), w kształcie `price` z listy.
 - Kwoty zawsze w groszach (`integer`), stawki w punktach bazowych.
 
 ## Sklep (`apps/store`)
@@ -234,9 +242,11 @@ z tokenem realmu `shop`: 401):
 
 ## Testy
 
-- Architektura: Deptrac z regułą `Pricing_Infrastructure → Catalog_Application` i próbami obejścia (pliki
-  tymczasowe muszą dać błąd): `Catalog_* → Pricing_*`, `Pricing_Domain → Catalog_*`,
-  `Pricing_Application → Catalog_Domain`. Test kontraktu: każdy przypadek `TaxClassCode` ma stawkę
+- Architektura: Deptrac z regułami `Pricing_Infrastructure → Catalog_Application`,
+  `Pricing_Infrastructure → Backoffice_Application` i `Pricing_UI → Backoffice_Application` oraz próbami obejścia
+  (pliki tymczasowe muszą dać błąd): `Catalog_* → Pricing_*`, `Pricing_Domain → Catalog_*`,
+  `Pricing_Application → Catalog_Domain`, `Pricing_Domain → Backoffice_Application`,
+  `Pricing_Application → Backoffice_Application`, `Pricing_Infrastructure → Backoffice_Infrastructure`. Test kontraktu: każdy przypadek `TaxClassCode` ma stawkę
   w `PolishVatRates` i każda stawka ma przypadek.
 - Obliczenia (TDD): przypadki graniczne HALF_UP dla każdej stawki; test własności dla każdego brutto
   1–100 000 groszy i dla maksimum (netto + VAT = brutto, VAT ≥ 0, wynik równy obliczeniu referencyjnemu); stawka 0 bp;
@@ -267,4 +277,4 @@ z tokenem realmu `shop`: 401):
 - `docs/vision.md`: „kategoria podatkowa (`taxCategory`)” → „klasa podatkowa (`taxClass`)” w regułach domenowych
   i na liście decyzji; stawki dla PL w kodzie Pricing.
 - `apps/api/CLAUDE.md`: `pricing:seed-demo` w `make seed` i opis `pricing:reconcile-tax`.
-- `apps/api/deptrac.yaml`: warstwy Pricing i komentarz do reguły Pricing → Catalog.
+- `apps/api/deptrac.yaml`: warstwy Pricing oraz komentarze do reguł Pricing → Catalog i Pricing → Backoffice_Application.
