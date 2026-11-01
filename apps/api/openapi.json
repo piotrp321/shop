@@ -452,7 +452,7 @@
                         "type": "string"
                     },
                     "violations": {
-                        "description": "Present only for 400 caused by invalid input.",
+                        "description": "Present only for 400 (invalid query parameters) or 422 (invalid request body) caused by invalid input.",
                         "type": "array",
                         "items": {
                             "required": [

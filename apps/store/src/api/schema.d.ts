@@ -172,7 +172,7 @@ export interface components {
             status: number;
             /** @description Present only for 4xx errors, never for 5xx. */
             detail?: string;
-            /** @description Present only for 400 caused by invalid input. */
+            /** @description Present only for 400 (invalid query parameters) or 422 (invalid request body) caused by invalid input. */
             violations?: {
                 /** @example category */
                 propertyPath: string;
