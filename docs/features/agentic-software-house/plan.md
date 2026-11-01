@@ -132,10 +132,12 @@ Styk `/planner` → backlog → AO → `/delivery`. Format manifestu i jego wali
    AO nie zapisuje niczego w repozytorium, `/planner` nie zgłasza zadań do AO.
 2. **Plan wiążący = plan na `origin/main`.** Zaakceptowany plan i jego specyfikacja trafiają do `main` przed
    zgłoszeniem zadań, więc każda gałąź zadania zawiera specyfikację. AO zapamiętuje SHA commita, z którego
-   zaimportował plan.
-3. **Zmiana planu po imporcie.** Nowy import tego samego epica z innego commita: zadania dodane są przyjmowane,
-   zadania niezgłoszone mogą się zmienić, a zmiana albo usunięcie zadania już zgłoszonego kończy się odmową
-   i decyzją w skrzynce. Plan zmieniony po akceptacji wymaga ponownej akceptacji (zasada `/planner`).
+   zaimportował plan. Plan z innej gałęzi na `origin` AO przyjmuje tylko na jawne wskazanie (testy
+   akceptacyjne bez merge'a do `main`).
+3. **Zmiana planu po imporcie.** Dziś import epica z innego commita, w którym zadanie już zgłoszone ma inną bazę,
+   kończy się odmową całego importu. Docelowo, razem z punktem 4: zadania dodane są przyjmowane, zadania
+   niezgłoszone mogą się zmienić, a zmiana albo usunięcie zadania już zgłoszonego kończy się odmową i decyzją
+   w skrzynce. Plan zmieniony po akceptacji wymaga ponownej akceptacji (zasada `/planner`).
 4. **Gotowość zadania zależnego.** Zależność jest spełniona, gdy PR z gałęzi `task/<ID>` jest zmergowany do `main`.
    AO sprawdza to w GitHubie (`gh pr view`), nie historią Gita, bo squash merge nie zostawia gałęzi w historii.
    Bazą zadania zależnego jest aktualny `origin/main`. Gdy zależności są spełnione, AO zgłasza zadanie samo.
