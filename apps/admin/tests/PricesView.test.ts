@@ -201,6 +201,37 @@ describe("PricesView", () => {
     expect(wrapper.get("[data-testid=search-hint]").text()).toContain("2 znaki");
   });
 
+  it("counts characters, not UTF-16 units: a single emoji is too short to search", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+    const calls = priceCalls().length;
+
+    await wrapper.get("[data-testid=search]").setValue("😀");
+    await vi.advanceTimersByTimeAsync(1000);
+    await settle();
+
+    expect(priceCalls()).toHaveLength(calls);
+    expect(wrapper.get("[data-testid=search-hint]").text()).toContain("2 znaki");
+  });
+
+  it("searches for two emoji, which are two characters", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+
+    await wrapper.get("[data-testid=search]").setValue("😀😀");
+    await vi.advanceTimersByTimeAsync(400);
+    await settle();
+
+    expect(priceCalls().at(-1)).toEqual({ q: "😀😀" });
+  });
+
+  it("limits the search field to the 100 characters the API accepts", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+
+    expect(wrapper.get("[data-testid=search]").attributes("maxlength")).toBe("100");
+  });
+
   it("searches after the typing pauses, once, with the trimmed term", async () => {
     serve({ pages: { "": { items: [item("A")], next: null } } });
     wrapper = await mountView();
@@ -300,6 +331,53 @@ describe("PricesView", () => {
 
     expect(wrapper.find("[data-testid=prices-error]").exists()).toBe(false);
     expect(wrapper.findAll("[data-testid=name]").map((cell) => cell.text())).toEqual(["B"]);
+  });
+
+  it("never pairs a new category with a cursor of the old list after a failed filter change", async () => {
+    serve({
+      pages: {
+        "": { items: [item("A")], next: "c1" },
+        c1: { items: [item("B")], next: "c2" },
+      },
+    });
+    wrapper = await mountView();
+    await wrapper.get("[data-testid=next-page]").trigger("click");
+    await settle();
+    expect(priceCalls().at(-1)).toEqual({ after: "c1" });
+
+    serve({ pages: {}, status: 500 });
+    wrapper.getComponent(TreeSelect).vm.$emit("update:modelValue", { "c-food": true });
+    await settle();
+
+    expect(wrapper.get("[data-testid=prices-error]").exists()).toBe(true);
+    expect(wrapper.get("[data-testid=next-page]").attributes("disabled")).toBeDefined();
+    expect(wrapper.get("[data-testid=previous-page]").attributes("disabled")).toBeDefined();
+    await wrapper.get("[data-testid=next-page]").trigger("click");
+    await wrapper.get("[data-testid=previous-page]").trigger("click");
+    await settle();
+    expect(priceCalls().filter((query) => query.category !== undefined && query.after !== undefined)).toEqual([]);
+
+    serve({ pages: { "": { items: [item("F")], next: null } } });
+    await wrapper.get("[data-testid=retry]").trigger("click");
+    await settle();
+    expect(priceCalls().at(-1)).toEqual({ category: "c-food" });
+    expect(wrapper.findAll("[data-testid=name]").map((cell) => cell.text())).toEqual(["F"]);
+  });
+
+  it("never pairs a new search with a cursor of the old list after a failed search", async () => {
+    serve({ pages: { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } } });
+    wrapper = await mountView();
+    await wrapper.get("[data-testid=next-page]").trigger("click");
+    await settle();
+
+    serve({ pages: {}, status: 500 });
+    await wrapper.get("[data-testid=search]").setValue("zz");
+    await vi.advanceTimersByTimeAsync(400);
+    await settle();
+
+    expect(wrapper.get("[data-testid=next-page]").attributes("disabled")).toBeDefined();
+    expect(wrapper.get("[data-testid=previous-page]").attributes("disabled")).toBeDefined();
+    expect(priceCalls().at(-1)).toEqual({ q: "zz" });
   });
 
   it("shows an error when the request itself fails", async () => {

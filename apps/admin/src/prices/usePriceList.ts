@@ -4,14 +4,19 @@ import type { components } from "@/api/schema";
 
 export type PriceListItem = components["schemas"]["PriceListItemResponse"];
 
-/** The API searches names of at least this many characters. */
+/** The API searches names of 2 to 100 characters (code points, as it counts them), not UTF-16 units. */
 export const MIN_SEARCH_LENGTH = 2;
+export const MAX_SEARCH_LENGTH = 100;
 export const SEARCH_DEBOUNCE_MS = 300;
 
 interface PriceQuery {
   q?: string;
   category?: string;
   after?: string;
+}
+
+function characters(text: string): number {
+  return [...text].length;
 }
 
 function failureMessage(status: number): string {
@@ -48,7 +53,10 @@ export function usePriceList() {
   // Only the newest request may change the state; an older one that finishes late is ignored.
   let latest = 0;
 
-  const searchTooShort = computed(() => search.value.trim().length > 0 && search.value.trim().length < MIN_SEARCH_LENGTH);
+  const searchTooShort = computed(() => {
+    const length = characters(search.value.trim());
+    return length > 0 && length < MIN_SEARCH_LENGTH;
+  });
   const hasPrevious = computed(() => cursors.value.length > 1);
   const hasNext = computed(() => next.value !== null);
   const pageNumber = computed(() => cursors.value.length);
@@ -97,21 +105,31 @@ export function usePriceList() {
     clearTimeout(timer);
     timer = setTimeout(() => {
       const term = search.value.trim();
-      if (term.length > 0 && term.length < MIN_SEARCH_LENGTH) {
+      const length = characters(term);
+      if (length > 0 && length < MIN_SEARCH_LENGTH) {
         // Too short to ask: the list stays as it is and the hint says why.
         return;
       }
-      const effective = term.length >= MIN_SEARCH_LENGTH ? term : null;
+      const effective = length >= MIN_SEARCH_LENGTH ? term : null;
       if (effective !== appliedTerm) {
         appliedTerm = effective;
+        startFromFirstPage();
         void load([null]);
       }
     }, SEARCH_DEBOUNCE_MS);
   });
 
+  // The cursors and `next` belong to the list of the old filter. Dropping them now means that if the request for the
+  // new filter fails, the pager cannot pair the new filter with an old cursor: it stays off until a retry succeeds.
+  function startFromFirstPage(): void {
+    cursors.value = [null];
+    next.value = null;
+  }
+
   function selectCategory(id: string | null): void {
     if (id !== categoryId.value) {
       categoryId.value = id;
+      startFromFirstPage();
       void load([null]);
     }
   }

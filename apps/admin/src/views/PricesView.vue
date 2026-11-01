@@ -10,7 +10,7 @@ import TreeSelect from "primevue/treeselect";
 import { ref, watch } from "vue";
 import { formatMoney, formatRate } from "@/prices/format";
 import { useCategoryTree } from "@/prices/useCategoryTree";
-import { usePriceList } from "@/prices/usePriceList";
+import { MAX_SEARCH_LENGTH, usePriceList } from "@/prices/usePriceList";
 
 const { search, searchTooShort, items, loading, loaded, error, hasPrevious, hasNext, pageNumber, selectCategory, goNext, goPrevious, retry } =
   usePriceList();
@@ -31,6 +31,7 @@ watch(selection, (value) => selectCategory(value ? (Object.keys(value)[0] ?? nul
           v-model="search"
           data-testid="search"
           type="search"
+          :maxlength="MAX_SEARCH_LENGTH"
           placeholder="Szukaj po nazwie"
           aria-label="Szukaj po nazwie produktu"
         />
