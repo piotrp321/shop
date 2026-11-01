@@ -50,16 +50,27 @@ const fieldError = ref<string | null>(null);
 const conflict = ref<string | null>(null);
 const changeError = ref<string | null>(null);
 const saving = ref(false);
+// Counts the openings and closings of the dialog. A save answers only the dialog it was sent from: when the dialog
+// was closed or opened again meanwhile (even for the same product), the answer must not touch the new one.
+let dialogSession = 0;
 const dialogVisible = computed({
   get: () => editingId.value !== null,
   set: (visible: boolean) => {
     if (!visible) {
-      editingId.value = null;
+      closeChange();
     }
   },
 });
 
+function closeChange(): void {
+  dialogSession++;
+  editingId.value = null;
+  saving.value = false;
+}
+
 function openChange(item: PriceListItem): void {
+  dialogSession++;
+  saving.value = false;
   editingId.value = item.productId;
   editingName.value = item.name;
   grossText.value = "";
@@ -82,11 +93,16 @@ async function saveChange(): Promise<void> {
   conflict.value = null;
   changeError.value = null;
   saving.value = true;
+  const session = dialogSession;
   const result = await changePrice(item.productId, gross.grosze, item.price?.version ?? null);
+  if (session !== dialogSession) {
+    // The list has taken the outcome (a saved price, a reload after a conflict); this dialog is not the one that asked.
+    return;
+  }
   saving.value = false;
   switch (result.status) {
     case "saved":
-      editingId.value = null;
+      closeChange();
       break;
     case "invalid":
       fieldError.value = result.message;

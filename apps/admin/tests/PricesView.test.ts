@@ -622,4 +622,87 @@ describe("PricesView: changing a price", () => {
     expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(false);
     expect(mocks.put).not.toHaveBeenCalled();
   });
+  /** A PUT that answers only when the test says so. */
+  function deferredPut() {
+    let resolve!: (value: unknown) => void;
+    mocks.put.mockImplementationOnce(() => new Promise((done) => (resolve = done)));
+    return (status: number, data?: ListedPrice) =>
+      resolve(data ? { data, error: undefined, response: { status } } : { data: undefined, error: { status }, response: { status } });
+  }
+
+  async function closeDialog() {
+    await wrapper!.get("[data-testid=cancel-change]").trigger("click");
+    await settle();
+  }
+
+  it("does not let the answer of a closed dialog close or mark the dialog opened for another product", async () => {
+    serve({ pages: { "": { items: [item("A"), item("B")], next: null } } });
+    wrapper = await mountView();
+    const respond = deferredPut();
+
+    await openDialog(0);
+    await submit("59,90");
+    await closeDialog();
+    await openDialog(1);
+    respond(200, price({ gross: 5990, version: 2 }));
+    await settle();
+
+    const dialog = wrapper.get("[data-testid=change-dialog]");
+    expect(dialog.text()).toContain("B");
+    // The list still takes the saved price of A.
+    expect(wrapper.findAll("[data-testid=price-row]")[0]!.get("[data-testid=gross]").text()).toMatch(/^59,90\s*zł$/);
+  });
+
+  it("does not show the conflict or the error of a closed dialog in the dialog opened for another product", async () => {
+    serve({ pages: { "": { items: [item("A"), item("B")], next: null } } });
+    wrapper = await mountView();
+    const respond = deferredPut();
+
+    await openDialog(0);
+    await submit("59,90");
+    await closeDialog();
+    await openDialog(1);
+    respond(409);
+    await settle();
+
+    expect(wrapper.get("[data-testid=change-dialog]").text()).toContain("B");
+    expect(wrapper.find("[data-testid=change-conflict]").exists()).toBe(false);
+    expect(wrapper.find("[data-testid=change-error]").exists()).toBe(false);
+    expect(wrapper.find("[data-testid=gross-error]").exists()).toBe(false);
+  });
+
+  it("does not carry the saving state of a closed dialog into the next one", async () => {
+    serve({ pages: { "": { items: [item("A"), item("B")], next: null } } });
+    wrapper = await mountView();
+    const respond = deferredPut();
+
+    await openDialog(0);
+    await submit("59,90");
+    await closeDialog();
+    await openDialog(1);
+    answer(200, price({ gross: 6990, version: 2 }));
+    await submit("69,90");
+
+    expect(mocks.put).toHaveBeenCalledTimes(2);
+    expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { productId: "id-B" } }, body: { gross: 6990, version: 1 } });
+    expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(false);
+    respond(200, price({ gross: 5990, version: 2 }));
+    await settle();
+  });
+
+  it("does not reuse a late answer for the same product opened again", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+    const respond = deferredPut();
+
+    await openDialog(0);
+    await submit("59,90");
+    await closeDialog();
+    await openDialog(0);
+    respond(422);
+    await settle();
+
+    expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(true);
+    expect(wrapper.find("[data-testid=gross-error]").exists()).toBe(false);
+  });
 });
