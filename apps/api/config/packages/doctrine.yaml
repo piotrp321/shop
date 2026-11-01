@@ -16,6 +16,11 @@ doctrine:
                 is_bundle: false
                 dir: '%kernel.project_dir%/src/Catalog/Infrastructure/Persistence/Doctrine/Record'
                 prefix: 'App\Catalog\Infrastructure\Persistence\Doctrine\Record'
+            Pricing:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/Pricing/Infrastructure/Persistence/Doctrine/Record'
+                prefix: 'App\Pricing\Infrastructure\Persistence\Doctrine\Record'
 
 when@test: &test
     doctrine:
