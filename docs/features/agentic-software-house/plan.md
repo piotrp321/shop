@@ -30,12 +30,9 @@ Stan wyjściowy: `/brainstorm` i `/delivery` v2.1 działają, AO v0.1 prowadzi j
 
 Decyzje użytkownika, od których zależą kolejne etapy. Dla każdej rekomendacja:
 
-- **Kontrakt manifestu zadań.** Wyjście `/planner` i wejście backlogu oraz AO: pola zadania (ID, zakres,
-  kryteria akceptacji, zależności, ryzyko, specyfikacja), wersja schematu i walidacja po stronie AO, tak jak
-  przy wyniku `/delivery`. Rekomendacja: ustalić go przed ukończeniem `/planner`, jako osobny plik schematu.
-
-- **Gdzie żyje backlog.** Rekomendacja: GitHub Issues (sub-issues, powiązania „blocked by”, etykiety statusu),
-  bez własnej bazy zadań. AO trzyma w SQLite tylko stan prób.
+- **Kontrakt manifestu zadań (ustalony).** Sekcja „Kontrakt planu i backlogu”.
+- **Gdzie żyje backlog (ustalone).** Definicje zadań w manifeście `plan.md` w Gicie, stan zadań w bazie AO.
+  Bez GitHub Issues i bez własnej bazy zadań w `shop`.
 - **Kanał skrzynki decyzji.** Rekomendacja: issue z etykietą `decision` w GitHubie (odpowiedź komentarzem)
   i powiadomienie push na telefon.
 - **Host 24/7.** Rekomendacja na start: obecny Mac z wyłączonym usypianiem i launchd. Serwer dopiero, gdy limit
