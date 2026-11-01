@@ -85,6 +85,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
+- Wyszukiwanie produktów po nazwie w panelu (`SearchBackofficeProducts`) używa rozszerzenia PostgreSQL `pg_trgm`
+  (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)`.
+  Indeks GIN obsługuje frazy od 3 znaków; fraza 2-znakowa (minimum w API) nie ma trigramów, więc idzie skanem indeksu
+  `(name, id)` z filtrem `ILIKE`.
+  Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
 - Profilowanie: SPX (php-spx) jest tylko w obrazie deweloperskim (target `dev` w Dockerfile), nigdy w obrazie produkcyjnym.
   Przy problemie z wydajnością najpierw zmierz w SPX, potem optymalizuj.
 

@@ -99,6 +99,169 @@
                     }
                 ]
             }
+        },
+        "/api/v1/admin/categories": {
+            "get": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Category tree",
+                "description": "The whole category tree, for every staff member. Siblings at every level are sorted by name (Polish collation).",
+                "operationId": "getBackofficeCategoryTree",
+                "responses": {
+                    "200": {
+                        "description": "Root categories with their descendants. An empty catalogue gives an empty array.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/CategoryNode"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/prices": {
+            "get": {
+                "tags": [
+                    "Pricing"
+                ],
+                "summary": "Price list",
+                "description": "A page of products sorted by name, then by id, each with its price (null when it has none). Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
+                "operationId": "listPrices",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "A part of the product name, 2 to 100 characters.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 100,
+                            "minLength": 2
+                        }
+                    },
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "description": "Category id (UUID).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `next` cursor of the previous page.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the price list. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PriceListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "The `category` filter names a category that does not exist (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
         }
     },
     "components": {
@@ -147,6 +310,37 @@
                             },
                             "type": "object"
                         }
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficePricesQuery": {
+                "properties": {
+                    "q": {
+                        "type": "string",
+                        "pattern": "((?!\\0).)*",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 100,
+                        "minLength": 2
+                    },
+                    "category": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 25,
+                        "maximum": 100,
+                        "minimum": 1
                     }
                 },
                 "type": "object"
@@ -360,6 +554,146 @@
                     }
                 },
                 "type": "object"
+            },
+            "CategoryNode": {
+                "required": [
+                    "id",
+                    "name",
+                    "children"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "children": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CategoryNode"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "ListedPriceResponse": {
+                "description": "The stored price of a product. Amounts are in grosze, the rate in basis points; all computed by the API.",
+                "required": [
+                    "gross",
+                    "net",
+                    "vat",
+                    "vatRate",
+                    "currency",
+                    "version",
+                    "updatedAt",
+                    "vatRateOutdated"
+                ],
+                "properties": {
+                    "gross": {
+                        "description": "Gross price (VAT included) in grosze.",
+                        "type": "integer",
+                        "example": 5490
+                    },
+                    "net": {
+                        "description": "Net price in grosze.",
+                        "type": "integer",
+                        "example": 5229
+                    },
+                    "vat": {
+                        "description": "VAT amount in grosze (gross minus net).",
+                        "type": "integer",
+                        "example": 261
+                    },
+                    "vatRate": {
+                        "description": "The VAT rate the amounts were computed at, in basis points (2300 = 23%).",
+                        "type": "integer",
+                        "example": 500
+                    },
+                    "currency": {
+                        "description": "ISO 4217 code.",
+                        "type": "string",
+                        "example": "PLN"
+                    },
+                    "version": {
+                        "description": "Version of the price, for the optimistic locking of changes.",
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "updatedAt": {
+                        "description": "When the price last changed (RFC 3339).",
+                        "type": "string",
+                        "example": "2026-11-01T12:30:00+00:00"
+                    },
+                    "vatRateOutdated": {
+                        "description": "The stored rate is no longer the rate of the price's tax class: the price is not offered in the store until it is repaired.",
+                        "type": "boolean",
+                        "example": false
+                    }
+                },
+                "type": "object"
+            },
+            "PriceListItemResponse": {
+                "description": "A product with its price.",
+                "required": [
+                    "productId",
+                    "name",
+                    "taxClass",
+                    "applicableVatRate",
+                    "price"
+                ],
+                "properties": {
+                    "productId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Przewodnik Tatry Zachodnie"
+                    },
+                    "taxClass": {
+                        "description": "The tax class of the product.",
+                        "type": "string",
+                        "example": "printed_book"
+                    },
+                    "applicableVatRate": {
+                        "description": "The VAT rate of the tax class today, in basis points (2300 = 23%).",
+                        "type": "integer",
+                        "example": 500
+                    },
+                    "price": {
+                        "description": "The stored price, null when the product has no price yet.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/ListedPriceResponse"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "PriceListResponse": {
+                "description": "A page of the price list.",
+                "required": [
+                    "items",
+                    "next"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PriceListItemResponse"
+                        }
+                    },
+                    "next": {
+                        "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
+                        "type": "string",
+                        "example": "eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
             }
         },
         "securitySchemes": {
@@ -375,6 +709,14 @@
         {
             "name": "Staff",
             "description": "Staff"
+        },
+        {
+            "name": "Catalog",
+            "description": "Catalog"
+        },
+        {
+            "name": "Pricing",
+            "description": "Pricing"
         }
     ]
 }

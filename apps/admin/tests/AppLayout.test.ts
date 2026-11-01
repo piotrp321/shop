@@ -17,7 +17,16 @@ const MINUTE = 60_000;
 async function mountLayout() {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: "/", component: AppLayout, children: [{ path: "", name: "dashboard", component: { template: "<div />" } }] }],
+    routes: [
+      {
+        path: "/",
+        component: AppLayout,
+        children: [
+          { path: "", name: "dashboard", component: { template: "<div />" } },
+          { path: "prices", name: "prices", component: { template: "<div />" } },
+        ],
+      },
+    ],
   });
   await router.push("/");
   return mount(RouterView, { global: { plugins: [createPinia(), router, [PrimeVue, primeVueOptions]] } });

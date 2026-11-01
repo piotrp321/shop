@@ -1,0 +1,102 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Tests\Integration\Pricing\Catalog;
+
+use App\Catalog\Domain\Category\Category;
+use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
+use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
+use App\Pricing\Application\Port\CategoryNotFound;
+use App\Pricing\Application\Port\DirectoryProduct;
+use App\Pricing\Application\Port\InvalidPriceListCursor;
+use App\Pricing\Infrastructure\Catalog\QueryBusProductDirectory;
+use App\Shared\Domain\Exception\InvalidInput;
+use App\Tests\Factory\CategoryFactory;
+use App\Tests\Factory\ProductFactory;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Zenstruck\Foundry\Test\Factories;
+
+/**
+ * Pricing's directory of Catalog products, through the real query bus and shop_test.
+ */
+final class QueryBusProductDirectoryTest extends KernelTestCase
+{
+    use Factories;
+
+    private QueryBusProductDirectory $directory;
+    private EntityManagerInterface $entityManager;
+
+    protected function setUp(): void
+    {
+        $queryBus = self::getContainer()->get('query.bus');
+        self::assertInstanceOf(MessageBusInterface::class, $queryBus);
+        $this->directory = new QueryBusProductDirectory($queryBus);
+        $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $this->entityManager = $entityManager;
+    }
+
+    public function testSearchesTheCatalogProductsAsPagesOfPricingProducts(): void
+    {
+        $category = $this->saveCategory();
+        $this->saveProduct($category, 'Zebra', TaxClassCode::Standard);
+        $gel = $this->saveProduct($category, 'Alfa żel', TaxClassCode::EnergyGel);
+        $this->saveProduct($category, 'Alfa baton', TaxClassCode::EnergyBar);
+
+        $first = $this->directory->page('alfa', null, null, 1);
+        $second = $this->directory->page('alfa', $category->id()->toString(), $first->next, 1);
+
+        self::assertSame(['Alfa baton'], array_map(static fn (DirectoryProduct $product): string => $product->name, $first->items));
+        self::assertNotNull($first->next);
+        self::assertCount(1, $second->items);
+        self::assertSame($gel->id()->toString(), $second->items[0]->id->toString());
+        self::assertSame('Alfa żel', $second->items[0]->name);
+        self::assertSame('energy_gel', $second->items[0]->taxClass->toString());
+        self::assertNull($second->next);
+    }
+
+    public function testAnUnknownCategoryIsACategoryNotFoundOfPricing(): void
+    {
+        $this->expectException(CategoryNotFound::class);
+
+        $this->directory->page(null, '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', null, 25);
+    }
+
+    public function testAMalformedCursorIsAnInvalidCursorOfPricing(): void
+    {
+        $this->expectException(InvalidPriceListCursor::class);
+
+        $this->directory->page(null, null, 'garbage!', 25);
+    }
+
+    public function testOutOfRangeParametersAreRejectedAsInvalidInput(): void
+    {
+        try {
+            $this->directory->page('a', null, null, 25);
+            self::fail('Expected an InvalidInput exception.');
+        } catch (\Throwable $failure) {
+            self::assertInstanceOf(InvalidInput::class, $failure);
+        }
+    }
+
+    private function saveCategory(): Category
+    {
+        $category = CategoryFactory::createOne();
+        new DoctrineCategoryRepository($this->entityManager)->save($category);
+
+        return $category;
+    }
+
+    private function saveProduct(Category $category, string $name, TaxClassCode $taxClass): Product
+    {
+        $product = ProductFactory::createOne(['mainCategory' => $category, 'name' => $name, 'taxClass' => $taxClass]);
+        new DoctrineProductRepository($this->entityManager)->save($product);
+
+        return $product;
+    }
+}

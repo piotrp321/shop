@@ -21,6 +21,8 @@ final class InMemoryProductPriceRepository implements ProductPriceRepository
     /** @var list<PriceHistoryEntry> */
     public array $history = [];
     public int $writes = 0;
+    /** @var list<list<string>> the ids of every findMany() call */
+    public array $manyReads = [];
 
     public function find(ProductId $id): ?ProductPrice
     {
@@ -31,6 +33,7 @@ final class InMemoryProductPriceRepository implements ProductPriceRepository
 
     public function findMany(array $ids): array
     {
+        $this->manyReads[] = array_map(static fn (ProductId $id): string => $id->toString(), $ids);
         $found = [];
         foreach ($ids as $id) {
             $stored = $this->prices[$id->toString()] ?? null;
