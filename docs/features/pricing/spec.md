@@ -183,6 +183,10 @@ z tokenem realmu `shop`: 401):
 - Uprawnienie do zmiany ceny sprawdza `PriceVoter` w `Pricing_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `marketing`, `support` i `warehouse` dostają 403.
 - Aktor (`sub` i nazwa) pochodzi z tokena, nigdy z treści żądania.
+- `PUT` ceny: oba klucze są wymagane, a typy ścisłe (liczba w napisie, ułamek, także `100.0`, to 422, bez
+  rzutowania). Uprawnienie jest sprawdzane przed treścią i produktem. Identyfikator, który nie jest UUID: 404;
+  treść, która nie jest poprawnym JSON-em: 400; treść inna niż JSON: 415. Odpowiedź 200 to cena zwrócona przez
+  `SetProductPrice` po zapisie (z wersją zapisu), w kształcie `price` z listy.
 - Kwoty zawsze w groszach (`integer`), stawki w punktach bazowych.
 
 ## Sklep (`apps/store`)

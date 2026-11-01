@@ -262,6 +262,136 @@
                     }
                 ]
             }
+        },
+        "/api/v1/admin/products/{productId}/price": {
+            "put": {
+                "tags": [
+                    "Pricing"
+                ],
+                "summary": "Change the price of a product",
+                "description": "Sets the gross price; the API computes the net and the VAT at the current rate of the price's tax class (the class of the product for a first price). Administrators only. Send the `version` of the price you saw (null for a product without a price): a price changed since then is a 409 and nothing is overwritten. The same gross at the same rate changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.",
+                "operationId": "changePrice",
+                "parameters": [
+                    {
+                        "name": "productId",
+                        "in": "path",
+                        "description": "Product id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChangePriceRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The price as saved, or as it was when nothing changed.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ListedPriceResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is not an administrator (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such product, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The price was changed since the given version, or created since the null version (problem details). Reload it.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The gross is out of range or a key is missing or of a wrong type (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
         }
     },
     "components": {
@@ -341,6 +471,29 @@
                         "default": 25,
                         "maximum": 100,
                         "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "ChangePriceRequest": {
+                "description": "A new gross price, based on the version of the price the staff member saw.",
+                "required": [
+                    "gross",
+                    "version"
+                ],
+                "properties": {
+                    "gross": {
+                        "description": "Gross price (VAT included) in grosze, from 1 (0,01 z\u0142) to 99 999 999 (999 999,99 z\u0142).",
+                        "type": "integer",
+                        "example": 5990,
+                        "maximum": 99999999,
+                        "minimum": 1
+                    },
+                    "version": {
+                        "description": "The `version` of the price the change is based on; null when the product has no price yet.",
+                        "type": "integer",
+                        "example": 1,
+                        "nullable": true
                     }
                 },
                 "type": "object"
