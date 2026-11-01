@@ -16,6 +16,9 @@ describe("parseGross", () => {
     ["1 234,56", 123456],
     ["1 234,56", 123456],
     ["999 999,99", 99_999_999],
+    ["12 345 678", 1_234_567_800],
+    ["12\u00a0345\u202f678,9", 1_234_567_890],
+    [" \u00a01 234 \t", 123_400],
     ["0", 0],
     ["12345678901", 1_234_567_890_100],
   ])("turns %j into %d grosze", (text, grosze) => {
@@ -41,6 +44,14 @@ describe("parseGross", () => {
     ["0x10", "Wpisz kwotę w złotych, np. 54,90."],
     ["١٢", "Wpisz kwotę w złotych, np. 54,90."],
     ["99999999999999999", "Kwota jest za duża."],
+    ["5 99", "Wpisz kwotę w złotych, np. 54,90."],
+    ["12 34", "Wpisz kwotę w złotych, np. 54,90."],
+    ["1  234", "Wpisz kwotę w złotych, np. 54,90."],
+    ["1 2345", "Wpisz kwotę w złotych, np. 54,90."],
+    ["1234 567", "Wpisz kwotę w złotych, np. 54,90."],
+    ["1 234 ,56", "Wpisz kwotę w złotych, np. 54,90."],
+    ["1 234,5 6", "Wpisz kwotę w złotych, np. 54,90."],
+    ["1 234,567", "Kwota może mieć najwyżej 2 miejsca po przecinku."],
   ])("rejects %j", (text, message) => {
     expect(parseGross(text)).toEqual({ ok: false, message });
   });
