@@ -36,7 +36,8 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
 
 1. **Preflight.** Sprawdź: `git rev-parse HEAD` równa się HEAD z promptu (inaczej bloker `technical`),
    `git branch --show-current` to gałąź z promptu, `git status --porcelain` jest puste (zapamiętaj to: na końcu ma
-   być identycznie, z wyjątkiem raportu poza repo). Wykonaj `git fetch origin main`. Przeczytaj spec i plan; z manifestu
+   być identycznie, z wyjątkiem raportu poza repo). Brudne drzewo przed pracą, pusty `git branch --show-current`
+   (detached HEAD), nieudany `git fetch origin main` i `<report_path>` wewnątrz repo to bloker `technical`. Wykonaj `git fetch origin main`. Przeczytaj spec i plan; z manifestu
    planu (jeden blok ```` ```json ````) weź listę zadań, ich `scope` i kryteria akceptacji. Ustal stos: AO przygotował go
    przez `.ao/setup` (zmienne `AO_COMPOSE_PROJECT`, `AO_PORT_BASE`, plik `.env` w worktree). Sprawdź
    `docker compose ps`; gdy stos nie działa, a zmienne `AO_*` są ustawione, uruchom `.ao/setup` raz. Gdy nadal nie działa:
@@ -44,21 +45,27 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
 2. **Zakres.** `FULL`: cały diff `git diff origin/main...HEAD` (statystyka `--stat`, lista commitów
    `git log origin/main..HEAD`; mapuj pliki i commity na zadania planu po treści commitów i `scope`, gdy nie da się
    jednoznacznie, `task_id` ustaw na `null`). `DELTA`: poprzedni HEAD to `poprzedni HEAD` z promptu, a gdy go brak,
-   `Przegląd HEAD:` z najnowszego raportu w katalogu `<report_path>` (inny plik niż bieżący), który jest przodkiem
+   `Przegląd HEAD:` z najnowszego (wg czasu modyfikacji) innego pliku `*.md` w katalogu `<report_path>`, który jest przodkiem
    HEAD (`git merge-base --is-ancestor`). Zakres DELTA to `git diff <poprzedni>..HEAD` **oraz skutki**: kod, który
    te zmiany wywołuje lub którego kontrakty zmieniają (grep użyć, testy, OpenAPI, klienty). Bez wiarygodnego
-   poprzedniego HEAD pracuj jak w `FULL` i napisz to w raporcie. Bramki uruchamiasz zawsze w całości.
+   poprzedniego HEAD pracuj jak w `FULL`, napisz to w raporcie i zaznacz, że poprzednich znalezisk nie dało się
+   porównać (lista do sprawdzenia pochodzi z tego samego poprzedniego raportu). Bramki uruchamiasz zawsze w całości.
 3. **Review równolegle.** W jednej wiadomości uruchom dwa agenty (każdy dostaje HEAD SHA, zakres z kroku 2, ścieżki
    spec i planu, listę zadań; **nie przekazuj** im swoich ani cudzych wniosków):
    - `architecture-reviewer`: zgodność z DDD, architekturą heksagonalną, `CLAUDE.md` i specyfikacją całego epika,
      spójność kontraktów między zadaniami, zbędna złożoność, dublowanie.
    - `qa-adversarial`: błędy funkcjonalne i bezpieczeństwa na styku zadań, transakcje, współbieżność, przypadki
-     brzegowe, kryteria akceptacji ze specyfikacji, które żadne zadanie nie sprawdza end-to-end. Wskaż mu stos
-     (`AO_COMPOSE_PROJECT`, porty z `.env`) i zakaz: bez `make up`/`down`, bez operacji destrukcyjnych na danych
-     stosu, bez `make e2e` (bramki uruchamiasz sam po jego zakończeniu), bez commitów i pushy.
+     brzegowe, kryteria akceptacji ze specyfikacji, które żadne zadanie nie sprawdza end-to-end. Pracuje w
+     własnym worktree (bez `.env`, bez dostępu do stosu AO, jego kontenery montują źródła worktree epika), więc
+     **nie uruchamia stosu ani żadnych `make`**: sprawdza kod, odtwarza podejrzenia samodzielnymi skryptami
+     bez Dockera i pisze testy wyłącznie jako propozycje w raporcie. Niczego nie zapisuje w worktree epika, bez
+     commitów i pushy. Bramki uruchamiasz sam, po jego zakończeniu.
    W trybie DELTA przekaż zakres DELTA i listę znalezisk z poprzedniego raportu do sprawdzenia, czy zostały naprawione.
 4. **Bramki.** Po zakończeniu obu agentów, sekwencyjnie, z limitem czasu każdej (np. `timeout`/Bash `timeout`):
-   `make check`, `make test`, `make e2e`. Zapisz kod wyjścia i koniec wyjścia każdej. Czerwona bramka to znalezisko
+   `make check RUN="docker compose exec -T"`, `make test RUN="docker compose exec -T"`, potem
+   `make seed RUN="docker compose exec -T"` i `make e2e E2E_FLAGS=-T` (sesja nie ma terminala, więc bez `-T` komendy padają).
+   Wszystkie uruchamiasz nawet po czerwonej wcześniejszej bramce. W wyniku nazwy bramek to `make check`, `make test`,
+   `make e2e`. Zapisz kod wyjścia i koniec wyjścia każdej. Czerwona bramka to znalezisko
    (domyślnie `Important`, z `evidence` = komenda i końcówka wyjścia; `Critical` przy utracie danych lub luce
    bezpieczeństwa). `make e2e`, które padło, powtórz raz: gdy przejdzie, zapisz `passed` i znalezisko `Minor`
    („niestabilny test e2e”, z nazwą testu). Awaria środowiska (stos nie odpowiada, brak Dockera, brak miejsca) to
@@ -67,9 +74,10 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    odtwórz komendą, zanim trafi do wyniku; niepotwierdzone, niepewne i stylistyczne wpisz do raportu jako uwagi
    albo odrzuć, nie jako znaleziska. Scal duplikaty. Waga: `Critical` utrata danych lub poważna luka
    bezpieczeństwa; `Important` błędne działanie w realnym scenariuszu, naruszenie kryterium akceptacji albo zasady
-   z `CLAUDE.md` / architektury; `Minor` przypadek brzegowy o niewielkim wpływie lub drobna jakość. Nie zawyżaj wagi.
+   z `CLAUDE.md` / architektury, którą da się naprawić; `Minor` przypadek brzegowy o niewielkim wpływie lub drobna jakość. Nie zawyżaj wagi.
    Werdykt `REWORK` albo „decyzja do rewizji” architekta, który wymaga decyzji użytkownika (sprzeczność ze
-   specyfikacją, nowa zależność, zmiana granic modułów), to bloker `architecture`, nie znalezisko.
+   specyfikacją, nowa zależność, zmiana granic modułów, świadome odstępstwo od `CLAUDE.md`), to bloker `architecture`, nie znalezisko; naprawialne
+   naruszenie jest znaleziskiem.
 6. **Stabilność znalezisk.** AO liczy odcisk znaleziska z `severity`, znormalizowanego `title` i posortowanych
    `files`, i przerywa pętlę napraw, gdy ten sam odcisk wraca po rundzie naprawczej. Dlatego: `title` opisuje problem,
    nie szczegół przebiegu (bez SHA, numerów linii i liczb); `files` to pliki, w których trzeba poprawić; ten sam

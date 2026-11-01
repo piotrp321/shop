@@ -68,6 +68,8 @@ def unique_ids(problems, where, items, key):
     seen = set()
     for item in items:
         value = item.get(key)
+        if not isinstance(value, str):
+            continue
         if value in seen:
             problems.append('%s: duplicate %s %r' % (where, key, value))
         seen.add(value)
@@ -91,6 +93,8 @@ def check_findings(problems, findings):
         exact_keys(problems, where, f, FINDING_KEYS)
         for key in ('id', 'title', 'detail', 'evidence'):
             text_field(problems, where, f, key)
+        if f.get('severity') in ('Critical', 'Important') and f.get('files') == []:
+            problems.append('%s.files must name the files to fix for a %s finding' % (where, f['severity']))
         if f.get('severity') not in SEVERITIES:
             problems.append('%s.severity must be one of %s' % (where, ', '.join(SEVERITIES)))
         files = f.get('files')
@@ -99,7 +103,18 @@ def check_findings(problems, findings):
         task_id = f.get('task_id')
         if task_id is not None and not (isinstance(task_id, str) and task_id.strip()):
             problems.append('%s.task_id must be a non-empty string or null' % where)
-    unique_ids(problems, 'findings', [f for f in findings if isinstance(f, dict)], 'id')
+    dicts = [f for f in findings if isinstance(f, dict)]
+    unique_ids(problems, 'findings', dicts, 'id')
+    seen = set()
+    for f in dicts:
+        files = f.get('files')
+        if not (isinstance(f.get('title'), str) and isinstance(files, list) and all(isinstance(x, str) for x in files)):
+            continue
+        # The orchestrator's fingerprint: severity, normalized title and sorted files.
+        print_ = (f.get('severity'), ' '.join(f['title'].lower().split()), tuple(sorted(files)))
+        if print_ in seen:
+            problems.append('findings: two findings share the fingerprint of %r' % f.get('id'))
+        seen.add(print_)
 
 
 def check_checks(problems, checks):
@@ -134,6 +149,7 @@ def check_blockers(problems, blockers):
             if not isinstance(o, dict):
                 problems.append('%s.options[%d] must be an object' % (where, j))
                 continue
+            exact_keys(problems, '%s.options[%d]' % (where, j), o, ('option', 'consequences'))
             for key in ('option', 'consequences'):
                 text_field(problems, '%s.options[%d]' % (where, j), o, key)
     unique_ids(problems, 'blockers', [b for b in blockers if isinstance(b, dict)], 'id')
@@ -142,7 +158,7 @@ def check_blockers(problems, blockers):
 def check_status(problems, value):
     """PASSED, FINDINGS and BLOCKED are mutually exclusive outcomes of the lists."""
     findings = [f for f in value['findings'] if isinstance(f, dict)]
-    checks = {c.get('name'): c.get('status') for c in value['checks'] if isinstance(c, dict)}
+    checks = {c.get('name'): c.get('status') for c in value['checks'] if isinstance(c, dict) and isinstance(c.get('name'), str)}
     blocking = [f for f in findings if f.get('severity') in ('Critical', 'Important')]
     status = value['status']
     if status == 'PASSED':
@@ -171,7 +187,7 @@ def validate(value, head=None, epic=None, mode=None):
     if not isinstance(value, dict):
         return ['the result must be a JSON object']
     exact_keys(problems, 'result', value, KEYS)
-    if value.get('schema_version') != SCHEMA_VERSION:
+    if type(value.get('schema_version')) is not int or value['schema_version'] != SCHEMA_VERSION:
         problems.append('schema_version must be %d' % SCHEMA_VERSION)
     text_field(problems, 'result', value, 'epic_id')
     text_field(problems, 'result', value, 'report_file')
@@ -179,7 +195,7 @@ def validate(value, head=None, epic=None, mode=None):
         problems.append('status must be one of %s' % ', '.join(STATUSES))
     if value.get('mode') not in MODES:
         problems.append('mode must be one of %s' % ', '.join(MODES))
-    if not isinstance(value.get('head_sha'), str) or not SHA.match(value['head_sha']):
+    if not isinstance(value.get('head_sha'), str) or not SHA.fullmatch(value['head_sha']):
         problems.append('head_sha must be 40 lowercase hex characters')
     lists = True
     for key, checker in (('findings', check_findings), ('checks', check_checks), ('blockers', check_blockers)):

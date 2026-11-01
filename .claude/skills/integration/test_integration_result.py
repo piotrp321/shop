@@ -166,6 +166,20 @@ class IntegrationResultTest(unittest.TestCase):
         self.assertInvalid(result(status='BLOCKED', blockers=[blocker(recommendation='')]), 'recommendation')
         self.assertInvalid(result(status='BLOCKED', blockers=[blocker(), blocker()]), 'duplicate')
 
+    def test_rejects_wrong_types_and_shapes(self):
+        self.assertInvalid(result(schema_version=True), 'schema_version')
+        self.assertInvalid(result(schema_version=1.0), 'schema_version')
+        self.assertInvalid(result(head_sha='a' * 40 + '\n'), 'head_sha')
+        self.assertInvalid(result(findings=[finding(id=['x'])], status='FINDINGS'), 'id')
+        self.assertInvalid(result(checks=[{'name': ['x'], 'status': 'passed'}]), 'name')
+        self.assertInvalid(result(status='BLOCKED', blockers=[blocker(options=[{'option': 'a', 'consequences': 'b', 'x': 1}])]), 'x')
+        self.assertInvalid(result(status='FINDINGS', findings=[finding(files=[])]), 'files')
+
+    def test_rejects_findings_with_the_same_fingerprint(self):
+        two = [finding('F1'), finding('F2', title=' title f1 ', detail='other')]
+        two[1]['title'] = two[0]['title'].upper()
+        self.assertInvalid(result(status='FINDINGS', findings=two), 'fingerprint')
+
     def test_reports_every_problem(self):
         r = self.validate(result(status='OK', mode='X', head_sha='1'))
         self.assertEqual(2, r.returncode)
