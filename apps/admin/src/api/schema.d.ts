@@ -44,6 +44,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Category tree
+         * @description The whole category tree, for every staff member. Siblings at every level are sorted by name (Polish collation).
+         */
+        get: operations["getBackofficeCategoryTree"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Price list
+         * @description A page of products sorted by name, then by id, each with its price (null when it has none). Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         */
+        get: operations["listPrices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -65,6 +105,16 @@ export interface components {
                 /** @example This is not a valid UUID. */
                 title: string;
             }[];
+        };
+        BackofficePricesQuery: {
+            /** @default null */
+            q: string | null;
+            /** @default null */
+            category: string | null;
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
         };
         /** @description Catalogue numbers, from the database. */
         DashboardCatalogResponse: {
@@ -166,6 +216,82 @@ export interface components {
              */
             roles: ("admin" | "support" | "warehouse" | "marketing")[];
         };
+        CategoryNode: {
+            id: string;
+            name: string;
+            children: components["schemas"]["CategoryNode"][];
+        };
+        /** @description The stored price of a product. Amounts are in grosze, the rate in basis points; all computed by the API. */
+        ListedPriceResponse: {
+            /**
+             * @description Gross price (VAT included) in grosze.
+             * @example 5490
+             */
+            gross: number;
+            /**
+             * @description Net price in grosze.
+             * @example 5229
+             */
+            net: number;
+            /**
+             * @description VAT amount in grosze (gross minus net).
+             * @example 261
+             */
+            vat: number;
+            /**
+             * @description The VAT rate the amounts were computed at, in basis points (2300 = 23%).
+             * @example 500
+             */
+            vatRate: number;
+            /**
+             * @description ISO 4217 code.
+             * @example PLN
+             */
+            currency: string;
+            /**
+             * @description Version of the price, for the optimistic locking of changes.
+             * @example 1
+             */
+            version: number;
+            /**
+             * @description When the price last changed (RFC 3339).
+             * @example 2026-11-01T12:30:00+00:00
+             */
+            updatedAt: string;
+            /**
+             * @description The stored rate is no longer the rate of the price's tax class: the price is not offered in the store until it is repaired.
+             * @example false
+             */
+            vatRateOutdated: boolean;
+        };
+        /** @description A product with its price. */
+        PriceListItemResponse: {
+            /** Format: uuid */
+            productId: string;
+            /** @example Przewodnik Tatry Zachodnie */
+            name: string;
+            /**
+             * @description The tax class of the product.
+             * @example printed_book
+             */
+            taxClass: string;
+            /**
+             * @description The VAT rate of the tax class today, in basis points (2300 = 23%).
+             * @example 500
+             */
+            applicableVatRate: number;
+            /** @description The stored price, null when the product has no price yet. */
+            price: components["schemas"]["ListedPriceResponse"] | null;
+        };
+        /** @description A page of the price list. */
+        PriceListResponse: {
+            items: components["schemas"]["PriceListItemResponse"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after`), null on the last page.
+             * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
+             */
+            next: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -233,6 +359,109 @@ export interface operations {
             };
             /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getBackofficeCategoryTree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Root categories with their descendants. An empty catalogue gives an empty array. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryNode"][];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listPrices: {
+        parameters: {
+            query?: {
+                /** @description A part of the product name, 2 to 100 characters. */
+                q?: string;
+                /** @description Category id (UUID). */
+                category?: string;
+                /** @description The `next` cursor of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the price list. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceListResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The `category` filter names a category that does not exist (problem details). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
