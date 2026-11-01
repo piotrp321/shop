@@ -92,7 +92,9 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   Konfigurację i infrastrukturę weryfikujemy komendami z planu, bez sztucznego odtwarzania fazy RED.
 - Pracuj małymi krokami. Jedna logiczna zmiana na commit, format Conventional Commits.
 - Jeden PR to jedna logiczna, weryfikowalna zmiana. Powiązane, niewielkie zadania planu mogą trafić do jednego PR.
-  PR przechodzi CI i review. Nie merguj bez zgody użytkownika.
+  PR przechodzi CI i review. Nie merguj bez zgody użytkownika. Wyjątek: akceptacja planu epika realizowanego przez AO
+  obejmuje zgodę na squash-merge PR zadań do jego gałęzi `epic/<epik>` po zielonym CI. Do `main` (także PR epika)
+  merguje wyłącznie użytkownik.
 - Każdy PR/MR mergujemy wyłącznie w trybie squash, a po merge'u usuwamy jego branch
   (np. `gh pr merge <nr> --squash --delete-branch`).
 - CI (`.github/workflows/ci.yml`) uruchamia `make check` i testy wszystkich aplikacji przy każdym PR. Testy na
