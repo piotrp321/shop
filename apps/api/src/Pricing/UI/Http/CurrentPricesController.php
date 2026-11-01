@@ -94,8 +94,9 @@ final class CurrentPricesController
 
     /**
      * Every value of the `productId` key of the raw query string, in the order sent. PHP's own parsing keeps only the
-     * last value of a repeated key without `[]`, so the string is read here. It stops one value past the limit: the
-     * count constraint rejects that, and a very long query is not parsed to the end.
+     * last value of a repeated key without `[]`, so the string is read here. The collecting stops one value past the
+     * limit (the count constraint rejects that), so a long list of ids is neither validated nor handed on in full.
+     * The query string itself is split whole: its length is bounded by the web server's request line limit.
      *
      * @return list<string>
      */
