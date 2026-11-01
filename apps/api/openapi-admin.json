@@ -392,6 +392,109 @@
                     }
                 ]
             }
+        },
+        "/api/v1/admin/products/{productId}/price-history": {
+            "get": {
+                "tags": [
+                    "Pricing"
+                ],
+                "summary": "Price history of a product",
+                "description": "Every recorded change of the price of a product, newest first, with the price as it was set, what made the change and, for a change by staff, who. Every staff member may read it. A product that exists but never had a price has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.",
+                "operationId": "getPriceHistory",
+                "parameters": [
+                    {
+                        "name": "productId",
+                        "in": "path",
+                        "description": "Product id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `next` cursor of the previous page.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the history. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PriceHistoryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such product, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
         }
     },
     "components": {
@@ -494,6 +597,24 @@
                         "type": "integer",
                         "example": 1,
                         "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "PriceHistoryQuery": {
+                "properties": {
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 25,
+                        "maximum": 100,
+                        "minimum": 1
                     }
                 },
                 "type": "object"
@@ -843,6 +964,90 @@
                         "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
                         "type": "string",
                         "example": "eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "PriceHistoryItemResponse": {
+                "description": "One recorded price change: the price as it was set. Amounts are in grosze, the rate in basis points; all computed by the API.",
+                "required": [
+                    "changedAt",
+                    "gross",
+                    "net",
+                    "vat",
+                    "vatRate",
+                    "taxClass",
+                    "source",
+                    "actorName"
+                ],
+                "properties": {
+                    "changedAt": {
+                        "description": "When the price was changed (RFC 3339, UTC).",
+                        "type": "string",
+                        "example": "2026-11-01T12:30:00+00:00"
+                    },
+                    "gross": {
+                        "description": "Gross price (VAT included) in grosze.",
+                        "type": "integer",
+                        "example": 5490
+                    },
+                    "net": {
+                        "description": "Net price in grosze.",
+                        "type": "integer",
+                        "example": 5229
+                    },
+                    "vat": {
+                        "description": "VAT amount in grosze (gross minus net).",
+                        "type": "integer",
+                        "example": 261
+                    },
+                    "vatRate": {
+                        "description": "The VAT rate the amounts were computed at, in basis points (2300 = 23%).",
+                        "type": "integer",
+                        "example": 500
+                    },
+                    "taxClass": {
+                        "description": "The tax class of the price at the time.",
+                        "type": "string",
+                        "example": "printed_book"
+                    },
+                    "source": {
+                        "description": "What made the change: `staff` (a staff member in the panel), `seed` (the demo data) or `tax_reconciliation` (a repair after a rate change).",
+                        "type": "string",
+                        "example": "staff",
+                        "enum": [
+                            "staff",
+                            "seed",
+                            "tax_reconciliation"
+                        ]
+                    },
+                    "actorName": {
+                        "description": "The staff member who made a `staff` change, null for the other sources.",
+                        "type": "string",
+                        "example": "Anna Admin",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "PriceHistoryResponse": {
+                "description": "A page of the price history of a product, newest change first.",
+                "required": [
+                    "items",
+                    "next"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PriceHistoryItemResponse"
+                        }
+                    },
+                    "next": {
+                        "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
+                        "type": "string",
+                        "example": "eyJ0IjoiMjAyNi0xMS0wMVQxMjozMDowMC4wMDAwMDArMDA6MDAiLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
                         "nullable": true
                     }
                 },
