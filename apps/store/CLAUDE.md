@@ -38,6 +38,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Żadnej logiki biznesowej: ceny, sumy, dostępność i filtrowanie liczy API, sklep je wyświetla.
 - Sklep woła API tylko z serwera, pod adresem wewnętrznym.
 - Domyślnie Server Components. Client Component tylko tam, gdzie potrzebna jest interakcja.
+- `generateMetadata` i strona pobierają dane katalogu przez `loadCatalogForRequest` (`React.cache`), więc jedno wejście
+  to jedno żądanie na endpoint. Metadane katalogu (`src/catalog/page-metadata.ts`) opierają się na `STORE_URL`.
 - HTML katalogu nie zależy od sesji. To, co zależy od zalogowania, ładuje Client Component przez `/auth/session`.
 
 ## Logowanie
