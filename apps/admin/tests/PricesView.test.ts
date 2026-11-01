@@ -349,7 +349,7 @@ describe("PricesView", () => {
     wrapper.getComponent(TreeSelect).vm.$emit("update:modelValue", { "c-food": true });
     await settle();
 
-    expect(wrapper.get("[data-testid=prices-error]").exists()).toBe(true);
+    expect(wrapper.find("[data-testid=prices-error]").exists()).toBe(true);
     expect(wrapper.get("[data-testid=next-page]").attributes("disabled")).toBeDefined();
     expect(wrapper.get("[data-testid=previous-page]").attributes("disabled")).toBeDefined();
     await wrapper.get("[data-testid=next-page]").trigger("click");
