@@ -6,7 +6,8 @@ type ProductPage = components["schemas"]["ProductPage"];
 
 export type CatalogResult =
   | { kind: "ok"; categories: CategoryNode[]; products: ProductPage }
-  | { kind: "invalid-filter" };
+  | { kind: "invalid-filter" }
+  | { kind: "unknown-category" };
 
 function serverClient() {
   const baseUrl = process.env.API_INTERNAL_URL;
@@ -17,8 +18,9 @@ function serverClient() {
 }
 
 /**
- * Loads the category tree and one page of products in parallel. A 400 for the filter becomes `invalid-filter`;
- * any other failure (5xx, network) is thrown and handled by `app/error.tsx`.
+ * Loads the category tree and one page of products in parallel. A 400 for the filter becomes `invalid-filter`
+ * and a 404 for the product list (the category does not exist) becomes `unknown-category`; any other failure
+ * (5xx, network) is thrown and handled by `app/error.tsx`.
  */
 export async function loadCatalog(params: { category?: string; page?: string }): Promise<CatalogResult> {
   const client = serverClient();
@@ -36,6 +38,9 @@ export async function loadCatalog(params: { category?: string; page?: string }):
   if (products.data === undefined) {
     if (products.response.status === 400) {
       return { kind: "invalid-filter" };
+    }
+    if (products.response.status === 404) {
+      return { kind: "unknown-category" };
     }
     throw new Error(`GET /api/v1/products failed with status ${products.response.status}.`);
   }

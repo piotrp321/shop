@@ -508,8 +508,8 @@ Wszystkie pod `/api/v1`, JSON, opisane w OpenAPI (żądanie, odpowiedzi, błędy
 **`GET /api/v1/products`**
 - Parametry: `category` (UUID, opcjonalny), `page` (≥ 1, domyślnie 1), `perPage` (1–48, domyślnie 24).
 - Filtr `category` obejmuje produkty przypisane do kategorii (jako głównej lub dodatkowej) i do wszystkich jej
-  podkategorii (`category_ancestor_ids`). Nieistniejąca kategoria
-  daje 200 i pustą listę (API nie odpytuje Postgresa przy odczycie z modelu odczytu).
+  podkategorii (`category_ancestor_ids`). Istnienie kategorii sprawdza Postgres: nieistniejąca kategoria daje 404
+  jako problem details, istniejąca bez produktów 200 i pustą listę.
 - Sortowanie po nazwie (`name.sort`), potem po `id`.
 - Strona poza zakresem (np. `page=999`) daje 200, pustą listę `items` i prawdziwe `total`.
 - Błędne parametry: 400 jako problem details z listą naruszeń.
@@ -711,7 +711,8 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
 - Siatka produktów: kafel (`card`) ze zdjęciem i nazwą. Responsywnie 2, 3 albo 4 kolumny.
 - Paginacja (`pagination`): linki „Poprzednia” i „Następna” z zachowaniem filtra.
 - Pusty wynik pokazuje komunikat z linkiem do całego katalogu. Produkt bez zdjęcia ma neutralny placeholder.
-- 400 z API pokazuje „Nieprawidłowy filtr” z linkiem do całego katalogu. Niedostępne API kończy się w `error.tsx`.
+- 400 z API pokazuje „Nieprawidłowy filtr” z linkiem do całego katalogu. 404 dla listy produktów (nieznana kategoria)
+  daje stronę 404 (`notFound()`). Niedostępne API kończy się w `error.tsx`.
 - Nagłówek: nazwa sklepu oraz komponent konta (niżej).
 
 ### Obrazy

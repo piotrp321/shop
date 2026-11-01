@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { CategoryTree } from "@/catalog/CategoryTree";
 import { findCategoryPath } from "@/catalog/category-path";
 import { loadCatalog } from "@/catalog/load-catalog";
@@ -14,6 +15,9 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const query: SearchParams = await searchParams;
   const category = first(query.category);
   const catalog = await loadCatalog({ category, page: first(query.page) });
+  if (catalog.kind === "unknown-category") {
+    notFound();
+  }
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6">
