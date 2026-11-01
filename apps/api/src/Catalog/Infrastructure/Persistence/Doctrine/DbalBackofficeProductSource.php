@@ -14,8 +14,9 @@ use Doctrine\DBAL\ParameterType;
 final readonly class DbalBackofficeProductSource implements BackofficeProductSource
 {
     // The conditions are constant fragments joined by AND; input only ever reaches the statement as parameters.
-    // The name term is served by the trigram index (ILIKE '%…%'), the order and the keyset cursor by the (name, id)
-    // index. The cursor is a row comparison, which keeps it an index condition. A category matches when the product's
+    // The name term (ILIKE '%…%') is served by the trigram index from 3 characters on; pg_trgm extracts no trigram from
+    // a 2-character term, so those run as a scan of the (name, id) index with the term as a filter. The order and the
+    // keyset cursor are served by the (name, id) index. The cursor is a row comparison, which keeps it an index condition. A category matches when the product's
     // main category or one of its additional categories is in the subtree: the path of every category starts with
     // the path of its ancestors (materialized path), so the subtree is a prefix match on the path.
     private const string TERM = 'p.name ILIKE :pattern';
