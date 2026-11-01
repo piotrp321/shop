@@ -9,9 +9,10 @@ import Skeleton from "primevue/skeleton";
 import Tag from "primevue/tag";
 import TreeSelect from "primevue/treeselect";
 import { computed, ref, watch } from "vue";
-import { formatMoney, formatRate } from "@/prices/format";
+import { formatDateTime, formatMoney, formatRate, sourceLabel } from "@/prices/format";
 import { parseGross } from "@/prices/parseGross";
 import { useCategoryTree } from "@/prices/useCategoryTree";
+import { usePriceHistory } from "@/prices/usePriceHistory";
 import { MAX_SEARCH_LENGTH, type PriceListItem, usePriceList } from "@/prices/usePriceList";
 import { useAuthStore } from "@/stores/auth";
 
@@ -32,6 +33,9 @@ const {
   changePrice,
 } = usePriceList();
 const { nodes: categories, error: categoriesError } = useCategoryTree();
+const history = usePriceHistory();
+// The entries of the history carry no currency: prices are in PLN only (the only currency of the API).
+const HISTORY_CURRENCY = "PLN";
 
 // TreeSelect (single selection) holds the chosen node as { [key]: true }, or null when nothing is chosen.
 const selection = ref<Record<string, boolean> | null>(null);
@@ -77,6 +81,23 @@ function openChange(item: PriceListItem): void {
   fieldError.value = null;
   conflict.value = null;
   changeError.value = null;
+}
+
+// The history dialog is open while a product is chosen. Its name is kept from the moment it was opened, since the list
+// may move to another page meanwhile.
+const historyName = ref("");
+const historyVisible = computed({
+  get: () => history.productId.value !== null,
+  set: (visible: boolean) => {
+    if (!visible) {
+      history.close();
+    }
+  },
+});
+
+function openHistory(item: PriceListItem): void {
+  historyName.value = item.name;
+  void history.open(item.productId);
 }
 
 async function saveChange(): Promise<void> {
@@ -234,19 +255,27 @@ async function saveChange(): Promise<void> {
           />
         </template>
       </Column>
-      <Column
-        v-if="canChangePrices"
-        header="Akcje"
-      >
+      <Column header="Akcje">
         <template #body="{ data }">
-          <Button
-            data-testid="change-price"
-            label="Zmień cenę"
-            icon="pi pi-pencil"
-            severity="secondary"
-            size="small"
-            @click="openChange(data)"
-          />
+          <div class="row-actions">
+            <Button
+              data-testid="show-history"
+              label="Historia"
+              icon="pi pi-history"
+              severity="secondary"
+              size="small"
+              @click="openHistory(data)"
+            />
+            <Button
+              v-if="canChangePrices"
+              data-testid="change-price"
+              label="Zmień cenę"
+              icon="pi pi-pencil"
+              severity="secondary"
+              size="small"
+              @click="openChange(data)"
+            />
+          </div>
         </template>
       </Column>
     </DataTable>
@@ -334,6 +363,114 @@ async function saveChange(): Promise<void> {
       </div>
     </Dialog>
 
+    <Dialog
+      v-model:visible="historyVisible"
+      modal
+      header="Historia cen"
+      :style="{ width: '64rem', maxWidth: '95vw' }"
+    >
+      <div
+        data-testid="history-dialog"
+        class="history"
+      >
+        <strong>{{ historyName }}</strong>
+        <Message
+          v-if="history.error.value"
+          data-testid="history-error"
+          severity="error"
+        >
+          {{ history.error.value }}
+          <Button
+            data-testid="history-retry"
+            label="Spróbuj ponownie"
+            icon="pi pi-refresh"
+            severity="secondary"
+            size="small"
+            :loading="history.loading.value"
+            @click="history.retry()"
+          />
+        </Message>
+        <DataTable
+          v-if="history.loaded.value"
+          :value="history.items.value"
+          :pt="{ bodyRow: { 'data-testid': 'history-row' } }"
+        >
+          <template #empty>
+            <span data-testid="history-empty">Produkt nie ma jeszcze ceny.</span>
+          </template>
+          <Column header="Data zmiany">
+            <template #body="{ data }">
+              <span data-testid="history-changed-at">{{ formatDateTime(data.changedAt) }}</span>
+            </template>
+          </Column>
+          <Column
+            header="Brutto"
+            class="amount"
+          >
+            <template #body="{ data }">
+              <span data-testid="history-gross">{{ formatMoney(data.gross, HISTORY_CURRENCY) }}</span>
+            </template>
+          </Column>
+          <Column
+            header="Netto"
+            class="amount"
+          >
+            <template #body="{ data }">
+              <span data-testid="history-net">{{ formatMoney(data.net, HISTORY_CURRENCY) }}</span>
+            </template>
+          </Column>
+          <Column
+            header="VAT"
+            class="amount"
+          >
+            <template #body="{ data }">
+              <span data-testid="history-vat">{{ formatMoney(data.vat, HISTORY_CURRENCY) }}</span>
+            </template>
+          </Column>
+          <Column header="Stawka">
+            <template #body="{ data }">
+              <span data-testid="history-rate">{{ formatRate(data.vatRate) }}</span>
+            </template>
+          </Column>
+          <Column header="Klasa">
+            <template #body="{ data }">
+              <span data-testid="history-tax-class">{{ data.taxClass }}</span>
+            </template>
+          </Column>
+          <Column header="Źródło">
+            <template #body="{ data }">
+              <span data-testid="history-source">{{ sourceLabel(data.source) }}</span>
+            </template>
+          </Column>
+          <Column header="Pracownik">
+            <template #body="{ data }">
+              <span data-testid="history-actor">{{ data.actorName ?? "—" }}</span>
+            </template>
+          </Column>
+        </DataTable>
+        <Skeleton
+          v-else-if="history.loading.value"
+          height="8rem"
+        />
+        <div class="actions">
+          <Button
+            v-if="history.hasMore.value"
+            data-testid="history-more"
+            label="Pokaż więcej"
+            icon="pi pi-angle-down"
+            severity="secondary"
+            :loading="history.loading.value"
+            @click="history.loadMore()"
+          />
+          <Button
+            data-testid="close-history"
+            label="Zamknij"
+            @click="historyVisible = false"
+          />
+        </div>
+      </div>
+    </Dialog>
+
     <div
       v-if="loaded"
       class="pager"
@@ -408,6 +545,13 @@ async function saveChange(): Promise<void> {
   color: var(--p-text-muted-color);
 }
 
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.history,
 .change {
   display: flex;
   flex-direction: column;

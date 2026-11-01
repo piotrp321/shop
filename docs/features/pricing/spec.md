@@ -191,6 +191,11 @@ z tokenem realmu `shop`: 401):
   rzutowania). Uprawnienie jest sprawdzane przed treścią i produktem. Identyfikator, który nie jest UUID: 404;
   treść, która nie jest poprawnym JSON-em: 400; treść inna niż JSON: 415. Odpowiedź 200 to cena zwrócona przez
   `SetProductPrice` po zapisie (z wersją zapisu), w kształcie `price` z listy.
+- Historia (`price-history`): `perPage` 1–100 (domyślnie 25), `after` to nieprzezroczysty kursor z `next`. Kolejność
+  `(changed_at, id)` malejąco: przy zmianach w tej samej sekundzie pierwsza jest późniejsza (identyfikatory wpisów są
+  uporządkowane w czasie). Zły kursor albo parametr: 400. Produkt istniejący w Catalog bez ceny: 200 z pustą listą;
+  „nieznany” znaczy nieznany Catalogowi, jak przy `PUT` ceny. `changedAt` w UTC (RFC 3339), a identyfikator aktora
+  nie jest zwracany, tylko `actorName`.
 - Kwoty zawsze w groszach (`integer`), stawki w punktach bazowych.
 
 ## Sklep (`apps/store`)

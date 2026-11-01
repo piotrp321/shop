@@ -104,6 +104,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/products/{productId}/price-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Price history of a product
+         * @description Every recorded change of the price of a product, newest first, with the price as it was set, what made the change and, for a change by staff, who. Every staff member may read it. A product that exists but never had a price has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.
+         */
+        get: operations["getPriceHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -148,6 +168,12 @@ export interface components {
              * @example 1
              */
             version: number | null;
+        };
+        PriceHistoryQuery: {
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
         };
         /** @description Catalogue numbers, from the database. */
         DashboardCatalogResponse: {
@@ -322,6 +348,59 @@ export interface components {
             /**
              * @description Opaque cursor of the next page (send it as `after`), null on the last page.
              * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
+             */
+            next: string | null;
+        };
+        /** @description One recorded price change: the price as it was set. Amounts are in grosze, the rate in basis points; all computed by the API. */
+        PriceHistoryItemResponse: {
+            /**
+             * @description When the price was changed (RFC 3339, UTC).
+             * @example 2026-11-01T12:30:00+00:00
+             */
+            changedAt: string;
+            /**
+             * @description Gross price (VAT included) in grosze.
+             * @example 5490
+             */
+            gross: number;
+            /**
+             * @description Net price in grosze.
+             * @example 5229
+             */
+            net: number;
+            /**
+             * @description VAT amount in grosze (gross minus net).
+             * @example 261
+             */
+            vat: number;
+            /**
+             * @description The VAT rate the amounts were computed at, in basis points (2300 = 23%).
+             * @example 500
+             */
+            vatRate: number;
+            /**
+             * @description The tax class of the price at the time.
+             * @example printed_book
+             */
+            taxClass: string;
+            /**
+             * @description What made the change: `staff` (a staff member in the panel), `seed` (the demo data) or `tax_reconciliation` (a repair after a rate change).
+             * @example staff
+             * @enum {string}
+             */
+            source: "staff" | "seed" | "tax_reconciliation";
+            /**
+             * @description The staff member who made a `staff` change, null for the other sources.
+             * @example Anna Admin
+             */
+            actorName: string | null;
+        };
+        /** @description A page of the price history of a product, newest change first. */
+        PriceHistoryResponse: {
+            items: components["schemas"]["PriceHistoryItemResponse"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after`), null on the last page.
+             * @example eyJ0IjoiMjAyNi0xMS0wMVQxMjozMDowMC4wMDAwMDArMDA6MDAiLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
              */
             next: string | null;
         };
@@ -594,6 +673,70 @@ export interface operations {
             };
             /** @description The gross is out of range or a key is missing or of a wrong type (problem details with `violations`). */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getPriceHistory: {
+        parameters: {
+            query?: {
+                /** @description The `next` cursor of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Product id (UUID). */
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the history. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceHistoryResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the id is not a UUID (problem details). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

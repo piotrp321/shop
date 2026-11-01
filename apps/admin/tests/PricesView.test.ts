@@ -706,3 +706,212 @@ describe("PricesView: changing a price", () => {
     expect(wrapper.find("[data-testid=gross-error]").exists()).toBe(false);
   });
 });
+
+describe("PricesView: price history", () => {
+  let wrapper: Awaited<ReturnType<typeof mountView>> | undefined;
+  const HISTORY = "/api/v1/admin/products/{productId}/price-history";
+
+  type HistoryEntry = components["schemas"]["PriceHistoryItemResponse"];
+  type HistoryPage = components["schemas"]["PriceHistoryResponse"];
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mocks.get.mockReset();
+    mocks.put.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+    vi.useRealTimers();
+  });
+
+  function entry(gross: number, overrides: Partial<HistoryEntry> = {}): HistoryEntry {
+    return {
+      changedAt: "2026-11-01T12:30:00+00:00",
+      gross,
+      net: gross - 261,
+      vat: 261,
+      vatRate: 500,
+      taxClass: "printed_book",
+      source: "staff",
+      actorName: "Anna Admin",
+      ...overrides,
+    };
+  }
+
+  /** Answers the price list with one page and the history by the `after` cursor of the request ("" for the first page). */
+  function serveHistory(histories: Record<string, HistoryPage> | number, items: PriceListItem[] = [item("A", { productId: "p-1" })]) {
+    mocks.get.mockImplementation(
+      async (path: string, options?: { params?: { path?: { productId: string }; query?: { after?: string } } }) => {
+        if (path === CATEGORIES) {
+          return { data: tree, response: { status: 200 } };
+        }
+        if (path === HISTORY) {
+          if (typeof histories === "number") {
+            return { data: undefined, response: { status: histories } };
+          }
+          return { data: histories[options?.params?.query?.after ?? ""], response: { status: 200 } };
+        }
+        return { data: { items, next: null }, response: { status: 200 } };
+      },
+    );
+  }
+
+  function historyCalls() {
+    return mocks.get.mock.calls.filter(([path]) => path === HISTORY).map(([, options]) => options.params);
+  }
+
+  async function openHistory(row = 0) {
+    await wrapper!.findAll("[data-testid=show-history]")[row]!.trigger("click");
+    await settle();
+  }
+
+  it.each([[["admin"]], [["marketing"]], [["support"]], [["warehouse"]], [[]]] as StaffMe["roles"][][])(
+    "offers the history on every row to a staff member with the roles %j",
+    async (roles) => {
+      serveHistory({}, [item("A"), item("B")]);
+      wrapper = await mountView(roles);
+
+      expect(wrapper.findAll("[data-testid=show-history]")).toHaveLength(2);
+      expect(historyCalls()).toEqual([]);
+    },
+  );
+
+  it("shows the entries newest first with the amounts and the rate from the API and the source of each change", async () => {
+    serveHistory({
+      "": {
+        items: [
+          entry(5990, { changedAt: "2026-11-03T09:00:00+00:00", source: "tax_reconciliation", actorName: null, net: 5705, vat: 285 }),
+          entry(5790, { changedAt: "2026-11-02T09:00:00+00:00", source: "staff", actorName: "Jan Kowalski", net: 5514, vat: 276 }),
+          entry(5490, { changedAt: "2026-11-01T09:00:00+00:00", source: "seed", actorName: null, net: 5229, vat: 261 }),
+        ],
+        next: null,
+      },
+    });
+    wrapper = await mountView();
+
+    await openHistory();
+
+    expect(historyCalls()).toEqual([{ path: { productId: "p-1" }, query: {} }]);
+    const dialog = wrapper.get("[data-testid=history-dialog]");
+    expect(dialog.text()).toContain("A");
+    const rows = dialog.findAll("[data-testid=history-row]");
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.get("[data-testid=history-source]").text())).toEqual(["Uzgodnienie podatkowe", "Pracownik", "Dane demo"]);
+    expect(rows.map((row) => row.get("[data-testid=history-actor]").text())).toEqual(["—", "Jan Kowalski", "—"]);
+    expect(rows[0]!.get("[data-testid=history-changed-at]").text()).toMatch(/^03\.11\.2026.*10:00:00$/);
+    expect(rows[0]!.get("[data-testid=history-gross]").text()).toMatch(/^59,90\s*zł$/);
+    expect(rows[0]!.get("[data-testid=history-net]").text()).toMatch(/^57,05\s*zł$/);
+    expect(rows[0]!.get("[data-testid=history-vat]").text()).toMatch(/^2,85\s*zł$/);
+    expect(rows[0]!.get("[data-testid=history-rate]").text()).toBe("5%");
+    expect(rows[2]!.get("[data-testid=history-gross]").text()).toMatch(/^54,90\s*zł$/);
+    expect(dialog.find("[data-testid=history-more]").exists()).toBe(false);
+  });
+
+  it("loads further entries with 'Pokaż więcej' using the cursor of the API, until the last page", async () => {
+    serveHistory({
+      "": { items: [entry(3000), entry(2000)], next: "c1" },
+      c1: { items: [entry(1000)], next: null },
+    });
+    wrapper = await mountView();
+    await openHistory();
+    const grosses = () => wrapper!.findAll("[data-testid=history-gross]").map((cell) => cell.text().replace(/\s/g, " "));
+
+    expect(grosses()).toHaveLength(2);
+    expect(wrapper.get("[data-testid=history-more]").text()).toBe("Pokaż więcej");
+
+    await wrapper.get("[data-testid=history-more]").trigger("click");
+    await settle();
+
+    expect(historyCalls().at(-1)).toEqual({ path: { productId: "p-1" }, query: { after: "c1" } });
+    expect(grosses()).toHaveLength(3);
+    expect(wrapper.find("[data-testid=history-more]").exists()).toBe(false);
+  });
+
+  it("says so when the product has no recorded price change", async () => {
+    serveHistory({ "": { items: [], next: null } });
+    wrapper = await mountView();
+
+    await openHistory();
+
+    expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(0);
+    expect(wrapper.get("[data-testid=history-empty]").text()).toBe("Produkt nie ma jeszcze ceny.");
+  });
+
+  it("shows the error of the API and loads again on retry", async () => {
+    serveHistory(500);
+    wrapper = await mountView();
+
+    await openHistory();
+
+    expect(wrapper.get("[data-testid=history-error]").text()).toContain("Nie udało się pobrać historii cen (HTTP 500).");
+    expect(wrapper.find("[data-testid=history-empty]").exists()).toBe(false);
+
+    serveHistory({ "": { items: [entry(5490)], next: null } });
+    await wrapper.get("[data-testid=history-retry]").trigger("click");
+    await settle();
+
+    expect(wrapper.find("[data-testid=history-error]").exists()).toBe(false);
+    expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(1);
+  });
+
+  it("keeps the entries and offers a retry when a further page fails", async () => {
+    let calls = 0;
+    mocks.get.mockImplementation(async (path: string, options?: { params?: { query?: { after?: string } } }) => {
+      if (path === CATEGORIES) {
+        return { data: tree, response: { status: 200 } };
+      }
+      if (path === HISTORY) {
+        calls++;
+        return calls === 2
+          ? { data: undefined, response: { status: 503 } }
+          : { data: options?.params?.query?.after ? { items: [entry(1000)], next: null } : { items: [entry(2000)], next: "c1" }, response: { status: 200 } };
+      }
+      return { data: { items: [item("A", { productId: "p-1" })], next: null }, response: { status: 200 } };
+    });
+    wrapper = await mountView();
+    await openHistory();
+
+    await wrapper.get("[data-testid=history-more]").trigger("click");
+    await settle();
+    expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(1);
+    expect(wrapper.get("[data-testid=history-error]").text()).toContain("HTTP 503");
+
+    await wrapper.get("[data-testid=history-retry]").trigger("click");
+    await settle();
+    expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(2);
+    expect(wrapper.find("[data-testid=history-error]").exists()).toBe(false);
+  });
+
+  it("closes without asking again, and the next product starts from its own first page", async () => {
+    serveHistory(
+      { "": { items: [entry(5490)], next: "c1" }, c1: { items: [entry(1)], next: null } },
+      [item("A", { productId: "p-1" }), item("B", { productId: "p-2" })],
+    );
+    wrapper = await mountView();
+    await openHistory(0);
+    await wrapper.get("[data-testid=history-more]").trigger("click");
+    await settle();
+    expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(2);
+
+    await wrapper.get("[data-testid=close-history]").trigger("click");
+    await settle();
+    expect(wrapper.find("[data-testid=history-dialog]").exists()).toBe(false);
+
+    await openHistory(1);
+    expect(historyCalls().at(-1)).toEqual({ path: { productId: "p-2" }, query: {} });
+    expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(1);
+    expect(wrapper.get("[data-testid=history-dialog]").text()).toContain("B");
+  });
+
+  it("leaves the history to every role but opens the price change only for an administrator", async () => {
+    serveHistory({ "": { items: [entry(5490)], next: null } });
+    wrapper = await mountView(["marketing"]);
+
+    await openHistory();
+
+    expect(wrapper.find("[data-testid=change-price]").exists()).toBe(false);
+    expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(1);
+  });
+});
