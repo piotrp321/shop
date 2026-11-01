@@ -137,7 +137,10 @@ Catalog:
   każdą cenę w osobnej transakcji.
 - Idempotentne: kolejne uruchomienie po naprawie nic nie znajduje.
 - Konflikt wersji z równoległą edycją: ponowny odczyt tej ceny i jedna kolejna próba, potem pozycja w raporcie.
-- Kod wyjścia: 0 – spójne albo naprawione, 1 – bez `--apply` znaleziono rozbieżności, 2 – błąd (np. niedostępna baza).
+- Cena, dla której klasa z Catalog nie ma stawki, zostaje bez zmian i trafia do raportu. Cena produktu, którego nie
+  ma w Catalog, zachowuje swoją klasę.
+- Kod wyjścia: 0 – spójne albo naprawione, 1 – bez `--apply` znaleziono rozbieżności albo z `--apply` zostały
+  nienaprawione (konflikt po ponownej próbie, klasa bez stawki), 2 – błąd (np. niedostępna baza).
 
 Procedura zmiany stawki: zmiana w `PolishVatRates` i wdrożenie, potem `pricing:reconcile-tax --apply`. Do tego
 czasu ceny z nieaktualną stawką są niedostępne w sklepie (bezpieczne zachowanie), a panel oznacza je
