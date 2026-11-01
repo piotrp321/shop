@@ -1,9 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CategoryTree } from "@/catalog/CategoryTree";
 import { findCategoryPath } from "@/catalog/category-path";
-import { loadCatalog } from "@/catalog/load-catalog";
+import { loadCatalogForRequest } from "@/catalog/load-catalog";
 import { CatalogPagination } from "@/catalog/Pagination";
+import { buildCatalogMetadata } from "@/catalog/page-metadata";
 import { ProductGrid } from "@/catalog/ProductGrid";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -11,10 +13,26 @@ type SearchParams = Record<string, string | string[] | undefined>;
 // A repeated parameter (?page=1&page=2) counts as its first value.
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 
+export async function generateMetadata({ searchParams }: PageProps<"/">): Promise<Metadata> {
+  const query: SearchParams = await searchParams;
+  const category = first(query.category);
+  const page = first(query.page);
+  // Shares the request with the page through `loadCatalogForRequest`, so the metadata adds no API calls.
+  const catalog = await loadCatalogForRequest(category, page);
+  if (catalog.kind === "unknown-category") {
+    return {}; // The page answers 404.
+  }
+  const storeUrl = process.env.STORE_URL;
+  if (!storeUrl) {
+    throw new Error("STORE_URL is not set.");
+  }
+  return buildCatalogMetadata(catalog, { category, page }, storeUrl);
+}
+
 export default async function Home({ searchParams }: PageProps<"/">) {
   const query: SearchParams = await searchParams;
   const category = first(query.category);
-  const catalog = await loadCatalog({ category, page: first(query.page) });
+  const catalog = await loadCatalogForRequest(category, first(query.page));
   if (catalog.kind === "unknown-category") {
     notFound();
   }

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 
@@ -46,3 +47,9 @@ export async function loadCatalog(params: { category?: string; page?: string }):
   }
   return { kind: "ok", categories: categories.data, products: products.data };
 }
+
+/**
+ * `loadCatalog` shared by `generateMetadata` and the page within one request, so entering the page calls the API
+ * once per endpoint. The arguments are strings (not an object) because `cache` compares them by identity.
+ */
+export const loadCatalogForRequest = cache((category?: string, page?: string) => loadCatalog({ category, page }));
