@@ -32,6 +32,18 @@ final class ProductDocumentBuilderTest extends TestCase
         self::assertSame([self::ROOT, self::CHILD, self::LEAF, self::SIBLING, self::OTHER_ROOT], $document->categoryAncestorIds);
     }
 
+    public function testDocumentCarriesNoTaxClass(): void
+    {
+        $document = new ProductDocumentBuilder()->build($this->snapshot(
+            mainCategoryId: self::ROOT,
+            additionalCategoryIds: [],
+            categoryPaths: [[self::ROOT]],
+        ));
+
+        $fields = array_keys(get_object_vars($document));
+        self::assertSame([], array_filter($fields, static fn (string $field): bool => str_contains(strtolower($field), 'tax')));
+    }
+
     public function testCategoryIdsStartWithTheMainCategory(): void
     {
         $document = new ProductDocumentBuilder()->build($this->snapshot(

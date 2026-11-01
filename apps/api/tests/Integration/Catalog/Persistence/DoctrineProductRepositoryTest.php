@@ -10,7 +10,7 @@ use App\Catalog\Domain\Product\ProductAlreadyExists;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductNotFound;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
-use App\Catalog\Domain\Product\TaxCategory;
+use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -51,7 +51,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         $product = ProductFactory::createOne([
             'mainCategory' => $main,
             'additionalCategories' => [$b, $a],
-            'taxCategory' => TaxCategory::Food,
+            'taxClass' => TaxClassCode::FreezeDriedMeal,
             'imageAlts' => ['front', 'side', 'back'],
         ]);
         $this->products->save($product);
@@ -62,7 +62,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         self::assertSame([], $loaded->releaseEvents());
         self::assertSame($product->name()->value(), $loaded->name()->value());
         self::assertSame($product->slug()->value(), $loaded->slug()->value());
-        self::assertSame(TaxCategory::Food, $loaded->taxCategory());
+        self::assertSame(TaxClassCode::FreezeDriedMeal, $loaded->taxClass());
         self::assertSame($main->id()->toString(), $loaded->categories()->main()->toString());
         $expectedAdditional = [$a->id()->toString(), $b->id()->toString()];
         sort($expectedAdditional);
@@ -196,7 +196,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
             'name' => 'Competing',
             'short_description' => '',
             'primary_category_id' => $category->id()->toString(),
-            'tax_category' => 'standard',
+            'tax_class' => 'standard',
             'images' => '[]',
             'version' => '1',
         ]);

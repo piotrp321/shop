@@ -43,7 +43,7 @@ class ProductRecord
     public Collection $additionalCategories;
 
     #[ORM\Column(length: 32)]
-    public string $taxCategory;
+    public string $taxClass;
 
     /** @var list<array{key: string, alt: string}> in position order */
     #[ORM\Column(type: Types::JSONB)]

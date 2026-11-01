@@ -61,7 +61,7 @@ final readonly class DemoCatalogExpander
                             $model['description'],
                             $main,
                             $additional,
-                            $template->taxCategory,
+                            $template->taxClass,
                             $this->images($template, $index, $definition->imagelessEvery),
                         );
                         ++$index;

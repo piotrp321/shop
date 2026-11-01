@@ -15,7 +15,7 @@ use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
-use App\Catalog\Domain\Product\TaxCategory;
+use App\Catalog\Domain\Product\TaxClassCode;
 use Zenstruck\Foundry\ObjectFactory;
 
 /**
@@ -43,7 +43,7 @@ final class ProductFactory extends ObjectFactory
             'shortDescription' => '',
             'mainCategory' => CategoryFactory::new(),
             'additionalCategories' => [],
-            'taxCategory' => TaxCategory::Standard,
+            'taxClass' => TaxClassCode::Standard,
             'imageAlts' => [],
         ];
     }
@@ -60,11 +60,11 @@ final class ProductFactory extends ObjectFactory
     {
         [
             'id' => $id, 'name' => $name, 'slug' => $slug, 'shortDescription' => $shortDescription,
-            'mainCategory' => $main, 'additionalCategories' => $additional, 'taxCategory' => $taxCategory,
+            'mainCategory' => $main, 'additionalCategories' => $additional, 'taxClass' => $taxClass,
             'imageAlts' => $imageAlts,
         ] = $attributes;
         \assert(\is_string($id) && \is_string($name) && \is_string($slug) && \is_string($shortDescription));
-        \assert($main instanceof Category && $taxCategory instanceof TaxCategory);
+        \assert($main instanceof Category && $taxClass instanceof TaxClassCode);
         \assert(\is_array($additional) && array_is_list($additional) && \is_array($imageAlts) && array_is_list($imageAlts));
 
         $images = [];
@@ -82,7 +82,7 @@ final class ProductFactory extends ObjectFactory
                 static fn (mixed $category): CategoryId => $category instanceof Category ? $category->id() : throw new \InvalidArgumentException('Expected a Category.'),
                 $additional,
             )),
-            $taxCategory,
+            $taxClass,
             ProductImages::fromList($images),
         );
     }

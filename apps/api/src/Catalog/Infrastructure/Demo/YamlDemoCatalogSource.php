@@ -14,7 +14,7 @@ use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
-use App\Catalog\Domain\Product\TaxCategory;
+use App\Catalog\Domain\Product\TaxClassCode;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
@@ -33,7 +33,7 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
 
     /**
      * @throws \InvalidArgumentException when the definition is malformed, breaks a domain rule (names, slug, tax
-     *                                   category, description, photo alt, categories) or a photo file is missing
+     *                                   class, description, photo alt, categories) or a photo file is missing
      */
     public function load(): DemoCatalog
     {
@@ -66,7 +66,7 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
                 new ProductName($product->name);
                 new Slug($product->slug);
                 new ShortDescription($product->shortDescription);
-                TaxCategory::from($product->taxCategory);
+                TaxClassCode::from($product->taxClass);
                 ProductCategories::create(
                     CategoryId::fromString($product->mainCategoryId),
                     array_map(CategoryId::fromString(...), $product->additionalCategoryIds),

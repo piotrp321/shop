@@ -17,7 +17,7 @@ final class Product
         private readonly Slug $slug,
         private readonly ShortDescription $shortDescription,
         private readonly ProductCategories $categories,
-        private readonly TaxCategory $taxCategory,
+        private readonly TaxClassCode $taxClass,
         private readonly ProductImages $images,
     ) {
     }
@@ -28,10 +28,10 @@ final class Product
         Slug $slug,
         ShortDescription $shortDescription,
         ProductCategories $categories,
-        TaxCategory $taxCategory,
+        TaxClassCode $taxClass,
         ProductImages $images,
     ): self {
-        $product = new self($id, $name, $slug, $shortDescription, $categories, $taxCategory, $images);
+        $product = new self($id, $name, $slug, $shortDescription, $categories, $taxClass, $images);
         $product->events[] = new ProductCreated($id->toString(), new \DateTimeImmutable());
 
         return $product;
@@ -46,10 +46,10 @@ final class Product
         Slug $slug,
         ShortDescription $shortDescription,
         ProductCategories $categories,
-        TaxCategory $taxCategory,
+        TaxClassCode $taxClass,
         ProductImages $images,
     ): self {
-        return new self($id, $name, $slug, $shortDescription, $categories, $taxCategory, $images);
+        return new self($id, $name, $slug, $shortDescription, $categories, $taxClass, $images);
     }
 
     /**
@@ -88,9 +88,9 @@ final class Product
         return $this->categories;
     }
 
-    public function taxCategory(): TaxCategory
+    public function taxClass(): TaxClassCode
     {
-        return $this->taxCategory;
+        return $this->taxClass;
     }
 
     public function images(): ProductImages
