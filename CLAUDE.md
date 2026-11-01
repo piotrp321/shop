@@ -98,6 +98,9 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   subagenci implementują i robią review. Nie dokładamy własnej orkiestracji ani hooków. Implementerzy pracują
   po kolei, jak w skillu; równolegle tylko przy zadaniach naprawdę niezależnych, z ustalonym kontraktem, bez
   wspólnych plików i każdy we własnym worktree.
+- Epik do realizacji przez Agentic Orchestrator (AO): `/brainstorm` zapisuje `spec.md`, `/planner` dzieli ją na
+  zadania w `plan.md` (manifest JSON, akceptacja użytkownika), `ao submit-plan` zgłasza zadania pierwszej fali,
+  a każde z nich realizuje `/delivery` jako osobny PR. Plan z `/planner` nie ma kroków implementacji.
 - Orkiestrator sam rozstrzyga szczegóły implementacji (wpis `Ruling:` w ledgerze). Istotne decyzje DDD (agregaty,
   value objecty, granice modułów, persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury
   przedstawia użytkownikowi przed implementacją.
@@ -109,7 +112,8 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   bez powodu.
 - Raport po PR: zakres, subagenci i ich role, wynik review, wykryte i naprawione problemy, uruchomione testy
   z wynikami, link do PR i CI, czas pracy i zużycie modelu. Zwięźle, bez pełnych logów.
-- Stan prac jest wyłącznie w sekcji „Status” planu funkcji (`docs/features/<funkcja>/plan.md`).
+- Stan prac jest wyłącznie w sekcji „Status” planu funkcji (`docs/features/<funkcja>/plan.md`). Przebieg prób
+  zadań zgłoszonych do AO jest w AO (`ao status`), nie w repo.
 
 ## Dokumentacja
 
