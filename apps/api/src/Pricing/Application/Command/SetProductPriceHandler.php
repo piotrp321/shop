@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Pricing\Application\Command;
 
 use App\Pricing\Application\Port\ProductTaxClasses;
+use App\Pricing\Application\Query\ListedPrice;
 use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\GrossPriceOutOfRange;
 use App\Pricing\Domain\Price\PriceChangeOrigin;
@@ -32,13 +33,15 @@ final readonly class SetProductPriceHandler
      * A first price takes the product's tax class from Catalog. An existing price keeps its own class and takes
      * its current rate, so the change also fixes an outdated rate. The same gross at the same rate changes nothing.
      *
+     * @return ListedPrice the price as saved (with the version it was written with), or as stored when nothing changed
+     *
      * @throws GrossPriceOutOfRange
      * @throws ProductNotFound
      * @throws PriceModifiedConcurrently when the expected version is not the stored one (null for an existing
      *                                   price, any version for a product without price), checked again on write
      * @throws TaxClassWithoutRate
      */
-    public function __invoke(SetProductPrice $command): void
+    public function __invoke(SetProductPrice $command): ListedPrice
     {
         $gross = GrossPrice::pln($command->gross);
         $origin = $this->origin($command);
@@ -60,6 +63,8 @@ final readonly class SetProductPriceHandler
         }
 
         $this->prices->save($price);
+
+        return ListedPrice::of($price, $this->rates);
     }
 
     private function origin(SetProductPrice $command): PriceChangeOrigin

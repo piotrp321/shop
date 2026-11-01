@@ -57,23 +57,7 @@ final readonly class ListBackofficePricesHandler
             $product->name,
             $product->taxClass->toString(),
             $this->rates->rateFor($product->taxClass)->basisPoints(),
-            null === $price ? null : $this->listed($price),
-        );
-    }
-
-    private function listed(ProductPrice $price): ListedPrice
-    {
-        $breakdown = $price->breakdown();
-
-        return new ListedPrice(
-            $breakdown->gross()->amount(),
-            $breakdown->net()->amount(),
-            $breakdown->vat()->amount(),
-            $breakdown->rate()->basisPoints(),
-            $breakdown->currency()->value,
-            $price->version(),
-            $price->updatedAt(),
-            !$price->isCurrent($this->rates),
+            null === $price ? null : ListedPrice::of($price, $this->rates),
         );
     }
 }

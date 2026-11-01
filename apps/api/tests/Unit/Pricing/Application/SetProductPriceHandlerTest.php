@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Pricing\Application;
 
 use App\Pricing\Application\Command\SetProductPrice;
 use App\Pricing\Application\Command\SetProductPriceHandler;
+use App\Pricing\Application\Query\ListedPrice;
 use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\GrossPriceOutOfRange;
 use App\Pricing\Domain\Price\PriceBreakdown;
@@ -53,6 +54,51 @@ final class SetProductPriceHandlerTest extends TestCase
         self::assertSame(PriceChangeSource::Staff, $origin->source());
         self::assertSame('sub-1', $origin->actorId());
         self::assertSame('Anna Admin', $origin->actorName());
+    }
+
+    public function testReturnsTheSavedFirstPrice(): void
+    {
+        $saved = ($this->handler)(SetProductPrice::byStaff(self::PRODUCT, 12300, null, 'sub-1', 'Anna Admin'));
+
+        self::assertEquals(
+            new ListedPrice(12300, 10000, 2300, 2300, 'PLN', 1, $this->price()->updatedAt(), false),
+            $saved,
+        );
+    }
+
+    public function testReturnsTheChangedPriceWithItsNewVersion(): void
+    {
+        $this->storePrice(gross: 10000, basisPoints: 2300, version: 2);
+
+        $saved = ($this->handler)(SetProductPrice::byStaff(self::PRODUCT, 12300, 2, 'sub-1', 'Anna Admin'));
+
+        self::assertSame(3, $saved->version);
+        self::assertSame([12300, 10000, 2300, 2300], [$saved->gross, $saved->net, $saved->vat, $saved->vatRate]);
+        self::assertEquals($this->price()->updatedAt(), $saved->updatedAt);
+        self::assertFalse($saved->vatRateOutdated);
+    }
+
+    public function testSameAmountReturnsTheStoredPriceUnchanged(): void
+    {
+        $this->storePrice(gross: 10000, basisPoints: 2300, version: 2);
+
+        $saved = ($this->handler)(SetProductPrice::byStaff(self::PRODUCT, 10000, 2, 'sub-1', 'Anna Admin'));
+
+        self::assertEquals(
+            new ListedPrice(10000, 8130, 1870, 2300, 'PLN', 2, new \DateTimeImmutable('2026-10-01 12:00:00+00:00'), false),
+            $saved,
+        );
+    }
+
+    public function testFixingAnOutdatedRateReturnsTheCurrentRate(): void
+    {
+        $this->storePrice(gross: 10000, basisPoints: 800, version: 2);
+
+        $saved = ($this->handler)(SetProductPrice::byStaff(self::PRODUCT, 10000, 2, 'sub-1', 'Anna Admin'));
+
+        self::assertSame(2300, $saved->vatRate);
+        self::assertSame(3, $saved->version);
+        self::assertFalse($saved->vatRateOutdated);
     }
 
     public function testSeedPriceHasNoActor(): void
