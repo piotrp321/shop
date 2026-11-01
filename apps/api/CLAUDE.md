@@ -13,6 +13,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
   (`catalog:search-index:setup --recreate`); wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
+- dane demo ładuje `make seed` z głównego `Makefile`: najpierw `catalog:seed-demo` (katalog), potem
+  `pricing:seed-demo`, który czyści ceny i ich historię i ustawia cenę (źródło `seed`) każdemu produktowi demo według
+  wzorców slugów z `fixtures/prices.yaml` (pierwszy pasujący wzorzec w kolejności pliku; produkt bez wzorca kończy
+  seed błędem bez zmian w danych). Obie komendy w `prod` wymagają `--force-reset`
 - `openapi` – eksport specyfikacji do `openapi.json` (sklep: endpointy publiczne i klienta)
   oraz `openapi-admin.json` (panel: `/api/v1/admin`). Zrzut idzie przez pliki tymczasowe, więc nieudany eksport
   kończy się błędem i nie zmienia ani nie obcina plików. CI sprawdza, że commitowane pliki są aktualne

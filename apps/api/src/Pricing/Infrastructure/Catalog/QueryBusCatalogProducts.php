@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Pricing\Infrastructure\Catalog;
 
 use App\Catalog\Application\Query\GetProductTaxClass;
+use App\Catalog\Application\Query\ListProductsForPricing;
+use App\Catalog\Application\Query\ProductForPricing;
+use App\Pricing\Application\Port\CatalogProduct;
+use App\Pricing\Application\Port\ProductsForPricing;
 use App\Pricing\Application\Port\ProductTaxClasses;
 use App\Pricing\Domain\Price\ProductId;
 use App\Pricing\Domain\Tax\TaxClass;
@@ -17,7 +21,7 @@ use Symfony\Component\Messenger\MessageBusInterface;
  * Asks Catalog about products through the query bus, the one dependency of Pricing on Catalog. Catalog's tax class
  * codes become Pricing's TaxClass here.
  */
-final class QueryBusCatalogProducts implements ProductTaxClasses
+final class QueryBusCatalogProducts implements ProductTaxClasses, ProductsForPricing
 {
     use HandleTrait;
 
@@ -32,6 +36,18 @@ final class QueryBusCatalogProducts implements ProductTaxClasses
         \assert(null === $code || \is_string($code));
 
         return null === $code ? null : TaxClass::fromString($code);
+    }
+
+    public function page(?ProductId $after, int $limit): array
+    {
+        $batch = $this->ask(new ListProductsForPricing($after?->toString(), $limit));
+        \assert(\is_array($batch));
+
+        return array_values(array_map(static function (mixed $product): CatalogProduct {
+            \assert($product instanceof ProductForPricing);
+
+            return new CatalogProduct(ProductId::fromString($product->id), $product->slug, TaxClass::fromString($product->taxClass));
+        }, $batch));
     }
 
     private function ask(object $query): mixed
