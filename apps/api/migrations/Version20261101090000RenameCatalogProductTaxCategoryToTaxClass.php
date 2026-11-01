@@ -29,6 +29,7 @@ final class Version20261101090000RenameCatalogProductTaxCategoryToTaxClass exten
 
     public function down(Schema $schema): void
     {
+        // Lossy: several classes map to one old category. The exact classes are restored by `make seed`.
         $this->addSql(<<<'SQL'
             UPDATE catalog_product SET tax_class = CASE tax_class
                 WHEN 'printed_book' THEN 'printed_publication'

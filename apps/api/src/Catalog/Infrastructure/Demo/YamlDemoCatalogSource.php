@@ -33,7 +33,7 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
 
     /**
      * @throws \InvalidArgumentException when the definition is malformed, breaks a domain rule (names, slug, tax
-     *                                   category, description, photo alt, categories) or a photo file is missing
+     *                                   class, description, photo alt, categories) or a photo file is missing
      */
     public function load(): DemoCatalog
     {

@@ -167,7 +167,8 @@ context ma własne value objecty.
 - **Ceny brutto i VAT**: klient widzi ceny brutto. Cena przechowuje netto, stawkę VAT i brutto,
   liczone w groszach z jawną regułą zaokrąglania. Produkt w Catalog ma klasę podatkową (`taxClass`:
   jednorodna grupa towarów nazwana po towarze, np. standardowa, książka drukowana, żel energetyczny), a nie
-  stawkę. Pricing wyznacza stawkę (23%, 8%, 5%, 0%) z klasy podatkowej i okresu obowiązywania stawki; stawki dla PL są w kodzie Pricing.
+  stawkę. Pricing wyznacza stawkę (23%, 8%, 5%, 0%) z klasy podatkowej i okresu obowiązywania stawki;
+  stawki dla PL są w kodzie Pricing.
 - **Omnibus**: każda zmiana ceny jest zapisywana w historii. Przy promocji sklep pokazuje najniższą cenę
   z 30 dni przed jej rozpoczęciem.
 - **Stany magazynowe**: sprzedaż ponad stan jest niemożliwa, także przy równoległych zakupach.
