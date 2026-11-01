@@ -27,10 +27,14 @@ test("a price changed in the panel shows up on the store list", async ({ page })
   // The first product of the first page of the store: always on the list and with a name unique on that page.
   await page.goto("/");
   const productName = (await page.getByRole("main").getByRole("heading", { level: 2 }).first().innerText()).trim();
+  const priceBefore = normalize(await storeTile(page, productName).locator("p").innerText());
 
   await loginStaff(page, staff.admin);
   await page.getByRole("link", { name: "Ceny" }).click();
   await page.getByRole("searchbox", { name: "Szukaj po nazwie produktu" }).fill(productName);
+  // The unfiltered first page has many rows: exactly one row means the (debounced) search has been applied. Changing
+  // the price earlier would let a late search answer overwrite the row with the old price.
+  await expect(page.getByTestId("price-row"), "the search narrows the list to the product").toHaveCount(1);
   const row = page.getByTestId("price-row").filter({ has: page.getByTestId("name").getByText(productName, { exact: true }) });
   await expect(row).toHaveCount(1);
 
@@ -41,11 +45,12 @@ test("a price changed in the panel shows up on the store list", async ({ page })
   await row.getByRole("button", { name: "Zmień cenę" }).click();
   await page.getByTestId("gross-input").fill(target.input);
   await page.getByRole("button", { name: "Zapisz" }).click();
-  await expect(page.getByTestId("change-dialog")).toBeHidden();
+  await expect(page.getByTestId("change-dialog"), "the price change was rejected (conflict, validation or API error)").toBeHidden();
   await expect(row.getByTestId("gross")).toHaveText(new RegExp(`^${target.input.replace(",", "[,.]")}\\s`));
 
   // The prices endpoint may be cached for up to 60 s: reload until the new price appears.
   const expected = normalize(formatPln(target.grosze));
+  expect(priceBefore, "the store showed another price before the change").not.toBe(expected);
   await page.goto("/");
   await expect
     .poll(
