@@ -14,7 +14,7 @@ use App\Catalog\Domain\Product\ProductAlreadyExists;
 use App\Catalog\Domain\Product\ProductCreated;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
-use App\Catalog\Domain\Product\TaxCategory;
+use App\Catalog\Domain\Product\TaxClassCode;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use App\Tests\Support\InMemory\InMemoryProductRepository;
 use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
@@ -52,7 +52,7 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame('Lekkie', $product->shortDescription()->value());
         self::assertSame(self::MAIN_ID, $product->categories()->main()->toString());
         self::assertSame([self::EXTRA_ID], array_map(static fn (CategoryId $id): string => $id->toString(), $product->categories()->additional()));
-        self::assertSame(TaxCategory::Standard, $product->taxCategory());
+        self::assertSame(TaxClassCode::Standard, $product->taxClass());
         $images = $product->images()->toList();
         self::assertCount(1, $images);
         self::assertSame('originals/'.str_repeat('a', 64).'.jpg', $images[0]->key()->toString());

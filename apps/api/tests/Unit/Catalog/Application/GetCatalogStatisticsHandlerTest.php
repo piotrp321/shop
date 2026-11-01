@@ -24,7 +24,7 @@ use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
-use App\Catalog\Domain\Product\TaxCategory;
+use App\Catalog\Domain\Product\TaxClassCode;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use App\Tests\Support\InMemory\InMemoryProductRepository;
 use PHPUnit\Framework\TestCase;
@@ -121,7 +121,7 @@ final class GetCatalogStatisticsHandlerTest extends TestCase
             new Slug('product-'.substr($id, 0, 8).'-'.substr($id, -4)),
             new ShortDescription(''),
             ProductCategories::create($category->id()),
-            TaxCategory::Standard,
+            TaxClassCode::Standard,
             $images,
         ));
     }

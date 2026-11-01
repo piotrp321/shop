@@ -20,7 +20,7 @@ use App\Catalog\Domain\Product\ProductRepository;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
-use App\Catalog\Domain\Product\TaxCategory;
+use App\Catalog\Domain\Product\TaxClassCode;
 use App\Shared\Domain\Event\DomainEventPublisher;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -69,7 +69,7 @@ final readonly class CreateProductHandler
             new Slug($command->slug),
             new ShortDescription($command->shortDescription),
             $categories,
-            TaxCategory::from($command->taxCategory),
+            TaxClassCode::from($command->taxClass),
             ProductImages::fromList($images),
         );
 

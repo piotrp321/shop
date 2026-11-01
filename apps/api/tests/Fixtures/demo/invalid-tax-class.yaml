@@ -19,7 +19,7 @@ templates:
     additionalCategories:
       - "turystyka/plecaki"
     productType: "Buty"
-    taxCategory: standard
+    taxClass: standard
     brands: ["Tarvik", "Norvane"]
     models:
       - name: "Asfalt 200"
@@ -34,7 +34,7 @@ templates:
         alt: "Biegacz w lesie"
   - category: "turystyka/plecaki"
     productType: "Plecak"
-    taxCategory: reduced
+    taxClass: reduced
     brands: ["Tarvik"]
     models:
       - name: "Ząb 20"
