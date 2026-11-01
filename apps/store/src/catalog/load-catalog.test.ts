@@ -78,6 +78,16 @@ describe("loadCatalog", () => {
     expect(await loadCatalog({ category: "not-a-uuid" })).toEqual({ kind: "invalid-filter" });
   });
 
+  it("returns unknown-category for a 404 from the product list", async () => {
+    stubApi((url) => (url.pathname === "/api/v1/products" ? problem(404) : json(TREE)));
+    expect(await loadCatalog({ category: "00000000-0000-4000-8000-0000000000ff" })).toEqual({ kind: "unknown-category" });
+  });
+
+  it("rethrows a 404 from the category tree", async () => {
+    stubApi((url) => (url.pathname === "/api/v1/categories" ? problem(404) : json(PAGE)));
+    await expect(loadCatalog({})).rejects.toThrow(/404/);
+  });
+
   it("rethrows a 503 from the API", async () => {
     stubApi((url) => (url.pathname === "/api/v1/products" ? problem(503) : json(TREE)));
     await expect(loadCatalog({})).rejects.toThrow(/503/);

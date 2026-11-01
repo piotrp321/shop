@@ -13,12 +13,38 @@ use App\Catalog\Application\Query\ListProductsHandler;
 use App\Catalog\Application\Query\ProductListItem;
 use App\Catalog\Application\Query\ProductPage;
 use App\Catalog\Application\Search\ProductDocument;
+use App\Catalog\Domain\Category\Category;
+use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Domain\Category\CategoryName;
+use App\Catalog\Domain\Category\CategoryNotFound;
+use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use PHPUnit\Framework\TestCase;
 
 final class ListProductsHandlerTest extends TestCase
 {
     private const string CATEGORY = '00000000-0000-4000-8000-0000000000a1';
+    private const string UNKNOWN = '00000000-0000-4000-8000-0000000000ff';
     private const string KEY = 'originals/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.jpg';
+
+    public function testUnknownCategoryIsNotFoundAndSearchIsNotCalled(): void
+    {
+        $search = new FakeProductSearch([self::document('Buty', null)], 1);
+
+        try {
+            $this->handle($search, new ListProducts(self::UNKNOWN, 1, 24));
+            self::fail('Expected CategoryNotFound.');
+        } catch (CategoryNotFound) {
+            self::assertNull($search->lastCall);
+        }
+    }
+
+    public function testExistingCategoryWithoutProductsGivesAnEmptyPage(): void
+    {
+        $page = $this->handle(new FakeProductSearch([], 0), new ListProducts(self::CATEGORY, 1, 24));
+
+        self::assertSame([], $page->items);
+        self::assertSame(0, $page->total);
+    }
 
     public function testProductWithoutImageHasNullImage(): void
     {
@@ -74,12 +100,15 @@ final class ListProductsHandlerTest extends TestCase
 
     private function handle(FakeProductSearch $search, ListProducts $query): ProductPage
     {
+        $categories = new InMemoryCategoryRepository();
+        $categories->save(Category::createRoot(CategoryId::fromString(self::CATEGORY), new CategoryName('Buty')));
+
         return (new ListProductsHandler($search, new class implements ImageUrlGenerator {
             public function url(string $imageKey, ImageSize $size, int $width, ImageFormat $format): string
             {
                 return \sprintf('https://img.test/%s/%d/%s', $format->value, $width, $imageKey);
             }
-        }))($query);
+        }, $categories))($query);
     }
 
     /**

@@ -10,6 +10,9 @@ use App\Catalog\Application\Port\ProductSearch;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
+use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Domain\Category\CategoryNotFound;
+use App\Catalog\Domain\Category\CategoryRepository;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
@@ -18,15 +21,22 @@ final readonly class ListProductsHandler
     public function __construct(
         private ProductSearch $search,
         private ImageUrlGenerator $imageUrls,
+        private CategoryRepository $categories,
     ) {
     }
 
     /**
+     * @throws CategoryNotFound  when the filter names a category that is not in the database
      * @throws SearchUnavailable
      * @throws SearchIndexError
      */
     public function __invoke(ListProducts $query): ProductPage
     {
+        if (null !== $query->categoryId) {
+            // The database decides whether the category exists; the search index is only a read model.
+            $this->categories->get(CategoryId::fromString($query->categoryId));
+        }
+
         $result = $this->search->search($query->categoryId, $query->page, $query->perPage);
 
         return new ProductPage(

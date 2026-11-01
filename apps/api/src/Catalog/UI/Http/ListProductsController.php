@@ -31,7 +31,7 @@ final class ListProductsController
         operationId: 'listProducts',
         summary: 'Product list',
         description: 'A page of products sorted by name, then by id. The category filter includes the products of all '
-            .'its subcategories; an unknown category gives an empty list. A page past the end gives an empty list '
+            .'its subcategories; an unknown category gives 404, an existing category without products an empty list. A page past the end gives an empty list '
             .'with the real total.',
         tags: ['Catalog'],
         parameters: [
@@ -53,6 +53,11 @@ final class ListProductsController
             new OA\Response(
                 response: 401,
                 description: 'An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.',
+                content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
+            ),
+            new OA\Response(
+                response: 404,
+                description: 'The `category` filter names a category that does not exist (problem details).',
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
             new OA\Response(

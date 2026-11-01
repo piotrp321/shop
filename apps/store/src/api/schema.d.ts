@@ -33,7 +33,7 @@ export interface paths {
         };
         /**
          * Product list
-         * @description A page of products sorted by name, then by id. The category filter includes the products of all its subcategories; an unknown category gives an empty list. A page past the end gives an empty list with the real total.
+         * @description A page of products sorted by name, then by id. The category filter includes the products of all its subcategories; an unknown category gives 404, an existing category without products an empty list. A page past the end gives an empty list with the real total.
          */
         get: operations["listProducts"];
         put?: never;
@@ -253,6 +253,15 @@ export interface operations {
             };
             /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The `category` filter names a category that does not exist (problem details). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -9,11 +9,16 @@ use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchResult;
 use App\Catalog\Application\Search\SearchUnavailable;
+use App\Catalog\Domain\Category\Category;
+use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
+use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductDocumentFactory;
 use App\Tests\Integration\Catalog\Search\UsesTemporarySearchAlias;
 use App\Tests\Support\SwitchableProductSearch;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -21,7 +26,7 @@ use Zenstruck\Foundry\Test\Factories;
 
 /**
  * Runs on a temporary index of the real Elasticsearch (see UsesTemporarySearchAlias).
- * Category tree: ROOT > CHILD > LEAF, and a separate OTHER.
+ * Category tree (saved in the database): ROOT > CHILD > LEAF, and a separate OTHER. UNKNOWN is never saved.
  */
 final class ProductsEndpointTest extends WebTestCase
 {
@@ -32,6 +37,7 @@ final class ProductsEndpointTest extends WebTestCase
     private const string CHILD = '00000000-0000-4000-8000-0000000000a2';
     private const string LEAF = '00000000-0000-4000-8000-0000000000a3';
     private const string OTHER = '00000000-0000-4000-8000-0000000000b1';
+    private const string EMPTY_CATEGORY = '00000000-0000-4000-8000-0000000000c1';
     private const string UNKNOWN = '00000000-0000-4000-8000-0000000000ff';
     private const string IMAGE_KEY = 'originals/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.jpg';
 
@@ -44,6 +50,10 @@ final class ProductsEndpointTest extends WebTestCase
         $this->client->disableReboot();
         $this->maintenance()->setup();
         $this->searchService()->use(new ElasticsearchProductSearch(self::clientFactory()->create(2.0), $this->alias()));
+        $root = $this->saveCategory(self::ROOT);
+        $child = $this->saveCategory(self::CHILD, $root);
+        $this->saveCategory(self::LEAF, $child);
+        $this->saveCategory(self::OTHER);
     }
 
     public function testResponseHasTheDocumentedShape(): void
@@ -107,11 +117,35 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertSame(['Leaf'], array_column($this->items($this->get('/api/v1/products?category='.self::LEAF)), 'name'));
     }
 
-    public function testUnknownCategoryGivesAnEmptyList(): void
+    public function testUnknownCategoryGivesProblemDetailsNotFound(): void
     {
         $this->index($this->document('Buty', self::LEAF, [self::LEAF]));
 
-        $body = $this->get('/api/v1/products?category='.self::UNKNOWN);
+        $problem = $this->get('/api/v1/products?category='.self::UNKNOWN);
+
+        self::assertResponseStatusCodeSame(404);
+        self::assertStringStartsWith('application/problem+json', (string) $this->client->getResponse()->headers->get('Content-Type'));
+        self::assertSame(404, $problem['status']);
+        self::assertSame('Category not found.', $problem['detail']);
+        self::assertStringNotContainsString(self::UNKNOWN, (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testUnknownCategoryIsDecidedByTheDatabaseNotBySearch(): void
+    {
+        // The index holds a product of this category id, yet the category is not in the database.
+        $this->index($this->document('Buty', self::UNKNOWN, [self::UNKNOWN]));
+
+        $this->get('/api/v1/products?category='.self::UNKNOWN);
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testExistingCategoryWithoutProductsGivesAnEmptyList(): void
+    {
+        $this->index($this->document('Buty', self::LEAF, [self::LEAF]));
+        $this->saveCategory(self::EMPTY_CATEGORY);
+
+        $body = $this->get('/api/v1/products?category='.self::EMPTY_CATEGORY);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame([], $body['items']);
@@ -247,8 +281,8 @@ final class ProductsEndpointTest extends WebTestCase
         $operation = $path['get'];
         self::assertIsArray($operation);
         self::assertIsArray($operation['responses']);
-        self::assertEqualsCanonicalizing(['200', '400', '401', '503'], array_keys($operation['responses']));
-        foreach (['400', '401', '503'] as $status) {
+        self::assertEqualsCanonicalizing(['200', '400', '401', '404', '503'], array_keys($operation['responses']));
+        foreach (['400', '401', '404', '503'] as $status) {
             $response = $operation['responses'][$status];
             self::assertIsArray($response);
             self::assertIsArray($response['content']);
@@ -286,6 +320,18 @@ final class ProductsEndpointTest extends WebTestCase
 
         self::assertEqualsCanonicalizing(array_keys($schema['properties']), array_keys($object), $schemaName.' keys must match the schema.');
         self::assertEqualsCanonicalizing($schema['required'], array_keys($object), $schemaName.' requires every key.');
+    }
+
+    private function saveCategory(string $id, ?Category $parent = null): Category
+    {
+        $category = CategoryFactory::createOne(['id' => $id, 'parent' => $parent]);
+        $doctrine = self::getContainer()->get('doctrine');
+        self::assertInstanceOf(ManagerRegistry::class, $doctrine);
+        $entityManager = $doctrine->getManager();
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        (new DoctrineCategoryRepository($entityManager))->save($category);
+
+        return $category;
     }
 
     private function searchService(): SwitchableProductSearch
