@@ -129,6 +129,28 @@ class PlanManifestTest(unittest.TestCase):
                 self.write_plan(self.manifest([task('CART-1')], spec=spec))
                 self.assertInvalid(message)
 
+    def test_spec_must_be_in_the_plan_directory(self):
+        self.write('README.md', '# Shop\n')
+        self.write_plan(self.manifest([task('CART-1')], spec='README.md'))
+        self.assertInvalid('spec must be in docs/features/cart')
+
+    def test_spec_symlink_leaving_the_repository_is_refused(self):
+        with tempfile.NamedTemporaryFile(suffix='.md') as outside:
+            os.symlink(outside.name, os.path.join(self.repo, 'docs', 'features', 'cart', 'link.md'))
+            self.write_plan(self.manifest([task('CART-1')], spec='docs/features/cart/link.md'))
+            self.assertInvalid('relative path inside the repository')
+
+    def test_ids_with_a_trailing_newline_are_refused(self):
+        self.write_plan(self.manifest([task('CART-1'), task('CART-1\n', ['CART-1'])]))
+        self.assertInvalid('id must match')
+        self.write_plan(self.manifest([task('CART-1')], epic='CART\n'))
+        self.assertInvalid('epic must match')
+
+    def test_plan_that_is_not_utf8(self):
+        with open(self.plan, 'wb') as f:
+            f.write(b'\xff\xfe```json\n')
+        self.assertInvalid('cannot read')
+
     def test_tasks_must_be_a_non_empty_list_of_objects(self):
         self.write_plan(self.manifest([]))
         self.assertInvalid('tasks must be a non-empty list')

@@ -4,8 +4,8 @@
   validate PLAN
       Reads the single ```json block of PLAN (docs/features/<epic>/plan.md), checks it and prints the manifest as
       JSON with "waves" added: task ids grouped by dependency depth, in plan order. Wave 1 has no dependencies;
-      a task of wave N depends only on tasks of earlier waves. The spec path is resolved against the root of the
-      git repository that contains PLAN.
+      a task of wave N depends only on tasks of earlier waves. The spec path is relative to the root of the git
+      repository that contains PLAN and must point to a file in the plan's directory.
 
 Exit code 2: unreadable plan, missing or broken block, or an invalid manifest (every problem on stderr).
 """
@@ -50,7 +50,7 @@ def extract_block(text):
     return blocks[0]
 
 
-def check(manifest, root):
+def check(manifest, root, plan_dir):
     """Problems of the manifest, empty when it is valid."""
     if not isinstance(manifest, dict):
         return ['the manifest must be a JSON object']
@@ -59,11 +59,11 @@ def check(manifest, root):
     if 'schema_version' in manifest and (type(version) is not int or version != SCHEMA_VERSION):
         problems.append('schema_version must be %d' % SCHEMA_VERSION)
     epic = manifest.get('epic')
-    if 'epic' in manifest and not (isinstance(epic, str) and TASK_ID.match(epic)):
+    if 'epic' in manifest and not (isinstance(epic, str) and TASK_ID.fullmatch(epic)):
         problems.append('epic must match %s' % TASK_ID.pattern)
         epic = None
     if 'spec' in manifest:
-        problems.extend(_spec_problems(manifest['spec'], root))
+        problems.extend(_spec_problems(manifest['spec'], root, plan_dir))
     tasks = manifest.get('tasks')
     if 'tasks' not in manifest:
         return problems
@@ -112,14 +112,19 @@ def _keys(where, value, expected):
     return problems
 
 
-def _spec_problems(spec, root):
+def _spec_problems(spec, root, plan_dir):
     if not isinstance(spec, str) or not spec or spec.startswith('/') or '\\' in spec:
         return ['spec must be a relative path inside the repository']
     normalized = posixpath.normpath(spec)
     if normalized == '..' or normalized.startswith('../'):
         return ['spec must be a relative path inside the repository']
-    if not os.path.isfile(os.path.join(root, normalized)):
+    path = os.path.realpath(os.path.join(root, normalized))
+    if os.path.commonpath([path, os.path.realpath(root)]) != os.path.realpath(root):
+        return ['spec must be a relative path inside the repository']
+    if not os.path.isfile(path):
         return ['spec %s not found in %s' % (spec, root)]
+    if posixpath.dirname(normalized) != plan_dir:
+        return ['spec must be in %s, the directory of the plan' % plan_dir]
     return []
 
 
@@ -128,7 +133,7 @@ def _task_problems(i, item, epic, ids):
     where = 'tasks[%d] (%s)' % (i, task_id) if isinstance(task_id, str) else 'tasks[%d]' % i
     problems = _keys(where, item, TASK_KEYS)
     if 'id' in item:
-        if not (isinstance(task_id, str) and TASK_ID.match(task_id)):
+        if not (isinstance(task_id, str) and TASK_ID.fullmatch(task_id)):
             problems.append('%s: id must match %s' % (where, TASK_ID.pattern))
         elif epic is not None and not (task_id.startswith(epic + '-') and len(task_id) > len(epic) + 1):
             problems.append('%s: id must start with %s-' % (where, epic))
@@ -200,11 +205,12 @@ def validate(path):
     except (OSError, UnicodeDecodeError) as e:
         raise PlanError('cannot read %s: %s' % (path, e)) from None
     root = _repo_root(os.path.abspath(path))
+    plan_dir = os.path.relpath(os.path.dirname(os.path.realpath(path)), os.path.realpath(root)).replace(os.sep, '/')
     try:
         manifest = json.loads(extract_block(text))
     except ValueError as e:
         raise PlanError('the ```json block is not valid JSON: %s' % e) from None
-    problems = check(manifest, root)
+    problems = check(manifest, root, plan_dir)
     if problems:
         raise PlanError('\n'.join(problems))
     return dict(manifest, waves=waves(manifest['tasks']))
