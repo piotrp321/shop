@@ -23,7 +23,7 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
  * Renders every exception as an RFC 9457 problem details document.
  *
  * A validation failure (also as the `previous` of an HTTP exception) lists its violations, without `detail`; its
- * status is 400, or the client error status of the HTTP exception that wraps it (422 for a request payload).
+ * status is 400, or 422 when the HTTP exception that wraps it is a 422 (a request payload).
  *
  * Only the thrown exception itself decides about `detail`, its `previous` chain is never inspected for it.
  * The one exception: a Messenger HandlerFailedException that wraps exactly one exception is replaced by that
@@ -112,13 +112,14 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
     }
 
     /**
-     * A validation failure is a 400, unless an HTTP exception that wraps it names another client error: a request
-     * payload mapped with `validationFailedStatusCode: 422` is a 422. Never a server error.
+     * A validation failure is a 400, unless an HTTP exception that wraps it is a 422: a request payload mapped with
+     * `validationFailedStatusCode: 422`. Any other status of the wrapper is ignored (`#[MapQueryString]` wraps in a
+     * 404 by default, but a bad query is a 400), so it is never a server error either.
      */
     private static function validationStatus(\Throwable $exception): int
     {
-        if ($exception instanceof HttpExceptionInterface && $exception->getStatusCode() >= 400 && $exception->getStatusCode() < 500) {
-            return $exception->getStatusCode();
+        if ($exception instanceof HttpExceptionInterface && Response::HTTP_UNPROCESSABLE_ENTITY === $exception->getStatusCode()) {
+            return Response::HTTP_UNPROCESSABLE_ENTITY;
         }
 
         return Response::HTTP_BAD_REQUEST;

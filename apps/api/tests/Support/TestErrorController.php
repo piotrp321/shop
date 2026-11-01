@@ -12,6 +12,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Symfony\Component\Messenger\Envelope;
@@ -61,6 +62,15 @@ final class TestErrorController
         $violations = new ConstraintViolationList([new ConstraintViolation('Name is required.', null, [], 'input', 'name', null)]);
 
         throw new ServiceUnavailableHttpException(30, 'internal secret', new ValidationFailedException('input', $violations));
+    }
+
+    /** What #[MapQueryString] throws by default (validationFailedStatusCode 404): a query failure is not a 404. */
+    #[Route('/_test/invalid-in-not-found', methods: ['GET'])]
+    public function invalidInNotFound(): Response
+    {
+        $violations = new ConstraintViolationList([new ConstraintViolation('Name is required.', null, [], 'input', 'name', null)]);
+
+        throw new NotFoundHttpException('internal secret', new ValidationFailedException('input', $violations));
     }
 
     #[Route('/_test/project-exception', methods: ['GET'])]
