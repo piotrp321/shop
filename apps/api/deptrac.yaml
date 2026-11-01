@@ -53,6 +53,22 @@ deptrac:
       collectors:
         - type: classNameRegex
           value: '#^App\\Backoffice\\UI\\#'
+    - name: Pricing_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Pricing\\Domain\\#'
+    - name: Pricing_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Pricing\\Application\\#'
+    - name: Pricing_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Pricing\\Infrastructure\\#'
+    - name: Pricing_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Pricing\\UI\\#'
     - name: Shared_Domain
       collectors:
         - type: classNameRegex
@@ -154,6 +170,31 @@ deptrac:
       - Native
       - Backoffice_Application
       - Backoffice_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+    Pricing_Domain:
+      - Native
+      - Shared_Domain
+    Pricing_Application:
+      - Native
+      - Pricing_Domain
+      - Shared_Domain
+      - Vendor
+    Pricing_Infrastructure:
+      - Native
+      - Pricing_Application
+      - Pricing_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      # Adapters of Pricing's ports ask Catalog through its queries on query.bus. The only dependency between the
+      # two modules, one way: Catalog depends on Pricing in no layer.
+      - Catalog_Application
+    Pricing_UI:
+      - Native
+      - Pricing_Application
+      - Pricing_Domain
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
