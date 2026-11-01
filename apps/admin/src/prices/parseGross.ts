@@ -25,7 +25,7 @@ export function parseGross(text: string): GrossInput {
   if (match === null) {
     return { ok: false, message: "Wpisz kwotę w złotych, np. 54,90." };
   }
-  const [, zlote, fraction = ""] = match;
+  const [, zlote = "", fraction = ""] = match;
   const grosze = BigInt(zlote) * 100n + BigInt(fraction.padEnd(2, "0"));
   if (grosze > BigInt(Number.MAX_SAFE_INTEGER)) {
     return { ok: false, message: "Kwota jest za duża." };
