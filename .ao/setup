@@ -5,6 +5,8 @@
 # services to be healthy and creates .env.local with generated secrets), seeds demo data and waits for the API.
 # Exit 0 = the stack is ready. Set AO_SETUP_READY_TIMEOUT (seconds, default 120) to change the API wait.
 set -eu
+# Name and number checks below must not depend on the locale (ranges like a-z).
+export LC_ALL=C
 
 fail() { echo "ao setup: $*" >&2; exit 1; }
 
@@ -18,11 +20,11 @@ case "$AO_COMPOSE_PROJECT" in
   *[!a-z0-9_-]*) fail "AO_COMPOSE_PROJECT may contain only a-z, 0-9, _ and -: $AO_COMPOSE_PROJECT" ;;
 esac
 case "$AO_PORT_BASE" in
-  *[!0-9]*) fail "AO_PORT_BASE is not a number: $AO_PORT_BASE" ;;
+  *[!0-9]* | 0*) fail "AO_PORT_BASE is not a decimal number without leading zeros: $AO_PORT_BASE" ;;
 esac
 # 7 consecutive ports are used, all of them must be unprivileged and valid.
-{ [ "$AO_PORT_BASE" -ge 1024 ] && [ "$AO_PORT_BASE" -le 65528 ]; } \
-  || fail "AO_PORT_BASE must be between 1024 and 65528: $AO_PORT_BASE"
+{ [ "$AO_PORT_BASE" -ge 1024 ] && [ "$AO_PORT_BASE" -le 65529 ]; } \
+  || fail "AO_PORT_BASE must be between 1024 and 65529: $AO_PORT_BASE"
 
 cd "$(dirname "$0")/.."
 
@@ -49,6 +51,7 @@ PY
 
 tmp="$(mktemp .env.XXXXXX)"
 trap 'rm -f "$tmp"' EXIT
+trap 'rm -f "$tmp"; exit 1' INT TERM
 {
   echo "COMPOSE_PROJECT_NAME=$AO_COMPOSE_PROJECT"
   offset=0
@@ -58,7 +61,7 @@ trap 'rm -f "$tmp"' EXIT
   done
 } > "$tmp"
 mv "$tmp" .env
-trap - EXIT
+trap - EXIT INT TERM
 
 export COMPOSE_PROJECT_NAME="$AO_COMPOSE_PROJECT"
 make up || fail "make up failed"
@@ -66,8 +69,11 @@ make seed || fail "make seed failed"
 
 api_port=$((AO_PORT_BASE + 2))
 timeout="${AO_SETUP_READY_TIMEOUT:-120}"
+case "$timeout" in
+  '' | *[!0-9]*) fail "AO_SETUP_READY_TIMEOUT is not a number of seconds: $timeout" ;;
+esac
 waited=0
-until curl -fs "http://127.0.0.1:$api_port/health" >/dev/null 2>&1; do
+until curl -fs --max-time 5 "http://127.0.0.1:$api_port/health" >/dev/null 2>&1; do
   [ "$waited" -lt "$timeout" ] || fail "the API did not become ready within ${timeout}s (http://127.0.0.1:$api_port/health)"
   sleep 1
   waited=$((waited + 1))

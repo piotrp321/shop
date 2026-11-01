@@ -142,7 +142,7 @@ class AoScriptsTest(unittest.TestCase):
         self.assertEqual([], self.calls())
 
     def test_setup_rejects_invalid_values(self):
-        for name, value in (('AO_PORT_BASE', 'abc'), ('AO_PORT_BASE', '80'), ('AO_PORT_BASE', '65529'),
+        for name, value in (('AO_PORT_BASE', 'abc'), ('AO_PORT_BASE', '80'), ('AO_PORT_BASE', '65530'), ('AO_PORT_BASE', '01100'), ('AO_COMPOSE_PROJECT', 'Bad'), ('AO_COMPOSE_PROJECT', 'aBc'),
                             ('AO_COMPOSE_PROJECT', 'Bad Name'), ('AO_COMPOSE_PROJECT', '../x')):
             with self.subTest(name=name, value=value):
                 open(self.log, 'w').close()
@@ -175,6 +175,16 @@ class AoScriptsTest(unittest.TestCase):
         self.assertIn('make up', r.stderr)
         self.assertNotIn('make seed project=ao-t1-a1', self.calls())
 
+    def test_setup_propagates_a_failing_make_seed(self):
+        r = self.setup(FAKE_MAKE_FAIL='seed')
+        self.assertNotEqual(0, r.returncode)
+        self.assertIn('make seed', r.stderr)
+
+    def test_setup_rejects_a_non_numeric_ready_timeout(self):
+        r = self.setup(AO_SETUP_READY_TIMEOUT='soon')
+        self.assertNotEqual(0, r.returncode)
+        self.assertIn('AO_SETUP_READY_TIMEOUT', r.stderr)
+
     def test_setup_fails_when_the_api_never_becomes_ready(self):
         r = self.setup(FAKE_CURL_FAIL='1', AO_SETUP_READY_TIMEOUT='2')
         self.assertNotEqual(0, r.returncode)
@@ -185,7 +195,7 @@ class AoScriptsTest(unittest.TestCase):
     def test_teardown_removes_the_project_with_its_volumes(self):
         r = self.teardown_()
         self.assertEqual(0, r.returncode, r.stderr)
-        self.assertIn('docker compose -p ao-t1-a1 down -v --remove-orphans', self.calls())
+        self.assertIn('docker compose -p ao-t1-a1 down -v --remove-orphans --rmi local', self.calls())
 
     def test_teardown_is_idempotent(self):
         self.assertEqual(0, self.teardown_().returncode)
