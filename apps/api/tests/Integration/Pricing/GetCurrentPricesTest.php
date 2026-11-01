@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Pricing;
 use App\Pricing\Application\Query\GetCurrentPrices;
 use App\Pricing\Application\Query\InvalidCurrentPricesQuery;
 use App\Pricing\Application\Query\PriceSnapshot;
+use App\Tests\Factory\ProductPriceRecordFactory;
 use App\Tests\Support\StatementCounter;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -23,6 +24,7 @@ final class GetCurrentPricesTest extends KernelTestCase
 {
     private MessageBusInterface $queryBus;
     private Connection $connection;
+    private EntityManagerInterface $entityManager;
     private StatementCounter $counter;
 
     protected function setUp(): void
@@ -32,6 +34,7 @@ final class GetCurrentPricesTest extends KernelTestCase
         $this->queryBus = $bus;
         $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $this->entityManager = $entityManager;
         $this->connection = $entityManager->getConnection();
         $counter = self::getContainer()->get(StatementCounter::class);
         self::assertInstanceOf(StatementCounter::class, $counter);
@@ -100,16 +103,7 @@ final class GetCurrentPricesTest extends KernelTestCase
 
     private function insertPrice(int $gross, string $taxClass, int $basisPoints): string
     {
-        $id = (string) Uuid::v7();
-        $divisor = 10000 + $basisPoints;
-        $net = intdiv(2 * $gross * 10000 + $divisor, 2 * $divisor);
-        $this->connection->executeStatement(
-            'INSERT INTO pricing_product_price (product_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 1, now())',
-            [$id, 'PLN', $gross, $net, $gross - $net, $basisPoints, $taxClass],
-        );
-
-        return $id;
+        return ProductPriceRecordFactory::store($this->entityManager, ['gross' => $gross, 'taxClass' => $taxClass, 'vatRateBp' => $basisPoints]);
     }
 
     /**
