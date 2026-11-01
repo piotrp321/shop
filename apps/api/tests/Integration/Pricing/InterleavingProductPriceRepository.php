@@ -39,6 +39,11 @@ final class InterleavingProductPriceRepository implements ProductPriceRepository
         return $this->inner->findMany($ids);
     }
 
+    public function page(?ProductId $after, int $limit): array
+    {
+        return $this->inner->page($after, $limit);
+    }
+
     public function save(ProductPrice $price): void
     {
         $this->inner->save($price);

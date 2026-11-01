@@ -23,6 +23,8 @@ final class InMemoryProductPriceRepository implements ProductPriceRepository
     public int $writes = 0;
     /** @var list<list<string>> the ids of every findMany() call */
     public array $manyReads = [];
+    /** @var list<int> the limit of every page() call */
+    public array $pageLimits = [];
 
     public function find(ProductId $id): ?ProductPrice
     {
@@ -43,6 +45,18 @@ final class InMemoryProductPriceRepository implements ProductPriceRepository
         }
 
         return $found;
+    }
+
+    public function page(?ProductId $after, int $limit): array
+    {
+        $this->pageLimits[] = $limit;
+        $ids = array_keys($this->prices);
+        sort($ids, \SORT_STRING);
+        if (null !== $after) {
+            $ids = array_filter($ids, static fn (string $id): bool => strcmp($id, $after->toString()) > 0);
+        }
+
+        return array_map(fn (string $id): ProductPrice => $this->copy($this->prices[$id]), \array_slice(array_values($ids), 0, $limit));
     }
 
     public function save(ProductPrice $price): void

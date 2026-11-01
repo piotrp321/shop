@@ -14,6 +14,7 @@ use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\VatRate;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineProductPriceRepository;
+use App\Tests\Factory\ProductPriceRecordFactory;
 use App\Tests\Integration\Pricing\IndependentEntityManagers;
 use App\Tests\Support\StatementCounter;
 use Doctrine\Common\EventManager;
@@ -25,9 +26,11 @@ use Doctrine\ORM\Events;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Uid\Uuid;
+use Zenstruck\Foundry\Test\Factories;
 
 final class DoctrineProductPriceRepositoryTest extends KernelTestCase
 {
+    use Factories;
     use IndependentEntityManagers;
 
     private EntityManagerInterface $entityManager;
@@ -86,6 +89,33 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
     public function testUnknownPriceIsNull(): void
     {
         self::assertNull($this->prices->find(ProductId::fromString((string) Uuid::v4())));
+    }
+
+    /**
+     * Keyset pages by product id, read as stored: an outdated rate and a class without a rate come back unchanged.
+     */
+    public function testPagesFollowTheProductIdAfterTheCursor(): void
+    {
+        $this->connection->executeStatement('DELETE FROM pricing_price_history');
+        $this->connection->executeStatement('DELETE FROM pricing_product_price');
+        $third = ProductPriceRecordFactory::store($this->entityManager, ['productId' => 'f0000000-0000-4000-8000-000000000003', 'gross' => 990, 'taxClass' => 'retired_class', 'vatRateBp' => 700]);
+        $first = ProductPriceRecordFactory::store($this->entityManager, ['productId' => '10000000-0000-4000-8000-000000000001', 'gross' => 12300]);
+        $second = ProductPriceRecordFactory::store($this->entityManager, ['productId' => 'a0000000-0000-4000-8000-000000000002', 'gross' => 5490, 'taxClass' => 'printed_book', 'vatRateBp' => 2300]);
+        $this->entityManager->clear();
+
+        $firstPage = $this->prices->page(null, 2);
+        $secondPage = $this->prices->page(ProductId::fromString($second), 2);
+
+        self::assertSame([$first, $second], array_map(static fn (ProductPrice $price): string => $price->id()->toString(), $firstPage));
+        self::assertSame([$third], array_map(static fn (ProductPrice $price): string => $price->id()->toString(), $secondPage));
+        self::assertSame([], $this->prices->page(ProductId::fromString($third), 2));
+        $outdated = $firstPage[1];
+        self::assertTrue($outdated->breakdown()->equals(PriceBreakdown::fromGross(GrossPrice::pln(5490), VatRate::fromBasisPoints(2300))));
+        self::assertSame('printed_book', $outdated->taxClass()->toString());
+        self::assertSame(1, $outdated->version());
+        self::assertFalse($outdated->isCurrent(new PolishVatRates()));
+        self::assertSame('retired_class', $secondPage[0]->taxClass()->toString());
+        self::assertSame(700, $secondPage[0]->breakdown()->rate()->basisPoints());
     }
 
     public function testChangeIncrementsTheVersionAndAppendsOneEntry(): void

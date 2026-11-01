@@ -19,6 +19,15 @@ interface ProductPriceRepository
     public function findMany(array $ids): array;
 
     /**
+     * All stored prices in batches by product id (keyset), read like findMany(): the stored state, nothing kept.
+     *
+     * @param int $limit 1 to 1000
+     *
+     * @return list<ProductPrice> ordered by product id, starting after $after; empty after the last price
+     */
+    public function page(?ProductId $after, int $limit): array;
+
+    /**
      * Writes the price and appends its unsaved history entries in one transaction. A price without unsaved entries
      * is unchanged and nothing is written. History is never changed or deleted.
      *

@@ -18,12 +18,15 @@ use App\Pricing\Domain\Tax\VatRate;
 use App\Pricing\Infrastructure\Persistence\Doctrine\Record\PriceHistoryRecord;
 use App\Pricing\Infrastructure\Persistence\Doctrine\Record\ProductPriceRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Doctrine\DBAL\ParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
 use Symfony\Component\Uid\Uuid;
 
 final readonly class DoctrineProductPriceRepository implements ProductPriceRepository
 {
+    private const string COLUMNS = 'product_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at';
+
     public function __construct(private EntityManagerInterface $entityManager)
     {
     }
@@ -48,28 +51,33 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
         // A PostgreSQL array literal of validated UUIDs (hex digits and dashes only), bound as one parameter.
         $literal = '{'.implode(',', array_map(static fn (ProductId $id): string => $id->toString(), $ids)).'}';
         $rows = $this->entityManager->getConnection()->fetchAllAssociative(
-            'SELECT product_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at
-             FROM pricing_product_price WHERE product_id = ANY(CAST(:ids AS uuid[]))',
+            'SELECT '.self::COLUMNS.' FROM pricing_product_price WHERE product_id = ANY(CAST(:ids AS uuid[]))',
             ['ids' => $literal],
         );
 
-        return array_map(static function (array $row): ProductPrice {
-            \assert(\is_string($row['product_id']) && \is_string($row['currency']) && \is_string($row['tax_class']) && \is_string($row['updated_at']));
-            \assert(\is_int($row['gross_amount']) && \is_int($row['net_amount']) && \is_int($row['vat_amount']) && \is_int($row['vat_rate_bp']) && \is_int($row['version']));
+        return array_map($this->fromRow(...), $rows);
+    }
 
-            return ProductPrice::reconstitute(
-                ProductId::fromString($row['product_id']),
-                PriceBreakdown::restore(
-                    GrossPrice::of(Money::of($row['gross_amount'], Currency::from($row['currency']))),
-                    $row['net_amount'],
-                    $row['vat_amount'],
-                    VatRate::fromBasisPoints($row['vat_rate_bp']),
-                ),
-                TaxClass::fromString($row['tax_class']),
-                $row['version'],
-                new \DateTimeImmutable($row['updated_at']),
+    /**
+     * Straight on the connection like findMany(). Two statements rather than "IS NULL OR", so the cursor stays an
+     * index condition of the primary key.
+     */
+    public function page(?ProductId $after, int $limit): array
+    {
+        $connection = $this->entityManager->getConnection();
+        $rows = null === $after
+            ? $connection->fetchAllAssociative(
+                'SELECT '.self::COLUMNS.' FROM pricing_product_price ORDER BY product_id LIMIT :limit',
+                ['limit' => $limit],
+                ['limit' => ParameterType::INTEGER],
+            )
+            : $connection->fetchAllAssociative(
+                'SELECT '.self::COLUMNS.' FROM pricing_product_price WHERE product_id > CAST(:after AS uuid) ORDER BY product_id LIMIT :limit',
+                ['after' => $after->toString(), 'limit' => $limit],
+                ['limit' => ParameterType::INTEGER],
             );
-        }, $rows);
+
+        return array_map($this->fromRow(...), $rows);
     }
 
     /**
@@ -160,6 +168,28 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
             $entry->origin()->source()->value,
             $entry->origin()->actorId(),
             $entry->origin()->actorName(),
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $row the columns of self::COLUMNS
+     */
+    private function fromRow(array $row): ProductPrice
+    {
+        \assert(\is_string($row['product_id']) && \is_string($row['currency']) && \is_string($row['tax_class']) && \is_string($row['updated_at']));
+        \assert(\is_int($row['gross_amount']) && \is_int($row['net_amount']) && \is_int($row['vat_amount']) && \is_int($row['vat_rate_bp']) && \is_int($row['version']));
+
+        return ProductPrice::reconstitute(
+            ProductId::fromString($row['product_id']),
+            PriceBreakdown::restore(
+                GrossPrice::of(Money::of($row['gross_amount'], Currency::from($row['currency']))),
+                $row['net_amount'],
+                $row['vat_amount'],
+                VatRate::fromBasisPoints($row['vat_rate_bp']),
+            ),
+            TaxClass::fromString($row['tax_class']),
+            $row['version'],
+            new \DateTimeImmutable($row['updated_at']),
         );
     }
 
