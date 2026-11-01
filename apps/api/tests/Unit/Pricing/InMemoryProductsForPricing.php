@@ -17,13 +17,14 @@ final class InMemoryProductsForPricing implements ProductsForPricing
     private array $products = [];
 
     /**
-     * @param array<string, string> $slugs product id => slug; every product is `standard`
+     * @param array<string, string> $slugs      product id => slug
+     * @param array<string, string> $taxClasses product id => tax class code; `standard` when absent
      */
-    public function __construct(array $slugs = [])
+    public function __construct(array $slugs = [], array $taxClasses = [])
     {
         ksort($slugs);
         foreach ($slugs as $id => $slug) {
-            $this->products[] = new CatalogProduct(ProductId::fromString($id), $slug, TaxClass::fromString('standard'));
+            $this->products[] = new CatalogProduct(ProductId::fromString($id), $slug, TaxClass::fromString($taxClasses[$id] ?? 'standard'));
         }
     }
 
