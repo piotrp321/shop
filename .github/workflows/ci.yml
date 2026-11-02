@@ -8,12 +8,16 @@ name: CI
 
 on:
   pull_request:
+  # Pushes to main and to epic branches (epic/*, to which AO squash-merges task PRs): the required checks
+  # report on the head of the branch.
   push:
-    branches: [main]
+    branches: [main, 'epic/**']
 
+# A pull request run is superseded by the next push to the same PR. A push run is keyed by its commit and never
+# cancelled, so every merge into an epic branch gets its own result and the head never stays without one.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -37,7 +41,7 @@ jobs:
       - name: Scope script tests
         run: sh .github/scripts/test_docs_only.sh
 
-      # Pushes to main always run the full CI.
+      # Pushes (main, epic/**) always run the full CI.
       - name: Detect a documentation-only change
         id: scope
         env:
@@ -70,10 +74,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.FULL_CI == 'true'
 
-      # Standard-library scripts of the Claude Code skills (/delivery state, /planner manifest).
+      # Standard-library scripts of the Claude Code skills (/delivery state, /planner manifest) and the AO hooks.
       - name: Skill script tests
         if: env.FULL_CI == 'true'
         run: |
+          python3 -m unittest discover -s .ao -p 'test_*.py'
           python3 -m unittest discover -s .claude/skills/delivery -p 'test_*.py'
           python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'
 

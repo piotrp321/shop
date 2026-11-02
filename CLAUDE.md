@@ -36,6 +36,26 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 - Każdy worktree ma lokalny `.env` (poza repo) z własnym `COMPOSE_PROJECT_NAME` i wolnymi portami, żeby stosy
   z różnych worktree nie kolidowały ze sobą ani z innymi projektami.
 
+## Epiki, gałęzie `epic/*` i hooki AO
+
+- Epik realizowany przez AO ma gałąź `epic/<epik>` (zakładaną z `main`). PR zadań (`task/<id>`) mają bazę `epic/<epik>`
+  i AO squash-merguje je tylko tam, nigdy do `main`. PR `epic/<epik>` → `main` zatwierdza i merguje użytkownik.
+  Skill `/delivery` dostaje gałąź docelową PR w linii `Gałąź docelowa PR:` (domyślnie `main`) i tworzy PR z `--base`.
+- Ruleset `epic` (`tools/rulesets/epic.json`, wzorzec `refs/heads/epic/*`): zakaz force-push i usuwania gałęzi, zmiany
+  tylko przez PR (0 zatwierdzeń, tylko squash), wymagane checki `checks` i `e2e` (bez „up to date”), bez bypassu.
+  Tworzenia gałęzi nie blokuje: `do_not_enforce_on_create` pozwala AO wypchnąć nową gałąź od commita z `main`.
+  Zakładanie lub aktualizacja (wymaga uprawnień admina repo):
+  `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/epic.json`
+  (aktualizacja istniejącego: `-X PUT repos/piotrp321/shop/rulesets/<id>`).
+- CI uruchamia się też na `push` do `epic/**`, więc `checks` i `e2e` raportują na HEAD gałęzi epika po każdym merge'u.
+  Run dla pusha jest grupowany po SHA i nie jest anulowany przez kolejne merge'e; anulowanie dotyczy tylko kolejnych
+  pushy do tego samego PR.
+- `.ao/setup` i `.ao/teardown` to wykonywalne skrypty uruchamiane przez AO z worktree zadania (zmienne
+  `AO_COMPOSE_PROJECT` i `AO_PORT_BASE`, `AO_SETUP_READY_TIMEOUT` opcjonalnie). `setup` zapisuje `.env` (nazwa projektu
+  i 7 kolejnych portów od `AO_PORT_BASE`), sprawdza, że porty są wolne, uruchamia `make up` i `make seed`, po czym czeka
+  na `/health` API. `teardown` jest idempotentny: `docker compose -p "$AO_COMPOSE_PROJECT" down -v --remove-orphans`.
+  Oba odmawiają pracy bez zmiennych albo bez Dockera. Testy: `python3 -m unittest discover -s .ao -p 'test_*.py'`.
+
 ## Kontrakt API
 
 - Źródłem prawdy jest OpenAPI wyeksportowane do dwóch plików: `apps/api/openapi.json` (sklep: endpointy
@@ -72,7 +92,9 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   Konfigurację i infrastrukturę weryfikujemy komendami z planu, bez sztucznego odtwarzania fazy RED.
 - Pracuj małymi krokami. Jedna logiczna zmiana na commit, format Conventional Commits.
 - Jeden PR to jedna logiczna, weryfikowalna zmiana. Powiązane, niewielkie zadania planu mogą trafić do jednego PR.
-  PR przechodzi CI i review. Nie merguj bez zgody użytkownika.
+  PR przechodzi CI i review. Nie merguj bez zgody użytkownika. Wyjątek: akceptacja planu epika realizowanego przez AO
+  obejmuje zgodę na squash-merge PR zadań do jego gałęzi `epic/<epik>` po zielonym CI. Do `main` (także PR epika)
+  merguje wyłącznie użytkownik.
 - Każdy PR/MR mergujemy wyłącznie w trybie squash, a po merge'u usuwamy jego branch
   (np. `gh pr merge <nr> --squash --delete-branch`).
 - CI (`.github/workflows/ci.yml`) uruchamia `make check` i testy wszystkich aplikacji przy każdym PR. Testy na

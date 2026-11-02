@@ -191,6 +191,25 @@ class DeliveryStateTest(unittest.TestCase):
         self.assertEqual(0, r.returncode, r.stderr)
         self.assertEqual((merge, self.base), (self.load()['head_sha'], self.load()['base_sha']))
 
+    def test_target_branch_of_an_epic_is_not_assumed_to_be_main(self):
+        git(self.repo, 'checkout', '-q', '-b', 'epic/demo', 'main')
+        self.base = self.commit('epic-base')
+        git(self.repo, 'checkout', '-q', '-B', 'feature/x')
+        self.init_state('implementation')
+        self.commit('impl')
+        self.cli('record-commit', self.state)
+        self.cli('checkpoint', self.state, '--phase', 'pr_ci')
+        git(self.repo, 'checkout', '-q', 'epic/demo')
+        self.commit('other-task')
+        git(self.repo, 'checkout', '-q', 'feature/x')
+        git(self.repo, 'merge', '-q', '--no-ff', '--no-edit', 'epic/demo')
+        merge = git(self.repo, 'rev-parse', 'HEAD')
+        self.cli('record-commit', self.state)
+        r = self.cli('checkpoint', self.state, '--phase', 'fixes', '--accept-head')
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual((merge, self.base), (self.load()['head_sha'], self.load()['base_sha']))
+        self.assertEqual('current', self.resume()['verdict'])
+
     def test_checkpoint_follows_recorded_commits(self):
         self.init_state('implementation')
         head = self.commit('impl')

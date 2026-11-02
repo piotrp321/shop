@@ -1,0 +1,26 @@
+#!/bin/sh
+# Releases the stack of one AO task attempt: containers, networks and volumes of the Compose project.
+# Idempotent: for a project that is already gone `down` succeeds and nothing happens.
+# Input: AO_COMPOSE_PROJECT. Touches only that project, never other containers.
+set -eu
+export LC_ALL=C
+
+fail() { echo "ao teardown: $*" >&2; exit 1; }
+
+[ -n "${AO_COMPOSE_PROJECT:-}" ] || fail "AO_COMPOSE_PROJECT is not set"
+case "$AO_COMPOSE_PROJECT" in
+  [a-z0-9]*) ;;
+  *) fail "AO_COMPOSE_PROJECT must start with a lowercase letter or digit: $AO_COMPOSE_PROJECT" ;;
+esac
+case "$AO_COMPOSE_PROJECT" in
+  *[!a-z0-9_-]*) fail "AO_COMPOSE_PROJECT may contain only a-z, 0-9, _ and -: $AO_COMPOSE_PROJECT" ;;
+esac
+
+cd "$(dirname "$0")/.."
+
+docker info >/dev/null 2>&1 || fail "docker is not available, the resources of $AO_COMPOSE_PROJECT were not released"
+
+# `-p` wins over COMPOSE_PROJECT_NAME from a leftover .env.
+docker compose -p "$AO_COMPOSE_PROJECT" down -v --remove-orphans --rmi local \
+  || fail "docker compose down failed for $AO_COMPOSE_PROJECT"
+echo "ao teardown: project $AO_COMPOSE_PROJECT removed"

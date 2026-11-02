@@ -1,0 +1,81 @@
+#!/bin/sh
+# Prepares the isolated stack of one AO task attempt (contract of the Agentic Orchestrator, run from the worktree).
+# Input: AO_COMPOSE_PROJECT (Compose project name) and AO_PORT_BASE (first of a block of free host ports).
+# Writes the gitignored .env with the project name and ports, starts the stack with `make up` (it waits for the
+# services to be healthy and creates .env.local with generated secrets), seeds demo data and waits for the API.
+# Exit 0 = the stack is ready. Set AO_SETUP_READY_TIMEOUT (seconds, default 120) to change the API wait.
+set -eu
+# Name and number checks below must not depend on the locale (ranges like a-z).
+export LC_ALL=C
+
+fail() { echo "ao setup: $*" >&2; exit 1; }
+
+[ -n "${AO_COMPOSE_PROJECT:-}" ] || fail "AO_COMPOSE_PROJECT is not set"
+[ -n "${AO_PORT_BASE:-}" ] || fail "AO_PORT_BASE is not set"
+case "$AO_COMPOSE_PROJECT" in
+  [a-z0-9]*) ;;
+  *) fail "AO_COMPOSE_PROJECT must start with a lowercase letter or digit: $AO_COMPOSE_PROJECT" ;;
+esac
+case "$AO_COMPOSE_PROJECT" in
+  *[!a-z0-9_-]*) fail "AO_COMPOSE_PROJECT may contain only a-z, 0-9, _ and -: $AO_COMPOSE_PROJECT" ;;
+esac
+case "$AO_PORT_BASE" in
+  *[!0-9]* | 0*) fail "AO_PORT_BASE is not a decimal number without leading zeros: $AO_PORT_BASE" ;;
+esac
+# 7 consecutive ports are used, all of them must be unprivileged and valid.
+{ [ "$AO_PORT_BASE" -ge 1024 ] && [ "$AO_PORT_BASE" -le 65529 ]; } \
+  || fail "AO_PORT_BASE must be between 1024 and 65529: $AO_PORT_BASE"
+
+cd "$(dirname "$0")/.."
+
+docker info >/dev/null 2>&1 || fail "docker is not available (is the daemon running?)"
+
+# Fixed order of the stack's host ports, one per offset from AO_PORT_BASE.
+ports="STORE_PORT ADMIN_PORT API_PORT KEYCLOAK_PORT IMGPROXY_PORT MAILPIT_PORT RABBITMQ_MANAGEMENT_PORT"
+
+# Fail early on a busy port: Compose would otherwise fail halfway with a half-started stack.
+last=$((AO_PORT_BASE + 6))
+busy="$(python3 - "$AO_PORT_BASE" "$last" <<'PY'
+import socket, sys
+for port in range(int(sys.argv[1]), int(sys.argv[2]) + 1):
+    s = socket.socket()
+    try:
+        s.bind(('127.0.0.1', port))
+    except OSError:
+        print(port)
+    finally:
+        s.close()
+PY
+)" || fail "cannot check ports (python3 is required)"
+[ -z "$busy" ] || fail "port(s) already in use: $(echo $busy)"
+
+tmp="$(mktemp .env.XXXXXX)"
+trap 'rm -f "$tmp"' EXIT
+trap 'rm -f "$tmp"; exit 1' INT TERM
+{
+  echo "COMPOSE_PROJECT_NAME=$AO_COMPOSE_PROJECT"
+  offset=0
+  for name in $ports; do
+    echo "$name=$((AO_PORT_BASE + offset))"
+    offset=$((offset + 1))
+  done
+} > "$tmp"
+mv "$tmp" .env
+trap - EXIT INT TERM
+
+export COMPOSE_PROJECT_NAME="$AO_COMPOSE_PROJECT"
+make up || fail "make up failed"
+make seed || fail "make seed failed"
+
+api_port=$((AO_PORT_BASE + 2))
+timeout="${AO_SETUP_READY_TIMEOUT:-120}"
+case "$timeout" in
+  '' | *[!0-9]*) fail "AO_SETUP_READY_TIMEOUT is not a number of seconds: $timeout" ;;
+esac
+waited=0
+until curl -fs --max-time 5 "http://127.0.0.1:$api_port/health" >/dev/null 2>&1; do
+  [ "$waited" -lt "$timeout" ] || fail "the API did not become ready within ${timeout}s (http://127.0.0.1:$api_port/health)"
+  sleep 1
+  waited=$((waited + 1))
+done
+echo "ao setup: stack $AO_COMPOSE_PROJECT is ready (API on port $api_port)"
