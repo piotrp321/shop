@@ -13,6 +13,20 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
   (`catalog:search-index:setup --recreate`); wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
+- dane demo ładuje `make seed` z głównego `Makefile`: najpierw `catalog:seed-demo` (katalog), potem
+  `pricing:seed-demo`, który czyści ceny i ich historię i ustawia cenę (źródło `seed`) każdemu produktowi demo według
+  wzorców slugów z `fixtures/prices.yaml` (pierwszy pasujący wzorzec w kolejności pliku; produkt bez wzorca kończy
+  seed błędem bez zmian w danych). Obie komendy w `prod` wymagają `--force-reset`
+- `pricing:reconcile-tax [--apply]` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`) –
+  narzędzie uruchamiane świadomie, np. po zmianie stawki w `PolishVatRates`; nie wywołuje go `make init`, `make up`
+  ani `make seed`. Przechodzi wszystkie ceny partiami po `product_id` razem z produktami Catalog
+  (`ListProductsForPricing`) i wypisuje w jednej linii każdą cenę ze stawką inną niż bieżąca stawka jej klasy albo
+  z klasą inną niż klasa produktu w Catalog (cena produktu, którego nie ma w Catalog, zachowuje swoją klasę).
+  Z `--apply` przelicza je (`reprice`: to samo brutto, źródło `tax_reconciliation`), każdą w osobnej transakcji;
+  zapis odrzucony przez równoległą zmianę ceny ponawia raz na cenie odczytanej od nowa (świeży EntityManager), drugi
+  konflikt zostaje w raporcie. Kod wyjścia: 0 – wszystko spójne albo naprawione, 1 – zostały rozbieżności (bez
+  `--apply` znalezione; z `--apply` nienaprawione: dwa konflikty albo klasa bez stawki), 2 – przerwane błędem
+  (np. niedostępna baza), naprawione wcześniej ceny zostają zmienione
 - `openapi` – eksport specyfikacji do `openapi.json` (sklep: endpointy publiczne i klienta)
   oraz `openapi-admin.json` (panel: `/api/v1/admin`). Zrzut idzie przez pliki tymczasowe, więc nieudany eksport
   kończy się błędem i nie zmienia ani nie obcina plików. CI sprawdza, że commitowane pliki są aktualne
@@ -48,7 +62,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## API
 
 - REST, JSON, wersjonowane pod `/api/v1`.
-- Wejście przez DTO z Symfony Validator. Domena dodatkowo pilnuje swoich niezmienników.
+- Wejście przez DTO z Symfony Validator. Domena dodatkowo pilnuje swoich niezmienników. Złe parametry zapytania
+  (`#[MapQueryString]`) to 400, zła treść żądania (`#[MapRequestPayload]`, tylko JSON, typy bez rzutowania) to 422;
+  oba z listą `violations`.
 - Dokumentacja OpenAPI z kodu (NelmioApiDocBundle). Każdy endpoint ma opisane żądanie, odpowiedzi i błędy.
 - Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Dwa firewalle:
   `/api/v1/admin/...` przyjmuje tylko tokeny z realmu `backoffice` (pracownicy, `Staff`),
@@ -81,6 +97,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
+- Wyszukiwanie produktów po nazwie w panelu (`SearchBackofficeProducts`) używa rozszerzenia PostgreSQL `pg_trgm`
+  (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)`.
+  Indeks GIN obsługuje frazy od 3 znaków; fraza 2-znakowa (minimum w API) nie ma trigramów, więc idzie skanem indeksu
+  `(name, id)` z filtrem `ILIKE`.
+  Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
 - Profilowanie: SPX (php-spx) jest tylko w obrazie deweloperskim (target `dev` w Dockerfile), nigdy w obrazie produkcyjnym.
   Przy problemie z wydajnością najpierw zmierz w SPX, potem optymalizuj.
 

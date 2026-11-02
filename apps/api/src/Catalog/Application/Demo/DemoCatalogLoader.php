@@ -46,7 +46,7 @@ final readonly class DemoCatalogLoader
                 $product->shortDescription,
                 $product->mainCategoryId,
                 $product->additionalCategoryIds,
-                $product->taxCategory,
+                $product->taxClass,
                 array_map(static fn (array $image): array => ['key' => $keys[$image['file']], 'alt' => $image['alt']], $product->images),
             ));
         }

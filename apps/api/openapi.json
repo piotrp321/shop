@@ -194,6 +194,77 @@
                     }
                 ]
             }
+        },
+        "/api/v1/prices": {
+            "get": {
+                "tags": [
+                    "Pricing"
+                ],
+                "summary": "Gross prices of products",
+                "description": "The current gross price of each requested product, for the product list. A product without a price, with a price at an outdated VAT rate, or unknown, is left out. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not the price to charge: checkout reads prices from the database.",
+                "operationId": "getCurrentPrices",
+                "parameters": [
+                    {
+                        "name": "productId",
+                        "in": "query",
+                        "description": "Product ids (UUID), 1 to 48.",
+                        "required": true,
+                        "style": "form",
+                        "explode": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            "maxItems": 48,
+                            "minItems": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The prices found, in the order of the request. Possibly an empty list.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PriceList"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without technical details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -317,6 +388,45 @@
                 },
                 "type": "object"
             },
+            "PriceList": {
+                "required": [
+                    "items"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PriceItem"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "PriceItem": {
+                "description": "The current gross price of one product.",
+                "required": [
+                    "productId",
+                    "gross",
+                    "currency"
+                ],
+                "properties": {
+                    "productId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "gross": {
+                        "description": "Gross price (VAT included) in grosze.",
+                        "type": "integer",
+                        "example": 5490
+                    },
+                    "currency": {
+                        "description": "ISO 4217 code.",
+                        "type": "string",
+                        "example": "PLN"
+                    }
+                },
+                "type": "object"
+            },
             "Problem": {
                 "description": "Problem details (RFC 9457), `application/problem+json`.",
                 "required": [
@@ -342,7 +452,7 @@
                         "type": "string"
                     },
                     "violations": {
-                        "description": "Present only for 400 caused by invalid input.",
+                        "description": "Present only for 400 (invalid query parameters) or 422 (invalid request body) caused by invalid input.",
                         "type": "array",
                         "items": {
                             "required": [
@@ -452,6 +562,10 @@
         {
             "name": "Customer",
             "description": "Customer"
+        },
+        {
+            "name": "Pricing",
+            "description": "Pricing"
         }
     ]
 }

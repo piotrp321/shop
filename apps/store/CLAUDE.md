@@ -27,7 +27,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
 - `src/account/` – komponent konta w nagłówku (Client Component).
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
-- `src/catalog/` – komponenty i ładowanie danych katalogu.
+- `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`).
 - `src/components/ui/` – komponenty shadcn/ui.
 - `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu.
 
@@ -36,6 +36,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Dane wyłącznie z API przez wygenerowanego klienta (`src/api/client.ts`). ESLint blokuje globalny `fetch`
   poza tym plikiem.
 - Żadnej logiki biznesowej: ceny, sumy, dostępność i filtrowanie liczy API, sklep je wyświetla.
+- Ceny listy `loadCatalog` pobiera jednym wywołaniem `GET /api/v1/prices` po pobraniu strony produktów. Błąd cen nie psuje
+  listy: produkty pokazują „Cena niedostępna”, a błąd trafia do logu serwera.
 - Sklep woła API tylko z serwera, pod adresem wewnętrznym.
 - Domyślnie Server Components. Client Component tylko tam, gdzie potrzebna jest interakcja.
 - `generateMetadata` i strona pobierają dane katalogu przez `loadCatalogForRequest` (`React.cache`), więc jedno wejście

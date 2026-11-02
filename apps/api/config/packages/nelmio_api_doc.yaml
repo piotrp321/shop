@@ -86,6 +86,30 @@ nelmio_api_doc:
                                                 url:
                                                     type: string
                                                     example: http://localhost:8081/signature/rs:fill:256:256/g:sm/czM6Ly9idWNrZXQva2V5/plain.webp
+                        PriceList:
+                            type: object
+                            required: [items]
+                            properties:
+                                items:
+                                    type: array
+                                    items:
+                                        $ref: '#/components/schemas/PriceItem'
+                        PriceItem:
+                            type: object
+                            description: The current gross price of one product.
+                            required: [productId, gross, currency]
+                            properties:
+                                productId:
+                                    type: string
+                                    format: uuid
+                                gross:
+                                    type: integer
+                                    description: Gross price (VAT included) in grosze.
+                                    example: 5490
+                                currency:
+                                    type: string
+                                    description: ISO 4217 code.
+                                    example: PLN
                         Problem: &problem
                             type: object
                             description: Problem details (RFC 9457), `application/problem+json`.
@@ -105,7 +129,7 @@ nelmio_api_doc:
                                     description: Present only for 4xx errors, never for 5xx.
                                 violations:
                                     type: array
-                                    description: Present only for 400 caused by invalid input.
+                                    description: Present only for 400 (invalid query parameters) or 422 (invalid request body) caused by invalid input.
                                     items:
                                         type: object
                                         required: [propertyPath, title]

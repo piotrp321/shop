@@ -19,7 +19,7 @@ use App\Catalog\Domain\Product\ProductRepository;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
-use App\Catalog\Domain\Product\TaxCategory;
+use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\CategoryRecord;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\ProductRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -101,7 +101,7 @@ final readonly class DoctrineProductRepository implements ProductRepository
         $record->name = $product->name()->value();
         $record->shortDescription = $product->shortDescription()->value();
         $record->primaryCategory = $this->categoryReference($product->categories()->main());
-        $record->taxCategory = $product->taxCategory()->value;
+        $record->taxClass = $product->taxClass()->value;
         $images = array_map(
             static fn (ProductImage $image): array => ['key' => $image->key()->toString(), 'alt' => $image->alt()],
             $product->images()->toList(),
@@ -189,7 +189,7 @@ final readonly class DoctrineProductRepository implements ProductRepository
                 CategoryId::fromString($record->primaryCategory->id),
                 array_map(CategoryId::fromString(...), $additionalIds),
             ),
-            TaxCategory::from($record->taxCategory),
+            TaxClassCode::from($record->taxClass),
             ProductImages::fromList($images),
         );
     }

@@ -17,7 +17,7 @@ final readonly class CreateProduct
         public string $shortDescription,
         public string $mainCategoryId,
         public array $additionalCategoryIds,
-        public string $taxCategory,
+        public string $taxClass,
         public array $images,
     ) {
     }

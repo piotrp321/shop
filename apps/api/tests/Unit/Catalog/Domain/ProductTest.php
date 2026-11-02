@@ -13,7 +13,7 @@ use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
-use App\Catalog\Domain\Product\TaxCategory;
+use App\Catalog\Domain\Product\TaxClassCode;
 use PHPUnit\Framework\TestCase;
 
 final class ProductTest extends TestCase
@@ -50,7 +50,7 @@ final class ProductTest extends TestCase
         self::assertSame('Shoes', $product->name()->value());
         self::assertSame('shoes', $product->slug()->value());
         self::assertSame('', $product->shortDescription()->value());
-        self::assertSame(TaxCategory::Standard, $product->taxCategory());
+        self::assertSame(TaxClassCode::Standard, $product->taxClass());
         self::assertTrue($product->images()->isEmpty());
         self::assertSame('22222222-2222-4222-8222-222222222222', $product->categories()->main()->toString());
     }
@@ -63,7 +63,7 @@ final class ProductTest extends TestCase
             new Slug('shoes'),
             new ShortDescription('Light'),
             ProductCategories::create(CategoryId::fromString('22222222-2222-4222-8222-222222222222')),
-            TaxCategory::Food,
+            TaxClassCode::FreezeDriedMeal,
             ProductImages::fromList([]),
         );
 
@@ -72,7 +72,7 @@ final class ProductTest extends TestCase
         self::assertSame('Shoes', $product->name()->value());
         self::assertSame('shoes', $product->slug()->value());
         self::assertSame('Light', $product->shortDescription()->value());
-        self::assertSame(TaxCategory::Food, $product->taxCategory());
+        self::assertSame(TaxClassCode::FreezeDriedMeal, $product->taxClass());
         self::assertSame('22222222-2222-4222-8222-222222222222', $product->categories()->main()->toString());
     }
 
@@ -120,7 +120,7 @@ final class ProductTest extends TestCase
             new Slug('shoes'),
             new ShortDescription(''),
             ProductCategories::create(CategoryId::fromString('22222222-2222-4222-8222-222222222222')),
-            TaxCategory::Standard,
+            TaxClassCode::Standard,
             ProductImages::fromList([]),
         );
     }

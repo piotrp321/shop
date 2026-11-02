@@ -4,9 +4,10 @@ import type { components } from "@/api/schema";
 
 type CategoryNode = components["schemas"]["CategoryNode"];
 type ProductPage = components["schemas"]["ProductPage"];
+type PriceItem = components["schemas"]["PriceItem"];
 
 export type CatalogResult =
-  | { kind: "ok"; categories: CategoryNode[]; products: ProductPage }
+  | { kind: "ok"; categories: CategoryNode[]; products: ProductPage; prices: Record<string, PriceItem> }
   | { kind: "invalid-filter" }
   | { kind: "unknown-category" };
 
@@ -19,7 +20,32 @@ function serverClient() {
 }
 
 /**
- * Loads the category tree and one page of products in parallel. A 400 for the filter becomes `invalid-filter`
+ * The gross prices of the products, by product id, in one request. A product without a price is absent. The prices
+ * are an addition to the list, so a failure (status, network, unexpected body) does not fail the page: it is logged
+ * on the server and the products show without prices.
+ */
+async function loadPrices(client: ReturnType<typeof serverClient>, products: ProductPage["items"]): Promise<Record<string, PriceItem>> {
+  if (products.length === 0) {
+    return {};
+  }
+  try {
+    const { data, response } = await client.GET("/api/v1/prices", {
+      params: { query: { productId: products.map((product) => product.id) } },
+    });
+    if (data === undefined || !Array.isArray(data.items)) {
+      console.error(`GET /api/v1/prices failed with status ${response.status}, the products are shown without prices.`);
+      return {};
+    }
+    return Object.fromEntries(data.items.map((price) => [price.productId, price]));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "unknown error";
+    console.error(`GET /api/v1/prices failed (${reason}), the products are shown without prices.`);
+    return {};
+  }
+}
+
+/**
+ * Loads the category tree and one page of products in parallel, then the prices of that page. A 400 for the filter becomes `invalid-filter`
  * and a 404 for the product list (the category does not exist) becomes `unknown-category`; any other failure
  * (5xx, network) is thrown and handled by `app/error.tsx`.
  */
@@ -45,7 +71,7 @@ export async function loadCatalog(params: { category?: string; page?: string }):
     }
     throw new Error(`GET /api/v1/products failed with status ${products.response.status}.`);
   }
-  return { kind: "ok", categories: categories.data, products: products.data };
+  return { kind: "ok", categories: categories.data, products: products.data, prices: await loadPrices(client, products.data.items) };
 }
 
 /**

@@ -20,6 +20,7 @@ final class InvalidTokenOnPublicEndpointTest extends WebTestCase
     public static function invalidTokens(): iterable
     {
         yield 'garbage on the product list' => ['/api/v1/products', 'garbage'];
+        yield 'garbage on the price list' => ['/api/v1/prices?productId=0192f0c4-7c1a-7c4e-9a6e-000000000001', 'garbage'];
         yield 'garbage on the category tree' => ['/api/v1/categories', 'garbage'];
         yield 'staff token on the category tree' => ['/api/v1/categories', TestTokenFactory::staff(['admin'])];
         yield 'expired customer token on the category tree' => ['/api/v1/categories', TestTokenFactory::customer(['iat' => time() - 600, 'exp' => time() - 1])];

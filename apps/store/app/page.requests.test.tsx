@@ -37,7 +37,9 @@ beforeEach(() => {
     vi.fn(async (input: Request | string | URL) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       requested.push(url.pathname);
-      return url.pathname === "/api/v1/categories" ? json(TREE) : json(PAGE);
+      if (url.pathname === "/api/v1/categories") return json(TREE);
+      if (url.pathname === "/api/v1/prices") return json({ items: [{ productId: makeProduct(1).id, gross: 5490, currency: "PLN" }] });
+      return json(PAGE);
     }),
   );
 });
@@ -51,16 +53,16 @@ const props = (params: Record<string, string>) =>
   ({ searchParams: Promise.resolve(params) }) as unknown as Parameters<typeof Home>[0];
 
 describe("catalogue page requests", () => {
-  it("makes one categories request and one products request for the metadata and the page together", async () => {
+  it("makes one categories, one products and one prices request for the metadata and the page together", async () => {
     const request = props({ category: "buty", page: "2" });
     await Promise.all([generateMetadata(request), Home(request)]);
-    expect(requested.sort()).toEqual(["/api/v1/categories", "/api/v1/products"]);
+    expect(requested.sort()).toEqual(["/api/v1/categories", "/api/v1/prices", "/api/v1/products"]);
   });
 
   it("asks again on the next request", async () => {
     await generateMetadata(props({}));
     memo.newRequest();
     await generateMetadata(props({}));
-    expect(requested).toHaveLength(4);
+    expect(requested).toHaveLength(6);
   });
 });

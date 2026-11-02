@@ -40,7 +40,7 @@ final class YamlDemoCatalogSourceTest extends TestCase
     /** @return iterable<string, array{list<string|int>, mixed, string}> */
     public static function invalidValues(): iterable
     {
-        yield 'unknown tax category' => [['templates', 1, 'taxCategory'], 'reduced', 'reduced'];
+        yield 'unknown tax class' => [['templates', 1, 'taxClass'], 'reduced', 'reduced'];
         yield 'over-long product name' => [['templates', 0, 'productType'], str_repeat('Buty ', 50), 'ProductName'];
         yield 'over-long category name' => [['categories', 0, 'name'], str_repeat('K', 101), 'CategoryName'];
         yield 'over-long short description' => [['templates', 0, 'models', 0, 'description'], str_repeat('x', 501), 'ShortDescription'];
