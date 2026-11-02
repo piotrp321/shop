@@ -315,3 +315,4 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
 - Zasady wspólne są w głównym `CLAUDE.md`, zasady konkretnej aplikacji w jej własnym `CLAUDE.md`,
   żeby agent pracujący nad frontem nie dostawał w kontekście zasad Doctrine i odwrotnie.
 - Raport z każdego PR podaje czas pracy i zużycie modelu, żeby koszt pracy z AI był widoczny.
+<!-- probe -->
