@@ -729,6 +729,7 @@ describe("PricesView: price history", () => {
   function entry(gross: number, overrides: Partial<HistoryEntry> = {}): HistoryEntry {
     return {
       changedAt: "2026-11-01T12:30:00+00:00",
+      currency: "PLN",
       gross,
       net: gross - 261,
       vat: 261,
@@ -807,6 +808,19 @@ describe("PricesView: price history", () => {
     expect(rows[0]!.get("[data-testid=history-rate]").text()).toBe("5%");
     expect(rows[2]!.get("[data-testid=history-gross]").text()).toMatch(/^54,90\s*zł$/);
     expect(dialog.find("[data-testid=history-more]").exists()).toBe(false);
+  });
+
+  it("formats the amounts of an entry in the currency the API sends with it", async () => {
+    serveHistory({ "": { items: [entry(5990, { currency: "EUR", net: 5705, vat: 285 })], next: null } });
+    wrapper = await mountView();
+
+    await openHistory();
+
+    const row = wrapper.get("[data-testid=history-row]");
+    for (const cell of ["history-gross", "history-net", "history-vat"]) {
+      expect(row.get(`[data-testid=${cell}]`).text()).toContain("€");
+      expect(row.get(`[data-testid=${cell}]`).text()).not.toContain("zł");
+    }
   });
 
   it("loads further entries with 'Pokaż więcej' using the cursor of the API, until the last page", async () => {

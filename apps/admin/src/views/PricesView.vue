@@ -34,8 +34,6 @@ const {
 } = usePriceList();
 const { nodes: categories, error: categoriesError } = useCategoryTree();
 const history = usePriceHistory();
-// The entries of the history carry no currency: prices are in PLN only (the only currency of the API).
-const HISTORY_CURRENCY = "PLN";
 
 // TreeSelect (single selection) holds the chosen node as { [key]: true }, or null when nothing is chosen.
 const selection = ref<Record<string, boolean> | null>(null);
@@ -408,7 +406,7 @@ async function saveChange(): Promise<void> {
             class="amount"
           >
             <template #body="{ data }">
-              <span data-testid="history-gross">{{ formatMoney(data.gross, HISTORY_CURRENCY) }}</span>
+              <span data-testid="history-gross">{{ formatMoney(data.gross, data.currency) }}</span>
             </template>
           </Column>
           <Column
@@ -416,7 +414,7 @@ async function saveChange(): Promise<void> {
             class="amount"
           >
             <template #body="{ data }">
-              <span data-testid="history-net">{{ formatMoney(data.net, HISTORY_CURRENCY) }}</span>
+              <span data-testid="history-net">{{ formatMoney(data.net, data.currency) }}</span>
             </template>
           </Column>
           <Column
@@ -424,7 +422,7 @@ async function saveChange(): Promise<void> {
             class="amount"
           >
             <template #body="{ data }">
-              <span data-testid="history-vat">{{ formatMoney(data.vat, HISTORY_CURRENCY) }}</span>
+              <span data-testid="history-vat">{{ formatMoney(data.vat, data.currency) }}</span>
             </template>
           </Column>
           <Column header="Stawka">
