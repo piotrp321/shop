@@ -15,6 +15,8 @@ final readonly class PriceHistoryCursor
     /** UTC with microseconds, so a cursor keeps the whole precision of the stored time. */
     private const string TIME_FORMAT = 'Y-m-d\TH:i:s.uP';
 
+    private const string TIME_PATTERN = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}[+-]\d{2}:\d{2}$/D';
+
     private function __construct(
         public \DateTimeImmutable $changedAt,
         public string $id,
@@ -49,8 +51,16 @@ final readonly class PriceHistoryCursor
         }
 
         // Only a time written in the exact format of encode() is a cursor: "2026-02-31" would be moved to March.
+        // The shape is checked first: createFromFormat() throws a ValueError on a NUL byte.
+        if (1 !== preg_match(self::TIME_PATTERN, $data['t'])) {
+            throw new InvalidPriceHistoryCursor();
+        }
         $changedAt = \DateTimeImmutable::createFromFormat('!'.self::TIME_FORMAT, $data['t']);
         if (false === $changedAt || $changedAt->format(self::TIME_FORMAT) !== $data['t']) {
+            throw new InvalidPriceHistoryCursor();
+        }
+        // PostgreSQL has no year 0 (the year before 1 is 1 BC), so the query would fail with 22008.
+        if ((int) $changedAt->format('Y') < 1) {
             throw new InvalidPriceHistoryCursor();
         }
         if (1 !== preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/D', $data['i'])) {
