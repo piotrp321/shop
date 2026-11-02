@@ -11,7 +11,7 @@ import TreeSelect from "primevue/treeselect";
 import { computed, ref, watch } from "vue";
 import { formatDateTime, formatMoney, formatRate, sourceLabel } from "@/prices/format";
 import { parseGross } from "@/prices/parseGross";
-import { useCategoryTree } from "@/prices/useCategoryTree";
+import { useCategoryTree } from "@/composables/useCategoryTree";
 import { usePriceHistory } from "@/prices/usePriceHistory";
 import { MAX_SEARCH_LENGTH, type PriceListItem, usePriceList } from "@/prices/usePriceList";
 import { useAuthStore } from "@/stores/auth";

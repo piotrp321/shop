@@ -62,6 +62,25 @@ describe("router guard", () => {
     expect(router.currentRoute.value.name).not.toBe("prices");
   });
 
+  it("serves the stock list at /inventory to a signed-in user", async () => {
+    const { router, userManager } = setup({ expired: false });
+
+    await router.push("/inventory");
+
+    expect(router.currentRoute.value.name).toBe("inventory");
+    expect(router.currentRoute.value.path).toBe("/inventory");
+    expect(userManager.signinRedirect).not.toHaveBeenCalled();
+  });
+
+  it("protects /inventory like every other route", async () => {
+    const { router, userManager } = setup(null);
+
+    await router.push("/inventory");
+
+    expect(userManager.signinRedirect).toHaveBeenCalledWith({ state: { returnTo: "/inventory" } });
+    expect(router.currentRoute.value.name).not.toBe("inventory");
+  });
+
   it("does not protect the callback route", async () => {
     const { router, userManager } = setup(null);
 

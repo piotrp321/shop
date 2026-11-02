@@ -150,6 +150,119 @@
                 ]
             }
         },
+        "/api/v1/admin/stock": {
+            "get": {
+                "tags": [
+                    "Inventory"
+                ],
+                "summary": "Stock list",
+                "description": "A page of products sorted by name, then by id, each with its stock (null when it has no stock record). Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
+                "operationId": "listStock",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "A part of the product name, 2 to 100 characters.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 100,
+                            "minLength": 2
+                        }
+                    },
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "description": "Category id (UUID).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `next` cursor of the previous page.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the stock list. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StockListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "The `category` filter names a category that does not exist (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
         "/api/v1/admin/products/{productId}/stock/corrections": {
             "post": {
                 "tags": [
@@ -829,6 +942,37 @@
                 },
                 "type": "object"
             },
+            "BackofficeStockQuery": {
+                "properties": {
+                    "q": {
+                        "type": "string",
+                        "pattern": "((?!\\0).)*",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 100,
+                        "minLength": 2
+                    },
+                    "category": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 25,
+                        "maximum": 100,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
             "CorrectStockRequest": {
                 "description": "The counted physical stock of a product, based on the version of the stock the staff member saw.",
                 "required": [
@@ -1198,6 +1342,105 @@
                         "items": {
                             "$ref": "#/components/schemas/CategoryNode"
                         }
+                    }
+                },
+                "type": "object"
+            },
+            "ListedStockResponse": {
+                "description": "The stored stock of a product, in whole units; all computed by the API.",
+                "required": [
+                    "physical",
+                    "reserved",
+                    "available",
+                    "level",
+                    "version",
+                    "updatedAt"
+                ],
+                "properties": {
+                    "physical": {
+                        "description": "Units on the shelf.",
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "reserved": {
+                        "description": "Units promised to active reservations.",
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "available": {
+                        "description": "Physical minus reserved.",
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "level": {
+                        "description": "Availability level shown in the store.",
+                        "type": "string",
+                        "example": "in_stock",
+                        "enum": [
+                            "in_stock",
+                            "low_stock",
+                            "out_of_stock"
+                        ]
+                    },
+                    "version": {
+                        "description": "Version of the stock, to send with a correction.",
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "updatedAt": {
+                        "description": "When the stock last changed (RFC 3339, UTC).",
+                        "type": "string",
+                        "example": "2026-11-02T12:30:00+00:00"
+                    }
+                },
+                "type": "object"
+            },
+            "StockListItemResponse": {
+                "description": "A product with its stock.",
+                "required": [
+                    "productId",
+                    "name",
+                    "stock"
+                ],
+                "properties": {
+                    "productId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Bidon 750 ml"
+                    },
+                    "stock": {
+                        "description": "The stored stock, null when the product has no stock record (nothing on the shelf, nothing reserved).",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/ListedStockResponse"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "StockListResponse": {
+                "description": "A page of the stock list.",
+                "required": [
+                    "items",
+                    "next"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StockListItemResponse"
+                        }
+                    },
+                    "next": {
+                        "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
+                        "type": "string",
+                        "example": "eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
+                        "nullable": true
                     }
                 },
                 "type": "object"
