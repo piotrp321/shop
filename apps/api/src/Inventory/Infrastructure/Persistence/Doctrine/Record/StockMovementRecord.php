@@ -17,7 +17,8 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(readOnly: true)]
 #[ORM\Table(name: 'inventory_stock_movement')]
 #[ORM\Index(name: 'inventory_stock_movement_product_occurred_at_idx', columns: ['product_id', 'occurred_at', 'id'])]
-#[ORM\UniqueConstraint(name: self::RECEIPT_REFERENCE_INDEX, columns: ['reference'], options: ['where' => "(type = 'receipt')"])]
+// The predicate as PostgreSQL gives it back (pg_get_expr), so the schema comparison sees no difference.
+#[ORM\UniqueConstraint(name: self::RECEIPT_REFERENCE_INDEX, columns: ['reference'], options: ['where' => "((type)::text = 'receipt'::text)"])]
 class StockMovementRecord
 {
     public const string RECEIPT_REFERENCE_INDEX = 'inventory_stock_movement_receipt_reference_key';
