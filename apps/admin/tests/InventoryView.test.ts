@@ -1,9 +1,11 @@
 import { flushPromises, mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import PrimeVue from "primevue/config";
 import TreeSelect from "primevue/treeselect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "@/api/schema";
 import { primeVueOptions } from "@/primevue";
+import { useAuthStore } from "@/stores/auth";
 import InventoryView from "@/views/InventoryView.vue";
 
 type StockList = components["schemas"]["StockListResponse"];
@@ -49,7 +51,10 @@ async function settle() {
 }
 
 async function mountView() {
-  const wrapper = mount(InventoryView, { global: { plugins: [[PrimeVue, primeVueOptions]] as never[] } });
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  useAuthStore().staff = { id: "u1", username: "anna", roles: ["support"] };
+  const wrapper = mount(InventoryView, { global: { plugins: [pinia, [PrimeVue, primeVueOptions]] as never[] } });
   await settle();
   return wrapper;
 }
