@@ -4,13 +4,14 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import AppMenu from "@/layout/AppMenu.vue";
 
 describe("AppMenu", () => {
-  it("links the dashboard and the price list", async () => {
+  it("links the dashboard, the price list and the stock list", async () => {
     const empty = { template: "<div />" };
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
         { path: "/", name: "dashboard", component: empty },
         { path: "/prices", name: "prices", component: empty },
+        { path: "/inventory", name: "inventory", component: empty },
       ],
     });
     await router.push("/prices");
@@ -21,7 +22,9 @@ describe("AppMenu", () => {
     expect(links).toEqual([
       ["Dashboard", "/"],
       ["Ceny", "/prices"],
+      ["Stany magazynowe", "/inventory"],
     ]);
     expect(wrapper.get("a[href='/prices']").classes()).toContain("menu-item--active");
+    expect(wrapper.get("a[href='/inventory']").classes()).not.toContain("menu-item--active");
   });
 });
