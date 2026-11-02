@@ -100,8 +100,20 @@ final class ConcurrentCommands
         return $outcomes;
     }
 
-    private static function participate(object $command, string $outcomeFile, int $barrier): never
+    /**
+     * Never returns: the process kills itself. POSIX delivers a signal a process sends to itself before kill()
+     * returns, and SIGKILL cannot be blocked.
+     */
+    private static function participate(object $command, string $outcomeFile, int $barrier): void
     {
+        // A fatal error (e.g. the time limit) is no Throwable: the process still ends before any destructor runs
+        // (the shutdown functions inherited from the parent run first; they only report), and writes nothing into
+        // PHPUnit's output. The run fails because the participant left no outcome.
+        ini_set('display_errors', '0');
+        register_shutdown_function(static function (): void {
+            posix_kill(posix_getpid(), \SIGKILL);
+        });
+
         $outcome = Outcome::participantFailure('The participant stopped before its command finished.');
         try {
             // The parent's DAMA connection belongs to the parent (and to its open transaction): this process opens
@@ -136,8 +148,6 @@ final class ConcurrentCommands
 
         file_put_contents($outcomeFile, $outcome->toJson());
         posix_kill(posix_getpid(), \SIGKILL);
-
-        exit(1);
     }
 
     /**

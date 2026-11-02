@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Inventory\Concurrency;
 
 use App\Tests\Integration\Inventory\IndependentConnections;
+use App\Tests\Support\Concurrency\ExceedTimeLimit;
 use App\Tests\Support\Concurrency\KillOwnProcess;
 use App\Tests\Support\TestMessage;
+use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
@@ -40,7 +42,30 @@ final class ConcurrentCommandsTest extends KernelTestCase
             self::assertSame('Participant 1 left no outcome.', $failure->getMessage());
         }
 
+        self::assertSame(1, $control->fetchOne('SELECT 1'));
         // The barrier was released: the control connection can take it again at once.
         self::assertSame(0, $control->fetchOne("SELECT COUNT(*) FROM pg_locks WHERE locktype = 'advisory' AND classid = CAST(6782 AS int)::oid AND pid = pg_backend_pid()"));
+    }
+
+    /**
+     * A fatal error (here the time limit) is no Throwable: the participant must still end without running the
+     * destructors it inherited, which would close the parent's connections (shared sockets after the fork).
+     */
+    public function testAParticipantEndingWithAFatalErrorLeavesTheParentsConnectionsWorking(): void
+    {
+        $control = $this->independentConnection();
+        $kernelConnection = self::getContainer()->get('doctrine.dbal.default_connection');
+        self::assertInstanceOf(Connection::class, $kernelConnection);
+        self::assertSame(1, $kernelConnection->fetchOne('SELECT 1'));
+
+        try {
+            ConcurrentCommands::run($control, [new ExceedTimeLimit()]);
+            self::fail('Expected the run to fail.');
+        } catch (\RuntimeException $failure) {
+            self::assertSame('Participant 0 left no outcome.', $failure->getMessage());
+        }
+
+        self::assertSame(1, $control->fetchOne('SELECT 1'));
+        self::assertSame(1, $kernelConnection->fetchOne('SELECT 1'));
     }
 }
