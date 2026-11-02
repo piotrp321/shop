@@ -140,18 +140,27 @@ wiersz, a stan nie zmienia się dwa razy.
 - `inventory_stock_item`: `product_id uuid` (PK), `physical int`, `reserved int`, `version int`, `updated_at`;
   `CHECK (reserved >= 0 AND physical >= reserved AND physical <= 1000000)`.
 - `inventory_reservation`: `reservation_key varchar(100)` (PK), `status`, `created_at`, `updated_at`.
-- `inventory_reservation_line`: `reservation_key`, `product_id`, `quantity`; PK `(reservation_key, product_id)`.
+- `inventory_reservation_line`: `reservation_key`, `product_id`, `quantity`; PK `(reservation_key, product_id)`;
+  klucz obcy `reservation_key` → `inventory_reservation` (`inventory_reservation_line_reservation_fk`, bez
+  `ON DELETE CASCADE`: rezerwacje są przechowywane na zawsze, więc nagłówek z liniami nie daje się usunąć).
 - `inventory_stock_movement`: `id uuid` (v7, PK), `product_id`, `type`, `physical_delta`, `reserved_delta`,
   `physical_after`, `reserved_after`, `reason` (null), `note` (null), `reference` (null), `source`, `actor_id` (null),
   `actor_name` (null), `occurred_at`; indeks `(product_id, occurred_at DESC, id)`; unikalny indeks częściowy
   `(reference) WHERE type = 'receipt'`.
 - Bez kluczy obcych do tabel Catalog.
-- Rekordy Doctrine w `Inventory/Infrastructure/Persistence/Doctrine/Record`, mapowanie agregat ↔ rekord
-  w repozytoriach, `reconstitute()` bez wpisów historii.
+- Repozytoria (`Inventory/Infrastructure/Persistence/Doctrine`) zapisują i czytają przez DBAL na połączeniu Doctrine,
+  w transakcji `command.bus`: `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE` z wersją. Agregat jest
+  odtwarzany przez `reconstitute()` bez wpisów historii. Rekordy Doctrine (`…/Doctrine/Record`) są wyłącznie definicją
+  schematu dla `doctrine:schema` i migracji (`doctrine:schema:update --dump-sql` nie pokazuje różnic dla tabel
+  Inventory), repozytoria ich nie używają. To świadomy wyjątek od reguły „agregat ↔ rekord” (`apps/api/CLAUDE.md`):
+  rollback do savepointu przy zagnieżdżonym dispatchu nie czyści `UnitOfWork`, więc `flush` wywołującego zapisałby
+  wycofane zmiany; błąd bazy zamyka wspólny `EntityManager`; `find()` z `PESSIMISTIC_WRITE` na encji już obecnej
+  w identity map nie odświeża jej stanu (ryzyko sprzedaży ponad stan); `ON CONFLICT` i tak wymaga SQL.
 - Stan, rezerwacja i wpisy historii zapisują się w jednej transakcji `command.bus` (`doctrine_transaction`).
   Nie ma zmiany stanu bez wpisu ani wpisu bez zmiany.
 - Repozytoria nie mają operacji zmiany ani usuwania wpisów historii. Tabele Inventory czyści wyłącznie
-  `inventory:seed-demo` (`DbalInventoryReset`).
+  `inventory:seed-demo` (`DbalInventoryReset`), w kolejności zgodnej z kluczem obcym (linie przed nagłówkami
+  rezerwacji) albo jednym `TRUNCATE` wszystkich tabel.
 
 ## Warstwa aplikacji
 

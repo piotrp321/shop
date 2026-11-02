@@ -69,6 +69,22 @@ deptrac:
       collectors:
         - type: classNameRegex
           value: '#^App\\Pricing\\UI\\#'
+    - name: Inventory_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Inventory\\Domain\\#'
+    - name: Inventory_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Inventory\\Application\\#'
+    - name: Inventory_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Inventory\\Infrastructure\\#'
+    - name: Inventory_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Inventory\\UI\\#'
     - name: Shared_Domain
       collectors:
         - type: classNameRegex
@@ -204,6 +220,28 @@ deptrac:
       # The controller of a price change takes the actor from AuthenticatedStaffMember, the security contract of
       # Backoffice. Pricing_Domain and Pricing_Application stay free of Backoffice.
       - Backoffice_Application
+    Inventory_Domain:
+      - Native
+      - Shared_Domain
+    Inventory_Application:
+      - Native
+      - Inventory_Domain
+      - Shared_Domain
+      - Vendor
+    Inventory_Infrastructure:
+      - Native
+      - Inventory_Application
+      - Inventory_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+    Inventory_UI:
+      - Native
+      - Inventory_Application
+      - Inventory_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
     Shared_Domain:
       - Native
     Shared_Application:
