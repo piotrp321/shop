@@ -32,9 +32,10 @@ final readonly class CorrectStockRequest
         #[Assert\Type('string')]
         #[Assert\Choice(choices: ['inventory_count', 'damage', 'loss', 'other'], message: 'Wybierz powód korekty: inwentaryzacja, uszkodzenie, zaginięcie albo inne.')]
         public mixed $reason,
-        #[OA\Property(type: 'string', description: 'A note, at most 500 characters once trimmed; required for the reason `other`, otherwise null or blank for none.', maxLength: StockNote::MAX_LENGTH, nullable: true, example: 'Inwentaryzacja roczna')]
+        #[OA\Property(type: 'string', description: 'A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or blank for none.', maxLength: StockNote::MAX_LENGTH, nullable: true, example: 'Inwentaryzacja roczna')]
         #[Assert\Type('string')]
         #[Assert\Length(max: StockNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', normalizer: 'trim')]
+        #[Assert\Regex(pattern: StockNote::CONTROL_CHARACTERS, match: false, htmlPattern: '^[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]*$', message: 'Notatka nie może zawierać znaków sterujących (poza tabulatorem i końcem wiersza).')]
         public mixed $note,
     ) {
     }

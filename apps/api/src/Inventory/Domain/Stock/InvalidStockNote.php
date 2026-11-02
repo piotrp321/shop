@@ -16,6 +16,11 @@ final class InvalidStockNote extends \DomainException implements InvalidInput
         return new self(\sprintf('A note may have at most %d characters.', StockNote::MAX_LENGTH));
     }
 
+    public static function controlCharacters(): self
+    {
+        return new self('A note may not contain control characters other than tabs and line breaks.');
+    }
+
     public static function requiredForOtherReason(): self
     {
         return new self('A correction for another reason needs a note.');

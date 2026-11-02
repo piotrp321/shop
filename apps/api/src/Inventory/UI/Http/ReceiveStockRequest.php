@@ -24,9 +24,10 @@ final readonly class ReceiveStockRequest
         #[Assert\Type('integer')]
         #[Assert\Range(notInRangeMessage: 'Ilość musi wynosić od 1 do 100 000 szt.', min: 1, max: StockItem::MAX_RECEIPT)]
         public mixed $quantity,
-        #[OA\Property(type: 'string', description: 'A note, at most 500 characters once trimmed; null or blank for none.', maxLength: StockNote::MAX_LENGTH, nullable: true, example: 'Dostawa od Biegam sp. z o.o.')]
+        #[OA\Property(type: 'string', description: 'A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; null or blank for none.', maxLength: StockNote::MAX_LENGTH, nullable: true, example: 'Dostawa od Biegam sp. z o.o.')]
         #[Assert\Type('string')]
         #[Assert\Length(max: StockNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', normalizer: 'trim')]
+        #[Assert\Regex(pattern: StockNote::CONTROL_CHARACTERS, match: false, htmlPattern: '^[^\x00-\x08\x0B\x0C\x0E-\x1F\x7F]*$', message: 'Notatka nie może zawierać znaków sterujących (poza tabulatorem i końcem wiersza).')]
         public mixed $note,
     ) {
     }

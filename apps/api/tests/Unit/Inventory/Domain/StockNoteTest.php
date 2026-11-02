@@ -56,6 +56,36 @@ final class StockNoteTest extends TestCase
         }
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function notesWithControlCharacters(): iterable
+    {
+        yield 'NUL inside' => ["a\0b"];
+        yield 'NUL at the end, which trimming would drop' => ["a\0"];
+        yield 'NUL alone' => ["\0"];
+        yield 'a vertical tab, which trimming would drop' => ["\x0Ba"];
+        yield 'escape' => ["a\x1Bb"];
+        yield 'unit separator' => ["a\x1Fb"];
+        yield 'delete' => ["a\x7Fb"];
+    }
+
+    #[DataProvider('notesWithControlCharacters')]
+    public function testAControlCharacterOtherThanTabOrLineBreakIsInvalidInput(string $text): void
+    {
+        try {
+            StockNote::fromNullable($text);
+            self::fail('Expected InvalidStockNote.');
+        } catch (InvalidStockNote $invalid) {
+            self::assertSame('A note may not contain control characters other than tabs and line breaks.', $invalid->getMessage());
+        }
+    }
+
+    public function testTabsAndLineBreaksInsideANoteAreKept(): void
+    {
+        self::assertSame("Dostawa\r\n\tpaleta 2", StockNote::fromNullable("Dostawa\r\n\tpaleta 2")->toNullableString());
+    }
+
     public function testNotesAreEqualByTheirTrimmedText(): void
     {
         self::assertTrue(StockNote::fromNullable(' a ')->equals(StockNote::fromNullable('a')));

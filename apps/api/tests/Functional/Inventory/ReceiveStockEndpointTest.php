@@ -402,6 +402,33 @@ final class ReceiveStockEndpointTest extends WebTestCase
         );
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function notesWithControlCharacters(): iterable
+    {
+        yield 'NUL inside' => ["a\0b"];
+        yield 'NUL at the end' => ["a\0"];
+        yield 'escape' => ["a\x1Bb"];
+        yield 'delete' => ["a\x7Fb"];
+    }
+
+    /**
+     * PostgreSQL's driver would cut the note at NUL without a word, so the history would not keep what was sent.
+     */
+    #[DataProvider('notesWithControlCharacters')]
+    public function testANoteWithAControlCharacterIsUnprocessableAndChangesNothing(string $note): void
+    {
+        $productId = $this->product();
+
+        $this->receive($productId, ['quantity' => 5, 'note' => $note]);
+
+        $problem = $this->assertProblem(422);
+        self::assertIsArray($problem['violations']);
+        self::assertSame(['note' => 'Notatka nie może zawierać znaków sterujących (poza tabulatorem i końcem wiersza).'], array_column($problem['violations'], 'title', 'propertyPath'));
+        self::assertNull($this->storedStock($productId));
+    }
+
     public function testMalformedJsonIsABadRequest(): void
     {
         $productId = $this->product();

@@ -330,6 +330,34 @@ final class CorrectStockEndpointTest extends WebTestCase
         self::assertSame(['note' => 'Przy powodzie „inne” notatka jest wymagana.'], array_column($problem['violations'], 'title', 'propertyPath'));
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function notesWithControlCharacters(): iterable
+    {
+        yield 'NUL inside' => ["a\0b"];
+        yield 'NUL at the end' => ["a\0"];
+        yield 'escape' => ["a\x1Bb"];
+        yield 'delete' => ["a\x7Fb"];
+    }
+
+    /**
+     * PostgreSQL's driver would cut the note at NUL without a word, so the history would not keep what was sent.
+     */
+    #[DataProvider('notesWithControlCharacters')]
+    public function testANoteWithAControlCharacterIsUnprocessableAndChangesNothing(string $note): void
+    {
+        $productId = $this->stockedProduct(10, 0, 1);
+
+        $this->correct($productId, ['physical' => 8, 'version' => 1, 'reason' => 'other', 'note' => $note]);
+
+        $problem = $this->assertProblem(422);
+        self::assertIsArray($problem['violations']);
+        self::assertSame(['note' => 'Notatka nie może zawierać znaków sterujących (poza tabulatorem i końcem wiersza).'], array_column($problem['violations'], 'title', 'propertyPath'));
+        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
+        self::assertSame([], $this->movements($productId));
+    }
+
     public function testMalformedJsonIsABadRequest(): void
     {
         $productId = $this->stockedProduct(10, 0, 1);
