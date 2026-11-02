@@ -78,6 +78,10 @@ export function usePriceList() {
   let timer: ReturnType<typeof setTimeout> | undefined;
   // Only the newest request may change the state; an older one that finishes late is ignored.
   let latest = 0;
+  // The prices saved since the newest list request started. Its answer can predate such a save, so a row it brings
+  // is replaced by the saved price when that is newer (a greater version). Cleared when a request starts: the next
+  // one is asked after those saves, so it already has them.
+  const savedSinceLoad = new Map<string, PriceListItem["price"]>();
 
   const searchTooShort = computed(() => {
     const length = characters(search.value.trim());
@@ -89,6 +93,7 @@ export function usePriceList() {
 
   async function load(stack: (string | null)[]): Promise<void> {
     const request = ++latest;
+    savedSinceLoad.clear();
     attempted = stack;
     loading.value = true;
     const query: PriceQuery = {};
@@ -108,7 +113,7 @@ export function usePriceList() {
         return;
       }
       if (result.data) {
-        items.value = result.data.items;
+        items.value = result.data.items.map(withSavedPrice);
         next.value = result.data.next;
         cursors.value = stack;
         loaded.value = true;
@@ -125,6 +130,11 @@ export function usePriceList() {
         loading.value = false;
       }
     }
+  }
+
+  function withSavedPrice(item: PriceListItem): PriceListItem {
+    const saved = savedSinceLoad.get(item.productId);
+    return saved && (item.price === null || saved.version > item.price.version) ? { ...item, price: saved } : item;
   }
 
   watch(search, () => {
@@ -180,6 +190,7 @@ export function usePriceList() {
       });
       if (result.data) {
         const saved = result.data;
+        savedSinceLoad.set(productId, saved);
         items.value = items.value.map((item) => (item.productId === productId ? { ...item, price: saved } : item));
         return { status: "saved" };
       }

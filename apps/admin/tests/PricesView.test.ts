@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "@/api/schema";
 import { primeVueOptions } from "@/primevue";
 import { useAuthStore, type StaffMe } from "@/stores/auth";
+import { SEARCH_DEBOUNCE_MS } from "@/prices/usePriceList";
 import PricesView from "@/views/PricesView.vue";
 
 type PriceList = components["schemas"]["PriceListResponse"];
@@ -525,6 +526,36 @@ describe("PricesView: changing a price", () => {
     expect(row.get("[data-testid=gross]").text()).toMatch(/^59,90\s*zł$/);
     expect(row.get("[data-testid=net]").text()).toMatch(/^57,05\s*zł$/);
     expect(row.get("[data-testid=vat]").text()).toMatch(/^2,85\s*zł$/);
+  });
+
+  it("keeps the saved price when a list request that started before the save answers with the old one", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+    await openDialog();
+    // A search starts a list request that is still open while the change is saved.
+    let respondList: (page: PriceList) => void = () => undefined;
+    mocks.get.mockImplementation(
+      (path: string) =>
+        new Promise((resolve) => {
+          respondList = (page) => resolve({ data: path === PRICES ? page : tree, response: { status: 200 } });
+        }),
+    );
+    await wrapper.get("[data-testid=search]").setValue("Ab");
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
+    answer(200, price({ gross: 5990, net: 5705, vat: 285, version: 2 }));
+
+    await submit("59,90");
+    respondList({ items: [item("A"), item("B")], next: null });
+    await settle();
+
+    const rows = wrapper.findAll("[data-testid=price-row]");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.get("[data-testid=gross]").text()).toMatch(/^59,90\s*zł$/);
+    expect(rows[1]!.get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
+    answer(200, price({ gross: 6100, version: 3 }));
+    await openDialog();
+    await submit("61");
+    expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { productId: "id-A" } }, body: { gross: 6100, version: 2 } });
   });
 
   it("sends no version for a product without a price", async () => {
