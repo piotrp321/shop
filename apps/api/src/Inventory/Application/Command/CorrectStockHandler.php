@@ -63,6 +63,7 @@ final readonly class CorrectStockHandler
                 return StockView::of($unstored);
             }
             $item = $this->stock->lockOrCreate($productId);
+            // An empty stock (0/0, version 0) committed meanwhile equals no stock at all, so the null version takes it.
             if (0 !== $item->version()) {
                 throw new StockModifiedConcurrently();
             }

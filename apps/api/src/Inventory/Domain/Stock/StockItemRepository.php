@@ -27,8 +27,9 @@ interface StockItemRepository
     /**
      * Locks the stock of the product like lockMany() and returns it as it is once locked. A product without a stored
      * stock gets one first, with nothing on the shelf at version 0 (INSERT … ON CONFLICT DO NOTHING): a transaction
-     * creating the same stock waits for this one to end, then locks the stock this one left. A stock at version 0
-     * was created by this transaction; the caller saves a change to it or rolls the transaction back.
+     * creating the same stock waits for this one to end, then locks the stock this one left. Version 0 means a stock
+     * no change was ever saved for: created by this transaction, or an empty stock stored earlier (the demo data
+     * does, see CreateEmptyStock). The caller saves a change to it or leaves it as it is.
      *
      * Must run inside a transaction (command.bus has doctrine_transaction).
      */
