@@ -239,6 +239,9 @@ deptrac:
       # Pricing. Catalog depends on Inventory in no layer, and Inventory_Domain and Inventory_Application never see
       # Catalog: the port speaks Inventory's own ProductId.
       - Catalog_Application
+      # StockVoter decides on the staff roles of AuthenticatedStaffMember: Inventory uses only the security contract
+      # of Backoffice (its Application layer), never StaffUser of Backoffice_Infrastructure.
+      - Backoffice_Application
     Inventory_UI:
       - Native
       - Inventory_Application
@@ -246,6 +249,9 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
+      # The controllers of receipts and corrections take the actor from AuthenticatedStaffMember, the security
+      # contract of Backoffice. Inventory_Domain and Inventory_Application stay free of Backoffice.
+      - Backoffice_Application
     Shared_Domain:
       - Native
     Shared_Application:
