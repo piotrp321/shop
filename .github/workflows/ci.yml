@@ -41,7 +41,7 @@ jobs:
       - name: Scope script tests
         run: sh .github/scripts/test_docs_only.sh
 
-      # Pushes to main always run the full CI.
+      # Pushes (main, epic/**) always run the full CI.
       - name: Detect a documentation-only change
         id: scope
         env:
