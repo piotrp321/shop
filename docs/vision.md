@@ -290,7 +290,8 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
 - Domena bez mapowania Doctrine: osobny model persystencji (rekordy z atrybutami w Infrastructure) i jawne
   mapowanie agregat ↔ rekord w repozytoriach. To założenie początkowe, nie ostateczna decyzja: po walking
   skeleton ocenimy, czy osobny model persystencji daje korzyści warte kosztu utrzymania. Jeśli okaże się zbędny,
-  rozważymy bezpośrednie mapowanie agregatów przez Doctrine w XML.
+  rozważymy bezpośrednie mapowanie agregatów przez Doctrine w XML. Wyjątek: Inventory zapisuje przez DBAL,
+  a jego rekordy służą tylko za definicję schematu (uzasadnienie w `apps/api/CLAUDE.md`).
 - Osobne value objecty w każdym contexcie zamiast wspólnej klasy bazowej.
 - Transactional outbox dla zdarzeń domenowych.
 - Elasticsearch wyłącznie jako model odczytu.

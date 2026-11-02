@@ -8,9 +8,10 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * Persistence model of the Reservation aggregate; its lines are the ReservationLineRecord rows of the same key.
- * DoctrineReservationRepository maps the aggregate to and from these rows. The key is the primary key: a reservation
- * is stored once and kept forever.
+ * Schema definition of the Reservation aggregate; its lines are the ReservationLineRecord rows of the same key.
+ * DoctrineReservationRepository reads and writes the rows with plain statements (DBAL), not through this record; it
+ * is here for doctrine:schema and the migrations. The key is the primary key: a reservation is stored once and kept
+ * forever.
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'inventory_reservation')]

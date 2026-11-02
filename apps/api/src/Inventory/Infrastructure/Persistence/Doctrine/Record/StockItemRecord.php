@@ -8,7 +8,8 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * Persistence model of the StockItem aggregate. DoctrineStockItemRepository maps the aggregate to and from its row.
+ * Schema definition of the row of the StockItem aggregate. DoctrineStockItemRepository reads and writes the row with
+ * plain statements (DBAL), not through this record; it is here for doctrine:schema and the migrations.
  *
  * The migration adds the CHECK constraint (0 ≤ reserved ≤ physical ≤ 1 000 000), the last line of defence of the
  * invariant; the mapping cannot express it. The version is not an ORM version: the operations on a stock are
