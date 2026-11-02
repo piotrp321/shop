@@ -15,9 +15,9 @@ use Doctrine\DBAL\ParameterType;
  * Reads straight on the connection, one statement per page. The index (product_id, occurred_at DESC, id) serves the
  * product and the time order; the id is descending, so the later of two entries within one second comes first (the
  * ids are time-ordered, see DoctrineStockItemRepository), which the database finishes by sorting the few rows of
- * one second. The cursor is a row comparison of the same two columns in the same direction; the plain bound on the
- * time repeats its first half, because a row comparison alone cannot use an index whose columns run in mixed
- * directions. Nothing here writes. The id of the actor is not even selected.
+ * one second. The cursor is a row comparison of the same two columns in the same direction (EXPLAIN on PostgreSQL 18:
+ * an index-only scan from the cursor position plus an incremental sort, no extra index needed). Nothing here
+ * writes. The id of the actor is not even selected.
  */
 final readonly class DbalStockHistoryReader implements StockHistoryReader
 {
@@ -37,7 +37,7 @@ final readonly class DbalStockHistoryReader implements StockHistoryReader
         $parameters = ['product' => $productId->toString(), 'limit' => $limit];
         $types = ['limit' => ParameterType::INTEGER];
         if (null !== $after) {
-            $sql .= ' AND occurred_at <= CAST(:after_time AS timestamptz) AND (occurred_at, id) < (CAST(:after_time AS timestamptz), CAST(:after_id AS uuid))';
+            $sql .= ' AND (occurred_at, id) < (CAST(:after_time AS timestamptz), CAST(:after_id AS uuid))';
             $parameters['after_time'] = $after->occurredAt->format('Y-m-d H:i:s.uP');
             $parameters['after_id'] = $after->id;
         }

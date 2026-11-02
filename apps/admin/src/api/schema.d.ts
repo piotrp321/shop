@@ -124,6 +124,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/products/{productId}/stock-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock history of a product
+         * @description Every recorded change of the stock of a product (receipts, corrections, reservations, releases and commits), newest first, with the deltas, the stock right after the change, what made it and, for a change by staff, who. Every staff member may read it. A product that exists but has no stock record has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.
+         */
+        get: operations["getStockHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/prices": {
         parameters: {
             query?: never;
@@ -252,6 +272,12 @@ export interface components {
              * @example Dostawa od Biegam sp. z o.o.
              */
             note: string | null;
+        };
+        StockHistoryQuery: {
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
         };
         BackofficePricesQuery: {
             /** @default null */
@@ -477,6 +503,76 @@ export interface components {
              * @example 2026-11-02T12:30:00+00:00
              */
             updatedAt: string | null;
+        };
+        /** @description One recorded stock change: what changed and the stock right after it, in whole units. */
+        StockHistoryItemResponse: {
+            /**
+             * @description When the stock changed (RFC 3339, UTC).
+             * @example 2026-11-01T12:30:00+00:00
+             */
+            occurredAt: string;
+            /**
+             * @description What happened: a `receipt` of delivered units, a `correction` after counting, a `reservation`, the `release` of a reservation or its `commit` (the units leave the shelf).
+             * @example receipt
+             * @enum {string}
+             */
+            type: "receipt" | "correction" | "reservation" | "release" | "commit";
+            /**
+             * @description Change of the physical stock (negative when units left).
+             * @example 12
+             */
+            physicalDelta: number;
+            /**
+             * @description Change of the reserved stock.
+             * @example 0
+             */
+            reservedDelta: number;
+            /**
+             * @description Physical stock right after the change.
+             * @example 12
+             */
+            physicalAfter: number;
+            /**
+             * @description Reserved stock right after the change.
+             * @example 0
+             */
+            reservedAfter: number;
+            /**
+             * @description Reason of a `correction`, null for the other types.
+             * @example damage
+             * @enum {string|null}
+             */
+            reason: "inventory_count" | "damage" | "loss" | "other" | null;
+            /**
+             * @description Note of the staff member, if any.
+             * @example Dostawa od dostawcy
+             */
+            note: string | null;
+            /**
+             * @description The key of the receipt or of the reservation, if any.
+             * @example order-1042
+             */
+            reference: string | null;
+            /**
+             * @description What made the change: `staff` (a staff member in the panel), `seed` (the demo data) or `system` (another module through the reservation port).
+             * @example staff
+             * @enum {string}
+             */
+            source: "staff" | "seed" | "system";
+            /**
+             * @description The staff member who made a `staff` change, null for the other sources.
+             * @example Anna Admin
+             */
+            actorName: string | null;
+        };
+        /** @description A page of the stock history of a product, newest entry first. */
+        StockHistoryResponse: {
+            items: components["schemas"]["StockHistoryItemResponse"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after`), null on the last page.
+             * @example eyJ0IjoiMjAyNi0xMS0wMVQxMjozMDowMC4wMDAwMDArMDA6MDAiLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
+             */
+            next: string | null;
         };
         /** @description The stored price of a product. Amounts are in grosze, the rate in basis points; all computed by the API. */
         ListedPriceResponse: {
@@ -987,6 +1083,70 @@ export interface operations {
             };
             /** @description The quantity or the note is out of range, a key is missing or of a wrong type (problem details with `violations`), or the physical stock would exceed 1 000 000 (problem details). */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getStockHistory: {
+        parameters: {
+            query?: {
+                /** @description The `next` cursor of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Product id (UUID). */
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the history. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockHistoryResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the id is not a UUID (problem details). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
