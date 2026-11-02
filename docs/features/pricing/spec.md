@@ -94,8 +94,8 @@ Historia wystarcza do późniejszego Omnibusa: najniższe brutto z 30 dni przed 
 - Rekordy Doctrine z atrybutami w `Pricing/Infrastructure/Persistence/Doctrine/Record`, mapowanie agregat ↔ rekord
   w repozytorium, `reconstitute()` bez wpisów. Optimistic locking przez `#[Version]` na cenie.
 - Cena i jej nowe wpisy historii zapisują się w jednej transakcji. Nie ma zmiany ceny bez wpisu ani wpisu bez zmiany.
-- Kod tylko dopisuje historię: repozytorium nie ma operacji zmiany ani usuwania wpisów. Reset danych demo czyści
-  tabele Pricing razem z katalogiem.
+- Kod tylko dopisuje historię: repozytorium nie ma operacji zmiany ani usuwania wpisów. Tabele Pricing czyści tylko
+  reset danych demo: `pricing:seed-demo` (`DbalPricingReset`), który `make seed` uruchamia po seedzie katalogu.
 
 ## Warstwa aplikacji
 
