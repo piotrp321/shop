@@ -85,4 +85,16 @@ final readonly class StockMovement
     {
         return $this->occurredAt;
     }
+
+    /**
+     * Whether this is the receipt of the quantity with the note into the product: a receipt sent again with its key
+     * is the same receipt only then.
+     */
+    public function isReceiptOf(ProductId $productId, int $quantity, StockNote $note): bool
+    {
+        return StockMovementType::Receipt === $this->type
+            && $this->productId->equals($productId)
+            && $quantity === $this->physicalDelta
+            && $note->toNullableString() === $this->note;
+    }
 }
