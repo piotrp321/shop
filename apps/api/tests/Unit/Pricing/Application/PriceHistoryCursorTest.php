@@ -43,6 +43,11 @@ final class PriceHistoryCursorTest extends TestCase
         yield 'year zero' => [self::base64('{"t":"0000-01-01T00:00:00.000000+00:00","i":"'.self::ID.'"}')];
         yield 'time with a NUL byte' => [self::base64('{"t":"2026-10-31T10:30:45.000000+00:00\u0000","i":"'.self::ID.'"}')];
         yield 'NUL byte inside the time' => [self::base64('{"t":"2026-10-31T10:30:\u000045.000000+00:00","i":"'.self::ID.'"}')];
+        yield 'time not in UTC, offset out of range' => [self::base64('{"t":"2026-10-31T10:30:45.000000+16:00","i":"'.self::ID.'"}')];
+        yield 'time not in UTC, offset +01:00' => [self::base64('{"t":"2026-10-31T10:30:45.000000+01:00","i":"'.self::ID.'"}')];
+        yield 'time not in UTC, offset -23:59' => [self::base64('{"t":"2026-10-31T10:30:45.000000-23:59","i":"'.self::ID.'"}')];
+        yield 'time not in UTC, offset +99:59' => [self::base64('{"t":"2026-10-31T10:30:45.000000+99:59","i":"'.self::ID.'"}')];
+        yield 'time with a negative zero offset' => [self::base64('{"t":"2026-10-31T10:30:45.000000-00:00","i":"'.self::ID.'"}')];
         yield 'id not a uuid' => [self::base64('{"t":"2026-10-31T10:30:45.000000+00:00","i":"abc"}')];
         yield 'too long' => [str_repeat('a', 3000)];
     }

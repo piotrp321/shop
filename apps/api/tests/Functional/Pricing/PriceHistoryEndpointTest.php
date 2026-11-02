@@ -203,6 +203,7 @@ final class PriceHistoryEndpointTest extends WebTestCase
         yield 'cursor of the product list' => ['after=eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0'];
         yield 'cursor with year zero' => ['after='.self::cursor('{"t":"0000-01-01T00:00:00.000000+00:00","i":"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60"}')];
         yield 'cursor with a NUL byte in the time' => ['after='.self::cursor('{"t":"2026-10-01T10:00:00.000000+00:00\u0000","i":"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60"}')];
+        yield 'cursor with a time zone offset out of range' => ['after='.self::cursor('{"t":"2026-10-01T10:00:00.000000+16:00","i":"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60"}')];
         yield 'empty cursor' => ['after='];
         yield 'cursor as an array' => ['after[]=abc'];
     }

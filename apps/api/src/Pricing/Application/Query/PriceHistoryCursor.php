@@ -15,7 +15,8 @@ final readonly class PriceHistoryCursor
     /** UTC with microseconds, so a cursor keeps the whole precision of the stored time. */
     private const string TIME_FORMAT = 'Y-m-d\TH:i:s.uP';
 
-    private const string TIME_PATTERN = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}[+-]\d{2}:\d{2}$/D';
+    /** encode() writes UTC only; any other offset is not a cursor (and PostgreSQL rejects offsets beyond +-15:59). */
+    private const string TIME_PATTERN = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}\+00:00$/D';
 
     private function __construct(
         public \DateTimeImmutable $changedAt,
