@@ -6,10 +6,11 @@ import { SEARCH_DEBOUNCE_MS, useStockList } from "@/inventory/useStockList";
 
 type StockList = components["schemas"]["StockListResponse"];
 type StockListItem = components["schemas"]["StockListItemResponse"];
+type StockState = components["schemas"]["StockStateResponse"];
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 
-vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get }) }));
+vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mocks.post }) }));
 
 const STOCK = "/api/v1/admin/stock";
 
@@ -57,6 +58,7 @@ describe("useStockList", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     mocks.get.mockReset();
+    mocks.post.mockReset();
   });
 
   afterEach(() => {
@@ -215,5 +217,322 @@ describe("useStockList", () => {
     await settle();
 
     expect(mounted.list.items.value.map((row) => row.name)).toEqual(["Nowy"]);
+  });
+});
+
+describe("useStockList: receipts and corrections", () => {
+  const RECEIPTS = "/api/v1/admin/products/{productId}/stock/receipts";
+  const CORRECTIONS = "/api/v1/admin/products/{productId}/stock/corrections";
+  let wrapper: ReturnType<typeof mountList>["wrapper"] | undefined;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mocks.get.mockReset();
+    mocks.post.mockReset();
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+    vi.useRealTimers();
+  });
+
+  async function start(pages: Record<string, StockList>) {
+    serve(pages);
+    const mounted = mountList();
+    wrapper = mounted.wrapper;
+    await settle();
+    return mounted.list;
+  }
+
+  function state(overrides: Partial<StockState> = {}): StockState {
+    return {
+      productId: "id-A",
+      physical: 15,
+      reserved: 4,
+      available: 11,
+      level: "in_stock",
+      version: 4,
+      updatedAt: "2026-11-02T13:00:00+00:00",
+      ...overrides,
+    };
+  }
+
+  function respond(status: number, body?: unknown) {
+    const ok = status < 300;
+    mocks.post.mockResolvedValue({ data: ok ? body : undefined, error: ok ? undefined : body, response: { status } });
+  }
+
+  const receipt = { quantity: 5, note: "Dostawa", key: "key-1" };
+  const correction = { physical: 15, reason: "inventory_count" as const, note: null, version: 3 };
+
+  describe("receiveStock", () => {
+    it("posts the quantity and note with the key as Idempotency-Key and puts the stock of the API into the row", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(201, state());
+
+      const result = await list.receiveStock("id-A", receipt);
+
+      expect(mocks.post).toHaveBeenCalledWith(RECEIPTS, {
+        params: { path: { productId: "id-A" }, header: { "Idempotency-Key": "key-1" } },
+        body: { quantity: 5, note: "Dostawa" },
+      });
+      expect(result).toEqual({ status: "saved" });
+      expect(list.items.value[0]!.stock).toEqual({
+        physical: 15,
+        reserved: 4,
+        available: 11,
+        level: "in_stock",
+        version: 4,
+        updatedAt: "2026-11-02T13:00:00+00:00",
+      });
+    });
+
+    it("takes the 200 of a repeated receipt the same way", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(200, state({ physical: 15 }));
+
+      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "saved" });
+      expect(list.items.value[0]!.stock?.physical).toBe(15);
+    });
+
+    it("gives a row without a stock record the stock the API created", async () => {
+      const list = await start({ "": { items: [item("A", { stock: null })], next: null } });
+      respond(201, state({ physical: 5, reserved: 0, available: 5, version: 1 }));
+
+      await list.receiveStock("id-A", receipt);
+
+      expect(list.items.value[0]!.stock).toMatchObject({ physical: 5, available: 5, version: 1 });
+    });
+
+    it("does not let a list answer that started before the receipt bring back the old stock", async () => {
+      const list = await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("A")], next: null } });
+      let answerList!: (value: unknown) => void;
+      mocks.get.mockImplementationOnce(() => new Promise((done) => (answerList = done)));
+      const reload = list.goNext();
+      respond(201, state());
+
+      await list.receiveStock("id-A", receipt);
+      answerList({ data: { items: [item("A")], next: null }, response: { status: 200 } });
+      await reload;
+
+      expect(list.items.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+    });
+
+    it("takes a newer stock from a list answer over the receipt's", async () => {
+      const list = await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("A")], next: null } });
+      let answerList!: (value: unknown) => void;
+      mocks.get.mockImplementationOnce(() => new Promise((done) => (answerList = done)));
+      const reload = list.goNext();
+      respond(201, state());
+      await list.receiveStock("id-A", receipt);
+
+      answerList({
+        data: { items: [item("A", { stock: { physical: 20, reserved: 4, available: 16, level: "in_stock", version: 5, updatedAt: "2026-11-02T14:00:00+00:00" } })], next: null },
+        response: { status: 200 },
+      });
+      await reload;
+
+      expect(list.items.value[0]!.stock).toMatchObject({ physical: 20, version: 5 });
+    });
+
+    it("sends a blank note as null", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(201, state());
+
+      await list.receiveStock("id-A", { ...receipt, note: "   " });
+
+      expect(mocks.post.mock.calls[0]![1].body).toEqual({ quantity: 5, note: null });
+    });
+
+    it("shows the violations of a 422 at their fields", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(422, {
+        status: 422,
+        violations: [
+          { propertyPath: "quantity", title: "Ilość musi wynosić od 1 do 100 000." },
+          { propertyPath: "note", title: "Notatka jest za długa." },
+        ],
+      });
+
+      expect(await list.receiveStock("id-A", receipt)).toEqual({
+        status: "invalid",
+        fields: { quantity: "Ilość musi wynosić od 1 do 100 000.", note: "Notatka jest za długa." },
+        message: null,
+      });
+      expect(list.items.value[0]!.stock?.physical).toBe(10);
+    });
+
+    it("keeps a violation of an unknown path as a message of the dialog", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(422, { status: 422, violations: [{ propertyPath: "Idempotency-Key", title: "Klucz jest nieprawidłowy." }] });
+
+      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "invalid", fields: {}, message: "Klucz jest nieprawidłowy." });
+    });
+
+    it("shows the detail of a 422 without violations as the dialog's message", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(422, { status: 422, detail: "Stan fizyczny nie może przekroczyć 1 000 000." });
+
+      expect(await list.receiveStock("id-A", receipt)).toEqual({
+        status: "invalid",
+        fields: {},
+        message: "Stan fizyczny nie może przekroczyć 1 000 000.",
+      });
+    });
+
+    it("shows the detail of a 409 about the key and reloads the page, so a receipt whose answer was lost shows in the row", async () => {
+      const list = await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("A")], next: null } });
+      await list.goNext();
+      respond(409, { status: 409, detail: "Ten klucz został użyty dla innego przyjęcia." });
+      serve({ c1: { items: [item("A", { stock: { physical: 15, reserved: 4, available: 11, level: "in_stock", version: 4, updatedAt: "2026-11-02T13:00:00+00:00" } })], next: null } });
+
+      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "failed", message: "Ten klucz został użyty dla innego przyjęcia." });
+      expect(queries().at(-1)).toEqual({ after: "c1" });
+      expect(list.items.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+    });
+
+    it("shows the detail of a 409 about the key also when the reload fails", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(409, { status: 409, detail: "Ten klucz został użyty dla innego przyjęcia." });
+      serve({}, 500);
+
+      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "failed", message: "Ten klucz został użyty dla innego przyjęcia." });
+    });
+
+    it("says the staff member may not receive stock on a 403", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(403, { status: 403 });
+
+      const result = await list.receiveStock("id-A", receipt);
+
+      expect(result).toMatchObject({ status: "failed" });
+      expect((result as { message: string }).message).toContain("Nie masz uprawnień");
+    });
+
+    it("says the product is gone on a 404", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(404, { status: 404 });
+
+      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "failed", message: "Ten produkt już nie istnieje." });
+    });
+
+    it("says so when the request itself fails", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      mocks.post.mockRejectedValue(new TypeError("network down"));
+
+      const result = await list.receiveStock("id-A", receipt);
+
+      expect(result).toMatchObject({ status: "failed" });
+      expect((result as { message: string }).message).toContain("połączenie");
+    });
+  });
+
+  describe("correctStock", () => {
+    it("posts the count, reason, note and the version of the row and puts the stock of the API into the row", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(200, state({ physical: 15 }));
+
+      const result = await list.correctStock("id-A", { ...correction, reason: "other", note: "Policzone ręcznie" });
+
+      expect(mocks.post).toHaveBeenCalledWith(CORRECTIONS, {
+        params: { path: { productId: "id-A" } },
+        body: { physical: 15, reason: "other", note: "Policzone ręcznie", version: 3 },
+      });
+      expect(result).toEqual({ status: "saved" });
+      expect(list.items.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+    });
+
+    it("sends version null for a product without a stock record", async () => {
+      const list = await start({ "": { items: [item("A", { stock: null })], next: null } });
+      respond(200, state({ physical: 7, reserved: 0, available: 7, version: 1 }));
+
+      await list.correctStock("id-A", { ...correction, physical: 7, version: null });
+
+      expect(mocks.post.mock.calls[0]![1].body).toMatchObject({ physical: 7, version: null });
+      expect(list.items.value[0]!.stock).toMatchObject({ physical: 7, version: 1 });
+    });
+
+    it("leaves a row without a stock record without one when the API still has none (counted zero)", async () => {
+      const list = await start({ "": { items: [item("A", { stock: null })], next: null } });
+      respond(200, state({ physical: 0, reserved: 0, available: 0, level: "out_of_stock", version: null, updatedAt: null }));
+
+      expect(await list.correctStock("id-A", { ...correction, physical: 0, version: null })).toEqual({ status: "saved" });
+      expect(list.items.value[0]!.stock).toBeNull();
+    });
+
+    it("on a 409 reloads the page and, when the row's version changed, reports a version conflict", async () => {
+      const list = await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("A")], next: null } });
+      await list.goNext();
+      respond(409, { type: "about:blank", status: 409, detail: "The stock was changed." });
+      serve({ c1: { items: [item("A", { stock: { physical: 12, reserved: 4, available: 8, level: "in_stock", version: 4, updatedAt: "2026-11-02T13:00:00+00:00" } })], next: null } });
+
+      const result = await list.correctStock("id-A", correction);
+
+      expect(result).toEqual({ status: "conflict", message: "Stan został w międzyczasie zmieniony – odśwież" });
+      expect(queries().at(-1)).toEqual({ after: "c1" });
+      expect(list.items.value[0]!.stock).toMatchObject({ physical: 12, version: 4 });
+    });
+
+    it("on a 409 reports a version conflict when a row without a record got one meanwhile", async () => {
+      const list = await start({ "": { items: [item("A", { stock: null })], next: null } });
+      respond(409, { status: 409, detail: "x" });
+      serve({ "": { items: [item("A")], next: null } });
+
+      expect(await list.correctStock("id-A", { ...correction, version: null })).toMatchObject({ status: "conflict" });
+    });
+
+    it("on a 409 with the version unchanged shows the detail of the API (below the reserved units)", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(409, { status: 409, detail: "Nie można ustawić stanu poniżej zarezerwowanych: 4 szt." });
+
+      const result = await list.correctStock("id-A", { ...correction, physical: 2 });
+
+      expect(result).toEqual({ status: "failed", message: "Nie można ustawić stanu poniżej zarezerwowanych: 4 szt." });
+      expect(mocks.get).toHaveBeenCalledTimes(2);
+    });
+
+    it("on a 409 shows the detail when the reload fails", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(409, { status: 409, detail: "Detail of the API." });
+      serve({}, 500);
+
+      expect(await list.correctStock("id-A", correction)).toEqual({ status: "failed", message: "Detail of the API." });
+    });
+
+    it("on a 409 without a detail still says the correction was rejected", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(409, undefined);
+
+      expect(await list.correctStock("id-A", correction)).toEqual({ status: "failed", message: "API odrzuciło korektę (HTTP 409)." });
+    });
+
+    it("shows the violations of a 422 at their fields", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(422, {
+        status: 422,
+        violations: [
+          { propertyPath: "physical", title: "Stan musi wynosić od 0 do 1 000 000." },
+          { propertyPath: "reason", title: "Nieznany powód." },
+          { propertyPath: "note", title: "Podaj notatkę." },
+        ],
+      });
+
+      expect(await list.correctStock("id-A", correction)).toEqual({
+        status: "invalid",
+        fields: { physical: "Stan musi wynosić od 0 do 1 000 000.", reason: "Nieznany powód.", note: "Podaj notatkę." },
+        message: null,
+      });
+    });
+
+    it("says the staff member may not correct stock on a 403", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(403, { status: 403 });
+
+      const result = await list.correctStock("id-A", correction);
+
+      expect(result).toMatchObject({ status: "failed" });
+      expect((result as { message: string }).message).toContain("Nie masz uprawnień");
+    });
   });
 });
