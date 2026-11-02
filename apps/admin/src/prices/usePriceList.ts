@@ -39,10 +39,28 @@ function failureMessage(status: number): string {
   }
 }
 
-function changeFailure(status: number): PriceChange {
+/** The reason of a rejected request from a problem details body (`violations[].title`, else `detail`), if it has one. */
+function problemMessage(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const { violations, detail } = body as { violations?: unknown; detail?: unknown };
+  if (Array.isArray(violations)) {
+    const titles = violations
+      .map((violation) => (violation as { title?: unknown } | null)?.title)
+      .filter((title): title is string => typeof title === "string" && title !== "");
+    if (titles.length > 0) {
+      return titles.join(" ");
+    }
+  }
+  return typeof detail === "string" && detail !== "" ? detail : null;
+}
+
+function changeFailure(status: number, body: unknown): PriceChange {
   switch (status) {
     case 422:
-      return { status: "invalid", message: "API odrzuciło kwotę. Cena brutto musi wynosić od 0,01 zł do 999 999,99 zł." };
+      // The rules of the amount are the API's; the panel only shows the reason it gives.
+      return { status: "invalid", message: problemMessage(body) ?? `API odrzuciło cenę (HTTP ${status}).` };
     case 403:
       return { status: "failed", message: "Nie masz uprawnień do zmiany cen." };
     case 404:
@@ -198,7 +216,7 @@ export function usePriceList() {
         await load(cursors.value);
         return { status: "conflict", message: CONFLICT_MESSAGE };
       }
-      return changeFailure(result.response.status);
+      return changeFailure(result.response.status, result.error);
     } catch {
       return { status: "failed", message: "Nie udało się zapisać ceny. Sprawdź połączenie z API." };
     }

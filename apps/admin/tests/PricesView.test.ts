@@ -581,18 +581,67 @@ describe("PricesView: changing a price", () => {
     expect(wrapper.get("[data-testid=gross-input]").attributes("aria-invalid")).toBe("true");
   });
 
-  it("shows a 422 of the API at the field and changes nothing", async () => {
-    serve({ pages: { "": { items: [item("A")], next: null } } });
-    wrapper = await mountView();
-    answer(422);
+  describe("a 422 of the API", () => {
+    function rejectWith(error: unknown) {
+      mocks.put.mockResolvedValue({ data: undefined, error, response: { status: 422 } });
+    }
 
-    await openDialog();
-    await submit("0");
+    async function submitRejected(error: unknown) {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView();
+      rejectWith(error);
 
-    expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { productId: "id-A" } }, body: { gross: 0, version: 1 } });
-    expect(wrapper.get("[data-testid=gross-error]").text()).toContain("od 0,01 zł do 999 999,99 zł");
-    expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(true);
-    expect(wrapper.get("[data-testid=price-row]").get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
+      await openDialog();
+      await submit("0");
+
+      expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { productId: "id-A" } }, body: { gross: 0, version: 1 } });
+      expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(true);
+      expect(wrapper.get("[data-testid=price-row]").get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
+      return wrapper.get("[data-testid=gross-error]").text();
+    }
+
+    it("shows the violations of the API at the field, not a range of the panel", async () => {
+      const text = await submitRejected({
+        type: "about:blank",
+        title: "Unprocessable Entity",
+        status: 422,
+        detail: "The request is invalid.",
+        violations: [{ propertyPath: "gross", title: "This value should be between 1 and 99999999." }],
+      });
+
+      expect(text).toBe("This value should be between 1 and 99999999.");
+    });
+
+    it("shows every violation", async () => {
+      const text = await submitRejected({
+        title: "Unprocessable Entity",
+        status: 422,
+        violations: [
+          { propertyPath: "gross", title: "First problem." },
+          { propertyPath: "version", title: "Second problem." },
+        ],
+      });
+
+      expect(text).toBe("First problem. Second problem.");
+    });
+
+    it("shows the detail when there are no violations", async () => {
+      const text = await submitRejected({ title: "Unprocessable Entity", status: 422, detail: "The price cannot be set." });
+
+      expect(text).toBe("The price cannot be set.");
+    });
+
+    it.each([
+      ["an empty problem", { title: "Unprocessable Entity", status: 422 }],
+      ["empty violations and no detail", { title: "Unprocessable Entity", status: 422, violations: [] }],
+      ["a body that is not a problem", "oops"],
+      ["no body", undefined],
+    ])("says the API rejected the price when the answer has %s", async (_name, error) => {
+      const text = await submitRejected(error);
+
+      expect(text).toBe("API odrzuciło cenę (HTTP 422).");
+      expect(text).not.toContain("999 999,99");
+    });
   });
 
   it("on a 409 says the price was changed meanwhile and refreshes the row", async () => {
