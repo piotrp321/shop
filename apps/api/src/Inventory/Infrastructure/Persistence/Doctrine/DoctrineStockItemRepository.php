@@ -5,10 +5,17 @@ declare(strict_types=1);
 namespace App\Inventory\Infrastructure\Persistence\Doctrine;
 
 use App\Inventory\Domain\Stock\ProductId;
+use App\Inventory\Domain\Stock\ReceiptKey;
+use App\Inventory\Domain\Stock\ReceiptKeyReused;
+use App\Inventory\Domain\Stock\StockChangeOrigin;
+use App\Inventory\Domain\Stock\StockChangeSource;
 use App\Inventory\Domain\Stock\StockItem;
 use App\Inventory\Domain\Stock\StockItemRepository;
 use App\Inventory\Domain\Stock\StockMovement;
+use App\Inventory\Domain\Stock\StockMovementType;
+use App\Inventory\Infrastructure\Persistence\Doctrine\Record\StockMovementRecord;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\Types\Types;
 use Symfony\Component\Uid\Uuid;
 
@@ -47,6 +54,59 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
     }
 
     /**
+     * INSERT … ON CONFLICT DO NOTHING of a row with zeros at version 0, then SELECT … FOR UPDATE. PostgreSQL makes an
+     * insert of a key that another, uncommitted transaction inserted wait for it; once that one ends, the insert
+     * either adds the row (the other rolled back) or skips it, and the lock reads the row as the other committed it.
+     * The row inserted here is locked by this transaction anyway.
+     */
+    public function lockOrCreate(ProductId $id): StockItem
+    {
+        $this->connection->executeStatement(
+            'INSERT INTO inventory_stock_item (product_id, physical, reserved, version, updated_at) VALUES (:product_id, 0, 0, 0, :now) ON CONFLICT (product_id) DO NOTHING',
+            ['product_id' => $id->toString(), 'now' => new \DateTimeImmutable()],
+            ['now' => Types::DATETIMETZ_IMMUTABLE],
+        );
+
+        return $this->lockMany([$id])[0] ?? throw new \LogicException('A stock just created or found is not stored.');
+    }
+
+    /**
+     * One lookup of the partial unique index of receipt keys.
+     */
+    public function findReceipt(ReceiptKey $key): ?StockMovement
+    {
+        $row = $this->connection->fetchAssociative(
+            "SELECT product_id, physical_delta, reserved_delta, physical_after, reserved_after, note, reference, source, actor_id, actor_name, occurred_at FROM inventory_stock_movement WHERE type = 'receipt' AND reference = :reference",
+            ['reference' => $key->toString()],
+        );
+        if (false === $row) {
+            return null;
+        }
+        \assert(\is_string($row['product_id']) && \is_string($row['source']) && \is_string($row['occurred_at']));
+        \assert(\is_int($row['physical_delta']) && \is_int($row['reserved_delta']) && \is_int($row['physical_after']) && \is_int($row['reserved_after']));
+        \assert((null === $row['note'] || \is_string($row['note'])) && \is_string($row['reference']));
+        \assert((null === $row['actor_id'] || \is_string($row['actor_id'])) && (null === $row['actor_name'] || \is_string($row['actor_name'])));
+
+        return new StockMovement(
+            ProductId::fromString($row['product_id']),
+            StockMovementType::Receipt,
+            $row['physical_delta'],
+            $row['reserved_delta'],
+            $row['physical_after'],
+            $row['reserved_after'],
+            null,
+            $row['note'],
+            $row['reference'],
+            match (StockChangeSource::from($row['source'])) {
+                StockChangeSource::Staff => StockChangeOrigin::staff($row['actor_id'] ?? '', $row['actor_name'] ?? ''),
+                StockChangeSource::Seed => StockChangeOrigin::seed(),
+                StockChangeSource::System => StockChangeOrigin::system(),
+            },
+            new \DateTimeImmutable($row['occurred_at']),
+        );
+    }
+
+    /**
      * One statement, `product_id = ANY(:ids)`, without a lock.
      */
     public function findMany(array $ids): array
@@ -67,7 +127,9 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
      * The stock was read at version() − 1 (all its unsaved changes share one version step). The UPDATE compares that
      * version, so a write that did not hold the row lock and lost a race cannot pass silently; the CHECK constraint
      * of the table refuses a state breaking the invariant. The movements are inserted by the same transaction, so
-     * there is no change without its movement and no movement without its change.
+     * there is no change without its movement and no movement without its change. The partial unique index of receipt
+     * keys refuses a receipt with a key another transaction stored after this one looked it up (two products received
+     * with one key at the same time): the transaction fails as ReceiptKeyReused and must be rolled back.
      */
     public function save(StockItem $item): void
     {
@@ -97,7 +159,23 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
         }
     }
 
+    /**
+     * @throws ReceiptKeyReused
+     */
     private function append(StockMovement $movement): void
+    {
+        try {
+            $this->insert($movement);
+        } catch (UniqueConstraintViolationException $violation) {
+            if (StockMovementType::Receipt === $movement->type() && str_contains($violation->getMessage(), StockMovementRecord::RECEIPT_REFERENCE_INDEX)) {
+                throw new ReceiptKeyReused($violation);
+            }
+
+            throw $violation;
+        }
+    }
+
+    private function insert(StockMovement $movement): void
     {
         $this->connection->executeStatement(
             'INSERT INTO inventory_stock_movement (id, product_id, type, physical_delta, reserved_delta, physical_after, reserved_after, reason, note, reference, source, actor_id, actor_name, occurred_at) '

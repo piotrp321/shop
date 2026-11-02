@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Inventory;
 
 use App\Inventory\Domain\Stock\ProductId;
+use App\Inventory\Domain\Stock\ReceiptKey;
+use App\Inventory\Domain\Stock\ReceiptKeyReused;
 use App\Inventory\Domain\Stock\StockItem;
 use App\Inventory\Domain\Stock\StockItemRepository;
 use App\Inventory\Domain\Stock\StockMovement;
+use App\Inventory\Domain\Stock\StockMovementType;
 
 /**
- * Keeps stocks like the database does: reads return fresh copies, save() checks the version the stock was read with
- * and appends the movements. Locks are only recorded (one process, nothing to wait for).
+ * Keeps stocks like the database does: reads return fresh copies, lockOrCreate() stores a missing stock at version 0,
+ * save() checks the version the stock was read with and the uniqueness of receipt keys and appends the movements.
+ * Locks are only recorded (one process, nothing to wait for).
  */
 final class InMemoryStockItemRepository implements StockItemRepository
 {
@@ -34,6 +38,24 @@ final class InMemoryStockItemRepository implements StockItemRepository
         return $found;
     }
 
+    public function lockOrCreate(ProductId $id): StockItem
+    {
+        $this->items[$id->toString()] ??= StockItem::unstored($id);
+
+        return $this->lockMany([$id])[0];
+    }
+
+    public function findReceipt(ReceiptKey $key): ?StockMovement
+    {
+        foreach ($this->movements as $movement) {
+            if (StockMovementType::Receipt === $movement->type() && $key->toString() === $movement->reference()) {
+                return $movement;
+            }
+        }
+
+        return null;
+    }
+
     public function findMany(array $ids): array
     {
         $this->manyReads[] = array_map(static fn (ProductId $id): string => $id->toString(), $ids);
@@ -50,6 +72,13 @@ final class InMemoryStockItemRepository implements StockItemRepository
         $stored = $this->items[$item->id()->toString()] ?? throw new \LogicException('Only a stored stock can be saved.');
         if ($item->version() - 1 !== $stored->version()) {
             throw new \LogicException('The stock was changed without its lock.');
+        }
+
+        // The unique index of receipt keys.
+        foreach ($movements as $movement) {
+            if (StockMovementType::Receipt === $movement->type() && null !== $this->findReceipt(ReceiptKey::fromString((string) $movement->reference()))) {
+                throw new ReceiptKeyReused();
+            }
         }
 
         $this->items[$item->id()->toString()] = $this->copy($item);
