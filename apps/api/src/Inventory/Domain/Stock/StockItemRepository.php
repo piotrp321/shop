@@ -25,6 +25,22 @@ interface StockItemRepository
     public function lockMany(array $ids): array;
 
     /**
+     * Locks the stock of the product like lockMany() and returns it as it is once locked. A product without a stored
+     * stock gets one first, with nothing on the shelf at version 0 (INSERT … ON CONFLICT DO NOTHING): a transaction
+     * creating the same stock waits for this one to end, then locks the stock this one left. A stock at version 0
+     * was created by this transaction; the caller saves a change to it or rolls the transaction back.
+     *
+     * Must run inside a transaction (command.bus has doctrine_transaction).
+     */
+    public function lockOrCreate(ProductId $id): StockItem;
+
+    /**
+     * The receipt recorded with the key, whatever its product; null when the key was never used. Read without a lock:
+     * a receipt with the key committed by a concurrent transaction after this read is refused by save().
+     */
+    public function findReceipt(ReceiptKey $key): ?StockMovement;
+
+    /**
      * The stored stocks of the products, in one read straight from the store (no cache, no session state, no lock),
      * in no particular order. A product without a stored stock is absent from the result.
      *
@@ -38,8 +54,9 @@ interface StockItemRepository
      * Writes a stock locked by lockMany() in this transaction with the version of the stock, and appends its unsaved
      * movements. A stock without unsaved movements is unchanged and nothing is written.
      *
-     * @throws \LogicException when the stored version is not the one the stock was read with, i.e. it was changed
-     *                         without holding its lock
+     * @throws ReceiptKeyReused when a receipt with the key of a receipt among the movements is already stored
+     * @throws \LogicException  when the stored version is not the one the stock was read with, i.e. it was changed
+     *                          without holding its lock
      */
     public function save(StockItem $item): void;
 }

@@ -12,13 +12,15 @@ use App\Inventory\Domain\Reservation\ReservationKey;
  *
  * Invariant: 0 ≤ reserved ≤ physical ≤ 1 000 000. Every change records one movement with the state after it. The
  * version is the one the state will have once saved: the changes made before the next save share one version step,
- * as they are saved by one write.
+ * as they are saved by one write. Version 0 is a stock that no change was saved for yet.
  *
- * The reservation operations are serialised by a row lock (see StockItemRepository::lockMany), not by the version.
+ * All operations are serialised by a row lock (see StockItemRepository::lockMany), not by the version; a correction
+ * from the panel also checks the version of the view it is based on (the handler does).
  */
 final class StockItem
 {
     public const int MAX_PHYSICAL = 1_000_000;
+    public const int MAX_RECEIPT = 100_000;
 
     /** @var list<StockMovement> */
     private array $unsavedMovements = [];
@@ -41,6 +43,62 @@ final class StockItem
     public static function reconstitute(ProductId $id, int $physical, int $reserved, int $version, \DateTimeImmutable $updatedAt): self
     {
         return new self($id, $physical, $reserved, $version, $updatedAt);
+    }
+
+    /**
+     * The stock of a product that has no stored stock: nothing on the shelf, nothing reserved, version 0.
+     */
+    public static function unstored(ProductId $id): self
+    {
+        return new self($id, 0, 0, 0, new \DateTimeImmutable());
+    }
+
+    /**
+     * Puts a delivered quantity on the shelf.
+     *
+     * @throws InvalidStockQuantity       when the quantity is not 1 to 100 000
+     * @throws PhysicalStockLimitExceeded when physical would exceed 1 000 000; nothing changes
+     */
+    public function receive(int $quantity, ReceiptKey $key, StockNote $note, StockChangeOrigin $origin): void
+    {
+        if ($quantity < 1 || $quantity > self::MAX_RECEIPT) {
+            throw InvalidStockQuantity::receipt();
+        }
+        if ($this->physical + $quantity > self::MAX_PHYSICAL) {
+            throw new PhysicalStockLimitExceeded();
+        }
+
+        $this->record(StockMovementType::Receipt, $quantity, 0, null, $note, $key->toString(), $origin);
+    }
+
+    /**
+     * Sets physical to what was counted on the shelf. Counting what the stock already has changes nothing: no
+     * movement, no new version.
+     *
+     * @return bool whether the stock changed
+     *
+     * @throws InvalidStockQuantity    when the count is not 0 to 1 000 000
+     * @throws InvalidStockNote        when the reason needs a note and there is none
+     * @throws CorrectionBelowReserved when less than is reserved was counted; nothing changes
+     */
+    public function correct(int $counted, CorrectionReason $reason, StockNote $note, StockChangeOrigin $origin): bool
+    {
+        if ($counted < 0 || $counted > self::MAX_PHYSICAL) {
+            throw InvalidStockQuantity::count();
+        }
+        if ($reason->requiresNote() && $note->isEmpty()) {
+            throw InvalidStockNote::requiredForOtherReason();
+        }
+        if ($counted === $this->physical) {
+            return false;
+        }
+        if ($counted < $this->reserved) {
+            throw new CorrectionBelowReserved($this->reserved);
+        }
+
+        $this->record(StockMovementType::Correction, $counted - $this->physical, 0, $reason->value, $note, null, $origin);
+
+        return true;
     }
 
     /**
@@ -127,6 +185,11 @@ final class StockItem
      */
     private function apply(StockMovementType $type, int $physicalDelta, int $reservedDelta, ReservationKey $key): void
     {
+        $this->record($type, $physicalDelta, $reservedDelta, null, StockNote::none(), $key->toString(), StockChangeOrigin::system());
+    }
+
+    private function record(StockMovementType $type, int $physicalDelta, int $reservedDelta, ?string $reason, StockNote $note, ?string $reference, StockChangeOrigin $origin): void
+    {
         $physical = $this->physical + $physicalDelta;
         $reserved = $this->reserved + $reservedDelta;
         self::guard($physical, $reserved);
@@ -144,10 +207,10 @@ final class StockItem
             $reservedDelta,
             $physical,
             $reserved,
-            null,
-            null,
-            $key->toString(),
-            StockChangeOrigin::system(),
+            $reason,
+            $note->toNullableString(),
+            $reference,
+            $origin,
             $this->updatedAt,
         );
     }

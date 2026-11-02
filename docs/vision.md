@@ -188,11 +188,12 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 **Spójność i współbieżność**
 - Optimistic locking (wersja) dla edycji z widoku: zmiana agregatu edytowanego równolegle (zamówienie, cena, korekta
   stanu magazynowego) wskazuje wersję, na której się opiera, a nieaktualna wersja kończy się konfliktem.
-- Krótka blokada wiersza (`SELECT … FOR UPDATE`) dla atomowych operacji na stanie magazynowym (rezerwacja, zwolnienie,
-  zatwierdzenie): szereguje je baza, bez sprawdzania wersji z widoku i bez ponawiania. Wiersze kilku produktów są
-  blokowane w kolejności identyfikatorów, więc nie ma zakleszczeń; każda zmiana i tak podnosi wersję.
-- `Idempotency-Key` na operacjach, które nie mogą się wykonać dwa razy: złożenie zamówienia, rozpoczęcie płatności.
-  Podwójne kliknięcie „Zapłać” nie tworzy dwóch zamówień.
+- Krótka blokada wiersza (`SELECT … FOR UPDATE`) dla atomowych operacji na stanie magazynowym (przyjęcie, rezerwacja,
+  zwolnienie, zatwierdzenie): szereguje je baza, bez sprawdzania wersji z widoku i bez ponawiania. Wiersze kilku
+  produktów są blokowane w kolejności identyfikatorów, więc nie ma zakleszczeń; każda zmiana i tak podnosi wersję.
+- `Idempotency-Key` na operacjach, które nie mogą się wykonać dwa razy: złożenie zamówienia, rozpoczęcie płatności,
+  przyjęcie magazynowe. Podwójne kliknięcie „Zapłać” nie tworzy dwóch zamówień, a ponowione przyjęcie nie zwiększa
+  stanu drugi raz.
 - Odbiorcy zdarzeń są idempotentni (outbox daje dostarczenie „co najmniej raz”).
 - Webhooki płatności: weryfikacja podpisu, deduplikacja po identyfikatorze zdarzenia.
 

@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\After;
 /**
  * Connections of their own, outside the DAMA transaction of the test, so a test can play transactions that commit
  * or wait for each other. Inventory rows of the products and reservations named in $committedProductIds and
- * $committedReservationKeys are deleted after the test.
+ * $committedReservationKeys, and the Catalog products named in $committedCatalogProductIds, are deleted after the test.
  */
 trait IndependentConnections
 {
@@ -23,6 +23,8 @@ trait IndependentConnections
     private array $committedProductIds = [];
     /** @var list<string> */
     private array $committedReservationKeys = [];
+    /** @var list<string> */
+    private array $committedCatalogProductIds = [];
 
     private function independentConnection(): Connection
     {
@@ -66,11 +68,13 @@ trait IndependentConnections
             }
         }
         StockFixture::delete($this->independentConnections[0], $this->committedProductIds, $this->committedReservationKeys);
+        CatalogFixture::delete($this->independentConnections[0], $this->committedCatalogProductIds);
         foreach ($this->independentConnections as $connection) {
             $connection->close();
         }
         $this->independentConnections = [];
         $this->committedProductIds = [];
         $this->committedReservationKeys = [];
+        $this->committedCatalogProductIds = [];
     }
 }

@@ -155,6 +155,7 @@ services:
     App\Catalog\Application\Port\CatalogReset: '@App\Catalog\Infrastructure\Demo\DbalCatalogReset'
     App\Catalog\Application\Port\DemoCatalogSource: '@App\Catalog\Infrastructure\Demo\YamlDemoCatalogSource'
     App\Catalog\Application\Port\ProductsForPricingSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductsForPricingSource'
+    App\Catalog\Application\Port\ProductsForInventorySource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductsForInventorySource'
     App\Catalog\Application\Port\BackofficeProductSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalBackofficeProductSource'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'
 
