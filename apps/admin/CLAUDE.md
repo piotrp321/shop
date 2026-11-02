@@ -36,8 +36,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i `sourceLabel` (etykiety źródeł zmiany: Pracownik, Dane demo, Uzgodnienie podatkowe).
 - `src/inventory/` – lista stanów magazynowych (`/inventory`, widok `InventoryView`): `useStockList` (wyszukiwanie od
   2 znaków z opóźnieniem, filtr kategorii, stronicowanie po kursorach ze stosem kursorów w panelu, jak w `usePriceList`),
-  `format.ts` (`levelLabel`: etykieta i kolor poziomu z API). Produkt bez rekordu (`stock: null`) pokazuje zera
-  i poziom „Brak”; to tylko prezentacja braku danych, liczby i poziomy dla produktów ze stanem pochodzą z API.
+  `format.ts` (`levelLabel`: etykieta i kolor poziomu z API: Dostępny, Ostatnie sztuki, Niedostępny). Produkt bez
+  rekordu (`stock: null`) pokazuje zera w kolumnach liczbowych i „—” zamiast poziomu; panel nie przypisuje mu poziomu.
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 
 ## Dane i API

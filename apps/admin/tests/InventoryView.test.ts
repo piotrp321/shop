@@ -76,16 +76,16 @@ describe("InventoryView", () => {
     const cells = (row: (typeof rows)[number]) =>
       ["name", "physical", "reserved", "available", "level"].map((id) => row.get(`[data-testid=${id}]`).text());
     expect(cells(rows[0]!)).toEqual(["Bidon", "10", "4", "6", "Dostępny"]);
-    expect(cells(rows[1]!)).toEqual(["Żel", "3", "3", "0", "Brak"]);
-    expect(cells(rows[2]!)).toEqual(["Baton", "9", "4", "5", "Mało"]);
+    expect(cells(rows[1]!)).toEqual(["Żel", "3", "3", "0", "Niedostępny"]);
+    expect(cells(rows[2]!)).toEqual(["Baton", "9", "4", "5", "Ostatnie sztuki"]);
   });
 
-  it("shows zeros for a product without a stock record", async () => {
+  it("shows zeros and no level for a product without a stock record", async () => {
     serve({ "": { items: [item("Nowy", { stock: null })], next: null } });
     wrapper = await mountView();
 
     const row = wrapper.get("[data-testid=stock-row]");
-    expect(["physical", "reserved", "available", "level"].map((id) => row.get(`[data-testid=${id}]`).text())).toEqual(["0", "0", "0", "Brak"]);
+    expect(["physical", "reserved", "available", "level"].map((id) => row.get(`[data-testid=${id}]`).text())).toEqual(["0", "0", "0", "—"]);
   });
 
   it("shows a message and no rows when nothing matches", async () => {

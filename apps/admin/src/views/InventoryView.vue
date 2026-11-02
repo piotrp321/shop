@@ -124,10 +124,15 @@ watch(selection, (value) => selectCategory(value ? (Object.keys(value)[0] ?? nul
       <Column header="Poziom">
         <template #body="{ data }">
           <Tag
+            v-if="data.stock"
             data-testid="level"
-            :value="levelLabel(data.stock?.level ?? 'out_of_stock').label"
-            :severity="levelLabel(data.stock?.level ?? 'out_of_stock').severity"
+            :value="levelLabel(data.stock.level).label"
+            :severity="levelLabel(data.stock.level).severity"
           />
+          <span
+            v-else
+            data-testid="level"
+          >—</span>
         </template>
       </Column>
     </DataTable>

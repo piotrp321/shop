@@ -6,8 +6,8 @@ export function levelLabel(level: Level): { label: string; severity: "success" |
     case "in_stock":
       return { label: "Dostępny", severity: "success" };
     case "low_stock":
-      return { label: "Mało", severity: "warn" };
+      return { label: "Ostatnie sztuki", severity: "warn" };
     case "out_of_stock":
-      return { label: "Brak", severity: "danger" };
+      return { label: "Niedostępny", severity: "danger" };
   }
 }
