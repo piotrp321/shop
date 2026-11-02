@@ -235,6 +235,10 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
+      # Adapters of Inventory's ports ask Catalog through its queries on query.bus (e.g. GetProductExists), like
+      # Pricing. Catalog depends on Inventory in no layer, and Inventory_Domain and Inventory_Application never see
+      # Catalog: the port speaks Inventory's own ProductId.
+      - Catalog_Application
     Inventory_UI:
       - Native
       - Inventory_Application

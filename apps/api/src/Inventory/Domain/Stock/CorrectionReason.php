@@ -15,6 +15,14 @@ enum CorrectionReason: string
     case Other = 'other';
 
     /**
+     * @throws InvalidCorrectionReason
+     */
+    public static function fromString(string $value): self
+    {
+        return self::tryFrom($value) ?? throw new InvalidCorrectionReason();
+    }
+
+    /**
      * Another reason is explained in the note.
      */
     public function requiresNote(): bool
