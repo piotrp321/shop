@@ -8,7 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 /**
  * One line of a reservation: a product (no foreign key to Catalog) and its quantity, once per reservation. The lines
- * are written together with their reservation (ReservationRecord) and never change.
+ * are written together with their reservation (ReservationRecord, a foreign key without cascade) and never change.
  */
 #[ORM\Entity(readOnly: true)]
 #[ORM\Table(name: 'inventory_reservation_line')]
@@ -16,8 +16,9 @@ class ReservationLineRecord
 {
     public function __construct(
         #[ORM\Id]
-        #[ORM\Column(length: 100)]
-        public readonly string $reservationKey,
+        #[ORM\ManyToOne(targetEntity: ReservationRecord::class)]
+        #[ORM\JoinColumn(name: 'reservation_key', referencedColumnName: 'reservation_key', nullable: false)]
+        public readonly ReservationRecord $reservation,
         #[ORM\Id]
         #[ORM\Column(type: 'guid')]
         public readonly string $productId,
