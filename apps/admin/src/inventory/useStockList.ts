@@ -217,7 +217,11 @@ export function useStockList() {
         saveStock(productId, result.data);
         return { status: "saved" };
       }
-      // A 409 here is a reused key; the API says so in `detail`.
+      // A 409 here is a reused key; the API says so in `detail`. The first request with this key may have been saved
+      // although its answer was lost, so the page is reloaded to show the row as it is now (and not to receive twice).
+      if (result.response.status === 409) {
+        await load(cursors.value);
+      }
       return changeFailure(result.response.status, result.error, "API odrzuciło przyjęcie");
     } catch {
       return { status: "failed", message: "Nie udało się zapisać przyjęcia. Sprawdź połączenie z API." };

@@ -381,13 +381,23 @@ describe("useStockList: receipts and corrections", () => {
       });
     });
 
-    it("shows the detail of a 409 about the key and does not reload the list", async () => {
-      const list = await start({ "": { items: [item("A")], next: null } });
+    it("shows the detail of a 409 about the key and reloads the page, so a receipt whose answer was lost shows in the row", async () => {
+      const list = await start({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("A")], next: null } });
+      await list.goNext();
       respond(409, { status: 409, detail: "Ten klucz został użyty dla innego przyjęcia." });
-      const getsBefore = mocks.get.mock.calls.length;
+      serve({ c1: { items: [item("A", { stock: { physical: 15, reserved: 4, available: 11, level: "in_stock", version: 4, updatedAt: "2026-11-02T13:00:00+00:00" } })], next: null } });
 
       expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "failed", message: "Ten klucz został użyty dla innego przyjęcia." });
-      expect(mocks.get.mock.calls).toHaveLength(getsBefore);
+      expect(queries().at(-1)).toEqual({ after: "c1" });
+      expect(list.items.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+    });
+
+    it("shows the detail of a 409 about the key also when the reload fails", async () => {
+      const list = await start({ "": { items: [item("A")], next: null } });
+      respond(409, { status: 409, detail: "Ten klucz został użyty dla innego przyjęcia." });
+      serve({}, 500);
+
+      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "failed", message: "Ten klucz został użyty dla innego przyjęcia." });
     });
 
     it("says the staff member may not receive stock on a 403", async () => {

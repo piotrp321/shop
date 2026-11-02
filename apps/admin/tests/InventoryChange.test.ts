@@ -288,6 +288,42 @@ describe("InventoryView: receipts and corrections", () => {
       expect(dialog("receive-error").text()).toBe("Ten klucz został użyty dla innego przyjęcia.");
     });
 
+    it("sends one request when Przyjmij is clicked again while saving", async () => {
+      serve(one);
+      wrapper = await mountView();
+      let respond!: (value: unknown) => void;
+      mocks.post.mockImplementationOnce(() => new Promise((done) => (respond = done)));
+
+      await open("receive-stock");
+      await fillReceipt(5);
+      await dialog("receive-submit").trigger("click");
+      await dialog("receive-submit").trigger("click");
+      await settle();
+
+      expect(mocks.post).toHaveBeenCalledTimes(1);
+      respond({ data: state(), error: undefined, response: { status: 201 } });
+      await settle();
+    });
+
+    it("does not let a late answer of a closed dialog touch the dialog opened for another product", async () => {
+      serve(() => ({ items: [item("A"), item("B")], next: null }));
+      wrapper = await mountView();
+      let respond!: (value: unknown) => void;
+      mocks.post.mockImplementationOnce(() => new Promise((done) => (respond = done)));
+
+      await open("receive-stock", 0);
+      await fillReceipt(5);
+      await dialog("receive-submit").trigger("click");
+      await dialog("receive-cancel").trigger("click");
+      await settle();
+      await open("receive-stock", 1);
+      respond({ data: undefined, error: { status: 403 }, response: { status: 403 } });
+      await settle();
+
+      expect(dialog("receive-dialog").text()).toContain("B");
+      expect(wrapper.find("[data-testid=receive-error]").exists()).toBe(false);
+    });
+
     it("says the staff member may not on a 403", async () => {
       serve(one);
       wrapper = await mountView();
@@ -462,6 +498,23 @@ describe("InventoryView: receipts and corrections", () => {
       await submitCorrection();
 
       expect(dialog("correct-error").text()).toContain("Nie masz uprawnień");
+    });
+
+    it("sends one request when Zapisz korektę is clicked again while saving", async () => {
+      serve(one);
+      wrapper = await mountView();
+      let respond!: (value: unknown) => void;
+      mocks.post.mockImplementationOnce(() => new Promise((done) => (respond = done)));
+
+      await open("correct-stock");
+      await fillCorrection(15);
+      await dialog("correct-submit").trigger("click");
+      await dialog("correct-submit").trigger("click");
+      await settle();
+
+      expect(mocks.post).toHaveBeenCalledTimes(1);
+      respond({ data: state(), error: undefined, response: { status: 200 } });
+      await settle();
     });
 
     it("does not let a late answer of a closed dialog touch the dialog opened for another product", async () => {
