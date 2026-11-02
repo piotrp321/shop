@@ -13,8 +13,10 @@ import Textarea from "primevue/textarea";
 import TreeSelect from "primevue/treeselect";
 import { computed, ref, watch } from "vue";
 import { useCategoryTree } from "@/composables/useCategoryTree";
-import { levelLabel } from "@/inventory/format";
+import { formatDelta, levelLabel, movementReasonLabel, movementSourceLabel, movementTypeLabel } from "@/inventory/format";
+import { useStockHistory } from "@/inventory/useStockHistory";
 import { MAX_SEARCH_LENGTH, type StockChange, type StockListItem, useStockList } from "@/inventory/useStockList";
+import { formatDateTime } from "@/prices/format";
 import { useAuthStore } from "@/stores/auth";
 
 const {
@@ -51,6 +53,23 @@ const REASONS = [
   { label: "Inne", value: "other" },
 ] as const;
 type Reason = (typeof REASONS)[number]["value"];
+
+// History. The dialog keeps the name it was opened with, so the title stays while the list moves to another page.
+const history = useStockHistory();
+const historyName = ref("");
+const historyVisible = computed({
+  get: () => history.productId.value !== null,
+  set: (visible: boolean) => {
+    if (!visible) {
+      history.close();
+    }
+  },
+});
+
+function openHistory(item: StockListItem): void {
+  historyName.value = item.name;
+  void history.open(item.productId);
+}
 
 // Each dialog counts its openings and closings. A save answers only the dialog it was sent from: when the dialog was
 // closed or opened again meanwhile (even for the same product), the answer must not touch the new one.
@@ -340,13 +359,19 @@ function applyCorrectionResult(result: StockChange): void {
           >—</span>
         </template>
       </Column>
-      <Column
-        v-if="canChangeStock"
-        header="Akcje"
-      >
+      <Column header="Akcje">
         <template #body="{ data }">
           <div class="row-actions">
             <Button
+              data-testid="show-history"
+              label="Historia"
+              icon="pi pi-history"
+              severity="secondary"
+              size="small"
+              @click="openHistory(data)"
+            />
+            <Button
+              v-if="canChangeStock"
               data-testid="receive-stock"
               label="Przyjęcie"
               icon="pi pi-plus"
@@ -355,6 +380,7 @@ function applyCorrectionResult(result: StockChange): void {
               @click="openReceipt(data)"
             />
             <Button
+              v-if="canChangeStock"
               data-testid="correct-stock"
               label="Korekta"
               icon="pi pi-pencil"
@@ -565,6 +591,132 @@ function applyCorrectionResult(result: StockChange): void {
             :loading="correctionSaving"
             :disabled="correcting === null"
             @click="saveCorrection()"
+          />
+        </div>
+      </div>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="historyVisible"
+      modal
+      header="Historia stanów"
+      :style="{ width: '80rem', maxWidth: '95vw' }"
+    >
+      <div
+        data-testid="history-dialog"
+        class="change"
+      >
+        <strong>{{ historyName }}</strong>
+        <Message
+          v-if="history.error.value"
+          data-testid="history-error"
+          severity="error"
+        >
+          {{ history.error.value }}
+          <Button
+            data-testid="history-retry"
+            label="Spróbuj ponownie"
+            icon="pi pi-refresh"
+            severity="secondary"
+            size="small"
+            :loading="history.loading.value"
+            @click="history.retry()"
+          />
+        </Message>
+        <DataTable
+          v-if="history.loaded.value"
+          :value="history.items.value"
+          :pt="{ bodyRow: { 'data-testid': 'history-row' } }"
+        >
+          <template #empty>
+            <span data-testid="history-empty">Produkt nie ma jeszcze zmian stanu.</span>
+          </template>
+          <Column header="Data">
+            <template #body="{ data }">
+              <span data-testid="history-occurred-at">{{ formatDateTime(data.occurredAt) }}</span>
+            </template>
+          </Column>
+          <Column header="Typ">
+            <template #body="{ data }">
+              <span data-testid="history-type">{{ movementTypeLabel(data.type) }}</span>
+            </template>
+          </Column>
+          <Column
+            header="Fizyczny (zmiana)"
+            class="amount"
+          >
+            <template #body="{ data }">
+              <span data-testid="history-physical-delta">{{ formatDelta(data.physicalDelta) }}</span>
+            </template>
+          </Column>
+          <Column
+            header="Fizyczny (po)"
+            class="amount"
+          >
+            <template #body="{ data }">
+              <span data-testid="history-physical-after">{{ data.physicalAfter }}</span>
+            </template>
+          </Column>
+          <Column
+            header="Zarezerwowany (zmiana)"
+            class="amount"
+          >
+            <template #body="{ data }">
+              <span data-testid="history-reserved-delta">{{ formatDelta(data.reservedDelta) }}</span>
+            </template>
+          </Column>
+          <Column
+            header="Zarezerwowany (po)"
+            class="amount"
+          >
+            <template #body="{ data }">
+              <span data-testid="history-reserved-after">{{ data.reservedAfter }}</span>
+            </template>
+          </Column>
+          <Column header="Powód">
+            <template #body="{ data }">
+              <span data-testid="history-reason">{{ movementReasonLabel(data.reason) }}</span>
+            </template>
+          </Column>
+          <Column header="Notatka">
+            <template #body="{ data }">
+              <span data-testid="history-note">{{ data.note ?? "—" }}</span>
+            </template>
+          </Column>
+          <Column header="Referencja">
+            <template #body="{ data }">
+              <span data-testid="history-reference">{{ data.reference ?? "—" }}</span>
+            </template>
+          </Column>
+          <Column header="Źródło">
+            <template #body="{ data }">
+              <span data-testid="history-source">{{ movementSourceLabel(data.source) }}</span>
+            </template>
+          </Column>
+          <Column header="Pracownik">
+            <template #body="{ data }">
+              <span data-testid="history-actor">{{ data.actorName ?? "—" }}</span>
+            </template>
+          </Column>
+        </DataTable>
+        <Skeleton
+          v-else-if="history.loading.value"
+          height="8rem"
+        />
+        <div class="actions">
+          <Button
+            v-if="history.hasMore.value"
+            data-testid="history-more"
+            label="Pokaż więcej"
+            icon="pi pi-angle-down"
+            severity="secondary"
+            :loading="history.loading.value"
+            @click="history.loadMore()"
+          />
+          <Button
+            data-testid="close-history"
+            label="Zamknij"
+            @click="historyVisible = false"
           />
         </div>
       </div>

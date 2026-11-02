@@ -255,7 +255,7 @@ z tokenem realmu `shop`: 401):
     „Inne”), wersja z wiersza.
   - 409 wersji: „Stan został w międzyczasie zmieniony – odśwież” i odświeżenie wiersza; 409 poniżej zarezerwowanego
     i 409 klucza: `detail` z API; 422: komunikat naruszenia przy polu.
-- „Historia”: wpisy od najnowszych, „Pokaż więcej”, etykiety typów (Przyjęcie, Korekta, Rezerwacja, Zwolnienie,
+- „Historia” (przycisk w wierszu, dla każdego pracownika): wpisy od najnowszych, „Pokaż więcej”, etykiety typów (Przyjęcie, Korekta, Rezerwacja, Zwolnienie,
   Zatwierdzenie), powodów i źródeł (Pracownik, Dane demo, System).
 
 ## Scenariusze błędów
