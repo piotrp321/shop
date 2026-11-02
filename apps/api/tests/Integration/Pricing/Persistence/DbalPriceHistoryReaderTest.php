@@ -42,6 +42,7 @@ final class DbalPriceHistoryReaderTest extends KernelTestCase
         $id = PriceHistoryRecordFactory::store($this->entityManager, [
             'productId' => self::PRODUCT,
             'changedAt' => new \DateTimeImmutable('2026-10-31 12:30:45+02:00'),
+            'currency' => 'EUR',
             'grossAmount' => 5490, 'netAmount' => 5229, 'vatAmount' => 261, 'vatRateBp' => 500, 'taxClass' => 'printed_book',
             'source' => 'staff', 'actorName' => 'Anna Admin',
         ]);
@@ -50,7 +51,7 @@ final class DbalPriceHistoryReaderTest extends KernelTestCase
 
         self::assertCount(1, $items);
         $item = $items[0];
-        self::assertSame([$id, 5490, 5229, 261, 500, 'printed_book', 'staff', 'Anna Admin'], [$item->id, $item->gross, $item->net, $item->vat, $item->vatRate, $item->taxClass, $item->source, $item->actorName]);
+        self::assertSame([$id, 'EUR', 5490, 5229, 261, 500, 'printed_book', 'staff', 'Anna Admin'], [$item->id, $item->currency, $item->gross, $item->net, $item->vat, $item->vatRate, $item->taxClass, $item->source, $item->actorName]);
         self::assertEquals(new \DateTimeImmutable('2026-10-31 10:30:45+00:00'), $item->changedAt);
     }
 

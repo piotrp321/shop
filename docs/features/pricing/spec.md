@@ -181,7 +181,7 @@ z tokenem realmu `shop`: 401):
 |---|---|---|
 | `GET /api/v1/admin/prices?q&category&after&perPage` | każdy pracownik | `200 {items: [{productId, name, taxClass, applicableVatRate, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}], next}`; 400 złe parametry; 404 nieznana kategoria |
 | `PUT /api/v1/admin/products/{productId}/price`, body `{gross: int, version: int \| null}` | rola `admin` | 200 cena (ta sama kwota: bez zmiany wersji i bez wpisu); 403; 404 nieznany produkt; 409 konflikt wersji; 422 kwota poza zakresem lub zły typ |
-| `GET /api/v1/admin/products/{productId}/price-history?after&perPage` | każdy pracownik | `200 {items: [{changedAt, gross, net, vat, vatRate, taxClass, source, actorName}], next}`; 404 nieznany produkt |
+| `GET /api/v1/admin/products/{productId}/price-history?after&perPage` | każdy pracownik | `200 {items: [{changedAt, currency, gross, net, vat, vatRate, taxClass, source, actorName}], next}`; 404 nieznany produkt |
 | `GET /api/v1/admin/categories` | każdy pracownik | 200 drzewo kategorii (`GetCategoryTree`) |
 
 - Uprawnienie do zmiany ceny sprawdza `PriceVoter` w `Pricing_Infrastructure` na podstawie ról

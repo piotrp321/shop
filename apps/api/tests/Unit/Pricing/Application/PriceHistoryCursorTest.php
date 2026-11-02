@@ -16,7 +16,7 @@ final class PriceHistoryCursorTest extends TestCase
 
     public function testEncodesToOpaqueUrlSafeTextThatDecodesToTheSamePosition(): void
     {
-        $item = new PriceHistoryItem(self::ID, new \DateTimeImmutable('2026-10-31 12:30:45.123456+02:00'), 100, 90, 10, 1000, 'standard', 'staff', 'Jan');
+        $item = new PriceHistoryItem(self::ID, new \DateTimeImmutable('2026-10-31 12:30:45.123456+02:00'), 'PLN', 100, 90, 10, 1000, 'standard', 'staff', 'Jan');
 
         $text = PriceHistoryCursor::after($item)->encode();
         $decoded = PriceHistoryCursor::decode($text);

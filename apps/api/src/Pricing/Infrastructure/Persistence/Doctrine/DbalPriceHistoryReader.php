@@ -19,7 +19,7 @@ use Doctrine\DBAL\ParameterType;
  */
 final readonly class DbalPriceHistoryReader implements PriceHistoryReader
 {
-    private const string COLUMNS = 'id, changed_at, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, source, actor_name';
+    private const string COLUMNS = 'id, changed_at, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, source, actor_name';
 
     public function __construct(private Connection $connection)
     {
@@ -49,13 +49,14 @@ final readonly class DbalPriceHistoryReader implements PriceHistoryReader
      */
     private function fromRow(array $row): PriceHistoryItem
     {
-        \assert(\is_string($row['id']) && \is_string($row['changed_at']) && \is_string($row['tax_class']) && \is_string($row['source']));
+        \assert(\is_string($row['id']) && \is_string($row['changed_at']) && \is_string($row['currency']) && \is_string($row['tax_class']) && \is_string($row['source']));
         \assert(\is_int($row['gross_amount']) && \is_int($row['net_amount']) && \is_int($row['vat_amount']) && \is_int($row['vat_rate_bp']));
         \assert(null === $row['actor_name'] || \is_string($row['actor_name']));
 
         return new PriceHistoryItem(
             $row['id'],
             new \DateTimeImmutable($row['changed_at']),
+            $row['currency'],
             $row['gross_amount'],
             $row['net_amount'],
             $row['vat_amount'],

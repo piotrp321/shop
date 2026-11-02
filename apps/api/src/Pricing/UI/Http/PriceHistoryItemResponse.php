@@ -7,12 +7,14 @@ namespace App\Pricing\UI\Http;
 use App\Pricing\Application\Query\PriceHistoryItem;
 use OpenApi\Attributes as OA;
 
-#[OA\Schema(description: 'One recorded price change: the price as it was set. Amounts are in grosze, the rate in basis points; all computed by the API.', required: ['changedAt', 'gross', 'net', 'vat', 'vatRate', 'taxClass', 'source', 'actorName'])]
+#[OA\Schema(description: 'One recorded price change: the price as it was set. Amounts are in grosze, the rate in basis points; all computed by the API.', required: ['changedAt', 'currency', 'gross', 'net', 'vat', 'vatRate', 'taxClass', 'source', 'actorName'])]
 final readonly class PriceHistoryItemResponse
 {
     public function __construct(
         #[OA\Property(description: 'When the price was changed (RFC 3339, UTC).', example: '2026-11-01T12:30:00+00:00')]
         public string $changedAt,
+        #[OA\Property(description: 'The ISO 4217 currency code of the amounts.', example: 'PLN')]
+        public string $currency,
         #[OA\Property(description: 'Gross price (VAT included) in grosze.', example: 5490)]
         public int $gross,
         #[OA\Property(description: 'Net price in grosze.', example: 5229)]
@@ -34,6 +36,7 @@ final readonly class PriceHistoryItemResponse
     {
         return new self(
             $item->changedAt->setTimezone(new \DateTimeZone('UTC'))->format(\DATE_ATOM),
+            $item->currency,
             $item->gross,
             $item->net,
             $item->vat,
