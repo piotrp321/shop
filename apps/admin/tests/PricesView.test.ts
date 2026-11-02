@@ -600,16 +600,16 @@ describe("PricesView: changing a price", () => {
       return wrapper.get("[data-testid=gross-error]").text();
     }
 
-    it("shows the violations of the API at the field, not a range of the panel", async () => {
+    it("shows the violation of the API at the field as it is, with the range in złoty from the API", async () => {
       const text = await submitRejected({
         type: "about:blank",
         title: "Unprocessable Entity",
         status: 422,
         detail: "The request is invalid.",
-        violations: [{ propertyPath: "gross", title: "This value should be between 1 and 99999999." }],
+        violations: [{ propertyPath: "gross", title: "Cena brutto musi wynosić od 0,01 zł do 999 999,99 zł." }],
       });
 
-      expect(text).toBe("This value should be between 1 and 99999999.");
+      expect(text).toBe("Cena brutto musi wynosić od 0,01 zł do 999 999,99 zł.");
     });
 
     it("shows every violation", async () => {

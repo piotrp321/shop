@@ -21,7 +21,9 @@ final readonly class ChangePriceRequest
         #[OA\Property(type: 'integer', description: 'Gross price (VAT included) in grosze, from 1 (0,01 zł) to 99 999 999 (999 999,99 zł).', minimum: GrossPrice::MIN, maximum: GrossPrice::MAX, example: 5990)]
         #[Assert\NotNull]
         #[Assert\Type('integer')]
-        #[Assert\Range(min: GrossPrice::MIN, max: GrossPrice::MAX)]
+        // Shown to a staff member as it is: in Polish and in złoty, as GrossPrice::MIN and MAX read in złoty (a functional
+        // test keeps them in step). The default message would give the range in grosze.
+        #[Assert\Range(notInRangeMessage: 'Cena brutto musi wynosić od 0,01 zł do 999 999,99 zł.', min: GrossPrice::MIN, max: GrossPrice::MAX)]
         public mixed $gross,
         #[OA\Property(type: 'integer', description: 'The `version` of the price the change is based on; null when the product has no price yet.', nullable: true, example: 1)]
         #[Assert\Type('integer')]
