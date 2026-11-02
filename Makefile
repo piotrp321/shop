@@ -28,9 +28,11 @@ ps:
 
 # Resets the catalog and loads the demo data; waits (60 s) until the worker has indexed every product.
 # Then resets the prices and sets the demo price of every product (fails when a product has no price pattern).
+# Then resets the stocks and sets the demo stock of every product (fails when a product has no stock pattern).
 seed:
 	$(RUN) api bin/console catalog:seed-demo
 	$(RUN) api bin/console pricing:seed-demo
+	$(RUN) api bin/console inventory:seed-demo
 
 check:
 	$(MAKE) -C apps/api check

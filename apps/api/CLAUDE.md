@@ -16,7 +16,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - dane demo ładuje `make seed` z głównego `Makefile`: najpierw `catalog:seed-demo` (katalog), potem
   `pricing:seed-demo`, który czyści ceny i ich historię i ustawia cenę (źródło `seed`) każdemu produktowi demo według
   wzorców slugów z `fixtures/prices.yaml` (pierwszy pasujący wzorzec w kolejności pliku; produkt bez wzorca kończy
-  seed błędem bez zmian w danych). Obie komendy w `prod` wymagają `--force-reset`
+  seed błędem bez zmian w danych); na końcu `inventory:seed-demo`, który czyści stany, rezerwacje i historię stanów
+  i ustawia stan fizyczny każdemu produktowi demo według wzorców slugów z `fixtures/stock.yaml` (ta sama składnia
+  i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze źródłem `seed` i kluczem `seed:<productId>`, stan 0
+  to rekord stanu bez wpisu historii; produkt bez wzorca kończy seed błędem bez zmian w danych). Wszystkie trzy
+  komendy w `prod` wymagają `--force-reset`
 - `pricing:reconcile-tax [--apply]` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`) –
   narzędzie uruchamiane świadomie, np. po zmianie stawki w `PolishVatRates`; nie wywołuje go `make init`, `make up`
   ani `make seed`. Przechodzi wszystkie ceny partiami po `product_id` razem z produktami Catalog
