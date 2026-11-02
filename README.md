@@ -141,7 +141,8 @@ i testy E2E na pełnym stosie przy każdym pull requeście.
 - Kontrakt: OpenAPI sklepu i panelu eksportowane do plików, z nich generowani klienci TypeScript obu frontów
   (`make api-client`); reguła ESLint blokuje `fetch` poza klientem API.
 - Testy E2E (Playwright, `make e2e`): katalog, logowanie klienta, rejestracja z weryfikacją e-maila, logowanie
-  pracownika z TOTP.
+  pracownika z TOTP, zmiana ceny w panelu widoczna w sklepie, przyjęcie towaru w panelu widoczne w sklepie (test
+  przywraca stan 0 korektą, więc kolejne `make e2e` nie wymaga `make seed`).
 - CI: analiza statyczna, testy trzech aplikacji, kontrola aktualności kontraktu i testy E2E na pełnym stosie.
 
 ## Dokumentacja
