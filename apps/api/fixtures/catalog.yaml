@@ -108,7 +108,7 @@ categories:
 templates:
   - category: "bieganie/buty/szosowe"
     productType: "Buty szosowe"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Tarvik"
       - "Norvane"
@@ -129,7 +129,7 @@ templates:
         alt: "Biegacz na pustej asfaltowej drodze z górami w tle"
   - category: "bieganie/buty/trailowe"
     productType: "Buty trailowe"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Tarvik"
       - "Norvane"
@@ -153,7 +153,7 @@ templates:
     additionalCategories:
       - "sporty-zimowe/odziez"
     productType: "Kurtka biegowa"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Tarvik"
       - "Norvane"
@@ -173,7 +173,7 @@ templates:
         alt: "Biegacz na górskim szlaku w słoneczny dzień"
   - category: "bieganie/odziez"
     productType: "Koszulka biegowa"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Tarvik"
       - "Norvane"
@@ -195,7 +195,7 @@ templates:
     additionalCategories:
       - "turystyka/plecaki"
     productType: "Plecak biegowy"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Tarvik"
       - "Norvane"
@@ -216,7 +216,7 @@ templates:
     additionalCategories:
       - "turystyka/biwak"
     productType: "Latarka czołowa"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Tarvik"
       - "Hallen"
@@ -233,7 +233,7 @@ templates:
         alt: "Samotny turysta z czołówką na górskiej ścieżce o zmierzchu"
   - category: "rower/rowery/gorskie"
     productType: "Rower górski"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Zolvia"
       - "Dravik"
@@ -257,7 +257,7 @@ templates:
         alt: "Rowerzysta w niebieskiej kurtce na szutrowej drodze w górach"
   - category: "rower/rowery/elektryczne"
     productType: "Rower elektryczny"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Zolvia"
       - "Dravik"
@@ -277,7 +277,7 @@ templates:
         alt: "Rowerzysta na drodze z widokiem na góry"
   - category: "rower/kaski-i-ochraniacze"
     productType: "Kask rowerowy"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Zolvia"
       - "Dravik"
@@ -297,7 +297,7 @@ templates:
         alt: "Rowerzysta na drodze z widokiem na góry"
   - category: "rower/akcesoria"
     productType: "Torba rowerowa"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Zolvia"
       - "Hallen"
@@ -316,7 +316,7 @@ templates:
         alt: "Rowerzysta z sakwami bikepackingowymi na skalistym szlaku wśród sosen"
   - category: "rower/akcesoria"
     productType: "Bidon termiczny"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Zolvia"
       - "Dravik"
@@ -336,7 +336,7 @@ templates:
         alt: "Rowerzysta w niebieskiej kurtce na szutrowej drodze w górach"
   - category: "turystyka/plecaki"
     productType: "Plecak trekkingowy"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Hallen"
       - "Norvane"
@@ -359,7 +359,7 @@ templates:
         alt: "Turystki z plecakami na górskim szlaku"
   - category: "turystyka/plecaki"
     productType: "Plecak dzienny"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Hallen"
       - "Norvane"
@@ -379,7 +379,7 @@ templates:
         alt: "Grupa turystów na górskim szlaku"
   - category: "turystyka/biwak/namioty"
     productType: "Namiot turystyczny"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Norvane"
       - "Hallen"
@@ -400,7 +400,7 @@ templates:
         alt: "Pomarańczowy namiot nad turkusowym górskim jeziorem"
   - category: "turystyka/biwak/spanie/spiwory"
     productType: "Śpiwór"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Norvane"
       - "Hallen"
@@ -420,7 +420,7 @@ templates:
         alt: "Pomarańczowy namiot w lesie, w tle ośnieżony górski grzbiet"
   - category: "turystyka/biwak/spanie/maty"
     productType: "Mata samopompująca"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Norvane"
       - "Hallen"
@@ -439,7 +439,7 @@ templates:
         alt: "Pomarańczowy namiot nad turkusowym górskim jeziorem"
   - category: "turystyka/nawigacja/przewodniki"
     productType: "Przewodnik"
-    taxCategory: printed_publication
+    taxClass: printed_book
     brands:
       - "Tarvik Press"
       - "Norvane Atlas"
@@ -462,7 +462,7 @@ templates:
         alt: "Grupa turystów na górskim szlaku"
   - category: "turystyka/nawigacja/mapy"
     productType: "Mapa turystyczna"
-    taxCategory: printed_publication
+    taxClass: printed_map
     brands:
       - "Tarvik Press"
       - "Norvane Atlas"
@@ -485,7 +485,7 @@ templates:
         alt: "Dwoje turystów z plecakami na szlaku wśród drzew"
   - category: "turystyka/zywnosc"
     productType: "Danie liofilizowane"
-    taxCategory: food
+    taxClass: freeze_dried_meal
     brands:
       - "Pyrko"
       - "Hallen"
@@ -510,7 +510,7 @@ templates:
         alt: "Pomarańczowy namiot nad turkusowym górskim jeziorem"
   - category: "sporty-zimowe/narty/zjazdowe"
     productType: "Narty zjazdowe"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Stavro"
       - "Vilmar"
@@ -531,7 +531,7 @@ templates:
         alt: "Turyści idący zaśnieżonym szlakiem w słońcu"
   - category: "sporty-zimowe/narty/skiturowe"
     productType: "Narty skiturowe"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Stavro"
       - "Vilmar"
@@ -552,7 +552,7 @@ templates:
     additionalCategories:
       - "rower/kaski-i-ochraniacze"
     productType: "Kask wielosportowy"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Stavro"
       - "Dravik"
@@ -574,7 +574,7 @@ templates:
         alt: "Dwie osoby na skiturach na stromym śnieżnym stoku"
   - category: "sporty-zimowe/odziez"
     productType: "Kurtka narciarska"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Stavro"
       - "Vilmar"
@@ -596,7 +596,7 @@ templates:
         alt: "Turyści idący zaśnieżonym szlakiem w słońcu"
   - category: "fitness/trening"
     productType: "Mata do ćwiczeń"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Lumora"
       - "Dravik"
@@ -616,7 +616,7 @@ templates:
         alt: "Osoba ćwicząca jogę na skale z widokiem na góry"
   - category: "fitness/trening"
     productType: "Hantle regulowane"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Lumora"
       - "Dravik"
@@ -635,7 +635,7 @@ templates:
         alt: "Osoba ćwicząca jogę na skale z widokiem na góry"
   - category: "fitness/odzywki/zywnosc-sportowa"
     productType: "Baton energetyczny"
-    taxCategory: food
+    taxClass: energy_bar
     brands:
       - "Pyrko"
       - "Lumora"
@@ -660,7 +660,7 @@ templates:
       - "bieganie/akcesoria"
       - "rower/akcesoria"
     productType: "Żel energetyczny"
-    taxCategory: food
+    taxClass: energy_gel
     brands:
       - "Pyrko"
       - "Lumora"
@@ -680,7 +680,7 @@ templates:
         alt: "Rowerzysta na drodze z widokiem na góry"
   - category: "fitness/odzywki/suplementy"
     productType: "Odżywka białkowa"
-    taxCategory: food_supplement
+    taxClass: protein_powder
     brands:
       - "Lumora"
       - "Pyrko"
@@ -700,7 +700,7 @@ templates:
         alt: "Biegacz na wiejskiej drodze wśród łąk"
   - category: "fitness/odzywki/suplementy"
     productType: "Elektrolity w tabletkach"
-    taxCategory: food_supplement
+    taxClass: electrolyte_tablet
     brands:
       - "Lumora"
       - "Pyrko"
@@ -719,7 +719,7 @@ templates:
         alt: "Biegacz na pustej asfaltowej drodze z górami w tle"
   - category: "sporty-wodne/sup"
     productType: "Deska SUP"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Vilmar"
       - "Dravik"
@@ -740,7 +740,7 @@ templates:
         alt: "Dwie osoby w kajaku na spokojnym jeziorze wśród gór"
   - category: "sporty-wodne/kajaki"
     productType: "Kajak turystyczny"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Vilmar"
       - "Dravik"
@@ -759,7 +759,7 @@ templates:
         alt: "Dwie osoby na deskach SUP na górskim jeziorze"
   - category: "sporty-wodne/plywanie/okulary"
     productType: "Okulary pływackie"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Vilmar"
       - "Lumora"
@@ -779,7 +779,7 @@ templates:
         alt: "Pływak w jeziorze"
   - category: "sporty-wodne/plywanie/pianki"
     productType: "Pianka pływacka"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Vilmar"
       - "Lumora"
@@ -796,7 +796,7 @@ templates:
         alt: "Pływak w jeziorze"
   - category: "sporty-druzynowe/pilki/nozna"
     productType: "Piłka nożna"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Dravik"
       - "Stavro"
@@ -816,7 +816,7 @@ templates:
         alt: "Piłka nożna na murawie boiska"
   - category: "sporty-druzynowe/pilki/nozna"
     productType: "Buty piłkarskie"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Dravik"
       - "Stavro"
@@ -835,7 +835,7 @@ templates:
         alt: "Piłka nożna na murawie boiska"
   - category: "sporty-druzynowe/pilki/halowe"
     productType: "Piłka siatkowa"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Dravik"
       - "Stavro"
@@ -852,7 +852,7 @@ templates:
         alt: "Mecz siatkówki w hali sportowej"
   - category: "sporty-druzynowe/pilki/halowe"
     productType: "Piłka koszykowa"
-    taxCategory: standard
+    taxClass: standard
     brands:
       - "Dravik"
       - "Stavro"

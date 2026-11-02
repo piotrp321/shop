@@ -39,8 +39,8 @@ final class DemoCatalogExpanderTest extends TestCase
         self::assertSame('Buty Norvane Asfalt 200 czarne', $products[4]->name);
         self::assertSame('Plecak Tarvik Ząb 20 żółty', $products[8]->name);
         self::assertSame('Lekkie buty na asfalt.', $products[0]->shortDescription);
-        self::assertSame('standard', $products[0]->taxCategory);
-        self::assertSame('food', $products[8]->taxCategory);
+        self::assertSame('standard', $products[0]->taxClass);
+        self::assertSame('freeze_dried_meal', $products[8]->taxClass);
     }
 
     public function testSlugIsTransliteratedNameWithoutPolishCharacters(): void

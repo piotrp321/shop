@@ -44,7 +44,7 @@ final class SeedProdGuardTest extends SeedCommandTestCase
     {
         $tester = $this->tester(
             new FixedCountProductIndexer([10]),
-            definition: __DIR__.'/../../../Fixtures/demo/invalid-tax-category.yaml',
+            definition: __DIR__.'/../../../Fixtures/demo/invalid-tax-class.yaml',
         );
 
         $exitCode = $tester->execute([]);

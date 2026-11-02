@@ -53,6 +53,22 @@ deptrac:
       collectors:
         - type: classNameRegex
           value: '#^App\\Backoffice\\UI\\#'
+    - name: Pricing_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Pricing\\Domain\\#'
+    - name: Pricing_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Pricing\\Application\\#'
+    - name: Pricing_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Pricing\\Infrastructure\\#'
+    - name: Pricing_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Pricing\\UI\\#'
     - name: Shared_Domain
       collectors:
         - type: classNameRegex
@@ -157,6 +173,37 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
+    Pricing_Domain:
+      - Native
+      - Shared_Domain
+    Pricing_Application:
+      - Native
+      - Pricing_Domain
+      - Shared_Domain
+      - Vendor
+    Pricing_Infrastructure:
+      - Native
+      - Pricing_Application
+      - Pricing_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      # Adapters of Pricing's ports ask Catalog through its queries on query.bus. The only dependency between the
+      # two modules, one way: Catalog depends on Pricing in no layer.
+      - Catalog_Application
+      # PriceVoter decides on the staff roles of AuthenticatedStaffMember: Pricing uses only the security contract
+      # of Backoffice (its Application layer), never StaffUser of Backoffice_Infrastructure.
+      - Backoffice_Application
+    Pricing_UI:
+      - Native
+      - Pricing_Application
+      - Pricing_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      # The controller of a price change takes the actor from AuthenticatedStaffMember, the security contract of
+      # Backoffice. Pricing_Domain and Pricing_Application stay free of Backoffice.
+      - Backoffice_Application
     Shared_Domain:
       - Native
     Shared_Application:

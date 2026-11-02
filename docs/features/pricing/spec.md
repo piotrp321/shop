@@ -23,6 +23,10 @@ checkout, wiele krajów i walut, harmonogramy zmian stawek, edycja klasy podatko
 - Zależność jest jednokierunkowa: `Pricing_Infrastructure → Catalog_Application` (adaptery portów Pricing wołają
   zapytania Catalog przez `query.bus`, jak `Backoffice\Infrastructure\QueryBusCatalogStatistics`).
 - Catalog nie zależy od Pricing w żadnej warstwie. Deptrac nie ma żadnej reguły `Catalog_* → Pricing_*`.
+- Pricing zależy od Backoffice wyłącznie przez kontrakt bezpieczeństwa `AuthenticatedStaffMember` z `Backoffice_Application`:
+  `Pricing_Infrastructure` (`PriceVoter`, role pracownika) i `Pricing_UI` (aktor zmiany ceny w `ChangePriceController`).
+  `Pricing_Domain` i `Pricing_Application` nie zależą od Backoffice, a żadna warstwa Pricing nie zależy od
+  `Backoffice_Infrastructure`, `Backoffice_Domain` ani `Backoffice_UI`.
 - Domena Pricing ma własne value objecty (`ProductId`, `TaxClass` jako kod tekstowy) i nie importuje kodu Catalog.
   Adapter mapuje kod klasy z Catalog na `TaxClass` Pricing.
 - Odczyt cen (`GetCurrentPrices`) czyta wyłącznie tabele Pricing, bez odczytu z Catalog.
@@ -90,8 +94,8 @@ Historia wystarcza do późniejszego Omnibusa: najniższe brutto z 30 dni przed 
 - Rekordy Doctrine z atrybutami w `Pricing/Infrastructure/Persistence/Doctrine/Record`, mapowanie agregat ↔ rekord
   w repozytorium, `reconstitute()` bez wpisów. Optimistic locking przez `#[Version]` na cenie.
 - Cena i jej nowe wpisy historii zapisują się w jednej transakcji. Nie ma zmiany ceny bez wpisu ani wpisu bez zmiany.
-- Kod tylko dopisuje historię: repozytorium nie ma operacji zmiany ani usuwania wpisów. Reset danych demo czyści
-  tabele Pricing razem z katalogiem.
+- Kod tylko dopisuje historię: repozytorium nie ma operacji zmiany ani usuwania wpisów. Tabele Pricing czyści tylko
+  reset danych demo: `pricing:seed-demo` (`DbalPricingReset`), który `make seed` uruchamia po seedzie katalogu.
 
 ## Warstwa aplikacji
 
@@ -137,7 +141,10 @@ Catalog:
   każdą cenę w osobnej transakcji.
 - Idempotentne: kolejne uruchomienie po naprawie nic nie znajduje.
 - Konflikt wersji z równoległą edycją: ponowny odczyt tej ceny i jedna kolejna próba, potem pozycja w raporcie.
-- Kod wyjścia: 0 – spójne albo naprawione, 1 – bez `--apply` znaleziono rozbieżności, 2 – błąd (np. niedostępna baza).
+- Cena, dla której klasa z Catalog nie ma stawki, zostaje bez zmian i trafia do raportu. Cena produktu, którego nie
+  ma w Catalog, zachowuje swoją klasę.
+- Kod wyjścia: 0 – spójne albo naprawione, 1 – bez `--apply` znaleziono rozbieżności albo z `--apply` zostały
+  nienaprawione (konflikt po ponownej próbie, klasa bez stawki), 2 – błąd (np. niedostępna baza).
 
 Procedura zmiany stawki: zmiana w `PolishVatRates` i wdrożenie, potem `pricing:reconcile-tax --apply`. Do tego
 czasu ceny z nieaktualną stawką są niedostępne w sklepie (bezpieczne zachowanie), a panel oznacza je
@@ -174,12 +181,21 @@ z tokenem realmu `shop`: 401):
 |---|---|---|
 | `GET /api/v1/admin/prices?q&category&after&perPage` | każdy pracownik | `200 {items: [{productId, name, taxClass, applicableVatRate, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}], next}`; 400 złe parametry; 404 nieznana kategoria |
 | `PUT /api/v1/admin/products/{productId}/price`, body `{gross: int, version: int \| null}` | rola `admin` | 200 cena (ta sama kwota: bez zmiany wersji i bez wpisu); 403; 404 nieznany produkt; 409 konflikt wersji; 422 kwota poza zakresem lub zły typ |
-| `GET /api/v1/admin/products/{productId}/price-history?after&perPage` | każdy pracownik | `200 {items: [{changedAt, gross, net, vat, vatRate, taxClass, source, actorName}], next}`; 404 nieznany produkt |
+| `GET /api/v1/admin/products/{productId}/price-history?after&perPage` | każdy pracownik | `200 {items: [{changedAt, currency, gross, net, vat, vatRate, taxClass, source, actorName}], next}`; 404 nieznany produkt |
 | `GET /api/v1/admin/categories` | każdy pracownik | 200 drzewo kategorii (`GetCategoryTree`) |
 
 - Uprawnienie do zmiany ceny sprawdza `PriceVoter` w `Pricing_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `marketing`, `support` i `warehouse` dostają 403.
 - Aktor (`sub` i nazwa) pochodzi z tokena, nigdy z treści żądania.
+- `PUT` ceny: oba klucze są wymagane, a typy ścisłe (liczba w napisie, ułamek, także `100.0`, to 422, bez
+  rzutowania). Uprawnienie jest sprawdzane przed treścią i produktem. Identyfikator, który nie jest UUID: 404;
+  treść, która nie jest poprawnym JSON-em: 400; treść inna niż JSON: 415. Odpowiedź 200 to cena zwrócona przez
+  `SetProductPrice` po zapisie (z wersją zapisu), w kształcie `price` z listy.
+- Historia (`price-history`): `perPage` 1–100 (domyślnie 25), `after` to nieprzezroczysty kursor z `next`. Kolejność
+  `(changed_at, id)` malejąco: przy zmianach w tej samej sekundzie pierwsza jest późniejsza (identyfikatory wpisów są
+  uporządkowane w czasie). Zły kursor albo parametr: 400. Produkt istniejący w Catalog bez ceny: 200 z pustą listą;
+  „nieznany” znaczy nieznany Catalogowi, jak przy `PUT` ceny. `changedAt` w UTC (RFC 3339), a identyfikator aktora
+  nie jest zwracany, tylko `actorName`.
 - Kwoty zawsze w groszach (`integer`), stawki w punktach bazowych.
 
 ## Sklep (`apps/store`)
@@ -199,7 +215,8 @@ z tokenem realmu `shop`: 401):
   - pole brutto w PLN, zamiana tekstu na grosze bez `float` w osobnym helperze;
   - podgląd stawki z `applicableVatRate`, bez liczenia netto na froncie;
   - 409: „Cena została w międzyczasie zmieniona – odśwież” i odświeżenie wiersza;
-  - 422: komunikat przy polu.
+  - 422: komunikat naruszenia z API przy polu; kwota poza zakresem daje „Cena brutto musi wynosić od 0,01 zł do
+    999 999,99 zł.” (zakres zdefiniowany tylko w API).
 - „Historia”: wpisy od najnowszych, „Pokaż więcej”, etykiety źródeł (Pracownik, Dane demo, Uzgodnienie podatkowe).
 
 ## Scenariusze błędów
@@ -231,9 +248,11 @@ z tokenem realmu `shop`: 401):
 
 ## Testy
 
-- Architektura: Deptrac z regułą `Pricing_Infrastructure → Catalog_Application` i próbami obejścia (pliki
-  tymczasowe muszą dać błąd): `Catalog_* → Pricing_*`, `Pricing_Domain → Catalog_*`,
-  `Pricing_Application → Catalog_Domain`. Test kontraktu: każdy przypadek `TaxClassCode` ma stawkę
+- Architektura: Deptrac z regułami `Pricing_Infrastructure → Catalog_Application`,
+  `Pricing_Infrastructure → Backoffice_Application` i `Pricing_UI → Backoffice_Application` oraz próbami obejścia
+  (pliki tymczasowe muszą dać błąd): `Catalog_* → Pricing_*`, `Pricing_Domain → Catalog_*`,
+  `Pricing_Application → Catalog_Domain`, `Pricing_Domain → Backoffice_Application`,
+  `Pricing_Application → Backoffice_Application`, `Pricing_Infrastructure → Backoffice_Infrastructure`. Test kontraktu: każdy przypadek `TaxClassCode` ma stawkę
   w `PolishVatRates` i każda stawka ma przypadek.
 - Obliczenia (TDD): przypadki graniczne HALF_UP dla każdej stawki; test własności dla każdego brutto
   1–100 000 groszy i dla maksimum (netto + VAT = brutto, VAT ≥ 0, wynik równy obliczeniu referencyjnemu); stawka 0 bp;
@@ -264,4 +283,4 @@ z tokenem realmu `shop`: 401):
 - `docs/vision.md`: „kategoria podatkowa (`taxCategory`)” → „klasa podatkowa (`taxClass`)” w regułach domenowych
   i na liście decyzji; stawki dla PL w kodzie Pricing.
 - `apps/api/CLAUDE.md`: `pricing:seed-demo` w `make seed` i opis `pricing:reconcile-tax`.
-- `apps/api/deptrac.yaml`: warstwy Pricing i komentarz do reguły Pricing → Catalog.
+- `apps/api/deptrac.yaml`: warstwy Pricing oraz komentarze do reguł Pricing → Catalog i Pricing → Backoffice_Application.

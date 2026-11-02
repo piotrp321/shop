@@ -43,6 +43,25 @@ describe("router guard", () => {
     expect(userManager.signinRedirect).not.toHaveBeenCalled();
   });
 
+  it("serves the price list at /prices to a signed-in user", async () => {
+    const { router, userManager } = setup({ expired: false });
+
+    await router.push("/prices");
+
+    expect(router.currentRoute.value.name).toBe("prices");
+    expect(router.currentRoute.value.path).toBe("/prices");
+    expect(userManager.signinRedirect).not.toHaveBeenCalled();
+  });
+
+  it("protects /prices like every other route", async () => {
+    const { router, userManager } = setup(null);
+
+    await router.push("/prices");
+
+    expect(userManager.signinRedirect).toHaveBeenCalledWith({ state: { returnTo: "/prices" } });
+    expect(router.currentRoute.value.name).not.toBe("prices");
+  });
+
   it("does not protect the callback route", async () => {
     const { router, userManager } = setup(null);
 

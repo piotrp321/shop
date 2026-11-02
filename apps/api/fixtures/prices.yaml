@@ -1,0 +1,108 @@
+# Demo gross prices in grosze (5490 = 54,90 zł) for the demo products of fixtures/catalog.yaml, loaded by
+# `pricing:seed-demo` (`make seed`). Keys are patterns of product slugs: `*` matches any run of characters, the
+# pattern has to match the whole slug.
+#
+# Patterns are checked in the order of this file and the FIRST one that matches wins, so a specific pattern goes
+# before a general one. A demo product that no pattern matches stops the seed with an error and nothing is changed.
+
+# Bieganie
+"buty-szosowe-*-asfalt-200-*": 34900
+"buty-szosowe-*-dystans-400-*": 47900
+"buty-szosowe-*-tempo-600-*": 59900
+"buty-trailowe-*-gran-300-*": 39900
+"buty-trailowe-*-hala-500-*": 54900
+"buty-trailowe-*-przelecz-700-*": 69900
+"kurtka-biegowa-*-wiatr-100-*": 22900
+"kurtka-biegowa-*-mgla-300-*": 39900
+"koszulka-biegowa-*-oddech-100-*": 8990
+"koszulka-biegowa-*-merino-200-*": 21900
+"plecak-biegowy-*-sprint-8-*": 18900
+"plecak-biegowy-*-ultra-12-*": 32900
+"latarka-czolowa-*-swit-250-*": 12900
+"latarka-czolowa-*-zmierzch-600-*": 24900
+
+# Rower
+"rower-gorski-*-singiel-29-*": 649900
+"rower-gorski-*-trawers-29-*": 849900
+"rower-gorski-*-zjazd-27-5-*": 1199900
+"rower-elektryczny-*-dolina-e-*": 1099900
+"rower-elektryczny-*-szlak-e-*": 1499900
+"kask-rowerowy-*-wiatr-*": 24900
+"kask-rowerowy-*-korona-*": 44900
+"torba-rowerowa-*-rama-4-*": 11900
+"torba-rowerowa-*-kierownica-10-*": 18900
+"bidon-termiczny-*-kropla-500-*": 6990
+"bidon-termiczny-*-zrodlo-750-*": 8990
+
+# Turystyka
+"plecak-trekkingowy-*-wierch-45-*": 49900
+"plecak-trekkingowy-*-dolina-55-*": 64900
+"plecak-trekkingowy-*-przelecz-65-*": 79900
+"plecak-dzienny-*-spacer-20-*": 15900
+"plecak-dzienny-*-szlak-28-*": 22900
+"namiot-turystyczny-*-biwak-2-*": 69900
+"namiot-turystyczny-*-dolina-3-*": 109900
+"namiot-turystyczny-*-halny-4-*": 159900
+"spiwor-*-noc-5-*": 59900
+"spiwor-*-letni-10-*": 32900
+"mata-samopompujaca-*-sen-3-*": 24900
+"mata-samopompujaca-*-sen-5-*": 34900
+# The Tatry Zachodnie guide costs the same in both bindings, the others depend on the binding.
+"przewodnik-*-tatry-zachodnie-*": 5490
+"przewodnik-*-oprawa-miekka": 4490
+"przewodnik-*-oprawa-twarda": 5990
+"mapa-turystyczna-*-skladana": 2490
+"mapa-turystyczna-*-laminowana": 3490
+"danie-liofilizowane-*-porcja-jednoosobowa": 3290
+"danie-liofilizowane-*-porcja-dwuosobowa": 5490
+
+# Sporty zimowe
+"narty-zjazdowe-*-stok-80-*": 179900
+"narty-zjazdowe-*-carving-72-*": 229900
+"narty-zjazdowe-*-freeride-100-*": 279900
+"narty-skiturowe-*-wejscie-88-*": 249900
+"narty-skiturowe-*-gran-95-*": 299900
+"kask-wielosportowy-*-zima-1-*": 29900
+"kask-wielosportowy-*-zima-2-*": 39900
+"kask-wielosportowy-*-zima-3-*": 49900
+"kurtka-narciarska-*-snieg-10-*": 59900
+"kurtka-narciarska-*-lawina-15-*": 79900
+"kurtka-narciarska-*-szczyt-20-*": 99900
+
+# Fitness
+"mata-do-cwiczen-*-podloze-6-*": 8990
+"mata-do-cwiczen-*-podloze-10-*": 12900
+"hantle-regulowane-*-para-10-*": 39900
+"hantle-regulowane-*-para-24-*": 89900
+"baton-energetyczny-*-proteinowy-*": 890
+"baton-energetyczny-*": 690
+"zel-energetyczny-*-start-*": 990
+"zel-energetyczny-*-dystans-*": 1290
+"odzywka-bialkowa-*-serwatka-900-*": 12900
+"odzywka-bialkowa-*-roslinna-750-*": 13900
+"elektrolity-w-tabletkach-*-nawodnienie-20-*": 2490
+"elektrolity-w-tabletkach-*-nawodnienie-40-*": 3990
+
+# Sporty wodne
+"deska-sup-*-jezioro-10-*": 189900
+"deska-sup-*-jezioro-11-*": 219900
+"deska-sup-*-wyscig-12-*": 299900
+"kajak-turystyczny-*-rzeka-1-*": 249900
+"kajak-turystyczny-*-rzeka-2-*": 349900
+"okulary-plywackie-*-basen-*": 4990
+"okulary-plywackie-*-jezioro-*": 7990
+"okulary-plywackie-*-sprint-*": 9990
+"pianka-plywacka-*-cieplej-3-*": 69900
+"pianka-plywacka-*-cieplej-5-*": 99900
+
+# Sporty drużynowe
+"pilka-nozna-*-trening-5-*": 8990
+"pilka-nozna-*-mecz-5-*": 19900
+"pilka-nozna-*-junior-4-*": 6990
+"buty-pilkarskie-*-murawa-*": 34900
+"buty-pilkarskie-*-orlik-*": 27900
+"buty-pilkarskie-*-hala-*": 24900
+"pilka-siatkowa-*-trening-*": 9990
+"pilka-siatkowa-*-hala-*": 19900
+"pilka-koszykowa-*-boisko-7-*": 12900
+"pilka-koszykowa-*-hala-6-*": 15900
