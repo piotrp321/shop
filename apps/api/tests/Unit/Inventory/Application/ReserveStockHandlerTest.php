@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Inventory\Application;
 
 use App\Inventory\Application\Command\CommitReservation;
 use App\Inventory\Application\Command\InsufficientStock;
+use App\Inventory\Application\Command\InvalidReservation;
 use App\Inventory\Application\Command\ReleaseReservation;
 use App\Inventory\Application\Command\ReservationKeyReused;
 use App\Inventory\Application\Command\ReservationLineView;
@@ -15,7 +16,6 @@ use App\Inventory\Application\Command\ReserveStock;
 use App\Inventory\Application\Command\ReserveStockHandler;
 use App\Inventory\Application\Command\ReserveStockLine;
 use App\Inventory\Application\Command\Shortage;
-use App\Inventory\Domain\Reservation\InvalidReservation;
 use App\Inventory\Domain\Reservation\ReservationStatus;
 use App\Inventory\Domain\Stock\StockChangeSource;
 use App\Inventory\Domain\Stock\StockMovement;

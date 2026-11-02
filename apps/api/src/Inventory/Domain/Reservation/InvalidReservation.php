@@ -30,9 +30,4 @@ final class InvalidReservation extends \DomainException implements InvalidInput
     {
         return new self('A product may appear in only one line of a reservation.');
     }
-
-    public static function notAProductId(): self
-    {
-        return new self('A product id must be a UUID.');
-    }
 }

@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Inventory\Application\Command;
 
-use App\Inventory\Domain\Reservation\InvalidReservation;
+use App\Inventory\Domain\Reservation\InvalidReservation as InvalidReservationInDomain;
 use App\Inventory\Domain\Reservation\Reservation;
 use App\Inventory\Domain\Reservation\ReservationKey;
 use App\Inventory\Domain\Reservation\ReservationLine;
 use App\Inventory\Domain\Reservation\ReservationRepository;
-use App\Inventory\Domain\Reservation\ReservationStateConflict;
+use App\Inventory\Domain\Reservation\ReservationStateConflict as ReservationStateConflictInDomain;
 use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Domain\Stock\StockItem;
 use App\Inventory\Domain\Stock\StockItemRepository;
@@ -38,7 +38,7 @@ final readonly class ReservationTransitionHandler
     public function release(ReleaseReservation $command): ReservationView
     {
         $reservation = $this->locked($command->reservationKey);
-        if ($reservation->release()) {
+        if (self::transition($reservation->release(...))) {
             $this->applyToStock($reservation, static fn (StockItem $item, int $quantity) => $item->release($quantity, $reservation->key()));
         }
 
@@ -54,16 +54,40 @@ final readonly class ReservationTransitionHandler
     public function commit(CommitReservation $command): ReservationView
     {
         $reservation = $this->locked($command->reservationKey);
-        if ($reservation->commit()) {
+        if (self::transition($reservation->commit(...))) {
             $this->applyToStock($reservation, static fn (StockItem $item, int $quantity) => $item->commit($quantity, $reservation->key()));
         }
 
         return ReservationView::of($reservation);
     }
 
+    /**
+     * @throws InvalidReservation
+     * @throws ReservationNotFound
+     */
     private function locked(string $key): Reservation
     {
-        return $this->reservations->lock(ReservationKey::fromString($key)) ?? throw new ReservationNotFound();
+        try {
+            $reservationKey = ReservationKey::fromString($key);
+        } catch (InvalidReservationInDomain $invalid) {
+            throw InvalidReservation::fromDomain($invalid);
+        }
+
+        return $this->reservations->lock($reservationKey) ?? throw new ReservationNotFound();
+    }
+
+    /**
+     * @param \Closure(): bool $transition
+     *
+     * @throws ReservationStateConflict
+     */
+    private static function transition(\Closure $transition): bool
+    {
+        try {
+            return $transition();
+        } catch (ReservationStateConflictInDomain $conflict) {
+            throw ReservationStateConflict::fromDomain($conflict);
+        }
     }
 
     /**

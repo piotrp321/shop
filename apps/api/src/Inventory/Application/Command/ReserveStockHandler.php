@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Inventory\Application\Command;
 
-use App\Inventory\Domain\Reservation\InvalidReservation;
+use App\Inventory\Domain\Reservation\InvalidReservation as InvalidReservationInDomain;
 use App\Inventory\Domain\Reservation\Reservation;
 use App\Inventory\Domain\Reservation\ReservationKey;
 use App\Inventory\Domain\Reservation\ReservationLine;
@@ -36,10 +36,7 @@ final readonly class ReserveStockHandler
      */
     public function __invoke(ReserveStock $command): ReservationView
     {
-        $reservation = Reservation::place(
-            ReservationKey::fromString($command->reservationKey),
-            array_map(self::line(...), $command->lines),
-        );
+        $reservation = self::reservation($command);
 
         if (!$this->reservations->add($reservation)) {
             $stored = $this->reservations->find($reservation->key())
@@ -82,6 +79,22 @@ final readonly class ReserveStockHandler
 
     /**
      * @throws InvalidReservation
+     */
+    private static function reservation(ReserveStock $command): Reservation
+    {
+        try {
+            return Reservation::place(
+                ReservationKey::fromString($command->reservationKey),
+                array_map(self::line(...), $command->lines),
+            );
+        } catch (InvalidReservationInDomain $invalid) {
+            throw InvalidReservation::fromDomain($invalid);
+        }
+    }
+
+    /**
+     * @throws InvalidReservation
+     * @throws InvalidReservationInDomain
      */
     private static function line(ReserveStockLine $line): ReservationLine
     {

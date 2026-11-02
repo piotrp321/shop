@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Inventory\Application;
 
 use App\Inventory\Application\Command\CommitReservation;
+use App\Inventory\Application\Command\InvalidReservation;
 use App\Inventory\Application\Command\ReleaseReservation;
 use App\Inventory\Application\Command\ReservationLineView;
 use App\Inventory\Application\Command\ReservationNotFound;
+use App\Inventory\Application\Command\ReservationStateConflict;
 use App\Inventory\Application\Command\ReservationTransitionHandler;
 use App\Inventory\Application\Command\ReservationView;
 use App\Inventory\Application\Command\ReserveStock;
 use App\Inventory\Application\Command\ReserveStockHandler;
 use App\Inventory\Application\Command\ReserveStockLine;
-use App\Inventory\Domain\Reservation\InvalidReservation;
-use App\Inventory\Domain\Reservation\ReservationStateConflict;
 use App\Inventory\Domain\Stock\StockMovement;
 use App\Tests\Unit\Inventory\InMemoryReservationRepository;
 use App\Tests\Unit\Inventory\InMemoryStockItemRepository;
