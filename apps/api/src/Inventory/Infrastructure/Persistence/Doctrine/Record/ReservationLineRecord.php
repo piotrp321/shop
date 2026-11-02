@@ -17,7 +17,7 @@ class ReservationLineRecord
     public function __construct(
         #[ORM\Id]
         #[ORM\ManyToOne(targetEntity: ReservationRecord::class)]
-        #[ORM\JoinColumn(name: 'reservation_key', referencedColumnName: 'reservation_key', nullable: false)]
+        #[ORM\JoinColumn(name: 'reservation_key', referencedColumnName: 'reservation_key')]
         public readonly ReservationRecord $reservation,
         #[ORM\Id]
         #[ORM\Column(type: 'guid')]

@@ -33,7 +33,7 @@ final class Version20261102120000CreateInventoryTables extends AbstractMigration
     public function down(Schema $schema): void
     {
         $this->addSql('DROP TABLE inventory_stock_movement');
-        // The lines first: the foreign key makes the reservation table depend on them.
+        // The lines first: they reference the reservation table through the foreign key.
         $this->addSql('DROP TABLE inventory_reservation_line');
         $this->addSql('DROP TABLE inventory_reservation');
         $this->addSql('DROP TABLE inventory_stock_item');
