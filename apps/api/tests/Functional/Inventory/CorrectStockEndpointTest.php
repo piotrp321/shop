@@ -67,6 +67,29 @@ final class CorrectStockEndpointTest extends WebTestCase
         self::assertSame([], $this->movements($productId));
     }
 
+    public function testAnEmptyStoredStockKeepsItsVersionWhenCountedAtZeroAndIsThenCorrectedFromIt(): void
+    {
+        $productId = $this->product();
+        // The record that CreateEmptyStock stores: 0/0 at version 0, without a history entry.
+        $this->connection->executeStatement(
+            'INSERT INTO inventory_stock_item (product_id, physical, reserved, version, updated_at) VALUES (?, 0, 0, 0, now())',
+            [$productId],
+        );
+
+        $stock = $this->correct($productId, ['physical' => 0, 'version' => 0, 'reason' => 'loss', 'note' => null]);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([0, 0, 0, 'out_of_stock', 0], [$stock['physical'], $stock['reserved'], $stock['available'], $stock['level'], $stock['version']]);
+        self::assertUtcTimestamp($stock);
+        self::assertSame([], $this->movements($productId));
+
+        $stock = $this->correct($productId, ['physical' => 5, 'version' => $stock['version'], 'reason' => 'inventory_count', 'note' => null]);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([5, 1], [$stock['physical'], $stock['version']]);
+        self::assertSame(['physical' => 5, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
+    }
+
     public function testCountingNothingForAProductWithoutStockStoresNothing(): void
     {
         $productId = $this->product();

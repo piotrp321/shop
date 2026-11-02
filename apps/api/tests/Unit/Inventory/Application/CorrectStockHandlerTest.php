@@ -69,6 +69,18 @@ final class CorrectStockHandlerTest extends TestCase
         self::assertSame(0, $this->stock->writes);
     }
 
+    public function testCountingTheCurrentZeroOfAnEmptyStoredStockKeepsItsVersion(): void
+    {
+        $this->stock->store(self::A, 0, 0, version: 0); // the record that CreateEmptyStock stores
+
+        $view = $this->correct(self::A, 0, 0, 'inventory_count', null);
+
+        $this->assertView([self::A, 0, 0, 0, 'out_of_stock', 0], $view);
+        self::assertNotNull($view->updatedAt);
+        self::assertSame([0, 0, 0], $this->state(self::A));
+        self::assertSame([], $this->stock->movements);
+    }
+
     public function testTheFirstCorrectionOfAProductWithoutStockCreatesItAtVersionOne(): void
     {
         $view = $this->correct(self::A, 5, null, 'inventory_count', null);

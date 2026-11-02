@@ -60,7 +60,7 @@ final readonly class CorrectStockHandler
             }
             $unstored = StockItem::unstored($productId);
             if (!$unstored->correct($command->countedPhysical, $reason, $note, $origin)) {
-                return StockView::of($unstored);
+                return StockView::unstored($unstored);
             }
             $item = $this->stock->lockOrCreate($productId);
             // An empty stock (0/0, version 0) committed meanwhile equals no stock at all, so the null version takes it.
