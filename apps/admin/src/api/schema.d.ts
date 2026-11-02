@@ -64,6 +64,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/stock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock list
+         * @description A page of products sorted by name, then by id, each with its stock (null when it has no stock record). Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         */
+        get: operations["listStock"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/products/{productId}/stock/corrections": {
         parameters: {
             query?: never;
@@ -185,6 +205,16 @@ export interface components {
                 /** @example This is not a valid UUID. */
                 title: string;
             }[];
+        };
+        BackofficeStockQuery: {
+            /** @default null */
+            q: string | null;
+            /** @default null */
+            category: string | null;
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
         };
         /** @description The counted physical stock of a product, based on the version of the stock the staff member saw. */
         CorrectStockRequest: {
@@ -356,6 +386,58 @@ export interface components {
             id: string;
             name: string;
             children: components["schemas"]["CategoryNode"][];
+        };
+        /** @description The stored stock of a product, in whole units; all computed by the API. */
+        ListedStockResponse: {
+            /**
+             * @description Units on the shelf.
+             * @example 12
+             */
+            physical: number;
+            /**
+             * @description Units promised to active reservations.
+             * @example 2
+             */
+            reserved: number;
+            /**
+             * @description Physical minus reserved.
+             * @example 10
+             */
+            available: number;
+            /**
+             * @description Availability level shown in the store.
+             * @example in_stock
+             * @enum {string}
+             */
+            level: "in_stock" | "low_stock" | "out_of_stock";
+            /**
+             * @description Version of the stock, to send with a correction.
+             * @example 3
+             */
+            version: number;
+            /**
+             * @description When the stock last changed (RFC 3339, UTC).
+             * @example 2026-11-02T12:30:00+00:00
+             */
+            updatedAt: string;
+        };
+        /** @description A product with its stock. */
+        StockListItemResponse: {
+            /** Format: uuid */
+            productId: string;
+            /** @example Bidon 750 ml */
+            name: string;
+            /** @description The stored stock, null when the product has no stock record (nothing on the shelf, nothing reserved). */
+            stock: components["schemas"]["ListedStockResponse"] | null;
+        };
+        /** @description A page of the stock list. */
+        StockListResponse: {
+            items: components["schemas"]["StockListItemResponse"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after`), null on the last page.
+             * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
+             */
+            next: string | null;
         };
         /** @description The stock of a product after a receipt or a correction, in whole units; all computed by the API. */
         StockStateResponse: {
@@ -630,6 +712,71 @@ export interface operations {
             };
             /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listStock: {
+        parameters: {
+            query?: {
+                /** @description A part of the product name, 2 to 100 characters. */
+                q?: string;
+                /** @description Category id (UUID). */
+                category?: string;
+                /** @description The `next` cursor of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the stock list. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockListResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The `category` filter names a category that does not exist (problem details). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
