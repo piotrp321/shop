@@ -123,6 +123,9 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
 - Epik do realizacji przez Agentic Orchestrator (AO): `/brainstorm` zapisuje `spec.md`, `/planner` dzieli ją na
   zadania w `plan.md` (manifest JSON, akceptacja użytkownika), `ao submit-plan` zgłasza zadania pierwszej fali,
   a każde z nich realizuje `/delivery` jako osobny PR. Plan z `/planner` nie ma kroków implementacji.
+  Po zmergowaniu zadań do `epic/<epik>` AO uruchamia `/integration` (globalny Architecture Review, adversarial QA
+  i bramki `make check`, `make test`, `make e2e` na całym diffie `origin/main...HEAD`); skill niczego nie commituje,
+  a jego wynik waliduje `.claude/skills/integration/integration_result.py`.
 - Orkiestrator sam rozstrzyga szczegóły implementacji (wpis `Ruling:` w ledgerze). Istotne decyzje DDD (agregaty,
   value objecty, granice modułów, persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury
   przedstawia użytkownikowi przed implementacją.
