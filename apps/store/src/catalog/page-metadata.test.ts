@@ -4,7 +4,7 @@ import { buildCatalogMetadata } from "./page-metadata";
 
 const STORE = "http://store.test";
 const page = (n: number, items = [makeProduct(1)]) => ({ items, page: n, perPage: 24, total: items.length });
-const ok = (n = 1, items = [makeProduct(1)]) => ({ kind: "ok" as const, categories: TREE, products: page(n, items), prices: {} });
+const ok = (n = 1, items = [makeProduct(1)]) => ({ kind: "ok" as const, categories: TREE, products: page(n, items), prices: {}, availability: {} });
 
 describe("buildCatalogMetadata", () => {
   it("describes the whole catalogue", () => {

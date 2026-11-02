@@ -53,7 +53,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           </aside>
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             <h1 className="text-2xl font-semibold">{findCategoryPath(catalog.categories, category).at(-1)?.name ?? "Wszystkie produkty"}</h1>
-            <ProductGrid products={catalog.products.items} prices={catalog.prices} />
+            <ProductGrid products={catalog.products.items} prices={catalog.prices} availability={catalog.availability} />
             <CatalogPagination
               page={catalog.products.page}
               perPage={catalog.products.perPage}

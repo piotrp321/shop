@@ -27,7 +27,7 @@ test("a price changed in the panel shows up on the store list", async ({ page })
   // The first product of the first page of the store: always on the list and with a name unique on that page.
   await page.goto("/");
   const productName = (await page.getByRole("main").getByRole("heading", { level: 2 }).first().innerText()).trim();
-  const priceBefore = normalize(await storeTile(page, productName).locator("p").innerText());
+  const priceBefore = normalize(await storeTile(page, productName).getByTestId("price").innerText());
 
   await loginStaff(page, staff.admin);
   await page.getByRole("link", { name: "Ceny" }).click();
@@ -56,7 +56,7 @@ test("a price changed in the panel shows up on the store list", async ({ page })
     .poll(
       async () => {
         await page.reload();
-        return normalize(await storeTile(page, productName).locator("p").innerText());
+        return normalize(await storeTile(page, productName).getByTestId("price").innerText());
       },
       { message: `the store did not show ${expected} for "${productName}"`, timeout: STORE_PRICE_WAIT_MS, intervals: [2_000] },
     )
