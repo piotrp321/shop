@@ -7,6 +7,7 @@ namespace App\Tests\Functional\Pricing;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
+use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\ProductPriceRepository;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineProductPriceRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -320,6 +321,36 @@ final class ChangePriceEndpointTest extends WebTestCase
         $problem = $this->assertProblem(422);
         self::assertIsArray($problem['violations']);
         self::assertSame(['gross'], array_column($problem['violations'], 'propertyPath'));
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function amountsOutOfRange(): iterable
+    {
+        yield 'zero' => [0];
+        yield 'negative' => [-100];
+        yield 'above the maximum' => [GrossPrice::MAX + 1];
+    }
+
+    /**
+     * The panel shows the title of the violation to a staff member as it is: in Polish, in złoty, without the amount
+     * that was sent. The range in the message is built here from the limits of the domain, so it cannot drift from them.
+     */
+    #[DataProvider('amountsOutOfRange')]
+    public function testTheViolationOfTheRangeSaysTheLimitsInZloty(int $gross): void
+    {
+        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+
+        $this->put($productId, ['gross' => $gross, 'version' => 1]);
+
+        $problem = $this->assertProblem(422);
+        self::assertIsArray($problem['violations']);
+        $zloty = static fn (int $grosze): string => number_format($grosze / 100, 2, ',', ' ');
+        self::assertSame(
+            [\sprintf('Cena brutto musi wynosić od %s zł do %s zł.', $zloty(GrossPrice::MIN), $zloty(GrossPrice::MAX))],
+            array_column($problem['violations'], 'title'),
+        );
     }
 
     public function testTheLimitsOfTheAmountAreAccepted(): void

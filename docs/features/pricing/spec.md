@@ -215,7 +215,8 @@ z tokenem realmu `shop`: 401):
   - pole brutto w PLN, zamiana tekstu na grosze bez `float` w osobnym helperze;
   - podgląd stawki z `applicableVatRate`, bez liczenia netto na froncie;
   - 409: „Cena została w międzyczasie zmieniona – odśwież” i odświeżenie wiersza;
-  - 422: komunikat przy polu.
+  - 422: komunikat naruszenia z API przy polu; kwota poza zakresem daje „Cena brutto musi wynosić od 0,01 zł do
+    999 999,99 zł.” (zakres zdefiniowany tylko w API).
 - „Historia”: wpisy od najnowszych, „Pokaż więcej”, etykiety źródeł (Pracownik, Dane demo, Uzgodnienie podatkowe).
 
 ## Scenariusze błędów
