@@ -32,11 +32,11 @@ export function ProductTile({
       <ProductPhoto image={product.image} sizes={sizes} priority={priority} />
       <CardContent className="flex flex-col gap-1">
         <h2 className="text-sm leading-snug font-medium">{product.name}</h2>
-        <p className={price ? "text-sm font-semibold" : "text-sm text-muted-foreground"}>
+        <p data-testid="price" className={price ? "text-sm font-semibold" : "text-sm text-muted-foreground"}>
           {price ? formatPrice(price.gross, price.currency) : "Cena niedostępna"}
         </p>
         {availability ? (
-          <p className={`text-xs font-medium ${AVAILABILITY_LABELS[availability.level].className}`}>{AVAILABILITY_LABELS[availability.level].text}</p>
+          <p data-testid="availability" className={`text-xs font-medium ${AVAILABILITY_LABELS[availability.level].className}`}>{AVAILABILITY_LABELS[availability.level].text}</p>
         ) : null}
       </CardContent>
     </Card>

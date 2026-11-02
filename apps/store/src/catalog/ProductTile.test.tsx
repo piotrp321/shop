@@ -14,6 +14,7 @@ describe("ProductTile", () => {
     // getByText collapses the no-break space, so the exact text is read from the element.
     expect(screen.getByText(/123,00/).textContent).toBe("123,00\u00a0zł");
     expect(screen.queryByText("Cena niedostępna")).toBeNull();
+    expect(screen.getByTestId("price").textContent).toBe("123,00\u00a0zł");
   });
 
   it("says the price is unavailable without one", () => {
@@ -32,6 +33,7 @@ describe("ProductTile", () => {
     ] as const)("shows the label of %s", (level, label) => {
       render(<ProductTile product={makeProduct(1)} availability={{ productId, level }} sizes={SIZES} />);
       expect(screen.getByText(label)).toBeTruthy();
+      expect(screen.getByTestId("availability").textContent).toBe(label);
       for (const other of ["Dostępny", "Ostatnie sztuki", "Niedostępny"].filter((text) => text !== label)) {
         expect(screen.queryByText(other)).toBeNull();
       }
@@ -43,6 +45,7 @@ describe("ProductTile", () => {
         expect(screen.queryByText(label)).toBeNull();
       }
       expect(screen.getByText("Cena niedostępna")).toBeTruthy();
+      expect(screen.queryByTestId("availability")).toBeNull();
     });
   });
 });
