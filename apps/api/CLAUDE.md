@@ -98,3 +98,4 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Nie umieszczaj logiki biznesowej w kontrolerach, listenerach Doctrine ani w handlerach wiadomości.
   Handler orkiestruje, decyzje podejmuje domena.
 - Nie wołaj innego contextu przez jego repozytorium ani encje.
+<!-- probe -->
