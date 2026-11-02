@@ -15,6 +15,7 @@ const HISTORY = "/api/v1/admin/products/{productId}/price-history";
 function entry(gross: number, overrides: Partial<Entry> = {}): Entry {
   return {
     changedAt: "2026-11-01T12:30:00+00:00",
+    currency: "PLN",
     gross,
     net: gross - 10,
     vat: 10,

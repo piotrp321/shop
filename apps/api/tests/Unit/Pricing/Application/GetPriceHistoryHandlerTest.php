@@ -127,6 +127,6 @@ final class GetPriceHistoryHandlerTest extends TestCase
 
     private function entry(string $productId, int $n, string $changedAt, int $gross, string $source, ?string $actorName = null): void
     {
-        $this->history->add($productId, new PriceHistoryItem(\sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $n), new \DateTimeImmutable($changedAt), $gross, $gross - 10, 10, 500, 'printed_book', $source, $actorName));
+        $this->history->add($productId, new PriceHistoryItem(\sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $n), new \DateTimeImmutable($changedAt), 'PLN', $gross, $gross - 10, 10, 500, 'printed_book', $source, $actorName));
     }
 }

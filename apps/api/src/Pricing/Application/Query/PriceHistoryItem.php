@@ -12,12 +12,14 @@ final readonly class PriceHistoryItem
 {
     /**
      * @param string      $id        the id of the history entry (UUID); within one second the later change has the greater id
+     * @param string      $currency  the ISO 4217 code of the amounts
      * @param string      $source    `staff`, `seed` or `tax_reconciliation`
      * @param string|null $actorName the staff member of a `staff` change, null for a system source
      */
     public function __construct(
         public string $id,
         public \DateTimeImmutable $changedAt,
+        public string $currency,
         public int $gross,
         public int $net,
         public int $vat,

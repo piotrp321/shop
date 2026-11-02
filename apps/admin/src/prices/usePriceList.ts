@@ -39,10 +39,28 @@ function failureMessage(status: number): string {
   }
 }
 
-function changeFailure(status: number): PriceChange {
+/** The reason of a rejected request from a problem details body (`violations[].title`, else `detail`), if it has one. */
+function problemMessage(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const { violations, detail } = body as { violations?: unknown; detail?: unknown };
+  if (Array.isArray(violations)) {
+    const titles = violations
+      .map((violation) => (violation as { title?: unknown } | null)?.title)
+      .filter((title): title is string => typeof title === "string" && title !== "");
+    if (titles.length > 0) {
+      return titles.join(" ");
+    }
+  }
+  return typeof detail === "string" && detail !== "" ? detail : null;
+}
+
+function changeFailure(status: number, body: unknown): PriceChange {
   switch (status) {
     case 422:
-      return { status: "invalid", message: "API odrzuciło kwotę. Cena brutto musi wynosić od 0,01 zł do 999 999,99 zł." };
+      // The rules of the amount are the API's; the panel only shows the reason it gives.
+      return { status: "invalid", message: problemMessage(body) ?? `API odrzuciło cenę (HTTP ${status}).` };
     case 403:
       return { status: "failed", message: "Nie masz uprawnień do zmiany cen." };
     case 404:
@@ -78,6 +96,10 @@ export function usePriceList() {
   let timer: ReturnType<typeof setTimeout> | undefined;
   // Only the newest request may change the state; an older one that finishes late is ignored.
   let latest = 0;
+  // The prices saved since the newest list request started. Its answer can predate such a save, so a row it brings
+  // is replaced by the saved price when that is newer (a greater version). Cleared when a request starts: the next
+  // one is asked after those saves, so it already has them.
+  const savedSinceLoad = new Map<string, PriceListItem["price"]>();
 
   const searchTooShort = computed(() => {
     const length = characters(search.value.trim());
@@ -89,6 +111,7 @@ export function usePriceList() {
 
   async function load(stack: (string | null)[]): Promise<void> {
     const request = ++latest;
+    savedSinceLoad.clear();
     attempted = stack;
     loading.value = true;
     const query: PriceQuery = {};
@@ -108,7 +131,7 @@ export function usePriceList() {
         return;
       }
       if (result.data) {
-        items.value = result.data.items;
+        items.value = result.data.items.map(withSavedPrice);
         next.value = result.data.next;
         cursors.value = stack;
         loaded.value = true;
@@ -125,6 +148,11 @@ export function usePriceList() {
         loading.value = false;
       }
     }
+  }
+
+  function withSavedPrice(item: PriceListItem): PriceListItem {
+    const saved = savedSinceLoad.get(item.productId);
+    return saved && (item.price === null || saved.version > item.price.version) ? { ...item, price: saved } : item;
   }
 
   watch(search, () => {
@@ -180,6 +208,7 @@ export function usePriceList() {
       });
       if (result.data) {
         const saved = result.data;
+        savedSinceLoad.set(productId, saved);
         items.value = items.value.map((item) => (item.productId === productId ? { ...item, price: saved } : item));
         return { status: "saved" };
       }
@@ -187,7 +216,7 @@ export function usePriceList() {
         await load(cursors.value);
         return { status: "conflict", message: CONFLICT_MESSAGE };
       }
-      return changeFailure(result.response.status);
+      return changeFailure(result.response.status, result.error);
     } catch {
       return { status: "failed", message: "Nie udało się zapisać ceny. Sprawdź połączenie z API." };
     }

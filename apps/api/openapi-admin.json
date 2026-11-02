@@ -973,6 +973,7 @@
                 "description": "One recorded price change: the price as it was set. Amounts are in grosze, the rate in basis points; all computed by the API.",
                 "required": [
                     "changedAt",
+                    "currency",
                     "gross",
                     "net",
                     "vat",
@@ -986,6 +987,11 @@
                         "description": "When the price was changed (RFC 3339, UTC).",
                         "type": "string",
                         "example": "2026-11-01T12:30:00+00:00"
+                    },
+                    "currency": {
+                        "description": "The ISO 4217 currency code of the amounts.",
+                        "type": "string",
+                        "example": "PLN"
                     },
                     "gross": {
                         "description": "Gross price (VAT included) in grosze.",

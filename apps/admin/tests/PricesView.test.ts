@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "@/api/schema";
 import { primeVueOptions } from "@/primevue";
 import { useAuthStore, type StaffMe } from "@/stores/auth";
+import { SEARCH_DEBOUNCE_MS } from "@/prices/usePriceList";
 import PricesView from "@/views/PricesView.vue";
 
 type PriceList = components["schemas"]["PriceListResponse"];
@@ -527,6 +528,36 @@ describe("PricesView: changing a price", () => {
     expect(row.get("[data-testid=vat]").text()).toMatch(/^2,85\s*zł$/);
   });
 
+  it("keeps the saved price when a list request that started before the save answers with the old one", async () => {
+    serve({ pages: { "": { items: [item("A")], next: null } } });
+    wrapper = await mountView();
+    await openDialog();
+    // A search starts a list request that is still open while the change is saved.
+    let respondList: (page: PriceList) => void = () => undefined;
+    mocks.get.mockImplementation(
+      (path: string) =>
+        new Promise((resolve) => {
+          respondList = (page) => resolve({ data: path === PRICES ? page : tree, response: { status: 200 } });
+        }),
+    );
+    await wrapper.get("[data-testid=search]").setValue("Ab");
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS);
+    answer(200, price({ gross: 5990, net: 5705, vat: 285, version: 2 }));
+
+    await submit("59,90");
+    respondList({ items: [item("A"), item("B")], next: null });
+    await settle();
+
+    const rows = wrapper.findAll("[data-testid=price-row]");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.get("[data-testid=gross]").text()).toMatch(/^59,90\s*zł$/);
+    expect(rows[1]!.get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
+    answer(200, price({ gross: 6100, version: 3 }));
+    await openDialog();
+    await submit("61");
+    expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { productId: "id-A" } }, body: { gross: 6100, version: 2 } });
+  });
+
   it("sends no version for a product without a price", async () => {
     serve({ pages: { "": { items: [item("A", { productId: "p-2", price: null })], next: null } } });
     wrapper = await mountView();
@@ -550,18 +581,67 @@ describe("PricesView: changing a price", () => {
     expect(wrapper.get("[data-testid=gross-input]").attributes("aria-invalid")).toBe("true");
   });
 
-  it("shows a 422 of the API at the field and changes nothing", async () => {
-    serve({ pages: { "": { items: [item("A")], next: null } } });
-    wrapper = await mountView();
-    answer(422);
+  describe("a 422 of the API", () => {
+    function rejectWith(error: unknown) {
+      mocks.put.mockResolvedValue({ data: undefined, error, response: { status: 422 } });
+    }
 
-    await openDialog();
-    await submit("0");
+    async function submitRejected(error: unknown) {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView();
+      rejectWith(error);
 
-    expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { productId: "id-A" } }, body: { gross: 0, version: 1 } });
-    expect(wrapper.get("[data-testid=gross-error]").text()).toContain("od 0,01 zł do 999 999,99 zł");
-    expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(true);
-    expect(wrapper.get("[data-testid=price-row]").get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
+      await openDialog();
+      await submit("0");
+
+      expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { productId: "id-A" } }, body: { gross: 0, version: 1 } });
+      expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(true);
+      expect(wrapper.get("[data-testid=price-row]").get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
+      return wrapper.get("[data-testid=gross-error]").text();
+    }
+
+    it("shows the violations of the API at the field, not a range of the panel", async () => {
+      const text = await submitRejected({
+        type: "about:blank",
+        title: "Unprocessable Entity",
+        status: 422,
+        detail: "The request is invalid.",
+        violations: [{ propertyPath: "gross", title: "This value should be between 1 and 99999999." }],
+      });
+
+      expect(text).toBe("This value should be between 1 and 99999999.");
+    });
+
+    it("shows every violation", async () => {
+      const text = await submitRejected({
+        title: "Unprocessable Entity",
+        status: 422,
+        violations: [
+          { propertyPath: "gross", title: "First problem." },
+          { propertyPath: "version", title: "Second problem." },
+        ],
+      });
+
+      expect(text).toBe("First problem. Second problem.");
+    });
+
+    it("shows the detail when there are no violations", async () => {
+      const text = await submitRejected({ title: "Unprocessable Entity", status: 422, detail: "The price cannot be set." });
+
+      expect(text).toBe("The price cannot be set.");
+    });
+
+    it.each([
+      ["an empty problem", { title: "Unprocessable Entity", status: 422 }],
+      ["empty violations and no detail", { title: "Unprocessable Entity", status: 422, violations: [] }],
+      ["a body that is not a problem", "oops"],
+      ["no body", undefined],
+    ])("says the API rejected the price when the answer has %s", async (_name, error) => {
+      const text = await submitRejected(error);
+
+      expect(text).toBe("API odrzuciło cenę (HTTP 422).");
+      expect(text).not.toContain("999 999,99");
+    });
   });
 
   it("on a 409 says the price was changed meanwhile and refreshes the row", async () => {
@@ -729,6 +809,7 @@ describe("PricesView: price history", () => {
   function entry(gross: number, overrides: Partial<HistoryEntry> = {}): HistoryEntry {
     return {
       changedAt: "2026-11-01T12:30:00+00:00",
+      currency: "PLN",
       gross,
       net: gross - 261,
       vat: 261,
@@ -807,6 +888,19 @@ describe("PricesView: price history", () => {
     expect(rows[0]!.get("[data-testid=history-rate]").text()).toBe("5%");
     expect(rows[2]!.get("[data-testid=history-gross]").text()).toMatch(/^54,90\s*zł$/);
     expect(dialog.find("[data-testid=history-more]").exists()).toBe(false);
+  });
+
+  it("formats the amounts of an entry in the currency the API sends with it", async () => {
+    serveHistory({ "": { items: [entry(5990, { currency: "EUR", net: 5705, vat: 285 })], next: null } });
+    wrapper = await mountView();
+
+    await openHistory();
+
+    const row = wrapper.get("[data-testid=history-row]");
+    for (const cell of ["history-gross", "history-net", "history-vat"]) {
+      expect(row.get(`[data-testid=${cell}]`).text()).toContain("€");
+      expect(row.get(`[data-testid=${cell}]`).text()).not.toContain("zł");
+    }
   });
 
   it("loads further entries with 'Pokaż więcej' using the cursor of the API, until the last page", async () => {

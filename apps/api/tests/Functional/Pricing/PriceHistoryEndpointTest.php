@@ -53,9 +53,9 @@ final class PriceHistoryEndpointTest extends WebTestCase
         $items = $this->items($body);
         self::assertSame(
             [
-                ['changedAt' => '2026-10-03T10:30:00+00:00', 'gross' => 5990, 'net' => 5705, 'vat' => 285, 'vatRate' => 500, 'taxClass' => 'printed_book', 'source' => 'tax_reconciliation', 'actorName' => null],
-                ['changedAt' => '2026-10-02T10:00:00+00:00', 'gross' => 5790, 'net' => 5514, 'vat' => 276, 'vatRate' => 500, 'taxClass' => 'printed_book', 'source' => 'staff', 'actorName' => 'Anna Admin'],
-                ['changedAt' => '2026-10-01T10:00:00+00:00', 'gross' => 5490, 'net' => 5229, 'vat' => 261, 'vatRate' => 500, 'taxClass' => 'printed_book', 'source' => 'seed', 'actorName' => null],
+                ['changedAt' => '2026-10-03T10:30:00+00:00', 'currency' => 'PLN', 'gross' => 5990, 'net' => 5705, 'vat' => 285, 'vatRate' => 500, 'taxClass' => 'printed_book', 'source' => 'tax_reconciliation', 'actorName' => null],
+                ['changedAt' => '2026-10-02T10:00:00+00:00', 'currency' => 'PLN', 'gross' => 5790, 'net' => 5514, 'vat' => 276, 'vatRate' => 500, 'taxClass' => 'printed_book', 'source' => 'staff', 'actorName' => 'Anna Admin'],
+                ['changedAt' => '2026-10-01T10:00:00+00:00', 'currency' => 'PLN', 'gross' => 5490, 'net' => 5229, 'vat' => 261, 'vatRate' => 500, 'taxClass' => 'printed_book', 'source' => 'seed', 'actorName' => null],
             ],
             $items,
         );
@@ -201,6 +201,9 @@ final class PriceHistoryEndpointTest extends WebTestCase
         yield 'malformed cursor' => ['after=garbage!'];
         yield 'cursor of another shape' => ['after=aGVsbG8'];
         yield 'cursor of the product list' => ['after=eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0'];
+        yield 'cursor with year zero' => ['after='.self::cursor('{"t":"0000-01-01T00:00:00.000000+00:00","i":"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60"}')];
+        yield 'cursor with a NUL byte in the time' => ['after='.self::cursor('{"t":"2026-10-01T10:00:00.000000+00:00\u0000","i":"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60"}')];
+        yield 'cursor with a time zone offset out of range' => ['after='.self::cursor('{"t":"2026-10-01T10:00:00.000000+16:00","i":"0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60"}')];
         yield 'empty cursor' => ['after='];
         yield 'cursor as an array' => ['after[]=abc'];
     }
@@ -228,6 +231,11 @@ final class PriceHistoryEndpointTest extends WebTestCase
 
             self::assertResponseStatusCodeSame(200, $query);
         }
+    }
+
+    private static function cursor(string $json): string
+    {
+        return rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
     }
 
     private function product(): string

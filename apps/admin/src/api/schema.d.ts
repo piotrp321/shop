@@ -359,6 +359,11 @@ export interface components {
              */
             changedAt: string;
             /**
+             * @description The ISO 4217 currency code of the amounts.
+             * @example PLN
+             */
+            currency: string;
+            /**
              * @description Gross price (VAT included) in grosze.
              * @example 5490
              */

@@ -16,7 +16,7 @@ final class PriceHistoryCursorTest extends TestCase
 
     public function testEncodesToOpaqueUrlSafeTextThatDecodesToTheSamePosition(): void
     {
-        $item = new PriceHistoryItem(self::ID, new \DateTimeImmutable('2026-10-31 12:30:45.123456+02:00'), 100, 90, 10, 1000, 'standard', 'staff', 'Jan');
+        $item = new PriceHistoryItem(self::ID, new \DateTimeImmutable('2026-10-31 12:30:45.123456+02:00'), 'PLN', 100, 90, 10, 1000, 'standard', 'staff', 'Jan');
 
         $text = PriceHistoryCursor::after($item)->encode();
         $decoded = PriceHistoryCursor::decode($text);
@@ -40,6 +40,14 @@ final class PriceHistoryCursorTest extends TestCase
         yield 'time not a string' => [self::base64('{"t":1,"i":"'.self::ID.'"}')];
         yield 'time of another format' => [self::base64('{"t":"yesterday","i":"'.self::ID.'"}')];
         yield 'impossible date' => [self::base64('{"t":"2026-02-31T10:30:45.000000+00:00","i":"'.self::ID.'"}')];
+        yield 'year zero' => [self::base64('{"t":"0000-01-01T00:00:00.000000+00:00","i":"'.self::ID.'"}')];
+        yield 'time with a NUL byte' => [self::base64('{"t":"2026-10-31T10:30:45.000000+00:00\u0000","i":"'.self::ID.'"}')];
+        yield 'NUL byte inside the time' => [self::base64('{"t":"2026-10-31T10:30:\u000045.000000+00:00","i":"'.self::ID.'"}')];
+        yield 'time not in UTC, offset out of range' => [self::base64('{"t":"2026-10-31T10:30:45.000000+16:00","i":"'.self::ID.'"}')];
+        yield 'time not in UTC, offset +01:00' => [self::base64('{"t":"2026-10-31T10:30:45.000000+01:00","i":"'.self::ID.'"}')];
+        yield 'time not in UTC, offset -23:59' => [self::base64('{"t":"2026-10-31T10:30:45.000000-23:59","i":"'.self::ID.'"}')];
+        yield 'time not in UTC, offset +99:59' => [self::base64('{"t":"2026-10-31T10:30:45.000000+99:59","i":"'.self::ID.'"}')];
+        yield 'time with a negative zero offset' => [self::base64('{"t":"2026-10-31T10:30:45.000000-00:00","i":"'.self::ID.'"}')];
         yield 'id not a uuid' => [self::base64('{"t":"2026-10-31T10:30:45.000000+00:00","i":"abc"}')];
         yield 'too long' => [str_repeat('a', 3000)];
     }
@@ -50,6 +58,13 @@ final class PriceHistoryCursorTest extends TestCase
         $this->expectException(InvalidPriceHistoryCursor::class);
 
         PriceHistoryCursor::decode($text);
+    }
+
+    public function testTheEarliestTimePostgreSqlAcceptsIsStillACursor(): void
+    {
+        $decoded = PriceHistoryCursor::decode(self::base64('{"t":"0001-01-01T00:00:00.000000+00:00","i":"'.self::ID.'"}'));
+
+        self::assertSame('0001-01-01T00:00:00.000000+00:00', $decoded->changedAt->format('Y-m-d\TH:i:s.uP'));
     }
 
     private static function base64(string $json): string
