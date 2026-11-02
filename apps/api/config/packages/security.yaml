@@ -38,7 +38,7 @@ security:
     # First match wins. Everything under /api/v1 needs a token unless it is listed as public here.
     access_control:
         - { path: ^/api/v1/admin(/|$), roles: ROLE_STAFF }
-        - { path: ^/api/v1/(products|categories|prices)$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
+        - { path: ^/api/v1/(products|categories|prices|availability)$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
         - { path: ^/api/v1(/|$), roles: ROLE_CUSTOMER }
 
 # Keys from the discovery document and JWKS of each realm, fetched through the internal URL and cached.

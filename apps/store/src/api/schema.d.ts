@@ -64,6 +64,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Availability of products
+         * @description The availability level of each requested product, for the product list. A product without a stock record, or unknown, is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not what decides a purchase: the reservation at checkout does.
+         */
+        get: operations["getAvailability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/prices": {
         parameters: {
             query?: never;
@@ -208,6 +228,24 @@ export interface components {
              */
             name: string;
         };
+        /** @description The availability level of one product. Never the number of units. */
+        AvailabilityItemResponse: {
+            /**
+             * Format: uuid
+             * @description Product id (UUID).
+             */
+            productId: string;
+            /**
+             * @description Availability level computed by the API: no units available, 1 to 5 (last units), or more.
+             * @example in_stock
+             * @enum {string}
+             */
+            level: "in_stock" | "low_stock" | "out_of_stock";
+        };
+        /** @description The availability levels of the requested products. */
+        AvailabilityListResponse: {
+            items: components["schemas"]["AvailabilityItemResponse"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -346,6 +384,56 @@ export interface operations {
                 };
             };
             /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getAvailability: {
+        parameters: {
+            query: {
+                /** @description Product ids (UUID), 1 to 48. */
+                productId: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The level of every requested product, in the order of the request; a repeated id answers once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailabilityListResponse"];
+                };
+            };
+            /** @description No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
             503: {
                 headers: {
                     [name: string]: unknown;
