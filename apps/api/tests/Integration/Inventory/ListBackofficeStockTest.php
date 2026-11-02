@@ -77,6 +77,17 @@ final class ListBackofficeStockTest extends KernelTestCase
         self::assertNull($list->items[1]->stock);
     }
 
+    public function testAStoredEmptyStockAtVersionZeroIsListedWithItsVersion(): void
+    {
+        $ids = $this->products(1);
+        $this->connection->executeStatement('INSERT INTO inventory_stock_item (product_id, physical, reserved, version, updated_at) VALUES (?, 0, 0, 0, now())', [$ids[0]]);
+
+        $stock = $this->ask(new ListBackofficeStock(null, null, null, 25))->items[0]->stock;
+
+        self::assertNotNull($stock);
+        self::assertSame([0, 0, 0, 'out_of_stock', 0], [$stock->physical, $stock->reserved, $stock->available, $stock->level, $stock->version]);
+    }
+
     /**
      * Saves products named "Produkt 01", "Produkt 02", … in one category.
      *

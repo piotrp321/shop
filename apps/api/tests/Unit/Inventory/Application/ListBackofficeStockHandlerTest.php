@@ -59,13 +59,16 @@ final class ListBackofficeStockHandlerTest extends TestCase
         self::assertNull($list->items[0]->stock);
     }
 
-    public function testAnEmptyStockNeverChangedEqualsNoStock(): void
+    public function testAnEmptyStoredStockKeepsItsVersionSoThatACorrectionCanBeBasedOnIt(): void
     {
         $directory = new InMemoryProductDirectory([$this->product(self::EMPTY_STORED, 'Żel')]);
 
         $list = $this->handler($directory)(new ListBackofficeStock(null, null, null, 25));
 
-        self::assertNull($list->items[0]->stock);
+        $stock = $list->items[0]->stock;
+        self::assertNotNull($stock);
+        self::assertSame([0, 0, 0, 'out_of_stock', 0], [$stock->physical, $stock->reserved, $stock->available, $stock->level, $stock->version]);
+        self::assertEquals(new \DateTimeImmutable('2026-11-01 10:00:00+00:00'), $stock->updatedAt);
     }
 
     public function testStocksOfThePageAreReadWithOneCall(): void

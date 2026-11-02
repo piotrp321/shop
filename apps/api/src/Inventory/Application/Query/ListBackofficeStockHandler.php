@@ -23,8 +23,8 @@ final readonly class ListBackofficeStockHandler
 
     /**
      * The page of products comes from Catalog (the search and the paging are its job); the stocks of the whole page
-     * are read with one query. A product without a stored stock, or with an empty one no change was ever saved for
-     * (version 0, the same as no stock for a correction), is listed without a stock.
+     * are read with one query. A product without a stored stock is listed without one; a stored stock, even an
+     * empty one at version 0, is listed as it is, so that a correction can be based on its version.
      *
      * @throws CategoryNotFound
      * @throws InvalidStockListCursor
@@ -52,7 +52,7 @@ final readonly class ListBackofficeStockHandler
         return new StockListItem(
             $product->id->toString(),
             $product->name,
-            null === $item || 0 === $item->version() ? null : ListedStock::of($item),
+            null === $item ? null : ListedStock::of($item),
         );
     }
 }

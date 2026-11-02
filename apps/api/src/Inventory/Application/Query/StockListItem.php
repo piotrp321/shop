@@ -7,7 +7,7 @@ namespace App\Inventory\Application\Query;
 final readonly class StockListItem
 {
     /**
-     * @param ListedStock|null $stock null when no change of the stock was ever saved for the product
+     * @param ListedStock|null $stock null when the product has no stock record
      */
     public function __construct(
         public string $productId,
