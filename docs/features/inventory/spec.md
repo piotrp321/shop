@@ -53,7 +53,8 @@ Niezmiennik: `0 ≤ reserved ≤ physical ≤ 1 000 000`.
 
 - `correct` z wartością równą bieżącemu `physical` zwraca `false`: bez wpisu historii i bez zmiany wersji.
 - Każda faktyczna zmiana dopisuje jeden `StockMovement` ze stanem po operacji i podnosi `version` przy zapisie.
-- Produkt bez rekordu stanu ma `physical = reserved = 0`. Rekord powstaje przy pierwszym przyjęciu lub korekcie.
+- Produkt bez rekordu stanu ma `physical = reserved = 0`. Rekord powstaje przy pierwszym przyjęciu lub korekcie
+  albo jako pusty rekord danych demo (wersja 0, bez wpisu historii).
 
 ### Agregat `Reservation`
 
@@ -170,6 +171,8 @@ Komendy (`command.bus`):
 - `CorrectStock(productId, countedPhysical, expectedVersion|null, reason, note, actorId, actorName)` → `StockView`.
   Nieznany produkt: 404. Produkt bez rekordu wymaga `expectedVersion = null`; rekord istnieje, a wersja jest inna
   (także `null`): 409.
+- `CreateEmptyStock(productId)`: pusty rekord (0/0) w wersji 0 bez wpisu historii; idempotentna (istniejący rekord
+  zostaje bez zmian). Nieznany produkt: `ProductNotFound` (404). Używa jej tylko seed.
 - Port dla Ordering:
   - `ReserveStock(reservationKey, lines)` → `ReservationView {key, status, lines}`;
   - `ReleaseReservation(reservationKey)` → `ReservationView`;
@@ -197,7 +200,8 @@ Dane demo: `inventory:seed-demo`
 - `fixtures/stock.yaml`: wzorce slugów → stan fizyczny (składnia i zasada „pierwszy pasujący” jak `prices.yaml`).
   Większość produktów 20–50 sztuk, kilka 2–3 (`low_stock`), kilka 0 (`out_of_stock`); co najmniej jeden produkt
   demo ma 0 (używa go E2E).
-- Stan > 0: `ReceiveStock` ze źródłem `seed` i kluczem `seed:<productId>`. Stan 0: rekord bez przyjęcia.
+- Stan > 0: `ReceiveStock` ze źródłem `seed` i kluczem `seed:<productId>`. Stan 0: pusty rekord przez
+  `CreateEmptyStock`, bez przyjęcia i wpisu historii.
 - Produkt demo bez dopasowanego wzorca kończy seed błędem bez zmian w danych.
 - `make seed` uruchamia go po `pricing:seed-demo`. W `prod` wymaga `--force-reset`.
 
