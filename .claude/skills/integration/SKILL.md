@@ -67,8 +67,13 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
      - Dostęp do `/api/v1/admin`: token realmu `backoffice` z klienta publicznego `admin` (authorization code
        z PKCE S256, `redirect_uri` `http://localhost:<ADMIN_PORT>/`, formularz logowania Keycloak z kodem TOTP;
        direct grant jest wyłączony). Konta, hasła i sekrety TOTP to dane demo z `e2e/support/accounts.ts`
-       (realm `infra/keycloak/realms/backoffice.json`). Kod TOTP jest jednorazowy, a token krótko ważny: jedno
-       logowanie na konto, ten sam token we wszystkich żądaniach, także równoległych, nowy po wygaśnięciu.
+       (realm `infra/keycloak/realms/backoffice.json`). Wzorzec logowania: `e2e/support/staff-login.ts` (pola
+       `#username`, `#password`, potem `#otp`) i `e2e/support/totp.ts` (sekret to surowy tekst UTF-8, nie base32;
+       SHA1, 6 cyfr, okno 30 s). Kod TOTP jest jednorazowy, a token krótko ważny: jedno logowanie na konto, ten sam
+       token we wszystkich żądaniach, także równoległych, nowy po wygaśnięciu. Oba realmy mają ochronę przed
+       brute force, a `make seed` nie resetuje Keycloaka, więc bez celowo błędnych logowań na kontach demo
+       (zablokowane konto psuje `make e2e`). Gdy logowanie się nie uda, QA nie ponawia prób: scenariusze
+       `/api/v1/admin` zapisuje jako propozycje testu z powodem.
      - Dostęp do `/api/v1` klienta: token realmu `shop` wymaga sekretu klienta `store` z `.env.local`, którego
        QA nie czyta. Scenariusze klienta wykonuje przez sklep (logowanie kontem demo z `e2e/support/accounts.ts`)
        albo zapisuje jako propozycję testu. Publiczne `GET` (`apps/api/config/packages/security.yaml`) nie
@@ -87,8 +92,8 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    Zapisy QA trafiły do bazy dev stosu. `make check` nie czyta danych, a `make test` działa na osobnych zasobach
    testowych (baza `shop_test`, indeks `test_products`, vhost `test`, Redis DB 1), więc jedyną bramką zależną od
    danych dev jest `make e2e`; `make seed` (reset katalogu, cen, stanów i rezerwacji) stoi bezpośrednio przed nią
-   i nie przesuwaj go. Wszystkie uruchamiasz nawet po czerwonej wcześniejszej bramce. W wyniku nazwy bramek to `make check`, `make test`,
-   `make e2e`. Zapisz kod wyjścia i koniec wyjścia każdej. Czerwona bramka to znalezisko
+   i nie przesuwaj go. Wszystkie uruchamiasz nawet po czerwonej wcześniejszej bramce. W wyniku nazwy bramek to
+   `make check`, `make test`, `make e2e`. Zapisz kod wyjścia i koniec wyjścia każdej. Czerwona bramka to znalezisko
    (domyślnie `Important`, z `evidence` = komenda i końcówka wyjścia; `Critical` przy utracie danych lub luce
    bezpieczeństwa). `make e2e`, które padło, powtórz raz: gdy przejdzie, zapisz `passed` i znalezisko `Minor`
    („niestabilny test e2e”, z nazwą testu). Awaria środowiska (stos nie odpowiada, brak Dockera, brak miejsca) to
@@ -111,8 +116,8 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    z poprzednim HEAD). Dalej: werdykt, znaleziska (id, waga, zadanie, plik, dowód, sugerowana naprawa), bramki
    (komenda, kod wyjścia, koniec wyjścia), werdykt i uwagi architekta, wyniki QA w dwóch grupach: **wykonane**
    przeciw stosowi (scenariusz, komenda lub skrypt, wynik) i **propozycje testu** (kod w blokach), a gdy QA
-   pracował statycznie, to zdanie z powodem, niepotwierdzone ryzyka, co sprawdzono bez uwag, bloker(y). Raport jest dowodem dla AO i
-   użytkownika, więc nie wklejaj pełnych logów.
+   pracował statycznie, to zdanie z powodem, niepotwierdzone ryzyka, co sprawdzono bez uwag, bloker(y). Raport
+   jest dowodem dla AO i użytkownika, więc nie wklejaj pełnych logów.
 8. **Wynik.** Złóż JSON według kontraktu poniżej, zapisz go do pliku tymczasowego poza repo i zwaliduj:
 
    ```bash
