@@ -55,16 +55,39 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    - `architecture-reviewer`: zgodność z DDD, architekturą heksagonalną, `CLAUDE.md` i specyfikacją całego epika,
      spójność kontraktów między zadaniami, zbędna złożoność, dublowanie.
    - `qa-adversarial`: błędy funkcjonalne i bezpieczeństwa na styku zadań, transakcje, współbieżność, przypadki
-     brzegowe, kryteria akceptacji ze specyfikacji, które żadne zadanie nie sprawdza end-to-end. Pracuje w
-     własnym worktree (bez `.env`, bez dostępu do stosu AO, jego kontenery montują źródła worktree epika), więc
-     **nie uruchamia stosu ani żadnych `make`**: sprawdza kod, odtwarza podejrzenia samodzielnymi skryptami
-     bez Dockera i pisze testy wyłącznie jako propozycje w raporcie. Niczego nie zapisuje w worktree epika, bez
-     commitów i pushy. Bramki uruchamiasz sam, po jego zakończeniu.
+     brzegowe, kryteria akceptacji ze specyfikacji, które żadne zadanie nie sprawdza end-to-end. Pracuje we
+     własnym worktree (bez `.env`; kontenery stosu AO montują źródła worktree epika), więc **nie uruchamia
+     `make` ani `docker`**, ale stos AO testuje jako czarną skrzynkę przez HTTP. Przekaż mu w zleceniu:
+     - Adresy stosu z `.env` worktree epika (porty, które `.ao/setup` zapisuje od `AO_PORT_BASE`; bez wpisu
+       obowiązuje domyślny port z `infra/docker-compose.yml`), wszystkie dostępne tylko z `127.0.0.1`:
+       API `http://127.0.0.1:<API_PORT>`, Keycloak `http://localhost:<KEYCLOAK_PORT>`, panel
+       `http://localhost:<ADMIN_PORT>`, sklep `http://localhost:<STORE_PORT>`. Przed zleceniem sprawdź
+       `curl -fs --max-time 5 http://127.0.0.1:<API_PORT>/health`; gdy nie odpowiada, napisz QA, że stos jest
+       niedostępny.
+     - Dostęp do `/api/v1/admin`: token realmu `backoffice` z klienta publicznego `admin` (authorization code
+       z PKCE S256, `redirect_uri` `http://localhost:<ADMIN_PORT>/`, formularz logowania Keycloak z kodem TOTP;
+       direct grant jest wyłączony). Konta, hasła i sekrety TOTP to dane demo z `e2e/support/accounts.ts`
+       (realm `infra/keycloak/realms/backoffice.json`). Kod TOTP jest jednorazowy, a token krótko ważny: jedno
+       logowanie na konto, ten sam token we wszystkich żądaniach, także równoległych, nowy po wygaśnięciu.
+     - Dostęp do `/api/v1` klienta: token realmu `shop` wymaga sekretu klienta `store` z `.env.local`, którego
+       QA nie czyta. Scenariusze klienta wykonuje przez sklep (logowanie kontem demo z `e2e/support/accounts.ts`)
+       albo zapisuje jako propozycję testu. Publiczne `GET` (`apps/api/config/packages/security.yaml`) nie
+       wymagają tokenu.
+     QA może uruchamiać przeciw tym adresom czarnoskrzynkowe skrypty HTTP (`curl`, `python3` z biblioteką
+     standardową), także scenariusze współbieżne (np. 16 równoległych `PUT`). Zapisuje tylko dane, które odtwarza
+     `make seed` (katalog, ceny, stany i rezerwacje); nie zakłada kont, nie zmienia Keycloaka ani konfiguracji
+     usług, nie czyta `.env.local`, niczego nie zapisuje w worktree epika, bez commitów i pushy. Gdy stos jest
+     niedostępny, pracuje statycznie (kod, samodzielne skrypty bez Dockera) i pisze to w raporcie. Raport QA
+     oddziela **wykonane** (scenariusz uruchomiony przeciw stosowi: komenda lub skrypt i wynik) od **propozycji
+     testu** (nieuruchomionej). Bramki uruchamiasz sam, po jego zakończeniu.
    W trybie DELTA przekaż zakres DELTA i listę znalezisk z poprzedniego raportu do sprawdzenia, czy zostały naprawione.
 4. **Bramki.** Po zakończeniu obu agentów, sekwencyjnie, z limitem czasu każdej (np. `timeout`/Bash `timeout`):
    `make check RUN="docker compose exec -T"`, `make test RUN="docker compose exec -T"`, potem
    `make seed RUN="docker compose exec -T"` i `make e2e E2E_FLAGS=-T` (sesja nie ma terminala, więc bez `-T` komendy padają).
-   Wszystkie uruchamiasz nawet po czerwonej wcześniejszej bramce. W wyniku nazwy bramek to `make check`, `make test`,
+   Zapisy QA trafiły do bazy dev stosu. `make check` nie czyta danych, a `make test` działa na osobnych zasobach
+   testowych (baza `shop_test`, indeks `test_products`, vhost `test`, Redis DB 1), więc jedyną bramką zależną od
+   danych dev jest `make e2e`; `make seed` (reset katalogu, cen, stanów i rezerwacji) stoi bezpośrednio przed nią
+   i nie przesuwaj go. Wszystkie uruchamiasz nawet po czerwonej wcześniejszej bramce. W wyniku nazwy bramek to `make check`, `make test`,
    `make e2e`. Zapisz kod wyjścia i koniec wyjścia każdej. Czerwona bramka to znalezisko
    (domyślnie `Important`, z `evidence` = komenda i końcówka wyjścia; `Critical` przy utracie danych lub luce
    bezpieczeństwa). `make e2e`, które padło, powtórz raz: gdy przejdzie, zapisz `passed` i znalezisko `Minor`
@@ -86,8 +109,9 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
 7. **Raport.** Zapisz Markdown po polsku do `<report_path>` (tworząc katalog, jeśli trzeba; ścieżka leży poza repo,
    nie dodawaj jej do Git). Pierwsze linie: `Epik:`, `Gałąź:`, `Przegląd HEAD: <sha>`, `Tryb:`, `Zakres:` (w DELTA
    z poprzednim HEAD). Dalej: werdykt, znaleziska (id, waga, zadanie, plik, dowód, sugerowana naprawa), bramki
-   (komenda, kod wyjścia, koniec wyjścia), werdykt i uwagi architekta, wyniki QA wraz z proponowanymi testami
-   (kod w blokach), niepotwierdzone ryzyka, co sprawdzono bez uwag, bloker(y). Raport jest dowodem dla AO i
+   (komenda, kod wyjścia, koniec wyjścia), werdykt i uwagi architekta, wyniki QA w dwóch grupach: **wykonane**
+   przeciw stosowi (scenariusz, komenda lub skrypt, wynik) i **propozycje testu** (kod w blokach), a gdy QA
+   pracował statycznie, to zdanie z powodem, niepotwierdzone ryzyka, co sprawdzono bez uwag, bloker(y). Raport jest dowodem dla AO i
    użytkownika, więc nie wklejaj pełnych logów.
 8. **Wynik.** Złóż JSON według kontraktu poniżej, zapisz go do pliku tymczasowego poza repo i zwaliduj:
 
