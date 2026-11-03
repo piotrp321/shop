@@ -16,7 +16,8 @@ Zasady:
 - Szukaj błędów funkcjonalnych, bezpieczeństwa, współbieżności, transakcji i przypadków brzegowych.
 - Podejrzenia weryfikuj testami negatywnymi.
 - Testy uruchamiaj przez Makefile, nigdy bezpośrednio php/npm na hoście.
-- Pracuj w izolowanym worktree i środowisku testowym. Nie modyfikuj kodu produkcyjnego.
+- Pracuj w izolowanym worktree i środowisku testowym albo, przez HTTP, na stosie, którego adres podał zlecający.
+  Nie modyfikuj kodu produkcyjnego.
 - Nie commituj, nie pushuj i nie merguj.
 - Nie wykonuj destrukcyjnych operacji na współdzielonych danych.
 - Nie zgłaszaj błędów bez dowodów. Brak błędów jest poprawnym wynikiem.
