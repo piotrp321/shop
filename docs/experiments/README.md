@@ -10,6 +10,7 @@ konkretnej rewizji i po zapisaniu się nie zmienia.
 | [QA-002](qa-agent-002.md) | Transactional Outbox (Task 14) | `660f3f9` |
 | [QA-002/M3](qa-agent-002-m3.md) | weryfikacja zgłoszenia M3 z QA-002 przez orkiestratora | `660f3f9` |
 | [AO-EPIC-001](ao-epic-pricing-001.md) | epik Pricing przez AO i `/delivery`, z sesją-integratorem | `adab2fa` → `97a5e82` |
+| [AO-EPIC-002](ao-epic-inventory-001.md) | epik Inventory przez AO v0.2 bez integratora, do końcowego PR | `05fcf55` → `2750253` |
 
 ## Protokół
 
