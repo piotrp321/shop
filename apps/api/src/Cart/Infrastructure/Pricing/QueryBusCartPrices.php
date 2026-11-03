@@ -1,0 +1,57 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Cart\Infrastructure\Pricing;
+
+use App\Cart\Application\Port\CartPrice;
+use App\Cart\Application\Port\CartPrices;
+use App\Cart\Domain\Currency;
+use App\Cart\Domain\Money;
+use App\Cart\Domain\ProductId;
+use App\Cart\Infrastructure\QueryBusFailure;
+use App\Pricing\Application\Query\GetCurrentPrices;
+use App\Pricing\Application\Query\PriceSnapshot;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
+use Symfony\Component\Messenger\HandleTrait;
+use Symfony\Component\Messenger\MessageBusInterface;
+
+/**
+ * The current gross prices through Pricing's GetCurrentPrices on the query bus. A price in a currency the cart does
+ * not sell in counts as no current price.
+ */
+final class QueryBusCartPrices implements CartPrices
+{
+    use HandleTrait;
+
+    public function __construct(#[Autowire(service: 'query.bus')] MessageBusInterface $queryBus)
+    {
+        $this->messageBus = $queryBus;
+    }
+
+    public function current(array $ids): array
+    {
+        if ([] === $ids) {
+            return [];
+        }
+
+        try {
+            $snapshots = $this->handle(new GetCurrentPrices(array_map(static fn (ProductId $id): string => $id->toString(), $ids)));
+        } catch (HandlerFailedException $failure) {
+            throw QueryBusFailure::cause($failure);
+        }
+        \assert(\is_array($snapshots));
+
+        $prices = [];
+        foreach ($snapshots as $snapshot) {
+            \assert($snapshot instanceof PriceSnapshot);
+            $currency = Currency::tryFrom($snapshot->currency);
+            if (null !== $currency) {
+                $prices[] = new CartPrice(ProductId::fromString($snapshot->productId), Money::of($snapshot->gross, $currency));
+            }
+        }
+
+        return $prices;
+    }
+}

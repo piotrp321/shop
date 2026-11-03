@@ -20,8 +20,11 @@ cs-check:
 cs-fix:
 	$(RUN) api vendor/bin/php-cs-fixer fix
 
+# Extra PHPUnit arguments for `test` and `test-unit`, e.g. PHPUNIT_ARGS='--filter CartTest' for a focused run.
+PHPUNIT_ARGS ?=
+
 test: init-test
-	$(RUN) api vendor/bin/phpunit
+	$(RUN) api vendor/bin/phpunit $(PHPUNIT_ARGS)
 
 # Brings the dev database schema up to date and creates the search alias and index if missing (idempotent);
 # `make up` runs it once the services are healthy.
@@ -35,7 +38,7 @@ init-test:
 	$(RUN) api bin/console catalog:search-index:setup --recreate --env=test
 
 test-unit:
-	$(RUN) api vendor/bin/phpunit --testsuite unit
+	$(RUN) api vendor/bin/phpunit --testsuite unit $(PHPUNIT_ARGS)
 
 migrate:
 	$(RUN) api bin/console doctrine:migrations:migrate --no-interaction

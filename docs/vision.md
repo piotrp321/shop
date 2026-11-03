@@ -28,7 +28,7 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
 
 - **PostgreSQL** – źródło prawdy dla wszystkich contextów.
 - **Elasticsearch** – wyszukiwanie i filtrowanie produktów w sklepie. Tylko model odczytu, odbudowywany z Postgresa.
-- **Redis** – cache (odczyty katalogu, koszyki gości), limity dla rate limitera.
+- **Redis** – cache (odczyty katalogu), limity dla rate limitera.
 - **RabbitMQ** – komunikaty asynchroniczne przez Symfony Messenger: zdarzenia domenowe między contextami,
   indeksowanie w ES, e-maile, rewalidacja stron sklepu.
 - **Keycloak** – tożsamość użytkowników w dwóch osobnych realmach (szczegóły w sekcji „Klienci i pracownicy”).
@@ -151,7 +151,7 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 |---|---|
 | Catalog | Produkty, warianty, kategorie, atrybuty, zdjęcia |
 | Pricing | Ceny katalogowe (netto, VAT, brutto), promocje, kody rabatowe, historia cen (Omnibus) |
-| Cart | Pozycje koszyka, podgląd sum, koszyki gości i zalogowanych |
+| Cart | Pozycje koszyka, podgląd sum, koszyki gości i zalogowanych w PostgreSQL |
 | Ordering | Checkout, cykl życia zamówienia (Symfony Workflow), historia zamówień |
 | Payment | Dostawcy płatności za jednym portem, status płatności, webhooki dostawców |
 | Inventory | Stany magazynowe, rezerwacja przy zamówieniu, zwolnienie przy anulowaniu |
@@ -191,6 +191,8 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 - Krótka blokada wiersza (`SELECT … FOR UPDATE`) dla atomowych operacji na stanie magazynowym (przyjęcie, rezerwacja,
   zwolnienie, zatwierdzenie): szereguje je baza, bez sprawdzania wersji z widoku i bez ponawiania. Wiersze kilku
   produktów są blokowane w kolejności identyfikatorów, więc nie ma zakleszczeń; każda zmiana i tak podnosi wersję.
+- Zmiany koszyka szereguje krótka blokada wiersza koszyka, bez wersji z widoku: równoległe dodania z dwóch kart są
+  wszystkie zapisane, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - `Idempotency-Key` na operacjach, które nie mogą się wykonać dwa razy: złożenie zamówienia, rozpoczęcie płatności,
   przyjęcie magazynowe. Podwójne kliknięcie „Zapłać” nie tworzy dwóch zamówień, a ponowione przyjęcie nie zwiększa
   stanu drugi raz.
