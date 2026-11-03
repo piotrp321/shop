@@ -395,6 +395,93 @@
                 ]
             }
         },
+        "/api/v1/me/cart/merge": {
+            "post": {
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Merge a guest cart into the cart of the customer",
+                "description": "Moves the lines of the guest cart into the cart of the customer, in one transaction: the quantities of a product in both are added and cut to 99, a product of the guest beyond the 50th of the cart is skipped (either makes `truncated` true); price and availability are not checked. The guest cart is then merged and every later change of it is a 404. An expired cart of the customer is cleared first. A merged guest cart gives `already_merged`; an unknown or expired guest cart, or the id of a customer cart, gives `nothing_to_merge`; neither changes anything nor creates a cart, and `cart` is the cart as `GET /api/v1/me/cart` gives it.",
+                "operationId": "mergeGuestCart",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MergeGuestCartRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The cart of the customer and how the merge ended.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MergeResult"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The guest cart id is missing, not a string or not a UUID (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "shop": []
+                    }
+                ]
+            }
+        },
         "/api/v1/guest-carts": {
             "post": {
                 "tags": [
@@ -1542,6 +1629,33 @@
                 },
                 "type": "object"
             },
+            "MergeResult": {
+                "description": "The cart of the customer after a merge of a guest cart.",
+                "required": [
+                    "cart",
+                    "result",
+                    "truncated"
+                ],
+                "properties": {
+                    "cart": {
+                        "$ref": "#/components/schemas/CartView"
+                    },
+                    "result": {
+                        "description": "`merged`: the guest lines moved; `already_merged`: the guest cart was merged before; `nothing_to_merge`: the guest cart is unknown, expired or a customer cart. Only `merged` changes anything.",
+                        "type": "string",
+                        "enum": [
+                            "merged",
+                            "already_merged",
+                            "nothing_to_merge"
+                        ]
+                    },
+                    "truncated": {
+                        "description": "Whether a sum was cut to 99 units or a product of the guest skipped because the cart had 50 products; always false unless `merged`.",
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
             "CartSummary": {
                 "required": [
                     "itemCount"
@@ -1637,6 +1751,20 @@
                         "example": 3,
                         "maximum": 99,
                         "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "MergeGuestCartRequest": {
+                "description": "The guest cart to merge into the cart of the customer.",
+                "required": [
+                    "guestCartId"
+                ],
+                "properties": {
+                    "guestCartId": {
+                        "description": "Id of the guest cart (UUID).",
+                        "type": "string",
+                        "format": "uuid"
                     }
                 },
                 "type": "object"

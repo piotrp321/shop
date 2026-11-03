@@ -200,6 +200,20 @@ nelmio_api_doc:
                                     type: integer
                                     description: Units of every line, purchasable or not (the counter in the header).
                                     example: 2
+                        MergeResult:
+                            type: object
+                            description: The cart of the customer after a merge of a guest cart.
+                            required: [cart, result, truncated]
+                            properties:
+                                cart:
+                                    $ref: '#/components/schemas/CartView'
+                                result:
+                                    type: string
+                                    description: '`merged`: the guest lines moved; `already_merged`: the guest cart was merged before; `nothing_to_merge`: the guest cart is unknown, expired or a customer cart. Only `merged` changes anything.'
+                                    enum: [merged, already_merged, nothing_to_merge]
+                                truncated:
+                                    type: boolean
+                                    description: Whether a sum was cut to 99 units or a product of the guest skipped because the cart had 50 products; always false unless `merged`.
                         CartSummary:
                             type: object
                             required: [itemCount]

@@ -7,6 +7,7 @@ namespace App\Cart\UI\Http;
 use App\Cart\Application\CartRef;
 use App\Cart\Application\Command\AddCartItem;
 use App\Cart\Application\Command\ChangeCartItemQuantity;
+use App\Cart\Application\Command\MergeGuestCart;
 use App\Cart\Application\Command\RemoveCartItem;
 use App\Cart\Application\Query\CartSummary;
 use App\Cart\Application\Query\GetCart;
@@ -26,7 +27,7 @@ use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 
 /**
  * The cart of the customer of the token (`sub` of the `shop` realm); its id is never in the path. The first change
- * creates it; reads never do. Every response is `private, no-store` (CartResponseCacheSubscriber).
+ * or merge creates it; reads never do. Every response is `private, no-store` (CartResponseCacheSubscriber).
  */
 #[Security(name: 'shop')]
 final readonly class CustomerCartController
@@ -151,6 +152,36 @@ final readonly class CustomerCartController
     public function removeItem(#[CurrentUser] AuthenticatedCustomer $customer, string $productId): JsonResponse
     {
         return new JsonResponse($this->dispatch($this->commandBus, new RemoveCartItem(CartRef::customer($customer->id()), $productId)));
+    }
+
+    #[Route('/api/v1/me/cart/merge', name: 'cart_customer_merge', methods: ['POST'])]
+    #[OA\Post(
+        operationId: 'mergeGuestCart',
+        summary: 'Merge a guest cart into the cart of the customer',
+        description: 'Moves the lines of the guest cart into the cart of the customer, in one transaction: the quantities of a product in both '
+            .'are added and cut to 99, a product of the guest beyond the 50th of the cart is skipped (either makes `truncated` true); price and '
+            .'availability are not checked. The guest cart is then merged and every later change of it is a 404. An expired cart of the customer '
+            .'is cleared first. A merged guest cart gives `already_merged`; an unknown or expired guest cart, or the id of a customer cart, '
+            .'gives `nothing_to_merge`; neither changes anything nor creates a cart, and `cart` is the cart as `GET /api/v1/me/cart` gives it.',
+        tags: ['Cart'],
+        responses: [
+            new OA\Response(response: 200, description: 'The cart of the customer and how the merge ended.', content: new OA\JsonContent(ref: '#/components/schemas/MergeResult')),
+            new OA\Response(response: 400, description: 'The body is not valid JSON (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 401, description: 'Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 415, description: 'The body is not JSON (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 422, description: 'The guest cart id is missing, not a string or not a UUID (problem details with `violations`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 503, description: 'The keys of the token issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+        ],
+    )]
+    public function merge(
+        #[CurrentUser] AuthenticatedCustomer $customer,
+        #[MapRequestPayload(acceptFormat: 'json', serializationContext: [AbstractNormalizer::REQUIRE_ALL_PROPERTIES => true], validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
+        MergeGuestCartRequest $merge,
+    ): JsonResponse {
+        // Validated by the payload mapping: a UUID string.
+        \assert(\is_string($merge->guestCartId));
+
+        return new JsonResponse($this->dispatch($this->commandBus, new MergeGuestCart($customer->id(), $merge->guestCartId)));
     }
 
     /**
