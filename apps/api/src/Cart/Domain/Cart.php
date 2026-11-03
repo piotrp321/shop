@@ -280,6 +280,84 @@ final class Cart
     }
 
     /**
+     * What a merge of this cart into a customer cart ends with when it moves nothing: already_merged for a merged
+     * guest cart (also an expired one), nothing_to_merge for an expired guest cart and for a customer cart; null when
+     * the cart can be merged.
+     */
+    public function outcomeWithoutMerge(\DateTimeImmutable $now): ?MergeOutcome
+    {
+        if (!$this->owner->isGuest()) {
+            return MergeOutcome::nothingToMerge();
+        }
+        if (CartStatus::Merged === $this->status) {
+            return MergeOutcome::alreadyMerged();
+        }
+
+        return $this->isExpired($now) ? MergeOutcome::nothingToMerge() : null;
+    }
+
+    /**
+     * Merges a guest cart into this customer cart. An expired customer cart is cleared first, so it ends with the
+     * guest lines only. The guest lines, in the order of addedAt: the quantity of a product already in the cart is
+     * added, cut to MAX_QUANTITY; a new product becomes a line with the guest's quantity and addedAt while the cart
+     * has fewer than MAX_LINES lines, otherwise it is skipped. A cut or a skip makes the outcome truncated. Neither
+     * the price nor the availability is checked. The guest cart is marked merged and this cart is touched.
+     *
+     * A guest cart that cannot be merged (see outcomeWithoutMerge()) changes nothing, neither cart.
+     */
+    public function mergeFrom(self $guest, \DateTimeImmutable $now): MergeOutcome
+    {
+        if ($this->owner->isGuest()) {
+            throw new \LogicException('A guest cart is merged only into a customer cart.');
+        }
+        $refused = $guest->outcomeWithoutMerge($now);
+        if (null !== $refused) {
+            return $refused;
+        }
+
+        $this->clearIfExpired($now);
+        $truncated = false;
+        foreach ($guest->lines() as $line) {
+            $key = $line->productId()->toString();
+            $existing = $this->lines[$key] ?? null;
+            if (null !== $existing) {
+                $sum = $existing->quantity()->value() + $line->quantity()->value();
+                $truncated = $truncated || $sum > self::MAX_QUANTITY;
+                $this->lines[$key] = $existing->withQuantity(Quantity::of(min($sum, self::MAX_QUANTITY)));
+            } elseif (\count($this->lines) < self::MAX_LINES) {
+                $this->lines[$key] = $line;
+            } else {
+                $truncated = true;
+            }
+        }
+        // A guest line may be older than the lines of this cart; the lines stay in the order of addedAt (a stable
+        // sort, so lines of the same moment keep the order they got).
+        uasort($this->lines, static fn (CartLine $a, CartLine $b): int => $a->addedAt() <=> $b->addedAt());
+
+        $guest->markMerged($this->id, $now);
+        $this->touch($now);
+
+        return MergeOutcome::merged($truncated);
+    }
+
+    /**
+     * Ends an open guest cart once its lines moved into the customer cart: the lines go and the cart never changes
+     * again. The expiry stays: a merged cart only waits for its purge.
+     */
+    public function markMerged(CartId $customerCartId, \DateTimeImmutable $now): void
+    {
+        if (!$this->owner->isGuest() || CartStatus::Open !== $this->status) {
+            throw new \LogicException('Only an open guest cart can be marked merged.');
+        }
+
+        $this->lines = [];
+        $this->status = CartStatus::Merged;
+        $this->mergedInto = $customerCartId;
+        $this->mergedAt = $now;
+        $this->updatedAt = $now;
+    }
+
+    /**
      * An expired customer cart loses all its lines. A guest cart is never cleared: once expired it is gone.
      */
     public function clearIfExpired(\DateTimeImmutable $now): void
