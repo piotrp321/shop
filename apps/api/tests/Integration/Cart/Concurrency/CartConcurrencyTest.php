@@ -99,6 +99,7 @@ final class CartConcurrencyTest extends KernelTestCase
 
             $message = 'K2 round '.$round;
             $merge = array_shift($outcomes);
+            self::assertNotNull($merge);
             self::assertSame(Outcome::SUCCESS, $merge->kind, $message.': '.$merge->message);
             self::assertSame('merged', $merge->result['result'] ?? null, $message);
             $additions = self::kinds($outcomes);
