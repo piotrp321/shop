@@ -64,6 +64,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/stock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock list
+         * @description A page of products sorted by name, then by id, each with its stock (null when it has no stock record). Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         */
+        get: operations["listStock"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/products/{productId}/stock/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct the stock of a product
+         * @description Sets the physical stock to the counted units, with a reason (a note is required for `other`). Administrators and the warehouse only. Send the `version` of the stock you saw (null for a product without a stock record): a stock changed since then is a 409 and nothing is overwritten, so repeating a correction that succeeded is a 409 too. Counting what the stock has changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.
+         */
+        post: operations["correctStock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/products/{productId}/stock/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive stock of a product
+         * @description Adds delivered units to the physical stock. Administrators and the warehouse only. The `Idempotency-Key` identifies the receipt: sending it again with the same product, quantity and note adds nothing and answers 200 with the current stock, so a receipt can be retried safely; the same key with other content or another product is a 409. The history entry names the staff member of the token.
+         */
+        post: operations["receiveStock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/products/{productId}/stock-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock history of a product
+         * @description Every recorded change of the stock of a product (receipts, corrections, reservations, releases and commits), newest first, with the deltas, the stock right after the change, what made it and, for a change by staff, who. Every staff member may read it. A product that exists but has no stock record has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.
+         */
+        get: operations["getStockHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/prices": {
         parameters: {
             query?: never;
@@ -145,6 +225,59 @@ export interface components {
                 /** @example This is not a valid UUID. */
                 title: string;
             }[];
+        };
+        BackofficeStockQuery: {
+            /** @default null */
+            q: string | null;
+            /** @default null */
+            category: string | null;
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
+        };
+        /** @description The counted physical stock of a product, based on the version of the stock the staff member saw. */
+        CorrectStockRequest: {
+            /**
+             * @description Units counted on the shelf, from 0 to 1 000 000; not less than is reserved.
+             * @example 18
+             */
+            physical: number;
+            /**
+             * @description The `version` of the stock the correction is based on; null when the product has no stock record.
+             * @example 3
+             */
+            version: number | null;
+            /**
+             * @description Why: inventory count, damage, loss or another reason (explained in the note).
+             * @example inventory_count
+             * @enum {string}
+             */
+            reason: "inventory_count" | "damage" | "loss" | "other";
+            /**
+             * @description A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or blank for none.
+             * @example Inwentaryzacja roczna
+             */
+            note: string | null;
+        };
+        /** @description Delivered units of a product. */
+        ReceiveStockRequest: {
+            /**
+             * @description Units received, from 1 to 100 000. The physical stock may not exceed 1 000 000.
+             * @example 24
+             */
+            quantity: number;
+            /**
+             * @description A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; null or blank for none.
+             * @example Dostawa od Biegam sp. z o.o.
+             */
+            note: string | null;
+        };
+        StockHistoryQuery: {
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
         };
         BackofficePricesQuery: {
             /** @default null */
@@ -279,6 +412,167 @@ export interface components {
             id: string;
             name: string;
             children: components["schemas"]["CategoryNode"][];
+        };
+        /** @description The stored stock of a product, in whole units; all computed by the API. */
+        ListedStockResponse: {
+            /**
+             * @description Units on the shelf.
+             * @example 12
+             */
+            physical: number;
+            /**
+             * @description Units promised to active reservations.
+             * @example 2
+             */
+            reserved: number;
+            /**
+             * @description Physical minus reserved.
+             * @example 10
+             */
+            available: number;
+            /**
+             * @description Availability level shown in the store.
+             * @example in_stock
+             * @enum {string}
+             */
+            level: "in_stock" | "low_stock" | "out_of_stock";
+            /**
+             * @description Version of the stock, to send with a correction.
+             * @example 3
+             */
+            version: number;
+            /**
+             * @description When the stock last changed (RFC 3339, UTC).
+             * @example 2026-11-02T12:30:00+00:00
+             */
+            updatedAt: string;
+        };
+        /** @description A product with its stock. */
+        StockListItemResponse: {
+            /** Format: uuid */
+            productId: string;
+            /** @example Bidon 750 ml */
+            name: string;
+            /** @description The stored stock, null when the product has no stock record (nothing on the shelf, nothing reserved). */
+            stock: components["schemas"]["ListedStockResponse"] | null;
+        };
+        /** @description A page of the stock list. */
+        StockListResponse: {
+            items: components["schemas"]["StockListItemResponse"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after`), null on the last page.
+             * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
+             */
+            next: string | null;
+        };
+        /** @description The stock of a product after a receipt or a correction, in whole units; all computed by the API. */
+        StockStateResponse: {
+            /**
+             * Format: uuid
+             * @description Product id (UUID).
+             */
+            productId: string;
+            /**
+             * @description Units on the shelf.
+             * @example 12
+             */
+            physical: number;
+            /**
+             * @description Units promised to active reservations.
+             * @example 2
+             */
+            reserved: number;
+            /**
+             * @description Physical minus reserved.
+             * @example 10
+             */
+            available: number;
+            /**
+             * @description Availability level shown in the store.
+             * @example in_stock
+             * @enum {string}
+             */
+            level: "in_stock" | "low_stock" | "out_of_stock";
+            /**
+             * @description Version of the stock, to send with a correction; null when the product has no stock record.
+             * @example 3
+             */
+            version: number | null;
+            /**
+             * @description When the stock last changed (RFC 3339, UTC); null when the product has no stock record.
+             * @example 2026-11-02T12:30:00+00:00
+             */
+            updatedAt: string | null;
+        };
+        /** @description One recorded stock change: what changed and the stock right after it, in whole units. */
+        StockHistoryItemResponse: {
+            /**
+             * @description When the stock changed (RFC 3339, UTC).
+             * @example 2026-11-01T12:30:00+00:00
+             */
+            occurredAt: string;
+            /**
+             * @description What happened: a `receipt` of delivered units, a `correction` after counting, a `reservation`, the `release` of a reservation or its `commit` (the units leave the shelf).
+             * @example receipt
+             * @enum {string}
+             */
+            type: "receipt" | "correction" | "reservation" | "release" | "commit";
+            /**
+             * @description Change of the physical stock (negative when units left).
+             * @example 12
+             */
+            physicalDelta: number;
+            /**
+             * @description Change of the reserved stock.
+             * @example 0
+             */
+            reservedDelta: number;
+            /**
+             * @description Physical stock right after the change.
+             * @example 12
+             */
+            physicalAfter: number;
+            /**
+             * @description Reserved stock right after the change.
+             * @example 0
+             */
+            reservedAfter: number;
+            /**
+             * @description Reason of a `correction`, null for the other types.
+             * @example damage
+             * @enum {string|null}
+             */
+            reason: "inventory_count" | "damage" | "loss" | "other" | null;
+            /**
+             * @description Note of the staff member, if any.
+             * @example Dostawa od dostawcy
+             */
+            note: string | null;
+            /**
+             * @description The key of the receipt or of the reservation, if any.
+             * @example order-1042
+             */
+            reference: string | null;
+            /**
+             * @description What made the change: `staff` (a staff member in the panel), `seed` (the demo data) or `system` (another module through the reservation port).
+             * @example staff
+             * @enum {string}
+             */
+            source: "staff" | "seed" | "system";
+            /**
+             * @description The staff member who made a `staff` change, null for the other sources.
+             * @example Anna Admin
+             */
+            actorName: string | null;
+        };
+        /** @description A page of the stock history of a product, newest entry first. */
+        StockHistoryResponse: {
+            items: components["schemas"]["StockHistoryItemResponse"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after`), null on the last page.
+             * @example eyJ0IjoiMjAyNi0xMS0wMVQxMjozMDowMC4wMDAwMDArMDA6MDAiLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
+             */
+            next: string | null;
         };
         /** @description The stored price of a product. Amounts are in grosze, the rate in basis points; all computed by the API. */
         ListedPriceResponse: {
@@ -514,6 +808,345 @@ export interface operations {
             };
             /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listStock: {
+        parameters: {
+            query?: {
+                /** @description A part of the product name, 2 to 100 characters. */
+                q?: string;
+                /** @description Category id (UUID). */
+                category?: string;
+                /** @description The `next` cursor of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the stock list. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockListResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The `category` filter names a category that does not exist (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    correctStock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Product id (UUID). */
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectStockRequest"];
+            };
+        };
+        responses: {
+            /** @description The stock as saved, or as it was when nothing changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockStateResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in the warehouse (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The stock was changed since the given version, or created since the null version; or less was counted than is reserved, `detail` names the reserved units (problem details). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The count is out of range, the reason unknown, the note too long or missing for `other`, or a key is missing or of a wrong type (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    receiveStock: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Key of the receipt, chosen by the client (e.g. a UUID made when the dialog opens): 1 to 100 characters, letters, digits, ".", "_", ":" or "-". */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Product id (UUID). */
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiveStockRequest"];
+            };
+        };
+        responses: {
+            /** @description The receipt was received before with this key and the same content: nothing changed, the current stock. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockStateResponse"];
+                };
+            };
+            /** @description Received: the stock after the receipt. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockStateResponse"];
+                };
+            };
+            /** @description The `Idempotency-Key` header is missing or malformed (problem details with `violations`), or the body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in the warehouse (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The key was used for a receipt with other content or of another product (problem details). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The quantity or the note is out of range, a key is missing or of a wrong type (problem details with `violations`), or the physical stock would exceed 1 000 000 (problem details). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getStockHistory: {
+        parameters: {
+            query?: {
+                /** @description The `next` cursor of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Product id (UUID). */
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the history. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockHistoryResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the id is not a UUID (problem details). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

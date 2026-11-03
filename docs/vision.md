@@ -186,9 +186,14 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
   nie uruchamiamy lokalnie ani w środowisku demo.
 
 **Spójność i współbieżność**
-- Optimistic locking (wersja) na agregatach, które mogą być edytowane równolegle (zamówienie, stan magazynowy, cena).
-- `Idempotency-Key` na operacjach, które nie mogą się wykonać dwa razy: złożenie zamówienia, rozpoczęcie płatności.
-  Podwójne kliknięcie „Zapłać” nie tworzy dwóch zamówień.
+- Optimistic locking (wersja) dla edycji z widoku: zmiana agregatu edytowanego równolegle (zamówienie, cena, korekta
+  stanu magazynowego) wskazuje wersję, na której się opiera, a nieaktualna wersja kończy się konfliktem.
+- Krótka blokada wiersza (`SELECT … FOR UPDATE`) dla atomowych operacji na stanie magazynowym (przyjęcie, rezerwacja,
+  zwolnienie, zatwierdzenie): szereguje je baza, bez sprawdzania wersji z widoku i bez ponawiania. Wiersze kilku
+  produktów są blokowane w kolejności identyfikatorów, więc nie ma zakleszczeń; każda zmiana i tak podnosi wersję.
+- `Idempotency-Key` na operacjach, które nie mogą się wykonać dwa razy: złożenie zamówienia, rozpoczęcie płatności,
+  przyjęcie magazynowe. Podwójne kliknięcie „Zapłać” nie tworzy dwóch zamówień, a ponowione przyjęcie nie zwiększa
+  stanu drugi raz.
 - Odbiorcy zdarzeń są idempotentni (outbox daje dostarczenie „co najmniej raz”).
 - Webhooki płatności: weryfikacja podpisu, deduplikacja po identyfikatorze zdarzenia.
 
@@ -286,13 +291,16 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
 - Domena bez mapowania Doctrine: osobny model persystencji (rekordy z atrybutami w Infrastructure) i jawne
   mapowanie agregat ↔ rekord w repozytoriach. To założenie początkowe, nie ostateczna decyzja: po walking
   skeleton ocenimy, czy osobny model persystencji daje korzyści warte kosztu utrzymania. Jeśli okaże się zbędny,
-  rozważymy bezpośrednie mapowanie agregatów przez Doctrine w XML.
+  rozważymy bezpośrednie mapowanie agregatów przez Doctrine w XML. Wyjątek: Inventory zapisuje przez DBAL,
+  a jego rekordy służą tylko za definicję schematu (uzasadnienie w `apps/api/CLAUDE.md`).
 - Osobne value objecty w każdym contexcie zamiast wspólnej klasy bazowej.
 - Transactional outbox dla zdarzeń domenowych.
 - Elasticsearch wyłącznie jako model odczytu.
 - ISR z rewalidacją na żądanie zamiast SSR przy każdym żądaniu dla stron katalogu.
 - Varnish z tagami (xkey) tylko przed publicznymi odczytami API; trzy warstwy cache i ich unieważnianie.
-- Optimistic locking i klucze idempotencji zamiast blokad pesymistycznych.
+- Model mieszany: optimistic locking i klucze idempotencji dla edycji z widoku i operacji powtarzanych przez klienta,
+  krótka blokada wiersza (`SELECT … FOR UPDATE`) z decyzją w agregacie dla atomowych operacji na stanie magazynowym,
+  żeby sprzedaż ponad stan była niemożliwa także przy równoległych rezerwacjach.
 - Garage jako magazyn S3 i imgproxy (przetwarzanie obrazów na żądanie, format w podpisanym adresie) zamiast
   generowania miniatur przy uploadzie.
 - Drzewo kategorii jako lista sąsiedztwa (`parent_id`, źródło prawdy) ze zmaterializowaną ścieżką do zapytań

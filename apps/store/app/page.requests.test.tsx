@@ -39,6 +39,7 @@ beforeEach(() => {
       requested.push(url.pathname);
       if (url.pathname === "/api/v1/categories") return json(TREE);
       if (url.pathname === "/api/v1/prices") return json({ items: [{ productId: makeProduct(1).id, gross: 5490, currency: "PLN" }] });
+      if (url.pathname === "/api/v1/availability") return json({ items: [{ productId: makeProduct(1).id, level: "in_stock" }] });
       return json(PAGE);
     }),
   );
@@ -53,16 +54,16 @@ const props = (params: Record<string, string>) =>
   ({ searchParams: Promise.resolve(params) }) as unknown as Parameters<typeof Home>[0];
 
 describe("catalogue page requests", () => {
-  it("makes one categories, one products and one prices request for the metadata and the page together", async () => {
+  it("makes one categories, one products, one prices and one availability request for the metadata and the page together", async () => {
     const request = props({ category: "buty", page: "2" });
     await Promise.all([generateMetadata(request), Home(request)]);
-    expect(requested.sort()).toEqual(["/api/v1/categories", "/api/v1/prices", "/api/v1/products"]);
+    expect(requested.sort()).toEqual(["/api/v1/availability", "/api/v1/categories", "/api/v1/prices", "/api/v1/products"]);
   });
 
   it("asks again on the next request", async () => {
     await generateMetadata(props({}));
     memo.newRequest();
     await generateMetadata(props({}));
-    expect(requested).toHaveLength(6);
+    expect(requested).toHaveLength(8);
   });
 });

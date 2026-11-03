@@ -37,6 +37,7 @@ describe("Home page", () => {
       categories: TREE,
       products: { items, page, perPage: 24, total: items.length },
       prices: {},
+      availability: {},
     });
 
     it("loads the catalogue for the first value of each repeated parameter", async () => {

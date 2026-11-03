@@ -1,6 +1,6 @@
 # Inventory: stany magazynowe (MVP)
 
-Status: zaakceptowana do realizacji. Punkt 9 MVP z `docs/vision.md` (bez Ordering).
+Punkt 9 MVP z `docs/vision.md` (bez Ordering).
 
 ## Cel i zakres
 
@@ -16,8 +16,8 @@ Varnish i ISR. Nie powstają endpointy ani ekrany rezerwacji: port jest testowan
 
 | Context | Odpowiada za |
 |---|---|
-| Inventory (nowy) | stany, przyjęcia, korekty, rezerwacje, historia, poziom dostępności |
-| Catalog | zapytania dla Inventory: `GetProductExists`, `ListProductIdentities` (nowe), `SearchBackofficeProducts` (istniejące) |
+| Inventory | stany, przyjęcia, korekty, rezerwacje, historia, poziom dostępności |
+| Catalog | zapytania dla Inventory: `GetProductExists`, `ListProductIdentities`, `SearchBackofficeProducts` |
 | Sklep, panel | wyświetlanie wartości z API; żadnego liczenia dostępności ani poziomów |
 
 - `Inventory_Infrastructure → Catalog_Application`: adaptery portów Inventory wołają zapytania Catalog przez
@@ -30,7 +30,7 @@ Varnish i ISR. Nie powstają endpointy ani ekrany rezerwacji: port jest testowan
 - Inventory w MVP nie publikuje ani nie konsumuje zdarzeń domenowych (jak Pricing). Zdarzenie zmiany dostępności
   dochodzi razem z Varnishem i rewalidacją ISR.
 
-Nowe zapytania Catalog (`query.bus`, DBAL):
+Zapytania Catalog dla Inventory (`query.bus`, DBAL):
 - `GetProductExists(productId): bool`.
 - `ListProductIdentities(after, limit)`: `{id, slug}` partiami po `id`, dla seeda Inventory.
 
@@ -53,7 +53,9 @@ Niezmiennik: `0 ≤ reserved ≤ physical ≤ 1 000 000`.
 
 - `correct` z wartością równą bieżącemu `physical` zwraca `false`: bez wpisu historii i bez zmiany wersji.
 - Każda faktyczna zmiana dopisuje jeden `StockMovement` ze stanem po operacji i podnosi `version` przy zapisie.
-- Produkt bez rekordu stanu ma `physical = reserved = 0`. Rekord powstaje przy pierwszym przyjęciu lub korekcie.
+- Produkt bez rekordu stanu ma `physical = reserved = 0`. Rekord powstaje przy pierwszym przyjęciu, przy korekcie
+  zmieniającej stan (korekta do 0 nie zapisuje rekordu) albo jako pusty rekord danych demo (wersja 0, bez wpisu
+  historii).
 
 ### Agregat `Reservation`
 
@@ -93,8 +95,8 @@ wpis historii ze stanem po operacji powstaje z agregatu, a wynik jest determinis
 bez fałszywych odmów i ponawiania). Krótsza blokada warunkowego `UPDATE` jest pomijalna przy krótkiej transakcji.
 
 - Repozytorium: `lockMany(productIds)` blokuje wiersze `inventory_stock_item` w kolejności rosnącego `product_id`
-  (bez zakleszczeń przy liniach w dowolnej kolejności). Wiersz dla przyjęcia lub korekty produktu bez rekordu
-  zakłada `INSERT … ON CONFLICT DO NOTHING` przed blokadą.
+  (bez zakleszczeń przy liniach w dowolnej kolejności). Wiersz dla przyjęcia lub korekty zmieniającej stan produktu
+  bez rekordu zakłada `INSERT … ON CONFLICT DO NOTHING` przed blokadą.
 - Model mieszany: operacje atomowe (przyjęcie, rezerwacja, zwolnienie, zatwierdzenie) nie sprawdzają wersji z widoku,
   szereguje je blokada wiersza. Korekta z panelu dodatkowo sprawdza `expectedVersion` (nieaktualny widok: 409,
   `StockModifiedConcurrently`). Każda zmiana podnosi `version`.
@@ -140,27 +142,38 @@ wiersz, a stan nie zmienia się dwa razy.
 - `inventory_stock_item`: `product_id uuid` (PK), `physical int`, `reserved int`, `version int`, `updated_at`;
   `CHECK (reserved >= 0 AND physical >= reserved AND physical <= 1000000)`.
 - `inventory_reservation`: `reservation_key varchar(100)` (PK), `status`, `created_at`, `updated_at`.
-- `inventory_reservation_line`: `reservation_key`, `product_id`, `quantity`; PK `(reservation_key, product_id)`.
+- `inventory_reservation_line`: `reservation_key`, `product_id`, `quantity`; PK `(reservation_key, product_id)`;
+  klucz obcy `reservation_key` → `inventory_reservation` (`inventory_reservation_line_reservation_fk`, bez
+  `ON DELETE CASCADE`: rezerwacje są przechowywane na zawsze, więc nagłówek z liniami nie daje się usunąć).
 - `inventory_stock_movement`: `id uuid` (v7, PK), `product_id`, `type`, `physical_delta`, `reserved_delta`,
   `physical_after`, `reserved_after`, `reason` (null), `note` (null), `reference` (null), `source`, `actor_id` (null),
   `actor_name` (null), `occurred_at`; indeks `(product_id, occurred_at DESC, id)`; unikalny indeks częściowy
   `(reference) WHERE type = 'receipt'`.
 - Bez kluczy obcych do tabel Catalog.
-- Rekordy Doctrine w `Inventory/Infrastructure/Persistence/Doctrine/Record`, mapowanie agregat ↔ rekord
-  w repozytoriach, `reconstitute()` bez wpisów historii.
+- Repozytoria (`Inventory/Infrastructure/Persistence/Doctrine`) zapisują i czytają przez DBAL na połączeniu Doctrine,
+  w transakcji `command.bus`: `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE` z wersją. Agregat jest
+  odtwarzany przez `reconstitute()` bez wpisów historii. Rekordy Doctrine (`…/Doctrine/Record`) są wyłącznie definicją
+  schematu dla `doctrine:schema` i migracji (`doctrine:schema:update --dump-sql` nie pokazuje różnic dla tabel
+  Inventory), repozytoria ich nie używają. To świadomy wyjątek od reguły „agregat ↔ rekord” (`apps/api/CLAUDE.md`):
+  rollback do savepointu przy zagnieżdżonym dispatchu nie czyści `UnitOfWork`, więc `flush` wywołującego zapisałby
+  wycofane zmiany; błąd bazy zamyka wspólny `EntityManager`; `find()` z `PESSIMISTIC_WRITE` na encji już obecnej
+  w identity map nie odświeża jej stanu (ryzyko sprzedaży ponad stan); `ON CONFLICT` i tak wymaga SQL.
 - Stan, rezerwacja i wpisy historii zapisują się w jednej transakcji `command.bus` (`doctrine_transaction`).
   Nie ma zmiany stanu bez wpisu ani wpisu bez zmiany.
 - Repozytoria nie mają operacji zmiany ani usuwania wpisów historii. Tabele Inventory czyści wyłącznie
-  `inventory:seed-demo` (`DbalInventoryReset`).
+  `inventory:seed-demo` (`DbalInventoryReset`), jednym `TRUNCATE` wszystkich czterech tabel.
 
 ## Warstwa aplikacji
 
 Komendy (`command.bus`):
-- `ReceiveStock(productId, quantity, receiptKey, note, actorId, actorName)` → `StockView` i znacznik, czy to
-  powtórzenie. Nieznany produkt (port `ProductCatalog`, Catalog `GetProductExists`): `ProductNotFound` (404).
+- `ReceiveStock` (`byStaff(productId, quantity, receiptKey, note, actorId, actorName)` z panelu,
+  `bySeed(productId, quantity, receiptKey)` dla seeda) → `StockView` i znacznik, czy to powtórzenie. Nieznany produkt
+  (port `ProductCatalog`, Catalog `GetProductExists`): `ProductNotFound` (404).
 - `CorrectStock(productId, countedPhysical, expectedVersion|null, reason, note, actorId, actorName)` → `StockView`.
   Nieznany produkt: 404. Produkt bez rekordu wymaga `expectedVersion = null`; rekord istnieje, a wersja jest inna
   (także `null`): 409.
+- `CreateEmptyStock(productId)`: pusty rekord (0/0) w wersji 0 bez wpisu historii; idempotentna (istniejący rekord
+  zostaje bez zmian). Nieznany produkt: `ProductNotFound` (404). Używa jej tylko seed.
 - Port dla Ordering:
   - `ReserveStock(reservationKey, lines)` → `ReservationView {key, status, lines}`;
   - `ReleaseReservation(reservationKey)` → `ReservationView`;
@@ -172,7 +185,7 @@ Zapytania (`query.bus`):
 - `GetStockLevels(productIds)` (1–100 id) → dla każdego id `StockLevel {productId, physical, reserved, available,
   level, version|null}`; produkt bez rekordu: zera i `version = null`. Jedno zapytanie `WHERE product_id = ANY(:ids)`,
   z bazy, bez cache. Autorytatywny odczyt dla przyszłych Cart i Ordering i źródło endpointu sklepu.
-- `ListBackofficeStock(q, categoryId, after, perPage)`: strona produktów z portu `ProductDirectory` (Catalog
+- `ListBackofficeStock(term, categoryId, after, perPage)`: strona produktów z portu `ProductDirectory` (Catalog
   `SearchBackofficeProducts`), stany strony jednym zapytaniem.
 - `GetStockHistory(productId, after, perPage)`: od najnowszych, keyset po `(occurred_at, id)` malejąco. Nieznany
   produkt: 404. Produkt bez rekordu: pusta lista.
@@ -188,7 +201,8 @@ Dane demo: `inventory:seed-demo`
 - `fixtures/stock.yaml`: wzorce slugów → stan fizyczny (składnia i zasada „pierwszy pasujący” jak `prices.yaml`).
   Większość produktów 20–50 sztuk, kilka 2–3 (`low_stock`), kilka 0 (`out_of_stock`); co najmniej jeden produkt
   demo ma 0 (używa go E2E).
-- Stan > 0: `ReceiveStock` ze źródłem `seed` i kluczem `seed:<productId>`. Stan 0: rekord bez przyjęcia.
+- Stan > 0: `ReceiveStock` ze źródłem `seed` i kluczem `seed:<productId>`. Stan 0: pusty rekord przez
+  `CreateEmptyStock`, bez przyjęcia i wpisu historii.
 - Produkt demo bez dopasowanego wzorca kończy seed błędem bez zmian w danych.
 - `make seed` uruchamia go po `pricing:seed-demo`. W `prod` wymaga `--force-reset`.
 
@@ -242,7 +256,7 @@ z tokenem realmu `shop`: 401):
     „Inne”), wersja z wiersza.
   - 409 wersji: „Stan został w międzyczasie zmieniony – odśwież” i odświeżenie wiersza; 409 poniżej zarezerwowanego
     i 409 klucza: `detail` z API; 422: komunikat naruszenia przy polu.
-- „Historia”: wpisy od najnowszych, „Pokaż więcej”, etykiety typów (Przyjęcie, Korekta, Rezerwacja, Zwolnienie,
+- „Historia” (przycisk w wierszu, dla każdego pracownika): wpisy od najnowszych, „Pokaż więcej”, etykiety typów (Przyjęcie, Korekta, Rezerwacja, Zwolnienie,
   Zatwierdzenie), powodów i źródeł (Pracownik, Dane demo, System).
 
 ## Scenariusze błędów
@@ -277,7 +291,7 @@ z tokenem realmu `shop`: 401):
 7. Sklep pokazuje poziom dostępności (próg „Ostatnie sztuki” 1–5 w API), nigdy liczby sztuk.
 8. Kryteria współbieżności C1–C6 przechodzą na prawdziwym PostgreSQL w CI.
 9. Po `make seed` każdy produkt demo ma rekord stanu.
-10. Catalog i Pricing nie zależą od Inventory; Deptrac odrzuca próby obejścia.
+10. Catalog i Pricing nie zależą od Inventory; Deptrac odrzuca zależności spoza reguł Inventory.
 11. Przechodzą `make -C apps/api check`, `make -C apps/api test`, `check` i `test` sklepu i panelu oraz `make e2e`.
 
 ## Testy
@@ -297,13 +311,13 @@ w 5 rundach; po każdej rundzie niezmiennik: `reserved` = suma linii aktywnych r
 | C3 | 10 procesów, ten sam klucz i linie rezerwacji | 1 rezerwacja, stan zmieniony raz, 10 identycznych wyników, 1 wpis na linię |
 | C4 | 10 procesów, ten sam klucz przyjęcia | `physical` += q raz, 1 wpis, wszystkie wyniki to sukces |
 | C5 | 10 procesów naraz zwalnia albo zatwierdza tę samą rezerwację | wygrywa jedno przejście; powtórzenia tego przejścia: sukces bez zmian; przeciwne: `ReservationStateConflict`; stan spójny z wygranym przejściem |
-| C6 | korekty w dół równolegle z rezerwacjami | `physical ≥ reserved ≥ 0` po każdej operacji; bezpośredni SQL łamiący `CHECK` kończy się błędem |
+| C6 | korekty w dół (na tej samej wersji) równolegle z rezerwacjami | zapisana co najwyżej jedna korekta, nigdy poniżej `reserved`; pozostałe: `StockModifiedConcurrently` albo `CorrectionBelowReserved`; `physical ≥ reserved ≥ 0` w każdym stanie historii |
 
 ### Pozostałe
 
 - Architektura: Deptrac z regułami `Inventory_Infrastructure → Catalog_Application`,
-  `Inventory_Infrastructure → Backoffice_Application`, `Inventory_UI → Backoffice_Application` oraz próbami obejścia
-  (pliki tymczasowe muszą dać błąd): `Catalog_* → Inventory_*`, `Pricing_* → Inventory_*`, `Inventory_* → Pricing_*`,
+  `Inventory_Infrastructure → Backoffice_Application`, `Inventory_UI → Backoffice_Application`; zakazane (brak reguły,
+  Deptrac zgłasza błąd): `Catalog_* → Inventory_*`, `Pricing_* → Inventory_*`, `Inventory_* → Pricing_*`,
   `Inventory_Domain → Catalog_*`, `Inventory_Application → Catalog_Domain`,
   `Inventory_Domain → Backoffice_Application`, `Inventory_Application → Backoffice_Application`,
   `Inventory_Infrastructure → Backoffice_Infrastructure`.
@@ -312,8 +326,8 @@ w 5 rundach; po każdej rundzie niezmiennik: `reserved` = suma linii aktywnych r
   handlery: idempotencja przyjęcia i rezerwacji (także ponowienie po zwolnieniu i zatwierdzeniu zwraca aktualny
   status), `InsufficientStock` z pełną listą braków, „wszystko albo nic”.
 - Integracyjne (PostgreSQL): blokady i `ON CONFLICT`, wymuszony błąd zapisu historii wycofuje zmianę stanu,
-  `GetStockLevels` dla 100 id jednym zapytaniem, indeks unikalny klucza przyjęcia, nowe zapytania Catalog, seed
-  i reset (także produkt bez wzorca).
+  `GetStockLevels` dla 100 id jednym zapytaniem, indeks unikalny klucza przyjęcia, `CHECK` odrzucający
+  bezpośredni SQL łamiący niezmiennik, zapytania Catalog dla Inventory, seed i reset (także produkt bez wzorca).
 - Funkcjonalne API: każdy endpoint z przypadkami 200/201, 400, 401 (bez tokena i z tokenem `shop`), 403 (`support`,
   `marketing` przy POST), 404, 409, 415, 422.
 - Vitest: sklep – etykiety poziomów, kafelek bez etykiety, `loadCatalog` przy błędzie dostępności; panel – widok
@@ -328,15 +342,5 @@ w 5 rundach; po każdej rundzie niezmiennik: `reserved` = suma linii aktywnych r
   w transakcji Ordering wydłuża blokadę. Wydajność nie jest potwierdzona testami obciążeniowymi.
 - Wersja rośnie przy każdej rezerwacji, więc korekta w trakcie ruchu częściej kończy się 409.
 - Historia rośnie o 2–3 wpisy na linię zamówienia, bez partycjonowania w MVP.
-- Sklep pokazuje dostępność z opóźnieniem do 60 s i wykonuje trzecie wywołanie API na stronę listy.
-
-## Dokumentacja do aktualizacji razem z implementacją
-
-- `docs/vision.md`: w „Spójność i współbieżność” – optimistic locking (wersja) dla edycji z widoku, krótka blokada
-  wiersza (`SELECT … FOR UPDATE`) dla atomowych operacji na stanie magazynowym; `Idempotency-Key` także dla przyjęcia
-  magazynowego; na liście decyzji pozycja „Optimistic locking i klucze idempotencji zamiast blokad pesymistycznych”
-  zastąpiona opisem modelu mieszanego.
-- `apps/api/CLAUDE.md`: reguła optimistic locking z wyjątkiem dla operacji atomowych na stanie magazynowym;
-  `inventory:seed-demo` w opisie `make seed`; `Idempotency-Key` przy przyjęciu magazynowym.
-- `apps/api/deptrac.yaml`: warstwy Inventory oraz komentarze do reguł Inventory → Catalog i
-  Inventory → Backoffice_Application.
+- Sklep pokazuje dostępność z opóźnieniem do 60 s i wykonuje dodatkowe wywołanie API na stronę listy (obok kategorii,
+  produktów i cen).

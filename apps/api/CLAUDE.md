@@ -16,7 +16,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - dane demo ładuje `make seed` z głównego `Makefile`: najpierw `catalog:seed-demo` (katalog), potem
   `pricing:seed-demo`, który czyści ceny i ich historię i ustawia cenę (źródło `seed`) każdemu produktowi demo według
   wzorców slugów z `fixtures/prices.yaml` (pierwszy pasujący wzorzec w kolejności pliku; produkt bez wzorca kończy
-  seed błędem bez zmian w danych). Obie komendy w `prod` wymagają `--force-reset`
+  seed błędem bez zmian w danych); na końcu `inventory:seed-demo`, który czyści stany, rezerwacje i historię stanów
+  i ustawia stan fizyczny każdemu produktowi demo według wzorców slugów z `fixtures/stock.yaml` (ta sama składnia
+  i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze źródłem `seed` i kluczem `seed:<productId>`, stan 0
+  to rekord stanu bez wpisu historii; produkt bez wzorca kończy seed błędem bez zmian w danych). Wszystkie trzy
+  komendy w `prod` wymagają `--force-reset`
 - `pricing:reconcile-tax [--apply]` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`) –
   narzędzie uruchamiane świadomie, np. po zmianie stawki w `PolishVatRates`; nie wywołuje go `make init`, `make up`
   ani `make seed`. Przechodzi wszystkie ceny partiami po `product_id` razem z produktami Catalog
@@ -38,6 +42,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Domena nie jest mapowana przez Doctrine. Persystencja przez rekordy w `<Context>/Infrastructure/Persistence/Doctrine`
   mapowane atrybutami, z relacjami między rekordami. Repozytoria mapują agregat ↔ rekord, a agregat odtwarzają
   przez `reconstitute()`, które nie zapisuje zdarzeń.
+- Wyjątek: Inventory. Stan, rezerwacje i historię zapisuje i czyta przez DBAL na połączeniu Doctrine, w transakcji
+  `command.bus` (jawne `SELECT … FOR UPDATE`, `INSERT … ON CONFLICT DO NOTHING`, `UPDATE` z wersją). Rekordy Doctrine
+  Inventory są tylko definicją schematu dla `doctrine:schema` i migracji, repozytoria ich nie używają. Powody:
+  rollback do savepointu przy zagnieżdżonym dispatchu nie czyści `UnitOfWork`, więc `flush` wywołującego zapisałby
+  wycofane zmiany; błąd bazy zamyka wspólny `EntityManager`; `find()` z `PESSIMISTIC_WRITE` na encji już obecnej
+  w identity map nie odświeża jej stanu (ryzyko sprzedaży ponad stan); `ON CONFLICT` i tak wymaga SQL.
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
@@ -53,7 +63,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## Reguły modelu
 
 - Pieniądze zawsze jako liczba całkowita w groszach plus waluta, nigdy float. Zaokrąglanie VAT jawnie, w jednym miejscu.
-- Agregaty edytowane równolegle (zamówienie, stan magazynowy, cena) mają optimistic locking (pole wersji).
+- Agregaty edytowane równolegle (zamówienie, stan magazynowy, cena) mają optimistic locking (pole wersji): edycja
+  z widoku sprawdza wersję, na której się opiera. Wyjątek: atomowe operacje na stanie magazynowym (przyjęcie,
+  rezerwacja, zwolnienie, zatwierdzenie) nie sprawdzają wersji z widoku, tylko blokują wiersze (`SELECT … FOR UPDATE`
+  w `StockItemRepository::lockMany`, w kolejności rosnącego `product_id`; przyjęcie i korekta produktu bez stanu
+  zakładają wiersz przez `lockOrCreate`, `INSERT … ON CONFLICT DO NOTHING` przed blokadą) i czytają stan od nowa po
+  uzyskaniu blokady; zapis i tak podnosi wersję. Korekta z panelu blokuje wiersz i dodatkowo sprawdza wersję z widoku.
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
 - Odbiorcy zdarzeń muszą być idempotentni: to samo zdarzenie może przyjść więcej niż raz.
 - Zamówienie przechowuje kopię cen, rabatów i adresu z chwili złożenia, nie referencje.
@@ -79,7 +94,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   HTTP, mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
   (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
-- Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności) wymagają nagłówka `Idempotency-Key`.
+- Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności, przyjęcie magazynowe) wymagają nagłówka
+  `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Przyjęcie z tym samym kluczem i tą samą
+  treścią (produkt, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
+  treścią albo dla innego produktu to 409. Klucze przyjęć są w historii stanów na zawsze (unikalny indeks).
 - Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
 

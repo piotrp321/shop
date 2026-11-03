@@ -150,6 +150,504 @@
                 ]
             }
         },
+        "/api/v1/admin/stock": {
+            "get": {
+                "tags": [
+                    "Inventory"
+                ],
+                "summary": "Stock list",
+                "description": "A page of products sorted by name, then by id, each with its stock (null when it has no stock record). Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
+                "operationId": "listStock",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "A part of the product name, 2 to 100 characters.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 100,
+                            "minLength": 2
+                        }
+                    },
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "description": "Category id (UUID).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `next` cursor of the previous page.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the stock list. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StockListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "The `category` filter names a category that does not exist (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/products/{productId}/stock/corrections": {
+            "post": {
+                "tags": [
+                    "Inventory"
+                ],
+                "summary": "Correct the stock of a product",
+                "description": "Sets the physical stock to the counted units, with a reason (a note is required for `other`). Administrators and the warehouse only. Send the `version` of the stock you saw (null for a product without a stock record): a stock changed since then is a 409 and nothing is overwritten, so repeating a correction that succeeded is a 409 too. Counting what the stock has changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.",
+                "operationId": "correctStock",
+                "parameters": [
+                    {
+                        "name": "productId",
+                        "in": "path",
+                        "description": "Product id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CorrectStockRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The stock as saved, or as it was when nothing changed.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StockStateResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in the warehouse (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such product, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The stock was changed since the given version, or created since the null version; or less was counted than is reserved, `detail` names the reserved units (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The count is out of range, the reason unknown, the note too long or missing for `other`, or a key is missing or of a wrong type (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/products/{productId}/stock/receipts": {
+            "post": {
+                "tags": [
+                    "Inventory"
+                ],
+                "summary": "Receive stock of a product",
+                "description": "Adds delivered units to the physical stock. Administrators and the warehouse only. The `Idempotency-Key` identifies the receipt: sending it again with the same product, quantity and note adds nothing and answers 200 with the current stock, so a receipt can be retried safely; the same key with other content or another product is a 409. The history entry names the staff member of the token.",
+                "operationId": "receiveStock",
+                "parameters": [
+                    {
+                        "name": "productId",
+                        "in": "path",
+                        "description": "Product id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    },
+                    {
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "description": "Key of the receipt, chosen by the client (e.g. a UUID made when the dialog opens): 1 to 100 characters, letters, digits, \".\", \"_\", \":\" or \"-\".",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+                            "maxLength": 100,
+                            "minLength": 1
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ReceiveStockRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Received: the stock after the receipt.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StockStateResponse"
+                                }
+                            }
+                        }
+                    },
+                    "200": {
+                        "description": "The receipt was received before with this key and the same content: nothing changed, the current stock.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StockStateResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The `Idempotency-Key` header is missing or malformed (problem details with `violations`), or the body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in the warehouse (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such product, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The key was used for a receipt with other content or of another product (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The quantity or the note is out of range, a key is missing or of a wrong type (problem details with `violations`), or the physical stock would exceed 1 000 000 (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/products/{productId}/stock-history": {
+            "get": {
+                "tags": [
+                    "Inventory"
+                ],
+                "summary": "Stock history of a product",
+                "description": "Every recorded change of the stock of a product (receipts, corrections, reservations, releases and commits), newest first, with the deltas, the stock right after the change, what made it and, for a change by staff, who. Every staff member may read it. A product that exists but has no stock record has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.",
+                "operationId": "getStockHistory",
+                "parameters": [
+                    {
+                        "name": "productId",
+                        "in": "path",
+                        "description": "Product id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `next` cursor of the previous page.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the history. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StockHistoryResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such product, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
         "/api/v1/admin/prices": {
             "get": {
                 "tags": [
@@ -547,6 +1045,124 @@
                 },
                 "type": "object"
             },
+            "BackofficeStockQuery": {
+                "properties": {
+                    "q": {
+                        "type": "string",
+                        "pattern": "((?!\\0).)*",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 100,
+                        "minLength": 2
+                    },
+                    "category": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 25,
+                        "maximum": 100,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "CorrectStockRequest": {
+                "description": "The counted physical stock of a product, based on the version of the stock the staff member saw.",
+                "required": [
+                    "physical",
+                    "version",
+                    "reason",
+                    "note"
+                ],
+                "properties": {
+                    "physical": {
+                        "description": "Units counted on the shelf, from 0 to 1 000 000; not less than is reserved.",
+                        "type": "integer",
+                        "example": 18,
+                        "maximum": 1000000,
+                        "minimum": 0
+                    },
+                    "version": {
+                        "description": "The `version` of the stock the correction is based on; null when the product has no stock record.",
+                        "type": "integer",
+                        "example": 3,
+                        "nullable": true
+                    },
+                    "reason": {
+                        "description": "Why: inventory count, damage, loss or another reason (explained in the note).",
+                        "type": "string",
+                        "example": "inventory_count",
+                        "enum": [
+                            "inventory_count",
+                            "damage",
+                            "loss",
+                            "other"
+                        ]
+                    },
+                    "note": {
+                        "description": "A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; required for the reason `other`, otherwise null or blank for none.",
+                        "type": "string",
+                        "pattern": "^[^\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]*$",
+                        "example": "Inwentaryzacja roczna",
+                        "nullable": true,
+                        "maxLength": 500
+                    }
+                },
+                "type": "object"
+            },
+            "ReceiveStockRequest": {
+                "description": "Delivered units of a product.",
+                "required": [
+                    "quantity",
+                    "note"
+                ],
+                "properties": {
+                    "quantity": {
+                        "description": "Units received, from 1 to 100 000. The physical stock may not exceed 1 000 000.",
+                        "type": "integer",
+                        "example": 24,
+                        "maximum": 100000,
+                        "minimum": 1
+                    },
+                    "note": {
+                        "description": "A note, at most 500 characters once trimmed, without control characters other than tab and line breaks; null or blank for none.",
+                        "type": "string",
+                        "pattern": "^[^\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]*$",
+                        "example": "Dostawa od Biegam sp. z o.o.",
+                        "nullable": true,
+                        "maxLength": 500
+                    }
+                },
+                "type": "object"
+            },
+            "StockHistoryQuery": {
+                "properties": {
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 25,
+                        "maximum": 100,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
             "BackofficePricesQuery": {
                 "properties": {
                     "q": {
@@ -851,6 +1467,280 @@
                 },
                 "type": "object"
             },
+            "ListedStockResponse": {
+                "description": "The stored stock of a product, in whole units; all computed by the API.",
+                "required": [
+                    "physical",
+                    "reserved",
+                    "available",
+                    "level",
+                    "version",
+                    "updatedAt"
+                ],
+                "properties": {
+                    "physical": {
+                        "description": "Units on the shelf.",
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "reserved": {
+                        "description": "Units promised to active reservations.",
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "available": {
+                        "description": "Physical minus reserved.",
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "level": {
+                        "description": "Availability level shown in the store.",
+                        "type": "string",
+                        "example": "in_stock",
+                        "enum": [
+                            "in_stock",
+                            "low_stock",
+                            "out_of_stock"
+                        ]
+                    },
+                    "version": {
+                        "description": "Version of the stock, to send with a correction.",
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "updatedAt": {
+                        "description": "When the stock last changed (RFC 3339, UTC).",
+                        "type": "string",
+                        "example": "2026-11-02T12:30:00+00:00"
+                    }
+                },
+                "type": "object"
+            },
+            "StockListItemResponse": {
+                "description": "A product with its stock.",
+                "required": [
+                    "productId",
+                    "name",
+                    "stock"
+                ],
+                "properties": {
+                    "productId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Bidon 750 ml"
+                    },
+                    "stock": {
+                        "description": "The stored stock, null when the product has no stock record (nothing on the shelf, nothing reserved).",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/ListedStockResponse"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "StockListResponse": {
+                "description": "A page of the stock list.",
+                "required": [
+                    "items",
+                    "next"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StockListItemResponse"
+                        }
+                    },
+                    "next": {
+                        "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
+                        "type": "string",
+                        "example": "eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "StockStateResponse": {
+                "description": "The stock of a product after a receipt or a correction, in whole units; all computed by the API.",
+                "required": [
+                    "productId",
+                    "physical",
+                    "reserved",
+                    "available",
+                    "level",
+                    "version",
+                    "updatedAt"
+                ],
+                "properties": {
+                    "productId": {
+                        "description": "Product id (UUID).",
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "physical": {
+                        "description": "Units on the shelf.",
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "reserved": {
+                        "description": "Units promised to active reservations.",
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "available": {
+                        "description": "Physical minus reserved.",
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "level": {
+                        "description": "Availability level shown in the store.",
+                        "type": "string",
+                        "example": "in_stock",
+                        "enum": [
+                            "in_stock",
+                            "low_stock",
+                            "out_of_stock"
+                        ]
+                    },
+                    "version": {
+                        "description": "Version of the stock, to send with a correction; null when the product has no stock record.",
+                        "type": "integer",
+                        "example": 3,
+                        "nullable": true
+                    },
+                    "updatedAt": {
+                        "description": "When the stock last changed (RFC 3339, UTC); null when the product has no stock record.",
+                        "type": "string",
+                        "example": "2026-11-02T12:30:00+00:00",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "StockHistoryItemResponse": {
+                "description": "One recorded stock change: what changed and the stock right after it, in whole units.",
+                "required": [
+                    "occurredAt",
+                    "type",
+                    "physicalDelta",
+                    "reservedDelta",
+                    "physicalAfter",
+                    "reservedAfter",
+                    "reason",
+                    "note",
+                    "reference",
+                    "source",
+                    "actorName"
+                ],
+                "properties": {
+                    "occurredAt": {
+                        "description": "When the stock changed (RFC 3339, UTC).",
+                        "type": "string",
+                        "example": "2026-11-01T12:30:00+00:00"
+                    },
+                    "type": {
+                        "description": "What happened: a `receipt` of delivered units, a `correction` after counting, a `reservation`, the `release` of a reservation or its `commit` (the units leave the shelf).",
+                        "type": "string",
+                        "example": "receipt",
+                        "enum": [
+                            "receipt",
+                            "correction",
+                            "reservation",
+                            "release",
+                            "commit"
+                        ]
+                    },
+                    "physicalDelta": {
+                        "description": "Change of the physical stock (negative when units left).",
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "reservedDelta": {
+                        "description": "Change of the reserved stock.",
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "physicalAfter": {
+                        "description": "Physical stock right after the change.",
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "reservedAfter": {
+                        "description": "Reserved stock right after the change.",
+                        "type": "integer",
+                        "example": 0
+                    },
+                    "reason": {
+                        "description": "Reason of a `correction`, null for the other types.",
+                        "type": "string",
+                        "example": "damage",
+                        "nullable": true,
+                        "enum": [
+                            "inventory_count",
+                            "damage",
+                            "loss",
+                            "other"
+                        ]
+                    },
+                    "note": {
+                        "description": "Note of the staff member, if any.",
+                        "type": "string",
+                        "example": "Dostawa od dostawcy",
+                        "nullable": true
+                    },
+                    "reference": {
+                        "description": "The key of the receipt or of the reservation, if any.",
+                        "type": "string",
+                        "example": "order-1042",
+                        "nullable": true
+                    },
+                    "source": {
+                        "description": "What made the change: `staff` (a staff member in the panel), `seed` (the demo data) or `system` (another module through the reservation port).",
+                        "type": "string",
+                        "example": "staff",
+                        "enum": [
+                            "staff",
+                            "seed",
+                            "system"
+                        ]
+                    },
+                    "actorName": {
+                        "description": "The staff member who made a `staff` change, null for the other sources.",
+                        "type": "string",
+                        "example": "Anna Admin",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "StockHistoryResponse": {
+                "description": "A page of the stock history of a product, newest entry first.",
+                "required": [
+                    "items",
+                    "next"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StockHistoryItemResponse"
+                        }
+                    },
+                    "next": {
+                        "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
+                        "type": "string",
+                        "example": "eyJ0IjoiMjAyNi0xMS0wMVQxMjozMDowMC4wMDAwMDArMDA6MDAiLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
             "ListedPriceResponse": {
                 "description": "The stored price of a product. Amounts are in grosze, the rate in basis points; all computed by the API.",
                 "required": [
@@ -1077,6 +1967,10 @@
         {
             "name": "Catalog",
             "description": "Catalog"
+        },
+        {
+            "name": "Inventory",
+            "description": "Inventory"
         },
         {
             "name": "Pricing",
