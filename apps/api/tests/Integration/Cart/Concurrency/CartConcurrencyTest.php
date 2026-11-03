@@ -22,7 +22,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * Scenarios K1 to K7 of the Cart specification ("Testy – Współbieżność") on PostgreSQL: every participant is
+ * Scenarios K1 to K8 of the Cart specification ("Testy – Współbieżność") on PostgreSQL: every participant is
  * a process of its own dispatching on command.bus (ConcurrentCommands of the Inventory tests), all start at once.
  * Each scenario runs 5 rounds on fresh products and customers; after every round no cart of the test has more than
  * 50 lines or a line of more than 99 units, and no merged cart has lines. The rows commit (products in Catalog,
@@ -154,6 +154,29 @@ final class CartConcurrencyTest extends KernelTestCase
             self::assertEqualsCanonicalizing([$p1 => 5, $p2 => 1, $p3 => 4], $this->customerLines($customer), $message.': the quantities are summed');
             $this->assertMergedInto($first, $customer, $message);
             $this->assertMergedInto($second, $customer, $message);
+            $this->assertInvariant($message);
+        }
+    }
+
+    public function testK8TwoCustomersMergingEachOthersCartAtOnceGetNothingToMergeWithoutADeadlock(): void
+    {
+        for ($round = 1; $round <= self::ROUNDS; ++$round) {
+            $first = $this->customer();
+            $second = $this->customer();
+            $p1 = Uuid::v7()->toRfc4122();
+            $p2 = Uuid::v7()->toRfc4122();
+            $this->carts[] = $firstCart = CartFixture::cart($this->control, customerId: $first, expiresAt: '+180 days', lines: [[$p1, 1]]);
+            $this->carts[] = $secondCart = CartFixture::cart($this->control, customerId: $second, expiresAt: '+180 days', lines: [[$p2, 2]]);
+
+            // Each customer names the cart of the other as a guest cart.
+            $outcomes = ConcurrentCommands::run($this->control, [new MergeGuestCart($first, $secondCart), new MergeGuestCart($second, $firstCart)]);
+
+            $message = 'K8 round '.$round;
+            self::assertSame([Outcome::SUCCESS => 2], self::kinds($outcomes), $message.': '.self::messages($outcomes));
+            self::assertSame(['nothing_to_merge' => 2], self::mergeResults($outcomes), $message);
+            self::assertSame([$p1 => 1], $this->customerLines($first), $message.': the first cart did not change');
+            self::assertSame([$p2 => 2], $this->customerLines($second), $message.': the second cart did not change');
+            self::assertSame(2, $this->control->fetchOne("SELECT COUNT(*) FROM cart_cart WHERE id IN (?, ?) AND status = 'open' AND merged_into IS NULL", [$firstCart, $secondCart]), $message.': both carts stay open');
             $this->assertInvariant($message);
         }
     }

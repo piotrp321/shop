@@ -173,7 +173,8 @@ Blokady i jawne wyjątki od zasad (zapisywane też w `apps/api/CLAUDE.md`):
 Jedna transakcja `command.bus`:
 1. Blokada koszyka gościa (`FOR UPDATE` jak wyżej) i odczyt statusu po uzyskaniu blokady.
 2. Brak koszyka, koszyk wygasły albo `guestCartId` wskazuje koszyk klienta: wynik `nothing_to_merge`, bez zmian.
-   Status `merged`: wynik `already_merged`, bez zmian.
+   Status `merged`: wynik `already_merged`, bez zmian. Widok koszyka klienta w obu przypadkach to odczyt bez blokady
+   (jak `GetCart`), więc taka transakcja trzyma najwyżej blokadę wiersza wskazanego jako koszyk gościa.
 3. `lockOrCreateForCustomer(customerId)`.
 4. `customer.mergeFrom(guest, now)` (w tym wyczyszczenie wygasłego koszyka klienta), zapis obu koszyków.
 5. Jeden commit. Każdy błąd wycofuje całość: koszyk gościa zostaje `open`, koszyk klienta bez zmian. Oznaczenie
@@ -424,6 +425,7 @@ przez barierę na advisory locku, wywołania handlerów na `command.bus`, każdy
 | K5 | ten sam gość scalany równolegle do 2 różnych klientów | dokładnie jeden klient dostaje linie, drugi `already_merged` |
 | K6 | 2 różne koszyki gościa scalane równolegle do tego samego klienta | oba `merged`, ilości zsumowane, brak zakleszczeń |
 | K7 | równoległe dodania różnych produktów do koszyka z 48 liniami | dokładnie 2 sukcesy, reszta `CartLineLimit` |
+| K8 | 2 klientów z koszykami scala równolegle nawzajem id swoich koszyków | oba `nothing_to_merge`, brak zakleszczeń, koszyki bez zmian |
 
 ### Funkcjonalne API
 

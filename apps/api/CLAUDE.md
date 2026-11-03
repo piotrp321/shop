@@ -56,7 +56,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `INSERT … ON CONFLICT DO NOTHING` przed blokadą (`lockOrCreateForCustomer`), bo naruszenie unikalności przy dwóch
   równoległych pierwszych dodaniach zamknęłoby `EntityManager`. Dwie blokady naraz bierze tylko scalenie
   (`MergeGuestCart`), zawsze w kolejności: koszyk gościa, potem koszyk klienta, i zapisuje oba w jednej transakcji,
-  więc nie ma zakleszczeń, a koszyk gościa jest `merged` tylko po udanym przeniesieniu linii. Odczyty (`GetCart`, `GetCartSummary`) idą przez DBAL,
+  więc nie ma zakleszczeń, a koszyk gościa jest `merged` tylko po udanym przeniesieniu linii. Scalenie bez
+  przeniesienia (`nothing_to_merge`, `already_merged`) czyta koszyk klienta bez blokady, więc trzyma tylko blokadę
+  wiersza wskazanego jako koszyk gościa (może to być koszyk innego klienta). Odczyty (`GetCart`, `GetCartSummary`) idą przez DBAL,
   bez blokady i bez transakcji. Linie są zapisywane w miejscu po produkcie, więc usunięcie i ponowne dodanie produktu
   w jednej zmianie nie trafia na unikalny indeks.
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.

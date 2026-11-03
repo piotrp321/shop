@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Cart\Application\Command;
 
+use App\Cart\Application\Port\CartReader;
 use App\Cart\Application\Port\Clock;
 use App\Cart\Application\ProductDataLoader;
 use App\Cart\Application\View\CartView;
@@ -23,14 +24,17 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
  * Both carts are stored in the same transaction: any failure rolls both back, so a guest cart is merged only when its
  * lines are in the customer cart.
  *
- * A merge that moves nothing changes nothing and creates no customer cart: its view is the customer cart as a read
- * sees it (GetCart), the empty view without id for a customer without a cart.
+ * A merge that moves nothing changes nothing and creates no customer cart: its view is the customer cart read without
+ * a lock, as GetCart reads it (the empty view without id for a customer without a cart). Such a merge holds only the
+ * lock of the row named as the guest cart, which may be the cart of another customer, so it never waits for a second
+ * lock while holding one.
  */
 #[AsMessageHandler(bus: 'command.bus')]
 final readonly class MergeGuestCartHandler
 {
     public function __construct(
         private CartRepository $carts,
+        private CartReader $reader,
         private ProductDataLoader $products,
         private CartViewBuilder $views,
         private Clock $clock,
@@ -70,7 +74,7 @@ final readonly class MergeGuestCartHandler
 
     private function viewWithoutChange(string $customerId, \DateTimeImmutable $now): CartView
     {
-        $customer = $this->carts->lockForCustomer($customerId);
+        $customer = $this->reader->findForCustomer($customerId);
         if (null === $customer) {
             return $this->views->empty(null);
         }
