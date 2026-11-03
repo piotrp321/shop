@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Catalog\Application\Query;
 
-use App\Catalog\Application\Image\ImageSize;
+use App\Catalog\Application\Image\ListingImage;
 use App\Catalog\Application\Port\ImageUrlGenerator;
 use App\Catalog\Application\Port\ProductSearch;
 use App\Catalog\Application\Search\ProductDocument;
@@ -60,16 +60,6 @@ final readonly class ListProductsHandler
 
     private function image(string $key, string $alt): ImageView
     {
-        $size = ImageSize::Listing;
-        $variants = [];
-        foreach ($size->formats() as $format) {
-            $widths = $size->widths();
-            sort($widths);
-            foreach ($widths as $width) {
-                $variants[$format->value][] = ['width' => $width, 'url' => $this->imageUrls->url($key, $size, $width, $format)];
-            }
-        }
-
-        return new ImageView($alt, $size->value, $size->aspectRatio(), $variants);
+        return ListingImage::view($this->imageUrls, $key, $alt);
     }
 }
