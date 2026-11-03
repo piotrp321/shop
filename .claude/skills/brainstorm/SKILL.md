@@ -47,6 +47,11 @@ Ten skill zastępuje superpowers:brainstorming, gdy użytkownik wywołuje /brain
     ustalenia. Sprawdź też projekt z CLAUDE.md (głównym i aplikacji) i z rzeczywistym kodem: kontrakty i kody błędów,
     autoryzację, granice modułów (Deptrac), wzorce, na które się powołujesz. Każde twierdzenie o kodzie sprawdź w pliku
     i podaj go przy istotnych decyzjach.
+    Sprawdź też każdy niskopoziomowy mechanizm, który projekt nazywa (blokady wierszy, upsert, surowy SQL lub DBAL,
+    transakcje, cache, kolejki), z regułami `CLAUDE.md` dotkniętych aplikacji, np. `SELECT … FOR UPDATE` albo
+    `INSERT … ON CONFLICT` z zasadą, że persystencja idzie przez rekordy ORM mapowane w repozytoriach. Kolizja to
+    pytanie do użytkownika z rekomendacją (zasady z punktu 8) albo jawny, uzasadniony wyjątek zapisany w specyfikacji;
+    nigdy nie zostawiaj jej do implementacji.
 11. Sprawdź zgodność wymagań, API, UI i testów oraz przypadki brzegowe: autoryzację, współbieżność, propagację błędów
     aż do UI (czy UI odróżni przypadki), paginację, brakujące dane. Przy każdej zmianie stanu danych sprawdź,
     proporcjonalnie do ryzyka: równoległe zmiany (także z nieaktualnego widoku), cykl życia danych, innych konsumentów
