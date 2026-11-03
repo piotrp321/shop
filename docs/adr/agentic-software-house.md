@@ -3,9 +3,10 @@
 ## Kontekst
 
 Większość kodu sklepu piszą agenci Claude Code. Dziś działają `/brainstorm` (projekt funkcji → `spec.md`),
-`/delivery` v2.1 (jedno zadanie → zweryfikowany PR) i agentic orchestrator (AO) v0.1 w osobnym repozytorium
-`piotrp321/agentic-orchestrator`, który prowadzi jedno zadanie `/delivery` naraz. Podział funkcji na zadania,
-integracja całej funkcji, wdrożenie i monitoring są ręczne, a każda decyzja czeka na człowieka w czasie rzeczywistym.
+`/planner` (`plan.md` z manifestem zadań), `/delivery` (jedno zadanie → zweryfikowany PR), `/integration`
+(weryfikacja całego epiku) i agentic orchestrator (AO) w osobnym repozytorium `piotrp321/agentic-orchestrator`,
+który prowadzi epik po jednym zadaniu naraz w gałęzi `epic/<epik>` i otwiera końcowy PR. Wdrożenie i monitoring są
+ręczne, a blokery czekają na odpowiedź człowieka.
 Chcemy, żeby system pracował autonomicznie przez całą dobę, a człowiek zatwierdzał tylko istotne decyzje.
 
 ## Decyzja
@@ -21,7 +22,7 @@ flowchart TB
 
     subgraph flow[Przepływ]
         direction TB
-        intake[Intake i roadmapa<br/>pomysły, bugi, incydenty]
+        intake[Intake: GitHub Issues<br/>pomysły, bugi, incydenty]
         brainstorm["/brainstorm<br/>projekt → spec.md"]
         planner["/planner<br/>plan.md + manifest"]
         backlog[Backlog<br/>zadania i zależności]
@@ -56,7 +57,7 @@ w [planie](../features/agentic-software-house/plan.md).
 
 | Komponent | Jedna odpowiedzialność |
 |---|---|
-| Intake | Zbieranie pomysłów, bugów i incydentów w jednym miejscu |
+| Intake | Zbieranie pomysłów, bugów i incydentów w jednym miejscu: GitHub Issues (`epic`, `bug`, `ux`) |
 | `/brainstorm` | Projektowanie funkcjonalności → `spec.md` |
 | `/planner` | Dekompozycja → `plan.md` i manifest zadań |
 | Backlog | Trwałe zarządzanie zadaniami i zależnościami: definicje w manifeście `plan.md`, stan w AO |
@@ -65,6 +66,8 @@ w [planie](../features/agentic-software-house/plan.md).
 | `/integration` | Integracja i weryfikacja całej funkcjonalności |
 | Merge/Release | Merge zatwierdzonych zmian i wdrożenie z możliwością rollbacku |
 | Monitoring | Zamiana alertów i incydentów w nowe zgłoszenia w intake |
+| Agent tester | Test całego sklepu po merge'u epiku, zgłoszenia `bug` do triage człowieka |
+| Agent UX | Przegląd ekranów, wersji mobilnej i dostępności, zgłoszenia `ux` do triage człowieka |
 | Skrzynka decyzji | Jedno miejsce na decyzje człowieka, z rekomendacją agenta i powiadomieniem |
 | Budżet i limity | Limity subskrypcji, budżet na funkcję, priorytety kolejki |
 | Pula środowisk | Worktree i stos Docker na zadanie, wolne porty, sprzątanie |
