@@ -89,6 +89,6 @@ Na końcu zwróć **poprawny JSON** (bez wymyślonych danych): dokładnie wyjśc
 }
 ```
 
-Wartości statusów wybieraj pojedynczo; `null` oznacza brak danych, `[]` brak wpisów. `IN_PROGRESS` występuje tylko w zapisach pośrednich, a `phase` wskazuje fazę, od której należy wznowić pracę.
+`review.sha` to pełny SHA zrecenzowanego HEAD (skrypt rozwija skrót i odrzuca nieznany SHA). Wartości statusów wybieraj pojedynczo; `null` oznacza brak danych, `[]` brak wpisów. `IN_PROGRESS` występuje tylko w zapisach pośrednich, a `phase` wskazuje fazę, od której należy wznowić pracę.
 
 Status `READY_FOR_INTEGRATION` oznacza **gotowy PR pojedynczego taska**, a nie gotowość całej funkcjonalności do merge lub produkcji. Pisz zwięźle po polsku.
