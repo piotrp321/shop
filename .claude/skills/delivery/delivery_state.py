@@ -4,6 +4,8 @@
   checkpoint STATE --phase P [--status S] [--set KEY=JSON ...] [--accept-head]
       Atomically writes the state: keeps earlier fields, applies --set, takes head_sha from Git and
       summarises the TDD evidence. An invalid result is rejected and the file stays as it was.
+      review.sha is stored as a full SHA: an abbreviation is expanded in the worktree, a value that is not a commit
+      there is rejected (null stays null).
       Once the state exists, --set cannot change the task identity (task_id, worktree, base_sha, branch); fields
       the script computes (head_sha, evidence_file, ...) cannot be set at all.
       head_sha moves only over commits recorded in the evidence log; with status BLOCKED it stays at the last
@@ -23,6 +25,7 @@ import datetime
 import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -139,6 +142,23 @@ def validate(state):
         raise StateError('BLOCKED needs at least one blocker')
 
 
+def full_review_sha(repo, review):
+    """The reviewed commit as a full lowercase SHA (the orchestrator's validator accepts nothing else); an
+    abbreviation is expanded, a value that is not one commit of the checkout is rejected."""
+    if not isinstance(review, dict):
+        raise StateError('review must be an object')
+    value = review.get('sha')
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value or value.startswith('-'):
+        raise StateError('review.sha %r is not a commit of the checkout' % (value,))
+    r = git(repo, 'rev-parse', '--verify', '--quiet', value + '^{commit}', check=False)
+    sha = r.stdout.strip()
+    if r.returncode != 0 or not re.fullmatch('[0-9a-f]{40}', sha):
+        raise StateError('review.sha %r does not resolve to one commit of the checkout' % value)
+    return sha
+
+
 def write_atomically(path, state):
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
@@ -194,6 +214,8 @@ def checkpoint(args):
     if status in MANUAL_TDD:
         summary['status'] = status
     state['tdd'] = summary
+    sha = full_review_sha(state['worktree'], state['review'])
+    state['review'] = dict(state['review'], sha=sha)
     state['updated_at'] = now()
     validate(state)
     write_atomically(path, state)

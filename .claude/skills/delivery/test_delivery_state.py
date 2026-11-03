@@ -89,6 +89,52 @@ class DeliveryStateTest(unittest.TestCase):
             self.assertNotEqual(0, r.returncode, args)
             self.assertEqual(before, open(self.state).read(), args)
 
+    # review.sha
+
+    def review_checkpoint(self, value):
+        return self.cli('checkpoint', self.state, '--phase', 'review', '--set', 'review=' + json.dumps(value))
+
+    def test_abbreviated_review_sha_is_stored_in_full(self):
+        self.init_state()
+        head = self.commit('impl')
+        self.cli('record-commit', self.state)
+        r = self.review_checkpoint({'status': 'passed', 'mode': 'FULL', 'sha': head[:7]})
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual(head, self.load()['review']['sha'])
+        self.assertEqual(head, json.loads(r.stdout)['review']['sha'])
+
+    def test_full_and_null_review_sha_stay_as_they_are(self):
+        self.init_state()
+        self.assertEqual(0, self.review_checkpoint({'status': 'passed', 'mode': 'FULL', 'sha': self.base}).returncode)
+        self.assertEqual(self.base, self.load()['review']['sha'])
+        self.assertEqual(0, self.review_checkpoint({'status': 'skipped', 'mode': 'FULL', 'sha': None}).returncode)
+        self.assertIsNone(self.load()['review']['sha'])
+
+    def test_unresolvable_review_sha_is_rejected_and_the_state_stays(self):
+        self.init_state()
+        before = open(self.state).read()
+        for sha in ('deadbeef', '0' * 40, 'not-a-sha', '', '-x', 123, ['abc'],
+                    git(self.repo, 'rev-parse', 'HEAD^{tree}')):
+            r = self.review_checkpoint({'status': 'passed', 'mode': 'FULL', 'sha': sha})
+            self.assertNotEqual(0, r.returncode, sha)
+            self.assertIn('review.sha', r.stderr, sha)
+            self.assertEqual(before, open(self.state).read(), sha)
+
+    def test_review_that_is_not_an_object_is_rejected(self):
+        self.init_state()
+        before = open(self.state).read()
+        self.assertNotEqual(0, self.review_checkpoint('abc1234').returncode)
+        self.assertEqual(before, open(self.state).read())
+
+    def test_short_review_sha_already_in_the_file_is_repaired_on_the_next_checkpoint(self):
+        s = self.init_state()
+        s['review'] = {'status': 'passed', 'mode': 'FULL', 'sha': self.base[:9]}
+        with open(self.state, 'w') as f:
+            json.dump(s, f)
+        r = self.cli('checkpoint', self.state, '--phase', 'review')
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual(self.base, self.load()['review']['sha'])
+
     def test_identity_of_an_existing_task_cannot_be_changed(self):
         self.init_state('review')
         other = self.commit('other')
