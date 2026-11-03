@@ -85,6 +85,22 @@ deptrac:
       collectors:
         - type: classNameRegex
           value: '#^App\\Inventory\\UI\\#'
+    - name: Cart_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Cart\\Domain\\#'
+    - name: Cart_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Cart\\Application\\#'
+    - name: Cart_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Cart\\Infrastructure\\#'
+    - name: Cart_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Cart\\UI\\#'
     - name: Shared_Domain
       collectors:
         - type: classNameRegex
@@ -252,6 +268,39 @@ deptrac:
       # The controllers of receipts and corrections take the actor from AuthenticatedStaffMember, the security
       # contract of Backoffice. Inventory_Domain and Inventory_Application stay free of Backoffice.
       - Backoffice_Application
+    # No other module depends on Cart in any layer. Cart_Domain and Cart_Application never see another module: the
+    # ports speak Cart's own ProductId, Money and product data.
+    Cart_Domain:
+      - Native
+      - Shared_Domain
+    Cart_Application:
+      - Native
+      - Cart_Domain
+      - Shared_Domain
+      - Vendor
+    Cart_Infrastructure:
+      - Native
+      - Cart_Application
+      - Cart_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      # Adapters of Cart's ports (ProductCatalog, CartPrices, StockAvailability) ask the other modules through their
+      # queries on query.bus: Catalog GetProductSummaries, Pricing GetCurrentPrices, Inventory GetStockLevels. Only
+      # their Application layer, never their Domain or Infrastructure.
+      - Catalog_Application
+      - Pricing_Application
+      - Inventory_Application
+    Cart_UI:
+      - Native
+      - Cart_Application
+      - Cart_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      # The controllers of the customer cart take the owner from AuthenticatedCustomer (the `sub` of the token), the
+      # security contract of Customer, never CustomerUser of Customer_Infrastructure.
+      - Customer_Application
     Shared_Domain:
       - Native
     Shared_Application:
