@@ -156,6 +156,21 @@ final class GuestCartEndpointTest extends WebTestCase
         $this->assertProblem(404, 'Tej pozycji nie ma w koszyku.', $this->request('PUT', $cart.'/items/'.Uuid::v7(), '{"quantity": 1}'));
     }
 
+    public function testAnIncreaseOfALineWhoseProductCatalogForgotIsNotFoundAndADecreaseWorks(): void
+    {
+        $cart = $this->guestCart();
+        $forgotten = (string) Uuid::v7();
+        CartFixture::line($this->connection, $this->cartId($cart), $forgotten, 3);
+
+        $this->assertProblem(404, 'Produkt nie jest już dostępny.', $this->request('PUT', $cart.'/items/'.$forgotten, '{"quantity": 4}'));
+        self::assertSame([[$forgotten, 3]], CartFixture::lines($this->connection, $this->cartId($cart)));
+
+        $decreased = $this->request('PUT', $cart.'/items/'.$forgotten, '{"quantity": 2}');
+        self::assertResponseStatusCodeSame(200);
+        $this->assertNoStore();
+        self::assertSame([[$forgotten, 2]], self::quantities($decreased));
+    }
+
     /**
      * @return iterable<string, array{string, string, ?string}>
      */

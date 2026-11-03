@@ -114,6 +114,34 @@ final class CustomerCartEndpointTest extends WebTestCase
         $this->assertProblem(404, null, $this->request('DELETE', '/api/v1/me/cart/items/not-a-uuid', null, $token));
     }
 
+    public function testAnIncreaseOfALineWhoseProductCatalogForgotIsNotFoundAndADecreaseWorks(): void
+    {
+        $forgotten = (string) Uuid::v7();
+        $id = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$forgotten, 3]]);
+        $token = TestTokenFactory::customer();
+
+        $this->assertProblem(404, 'Produkt nie jest już dostępny.', $this->request('PUT', '/api/v1/me/cart/items/'.$forgotten, '{"quantity": 4}', $token));
+        self::assertSame([[$forgotten, 3]], CartFixture::lines($this->connection, $id));
+
+        $decreased = $this->request('PUT', '/api/v1/me/cart/items/'.$forgotten, '{"quantity": 2}', $token);
+        self::assertResponseStatusCodeSame(200);
+        $this->assertNoStore();
+        self::assertSame($id, $decreased['id']);
+        self::assertSame([[$forgotten, 2]], CartFixture::lines($this->connection, $id));
+    }
+
+    public function testBadJsonIs400AndAnotherContentTypeIs415OnBothWriteEndpoints(): void
+    {
+        $token = TestTokenFactory::customer();
+        $product = $this->product();
+        $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $product, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
+
+        $this->assertProblem(400, null, $this->request('POST', '/api/v1/me/cart/items', '{"productId": ', $token));
+        $this->assertProblem(400, null, $this->request('PUT', '/api/v1/me/cart/items/'.$product, '{"quantity": ', $token));
+        $this->assertProblem(415, null, $this->request('POST', '/api/v1/me/cart/items', 'productId=1&quantity=1', $token, 'application/x-www-form-urlencoded'));
+        $this->assertProblem(415, null, $this->request('PUT', '/api/v1/me/cart/items/'.$product, 'quantity=1', $token, 'text/plain'));
+    }
+
     public function testTheLimitOf50ProductsAppliesToTheCustomerCart(): void
     {
         $id = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID);
