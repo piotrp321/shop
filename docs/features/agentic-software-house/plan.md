@@ -1,156 +1,200 @@
-# Plan: Agentic Software House 24/7
+# Plan: Agentic Software House
 
-Docelowa architektura i zasady: [ADR](../../adr/agentic-software-house.md). Ten plan ustala kolejność etapów.
-Każdy etap przed implementacją dostaje własną specyfikację (`/brainstorm`) i plan zadań, akceptowane przez
-użytkownika. Kod AO powstaje w repozytorium `piotrp321/agentic-orchestrator`, skille i agenci w `.claude/` tego
-repozytorium.
+Docelowa architektura i zasady: [ADR](../../adr/agentic-software-house.md). Ten plan ustala role, proces pracy
+i kroki wdrożenia. AO jest zamrożone po v0.3.1: zmienia się tylko wtedy, gdy prawdziwy przebieg epiku stoi,
+najmniejszą poprawką i za zgodą użytkownika. Nowe role powstają jako skille i agenci w `shop`, bez kodu AO.
+
+Cel: użytkownik poświęca około godziny dziennie na decyzje, a agenci budują sklep według „Zakresu MVP”
+z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 6), nie potwierdzony fakt.
 
 ## Status
 
-W toku: `/planner` i `ao submit-plan` (etap 2) w osobnej sesji. Następny krok: **pozostałe decyzje z etapu 0**
-(kanał skrzynki decyzji, host, polityka autonomii). Blokery: brak.
+W toku: krok 2. Następny krok: krok 3. Blokery: brak.
 
-| Etap | Zakres | Repozytorium | Status |
+| Krok | Zakres | Status |
+|---|---|---|
+| 1 | AO v0.3.1 i zamrożenie AO | zrobione |
+| 2 | Ten plan, zasada backlogu w `CLAUDE.md` i ADR | w toku |
+| 3 | Poprawki procesu w `shop` | do zrobienia |
+| 4 | Backlog w GitHub Issues | do zrobienia |
+| 5 | Powiadomienia ntfy | do zrobienia |
+| 6 | Pierwszy epik przez cały proces | do zrobienia |
+| 7 | Agent tester i agent UX | do zrobienia |
+| 8 | Przed publicznym demo: bezpieczeństwo i wydajność | do zrobienia |
+| 9 | Po MVP: release i monitoring | do zrobienia |
+
+## Role
+
+Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowiekiem jest tylko właściciel produktu.
+
+| Dział | Rola | Kto | Stan |
 |---|---|---|---|
-| 0 | Decyzje wstępne | – | kontrakt i backlog ustalone |
-| 1 | Skrzynka decyzji i polityka autonomii | shop, AO | do zrobienia |
-| 2 | Backlog i `/planner` | shop, AO | w toku |
-| 3 | AO jako demon 24/7 | AO | do zrobienia |
-| 4 | `/integration` | shop | do zrobienia |
-| 5 | Pula środowisk i budżet | AO, shop (`infra`) | do zrobienia |
-| 6 | Merge queue i release | shop | do zrobienia |
-| 7 | Monitoring → intake | shop, AO | do zrobienia |
-| 8 | Metryki, evale i pętla uczenia | AO, shop | do zrobienia |
+| Produkt | Właściciel produktu: co budujemy, kolejność, triage, odbiór | użytkownik | działa |
+| Analiza i projekt | Analityk: specyfikacja | `/brainstorm` z użytkownikiem | działa |
+| | Architekt: ADR, review architektury epiku | `architecture-reviewer` w `/integration` | działa |
+| | UX: ekrany, wersja mobilna, dostępność | agent UX | krok 7 |
+| Planowanie | Plan i zadania | `/planner` | działa |
+| | Koordynacja: przebieg nocny, stan, PR | AO | działa |
+| Wytwarzanie | Developer: zadanie z TDD | `developer` w `/delivery` | działa |
+| | Code review zadania | `code-reviewer` w `/delivery` | działa |
+| Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
+| | Tester całego sklepu | agent tester | krok 7 |
+| | Bezpieczeństwo i wydajność | ustalane w kroku 8 | krok 8 |
+| Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 9 |
+| | Monitoring → issues | Sentry i Grafana Cloud z `docs/vision.md` | krok 9 |
 
-Stan wyjściowy: `/brainstorm` i `/delivery` v2.1 działają, AO v0.1 prowadzi jedno zadanie naraz bez trybu demona.
+## Proces
 
-## Etapy
+Stały proces każdego epiku. Elementy, które jeszcze nie działają, mają w nawiasie numer kroku wdrożenia.
 
-### 0. Decyzje wstępne
+```mermaid
+flowchart TB
+    issues[GitHub Issues<br/>epic, bug, ux]
+    triage{Triage i kolejność<br/>użytkownik}
+    prep["/brainstorm i /planner<br/>epik albo epik poprawek"]
+    accept{"Akceptacja spec i planu<br/>końcowy PR do przejrzenia w jednym posiedzeniu?"}
+    onmain[main: spec.md i plan.md]
+    subgraph night[AO w nocy]
+        delivery["/delivery × N"] --> integration["/integration<br/>architektura, QA, UX"] --> finalpr[Końcowy PR do main]
+    end
+    blocker[Bloker: ntfy i ao answer]
+    review{Odbiór według ryzyka<br/>użytkownik}
+    merge[Merge i zamknięcie issue]
+    sweep[Agent tester i agent UX<br/>cały sklep na main]
 
-Decyzje użytkownika, od których zależą kolejne etapy. Dla każdej rekomendacja:
+    issues --> triage --> prep --> accept
+    accept -- za duży, podział --> prep
+    accept -- tak --> onmain --> delivery
+    delivery -. bloker .-> blocker -. odpowiedź .-> delivery
+    finalpr --> review
+    review -- błąd w zakresie epiku: PR do gałęzi epiku --> integration
+    review -- odebrany --> merge --> sweep
+    review -. uwagi i problemy spoza zakresu .-> issues
+    sweep -. zgłoszenia z etykietą agent .-> issues
+```
 
-- **Kontrakt manifestu zadań (ustalony).** Sekcja „Kontrakt planu i backlogu”.
-- **Gdzie żyje backlog (ustalone).** Definicje zadań w manifeście `plan.md` w Gicie, stan zadań w bazie AO.
-  Bez GitHub Issues i bez własnej bazy zadań w `shop`.
-- **Kanał skrzynki decyzji.** Rekomendacja: issue z etykietą `decision` w GitHubie (odpowiedź komentarzem)
-  i powiadomienie push na telefon.
-- **Host 24/7.** Rekomendacja na start: obecny Mac z wyłączonym usypianiem i launchd. Serwer dopiero, gdy limit
-  zasobów jednej maszyny stanie się realny.
-- **Polityka autonomii na start.** Rekomendacja: żadnego automatycznego merge'a. Pierwszy krok autonomii to
-  automatyczny merge zadań `FAST` z zielonym CI i czystym review do gałęzi funkcji, nie do `main`.
+1. **Backlog: GitHub Issues** w `piotrp321/shop`.
+   - Etykieta `epic` to funkcja z „Zakresu MVP”, `bug` to błąd, `ux` to problem użyteczności albo wyglądu.
+   - Zgłaszają: użytkownik, agent tester i agent UX (krok 7). Zgłoszenia agentów mają etykietę `agent` i limit
+     na jeden przebieg. Do backlogu trafiają dopiero po triage użytkownika.
+   - Zgłoszenia `bug` i `ux` mają formularz (krok 3): środowisko, kroki odtworzenia (jeden krok w linii), wynik
+     oczekiwany i faktyczny, kryterium akceptacji, niewiadome. Agenci wypełniają te same pola. Zgłoszenie
+     z brakami dostaje etykietę `needs-info` i nie idzie do przygotowania.
+   - Kolejność ustala użytkownik.
+2. **Przygotowanie (użytkownik, w dzień).**
+   - Issue z góry listy → `/brainstorm` → `spec.md` → `/planner` → `plan.md`.
+   - Przed akceptacją planu jedno pytanie: czy końcowy PR da się przejrzeć w jednym posiedzeniu? Jeśli nie, epik
+     dzielimy na dwa, mergowane po kolei. Rozmiar pojedynczych zadań zostaje bez zmian.
+   - Zgłoszenie `ux` zawsze idzie przez `/brainstorm`. Drobne zgłoszenia `bug` trafiają razem do jednego epiku
+     poprawek: krótka specyfikacja, jedno zadanie na issue.
+   - Zaakceptowane `spec.md` i `plan.md` trafiają do `main`.
+3. **Wykonanie (AO, w nocy).**
+   - `ao submit-plan`, potem `ao run --until-idle`. AO prowadzi zadania przez `/delivery` po jednym naraz,
+     squash-merguje je do `epic/<epik>`, uruchamia `/integration` i otwiera końcowy PR `epic/<epik>` → `main`
+     z raportem `ao report`.
+   - `code-reviewer` w `/delivery` i `qa-adversarial` w `/integration` sprawdzają jawnie dwie rzeczy (krok 3).
+     Usunięty, pominięty albo osłabiony istniejący test lub zmieniona wartość oczekiwana bez podstawy
+     w specyfikacji to `BLOCKER`. Plik albo zmiana spoza `scope` zadania w manifeście to zgłoszenie.
+   - Przy epikach, które zmieniają `apps/store` albo `apps/admin`, `/integration` uruchamia też agenta UX
+     (krok 7). Problem z zakresu epiku jest znaleziskiem do naprawy, pozostałe zostają w raporcie jako uwagi.
+4. **Blokery.**
+   - `BLOCKED` i powiadomienie na telefon (ntfy, krok 5) tylko wtedy, gdy zadanie nie może iść dalej bez decyzji.
+     Użytkownik odpowiada przez `ao answer`.
+   - Wybory odwracalne agent rozstrzyga sam i wpisuje do sekcji „Decyzje bez pytania” w opisie PR zadania, a
+     `/integration` przenosi je do swojego raportu (krok 3).
+   - Powtarzający się bloker naprawiamy w `/brainstorm` albo w `CLAUDE.md`, nie w AO.
+5. **Odbiór (użytkownik).**
+   - Przegląd według ryzyka, nie linia po linii: raport `/integration`, zmiany istniejących testów, migracje,
+     odstępstwa od specyfikacji, pliki spoza zakresów zadań, „Decyzje bez pytania”. Na koniec główny scenariusz
+     przeklikany na stosie.
+   - Błąd w zakresie epiku: poprawka przez PR do `epic/<epik>` (np. `/delivery` uruchomione ręcznie z linią
+     `Gałąź docelowa PR: epic/<epik>`), zmergowany przez użytkownika po zielonym CI. AO traktuje nowy HEAD jako
+     kod po przeglądzie: robi rundę `DELTA` `/integration`, a końcowy PR czeka na jej wynik. Potem odbiór od nowa.
+     Taka poprawka liczy się jako ręczna.
+   - Problem spoza zakresu albo większy: nowe issue `bug` lub `ux`. Epik mergujemy bez tej poprawki, o ile
+     niczego na `main` nie psuje. Uwagi `Minor` z raportu `/integration`, które warto zrobić, też stają się
+     issues.
+   - Użytkownik dopisuje `Closes #N` każdego issue epiku do opisu końcowego PR i merguje go (squash). Issue
+     zamykają się same. Merge do `main` zostaje wyłącznie u użytkownika.
+   - Po każdym epiku trzy liczby w komentarzu do issue epiku: minuty użytkownika (spec, blokery, przegląd, triage),
+     liczba interwencji (z `ao report`) i liczba ręcznych poprawek.
+6. **Po merge'u (krok 7).** Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne
+   ścieżki z sekcji „Testy” w `docs/vision.md` i nową funkcję ze specyfikacji, jako klient i jako pracownik.
+   Przed założeniem zgłoszenia sprawdzają otwarte issues, żeby nie dublować. Zgłoszenia trafiają do triage
+   (punkt 1).
 
-Koniec etapu: decyzje zapisane w ADR (zmiana obecnego pliku albo nowe ADR-y).
+## Kroki wdrożenia
 
-### 1. Skrzynka decyzji i polityka autonomii
+1. **AO v0.3.1 i zamrożenie.** v0.3.1 zamknięte (piotrp321/agentic-orchestrator#32). Od teraz AO jest zamrożone.
+2. **Plan i zasada backlogu.** Ten plan zastępuje poprzedni. `CLAUDE.md` dostaje zasadę backlogu, ADR wskazuje
+   GitHub Issues jako intake i opisuje role agenta testera i agenta UX. Jeden PR.
+3. **Poprawki procesu w `shop`.** Jeden PR:
+   - formularze `.github/ISSUE_TEMPLATE/bug.yml` i `ux.yml` z polami z punktu 1 procesu, `needs-info` w zasadzie
+     backlogu w `CLAUDE.md`;
+   - `.claude/agents/code-reviewer.md` i zlecenie `qa-adversarial` w `.claude/skills/integration/SKILL.md`: obie
+     kontrole z punktu 3 procesu;
+   - `.claude/skills/delivery/SKILL.md`: sekcja „Decyzje bez pytania” w opisie PR zadania (dziś skill każe tylko
+     opisać istotne decyzje w PR), a `.claude/skills/integration/SKILL.md` przenosi ją do raportu.
+4. **Backlog.** Sprawdzam, które punkty „Zakresu MVP” są zrobione. Użytkownik akceptuje listę issues, ich
+   kolejność i miejsce zapisu kolejności (lista issues albo tablica GitHub Projects). Dopiero potem zakładam
+   etykiety `epic`, `bug`, `ux`, `needs-info`, `agent` i issues: repozytorium jest publiczne.
+5. **Powiadomienia.** ntfy jako `--notify-cmd` AO, próbne powiadomienie na telefon.
+6. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, razem z pomiarem z punktu 5 procesu. Każdy
+   kolejny epik idzie tym samym procesem.
+7. **Agent tester i agent UX.** Rusza po kroku 6, żeby zgłoszenia agentów doszły dopiero wtedy, gdy znamy czas
+   odbioru. Najpierw specyfikacja przez `/brainstorm`, potem skille i agenci w `shop`:
+   - agent tester po merge'u epiku (punkt 6 procesu);
+   - agent UX po merge'u i jako trzeci reviewer w `/integration` (punkt 3 procesu);
+   - etykieta `agent`, limit zgłoszeń na przebieg, sprawdzanie duplikatów;
+   - do czasu makiet z punktu 3 „Zakresu MVP” agent UX ocenia tylko użyteczność i dostępność, nie zgodność
+     z projektem wizualnym;
+   - na start uruchamia ich użytkownik jedną komendą po merge'u, automatyczne uruchamianie dopiero wtedy, gdy
+     zgłoszenia okażą się warte czasu triage.
+8. **Przed publicznym demo: bezpieczeństwo i wydajność.** Przegląd bezpieczeństwa całego sklepu i testy
+   obciążeniowe względem „Wymagań niefunkcjonalnych” z `docs/vision.md`. Zakres i narzędzia ustala specyfikacja
+   przed demo.
+9. **Po MVP: release i monitoring.** Publiczne demo zgodnie z `docs/vision.md` (k3s, Argo CD, rollback). Błędy
+   z Sentry i alerty z Grafana Cloud stają się issues `bug` z etykietą `agent` i przechodzą triage.
 
-Cel: kolejka nie stoi, gdy czeka na człowieka.
+Proces i kontrakt trafiają do ADR, gdy krok 6 potwierdzi, że działają. Plan usuwamy po ostatnim kroku.
 
-- AO publikuje bloker `/delivery` (`business`, `architecture`, `cost`, `technical`) jako decyzję w skrzynce:
-  pytanie, opcje, rekomendacja, dowody. Odpowiedź wznawia zadanie (`answer` w AO już istnieje).
-- Akceptacja specyfikacji i planu też przechodzi przez skrzynkę.
-- Polityka autonomii jako plik w repozytorium: które decyzje i jakie ryzyko (`FAST`, `STANDARD`, `CRITICAL`)
-  wymagają człowieka.
-- Powiadomienie o nowej decyzji.
+## Świadomie poza planem
 
-Koniec etapu: bloker zgłoszony w nocy czeka w skrzynce, AO w tym czasie robi inne zadania bez blokera,
-odpowiedź rano wznawia zablokowane zadanie.
-
-### 2. Backlog i `/planner`
-
-Cel: zaakceptowana specyfikacja zamienia się w zadania, które AO bierze bez udziału człowieka.
-
-- Skill `/planner`: ze `spec.md` tworzy `plan.md` z manifestem zadań.
-- `ao submit-plan` importuje plan z `origin/main` i zgłasza pierwszą falę.
-- AO sam zgłasza kolejne fale, gdy zależności są zmergowane (punkt 4 kontraktu).
-
-Koniec etapu: funkcja od zaakceptowanej specyfikacji do PR-ów wszystkich zadań bez ręcznego `submit`.
-
-### 3. AO jako demon 24/7
-
-Cel: AO działa bez nadzoru. Zakres z sekcji „Ograniczenia” README AO:
-
-- tryb demona pod launchd, samodzielne wznowienie po limicie subskrypcji;
-- sprawdzanie PR i CI w GitHubie, tryb poprawki `/delivery` na czerwonym CI;
-- wykrywanie braku postępu i limit czasu, anulowanie;
-- kilka zadań naraz, każde we własnym worktree (po etapie 5).
-
-Koniec etapu: przebieg nocny z kilkoma zadaniami i jednym limitem subskrypcji kończy się bez interwencji.
-
-### 4. `/integration`
-
-Cel: weryfikacja całej funkcji, nie pojedynczych PR-ów.
-
-- Skill `/integration`: łączy PR-y funkcji, uruchamia `make check`, testy i `make e2e` na pełnym stosie,
-  review architektury (`architecture-reviewer`) i adwersarialne QA (`qa-adversarial`).
-- Problem w jednym zadaniu wraca do jego PR przez tryb poprawki `/delivery`. Problem kilku zadań to decyzja
-  w skrzynce.
-- Wynik: raport integracji i prośba o akceptację w skrzynce.
-
-Koniec etapu: funkcja z kilku zadań przechodzi integrację z co najmniej jedną automatyczną poprawką.
-
-### 5. Pula środowisk i budżet
-
-- Worktree i stos Docker na zadanie z wolnymi portami (mechanizm `.env` worktree), sprzątanie po zadaniu.
-- Limit zadań naraz wynikający z zasobów hosta.
-- Budżet na funkcję i priorytety kolejki. Rezerwa limitu subskrypcji na pracę interaktywną w dzień.
-
-Koniec etapu: kilka zadań naraz na jednym hoście bez kolizji portów i bez osieroconych kontenerów.
-
-### 6. Merge queue i release
-
-- Merge zatwierdzonej funkcji (squash, usunięcie gałęzi) w kolejce z ponownym CI.
-- Wdrożenie zgodne z `docs/vision.md` (k3s + Argo CD): staging automatycznie, produkcja po akceptacji,
-  rollback.
-
-Koniec etapu: zatwierdzona funkcja trafia na staging bez ręcznych kroków.
-
-### 7. Monitoring → intake
-
-- Alerty z obserwowalności z `docs/vision.md` (Grafana Cloud, Sentry) tworzą zgłoszenia w intake z kontekstem
-  (logi, trace, wersja).
-- Zgłoszenie błędu przechodzi zwykłą drogą: `/brainstorm` dla zmian zachowania, `/delivery` dla poprawki.
-
-Koniec etapu: błąd ze stagingu kończy się PR z poprawką bez ręcznego zakładania zgłoszenia.
-
-### 8. Metryki, evale i pętla uczenia
-
-- Metryki z AO: czas od zgłoszenia do merge'a, rundy poprawek, odsetek blokerów, zużycie modelu.
-- Benchmark skilli na bazie `docs/experiments/` (`delivery-001`, `brainstorm-00x`): zmiana skilla przechodzi
-  benchmark przed użyciem.
-- Retro po funkcji: propozycje zmian w skillach i `CLAUDE.md`, wdrażane po evalach i akceptacji użytkownika.
-
-Koniec etapu: pierwsza zmiana skilla zaproponowana przez retro i potwierdzona benchmarkiem.
+Skrzynka decyzji (zamiast niej ntfy i `ao answer`), polityka autonomii jako plik, AO jako demon launchd, kilka
+zadań naraz i pula środowisk, budżet na funkcję, merge queue, automatyczne zamienianie issue w zadania, metryki
+i evale skilli, agent decydujący o produkcie, automatyczny merge do `main`, rój agentów pracujących równolegle.
+Wracają tylko wtedy, gdy przebiegi pokażą, że czegoś z tego brakuje, i użytkownik o tym zdecyduje.
 
 ## Kontrakt planu i backlogu
 
-Styk `/planner` → backlog → AO → `/delivery`. Format manifestu i jego walidator są w
-`.claude/skills/planner/` (`schema_version: 1`), import pierwszej fali to `ao submit-plan`.
+Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego walidator są w `.claude/skills/planner/`
+(`schema_version: 1`). Szczegóły po stronie AO opisuje README `piotrp321/agentic-orchestrator`.
 
-1. **Jedno źródło na rodzaj danych.** Definicja zadania (ID, tytuł, zakres, kryteria akceptacji, ryzyko,
-   zależności, specyfikacja) jest tylko w manifeście. Stan zadania (kolejka, próby, PR, blokery) jest tylko w AO.
-   AO nie zapisuje niczego w repozytorium, `/planner` nie zgłasza zadań do AO.
+1. **Jedno źródło na rodzaj danych.** Co budujemy i w jakiej kolejności: issue. Definicja zadania (ID, tytuł,
+   zakres, kryteria akceptacji, ryzyko, zależności, specyfikacja): tylko manifest. Stan zadania (kolejka, próby,
+   PR, blokery): tylko AO. AO nie zapisuje niczego w repozytorium, `/planner` nie zgłasza zadań do AO, issue nie
+   zawiera definicji zadań.
 2. **Plan wiążący = plan na `origin/main`.** Zaakceptowany plan i jego specyfikacja trafiają do `main` przed
-   zgłoszeniem zadań, więc każda gałąź zadania zawiera specyfikację. AO zapamiętuje SHA commita, z którego
-   zaimportował plan. Plan z innej gałęzi na `origin` AO przyjmuje tylko na jawne wskazanie (testy
-   akceptacyjne bez merge'a do `main`).
-3. **Zmiana planu po imporcie.** Dziś import epica z innego commita, w którym zadanie już zgłoszone ma inną bazę,
-   kończy się odmową całego importu. Docelowo, razem z punktem 4: zadania dodane są przyjmowane, zadania
-   niezgłoszone mogą się zmienić, a zmiana albo usunięcie zadania już zgłoszonego kończy się odmową i decyzją
-   w skrzynce. Plan zmieniony po akceptacji wymaga ponownej akceptacji (zasada `/planner`).
-4. **Gotowość zadania zależnego.** Zależność jest spełniona, gdy PR z gałęzi `task/<ID>` jest zmergowany do `main`.
-   AO sprawdza to w GitHubie (`gh pr view`), nie historią Gita, bo squash merge nie zostawia gałęzi w historii.
-   Bazą zadania zależnego jest aktualny `origin/main`. Gdy zależności są spełnione, AO zgłasza zadanie samo.
-5. **Wejście `/delivery`.** AO przekazuje ID zadania i ścieżkę `plan.md`. `/delivery` czyta swoje zadanie
-   z manifestu na commicie bazowym, a specyfikację z pola `spec`. `risk` z manifestu to podpowiedź, wiąże
-   klasyfikacja `/delivery`.
+   `ao submit-plan`, więc każda gałąź zadania zawiera specyfikację. AO czyta plan z commita, nie z dysku, i
+   zapamiętuje jego SHA. Plan z innej gałęzi na `origin` AO przyjmuje tylko na jawne wskazanie (`--base`).
+3. **Zmiana planu po imporcie.** Ponowne `ao submit-plan` z tym samym planem niczego nie zmienia. Epik
+   zarejestrowany z innego commita planu albo z inną konfiguracją kończy się odmową. Plan zmieniony po akceptacji
+   wymaga ponownej akceptacji (zasada `/planner`).
+4. **Gotowość zadania zależnego.** Zadanie rusza, gdy wszystkie jego zależności są `MERGED` do `epic/<epik>`. AO
+   sprawdza to w GitHubie (`gh pr view`) i promuje zadanie sam, od aktualnego `origin/epic/<epik>`.
+5. **Wejście `/delivery`.** AO przekazuje ID zadania, ścieżkę `plan.md` i gałąź docelową PR (`epic/<epik>`).
+   `/delivery` czyta swoje zadanie z manifestu na commicie bazowym, a specyfikację z pola `spec`. `risk`
+   z manifestu to podpowiedź, wiąże klasyfikacja `/delivery`.
 6. **Wersjonowanie.** Każda zmiana pól manifestu podnosi `schema_version` i wymaga zmiany walidatora `/planner`
    i AO w tej samej fali prac. AO odrzuca nieznaną wersję. AO sprawdza tylko pola, których używa, pełny format
    sprawdza walidator w `shop`.
 
 ## Punkty zatrzymania
 
-- **Etap 0:** wszystkie decyzje użytkownika przed rozpoczęciem etapu 1.
-- **Każdy etap:** specyfikacja i plan zadań zaakceptowane przed implementacją.
-- **Etapy 1 i 6:** każde rozszerzenie polityki autonomii (automatyczny merge, wdrożenie bez akceptacji) wymaga
-  jawnej zgody użytkownika.
+- **Każdy epik:** `spec.md` i `plan.md` zaakceptowane przez użytkownika przed `ao submit-plan`.
+- **Merge do `main`:** końcowy PR epiku merguje wyłącznie użytkownik. Każde rozszerzenie autonomii wymaga jego
+  jawnej zgody.
+- **Zmiana AO:** tylko przy zablokowanym prawdziwym przebiegu, za zgodą użytkownika.
+- **Krok 4:** issues powstają dopiero po akceptacji listy.
+- **Kroki 7–9:** specyfikacja każdej nowej roli zaakceptowana przed implementacją.
+- **Zgłoszenia agentów:** trafiają do backlogu dopiero po triage użytkownika.

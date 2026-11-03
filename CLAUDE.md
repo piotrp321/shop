@@ -38,6 +38,10 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 
 ## Epiki, gałęzie `epic/*` i hooki AO
 
+- Backlog jest w GitHub Issues: etykieta `epic` to funkcja z „Zakresu MVP” (`docs/vision.md`), `bug` to błąd,
+  `ux` to problem użyteczności albo wyglądu. Kolejność ustala użytkownik. Definicje zadań są tylko w manifeście `plan.md`, ich stan tylko
+  w AO. Użytkownik dopisuje `Closes #N` do końcowego PR epiku przed merge'em. Proces:
+  `docs/features/agentic-software-house/plan.md`.
 - Epik realizowany przez AO ma gałąź `epic/<epik>` (zakładaną z `main`). PR zadań (`task/<id>`) mają bazę `epic/<epik>`
   i AO squash-merguje je tylko tam, nigdy do `main`. PR `epic/<epik>` → `main` zatwierdza i merguje użytkownik.
   Skill `/delivery` dostaje gałąź docelową PR w linii `Gałąź docelowa PR:` (domyślnie `main`) i tworzy PR z `--base`.
