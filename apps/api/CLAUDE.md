@@ -7,7 +7,8 @@ Zasady wspólne dla całego repo są w głównym `CLAUDE.md`, opis domeny w `doc
 
 Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `check` – PHPStan, Deptrac, PHP CS Fixer
-- `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ)
+- `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ); dodatkowe
+  argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`
 - `init` – migracje bazy deweloperskiej i `catalog:search-index:setup` (alias `products` i indeks, jeśli ich nie ma);
   idempotentny, wywołuje go `make up` po starcie usług
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
