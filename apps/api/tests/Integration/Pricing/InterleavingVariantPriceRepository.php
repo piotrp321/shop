@@ -4,25 +4,25 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Pricing;
 
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductPrice;
-use App\Pricing\Domain\Price\ProductPriceRepository;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantPrice;
+use App\Pricing\Domain\Price\VariantPriceRepository;
 
 /**
  * Runs a competing request once, right after the handler under test has read the price and before it saves.
  */
-final class InterleavingProductPriceRepository implements ProductPriceRepository
+final class InterleavingVariantPriceRepository implements VariantPriceRepository
 {
     /**
      * @param \Closure(): void $competingRequest
      */
     public function __construct(
-        private readonly ProductPriceRepository $inner,
+        private readonly VariantPriceRepository $inner,
         private ?\Closure $competingRequest,
     ) {
     }
 
-    public function find(ProductId $id): ?ProductPrice
+    public function find(VariantId $id): ?VariantPrice
     {
         $price = $this->inner->find($id);
         $competingRequest = $this->competingRequest;
@@ -39,12 +39,12 @@ final class InterleavingProductPriceRepository implements ProductPriceRepository
         return $this->inner->findMany($ids);
     }
 
-    public function page(?ProductId $after, int $limit): array
+    public function page(?VariantId $after, int $limit): array
     {
         return $this->inner->page($after, $limit);
     }
 
-    public function save(ProductPrice $price): void
+    public function save(VariantPrice $price): void
     {
         $this->inner->save($price);
     }

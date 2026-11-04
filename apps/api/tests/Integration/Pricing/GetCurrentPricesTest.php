@@ -7,7 +7,7 @@ namespace App\Tests\Integration\Pricing;
 use App\Pricing\Application\Query\GetCurrentPrices;
 use App\Pricing\Application\Query\InvalidCurrentPricesQuery;
 use App\Pricing\Application\Query\PriceSnapshot;
-use App\Tests\Factory\ProductPriceRecordFactory;
+use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Support\StatementCounter;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -41,20 +41,28 @@ final class GetCurrentPricesTest extends KernelTestCase
         $this->counter = $counter;
     }
 
-    public function testHundredProductsAreReadWithOneStatement(): void
+    /**
+     * 48 products of 100 variants: the most a page of the store list can ask for.
+     */
+    public function test4800VariantsAreReadWithOneStatement(): void
     {
-        $ids = [];
-        for ($i = 0; $i < 100; ++$i) {
-            $ids[] = $this->insertPrice(10000 + $i, 'standard', 2300);
-        }
+        $ids = array_map(
+            static fn (mixed $id): string => \is_string($id) ? $id : throw new \LogicException('Expected a UUID.'),
+            $this->connection->fetchFirstColumn('SELECT gen_random_uuid()::text FROM generate_series(1, 4800)'),
+        );
+        $this->connection->executeStatement(
+            "INSERT INTO pricing_variant_price (variant_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at)
+             SELECT CAST(id AS uuid), 'PLN', 10000, 8130, 1870, 2300, 'standard', 1, NOW() FROM unnest(CAST(:ids AS text[])) AS id",
+            ['ids' => '{'.implode(',', $ids).'}'],
+        );
 
         $before = $this->counter->count();
         $snapshots = $this->ask($ids);
         $statements = $this->counter->count() - $before;
 
         self::assertSame(1, $statements);
-        self::assertCount(100, $snapshots);
-        self::assertSame($ids, array_map(static fn (PriceSnapshot $s): string => $s->productId, $snapshots));
+        self::assertCount(4800, $snapshots);
+        self::assertSame($ids, array_map(static fn (PriceSnapshot $s): string => $s->variantId, $snapshots));
         self::assertEquals(new PriceSnapshot($ids[0], 'standard', 2300, 8130, 1870, 10000, 'PLN', 1), $snapshots[0]);
     }
 
@@ -67,7 +75,7 @@ final class GetCurrentPricesTest extends KernelTestCase
 
         $snapshots = $this->ask([$outdated, $current, $withoutRate, $withoutPrice]);
 
-        self::assertSame([$current], array_map(static fn (PriceSnapshot $s): string => $s->productId, $snapshots));
+        self::assertSame([$current], array_map(static fn (PriceSnapshot $s): string => $s->variantId, $snapshots));
         self::assertEquals(new PriceSnapshot($current, 'printed_book', 500, 5229, 261, 5490, 'PLN', 1), $snapshots[0]);
     }
 
@@ -77,7 +85,7 @@ final class GetCurrentPricesTest extends KernelTestCase
         self::assertSame(5490, $this->ask([$id])[0]->gross);
 
         $this->connection->executeStatement(
-            'UPDATE pricing_product_price SET gross_amount = 5990, net_amount = 5705, vat_amount = 285, version = 2 WHERE product_id = ?',
+            'UPDATE pricing_variant_price SET gross_amount = 5990, net_amount = 5705, vat_amount = 285, version = 2 WHERE variant_id = ?',
             [$id],
         );
 
@@ -86,9 +94,9 @@ final class GetCurrentPricesTest extends KernelTestCase
         self::assertSame(2, $snapshot->version);
     }
 
-    public function testRejectsMoreThanAHundredProductsBeforeReadingAnything(): void
+    public function testRejectsMoreThan4800VariantsBeforeReadingAnything(): void
     {
-        $ids = array_map(static fn (): string => (string) Uuid::v7(), range(1, 101));
+        $ids = array_map(static fn (): string => (string) Uuid::v7(), range(1, 4801));
 
         $before = $this->counter->count();
         try {
@@ -103,7 +111,7 @@ final class GetCurrentPricesTest extends KernelTestCase
 
     private function insertPrice(int $gross, string $taxClass, int $basisPoints): string
     {
-        return ProductPriceRecordFactory::store($this->entityManager, ['gross' => $gross, 'taxClass' => $taxClass, 'vatRateBp' => $basisPoints]);
+        return VariantPriceRecordFactory::store($this->entityManager, ['gross' => $gross, 'taxClass' => $taxClass, 'vatRateBp' => $basisPoints]);
     }
 
     /**

@@ -7,22 +7,22 @@ namespace App\Tests\Unit\Pricing;
 use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\PriceChangeOrigin;
 use App\Pricing\Domain\Price\PriceModifiedConcurrently;
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductPrice;
-use App\Pricing\Domain\Price\ProductPriceRepository;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantPrice;
+use App\Pricing\Domain\Price\VariantPriceRepository;
 use App\Pricing\Domain\Tax\VatRates;
 
 /**
  * Plays a staff member who changes the gross of a price right before the code under test saves it, so that save
  * is refused. A refused save closes the session, and any use of a closed session fails, as with Doctrine.
  */
-final class ConcurrentlyEditedProductPriceRepository implements ProductPriceRepository
+final class ConcurrentlyEditedVariantPriceRepository implements VariantPriceRepository
 {
-    /** @var array<string, int> product id => edits still to play */
+    /** @var array<string, int> variant id => edits still to play */
     private array $edits = [];
 
     public function __construct(
-        private readonly InMemoryProductPriceRepository $inner,
+        private readonly InMemoryVariantPriceRepository $inner,
         private readonly InMemoryPersistenceSession $session,
         private readonly VatRates $rates,
     ) {
@@ -31,12 +31,12 @@ final class ConcurrentlyEditedProductPriceRepository implements ProductPriceRepo
     /**
      * @param int $times how many saves of the price are preceded by a competing edit
      */
-    public function editBeforeSave(string $productId, int $times): void
+    public function editBeforeSave(string $variantId, int $times): void
     {
-        $this->edits[$productId] = $times;
+        $this->edits[$variantId] = $times;
     }
 
-    public function find(ProductId $id): ?ProductPrice
+    public function find(VariantId $id): ?VariantPrice
     {
         $this->assertOpen();
 
@@ -50,14 +50,14 @@ final class ConcurrentlyEditedProductPriceRepository implements ProductPriceRepo
         return $this->inner->findMany($ids);
     }
 
-    public function page(?ProductId $after, int $limit): array
+    public function page(?VariantId $after, int $limit): array
     {
         $this->assertOpen();
 
         return $this->inner->page($after, $limit);
     }
 
-    public function save(ProductPrice $price): void
+    public function save(VariantPrice $price): void
     {
         $this->assertOpen();
         $id = $price->id()->toString();

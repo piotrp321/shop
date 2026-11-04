@@ -7,7 +7,7 @@ namespace App\Tests\Factory;
 use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\PriceBreakdown;
 use App\Pricing\Domain\Tax\VatRate;
-use App\Pricing\Infrastructure\Persistence\Doctrine\Record\ProductPriceRecord;
+use App\Pricing\Infrastructure\Persistence\Doctrine\Record\VariantPriceRecord;
 use Doctrine\ORM\EntityManagerInterface;
 use Zenstruck\Foundry\ObjectFactory;
 
@@ -16,19 +16,19 @@ use Zenstruck\Foundry\ObjectFactory;
  * from the rate of the class (an outdated rate) and the class may have no rate at all: the factory writes what a
  * test needs to find in the table, not what the domain would have written today.
  *
- * @extends ObjectFactory<ProductPriceRecord>
+ * @extends ObjectFactory<VariantPriceRecord>
  */
-final class ProductPriceRecordFactory extends ObjectFactory
+final class VariantPriceRecordFactory extends ObjectFactory
 {
     public static function class(): string
     {
-        return ProductPriceRecord::class;
+        return VariantPriceRecord::class;
     }
 
     /**
-     * Saves a price row at once and returns the id of its product.
+     * Saves a price row at once and returns the id of its variant.
      *
-     * @param array<string, mixed> $attributes productId, gross (grosze), taxClass, vatRateBp, currency
+     * @param array<string, mixed> $attributes variantId, gross (grosze), taxClass, vatRateBp, currency
      */
     public static function store(EntityManagerInterface $entityManager, array $attributes = []): string
     {
@@ -36,7 +36,7 @@ final class ProductPriceRecordFactory extends ObjectFactory
         $entityManager->persist($record);
         $entityManager->flush();
 
-        return $record->productId;
+        return $record->variantId;
     }
 
     /**
@@ -45,7 +45,7 @@ final class ProductPriceRecordFactory extends ObjectFactory
     protected function defaults(): array
     {
         return [
-            'productId' => self::faker()->uuid(),
+            'variantId' => self::faker()->uuid(),
             'gross' => 12300,
             'taxClass' => 'standard',
             'vatRateBp' => 2300,
@@ -61,13 +61,13 @@ final class ProductPriceRecordFactory extends ObjectFactory
     /**
      * @param array<string, mixed> $attributes
      */
-    private static function instantiate(array $attributes): ProductPriceRecord
+    private static function instantiate(array $attributes): VariantPriceRecord
     {
-        ['productId' => $productId, 'gross' => $gross, 'taxClass' => $taxClass, 'vatRateBp' => $basisPoints, 'currency' => $currency] = $attributes;
-        \assert(\is_string($productId) && \is_int($gross) && \is_string($taxClass) && \is_int($basisPoints) && \is_string($currency));
+        ['variantId' => $variantId, 'gross' => $gross, 'taxClass' => $taxClass, 'vatRateBp' => $basisPoints, 'currency' => $currency] = $attributes;
+        \assert(\is_string($variantId) && \is_int($gross) && \is_string($taxClass) && \is_int($basisPoints) && \is_string($currency));
 
         $breakdown = PriceBreakdown::fromGross(GrossPrice::pln($gross), VatRate::fromBasisPoints($basisPoints));
-        $record = new ProductPriceRecord($productId);
+        $record = new VariantPriceRecord($variantId);
         $record->currency = $currency;
         $record->grossAmount = $breakdown->gross()->amount();
         $record->netAmount = $breakdown->net()->amount();

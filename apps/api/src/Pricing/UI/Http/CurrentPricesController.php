@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Pricing\UI\Http;
 
-use App\Pricing\Application\Query\GetCurrentPrices;
-use App\Pricing\Application\Query\PriceSnapshot;
+use App\Pricing\Application\Query\CurrentProductPrice;
+use App\Pricing\Application\Query\GetCurrentProductPrices;
 use OpenApi\Attributes as OA;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -33,7 +33,7 @@ final class CurrentPricesController
         operationId: 'getCurrentPrices',
         summary: 'Gross prices of products',
         description: 'The current gross price of each requested product, for the product list. A product without a price, '
-            .'with a price at an outdated VAT rate, or unknown, is left out. Send the ids as a repeated `productId` key '
+            .'with a price at an outdated VAT rate, with more than one variant, or unknown, is left out. Send the ids as a repeated `productId` key '
             .'(`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, '
             .'so it is not the price to charge: checkout reads prices from the database.',
         tags: ['Pricing'],
@@ -79,12 +79,14 @@ final class CurrentPricesController
             throw new ValidationFailedException($query, $violations);
         }
 
-        /** @var list<PriceSnapshot> $snapshots */
-        $snapshots = $this->handle(new GetCurrentPrices($query->productId));
+        // Transitional until the product offers replace this endpoint (VARIANTS-4): a product with exactly one variant
+        // has the price of that variant.
+        /** @var list<CurrentProductPrice> $prices */
+        $prices = $this->handle(new GetCurrentProductPrices($query->productId));
 
         $response = new JsonResponse(['items' => array_map(
-            static fn (PriceSnapshot $price): array => ['productId' => $price->productId, 'gross' => $price->gross, 'currency' => $price->currency],
-            $snapshots,
+            static fn (CurrentProductPrice $price): array => ['productId' => $price->productId, 'gross' => $price->gross, 'currency' => $price->currency],
+            $prices,
         )]);
         $response->setPublic();
         $response->setMaxAge(60);

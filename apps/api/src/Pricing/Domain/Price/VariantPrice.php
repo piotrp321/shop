@@ -9,20 +9,20 @@ use App\Pricing\Domain\Tax\TaxClassWithoutRate;
 use App\Pricing\Domain\Tax\VatRates;
 
 /**
- * The catalog price of one product: the breakdown at the rate of its tax class, and the history entries of the
+ * The catalog price of one product variant: the breakdown at the rate of its tax class, and the history entries of the
  * changes not saved yet.
  *
  * Every change of the gross, net, VAT, rate or class records one history entry; a change to the identical set
  * records nothing and keeps the version. The version is the one the state will have once saved: a new price has
  * version 1, and the changes made before the next save share one version step, as they are saved by one write.
  */
-final class ProductPrice
+final class VariantPrice
 {
     /** @var list<PriceHistoryEntry> */
     private array $unsavedHistory = [];
 
     private function __construct(
-        private readonly ProductId $id,
+        private readonly VariantId $id,
         private PriceBreakdown $breakdown,
         private TaxClass $taxClass,
         private int $version,
@@ -33,7 +33,7 @@ final class ProductPrice
     /**
      * @throws TaxClassWithoutRate
      */
-    public static function create(ProductId $id, GrossPrice $gross, TaxClass $taxClass, VatRates $rates, PriceChangeOrigin $origin): self
+    public static function create(VariantId $id, GrossPrice $gross, TaxClass $taxClass, VatRates $rates, PriceChangeOrigin $origin): self
     {
         $changedAt = new \DateTimeImmutable();
         $price = new self($id, PriceBreakdown::fromGross($gross, $rates->rateFor($taxClass)), $taxClass, 1, $changedAt);
@@ -45,7 +45,7 @@ final class ProductPrice
     /**
      * Restores a stored price without recording history.
      */
-    public static function reconstitute(ProductId $id, PriceBreakdown $breakdown, TaxClass $taxClass, int $version, \DateTimeImmutable $updatedAt): self
+    public static function reconstitute(VariantId $id, PriceBreakdown $breakdown, TaxClass $taxClass, int $version, \DateTimeImmutable $updatedAt): self
     {
         return new self($id, $breakdown, $taxClass, $version, $updatedAt);
     }
@@ -97,7 +97,7 @@ final class ProductPrice
         return $entries;
     }
 
-    public function id(): ProductId
+    public function id(): VariantId
     {
         return $this->id;
     }

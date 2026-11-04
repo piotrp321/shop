@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Pricing\Application\Query;
 
-use App\Pricing\Domain\Price\ProductPrice;
+use App\Pricing\Domain\Price\VariantPrice;
 use App\Pricing\Domain\Tax\VatRates;
 
 /**
@@ -31,7 +31,7 @@ final readonly class ListedPrice
     /**
      * The price as it is stored: after a save, its version and time are the ones written.
      */
-    public static function of(ProductPrice $price, VatRates $rates): self
+    public static function of(VariantPrice $price, VatRates $rates): self
     {
         $breakdown = $price->breakdown();
 

@@ -4,28 +4,28 @@ declare(strict_types=1);
 
 namespace App\Pricing\Domain\Price;
 
-interface ProductPriceRepository
+interface VariantPriceRepository
 {
-    public function find(ProductId $id): ?ProductPrice;
+    public function find(VariantId $id): ?VariantPrice;
 
     /**
-     * The stored prices of the products, in one read straight from the store (no cache, no session state), in no
-     * particular order. A product without a price is absent from the result.
+     * The stored prices of the variants, in one read straight from the store (no cache, no session state), in no
+     * particular order. A variant without a price is absent from the result.
      *
-     * @param list<ProductId> $ids
+     * @param list<VariantId> $ids
      *
-     * @return list<ProductPrice>
+     * @return list<VariantPrice>
      */
     public function findMany(array $ids): array;
 
     /**
-     * All stored prices in batches by product id (keyset), read like findMany(): the stored state, nothing kept.
+     * All stored prices in batches by variant id (keyset), read like findMany(): the stored state, nothing kept.
      *
      * @param int $limit 1 to 1000
      *
-     * @return list<ProductPrice> ordered by product id, starting after $after; empty after the last price
+     * @return list<VariantPrice> ordered by variant id, starting after $after; empty after the last price
      */
-    public function page(?ProductId $after, int $limit): array;
+    public function page(?VariantId $after, int $limit): array;
 
     /**
      * Writes the price and appends its unsaved history entries in one transaction. A price without unsaved entries
@@ -38,5 +38,5 @@ interface ProductPriceRepository
      * @throws PriceModifiedConcurrently when the stored version is not the one the price was read with, or a price
      *                                   created concurrently was stored first
      */
-    public function save(ProductPrice $price): void;
+    public function save(VariantPrice $price): void;
 }

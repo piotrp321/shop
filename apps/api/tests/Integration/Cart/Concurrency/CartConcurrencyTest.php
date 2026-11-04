@@ -55,7 +55,7 @@ final class CartConcurrencyTest extends KernelTestCase
     {
         CartFixture::delete($this->control, $this->carts, $this->customers);
         if ([] !== $this->products) {
-            $this->control->executeStatement('DELETE FROM pricing_product_price WHERE product_id IN (?)', [$this->products], [ArrayParameterType::STRING]);
+            $this->control->executeStatement('DELETE FROM pricing_variant_price WHERE variant_id IN (SELECT id FROM catalog_product_variant WHERE product_id IN (?))', [$this->products], [ArrayParameterType::STRING]);
         }
         StockFixture::delete($this->control, $this->products, []);
         CatalogFixture::delete($this->control, $this->products);
@@ -294,14 +294,14 @@ final class CartConcurrencyTest extends KernelTestCase
     }
 
     /**
-     * A product in Catalog with a current price and 1000 units in stock, committed.
+     * A product in Catalog with a current price of its one variant and 1000 units in stock, committed.
      */
     private function purchasableProduct(): string
     {
         $id = CatalogFixture::product($this->control);
         $this->products[] = $id;
         $this->control->executeStatement(
-            "INSERT INTO pricing_product_price (product_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at) VALUES (?, 'PLN', 1230, 1000, 230, 2300, 'standard', 1, now())",
+            "INSERT INTO pricing_variant_price (variant_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at) SELECT id, 'PLN', 1230, 1000, 230, 2300, 'standard', 1, now() FROM catalog_product_variant WHERE product_id = ?",
             [$id],
         );
         StockFixture::stock($this->control, 1000, productId: $id);

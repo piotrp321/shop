@@ -13,13 +13,13 @@ import { formatDateTime, formatMoney, formatRate, sourceLabel } from "@/prices/f
 import { parseGross } from "@/prices/parseGross";
 import { useCategoryTree } from "@/composables/useCategoryTree";
 import { usePriceHistory } from "@/prices/usePriceHistory";
-import { MAX_SEARCH_LENGTH, type PriceListItem, usePriceList } from "@/prices/usePriceList";
+import { MAX_SEARCH_LENGTH, type PriceRow, usePriceList } from "@/prices/usePriceList";
 import { useAuthStore } from "@/stores/auth";
 
 const {
   search,
   searchTooShort,
-  items,
+  rows,
   loading,
   loaded,
   error,
@@ -43,17 +43,22 @@ watch(selection, (value) => selectCategory(value ? (Object.keys(value)[0] ?? nul
 const auth = useAuthStore();
 const canChangePrices = computed(() => auth.staff?.roles.includes("admin") ?? false);
 
-// The dialog follows the row by id, so after a conflict reloads the page it shows the current price and version.
+// The name of a variant in the dialogs: the product, and the label unless it is the default variant.
+function variantName(row: PriceRow): string {
+  return row.label === "" ? row.name : `${row.name} – ${row.label}`;
+}
+
+// The dialog follows the row by variant id, so after a conflict reloads the page it shows the current price and version.
 const editingId = ref<string | null>(null);
 const editingName = ref("");
-const editing = computed(() => items.value.find((item) => item.productId === editingId.value) ?? null);
+const editing = computed(() => rows.value.find((row) => row.variantId === editingId.value) ?? null);
 const grossText = ref("");
 const fieldError = ref<string | null>(null);
 const conflict = ref<string | null>(null);
 const changeError = ref<string | null>(null);
 const saving = ref(false);
 // Counts the openings and closings of the dialog. A save answers only the dialog it was sent from: when the dialog
-// was closed or opened again meanwhile (even for the same product), the answer must not touch the new one.
+// was closed or opened again meanwhile (even for the same variant), the answer must not touch the new one.
 let dialogSession = 0;
 const dialogVisible = computed({
   get: () => editingId.value !== null,
@@ -70,22 +75,22 @@ function closeChange(): void {
   saving.value = false;
 }
 
-function openChange(item: PriceListItem): void {
+function openChange(row: PriceRow): void {
   dialogSession++;
   saving.value = false;
-  editingId.value = item.productId;
-  editingName.value = item.name;
+  editingId.value = row.variantId;
+  editingName.value = variantName(row);
   grossText.value = "";
   fieldError.value = null;
   conflict.value = null;
   changeError.value = null;
 }
 
-// The history dialog is open while a product is chosen. Its name is kept from the moment it was opened, since the list
+// The history dialog is open while a variant is chosen. Its name is kept from the moment it was opened, since the list
 // may move to another page meanwhile.
 const historyName = ref("");
 const historyVisible = computed({
-  get: () => history.productId.value !== null,
+  get: () => history.variantId.value !== null,
   set: (visible: boolean) => {
     if (!visible) {
       history.close();
@@ -93,9 +98,9 @@ const historyVisible = computed({
   },
 });
 
-function openHistory(item: PriceListItem): void {
-  historyName.value = item.name;
-  void history.open(item.productId);
+function openHistory(row: PriceRow): void {
+  historyName.value = variantName(row);
+  void history.open(row.variantId);
 }
 
 async function saveChange(): Promise<void> {
@@ -113,7 +118,7 @@ async function saveChange(): Promise<void> {
   changeError.value = null;
   saving.value = true;
   const session = dialogSession;
-  const result = await changePrice(item.productId, gross.grosze, item.price?.version ?? null);
+  const result = await changePrice(item.variantId, gross.grosze, item.price?.version ?? null);
   if (session !== dialogSession) {
     // The list has taken the outcome (a saved price, a reload after a conflict); this dialog is not the one that asked.
     return;
@@ -199,9 +204,9 @@ async function saveChange(): Promise<void> {
 
     <DataTable
       v-if="loaded"
-      :value="items"
+      :value="rows"
       :loading="loading"
-      data-key="productId"
+      data-key="variantId"
       :pt="{ bodyRow: { 'data-testid': 'price-row' } }"
     >
       <template #empty>
@@ -209,12 +214,23 @@ async function saveChange(): Promise<void> {
       </template>
       <Column header="Nazwa">
         <template #body="{ data }">
-          <span data-testid="name">{{ data.name }}</span>
+          <span
+            v-if="data.first"
+            data-testid="name"
+          >{{ data.name }}</span>
+        </template>
+      </Column>
+      <Column header="Wariant">
+        <template #body="{ data }">
+          <span data-testid="variant-label">{{ data.label }}</span>
         </template>
       </Column>
       <Column header="Klasa">
         <template #body="{ data }">
-          <span data-testid="tax-class">{{ data.taxClass }}</span>
+          <span
+            v-if="data.first"
+            data-testid="tax-class"
+          >{{ data.taxClass }}</span>
         </template>
       </Column>
       <Column
@@ -292,7 +308,7 @@ async function saveChange(): Promise<void> {
         data-testid="change-dialog"
         class="change"
       >
-        <strong>{{ editing?.name ?? editingName }}</strong>
+        <strong>{{ editing ? variantName(editing) : editingName }}</strong>
         <span data-testid="current-gross">
           Obecna cena brutto: {{ editing?.price ? formatMoney(editing.price.gross, editing.price.currency) : "Brak ceny" }}
         </span>

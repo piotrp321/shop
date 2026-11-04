@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Pricing\Domain\Price;
 
 /**
- * Identifier of a priced product: the UUID of the product in Catalog, kept as Pricing's own value.
+ * Identifier of a Catalog product, kept as Pricing's own value: the panel lists products with the prices of their
+ * variants.
  */
 final readonly class ProductId
 {

@@ -6,17 +6,17 @@ namespace App\Tests\Unit\Pricing;
 
 use App\Pricing\Domain\Price\PriceHistoryEntry;
 use App\Pricing\Domain\Price\PriceModifiedConcurrently;
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductPrice;
-use App\Pricing\Domain\Price\ProductPriceRepository;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantPrice;
+use App\Pricing\Domain\Price\VariantPriceRepository;
 
 /**
  * Keeps prices like the database does: find() returns a fresh copy, save() checks the version the price was read
  * with and appends the history.
  */
-final class InMemoryProductPriceRepository implements ProductPriceRepository
+final class InMemoryVariantPriceRepository implements VariantPriceRepository
 {
-    /** @var array<string, ProductPrice> */
+    /** @var array<string, VariantPrice> */
     private array $prices = [];
     /** @var list<PriceHistoryEntry> */
     public array $history = [];
@@ -26,7 +26,7 @@ final class InMemoryProductPriceRepository implements ProductPriceRepository
     /** @var list<int> the limit of every page() call */
     public array $pageLimits = [];
 
-    public function find(ProductId $id): ?ProductPrice
+    public function find(VariantId $id): ?VariantPrice
     {
         $stored = $this->prices[$id->toString()] ?? null;
 
@@ -35,7 +35,7 @@ final class InMemoryProductPriceRepository implements ProductPriceRepository
 
     public function findMany(array $ids): array
     {
-        $this->manyReads[] = array_map(static fn (ProductId $id): string => $id->toString(), $ids);
+        $this->manyReads[] = array_map(static fn (VariantId $id): string => $id->toString(), $ids);
         $found = [];
         foreach ($ids as $id) {
             $stored = $this->prices[$id->toString()] ?? null;
@@ -47,7 +47,7 @@ final class InMemoryProductPriceRepository implements ProductPriceRepository
         return $found;
     }
 
-    public function page(?ProductId $after, int $limit): array
+    public function page(?VariantId $after, int $limit): array
     {
         $this->pageLimits[] = $limit;
         $ids = array_keys($this->prices);
@@ -56,10 +56,10 @@ final class InMemoryProductPriceRepository implements ProductPriceRepository
             $ids = array_filter($ids, static fn (string $id): bool => strcmp($id, $after->toString()) > 0);
         }
 
-        return array_map(fn (string $id): ProductPrice => $this->copy($this->prices[$id]), \array_slice(array_values($ids), 0, $limit));
+        return array_map(fn (string $id): VariantPrice => $this->copy($this->prices[$id]), \array_slice(array_values($ids), 0, $limit));
     }
 
-    public function save(ProductPrice $price): void
+    public function save(VariantPrice $price): void
     {
         $entries = $price->releaseHistory();
         if ([] === $entries) {
@@ -80,14 +80,14 @@ final class InMemoryProductPriceRepository implements ProductPriceRepository
     /**
      * Stores a price as if it had been saved earlier, without history.
      */
-    public function store(ProductPrice $price): void
+    public function store(VariantPrice $price): void
     {
         $price->releaseHistory();
         $this->prices[$price->id()->toString()] = $this->copy($price);
     }
 
-    private function copy(ProductPrice $price): ProductPrice
+    private function copy(VariantPrice $price): VariantPrice
     {
-        return ProductPrice::reconstitute($price->id(), $price->breakdown(), $price->taxClass(), $price->version(), $price->updatedAt());
+        return VariantPrice::reconstitute($price->id(), $price->breakdown(), $price->taxClass(), $price->version(), $price->updatedAt());
     }
 }

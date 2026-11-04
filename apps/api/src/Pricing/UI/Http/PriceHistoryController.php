@@ -26,7 +26,7 @@ final class PriceHistoryController
 {
     use HandleTrait;
 
-    /** A UUID in any letter case; anything else matches no route (404), like an unknown product. */
+    /** A UUID in any letter case; anything else matches no route (404), like an unknown variant. */
     private const string UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 
     public function __construct(#[Autowire(service: 'query.bus')] MessageBusInterface $queryBus)
@@ -34,17 +34,17 @@ final class PriceHistoryController
         $this->messageBus = $queryBus;
     }
 
-    #[Route('/api/v1/admin/products/{productId}/price-history', name: 'pricing_price_history', requirements: ['productId' => self::UUID], methods: ['GET'])]
+    #[Route('/api/v1/admin/variants/{variantId}/price-history', name: 'pricing_price_history', requirements: ['variantId' => self::UUID], methods: ['GET'])]
     #[Security(name: 'backoffice')]
     #[OA\Get(
         operationId: 'getPriceHistory',
-        summary: 'Price history of a product',
-        description: 'Every recorded change of the price of a product, newest first, with the price as it was set, '
-            .'what made the change and, for a change by staff, who. Every staff member may read it. A product that exists '
+        summary: 'Price history of a product variant',
+        description: 'Every recorded change of the price of a product variant, newest first, with the price as it was set, '
+            .'what made the change and, for a change by staff, who. Every staff member may read it. A variant that exists '
             .'but never had a price has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.',
         tags: ['Pricing'],
         parameters: [
-            new OA\Parameter(name: 'productId', in: 'path', required: true, description: 'Product id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'variantId', in: 'path', required: true, description: 'Variant id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
             new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `next` cursor of the previous page.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: PriceHistoryQuery::MAX_CURSOR_LENGTH)),
             new OA\Parameter(name: 'perPage', in: 'query', required: false, description: 'Page size.', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: GetPriceHistory::MAX_PER_PAGE, default: GetPriceHistory::DEFAULT_PER_PAGE)),
         ],
@@ -66,7 +66,7 @@ final class PriceHistoryController
             ),
             new OA\Response(
                 response: 404,
-                description: 'No such product, or the id is not a UUID (problem details).',
+                description: 'No such variant, or the id is not a UUID (problem details).',
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
             new OA\Response(
@@ -76,11 +76,11 @@ final class PriceHistoryController
             ),
         ],
     )]
-    public function __invoke(string $productId, #[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] PriceHistoryQuery $query = new PriceHistoryQuery()): JsonResponse
+    public function __invoke(string $variantId, #[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] PriceHistoryQuery $query = new PriceHistoryQuery()): JsonResponse
     {
         try {
             /** @var PriceHistoryPage $page */
-            $page = $this->handle(new GetPriceHistory($productId, $query->after, $query->perPage));
+            $page = $this->handle(new GetPriceHistory($variantId, $query->after, $query->perPage));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

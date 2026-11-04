@@ -13,7 +13,7 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
-use App\Tests\Factory\ProductPriceRecordFactory;
+use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Inventory\StockFixture;
 use App\Tests\Support\StatementCounter;
 use Doctrine\ORM\EntityManagerInterface;
@@ -61,16 +61,30 @@ final class QueryBusAdaptersTest extends KernelTestCase
         self::assertSame([256, 384, 512, 768], array_column($summaries[0]->image->variants['webp'] ?? [], 'width'));
     }
 
-    public function testPricingGivesTheCurrentGrossPricesOnly(): void
+    /**
+     * Transitional until the cart lines are kept per variant (VARIANTS-4): a product with exactly one variant has the
+     * current price of that variant, a product with more variants has none.
+     */
+    public function testPricingGivesTheCurrentGrossPriceOfTheOnlyVariantOfAProduct(): void
     {
-        $priced = ProductPriceRecordFactory::store($this->entityManager, ['gross' => 19_999]);
+        $priced = $this->product([(string) Uuid::v7()]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $priced[1][0], 'gross' => 19_999]);
         // A price at a rate that is no longer the rate of its class is no current price.
-        $outdated = ProductPriceRecordFactory::store($this->entityManager, ['gross' => 5_000, 'vatRateBp' => 800]);
+        $outdated = $this->product([(string) Uuid::v7()]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $outdated[1][0], 'gross' => 5_000, 'vatRateBp' => 800]);
+        $twoVariants = $this->product([(string) Uuid::v7(), (string) Uuid::v7()]);
+        foreach ($twoVariants[1] as $variantId) {
+            VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $variantId, 'gross' => 7_000]);
+        }
+        self::assertNotSame($priced[0], $priced[1][0]);
 
-        $prices = new QueryBusCartPrices($this->queryBus)->current([ProductId::fromString($priced), ProductId::fromString($outdated), ProductId::fromString((string) Uuid::v7())]);
+        $prices = new QueryBusCartPrices($this->queryBus)->current(array_map(
+            static fn (string $id): ProductId => ProductId::fromString($id),
+            [$twoVariants[0], $priced[0], $outdated[0], (string) Uuid::v7()],
+        ));
 
         self::assertCount(1, $prices);
-        self::assertSame($priced, $prices[0]->productId->toString());
+        self::assertSame($priced[0], $prices[0]->productId->toString());
         self::assertSame(19_999, $prices[0]->gross->amount());
     }
 
@@ -95,5 +109,23 @@ final class QueryBusAdaptersTest extends KernelTestCase
         self::assertSame([], new QueryBusStockAvailability($this->queryBus)->of([]));
 
         self::assertSame($before, $counter->count());
+    }
+
+    /**
+     * @param list<string> $variantIds one id for the default variant, more for variants of a colour axis
+     *
+     * @return array{string, list<string>} the id of the product and the ids of its variants
+     */
+    private function product(array $variantIds): array
+    {
+        $category = CategoryFactory::createOne();
+        new DoctrineCategoryRepository($this->entityManager)->save($category);
+        $variants = 1 === \count($variantIds)
+            ? ['variantAxes' => [], 'variants' => [['id' => $variantIds[0], 'values' => []]]]
+            : ['variantAxes' => ['Kolor'], 'variants' => array_map(static fn (string $id, int $n): array => ['id' => $id, 'values' => ['kolor '.$n]], $variantIds, array_keys($variantIds))];
+        $product = ProductFactory::createOne(['mainCategory' => $category, ...$variants]);
+        new DoctrineProductRepository($this->entityManager)->save($product);
+
+        return [$product->id()->toString(), $variantIds];
     }
 }

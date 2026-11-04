@@ -36,8 +36,9 @@ final class BackofficePricesController
     #[OA\Get(
         operationId: 'listPrices',
         summary: 'Price list',
-        description: 'A page of products sorted by name, then by id, each with its price (null when it has none). '
-            .'Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. '
+        description: 'A page of products sorted by name, then by id, each with its variants in presentation order and the price '
+            .'of each variant (null when it has none). Every staff member may read it. The page size counts products, each '
+            .'with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. '
             .'The category filter includes the subcategories and the products that have the category as an additional one; '
             .'an unknown category gives 404. The search term is a literal part of the name, case-insensitive.',
         tags: ['Pricing'],

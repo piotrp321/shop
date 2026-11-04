@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 
 vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get }) }));
 
-const HISTORY = "/api/v1/admin/products/{productId}/price-history";
+const HISTORY = "/api/v1/admin/variants/{variantId}/price-history";
 
 function entry(gross: number, overrides: Partial<Entry> = {}): Entry {
   return {
@@ -48,23 +48,23 @@ describe("usePriceHistory", () => {
     mocks.get.mockReset();
   });
 
-  it("starts empty and asks for nothing until a product is opened", () => {
+  it("starts empty and asks for nothing until a variant is opened", () => {
     const history = usePriceHistory();
 
-    expect(history.productId.value).toBeNull();
+    expect(history.variantId.value).toBeNull();
     expect(history.items.value).toEqual([]);
     expect(history.hasMore.value).toBe(false);
     expect(mocks.get).not.toHaveBeenCalled();
   });
 
-  it("opens a product with its first page, newest first as the API sends it", async () => {
+  it("opens a variant with its first page, newest first as the API sends it", async () => {
     mocks.get.mockResolvedValue(ok({ items: [entry(5990), entry(5490)], next: null }));
     const history = usePriceHistory();
 
     await history.open("p-1");
 
-    expect(mocks.get).toHaveBeenCalledWith(HISTORY, { params: { path: { productId: "p-1" }, query: {} } });
-    expect(history.productId.value).toBe("p-1");
+    expect(mocks.get).toHaveBeenCalledWith(HISTORY, { params: { path: { variantId: "p-1" }, query: {} } });
+    expect(history.variantId.value).toBe("p-1");
     expect(history.items.value.map((item) => item.gross)).toEqual([5990, 5490]);
     expect(history.loaded.value).toBe(true);
     expect(history.hasMore.value).toBe(false);
@@ -174,7 +174,7 @@ describe("usePriceHistory", () => {
     await first;
     await flushPromises();
 
-    expect(history.productId.value).toBe("p-2");
+    expect(history.variantId.value).toBe("p-2");
     expect(history.items.value.map((item) => item.gross)).toEqual([222]);
     expect(history.hasMore.value).toBe(false);
   });
@@ -189,7 +189,7 @@ describe("usePriceHistory", () => {
     late.resolve(ok({ items: [entry(1)], next: "c1" }));
     await opening;
 
-    expect(history.productId.value).toBeNull();
+    expect(history.variantId.value).toBeNull();
     expect(history.items.value).toEqual([]);
     expect(history.loading.value).toBe(false);
     expect(history.loaded.value).toBe(false);

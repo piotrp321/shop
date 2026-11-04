@@ -8,7 +8,7 @@ use App\Pricing\Application\Query\GetPriceHistory;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * Query string of GET /api/v1/admin/products/{productId}/price-history. The violation messages never contain the
+ * Query string of GET /api/v1/admin/variants/{variantId}/price-history. The violation messages never contain the
  * submitted value.
  */
 final readonly class PriceHistoryQuery

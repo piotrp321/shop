@@ -8,7 +8,7 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
-use App\Tests\Factory\ProductPriceRecordFactory;
+use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Inventory\StockFixture;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -37,7 +37,8 @@ trait CartEndpointTestTrait
     }
 
     /**
-     * A product of Catalog, with a gross price (null: none) and a physical stock (null: no stock record).
+     * A product of Catalog, with a gross price of its one variant (null: none) and a physical stock (null: no stock
+     * record).
      *
      * @param list<string> $imageAlts
      */
@@ -49,7 +50,7 @@ trait CartEndpointTestTrait
         new DoctrineProductRepository($this->entityManager)->save($product);
         $id = $product->id()->toString();
         if (null !== $gross) {
-            ProductPriceRecordFactory::store($this->entityManager, ['productId' => $id, 'gross' => $gross]);
+            VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $product->variants()->toList()[0]->id()->toString(), 'gross' => $gross]);
         }
         if (null !== $stock) {
             StockFixture::stock($this->connection, $stock, productId: $id);

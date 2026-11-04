@@ -18,13 +18,13 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
- * GET /api/v1/admin/products/{productId}/price-history on PostgreSQL (shop_test, rolled back after each test).
+ * GET /api/v1/admin/variants/{variantId}/price-history on PostgreSQL (shop_test, rolled back after each test).
  */
 final class PriceHistoryEndpointTest extends WebTestCase
 {
     use Factories;
 
-    private const string UNKNOWN_PRODUCT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
+    private const string UNKNOWN_VARIANT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
 
     private KernelBrowser $client;
     private EntityManagerInterface $entityManager;
@@ -39,13 +39,13 @@ final class PriceHistoryEndpointTest extends WebTestCase
 
     public function testListsTheChangesNewestFirstWithTheirSnapshot(): void
     {
-        $productId = $this->product();
-        $this->entry($productId, '2026-10-01 10:00:00+00:00', 5490, ['source' => 'seed', 'actorId' => null, 'actorName' => null, 'taxClass' => 'printed_book', 'netAmount' => 5229, 'vatAmount' => 261, 'vatRateBp' => 500]);
-        $this->entry($productId, '2026-10-03 12:30:00+02:00', 5990, ['source' => 'tax_reconciliation', 'actorId' => null, 'actorName' => null, 'taxClass' => 'printed_book', 'netAmount' => 5705, 'vatAmount' => 285, 'vatRateBp' => 500]);
-        $this->entry($productId, '2026-10-02 10:00:00+00:00', 5790, ['source' => 'staff', 'actorId' => 'sub-123', 'actorName' => 'Anna Admin', 'taxClass' => 'printed_book', 'netAmount' => 5514, 'vatAmount' => 276, 'vatRateBp' => 500]);
-        $this->entry($this->product(), '2026-10-04 10:00:00+00:00', 1000);
+        $variantId = $this->variant();
+        $this->entry($variantId, '2026-10-01 10:00:00+00:00', 5490, ['source' => 'seed', 'actorId' => null, 'actorName' => null, 'taxClass' => 'printed_book', 'netAmount' => 5229, 'vatAmount' => 261, 'vatRateBp' => 500]);
+        $this->entry($variantId, '2026-10-03 12:30:00+02:00', 5990, ['source' => 'tax_reconciliation', 'actorId' => null, 'actorName' => null, 'taxClass' => 'printed_book', 'netAmount' => 5705, 'vatAmount' => 285, 'vatRateBp' => 500]);
+        $this->entry($variantId, '2026-10-02 10:00:00+00:00', 5790, ['source' => 'staff', 'actorId' => 'sub-123', 'actorName' => 'Anna Admin', 'taxClass' => 'printed_book', 'netAmount' => 5514, 'vatAmount' => 276, 'vatRateBp' => 500]);
+        $this->entry($this->variant(), '2026-10-04 10:00:00+00:00', 1000);
 
-        $body = $this->get($productId);
+        $body = $this->get($variantId);
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringContainsString('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
@@ -64,21 +64,21 @@ final class PriceHistoryEndpointTest extends WebTestCase
         self::assertStringNotContainsString('sub-123', (string) $this->client->getResponse()->getContent());
     }
 
-    public function testAProductWithoutAPriceHasAnEmptyHistory(): void
+    public function testAVariantWithoutAPriceHasAnEmptyHistory(): void
     {
-        self::assertSame(['items' => [], 'next' => null], $this->get($this->product()));
+        self::assertSame(['items' => [], 'next' => null], $this->get($this->variant()));
         self::assertResponseStatusCodeSame(200);
     }
 
     public function testDefaultPageHoldsTwentyFiveEntriesAndTheCursorLeadsToTheRest(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
         for ($n = 1; $n <= 26; ++$n) {
-            $this->entry($productId, \sprintf('2026-10-01 10:%02d:00+00:00', $n), 1000 + $n);
+            $this->entry($variantId, \sprintf('2026-10-01 10:%02d:00+00:00', $n), 1000 + $n);
         }
 
-        $first = $this->get($productId);
-        $second = $this->get($productId, 'after='.$this->next($first));
+        $first = $this->get($variantId);
+        $second = $this->get($variantId, 'after='.$this->next($first));
 
         self::assertCount(25, $this->items($first));
         self::assertSame(1026, $this->items($first)[0]['gross']);
@@ -89,15 +89,15 @@ final class PriceHistoryEndpointTest extends WebTestCase
 
     public function testPagesWithPerPageWithoutRepeatingOrSkippingEntries(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
         foreach ([1, 2, 3, 4, 5] as $n) {
-            $this->entry($productId, '2026-10-01 10:00:00+00:00', 1000 * $n);
+            $this->entry($variantId, '2026-10-01 10:00:00+00:00', 1000 * $n);
         }
 
         $seen = [];
         $query = 'perPage=2';
         for ($page = 0; $page < 5; ++$page) {
-            $body = $this->get($productId, $query);
+            $body = $this->get($variantId, $query);
             array_push($seen, ...array_column($this->items($body), 'gross'));
             if (null === $body['next']) {
                 break;
@@ -107,12 +107,12 @@ final class PriceHistoryEndpointTest extends WebTestCase
 
         // Five changes within one second: the later change comes first.
         self::assertSame([5000, 4000, 3000, 2000, 1000], $seen);
-        self::assertSame(2, \count($this->items($this->get($productId, 'perPage=2'))));
+        self::assertSame(2, \count($this->items($this->get($variantId, 'perPage=2'))));
     }
 
     public function testResponseIsPrivateAndNotStored(): void
     {
-        $this->get($this->product());
+        $this->get($this->variant());
 
         $cacheControl = (string) $this->client->getResponse()->headers->get('Cache-Control');
         self::assertStringContainsString('private', $cacheControl);
@@ -137,10 +137,10 @@ final class PriceHistoryEndpointTest extends WebTestCase
     #[DataProvider('staffRoles')]
     public function testEveryStaffRoleCanReadTheHistory(array $roles): void
     {
-        $productId = $this->product();
-        $this->entry($productId, '2026-10-01 10:00:00+00:00', 5490);
+        $variantId = $this->variant();
+        $this->entry($variantId, '2026-10-01 10:00:00+00:00', 5490);
 
-        $body = $this->get($productId, '', TestTokenFactory::staff($roles));
+        $body = $this->get($variantId, '', TestTokenFactory::staff($roles));
 
         self::assertResponseStatusCodeSame(200);
         self::assertCount(1, $this->items($body));
@@ -148,27 +148,43 @@ final class PriceHistoryEndpointTest extends WebTestCase
 
     public function testWithoutATokenTheRequestIsUnauthorized(): void
     {
-        $this->request($this->product(), '', null);
+        $this->request($this->variant(), '', null);
 
         $this->assertUnauthorized();
     }
 
     public function testATokenOfTheShopRealmIsUnauthorized(): void
     {
-        $this->get($this->product(), '', TestTokenFactory::customer());
+        $this->get($this->variant(), '', TestTokenFactory::customer());
 
         $this->assertUnauthorized();
     }
 
-    public function testAnUnknownProductIsNotFound(): void
+    public function testAnUnknownVariantIsNotFound(): void
     {
-        $this->entry(self::UNKNOWN_PRODUCT, '2026-10-01 10:00:00+00:00', 5490);
+        $this->entry(self::UNKNOWN_VARIANT, '2026-10-01 10:00:00+00:00', 5490);
 
-        $this->get(self::UNKNOWN_PRODUCT);
+        $this->get(self::UNKNOWN_VARIANT);
 
         $this->assertProblem(404);
-        self::assertSame('Product not found.', $this->json()['detail']);
-        self::assertStringNotContainsString(self::UNKNOWN_PRODUCT, (string) $this->client->getResponse()->getContent());
+        self::assertSame('Wariant produktu nie istnieje.', $this->json()['detail']);
+        self::assertStringNotContainsString(self::UNKNOWN_VARIANT, (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testTheIdOfAProductIsNotAVariantAndTheOldPathIsGone(): void
+    {
+        $variantId = $this->variant();
+        $productId = $this->entityManager->getConnection()->fetchOne('SELECT product_id FROM catalog_product_variant WHERE id = ?', [$variantId]);
+        self::assertIsString($productId);
+        self::assertNotSame($variantId, $productId);
+        $this->entry($productId, '2026-10-01 10:00:00+00:00', 5490);
+
+        $this->get($productId);
+        $this->assertProblem(404);
+        self::assertSame('Wariant produktu nie istnieje.', $this->json()['detail']);
+
+        $this->client->request('GET', '/api/v1/admin/products/'.$productId.'/price-history', server: ['HTTP_AUTHORIZATION' => 'Bearer '.TestTokenFactory::staff(['admin'])]);
+        self::assertResponseStatusCodeSame(404);
     }
 
     /**
@@ -177,14 +193,14 @@ final class PriceHistoryEndpointTest extends WebTestCase
     public static function idsThatAreNotUuids(): iterable
     {
         yield 'a word' => ['shoes'];
-        yield 'a uuid with a suffix' => [self::UNKNOWN_PRODUCT.'x'];
-        yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_PRODUCT)];
+        yield 'a uuid with a suffix' => [self::UNKNOWN_VARIANT.'x'];
+        yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_VARIANT)];
     }
 
     #[DataProvider('idsThatAreNotUuids')]
-    public function testAProductIdThatIsNotAUuidIsNotFound(string $productId): void
+    public function testAVariantIdThatIsNotAUuidIsNotFound(string $variantId): void
     {
-        $this->get($productId);
+        $this->get($variantId);
 
         $this->assertProblem(404);
     }
@@ -211,10 +227,10 @@ final class PriceHistoryEndpointTest extends WebTestCase
     #[DataProvider('rejectedQueries')]
     public function testBadParametersAreRejectedWithProblemDetails(string $query): void
     {
-        $productId = $this->product();
-        $this->entry($productId, '2026-10-01 10:00:00+00:00', 5490);
+        $variantId = $this->variant();
+        $this->entry($variantId, '2026-10-01 10:00:00+00:00', 5490);
 
-        $this->get($productId, $query);
+        $this->get($variantId, $query);
 
         $this->assertProblem(400);
         $problem = $this->json();
@@ -224,10 +240,10 @@ final class PriceHistoryEndpointTest extends WebTestCase
 
     public function testBoundariesOfThePageSizeAreAccepted(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
         foreach (['perPage=1', 'perPage=100'] as $query) {
-            $this->get($productId, $query);
+            $this->get($variantId, $query);
 
             self::assertResponseStatusCodeSame(200, $query);
         }
@@ -238,23 +254,23 @@ final class PriceHistoryEndpointTest extends WebTestCase
         return rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
     }
 
-    private function product(): string
+    private function variant(): string
     {
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($this->entityManager)->save($category);
         $product = ProductFactory::createOne(['mainCategory' => $category, 'taxClass' => TaxClassCode::PrintedBook]);
         new DoctrineProductRepository($this->entityManager)->save($product);
 
-        return $product->id()->toString();
+        return $product->variants()->toList()[0]->id()->toString();
     }
 
     /**
      * @param array<string, mixed> $attributes more columns of the history row
      */
-    private function entry(string $productId, string $changedAt, int $gross, array $attributes = []): void
+    private function entry(string $variantId, string $changedAt, int $gross, array $attributes = []): void
     {
         PriceHistoryRecordFactory::store($this->entityManager, [
-            'productId' => $productId,
+            'variantId' => $variantId,
             'changedAt' => new \DateTimeImmutable($changedAt),
             'grossAmount' => $gross,
         ] + $attributes);
@@ -265,18 +281,18 @@ final class PriceHistoryEndpointTest extends WebTestCase
      *
      * @return array<mixed>
      */
-    private function get(string $productId, string $query = '', ?string $token = null): array
+    private function get(string $variantId, string $query = '', ?string $token = null): array
     {
-        return $this->request($productId, $query, 'Bearer '.($token ?? TestTokenFactory::staff(['admin'])));
+        return $this->request($variantId, $query, 'Bearer '.($token ?? TestTokenFactory::staff(['admin'])));
     }
 
     /**
      * @return array<mixed>
      */
-    private function request(string $productId, string $query, ?string $authorization): array
+    private function request(string $variantId, string $query, ?string $authorization): array
     {
         $server = null === $authorization ? [] : ['HTTP_AUTHORIZATION' => $authorization];
-        $this->client->request('GET', '/api/v1/admin/products/'.$productId.'/price-history'.('' === $query ? '' : '?'.$query), server: $server);
+        $this->client->request('GET', '/api/v1/admin/variants/'.$variantId.'/price-history'.('' === $query ? '' : '?'.$query), server: $server);
 
         return $this->json();
     }

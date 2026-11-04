@@ -9,8 +9,8 @@ use App\Pricing\Domain\Price\PriceBreakdown;
 use App\Pricing\Domain\Price\PriceChangeOrigin;
 use App\Pricing\Domain\Price\PriceChangeSource;
 use App\Pricing\Domain\Price\PriceHistoryEntry;
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductPrice;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantPrice;
 use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\TaxClassWithoutRate;
@@ -18,15 +18,15 @@ use App\Pricing\Domain\Tax\VatRate;
 use App\Tests\Unit\Pricing\FixedVatRates;
 use PHPUnit\Framework\TestCase;
 
-final class ProductPriceTest extends TestCase
+final class VariantPriceTest extends TestCase
 {
     private const string ID = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
 
     public function testCreateComputesTheBreakdownAndRecordsOneEntry(): void
     {
         $before = new \DateTimeImmutable();
-        $price = ProductPrice::create(
-            ProductId::fromString(self::ID),
+        $price = VariantPrice::create(
+            VariantId::fromString(self::ID),
             GrossPrice::pln(5490),
             TaxClass::fromString('printed_book'),
             new PolishVatRates(),
@@ -42,7 +42,7 @@ final class ProductPriceTest extends TestCase
         $entries = $price->releaseHistory();
         self::assertCount(1, $entries);
         $entry = $entries[0];
-        self::assertSame(self::ID, $entry->productId()->toString());
+        self::assertSame(self::ID, $entry->variantId()->toString());
         self::assertSame(5490, $entry->breakdown()->gross()->amount());
         self::assertSame(5229, $entry->breakdown()->net()->amount());
         self::assertSame(261, $entry->breakdown()->vat()->amount());
@@ -61,7 +61,7 @@ final class ProductPriceTest extends TestCase
     {
         $this->expectException(TaxClassWithoutRate::class);
 
-        ProductPrice::create(ProductId::fromString(self::ID), GrossPrice::pln(100), TaxClass::fromString('luxury'), new PolishVatRates(), PriceChangeOrigin::seed());
+        VariantPrice::create(VariantId::fromString(self::ID), GrossPrice::pln(100), TaxClass::fromString('luxury'), new PolishVatRates(), PriceChangeOrigin::seed());
     }
 
     public function testReconstituteRecordsNothing(): void
@@ -161,8 +161,8 @@ final class ProductPriceTest extends TestCase
 
     public function testRepriceToAnotherClassWithTheSameRateIsAChange(): void
     {
-        $price = ProductPrice::reconstitute(
-            ProductId::fromString(self::ID),
+        $price = VariantPrice::reconstitute(
+            VariantId::fromString(self::ID),
             PriceBreakdown::fromGross(GrossPrice::pln(5490), VatRate::fromBasisPoints(500)),
             TaxClass::fromString('printed_book'),
             1,
@@ -185,10 +185,10 @@ final class ProductPriceTest extends TestCase
         self::assertFalse($price->isCurrent(new FixedVatRates([])));
     }
 
-    private function stored(int $version): ProductPrice
+    private function stored(int $version): VariantPrice
     {
-        return ProductPrice::reconstitute(
-            ProductId::fromString(self::ID),
+        return VariantPrice::reconstitute(
+            VariantId::fromString(self::ID),
             PriceBreakdown::fromGross(GrossPrice::pln(10000), VatRate::fromBasisPoints(2300)),
             TaxClass::fromString('standard'),
             $version,

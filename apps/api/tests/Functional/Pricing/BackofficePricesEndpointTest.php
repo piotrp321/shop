@@ -11,7 +11,7 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
-use App\Tests\Factory\ProductPriceRecordFactory;
+use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -39,11 +39,15 @@ final class BackofficePricesEndpointTest extends WebTestCase
         $this->category = $this->saveCategory();
     }
 
-    public function testListsProductsWithAndWithoutAPrice(): void
+    public function testListsProductsWithTheirVariantsInPositionOrderWithAndWithoutAPrice(): void
     {
-        $book = $this->saveProduct('Przewodnik Tatry', TaxClassCode::PrintedBook);
+        $book = $this->saveProduct('Przewodnik Tatry', TaxClassCode::PrintedBook, variants: [
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'values' => ['oprawa twarda']],
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['oprawa miękka']],
+        ], axes: ['Oprawa']);
         $gel = $this->saveProduct('Żel malinowy', TaxClassCode::EnergyGel);
-        ProductPriceRecordFactory::store($this->entityManager, ['productId' => $book->id()->toString(), 'gross' => 5490, 'taxClass' => 'printed_book', 'vatRateBp' => 500]);
+        $gelVariant = $this->defaultVariant($gel);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'gross' => 5490, 'taxClass' => 'printed_book', 'vatRateBp' => 500]);
 
         $body = $this->get('');
 
@@ -54,9 +58,17 @@ final class BackofficePricesEndpointTest extends WebTestCase
         self::assertCount(2, $items);
         self::assertSame(
             ['productId' => $book->id()->toString(), 'name' => 'Przewodnik Tatry', 'taxClass' => 'printed_book', 'applicableVatRate' => 500],
-            array_diff_key($items[0], ['price' => 1]),
+            array_diff_key($items[0], ['variants' => 1]),
         );
-        $price = $items[0]['price'];
+        $variants = $items[0]['variants'];
+        self::assertIsArray($variants);
+        self::assertIsArray($variants[0]);
+        self::assertIsArray($variants[1]);
+        self::assertSame(
+            [['variantId' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'label' => 'oprawa twarda', 'price' => null], ['variantId' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'label' => 'oprawa miękka']],
+            [$variants[0], array_diff_key($variants[1], ['price' => 1])],
+        );
+        $price = $variants[1]['price'];
         self::assertIsArray($price);
         self::assertSame(
             ['gross' => 5490, 'net' => 5229, 'vat' => 261, 'vatRate' => 500, 'currency' => 'PLN', 'version' => 1, 'vatRateOutdated' => false],
@@ -64,26 +76,55 @@ final class BackofficePricesEndpointTest extends WebTestCase
         );
         self::assertIsString($price['updatedAt']);
         self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/D', $price['updatedAt']);
+        self::assertNotSame($gel->id()->toString(), $gelVariant);
         self::assertSame(
-            ['productId' => $gel->id()->toString(), 'name' => 'Żel malinowy', 'taxClass' => 'energy_gel', 'applicableVatRate' => 800, 'price' => null],
+            ['productId' => $gel->id()->toString(), 'name' => 'Żel malinowy', 'taxClass' => 'energy_gel', 'applicableVatRate' => 800, 'variants' => [['variantId' => $gelVariant, 'label' => '', 'price' => null]]],
             $items[1],
         );
         $this->assertKeysMatchSchema($body, 'PriceListResponse');
         $this->assertKeysMatchSchema($items[0], 'PriceListItemResponse');
+        $this->assertKeysMatchSchema($variants[1], 'PriceListVariantResponse');
         $this->assertKeysMatchSchema($price, 'ListedPriceResponse');
     }
 
     public function testAPriceAtAnOutdatedRateIsMarkedAndTheCurrentRateIsApplicable(): void
     {
         $shoes = $this->saveProduct('Buty', TaxClassCode::Standard);
-        ProductPriceRecordFactory::store($this->entityManager, ['productId' => $shoes->id()->toString(), 'gross' => 10800, 'taxClass' => 'standard', 'vatRateBp' => 800]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $this->defaultVariant($shoes), 'gross' => 10800, 'taxClass' => 'standard', 'vatRateBp' => 800]);
 
         $item = $this->items($this->get(''))[0];
 
         self::assertSame(2300, $item['applicableVatRate']);
-        self::assertIsArray($item['price']);
-        self::assertSame(800, $item['price']['vatRate']);
-        self::assertTrue($item['price']['vatRateOutdated']);
+        self::assertIsArray($item['variants']);
+        self::assertIsArray($item['variants'][0]);
+        $price = $item['variants'][0]['price'];
+        self::assertIsArray($price);
+        self::assertSame(800, $price['vatRate']);
+        self::assertTrue($price['vatRateOutdated']);
+    }
+
+    /**
+     * The page size counts products: every product of a page comes with all its variants.
+     */
+    public function testPagesCountProductsAndEachProductComesWithAllItsVariants(): void
+    {
+        foreach (['Buty A', 'Buty B', 'Buty C'] as $n => $name) {
+            $this->saveProduct($name, TaxClassCode::Standard, axes: ['Rozmiar'], variants: array_map(
+                static fn (int $size): array => ['id' => \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', 100 * $n + $size), 'values' => [(string) $size]],
+                [40, 41, 42],
+            ));
+        }
+
+        $first = $this->get('perPage=2');
+        $second = $this->get('perPage=2&after='.$this->next($first));
+
+        self::assertSame(['Buty A', 'Buty B'], array_column($this->items($first), 'name'));
+        self::assertSame(['Buty C'], array_column($this->items($second), 'name'));
+        self::assertNull($second['next']);
+        foreach ([...$this->items($first), ...$this->items($second)] as $item) {
+            self::assertIsArray($item['variants']);
+            self::assertSame(['40', '41', '42'], array_column($item['variants'], 'label'));
+        }
     }
 
     public function testEmptyCatalogGivesAnEmptyList(): void
@@ -241,12 +282,25 @@ final class BackofficePricesEndpointTest extends WebTestCase
         return $category;
     }
 
-    private function saveProduct(string $name, TaxClassCode $taxClass, ?Category $category = null): Product
+    /**
+     * @param list<string>                                  $axes
+     * @param list<array{id: string, values: list<string>}> $variants none for one default variant
+     */
+    private function saveProduct(string $name, TaxClassCode $taxClass, ?Category $category = null, array $axes = [], array $variants = []): Product
     {
-        $product = ProductFactory::createOne(['mainCategory' => $category ?? $this->category, 'name' => $name, 'taxClass' => $taxClass]);
+        $attributes = ['mainCategory' => $category ?? $this->category, 'name' => $name, 'taxClass' => $taxClass];
+        if ([] !== $variants) {
+            $attributes += ['variantAxes' => $axes, 'variants' => $variants];
+        }
+        $product = ProductFactory::createOne($attributes);
         new DoctrineProductRepository($this->entityManager)->save($product);
 
         return $product;
+    }
+
+    private function defaultVariant(Product $product): string
+    {
+        return $product->variants()->toList()[0]->id()->toString();
     }
 
     /**

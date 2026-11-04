@@ -8,13 +8,13 @@ use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\PriceBreakdown;
 use App\Pricing\Domain\Price\PriceChangeOrigin;
 use App\Pricing\Domain\Price\PriceModifiedConcurrently;
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductPrice;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantPrice;
 use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\VatRate;
-use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineProductPriceRepository;
-use App\Tests\Factory\ProductPriceRecordFactory;
+use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineVariantPriceRepository;
+use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Pricing\IndependentEntityManagers;
 use App\Tests\Support\StatementCounter;
 use Doctrine\Common\EventManager;
@@ -28,14 +28,14 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
-final class DoctrineProductPriceRepositoryTest extends KernelTestCase
+final class DoctrineVariantPriceRepositoryTest extends KernelTestCase
 {
     use Factories;
     use IndependentEntityManagers;
 
     private EntityManagerInterface $entityManager;
     private Connection $connection;
-    private DoctrineProductPriceRepository $prices;
+    private DoctrineVariantPriceRepository $prices;
 
     protected function setUp(): void
     {
@@ -43,7 +43,7 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
         $this->entityManager = $entityManager;
         $this->connection = $entityManager->getConnection();
-        $this->prices = new DoctrineProductPriceRepository($entityManager);
+        $this->prices = new DoctrineVariantPriceRepository($entityManager);
     }
 
     public function testNewPriceIsStoredWithItsFirstHistoryEntry(): void
@@ -56,9 +56,9 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
         self::assertSame(1, $price->version());
         self::assertSame(
             ['currency' => 'PLN', 'gross_amount' => 5490, 'net_amount' => 5229, 'vat_amount' => 261, 'vat_rate_bp' => 500, 'tax_class' => 'printed_book', 'version' => 1],
-            $this->connection->fetchAssociative('SELECT currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version FROM pricing_product_price WHERE product_id = ?', [$id]),
+            $this->connection->fetchAssociative('SELECT currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version FROM pricing_variant_price WHERE variant_id = ?', [$id]),
         );
-        $history = $this->connection->fetchAllAssociative('SELECT id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, source, actor_id, actor_name, changed_at FROM pricing_price_history WHERE product_id = ?', [$id]);
+        $history = $this->connection->fetchAllAssociative('SELECT id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, source, actor_id, actor_name, changed_at FROM pricing_price_history WHERE variant_id = ?', [$id]);
         self::assertCount(1, $history);
         self::assertIsString($history[0]['id']);
         self::assertTrue(Uuid::isValid($history[0]['id']));
@@ -88,7 +88,7 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
 
     public function testUnknownPriceIsNull(): void
     {
-        self::assertNull($this->prices->find(ProductId::fromString((string) Uuid::v4())));
+        self::assertNull($this->prices->find(VariantId::fromString((string) Uuid::v4())));
     }
 
     /**
@@ -97,18 +97,18 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
     public function testPagesFollowTheProductIdAfterTheCursor(): void
     {
         $this->connection->executeStatement('DELETE FROM pricing_price_history');
-        $this->connection->executeStatement('DELETE FROM pricing_product_price');
-        $third = ProductPriceRecordFactory::store($this->entityManager, ['productId' => 'f0000000-0000-4000-8000-000000000003', 'gross' => 990, 'taxClass' => 'retired_class', 'vatRateBp' => 700]);
-        $first = ProductPriceRecordFactory::store($this->entityManager, ['productId' => '10000000-0000-4000-8000-000000000001', 'gross' => 12300]);
-        $second = ProductPriceRecordFactory::store($this->entityManager, ['productId' => 'a0000000-0000-4000-8000-000000000002', 'gross' => 5490, 'taxClass' => 'printed_book', 'vatRateBp' => 2300]);
+        $this->connection->executeStatement('DELETE FROM pricing_variant_price');
+        $third = VariantPriceRecordFactory::store($this->entityManager, ['variantId' => 'f0000000-0000-4000-8000-000000000003', 'gross' => 990, 'taxClass' => 'retired_class', 'vatRateBp' => 700]);
+        $first = VariantPriceRecordFactory::store($this->entityManager, ['variantId' => '10000000-0000-4000-8000-000000000001', 'gross' => 12300]);
+        $second = VariantPriceRecordFactory::store($this->entityManager, ['variantId' => 'a0000000-0000-4000-8000-000000000002', 'gross' => 5490, 'taxClass' => 'printed_book', 'vatRateBp' => 2300]);
         $this->entityManager->clear();
 
         $firstPage = $this->prices->page(null, 2);
-        $secondPage = $this->prices->page(ProductId::fromString($second), 2);
+        $secondPage = $this->prices->page(VariantId::fromString($second), 2);
 
-        self::assertSame([$first, $second], array_map(static fn (ProductPrice $price): string => $price->id()->toString(), $firstPage));
-        self::assertSame([$third], array_map(static fn (ProductPrice $price): string => $price->id()->toString(), $secondPage));
-        self::assertSame([], $this->prices->page(ProductId::fromString($third), 2));
+        self::assertSame([$first, $second], array_map(static fn (VariantPrice $price): string => $price->id()->toString(), $firstPage));
+        self::assertSame([$third], array_map(static fn (VariantPrice $price): string => $price->id()->toString(), $secondPage));
+        self::assertSame([], $this->prices->page(VariantId::fromString($third), 2));
         $outdated = $firstPage[1];
         self::assertTrue($outdated->breakdown()->equals(PriceBreakdown::fromGross(GrossPrice::pln(5490), VatRate::fromBasisPoints(2300))));
         self::assertSame('printed_book', $outdated->taxClass()->toString());
@@ -130,9 +130,9 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
         $this->prices->save($read);
 
         self::assertSame(2, $read->version());
-        self::assertSame(2, $this->committedValue('SELECT version FROM pricing_product_price WHERE product_id = ?', $price));
-        self::assertSame(12300, $this->committedValue('SELECT gross_amount FROM pricing_product_price WHERE product_id = ?', $price));
-        self::assertSame([10000, 12300], $this->connection->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE product_id = ? ORDER BY changed_at, id', [$price->id()->toString()]));
+        self::assertSame(2, $this->committedValue('SELECT version FROM pricing_variant_price WHERE variant_id = ?', $price));
+        self::assertSame(12300, $this->committedValue('SELECT gross_amount FROM pricing_variant_price WHERE variant_id = ?', $price));
+        self::assertSame([10000, 12300], $this->connection->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE variant_id = ? ORDER BY changed_at, id', [$price->id()->toString()]));
         $this->entityManager->clear();
         self::assertSame(2, $this->prices->find($price->id())?->version());
     }
@@ -152,8 +152,8 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
         $this->prices->save($read);
 
         self::assertSame(0, $counter->writes() - $writesBefore);
-        self::assertSame(1, $this->committedValue('SELECT version FROM pricing_product_price WHERE product_id = ?', $price));
-        self::assertSame(1, $this->committedValue('SELECT COUNT(*) FROM pricing_price_history WHERE product_id = ?', $price));
+        self::assertSame(1, $this->committedValue('SELECT version FROM pricing_variant_price WHERE variant_id = ?', $price));
+        self::assertSame(1, $this->committedValue('SELECT COUNT(*) FROM pricing_price_history WHERE variant_id = ?', $price));
     }
 
     /**
@@ -165,10 +165,10 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
     {
         $first = $this->independentManager();
         $second = $this->independentManager();
-        $firstPrices = new DoctrineProductPriceRepository($first);
-        $secondPrices = new DoctrineProductPriceRepository($second);
+        $firstPrices = new DoctrineVariantPriceRepository($first);
+        $secondPrices = new DoctrineVariantPriceRepository($second);
         $price = $this->newPrice(10000, 'standard', PriceChangeOrigin::seed());
-        $this->committedProductIds[] = $price->id()->toString();
+        $this->committedVariantIds[] = $price->id()->toString();
         $firstPrices->save($price);
         $first->clear();
 
@@ -190,8 +190,8 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
 
         $verify = $this->independentConnection();
         $id = $price->id()->toString();
-        self::assertSame(['gross_amount' => 11000, 'version' => 2], $verify->fetchAssociative('SELECT gross_amount, version FROM pricing_product_price WHERE product_id = ?', [$id]));
-        self::assertSame([10000, 11000], $verify->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE product_id = ? ORDER BY changed_at, id', [$id]));
+        self::assertSame(['gross_amount' => 11000, 'version' => 2], $verify->fetchAssociative('SELECT gross_amount, version FROM pricing_variant_price WHERE variant_id = ?', [$id]));
+        self::assertSame([10000, 11000], $verify->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE variant_id = ? ORDER BY changed_at, id', [$id]));
         self::assertFalse($second->getConnection()->isTransactionActive());
         $verify->close();
     }
@@ -211,41 +211,41 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
     {
         $first = $this->independentManager();
         $second = $this->independentManager();
-        $firstPrices = new DoctrineProductPriceRepository($first);
-        $secondPrices = new DoctrineProductPriceRepository($second);
-        $id = ProductId::fromString((string) Uuid::v4());
-        $this->committedProductIds[] = $id->toString();
+        $firstPrices = new DoctrineVariantPriceRepository($first);
+        $secondPrices = new DoctrineVariantPriceRepository($second);
+        $id = VariantId::fromString((string) Uuid::v4());
+        $this->committedVariantIds[] = $id->toString();
 
         // Both requests see no price and create one.
         self::assertNull($firstPrices->find($id));
         self::assertNull($secondPrices->find($id));
-        $firstPrices->save(ProductPrice::create($id, GrossPrice::pln(10000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'First')));
+        $firstPrices->save(VariantPrice::create($id, GrossPrice::pln(10000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'First')));
 
         try {
-            $secondPrices->save(ProductPrice::create($id, GrossPrice::pln(20000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-2', 'Second')));
+            $secondPrices->save(VariantPrice::create($id, GrossPrice::pln(20000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-2', 'Second')));
             self::fail('Expected PriceModifiedConcurrently.');
         } catch (PriceModifiedConcurrently) {
         }
 
         $verify = $this->independentConnection();
-        self::assertSame(['gross_amount' => 10000, 'version' => 1], $verify->fetchAssociative('SELECT gross_amount, version FROM pricing_product_price WHERE product_id = ?', [$id->toString()]));
-        self::assertSame([10000], $verify->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE product_id = ?', [$id->toString()]));
+        self::assertSame(['gross_amount' => 10000, 'version' => 1], $verify->fetchAssociative('SELECT gross_amount, version FROM pricing_variant_price WHERE variant_id = ?', [$id->toString()]));
+        self::assertSame([10000], $verify->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE variant_id = ?', [$id->toString()]));
         $verify->close();
     }
 
     /**
      * The competing request commits its first price after the write under test has re-read the row (no price) and
-     * before it flushes: the INSERT hits the primary key (23505 on pricing_product_price_pkey), which ends in
+     * before it flushes: the INSERT hits the primary key (23505 on pricing_variant_price_pkey), which ends in
      * PriceModifiedConcurrently.
      */
     public function testFirstPriceCommittedBetweenTheReadAndTheInsertIsRefusedByThePrimaryKey(): void
     {
         $underTest = $this->independentManager();
-        $competing = new DoctrineProductPriceRepository($this->independentManager());
-        $id = ProductId::fromString((string) Uuid::v4());
-        $this->committedProductIds[] = $id->toString();
+        $competing = new DoctrineVariantPriceRepository($this->independentManager());
+        $id = VariantId::fromString((string) Uuid::v4());
+        $this->committedVariantIds[] = $id->toString();
         $listener = new class(static function () use ($competing, $id): void {
-            $competing->save(ProductPrice::create($id, GrossPrice::pln(12000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-2', 'Second')));
+            $competing->save(VariantPrice::create($id, GrossPrice::pln(12000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-2', 'Second')));
         }) {
             public int $calls = 0;
 
@@ -265,8 +265,8 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
         $eventManager->addEventListener(Events::preFlush, $listener);
 
         try {
-            new DoctrineProductPriceRepository($underTest)->save(
-                ProductPrice::create($id, GrossPrice::pln(11000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'First')),
+            new DoctrineVariantPriceRepository($underTest)->save(
+                VariantPrice::create($id, GrossPrice::pln(11000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'First')),
             );
             self::fail('Expected PriceModifiedConcurrently.');
         } catch (PriceModifiedConcurrently) {
@@ -274,9 +274,9 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
 
         self::assertSame(1, $listener->calls);
         $verify = $this->independentConnection();
-        self::assertSame([['gross_amount' => 12000, 'version' => 1]], $verify->fetchAllAssociative('SELECT gross_amount, version FROM pricing_product_price WHERE product_id = ?', [$id->toString()]));
+        self::assertSame([['gross_amount' => 12000, 'version' => 1]], $verify->fetchAllAssociative('SELECT gross_amount, version FROM pricing_variant_price WHERE variant_id = ?', [$id->toString()]));
         // One success, one entry.
-        self::assertSame([12000], $verify->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE product_id = ?', [$id->toString()]));
+        self::assertSame([12000], $verify->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE variant_id = ?', [$id->toString()]));
         $verify->close();
     }
 
@@ -305,8 +305,8 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
         }
 
         $id = $price->id()->toString();
-        self::assertSame(['gross_amount' => 11000, 'version' => 2], $this->connection->fetchAssociative('SELECT gross_amount, version FROM pricing_product_price WHERE product_id = ?', [$id]));
-        self::assertSame([10000, 11000], $this->connection->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE product_id = ? ORDER BY changed_at, id', [$id]));
+        self::assertSame(['gross_amount' => 11000, 'version' => 2], $this->connection->fetchAssociative('SELECT gross_amount, version FROM pricing_variant_price WHERE variant_id = ?', [$id]));
+        self::assertSame([10000, 11000], $this->connection->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE variant_id = ? ORDER BY changed_at, id', [$id]));
     }
 
     /**
@@ -317,10 +317,10 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
     public function testFailedHistoryWriteRollsBackThePrice(bool $change): void
     {
         $manager = $this->independentManager();
-        $prices = new DoctrineProductPriceRepository($manager);
+        $prices = new DoctrineVariantPriceRepository($manager);
         $price = $this->newPrice(10000, 'standard', PriceChangeOrigin::seed());
         $id = $price->id()->toString();
-        $this->committedProductIds[] = $id;
+        $this->committedVariantIds[] = $id;
         if ($change) {
             $prices->save($price);
             $manager->clear();
@@ -340,9 +340,9 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
         $verify = $this->independentConnection();
         self::assertSame(
             $change ? [['gross_amount' => 10000, 'version' => 1]] : [],
-            $verify->fetchAllAssociative('SELECT gross_amount, version FROM pricing_product_price WHERE product_id = ?', [$id]),
+            $verify->fetchAllAssociative('SELECT gross_amount, version FROM pricing_variant_price WHERE variant_id = ?', [$id]),
         );
-        self::assertSame($change ? [10000] : [], $verify->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE product_id = ?', [$id]));
+        self::assertSame($change ? [10000] : [], $verify->fetchFirstColumn('SELECT gross_amount FROM pricing_price_history WHERE variant_id = ?', [$id]));
         $verify->close();
     }
 
@@ -364,20 +364,20 @@ final class DoctrineProductPriceRepositoryTest extends KernelTestCase
             $$
             SQL);
         $setup->executeStatement(\sprintf(
-            "CREATE CONSTRAINT TRIGGER pricing_test_refuse_history AFTER INSERT ON pricing_price_history DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.product_id = '%s') EXECUTE FUNCTION pricing_test_refuse_history()",
-            ProductId::fromString($productId)->toString(),
+            "CREATE CONSTRAINT TRIGGER pricing_test_refuse_history AFTER INSERT ON pricing_price_history DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.variant_id = '%s') EXECUTE FUNCTION pricing_test_refuse_history()",
+            VariantId::fromString($productId)->toString(),
         ));
         $setup->close();
         $this->cleanupStatements[] = 'DROP TRIGGER IF EXISTS pricing_test_refuse_history ON pricing_price_history';
         $this->cleanupStatements[] = 'DROP FUNCTION IF EXISTS pricing_test_refuse_history()';
     }
 
-    private function newPrice(int $gross, string $taxClass, PriceChangeOrigin $origin): ProductPrice
+    private function newPrice(int $gross, string $taxClass, PriceChangeOrigin $origin): VariantPrice
     {
-        return ProductPrice::create(ProductId::fromString((string) Uuid::v4()), GrossPrice::pln($gross), TaxClass::fromString($taxClass), new PolishVatRates(), $origin);
+        return VariantPrice::create(VariantId::fromString((string) Uuid::v4()), GrossPrice::pln($gross), TaxClass::fromString($taxClass), new PolishVatRates(), $origin);
     }
 
-    private function committedValue(string $sql, ProductPrice $price): mixed
+    private function committedValue(string $sql, VariantPrice $price): mixed
     {
         return $this->connection->fetchOne($sql, [$price->id()->toString()]);
     }

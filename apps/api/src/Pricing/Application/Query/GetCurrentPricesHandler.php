@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Pricing\Application\Query;
 
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductPriceRepository;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantPriceRepository;
 use App\Pricing\Domain\Tax\VatRates;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -13,14 +13,14 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 final readonly class GetCurrentPricesHandler
 {
     public function __construct(
-        private ProductPriceRepository $prices,
+        private VariantPriceRepository $prices,
         private VatRates $rates,
     ) {
     }
 
     /**
-     * One read for all the products. A product without a price, or with a price at a rate that is no longer the rate
-     * of its class (see ProductPrice::isCurrent), has no snapshot: it cannot be bought until the price is repaired.
+     * One read for all the variants. A variant without a price, or with a price at a rate that is no longer the rate
+     * of its class (see VariantPrice::isCurrent), has no snapshot: it cannot be bought until the price is repaired.
      * The snapshots follow the order of the request, a repeated id answers once.
      *
      * @return list<PriceSnapshot>
@@ -29,17 +29,17 @@ final readonly class GetCurrentPricesHandler
      */
     public function __invoke(GetCurrentPrices $query): array
     {
-        $count = \count($query->productIds);
-        if ($count < 1 || $count > GetCurrentPrices::MAX_PRODUCTS) {
-            throw InvalidCurrentPricesQuery::productCountOutOfRange();
+        $count = \count($query->variantIds);
+        if ($count < 1 || $count > GetCurrentPrices::MAX_VARIANTS) {
+            throw InvalidCurrentPricesQuery::variantCountOutOfRange();
         }
 
         $ids = [];
-        foreach ($query->productIds as $raw) {
+        foreach ($query->variantIds as $raw) {
             try {
-                $id = ProductId::fromString($raw);
+                $id = VariantId::fromString($raw);
             } catch (\InvalidArgumentException) {
-                throw InvalidCurrentPricesQuery::notAProductId();
+                throw InvalidCurrentPricesQuery::notAVariantId();
             }
             $ids[$id->toString()] = $id;
         }

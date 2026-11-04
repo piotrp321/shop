@@ -1243,7 +1243,7 @@
                     "Pricing"
                 ],
                 "summary": "Gross prices of products",
-                "description": "The current gross price of each requested product, for the product list. A product without a price, with a price at an outdated VAT rate, or unknown, is left out. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not the price to charge: checkout reads prices from the database.",
+                "description": "The current gross price of each requested product, for the product list. A product without a price, with a price at an outdated VAT rate, with more than one variant, or unknown, is left out. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not the price to charge: checkout reads prices from the database.",
                 "operationId": "getCurrentPrices",
                 "parameters": [
                     {
