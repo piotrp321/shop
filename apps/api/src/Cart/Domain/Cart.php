@@ -386,12 +386,11 @@ final class Cart
      */
     private static function assertPurchasable(ProductOffer $offer, int $quantity): void
     {
-        if (!$offer->hasCurrentPrice || 0 === $offer->available) {
-            throw new ProductNotPurchasable();
-        }
-        if ($quantity > $offer->available) {
-            throw new InsufficientStock();
-        }
+        match ($offer->purchasability($quantity)) {
+            Purchasability::NoPrice, Purchasability::OutOfStock => throw new ProductNotPurchasable(),
+            Purchasability::InsufficientStock => throw new InsufficientStock(),
+            Purchasability::Purchasable => null,
+        };
     }
 
     /**
