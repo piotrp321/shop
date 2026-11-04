@@ -26,8 +26,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session` i `/api/cart/*`
   z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
 - `src/account/` – komponent konta w nagłówku (Client Component).
-- `src/cart/` – BFF koszyka (wybór koszyka, ciasteczko `store_cart`, wywołania API, mapowanie błędów) oraz komponenty
-  koszyka: `AddToCartButton`, `CartBadge` i `CartPage`.
+- `src/cart/` – BFF koszyka (wybór koszyka, ciasteczka `store_cart` i `store_cart_notice`, scalanie koszyka gościa
+  w `merge.ts`, wywołania API, mapowanie błędów) oraz komponenty koszyka: `AddToCartButton`, `CartBadge` i `CartPage`.
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
 - `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`).
 - `src/components/ui/` – komponenty shadcn/ui.
@@ -59,7 +59,19 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Koszyk wybiera sesja: zalogowany klient ma koszyk `/api/v1/me/cart` z tokenem z `freshAccessToken`, gość koszyk
   z ciasteczka `store_cart`. Ciasteczko zawiera id koszyka gościa podpisane (HMAC, `STORE_SESSION_SECRET`), nie
   szyfrowane; `HttpOnly`, `SameSite=Lax`, 30 dni odnawiane przy udanym zapisie. Niepoprawny podpis lub wartość spoza
-  UUID jest usuwana jak brak ciasteczka.
+  UUID jest usuwana jak brak ciasteczka (także przy sesji, wtedy bez scalania).
+- Scalanie koszyka gościa (`mergeGuestCart` i `applyGuestCartMerge` w `src/cart/merge.ts`, jedno miejsce dla BFF
+  i `/auth/callback`): `/auth/callback` po utworzeniu sesji (token z właśnie uzyskanych tokenów) i BFF przed każdą
+  operacją przy sesji wołają `POST /api/v1/me/cart/merge`, gdy jest `store_cart`. Każda odpowiedź 200 (`merged`,
+  `already_merged`, `nothing_to_merge`) usuwa `store_cart`. Błąd scalenia zostawia `store_cart` (następne żądanie
+  koszyka ponawia scalenie) i trafia do `logFailure`; w BFF operacja idzie dalej na koszyku klienta, w callbacku
+  logowanie kończy się normalnie. 401 scalenia w BFF kończy sesję jak każdy 401 API (odpowiedź 401, `store_cart`
+  zostaje), token, którego nie da się odświeżyć, daje 401 bez scalania, a chwilowy błąd odświeżenia 503 bez scalania.
+- `truncated` scalenia ustawia `store_cart_notice`: znacznik `merge_truncated` podpisany jak `store_cart`, `HttpOnly`,
+  `SameSite=Lax`, `Path=/`, `Max-Age` 5 minut. `GET /api/cart/summary` z odpowiedzią 200 zwraca `notice:
+  "merge_truncated"` raz (z poprawnie podpisanego ciasteczka albo ze scalenia w tym samym żądaniu) i usuwa ciasteczko;
+  inaczej `notice: null`. `CartBadge` pokazuje wtedy obok linku „Część produktów z koszyka gościa nie zmieściła się
+  w koszyku”.
 - Żądania zmieniające (`POST`, `PATCH`, `DELETE`) wymagają `Origin` równego `STORE_URL`, a `POST` i `PATCH` także
   `Content-Type: application/json`; inaczej 403 bez wywołania API.
 - `productId` spoza UUID w `/api/cart/items/[productId]` (PATCH i DELETE) dostaje 404 „Tej pozycji nie ma w koszyku.”
@@ -85,8 +97,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Tokeny OIDC nigdy nie trafiają do przeglądarki. Są tylko w sesji w Redisie, a ciasteczko zawiera wyłącznie
   id sesji podpisane kluczem `STORE_SESSION_SECRET`.
 - Route handlery `/auth/*` są owinięte w `withAuthDeps` (`src/auth/responses.ts`), które daje im zależności
-  (Redis, OIDC, API) z `getAuthDeps()` w `src/auth/deps.ts`, a przy ich braku odpowiada 503 z `no-store`. Testy
-  podmieniają zależności dublerami z `src/auth/test-support.ts`.
+  (Redis, OIDC, klient API) z `getAuthDeps()` w `src/auth/deps.ts`, a przy ich braku odpowiada 503 z `no-store`.
+  `getCartDeps()` bierze z nich sesje, `freshAccessToken`, klienta API i konfigurację. Testy podmieniają zależności
+  dublerami z `src/auth/test-support.ts` (domyślny klient API odrzuca każde wywołanie).
 - Nie loguj obiektów błędów openid-client (ich `cause` zawiera odpowiedzi z tokenami). Użyj `logFailure`.
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.
 - Odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`.
