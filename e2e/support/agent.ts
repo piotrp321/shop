@@ -50,10 +50,12 @@ export const test = base.extend<{ runtimeErrors: void }>({
 
       await use();
 
-      await testInfo.attach("runtime-errors", {
-        body: JSON.stringify(errors, null, 2),
-        contentType: "application/json",
-      });
+      const body = JSON.stringify(errors, null, 2);
+      await testInfo.attach("runtime-errors", { body, contentType: "application/json" });
+      // The list reporter prints stdout, so the errors are visible in the make output too.
+      if (errors.length > 0) {
+        console.log(`runtime-errors: ${JSON.stringify(errors)}`);
+      }
     },
     { auto: true },
   ],
@@ -77,13 +79,19 @@ export async function checkA11y(page: Page, name: string) {
     body: JSON.stringify(violations, null, 2),
     contentType: "application/json",
   });
+  // One line per violation in the make output: `a11y-<name> <id> (<impact>): <first target> [+N]`.
+  for (const violation of violations) {
+    const [first, ...rest] = violation.nodes;
+    const more = rest.length > 0 ? ` [+${rest.length}]` : "";
+    console.log(`a11y-${name} ${violation.id} (${violation.impact}): ${first?.join(" ") ?? ""}${more}`);
+  }
   return results.violations;
 }
 
-// Full-page screenshot saved in the test output directory and attached to the test; returns its path.
+// Full-page screenshot (CSS animations and transitions disabled) saved in the test output directory and attached to the test; returns its path.
 export async function snap(page: Page, name: string): Promise<string> {
   const path = test.info().outputPath(`${name}.png`);
-  await page.screenshot({ path, fullPage: true });
+  await page.screenshot({ path, fullPage: true, animations: "disabled" });
   await test.info().attach(name, { path, contentType: "image/png" });
   return path;
 }
