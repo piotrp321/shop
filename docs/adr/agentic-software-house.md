@@ -104,3 +104,5 @@ Zasady:
 - Autonomiczny merge bez człowieka jest dozwolony wyłącznie w granicach polityki autonomii zatwierdzonej
   przez użytkownika. Jedyny autonomiczny merge do `main` to PR ze specyfikacją i planem z `/prepare-epic`,
   po akceptacji użytkownika i zielonym CI.
+- Epik startuje dopiero po „tak” użytkownika na pytanie „Zacząć epik X?” albo na listę nocy, a kolejny epik listy
+  rusza bez pytania tylko przy spełnionych warunkach nocy z `docs/features/ao-run/spec.md` (zakres, czas, limity).

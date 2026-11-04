@@ -65,17 +65,23 @@ def _epic_id(title):
     return prefix if colon and ID_PATTERN.match(prefix) else None
 
 
-def select(run):
+def board_epics(run, check_all=True):
+    """Fetches origin/main and returns the open epic issues of the board in board order with their state.
+
+    Each entry: {number, title, body, id, dir, state, reason}; state is `invalid` (title without ID prefix),
+    `in_progress` (origin/epic/<dir> exists), `prepared`, `unprepared` (reason set) or `unchecked` (only when
+    check_all is false: after the first prepared epic the plan files are not read).
+    """
     run(['git', 'fetch', 'origin', 'main'])
     board_args = ['gh', 'project', 'item-list', '1', '--owner', OWNER, '--format', 'json', '--limit', '200']
     items = _json(run, board_args)
     open_args = ['gh', 'issue', 'list', '--repo', REPOSITORY, '--label', 'epic', '--state', 'open',
-                 '--json', 'number', '--limit', '200']
-    open_numbers = {i['number'] for i in _json(run, open_args)}
+                 '--json', 'number,title,body', '--limit', '200']
+    open_issues = _json(run, open_args)
     try:
         board = items['items']
-        open_numbers = {int(n) for n in open_numbers}
-    except (KeyError, TypeError, ValueError):
+        bodies = {int(i['number']): i.get('body') or '' for i in open_issues}
+    except (KeyError, TypeError, ValueError, AttributeError):
         raise CommandError(board_args, 'unexpected JSON shape')
 
     prefix = 'refs/heads/epic/'
@@ -87,24 +93,28 @@ def select(run):
         if len(parts) == 4 and parts[:2] == ['docs', 'features']:
             files.setdefault(parts[2], set()).add(parts[3])
 
-    epic, in_progress, skipped = None, [], []
+    entries, found_prepared = [], False
     for entry in board:
         content = entry.get('content') or {}
         number = content.get('number')
         if (content.get('type') != 'Issue' or content.get('repository') != REPOSITORY
                 or 'epic' not in (entry.get('labels') or []) or 'needs-info' in entry['labels']
-                or number not in open_numbers):
+                or number not in bodies):
             continue
         title = content.get('title') or ''
         epic_id = _epic_id(title)
+        result = {'number': number, 'title': title, 'body': bodies[number], 'id': epic_id,
+                  'dir': epic_id.lower() if epic_id else None, 'state': None, 'reason': None}
+        entries.append(result)
         if epic_id is None:
-            skipped.append({'issue': number, 'id': None, 'reason': 'tytuł bez prefiksu ID'})
+            result.update(state='invalid', reason='tytuł bez prefiksu ID')
             continue
-        directory = epic_id.lower()
+        directory = result['dir']
         if directory in branches:
-            in_progress.append({'dir': directory, 'id': epic_id, 'issue': number})
+            result['state'] = 'in_progress'
             continue
-        if epic is not None:
+        if found_prepared and not check_all:
+            result['state'] = 'unchecked'
             continue
         present = files.get(directory, set())
         has_spec, has_plan = 'spec.md' in present, 'plan.md' in present
@@ -118,9 +128,24 @@ def select(run):
         elif '"schema_version"' not in run(['git', 'show', 'origin/main:docs/features/%s/plan.md' % directory]):
             reason = 'plan bez manifestu'
         if reason:
-            skipped.append({'issue': number, 'id': epic_id, 'reason': reason})
+            result.update(state='unprepared', reason=reason)
         else:
-            epic = {'dir': directory, 'id': epic_id, 'issue': number, 'title': title}
+            result['state'] = 'prepared'
+            found_prepared = True
+    return entries
+
+
+def select(run):
+    epic, in_progress, skipped = None, [], []
+    for e in board_epics(run, check_all=False):
+        if e['state'] == 'invalid':
+            skipped.append({'issue': e['number'], 'id': None, 'reason': e['reason']})
+        elif e['state'] == 'in_progress':
+            in_progress.append({'dir': e['dir'], 'id': e['id'], 'issue': e['number']})
+        elif e['state'] == 'unprepared' and epic is None:
+            skipped.append({'issue': e['number'], 'id': e['id'], 'reason': e['reason']})
+        elif e['state'] == 'prepared' and epic is None:
+            epic = {'dir': e['dir'], 'id': e['id'], 'issue': e['number'], 'title': e['title']}
     return {'epic': None if in_progress else epic, 'in_progress': in_progress, 'skipped': skipped}
 
 

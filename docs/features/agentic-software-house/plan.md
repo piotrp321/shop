@@ -9,9 +9,10 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 7), nie 
 
 ## Status
 
-W toku: VARIANTS (#89) przez `/ao-run`. Następny krok: krok 8. Blokery: brak. Krok 7: CART-FIXES (#88) przeszedł
-cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika, 0 interwencji, 0 ręcznych
-poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
+W toku: VARIANTS (#89) przez `/ao-run`. Następny krok: pierwsza noc z listą kilku epików (`/ao-run --noc`) po merge'u
+VARIANTS. Blokery: brak. Krok 7: CART-FIXES (#88) przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy
+PR #112): 30 minut użytkownika, 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD
+według Claude CLI.
 
 | Krok | Zakres | Status |
 |---|---|---|
@@ -22,7 +23,7 @@ poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
 | 5 | Powiadomienia i kolejka epików przez aplikację Claude | zrobione (sprawdzenie w kroku 7) |
 | 6 | Przygotowanie epiku jednym skillem `/prepare-epic` | zrobione |
 | 7 | Pierwszy epik przez cały proces | zrobione |
-| 8 | Nocna kolejka kilku epików | do zrobienia |
+| 8 | Nocna kolejka kilku epików | zrobione (sprawdzenie: pierwsza noc) |
 | 9 | Agent tester i agent UX | zrobione |
 | 10 | Przed publicznym demo: bezpieczeństwo i wydajność | do zrobienia |
 | 11 | Po MVP: release i monitoring | do zrobienia |
@@ -41,7 +42,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | UX: ekrany, wersja mobilna, dostępność | `ux-reviewer` w `/sweep` i w `/integration` | działa |
 | Planowanie | Plan i zadania | `/planner`, w `/prepare-epic` | działa |
 | | Koordynacja: przebieg nocny, stan, PR | AO | działa |
-| | Kolejka epików: następny epik po merge'u | `/ao-run` w sesji z Remote Control | działa, sprawdzenie w kroku 7 |
+| | Kolejka epików: następny epik po merge'u i lista na noc | `/ao-run` w sesji z Remote Control | działa, lista na noc do sprawdzenia w pierwszej nocy |
 | Wytwarzanie | Developer: zadanie z TDD | `developer` w `/delivery` | działa |
 | | Code review zadania | `code-reviewer` w `/delivery` | działa |
 | Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
@@ -61,7 +62,7 @@ flowchart TB
     prep["/prepare-epic<br/>analityk, krytyk, architekt, planner<br/>epik albo epik poprawek"]
     accept{"Akceptacja specyfikacji<br/>końcowy PR do przejrzenia w jednym posiedzeniu?"}
     onmain[main: spec.md i plan.md]
-    start{"Zacząć epik? (krok 5)<br/>push w aplikacji Claude"}
+    start{"Zacząć epik? albo lista na noc<br/>push w aplikacji Claude"}
     subgraph night[AO w nocy]
         delivery["/delivery × N"] --> integration["/integration<br/>architektura, QA, UX"] --> finalpr[Końcowy PR do main]
     end
@@ -79,6 +80,7 @@ flowchart TB
     review -- błąd w zakresie epiku: PR do gałęzi epiku --> integration
     review -- odebrany --> merge --> sweep
     merge -. następny przygotowany epik .-> start
+    finalpr -. epic_done: następny epik listy na noc .-> start
     review -. uwagi i problemy spoza zakresu .-> issues
     sweep -. zgłoszenia z etykietą agent .-> issues
 ```
@@ -108,15 +110,22 @@ flowchart TB
      Skill podaje do tego liczbę zadań i dotknięte aplikacje. Jeśli PR jest za duży, epik dzielimy na dwa,
      mergowane po kolei. Rozmiar pojedynczych zadań zostaje bez zmian. Podziału na zadania użytkownik nie
      akceptuje: `plan.md` musi przejść walidator manifestu.
-   - Przygotowujemy jeden epik do przodu: gdy AO w nocy robi epik N, w dzień przygotowujemy N+1 (krok 8 może to
-     zmienić na tyle epików, ile mieści noc). Nie przygotowujemy wszystkich epików naraz, bo specyfikacja opisuje kod, którego jeszcze nie ma.
+   - Przygotowujemy tyle epików do przodu, ile mieści noc: aż `night_queue.py ahead` pokaże pełną noc (suma
+     szacunków z pomiaru; bez pomiaru jeden epik do przodu). Nie przygotowujemy wszystkich epików naraz, bo
+     specyfikacja opisuje kod, którego jeszcze nie ma.
+   - Specyfikacja ma linię `Zakres:`: ścieżki, które epik zmienia. Z niej lista na noc sprawdza rozłączność epików.
    - Zgłoszenie `ux` zawsze idzie przez `/prepare-epic`. Drobne zgłoszenia `bug`
      i `tech-debt` trafiają razem do jednego epiku poprawek: krótka specyfikacja, jedno zadanie na issue.
    - Zaakceptowane `spec.md` i `plan.md` trafiają do `main` przez PR, który `/prepare-epic` merguje po zielonym CI.
 3. **Wykonanie (AO, w nocy).**
-   - Start epiku (krok 5): sesja z Remote Control bierze następny epik z tablicy, który ma zaakceptowane
-     `spec.md` i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego
-     epiku albo na prośbę użytkownika. Bez zgody niczego nie uruchamia. Na raz trwa jeden epik.
+   - Start epiku: sesja z Remote Control bierze następny epik z tablicy, który ma zaakceptowane `spec.md`
+     i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego epiku albo na
+     prośbę użytkownika.
+   - Lista na noc: przed snem `/ao-run --noc` proponuje przygotowane epiki w kolejności tablicy, o rozłącznym
+     zakresie, bez zależności od otwartych epików i, przy pomiarze czasu, mieszczące się do rana. Użytkownik
+     zatwierdza ją jednym „tak”. Pierwszy epik rusza po „tak”, a każdy kolejny po `epic_done` poprzedniego, bez
+     czekania na merge, tylko gdy jego szacunek mieści się do rana i w limitach subskrypcji. Inaczej noc się kończy.
+   - Bez zgody sesja niczego nie uruchamia. Na raz trwa jeden epik.
    - Sesja z `/ao-run <epik>` uruchamia `ao epic start` i `ao run --until-idle`. AO prowadzi zadania przez
      `/delivery` po jednym naraz, squash-merguje je do `epic/<epik>`, uruchamia `/integration` i otwiera końcowy
      PR `epic/<epik>` → `main` z raportem `ao report`.
@@ -179,16 +188,17 @@ flowchart TB
    - PR ze `spec.md` i `plan.md` merguje skill po akceptacji i zielonym CI; wyjątki merge'ów w `CLAUDE.md` i ADR.
 7. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, od `/prepare-epic` do odbioru, razem z pomiarem
    z punktu 5 procesu. Każdy kolejny epik idzie tym samym procesem.
-8. **Nocna kolejka kilku epików.** Rusza po pomiarze z kroku 7, gdy wiemy, ile trwa cały epik i ile minut zajmuje
-   odbiór. Przed snem użytkownik jedną zgodą zatwierdza listę przygotowanych epików na noc. Po `epic_done` jednego
-   epiku sesja z `/ao-run` startuje następny z listy, bez czekania na merge. Rano użytkownik odbiera kilka raportów.
-   Najpierw specyfikacja (zmiana `docs/features/ao-run/spec.md`), potem zmiany w `shop`, bez zmian w AO:
+8. **Nocna kolejka kilku epików.** Przed snem użytkownik jedną zgodą zatwierdza listę przygotowanych epików na noc
+   (`/ao-run --noc`, punkt 3 procesu). Po `epic_done` jednego epiku sesja z `/ao-run` startuje następny z listy, bez
+   czekania na merge. Rano użytkownik odbiera kilka raportów. Opis jest w `docs/features/ao-run/spec.md` (sekcja
+   „Noc”), kod w `.claude/skills/ao-run/night_queue.py`, bez zmian w AO:
    - na jedną noc trafiają tylko epiki o rozłącznym zakresie, bo każdy startuje z `main` bez poprzednich;
-     `/prepare-epic` zapisuje zakres epiku (aplikacje i moduły), a kolejka sprawdza rozłączność;
-   - przygotowanie tylu epików do przodu, ile mieści noc, zamiast jednego (punkt 2 procesu);
-   - następny epik nie rusza, gdy limit subskrypcji nie wystarczy na cały jego przebieg;
-   - liczba epików na noc wynika z pomiaru, nie z założenia;
-   - punkt zatrzymania „Start epiku” zmienia się w tym samym PR co skill.
+     `/prepare-epic` zapisuje zakres epiku w linii `Zakres:` specyfikacji, a lista sprawdza rozłączność;
+   - `/prepare-epic` przygotowuje tyle epików do przodu, ile mieści noc (`night_queue.py ahead`, punkt 2 procesu);
+   - następny epik nie rusza, gdy jego szacunek nie mieści się do rana albo limit subskrypcji nie wystarczy na cały
+     jego przebieg;
+   - szacunki i liczba epików na noc wynikają z pomiaru każdego epiku prowadzonego przez `/ao-run`, nie z założenia.
+   Mechanizm sprawdza pierwsza noc.
 9. **Agent tester i agent UX.** Gotowe: agent tester i agent UX (`.claude/agents/`), skill `/sweep` uruchamiany
    przez użytkownika po merge'u epiku, agent UX jako trzeci reviewer w `/integration` dla epików z frontem,
    etykieta `agent`, limit pięciu propozycji na przebieg i sprawdzanie duplikatów. Do czasu makiet z punktu 3
@@ -238,7 +248,8 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
 
 - **Każdy epik:** przed `ao submit-plan` użytkownik akceptuje w `/prepare-epic` specyfikację i rozmiar końcowego PR,
   a `plan.md` przechodzi walidator manifestu.
-- **Start epiku:** AO rusza z epikiem dopiero po „tak” użytkownika na pytanie „Zacząć epik X?”.
+- **Start epiku:** AO rusza z epikiem dopiero po „tak” użytkownika na pytanie „Zacząć epik X?” albo na listę nocy.
+  Kolejny epik listy rusza bez pytania tylko przy spełnionych warunkach sekcji „Noc” z `docs/features/ao-run/spec.md`.
 - **Merge do `main`:** końcowy PR epiku merguje wyłącznie użytkownik. Wyjątek: PR ze `spec.md` i `plan.md`
   z `/prepare-epic`, który skill merguje po akceptacji użytkownika i zielonym CI. Każde rozszerzenie
   autonomii wymaga jego jawnej zgody.
