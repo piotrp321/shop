@@ -19,7 +19,7 @@ CART-FIXES (#88), pierwszy na tablicy backlogu, przygotowany już przez `/prepar
 | 2 | Ten plan, zasada backlogu w `CLAUDE.md` i ADR | zrobione |
 | 3 | Poprawki procesu w `shop` | zrobione |
 | 4 | Backlog w GitHub Issues | zrobione |
-| 5 | Powiadomienia i kolejka epików przez aplikację Claude | Remote Control włączone, kolejka do zrobienia, sprawdzenie w kroku 7 |
+| 5 | Powiadomienia i kolejka epików przez aplikację Claude | Remote Control włączone, skill `/ao-run`, kolejka do zrobienia, sprawdzenie w kroku 7 |
 | 6 | Przygotowanie epiku jednym skillem `/prepare-epic` | do zrobienia |
 | 7 | Pierwszy epik przez cały proces | do zrobienia |
 | 8 | Agent tester i agent UX | do zrobienia |
@@ -117,9 +117,9 @@ flowchart TB
    - Start epiku (krok 5): sesja z Remote Control bierze następny epik z tablicy, który ma zaakceptowane
      `spec.md` i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego
      epiku albo na prośbę użytkownika. Bez zgody niczego nie uruchamia. Na raz trwa jeden epik.
-   - `ao submit-plan`, potem `ao run --until-idle`. AO prowadzi zadania przez `/delivery` po jednym naraz,
-     squash-merguje je do `epic/<epik>`, uruchamia `/integration` i otwiera końcowy PR `epic/<epik>` → `main`
-     z raportem `ao report`.
+   - Sesja z `/ao-run <epik>` uruchamia `ao epic start` i `ao run --until-idle`. AO prowadzi zadania przez
+     `/delivery` po jednym naraz, squash-merguje je do `epic/<epik>`, uruchamia `/integration` i otwiera końcowy
+     PR `epic/<epik>` → `main` z raportem `ao report`.
    - `code-reviewer` w `/delivery` sprawdza każde zadanie, a `/integration` cały epik. Usunięty, wyłączony albo
      osłabiony istniejący test lub zmieniona wartość oczekiwana bez podstawy w specyfikacji to `BLOCKER` w zadaniu
      i `Important` w epiku. Plik albo zmiana spoza `scope` zadania to zgłoszenie. `code-reviewer` sprawdza też,
@@ -133,10 +133,10 @@ flowchart TB
      `/integration` przenosi je do swojego raportu.
    - Powtarzający się bloker naprawiamy w `/brainstorm` albo w `CLAUDE.md`, nie w AO.
 5. **Odbiór (użytkownik).**
-   - Przegląd według ryzyka, nie linia po linii. Zaczyna się od sekcji „Lista odbioru” w raporcie `/integration`
-     (ścieżka raportu jest w opisie końcowego PR): dla każdej pozycji „OK” albo „Sprawdź”, czyli zmiany istniejących
-     testów, migracje, pliki spoza zakresów zadań, odstępstwa od specyfikacji i „Decyzje bez pytania”. Na koniec
-     główny scenariusz przeklikany na stosie.
+   - Odbiór to przeczytanie raportu odbioru z `/ao-run` i merge. Raport ma rekomendację „merge” albo „najpierw
+     sprawdź: …”, zbudowaną z „Listy odbioru” raportu `/integration` (ścieżka raportu jest w opisie końcowego PR):
+     dla każdej pozycji „OK” albo „Sprawdź”, czyli zmiany istniejących testów, migracje, pliki spoza zakresów zadań,
+     odstępstwa od specyfikacji i „Decyzje bez pytania”.
    - Błąd w zakresie epiku: poprawka przez PR do `epic/<epik>` (np. `/delivery` uruchomione ręcznie z linią
      `Gałąź docelowa PR: epic/<epik>`), zmergowany przez użytkownika po zielonym CI. AO traktuje nowy HEAD jako
      kod po przeglądzie: robi rundę `DELTA` `/integration`, a końcowy PR czeka na jej wynik. Potem odbiór od nowa.
@@ -146,7 +146,7 @@ flowchart TB
      issues.
    - Użytkownik dopisuje `Closes #N` każdego issue epiku do opisu końcowego PR i merguje go (squash). Issue
      zamykają się same. Merge do `main` zostaje wyłącznie u użytkownika.
-   - Po każdym epiku trzy liczby w komentarzu do issue epiku: minuty użytkownika (spec, blokery, przegląd, triage),
+   - Po każdym epiku trzy liczby w komentarzu do issue epiku: minuty użytkownika (spec, blokery, triage, raport),
      liczba interwencji (z `ao report`) i liczba ręcznych poprawek.
 6. **Po merge'u (krok 8).** Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne
    ścieżki z sekcji „Testy” w `docs/vision.md` i nową funkcję ze specyfikacji, jako klient i jako pracownik.
@@ -168,7 +168,7 @@ flowchart TB
    powiadomienie push do aplikacji Claude na telefonie. Odpowiedź na bloker użytkownik pisze w tej sesji, a sesja
    wykonuje `ao answer`. Po merge'u końcowego PR ta sama sesja bierze następny przygotowany epik z tablicy i pyta
    „Zacząć epik X?” (punkt 3 procesu). Instrukcja dla sesji jest w `shop`, bez zmian w kodzie AO. Mechanizm sprawdza
-   pierwszy przebieg (krok 7).
+   pierwszy przebieg (krok 7). Przebieg epiku prowadzi skill `/ao-run <epik>` (`docs/features/ao-run/spec.md`).
 6. **Przygotowanie epiku jednym skillem.** Najpierw krótka specyfikacja przez `/brainstorm`, potem skill
    `/prepare-epic` i agent krytyka w `shop`, bez zmian w AO:
    - kolejność i podział ról jak w punkcie 2 procesu, zasady analityka i podziału na zadania brane z `/brainstorm`
@@ -178,8 +178,8 @@ flowchart TB
      samym PR co skill.
 7. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, od `/prepare-epic` do odbioru, razem z pomiarem
    z punktu 5 procesu. Każdy kolejny epik idzie tym samym procesem.
-8. **Agent tester i agent UX.** Rusza po kroku 7, żeby zgłoszenia agentów doszły dopiero wtedy, gdy znamy czas
-   odbioru. Najpierw specyfikacja przez `/brainstorm`, potem skille i agenci w `shop`:
+8. **Agent tester i agent UX.** Rusza po kroku 7, gdy lista odbioru zadziała na prawdziwym epiku.
+   Najpierw specyfikacja przez `/brainstorm`, potem skille i agenci w `shop`:
    - agent tester po merge'u epiku (punkt 6 procesu);
    - agent UX po merge'u i jako trzeci reviewer w `/integration` (punkt 3 procesu);
    - etykieta `agent`, limit zgłoszeń na przebieg, sprawdzanie duplikatów;
