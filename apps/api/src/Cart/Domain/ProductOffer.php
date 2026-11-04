@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Cart\Domain;
 
 /**
- * What the cart needs to know about a product to add it or to increase its quantity: whether it has a current price
+ * What the cart needs to know about a variant to add it or to increase its quantity: whether it has a current price
  * and how many units are available. The handler asks Pricing and Inventory and hands it to the cart.
  *
  * The one place of the rule of buying: purchasability() is used by the cart for additions and increases and by the
- * cart view for the state of a line.
+ * cart view for the state of a line, and by the product offers of the list (VariantOffer).
  */
 final readonly class ProductOffer
 {

@@ -13,6 +13,6 @@ final class CartLineLimit extends \DomainException implements Conflict
 {
     public function __construct()
     {
-        parent::__construct('Koszyk może zawierać najwyżej 50 różnych produktów.');
+        parent::__construct('Koszyk może zawierać najwyżej 50 różnych pozycji.');
     }
 }

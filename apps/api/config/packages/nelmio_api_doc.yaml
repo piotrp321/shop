@@ -134,14 +134,15 @@ nelmio_api_doc:
                                     description: Whether a line is not purchasable and so not part of `totals.gross`.
                         CartLine:
                             type: object
-                            required: [productId, product, quantity, unitPrice, lineTotal, state]
+                            required: [variantId, product, quantity, unitPrice, lineTotal, state]
                             properties:
-                                productId:
+                                variantId:
                                     type: string
                                     format: uuid
+                                    description: The variant of a product the line holds; the lines are unique by variant.
                                 product:
                                     nullable: true
-                                    description: Null when Catalog no longer knows the product (`unavailable_product`).
+                                    description: Null when Catalog no longer knows the variant (`unavailable_product`).
                                     allOf:
                                         - $ref: '#/components/schemas/CartLineProduct'
                                 quantity:
@@ -160,15 +161,24 @@ nelmio_api_doc:
                                         - $ref: '#/components/schemas/GrossAmount'
                                 state:
                                     type: string
-                                    description: 'The first that applies: the product is unknown to Catalog, has no current price, has no available unit, has fewer available units than the quantity; otherwise purchasable.'
+                                    description: 'The first that applies: the variant is unknown to Catalog, has no current price, has no available unit, has fewer available units than the quantity; otherwise purchasable.'
                                     enum: [unavailable_product, no_price, out_of_stock, insufficient_stock, purchasable]
                         CartLineProduct:
                             type: object
-                            required: [name, image]
+                            description: The product of the variant of the line.
+                            required: [productId, name, variantLabel, image]
                             properties:
+                                productId:
+                                    type: string
+                                    format: uuid
                                 name:
                                     type: string
-                                    example: Buty do biegania Puls 2 granatowe
+                                    description: Name of the product.
+                                    example: Buty szosowe Tarvik Asfalt 200
+                                variantLabel:
+                                    type: string
+                                    description: The values of the variant joined with ", "; empty for the default variant of a product without variant axes.
+                                    example: czarne, 42
                                 image:
                                     nullable: true
                                     description: The main image in the listing size, null when the product has no images.
@@ -213,7 +223,7 @@ nelmio_api_doc:
                                     enum: [merged, already_merged, nothing_to_merge]
                                 truncated:
                                     type: boolean
-                                    description: Whether a sum was cut to 99 units or a product of the guest skipped because the cart had 50 products; always false unless `merged`.
+                                    description: Whether a sum was cut to 99 units or a variant of the guest skipped because the cart had 50 variants; always false unless `merged`.
                         CartSummary:
                             type: object
                             required: [itemCount]

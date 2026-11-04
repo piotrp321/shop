@@ -34,10 +34,10 @@ use App\Cart\Domain\CartStatus;
 use App\Cart\Domain\GuestCartMerged;
 use App\Cart\Domain\InsufficientStock;
 use App\Cart\Domain\InvalidQuantity;
-use App\Cart\Domain\ProductId;
 use App\Cart\Domain\ProductNotFound;
 use App\Cart\Domain\ProductNotPurchasable;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\VariantId;
 use App\Tests\Unit\Cart\FixedClock;
 use App\Tests\Unit\Cart\InMemoryCarts;
 use App\Tests\Unit\Cart\InMemoryProducts;
@@ -49,6 +49,9 @@ final class CartHandlersTest extends TestCase
     private const string CUSTOMER = 'kc-sub-1';
     private const string A = '0192f0c4-7c1a-7c4e-9a6e-00000000000a';
     private const string B = '0192f0c4-7c1a-7c4e-9a6e-00000000000b';
+    private const string SHOES = 'c0ffee00-7c1a-7c4e-9a6e-000000000042';
+    private const string SIZE_42 = '0192f0c4-7c1a-7c4e-9a6e-000000000042';
+    private const string SIZE_43 = '0192f0c4-7c1a-7c4e-9a6e-000000000043';
     private const string UNKNOWN_CART = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
 
     private InMemoryCarts $carts;
@@ -58,7 +61,7 @@ final class CartHandlersTest extends TestCase
     protected function setUp(): void
     {
         $this->carts = new InMemoryCarts();
-        $this->products = new InMemoryProducts()->product(self::A, 'Buty', 10_000, 5)->product(self::B, 'Czapka', 2_500, 50);
+        $this->products = new InMemoryProducts()->variant(self::A, 'Buty', 10_000, 5)->variant(self::B, 'Czapka', 2_500, 50);
         $this->clock = new FixedClock(new \DateTimeImmutable('2026-11-03 12:00:00+00:00'));
     }
 
@@ -104,6 +107,35 @@ final class CartHandlersTest extends TestCase
         self::assertSame(['summaries' => [[self::A, self::B]], 'current' => [[self::A, self::B]], 'of' => [[self::A, self::B]]], $this->products->calls());
     }
 
+    /**
+     * Two sizes of one product are two lines; each line names its variant and its product with the label.
+     */
+    public function testTwoVariantsOfOneProductAreTwoLinesWithTheirLabels(): void
+    {
+        $this->products
+            ->variant(self::SIZE_42, 'Buty Asfalt', 30_000, 10, self::SHOES, 'czarne, 42')
+            ->variant(self::SIZE_43, 'Buty Asfalt', 31_000, 10, self::SHOES, 'czarne, 43');
+        $cart = $this->guest();
+
+        $this->add($cart, self::SIZE_42, 1);
+        $view = $this->add($cart, self::SIZE_43, 2);
+
+        self::assertSame([[self::SIZE_42, 1, 'purchasable', 30_000], [self::SIZE_43, 2, 'purchasable', 62_000]], self::lines($view));
+        self::assertSame(
+            [[self::SHOES, 'Buty Asfalt', 'czarne, 42'], [self::SHOES, 'Buty Asfalt', 'czarne, 43']],
+            array_map(static fn (CartLineView $l): array => [$l->product?->productId, $l->product?->name, $l->product?->variantLabel], $view->lines),
+        );
+        self::assertSame(3, $view->totals->itemCount);
+    }
+
+    public function testTheIdOfAProductIsNoVariantToAdd(): void
+    {
+        $this->products->variant(self::SIZE_42, 'Buty Asfalt', 30_000, 10, self::SHOES, 'czarne, 42');
+
+        $this->expectException(ProductNotFound::class);
+        $this->add($this->guest(), self::SHOES, 1);
+    }
+
     public function testRemovalOfAMissingLineIsASuccessWithoutChange(): void
     {
         $cart = $this->guest();
@@ -127,7 +159,7 @@ final class CartHandlersTest extends TestCase
         $this->add($cart, '0192f0c4-7c1a-7c4e-9a6e-0000000000ff', 1);
     }
 
-    public function testAProductIdThatIsNotAUuidIsAnUnknownProduct(): void
+    public function testAVariantIdThatIsNotAUuidIsAnUnknownProduct(): void
     {
         $this->expectException(ProductNotFound::class);
         $this->add($this->guest(), 'not-a-uuid', 1);
@@ -149,7 +181,7 @@ final class CartHandlersTest extends TestCase
     #[DataProvider('refusedAdditions')]
     public function testAdditionIsCheckedAgainstPricingAndInventory(?int $gross, int $available, string $expected): void
     {
-        $this->products->product(self::A, 'Buty', $gross, $available);
+        $this->products->variant(self::A, 'Buty', $gross, $available);
         $cart = $this->guest();
 
         $this->expectException($expected);
@@ -159,7 +191,7 @@ final class CartHandlersTest extends TestCase
     public function testTheLimitsAreRefusedWithoutChange(): void
     {
         $cart = $this->guest();
-        $this->products->product(self::A, 'Buty', 1000, 1000);
+        $this->products->variant(self::A, 'Buty', 1000, 1000);
         $this->add($cart, self::A, 99);
 
         try {
@@ -175,8 +207,8 @@ final class CartHandlersTest extends TestCase
         $lines = [];
         for ($i = 1; $i <= 50; ++$i) {
             $id = \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $i);
-            $this->products->product($id);
-            $lines[] = new CartLine(ProductId::fromString($id), Quantity::of(1), $this->clock->now);
+            $this->products->variant($id);
+            $lines[] = new CartLine(VariantId::fromString($id), Quantity::of(1), $this->clock->now);
         }
         $cart = $this->storedGuest(CartStatus::Open, $this->clock->now->modify('+1 day'), $lines);
 
@@ -194,7 +226,7 @@ final class CartHandlersTest extends TestCase
     {
         $cart = $this->guest();
         $this->add($cart, self::A, 3);
-        $this->products->product(self::A, 'Buty', null, 0);
+        $this->products->variant(self::A, 'Buty', null, 0);
         $this->products->resetCalls();
 
         $view = $this->change($cart, self::A, 1);
@@ -211,7 +243,7 @@ final class CartHandlersTest extends TestCase
 
         $view = $this->change($cart, self::A, 2);
 
-        self::assertSame([[self::A, 2, 'unavailable_product', 10_000]], [[$view->lines[0]->productId, $view->lines[0]->quantity, $view->lines[0]->state, $view->lines[0]->unitPrice?->gross]]);
+        self::assertSame([[self::A, 2, 'unavailable_product', 10_000]], [[$view->lines[0]->variantId, $view->lines[0]->quantity, $view->lines[0]->state, $view->lines[0]->unitPrice?->gross]]);
     }
 
     public function testIncreaseOfALineWhoseProductCatalogForgotIsNotFound(): void
@@ -277,7 +309,7 @@ final class CartHandlersTest extends TestCase
     #[DataProvider('guestOperations')]
     public function testAnExpiredGuestCartIsNotFound(\Closure $operation): void
     {
-        $cart = $this->storedGuest(CartStatus::Open, $this->clock->now->modify('-1 second'), [new CartLine(ProductId::fromString(self::A), Quantity::of(1), $this->clock->now->modify('-31 days'))]);
+        $cart = $this->storedGuest(CartStatus::Open, $this->clock->now->modify('-1 second'), [new CartLine(VariantId::fromString(self::A), Quantity::of(1), $this->clock->now->modify('-31 days'))]);
 
         $this->expectException(CartNotFound::class);
         $operation($this, $cart);
@@ -410,19 +442,19 @@ final class CartHandlersTest extends TestCase
         return new CreateGuestCartHandler($this->carts, new CartViewBuilder(), $this->clock)(new CreateGuestCart());
     }
 
-    public function add(CartRef $cart, string $productId, int $quantity): CartView
+    public function add(CartRef $cart, string $variantId, int $quantity): CartView
     {
-        return new AddCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder(), $this->clock)(new AddCartItem($cart, $productId, $quantity));
+        return new AddCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder(), $this->clock)(new AddCartItem($cart, $variantId, $quantity));
     }
 
-    public function change(CartRef $cart, string $productId, int $quantity): CartView
+    public function change(CartRef $cart, string $variantId, int $quantity): CartView
     {
-        return new ChangeCartItemQuantityHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder(), $this->clock)(new ChangeCartItemQuantity($cart, $productId, $quantity));
+        return new ChangeCartItemQuantityHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder(), $this->clock)(new ChangeCartItemQuantity($cart, $variantId, $quantity));
     }
 
-    public function remove(CartRef $cart, string $productId): CartView
+    public function remove(CartRef $cart, string $variantId): CartView
     {
-        return new RemoveCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder(), $this->clock)(new RemoveCartItem($cart, $productId));
+        return new RemoveCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder(), $this->clock)(new RemoveCartItem($cart, $variantId));
     }
 
     public function getCart(CartRef $cart): CartView
@@ -464,7 +496,7 @@ final class CartHandlersTest extends TestCase
      */
     private function storedLines(CartRef $cart): array
     {
-        return array_map(static fn (ProductId $id): string => $id->toString(), $this->carts->find(CartId::fromString($cart->cartId ?? ''))?->productIds() ?? []);
+        return array_map(static fn (VariantId $id): string => $id->toString(), $this->carts->find(CartId::fromString($cart->cartId ?? ''))?->variantIds() ?? []);
     }
 
     /**
@@ -472,6 +504,6 @@ final class CartHandlersTest extends TestCase
      */
     private static function lines(CartView $view): array
     {
-        return array_map(static fn (CartLineView $l): array => [$l->productId, $l->quantity, $l->state, $l->lineTotal?->gross], $view->lines);
+        return array_map(static fn (CartLineView $l): array => [$l->variantId, $l->quantity, $l->state, $l->lineTotal?->gross], $view->lines);
     }
 }

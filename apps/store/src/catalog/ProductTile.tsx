@@ -40,7 +40,7 @@ export function ProductTile({
           <p data-testid="availability" className={`text-xs font-medium ${AVAILABILITY_LABELS[availability.level].className}`}>{AVAILABILITY_LABELS[availability.level].text}</p>
         ) : null}
         {/* Without a label (the availability call failed) the button stays and the API decides. */}
-        {price && availability?.level !== "out_of_stock" ? <AddToCartButton productId={product.id} /> : null}
+        {price && availability?.level !== "out_of_stock" ? <AddToCartButton variantId={product.id} /> : null}
       </CardContent>
     </Card>
   );

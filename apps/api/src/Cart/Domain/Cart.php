@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Cart\Domain;
 
 /**
- * A cart of a guest or of a customer: lines unique by product, in the order they were added.
+ * A cart of a guest or of a customer: lines unique by variant, in the order they were added.
  *
  * Every change first checks that the cart may change (openForChange): a merged guest cart never changes again
  * (GuestCartMerged) and an expired guest cart does not exist (CartNotFound); an expired customer cart loses its lines
@@ -21,7 +21,7 @@ final class Cart
     public const int CUSTOMER_LIFETIME_DAYS = 180;
 
     /**
-     * @param array<string, CartLine> $lines by product id, in the order of addedAt
+     * @param array<string, CartLine> $lines by variant id, in the order of addedAt
      */
     private function __construct(
         private readonly CartId $id,
@@ -65,12 +65,12 @@ final class Cart
         \DateTimeImmutable $updatedAt,
         \DateTimeImmutable $expiresAt,
     ): self {
-        $byProduct = [];
+        $byVariant = [];
         foreach ($lines as $line) {
-            $byProduct[$line->productId()->toString()] = $line;
+            $byVariant[$line->variantId()->toString()] = $line;
         }
 
-        return new self($id, $owner, $status, $mergedInto, $mergedAt, $byProduct, $createdAt, $updatedAt, $expiresAt);
+        return new self($id, $owner, $status, $mergedInto, $mergedAt, $byVariant, $createdAt, $updatedAt, $expiresAt);
     }
 
     private static function create(CartId $id, CartOwner $owner, \DateTimeImmutable $now): self
@@ -114,11 +114,11 @@ final class Cart
     }
 
     /**
-     * @return list<ProductId> in the order of the lines
+     * @return list<VariantId> in the order of the lines
      */
-    public function productIds(): array
+    public function variantIds(): array
     {
-        return array_map(static fn (CartLine $line): ProductId => $line->productId(), array_values($this->lines));
+        return array_map(static fn (CartLine $line): VariantId => $line->variantId(), array_values($this->lines));
     }
 
     public function createdAt(): \DateTimeImmutable
@@ -173,7 +173,7 @@ final class Cart
 
     /**
      * Where every change starts; idempotent. A handler calls it first when it needs the state the change will see
-     * (e.g. to decide whether to ask for the offer of a product).
+     * (e.g. to decide whether to ask for the offer of a variant).
      *
      * @throws GuestCartMerged
      * @throws CartNotFound    an expired guest cart
@@ -190,7 +190,7 @@ final class Cart
     }
 
     /**
-     * Adds a line, or adds the quantity to the line of the product.
+     * Adds a line, or adds the quantity to the line of the variant.
      *
      * @throws GuestCartMerged
      * @throws CartNotFound
@@ -199,11 +199,11 @@ final class Cart
      * @throws ProductNotPurchasable
      * @throws InsufficientStock
      */
-    public function add(ProductId $productId, Quantity $quantity, ProductOffer $offer, \DateTimeImmutable $now): void
+    public function add(VariantId $variantId, Quantity $quantity, ProductOffer $offer, \DateTimeImmutable $now): void
     {
         $this->openForChange($now);
 
-        $key = $productId->toString();
+        $key = $variantId->toString();
         $existing = $this->lines[$key] ?? null;
         $result = ($existing?->quantity()->value() ?? 0) + $quantity->value();
         if ($result > self::MAX_QUANTITY) {
@@ -215,18 +215,18 @@ final class Cart
         self::assertPurchasable($offer, $result);
 
         $this->lines[$key] = null === $existing
-            ? new CartLine($productId, $quantity, $now)
+            ? new CartLine($variantId, $quantity, $now)
             : $existing->withQuantity(Quantity::of($result));
         $this->touch($now);
     }
 
     /**
-     * Whether changeQuantity() to this quantity is an increase, which needs the offer of the product. Call it after
+     * Whether changeQuantity() to this quantity is an increase, which needs the offer of the variant. Call it after
      * openForChange(), so an expired customer cart has no line to increase.
      */
-    public function needsOfferToChange(ProductId $productId, Quantity $quantity): bool
+    public function needsOfferToChange(VariantId $variantId, Quantity $quantity): bool
     {
-        $existing = $this->lines[$productId->toString()] ?? null;
+        $existing = $this->lines[$variantId->toString()] ?? null;
 
         return null !== $existing && $quantity->value() > $existing->quantity()->value();
     }
@@ -243,15 +243,15 @@ final class Cart
      * @throws ProductNotPurchasable
      * @throws InsufficientStock
      */
-    public function changeQuantity(ProductId $productId, Quantity $quantity, ?ProductOffer $offer, \DateTimeImmutable $now): void
+    public function changeQuantity(VariantId $variantId, Quantity $quantity, ?ProductOffer $offer, \DateTimeImmutable $now): void
     {
         $this->openForChange($now);
 
-        $key = $productId->toString();
+        $key = $variantId->toString();
         $existing = $this->lines[$key] ?? throw new CartLineNotFound();
         if ($quantity->value() > $existing->quantity()->value()) {
             if (null === $offer) {
-                throw new \LogicException('An increase of the quantity needs the offer of the product.');
+                throw new \LogicException('An increase of the quantity needs the offer of the variant.');
             }
             self::assertPurchasable($offer, $quantity->value());
         }
@@ -261,16 +261,16 @@ final class Cart
     }
 
     /**
-     * Removes the line of the product; without one, nothing changes.
+     * Removes the line of the variant; without one, nothing changes.
      *
      * @throws GuestCartMerged
      * @throws CartNotFound
      */
-    public function remove(ProductId $productId, \DateTimeImmutable $now): void
+    public function remove(VariantId $variantId, \DateTimeImmutable $now): void
     {
         $this->openForChange($now);
 
-        $key = $productId->toString();
+        $key = $variantId->toString();
         if (!isset($this->lines[$key])) {
             return;
         }
@@ -298,8 +298,8 @@ final class Cart
 
     /**
      * Merges a guest cart into this customer cart. An expired customer cart is cleared first, so it ends with the
-     * guest lines only. The guest lines, in the order of addedAt: the quantity of a product already in the cart is
-     * added, cut to MAX_QUANTITY; a new product becomes a line with the guest's quantity and addedAt while the cart
+     * guest lines only. The guest lines, in the order of addedAt: the quantity of a variant already in the cart is
+     * added, cut to MAX_QUANTITY; a new variant becomes a line with the guest's quantity and addedAt while the cart
      * has fewer than MAX_LINES lines, otherwise it is skipped. A cut or a skip makes the outcome truncated. Neither
      * the price nor the availability is checked. The guest cart is marked merged and this cart is touched.
      *
@@ -318,7 +318,7 @@ final class Cart
         $this->clearIfExpired($now);
         $truncated = false;
         foreach ($guest->lines() as $line) {
-            $key = $line->productId()->toString();
+            $key = $line->variantId()->toString();
             $existing = $this->lines[$key] ?? null;
             if (null !== $existing) {
                 $sum = $existing->quantity()->value() + $line->quantity()->value();

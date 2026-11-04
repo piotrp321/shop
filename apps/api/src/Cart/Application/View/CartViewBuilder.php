@@ -13,7 +13,7 @@ use App\Cart\Domain\Purchasability;
 
 /**
  * The one place of the totals of a cart and of the mapping of the line states. The rule of buying (price, then stock)
- * is only in ProductOffer::purchasability(); a product unknown to Catalog is the only state decided here.
+ * is only in ProductOffer::purchasability(); a variant unknown to Catalog is the only state decided here.
  */
 final readonly class CartViewBuilder
 {
@@ -27,13 +27,13 @@ final readonly class CartViewBuilder
         $itemCount = 0;
         $excluded = false;
         foreach ($lines as $line) {
-            $productId = $line->productId();
-            $summary = $data->summary($productId);
-            $price = $data->price($productId);
+            $variantId = $line->variantId();
+            $summary = $data->summary($variantId);
+            $price = $data->price($variantId);
             $quantity = $line->quantity()->value();
             $state = null === $summary
                 ? CartLineState::UnavailableProduct
-                : match ($data->offerFor($productId)->purchasability($quantity)) {
+                : match ($data->offerFor($variantId)->purchasability($quantity)) {
                     Purchasability::NoPrice => CartLineState::NoPrice,
                     Purchasability::OutOfStock => CartLineState::OutOfStock,
                     Purchasability::InsufficientStock => CartLineState::InsufficientStock,
@@ -50,8 +50,8 @@ final readonly class CartViewBuilder
             $itemCount += $quantity;
 
             $views[] = new CartLineView(
-                $productId->toString(),
-                null === $summary ? null : new CartLineProduct($summary->name, $summary->image),
+                $variantId->toString(),
+                null === $summary ? null : new CartLineProduct($summary->productId->toString(), $summary->name, $summary->label, $summary->image),
                 $quantity,
                 null === $price ? null : GrossAmount::of($price),
                 null === $lineTotal ? null : GrossAmount::of($lineTotal),

@@ -12,7 +12,9 @@ type CartView = components["schemas"]["CartView"];
 
 export const GUEST_CART_ID = "11111111-1111-4111-8111-111111111111";
 export const NEW_GUEST_CART_ID = "22222222-2222-4222-8222-222222222222";
-export const PRODUCT_ID = "00000000-0000-4000-8000-000000000001";
+export const VARIANT_ID = "00000000-0000-4000-8000-000000000001";
+/** The product of VARIANT_ID; a variant id is never the id of its product. */
+export const PRODUCT_ID = "00000000-0000-4000-8000-0000000000f1";
 
 export const emptyView = (id: string | null = null): CartView => ({
   id,
@@ -25,8 +27,8 @@ export const viewWithOneLine = (cartId: string | null, quantity = 1): CartView =
   id: cartId,
   lines: [
     {
-      productId: PRODUCT_ID,
-      product: { name: "Produkt 1", image: null },
+      variantId: VARIANT_ID,
+      product: { productId: PRODUCT_ID, name: "Produkt 1", variantLabel: "", image: null },
       quantity,
       unitPrice: { gross: 1000, currency: "PLN" },
       lineTotal: { gross: 1000 * quantity, currency: "PLN" },

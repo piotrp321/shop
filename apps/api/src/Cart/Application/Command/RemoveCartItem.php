@@ -10,7 +10,7 @@ final readonly class RemoveCartItem
 {
     public function __construct(
         public CartRef $cart,
-        public string $productId,
+        public string $variantId,
     ) {
     }
 }

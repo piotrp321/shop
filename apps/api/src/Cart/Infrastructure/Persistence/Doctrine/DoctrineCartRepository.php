@@ -10,8 +10,8 @@ use App\Cart\Domain\CartLine;
 use App\Cart\Domain\CartOwner;
 use App\Cart\Domain\CartRepository;
 use App\Cart\Domain\CartStatus;
-use App\Cart\Domain\ProductId;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\VariantId;
 use App\Cart\Infrastructure\Persistence\Doctrine\Record\CartLineRecord;
 use App\Cart\Infrastructure\Persistence\Doctrine\Record\CartRecord;
 use Doctrine\DBAL\LockMode;
@@ -105,8 +105,8 @@ final readonly class DoctrineCartRepository implements CartRepository
     }
 
     /**
-     * The lines are matched by product: a line of a product that stays is updated in place, so a line removed and
-     * one of the same product added in one change never meet the unique index (Doctrine deletes after it inserts).
+     * The lines are matched by variant: a line of a variant that stays is updated in place, so a line removed and
+     * one of the same variant added in one change never meet the unique index (Doctrine deletes after it inserts).
      */
     public function save(Cart $cart): void
     {
@@ -132,19 +132,19 @@ final readonly class DoctrineCartRepository implements CartRepository
 
         $stored = [];
         foreach ($record->lines as $line) {
-            $stored[$line->productId] = $line;
+            $stored[$line->variantId] = $line;
         }
         foreach ($cart->lines() as $line) {
-            $productId = $line->productId()->toString();
-            $lineRecord = $stored[$productId] ?? null;
+            $variantId = $line->variantId()->toString();
+            $lineRecord = $stored[$variantId] ?? null;
             if (null === $lineRecord) {
                 // Time-ordered, so lines added in the same second keep their order.
-                $lineRecord = new CartLineRecord(Uuid::v7()->toRfc4122(), $record, $productId);
+                $lineRecord = new CartLineRecord(Uuid::v7()->toRfc4122(), $record, $variantId);
                 $record->lines->add($lineRecord);
             }
             $lineRecord->quantity = $line->quantity()->value();
             $lineRecord->addedAt = $line->addedAt();
-            unset($stored[$productId]);
+            unset($stored[$variantId]);
         }
         foreach ($stored as $removed) {
             $record->lines->removeElement($removed);
@@ -192,7 +192,7 @@ final readonly class DoctrineCartRepository implements CartRepository
     {
         $lines = [];
         foreach ($record->lines as $line) {
-            $lines[] = new CartLine(ProductId::fromString($line->productId), Quantity::of($line->quantity), $line->addedAt);
+            $lines[] = new CartLine(VariantId::fromString($line->variantId), Quantity::of($line->quantity), $line->addedAt);
         }
 
         return Cart::reconstitute(

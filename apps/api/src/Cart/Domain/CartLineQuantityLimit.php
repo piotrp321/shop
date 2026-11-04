@@ -13,6 +13,6 @@ final class CartLineQuantityLimit extends \DomainException implements Conflict
 {
     public function __construct()
     {
-        parent::__construct('Można dodać najwyżej 99 sztuk jednego produktu.');
+        parent::__construct('Można dodać najwyżej 99 sztuk jednej pozycji.');
     }
 }

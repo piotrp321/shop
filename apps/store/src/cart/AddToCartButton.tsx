@@ -12,14 +12,14 @@ type Feedback = { kind: "added" } | { kind: "error"; failure: CartFailure; retur
  * Adds one unit of the product to the cart. The API decides whether it can be added (limits, price, availability);
  * its answer is shown here and the header counter gets the number of units from it.
  */
-export function AddToCartButton({ productId }: { productId: string }) {
+export function AddToCartButton({ variantId }: { variantId: string }) {
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   async function add() {
     setPending(true);
     setFeedback(null);
-    const result = await addCartItem(productId, 1);
+    const result = await addCartItem(variantId, 1);
     if (result.status === "ok") {
       announceCartChange(result.data.totals.itemCount);
       setFeedback({ kind: "added" });

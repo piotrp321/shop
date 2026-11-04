@@ -25,14 +25,14 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
     public function testTheGuestLinesMoveIntoTheCustomerCartAndTheGuestCartIsGoneForGood(): void
     {
         $token = TestTokenFactory::customer();
-        $shoes = $this->product(19_999, 10);
-        $cap = $this->product(4_990, 10);
-        $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $shoes, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
+        $shoes = $this->variant(19_999, 10);
+        $cap = $this->variant(4_990, 10);
+        $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $shoes, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
         $guest = $this->request('POST', '/api/v1/guest-carts');
         self::assertIsString($guest['id']);
         $guestPath = '/api/v1/guest-carts/'.$guest['id'];
-        $this->request('POST', $guestPath.'/items', json_encode(['productId' => $shoes, 'quantity' => 2], \JSON_THROW_ON_ERROR));
-        $this->request('POST', $guestPath.'/items', json_encode(['productId' => $cap, 'quantity' => 1], \JSON_THROW_ON_ERROR));
+        $this->request('POST', $guestPath.'/items', json_encode(['variantId' => $shoes, 'quantity' => 2], \JSON_THROW_ON_ERROR));
+        $this->request('POST', $guestPath.'/items', json_encode(['variantId' => $cap, 'quantity' => 1], \JSON_THROW_ON_ERROR));
 
         $merged = $this->request('POST', self::PATH, json_encode(['guestCartId' => $guest['id']], \JSON_THROW_ON_ERROR), $token);
 
@@ -52,7 +52,7 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
         foreach ([
             ['GET', $guestPath, null],
             ['GET', $guestPath.'/summary', null],
-            ['POST', $guestPath.'/items', json_encode(['productId' => $cap, 'quantity' => 1], \JSON_THROW_ON_ERROR)],
+            ['POST', $guestPath.'/items', json_encode(['variantId' => $cap, 'quantity' => 1], \JSON_THROW_ON_ERROR)],
             ['PUT', $guestPath.'/items/'.$cap, '{"quantity": 1}'],
             ['DELETE', $guestPath.'/items/'.$cap, null],
         ] as [$method, $path, $body]) {
@@ -69,9 +69,9 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
 
     public function testACutSumIsTruncated(): void
     {
-        $product = $this->product(1_000, 200);
-        $customer = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, expiresAt: '+10 days', lines: [[$product, 98]]);
-        $guest = CartFixture::cart($this->connection, lines: [[$product, 5]]);
+        $variant = $this->variant(1_000, 200);
+        $customer = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, expiresAt: '+10 days', lines: [[$variant, 98]]);
+        $guest = CartFixture::cart($this->connection, lines: [[$variant, 5]]);
 
         $merged = $this->request('POST', self::PATH, json_encode(['guestCartId' => $guest], \JSON_THROW_ON_ERROR), TestTokenFactory::customer());
 
@@ -79,7 +79,7 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
         $this->assertNoStore();
         self::assertSame('merged', $merged['result']);
         self::assertTrue($merged['truncated']);
-        self::assertSame([[$product, 99]], CartFixture::lines($this->connection, $customer));
+        self::assertSame([[$variant, 99]], CartFixture::lines($this->connection, $customer));
     }
 
     public function testASkippedLineIsTruncated(): void
@@ -119,10 +119,10 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
     public function testNothingToMergeGivesTheCartOfTheCustomerWithoutChange(): void
     {
         $token = TestTokenFactory::customer();
-        $product = $this->product();
+        $variant = $this->variant();
         $empty = ['cart' => ['id' => null, 'lines' => [], 'totals' => ['gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false], 'result' => 'nothing_to_merge', 'truncated' => false];
-        $expired = CartFixture::cart($this->connection, expiresAt: '-1 second', lines: [[$product, 1]]);
-        $other = CartFixture::cart($this->connection, customerId: 'another-customer', lines: [[$product, 1]]);
+        $expired = CartFixture::cart($this->connection, expiresAt: '-1 second', lines: [[$variant, 1]]);
+        $other = CartFixture::cart($this->connection, customerId: 'another-customer', lines: [[$variant, 1]]);
 
         foreach ([(string) Uuid::v4(), $expired, $other] as $guestCartId) {
             $result = $this->request('POST', self::PATH, json_encode(['guestCartId' => $guestCartId], \JSON_THROW_ON_ERROR), $token);
@@ -132,10 +132,10 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
         }
         self::assertMatchesSchema('MergeResult', $empty);
         self::assertSame(0, $this->connection->fetchOne('SELECT COUNT(*) FROM cart_cart WHERE customer_id = ?', [TestTokenFactory::CUSTOMER_ID]), 'nothing is created');
-        self::assertSame([[$product, 1]], CartFixture::lines($this->connection, $expired));
-        self::assertSame([[$product, 1]], CartFixture::lines($this->connection, $other));
+        self::assertSame([[$variant, 1]], CartFixture::lines($this->connection, $expired));
+        self::assertSame([[$variant, 1]], CartFixture::lines($this->connection, $other));
 
-        $own = $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $product, 'quantity' => 2], \JSON_THROW_ON_ERROR), $token);
+        $own = $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $variant, 'quantity' => 2], \JSON_THROW_ON_ERROR), $token);
         $result = $this->request('POST', self::PATH, json_encode(['guestCartId' => $own['id']], \JSON_THROW_ON_ERROR), $token);
         self::assertResponseStatusCodeSame(200);
         self::assertSame(['cart' => $own, 'result' => 'nothing_to_merge', 'truncated' => false], $result);

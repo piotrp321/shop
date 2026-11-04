@@ -10,7 +10,7 @@ import {
   GUEST_CART_ID,
   isCleared,
   mergeAnswer,
-  PRODUCT_ID,
+  VARIANT_ID,
   problem,
   sessionCookie,
   setCookie,
@@ -29,19 +29,19 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
-const path = `/api/cart/items/${PRODUCT_ID}`;
-const context = { params: Promise.resolve({ productId: PRODUCT_ID }) };
-const GUEST_LINE = `/api/v1/guest-carts/${GUEST_CART_ID}/items/${PRODUCT_ID}`;
+const path = `/api/cart/items/${VARIANT_ID}`;
+const context = { params: Promise.resolve({ variantId: VARIANT_ID }) };
+const GUEST_LINE = `/api/v1/guest-carts/${GUEST_CART_ID}/items/${VARIANT_ID}`;
 const GUEST_SUMMARY = `/api/v1/guest-carts/${GUEST_CART_ID}/summary`;
-const ME_LINE = `/api/v1/me/cart/items/${PRODUCT_ID}`;
+const ME_LINE = `/api/v1/me/cart/items/${VARIANT_ID}`;
 const LINE_MISSING = "Tej pozycji nie ma w koszyku.";
 
 const change = (options: Parameters<typeof cartRequest>[2] = { body: { quantity: 3 } }) => PATCH(cartRequest("PATCH", path, options), context);
 const remove = (options: Parameters<typeof cartRequest>[2] = {}) => DELETE(cartRequest("DELETE", path, options), context);
-const notAnId = { params: Promise.resolve({ productId: "abc" }) };
+const notAnId = { params: Promise.resolve({ variantId: "abc" }) };
 
-describe("PATCH /api/cart/items/[productId]", () => {
-  it("answers 404 for the line without asking the API or touching the cookie when the product id is not a UUID", async () => {
+describe("PATCH /api/cart/items/[variantId]", () => {
+  it("answers 404 for the line without asking the API or touching the cookie when the variant id is not a UUID", async () => {
     const response = await PATCH(
       cartRequest("PATCH", "/api/cart/items/abc", { body: { quantity: 3 }, cookie: signedCartCookie(GUEST_CART_ID) }),
       notAnId,
@@ -176,8 +176,8 @@ describe("PATCH /api/cart/items/[productId]", () => {
   });
 });
 
-describe("DELETE /api/cart/items/[productId]", () => {
-  it("answers 404 for the line without asking the API or touching the cookie when the product id is not a UUID", async () => {
+describe("DELETE /api/cart/items/[variantId]", () => {
+  it("answers 404 for the line without asking the API or touching the cookie when the variant id is not a UUID", async () => {
     const response = await DELETE(
       cartRequest("DELETE", "/api/cart/items/abc", { cookie: signedCartCookie(GUEST_CART_ID) }),
       notAnId,

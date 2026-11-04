@@ -53,7 +53,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Koszyk
 
 - Przeglądarka rozmawia z koszykiem wyłącznie przez BFF (`/api/cart`, `/api/cart/summary`, `/api/cart/items`,
-  `/api/cart/items/[productId]`); API woła serwer sklepu. Route handlery są owinięte w `withCartDeps`
+  `/api/cart/items/[variantId]`); API woła serwer sklepu. Route handlery są owinięte w `withCartDeps`
   (`src/cart/responses.ts`; zależności z `getCartDeps()` w `src/cart/deps.ts`, brak zależności daje 503 z `no-store`).
   Cała logika jest w `runCartCommand` (`src/cart/bff.ts`), testy podmieniają API dublerem z `src/cart/test-support.ts`.
 - Koszyk wybiera sesja: zalogowany klient ma koszyk `/api/v1/me/cart` z tokenem z `freshAccessToken`, gość koszyk
@@ -74,9 +74,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   w koszyku”.
 - Żądania zmieniające (`POST`, `PATCH`, `DELETE`) wymagają `Origin` równego `STORE_URL`, a `POST` i `PATCH` także
   `Content-Type: application/json`; inaczej 403 bez wywołania API.
-- `productId` spoza UUID w `/api/cart/items/[productId]` (PATCH i DELETE) dostaje 404 „Tej pozycji nie ma w koszyku.”
+- `variantId` spoza UUID w `/api/cart/items/[variantId]` (PATCH i DELETE) dostaje 404 „Tej pozycji nie ma w koszyku.”
   bez wywołania API i bez ruszania ciasteczek (API też odpowiedziałoby 404, który wyglądałby jak zniknięty koszyk).
-- 404 w koszyku gościa może znaczyć „koszyk zniknął”, „brak pozycji” albo „brak produktu”. BFF nie zgaduje po tekście
+- 404 w koszyku gościa może znaczyć „koszyk zniknął”, „brak pozycji” albo „brak wariantu”. BFF nie zgaduje po tekście
   `detail`. Odczyt i usunięcie pozycji: 404 oznacza koszyk, który zniknął, więc ciasteczko jest usuwane, a odpowiedzią
   jest pusty koszyk (bez sondy). Dodanie i zmiana pytają o `summary` koszyka: 404 oznacza koszyk, który zniknął
   (ciasteczko usuwane, dodanie zakłada nowy koszyk i powtarza się raz, zmiana zwraca 404 pozycji), w przeciwnym razie
@@ -91,7 +91,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   ani na blokadę. Testy ustawiają `navigator` przez `vi.stubGlobal` (Node ma własne `navigator.locks`).
 - UI: `AddToCartButton` w `ProductTile` (tylko przy cenie i poziomie dostępności innym niż `out_of_stock`, przy braku
   etykiety dostępności widoczny), `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
-  (`CartPage`, Client Component ładujący `/api/cart`). Po każdej zmianie koszyka komponent ogłasza `itemCount` z
+  (`CartPage`, Client Component ładujący `/api/cart`), linia z nazwą produktu i etykietą wariantu. Po każdej zmianie koszyka komponent ogłasza `itemCount` z
   odpowiedzi zdarzeniem (`src/cart/events.ts`), a licznik się aktualizuje. Front niczego nie liczy: kwoty, sumy i stany
   linii pochodzą z ostatniej odpowiedzi API, a odrzucona zmiana zostawia ostatni widok.
 - Odpowiedzi: 200 z danymi API, 404/409/422 z `{ detail }` API, 401 (sesja się skończyła: usunięta z Redisa i

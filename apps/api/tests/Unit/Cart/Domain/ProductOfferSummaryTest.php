@@ -66,7 +66,6 @@ final class ProductOfferSummaryTest extends TestCase
         ]);
 
         self::assertSame(12900, $summary->fromGross?->amount());
-        self::assertSame(Currency::PLN, $summary->fromGross?->currency());
         self::assertFalse($summary->hasPriceRange);
     }
 

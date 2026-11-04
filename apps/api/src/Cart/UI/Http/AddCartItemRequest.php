@@ -15,18 +15,18 @@ use Symfony\Component\Validator\Constraints as Assert;
  * validated, never cast: a number in a string or with a fraction (also `2.0`) is a violation. The constraints of a
  * field run in order up to the first violation, so a field gives at most one, in Polish.
  */
-#[OA\Schema(description: 'A product to add to the cart.', required: ['productId', 'quantity'])]
+#[OA\Schema(description: 'A variant of a product to add to the cart.', required: ['variantId', 'quantity'])]
 final readonly class AddCartItemRequest
 {
     public function __construct(
-        #[OA\Property(type: 'string', format: 'uuid', description: 'Product id (UUID).')]
+        #[OA\Property(type: 'string', format: 'uuid', description: 'Variant id (UUID) of a product.')]
         #[Assert\Sequentially([
-            new Assert\NotNull(message: 'Identyfikator produktu jest wymagany.'),
-            new Assert\Type('string', message: 'Identyfikator produktu musi być UUID.'),
-            new Assert\Uuid(message: 'Identyfikator produktu musi być UUID.'),
+            new Assert\NotNull(message: 'Identyfikator wariantu jest wymagany.'),
+            new Assert\Type('string', message: 'Identyfikator wariantu musi być UUID.'),
+            new Assert\Uuid(message: 'Identyfikator wariantu musi być UUID.'),
         ])]
-        public mixed $productId,
-        #[OA\Property(type: 'integer', description: 'Units to add, from 1 to 99. The line may have at most 99 units.', minimum: Quantity::MIN, maximum: Cart::MAX_QUANTITY, example: 1)]
+        public mixed $variantId,
+        #[OA\Property(type: 'integer', description: 'Units to add, from 1 to 99. The line of the variant may have at most 99 units.', minimum: Quantity::MIN, maximum: Cart::MAX_QUANTITY, example: 1)]
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Ilość jest wymagana.'),
             new Assert\Type('integer', message: 'Ilość musi być liczbą całkowitą.'),

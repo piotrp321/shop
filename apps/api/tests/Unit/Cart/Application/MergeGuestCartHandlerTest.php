@@ -15,8 +15,8 @@ use App\Cart\Domain\CartId;
 use App\Cart\Domain\CartLine;
 use App\Cart\Domain\CartOwner;
 use App\Cart\Domain\CartStatus;
-use App\Cart\Domain\ProductId;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\VariantId;
 use App\Tests\Unit\Cart\FixedClock;
 use App\Tests\Unit\Cart\InMemoryCarts;
 use App\Tests\Unit\Cart\InMemoryProducts;
@@ -37,7 +37,7 @@ final class MergeGuestCartHandlerTest extends TestCase
     protected function setUp(): void
     {
         $this->carts = new InMemoryCarts();
-        $this->products = new InMemoryProducts()->product(self::A, 'Buty', 10_000, 5)->product(self::B, 'Czapka', 2_500, 50);
+        $this->products = new InMemoryProducts()->variant(self::A, 'Buty', 10_000, 5)->variant(self::B, 'Czapka', 2_500, 50);
         $this->clock = new FixedClock(new \DateTimeImmutable('2026-11-03 12:00:00+00:00'));
     }
 
@@ -238,9 +238,9 @@ final class MergeGuestCartHandlerTest extends TestCase
         return $id;
     }
 
-    public function line(string $productId, int $quantity, string $addedAgo): CartLine
+    public function line(string $variantId, int $quantity, string $addedAgo): CartLine
     {
-        return new CartLine(ProductId::fromString($productId), Quantity::of($quantity), $this->clock->now->modify($addedAgo));
+        return new CartLine(VariantId::fromString($variantId), Quantity::of($quantity), $this->clock->now->modify($addedAgo));
     }
 
     /**
@@ -248,7 +248,7 @@ final class MergeGuestCartHandlerTest extends TestCase
      */
     private function storedLines(CartId $id): array
     {
-        return array_map(static fn (CartLine $line): array => [$line->productId()->toString(), $line->quantity()->value()], $this->carts->find($id)?->lines() ?? []);
+        return array_map(static fn (CartLine $line): array => [$line->variantId()->toString(), $line->quantity()->value()], $this->carts->find($id)?->lines() ?? []);
     }
 
     /**
@@ -264,6 +264,6 @@ final class MergeGuestCartHandlerTest extends TestCase
      */
     private static function lines(MergeResult $result): array
     {
-        return array_map(static fn (CartLineView $l): array => [$l->productId, $l->quantity, $l->state], $result->cart->lines);
+        return array_map(static fn (CartLineView $l): array => [$l->variantId, $l->quantity, $l->state], $result->cart->lines);
     }
 }

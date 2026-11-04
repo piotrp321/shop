@@ -5,20 +5,20 @@ declare(strict_types=1);
 namespace App\Cart\Domain;
 
 /**
- * One product of a cart and its quantity. `addedAt` orders the lines and never changes with the quantity.
+ * One variant of a product in a cart and its quantity. `addedAt` orders the lines and never changes with the quantity.
  */
 final readonly class CartLine
 {
     public function __construct(
-        private ProductId $productId,
+        private VariantId $variantId,
         private Quantity $quantity,
         private \DateTimeImmutable $addedAt,
     ) {
     }
 
-    public function productId(): ProductId
+    public function variantId(): VariantId
     {
-        return $this->productId;
+        return $this->variantId;
     }
 
     public function quantity(): Quantity
@@ -33,6 +33,6 @@ final readonly class CartLine
 
     public function withQuantity(Quantity $quantity): self
     {
-        return new self($this->productId, $quantity, $this->addedAt);
+        return new self($this->variantId, $quantity, $this->addedAt);
     }
 }
