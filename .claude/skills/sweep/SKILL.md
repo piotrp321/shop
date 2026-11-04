@@ -17,8 +17,9 @@ wyczytasz.
 ## Blok startowy
 
 Bash nie zachowuje stanu między wywołaniami. Wklej poniższy blok dosłownie na początku **każdej** komendy Bash w tym
-skillu. W kroku 1 znasz tylko trzy pierwsze linie; `<data>` (`date +%F` przy starcie), `<sha7>` i `<port>` (port
-bazowy) uzupełnij po kroku 1 i nie zmieniaj ich do końca przebiegu, także po północy.
+skillu. W kroku 1 znasz tylko trzy pierwsze linie; `<data>` (`date +%F` przy starcie), `<sha7>`, `<port>` (port
+bazowy) i `<run-id>` (`uuidgen` raz, po kroku 1) uzupełnij po kroku 1 i nie zmieniaj ich do końca przebiegu, także po
+północy.
 
 ```bash
 SKILL_ROOT="$(git rev-parse --show-toplevel)"
@@ -27,14 +28,17 @@ SWEEP_HOME="$HOME/.local/state/shop-sweep"
 RUN="$SWEEP_HOME/<data>-<sha7>"
 WT="$RUN/worktree"
 export AO_COMPOSE_PROJECT="sweep-<sha7>" AO_PORT_BASE="<port>"
+RUN_ID="<run-id>"
+owned() { [ "$(cat "$RUN/owner" 2>/dev/null)" = "$RUN_ID" ]; }
 ```
 
 `SHOP` to główny klon repo (tam działają `git` i `gh`), `RUN` to katalog przebiegu poza repo, `WT` to worktree stosu.
+`owned` jest prawdziwe tylko wtedy, gdy `$RUN` założyła ta sesja (krok 2); sprzątanie (krok 6) działa tylko wtedy.
 
 ## 1. Warunki startu
 
 Sprawdź wszystko i przy pierwszym niespełnionym warunku odmów, mówiąc dlaczego. Nic nie startuje: bez katalogu
-przebiegu, worktree i stosu.
+przebiegu, worktree i stosu. **Odmowa kończy skill:** nie wykonujesz kroków 2–7, także sprzątania z kroku 6.
 
 - Docker działa: `docker info >/dev/null`. `gh` działa: `cd "$SHOP" && gh auth status`.
 - `git -C "$SHOP" fetch origin main` się udaje. Commit przebiegu: `<sha>` = `git -C "$SHOP" rev-parse origin/main`,
@@ -62,17 +66,21 @@ przebiegu, worktree i stosu.
   Niepuste wyjście: odmowa z listą zajętych portów i podpowiedzią „podaj inny port bazowy:
   `/sweep [epik] --port-base <n>` (7 kolejnych wolnych portów)”.
 - Projektu `sweep-<sha7>` nie ma w `docker compose ls -a` i katalog `$RUN` nie istnieje. Inaczej odmowa: działa inny
-  przebieg tego commitu albo został po przerwanym (sprzątanie: komendy z kroku 6), a raport z tego samego dnia trzeba
-  najpierw przenieść.
+  przebieg tego commitu albo został po przerwanym, a raport z tego samego dnia trzeba najpierw przenieść. Cudzego
+  przebiegu nie sprzątasz: podaj użytkownikowi komendy (`.ao/teardown` z jego worktree z
+  `AO_COMPOSE_PROJECT=sweep-<sha7>`, potem `git worktree remove`) do uruchomienia, gdy sprawdzi, że nic nie działa.
 
 ## 2. Stos
 
 Zapisz czas startu. Od `git worktree add` każdy błąd i każde przerwanie kończy się krokiem 6.
 
 ```bash
-mkdir -p "$RUN"
-git -C "$SHOP" worktree add --detach "$WT" <sha>
+mkdir -p "$SWEEP_HOME" && mkdir "$RUN" && echo "$RUN_ID" > "$RUN/owner" \
+  && git -C "$SHOP" worktree add --detach "$WT" <sha>
 ```
+
+`mkdir "$RUN"` bez `-p` zawodzi, gdy katalog już istnieje (np. równoległy przebieg zdążył go założyć po kroku 1): to
+odmowa jak w kroku 1, bez sprzątania. `$RUN/owner` z `RUN_ID` tej sesji oznacza przebieg jako własny.
 
 Potem `.ao/setup` z worktree, w tle (Bash `run_in_background`; budowa obrazów może trwać ponad 10 minut), i czekaj
 na zakończenie zadania:
@@ -154,19 +162,22 @@ raportu i przykład odpowiedzi do triage („załóż 1 i 3, odrzuć 2: celowe�
 
 ## 6. Sprzątanie (zawsze, także po błędzie)
 
-Stos nie jest potrzebny do triage, więc sprzątasz przed czekaniem na odpowiedź. Stos powstaje tylko przez
-`.ao/setup` z `$WT`, a `$WT` usuwasz dopiero po udanym `teardown`, więc bez `$WT` nie ma czego sprzątać (odmowa
-w kroku 1 albo błąd `git worktree add`): pomiń ten krok. Nigdy nie uruchamiaj `teardown` z głównego klonu.
+Tylko po starcie kroku 2 w tej sesji: każda komenda sprzątania jest warunkowana `owned`, więc odmowa z kroku 1
+(cudzy `$RUN` i `$WT`) niczego nie usunie. Stos nie jest potrzebny do triage, więc sprzątasz przed czekaniem na
+odpowiedź. Stos powstaje tylko przez `.ao/setup` z `$WT`, a `$WT` usuwasz dopiero po udanym `teardown`, więc bez `$WT`
+nie ma czego sprzątać. Nigdy nie uruchamiaj `teardown` z głównego klonu.
 
 ```bash
-if [ -d "$WT" ]; then cd "$WT" && .ao/teardown; else echo "brak worktree: nic do sprzątania"; fi
+if ! owned; then echo "przebieg nie należy do tej sesji: nie sprzątam"
+elif [ -d "$WT" ]; then cd "$WT" && .ao/teardown
+else echo "brak worktree: nic do sprzątania"; fi
 ```
 
 Błąd `teardown`: nie usuwaj worktree (kontenery mogą go jeszcze montować), opisz błąd w raporcie i w rozmowie
 z komendą do ponowienia. Po udanym:
 
 ```bash
-git -C "$SHOP" worktree remove "$WT" || git -C "$SHOP" worktree remove --force "$WT"
+owned && { git -C "$SHOP" worktree remove "$WT" || git -C "$SHOP" worktree remove --force "$WT"; }
 git -C "$SHOP" worktree prune
 docker compose ls -a | grep "sweep-<sha7>"; git -C "$SHOP" worktree list | grep "$WT"
 ```
