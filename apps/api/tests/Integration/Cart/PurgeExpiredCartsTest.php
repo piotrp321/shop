@@ -129,8 +129,8 @@ final class PurgeExpiredCartsTest extends KernelTestCase
     }
 
     /**
-     * Every statement fails to connect. The exit code 2 and the message are checked first; the second check (the
-     * cart is still there) uses the test's own connection, so it shows only that this test did not remove it.
+     * Every statement fails to connect. Checks only the exit code 2 and the message; what stays after a failure in
+     * the middle of the purge is checked by the trigger test (KeepsTheBatchesRemovedBefore).
      */
     public function testUnavailableDatabaseStopsWithTwo(): void
     {
