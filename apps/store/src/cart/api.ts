@@ -3,6 +3,7 @@ import type { components } from "@/api/schema";
 
 export type CartView = components["schemas"]["CartView"];
 export type CartSummary = components["schemas"]["CartSummary"];
+export type MergeResult = components["schemas"]["MergeResult"];
 
 /** An answer of the API: its data, or the status (and the `detail` of its problem document) of a refusal. */
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; detail?: string };
@@ -32,6 +33,11 @@ function result<T>({ data, error, response }: Answer<T>): ApiResult<T> {
 /** `POST /api/v1/guest-carts`: a new, empty cart. */
 export async function createGuestCart(client: ApiClient): Promise<ApiResult<CartView>> {
   return result(await client.POST("/api/v1/guest-carts", init));
+}
+
+/** `POST /api/v1/me/cart/merge`: moves the guest cart into the cart of the customer whose access token the client carries. */
+export async function mergeIntoCustomerCart(client: ApiClient, guestCartId: string): Promise<ApiResult<MergeResult>> {
+  return result(await client.POST("/api/v1/me/cart/merge", { ...init, body: { guestCartId } }));
 }
 
 /** The cart of the customer whose access token the client carries. */

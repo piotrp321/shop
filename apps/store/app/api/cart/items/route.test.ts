@@ -9,6 +9,7 @@ import {
   emptyView,
   GUEST_CART_ID,
   isCleared,
+  mergeAnswer,
   NEW_GUEST_CART_ID,
   PRODUCT_ID,
   problem,
@@ -210,10 +211,35 @@ describe("POST /api/cart/items with a session", () => {
   it("adds to the cart of the customer with the session's token and touches no guest cart or cookie", async () => {
     const id = await setup.deps.sessions.create(sessionData({ accessToken: "access-9" }));
     setup.answer("POST", "/api/v1/me/cart/items", () => Response.json(viewWithOneLine(null)));
-    const response = await add({ body: BODY, cookie: `${sessionCookie(id)}; ${signedCartCookie(GUEST_CART_ID)}` });
+    const response = await add({ body: BODY, cookie: sessionCookie(id) });
 
     expect(response.status).toBe(200);
     expect(setup.calls).toEqual([{ method: "POST", path: "/api/v1/me/cart/items", authorization: "Bearer access-9", body: BODY }]);
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("merges the guest cart of store_cart first, clears the cookie and then adds to the customer cart", async () => {
+    const id = await setup.deps.sessions.create(sessionData({ accessToken: "access-9" }));
+    setup.answer("POST", "/api/v1/me/cart/merge", () => mergeAnswer("merged"));
+    setup.answer("POST", "/api/v1/me/cart/items", () => Response.json(viewWithOneLine(null, 3)));
+    const response = await add({ body: BODY, cookie: `${sessionCookie(id)}; ${signedCartCookie(GUEST_CART_ID)}` });
+
+    expect(response.status).toBe(200);
+    expect(setup.calls).toEqual([
+      { method: "POST", path: "/api/v1/me/cart/merge", authorization: "Bearer access-9", body: { guestCartId: GUEST_CART_ID } },
+      { method: "POST", path: "/api/v1/me/cart/items", authorization: "Bearer access-9", body: BODY },
+    ]);
+    expect(isCleared(setCookie(response, CART_COOKIE))).toBe(true);
+  });
+
+  it("adds to the customer cart and keeps store_cart when the merge fails, without touching the guest cart", async () => {
+    const id = await setup.deps.sessions.create(sessionData());
+    setup.answer("POST", "/api/v1/me/cart/merge", () => problem(503));
+    setup.answer("POST", "/api/v1/me/cart/items", () => Response.json(viewWithOneLine(null)));
+    const response = await add({ body: BODY, cookie: `${sessionCookie(id)}; ${signedCartCookie(GUEST_CART_ID)}` });
+
+    expect(response.status).toBe(200);
+    expect(setup.calls.map((call) => `${call.method} ${call.path}`)).toEqual(["POST /api/v1/me/cart/merge", "POST /api/v1/me/cart/items"]);
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
