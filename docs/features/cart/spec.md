@@ -306,12 +306,15 @@ wystawcy tokenu: 503):
   | Pole (żądanie) | Przypadek | Komunikat |
   |---|---|---|
   | `productId` (dodanie) | brak klucza albo `null` | Identyfikator produktu jest wymagany. |
-  | `productId` | nie jest napisem albo nie jest UUID | Identyfikator produktu musi być UUID. |
+  | `productId` | nie jest napisem albo jest niepustym napisem, który nie jest UUID | Identyfikator produktu musi być UUID. |
   | `quantity` (dodanie, zmiana) | brak klucza albo `null` | Ilość jest wymagana. |
   | `quantity` | nie jest liczbą całkowitą (napis, ułamek, `2.0`, wartość logiczna, tablica) | Ilość musi być liczbą całkowitą. |
   | `quantity` | spoza 1–99 | Ilość musi wynosić od 1 do 99 szt. |
   | `guestCartId` (scalenie) | brak klucza (także puste ciało) albo `null` | Identyfikator koszyka jest wymagany. |
-  | `guestCartId` | nie jest napisem albo nie jest UUID | Identyfikator koszyka musi być UUID. |
+  | `guestCartId` | nie jest napisem albo jest niepustym napisem, który nie jest UUID | Identyfikator koszyka musi być UUID. |
+
+  Pusty napis `""` nie jest naruszeniem (`Assert\Uuid` pomija pusty napis). `productId: ""` przy dodaniu daje 404, jak produkt
+  niedostępny, a `guestCartId: ""` przy scaleniu daje 200 z `result: "nothing_to_merge"`, jak koszyk gościa, którego nie ma.
 
 - Scalony koszyk gościa odpowiada 404 jak nieznany: BFF reaguje na oba tak samo, więc format błędów
   (`type: about:blank`) się nie zmienia.
