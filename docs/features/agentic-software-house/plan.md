@@ -9,16 +9,16 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 6), nie 
 
 ## Status
 
-W toku: brak. Następny krok: krok 4 (etykiety są założone, brakuje listy epików z „Zakresu MVP”). Blokery: brak.
-CART przeszedł przez AO przed krokami 3–5: 0 interwencji, odbiór końcowego PR pominięty, uwagi po nim są w issues
-#80–#85. Kandydat na pierwszy epik przez cały proces (krok 6): epik poprawek z tych issues.
+W toku: brak. Następny krok: krok 5. Blokery: brak. CART przeszedł przez AO przed krokami 3–5: 0 interwencji,
+odbiór końcowego PR pominięty, uwagi po nim są w issues #80–#85. Pierwszy epik przez cały proces (krok 6) to
+CART-FIXES (#88), pierwszy na tablicy backlogu.
 
 | Krok | Zakres | Status |
 |---|---|---|
 | 1 | AO v0.3.1 i zamrożenie AO | zrobione |
 | 2 | Ten plan, zasada backlogu w `CLAUDE.md` i ADR | zrobione |
 | 3 | Poprawki procesu w `shop` | zrobione |
-| 4 | Backlog w GitHub Issues | etykiety założone, lista epików do zrobienia |
+| 4 | Backlog w GitHub Issues | zrobione |
 | 5 | Powiadomienia ntfy | do zrobienia |
 | 6 | Pierwszy epik przez cały proces | do zrobienia |
 | 7 | Agent tester i agent UX | do zrobienia |
@@ -84,7 +84,8 @@ flowchart TB
      oczekiwany i faktyczny, kryterium akceptacji, niewiadome. Dla `bug` i `ux` jest formularz
      w `.github/ISSUE_TEMPLATE/`, agenci wypełniają te same pola. Zgłoszenie z brakami dostaje etykietę
      `needs-info` i nie idzie do przygotowania.
-   - Kolejność ustala użytkownik.
+   - Kolejność ustala użytkownik na tablicy GitHub Projects
+     [„Backlog sklepu”](https://github.com/users/piotrp321/projects/1): epik na górze idzie pierwszy.
 2. **Przygotowanie (użytkownik, w dzień).**
    - Issue z góry listy → `/brainstorm` → `spec.md` → `/planner` → `plan.md`.
    - Przed akceptacją planu jedno pytanie: czy końcowy PR da się przejrzeć w jednym posiedzeniu? Jeśli nie, epik
@@ -137,10 +138,8 @@ flowchart TB
 3. **Poprawki procesu w `shop`.** Formularze `bug` i `ux` w `.github/ISSUE_TEMPLATE/`, kontrole istniejących
    testów, zakresu i RED w `code-reviewer`, sekcja „Decyzje bez pytania” w PR zadań i lista odbioru w raporcie
    `/integration`.
-4. **Backlog.** Sprawdzam, które punkty „Zakresu MVP” są zrobione. Użytkownik akceptuje listę issues, ich
-   kolejność i miejsce zapisu kolejności (lista issues albo tablica GitHub Projects). Etykiety `epic`, `bug`, `ux`,
-   `tech-debt`, `needs-info` i `agent` są założone. Issues epików powstają dopiero po akceptacji listy: repozytorium
-   jest publiczne.
+4. **Backlog.** Etykiety `epic`, `bug`, `ux`, `tech-debt`, `needs-info` i `agent` są założone. Epiki z niezrobionych
+   punktów „Zakresu MVP” to issues #88–#97, w kolejności na tablicy „Backlog sklepu”.
 5. **Powiadomienia.** ntfy jako `--notify-cmd` AO, próbne powiadomienie na telefon.
 6. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, razem z pomiarem z punktu 5 procesu. Każdy
    kolejny epik idzie tym samym procesem.
