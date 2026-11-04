@@ -17,6 +17,7 @@ use Zenstruck\Foundry\Test\Factories;
 final class GuestCartEndpointTest extends WebTestCase
 {
     use CartEndpointTestTrait;
+    use CartRequestViolationCases;
     use Factories;
 
     public function testCreateAnswers201WithAnEmptyCartAndItsLocation(): void
@@ -265,6 +266,32 @@ final class GuestCartEndpointTest extends WebTestCase
         $this->add($cart, $product, 1);
 
         $this->assertViolation('quantity', $this->request('PUT', $cart.'/items/'.$product, $body));
+    }
+
+    /**
+     * @param list<array{string, string}> $violations
+     */
+    #[DataProvider('invalidAddItemBodies')]
+    public function testAnInvalidAdditionGivesPolishViolations(string $body, array $violations): void
+    {
+        $cart = $this->guestCart();
+
+        $this->assertViolations($violations, $this->request('POST', $cart.'/items', $body));
+        self::assertSame([], CartFixture::lines($this->connection, $this->cartId($cart)));
+    }
+
+    /**
+     * @param list<array{string, string}> $violations
+     */
+    #[DataProvider('invalidChangeQuantityBodies')]
+    public function testAnInvalidQuantityChangeGivesPolishViolations(string $body, array $violations): void
+    {
+        $cart = $this->guestCart();
+        $product = $this->product();
+        $this->add($cart, $product, 1);
+
+        $this->assertViolations($violations, $this->request('PUT', $cart.'/items/'.$product, $body));
+        self::assertSame([[$product, 1]], CartFixture::lines($this->connection, $this->cartId($cart)));
     }
 
     public function testBadJsonIs400AndAnotherContentTypeIs415(): void

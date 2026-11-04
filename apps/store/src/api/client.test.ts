@@ -1,5 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addCartItem, changeCartItemQuantity, loadAccountSession, loadCart, loadCartSummary, removeCartItem } from "./client";
+
+// Node has its own navigator.locks; every test decides whether the browser has Web Locks API. By default it has not.
+beforeEach(() => {
+  vi.stubGlobal("navigator", {});
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -117,23 +122,55 @@ describe("the cart calls", () => {
   });
 });
 
-describe("writes to the cart from the browser", () => {
+type LockCallback = (lock: { name: string; mode: string }) => Promise<unknown>;
+
+/**
+ * A stand-in for navigator.locks: one exclusive lock per name, granted in the order of the requests, like the browser
+ * does across all tabs of an origin. `held` is the name of the lock held right now.
+ */
+const lockManagerDouble = () => {
+  const tails = new Map<string, Promise<unknown>>();
+  const state = { held: null as string | null };
+  const request = vi.fn((name: string, options: { mode?: string }, callback: LockCallback) => {
+    const run = (tails.get(name) ?? Promise.resolve()).then(async () => {
+      state.held = name;
+      try {
+        return await callback({ name, mode: options.mode ?? "exclusive" });
+      } finally {
+        state.held = null;
+      }
+    });
+    tails.set(name, run.catch(() => undefined));
+    return run;
+  });
+  vi.stubGlobal("navigator", { locks: { request } });
+  return { request, state };
+};
+
+const gatedFetch = () => {
+  const gates: Array<(response: Response | Error) => void> = [];
+  const fetch = vi.fn(
+    () =>
+      new Promise<Response>((resolve, reject) => {
+        gates.push((response) => (response instanceof Error ? reject(response) : resolve(response)));
+      }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  return { fetch, gates };
+};
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+describe.each([
+  ["with Web Locks API", () => void lockManagerDouble()],
+  ["without Web Locks API", () => vi.stubGlobal("navigator", {})],
+])("writes to the cart from the browser %s", (_, setUpLocks) => {
   const PRODUCT = "00000000-0000-4000-8000-000000000001";
   const OTHER = "22222222-2222-4222-8222-222222222222";
 
-  const gatedFetch = () => {
-    const gates: Array<(response: Response | Error) => void> = [];
-    const fetch = vi.fn(
-      () =>
-        new Promise<Response>((resolve, reject) => {
-          gates.push((response) => (response instanceof Error ? reject(response) : resolve(response)));
-        }),
-    );
-    vi.stubGlobal("fetch", fetch);
-    return { fetch, gates };
-  };
-
-  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+  beforeEach(() => {
+    setUpLocks();
+  });
 
   it("starts the next write only after the previous one has finished", async () => {
     const { fetch, gates } = gatedFetch();
@@ -164,13 +201,16 @@ describe("writes to the cart from the browser", () => {
     await Promise.all(results);
   });
 
-  it("starts the next write after a failed one", async () => {
+  it.each([
+    ["a network error", new TypeError("Failed to fetch")],
+    ["an HTTP error", Response.json({}, { status: 503 })],
+  ])("starts the next write after %s", async (_, failure) => {
     const { fetch, gates } = gatedFetch();
 
     const first = addCartItem(PRODUCT, 1);
     const second = addCartItem(OTHER, 1);
     await flush();
-    gates[0](new TypeError("Failed to fetch"));
+    gates[0](failure);
     expect(await first).toEqual({ status: "failed" });
     await flush();
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -180,13 +220,99 @@ describe("writes to the cart from the browser", () => {
   });
 
   it("does not queue reads behind a write", async () => {
-    const { fetch } = gatedFetch();
+    const { fetch, gates } = gatedFetch();
 
-    void addCartItem(PRODUCT, 1);
+    const write = addCartItem(PRODUCT, 1);
     void loadCart();
     void loadCartSummary();
     await flush();
 
     expect(fetch).toHaveBeenCalledTimes(3);
+    gates.forEach((gate) => gate(Response.json({ id: "cart" })));
+    await write;
+  });
+});
+
+describe("the lock across the tabs of the browser", () => {
+  const PRODUCT = "00000000-0000-4000-8000-000000000001";
+  const OTHER = "22222222-2222-4222-8222-222222222222";
+  const cart = { id: "cart" };
+
+  it("runs every write inside an exclusive request of one lock name", async () => {
+    const { request, state } = lockManagerDouble();
+    const heldAtFetch: Array<string | null> = [];
+    stubFetch(async () => {
+      heldAtFetch.push(state.held);
+      return Response.json(cart);
+    });
+
+    await Promise.all([addCartItem(PRODUCT, 1), changeCartItemQuantity(PRODUCT, 2), removeCartItem(OTHER)]);
+
+    expect(request).toHaveBeenCalledTimes(3);
+    const names = new Set(request.mock.calls.map(([name]) => name));
+    expect(names.size).toBe(1);
+    const [name] = names;
+    expect(name).not.toBe("");
+    request.mock.calls.forEach(([, options]) => expect(options).toEqual({ mode: "exclusive" }));
+    expect(heldAtFetch).toEqual([name, name, name]);
+  });
+
+  it("does not take the lock for reads", async () => {
+    const { request, state } = lockManagerDouble();
+    const heldAtFetch: Array<string | null> = [];
+    stubFetch(async () => {
+      heldAtFetch.push(state.held);
+      return Response.json(cart);
+    });
+
+    await loadCart();
+    await loadCartSummary();
+
+    expect(request).not.toHaveBeenCalled();
+    expect(heldAtFetch).toEqual([null, null]);
+  });
+
+  it("waits with a write while another tab holds the lock", async () => {
+    const { request } = lockManagerDouble();
+    const fetch = stubFetch(async () => Response.json(cart));
+    // The first write of this tab learns the lock name; then another tab takes the same lock and keeps it.
+    await addCartItem(PRODUCT, 1);
+    expect(request).toHaveBeenCalledTimes(1);
+    const [name] = request.mock.calls[0];
+    let releaseOtherTab = () => {};
+    void navigator.locks.request(name, { mode: "exclusive" }, () => new Promise<void>((resolve) => (releaseOtherTab = resolve)));
+
+    const write = addCartItem(OTHER, 1);
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    releaseOtherTab();
+    expect(await write).toEqual({ status: "ok", data: cart });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a rejected lock request as failed without calling the store, and goes on with the next write", async () => {
+    const { request } = lockManagerDouble();
+    request.mockImplementationOnce(() => Promise.reject(new DOMException("The request is not allowed.", "SecurityError")));
+    const fetch = stubFetch(async () => Response.json(cart));
+
+    const first = addCartItem(PRODUCT, 1);
+    const second = addCartItem(OTHER, 1);
+
+    expect(await first).toEqual({ status: "failed" });
+    expect(await second).toEqual({ status: "ok", data: cart });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith("/api/cart/items", expect.objectContaining({ body: JSON.stringify({ productId: OTHER, quantity: 1 }) }));
+  });
+
+  it("reports a lock request that throws at once as failed without calling the store", async () => {
+    const { request } = lockManagerDouble();
+    request.mockImplementationOnce(() => {
+      throw new DOMException("The request is not allowed.", "SecurityError");
+    });
+    const fetch = stubFetch(async () => Response.json(cart));
+
+    expect(await addCartItem(PRODUCT, 1)).toEqual({ status: "failed" });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

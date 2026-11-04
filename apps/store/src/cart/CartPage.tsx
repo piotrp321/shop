@@ -63,6 +63,10 @@ export function CartPage() {
     announceCartChange(cart.totals.itemCount);
   }
 
+  function resetQuantityField(productId: string) {
+    setResets((current) => ({ ...current, [productId]: (current[productId] ?? 0) + 1 }));
+  }
+
   async function change(productId: string, run: () => Promise<CartResult<CartView>>) {
     setBusy(true);
     setLineErrors({});
@@ -72,16 +76,28 @@ export function CartPage() {
     if (result.status === "ok") {
       show(result.data);
     } else if (result.status === "not_found") {
+      // A 404 does not prove the line is gone (an unavailable product answers 404 to a change), so the reloaded cart decides.
       const reloaded = await loadCart();
-      if (reloaded.status === "ok") show(reloaded.data);
-      setNotice("Pozycja została już usunięta");
+      if (reloaded.status === "ok") {
+        show(reloaded.data);
+        if (reloaded.data.lines.some((line) => line.productId === productId)) {
+          setLineErrors({ [productId]: result.detail || SAVE_FAILED });
+          resetQuantityField(productId);
+        } else {
+          setNotice("Pozycja została już usunięta");
+        }
+      } else {
+        if (reloaded.status === "unauthorized") setSessionExpired(true);
+        else setLineErrors({ [productId]: SAVE_FAILED });
+        resetQuantityField(productId);
+      }
     } else {
       if (result.status === "unauthorized") {
         setSessionExpired(true);
       } else {
         setLineErrors({ [productId]: (result.status === "conflict" && result.detail) || SAVE_FAILED });
       }
-      setResets((current) => ({ ...current, [productId]: (current[productId] ?? 0) + 1 }));
+      resetQuantityField(productId);
     }
     setBusy(false);
   }

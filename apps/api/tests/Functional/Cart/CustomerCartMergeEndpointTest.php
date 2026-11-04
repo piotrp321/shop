@@ -17,6 +17,7 @@ use Zenstruck\Foundry\Test\Factories;
 final class CustomerCartMergeEndpointTest extends WebTestCase
 {
     use CartEndpointTestTrait;
+    use CartRequestViolationCases;
     use Factories;
 
     private const string PATH = '/api/v1/me/cart/merge';
@@ -153,6 +154,18 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
 
         self::assertSame(1, $this->connection->fetchOne("SELECT COUNT(*) FROM cart_cart WHERE id = ? AND status = 'open'", [$guest]));
         self::assertSame(0, $this->connection->fetchOne('SELECT COUNT(*) FROM cart_cart WHERE customer_id = ?', [TestTokenFactory::CUSTOMER_ID]));
+    }
+
+    /**
+     * @param list<array{string, string}> $violations
+     */
+    #[DataProvider('invalidMergeBodies')]
+    public function testAnInvalidMergeBodyGivesPolishViolations(string $body, array $violations): void
+    {
+        $guest = CartFixture::cart($this->connection, lines: [[(string) Uuid::v7(), 1]]);
+
+        $this->assertViolations($violations, $this->request('POST', self::PATH, $body, TestTokenFactory::customer()));
+        self::assertSame(1, $this->connection->fetchOne("SELECT COUNT(*) FROM cart_cart WHERE id = ? AND status = 'open'", [$guest]));
     }
 
     /**
