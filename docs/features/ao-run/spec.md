@@ -2,11 +2,14 @@
 
 Krok 5 planu [Agentic Software House](../agentic-software-house/plan.md). Skill prowadzi nocny przebieg jednego epiku
 przez AO z sesji Claude Code w aplikacji: uruchamia AO, przekazuje zdarzenia jako powiadomienia push do aplikacji Claude,
-przyjmuje odpowiedzi na blokery i kończy raportem odbioru. Kod AO się nie zmienia.
+przyjmuje odpowiedzi na blokery i kończy raportem odbioru. Po merge'u końcowego PR proponuje następny przygotowany epik
+z tablicy backlogu (kolejka epików). Kod AO się nie zmienia.
 
 ## Wejście i warunki startu
 
 `/ao-run <epik>`, gdzie `<epik>` to katalog planu w `docs/features/<epik>/` (np. `cart-fixes`).
+`/ao-run` bez argumentu to prośba użytkownika o następny epik: skill wykonuje tylko krok „Następny epik” (punkt 7
+przebiegu).
 
 Skill odmawia startu i mówi dlaczego, gdy:
 
@@ -25,6 +28,20 @@ Skill odmawia startu i mówi dlaczego, gdy:
   - `watch <plik>`: czyta nowe linie pliku zdarzeń i dla każdej wypisuje jedną linię komunikatu do 200 znaków,
     np. `cart-fixes: BLOCKED CART-FIXES-2: <pierwsze pytanie>`, `cart-fixes: końcowy PR <url>`; linie bez znaczenia
     dla człowieka pomija.
+- `.claude/skills/ao-run/next_epic.py` (Python 3.9+, bez zależności) i `test_next_epic.py`: wybór następnego epiku.
+  Sam wykonuje `gh project item-list 1 --owner piotrp321` (pozycje w kolejności tablicy „Backlog sklepu”),
+  `gh issue list --label epic --state open`, `git ls-remote --heads origin 'epic/*'`, `git ls-tree` i `git show`
+  na `origin/main` (po `git fetch origin main`). Wypisuje jedną linię JSON:
+  `{"epic": {"dir", "id", "issue", "title"} | null, "in_progress": [...], "skipped": [...]}`; kod wyjścia 0, a 1
+  (komunikat na stderr), gdy komenda `gh` albo `git` się nie powiedzie. Reguły, po pozycjach tablicy od góry:
+  - liczą się tylko otwarte issues z `piotrp321/shop` z etykietą `epic` i bez `needs-info`; ID i katalog jak
+    w `/prepare-epic` (prefiks tytułu przed dwukropkiem, katalog małymi literami); tytuł bez prefiksu trafia do
+    `skipped` z powodem;
+  - epik w toku: istnieje `origin/epic/<katalog>`, a issue jest otwarte (gałęzi epików nie usuwamy, ruleset `epic`);
+  - epik przygotowany: na `origin/main` są `docs/features/<katalog>/spec.md` i `plan.md`, a plan ma manifest
+    (`"schema_version"`); otwarte epiki nad nim, nieprzygotowane, trafiają do `skipped` z powodem;
+  - `epic` to pierwszy przygotowany epik, który nie jest w toku; gdy jakiś epik jest w toku, `epic` jest `null`
+    (na raz trwa jeden epik).
 - Katalog przebiegu `$HOME/.local/state/ao-<epik>/` (`AO_HOME`, poza repo) z `events.jsonl` i dziennikiem `run.log`.
 
 ## Przebieg
@@ -49,23 +66,40 @@ Skill odmawia startu i mówi dlaczego, gdy:
    - zakres, zadania i PR, interwencje, czas, koszt;
    - link do końcowego PR i lista `Closes #N` do dopisania (issue epiku i issues, które epik realizuje).
    Push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Sesja nigdy nie merguje do `main`.
-6. **Pomiar.** Po merge'u sesja pyta o minuty użytkownika (spec, blokery, triage, raport) i po zgodzie dopisuje
-   komentarz do issue epiku: minuty, liczba interwencji z `ao report`, liczba ręcznych poprawek.
+6. **Pomiar.** Po wysłaniu raportu odbioru sesja uruchamia w tle (Bash w tle) pętlę, która co 5 minut sprawdza
+   `gh pr view <końcowy PR> --json state` i kończy się przy `MERGED` albo `CLOSED`; jej zakończenie budzi sesję.
+   Użytkownik może też napisać w sesji, że zmergował: po potwierdzeniu `MERGED` sesja zatrzymuje pętlę. Po merge'u sesja pyta o minuty użytkownika (spec, blokery,
+   triage, raport) i po zgodzie dopisuje komentarz do issue epiku: minuty, liczba interwencji z `ao report`, liczba
+   ręcznych poprawek. PR zamknięty bez merge'u: sesja mówi o tym i nie przechodzi do punktu 7.
+7. **Następny epik.** Po merge'u końcowego PR albo na prośbę użytkownika (`/ao-run` bez argumentu) sesja uruchamia
+   `next_epic.py`:
+   - `epic` jest: push „Zacząć epik `<ID>` (#`<nr>`)?”, a w rozmowie także pozycje `skipped` (np. epik wyżej na
+     tablicy bez planu). Start dopiero po „tak” użytkownika w sesji: przebieg od punktu 1 dla nowego `<epik>`, z
+     wszystkimi warunkami startu. Inna odpowiedź albo brak odpowiedzi: sesja niczego nie uruchamia.
+   - `epic` jest `null`: push (krótszy niż 200 znaków) z powodem: pierwsza pozycja `in_progress` albo pierwsza
+     `skipped` z liczbą pozostałych, np. „Brak przygotowanego epiku: VARIANTS (#89) bez spec.md i plan.md na main,
+     następny krok `/prepare-epic` (+2 inne)”; pełna lista w rozmowie. Jeśli `in_progress` to epik właśnie
+     zmergowanego PR, issue epiku jest nadal otwarte (brak `Closes #N`): sesja mówi to, prosi o zamknięcie issue
+     i o ponowne `/ao-run`.
 
 ## Czego skill nie robi
 
 Nie zmienia kodu ani konfiguracji AO, nie merguje do `main`, nie odpowiada na blokery sam, nie uruchamia kilku epików
-naraz.
+naraz, nie zaczyna epiku bez „tak” użytkownika, nie przygotowuje epiku (`/prepare-epic`) i nie zmienia tablicy.
 
 ## Testy
 
 `python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'`: `record` (poprawne zdarzenie, pusty
 i niepoprawny JSON, brak katalogu), `watch` (każdy typ zdarzenia z README AO, limit 200 znaków, pomijanie zdarzeń bez
-znaczenia, linie dopisane w trakcie). CI uruchamia testy skilli tak jak dla `delivery` i `integration`. Sam przebieg
+znaczenia, linie dopisane w trakcie); `next_epic.py` z podstawionymi wynikami komend (kolejność tablicy, pominięcie
+zamkniętych, z `needs-info`, bez etykiety `epic`, z innego repo i nie-issue, tytuł bez prefiksu, plan bez manifestu,
+brak `spec.md`, epik w toku blokuje wybór, epik zakończony z gałęzią i zamkniętym issue nie blokuje, pusta tablica,
+błąd `gh` albo `git` → kod 1). CI uruchamia testy skilli tak jak dla `delivery` i `integration`. Sam przebieg
 sprawdza krok 7 planu (CART-FIXES).
 
 ## Zmiana w planie
 
-`docs/features/agentic-software-house/plan.md`: krok 5 wskazuje `/ao-run`. Odbiór (punkt 5 procesu) to przeczytanie
+`docs/features/agentic-software-house/plan.md`: krok 5 wskazuje `/ao-run`, kolejka epików jest w punkcie 7
+przebiegu, status kroku 5 i rola „Kolejka epików” bez „do zrobienia”, sprawdzenie w kroku 7. Odbiór (punkt 5 procesu) to przeczytanie
 raportu odbioru i merge; trzy liczby obejmują minuty na spec, blokery, triage i raport. Krok 8 rusza po kroku 7, bo
 lista odbioru ma najpierw zadziałać na prawdziwym epiku.
