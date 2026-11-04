@@ -20,7 +20,7 @@ przygotowanym przez `/prepare-epic`.
 | 2 | Ten plan, zasada backlogu w `CLAUDE.md` i ADR | zrobione |
 | 3 | Poprawki procesu w `shop` | zrobione |
 | 4 | Backlog w GitHub Issues | zrobione |
-| 5 | Powiadomienia i kolejka epików przez aplikację Claude | Remote Control włączone, skill `/ao-run`, kolejka do zrobienia, sprawdzenie w kroku 7 |
+| 5 | Powiadomienia i kolejka epików przez aplikację Claude | zrobione (sprawdzenie w kroku 7) |
 | 6 | Przygotowanie epiku jednym skillem `/prepare-epic` | zrobione |
 | 7 | Pierwszy epik przez cały proces | do zrobienia |
 | 8 | Agent tester i agent UX | do zrobienia |
@@ -41,7 +41,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | UX: ekrany, wersja mobilna, dostępność | agent UX | krok 8 |
 | Planowanie | Plan i zadania | `/planner`, w `/prepare-epic` | działa |
 | | Koordynacja: przebieg nocny, stan, PR | AO | działa |
-| | Kolejka epików: następny epik po merge'u | sesja z Remote Control | krok 5 |
+| | Kolejka epików: następny epik po merge'u | `/ao-run` w sesji z Remote Control | działa, sprawdzenie w kroku 7 |
 | Wytwarzanie | Developer: zadanie z TDD | `developer` w `/delivery` | działa |
 | | Code review zadania | `code-reviewer` w `/delivery` | działa |
 | Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
@@ -169,6 +169,8 @@ flowchart TB
    wykonuje `ao answer`. Po merge'u końcowego PR ta sama sesja bierze następny przygotowany epik z tablicy i pyta
    „Zacząć epik X?” (punkt 3 procesu). Instrukcja dla sesji jest w `shop`, bez zmian w kodzie AO. Mechanizm sprawdza
    pierwszy przebieg (krok 7). Przebieg epiku prowadzi skill `/ao-run <epik>` (`docs/features/ao-run/spec.md`).
+   Kolejkę prowadzi ten sam skill (sekcja „Następny epik”, `next_epic.py`): `/ao-run` bez argumentu wybiera
+   następny przygotowany epik z tablicy.
 6. **Przygotowanie epiku jednym skillem.** Skill `.claude/skills/prepare-epic/` i agent krytyka `spec-critic`
    w `shop`, bez zmian w AO (specyfikacja: `docs/features/prepare-epic/spec.md`):
    - kolejność i podział ról jak w punkcie 2 procesu, zasady analityka i podziału na zadania brane z `/brainstorm`
