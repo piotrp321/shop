@@ -79,4 +79,20 @@ describe("CartBadge", () => {
 
     expect(count()).toBe("1");
   });
+
+  it("shows the notice of a guest cart that did not fit when the summary carries it", async () => {
+    vi.mocked(loadCartSummary).mockResolvedValue({ status: "ok", data: { itemCount: 99, notice: "merge_truncated" } });
+    render(<CartBadge />);
+
+    expect((await screen.findByRole("status")).textContent).toBe("Część produktów z koszyka gościa nie zmieściła się w koszyku");
+    expect(count()).toBe("99");
+  });
+
+  it("shows no notice when the summary has none", async () => {
+    vi.mocked(loadCartSummary).mockResolvedValue({ status: "ok", data: { itemCount: 2, notice: null } });
+    render(<CartBadge />);
+
+    await screen.findByText("2");
+    expect(screen.queryByText(/nie zmieściła się/)).toBeNull();
+  });
 });

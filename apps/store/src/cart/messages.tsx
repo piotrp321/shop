@@ -1,5 +1,6 @@
 export const SAVE_FAILED = "Nie udało się zapisać zmian. Spróbuj ponownie.";
 export const PRODUCT_GONE = "Produkt nie jest już dostępny";
+export const MERGE_TRUNCATED = "Część produktów z koszyka gościa nie zmieściła się w koszyku";
 
 /** The session ended while the page was open; the login brings the customer back to `returnTo`. */
 export function SessionExpired({ returnTo }: { returnTo: string }) {
