@@ -9,10 +9,9 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 7), nie 
 
 ## Status
 
-W toku: brak. Następny krok: krok 7. Blokery: brak. CART przeszedł przez AO przed krokami 3–5: 0 interwencji,
-odbiór końcowego PR pominięty, uwagi po nim są w issues #80–#85. Pierwszy epik przez cały proces (krok 7) to
-CART-FIXES (#88), pierwszy na tablicy backlogu. Nie był jeszcze przygotowany: będzie pierwszym epikiem
-przygotowanym przez `/prepare-epic`.
+W toku: VARIANTS (#89) przez `/ao-run`. Następny krok: krok 8. Blokery: brak. Krok 7: CART-FIXES (#88) przeszedł
+cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika, 0 interwencji, 0 ręcznych
+poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
 
 | Krok | Zakres | Status |
 |---|---|---|
@@ -22,8 +21,8 @@ przygotowanym przez `/prepare-epic`.
 | 4 | Backlog w GitHub Issues | zrobione |
 | 5 | Powiadomienia i kolejka epików przez aplikację Claude | zrobione (sprawdzenie w kroku 7) |
 | 6 | Przygotowanie epiku jednym skillem `/prepare-epic` | zrobione |
-| 7 | Pierwszy epik przez cały proces | do zrobienia |
-| 8 | Nocna kolejka kilku epików | do zrobienia, po pomiarze z kroku 7 |
+| 7 | Pierwszy epik przez cały proces | zrobione |
+| 8 | Nocna kolejka kilku epików | do zrobienia |
 | 9 | Agent tester i agent UX | do zrobienia |
 | 10 | Przed publicznym demo: bezpieczeństwo i wydajność | do zrobienia |
 | 11 | Po MVP: release i monitoring | do zrobienia |
