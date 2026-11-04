@@ -88,6 +88,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/cart/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge a guest cart into the cart of the customer
+         * @description Moves the lines of the guest cart into the cart of the customer, in one transaction: the quantities of a product in both are added and cut to 99, a product of the guest beyond the 50th of the cart is skipped (either makes `truncated` true); price and availability are not checked. The guest cart is then merged and every later change of it is a 404. An expired cart of the customer is cleared first. A merged guest cart gives `already_merged`; an unknown or expired guest cart, or the id of a customer cart, gives `nothing_to_merge`; neither changes anything nor creates a cart, and `cart` is the cart as `GET /api/v1/me/cart` gives it.
+         */
+        post: operations["mergeGuestCart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/guest-carts": {
         parameters: {
             query?: never;
@@ -428,6 +448,17 @@ export interface components {
              */
             itemCount: number;
         };
+        /** @description The cart of the customer after a merge of a guest cart. */
+        MergeResult: {
+            cart: components["schemas"]["CartView"];
+            /**
+             * @description `merged`: the guest lines moved; `already_merged`: the guest cart was merged before; `nothing_to_merge`: the guest cart is unknown, expired or a customer cart. Only `merged` changes anything.
+             * @enum {string}
+             */
+            result: "merged" | "already_merged" | "nothing_to_merge";
+            /** @description Whether a sum was cut to 99 units or a product of the guest skipped because the cart had 50 products; always false unless `merged`. */
+            truncated: boolean;
+        };
         CartSummary: {
             /**
              * @description Units of every line of the cart.
@@ -473,6 +504,14 @@ export interface components {
              * @example 3
              */
             quantity: number;
+        };
+        /** @description The guest cart to merge into the cart of the customer. */
+        MergeGuestCartRequest: {
+            /**
+             * Format: uuid
+             * @description Id of the guest cart (UUID).
+             */
+            guestCartId: string;
         };
         ListProductsQuery: {
             /** @default null */
@@ -814,6 +853,75 @@ export interface operations {
             };
             /** @description The product id is not a UUID (problem details). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    mergeGuestCart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeGuestCartRequest"];
+            };
+        };
+        responses: {
+            /** @description The cart of the customer and how the merge ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeResult"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The guest cart id is missing, not a string or not a UUID (problem details with `violations`). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
