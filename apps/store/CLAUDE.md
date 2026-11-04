@@ -22,10 +22,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Struktura
 
-- `app/` – trasy App Router, w tym route handlery logowania w `app/auth/`.
-- `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne wywołanie `/auth/session` z przeglądarki)
-  i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
+- `app/` – trasy App Router, w tym route handlery logowania w `app/auth/` i koszyka w `app/api/cart/`.
+- `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session` i `/api/cart/*`
+  z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
 - `src/account/` – komponent konta w nagłówku (Client Component).
+- `src/cart/` – BFF koszyka (wybór koszyka, ciasteczko `store_cart`, wywołania API, mapowanie błędów).
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
 - `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`).
 - `src/components/ui/` – komponenty shadcn/ui.
@@ -47,6 +48,24 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `generateMetadata` i strona pobierają dane katalogu przez `loadCatalogForRequest` (`React.cache`), więc jedno wejście
   to jedno żądanie na endpoint. Metadane katalogu (`src/catalog/page-metadata.ts`) opierają się na `STORE_URL`.
 - HTML katalogu nie zależy od sesji. To, co zależy od zalogowania, ładuje Client Component przez `/auth/session`.
+
+## Koszyk
+
+- Przeglądarka rozmawia z koszykiem wyłącznie przez BFF (`/api/cart`, `/api/cart/summary`, `/api/cart/items`,
+  `/api/cart/items/[productId]`); API woła serwer sklepu. Route handlery są owinięte w `withCartDeps`
+  (`src/cart/responses.ts`; zależności z `getCartDeps()` w `src/cart/deps.ts`, brak zależności daje 503 z `no-store`).
+  Cała logika jest w `runCartCommand` (`src/cart/bff.ts`), testy podmieniają API dublerem z `src/cart/test-support.ts`.
+- Koszyk wybiera sesja: zalogowany klient ma koszyk `/api/v1/me/cart` z tokenem z `freshAccessToken`, gość koszyk
+  z ciasteczka `store_cart`. Ciasteczko zawiera id koszyka gościa podpisane (HMAC, `STORE_SESSION_SECRET`), nie
+  szyfrowane; `HttpOnly`, `SameSite=Lax`, 30 dni odnawiane przy udanym zapisie. Niepoprawny podpis lub wartość spoza
+  UUID jest usuwana jak brak ciasteczka.
+- Żądania zmieniające (`POST`, `PATCH`, `DELETE`) wymagają `Origin` równego `STORE_URL`, a `POST` i `PATCH` także
+  `Content-Type: application/json`; inaczej 403 bez wywołania API.
+- 404 zapisu w koszyku gościa może znaczyć „koszyk zniknął”, „brak pozycji” albo „brak produktu”. BFF nie zgaduje po
+  tekście `detail`, tylko pyta o `summary` koszyka: 404 oznacza koszyk, który zniknął (ciasteczko usuwane, dodanie
+  zakłada nowy koszyk i powtarza się raz, zmiana zwraca 404 pozycji), w przeciwnym razie 404 jest przekazywany.
+- Odpowiedzi: 200 z danymi API, 404/409/422 z `{ detail }` API, 401 (sesja się skończyła: usunięta z Redisa i
+  ciasteczka), 403, 503 (chwilowy błąd API, Redisa lub Keycloaka; sesja zostaje). Wszystkie z `private, no-store`.
 
 ## Logowanie
 

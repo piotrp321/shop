@@ -1,4 +1,4 @@
-import createClient, { type Client } from "openapi-fetch";
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
 import type { paths } from "./schema";
 
 export type ApiClient = Client<paths>;
@@ -7,9 +7,10 @@ export type ApiClient = Client<paths>;
  * The only place that talks to the API. Use it from the server only: `baseUrl` is the internal address.
  * `accessToken` adds a bearer header for endpoints that need a signed-in user.
  */
-export function createApiClient(options: { baseUrl: string; accessToken?: string }): ApiClient {
+export function createApiClient(options: { baseUrl: string; accessToken?: string; fetch?: ClientOptions["fetch"] }): ApiClient {
   return createClient<paths>({
     baseUrl: options.baseUrl,
+    fetch: options.fetch,
     headers: options.accessToken ? { Authorization: `Bearer ${options.accessToken}` } : undefined,
   });
 }
@@ -34,3 +35,6 @@ export async function loadAccountSession(): Promise<AccountSessionResult> {
     return { status: "unavailable" };
   }
 }
+
+/** Body of the store's own `GET /api/cart/summary` (route handler in app/api/cart/summary). */
+export type CartSummaryBody = { itemCount: number; notice: "merge_truncated" | null };
