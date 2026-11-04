@@ -74,7 +74,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.FULL_CI == 'true'
 
-      # Standard-library scripts of the Claude Code skills (/delivery state, /planner manifest) and the AO hooks.
+      # Standard-library scripts of the Claude Code skills (/delivery state, /planner manifest, /ao-run events) and the AO hooks.
       - name: Skill script tests
         if: env.FULL_CI == 'true'
         run: |
@@ -82,6 +82,7 @@ jobs:
           python3 -m unittest discover -s .claude/skills/delivery -p 'test_*.py'
           python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'
           python3 -m unittest discover -s .claude/skills/integration -p 'test_*.py'
+          python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: env.FULL_CI == 'true'
