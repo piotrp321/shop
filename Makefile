@@ -1,4 +1,4 @@
-.PHONY: up down logs ps seed check test e2e e2e-check api-client keycloak-reset
+.PHONY: up down logs ps seed check test e2e e2e-check e2e-agent api-client keycloak-reset
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -57,6 +57,18 @@ e2e:
 # the Playwright image for every developer; CI runs it in the e2e job).
 e2e-check:
 	docker compose --profile e2e run --rm --build --no-deps $(E2E_FLAGS) --entrypoint npx e2e tsc --noEmit
+
+# Playwright scripts written by an agent, outside the repo (see docs/features/agent-tester-ux/spec.md). AGENT_DIR is the
+# absolute path of an existing directory: scripts are read from $(AGENT_DIR)/tests, results go to $(AGENT_DIR)/results.
+# Extra Playwright arguments go in E2E_ARGS, e.g. E2E_ARGS="--project mobile". Needs the running stack.
+e2e-agent:
+	@case "$(AGENT_DIR)" in \
+		/*) ;; \
+		*) echo "e2e-agent: AGENT_DIR must be the absolute path of an existing directory, got '$(AGENT_DIR)'" >&2; exit 2 ;; \
+	esac; \
+	if [ ! -d "$(AGENT_DIR)" ]; then echo "e2e-agent: AGENT_DIR '$(AGENT_DIR)' is not an existing directory" >&2; exit 2; fi
+	mkdir -p "$(AGENT_DIR)/results"
+	docker compose --profile e2e run --rm --build $(E2E_FLAGS) -v "$(AGENT_DIR):/app/agent" e2e --config playwright.agent.config.ts $(E2E_ARGS)
 
 # Generates the TypeScript API client types of the store and of the admin panel from the committed OpenAPI files.
 api-client:
