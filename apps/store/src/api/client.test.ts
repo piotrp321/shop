@@ -89,14 +89,15 @@ describe("the cart calls", () => {
   });
 
   it.each([
-    [409, { status: "conflict", detail: "Nie mamy tylu sztuk tego produktu." }],
-    [404, { status: "not_found", detail: "Produkt nie jest już dostępny." }],
-    [401, { status: "unauthorized" }],
-    [403, { status: "failed" }],
-    [422, { status: "failed" }],
-    [503, { status: "failed" }],
-  ])("maps a %s to %j", async (status, expected) => {
-    stubFetch(async () => Response.json(status === 401 || status === 403 || status === 503 ? {} : { detail: expected.detail ?? "x" }, { status }));
+    [409, { detail: "Nie mamy tylu sztuk tego produktu." }, { status: "conflict", detail: "Nie mamy tylu sztuk tego produktu." }],
+    [404, { detail: "Produkt nie jest już dostępny." }, { status: "not_found", detail: "Produkt nie jest już dostępny." }],
+    [404, {}, { status: "not_found", detail: undefined }],
+    [401, {}, { status: "unauthorized" }],
+    [403, {}, { status: "failed" }],
+    [422, { detail: "x" }, { status: "failed" }],
+    [503, {}, { status: "failed" }],
+  ])("maps a %s with %j to %j", async (status, body, expected) => {
+    stubFetch(async () => Response.json(body, { status }));
 
     expect(await addCartItem(PRODUCT, 1)).toEqual(expected);
   });
