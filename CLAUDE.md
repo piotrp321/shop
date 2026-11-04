@@ -98,9 +98,11 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   Konfigurację i infrastrukturę weryfikujemy komendami z planu, bez sztucznego odtwarzania fazy RED.
 - Pracuj małymi krokami. Jedna logiczna zmiana na commit, format Conventional Commits.
 - Jeden PR to jedna logiczna, weryfikowalna zmiana. Powiązane, niewielkie zadania planu mogą trafić do jednego PR.
-  PR przechodzi CI i review. Nie merguj bez zgody użytkownika. Wyjątek: akceptacja planu epika realizowanego przez AO
-  obejmuje zgodę na squash-merge PR zadań do jego gałęzi `epic/<epik>` po zielonym CI. Do `main` (także PR epika)
-  merguje wyłącznie użytkownik.
+  PR przechodzi CI i review. Nie merguj bez zgody użytkownika. Wyjątek: akceptacja epiku w `/prepare-epic` (specyfikacja
+  i rozmiar końcowego PR) obejmuje zgodę na squash-merge PR zadań do jego gałęzi `epic/<epik>` po zielonym CI.
+  Drugi wyjątek: PR ze specyfikacją i planem epiku z `/prepare-epic` merguje skill po akceptacji użytkownika
+  i zielonym CI, gdy PR zmienia wyłącznie te dwa pliki. Pozostałe PR do `main`, także końcowy PR epiku, merguje
+  wyłącznie użytkownik.
 - Każdy PR/MR mergujemy wyłącznie w trybie squash, a po merge'u usuwamy jego branch
   (np. `gh pr merge <nr> --squash --delete-branch`).
 - CI (`.github/workflows/ci.yml`) uruchamia `make check` i testy wszystkich aplikacji przy każdym PR. Testy na
@@ -126,9 +128,12 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   subagenci implementują i robią review. Nie dokładamy własnej orkiestracji ani hooków. Implementerzy pracują
   po kolei, jak w skillu; równolegle tylko przy zadaniach naprawdę niezależnych, z ustalonym kontraktem, bez
   wspólnych plików i każdy we własnym worktree.
-- Epik do realizacji przez Agentic Orchestrator (AO): `/brainstorm` zapisuje `spec.md`, `/planner` dzieli ją na
-  zadania w `plan.md` (manifest JSON, akceptacja użytkownika), `ao submit-plan` zgłasza zadania pierwszej fali,
-  a każde z nich realizuje `/delivery` jako osobny PR. Plan z `/planner` nie ma kroków implementacji.
+- Epik do realizacji przez Agentic Orchestrator (AO): `/prepare-epic [nr issue]` przygotowuje `spec.md` i `plan.md`
+  (analityk według `/brainstorm`, `spec-critic`, `architecture-reviewer`, `/planner`). Użytkownik akceptuje
+  specyfikację i rozmiar końcowego PR, `plan.md` przechodzi walidator manifestu (manifest JSON), a skill merguje
+  do `main` PR z tymi plikami. `/brainstorm` i `/planner` zostają do pracy poza epikami. `ao submit-plan` zgłasza
+  zadania pierwszej fali, a każde z nich realizuje `/delivery` jako osobny PR. Plan z `/planner` nie ma kroków
+  implementacji.
   Po zmergowaniu zadań do `epic/<epik>` AO uruchamia `/integration` (globalny Architecture Review, adversarial QA
   i bramki `make check`, `make test`, `make e2e` na całym diffie `origin/main...HEAD`); skill niczego nie commituje,
   a jego wynik waliduje `.claude/skills/integration/integration_result.py`.
