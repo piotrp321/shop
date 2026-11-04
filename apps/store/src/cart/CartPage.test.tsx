@@ -263,6 +263,102 @@ describe("CartPage changing the quantity", () => {
     expect(announced).toEqual([1]);
   });
 
+  describe("a 404 while the line is still in the reloaded cart", () => {
+    const gone = (quantity: number) =>
+      line(A, "x", quantity, { product: null, state: "unavailable_product", unitPrice: null, lineTotal: null });
+    const unavailable = () => view([gone(1)], {}, true);
+    const SAVE_FAILED_TEXT = "Nie udało się zapisać zmian. Spróbuj ponownie.";
+    const quantityField = () => screen.getByRole("spinbutton", { name: "Ilość" }) as HTMLInputElement;
+    const changeUnavailableTo = (value: string) => {
+      fireEvent.change(quantityField(), { target: { value } });
+      fireEvent.blur(quantityField());
+    };
+
+    it("keeps the quantity field of an unavailable_product line enabled", async () => {
+      await renderWith(unavailable());
+
+      expect(quantityField().disabled).toBe(false);
+    });
+
+    it("shows the detail at the line, no gone notice, the old quantity and Usuń for an unavailable_product line", async () => {
+      await renderWith(unavailable());
+      vi.mocked(changeCartItemQuantity).mockResolvedValue({ status: "not_found", detail: "Produkt nie jest już dostępny." });
+      vi.mocked(loadCart).mockResolvedValue(ok(unavailable()));
+
+      changeUnavailableTo("2");
+
+      expect(await screen.findByText("Produkt nie jest już dostępny.")).toBeTruthy();
+      expect(screen.queryByText("Pozycja została już usunięta")).toBeNull();
+      expect(quantityField().value).toBe("1");
+      expect(quantityField().disabled).toBe(false);
+      expect(within(screen.getByRole("listitem")).getByRole("button", { name: /Usuń/ })).toBeTruthy();
+      expect(loadCart).toHaveBeenCalledTimes(2);
+    });
+
+    it("shows the quantity of the reloaded cart when it differs from the last view", async () => {
+      await renderWith(view([line(A, "Produkt A", 2)], { gross: 2000, itemCount: 2 }));
+      vi.mocked(changeCartItemQuantity).mockResolvedValue({ status: "not_found", detail: "Tej pozycji nie ma w koszyku." });
+      vi.mocked(loadCart).mockResolvedValue(ok(view([line(A, "Produkt A", 4)], { gross: 4000, itemCount: 4 })));
+
+      setQuantity("Produkt A", "7");
+
+      expect(await screen.findByText("Tej pozycji nie ma w koszyku.")).toBeTruthy();
+      expect(qty("Produkt A").value).toBe("4");
+      expect(screen.queryByText("Pozycja została już usunięta")).toBeNull();
+      expect(announced).toEqual([4]);
+    });
+
+    it("shows the detail when removing the line gets a 404 but the line is still in the reloaded cart", async () => {
+      await renderWith(unavailable());
+      vi.mocked(removeCartItem).mockResolvedValue({ status: "not_found", detail: "Produkt nie jest już dostępny." });
+      vi.mocked(loadCart).mockResolvedValue(ok(unavailable()));
+
+      fireEvent.click(screen.getByRole("button", { name: /Usuń/ }));
+
+      expect(await screen.findByText("Produkt nie jest już dostępny.")).toBeTruthy();
+      expect(screen.queryByText("Pozycja została już usunięta")).toBeNull();
+      expect(screen.getByRole("button", { name: /Usuń/ })).toBeTruthy();
+    });
+
+    it("shows the general message at the line when the 404 has no detail", async () => {
+      await renderWith(unavailable());
+      vi.mocked(changeCartItemQuantity).mockResolvedValue({ status: "not_found" });
+      vi.mocked(loadCart).mockResolvedValue(ok(unavailable()));
+
+      changeUnavailableTo("2");
+
+      expect(await screen.findByText(SAVE_FAILED_TEXT)).toBeTruthy();
+      expect(screen.queryByText("Pozycja została już usunięta")).toBeNull();
+      expect(quantityField().value).toBe("1");
+    });
+
+    it("says the session expired when the reload after a 404 gets a 401, with the quantity of the last view", async () => {
+      await renderWith(unavailable());
+      vi.mocked(changeCartItemQuantity).mockResolvedValue({ status: "not_found", detail: "Produkt nie jest już dostępny." });
+      vi.mocked(loadCart).mockResolvedValue({ status: "unauthorized" });
+
+      changeUnavailableTo("2");
+
+      expect(await screen.findByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Zaloguj się" }).getAttribute("href")).toBe("/auth/login?returnTo=%2Fcart");
+      expect(screen.queryByText("Pozycja została już usunięta")).toBeNull();
+      expect(quantityField().value).toBe("1");
+    });
+
+    it("shows the general message at the line when the reload after a 404 fails, with the quantity of the last view", async () => {
+      await renderWith(unavailable());
+      vi.mocked(changeCartItemQuantity).mockResolvedValue({ status: "not_found", detail: "Produkt nie jest już dostępny." });
+      vi.mocked(loadCart).mockResolvedValue({ status: "failed" });
+
+      changeUnavailableTo("2");
+
+      expect(await screen.findByText(SAVE_FAILED_TEXT)).toBeTruthy();
+      expect(screen.queryByText("Pozycja została już usunięta")).toBeNull();
+      expect(quantityField().value).toBe("1");
+      expect(announced).toEqual([]);
+    });
+  });
+
   it("says the session expired on a 401", async () => {
     await renderWith(before());
     vi.mocked(changeCartItemQuantity).mockResolvedValue({ status: "unauthorized" });

@@ -406,7 +406,7 @@ zwracana.
 | dodanie OK | komunikat „Dodano do koszyka”, licznik z `itemCount` |
 | 409 przy dodaniu albo zmianie ilości | `detail` z API przy kafelku albo linii; linia pokazuje poprzednią ilość z ostatniego widoku |
 | 404 produktu przy dodaniu | „Produkt nie jest już dostępny” |
-| 404 linii przy zmianie | odświeżenie koszyka i „Pozycja została już usunięta” |
+| 404 linii przy zmianie albo usunięciu | strona wczytuje koszyk ponownie i rozstrzyga po nim (404 nie dowodzi, że linii nie ma: zmiana ilości linii `unavailable_product` też dostaje 404). Linii nie ma w koszyku: „Pozycja została już usunięta”. Linia jest w koszyku: przy linii `detail` z 404 (dla `unavailable_product` „Produkt nie jest już dostępny.”), a bez `detail` „Nie udało się zapisać zmian. Spróbuj ponownie.”; pole ilości pokazuje ilość z wczytanego koszyka, „Usuń” zostaje. Wczytanie dało 401: „Twoja sesja wygasła. Zaloguj się ponownie.”; wczytanie nie udało się inaczej: „Nie udało się zapisać zmian. Spróbuj ponownie.” przy linii. W obu ostatnich przypadkach pole ilości pokazuje ilość z ostatniego widoku |
 | 403, 422, 503, 5xx, błąd sieci | „Nie udało się zapisać zmian. Spróbuj ponownie.” (bez automatycznego ponowienia) |
 | 401 (sesja wygasła), także przy wczytaniu `/cart` | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem „Zaloguj się” (`/auth/login?returnTo=…`) |
 | błąd wczytania koszyka | „Nie udało się wczytać koszyka” i przycisk „Spróbuj ponownie” |
@@ -529,7 +529,7 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
 - `ProductTile` (`ProductTile.test.tsx`): przycisk przy cenie i dostępności, brak przy braku ceny i `out_of_stock`, obecny przy braku etykiety.
 - `AddToCartButton` (`AddToCartButton.test.tsx`): blokada na czas żądania, sukces, 409 z `detail`, 404, błąd sieci.
 - `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, pusty koszyk, zmiana ilości z błędem 409
-  (poprzednia ilość), 404 linii (odświeżenie), 401, błąd wczytania z ponowieniem.
+  (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem.
 - `CartBadge` (`CartBadge.test.tsx`, `events.test.ts`): liczba sztuk, aktualizacja po zmianie, ukrycie przy błędzie,
   komunikat scalenia.
 - `src/api/client.test.ts`: wywołania `/api/cart/*`, kolejka zapisów z dublerem `navigator.locks` i bez niego (każdy
