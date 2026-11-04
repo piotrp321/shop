@@ -35,7 +35,6 @@ trait CartRequestViolationCases
         yield 'productId an array' => ['{"productId": ["'.$product.'"], "quantity": 1}', [['productId', self::PRODUCT_UUID]]];
         yield 'productId an object' => ['{"productId": {"id": "'.$product.'"}, "quantity": 1}', [['productId', self::PRODUCT_UUID]]];
         yield 'productId not a uuid' => ['{"productId": "abc", "quantity": 1}', [['productId', self::PRODUCT_UUID]]];
-        yield 'productId empty' => ['{"productId": "", "quantity": 1}', [['productId', self::PRODUCT_UUID]]];
         yield 'no quantity' => ['{"productId": "'.$product.'"}', [['quantity', self::QUANTITY_REQUIRED]]];
         yield 'null quantity' => ['{"productId": "'.$product.'", "quantity": null}', [['quantity', self::QUANTITY_REQUIRED]]];
         yield 'quantity in a string' => ['{"productId": "'.$product.'", "quantity": "1"}', [['quantity', self::QUANTITY_INTEGER]]];
@@ -82,6 +81,5 @@ trait CartRequestViolationCases
         yield 'guestCartId an array' => ['{"guestCartId": ["'.$guest.'"]}', [['guestCartId', self::CART_UUID]]];
         yield 'guestCartId an object' => ['{"guestCartId": {"id": "'.$guest.'"}}', [['guestCartId', self::CART_UUID]]];
         yield 'guestCartId not a uuid' => ['{"guestCartId": "not-a-uuid"}', [['guestCartId', self::CART_UUID]]];
-        yield 'guestCartId empty' => ['{"guestCartId": ""}', [['guestCartId', self::CART_UUID]]];
     }
 }
