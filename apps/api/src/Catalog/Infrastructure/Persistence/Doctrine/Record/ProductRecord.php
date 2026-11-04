@@ -53,6 +53,15 @@ class ProductRecord
     #[ORM\Column(type: Types::JSONB)]
     public array $images;
 
+    /** @var list<string> names of the variant axes, in order */
+    #[ORM\Column(type: Types::JSONB)]
+    public array $variantAxes = [];
+
+    /** @var Collection<int, ProductVariantRecord> in position order */
+    #[ORM\OneToMany(targetEntity: ProductVariantRecord::class, mappedBy: 'product', cascade: ['persist', 'remove'], orphanRemoval: true)]
+    #[ORM\OrderBy(['position' => 'ASC'])]
+    public Collection $variants;
+
     /** Managed by Doctrine optimistic locking; not part of the domain. */
     #[ORM\Version]
     #[ORM\Column(type: Types::BIGINT)]
@@ -64,5 +73,6 @@ class ProductRecord
         public readonly string $id,
     ) {
         $this->additionalCategories = new ArrayCollection();
+        $this->variants = new ArrayCollection();
     }
 }

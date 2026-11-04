@@ -11,9 +11,14 @@ use App\Catalog\Domain\Product\ProductCreated;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductVariant;
+use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\VariantAxes;
+use App\Catalog\Domain\Product\VariantId;
+use App\Catalog\Domain\Product\VariantValues;
 use PHPUnit\Framework\TestCase;
 
 final class ProductTest extends TestCase
@@ -53,6 +58,11 @@ final class ProductTest extends TestCase
         self::assertSame(TaxClassCode::Standard, $product->taxClass());
         self::assertTrue($product->images()->isEmpty());
         self::assertSame('22222222-2222-4222-8222-222222222222', $product->categories()->main()->toString());
+        self::assertSame([], $product->variantAxes()->names());
+        $variants = $product->variants()->toList();
+        self::assertCount(1, $variants);
+        self::assertSame('33333333-3333-4333-8333-333333333333', $variants[0]->id()->toString());
+        self::assertSame('', $variants[0]->label());
     }
 
     public function testReconstituteRestoresStateWithoutRecordingEvents(): void
@@ -65,8 +75,14 @@ final class ProductTest extends TestCase
             ProductCategories::create(CategoryId::fromString('22222222-2222-4222-8222-222222222222')),
             TaxClassCode::FreezeDriedMeal,
             ProductImages::fromList([]),
+            ProductVariants::create(VariantAxes::fromList(['Kolor']), [
+                new ProductVariant(VariantId::fromString('33333333-3333-4333-8333-333333333333'), VariantValues::fromList(['czarny'])),
+                new ProductVariant(VariantId::fromString('44444444-4444-4444-8444-444444444444'), VariantValues::fromList(['biały'])),
+            ]),
         );
 
+        self::assertSame(['Kolor'], $product->variantAxes()->names());
+        self::assertSame(['czarny', 'biały'], array_map(static fn (ProductVariant $v): string => $v->label(), $product->variants()->toList()));
         self::assertSame([], $product->releaseEvents());
         self::assertSame('11111111-1111-4111-8111-111111111111', $product->id()->toString());
         self::assertSame('Shoes', $product->name()->value());
@@ -122,6 +138,9 @@ final class ProductTest extends TestCase
             ProductCategories::create(CategoryId::fromString('22222222-2222-4222-8222-222222222222')),
             TaxClassCode::Standard,
             ProductImages::fromList([]),
+            ProductVariants::create(VariantAxes::fromList([]), [
+                new ProductVariant(VariantId::fromString('33333333-3333-4333-8333-333333333333'), VariantValues::fromList([])),
+            ]),
         );
     }
 }

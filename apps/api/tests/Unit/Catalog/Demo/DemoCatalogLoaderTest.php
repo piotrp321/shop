@@ -40,6 +40,13 @@ final class DemoCatalogLoaderTest extends TestCase
         self::assertSame([], $products[2]->images);
         self::assertSame($storage->stored[0], $products[0]->images[0]['key']);
         self::assertSame('Biegacz na drodze', $products[0]->images[0]['alt']);
+        // Every product is created with its one default variant, whose id is not the id of the product.
+        foreach ($products as $product) {
+            self::assertSame([], $product->variantAxes);
+            self::assertCount(1, $product->variants);
+            self::assertSame([], $product->variants[0]['values']);
+            self::assertNotSame($product->id, $product->variants[0]['id']);
+        }
     }
 
     public function testSourceFailsOnMissingImageFile(): void

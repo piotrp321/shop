@@ -93,8 +93,8 @@ final class TaxClassMigrationTest extends KernelTestCase
         foreach ($valueBySlug as $slug => $value) {
             $this->connection->executeStatement(
                 \sprintf(
-                    "INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, %s, images, version)
-                     VALUES (gen_random_uuid(), ?, ?, '', ?, ?, '[]'::jsonb, 1)",
+                    "INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, %s, images, variant_axes, version)
+                     VALUES (gen_random_uuid(), ?, ?, '', ?, ?, '[]'::jsonb, '[]'::jsonb, 1)",
                     $column,
                 ),
                 [$slug, $slug, self::CATEGORY_ID, $value],
