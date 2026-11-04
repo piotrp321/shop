@@ -338,7 +338,7 @@ def propose(run, state_dir, until_text, now):
         chosen.append({'dir': e['dir'], 'id': e['id'], 'issue': e['number'], 'title': e['title'], 'tasks': tasks,
                        'minutes': minutes, 'scope': scope})
     return {'epics': chosen, 'skipped': skipped, 'in_progress': in_progress, 'until': until.isoformat(),
-            'measured': bool(measured)}
+            'measured': estimate(measured, 1)['minutes'] is not None}
 
 
 def cmd_propose(args, run, now, stdin):

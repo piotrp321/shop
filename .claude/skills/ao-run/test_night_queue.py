@@ -567,6 +567,16 @@ class QueueCliTest(unittest.TestCase):
         result = self.propose(epics)
         self.assertEqual(['a', 'c'], self.dirs(result))
 
+    def test_measured_false_when_only_measurement_has_zero_tasks(self):
+        start = {'event': 'start', 'epic': 'old', 'tasks': 0, 'at': T0.isoformat(), 'usage': {}}
+        done = {'event': 'done', 'epic': 'old', 'at': (T0 + timedelta(minutes=60)).isoformat(), 'usage': {}}
+        original = night_queue.read_events
+        night_queue.read_events = lambda state: [start, done]
+        self.addCleanup(setattr, night_queue, 'read_events', original)
+        result = self.propose([epic(1, 'A', 'a', tasks=3)])
+        self.assertIsNone(result['epics'][0]['minutes'])
+        self.assertFalse(result['measured'])
+
     def test_no_limit_without_measurement(self):
         epics = [epic(i, 'E%d' % i, 'p%d' % i, tasks=1000) for i in range(1, 4)]
         result = self.propose(epics)
