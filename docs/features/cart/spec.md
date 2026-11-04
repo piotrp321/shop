@@ -63,7 +63,10 @@ Reguły Deptrac (żaden inny context nie zależy od Cart w żadnej warstwie):
 - `Quantity`: liczba całkowita 1–99 (`InvalidQuantity`, `InvalidInput`).
 - `Money`: nieujemne grosze (`int`) i `Currency` (tylko `PLN`). Bez `float`.
 - `ProductOffer {hasCurrentPrice: bool, available: int}`: stan produktu z portów, podany domenie przez handler;
-  `available` nie jest ujemne.
+  `available` nie jest ujemne. Jedyne miejsce reguły „produkt do kupienia”: `purchasability(quantity)` zwraca
+  `Purchasability` (enum domeny) w kolejności `NoPrice` (brak ceny), `OutOfStock` (`available = 0`),
+  `InsufficientStock` (`quantity > available`), `Purchasable`. Używają go `Cart` (dodanie i zwiększenie) oraz
+  widok koszyka.
 - `CartLine {productId, quantity, addedAt}`; `addedAt` ustala kolejność linii i nie zmienia się wraz z ilością.
 - `MergeOutcome {result: merged | already_merged | nothing_to_merge, truncated: bool}`.
 
@@ -123,8 +126,9 @@ Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99
 ### Widok koszyka (`CartView`)
 
 Budowany w warstwie aplikacji z koszyka i portów (`ProductCatalog`, `CartPrices`, `StockAvailability`), po jednym
-wywołaniu każdego portu dla wszystkich linii (`ProductDataLoader`; bez linii porty nie są wołane). Reguły stanów i sum
-są w jednej klasie (`CartViewBuilder`), testowanej jednostkowo.
+wywołaniu każdego portu dla wszystkich linii (`ProductDataLoader`; bez linii porty nie są wołane). Sumy i mapowanie
+stanów linii są w jednej klasie (`CartViewBuilder`), testowanej jednostkowo. Sama reguła zakupu (cena, potem stan) jest
+tylko w `ProductOffer::purchasability` (`ProductData::offerFor`); widok rozstrzyga wyłącznie `unavailable_product`.
 
 Stan linii, w kolejności priorytetu:
 
@@ -154,7 +158,11 @@ Tabele:
     `CHECK (status = 'open' OR owner_type = 'guest')`.
 - `cart_line`: `id uuid` (PK zastępczy, UUID v7), `cart_id uuid` (FK → `cart_cart` `ON DELETE CASCADE`), `product_id uuid`,
   `quantity int` (`CHECK (quantity BETWEEN 1 AND 99)`), `added_at`; unikalny indeks `(cart_id, product_id)` oraz indeks
-  `cart_id`. Migracja: `Version20261103120000CreateCartTables`.
+  `cart_id` (`cart_line_cart_id_idx`). Indeks `cart_id` jest potrzebny mimo unikalnego: Doctrine DBAL dodaje własny
+  indeks na kolumnach klucza obcego (`cart_id`, z `ManyToOne` w `CartLineRecord`), chyba że istnieje indeks o dokładnie
+  tych samych kolumnach, a unikalny `(cart_id, product_id)` się nie liczy (inna liczba kolumn). Bez nazwanego
+  `#[ORM\Index]` Doctrine wygenerowałby indeks `IDX_…` na `cart_id` i schemat rozjechałby się z mapowaniem.
+  Migracja: `Version20261103120000CreateCartTables`.
 - Bez kluczy obcych do tabel Catalog. Kaskada przy usuwaniu linii jest dozwolona, bo koszyki są krótkotrwałe
   (w odróżnieniu od rezerwacji Inventory).
 
@@ -280,7 +288,7 @@ Gość (bez tokena; token wysłany mimo to i niepoprawny daje 401, a gdy nie da 
 | `POST /api/v1/guest-carts` | 201 `CartView` (pusty), nagłówek `Location`; ciało nie jest czytane | |
 | `GET /api/v1/guest-carts/{cartId}` | 200 `CartView` | 404 |
 | `GET /api/v1/guest-carts/{cartId}/summary` | 200 `{itemCount}` | 404 |
-| `POST /api/v1/guest-carts/{cartId}/items`, body `{productId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo produkt; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`) `quantity` spoza 1–99, zły typ, brak klucza, zły UUID produktu |
+| `POST /api/v1/guest-carts/{cartId}/items`, body `{productId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo produkt; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`, komunikaty w punkcie „Komunikaty 422” niżej) |
 | `PUT /api/v1/guest-carts/{cartId}/items/{productId}`, body `{quantity: int}` | 200 `CartView` | jak wyżej oraz 404 `CartLineNotFound` |
 | `DELETE /api/v1/guest-carts/{cartId}/items/{productId}` | 200 `CartView` (brak linii: bez zmian) | 404 koszyk |
 
@@ -294,10 +302,28 @@ wystawcy tokenu: 503):
 | `POST /api/v1/me/cart/items` | 200 `CartView` | 401 oraz jak u gościa (404 tylko produkt) |
 | `PUT /api/v1/me/cart/items/{productId}` | 200 `CartView` | 401 oraz jak u gościa (404 produkt albo linia) |
 | `DELETE /api/v1/me/cart/items/{productId}` | 200 `CartView` | 401 |
-| `POST /api/v1/me/cart/merge`, body `{guestCartId: uuid}` | 200 `{cart: CartView, result: "merged" \| "already_merged" \| "nothing_to_merge", truncated: bool}` | 400, 401, 415, 422 (zły UUID, brak klucza) |
+| `POST /api/v1/me/cart/merge`, body `{guestCartId: uuid}` | 200 `{cart: CartView, result: "merged" \| "already_merged" \| "nothing_to_merge", truncated: bool}` | 400, 401, 415, 422 (z `violations`, jak niżej) |
 
 - Identyfikator w ścieżce (`cartId`, `productId`), który nie jest UUID (w dowolnej wielkości liter): 404, bo trasa nie
   pasuje. Typy ścisłe, bez rzutowania (liczba w napisie, ułamek: 422).
+- Komunikaty 422 (`violations[*].title`, `propertyPath` to nazwa pola). Wszystkie po polsku, bez danych wejściowych,
+  a jedno pole daje najwyżej jedno naruszenie (ograniczenia pola sprawdzane po kolei, `Assert\Sequentially`). Brak
+  klucza serializer zamienia na `null` (pola DTO są `mixed`, bez `REQUIRE_ALL_PROPERTIES`), a wymaga go
+  `Assert\NotNull`; pola nadal są `required` w OpenAPI, bez `nullable` i `default`:
+
+  | Pole (żądanie) | Przypadek | Komunikat |
+  |---|---|---|
+  | `productId` (dodanie) | brak klucza albo `null` | Identyfikator produktu jest wymagany. |
+  | `productId` | nie jest napisem albo jest niepustym napisem, który nie jest UUID | Identyfikator produktu musi być UUID. |
+  | `quantity` (dodanie, zmiana) | brak klucza albo `null` | Ilość jest wymagana. |
+  | `quantity` | nie jest liczbą całkowitą (napis, ułamek, `2.0`, wartość logiczna, tablica) | Ilość musi być liczbą całkowitą. |
+  | `quantity` | spoza 1–99 | Ilość musi wynosić od 1 do 99 szt. |
+  | `guestCartId` (scalenie) | brak klucza (także puste ciało) albo `null` | Identyfikator koszyka jest wymagany. |
+  | `guestCartId` | nie jest napisem albo jest niepustym napisem, który nie jest UUID | Identyfikator koszyka musi być UUID. |
+
+  Pusty napis `""` nie jest naruszeniem (`Assert\Uuid` pomija pusty napis). `productId: ""` przy dodaniu daje 404, jak produkt
+  niedostępny, a `guestCartId: ""` przy scaleniu daje 200 z `result: "nothing_to_merge"`, jak koszyk gościa, którego nie ma.
+
 - Scalony koszyk gościa odpowiada 404 jak nieznany: BFF reaguje na oba tak samo, więc format błędów
   (`type: about:blank`) się nie zmienia.
 - Klient zawsze działa na swoim koszyku (`sub` z tokena); identyfikatora koszyka klienta nie ma w ścieżce.
@@ -374,9 +400,18 @@ zwracana.
   z `detail`; 401 sesji; 403 `Origin` lub `Content-Type`; 503 niedostępne zależności lub API (także 400 i 415 API, które
   byłyby błędem BFF).
 - `src/api/client.ts` dostaje funkcje przeglądarki wołające `/api/cart/*` (`loadCart`, `loadCartSummary`, `addCartItem`,
-  `changeCartItemQuantity`, `removeCartItem`; jedyne miejsce `fetch`). Zapisy idą jeden po drugim w kolejce na poziomie
-  modułu (następny startuje po zakończeniu poprzedniego, także po błędzie), żeby dwa pierwsze dodania gościa nie założyły
-  dwóch koszyków; odczyty nie czekają w kolejce.
+  `changeCartItemQuantity`, `removeCartItem`; jedyne miejsce `fetch`). Zapisy idą jeden po drugim we wszystkich kartach
+  sklepu w przeglądarce, żeby równoczesne pierwsze dodania gościa nie założyły kilku koszyków:
+  - kolejka na poziomie modułu (`queueWrite`) ustala kolejność zapisów karty: następny startuje po zakończeniu
+    poprzedniego, także po błędzie;
+  - każdy zapis z kolejki, gdy przeglądarka ma `navigator.locks` (Web Locks API, tylko w bezpiecznym kontekście: HTTPS
+    albo `localhost`), trzyma blokadę `store-cart-write` (`navigator.locks.request`, tryb `exclusive`) od wysłania
+    żądania do końca odpowiedzi. Ciasteczko `store_cart` z odpowiedzi pierwszego dodania jest już zapisane, gdy rusza
+    zapis z innej karty, więc ten trafia do tego samego koszyka. Zapis, który się nie udał (błąd HTTP, błąd sieci),
+    zwalnia blokadę i nie wstrzymuje następnego. Odrzucenie samego `request` (np. `SecurityError`) daje wynik `failed`
+    bez wysłania żądania, a kolejka idzie dalej; funkcje zapisu nigdy nie odrzucają obietnicy;
+  - bez `navigator.locks` zapisy idą przez samą kolejkę karty (ograniczenie w „Ryzykach i ograniczeniach”);
+  - odczyty (`loadCart`, `loadCartSummary`) nie czekają ani w kolejce, ani na blokadę.
 
 ### UI
 
@@ -397,7 +432,7 @@ zwracana.
 | dodanie OK | komunikat „Dodano do koszyka”, licznik z `itemCount` |
 | 409 przy dodaniu albo zmianie ilości | `detail` z API przy kafelku albo linii; linia pokazuje poprzednią ilość z ostatniego widoku |
 | 404 produktu przy dodaniu | „Produkt nie jest już dostępny” |
-| 404 linii przy zmianie | odświeżenie koszyka i „Pozycja została już usunięta” |
+| 404 linii przy zmianie albo usunięciu | strona wczytuje koszyk ponownie i rozstrzyga po nim (404 nie dowodzi, że linii nie ma: zmiana ilości linii `unavailable_product` też dostaje 404). Linii nie ma w koszyku: „Pozycja została już usunięta”. Linia jest w koszyku: przy linii `detail` z 404 (dla `unavailable_product` „Produkt nie jest już dostępny.”), a bez `detail` „Nie udało się zapisać zmian. Spróbuj ponownie.”; pole ilości pokazuje ilość z wczytanego koszyka, „Usuń” zostaje. Wczytanie dało 401: „Twoja sesja wygasła. Zaloguj się ponownie.”; wczytanie nie udało się inaczej: „Nie udało się zapisać zmian. Spróbuj ponownie.” przy linii. W obu ostatnich przypadkach pole ilości pokazuje ilość z ostatniego widoku |
 | 403, 422, 503, 5xx, błąd sieci | „Nie udało się zapisać zmian. Spróbuj ponownie.” (bez automatycznego ponowienia) |
 | 401 (sesja wygasła), także przy wczytaniu `/cart` | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem „Zaloguj się” (`/auth/login?returnTo=…`) |
 | błąd wczytania koszyka | „Nie udało się wczytać koszyka” i przycisk „Spróbuj ponownie” |
@@ -418,7 +453,7 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 | dodanie produktu bez ceny albo niedostępnego | 409 `ProductNotPurchasable`; w sklepie brak przycisku |
 | ilość większa niż dostępna | 409 bez liczby sztuk |
 | zmiana ilości z nieaktualnej karty | ostatni zapis wygrywa |
-| równoległe dodania z dwóch kart | wszystkie zapisane, bez utraty zmian |
+| równoległe dodania z dwóch kart | wszystkie zapisane w jednym koszyku, bez utraty zmian (zapisy kart czekają na siebie przez Web Locks API; bez niego pierwsze dodania gościa mogą założyć dwa koszyki, zob. „Ryzyka i ograniczenia”) |
 | zmiana koszyka gościa po scaleniu | 404, bez zmian; BFF usuwa `store_cart`: dodanie zakłada nowy koszyk gościa, odczyt i usunięcie dają pusty koszyk, zmiana 404 pozycji |
 | ponowne lub równoległe scalenie tego samego gościa | `already_merged`, pozycje przeniesione raz |
 | scalenie z wygasłym koszykiem klienta | stare pozycje klienta usunięte, zostają pozycje gościa |
@@ -448,10 +483,12 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 
 ### Jednostkowe (TDD, adaptery in-memory; `apps/api/tests/Unit/Cart`)
 
-- `Cart`: `add` (nowa linia, zwiększenie), granice ilości 1, 99, 100 i liczby linii 50, 51; `ProductOffer` (brak ceny,
-  `available = 0`, wynik > `available`); `changeQuantity` (zmniejszenie zawsze, zwiększenie z kontrolą, brak linii);
-  `remove` idempotentne; zmiana koszyka `merged` odrzucona; `touch` i `isExpired` dla gościa i klienta;
-  `clearIfExpired`.
+- `Cart`: `add` (nowa linia, zwiększenie), granice ilości 1, 99, 100 i liczby linii 50, 51; odrzucenie przez `ProductOffer`
+  (brak ceny, `available = 0`, wynik > `available` → `ProductNotPurchasable` / `InsufficientStock`); `changeQuantity`
+  (zmniejszenie zawsze, zwiększenie z kontrolą, brak linii); `remove` idempotentne; zmiana koszyka `merged` odrzucona;
+  `touch` i `isExpired` dla gościa i klienta; `clearIfExpired`.
+- `ProductOffer::purchasability` (`ProductOfferTest`): brak ceny przed `available = 0`, granice `quantity = available`
+  i `available + 1`.
 - `mergeFrom`: suma, przycięcie do 99 (`truncated`), pominięcie linii ponad 50 (`truncated`), kolejność `addedAt`,
   pusty gość, gość już `merged` (`already_merged`), linie gościa usunięte i status `merged`; **wygasły koszyk klienta
   z pozycjami: po scaleniu zawiera wyłącznie pozycje gościa**.
@@ -499,8 +536,7 @@ sztuk, koszyk `merged` nie ma linii.
 
 `apps/api/tests/Functional/Cart` (`GuestCartEndpointTest`, `CustomerCartEndpointTest`, `CustomerCartMergeEndpointTest`).
 Każdy endpoint: 200/201, 400 (zły JSON), 401 (`/me/cart…` bez tokena i z tokenem `backoffice`), 404 (nie-UUID,
-nieznany, wygasły i scalony koszyk gościa, nieznany produkt, brak linii), 409 (każda przyczyna), 415, 422 (ilość 0
-i 100, napis, ułamek, brak klucza), `Cache-Control: private, no-store`; `merge`: każdy `result` i `truncated`.
+nieznany, wygasły i scalony koszyk gościa, nieznany produkt, brak linii), 409 (każda przyczyna), 415, 422 (każdy przypadek tabeli komunikatów: brak klucza, `null`, zły typ, zły UUID, ilość spoza 1–99; asercja na dokładną listę `violations`), `Cache-Control: private, no-store`; `merge`: każdy `result` i `truncated`.
 
 ### Architektura
 
@@ -520,16 +556,21 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
 - `ProductTile` (`ProductTile.test.tsx`): przycisk przy cenie i dostępności, brak przy braku ceny i `out_of_stock`, obecny przy braku etykiety.
 - `AddToCartButton` (`AddToCartButton.test.tsx`): blokada na czas żądania, sukces, 409 z `detail`, 404, błąd sieci.
 - `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, pusty koszyk, zmiana ilości z błędem 409
-  (poprzednia ilość), 404 linii (odświeżenie), 401, błąd wczytania z ponowieniem.
+  (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem.
 - `CartBadge` (`CartBadge.test.tsx`, `events.test.ts`): liczba sztuk, aktualizacja po zmianie, ukrycie przy błędzie,
   komunikat scalenia.
-- `src/api/client.test.ts`: wywołania `/api/cart/*`, kolejka zapisów (odczyty w niej nie czekają).
+- `src/api/client.test.ts`: wywołania `/api/cart/*`, kolejka zapisów z dublerem `navigator.locks` i bez niego (każdy
+  test ustawia `navigator` przez `vi.stubGlobal`, bo Node ma własne `navigator.locks`); z dublerem każdy zapis biegnie
+  wewnątrz `request` z jedną nazwą blokady i czeka, gdy blokadę trzyma inna karta; odczyty nie czekają ani w kolejce,
+  ani na blokadę; błąd HTTP i błąd sieci nie wstrzymują następnego zapisu; odrzucony `request` daje `failed` bez
+  wywołania `fetch`.
 
 ### E2E (Playwright)
 
 - `cart-guest.spec.ts`: gość dodaje z listy produkt demo `in_stock`, licznik pokazuje 1, na `/cart` (po odświeżeniu
   koszyk zostaje) zmienia ilość na 3, wartość linii i suma są równe 3 × cena z kafelka, usuwa pozycję, koszyk jest
-  pusty także po odświeżeniu.
+  pusty także po odświeżeniu. Dwie karty jednego kontekstu przeglądarki bez `store_cart` klikają równocześnie
+  „Do koszyka” na dwóch różnych produktach; po odświeżeniu licznik pokazuje 2, a `/cart` ma oba produkty.
 - `cart-merge.spec.ts`: Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
   po zalogowaniu licznik pokazuje 3, ciasteczko `store_cart` znika, a koszyk ma A × 1 i B × 2; drugi kontekst
   przeglądarki zalogowany jako Jan widzi ten sam koszyk.
@@ -545,6 +586,15 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   obciążeniowymi.
 - Dodanie powtórzone po zgubionej odpowiedzi może zwiększyć ilość dwa razy (bez `Idempotency-Key`), a zmiana ilości
   z nieaktualnej karty nadpisuje nowszą. Obie konsekwencje są świadome.
+- Gwarancja jednego koszyka przy równoczesnych pierwszych dodaniach z kilku kart działa tylko w przeglądarkach
+  z Web Locks API w bezpiecznym kontekście (HTTPS albo `localhost`). Bez niego zostaje kolejka w obrębie karty:
+  równoczesne pierwsze dodania gościa z kilku kart mogą założyć kilka koszyków, a przeglądarka zachowa ciasteczko
+  ostatniego, więc pozycje z pozostałych znikną z widoku.
+- Blokada szereguje zapisy wszystkich kart przeglądarki: zawieszone żądanie jednej karty wstrzymuje zapisy pozostałych
+  do jego zakończenia. Zamknięcie karty w trakcie zapisu zwalnia blokadę.
+- Odczyty nie biorą blokady. Przy nieaktualnym `store_cart` (koszyk wygasły albo scalony) dodanie w jednej karcie
+  zakłada nowy koszyk i ustawia nowe ciasteczko, a równoległy odczyt (`/api/cart`, `/api/cart/summary`) w innej karcie
+  ze starym ciasteczkiem dostaje 404 i może je usunąć, jeśli jego odpowiedź przyjdzie później.
 - Dostępność w koszyku nie jest rezerwacją: wiąże dopiero rezerwacja przy zamówieniu.
 - `cart:purge-expired` nie ma harmonogramu w MVP: do czasu jego uruchomienia (ręcznie albo z crona) wygasłe koszyki
   zostają w bazie, choć zachowują się jak nieistniejące lub puste.

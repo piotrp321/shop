@@ -15,7 +15,8 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity]
 #[ORM\Table(name: 'cart_line')]
 #[ORM\UniqueConstraint(name: 'cart_line_cart_product_key', columns: ['cart_id', 'product_id'])]
-// The index Doctrine requires for the foreign key, named here; the unique index above would serve the lookups too.
+// DBAL requires an index with exactly the foreign key columns; the unique (cart_id, product_id) index does not fulfil
+// it, so it is named here instead of being auto-generated as IDX_*.
 #[ORM\Index(name: 'cart_line_cart_id_idx', columns: ['cart_id'])]
 class CartLineRecord
 {

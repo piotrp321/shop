@@ -22,7 +22,6 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
-use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 
 /**
  * The cart of a guest, without a token: the cart id is the key to it. An unknown, expired or merged cart is a 404
@@ -124,7 +123,7 @@ final readonly class GuestCartController
     )]
     public function addItem(
         string $cartId,
-        #[MapRequestPayload(acceptFormat: 'json', serializationContext: [AbstractNormalizer::REQUIRE_ALL_PROPERTIES => true], validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
+        #[MapRequestPayload(acceptFormat: 'json', validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
         AddCartItemRequest $item,
     ): JsonResponse {
         // Validated by the payload mapping: a UUID string and an integer.
@@ -157,7 +156,7 @@ final readonly class GuestCartController
     public function changeItem(
         string $cartId,
         string $productId,
-        #[MapRequestPayload(acceptFormat: 'json', serializationContext: [AbstractNormalizer::REQUIRE_ALL_PROPERTIES => true], validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
+        #[MapRequestPayload(acceptFormat: 'json', validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
         ChangeCartItemQuantityRequest $change,
     ): JsonResponse {
         \assert(\is_int($change->quantity));

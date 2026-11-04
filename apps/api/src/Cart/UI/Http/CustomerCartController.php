@@ -23,7 +23,6 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
-use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 
 /**
  * The cart of the customer of the token (`sub` of the `shop` realm); its id is never in the path. The first change
@@ -97,7 +96,7 @@ final readonly class CustomerCartController
     )]
     public function addItem(
         #[CurrentUser] AuthenticatedCustomer $customer,
-        #[MapRequestPayload(acceptFormat: 'json', serializationContext: [AbstractNormalizer::REQUIRE_ALL_PROPERTIES => true], validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
+        #[MapRequestPayload(acceptFormat: 'json', validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
         AddCartItemRequest $item,
     ): JsonResponse {
         // Validated by the payload mapping: a UUID string and an integer.
@@ -127,7 +126,7 @@ final readonly class CustomerCartController
     public function changeItem(
         #[CurrentUser] AuthenticatedCustomer $customer,
         string $productId,
-        #[MapRequestPayload(acceptFormat: 'json', serializationContext: [AbstractNormalizer::REQUIRE_ALL_PROPERTIES => true], validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
+        #[MapRequestPayload(acceptFormat: 'json', validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
         ChangeCartItemQuantityRequest $change,
     ): JsonResponse {
         \assert(\is_int($change->quantity));
@@ -175,7 +174,7 @@ final readonly class CustomerCartController
     )]
     public function merge(
         #[CurrentUser] AuthenticatedCustomer $customer,
-        #[MapRequestPayload(acceptFormat: 'json', serializationContext: [AbstractNormalizer::REQUIRE_ALL_PROPERTIES => true], validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
+        #[MapRequestPayload(acceptFormat: 'json', validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
         MergeGuestCartRequest $merge,
     ): JsonResponse {
         // Validated by the payload mapping: a UUID string.
