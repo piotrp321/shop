@@ -2,8 +2,8 @@
 
 ## Kontekst
 
-Większość kodu sklepu piszą agenci Claude Code. Dziś działają `/brainstorm` (projekt funkcji → `spec.md`),
-`/planner` (`plan.md` z manifestem zadań), `/delivery` (jedno zadanie → zweryfikowany PR), `/integration`
+Większość kodu sklepu piszą agenci Claude Code. Dziś działają `/prepare-epic` (epik → `spec.md` i `plan.md` z manifestem zadań; poza epikami
+`/brainstorm` i `/planner`), `/delivery` (jedno zadanie → zweryfikowany PR), `/integration`
 (weryfikacja całego epiku) i agentic orchestrator (AO) w osobnym repozytorium `piotrp321/agentic-orchestrator`,
 który prowadzi epik po jednym zadaniu naraz w gałęzi `epic/<epik>` i otwiera końcowy PR. Wdrożenie i monitoring są
 ręczne, a blokery czekają na odpowiedź człowieka.
@@ -13,7 +13,7 @@ Chcemy, żeby system pracował autonomicznie przez całą dobę, a człowiek zat
 
 Docelowy przepływ:
 
-`Intake → /brainstorm → /planner → Backlog → AO → /delivery → /integration → Merge/Release → Monitoring`
+`Intake → /prepare-epic → Backlog → AO → /delivery → /integration → Merge/Release → Monitoring`
 
 ```mermaid
 flowchart TB
@@ -23,15 +23,14 @@ flowchart TB
     subgraph flow[Przepływ]
         direction TB
         intake[Intake: GitHub Issues<br/>pomysły, bugi, incydenty]
-        brainstorm["/brainstorm<br/>projekt → spec.md"]
-        planner["/planner<br/>plan.md + manifest"]
+        prepare["/prepare-epic<br/>analityk, krytyk, architekt, planner<br/>spec.md + plan.md"]
         backlog[Backlog<br/>zadania i zależności]
         ao[AO<br/>orkiestracja, stan, wykonanie]
         delivery["/delivery × N<br/>zadanie → zweryfikowany PR"]
         integration["/integration<br/>E2E, review architektury, QA"]
         release[Merge queue i release<br/>staging → produkcja, rollback]
         monitoring[Monitoring<br/>alerty → nowe zadania]
-        intake --> brainstorm --> planner --> backlog --> ao --> delivery --> integration --> release --> monitoring
+        intake --> prepare --> backlog --> ao --> delivery --> integration --> release --> monitoring
         monitoring -. incydenty i dług .-> intake
     end
 
@@ -45,8 +44,7 @@ flowchart TB
     end
 
     human <--> inbox
-    inbox <--> brainstorm
-    inbox <--> planner
+    inbox <--> prepare
     inbox <--> ao
     inbox <--> release
 
@@ -58,8 +56,9 @@ w [planie](../features/agentic-software-house/plan.md).
 | Komponent | Jedna odpowiedzialność |
 |---|---|
 | Intake | Zbieranie pomysłów, bugów i incydentów w jednym miejscu: GitHub Issues (`epic`, `bug`, `ux`, `tech-debt`) |
-| `/brainstorm` | Projektowanie funkcjonalności → `spec.md` |
-| `/planner` | Dekompozycja → `plan.md` i manifest zadań |
+| `/prepare-epic` | Przygotowanie epiku: `spec.md` i `plan.md` z jedną akceptacją użytkownika |
+| Krytyk specyfikacji | `spec-critic`: braki, sprzeczności i przypadki brzegowe szkicu |
+| `/brainstorm`, `/planner` | Narzędzia poza epikami: projekt funkcji → `spec.md`, dekompozycja → `plan.md` i manifest |
 | Backlog | Trwałe zarządzanie zadaniami i zależnościami: definicje w manifeście `plan.md`, stan w AO |
 | AO | Orkiestracja, stan i wykonywanie |
 | `/delivery` | Implementacja pojedynczego zadania do zweryfikowanego PR |
@@ -77,7 +76,7 @@ w [planie](../features/agentic-software-house/plan.md).
 Zasady:
 
 - Każdy komponent ma jedną, jasno określoną odpowiedzialność.
-- Wykorzystujemy istniejący kod i skille (`/brainstorm`, `/delivery`, AO, agentów z `.claude/agents/`, GitHub),
+- Wykorzystujemy istniejący kod i skille (`/prepare-epic`, `/delivery`, AO, agentów z `.claude/agents/`, GitHub),
   zamiast tworzyć nowe frameworki.
 - AO odpowiada za orkiestrację, stan i wykonywanie, a nie za decyzje architektoniczne. Decyzje spoza granic
   zadania wracają jako blokery do skrzynki decyzji.
@@ -103,4 +102,5 @@ Zasady:
 - Zadania wykonywane równolegle potrzebują osobnych stosów Docker. Zasoby jednego hosta ograniczają
   liczbę zadań naraz.
 - Autonomiczny merge bez człowieka jest dozwolony wyłącznie w granicach polityki autonomii zatwierdzonej
-  przez użytkownika.
+  przez użytkownika. Jedyny autonomiczny merge do `main` to PR ze specyfikacją i planem z `/prepare-epic`,
+  po akceptacji użytkownika i zielonym CI.
