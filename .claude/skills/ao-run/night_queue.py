@@ -4,6 +4,8 @@
   night_queue.py [--repo DIR] [--state DIR] scope <spec.md>
   night_queue.py [--repo DIR] [--state DIR] start <dir>   (stdin: the `plan` object of get_usage)
   night_queue.py [--repo DIR] [--state DIR] done <dir>    (stdin: the `plan` object of get_usage)
+  night_queue.py [--repo DIR] [--state DIR] propose [--until HH:MM]
+  night_queue.py [--repo DIR] [--state DIR] approve [--until HH:MM] <dir>...
 
 scope: reads the `Zakres:` line from the header of an epic spec (the lines before the first `## ` heading) and prints
 one JSON line `{"scope": [path, ...]}`, exit 0. A missing, doubled or unreadable line, or an unreadable file, prints
@@ -13,6 +15,12 @@ start: counts the tasks in the manifest of origin/main:docs/features/<dir>/plan.
 <state>/measurements.jsonl. done: appends a done event for the latest start without one and prints the measurement
 (tasks, minutes, usage delta per limit window). A start/done pair is a measurement only through `measurements`.
 
+propose: reads the backlog board (shared with next_epic.py) and prints one JSON line
+{"epics": [{dir, id, issue, title, tasks, minutes, scope}], "skipped": [{issue, id, reason}],
+"in_progress": [{dir, id, issue}], "until": <iso>, "measured": <bool>}: the prepared epics that can run in one night.
+`until` is the next occurrence of HH:MM (default 07:00) local time. approve: recomputes the list and, when it equals
+the given dirs in order, writes <state>/night.json and prints it; otherwise exits 2.
+
 Exit codes: 0 success; 1 a `git`/`gh` command failed or returned unexpected JSON; 2 usage and state errors.
 """
 import argparse
@@ -20,7 +28,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import next_epic  # noqa: E402,F401  (CommandError and the command runner shared with next_epic.py)
@@ -261,6 +269,102 @@ def cmd_done(args, run, now, stdin):
     return 0
 
 
+DEPENDENCIES_HEADING = '## Zależności'
+DEFAULT_UNTIL = '07:00'
+NIGHT_FILE = 'night.json'
+
+
+def dependencies_section(body):
+    lines, inside = [], False
+    for line in body.splitlines():
+        if inside and line.startswith('## '):
+            break
+        if inside:
+            lines.append(line)
+        elif line.rstrip() == DEPENDENCIES_HEADING:
+            inside = True
+    return '\n'.join(lines)
+
+
+def mentions(text, epic_id):
+    return re.search(r'(?<![A-Za-z0-9._-])%s(?!\.?[A-Za-z0-9_-])' % re.escape(epic_id), text) is not None
+
+
+def parse_until(text, now):
+    match = re.fullmatch(r'(\d{2}):(\d{2})', text)
+    if not match or int(match.group(1)) > 23 or int(match.group(2)) > 59:
+        raise StateError('nieprawidłowa godzina --until: %s (oczekiwano HH:MM)' % text)
+    until = now.replace(hour=int(match.group(1)), minute=int(match.group(2)), second=0, microsecond=0)
+    return until if until > now else until + timedelta(days=1)
+
+
+def propose(run, state_dir, until_text, now):
+    until = parse_until(until_text, now)
+    board = next_epic.board_epics(run)
+    measured = measurements(read_events(state_dir))
+    in_progress = [{'dir': e['dir'], 'id': e['id'], 'issue': e['number']} for e in board if e['state'] == 'in_progress']
+    skipped = [{'issue': e['number'], 'id': e['id'], 'reason': e['reason']}
+               for e in board if e['state'] in ('invalid', 'unprepared')]
+    chosen, minutes_total = [], 0.0
+    for e in ([] if in_progress else [e for e in board if e['state'] == 'prepared']):
+        def skip(reason):
+            skipped.append({'issue': e['number'], 'id': e['id'], 'reason': reason})
+        depends = next((o['id'] for o in board if o['id'] and o is not e
+                        and mentions(dependencies_section(e['body']), o['id'])), None)
+        if depends:
+            skip('zależy od %s' % depends)
+            continue
+        if chosen and chosen[0]['scope'] is None:
+            skip('pierwszy epik listy %s nie ma zakresu' % chosen[0]['id'])
+            continue
+        try:
+            scope = epic_scope(e['dir'], parse_scope(run(['git', 'show', 'origin/main:docs/features/%s/spec.md' % e['dir']])))
+        except ScopeError as error:
+            if chosen:
+                skip(str(error))
+                continue
+            scope = None
+        clash = next(((c['id'], overlap(scope, c['scope'])[0]) for c in chosen
+                      if scope is not None and overlap(scope, c['scope'])), None)
+        if clash:
+            skip('zakres wspólny z %s: %s' % clash)
+            continue
+        tasks = task_count(run, e['dir'])
+        minutes = estimate(measured, tasks)['minutes']
+        if minutes is not None and now + timedelta(minutes=minutes_total + minutes) > until:
+            skip('nie mieści się do %s' % until_text)
+            continue
+        minutes_total += minutes or 0.0
+        chosen.append({'dir': e['dir'], 'id': e['id'], 'issue': e['number'], 'title': e['title'], 'tasks': tasks,
+                       'minutes': minutes, 'scope': scope})
+    return {'epics': chosen, 'skipped': skipped, 'in_progress': in_progress, 'until': until.isoformat(),
+            'measured': bool(measured)}
+
+
+def cmd_propose(args, run, now, stdin):
+    print(json.dumps(propose(run, args.state, args.until, now), ensure_ascii=False))
+    return 0
+
+
+def cmd_approve(args, run, now, stdin):
+    result = propose(run, args.state, args.until, now)
+    listed = [e['dir'] for e in result['epics']]
+    if not listed or listed != args.dirs:
+        raise StateError('lista różni się od zatwierdzanej: propozycja [%s], podano [%s]'
+                         % (', '.join(listed), ', '.join(args.dirs)))
+    night = {'approved_at': now.isoformat(), 'until': result['until'], 'epics': listed}
+    directory = os.path.expanduser(args.state)
+    try:
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, NIGHT_FILE), 'w', encoding='utf-8') as f:
+            json.dump(night, f, ensure_ascii=False)
+            f.write('\n')
+    except OSError as e:
+        raise StateError('nie można zapisać %s: %s' % (NIGHT_FILE, e.strerror or e))
+    print(json.dumps(night, ensure_ascii=False))
+    return 0
+
+
 def main(argv=None, run=None, now=None, stdin=None):
     parser = argparse.ArgumentParser(description='Night queue of several epics')
     parser.add_argument('--repo', default='.')
@@ -270,6 +374,11 @@ def main(argv=None, run=None, now=None, stdin=None):
     scope.add_argument('spec')
     for name in ('start', 'done'):
         sub.add_parser(name).add_argument('dir')
+    propose_parser = sub.add_parser('propose', help='propose the list of epics for the night')
+    approve_parser = sub.add_parser('approve', help='approve the list of epics for the night')
+    for p in (propose_parser, approve_parser):
+        p.add_argument('--until', default=DEFAULT_UNTIL)
+    approve_parser.add_argument('dirs', nargs='+')
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:
@@ -279,7 +388,7 @@ def main(argv=None, run=None, now=None, stdin=None):
     run = run or next_epic.make_runner(args.repo)
     now = now or datetime.now().astimezone()
     try:
-        return {'start': cmd_start, 'done': cmd_done}[args.command](args, run, now, stdin)
+        return {'start': cmd_start, 'done': cmd_done, 'propose': cmd_propose, 'approve': cmd_approve}[args.command](args, run, now, stdin)
     except StateError as e:
         print('night_queue: %s' % e, file=sys.stderr)
         return 2

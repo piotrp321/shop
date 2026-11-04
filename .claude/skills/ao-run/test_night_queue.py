@@ -390,5 +390,255 @@ class MeasureCliTest(unittest.TestCase):
             self.assertIn('2', err)
 
 
+def spec_text(scope_line):
+    return '# Epic\n\nIssues: #1\n%s\n\n## Cel\nText\n' % scope_line if scope_line else '# Epic\n\n## Cel\n'
+
+
+class BoardRunner:
+    """Answers the git/gh commands of the shared board reading from prepared data."""
+
+    def __init__(self, epics, branches=(), fail=None):
+        # epics: list of (number, title, body, scope_line or None, tasks); all are prepared unless tasks is None
+        self.epics, self.branches, self.fail, self.calls = epics, branches, fail, []
+
+    def __call__(self, args):
+        self.calls.append(list(args))
+        if self.fail and list(args[:len(self.fail)]) == list(self.fail):
+            raise night_queue.next_epic.CommandError(args, 'boom')
+        if args[:2] == ['git', 'fetch']:
+            return ''
+        if args[:3] == ['gh', 'project', 'item-list']:
+            return json.dumps({'items': [
+                {'content': {'number': n, 'repository': 'piotrp321/shop', 'title': t, 'type': 'Issue'},
+                 'labels': ['epic']} for n, t, _, _, _ in self.epics]})
+        if args[:3] == ['gh', 'issue', 'list']:
+            return json.dumps([{'number': n, 'title': t, 'body': b} for n, t, b, _, _ in self.epics])
+        if args[:2] == ['git', 'ls-remote']:
+            return ''.join('abc\trefs/heads/epic/%s\n' % b for b in self.branches)
+        if args[:2] == ['git', 'ls-tree']:
+            out = ''
+            for n, t, b, scope, tasks in self.epics:
+                if tasks is not None:
+                    d = t.partition(':')[0].lower()
+                    out += 'docs/features/%s/spec.md\ndocs/features/%s/plan.md\n' % (d, d)
+            return out
+        if args[:2] == ['git', 'show']:
+            _, path = args[2].split(':', 1)
+            d, name = path.split('/')[2:]
+            for n, t, b, scope, tasks in self.epics:
+                if t.partition(':')[0].lower() == d:
+                    return spec_text(scope) if name == 'spec.md' else manifest(tasks).replace('{"tasks"', '{"schema_version": 1, "tasks"')
+        raise AssertionError('unexpected command %r' % args)
+
+
+def epic(number, id_, scope, tasks=2, body=''):
+    return (number, '%s: title' % id_, body, 'Zakres: %s' % scope if scope else None, tasks)
+
+
+class QueueCliTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+
+    def measure(self, tasks=2, minutes=60):
+        os.makedirs(self.state, exist_ok=True)
+        start = {'event': 'start', 'epic': 'old', 'tasks': tasks, 'at': T0.isoformat(), 'usage': {}}
+        done = {'event': 'done', 'epic': 'old', 'at': (T0 + timedelta(minutes=minutes)).isoformat(), 'usage': {}}
+        with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
+            f.write(json.dumps(start) + '\n' + json.dumps(done) + '\n')
+
+    def cli(self, command, epics, extra=(), branches=(), fail=None, now=T0):
+        out, err = io.StringIO(), io.StringIO()
+        argv = ['--state', self.state, command] + list(extra)
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(argv, run=BoardRunner(epics, branches, fail), now=now, stdin=io.StringIO(''))
+        return code, out.getvalue(), err.getvalue()
+
+    def propose(self, epics, extra=(), **kwargs):
+        code, out, err = self.cli('propose', epics, extra, **kwargs)
+        self.assertEqual(0, code, err)
+        return json.loads(out)
+
+    def dirs(self, result):
+        return [e['dir'] for e in result['epics']]
+
+    def test_output_shape(self):
+        result = self.propose([epic(1, 'CART', 'apps/api/src/Cart', tasks=3)])
+        self.assertEqual({'epics', 'skipped', 'in_progress', 'until', 'measured'}, set(result))
+        self.assertEqual({'dir': 'cart', 'id': 'CART', 'issue': 1, 'title': 'CART: title', 'tasks': 3,
+                          'minutes': None, 'scope': ['apps/api/src/Cart', 'docs/features/cart']},
+                         result['epics'][0])
+        self.assertFalse(result['measured'])
+        self.assertEqual([], result['skipped'] + result['in_progress'])
+
+    def test_in_progress_empties_list(self):
+        epics = [epic(1, 'CART', 'a'), epic(2, 'VARIANTS', 'b')]
+        result = self.propose(epics, branches=['cart'])
+        self.assertEqual([], result['epics'])
+        self.assertEqual([{'dir': 'cart', 'id': 'CART', 'issue': 1}], result['in_progress'])
+
+    def test_in_progress_keeps_unprepared_in_skipped(self):
+        epics = [epic(1, 'CART', 'a'), epic(2, 'LATER', 'b', tasks=None)]
+        result = self.propose(epics, branches=['cart'])
+        self.assertEqual([{'issue': 2, 'id': 'LATER', 'reason': 'brak spec.md i plan.md z manifestem na origin/main'}],
+                         result['skipped'])
+
+    def test_unprepared_does_not_stop_scan(self):
+        epics = [epic(1, 'CART', 'a', tasks=None), epic(2, 'VARIANTS', 'b')]
+        result = self.propose(epics)
+        self.assertEqual(['variants'], self.dirs(result))
+        self.assertEqual('brak spec.md i plan.md z manifestem na origin/main', result['skipped'][0]['reason'])
+
+    def test_title_without_prefix_is_skipped(self):
+        epics = [(1, 'no prefix', '', None, 1), epic(2, 'CART', 'a')]
+        result = self.propose(epics)
+        self.assertEqual([{'issue': 1, 'id': None, 'reason': 'tytuł bez prefiksu ID'}], result['skipped'])
+        self.assertEqual(['cart'], self.dirs(result))
+
+    def test_depends_on_open_epic(self):
+        epics = [epic(1, 'CHECKOUT', 'a'), epic(2, 'PAY', 'b', body='x\n## Zależności\nPo CHECKOUT oraz #3\n## Inne\n')]
+        result = self.propose(epics)
+        self.assertEqual(['checkout'], self.dirs(result))
+        self.assertEqual([{'issue': 2, 'id': 'PAY', 'reason': 'zależy od CHECKOUT'}], result['skipped'])
+
+    def test_dependency_prefix_id_does_not_match(self):
+        body = '## Zależności\nCART-FIXES musi być gotowy\n'
+        epics = [epic(1, 'CART', 'a'), epic(2, 'CART-FIXES', 'b'), epic(3, 'LAST', 'c', body=body)]
+        result = self.propose(epics)
+        self.assertEqual('zależy od CART-FIXES', result['skipped'][0]['reason'])
+        self.assertEqual(['cart', 'cart-fixes'], self.dirs(result))
+
+    def test_dependency_id_with_trailing_dot_matches(self):
+        epics = [epic(1, 'CART', 'a'), epic(2, 'LAST', 'b', body='## Zależności\nPo CART.\n')]
+        self.assertEqual('zależy od CART', self.propose(epics)['skipped'][0]['reason'])
+
+    def test_dependencies_only_from_their_section(self):
+        body = 'CART w opisie\n## Zależności\nbrak\n## Dalej\nCART\n'
+        epics = [epic(1, 'CART', 'a'), epic(2, 'LAST', 'b', body=body)]
+        self.assertEqual(['cart', 'last'], self.dirs(self.propose(epics)))
+
+    def test_dependency_first_in_board_order(self):
+        body = '## Zależności\nVARIANTS i CART\n'
+        epics = [epic(1, 'CART', 'a'), epic(2, 'VARIANTS', 'b'), epic(3, 'LAST', 'c', body=body)]
+        self.assertEqual('zależy od CART', self.propose(epics)['skipped'][0]['reason'])
+
+    def test_shared_scope_names_path_of_candidate(self):
+        epics = [epic(1, 'CART', 'apps/api/openapi.json'), epic(2, 'VARIANTS', 'apps/api/openapi.json, apps/x')]
+        result = self.propose(epics)
+        self.assertEqual([{'issue': 2, 'id': 'VARIANTS', 'reason': 'zakres wspólny z CART: apps/api/openapi.json'}],
+                         result['skipped'])
+
+    def test_first_without_scope_is_alone(self):
+        epics = [epic(1, 'CART', None), epic(2, 'VARIANTS', 'apps/x')]
+        result = self.propose(epics)
+        self.assertEqual(['cart'], self.dirs(result))
+        self.assertIsNone(result['epics'][0]['scope'])
+        self.assertEqual('pierwszy epik listy CART nie ma zakresu', result['skipped'][0]['reason'])
+
+    def test_later_without_scope_is_skipped(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', None)]
+        result = self.propose(epics)
+        self.assertEqual(['cart'], self.dirs(result))
+        self.assertEqual('brak linii Zakres', result['skipped'][0]['reason'])
+
+    def test_later_with_invalid_scope_gives_error_text(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', '/abs')]
+        self.assertEqual('nieczytelna linia Zakres: /abs', self.propose(epics)['skipped'][0]['reason'])
+
+    def test_lower_disjoint_epic_enters_after_skipped_higher(self):
+        epics = [epic(1, 'CART', 'apps/a'), epic(2, 'VARIANTS', 'apps/a/b'), epic(3, 'SEARCH', 'apps/c')]
+        result = self.propose(epics)
+        self.assertEqual(['cart', 'search'], self.dirs(result))
+        self.assertEqual([2], [s['issue'] for s in result['skipped']])
+
+    def test_time_limit_with_measurement(self):
+        self.measure(tasks=2, minutes=60)   # 30 min per task; 22:00 -> 07:00 is 540 min
+        epics = [epic(1, 'A', 'a', tasks=10), epic(2, 'B', 'b', tasks=6), epic(3, 'C', 'c', tasks=4)]
+        result = self.propose(epics)
+        self.assertTrue(result['measured'])
+        self.assertEqual(['a', 'b'], self.dirs(result))   # 300 + 180 = 480 fits, 480 + 120 = 600 does not
+        self.assertEqual([300.0, 180.0], [e['minutes'] for e in result['epics']])
+        self.assertEqual('nie mieści się do 07:00', result['skipped'][-1]['reason'])
+
+    def test_time_limit_skips_to_smaller_epic(self):
+        self.measure(tasks=2, minutes=60)
+        epics = [epic(1, 'A', 'a', tasks=10), epic(2, 'B', 'b', tasks=10), epic(3, 'C', 'c', tasks=2)]
+        result = self.propose(epics)
+        self.assertEqual(['a', 'c'], self.dirs(result))
+
+    def test_no_limit_without_measurement(self):
+        epics = [epic(i, 'E%d' % i, 'p%d' % i, tasks=1000) for i in range(1, 4)]
+        result = self.propose(epics)
+        self.assertEqual(3, len(result['epics']))
+        self.assertFalse(result['measured'])
+
+    def test_until_option_and_message(self):
+        self.measure(tasks=2, minutes=60)
+        result = self.propose([epic(1, 'A', 'a', tasks=4)], ['--until', '23:30'])   # 120 min > 90
+        self.assertEqual('nie mieści się do 23:30', result['skipped'][0]['reason'])
+        self.assertEqual('2026-11-04T23:30:00+00:00', result['until'])
+
+    def test_until_default_and_rollover_past_midnight(self):
+        self.assertEqual('2026-11-05T07:00:00+00:00', self.propose([epic(1, 'A', 'a')])['until'])
+        early = T0.replace(hour=5)
+        code, out, _ = self.cli('propose', [epic(1, 'A', 'a')], now=early)
+        self.assertEqual('2026-11-04T07:00:00+00:00', json.loads(out)['until'])
+
+    def test_until_strictly_after_now(self):
+        code, out, _ = self.cli('propose', [epic(1, 'A', 'a')], ['--until', '22:00'])
+        self.assertEqual('2026-11-05T22:00:00+00:00', json.loads(out)['until'])
+
+    def test_until_invalid_exits_2(self):
+        for bad in ['7', '25:00', '07:60', 'ab:cd', '07:00:00', '']:
+            with self.subTest(bad=bad):
+                code, out, err = self.cli('propose', [epic(1, 'A', 'a')], ['--until', bad])
+                self.assertEqual((2, ''), (code, out))
+                self.assertTrue(err)
+
+    def test_gh_failure_exits_1(self):
+        code, out, err = self.cli('propose', [epic(1, 'A', 'a')], fail=['gh', 'issue'])
+        self.assertEqual((1, ''), (code, out))
+        self.assertIn('boom', err)
+
+    def test_fetches_origin_main_first(self):
+        runner = BoardRunner([epic(1, 'A', 'a')])
+        with contextlib.redirect_stdout(io.StringIO()):
+            night_queue.main(['--state', self.state, 'propose'], run=runner, now=T0)
+        self.assertEqual(['git', 'fetch', 'origin', 'main'], runner.calls[0])
+
+    def test_approve_match_writes_night_json(self):
+        epics = [epic(1, 'A', 'a'), epic(2, 'B', 'b')]
+        code, out, err = self.cli('approve', epics, ['a', 'b'])
+        self.assertEqual(0, code, err)
+        expected = {'approved_at': T0.isoformat(), 'until': '2026-11-05T07:00:00+00:00', 'epics': ['a', 'b']}
+        self.assertEqual(expected, json.loads(out))
+        with open(os.path.join(self.state, 'night.json'), encoding='utf-8') as f:
+            self.assertEqual(expected, json.load(f))
+
+    def test_approve_mismatch_exits_2_with_both_lists(self):
+        epics = [epic(1, 'A', 'a'), epic(2, 'B', 'b')]
+        for given in (['b', 'a'], ['a'], ['a', 'b', 'c']):
+            with self.subTest(given=given):
+                code, out, err = self.cli('approve', epics, given)
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('a, b', err)
+                self.assertIn(', '.join(given), err)
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'night.json')))
+
+    def test_approve_empty_list_exits_2(self):
+        code, out, err = self.cli('approve', [epic(1, 'A', 'a')], ['a'], branches=['a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'night.json')))
+
+    def test_approve_uses_until_option(self):
+        code, out, _ = self.cli('approve', [epic(1, 'A', 'a')], ['--until', '06:00', 'a'])
+        self.assertEqual('2026-11-05T06:00:00+00:00', json.loads(out)['until'])
+
+    def test_approve_without_dirs_exits_2(self):
+        code, out, _ = self.cli('approve', [epic(1, 'A', 'a')])
+        self.assertEqual((2, ''), (code, out))
+
+
 if __name__ == '__main__':
     unittest.main()
