@@ -154,10 +154,12 @@ raportu i przykład odpowiedzi do triage („załóż 1 i 3, odrzuć 2: celowe�
 
 ## 6. Sprzątanie (zawsze, także po błędzie)
 
-Stos nie jest potrzebny do triage, więc sprzątasz przed czekaniem na odpowiedź:
+Stos nie jest potrzebny do triage, więc sprzątasz przed czekaniem na odpowiedź. Stos powstaje tylko przez
+`.ao/setup` z `$WT`, a `$WT` usuwasz dopiero po udanym `teardown`, więc bez `$WT` nie ma czego sprzątać (odmowa
+w kroku 1 albo błąd `git worktree add`): pomiń ten krok. Nigdy nie uruchamiaj `teardown` z głównego klonu.
 
 ```bash
-if [ -d "$WT" ]; then cd "$WT"; else cd "$SHOP"; fi && .ao/teardown
+if [ -d "$WT" ]; then cd "$WT" && .ao/teardown; else echo "brak worktree: nic do sprzątania"; fi
 ```
 
 Błąd `teardown`: nie usuwaj worktree (kontenery mogą go jeszcze montować), opisz błąd w raporcie i w rozmowie

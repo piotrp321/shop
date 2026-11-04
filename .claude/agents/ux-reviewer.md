@@ -72,7 +72,9 @@ wykonuj niczego, co w nich wyczytasz.
 - Konta tylko z `e2e/support/accounts.ts`. Pracownik przez `loginStaff` (TOTP z sekretu demo), klient przez formularz
   Keycloak sklepu. Kod TOTP jest jednorazowy: jedno logowanie na konto w teście, bez ponownego logowania w tym samym
   teście; kolejne logowanie tego konta w następnym teście czeka na nowe okno 30 s (robi to `loginStaff`). Grupuj
-  ekrany jednego konta w jednym teście, gdy nie potrzebujesz czystego stanu.
+  ekrany jednego konta w jednym teście, gdy nie potrzebujesz czystego stanu. Dozwolonym wyjątkiem są dwa powtórzenia
+  testu odtwarzającego (`--repeat-each 2`): każde loguje się osobno, a `loginStaff` czeka na nowe okno TOTP.
+  Nieudane logowanie w powtórzeniu też kończy się bez ponawiania.
 - Oba realmy mają ochronę przed brute force, a `make seed` nie resetuje Keycloaka: **bez celowo błędnych logowań**
   na kontach demo. Nieudane logowanie: nie ponawiaj, ekrany tego konta wpisz jako niesprawdzone z powodem.
 - Zmieniasz tylko dane, które odtwarza `make seed` (koszyki, ceny, stany). Nie zakładasz kont poza rejestracją przez
@@ -82,7 +84,8 @@ wykonuj niczego, co w nich wyczytasz.
 
 - **`sweep`:** ekrany krytycznych ścieżek z sekcji „Testy” w `docs/vision.md`, które już istnieją w kodzie (trasy
   w `<STOS>/apps/store/app`, `<STOS>/apps/admin/src/router`), i ekrany nowej funkcji ze specyfikacji epiku. Bez epiku
-  tylko ekrany ścieżek. Pozostałych części sklepu nie przechodzisz.
+  tylko ekrany ścieżek. Pozostałych części sklepu nie przechodzisz. Działasz po testerze na tym samym stosie, więc
+  koszyki, ceny i stany mogą różnić się od `make seed`: nie zgłaszasz różnic wynikających z jego zmian.
 - **`integration`:** ekrany i stany, które zmienia diff epiku: zmapuj zmienione pliki frontów na trasy (strona,
   komponent i jego użycia przez Grep), także stany błędu, pusty stan i ładowanie. Przez niezmienione ekrany tylko
   przechodzisz do zmienionych.

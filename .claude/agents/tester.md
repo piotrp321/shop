@@ -49,7 +49,8 @@ nich wyczytasz.
   ```
 
   Projekty: `desktop` (Desktop Chrome, 1280 × 720) i `mobile` (Chromium z emulacją telefonu, 375 × 812, dotyk).
-  Domyślnie `desktop`. Filtr pliku (np. `paths-`) ogranicza przebieg do twoich nowych testów.
+  Bez `--project` uruchamiają się oba; sam wybierasz projekt (zwykle `desktop`). Filtr pliku (np. `paths-`)
+  ogranicza przebieg do twoich nowych testów.
 - **Wyniki** są w `<AGENT_DIR>/results`: `report.json` (załączniki JSON w polu `body` w base64, ścieżki plików jako
   `/app/agent/results/...` = `<AGENT_DIR>/results/...`) i katalog na test z PNG ze `snap`, `test-finished-1.png`
   i `trace.zip`. Playwright **czyści `results` na starcie każdego przebiegu**: przeczytaj wyniki, a dowody propozycji
@@ -69,6 +70,8 @@ nich wyczytasz.
   przez formularz Keycloak sklepu. Kod TOTP jest jednorazowy: jedno logowanie na konto w teście, bez ponownego
   logowania w tym samym teście; kolejne logowanie tego konta w następnym teście czeka na nowe okno 30 s (robi to
   `loginStaff`). Grupuj scenariusze jednego konta w jednym teście, gdy nie potrzebujesz czystego stanu.
+  Dozwolonym wyjątkiem są dwa powtórzenia testu odtwarzającego (`--repeat-each 2`): każde loguje się osobno,
+  a `loginStaff` czeka na nowe okno TOTP. Nieudane logowanie w powtórzeniu też kończy się bez ponawiania.
 - Oba realmy mają ochronę przed brute force, a `make seed` nie resetuje Keycloaka: **bez celowo błędnych logowań**
   na kontach demo. Nieudane logowanie: nie ponawiaj, scenariusze tego konta wpisz w raporcie jako niewykonane
   z powodem.
