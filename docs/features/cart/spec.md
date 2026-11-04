@@ -126,10 +126,9 @@ Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99
 ### Widok koszyka (`CartView`)
 
 Budowany w warstwie aplikacji z koszyka i portów (`ProductCatalog`, `CartPrices`, `StockAvailability`), po jednym
-wywołaniu każdego portu dla wszystkich linii (`ProductDataLoader`; bez linii porty nie są wołane). Reguły stanów i sum
-są w jednej klasie (`CartViewBuilder`), testowanej jednostkowo. Reguła zakupu (cena, potem stan) jest tylko
-w `ProductOffer::purchasability`: widok sam rozstrzyga wyłącznie `unavailable_product` i mapuje wynik reguły na stan
-linii (`ProductData::offerFor`).
+wywołaniu każdego portu dla wszystkich linii (`ProductDataLoader`; bez linii porty nie są wołane). Sumy i mapowanie
+stanów linii są w jednej klasie (`CartViewBuilder`), testowanej jednostkowo. Sama reguła zakupu (cena, potem stan) jest
+tylko w `ProductOffer::purchasability` (`ProductData::offerFor`); widok rozstrzyga wyłącznie `unavailable_product`.
 
 Stan linii, w kolejności priorytetu:
 
@@ -453,10 +452,12 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 
 ### Jednostkowe (TDD, adaptery in-memory; `apps/api/tests/Unit/Cart`)
 
-- `Cart`: `add` (nowa linia, zwiększenie), granice ilości 1, 99, 100 i liczby linii 50, 51; `ProductOffer::purchasability`
-  (`ProductOfferTest`: brak ceny przed `available = 0`, granice `quantity = available` i `available + 1`); `changeQuantity` (zmniejszenie zawsze, zwiększenie z kontrolą, brak linii);
-  `remove` idempotentne; zmiana koszyka `merged` odrzucona; `touch` i `isExpired` dla gościa i klienta;
-  `clearIfExpired`.
+- `Cart`: `add` (nowa linia, zwiększenie), granice ilości 1, 99, 100 i liczby linii 50, 51; odrzucenie przez `ProductOffer`
+  (brak ceny, `available = 0`, wynik > `available` → `ProductNotPurchasable` / `InsufficientStock`); `changeQuantity`
+  (zmniejszenie zawsze, zwiększenie z kontrolą, brak linii); `remove` idempotentne; zmiana koszyka `merged` odrzucona;
+  `touch` i `isExpired` dla gościa i klienta; `clearIfExpired`.
+- `ProductOffer::purchasability` (`ProductOfferTest`): brak ceny przed `available = 0`, granice `quantity = available`
+  i `available + 1`.
 - `mergeFrom`: suma, przycięcie do 99 (`truncated`), pominięcie linii ponad 50 (`truncated`), kolejność `addedAt`,
   pusty gość, gość już `merged` (`already_merged`), linie gościa usunięte i status `merged`; **wygasły koszyk klienta
   z pozycjami: po scaleniu zawiera wyłącznie pozycje gościa**.
