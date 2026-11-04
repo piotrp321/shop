@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'night_queue.py')
 spec = importlib.util.spec_from_file_location('night_queue', SCRIPT)
@@ -647,6 +648,313 @@ class QueueCliTest(unittest.TestCase):
 
     def test_approve_without_dirs_exits_2(self):
         code, out, _ = self.cli('approve', [epic(1, 'A', 'a')])
+        self.assertEqual((2, ''), (code, out))
+
+
+APPROVED = T0
+UNTIL = T0 + timedelta(hours=9)
+NOW = T0 + timedelta(hours=2)
+
+
+class NextCliTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+        os.makedirs(self.state)
+
+    def night(self, dirs, until=UNTIL, approved=APPROVED):
+        with open(os.path.join(self.state, 'night.json'), 'w') as f:
+            json.dump({'approved_at': approved.isoformat(), 'until': until.isoformat(), 'epics': dirs}, f)
+
+    def events(self, *events):
+        with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
+            for e in events:
+                f.write(json.dumps(e) + '\n')
+
+    def start(self, epic_dir, at, tasks=2, usage_=None):
+        return {'event': 'start', 'epic': epic_dir, 'tasks': tasks, 'at': at.isoformat(), 'usage': usage_ or {}}
+
+    def done(self, epic_dir, at, usage_=None):
+        return {'event': 'done', 'epic': epic_dir, 'at': at.isoformat(), 'usage': usage_ or {}}
+
+    def old_measurement(self, minutes=60, tasks=2, before=10, after=14):
+        """Before the approval: 30 min and 2 % of the weekly window per task by default."""
+        at = T0 - timedelta(hours=10)
+        return [self.start('old', at, tasks, usage(before)), self.done('old', at + timedelta(minutes=minutes), usage(after))]
+
+    def a_done(self):
+        return [self.start('a', T0 + timedelta(minutes=10)), self.done('a', T0 + timedelta(minutes=90))]
+
+    def next(self, epics, stdin_text=None, branches=(), fail=None, now=NOW, runner=None):
+        out, err = io.StringIO(), io.StringIO()
+        runner = runner or BoardRunner(epics, branches, fail)
+        self.runner = runner
+        stdin = io.StringIO(json.dumps(usage(10)) if stdin_text is None else stdin_text)
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'next'], run=runner, now=now, stdin=stdin)
+        return code, out.getvalue(), err.getvalue()
+
+    def result(self, epics, **kwargs):
+        code, out, err = self.next(epics, **kwargs)
+        self.assertEqual(0, code, err)
+        return json.loads(out)
+
+    def reason(self, epics, **kwargs):
+        result = self.result(epics, **kwargs)
+        self.assertIsNone(result['epic'])
+        return result['reason']
+
+    def abc(self):
+        return [epic(1, 'A', 'a'), epic(2, 'B', 'b'), epic(3, 'C', 'c')]
+
+    def test_no_night_file(self):
+        result = self.result(self.abc())
+        self.assertEqual({'epic': None, 'reason': 'brak zatwierdzonej listy', 'started': [], 'left': []}, result)
+        self.assertEqual([], self.runner.calls)
+
+    def test_night_over(self):
+        self.night(['a', 'b'])
+        result = self.result(self.abc(), now=UNTIL + timedelta(minutes=1))
+        self.assertEqual('noc minęła (07:00)', result['reason'])
+        self.assertIsNone(result['epic'])
+        self.assertEqual([], self.runner.calls)
+
+    def test_night_over_time_is_local_to_now(self):
+        self.night(['a'])
+        tz = timezone(timedelta(hours=1))
+        result = self.result(self.abc(), now=(UNTIL + timedelta(minutes=1)).astimezone(tz))
+        self.assertEqual('noc minęła (08:00)', result['reason'])
+
+    def test_exactly_until_is_not_over(self):
+        self.night(['a'])
+        self.assertIsNotNone(self.result(self.abc(), now=UNTIL)['epic'])
+
+    def test_unreadable_night_file_exits_2(self):
+        with open(os.path.join(self.state, 'night.json'), 'w') as f:
+            f.write('{')
+        code, out, err = self.next(self.abc())
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('night.json', err)
+
+    def test_first_epic_without_checks(self):
+        self.night(['a', 'b'])
+        result = self.result(self.abc(), stdin_text='')
+        self.assertEqual({'dir': 'a', 'id': 'A', 'issue': None, 'title': None, 'tasks': 2, 'minutes': None},
+                         result['epic'])
+        self.assertIsNone(result['reason'])
+        self.assertEqual(([], ['b']), (result['started'], result['left']))
+        self.assertEqual([['git', 'show', 'origin/main:docs/features/a/plan.md']], self.runner.calls)
+
+    def test_first_epic_ignores_events_before_approval(self):
+        self.night(['a', 'b'])
+        self.events(self.start('a', T0 - timedelta(hours=3)), *self.old_measurement())
+        result = self.result(self.abc())
+        self.assertEqual('a', result['epic']['dir'])
+        self.assertEqual(60, result['epic']['minutes'])
+
+    def test_previous_epic_without_done(self):
+        self.night(['a', 'b'])
+        self.events(self.start('a', T0 + timedelta(minutes=10)))
+        result = self.result(self.abc())
+        self.assertEqual({'epic': None, 'reason': 'a bez pomiaru done', 'started': ['a'], 'left': ['b']}, result)
+        self.assertEqual([], self.runner.calls)
+
+    def test_restarted_epic_without_later_done(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done(), self.start('a', T0 + timedelta(minutes=100)))
+        self.assertEqual('a bez pomiaru done', self.reason(self.abc()))
+
+    def test_list_done(self):
+        self.night(['a'])
+        self.events(*self.a_done())
+        result = self.result(self.abc())
+        self.assertEqual({'epic': None, 'reason': 'lista wykonana', 'started': ['a'], 'left': []}, result)
+
+    def test_returns_second_epic_with_estimate(self):
+        self.night(['a', 'b', 'c'])
+        self.events(*self.old_measurement(), *self.a_done())
+        result = self.result(self.abc())
+        self.assertEqual({'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title', 'tasks': 2, 'minutes': 80.0},
+                         result['epic'])
+        self.assertEqual((None, ['a'], ['c']), (result['reason'], result['started'], result['left']))
+
+    def test_board_is_read_after_the_first_epic(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done())
+        self.result(self.abc())
+        self.assertEqual(['git', 'fetch', 'origin', 'main'], self.runner.calls[0])
+
+    def test_epic_missing_from_board(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done())
+        result = self.result([epic(1, 'A', 'a')])
+        self.assertEqual({'epic': None, 'reason': 'B nie jest już przygotowany', 'started': ['a'], 'left': ['b']},
+                         result)
+
+    def test_epic_no_longer_prepared_with_reason(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done())
+        epics = [epic(1, 'A', 'a'), epic(2, 'B', 'b', tasks=None)]
+        self.assertEqual('B nie jest już przygotowany: brak spec.md i plan.md z manifestem na origin/main',
+                         self.reason(epics))
+
+    def test_epic_in_progress(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done())
+        self.assertEqual('B nie jest już przygotowany: w toku', self.reason(self.abc(), branches=['b']))
+
+    def test_no_measurement(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done())
+        with mock.patch.object(night_queue, 'estimate', return_value={'minutes': None, 'usage': {}}):
+            result = self.result(self.abc())
+        self.assertEqual(('brak pomiaru', None), (result['reason'], result['epic']))
+
+    def test_does_not_fit_before_until(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done())
+        now = UNTIL - timedelta(minutes=79)
+        self.assertEqual('B nie zdąży do 07:00', self.reason(self.abc(), now=now))
+
+    def test_fits_exactly_before_until(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.a_done())
+        self.assertEqual('b', self.result(self.abc(), now=UNTIL - timedelta(minutes=80))['epic']['dir'])
+
+    def test_usage_status_not_ok(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done())
+        for text, status in [('', 'unreadable'), ('garbage', 'unreadable'), ('{"status": "error"}', 'error'),
+                             ('{"status": "ok"}', 'unreadable')]:
+            with self.subTest(text=text):
+                self.assertEqual('stan limitów: %s' % status, self.reason(self.abc(), stdin_text=text))
+
+    def test_window_over_80(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.a_done())
+        reason = self.reason(self.abc(), stdin_text=json.dumps(usage(78.04)))
+        self.assertEqual('okno Weekly · all models: 78.0% + 4.0% > 80%', reason)
+
+    def test_exactly_80_allowed(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.a_done())
+        result = self.result(self.abc(), stdin_text=json.dumps(usage(76)))
+        self.assertEqual('b', result['epic']['dir'])
+
+    def test_window_without_measurement(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.a_done())
+        text = json.dumps(usage(10, extra_windows=[{'label': 'Session', 'percentUsed': 1, 'resetsAt': RESET}]))
+        self.assertEqual('okno Session bez pomiaru', self.reason(self.abc(), stdin_text=text))
+
+    def test_window_without_any_usage_measurement(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done())
+        self.assertEqual('okno %s bez pomiaru' % LABEL, self.reason(self.abc()))
+
+    def test_window_resetting_before_the_end_is_ignored(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.a_done())
+        soon = (NOW + timedelta(minutes=30)).isoformat()
+        text = json.dumps(usage(10, extra_windows=[{'label': 'Session', 'percentUsed': 99, 'resetsAt': soon}]))
+        self.assertEqual('b', self.result(self.abc(), stdin_text=text)['epic']['dir'])
+
+    def test_window_resetting_right_after_the_end_counts(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.a_done())
+        late = (NOW + timedelta(minutes=80, seconds=1)).isoformat()
+        text = json.dumps(usage(10, extra_windows=[{'label': 'Session', 'percentUsed': 99, 'resetsAt': late}]))
+        self.assertEqual('okno Session bez pomiaru', self.reason(self.abc(), stdin_text=text))
+
+    def test_failed_check_leaves_candidate_in_left(self):
+        self.night(['a', 'b', 'c'])
+        self.events(*self.a_done())
+        result = self.result(self.abc(), stdin_text='')
+        self.assertEqual((['a'], ['b', 'c']), (result['started'], result['left']))
+
+    def test_gh_failure_exits_1(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done())
+        code, out, err = self.next(self.abc(), fail=['gh', 'issue'])
+        self.assertEqual((1, ''), (code, out))
+        self.assertIn('boom', err)
+
+    def test_git_failure_for_first_epic_exits_1(self):
+        self.night(['a'])
+        code, out, err = self.next(self.abc(), fail=['git', 'show'])
+        self.assertEqual((1, ''), (code, out))
+        self.assertIn('boom', err)
+
+
+class AheadCliTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+
+    def measure(self):
+        os.makedirs(self.state, exist_ok=True)
+        start = {'event': 'start', 'epic': 'old', 'tasks': 2, 'at': T0.isoformat(), 'usage': {}}
+        done = {'event': 'done', 'epic': 'old', 'at': (T0 + timedelta(minutes=60)).isoformat(), 'usage': {}}
+        with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
+            f.write(json.dumps(start) + '\n' + json.dumps(done) + '\n')
+
+    def ahead(self, epics, branches=(), fail=None):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'ahead'], run=BoardRunner(epics, branches, fail), now=T0)
+        return code, out.getvalue(), err.getvalue()
+
+    def result(self, epics, **kwargs):
+        code, out, err = self.ahead(epics, **kwargs)
+        self.assertEqual(0, code, err)
+        return json.loads(out)
+
+    def test_measured(self):
+        self.measure()
+        result = self.result([epic(1, 'A', 'a', tasks=3), epic(2, 'B', 'b', tasks=2)])
+        self.assertEqual({'epics', 'minutes', 'full'}, set(result))
+        self.assertEqual({'dir': 'a', 'id': 'A', 'issue': 1, 'title': 'A: title', 'tasks': 3, 'minutes': 90.0},
+                         result['epics'][0])
+        self.assertEqual([('b', 2, 60.0)], [(e['dir'], e['tasks'], e['minutes']) for e in result['epics'][1:]])
+        self.assertEqual((150.0, False), (result['minutes'], result['full']))
+
+    def test_measured_full_at_540(self):
+        self.measure()
+        result = self.result([epic(1, 'A', 'a', tasks=18)])
+        self.assertEqual((540.0, True), (result['minutes'], result['full']))
+
+    def test_measured_just_below_540(self):
+        self.measure()
+        result = self.result([epic(1, 'A', 'a', tasks=17)])
+        self.assertEqual((510.0, False), (result['minutes'], result['full']))
+
+    def test_not_measured_one_epic_is_full(self):
+        result = self.result([epic(1, 'A', 'a', tasks=3)])
+        self.assertEqual([None], [e['minutes'] for e in result['epics']])
+        self.assertEqual((None, True), (result['minutes'], result['full']))
+
+    def test_empty_not_measured(self):
+        self.assertEqual({'epics': [], 'minutes': None, 'full': False}, self.result([]))
+
+    def test_empty_measured(self):
+        self.measure()
+        self.assertEqual({'epics': [], 'minutes': 0.0, 'full': False}, self.result([]))
+
+    def test_only_prepared_not_in_progress(self):
+        epics = [epic(1, 'A', 'a'), epic(2, 'B', 'b', tasks=None), epic(3, 'C', 'c'),
+                 (4, 'no prefix', '', None, 2)]
+        result = self.result(epics, branches=['a'])
+        self.assertEqual(['c'], [e['dir'] for e in result['epics']])
+
+    def test_gh_failure_exits_1(self):
+        code, out, err = self.ahead([epic(1, 'A', 'a')], fail=['gh', 'project'])
+        self.assertEqual((1, ''), (code, out))
+        self.assertIn('boom', err)
+
+    def test_bad_manifest_exits_2(self):
+        code, out, err = self.ahead([epic(1, 'A', 'a', tasks=0)])
         self.assertEqual((2, ''), (code, out))
 
 

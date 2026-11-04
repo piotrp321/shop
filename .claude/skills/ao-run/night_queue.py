@@ -6,6 +6,8 @@
   night_queue.py [--repo DIR] [--state DIR] done <dir>    (stdin: the `plan` object of get_usage)
   night_queue.py [--repo DIR] [--state DIR] propose [--until HH:MM]
   night_queue.py [--repo DIR] [--state DIR] approve [--until HH:MM] <dir>...
+  night_queue.py [--repo DIR] [--state DIR] next          (stdin: the `plan` object of get_usage)
+  night_queue.py [--repo DIR] [--state DIR] ahead
 
 scope: reads the `Zakres:` line from the header of an epic spec (the lines before the first `## ` heading) and prints
 one JSON line `{"scope": [path, ...]}`, exit 0. A missing, doubled or unreadable line, or an unreadable file, prints
@@ -20,6 +22,18 @@ propose: reads the backlog board (shared with next_epic.py) and prints one JSON 
 "in_progress": [{dir, id, issue}], "until": <iso>, "measured": <bool>}: the prepared epics that can run in one night.
 `until` is the next occurrence of HH:MM (default 07:00) local time. approve: recomputes the list and, when it equals
 the given dirs in order, writes <state>/night.json and prints it; otherwise exits 2.
+
+next: reads <state>/night.json and prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes} | null,
+"reason": <str|null>, "started": [dirs], "left": [dirs]}, exit 0 also when `epic` is null. The candidate is the first
+list epic without a start event since `approved_at`. Reasons, in order: no list, night over, an epic of the night
+without a later done, list done. The first epic of the night is returned without further checks (and without reading
+the board, so its `issue` and `title` are null and `id` is the directory in upper case). Later ones must pass: still
+prepared on the board and not in progress, a time estimate, now + estimate <= until, usage status `ok`, and every
+window resetting after now + estimate has a usage estimate and stays <= 80% after adding it.
+
+ahead: reads the board and prints {"epics": [{dir, id, issue, title, tasks, minutes}], "minutes": <sum|null>,
+"full": <bool>}: prepared epics not in progress. `full` is true when the sum reaches the night (540 minutes), or, when
+nothing is measured, when there is at least one epic.
 
 Exit codes: 0 success; 1 a `git`/`gh` command failed or returned unexpected JSON; 2 usage and state errors.
 """
@@ -365,6 +379,123 @@ def cmd_approve(args, run, now, stdin):
     return 0
 
 
+NIGHT_MINUTES = 540
+
+
+def read_night(state_dir):
+    path = os.path.join(os.path.expanduser(state_dir), NIGHT_FILE)
+    try:
+        with open(path, encoding='utf-8') as f:
+            night = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError, ValueError) as e:
+        raise StateError('nieczytelny plik %s: %s' % (path, getattr(e, 'strerror', None) or e))
+    try:
+        parse_time(night['approved_at'])
+        parse_time(night['until'])
+        if not isinstance(night['epics'], list) or not all(isinstance(d, str) for d in night['epics']):
+            raise ValueError('epics')
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise StateError('nieczytelny plik %s' % path)
+    return night
+
+
+def _next_result(epic_, reason, started, left):
+    return {'epic': epic_, 'reason': reason, 'started': started, 'left': left}
+
+
+def _percent(value):
+    return '%.1f' % round(value, 1)
+
+
+def _not_prepared(directory, entry):
+    """The reason of check 1: the epic is not on the board as prepared (`entry` is None when absent)."""
+    detail = None
+    if entry is not None:
+        detail = 'w toku' if entry['state'] == 'in_progress' else entry['reason']
+    return '%s nie jest już przygotowany%s' % (entry['id'] if entry else directory.upper(),
+                                                ': %s' % detail if detail else '')
+
+
+def _forecast_failure(name, minutes, usage_estimate, now, until, stdin):
+    """Checks 2-5 for a candidate with a time estimate `minutes`: the reason it may not start now, or None."""
+    if minutes is None:
+        return 'brak pomiaru'
+    end = now + timedelta(minutes=minutes)
+    if end > until:
+        return '%s nie zdąży do %s' % (name, until.astimezone(now.tzinfo).strftime('%H:%M'))
+    usage_now = _read_usage(stdin)
+    if usage_now['status'] != 'ok':
+        return 'stan limitów: %s' % usage_now['status']
+    for w in usage_now['windows']:
+        if parse_time(w['resetsAt']) <= end:
+            continue
+        if w['label'] not in usage_estimate:
+            return 'okno %s bez pomiaru' % w['label']
+        if w['percentUsed'] + usage_estimate[w['label']] > 80:
+            return 'okno %s: %s%% + %s%% > 80%%' % (w['label'], _percent(w['percentUsed']),
+                                                   _percent(usage_estimate[w['label']]))
+    return None
+
+
+def cmd_next(args, run, now, stdin):
+    night = read_night(args.state)
+    if night is None:
+        print(json.dumps(_next_result(None, 'brak zatwierdzonej listy', [], []), ensure_ascii=False))
+        return 0
+    approved, until, listed = parse_time(night['approved_at']), parse_time(night['until']), night['epics']
+    events = read_events(args.state)
+    since = [e for e in events if e['epic'] in listed and parse_time(e['at']) >= approved]
+    started = [d for d in listed if any(e['epic'] == d and e['event'] == 'start' for e in since)]
+    unstarted = [d for d in listed if d not in started]
+
+    def finish(epic_, reason):
+        after = unstarted if epic_ is None else unstarted[1:]
+        print(json.dumps(_next_result(epic_, reason, started, after), ensure_ascii=False))
+        return 0
+
+    if now > until:
+        return finish(None, 'noc minęła (%s)' % until.astimezone(now.tzinfo).strftime('%H:%M'))
+    for d in started:
+        last = [e for e in since if e['epic'] == d][-1]
+        if last['event'] != 'done':
+            return finish(None, '%s bez pomiaru done' % d)
+    if not unstarted:
+        return finish(None, 'lista wykonana')
+    directory = unstarted[0]
+    entry = None
+    if started:
+        entry = next((e for e in next_epic.board_epics(run) if e['dir'] == directory), None)
+        if entry is None or entry['state'] != 'prepared':
+            return finish(None, _not_prepared(directory, entry))
+    tasks = task_count(run, directory)
+    forecast = estimate(measurements(events), tasks)
+    candidate = {'dir': directory, 'id': entry['id'] if entry else directory.upper(),
+                 'issue': entry['number'] if entry else None, 'title': entry['title'] if entry else None,
+                 'tasks': tasks, 'minutes': forecast['minutes']}
+    if started:
+        reason = _forecast_failure(candidate['id'], forecast['minutes'], forecast['usage'], now, until, stdin)
+        if reason:
+            return finish(None, reason)
+    return finish(candidate, None)
+
+
+def cmd_ahead(args, run, now, stdin):
+    measured = measurements(read_events(args.state))
+    epics = []
+    for e in next_epic.board_epics(run):
+        if e['state'] == 'prepared':
+            tasks = task_count(run, e['dir'])
+            epics.append({'dir': e['dir'], 'id': e['id'], 'issue': e['number'], 'title': e['title'], 'tasks': tasks,
+                          'minutes': estimate(measured, tasks)['minutes']})
+    is_measured = estimate(measured, 1)['minutes'] is not None
+    total = sum(e['minutes'] for e in epics) if is_measured else None
+    full = total >= NIGHT_MINUTES if is_measured else bool(epics)
+    print(json.dumps({'epics': epics, 'minutes': total, 'full': full}, ensure_ascii=False))
+    return 0
+
+
 def main(argv=None, run=None, now=None, stdin=None):
     parser = argparse.ArgumentParser(description='Night queue of several epics')
     parser.add_argument('--repo', default='.')
@@ -379,6 +510,8 @@ def main(argv=None, run=None, now=None, stdin=None):
     for p in (propose_parser, approve_parser):
         p.add_argument('--until', default=DEFAULT_UNTIL)
     approve_parser.add_argument('dirs', nargs='+')
+    sub.add_parser('next', help='the next epic of the night list, or the reason there is none')
+    sub.add_parser('ahead', help='prepared epics with time estimates')
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:
@@ -388,7 +521,8 @@ def main(argv=None, run=None, now=None, stdin=None):
     run = run or next_epic.make_runner(args.repo)
     now = now or datetime.now().astimezone()
     try:
-        return {'start': cmd_start, 'done': cmd_done, 'propose': cmd_propose, 'approve': cmd_approve}[args.command](args, run, now, stdin)
+        return {'start': cmd_start, 'done': cmd_done, 'propose': cmd_propose, 'approve': cmd_approve,
+                'next': cmd_next, 'ahead': cmd_ahead}[args.command](args, run, now, stdin)
     except StateError as e:
         print('night_queue: %s' % e, file=sys.stderr)
         return 2
