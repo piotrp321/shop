@@ -1,5 +1,6 @@
 import type { components } from "@/api/schema";
 import { Card, CardContent } from "@/components/ui/card";
+import { AddToCartButton } from "@/cart/AddToCartButton";
 import { formatPrice } from "./format-price";
 import { ProductPhoto } from "./ProductPhoto";
 
@@ -38,6 +39,8 @@ export function ProductTile({
         {availability ? (
           <p data-testid="availability" className={`text-xs font-medium ${AVAILABILITY_LABELS[availability.level].className}`}>{AVAILABILITY_LABELS[availability.level].text}</p>
         ) : null}
+        {/* Without a label (the availability call failed) the button stays and the API decides. */}
+        {price && availability?.level !== "out_of_stock" ? <AddToCartButton productId={product.id} /> : null}
       </CardContent>
     </Card>
   );
