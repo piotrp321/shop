@@ -1,5 +1,5 @@
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 
 export type ApiClient = Client<paths>;
 
@@ -38,3 +38,54 @@ export async function loadAccountSession(): Promise<AccountSessionResult> {
 
 /** Body of the store's own `GET /api/cart/summary` (route handler in app/api/cart/summary). */
 export type CartSummaryBody = { itemCount: number; notice: "merge_truncated" | null };
+
+export type CartView = components["schemas"]["CartView"];
+
+/** Why a call to the store's cart endpoints did not give data. `detail` is the Polish text of the API, when there is one. */
+export type CartFailure = { status: "conflict" | "not_found" | "unauthorized" | "failed"; detail?: string };
+
+export type CartResult<T> = { status: "ok"; data: T } | CartFailure;
+
+async function callCart<T>(path: string, init: { method: string; body?: unknown } = { method: "GET" }): Promise<CartResult<T>> {
+  try {
+    const response = await fetch(path, {
+      method: init.method,
+      credentials: "same-origin",
+      cache: "no-store",
+      ...(init.body === undefined
+        ? {}
+        : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(init.body) }),
+    });
+    if (response.ok) {
+      return { status: "ok", data: (await response.json()) as T };
+    }
+    switch (response.status) {
+      case 401:
+        return { status: "unauthorized" };
+      case 404:
+      case 409: {
+        const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+        const detail = typeof body?.detail === "string" ? body.detail : undefined;
+        return { status: response.status === 404 ? "not_found" : "conflict", detail };
+      }
+      default:
+        return { status: "failed" };
+    }
+  } catch {
+    return { status: "failed" };
+  }
+}
+
+/** For the browser: the cart pages and buttons talk to the store's `/api/cart/*`, never to the API. */
+export const loadCart = () => callCart<CartView>("/api/cart");
+
+export const loadCartSummary = () => callCart<CartSummaryBody>("/api/cart/summary");
+
+export const addCartItem = (productId: string, quantity: number) =>
+  callCart<CartView>("/api/cart/items", { method: "POST", body: { productId, quantity } });
+
+export const changeCartItemQuantity = (productId: string, quantity: number) =>
+  callCart<CartView>(`/api/cart/items/${encodeURIComponent(productId)}`, { method: "PATCH", body: { quantity } });
+
+export const removeCartItem = (productId: string) =>
+  callCart<CartView>(`/api/cart/items/${encodeURIComponent(productId)}`, { method: "DELETE" });
