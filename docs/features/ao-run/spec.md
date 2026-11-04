@@ -68,7 +68,7 @@ Skill odmawia startu i mówi dlaczego, gdy:
    Push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Sesja nigdy nie merguje do `main`.
 6. **Pomiar.** Po wysłaniu raportu odbioru sesja uruchamia w tle (Bash w tle) pętlę, która co 5 minut sprawdza
    `gh pr view <końcowy PR> --json state` i kończy się przy `MERGED` albo `CLOSED`; jej zakończenie budzi sesję.
-   Użytkownik może też napisać w sesji, że zmergował. Po merge'u sesja pyta o minuty użytkownika (spec, blokery,
+   Użytkownik może też napisać w sesji, że zmergował: po potwierdzeniu `MERGED` sesja zatrzymuje pętlę. Po merge'u sesja pyta o minuty użytkownika (spec, blokery,
    triage, raport) i po zgodzie dopisuje komentarz do issue epiku: minuty, liczba interwencji z `ao report`, liczba
    ręcznych poprawek. PR zamknięty bez merge'u: sesja mówi o tym i nie przechodzi do punktu 7.
 7. **Następny epik.** Po merge'u końcowego PR albo na prośbę użytkownika (`/ao-run` bez argumentu) sesja uruchamia
@@ -76,8 +76,11 @@ Skill odmawia startu i mówi dlaczego, gdy:
    - `epic` jest: push „Zacząć epik `<ID>` (#`<nr>`)?”, a w rozmowie także pozycje `skipped` (np. epik wyżej na
      tablicy bez planu). Start dopiero po „tak” użytkownika w sesji: przebieg od punktu 1 dla nowego `<epik>`, z
      wszystkimi warunkami startu. Inna odpowiedź albo brak odpowiedzi: sesja niczego nie uruchamia.
-   - `epic` jest `null`: push z powodem (epik w toku albo brak przygotowanego epiku, z `skipped`), np. „Brak
-     przygotowanego epiku: VARIANTS (#89) bez spec.md i plan.md na main, następny krok `/prepare-epic`”.
+   - `epic` jest `null`: push (krótszy niż 200 znaków) z powodem: pierwsza pozycja `in_progress` albo pierwsza
+     `skipped` z liczbą pozostałych, np. „Brak przygotowanego epiku: VARIANTS (#89) bez spec.md i plan.md na main,
+     następny krok `/prepare-epic` (+2 inne)”; pełna lista w rozmowie. Jeśli `in_progress` to epik właśnie
+     zmergowanego PR, issue epiku jest nadal otwarte (brak `Closes #N`): sesja mówi to, prosi o zamknięcie issue
+     i o ponowne `/ao-run`.
 
 ## Czego skill nie robi
 
