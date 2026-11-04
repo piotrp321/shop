@@ -15,17 +15,19 @@ use Doctrine\DBAL\Types\Types;
  *
  * The ids are chosen by expires_at (an index range scan) and locked with FOR UPDATE SKIP LOCKED: commands that change
  * a cart lock its row first and may renew expires_at (touch), so a cart one of them holds is skipped, not waited
- * for. A cart renewed and committed after the statement began is re-checked by FOR UPDATE against its new version
+ * for. The ids are a MATERIALIZED CTE, so the locking select runs exactly once: as a subquery of the DELETE the
+ * planner could run it again (a semi-join rescan), and with SKIP LOCKED each run may pick other rows than LIMIT
+ * allows. A cart renewed and committed after the statement began is re-checked by FOR UPDATE against its new version
  * (READ COMMITTED) and left out; the outer condition repeats expires_at as a guard that a renewed cart is never
  * deleted.
  */
 final readonly class DbalExpiredCarts implements ExpiredCarts
 {
     private const string SQL = <<<'SQL'
-        DELETE FROM cart_cart
-        WHERE id IN (
+        WITH batch AS MATERIALIZED (
             SELECT id FROM cart_cart WHERE expires_at < :now ORDER BY expires_at, id LIMIT :limit FOR UPDATE SKIP LOCKED
-        ) AND expires_at < :now
+        )
+        DELETE FROM cart_cart c USING batch WHERE c.id = batch.id AND c.expires_at < :now
         SQL;
 
     public function __construct(private Connection $connection)
