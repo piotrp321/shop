@@ -102,6 +102,25 @@ trait CartEndpointTestTrait
         self::assertContains($propertyPath, array_column($problem['violations'], 'propertyPath'));
     }
 
+    /**
+     * A 422 whose `violations` are exactly the given pairs of property path and title, in order: each field gives
+     * one violation, in Polish.
+     *
+     * @param list<array{string, string}> $expected
+     * @param array<mixed>                $problem
+     */
+    private function assertViolations(array $expected, array $problem): void
+    {
+        $this->assertProblem(422, null, $problem);
+        self::assertIsArray($problem['violations'] ?? null);
+        $actual = [];
+        foreach ($problem['violations'] as $violation) {
+            self::assertIsArray($violation);
+            $actual[] = [$violation['propertyPath'] ?? null, $violation['title'] ?? null];
+        }
+        self::assertSame($expected, $actual);
+    }
+
     private function assertNoStore(): void
     {
         $cacheControl = $this->client->getResponse()->headers->get('Cache-Control');

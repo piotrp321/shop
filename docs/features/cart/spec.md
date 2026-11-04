@@ -280,7 +280,7 @@ Gość (bez tokena; token wysłany mimo to i niepoprawny daje 401, a gdy nie da 
 | `POST /api/v1/guest-carts` | 201 `CartView` (pusty), nagłówek `Location`; ciało nie jest czytane | |
 | `GET /api/v1/guest-carts/{cartId}` | 200 `CartView` | 404 |
 | `GET /api/v1/guest-carts/{cartId}/summary` | 200 `{itemCount}` | 404 |
-| `POST /api/v1/guest-carts/{cartId}/items`, body `{productId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo produkt; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`) `quantity` spoza 1–99, zły typ, brak klucza, zły UUID produktu |
+| `POST /api/v1/guest-carts/{cartId}/items`, body `{productId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo produkt; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`, komunikaty w punkcie „Komunikaty 422” niżej) |
 | `PUT /api/v1/guest-carts/{cartId}/items/{productId}`, body `{quantity: int}` | 200 `CartView` | jak wyżej oraz 404 `CartLineNotFound` |
 | `DELETE /api/v1/guest-carts/{cartId}/items/{productId}` | 200 `CartView` (brak linii: bez zmian) | 404 koszyk |
 
@@ -294,10 +294,28 @@ wystawcy tokenu: 503):
 | `POST /api/v1/me/cart/items` | 200 `CartView` | 401 oraz jak u gościa (404 tylko produkt) |
 | `PUT /api/v1/me/cart/items/{productId}` | 200 `CartView` | 401 oraz jak u gościa (404 produkt albo linia) |
 | `DELETE /api/v1/me/cart/items/{productId}` | 200 `CartView` | 401 |
-| `POST /api/v1/me/cart/merge`, body `{guestCartId: uuid}` | 200 `{cart: CartView, result: "merged" \| "already_merged" \| "nothing_to_merge", truncated: bool}` | 400, 401, 415, 422 (zły UUID, brak klucza) |
+| `POST /api/v1/me/cart/merge`, body `{guestCartId: uuid}` | 200 `{cart: CartView, result: "merged" \| "already_merged" \| "nothing_to_merge", truncated: bool}` | 400, 401, 415, 422 (z `violations`, jak niżej) |
 
 - Identyfikator w ścieżce (`cartId`, `productId`), który nie jest UUID (w dowolnej wielkości liter): 404, bo trasa nie
   pasuje. Typy ścisłe, bez rzutowania (liczba w napisie, ułamek: 422).
+- Komunikaty 422 (`violations[*].title`, `propertyPath` to nazwa pola). Wszystkie po polsku, bez danych wejściowych,
+  a jedno pole daje najwyżej jedno naruszenie (ograniczenia pola sprawdzane po kolei, `Assert\Sequentially`). Brak
+  klucza serializer zamienia na `null` (pola DTO są `mixed`, bez `REQUIRE_ALL_PROPERTIES`), a wymaga go
+  `Assert\NotNull`; pola nadal są `required` w OpenAPI, bez `nullable` i `default`:
+
+  | Pole (żądanie) | Przypadek | Komunikat |
+  |---|---|---|
+  | `productId` (dodanie) | brak klucza albo `null` | Identyfikator produktu jest wymagany. |
+  | `productId` | nie jest napisem albo jest niepustym napisem, który nie jest UUID | Identyfikator produktu musi być UUID. |
+  | `quantity` (dodanie, zmiana) | brak klucza albo `null` | Ilość jest wymagana. |
+  | `quantity` | nie jest liczbą całkowitą (napis, ułamek, `2.0`, wartość logiczna, tablica) | Ilość musi być liczbą całkowitą. |
+  | `quantity` | spoza 1–99 | Ilość musi wynosić od 1 do 99 szt. |
+  | `guestCartId` (scalenie) | brak klucza (także puste ciało) albo `null` | Identyfikator koszyka jest wymagany. |
+  | `guestCartId` | nie jest napisem albo jest niepustym napisem, który nie jest UUID | Identyfikator koszyka musi być UUID. |
+
+  Pusty napis `""` nie jest naruszeniem (`Assert\Uuid` pomija pusty napis). `productId: ""` przy dodaniu daje 404, jak produkt
+  niedostępny, a `guestCartId: ""` przy scaleniu daje 200 z `result: "nothing_to_merge"`, jak koszyk gościa, którego nie ma.
+
 - Scalony koszyk gościa odpowiada 404 jak nieznany: BFF reaguje na oba tak samo, więc format błędów
   (`type: about:blank`) się nie zmienia.
 - Klient zawsze działa na swoim koszyku (`sub` z tokena); identyfikatora koszyka klienta nie ma w ścieżce.
@@ -508,8 +526,7 @@ sztuk, koszyk `merged` nie ma linii.
 
 `apps/api/tests/Functional/Cart` (`GuestCartEndpointTest`, `CustomerCartEndpointTest`, `CustomerCartMergeEndpointTest`).
 Każdy endpoint: 200/201, 400 (zły JSON), 401 (`/me/cart…` bez tokena i z tokenem `backoffice`), 404 (nie-UUID,
-nieznany, wygasły i scalony koszyk gościa, nieznany produkt, brak linii), 409 (każda przyczyna), 415, 422 (ilość 0
-i 100, napis, ułamek, brak klucza), `Cache-Control: private, no-store`; `merge`: każdy `result` i `truncated`.
+nieznany, wygasły i scalony koszyk gościa, nieznany produkt, brak linii), 409 (każda przyczyna), 415, 422 (każdy przypadek tabeli komunikatów: brak klucza, `null`, zły typ, zły UUID, ilość spoza 1–99; asercja na dokładną listę `violations`), `Cache-Control: private, no-store`; `merge`: każdy `result` i `truncated`.
 
 ### Architektura
 
