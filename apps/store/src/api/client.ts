@@ -1,5 +1,5 @@
-import createClient, { type Client } from "openapi-fetch";
-import type { paths } from "./schema";
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { components, paths } from "./schema";
 
 export type ApiClient = Client<paths>;
 
@@ -7,9 +7,10 @@ export type ApiClient = Client<paths>;
  * The only place that talks to the API. Use it from the server only: `baseUrl` is the internal address.
  * `accessToken` adds a bearer header for endpoints that need a signed-in user.
  */
-export function createApiClient(options: { baseUrl: string; accessToken?: string }): ApiClient {
+export function createApiClient(options: { baseUrl: string; accessToken?: string; fetch?: ClientOptions["fetch"] }): ApiClient {
   return createClient<paths>({
     baseUrl: options.baseUrl,
+    fetch: options.fetch,
     headers: options.accessToken ? { Authorization: `Bearer ${options.accessToken}` } : undefined,
   });
 }
@@ -34,3 +35,72 @@ export async function loadAccountSession(): Promise<AccountSessionResult> {
     return { status: "unavailable" };
   }
 }
+
+/** Body of the store's own `GET /api/cart/summary` (route handler in app/api/cart/summary). */
+export type CartSummaryBody = { itemCount: number; notice: "merge_truncated" | null };
+
+export type CartView = components["schemas"]["CartView"];
+
+/** Why a call to the store's cart endpoints did not give data. `detail` is the Polish text of the API, when there is one. */
+export type CartFailure = { status: "conflict" | "not_found" | "unauthorized" | "failed"; detail?: string };
+
+export type CartResult<T> = { status: "ok"; data: T } | CartFailure;
+
+async function callCart<T>(path: string, init: { method: string; body?: unknown } = { method: "GET" }): Promise<CartResult<T>> {
+  try {
+    const response = await fetch(path, {
+      method: init.method,
+      credentials: "same-origin",
+      cache: "no-store",
+      ...(init.body === undefined
+        ? {}
+        : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(init.body) }),
+    });
+    if (response.ok) {
+      return { status: "ok", data: (await response.json()) as T };
+    }
+    switch (response.status) {
+      case 401:
+        return { status: "unauthorized" };
+      case 404:
+      case 409: {
+        const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+        const detail = typeof body?.detail === "string" ? body.detail : undefined;
+        return { status: response.status === 404 ? "not_found" : "conflict", detail };
+      }
+      default:
+        return { status: "failed" };
+    }
+  } catch {
+    return { status: "failed" };
+  }
+}
+
+/** For the browser: the cart pages and buttons talk to the store's `/api/cart/*`, never to the API. */
+export const loadCart = () => callCart<CartView>("/api/cart");
+
+export const loadCartSummary = () => callCart<CartSummaryBody>("/api/cart/summary");
+
+let lastWrite: Promise<unknown> = Promise.resolve();
+
+/**
+ * Runs the writes to the cart one after another. Two first additions of a guest started together would each create
+ * a guest cart, and the last cookie would win; started one after another, the second finds the cart of the first.
+ * A failed write does not hold back the next one.
+ */
+function queueWrite<T>(write: () => Promise<T>): Promise<T> {
+  const result = lastWrite.then(write, write);
+  lastWrite = result.catch(() => undefined);
+  return result;
+}
+
+export const addCartItem = (productId: string, quantity: number) =>
+  queueWrite(() => callCart<CartView>("/api/cart/items", { method: "POST", body: { productId, quantity } }));
+
+export const changeCartItemQuantity = (productId: string, quantity: number) =>
+  queueWrite(() =>
+    callCart<CartView>(`/api/cart/items/${encodeURIComponent(productId)}`, { method: "PATCH", body: { quantity } }),
+  );
+
+export const removeCartItem = (productId: string) =>
+  queueWrite(() => callCart<CartView>(`/api/cart/items/${encodeURIComponent(productId)}`, { method: "DELETE" }));
