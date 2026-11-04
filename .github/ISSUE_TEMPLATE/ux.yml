@@ -1,0 +1,53 @@
+name: Problem UX
+description: Problem użyteczności albo wyglądu
+labels: [ux]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Wypełnij wymagane pola. Zgłoszenie z brakami dostaje etykietę `needs-info` i nie idzie do przygotowania.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Środowisko
+      description: "Gdzie wystąpił problem: stos lokalny albo inne środowisko, gałąź lub commit, przeglądarka, konto i jego rola."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Kroki odtworzenia
+      description: "Jak dojść do ekranu, jeden krok w linii."
+      value: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Oczekiwane zachowanie albo wygląd
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Obecne zachowanie albo wygląd
+      description: "Opis i zrzut ekranu, także wersji mobilnej, jeśli dotyczy."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Kryterium akceptacji
+      description: "Po czym poznamy, że problem jest rozwiązany. Najlepiej jako test."
+    validations:
+      required: true
+  - type: textarea
+    id: unknowns
+    attributes:
+      label: Niewiadome
+      description: "Czego nie wiesz albo co wymaga decyzji. Wpisz „Brak”, jeśli nic."
+    validations:
+      required: false
