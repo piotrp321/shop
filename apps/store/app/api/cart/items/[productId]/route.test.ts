@@ -37,8 +37,22 @@ const LINE_MISSING = "Tej pozycji nie ma w koszyku.";
 
 const change = (options: Parameters<typeof cartRequest>[2] = { body: { quantity: 3 } }) => PATCH(cartRequest("PATCH", path, options), context);
 const remove = (options: Parameters<typeof cartRequest>[2] = {}) => DELETE(cartRequest("DELETE", path, options), context);
+const notAnId = { params: Promise.resolve({ productId: "abc" }) };
 
 describe("PATCH /api/cart/items/[productId]", () => {
+  it("answers 404 for the line without asking the API or touching the cookie when the product id is not a UUID", async () => {
+    const response = await PATCH(
+      cartRequest("PATCH", "/api/cart/items/abc", { body: { quantity: 3 }, cookie: signedCartCookie(GUEST_CART_ID) }),
+      notAnId,
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ detail: LINE_MISSING });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(setup.calls).toEqual([]);
+  });
+
   it.each([
     ["without Origin", { origin: null }],
     ["from another origin", { origin: "http://evil.example" }],
@@ -151,6 +165,19 @@ describe("PATCH /api/cart/items/[productId]", () => {
 });
 
 describe("DELETE /api/cart/items/[productId]", () => {
+  it("answers 404 for the line without asking the API or touching the cookie when the product id is not a UUID", async () => {
+    const response = await DELETE(
+      cartRequest("DELETE", "/api/cart/items/abc", { cookie: signedCartCookie(GUEST_CART_ID) }),
+      notAnId,
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ detail: LINE_MISSING });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(setup.calls).toEqual([]);
+  });
+
   it.each([
     ["without Origin", { origin: null }],
     ["from another origin", { origin: "http://evil.example" }],

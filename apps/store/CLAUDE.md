@@ -61,9 +61,13 @@ Klienta API generuje `make api-client` z katalogu głównego.
   UUID jest usuwana jak brak ciasteczka.
 - Żądania zmieniające (`POST`, `PATCH`, `DELETE`) wymagają `Origin` równego `STORE_URL`, a `POST` i `PATCH` także
   `Content-Type: application/json`; inaczej 403 bez wywołania API.
-- 404 zapisu w koszyku gościa może znaczyć „koszyk zniknął”, „brak pozycji” albo „brak produktu”. BFF nie zgaduje po
-  tekście `detail`, tylko pyta o `summary` koszyka: 404 oznacza koszyk, który zniknął (ciasteczko usuwane, dodanie
-  zakłada nowy koszyk i powtarza się raz, zmiana zwraca 404 pozycji), w przeciwnym razie 404 jest przekazywany.
+- `productId` spoza UUID w `/api/cart/items/[productId]` (PATCH i DELETE) dostaje 404 „Tej pozycji nie ma w koszyku.”
+  bez wywołania API i bez ruszania ciasteczek (API też odpowiedziałoby 404, który wyglądałby jak zniknięty koszyk).
+- 404 w koszyku gościa może znaczyć „koszyk zniknął”, „brak pozycji” albo „brak produktu”. BFF nie zgaduje po tekście
+  `detail`. Odczyt i usunięcie pozycji: 404 oznacza koszyk, który zniknął, więc ciasteczko jest usuwane, a odpowiedzią
+  jest pusty koszyk (bez sondy). Dodanie i zmiana pytają o `summary` koszyka: 404 oznacza koszyk, który zniknął
+  (ciasteczko usuwane, dodanie zakłada nowy koszyk i powtarza się raz, zmiana zwraca 404 pozycji), w przeciwnym razie
+  404 jest przekazywany.
 - UI: `AddToCartButton` w `ProductTile` (tylko przy cenie i poziomie dostępności innym niż `out_of_stock`, przy braku
   etykiety dostępności widoczny), `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
   (`CartPage`, Client Component ładujący `/api/cart`). Po każdej zmianie koszyka komponent ogłasza `itemCount` z

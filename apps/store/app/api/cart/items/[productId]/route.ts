@@ -1,4 +1,5 @@
-import { invalidBody, readJsonObject, refuseForeignWrite, runCartCommand } from "@/cart/bff";
+import { invalidBody, lineMissing, readJsonObject, refuseForeignWrite, runCartCommand } from "@/cart/bff";
+import { isUuid } from "@/cart/cookies";
 import { withCartDeps } from "@/cart/responses";
 
 type Context = { params: Promise<{ productId: string }> };
@@ -9,11 +10,14 @@ export const PATCH = withCartDeps<Context>(async (request, deps, { params }) => 
   if (refused) {
     return refused;
   }
+  const { productId } = await params;
+  if (!isUuid(productId)) {
+    return lineMissing();
+  }
   const body = await readJsonObject(request);
   if (!body || typeof body.quantity !== "number") {
     return invalidBody();
   }
-  const { productId } = await params;
   return runCartCommand(request, deps, { kind: "change", productId, quantity: body.quantity });
 });
 
@@ -24,5 +28,8 @@ export const DELETE = withCartDeps<Context>(async (request, deps, { params }) =>
     return refused;
   }
   const { productId } = await params;
+  if (!isUuid(productId)) {
+    return lineMissing();
+  }
   return runCartCommand(request, deps, { kind: "remove", productId });
 });

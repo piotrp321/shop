@@ -8,6 +8,9 @@ export const CART_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Whether the value has the shape of a UUID, the only shape of an id the API accepts. */
+export const isUuid = (value: string): boolean => UUID.test(value);
+
 export function cartCookieOptions(storeUrl: string) {
   return { ...cookieOptions(storeUrl), maxAge: CART_COOKIE_MAX_AGE_SECONDS } as const;
 }
@@ -18,5 +21,5 @@ export function cartCookieOptions(storeUrl: string) {
  */
 export function readCartId(signed: string | undefined, secret: string): string | null {
   const value = readSignedValue(signed, secret);
-  return value !== null && UUID.test(value) ? value : null;
+  return value !== null && isUuid(value) ? value : null;
 }

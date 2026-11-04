@@ -50,6 +50,12 @@ export async function readJsonObject(request: NextRequest): Promise<Record<strin
 export const invalidBody = () => json({ detail: INVALID_BODY }, 422);
 
 /**
+ * The 404 for a product id that is not a UUID. The API would answer 404 for it too, which the BFF could mistake for a
+ * cart that is gone, so such an id never reaches the API and the cookies stay as they are.
+ */
+export const lineMissing = () => json({ detail: LINE_MISSING }, 404);
+
+/**
  * Chooses the cart (the customer's with a session, otherwise the guest's from `store_cart`), runs the command on
  * it and answers for the browser: 200 with the data, 404, 409 and 422 of the API with their `detail`, 401 when the
  * session ended, 503 for everything else. Nothing here computes a price or a total.
