@@ -382,6 +382,7 @@ services:
       - ./e2e/tests:/app/tests:ro
       - ./e2e/support:/app/support:ro
       - ./e2e/playwright.config.ts:/app/playwright.config.ts:ro
+      - ./e2e/playwright.agent.config.ts:/app/playwright.agent.config.ts:ro
       - ./e2e/tsconfig.json:/app/tsconfig.json:ro
       - ./e2e/test-results:/app/test-results
 
