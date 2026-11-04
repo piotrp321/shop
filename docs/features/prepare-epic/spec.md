@@ -44,9 +44,10 @@ Odmowa startu, z powodem, bez zmian w repo:
 - gałąź `prepare/<katalog>` już jest lokalnie albo na `origin`;
 - drzewo robocze nie jest czyste.
 
-Ostrzeżenie i start dopiero po potwierdzeniu użytkownika: na `origin/main` jest już inny epik przygotowany,
-a nierozpoczęty, czyli `docs/features/<inny>/plan.md` z manifestem (blok ```` ```json ```` z `schema_version`)
-bez gałęzi `origin/epic/<inny>`. Zasada planu: przygotowujemy jeden epik do przodu.
+Ostrzeżenie i start dopiero po potwierdzeniu użytkownika: przygotowane, a nierozpoczęte epiki na `origin/main`
+(`docs/features/<inny>/plan.md` z manifestem bez gałęzi `origin/epic/<inny>`) wypełniają już noc, czyli
+`python3 .claude/skills/ao-run/night_queue.py ahead` zwraca `full: true`. Zasada planu: przygotowujemy tyle epików do
+przodu, ile mieści noc (krok 8). Bez pomiaru czasu z `/ao-run` to jeden epik do przodu.
 
 Epik poprawek: skill czyta każde issue wymienione w opisie epiku. Issue z `needs-info` albo zamknięte wypada
 z zakresu i trafia do sekcji „Poza zakresem” specyfikacji z powodem.
@@ -69,6 +70,18 @@ Praca toczy się na gałęzi `prepare/<katalog>` od `origin/main`.
      zasady projektu).
    - Specyfikacja ma linię `Issues: #N, …` z issue epiku i wszystkimi issues, które epik realizuje (`/ao-run`
      buduje z niej listę `Closes #N`). Epik poprawek: krótka specyfikacja, jedna sekcja na issue.
+   - Pod linią `Issues:` specyfikacja ma linię `Zakres: <ścieżka>, …` (lista na noc w `/ao-run` sprawdza z niej
+     rozłączność epików). Ścieżki w repo, bez `/` na początku i końcu, bez `..` i znaków `*?[`, rozdzielone
+     przecinkami, opcjonalnie w odwrotnych apostrofach:
+     - katalogi modułów, które epik zmienia (`apps/api/src/Catalog`, `apps/api/tests/Functional/Catalog`,
+       `apps/store/src/catalog`, `apps/admin/src/prices`);
+     - każdy istniejący plik spoza tych katalogów, który epik zmienia: kontrakt i wygenerowany klient
+       (`apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `apps/api/openapi-admin.json`,
+       `apps/admin/src/api/schema.d.ts`), wspólna konfiguracja, `CLAUDE.md` (główny i aplikacji), `docs/vision.md`,
+       specyfikacje innych funkcji, istniejące testy E2E;
+     - nowe pliki o własnych nazwach w katalogach wspólnych (migracje, nowy plik w `e2e/tests`) nie wchodzą;
+       własny `docs/features/<katalog>/` też nie (należy do zakresu zawsze).
+     Analityk zapisuje linię w szkicu, planner uzupełnia ją po podziale na zadania (pola `scope` manifestu).
 2. **Review szkicu.** `spec-critic` i `architecture-reviewer` równolegle, w jednej wiadomości, na pierwszym planie.
    Każdy dostaje numery issues i ścieżkę szkicu, bez rozumowania analityka ani cudzych wniosków.
 3. **Poprawki.** Analityk weryfikuje każde znalezisko w issue, kodzie i dokumentacji. Odrzucone wpisuje do
@@ -82,7 +95,8 @@ Praca toczy się na gałęzi `prepare/<katalog>` od `origin/main`.
    obu reviewerów na zmienionej specyfikacji. Kolejna runda pytań tylko wtedy, gdy odpowiedzi otworzyły nową
    istotną decyzję. Odpowiedzi nie są akceptacją.
 5. **Planner.** Zasady z `.claude/skills/planner/SKILL.md`: „Granice odpowiedzialności”, „Proces” kroki 1–6
-   i „Manifest”; `plan.md` w katalogu epiku. Walidator musi przejść. Wejściem jest szkic po krokach 3–4
+   i „Manifest”; `plan.md` w katalogu epiku. Walidator musi przejść, a `night_queue.py scope` przyjmuje linię
+   `Zakres:` szkicu. Wejściem jest szkic po krokach 3–4
    (akceptacja w kroku 6 obejmuje oba pliki); push, PR i merge prowadzi krok 7. Bez osobnej akceptacji planu przez
    użytkownika. Luka w specyfikacji wykryta przy podziale wraca do kroku 3 (techniczna) albo 4 (produktowa albo
    architektoniczna).
@@ -91,7 +105,7 @@ Praca toczy się na gałęzi `prepare/<katalog>` od `origin/main`.
      istotne decyzje DDD i architektoniczne), kryteria akceptacji, ryzyka; ścieżka pliku;
    - issues epiku;
    - rozmiar końcowego PR: liczba zadań, fale z walidatora, dotknięte aplikacje (`apps/api`, `apps/store`,
-     `apps/admin`, `e2e`, `infra`, `docs`);
+     `apps/admin`, `e2e`, `infra`, `docs`) i linia `Zakres:`;
    - pytanie: czy specyfikację akceptujesz i czy końcowy PR da się przejrzeć w jednym posiedzeniu.
 
    Odpowiedzi:
@@ -107,7 +121,7 @@ Praca toczy się na gałęzi `prepare/<katalog>` od `origin/main`.
    nie jest.
 7. **Publikacja.** Akceptacja z kroku 6 jest zgodą na merge tego jednego PR do `main`. Po akceptacji skill nie
    zmienia `spec.md` ani `plan.md`. Każda zmiana (także po czerwonym CI lub walidatorze) wraca do kroku 6.
-   - Walidator jeszcze raz, commit `docs(<katalog>): add the spec and task plan` (tylko `spec.md` i `plan.md`),
+   - Walidator i `night_queue.py scope` jeszcze raz, commit `docs(<katalog>): add the spec and task plan` (tylko `spec.md` i `plan.md`),
      push, PR do `main`.
    - Opis PR wymienia issues tylko w linii `Issues: #88, #80, …`, nigdy bezpośrednio po ID epiku (`CART-FIXES #88`
      zamyka issue słowem kluczowym „FIXES #88”), bez słów `Closes`, `Fixes`, `Resolves` (issues zamyka końcowy PR
