@@ -110,6 +110,118 @@ nelmio_api_doc:
                                     type: string
                                     description: ISO 4217 code.
                                     example: PLN
+                        # Response schemas of the cart (Cart\Application\View), checked against real responses by the
+                        # functional tests of the cart endpoints.
+                        CartView:
+                            type: object
+                            description: A cart with everything the store shows, computed by the API. The number of available units is never part of it.
+                            required: [id, lines, totals, hasExcludedLines]
+                            properties:
+                                id:
+                                    type: string
+                                    format: uuid
+                                    nullable: true
+                                    description: Id of the cart; null for a customer who has no cart yet.
+                                lines:
+                                    type: array
+                                    description: The lines in the order they were added.
+                                    items:
+                                        $ref: '#/components/schemas/CartLine'
+                                totals:
+                                    $ref: '#/components/schemas/CartTotals'
+                                hasExcludedLines:
+                                    type: boolean
+                                    description: Whether a line is not purchasable and so not part of `totals.gross`.
+                        CartLine:
+                            type: object
+                            required: [productId, product, quantity, unitPrice, lineTotal, state]
+                            properties:
+                                productId:
+                                    type: string
+                                    format: uuid
+                                product:
+                                    nullable: true
+                                    description: Null when Catalog no longer knows the product (`unavailable_product`).
+                                    allOf:
+                                        - $ref: '#/components/schemas/CartLineProduct'
+                                quantity:
+                                    type: integer
+                                    minimum: 1
+                                    maximum: 99
+                                unitPrice:
+                                    nullable: true
+                                    description: The current gross price; null without a current price.
+                                    allOf:
+                                        - $ref: '#/components/schemas/GrossAmount'
+                                lineTotal:
+                                    nullable: true
+                                    description: Unit price × quantity, only for a `purchasable` line.
+                                    allOf:
+                                        - $ref: '#/components/schemas/GrossAmount'
+                                state:
+                                    type: string
+                                    description: 'The first that applies: the product is unknown to Catalog, has no current price, has no available unit, has fewer available units than the quantity; otherwise purchasable.'
+                                    enum: [unavailable_product, no_price, out_of_stock, insufficient_stock, purchasable]
+                        CartLineProduct:
+                            type: object
+                            required: [name, image]
+                            properties:
+                                name:
+                                    type: string
+                                    example: Buty do biegania Puls 2 granatowe
+                                image:
+                                    nullable: true
+                                    description: The main image in the listing size, null when the product has no images.
+                                    allOf:
+                                        - $ref: '#/components/schemas/ProductImage'
+                        GrossAmount:
+                            type: object
+                            required: [gross, currency]
+                            properties:
+                                gross:
+                                    type: integer
+                                    description: Gross amount (VAT included) in grosze.
+                                    example: 19999
+                                currency:
+                                    type: string
+                                    enum: [PLN]
+                        CartTotals:
+                            type: object
+                            required: [gross, currency, itemCount]
+                            properties:
+                                gross:
+                                    type: integer
+                                    description: Sum of the purchasable lines in grosze, 0 for an empty cart.
+                                    example: 39998
+                                currency:
+                                    type: string
+                                    enum: [PLN]
+                                itemCount:
+                                    type: integer
+                                    description: Units of every line, purchasable or not (the counter in the header).
+                                    example: 2
+                        MergeResult:
+                            type: object
+                            description: The cart of the customer after a merge of a guest cart.
+                            required: [cart, result, truncated]
+                            properties:
+                                cart:
+                                    $ref: '#/components/schemas/CartView'
+                                result:
+                                    type: string
+                                    description: '`merged`: the guest lines moved; `already_merged`: the guest cart was merged before; `nothing_to_merge`: the guest cart is unknown, expired or a customer cart. Only `merged` changes anything.'
+                                    enum: [merged, already_merged, nothing_to_merge]
+                                truncated:
+                                    type: boolean
+                                    description: Whether a sum was cut to 99 units or a product of the guest skipped because the cart had 50 products; always false unless `merged`.
+                        CartSummary:
+                            type: object
+                            required: [itemCount]
+                            properties:
+                                itemCount:
+                                    type: integer
+                                    description: Units of every line of the cart.
+                                    example: 2
                         Problem: &problem
                             type: object
                             description: Problem details (RFC 9457), `application/problem+json`.

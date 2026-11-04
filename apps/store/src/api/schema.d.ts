@@ -4,6 +4,214 @@
  */
 
 export interface paths {
+    "/api/v1/me/cart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cart of the customer
+         * @description The cart with its lines, their states and the totals, all computed by the API. A customer without a cart gets an empty one with `id: null`, and none is created; an expired cart (180 days after its last change) is empty.
+         */
+        get: operations["getCustomerCart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/cart/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Number of units in the cart of the customer
+         * @description The counter of the header: the units of every line, in one read and without asking other modules; 0 without a cart.
+         */
+        get: operations["getCustomerCartSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/cart/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a product to the cart of the customer
+         * @description Adds a line, or adds the units to the line of the product; the first change creates the cart. The product must have a current price and enough available units (the number of units is never told); the cart holds at most 50 products and 99 units of one. Nothing is reserved.
+         */
+        post: operations["addCustomerCartItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/cart/items/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the quantity of a line of the cart of the customer
+         * @description Sets the quantity. A decrease and the same quantity are always possible; an increase needs a current price and enough available units, like an addition.
+         */
+        put: operations["changeCustomerCartItemQuantity"];
+        post?: never;
+        /**
+         * Remove a line of the cart of the customer
+         * @description Removes the line of the product; a cart without it is answered as it is, a customer without a cart gets the empty one and none is created.
+         */
+        delete: operations["removeCustomerCartItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/cart/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge a guest cart into the cart of the customer
+         * @description Moves the lines of the guest cart into the cart of the customer, in one transaction: the quantities of a product in both are added and cut to 99, a product of the guest beyond the 50th of the cart is skipped (either makes `truncated` true); price and availability are not checked. The guest cart is then merged and every later change of it is a 404. An expired cart of the customer is cleared first. A merged guest cart gives `already_merged`; an unknown or expired guest cart, or the id of a customer cart, gives `nothing_to_merge`; neither changes anything nor creates a cart, and `cart` is the cart as `GET /api/v1/me/cart` gives it.
+         */
+        post: operations["mergeGuestCart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/guest-carts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a guest cart
+         * @description A new, empty cart with a random id, which is also the key to it. It expires 30 days after its last change. No body is read.
+         */
+        post: operations["createGuestCart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/guest-carts/{cartId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guest cart
+         * @description The cart with its lines, their states and the totals, all computed by the API. Nothing is changed.
+         */
+        get: operations["getGuestCart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/guest-carts/{cartId}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Number of units in a guest cart
+         * @description The counter of the header: the units of every line, in one read and without asking other modules.
+         */
+        get: operations["getGuestCartSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/guest-carts/{cartId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a product to a guest cart
+         * @description Adds a line, or adds the units to the line of the product. The product must have a current price and enough available units (the number of units is never told); the cart holds at most 50 products and 99 units of one. Nothing is reserved.
+         */
+        post: operations["addGuestCartItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/guest-carts/{cartId}/items/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change the quantity of a line of a guest cart
+         * @description Sets the quantity. A decrease and the same quantity are always possible; an increase needs a current price and enough available units, like an addition.
+         */
+        put: operations["changeGuestCartItemQuantity"];
+        post?: never;
+        /**
+         * Remove a line of a guest cart
+         * @description Removes the line of the product; a cart without it is answered as it is.
+         */
+        delete: operations["removeGuestCartItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -182,6 +390,82 @@ export interface components {
              */
             currency: string;
         };
+        /** @description A cart with everything the store shows, computed by the API. The number of available units is never part of it. */
+        CartView: {
+            /**
+             * Format: uuid
+             * @description Id of the cart; null for a customer who has no cart yet.
+             */
+            id: string | null;
+            /** @description The lines in the order they were added. */
+            lines: components["schemas"]["CartLine"][];
+            totals: components["schemas"]["CartTotals"];
+            /** @description Whether a line is not purchasable and so not part of `totals.gross`. */
+            hasExcludedLines: boolean;
+        };
+        CartLine: {
+            /** Format: uuid */
+            productId: string;
+            /** @description Null when Catalog no longer knows the product (`unavailable_product`). */
+            product: components["schemas"]["CartLineProduct"] | null;
+            quantity: number;
+            /** @description The current gross price; null without a current price. */
+            unitPrice: components["schemas"]["GrossAmount"] | null;
+            /** @description Unit price × quantity, only for a `purchasable` line. */
+            lineTotal: components["schemas"]["GrossAmount"] | null;
+            /**
+             * @description The first that applies: the product is unknown to Catalog, has no current price, has no available unit, has fewer available units than the quantity; otherwise purchasable.
+             * @enum {string}
+             */
+            state: "unavailable_product" | "no_price" | "out_of_stock" | "insufficient_stock" | "purchasable";
+        };
+        CartLineProduct: {
+            /** @example Buty do biegania Puls 2 granatowe */
+            name: string;
+            /** @description The main image in the listing size, null when the product has no images. */
+            image: components["schemas"]["ProductImage"] | null;
+        };
+        GrossAmount: {
+            /**
+             * @description Gross amount (VAT included) in grosze.
+             * @example 19999
+             */
+            gross: number;
+            /** @enum {string} */
+            currency: "PLN";
+        };
+        CartTotals: {
+            /**
+             * @description Sum of the purchasable lines in grosze, 0 for an empty cart.
+             * @example 39998
+             */
+            gross: number;
+            /** @enum {string} */
+            currency: "PLN";
+            /**
+             * @description Units of every line, purchasable or not (the counter in the header).
+             * @example 2
+             */
+            itemCount: number;
+        };
+        /** @description The cart of the customer after a merge of a guest cart. */
+        MergeResult: {
+            cart: components["schemas"]["CartView"];
+            /**
+             * @description `merged`: the guest lines moved; `already_merged`: the guest cart was merged before; `nothing_to_merge`: the guest cart is unknown, expired or a customer cart. Only `merged` changes anything.
+             * @enum {string}
+             */
+            result: "merged" | "already_merged" | "nothing_to_merge";
+            /** @description Whether a sum was cut to 99 units or a product of the guest skipped because the cart had 50 products; always false unless `merged`. */
+            truncated: boolean;
+        };
+        CartSummary: {
+            /**
+             * @description Units of every line of the cart.
+             * @example 2
+             */
+            itemCount: number;
+        };
         /** @description Problem details (RFC 9457), `application/problem+json`. */
         Problem: {
             /** @example about:blank */
@@ -199,6 +483,35 @@ export interface components {
                 /** @example This is not a valid UUID. */
                 title: string;
             }[];
+        };
+        /** @description A product to add to the cart. */
+        AddCartItemRequest: {
+            /**
+             * Format: uuid
+             * @description Product id (UUID).
+             */
+            productId: string;
+            /**
+             * @description Units to add, from 1 to 99. The line may have at most 99 units.
+             * @example 1
+             */
+            quantity: number;
+        };
+        /** @description The new quantity of a line. */
+        ChangeCartItemQuantityRequest: {
+            /**
+             * @description The quantity, from 1 to 99.
+             * @example 3
+             */
+            quantity: number;
+        };
+        /** @description The guest cart to merge into the cart of the customer. */
+        MergeGuestCartRequest: {
+            /**
+             * Format: uuid
+             * @description Id of the guest cart (UUID).
+             */
+            guestCartId: string;
         };
         ListProductsQuery: {
             /** @default null */
@@ -255,6 +568,752 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getCustomerCart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cart. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getCustomerCartSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The number of units. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartSummary"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    addCustomerCartItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddCartItemRequest"];
+            };
+        };
+        responses: {
+            /** @description The cart after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product in Catalog (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description More than 99 units of the product, a 51st product, a product without a current price or available units, or more units than available (problem details with a Polish `detail`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A key is missing, of a wrong type, the quantity is out of 1–99 or the product id is not a UUID (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    changeCustomerCartItemQuantity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Product id of the line (UUID). */
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeCartItemQuantityRequest"];
+            };
+        };
+        responses: {
+            /** @description The cart after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such line, an id that is not a UUID, or an increase of a product Catalog no longer knows (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An increase of a product without a current price or available units, or above the available units (problem details with a Polish `detail`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The quantity is missing, not an integer or out of 1–99 (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeCustomerCartItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Product id of the line (UUID). */
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cart after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The product id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    mergeGuestCart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeGuestCartRequest"];
+            };
+        };
+        responses: {
+            /** @description The cart of the customer and how the merge ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeResult"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The guest cart id is missing, not a string or not a UUID (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createGuestCart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The empty cart; `Location` is its address. */
+            201: {
+                headers: {
+                    /** @description Address of the cart. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getGuestCart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cart id (UUID). */
+                cartId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cart. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such cart: unknown, expired or merged, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getGuestCartSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cart id (UUID). */
+                cartId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The number of units. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartSummary"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such cart: unknown, expired or merged, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    addGuestCartItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cart id (UUID). */
+                cartId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddCartItemRequest"];
+            };
+        };
+        responses: {
+            /** @description The cart after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such cart (unknown, expired or merged, or the id is not a UUID) or no such product in Catalog (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description More than 99 units of the product, a 51st product, a product without a current price or available units, or more units than available (problem details with a Polish `detail`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A key is missing, of a wrong type, the quantity is out of 1–99 or the product id is not a UUID (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    changeGuestCartItemQuantity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cart id (UUID). */
+                cartId: string;
+                /** @description Product id of the line (UUID). */
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeCartItemQuantityRequest"];
+            };
+        };
+        responses: {
+            /** @description The cart after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such cart (unknown, expired or merged, or an id is not a UUID), no such line, or an increase of a product Catalog no longer knows (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An increase of a product without a current price or available units, or above the available units (problem details with a Polish `detail`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The quantity is missing, not an integer or out of 1–99 (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeGuestCartItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cart id (UUID). */
+                cartId: string;
+                /** @description Product id of the line (UUID). */
+                productId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cart after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such cart: unknown, expired or merged, or an id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getCategoryTree: {
         parameters: {
             query?: never;

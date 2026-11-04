@@ -7,7 +7,8 @@ Zasady wspólne dla całego repo są w głównym `CLAUDE.md`, opis domeny w `doc
 
 Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `check` – PHPStan, Deptrac, PHP CS Fixer
-- `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ)
+- `test` – wszystkie testy, `test-unit` – tylko jednostkowe (bez Postgresa, Elasticsearch i RabbitMQ); dodatkowe
+  argumenty PHPUnit w `PHPUNIT_ARGS`, np. `make -C apps/api test-unit PHPUNIT_ARGS='--filter CartTest'`
 - `init` – migracje bazy deweloperskiej i `catalog:search-index:setup` (alias `products` i indeks, jeśli ich nie ma);
   idempotentny, wywołuje go `make up` po starcie usług
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
@@ -31,6 +32,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   konflikt zostaje w raporcie. Kod wyjścia: 0 – wszystko spójne albo naprawione, 1 – zostały rozbieżności (bez
   `--apply` znalezione; z `--apply` nienaprawione: dwa konflikty albo klasa bez stawki), 2 – przerwane błędem
   (np. niedostępna baza), naprawione wcześniej ceny zostają zmienione
+- `cart:purge-expired [--batch-size=1000]` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`) –
+  narzędzie uruchamiane świadomie (ręcznie albo z crona); nie wywołuje go `make init`, `make up` ani `make seed`,
+  a w MVP nie ma harmonogramu. Usuwa koszyki z `expires_at` w przeszłości (gości w każdym statusie i klientów) razem
+  z liniami (kaskada FK), partiami po `--batch-size` (domyślnie 1000) id po indeksie `expires_at`. Każda partia to
+  osobna komenda `PurgeExpiredCarts` na `command.bus`, czyli osobna transakcja, powtarzana do partii pustej;
+  koszyk zablokowany przez równoległą zmianę jest pomijany (`FOR UPDATE SKIP LOCKED`), a odnowiony nie jest usuwany.
+  Wypisuje każdą partię i sumę. Kod wyjścia: 0 – gotowe (także gdy nic nie wygasło), 1 – rozmiar partii nie jest
+  dodatnią liczbą całkowitą (bez zmian), 2 – przerwane błędem (np. niedostępna baza), usunięte wcześniej partie
+  zostają usunięte
 - `openapi` – eksport specyfikacji do `openapi.json` (sklep: endpointy publiczne i klienta)
   oraz `openapi-admin.json` (panel: `/api/v1/admin`). Zrzut idzie przez pliki tymczasowe, więc nieudany eksport
   kończy się błędem i nie zmienia ani nie obcina plików. CI sprawdza, że commitowane pliki są aktualne
@@ -48,6 +58,21 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   rollback do savepointu przy zagnieżdżonym dispatchu nie czyści `UnitOfWork`, więc `flush` wywołującego zapisałby
   wycofane zmiany; błąd bazy zamyka wspólny `EntityManager`; `find()` z `PESSIMISTIC_WRITE` na encji już obecnej
   w identity map nie odświeża jej stanu (ryzyko sprzedaży ponad stan); `ON CONFLICT` i tak wymaga SQL.
+- Wyjątek: Cart. Zapisuje przez rekordy Doctrine, ale każda komenda zaczyna od blokady wiersza koszyka przez ORM
+  (`find()` z `PESSIMISTIC_WRITE`). Rekord już obecny w identity map jest odświeżany pod blokadą
+  (`refresh()` z `PESSIMISTIC_WRITE`), a po nim jego linie: kaskada `refresh` Doctrine czytałaby (i blokowała) linie
+  przed wierszem koszyka, w odwrotnej kolejności niż inne transakcje. Koszyk klienta zakłada
+  `INSERT … ON CONFLICT DO NOTHING` przed blokadą (`lockOrCreateForCustomer`), bo naruszenie unikalności przy dwóch
+  równoległych pierwszych dodaniach zamknęłoby `EntityManager`; gdy koszyk zniknął między `INSERT` a blokadą
+  (usunął go `cart:purge-expired`), `lockOrCreateForCustomer` ponawia `INSERT` i blokadę raz. Wyjątek od blokady przez
+  ORM: `PurgeExpiredCarts` usuwa partię jednym `DELETE` przez DBAL z `FOR UPDATE SKIP LOCKED` (bez ORM i repozytorium).
+  Dwie blokady naraz bierze tylko scalenie
+  (`MergeGuestCart`), zawsze w kolejności: koszyk gościa, potem koszyk klienta, i zapisuje oba w jednej transakcji,
+  więc nie ma zakleszczeń, a koszyk gościa jest `merged` tylko po udanym przeniesieniu linii. Scalenie bez
+  przeniesienia (`nothing_to_merge`, `already_merged`) czyta koszyk klienta bez blokady, więc trzyma tylko blokadę
+  wiersza wskazanego jako koszyk gościa (może to być koszyk innego klienta). Odczyty (`GetCart`, `GetCartSummary`) idą przez DBAL,
+  bez blokady i bez transakcji. Linie są zapisywane w miejscu po produkcie, więc usunięcie i ponowne dodanie produktu
+  w jednej zmianie nie trafia na unikalny indeks.
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
@@ -69,6 +94,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   w `StockItemRepository::lockMany`, w kolejności rosnącego `product_id`; przyjęcie i korekta produktu bez stanu
   zakładają wiersz przez `lockOrCreate`, `INSERT … ON CONFLICT DO NOTHING` przed blokadą) i czytają stan od nowa po
   uzyskaniu blokady; zapis i tak podnosi wersję. Korekta z panelu blokuje wiersz i dodatkowo sprawdza wersję z widoku.
+- Koszyk nie ma optimistic locking ani wersji z widoku: zmiany szereguje blokada wiersza koszyka, dodanie zwiększa
+  ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
 - Odbiorcy zdarzeń muszą być idempotentni: to samo zdarzenie może przyjść więcej niż raz.
 - Zamówienie przechowuje kopię cen, rabatów i adresu z chwili złożenia, nie referencje.

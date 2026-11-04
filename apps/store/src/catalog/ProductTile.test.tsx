@@ -23,6 +23,32 @@ describe("ProductTile", () => {
     expect(screen.getByText("Produkt 1")).toBeTruthy();
   });
 
+  describe("the add to cart button", () => {
+    const product = makeProduct(1);
+    const price = { productId: product.id, gross: 12300, currency: "PLN" } as const;
+    const button = () => screen.queryByRole("button", { name: "Do koszyka" });
+
+    it.each([["in_stock"], ["low_stock"]] as const)("is shown for a product with a price that is %s", (level) => {
+      render(<ProductTile product={product} price={price} availability={{ productId: product.id, level }} sizes={SIZES} />);
+      expect(button()).not.toBeNull();
+    });
+
+    it("is shown when the availability could not be loaded (the API decides)", () => {
+      render(<ProductTile product={product} price={price} sizes={SIZES} />);
+      expect(button()).not.toBeNull();
+    });
+
+    it("is not shown for an out of stock product", () => {
+      render(<ProductTile product={product} price={price} availability={{ productId: product.id, level: "out_of_stock" }} sizes={SIZES} />);
+      expect(button()).toBeNull();
+    });
+
+    it.each([[undefined], ["in_stock"]] as const)("is not shown for a product without a price (availability %s)", (level) => {
+      render(<ProductTile product={product} availability={level && { productId: product.id, level }} sizes={SIZES} />);
+      expect(button()).toBeNull();
+    });
+  });
+
   describe("availability", () => {
     const productId = makeProduct(1).id;
 
