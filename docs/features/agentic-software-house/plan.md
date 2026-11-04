@@ -23,7 +23,7 @@ poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
 | 6 | Przygotowanie epiku jednym skillem `/prepare-epic` | zrobione |
 | 7 | Pierwszy epik przez cały proces | zrobione |
 | 8 | Nocna kolejka kilku epików | do zrobienia |
-| 9 | Agent tester i agent UX | do zrobienia |
+| 9 | Agent tester i agent UX | zrobione |
 | 10 | Przed publicznym demo: bezpieczeństwo i wydajność | do zrobienia |
 | 11 | Po MVP: release i monitoring | do zrobienia |
 
@@ -38,14 +38,14 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | Krytyk specyfikacji: braki, sprzeczności, przypadki brzegowe | `spec-critic` w `/prepare-epic` | działa |
 | | Architekt: review specyfikacji | `architecture-reviewer` w `/prepare-epic` | działa |
 | | Architekt: ADR, review architektury epiku | `architecture-reviewer` w `/integration` | działa |
-| | UX: ekrany, wersja mobilna, dostępność | agent UX | krok 9 |
+| | UX: ekrany, wersja mobilna, dostępność | `ux-reviewer` w `/sweep` i w `/integration` | działa |
 | Planowanie | Plan i zadania | `/planner`, w `/prepare-epic` | działa |
 | | Koordynacja: przebieg nocny, stan, PR | AO | działa |
 | | Kolejka epików: następny epik po merge'u | `/ao-run` w sesji z Remote Control | działa, sprawdzenie w kroku 7 |
 | Wytwarzanie | Developer: zadanie z TDD | `developer` w `/delivery` | działa |
 | | Code review zadania | `code-reviewer` w `/delivery` | działa |
 | Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
-| | Tester całego sklepu | agent tester | krok 9 |
+| | Tester całego sklepu | `tester` w `/sweep` | działa |
 | | Bezpieczeństwo i wydajność | ustalane w kroku 10 | krok 10 |
 | Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 11 |
 | | Monitoring → issues | Sentry i Grafana Cloud z `docs/vision.md` | krok 11 |
@@ -86,7 +86,7 @@ flowchart TB
 1. **Backlog: GitHub Issues** w `piotrp321/shop`.
    - Etykieta `epic` to funkcja z „Zakresu MVP”, `bug` to błąd, `ux` to problem użyteczności albo wyglądu,
      `tech-debt` to porządki w kodzie, bazie albo dokumentacji bez zmiany zachowania.
-   - Zgłaszają: użytkownik, agent tester i agent UX (krok 9). Zgłoszenia agentów mają etykietę `agent` i limit
+   - Zgłaszają: użytkownik, agent tester i agent UX. Zgłoszenia agentów mają etykietę `agent` i limit
      na jeden przebieg. Do backlogu trafiają dopiero po triage użytkownika.
    - Zgłoszenia `bug`, `ux` i `tech-debt` mają pola: środowisko, kroki odtworzenia (jeden krok w linii), wynik
      oczekiwany i faktyczny, kryterium akceptacji, niewiadome. Dla `bug` i `ux` jest formularz
@@ -125,7 +125,7 @@ flowchart TB
      i `Important` w epiku. Plik albo zmiana spoza `scope` zadania to zgłoszenie. `code-reviewer` sprawdza też,
      czy RED poprzedził implementację.
    - Przy epikach, które zmieniają `apps/store` albo `apps/admin`, `/integration` uruchamia też agenta UX
-     (krok 9). Problem z zakresu epiku jest znaleziskiem do naprawy, pozostałe zostają w raporcie jako uwagi.
+     (`ux-reviewer`). Problem z zakresu epiku jest znaleziskiem do naprawy, pozostałe zostają w raporcie jako uwagi.
 4. **Blokery.**
    - `BLOCKED` i powiadomienie w aplikacji Claude na telefonie tylko wtedy, gdy zadanie nie może iść dalej bez
      decyzji. Użytkownik odpowiada w sesji, która prowadzi przebieg, a ta wykonuje `ao answer`.
@@ -148,10 +148,10 @@ flowchart TB
      zamykają się same. Merge do `main` zostaje wyłącznie u użytkownika.
    - Po każdym epiku trzy liczby w komentarzu do issue epiku: minuty użytkownika (spec, blokery, triage, raport),
      liczba interwencji (z `ao report`) i liczba ręcznych poprawek.
-6. **Po merge'u (krok 9).** Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne
-   ścieżki z sekcji „Testy” w `docs/vision.md` i nową funkcję ze specyfikacji, jako klient i jako pracownik.
-   Przed założeniem zgłoszenia sprawdzają otwarte issues, żeby nie dublować. Zgłoszenia trafiają do triage
-   (punkt 1).
+6. **Po merge'u (`/sweep [epik]`).** Użytkownik uruchamia komendę po merge'u epiku.
+   Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne ścieżki z sekcji „Testy”
+   w `docs/vision.md` i nową funkcję ze specyfikacji, jako klient i jako pracownik. Przed zaproponowaniem zgłoszenia
+   sprawdzają otwarte issues, żeby nie dublować. Propozycje trafiają do triage (punkt 1).
 
 ## Kroki wdrożenia
 

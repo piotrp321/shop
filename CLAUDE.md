@@ -27,7 +27,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 - Wszystko działa w Dockerze. Nigdy nie uruchamiaj `php`, `composer`, `npm` ani `node` bezpośrednio na hoście.
 - Komendy uruchamiaj przez Makefile, który opakowuje `docker compose exec`:
   - Główny `Makefile` zarządza stosem i uruchamia wszystkie aplikacje:
-    `make up` / `make down` / `make logs`, `make seed`, `make check`, `make test`, `make e2e`.
+    `make up` / `make down` / `make logs`, `make seed`, `make check`, `make test`, `make e2e`,
+    `make e2e-agent AGENT_DIR=<katalog> [E2E_ARGS=...]` (skrypty agentów tester i UX, wyniki poza repo).
   - Każda aplikacja ma własny `Makefile` z tymi samymi podstawowymi celami (`check`, `test`)
     oraz swoimi (np. `make migrate` w api). Pracując w jednej aplikacji, używaj jej Makefile:
     `make -C apps/api check`.
@@ -135,8 +136,11 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   zadania pierwszej fali, a każde z nich realizuje `/delivery` jako osobny PR. Plan z `/planner` nie ma kroków
   implementacji.
   Po zmergowaniu zadań do `epic/<epik>` AO uruchamia `/integration` (globalny Architecture Review, adversarial QA
-  i bramki `make check`, `make test`, `make e2e` na całym diffie `origin/main...HEAD`); skill niczego nie commituje,
-  a jego wynik waliduje `.claude/skills/integration/integration_result.py`.
+  i bramki `make check`, `make test`, `make e2e` na całym diffie `origin/main...HEAD`); przy zmianach w `apps/store`
+  lub `apps/admin` dochodzi agent UX (`ux-reviewer`). Skill niczego nie commituje, a jego wynik waliduje
+  `.claude/skills/integration/integration_result.py`.
+- Po merge'u epiku użytkownik uruchamia `/sweep [epik]`: agenci `tester` i `ux-reviewer` przechodzą sklep na świeżym
+  stosie z `main`. Wynik to propozycje zgłoszeń do triage (etykiety `bug`/`ux` i `agent`), nie issues.
 - Orkiestrator sam rozstrzyga szczegóły implementacji (wpis `Ruling:` w ledgerze). Istotne decyzje DDD (agregaty,
   value objecty, granice modułów, persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury
   przedstawia użytkownikowi przed implementacją.
