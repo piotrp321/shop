@@ -120,7 +120,7 @@ class FormatEventTest(unittest.TestCase):
         self.assertEqual(self.fmt(event('final_pr_created', {'pr_number': 79})), 'CART: końcowy PR #79')
 
     def test_epic_done(self):
-        self.assertEqual(self.fmt(event('epic_done', {'why': 'merged'})), 'CART: epik DONE')
+        self.assertEqual(self.fmt(event('epic_done', {'why': 'merged'})), 'CART: końcowy PR zielony, gotowy do odbioru')
 
     def test_minor_types(self):
         usage = self.fmt(event('usage_warning', {'window': '5h', 'utilization': 0.91, 'threshold': 0.9}))
@@ -138,8 +138,8 @@ class FormatEventTest(unittest.TestCase):
         self.assertIsNone(self.fmt(event('task_created')))
 
     def test_label_falls_back_to_epic_id_then_ao(self):
-        self.assertEqual(ao_events.format_event(event('epic_done'), None), 'cart: epik DONE')
-        self.assertEqual(ao_events.format_event(event('epic_done', epic_id=None), None), 'AO: epik DONE')
+        self.assertEqual(ao_events.format_event(event('epic_done'), None), 'cart: końcowy PR zielony, gotowy do odbioru')
+        self.assertEqual(ao_events.format_event(event('epic_done', epic_id=None), None), 'AO: końcowy PR zielony, gotowy do odbioru')
 
     def test_one_line_and_limit_200(self):
         ev = event('status_changed', {'to': 'BLOCKED', 'blockers': ['a\nb\r\nc' + 'x' * 400]})
@@ -208,12 +208,12 @@ class WatchTest(unittest.TestCase):
     def test_from_start_reads_existing_lines(self):
         self.append(event('epic_done'))
         p = self.start('--from-start')
-        self.assertEqual(self.next_line(p), 'cart: epik DONE')
+        self.assertEqual(self.next_line(p), 'cart: końcowy PR zielony, gotowy do odbioru')
 
     def test_file_created_after_start_is_detected(self):
         p = self.start('--epic-label', 'X')
         self.append(event('epic_done'))
-        self.assertEqual(self.next_line(p), 'X: epik DONE')
+        self.assertEqual(self.next_line(p), 'X: końcowy PR zielony, gotowy do odbioru')
 
     def test_partial_last_line_is_one_message_once_completed(self):
         p = self.start()
@@ -223,7 +223,7 @@ class WatchTest(unittest.TestCase):
             time.sleep(1.5)
             self.assertTrue(p.lines.empty())
             f.write('"epic_id": "cart"}\n')
-        self.assertEqual(self.next_line(p), 'cart: epik DONE')
+        self.assertEqual(self.next_line(p), 'cart: końcowy PR zielony, gotowy do odbioru')
         time.sleep(1.5)
         self.assertTrue(p.lines.empty())
 

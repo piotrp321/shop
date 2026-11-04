@@ -42,7 +42,7 @@ Skill odmawia startu i mówi dlaczego, gdy:
    `ao answer <ID> --text "<odpowiedź>"` z jego słowami i, jeśli `ao run` się zakończył, uruchamia go ponownie.
    Inne zatrzymania (`FAILED`, `epic_blocked`, `queue_held`) sesja diagnozuje przez `ao status` i opisuje w pushu;
    `ao resume`, `ao release` i `ao epic resume` wykonuje tylko na polecenie użytkownika.
-5. **Raport odbioru.** Po `final_pr_created` i zielonym CI końcowego PR sesja czyta `ao report --epic <epik>`
+5. **Raport odbioru.** Po `epic_done` (AO ustawia go dopiero przy zielonym CI końcowego PR) sesja czyta `ao report --epic <epik>`
    i sekcję „Lista odbioru” z ostatniego raportu `/integration` i zostawia w rozmowie raport odbioru:
    - rekomendacja: „merge” albo „najpierw sprawdź: …” (każda pozycja „Sprawdź:” z listy odbioru, znaleziska bez naprawy,
      ujawnione luki TDD);

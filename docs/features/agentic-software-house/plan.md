@@ -110,12 +110,10 @@ flowchart TB
      `/integration` przenosi je do swojego raportu.
    - Powtarzający się bloker naprawiamy w `/brainstorm` albo w `CLAUDE.md`, nie w AO.
 5. **Odbiór (użytkownik).**
-   - Odbiór to przeczytanie raportu odbioru z `/ao-run` (rekomendacja „merge” albo „najpierw sprawdź: …”,
-     zbudowana z „Listy odbioru” raportu `/integration`) i merge. Przegląd według ryzyka, nie linia po linii.
-     Zaczyna się od sekcji „Lista odbioru” w raporcie `/integration`
-     (ścieżka raportu jest w opisie końcowego PR): dla każdej pozycji „OK” albo „Sprawdź”, czyli zmiany istniejących
-     testów, migracje, pliki spoza zakresów zadań, odstępstwa od specyfikacji i „Decyzje bez pytania”. Na koniec
-     główny scenariusz przeklikany na stosie.
+   - Odbiór to przeczytanie raportu odbioru z `/ao-run` i merge. Raport ma rekomendację „merge” albo „najpierw
+     sprawdź: …”, zbudowaną z „Listy odbioru” raportu `/integration` (ścieżka raportu jest w opisie końcowego PR):
+     dla każdej pozycji „OK” albo „Sprawdź”, czyli zmiany istniejących testów, migracje, pliki spoza zakresów zadań,
+     odstępstwa od specyfikacji i „Decyzje bez pytania”.
    - Błąd w zakresie epiku: poprawka przez PR do `epic/<epik>` (np. `/delivery` uruchomione ręcznie z linią
      `Gałąź docelowa PR: epic/<epik>`), zmergowany przez użytkownika po zielonym CI. AO traktuje nowy HEAD jako
      kod po przeglądzie: robi rundę `DELTA` `/integration`, a końcowy PR czeka na jej wynik. Potem odbiór od nowa.

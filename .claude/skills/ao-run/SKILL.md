@@ -35,7 +35,7 @@ poniższy blok dosłownie na początku **każdej** komendy Bash i **każdego** p
 
 ```bash
 SKILL_ROOT="$(git rev-parse --show-toplevel)"
-SHOP="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+SHOP="$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 AO_DIR="$HOME/Development/claude/agentic-orchestrator"
 AO_HOME="$HOME/.local/state/ao-<epik>"
 mkdir -p "$AO_HOME"
@@ -45,7 +45,7 @@ ao() { env $(env | sed -n 's/^\(CLAUDE[A-Za-z0-9_]*\)=.*/-u \1/p') PYTHONPATH="$
 - `SKILL_ROOT` to katalog roboczy tej sesji (może być worktree); tu leży `ao_events.py`, używany w `--notify-cmd`
   i w Monitorze.
 - `SHOP` to główny klon repo (nie worktree sesji); jest argumentem `--repo` i `--worktrees "$SHOP/.."` w AO i miejscem
-  uruchamiania `gh` (`cd "$SHOP"` przed `gh pr checks`, `gh issue comment`).
+  uruchamiania `gh` (`cd "$SHOP"` przed `gh issue comment`).
 - Funkcja `ao` usuwa ze środowiska AO zmienne `CLAUDE*` (jak w README AO).
 
 Najpierw próba, potem właściwe zgłoszenie (odmowa w próbie kończy skill):
@@ -93,23 +93,36 @@ Zapamiętaj identyfikator zadania tła: jego zakończenie budzi sesję.
 ## 5. Blokery i zatrzymania
 
 - **Bloker z pytaniem:** push z pytaniem już poszedł (krok 3). Czekaj na odpowiedź użytkownika w sesji (także z
-  telefonu). Przekaż ją jego słowami: `ao answer <ID> --text "<odpowiedź>"`. Nie odpowiadaj sam, nie parafrazuj, nie
-  uzupełniaj. Jeśli `run` się zakończył, uruchom go ponownie (krok 4), uzbrój Monitor, jeśli wygasł, i zrób `ao status` (krok 3).
+  telefonu). Przekaż ją jego słowami, w cytowanym heredoc, żeby `"`, `$` i odwrotne apostrofy przeszły bez zmian:
+
+  ```bash
+  ao answer <ID> --text "$(cat <<'ANSWER'
+  <słowa użytkownika>
+  ANSWER
+  )"
+  ```
+
+  Nie odpowiadaj sam, nie parafrazuj, nie uzupełniaj. Jeśli `run` się zakończył, uruchom go ponownie (krok 4), uzbrój Monitor, jeśli wygasł, i zrób `ao status` (krok 3).
 - **Inne zatrzymania** (`FAILED`, `epic_blocked`, `queue_held`): zdiagnozuj przez `ao status --epic <epik>`, opisz
   przyczynę w pushu. `ao resume`, `ao release` i `ao epic resume` wykonuj wyłącznie na wyraźne polecenie użytkownika.
 
 ## 6. Raport odbioru
 
-Po zdarzeniu `final_pr_created` sprawdź CI końcowego PR: `cd "$SHOP" && gh pr checks <nr>`. Gdy trwa, poczekaj; gdy czerwone,
-opisz to w pushu i w raporcie (rekomendacja „najpierw sprawdź”). Przy zielonym CI przeczytaj `ao report --epic <epik>`
-oraz sekcję „Lista odbioru” z ostatniego raportu `/integration`: plik z najwyższym numerem rundy
-`$AO_HOME/epics/<epik>/integration/round-N.md`. Zostaw w rozmowie raport odbioru:
+Zacznij na zdarzeniu `epic_done` albo gdy `ao status --epic <epik>` pokazuje `DONE` (po resynchronizacji lub po
+zakończeniu zadania tła AO). AO ustawia `DONE` dopiero przy zielonym CI końcowego PR i `MERGEABLE`, a czerwone CI
+naprawia sam (jeden rerun, potem `<EPIK>-REPAIR-n` i runda `DELTA`), więc nie czekaj na CI sam. Na `final_pr_created`
+wysyłasz tylko push z linkiem (krok 3). Przeczytaj `ao report --epic <epik>` oraz sekcję „Lista odbioru” z ostatniego
+raportu `/integration`: plik z najwyższym numerem rundy `$AO_HOME/epics/<epik>/integration/round-N.md`. Zostaw w
+rozmowie raport odbioru:
 
 - **Rekomendacja:** „merge” albo „najpierw sprawdź: …”, gdzie lista to każda pozycja „Sprawdź:” z listy odbioru,
   znaleziska bez naprawy i ujawnione luki TDD.
 - **Zakres, zadania i PR, interwencje, czas i koszt** z `ao report --epic <epik>`.
 - **Link do końcowego PR i lista `Closes #N`** do dopisania przez użytkownika: issue epiku i issues wymienione w spec
   epiku (`docs/features/<epik>/spec.md`).
+
+Gdy epik kończy się jako `BLOCKED` (np. `max_repairs`, `epic_timeout`) albo AO zatrzymał się bez `DONE`, nie buduj raportu
+odbioru: opisz ten stan i powiedz, co użytkownik musi rozstrzygnąć.
 
 Wyślij push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Nigdy nie merguj do `main`: robi to wyłącznie
 użytkownik.

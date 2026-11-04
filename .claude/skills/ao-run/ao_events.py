@@ -62,7 +62,7 @@ def _message(event):
     if kind == 'final_pr_created':
         return 'końcowy PR %s' % (data.get('url') or '#%s' % data.get('pr_number'))
     if kind == 'epic_done':
-        return 'epik DONE'
+        return 'końcowy PR zielony, gotowy do odbioru'
     if kind == 'usage_warning':
         return 'limit użycia %s: %s' % (data.get('window'), _percent(data.get('utilization')))
     if kind == 'attempt_stalled':
