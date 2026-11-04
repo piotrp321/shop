@@ -57,3 +57,44 @@ test("a guest adds a product from the list, changes its quantity on the cart pag
   await page.reload();
   await expect(page.getByText("Twój koszyk jest pusty")).toBeVisible();
 });
+
+test("two tabs of a guest without a cart add two products at the same time and both land in one cart", async ({ context }) => {
+  const [first, second] = [await context.newPage(), await context.newPage()];
+  await Promise.all([first.goto("/"), second.goto("/")]);
+  expect((await context.cookies()).some((cookie) => cookie.name === "store_cart")).toBe(false);
+
+  // The first two products of the list that are plainly in stock, one per tab.
+  const inStock = (page: typeof first) =>
+    page
+      .getByRole("main")
+      .getByRole("listitem")
+      .filter({ has: page.getByTestId("availability").getByText("Dostępny", { exact: true }) })
+      .filter({ has: page.getByRole("button", { name: "Do koszyka" }) });
+  const tileA = inStock(first).nth(0);
+  const tileB = inStock(second).nth(1);
+  await expect(tileA).toBeVisible();
+  await expect(tileB).toBeVisible();
+  const nameA = (await tileA.getByRole("heading", { level: 2 }).innerText()).trim();
+  const nameB = (await tileB.getByRole("heading", { level: 2 }).innerText()).trim();
+  expect(nameA).not.toBe(nameB);
+
+  await Promise.all([
+    tileA.getByRole("button", { name: "Do koszyka" }).click(),
+    tileB.getByRole("button", { name: "Do koszyka" }).click(),
+  ]);
+  await expect(tileA.getByText("Dodano do koszyka")).toBeVisible();
+  await expect(tileB.getByText("Dodano do koszyka")).toBeVisible();
+
+  // One cart for both tabs: after a reload each tab counts both products.
+  await first.reload();
+  await expect(first.getByTestId("cart-count")).toHaveText("2");
+
+  await first.goto("/cart");
+  const lines = first.getByRole("main").getByRole("listitem");
+  await expect(lines.filter({ has: first.getByRole("heading", { level: 2, name: nameA, exact: true }) })).toHaveCount(1);
+  await expect(lines.filter({ has: first.getByRole("heading", { level: 2, name: nameB, exact: true }) })).toHaveCount(1);
+  await expect(first.getByTestId("cart-item-count")).toHaveText("2");
+
+  await second.reload();
+  await expect(second.getByTestId("cart-count")).toHaveText("2");
+});

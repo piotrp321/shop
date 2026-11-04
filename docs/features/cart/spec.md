@@ -374,9 +374,18 @@ zwracana.
   z `detail`; 401 sesji; 403 `Origin` lub `Content-Type`; 503 niedostępne zależności lub API (także 400 i 415 API, które
   byłyby błędem BFF).
 - `src/api/client.ts` dostaje funkcje przeglądarki wołające `/api/cart/*` (`loadCart`, `loadCartSummary`, `addCartItem`,
-  `changeCartItemQuantity`, `removeCartItem`; jedyne miejsce `fetch`). Zapisy idą jeden po drugim w kolejce na poziomie
-  modułu (następny startuje po zakończeniu poprzedniego, także po błędzie), żeby dwa pierwsze dodania gościa nie założyły
-  dwóch koszyków; odczyty nie czekają w kolejce.
+  `changeCartItemQuantity`, `removeCartItem`; jedyne miejsce `fetch`). Zapisy idą jeden po drugim we wszystkich kartach
+  sklepu w przeglądarce, żeby równoczesne pierwsze dodania gościa nie założyły kilku koszyków:
+  - kolejka na poziomie modułu (`queueWrite`) ustala kolejność zapisów karty: następny startuje po zakończeniu
+    poprzedniego, także po błędzie;
+  - każdy zapis z kolejki, gdy przeglądarka ma `navigator.locks` (Web Locks API, tylko w bezpiecznym kontekście: HTTPS
+    albo `localhost`), trzyma blokadę `store-cart-write` (`navigator.locks.request`, tryb `exclusive`) od wysłania
+    żądania do końca odpowiedzi. Ciasteczko `store_cart` z odpowiedzi pierwszego dodania jest już zapisane, gdy rusza
+    zapis z innej karty, więc ten trafia do tego samego koszyka. Zapis, który się nie udał (błąd HTTP, błąd sieci),
+    zwalnia blokadę i nie wstrzymuje następnego. Odrzucenie samego `request` (np. `SecurityError`) daje wynik `failed`
+    bez wysłania żądania, a kolejka idzie dalej; funkcje zapisu nigdy nie odrzucają obietnicy;
+  - bez `navigator.locks` zapisy idą przez samą kolejkę karty (ograniczenie w „Ryzykach i ograniczeniach”);
+  - odczyty (`loadCart`, `loadCartSummary`) nie czekają ani w kolejce, ani na blokadę.
 
 ### UI
 
@@ -418,7 +427,7 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 | dodanie produktu bez ceny albo niedostępnego | 409 `ProductNotPurchasable`; w sklepie brak przycisku |
 | ilość większa niż dostępna | 409 bez liczby sztuk |
 | zmiana ilości z nieaktualnej karty | ostatni zapis wygrywa |
-| równoległe dodania z dwóch kart | wszystkie zapisane, bez utraty zmian |
+| równoległe dodania z dwóch kart | wszystkie zapisane w jednym koszyku, bez utraty zmian (zapisy kart czekają na siebie przez Web Locks API; bez niego pierwsze dodania gościa mogą założyć dwa koszyki, zob. „Ryzyka i ograniczenia”) |
 | zmiana koszyka gościa po scaleniu | 404, bez zmian; BFF usuwa `store_cart`: dodanie zakłada nowy koszyk gościa, odczyt i usunięcie dają pusty koszyk, zmiana 404 pozycji |
 | ponowne lub równoległe scalenie tego samego gościa | `already_merged`, pozycje przeniesione raz |
 | scalenie z wygasłym koszykiem klienta | stare pozycje klienta usunięte, zostają pozycje gościa |
@@ -523,13 +532,18 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   (poprzednia ilość), 404 linii (odświeżenie), 401, błąd wczytania z ponowieniem.
 - `CartBadge` (`CartBadge.test.tsx`, `events.test.ts`): liczba sztuk, aktualizacja po zmianie, ukrycie przy błędzie,
   komunikat scalenia.
-- `src/api/client.test.ts`: wywołania `/api/cart/*`, kolejka zapisów (odczyty w niej nie czekają).
+- `src/api/client.test.ts`: wywołania `/api/cart/*`, kolejka zapisów z dublerem `navigator.locks` i bez niego (każdy
+  test ustawia `navigator` przez `vi.stubGlobal`, bo Node ma własne `navigator.locks`); z dublerem każdy zapis biegnie
+  wewnątrz `request` z jedną nazwą blokady i czeka, gdy blokadę trzyma inna karta; odczyty nie czekają ani w kolejce,
+  ani na blokadę; błąd HTTP i błąd sieci nie wstrzymują następnego zapisu; odrzucony `request` daje `failed` bez
+  wywołania `fetch`.
 
 ### E2E (Playwright)
 
 - `cart-guest.spec.ts`: gość dodaje z listy produkt demo `in_stock`, licznik pokazuje 1, na `/cart` (po odświeżeniu
   koszyk zostaje) zmienia ilość na 3, wartość linii i suma są równe 3 × cena z kafelka, usuwa pozycję, koszyk jest
-  pusty także po odświeżeniu.
+  pusty także po odświeżeniu. Dwie karty jednego kontekstu przeglądarki bez `store_cart` klikają równocześnie
+  „Do koszyka” na dwóch różnych produktach; po odświeżeniu licznik pokazuje 2, a `/cart` ma oba produkty.
 - `cart-merge.spec.ts`: Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
   po zalogowaniu licznik pokazuje 3, ciasteczko `store_cart` znika, a koszyk ma A × 1 i B × 2; drugi kontekst
   przeglądarki zalogowany jako Jan widzi ten sam koszyk.
@@ -545,6 +559,15 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   obciążeniowymi.
 - Dodanie powtórzone po zgubionej odpowiedzi może zwiększyć ilość dwa razy (bez `Idempotency-Key`), a zmiana ilości
   z nieaktualnej karty nadpisuje nowszą. Obie konsekwencje są świadome.
+- Gwarancja jednego koszyka przy równoczesnych pierwszych dodaniach z kilku kart działa tylko w przeglądarkach
+  z Web Locks API w bezpiecznym kontekście (HTTPS albo `localhost`). Bez niego zostaje kolejka w obrębie karty:
+  równoczesne pierwsze dodania gościa z kilku kart mogą założyć kilka koszyków, a przeglądarka zachowa ciasteczko
+  ostatniego, więc pozycje z pozostałych znikną z widoku.
+- Blokada szereguje zapisy wszystkich kart przeglądarki: zawieszone żądanie jednej karty wstrzymuje zapisy pozostałych
+  do jego zakończenia. Zamknięcie karty w trakcie zapisu zwalnia blokadę.
+- Odczyty nie biorą blokady. Przy nieaktualnym `store_cart` (koszyk wygasły albo scalony) dodanie w jednej karcie
+  zakłada nowy koszyk i ustawia nowe ciasteczko, a równoległy odczyt (`/api/cart`, `/api/cart/summary`) w innej karcie
+  ze starym ciasteczkiem dostaje 404 i może je usunąć, jeśli jego odpowiedź przyjdzie później.
 - Dostępność w koszyku nie jest rezerwacją: wiąże dopiero rezerwacja przy zamówieniu.
 - `cart:purge-expired` nie ma harmonogramu w MVP: do czasu jego uruchomienia (ręcznie albo z crona) wygasłe koszyki
   zostają w bazie, choć zachowują się jak nieistniejące lub puste.

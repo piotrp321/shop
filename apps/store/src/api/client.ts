@@ -81,17 +81,35 @@ export const loadCart = () => callCart<CartView>("/api/cart");
 
 export const loadCartSummary = () => callCart<CartSummaryBody>("/api/cart/summary");
 
+/** The one Web Locks API lock that the cart writes of all tabs of the store in this browser take in turn. */
+const CART_WRITE_LOCK = "store-cart-write";
+
 let lastWrite: Promise<unknown> = Promise.resolve();
 
 /**
  * Runs the writes to the cart one after another. Two first additions of a guest started together would each create
  * a guest cart, and the last cookie would win; started one after another, the second finds the cart of the first.
- * A failed write does not hold back the next one.
+ * The queue orders the writes of this tab; each write also holds the cart lock of Web Locks API, when the browser has
+ * it (a secure context), so the writes of other tabs wait too. A failed write does not hold back the next one.
  */
-function queueWrite<T>(write: () => Promise<T>): Promise<T> {
-  const result = lastWrite.then(write, write);
+function queueWrite<T>(write: () => Promise<CartResult<T>>): Promise<CartResult<T>> {
+  const locked = () => underCartLock(write);
+  const result = lastWrite.then(locked, locked);
   lastWrite = result.catch(() => undefined);
   return result;
+}
+
+/** A lock request the browser refuses (e.g. a `SecurityError`) gives `failed` without sending the write. */
+async function underCartLock<T>(write: () => Promise<CartResult<T>>): Promise<CartResult<T>> {
+  const locks = globalThis.navigator?.locks as LockManager | undefined;
+  if (locks === undefined) {
+    return write();
+  }
+  try {
+    return await locks.request(CART_WRITE_LOCK, { mode: "exclusive" }, write);
+  } catch {
+    return { status: "failed" };
+  }
 }
 
 export const addCartItem = (productId: string, quantity: number) =>
