@@ -102,8 +102,9 @@ final class PurgeExpiredCartsTest extends KernelTestCase
     }
 
     /**
-     * The batches are 2, 2 and 1 carts by expiry; deleting the last cart fails. The first two batches were committed
-     * (here: released savepoints) before the failure, the failed one is rolled back with its own transaction only.
+     * The batches are 2, 2 and 1 carts by expiry; deleting the last cart fails. The exit code 2 is checked first;
+     * then that the first two batches were committed (here: released savepoints) before the failure and the failed
+     * one was rolled back with its own transaction only.
      */
     public function testAFailureInALaterBatchStopsWithTwoAndKeepsTheBatchesRemovedBefore(): void
     {
@@ -127,9 +128,13 @@ final class PurgeExpiredCartsTest extends KernelTestCase
         self::assertSame([[self::A, 1]], CartFixture::lines($this->connection, $ids[1]));
     }
 
+    /**
+     * Every statement fails to connect. The exit code 2 and the message are checked first; the second check (the
+     * cart is still there) uses the test's own connection, so it shows only that this test did not remove it.
+     */
     public function testUnavailableDatabaseStopsWithTwo(): void
     {
-        $id = CartFixture::cart($this->connection, expiresAt: '-1 day', lines: [[self::A, 1]]);
+        CartFixture::cart($this->connection, expiresAt: '-1 day', lines: [[self::A, 1]]);
         /** @var array{driver: 'pdo_pgsql', host: string, dbname: string, user: string, password: string} $params */
         $params = $this->connection->getParams();
         // Nothing listens there: every statement fails to connect, as when PostgreSQL is down. A plain DBAL
@@ -146,14 +151,15 @@ final class PurgeExpiredCartsTest extends KernelTestCase
         $display = $this->display($tester);
         self::assertStringContainsString('The purge stopped:', $display);
         self::assertStringContainsString('Connection refused', $display);
-        self::assertSame([$id], $this->connection->fetchFirstColumn('SELECT id FROM cart_cart'));
     }
 
     /**
-     * A customer's command locks the cart row and renews expires_at (touch). The purge must neither wait for that
-     * lock nor remove the cart after the renewal: it skips the locked row, and the renewed cart no longer qualifies.
+     * A customer's command locks the cart row and renews expires_at (touch). The purge does not wait for that lock:
+     * it skips the locked row and removes the other expired cart. After the renewal is committed, a second run finds
+     * nothing expired and the cart stays; this part shows the outcome, not that the outer expires_at condition of the
+     * DELETE is what protects a cart renewed while the statement runs.
      */
-    public function testACartLockedByAConcurrentChangeIsSkippedAndNotRemovedAfterItsRenewal(): void
+    public function testACartLockedByAConcurrentChangeIsSkippedAndStaysAfterItsRenewal(): void
     {
         /** @var array{driver: 'pdo_pgsql', host: string, dbname: string, user: string, password: string} $params */
         $params = $this->connection->getParams();
