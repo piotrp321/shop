@@ -172,10 +172,13 @@ Epik z listy nocy: po uruchomieniu pętli przejdź do „Kolejnego epiku” w se
 ## 7. Pomiar po merge'u
 
 Stan końcowego PR to `MERGED` albo `CLOSED` (wynik pętli z sekcji 6 albo `gh pr view`). Przy `CLOSED` powiedz o tym
-użytkownikowi i nie przechodź do sekcji 8. Przy `MERGED` zapytaj o jego minuty (spec, blokery, triage, raport). Po jego zgodzie dopisz komentarz do
+użytkownikowi, bez komentarza z pomiarem, i nie przechodź do sekcji 8 (epik z listy nocy: reguła niżej). Przy `MERGED` zapytaj o jego minuty (spec, blokery, triage, raport). Po jego zgodzie dopisz komentarz do
 issue epiku (`cd "$SHOP" && gh issue comment <nr>`): minuty, liczba interwencji z `ao report` i liczba ręcznych poprawek. Bez zgody
-niczego nie komentuj. Potem sekcja 8. Epik z listy nocy: sekcja 8 dopiero wtedy, gdy końcowy PR każdego epiku nocy jest
-`MERGED` albo `CLOSED`.
+niczego nie komentuj. Potem sekcja 8.
+
+Epik z listy nocy: po `MERGED` albo `CLOSED` (z regułami wyżej) przejdź do sekcji 8 dopiero wtedy, gdy końcowy PR
+każdego epiku uruchomionego tej nocy jest `MERGED` albo `CLOSED`, bez względu na to, który zamknął się ostatni. `CLOSED`
+nie blokuje sekcji 8 i sam jej nie uruchamia.
 
 ## 8. Następny epik
 
@@ -259,8 +262,8 @@ Wyjście: `epic` (`dir`, `id`, `issue`, `title`, `tasks`, `minutes`) albo `null`
   `/ao-run --noc`.
 
 **Rano.** Użytkownik odbiera każdy epik osobno: raport odbioru z sekcji 6 i pętla na jego końcowy PR, potem sekcja 7
-dla każdego zmergowanego. Sekcję 8 wykonaj dopiero wtedy, gdy końcowy PR każdego epiku nocy jest `MERGED` albo
-`CLOSED`.
+dla każdego (`CLOSED`: tylko informacja, bez komentarza z pomiarem). Sekcję 8 wykonaj raz, gdy końcowy PR każdego
+epiku uruchomionego tej nocy jest `MERGED` albo `CLOSED`, bez względu na to, który zamknął się ostatni.
 
 ## Czego nie robisz
 
