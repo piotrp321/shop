@@ -190,10 +190,19 @@ Jedna transakcja `command.bus`:
 ### Czyszczenie (`cart:purge-expired`)
 
 - Usuwa koszyki z `expires_at < now` (gości w każdym statusie i klientów) partiami po 1000 id po indeksie
-  `expires_at`, każda partia w osobnej transakcji; linie usuwa kaskada.
+  `expires_at` (opcja `--batch-size`), każda partia w osobnej transakcji; linie usuwa kaskada. `command.bus` otacza
+  handler jedną transakcją, więc `PurgeExpiredCarts(batchSize)` usuwa jedną partię i zwraca jej liczbę, a komenda
+  konsoli wysyła ją w pętli, aż partia będzie pusta.
+- Współbieżność: komendy zmieniające koszyk blokują jego wiersz i odnawiają `expires_at` klienta (`touch`), więc
+  partia wybiera id przez `FOR UPDATE SKIP LOCKED` (zablokowany koszyk jest pomijany, nie czekamy) i powtarza warunek
+  `expires_at < now` w `DELETE`: odnowiony koszyk nie jest usuwany. Odwrotna kolejność: koszyk klienta usunięty
+  przez czyszczenie między `INSERT … ON CONFLICT DO NOTHING` (który go pominął) a blokadą w `lockOrCreateForCustomer`
+  nie kończy komendy klienta błędem. Blokada nie znajduje wiersza, więc `lockOrCreateForCustomer` raz powtarza
+  `INSERT` i blokadę (po zatwierdzeniu czyszczenia `INSERT` w READ COMMITTED dodaje nowy wiersz), a pierwsza zmiana
+  wygasłego koszyka klienta udaje się i zaczyna od pustego koszyka. Drugie chybienie to `LogicException`.
 - Uruchamiane świadomie (ręcznie albo z crona). Nie wywołują go `make init`, `make up` ani `make seed`.
-- Kod wyjścia: 0 – sukces (także nic do usunięcia), 2 – przerwane błędem (np. niedostępna baza); usunięte
-  wcześniej partie zostają usunięte.
+- Kod wyjścia: 0 – sukces (także nic do usunięcia), 1 – rozmiar partii nie jest dodatnią liczbą całkowitą (bez
+  zmian), 2 – przerwane błędem (np. niedostępna baza); usunięte wcześniej partie zostają usunięte.
 
 ## Warstwa aplikacji
 
@@ -206,7 +215,7 @@ Komendy (`command.bus`), każda zwraca `CartView`, chyba że opisano inaczej:
   - `AddCartItem` i zwiększenie w `ChangeCartItemQuantity`: produkt nieznany Catalogowi (`ProductCatalog`) to
     `ProductNotFound` (404); `ProductOffer` z `CartPrices` i `StockAvailability`.
 - `MergeGuestCart(customerId, guestCartId)` → `MergeResult {cart: CartView, result, truncated}`.
-- `PurgeExpiredCarts(batchSize)` → liczba usuniętych koszyków.
+- `PurgeExpiredCarts(batchSize)` → liczba koszyków usuniętych w jednej partii.
 
 Zapytania (`query.bus`):
 - `GetCart(cartRef)` → `CartView`. Koszyk klienta bez rekordu albo wygasły: pusty widok z `id = null` dla klienta

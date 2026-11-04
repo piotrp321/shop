@@ -56,8 +56,25 @@ final readonly class DoctrineCartRepository implements CartRepository
      * PostgreSQL makes an insert of a customer id that another, uncommitted transaction inserted wait for it; once
      * that one ends, the insert either adds the row (the other rolled back) or skips it, and the lock reads the row
      * as the other committed it.
+     *
+     * The row found may be an expired cart that cart:purge-expired deletes (and commits) between the insert and the
+     * lock; the lock then finds nothing. That change of the customer is still the first change of an expired cart,
+     * so the insert and the lock are repeated once: in READ COMMITTED the insert now adds a new row. A second miss
+     * is not expected (the purge deletes only expired carts, and the new one is not) and stays a LogicException.
      */
     public function lockOrCreateForCustomer(string $customerId, \DateTimeImmutable $now): Cart
+    {
+        for ($attempt = 1; $attempt <= 2; ++$attempt) {
+            $cart = $this->insertAndLockForCustomer($customerId, $now);
+            if (null !== $cart) {
+                return $cart;
+            }
+        }
+
+        throw new \LogicException('A customer cart just created or found is not stored.');
+    }
+
+    private function insertAndLockForCustomer(string $customerId, \DateTimeImmutable $now): ?Cart
     {
         $new = Cart::createForCustomer(CartId::generate(), $customerId, $now);
         $this->entityManager->getConnection()->executeStatement(
@@ -76,7 +93,7 @@ final readonly class DoctrineCartRepository implements CartRepository
             ['created_at' => Types::DATETIMETZ_IMMUTABLE, 'updated_at' => Types::DATETIMETZ_IMMUTABLE, 'expires_at' => Types::DATETIMETZ_IMMUTABLE],
         );
 
-        return $this->lockForCustomer($customerId) ?? throw new \LogicException('A customer cart just created or found is not stored.');
+        return $this->lockForCustomer($customerId);
     }
 
     public function add(Cart $cart): void

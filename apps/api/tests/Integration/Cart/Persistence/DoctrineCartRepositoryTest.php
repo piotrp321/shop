@@ -18,6 +18,8 @@ use Doctrine\DBAL\Configuration as DbalConfiguration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Exception\DriverException;
+use Doctrine\DBAL\LockMode;
+use Doctrine\ORM\Decorator\EntityManagerDecorator;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -249,6 +251,48 @@ final class DoctrineCartRepositoryTest extends KernelTestCase
         $this->connection->beginTransaction();
         self::assertNull($this->repository->lock(CartId::fromString($id)));
         $this->connection->rollBack();
+    }
+
+    /**
+     * The expired cart of the customer is removed by the purge (committed) after the INSERT … ON CONFLICT skipped
+     * and the id was read, and before the lock is taken. The change of the customer must still succeed: the
+     * insert is repeated, and it adds a new cart.
+     */
+    public function testLockOrCreateForCustomerCreatesANewCartWhenThePurgeRemovedTheFoundOneBeforeTheLock(): void
+    {
+        $other = $this->committingConnection();
+        $purged = CartFixture::cart($other, customerId: 'kc-sub-purged', expiresAt: '-1 day', lines: [[self::P1, 2]]);
+        $this->committedCarts[] = $purged;
+        $removeOnFirstLock = true;
+        $entityManager = new class($this->entityManager, static function () use (&$removeOnFirstLock, $other, $purged): void {
+            if ($removeOnFirstLock) {
+                $removeOnFirstLock = false;
+                $other->executeStatement('DELETE FROM cart_cart WHERE id = ?', [$purged]);
+            }
+        }) extends EntityManagerDecorator {
+            public function __construct(EntityManagerInterface $wrapped, private readonly \Closure $beforeFind)
+            {
+                parent::__construct($wrapped);
+            }
+
+            public function find(string $className, mixed $id, LockMode|int|null $lockMode = LockMode::NONE, ?int $lockVersion = null): ?object
+            {
+                ($this->beforeFind)();
+
+                return parent::find($className, $id, $lockMode, $lockVersion);
+            }
+        };
+        $now = new \DateTimeImmutable('2026-11-03 12:00:00+00:00');
+
+        $this->connection->beginTransaction();
+        $cart = new DoctrineCartRepository($entityManager)->lockOrCreateForCustomer('kc-sub-purged', $now);
+        $this->connection->commit();
+
+        self::assertFalse($removeOnFirstLock, 'The cart was removed between the read of its id and the lock.');
+        self::assertFalse($cart->id()->equals(CartId::fromString($purged)));
+        self::assertSame('kc-sub-purged', $cart->owner()->customerId());
+        self::assertSame([], self::lines($cart));
+        self::assertSame([$cart->id()->toString()], $this->connection->fetchFirstColumn('SELECT id FROM cart_cart WHERE customer_id = ?', ['kc-sub-purged']));
     }
 
     private function lockedCart(CartId $id): Cart
