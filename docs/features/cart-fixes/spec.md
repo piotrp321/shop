@@ -170,7 +170,7 @@ i `match` stanów w `CartViewBuilder` (`apps/api/src/Cart/Application/View/CartV
 3. W kodzie Cart nie ma innego miejsca, które porównuje ilość z dostępnością albo sprawdza brak ceny dla stanu linii
    lub błędu zakupu.
 4. `docs/features/cart/spec.md` (sekcje „Value objecty” i „Widok koszyka”) i docblock `CartViewBuilder` („The one
-   place of the rules…”) wskazują `ProductOffer` jako jedyne miejsce reguły zakupu.
+   place of the totals of a cart…”) wskazują `ProductOffer` jako jedyne miejsce reguły zakupu.
 
 ## #83: specyfikacja koszyka a trzy zachowania BFF i klienta
 
