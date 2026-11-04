@@ -157,7 +157,8 @@ od punktu 1 bez pytania „Zacząć epik?”. W punkcie 1 nocą zasilanie z bate
 a Remote Control jest potwierdzone przy liście. Gdy `epic` jest `null` albo punkt 1 odmawia, noc się kończy: push
 „Noc: gotowe A, B; C nie ruszył: <powód>” (do 200 znaków), pozostałe epiki listy nie ruszają, a `night.json`
 przestaje obowiązywać (następna noc to nowa lista). Epik nocy, który kończy się bez `DONE` (`BLOCKED`, `FAILED`),
-też kończy noc: następny nie rusza.
+też kończy noc: następny nie rusza. Sesja zapisuje koniec nocy przez `night_queue.py close`, a `next` zapisuje go sam,
+gdy zwraca `null`, więc późniejszy `next` odmawia.
 
 Rano użytkownik odbiera każdy epik osobno (punkt 5 i 6). Punkt 7 („Następny epik”) sesja wykonuje dopiero wtedy,
 gdy końcowy PR każdego epiku nocy jest zamknięty albo zmergowany.
@@ -196,7 +197,8 @@ w toku, zależność od otwartego epiku, wspólny zakres, epik bez zakresu tylko
 limit czasu z pomiarem i bez; `approve`: zgodna i niezgodna lista; `start` i `done`: liczba zadań, czas, okno
 odnowione w trakcie, stan limitów inny niż `ok`, `done` bez `start`; `next`: brak listy, poprzedni epik bez `done`,
 epik już nie przygotowany albo w toku, brak pomiaru, przekroczone `until`, okno powyżej 80%, okno bez pomiaru, okno
-odnawiane przed końcem; `ahead` z pomiarem i bez; błąd `gh` albo `git` → kod 1). CI uruchamia testy skilli tak jak dla
+odnawiane przed końcem; `close`: ustawienie końca nocy, drugie wywołanie bez zmiany, brak listy, odmowa `next` po
+`close`, zapis końca przez `next` zwracające `null`, nowa noc po `approve`; `ahead` z pomiarem i bez; błąd `gh` albo `git` → kod 1). CI uruchamia testy skilli tak jak dla
 `delivery` i `integration`. Sam przebieg sprawdza krok 7 planu (CART-FIXES), a nocną kolejkę pierwsza noc po kroku 8.
 
 ## Zmiana w planie

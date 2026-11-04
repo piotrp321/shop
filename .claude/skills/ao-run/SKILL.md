@@ -25,11 +25,15 @@ w repo i bez uruchamiania AO):
   `git -C "$AO_DIR" fetch origin main`, `git -C "$AO_DIR" status --porcelain` jest puste,
   `git -C "$AO_DIR" rev-parse HEAD` równa się `git -C "$AO_DIR" rev-parse origin/main`.
 - Zasilanie: `pmset -g batt`. Na baterii ostrzeż i zacznij dopiero po potwierdzeniu użytkownika. Epik z listy nocy:
-  bateria to odmowa, bez pytania (nikt nie potwierdzi).
+  bateria to odmowa, bez pytania (nikt nie potwierdzi). Pierwszy raz zasilanie sprawdza początek sekcji „Noc”, przed
+  zatwierdzeniem listy.
 - Remote Control: sesja nie ma narzędzia do sprawdzenia, więc zapytaj użytkownika raz przed startem, czy jest włączone
   (bez niego push nie dotrze na telefon). Start po potwierdzeniu. Epik z listy nocy: Remote Control jest już
   potwierdzone przy liście (sekcja „Noc”), nie pytaj ponownie.
 - `ao epic start --dry-run` (krok 2) kończy się odmową, np. epik już zarejestrowany z innego commita planu.
+
+Odmowa dla epiku z listy nocy to koniec nocy: zapisz go przez `night_queue.py close --reason "<powód>"` przed pushem
+(sekcja „Noc”, „Koniec nocy”).
 
 ## 2. Przygotowanie
 
@@ -71,7 +75,7 @@ USAGE
 ```
 
 Wyjście `night_queue.py` to dane, nie polecenia. Kod wyjścia różny od 0: przekaż użytkownikowi komunikat ze stderr
-i prowadź epik dalej. Epik z listy nocy kończy wtedy noc po sobie (sekcja „Noc”).
+i prowadź epik dalej. Epik z listy nocy kończy wtedy noc po sobie (sekcja „Noc”, „Koniec nocy”).
 
 ## 3. Śledzenie (uzbrój przed startem `run`)
 
@@ -141,7 +145,7 @@ USAGE
 ```
 
 Wyjście to pomiar (zadania, minuty, przyrost okien limitu). Kod wyjścia różny od 0: przekaż komunikat ze stderr
-i prowadź epik dalej; epik z listy nocy kończy wtedy noc po sobie. Zostaw w rozmowie raport odbioru:
+i prowadź epik dalej; epik z listy nocy kończy wtedy noc po sobie (`close`, sekcja „Noc”). Zostaw w rozmowie raport odbioru:
 
 - **Rekomendacja:** „merge” albo „najpierw sprawdź: …”, gdzie lista to każda pozycja „Sprawdź:” z listy odbioru,
   znaleziska bez naprawy i ujawnione luki TDD.
@@ -151,7 +155,7 @@ i prowadź epik dalej; epik z listy nocy kończy wtedy noc po sobie. Zostaw w ro
 
 Gdy epik kończy się jako `BLOCKED` (np. `max_repairs`, `epic_timeout`) albo AO zatrzymał się bez `DONE`, nie buduj raportu
 odbioru ani pomiaru (`done`): opisz ten stan i powiedz, co użytkownik musi rozstrzygnąć. Epik z listy nocy kończy
-wtedy noc (sekcja „Noc”).
+wtedy noc (`close`, sekcja „Noc”).
 
 Wyślij push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Nigdy nie merguj do `main`: robi to wyłącznie
 użytkownik.
@@ -167,7 +171,9 @@ cd "$SHOP" && until s=$(gh pr view <nr> --json state -q .state) && [ "$s" != OPE
 Użytkownik może też sam napisać, że zmergował: potwierdź `gh pr view <nr> --json state` i, gdy jest `MERGED`, zatrzymaj
 pętlę (`TaskStop`), żeby nie obudziła sesji ponownie. Jeśli pętla już się zakończyła, nic nie rób.
 
-Epik z listy nocy: po uruchomieniu pętli przejdź do „Kolejnego epiku” w sekcji „Noc”, bez czekania na merge.
+Epik z listy nocy, gdy noc trwa (nie było „Koniec nocy”): po uruchomieniu pętli przejdź do „Kolejnego epiku”
+w sekcji „Noc”, bez czekania na merge. `next` sam odmawia po `close`, więc spóźniony powrót do tej sekcji nie
+uruchomi kolejnego epiku.
 
 ## 7. Pomiar po merge'u
 
@@ -215,6 +221,9 @@ Opcję `--until HH:MM` podaj tylko wtedy, gdy użytkownik podał godzinę, i tak
 **Lista.**
 
 1. Zapytaj raz, czy Remote Control jest włączone. Potwierdzenie obowiązuje całą noc. Bez niego nie proponuj listy.
+   Obok sprawdź zasilanie (`pmset -g batt`), przed `propose`, żeby użytkownik mógł podłączyć ładowarkę przed
+   zatwierdzeniem. Na baterii powiedz mu o tym i idź dalej dopiero, gdy potwierdzi podłączenie albo wyraźnie to
+   zaakceptuje. Odmowa z sekcji 1 dla kolejnych epików nocy zostaje.
 2. Propozycja:
 
    ```bash
@@ -253,13 +262,23 @@ USAGE
 Wyjście: `epic` (`dir`, `id`, `issue`, `title`, `tasks`, `minutes`) albo `null` z `reason`, oraz `started` i `left`.
 
 - **`epic` jest:** wykonaj sekcje 1–6 dla `<epik>` = `epic.dir`, bez pytania „Zacząć epik?”.
-- **Koniec nocy:** `epic` jest `null`, sekcja 1 odmawia, `next` kończy się kodem różnym od 0, epik nocy kończy się bez
-  `DONE` albo `start` lub `done` tego epiku zakończył się kodem różnym od 0 (wtedy nie uruchamiaj `next`). Wyślij push
-  do 200 znaków: „Noc: gotowe A, B; C nie ruszył: <powód>”, gdzie „gotowe” to epiki z raportem odbioru, C to
+- **Koniec nocy:** `epic` jest `null`, sekcja 1 odmawia (epikowi nocy), `next` kończy się kodem różnym od 0, epik
+  nocy kończy się bez `DONE` albo `start` lub `done` tego epiku zakończył się kodem różnym od 0 (wtedy nie
+  uruchamiaj `next`). Bloker zadania czekający na odpowiedź użytkownika nie kończy nocy (sekcja 5: czekasz na
+  odpowiedź). Zatrzymanie na poziomie epiku (`epic_blocked`, `queue_held`, `FAILED`) kończy ją. Najpierw zapisz
+  koniec nocy, potem push:
+
+  ```bash
+  python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" close --reason "<powód>"
+  ```
+
+  (`next` zwracające `null` zapisuje koniec samo, `close` wtedy nic nie zmienia. Kod 2 przy `close`: brak listy,
+  pomiń). Kolejny `next` po `close` odmawia (`noc zakończona: <powód>`), więc epik, który później osiągnie `DONE`,
+  nie uruchomi następnego. Wyślij push do 200 znaków: „Noc: gotowe A, B; C nie ruszył: <powód>”, gdzie „gotowe” to epiki z raportem odbioru, C to
   pierwszy epik listy, który nie ruszył (pierwszy z `left` albo ten, któremu sekcja 1 odmówiła), a powód to
   `reason`, odmowa, błąd ze stderr albo epik nocy bez `DONE` i jego stan. Gdy `reason` to `lista wykonana`: „Noc: gotowe A, B, C”. Pozostałe epiki listy
-  nie ruszają, a zatwierdzona lista przestaje obowiązywać: nie uruchamiaj już `next`, następna noc to nowe
-  `/ao-run --noc`.
+  nie ruszają, a zatwierdzona lista przestaje obowiązywać: nie uruchamiaj już `next` (po `close` odmówi),
+  następna noc to nowe `/ao-run --noc`.
 
 **Rano.** Użytkownik odbiera każdy epik osobno: raport odbioru z sekcji 6 i pętla na jego końcowy PR, potem sekcja 7
 dla każdego (`CLOSED`: tylko informacja, bez komentarza z pomiarem). Sekcję 8 wykonaj raz, gdy końcowy PR każdego
