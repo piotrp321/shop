@@ -27,7 +27,7 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
   `apps/store/` albo `apps/admin/`), bramki jakości (`make check`, `make test`, `make e2e`), weryfikację zgłoszeń, raport do `<report_path>` i wynik JSON.
 - **Nie robisz:** kodu i poprawek (naprawy to osobne zadania `/delivery` zlecane przez AO), `git commit`, `git push`,
   `git merge`, zmiany gałęzi, `gh pr` poza odczytem opisów PR zadań (krok 6), merge, deploymentu, sprzątania stosu (`.ao/teardown` należy do AO). Jedyny
-  plik, który zapisujesz, to raport. Testy napisane przez QA zostają w raporcie jako propozycje albo w polu
+  plik w repo i w katalogu raportu, który zapisujesz, to raport (oraz katalog agenta UX poza repo). Testy napisane przez QA zostają w raporcie jako propozycje albo w polu
   `evidence` znaleziska; nie trafiają do repo. Skrypty, zrzuty i wyniki agenta UX zostają w `AGENT_DIR` poza
   repo (krok 3), więc `git status --porcelain` się nie zmienia.
 - **Źródłem prawdy** jest diff `origin/main...HEAD`, specyfikacja i plan, nie raporty z PR zadań ani opinie
@@ -46,13 +46,14 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
 2. **Zakres.** `FULL`: cały diff `git diff origin/main...HEAD` (statystyka `--stat`, lista commitów
    `git log origin/main..HEAD`; mapuj pliki i commity na zadania planu po treści commitów i `scope`, gdy nie da się
    jednoznacznie, `task_id` ustaw na `null`). `DELTA`: poprzedni HEAD to `poprzedni HEAD` z promptu, a gdy go brak,
-   `Przegląd HEAD:` z najnowszego (wg czasu modyfikacji) innego pliku `*.md` w katalogu `<report_path>`, który jest przodkiem
-   HEAD (`git merge-base --is-ancestor`). Zakres DELTA to `git diff <poprzedni>..HEAD` **oraz skutki**: kod, który
+   `Przegląd HEAD:` z najnowszego (wg czasu modyfikacji) innego pliku `*.md` bezpośrednio w katalogu `<report_path>` (bez podkatalogów,
+   więc bez raportów agenta UX `ux-<sha7>/report.md`), który jest przodkiem HEAD (`git merge-base --is-ancestor`). Zakres DELTA to `git diff <poprzedni>..HEAD` **oraz skutki**: kod, który
    te zmiany wywołuje lub którego kontrakty zmieniają (grep użyć, testy, OpenAPI, klienty). Bez wiarygodnego
    poprzedniego HEAD pracuj jak w `FULL`, napisz to w raporcie i zaznacz, że poprzednich znalezisk nie dało się
    porównać (lista do sprawdzenia pochodzi z tego samego poprzedniego raportu). Bramki uruchamiasz zawsze w całości.
-3. **Review równolegle.** W jednej wiadomości uruchom dwa agenty (każdy dostaje HEAD SHA, zakres z kroku 2, ścieżki
-   spec i planu, listę zadań; **nie przekazuj** im swoich ani cudzych wniosków):
+3. **Review równolegle.** W jednej wiadomości uruchom `architecture-reviewer` i `qa-adversarial`; `ux-reviewer`
+   dopiero po zakończeniu QA (niżej). Każdy agent dostaje HEAD SHA, zakres z kroku 2, ścieżki spec i planu, listę
+   zadań; **nie przekazuj** im swoich ani cudzych wniosków:
    - `architecture-reviewer`: zgodność z DDD, architekturą heksagonalną, `CLAUDE.md` i specyfikacją całego epika,
      spójność kontraktów między zadaniami, zbędna złożoność, dublowanie.
    - `qa-adversarial`: błędy funkcjonalne i bezpieczeństwa na styku zadań, transakcje, współbieżność, przypadki
@@ -88,7 +89,7 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
      testu** (nieuruchomionej). Bramki uruchamiasz sam, po jego zakończeniu.
    W trybie DELTA przekaż zakres DELTA i listę znalezisk z poprzedniego raportu do sprawdzenia, czy zostały naprawione.
    - `ux-reviewer` (agent UX): uruchamiasz go tylko wtedy, gdy `git diff --name-only <zakres> -- apps/store apps/admin`
-     (zakres z kroku 2) jest niepusty; inaczej `ux-review` ma status `skipped`, a raport mówi dlaczego. Uruchamiasz
+     (zakres z kroku 2) jest niepusty albo (`DELTA`) poprzedni raport ma znaleziska UX do sprawdzenia; inaczej `ux-review` ma status `skipped`, a raport mówi dlaczego. Uruchamiasz
      go **po zakończeniu `qa-adversarial`** (te same konta demo i kody TOTP, więc nie równolegle z QA) i **przed
      bramkami**. Pracuje w worktree epika (`<STOS>` = `cwd`) przeciw stosowi AO z `.env` tego worktree, przez
      `make e2e-agent`, i nie zmienia repo. Przekaż mu w zleceniu: tryb `integration`; `<STOS>`; adresy stosu z `.env`
@@ -101,7 +102,7 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
 4. **Bramki.** Po zakończeniu agentów (także agenta UX, jeśli był uruchamiany), sekwencyjnie, z limitem czasu każdej (np. `timeout`/Bash `timeout`):
    `make check RUN="docker compose exec -T"`, `make test RUN="docker compose exec -T"`, potem
    `make seed RUN="docker compose exec -T"` i `make e2e E2E_FLAGS=-T` (sesja nie ma terminala, więc bez `-T` komendy padają).
-   Zapisy QA trafiły do bazy dev stosu. `make check` nie czyta danych, a `make test` działa na osobnych zasobach
+   Zapisy QA i agenta UX trafiły do bazy dev stosu. `make check` nie czyta danych, a `make test` działa na osobnych zasobach
    testowych (baza `shop_test`, indeks `test_products`, vhost `test`, Redis DB 1), więc jedyną bramką zależną od
    danych dev jest `make e2e`; `make seed` (reset katalogu, cen, stanów i rezerwacji) stoi bezpośrednio przed nią
    i nie przesuwaj go. Wszystkie uruchamiasz nawet po czerwonej wcześniejszej bramce. W wyniku nazwy bramek to
@@ -199,6 +200,7 @@ Nie zadawaj pytań w tekście.
 
 `head_sha` to HEAD, który przeglądałeś (pełne 40 znaków, równe `git rev-parse HEAD`). `checks` zawiera zawsze trzy
 bramki; dodatkowe wpisy (np. `architecture-review`, `qa-adversarial` ze statusem `passed`/`failed`) są dozwolone.
-Wpis `ux-review` ma status `passed` (agent UX bez znalezisk `Important`), `failed` (jest znalezisko UX `Important`) albo
-`skipped` (diff nie dotyka frontów albo `make e2e-agent` nie działa).
+Wpis `ux-review` ma status `passed` (po weryfikacji z kroku 5 brak znaleziska UX `Important`), `failed` (jest takie
+znalezisko) albo `skipped` (diff nie dotyka frontów, `make e2e-agent` nie działa albo agent nie zwrócił raportu;
+uwaga w raporcie).
 Pola poza kontraktem są niedozwolone. Pisz zwięźle po polsku.

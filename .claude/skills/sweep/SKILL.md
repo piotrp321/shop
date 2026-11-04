@@ -132,7 +132,8 @@ Z obu raportów:
 
 1. **Kompletność:** propozycja bez `Odtworzono: tak (2/2)`, rodzaju, wagi, dowodu tekstowego albo któregoś
    wymaganego pola formularza (środowisko, kroki, wynik oczekiwany i faktyczny, kryterium akceptacji) nie jest
-   propozycją: przenieś ją do hipotez z dopiskiem, czego brakuje.
+   propozycją: przenieś ją do hipotez z dopiskiem, czego brakuje. Kryterium albo kroki odwołujące się tylko do pliku
+   lokalnego (bez fragmentu kodu albo zdania) to brak pola.
 2. **Duplikaty między agentami:** ten sam ekran lub endpoint i ten sam objaw to jedna propozycja z wyższą wagą,
    dowodami obu i obydwoma agentami w „Źródle”.
 3. **Ponowne sprawdzenie:** świeże `gh issue list --state open` (wszystkie etykiety) i `$SWEEP_HOME/rejected.md`.
@@ -149,9 +150,10 @@ Zapisz `$RUN/report.md` (poza repo), po polsku. Pierwsze linie: `Przebieg: <data
 `Epik: <epik albo brak>`, `Stos: sweep-<sha7>, porty od <port>`, `Czas: <start>–<koniec>`. Dalej sekcje:
 
 - `## Zakres i wynik`: każda ścieżka i każde kryterium (OK, błąd, jeszcze nie ma) z raportu testera, ekrany i rozmiary
-  z raportu UX.
+  z raportu UX. Wiersz UX bez obejrzanego zrzutu nie jest OK: trafia do „Uwag” jako odstępstwo od zasad agenta.
 - `## Propozycje`: 1–N z pełnymi polami (rodzaj, waga, `Odtworzono`, ekran lub endpoint, pliki kodu, sekcje
-  formularza, dowód, ścieżki dowodów, agent).
+  formularza, dowód, ścieżki dowodów, agent). Przepisz je do tego raportu w całości, nie odsyłaj do raportów agentów:
+  z tej sekcji powstaje issue.
 - `## Hipotezy`, `## Ponad limit`, `## Duplikaty` (już zgłoszone: #N, wcześniej odrzucone).
 - `## Dowody`: `$RUN/tester/evidence/`, `$RUN/ux/evidence/`, raporty agentów.
 - `## Uwagi`: problemy agentów i narzędzia, zużycie tokenów agentów, gdy wynik `Agent` je podaje.
@@ -201,7 +203,7 @@ Odpowiedź niejednoznaczna (numer spoza 1–N, ten sam numer w obu grupach): zap
   ### Kryterium akceptacji
   ### Niewiadome
   ### Dowód
-  <dowód tekstowy; zrzuty i trace lokalnie: <ścieżki w $RUN>>
+  <dowód tekstowy bez tokenów, nagłówków authorization, haseł i sekretów TOTP; zrzuty i trace lokalnie: <ścieżki w $RUN>>
   ### Źródło
   Przebieg `/sweep` <data>-<sha7>, commit <sha>, agent <tester | ux-reviewer>, odtworzono: tak (2/2), waga <waga>.
   <dopisek „wcześniej odrzucone <data>: <powód>” i co się zmieniło, gdy dotyczy>
