@@ -8,10 +8,13 @@ use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductNotFound;
 use App\Catalog\Domain\Product\ProductRepository;
+use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
+use App\Catalog\Domain\Product\VariantAlreadyExists;
 
 /**
- * Like the database, it holds one product per id (save overwrites) and refuses a slug used by another product.
+ * Like the database, it holds one product per id (save overwrites) and refuses a slug or a variant id used by another
+ * product.
  */
 final class InMemoryProductRepository implements ProductRepository
 {
@@ -23,6 +26,17 @@ final class InMemoryProductRepository implements ProductRepository
         foreach ($this->products as $id => $stored) {
             if ($id !== $product->id()->toString() && $stored->slug()->value() === $product->slug()->value()) {
                 throw new SlugAlreadyTaken();
+            }
+        }
+        foreach ($this->products as $id => $stored) {
+            if ($id === $product->id()->toString()) {
+                continue;
+            }
+            $taken = array_map(static fn (ProductVariant $v): string => $v->id()->toString(), $stored->variants()->toList());
+            foreach ($product->variants()->toList() as $variant) {
+                if (\in_array($variant->id()->toString(), $taken, true)) {
+                    throw new VariantAlreadyExists();
+                }
             }
         }
 

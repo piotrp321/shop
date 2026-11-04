@@ -205,7 +205,8 @@ Reguły Deptrac:
 **`Product`** (agregat)
 - `ProductId` (UUID), `ProductName` (niepusta, do 200 znaków), `Slug` (`^[a-z0-9]+(-[a-z0-9]+)*$`, do 200 znaków,
   unikalny), `ShortDescription` (do 500 znaków, może być pusty), `ProductCategories`, `TaxCategory`,
-  `ProductImages`.
+  `ProductImages`, `ProductVariants` (osie `VariantAxes` i warianty `ProductVariant`; opis w `docs/features/variants/spec.md`,
+  sekcja „Catalog”).
 - `ProductCategories`: dokładnie jedna kategoria główna i najwyżej 10 dodatkowych, wszystkie jako
   `CategoryId`. Kategoria nie powtarza się na liście, a główna nie jest jednocześnie dodatkową. `all()` zwraca
   główną, a po niej dodatkowe. Kolejność dodatkowych nie ma znaczenia biznesowego.
@@ -229,7 +230,10 @@ Persystencja:
 
 - `catalog_category`: `id`, `parent_id` (FK), `name`, `path` (tekst z indeksem `text_pattern_ops`).
 - `catalog_product`: `id`, `slug` (ograniczenie unikalności), `name`, `short_description`, `primary_category_id`
-  (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB), `version` (BIGINT NOT NULL).
+  (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB), `variant_axes` (JSONB), `version`
+  (BIGINT NOT NULL).
+- `catalog_product_variant`: warianty produktu (`id`, `product_id` FK `ON DELETE CASCADE`, `position`, `option_values`
+  JSONB, `values_key` liczona przez PostgreSQL; unikalne `(product_id, position)` i `(product_id, values_key)`).
 - `catalog_product_category`: dodatkowe kategorie produktu. `product_id` (FK do `catalog_product`, `ON DELETE
   CASCADE`) i `category_id` (FK do `catalog_category`), klucz główny (`product_id`, `category_id`) i indeks na
   `category_id` do wyszukiwania produktów po kategorii. Kategoria główna nie trafia do tej tabeli (niezmiennik
@@ -808,8 +812,9 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 - Zdjęcia: 20–30 prawdziwych zdjęć „w terenie” (ludzie w górach, na szlaku, na rowerze) w spójnej tonacji,
   z Unsplash lub Pexels, przeskalowanych do około 1600 px na dłuższym boku, w `apps/api/fixtures/images/`.
   `apps/api/fixtures/images/CREDITS.md` podaje dla każdego pliku źródło, autora i licencję.
-- Seed nadaje kategoriom i produktom UUID v5 wyliczane ze sluga w stałej przestrzeni nazw, więc identyfikatory są
-  takie same po każdym seedzie. To wyłącznie mechanizm seeda: komendy aplikacji przyjmują identyfikator
+- Seed nadaje kategoriom, produktom i wariantom UUID v5 wyliczane ze sluga (wariant: z klucza `<slug>/standard`)
+  w stałej przestrzeni nazw, więc identyfikatory są takie same po każdym seedzie. Każdy produkt demo ma jeden wariant
+  domyślny. To wyłącznie mechanizm seeda: komendy aplikacji przyjmują identyfikator
   od wywołującego.
 - Seed tworzy dane przez komendy aplikacji (`CreateCategory`, `CreateProduct`), więc indeks powstaje drogą
   outbox → RabbitMQ → `IndexProduct`. Na koniec czeka (do 60 s), aż liczba dokumentów w ES zrówna się z liczbą

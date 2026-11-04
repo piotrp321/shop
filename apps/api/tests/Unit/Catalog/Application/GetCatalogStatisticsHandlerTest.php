@@ -22,9 +22,14 @@ use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductVariant;
+use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\VariantAxes;
+use App\Catalog\Domain\Product\VariantId;
+use App\Catalog\Domain\Product\VariantValues;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use App\Tests\Support\InMemory\InMemoryProductRepository;
 use PHPUnit\Framework\TestCase;
@@ -123,6 +128,7 @@ final class GetCatalogStatisticsHandlerTest extends TestCase
             ProductCategories::create($category->id()),
             TaxClassCode::Standard,
             $images,
+            ProductVariants::create(VariantAxes::fromList([]), [new ProductVariant(VariantId::fromString('2'.substr($id, 1)), VariantValues::fromList([]))]),
         ));
     }
 }

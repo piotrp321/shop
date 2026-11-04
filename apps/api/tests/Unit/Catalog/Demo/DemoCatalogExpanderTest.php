@@ -68,6 +68,36 @@ final class DemoCatalogExpanderTest extends TestCase
         self::assertSame($byPath['bieganie/buty/szosowe'], $catalog->products[0]->mainCategoryId);
     }
 
+    public function testEveryProductHasOneDefaultVariantWithAnIdOfItsOwn(): void
+    {
+        $catalog = $this->expand();
+        $namespace = Uuid::fromString(self::NAMESPACE);
+
+        $variantIds = [];
+        foreach ($catalog->products as $product) {
+            self::assertSame([], $product->variantAxes);
+            self::assertSame(
+                [['id' => Uuid::v5($namespace, 'variant:'.$product->slug.'/standard')->toRfc4122(), 'values' => []]],
+                $product->variants,
+            );
+            self::assertNotSame($product->id, $product->variants[0]['id']);
+            $variantIds[] = $product->variants[0]['id'];
+        }
+        self::assertSame($variantIds, array_values(array_unique($variantIds)));
+    }
+
+    public function testRepeatedVariantKeyThrowsWithThatKey(): void
+    {
+        $data = $this->with(['templates', 0, 'colors'], ['czarne', 'Czarne']);
+
+        try {
+            new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES);
+            self::fail('A repeated variant key must be rejected.');
+        } catch (\InvalidArgumentException $e) {
+            self::assertStringContainsString('variant key "buty-tarvik-asfalt-200-czarne/standard"', $e->getMessage());
+        }
+    }
+
     public function testDuplicateSlugThrowsWithThatSlug(): void
     {
         $data = $this->with(['templates', 0, 'colors'], ['czarne', 'Czarne']);

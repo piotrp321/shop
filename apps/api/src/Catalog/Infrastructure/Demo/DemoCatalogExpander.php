@@ -7,6 +7,9 @@ namespace App\Catalog\Infrastructure\Demo;
 use App\Catalog\Application\Demo\DemoCatalog;
 use App\Catalog\Application\Demo\DemoCategory;
 use App\Catalog\Application\Demo\DemoProduct;
+use App\Catalog\Domain\Product\Slug;
+use App\Catalog\Domain\Product\VariantKey;
+use App\Catalog\Domain\Product\VariantValues;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -14,18 +17,15 @@ use Symfony\Component\Uid\Uuid;
  *
  * Products get a global 0-based expansion index: templates in file order, then brands, models and colors. A product
  * is imageless when (index + 1) % imagelessEvery == 0; the others take pool[index % count(pool)] of their template.
- * Ids are UUID v5 of the slug in the definition's namespace: 'category:<slug path>' and 'product:<slug>'.
+ * Ids are UUID v5 of the slug in the definition's namespace: 'category:<slug path>', 'product:<slug>' and
+ * 'variant:<variant key>' (<slug>/standard for the one default variant every product has).
  */
 final readonly class DemoCatalogExpander
 {
-    private const array TRANSLITERATION = [
-        'ą' => 'a', 'ć' => 'c', 'ę' => 'e', 'ł' => 'l', 'ń' => 'n', 'ó' => 'o', 'ś' => 's', 'ź' => 'z', 'ż' => 'z',
-    ];
-
     /**
      * The photo paths are $imagesDir/<file>; whether the files exist is not checked here.
      *
-     * @throws \InvalidArgumentException on a duplicated category path or product slug, or an unknown category path
+     * @throws \InvalidArgumentException on a duplicated category path, product slug or variant key, or an unknown category path
      */
     public function expand(DemoCatalogDefinition $definition, string $imagesDir): DemoCatalog
     {
@@ -39,6 +39,7 @@ final readonly class DemoCatalogExpander
 
         $products = [];
         $slugs = [];
+        $variantKeys = [];
         $index = 0;
         foreach ($definition->templates as $template) {
             $main = $this->categoryId($idsByPath, $template->category);
@@ -48,7 +49,12 @@ final readonly class DemoCatalogExpander
                 foreach ($template->models as $model) {
                     foreach ($template->colors as $color) {
                         $name = \sprintf('%s %s %s %s', $template->productType, $brand, $model['name'], $color);
-                        $slug = $this->slugify($name);
+                        $slug = Slug::slugify($name);
+                        $variantKey = VariantKey::of($slug, VariantValues::fromList([]));
+                        if (isset($variantKeys[$variantKey])) {
+                            throw new \InvalidArgumentException(\sprintf('The variant key "%s" is produced more than once.', $variantKey));
+                        }
+                        $variantKeys[$variantKey] = true;
                         if (isset($slugs[$slug])) {
                             throw new \InvalidArgumentException(\sprintf('The product slug "%s" is produced more than once.', $slug));
                         }
@@ -63,6 +69,8 @@ final readonly class DemoCatalogExpander
                             $additional,
                             $template->taxClass,
                             $this->images($template, $index, $definition->imagelessEvery),
+                            [],
+                            [['id' => Uuid::v5($namespace, 'variant:'.$variantKey)->toRfc4122(), 'values' => []]],
                         );
                         ++$index;
                     }
@@ -117,12 +125,5 @@ final readonly class DemoCatalogExpander
         }
 
         return [$template->images[$index % \count($template->images)]];
-    }
-
-    private function slugify(string $name): string
-    {
-        $ascii = strtr(mb_strtolower($name), self::TRANSLITERATION);
-
-        return trim((string) preg_replace('/[^a-z0-9]+/', '-', $ascii), '-');
     }
 }

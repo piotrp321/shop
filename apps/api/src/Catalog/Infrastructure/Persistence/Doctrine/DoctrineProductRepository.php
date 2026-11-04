@@ -16,12 +16,19 @@ use App\Catalog\Domain\Product\ProductModifiedConcurrently;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotFound;
 use App\Catalog\Domain\Product\ProductRepository;
+use App\Catalog\Domain\Product\ProductVariant;
+use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\VariantAlreadyExists;
+use App\Catalog\Domain\Product\VariantAxes;
+use App\Catalog\Domain\Product\VariantId;
+use App\Catalog\Domain\Product\VariantValues;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\CategoryRecord;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\ProductRecord;
+use App\Catalog\Infrastructure\Persistence\Doctrine\Record\ProductVariantRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
@@ -34,6 +41,8 @@ final readonly class DoctrineProductRepository implements ProductRepository
 
     public function save(Product $product): void
     {
+        $this->refuseVariantIdOfAnotherKnownProduct($product);
+
         try {
             $this->entityManager->wrapInTransaction(function () use ($product): void {
                 $this->write($product);
@@ -43,6 +52,9 @@ final readonly class DoctrineProductRepository implements ProductRepository
         } catch (UniqueConstraintViolationException $e) {
             if (str_contains($e->getMessage(), ProductRecord::SLUG_CONSTRAINT)) {
                 throw new SlugAlreadyTaken();
+            }
+            if (str_contains($e->getMessage(), ProductVariantRecord::PRIMARY_KEY_CONSTRAINT)) {
+                throw new VariantAlreadyExists();
             }
             if (str_contains($e->getMessage(), ProductRecord::PRIMARY_KEY_CONSTRAINT)) {
                 throw new ProductAlreadyExists();
@@ -65,10 +77,12 @@ final readonly class DoctrineProductRepository implements ProductRepository
     public function all(): iterable
     {
         $records = $this->entityManager->createQueryBuilder()
-            ->select('product', 'additional')
+            ->select('product', 'additional', 'variant')
             ->from(ProductRecord::class, 'product')
             ->leftJoin('product.additionalCategories', 'additional')
+            ->leftJoin('product.variants', 'variant')
             ->orderBy('product.slug')
+            ->addOrderBy('variant.position')
             ->getQuery()
             ->getResult();
 
@@ -90,6 +104,21 @@ final readonly class DoctrineProductRepository implements ProductRepository
         \assert(\is_int($count));
 
         return $count;
+    }
+
+    /**
+     * A variant id that another product of this EntityManager already holds would collide in its identity map before
+     * the primary key of the table is reached (the case of a seed that saves many products in one process).
+     */
+    private function refuseVariantIdOfAnotherKnownProduct(Product $product): void
+    {
+        $unitOfWork = $this->entityManager->getUnitOfWork();
+        foreach ($product->variants()->toList() as $variant) {
+            $known = $unitOfWork->tryGetById($variant->id()->toString(), ProductVariantRecord::class);
+            if ($known instanceof ProductVariantRecord && $known->product->id !== $product->id()->toString()) {
+                throw new VariantAlreadyExists();
+            }
+        }
     }
 
     private function write(Product $product): void
@@ -123,8 +152,18 @@ final readonly class DoctrineProductRepository implements ProductRepository
         sort($currentIds);
         $categoriesChanged = $additionalIds !== $currentIds;
 
-        if (null !== $existing && $categoriesChanged && !$this->rowChanged($record)) {
-            // Doctrine does not touch the version when only the many-to-many collection changes.
+        $axes = $product->variantAxes()->names();
+        if (null === $existing || $record->variantAxes !== $axes) {
+            $record->variantAxes = $axes;
+        }
+        $variants = array_map(
+            static fn (ProductVariant $variant): array => ['id' => $variant->id()->toString(), 'values' => $variant->values()->toList()],
+            $product->variants()->toList(),
+        );
+        $variantsChanged = null !== $existing && $variants !== $this->storedVariants($record);
+
+        if (null !== $existing && ($categoriesChanged || $variantsChanged) && !$this->rowChanged($record)) {
+            // Doctrine does not touch the version when only a collection changes.
             $this->incrementVersion($record);
         }
         if ($categoriesChanged) {
@@ -134,8 +173,42 @@ final readonly class DoctrineProductRepository implements ProductRepository
             }
         }
 
+        if (null === $existing) {
+            $this->addVariants($record, $variants);
+        }
+
         $this->entityManager->persist($record);
         $this->entityManager->flush();
+
+        if ($variantsChanged) {
+            // The old rows go first: the new ones may reuse a position, a combination or an id.
+            $record->variants->clear();
+            $this->entityManager->flush();
+            $this->addVariants($record, $variants);
+            $this->entityManager->flush();
+        }
+    }
+
+    /**
+     * @return list<array{id: string, values: list<string>}>
+     */
+    private function storedVariants(ProductRecord $record): array
+    {
+        return array_values($record->variants->map(
+            static fn (ProductVariantRecord $variant): array => ['id' => $variant->id, 'values' => $variant->optionValues],
+        )->toArray());
+    }
+
+    /**
+     * @param list<array{id: string, values: list<string>}> $variants
+     */
+    private function addVariants(ProductRecord $record, array $variants): void
+    {
+        foreach ($variants as $position => $variant) {
+            $variantRecord = new ProductVariantRecord($variant['id'], $record, $position);
+            $variantRecord->optionValues = $variant['values'];
+            $record->variants->add($variantRecord);
+        }
     }
 
     private function rowChanged(ProductRecord $record): bool
@@ -191,6 +264,15 @@ final readonly class DoctrineProductRepository implements ProductRepository
             ),
             TaxClassCode::from($record->taxClass),
             ProductImages::fromList($images),
+            ProductVariants::create(
+                VariantAxes::fromList($record->variantAxes),
+                array_values($record->variants->map(
+                    static fn (ProductVariantRecord $variant): ProductVariant => new ProductVariant(
+                        VariantId::fromString($variant->id),
+                        VariantValues::fromList($variant->optionValues),
+                    ),
+                )->toArray()),
+            ),
         );
     }
 }

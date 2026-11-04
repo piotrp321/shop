@@ -21,17 +21,22 @@ final class CatalogFixture
     {
         $categoryId = (string) Uuid::v7();
         $productId = (string) Uuid::v7();
+        $variantId = (string) Uuid::v7();
         $connection->executeStatement('INSERT INTO catalog_category (id, name, path, parent_id) VALUES (?, ?, ?, NULL)', [$categoryId, 'Concurrency', '/'.$categoryId.'/']);
         $connection->executeStatement(
-            "INSERT INTO catalog_product (id, slug, name, short_description, tax_class, images, primary_category_id, version) VALUES (?, ?, 'Concurrency', '', 'standard', '[]', ?, 1)",
+            "INSERT INTO catalog_product (id, slug, name, short_description, tax_class, images, variant_axes, primary_category_id, version) VALUES (?, ?, 'Concurrency', '', 'standard', '[]', '[]', ?, 1)",
             [$productId, 'concurrency-'.$productId, $categoryId],
+        );
+        $connection->executeStatement(
+            "INSERT INTO catalog_product_variant (id, product_id, position, option_values) VALUES (?, ?, 0, '[]')",
+            [$variantId, $productId],
         );
 
         return $productId;
     }
 
     /**
-     * Deletes the products and their categories.
+     * Deletes the products (their variants go with them) and their categories.
      *
      * @param list<string> $productIds
      */

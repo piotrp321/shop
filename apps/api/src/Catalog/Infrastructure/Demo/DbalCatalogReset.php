@@ -25,7 +25,7 @@ final readonly class DbalCatalogReset implements CatalogReset
     public function reset(): void
     {
         $this->connection->transactional(static function (Connection $connection): void {
-            $connection->executeStatement('TRUNCATE catalog_product_category, catalog_product, catalog_category');
+            $connection->executeStatement('TRUNCATE catalog_product_category, catalog_product_variant, catalog_product, catalog_category');
             // Only the relay's queue: events that were never sent to the broker. `failed` stays for inspection.
             $connection->executeStatement('DELETE FROM messenger_messages WHERE queue_name = :queue', ['queue' => 'outbox']);
         });

@@ -19,6 +19,7 @@ final class Product
         private readonly ProductCategories $categories,
         private readonly TaxClassCode $taxClass,
         private readonly ProductImages $images,
+        private readonly ProductVariants $variants,
     ) {
     }
 
@@ -30,8 +31,9 @@ final class Product
         ProductCategories $categories,
         TaxClassCode $taxClass,
         ProductImages $images,
+        ProductVariants $variants,
     ): self {
-        $product = new self($id, $name, $slug, $shortDescription, $categories, $taxClass, $images);
+        $product = new self($id, $name, $slug, $shortDescription, $categories, $taxClass, $images, $variants);
         $product->events[] = new ProductCreated($id->toString(), new \DateTimeImmutable());
 
         return $product;
@@ -48,8 +50,9 @@ final class Product
         ProductCategories $categories,
         TaxClassCode $taxClass,
         ProductImages $images,
+        ProductVariants $variants,
     ): self {
-        return new self($id, $name, $slug, $shortDescription, $categories, $taxClass, $images);
+        return new self($id, $name, $slug, $shortDescription, $categories, $taxClass, $images, $variants);
     }
 
     /**
@@ -96,5 +99,15 @@ final class Product
     public function images(): ProductImages
     {
         return $this->images;
+    }
+
+    public function variantAxes(): VariantAxes
+    {
+        return $this->variants->axes();
+    }
+
+    public function variants(): ProductVariants
+    {
+        return $this->variants;
     }
 }
