@@ -179,6 +179,7 @@ Zmiana w `.claude/skills/integration/SKILL.md`, bez zmian w AO:
 ## Ryzyka i ograniczenia
 
 - Ocena UX i eksploracja zależą od modelu. Wymóg odtworzenia i limit pięciu propozycji ograniczają szum, nie trafność.
-- Koszt przebiegu `/sweep` nie jest zmierzony; pierwszy prawdziwy przebieg podaje go w raporcie.
+- Koszt przebiegu `/sweep` jest zmierzony: `/sweep cart-fixes` trwał około 15 min, tester zużył około 111 tys.,
+  a UX około 142 tys. tokenów (Sonnet).
 - Agent UX wydłuża nocne `/integration` epików z frontem (działa po QA).
 - Zrzutów ekranu nie ma w issue; zostają lokalnie w katalogu przebiegu.

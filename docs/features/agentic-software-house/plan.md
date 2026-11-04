@@ -189,15 +189,11 @@ flowchart TB
    - następny epik nie rusza, gdy limit subskrypcji nie wystarczy na cały jego przebieg;
    - liczba epików na noc wynika z pomiaru, nie z założenia;
    - punkt zatrzymania „Start epiku” zmienia się w tym samym PR co skill.
-9. **Agent tester i agent UX.** Rusza po kroku 7, gdy lista odbioru zadziała na prawdziwym epiku.
-   Najpierw specyfikacja przez `/brainstorm`, potem skille i agenci w `shop`:
-   - agent tester po merge'u epiku (punkt 6 procesu);
-   - agent UX po merge'u i jako trzeci reviewer w `/integration` (punkt 3 procesu);
-   - etykieta `agent`, limit zgłoszeń na przebieg, sprawdzanie duplikatów;
-   - do czasu makiet z punktu 3 „Zakresu MVP” agent UX ocenia tylko użyteczność i dostępność, nie zgodność
-     z projektem wizualnym;
-   - na start uruchamia ich użytkownik jedną komendą po merge'u, automatyczne uruchamianie dopiero wtedy, gdy
-     zgłoszenia okażą się warte czasu triage.
+9. **Agent tester i agent UX.** Gotowe: agent tester i agent UX (`.claude/agents/`), skill `/sweep` uruchamiany
+   przez użytkownika po merge'u epiku, agent UX jako trzeci reviewer w `/integration` dla epików z frontem,
+   etykieta `agent`, limit pięciu propozycji na przebieg i sprawdzanie duplikatów. Do czasu makiet z punktu 3
+   „Zakresu MVP” agent UX ocenia tylko użyteczność i dostępność. Automatyczne uruchamianie dopiero wtedy, gdy
+   zgłoszenia okażą się warte czasu triage. Opis: `docs/features/agent-tester-ux/spec.md`.
 10. **Przed publicznym demo: bezpieczeństwo i wydajność.** Przegląd bezpieczeństwa całego sklepu i testy
    obciążeniowe względem „Wymagań niefunkcjonalnych” z `docs/vision.md`. Zakres i narzędzia ustala specyfikacja
    przed demo.
