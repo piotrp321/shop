@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Inventory\Domain\Stock;
 
 /**
- * Identifier of a stocked product: the UUID of the product in Catalog, kept as Inventory's own value.
+ * Identifier of a Catalog product, kept as Inventory's own value: the panel lists products with the stock of their
+ * variants.
  */
 final readonly class ProductId
 {

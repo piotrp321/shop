@@ -23,7 +23,7 @@ final class DbalInventoryResetTest extends KernelTestCase
         $first = StockFixture::stock($connection, 10, 3);
         StockFixture::stock($connection, 5);
         $connection->executeStatement("INSERT INTO inventory_reservation (reservation_key, status, created_at, updated_at) VALUES ('order-1', 'active', now(), now())");
-        $connection->executeStatement('INSERT INTO inventory_reservation_line (reservation_key, product_id, quantity) VALUES (?, ?, 3)', ['order-1', $first]);
+        $connection->executeStatement('INSERT INTO inventory_reservation_line (reservation_key, variant_id, quantity) VALUES (?, ?, 3)', ['order-1', $first]);
         foreach (['inventory_stock_item' => 2, 'inventory_stock_movement' => 2, 'inventory_reservation' => 1, 'inventory_reservation_line' => 1] as $table => $rows) {
             self::assertGreaterThanOrEqual($rows, $this->rows($connection, $table));
         }

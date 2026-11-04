@@ -7,7 +7,7 @@ namespace App\Inventory\Infrastructure\Persistence\Doctrine\Record;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * One line of a reservation: a product (no foreign key to Catalog) and its quantity, once per reservation. The lines
+ * One line of a reservation: a variant (no foreign key to Catalog) and its quantity, once per reservation. The lines
  * are written together with their reservation (ReservationRecord, a foreign key without cascade) and never change.
  */
 #[ORM\Entity(readOnly: true)]
@@ -21,7 +21,7 @@ class ReservationLineRecord
         public readonly ReservationRecord $reservation,
         #[ORM\Id]
         #[ORM\Column(type: 'guid')]
-        public readonly string $productId,
+        public readonly string $variantId,
         #[ORM\Column]
         public readonly int $quantity,
     ) {

@@ -6,6 +6,7 @@ import { SEARCH_DEBOUNCE_MS, useStockList } from "@/inventory/useStockList";
 
 type StockList = components["schemas"]["StockListResponse"];
 type StockListItem = components["schemas"]["StockListItemResponse"];
+type ListedStock = components["schemas"]["ListedStockResponse"];
 type StockState = components["schemas"]["StockStateResponse"];
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
@@ -14,12 +15,12 @@ vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mo
 
 const STOCK = "/api/v1/admin/stock";
 
-function item(name: string, overrides: Partial<StockListItem> = {}): StockListItem {
+/** A product with one default variant (empty label) unless `variants` names others; `stock` is that variant's. */
+function item(name: string, overrides: { stock?: ListedStock | null; variants?: StockListItem["variants"] } = {}): StockListItem {
   return {
     productId: `id-${name}`,
     name,
-    stock: { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00" },
-    ...overrides,
+    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00" } : overrides.stock }],
   };
 }
 
@@ -74,6 +75,24 @@ describe("useStockList", () => {
     await settle();
     return mounted.list;
   }
+
+  it("has a row per variant in the order of the products and of their variants, the first one of a product marked", async () => {
+    const list = await start({
+      "": {
+        items: [
+          item("Kajak", { variants: [{ variantId: "v-green", label: "zielony", stock: null }, { variantId: "v-orange", label: "pomarańczowy", stock: null }] }),
+          item("Bidon"),
+        ],
+        next: null,
+      },
+    });
+
+    expect(list.rows.value.map((row) => [row.productId, row.name, row.variantId, row.label, row.first])).toEqual([
+      ["id-Kajak", "Kajak", "v-green", "zielony", true],
+      ["id-Kajak", "Kajak", "v-orange", "pomarańczowy", false],
+      ["id-Bidon", "Bidon", "var-Bidon", "", true],
+    ]);
+  });
 
   it("loads the first page of the stock list on mount", async () => {
     const list = await start({ "": { items: [item("Bidon")], next: null } });
@@ -221,8 +240,8 @@ describe("useStockList", () => {
 });
 
 describe("useStockList: receipts and corrections", () => {
-  const RECEIPTS = "/api/v1/admin/products/{productId}/stock/receipts";
-  const CORRECTIONS = "/api/v1/admin/products/{productId}/stock/corrections";
+  const RECEIPTS = "/api/v1/admin/variants/{variantId}/stock/receipts";
+  const CORRECTIONS = "/api/v1/admin/variants/{variantId}/stock/corrections";
   let wrapper: ReturnType<typeof mountList>["wrapper"] | undefined;
 
   beforeEach(() => {
@@ -247,7 +266,7 @@ describe("useStockList: receipts and corrections", () => {
 
   function state(overrides: Partial<StockState> = {}): StockState {
     return {
-      productId: "id-A",
+      variantId: "var-A",
       physical: 15,
       reserved: 4,
       available: 11,
@@ -271,14 +290,14 @@ describe("useStockList: receipts and corrections", () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(201, state());
 
-      const result = await list.receiveStock("id-A", receipt);
+      const result = await list.receiveStock("var-A", receipt);
 
       expect(mocks.post).toHaveBeenCalledWith(RECEIPTS, {
-        params: { path: { productId: "id-A" }, header: { "Idempotency-Key": "key-1" } },
+        params: { path: { variantId: "var-A" }, header: { "Idempotency-Key": "key-1" } },
         body: { quantity: 5, note: "Dostawa" },
       });
       expect(result).toEqual({ status: "saved" });
-      expect(list.items.value[0]!.stock).toEqual({
+      expect(list.rows.value[0]!.stock).toEqual({
         physical: 15,
         reserved: 4,
         available: 11,
@@ -292,17 +311,17 @@ describe("useStockList: receipts and corrections", () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(200, state({ physical: 15 }));
 
-      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "saved" });
-      expect(list.items.value[0]!.stock?.physical).toBe(15);
+      expect(await list.receiveStock("var-A", receipt)).toEqual({ status: "saved" });
+      expect(list.rows.value[0]!.stock?.physical).toBe(15);
     });
 
     it("gives a row without a stock record the stock the API created", async () => {
       const list = await start({ "": { items: [item("A", { stock: null })], next: null } });
       respond(201, state({ physical: 5, reserved: 0, available: 5, version: 1 }));
 
-      await list.receiveStock("id-A", receipt);
+      await list.receiveStock("var-A", receipt);
 
-      expect(list.items.value[0]!.stock).toMatchObject({ physical: 5, available: 5, version: 1 });
+      expect(list.rows.value[0]!.stock).toMatchObject({ physical: 5, available: 5, version: 1 });
     });
 
     it("does not let a list answer that started before the receipt bring back the old stock", async () => {
@@ -312,11 +331,11 @@ describe("useStockList: receipts and corrections", () => {
       const reload = list.goNext();
       respond(201, state());
 
-      await list.receiveStock("id-A", receipt);
+      await list.receiveStock("var-A", receipt);
       answerList({ data: { items: [item("A")], next: null }, response: { status: 200 } });
       await reload;
 
-      expect(list.items.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+      expect(list.rows.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
     });
 
     it("takes a newer stock from a list answer over the receipt's", async () => {
@@ -325,7 +344,7 @@ describe("useStockList: receipts and corrections", () => {
       mocks.get.mockImplementationOnce(() => new Promise((done) => (answerList = done)));
       const reload = list.goNext();
       respond(201, state());
-      await list.receiveStock("id-A", receipt);
+      await list.receiveStock("var-A", receipt);
 
       answerList({
         data: { items: [item("A", { stock: { physical: 20, reserved: 4, available: 16, level: "in_stock", version: 5, updatedAt: "2026-11-02T14:00:00+00:00" } })], next: null },
@@ -333,14 +352,14 @@ describe("useStockList: receipts and corrections", () => {
       });
       await reload;
 
-      expect(list.items.value[0]!.stock).toMatchObject({ physical: 20, version: 5 });
+      expect(list.rows.value[0]!.stock).toMatchObject({ physical: 20, version: 5 });
     });
 
     it("sends a blank note as null", async () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(201, state());
 
-      await list.receiveStock("id-A", { ...receipt, note: "   " });
+      await list.receiveStock("var-A", { ...receipt, note: "   " });
 
       expect(mocks.post.mock.calls[0]![1].body).toEqual({ quantity: 5, note: null });
     });
@@ -355,26 +374,26 @@ describe("useStockList: receipts and corrections", () => {
         ],
       });
 
-      expect(await list.receiveStock("id-A", receipt)).toEqual({
+      expect(await list.receiveStock("var-A", receipt)).toEqual({
         status: "invalid",
         fields: { quantity: "Ilość musi wynosić od 1 do 100 000.", note: "Notatka jest za długa." },
         message: null,
       });
-      expect(list.items.value[0]!.stock?.physical).toBe(10);
+      expect(list.rows.value[0]!.stock?.physical).toBe(10);
     });
 
     it("keeps a violation of an unknown path as a message of the dialog", async () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(422, { status: 422, violations: [{ propertyPath: "Idempotency-Key", title: "Klucz jest nieprawidłowy." }] });
 
-      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "invalid", fields: {}, message: "Klucz jest nieprawidłowy." });
+      expect(await list.receiveStock("var-A", receipt)).toEqual({ status: "invalid", fields: {}, message: "Klucz jest nieprawidłowy." });
     });
 
     it("shows the detail of a 422 without violations as the dialog's message", async () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(422, { status: 422, detail: "Stan fizyczny nie może przekroczyć 1 000 000." });
 
-      expect(await list.receiveStock("id-A", receipt)).toEqual({
+      expect(await list.receiveStock("var-A", receipt)).toEqual({
         status: "invalid",
         fields: {},
         message: "Stan fizyczny nie może przekroczyć 1 000 000.",
@@ -387,9 +406,9 @@ describe("useStockList: receipts and corrections", () => {
       respond(409, { status: 409, detail: "Ten klucz został użyty dla innego przyjęcia." });
       serve({ c1: { items: [item("A", { stock: { physical: 15, reserved: 4, available: 11, level: "in_stock", version: 4, updatedAt: "2026-11-02T13:00:00+00:00" } })], next: null } });
 
-      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "failed", message: "Ten klucz został użyty dla innego przyjęcia." });
+      expect(await list.receiveStock("var-A", receipt)).toEqual({ status: "failed", message: "Ten klucz został użyty dla innego przyjęcia." });
       expect(queries().at(-1)).toEqual({ after: "c1" });
-      expect(list.items.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+      expect(list.rows.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
     });
 
     it("shows the detail of a 409 about the key also when the reload fails", async () => {
@@ -397,14 +416,14 @@ describe("useStockList: receipts and corrections", () => {
       respond(409, { status: 409, detail: "Ten klucz został użyty dla innego przyjęcia." });
       serve({}, 500);
 
-      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "failed", message: "Ten klucz został użyty dla innego przyjęcia." });
+      expect(await list.receiveStock("var-A", receipt)).toEqual({ status: "failed", message: "Ten klucz został użyty dla innego przyjęcia." });
     });
 
     it("says the staff member may not receive stock on a 403", async () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(403, { status: 403 });
 
-      const result = await list.receiveStock("id-A", receipt);
+      const result = await list.receiveStock("var-A", receipt);
 
       expect(result).toMatchObject({ status: "failed" });
       expect((result as { message: string }).message).toContain("Nie masz uprawnień");
@@ -414,14 +433,14 @@ describe("useStockList: receipts and corrections", () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(404, { status: 404 });
 
-      expect(await list.receiveStock("id-A", receipt)).toEqual({ status: "failed", message: "Ten produkt już nie istnieje." });
+      expect(await list.receiveStock("var-A", receipt)).toEqual({ status: "failed", message: "Ten wariant już nie istnieje." });
     });
 
     it("says so when the request itself fails", async () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       mocks.post.mockRejectedValue(new TypeError("network down"));
 
-      const result = await list.receiveStock("id-A", receipt);
+      const result = await list.receiveStock("var-A", receipt);
 
       expect(result).toMatchObject({ status: "failed" });
       expect((result as { message: string }).message).toContain("połączenie");
@@ -433,32 +452,32 @@ describe("useStockList: receipts and corrections", () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(200, state({ physical: 15 }));
 
-      const result = await list.correctStock("id-A", { ...correction, reason: "other", note: "Policzone ręcznie" });
+      const result = await list.correctStock("var-A", { ...correction, reason: "other", note: "Policzone ręcznie" });
 
       expect(mocks.post).toHaveBeenCalledWith(CORRECTIONS, {
-        params: { path: { productId: "id-A" } },
+        params: { path: { variantId: "var-A" } },
         body: { physical: 15, reason: "other", note: "Policzone ręcznie", version: 3 },
       });
       expect(result).toEqual({ status: "saved" });
-      expect(list.items.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
+      expect(list.rows.value[0]!.stock).toMatchObject({ physical: 15, version: 4 });
     });
 
     it("sends version null for a product without a stock record", async () => {
       const list = await start({ "": { items: [item("A", { stock: null })], next: null } });
       respond(200, state({ physical: 7, reserved: 0, available: 7, version: 1 }));
 
-      await list.correctStock("id-A", { ...correction, physical: 7, version: null });
+      await list.correctStock("var-A", { ...correction, physical: 7, version: null });
 
       expect(mocks.post.mock.calls[0]![1].body).toMatchObject({ physical: 7, version: null });
-      expect(list.items.value[0]!.stock).toMatchObject({ physical: 7, version: 1 });
+      expect(list.rows.value[0]!.stock).toMatchObject({ physical: 7, version: 1 });
     });
 
     it("leaves a row without a stock record without one when the API still has none (counted zero)", async () => {
       const list = await start({ "": { items: [item("A", { stock: null })], next: null } });
       respond(200, state({ physical: 0, reserved: 0, available: 0, level: "out_of_stock", version: null, updatedAt: null }));
 
-      expect(await list.correctStock("id-A", { ...correction, physical: 0, version: null })).toEqual({ status: "saved" });
-      expect(list.items.value[0]!.stock).toBeNull();
+      expect(await list.correctStock("var-A", { ...correction, physical: 0, version: null })).toEqual({ status: "saved" });
+      expect(list.rows.value[0]!.stock).toBeNull();
     });
 
     it("on a 409 reloads the page and, when the row's version changed, reports a version conflict", async () => {
@@ -467,11 +486,11 @@ describe("useStockList: receipts and corrections", () => {
       respond(409, { type: "about:blank", status: 409, detail: "The stock was changed." });
       serve({ c1: { items: [item("A", { stock: { physical: 12, reserved: 4, available: 8, level: "in_stock", version: 4, updatedAt: "2026-11-02T13:00:00+00:00" } })], next: null } });
 
-      const result = await list.correctStock("id-A", correction);
+      const result = await list.correctStock("var-A", correction);
 
       expect(result).toEqual({ status: "conflict", message: "Stan został w międzyczasie zmieniony – odśwież" });
       expect(queries().at(-1)).toEqual({ after: "c1" });
-      expect(list.items.value[0]!.stock).toMatchObject({ physical: 12, version: 4 });
+      expect(list.rows.value[0]!.stock).toMatchObject({ physical: 12, version: 4 });
     });
 
     it("on a 409 reports a version conflict when a row without a record got one meanwhile", async () => {
@@ -479,14 +498,14 @@ describe("useStockList: receipts and corrections", () => {
       respond(409, { status: 409, detail: "x" });
       serve({ "": { items: [item("A")], next: null } });
 
-      expect(await list.correctStock("id-A", { ...correction, version: null })).toMatchObject({ status: "conflict" });
+      expect(await list.correctStock("var-A", { ...correction, version: null })).toMatchObject({ status: "conflict" });
     });
 
     it("on a 409 with the version unchanged shows the detail of the API (below the reserved units)", async () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(409, { status: 409, detail: "Nie można ustawić stanu poniżej zarezerwowanych: 4 szt." });
 
-      const result = await list.correctStock("id-A", { ...correction, physical: 2 });
+      const result = await list.correctStock("var-A", { ...correction, physical: 2 });
 
       expect(result).toEqual({ status: "failed", message: "Nie można ustawić stanu poniżej zarezerwowanych: 4 szt." });
       expect(mocks.get).toHaveBeenCalledTimes(2);
@@ -497,14 +516,14 @@ describe("useStockList: receipts and corrections", () => {
       respond(409, { status: 409, detail: "Detail of the API." });
       serve({}, 500);
 
-      expect(await list.correctStock("id-A", correction)).toEqual({ status: "failed", message: "Detail of the API." });
+      expect(await list.correctStock("var-A", correction)).toEqual({ status: "failed", message: "Detail of the API." });
     });
 
     it("on a 409 without a detail still says the correction was rejected", async () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(409, undefined);
 
-      expect(await list.correctStock("id-A", correction)).toEqual({ status: "failed", message: "API odrzuciło korektę (HTTP 409)." });
+      expect(await list.correctStock("var-A", correction)).toEqual({ status: "failed", message: "API odrzuciło korektę (HTTP 409)." });
     });
 
     it("shows the violations of a 422 at their fields", async () => {
@@ -518,7 +537,7 @@ describe("useStockList: receipts and corrections", () => {
         ],
       });
 
-      expect(await list.correctStock("id-A", correction)).toEqual({
+      expect(await list.correctStock("var-A", correction)).toEqual({
         status: "invalid",
         fields: { physical: "Stan musi wynosić od 0 do 1 000 000.", reason: "Nieznany powód.", note: "Podaj notatkę." },
         message: null,
@@ -529,7 +548,7 @@ describe("useStockList: receipts and corrections", () => {
       const list = await start({ "": { items: [item("A")], next: null } });
       respond(403, { status: 403 });
 
-      const result = await list.correctStock("id-A", correction);
+      const result = await list.correctStock("var-A", correction);
 
       expect(result).toMatchObject({ status: "failed" });
       expect((result as { message: string }).message).toContain("Nie masz uprawnień");

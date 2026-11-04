@@ -8,8 +8,8 @@ use App\Inventory\Domain\Reservation\InvalidReservation as InvalidReservationInD
 use App\Shared\Domain\Exception\InvalidInput;
 
 /**
- * A reservation request with a malformed key, a line that is not valid (product id, quantity) or an invalid set of
- * lines (count, a repeated product). The exception of the reservation port: a caller outside Inventory depends only
+ * A reservation request with a malformed key, a line that is not valid (variant id, quantity) or an invalid set of
+ * lines (count, a repeated variant). The exception of the reservation port: a caller outside Inventory depends only
  * on its Application layer. The message never contains the submitted value.
  */
 final class InvalidReservation extends \DomainException implements InvalidInput
@@ -19,8 +19,8 @@ final class InvalidReservation extends \DomainException implements InvalidInput
         return new self($invalid->getMessage(), 0, $invalid);
     }
 
-    public static function notAProductId(): self
+    public static function notAVariantId(): self
     {
-        return new self('A product id must be a UUID.');
+        return new self('A variant id must be a UUID.');
     }
 }

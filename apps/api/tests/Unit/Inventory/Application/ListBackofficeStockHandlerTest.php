@@ -9,6 +9,7 @@ use App\Inventory\Application\Port\DirectoryProduct;
 use App\Inventory\Application\Port\InvalidStockListCursor;
 use App\Inventory\Application\Query\ListBackofficeStock;
 use App\Inventory\Application\Query\ListBackofficeStockHandler;
+use App\Inventory\Application\Query\StockListVariant;
 use App\Inventory\Domain\Stock\ProductId;
 use App\Tests\Unit\Inventory\InMemoryProductDirectory;
 use App\Tests\Unit\Inventory\InMemoryStockItemRepository;
@@ -16,10 +17,15 @@ use PHPUnit\Framework\TestCase;
 
 final class ListBackofficeStockHandlerTest extends TestCase
 {
-    private const string IN_STOCK = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
-    private const string LOW_STOCK = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a61';
-    private const string UNSTORED = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a62';
-    private const string EMPTY_STORED = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a63';
+    private const string BOTTLE = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
+    private const string BACKPACK = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a61';
+    private const string GEL = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a62';
+
+    // Variant ids are never the ids of their products.
+    private const string IN_STOCK = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01';
+    private const string LOW_STOCK = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02';
+    private const string UNSTORED = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b03';
+    private const string EMPTY_STORED = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b04';
 
     private InMemoryStockItemRepository $stock;
 
@@ -31,65 +37,92 @@ final class ListBackofficeStockHandlerTest extends TestCase
         $this->stock->store(self::EMPTY_STORED, 0, 0, version: 0);
     }
 
-    public function testListsTheProductsOfThePageWithTheirStockAndTheCursorOfTheNextPage(): void
+    public function testListsTheProductsOfThePageWithTheirVariantsInOrderAndTheirStockAndTheCursorOfTheNextPage(): void
     {
-        $directory = new InMemoryProductDirectory([$this->product(self::LOW_STOCK, 'Bidon'), $this->product(self::IN_STOCK, 'Plecak')], 'next-cursor');
+        $directory = new InMemoryProductDirectory([$this->product(self::BACKPACK, 'Plecak'), $this->product(self::BOTTLE, 'Bidon')], 'next-cursor')
+            ->withVariants(self::BACKPACK, [self::UNSTORED => 'czarny', self::IN_STOCK => 'zielony'])
+            ->withVariants(self::BOTTLE, [self::LOW_STOCK => '']);
 
         $list = $this->handler($directory)(new ListBackofficeStock(null, null, null, 25));
 
         self::assertSame('next-cursor', $list->next);
         self::assertCount(2, $list->items);
-        [$low, $in] = $list->items;
-        self::assertSame([self::LOW_STOCK, 'Bidon'], [$low->productId, $low->name]);
-        self::assertNotNull($low->stock);
-        self::assertSame([9, 4, 5, 'low_stock', 2], [$low->stock->physical, $low->stock->reserved, $low->stock->available, $low->stock->level, $low->stock->version]);
-        self::assertEquals(new \DateTimeImmutable('2026-11-01 10:00:00+00:00'), $low->stock->updatedAt);
-        self::assertNotNull($in->stock);
-        self::assertSame([10, 4, 6, 'in_stock', 7], [$in->stock->physical, $in->stock->reserved, $in->stock->available, $in->stock->level, $in->stock->version]);
+        [$backpack, $bottle] = $list->items;
+        self::assertSame([self::BACKPACK, 'Plecak'], [$backpack->productId, $backpack->name]);
+        self::assertSame(
+            [[self::UNSTORED, 'czarny', null], [self::IN_STOCK, 'zielony', 10]],
+            array_map(static fn (StockListVariant $variant): array => [$variant->variantId, $variant->label, $variant->stock?->physical], $backpack->variants),
+        );
+        $in = $backpack->variants[1]->stock;
+        self::assertNotNull($in);
+        self::assertSame([10, 4, 6, 'in_stock', 7], [$in->physical, $in->reserved, $in->available, $in->level, $in->version]);
+        self::assertSame([self::BOTTLE, 'Bidon'], [$bottle->productId, $bottle->name]);
+        self::assertCount(1, $bottle->variants);
+        self::assertSame([self::LOW_STOCK, ''], [$bottle->variants[0]->variantId, $bottle->variants[0]->label]);
+        $low = $bottle->variants[0]->stock;
+        self::assertNotNull($low);
+        self::assertSame([9, 4, 5, 'low_stock', 2], [$low->physical, $low->reserved, $low->available, $low->level, $low->version]);
+        self::assertEquals(new \DateTimeImmutable('2026-11-01 10:00:00+00:00'), $low->updatedAt);
     }
 
-    public function testAProductWithoutAStoredStockHasNoStock(): void
+    public function testAVariantWithoutAStoredStockHasNoStock(): void
     {
-        $directory = new InMemoryProductDirectory([$this->product(self::UNSTORED, 'Żel')]);
+        $directory = new InMemoryProductDirectory([$this->product(self::GEL, 'Żel')])->withVariants(self::GEL, [self::UNSTORED => '']);
 
         $list = $this->handler($directory)(new ListBackofficeStock(null, null, null, 25));
 
         self::assertNull($list->next);
-        self::assertSame(self::UNSTORED, $list->items[0]->productId);
-        self::assertNull($list->items[0]->stock);
+        self::assertSame(self::UNSTORED, $list->items[0]->variants[0]->variantId);
+        self::assertNull($list->items[0]->variants[0]->stock);
     }
 
     public function testAnEmptyStoredStockKeepsItsVersionSoThatACorrectionCanBeBasedOnIt(): void
     {
-        $directory = new InMemoryProductDirectory([$this->product(self::EMPTY_STORED, 'Żel')]);
+        $directory = new InMemoryProductDirectory([$this->product(self::GEL, 'Żel')])->withVariants(self::GEL, [self::EMPTY_STORED => '']);
 
         $list = $this->handler($directory)(new ListBackofficeStock(null, null, null, 25));
 
-        $stock = $list->items[0]->stock;
+        $stock = $list->items[0]->variants[0]->stock;
         self::assertNotNull($stock);
         self::assertSame([0, 0, 0, 'out_of_stock', 0], [$stock->physical, $stock->reserved, $stock->available, $stock->level, $stock->version]);
         self::assertEquals(new \DateTimeImmutable('2026-11-01 10:00:00+00:00'), $stock->updatedAt);
     }
 
-    public function testStocksOfThePageAreReadWithOneCall(): void
+    public function testAProductCatalogHasNoVariantsForIsListedWithoutVariants(): void
+    {
+        $directory = new InMemoryProductDirectory([$this->product(self::GEL, 'Żel'), $this->product(self::BOTTLE, 'Bidon')])
+            ->withVariants(self::BOTTLE, [self::LOW_STOCK => '']);
+
+        $list = $this->handler($directory)(new ListBackofficeStock(null, null, null, 25));
+
+        self::assertSame([self::GEL, 'Żel', []], [$list->items[0]->productId, $list->items[0]->name, $list->items[0]->variants]);
+        self::assertSame([[self::LOW_STOCK]], $this->stock->manyReads);
+    }
+
+    public function testTheVariantsOfThePageAreReadWithOneCallAndTheirStocksWithOneCall(): void
     {
         $directory = new InMemoryProductDirectory([
-            $this->product(self::LOW_STOCK, 'A'),
-            $this->product(self::UNSTORED, 'B'),
-            $this->product(self::IN_STOCK, 'C'),
-        ]);
+            $this->product(self::BOTTLE, 'A'),
+            $this->product(self::BACKPACK, 'B'),
+        ])
+            ->withVariants(self::BOTTLE, [self::LOW_STOCK => ''])
+            ->withVariants(self::BACKPACK, [self::UNSTORED => 'czarny', self::IN_STOCK => 'zielony']);
 
         $this->handler($directory)(new ListBackofficeStock(null, null, null, 25));
 
+        self::assertSame([[self::BOTTLE, self::BACKPACK]], $directory->variantRequests);
         self::assertSame([[self::LOW_STOCK, self::UNSTORED, self::IN_STOCK]], $this->stock->manyReads);
     }
 
-    public function testAnEmptyPageReadsNoStocks(): void
+    public function testAnEmptyPageReadsNoVariantsAndNoStocks(): void
     {
-        $list = $this->handler(new InMemoryProductDirectory())(new ListBackofficeStock('xyz', null, null, 25));
+        $directory = new InMemoryProductDirectory();
+
+        $list = $this->handler($directory)(new ListBackofficeStock('xyz', null, null, 25));
 
         self::assertSame([], $list->items);
         self::assertNull($list->next);
+        self::assertSame([], $directory->variantRequests);
         self::assertSame([], $this->stock->manyReads);
     }
 

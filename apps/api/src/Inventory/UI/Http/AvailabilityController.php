@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Inventory\UI\Http;
 
-use App\Inventory\Application\Query\GetStockLevels;
-use App\Inventory\Application\Query\StockLevel;
+use App\Inventory\Application\Query\GetProductStockLevels;
+use App\Inventory\Application\Query\ProductStockLevel;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -34,7 +34,7 @@ final class AvailabilityController
         operationId: 'getAvailability',
         summary: 'Availability of products',
         description: 'The availability level of each requested product, for the product list. A product without a stock record, '
-            .'or unknown, is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key '
+            .'with more than one variant, or unknown, is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key '
             .'(`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for '
             .'60 seconds, so it is not what decides a purchase: the reservation at checkout does.',
         tags: ['Inventory'],
@@ -80,8 +80,10 @@ final class AvailabilityController
             throw new ValidationFailedException($query, $violations);
         }
 
-        /** @var list<StockLevel> $levels */
-        $levels = $this->handle(new GetStockLevels($query->productId));
+        // Transitional until the product offers replace this endpoint (VARIANTS-4): a product with exactly one variant
+        // has the level of that variant.
+        /** @var list<ProductStockLevel> $levels */
+        $levels = $this->handle(new GetProductStockLevels($query->productId));
 
         $response = new JsonResponse(new AvailabilityListResponse(array_map(AvailabilityItemResponse::of(...), $levels)));
         $response->setPublic();

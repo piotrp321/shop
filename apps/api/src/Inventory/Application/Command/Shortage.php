@@ -10,7 +10,7 @@ namespace App\Inventory\Application\Command;
 final readonly class Shortage
 {
     public function __construct(
-        public string $productId,
+        public string $variantId,
         public int $requested,
         public int $available,
     ) {

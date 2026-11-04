@@ -8,7 +8,7 @@ use App\Inventory\Domain\Stock\AvailabilityLevel;
 use App\Inventory\Domain\Stock\StockItem;
 
 /**
- * The stored stock of a product in the list: physical, reserved, available (physical − reserved), the availability
+ * The stored stock of a variant in the list: physical, reserved, available (physical − reserved), the availability
  * level (out_of_stock, low_stock, in_stock), the version to base a correction on and the time of the last change.
  */
 final readonly class ListedStock

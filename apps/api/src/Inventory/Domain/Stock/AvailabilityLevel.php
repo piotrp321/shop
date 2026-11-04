@@ -9,7 +9,7 @@ namespace App\Inventory\Domain\Stock;
  */
 enum AvailabilityLevel: string
 {
-    /** The most a product may have available and still be "last items". */
+    /** The most a variant may have available and still be "last items". */
     public const int LOW_STOCK_THRESHOLD = 5;
 
     case OutOfStock = 'out_of_stock';

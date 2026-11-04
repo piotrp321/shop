@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Inventory\Domain;
 
 use App\Inventory\Domain\Reservation\ReservationKey;
-use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Domain\Stock\StockChangeSource;
 use App\Inventory\Domain\Stock\StockInvariantViolation;
 use App\Inventory\Domain\Stock\StockItem;
 use App\Inventory\Domain\Stock\StockMovement;
 use App\Inventory\Domain\Stock\StockMovementType;
 use App\Inventory\Domain\Stock\StockShortage;
+use App\Inventory\Domain\Stock\VariantId;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -22,7 +22,7 @@ final class StockItemTest extends TestCase
     public function testReconstitutedItemHasNoMovementsAndComputesAvailable(): void
     {
         $updatedAt = new \DateTimeImmutable('2026-11-01 10:00:00+00:00');
-        $item = StockItem::reconstitute(ProductId::fromString(self::ID), 10, 4, 3, $updatedAt);
+        $item = StockItem::reconstitute(VariantId::fromString(self::ID), 10, 4, 3, $updatedAt);
 
         self::assertSame(self::ID, $item->id()->toString());
         self::assertSame(10, $item->physical());
@@ -49,13 +49,13 @@ final class StockItemTest extends TestCase
     {
         $this->expectException(StockInvariantViolation::class);
 
-        StockItem::reconstitute(ProductId::fromString(self::ID), $physical, $reserved, 1, new \DateTimeImmutable());
+        StockItem::reconstitute(VariantId::fromString(self::ID), $physical, $reserved, 1, new \DateTimeImmutable());
     }
 
     public function testTheLimitsThemselvesAreValid(): void
     {
-        $full = StockItem::reconstitute(ProductId::fromString(self::ID), 1_000_000, 1_000_000, 1, new \DateTimeImmutable());
-        $empty = StockItem::reconstitute(ProductId::fromString(self::ID), 0, 0, 1, new \DateTimeImmutable());
+        $full = StockItem::reconstitute(VariantId::fromString(self::ID), 1_000_000, 1_000_000, 1, new \DateTimeImmutable());
+        $empty = StockItem::reconstitute(VariantId::fromString(self::ID), 0, 0, 1, new \DateTimeImmutable());
 
         self::assertSame(0, $full->available());
         self::assertSame(0, $empty->available());
@@ -74,7 +74,7 @@ final class StockItemTest extends TestCase
         self::assertSame(5, $item->version());
         $movement = $this->onlyMovement($item);
         self::assertSame(StockMovementType::Reservation, $movement->type());
-        self::assertSame(self::ID, $movement->productId()->toString());
+        self::assertSame(self::ID, $movement->variantId()->toString());
         self::assertSame(0, $movement->physicalDelta());
         self::assertSame(3, $movement->reservedDelta());
         self::assertSame(10, $movement->physicalAfter());
@@ -106,7 +106,7 @@ final class StockItemTest extends TestCase
             $item->reserve(4, ReservationKey::fromString('order-1'));
             self::fail('Expected StockShortage.');
         } catch (StockShortage $shortage) {
-            self::assertSame(self::ID, $shortage->productId()->toString());
+            self::assertSame(self::ID, $shortage->variantId()->toString());
             self::assertSame(4, $shortage->requested());
             self::assertSame(3, $shortage->available());
         }
@@ -219,7 +219,7 @@ final class StockItemTest extends TestCase
 
     private function item(int $physical, int $reserved, int $version = 1): StockItem
     {
-        return StockItem::reconstitute(ProductId::fromString(self::ID), $physical, $reserved, $version, new \DateTimeImmutable('2026-11-01 10:00:00+00:00'));
+        return StockItem::reconstitute(VariantId::fromString(self::ID), $physical, $reserved, $version, new \DateTimeImmutable('2026-11-01 10:00:00+00:00'));
     }
 
     private function onlyMovement(StockItem $item): StockMovement

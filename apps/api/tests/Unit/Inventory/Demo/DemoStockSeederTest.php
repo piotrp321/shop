@@ -10,22 +10,22 @@ use App\Inventory\Application\Demo\DemoStockList;
 use App\Inventory\Application\Demo\DemoStockSeeder;
 use App\Inventory\Domain\Stock\StockChangeSource;
 use App\Tests\Support\InMemory\RecordingMessageBus;
-use App\Tests\Unit\Inventory\InMemoryProductsForInventory;
+use App\Tests\Unit\Inventory\InMemoryVariantsForInventory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class DemoStockSeederTest extends TestCase
 {
-    private const array PRODUCTS = [
-        '00000000-0000-4000-8000-000000000003' => 'mapa-turystyczna-tarvik-press-gorce-skladana',
-        '00000000-0000-4000-8000-000000000001' => 'namiot-turystyczny-norvane-biwak-2-zielony',
-        '00000000-0000-4000-8000-000000000002' => 'mapa-turystyczna-tarvik-press-tatry-laminowana',
+    private const array VARIANTS = [
+        '00000000-0000-4000-8000-000000000003' => 'mapa-turystyczna-tarvik-press-gorce/skladana',
+        '00000000-0000-4000-8000-000000000001' => 'namiot-turystyczny-norvane-biwak-2/zielony',
+        '00000000-0000-4000-8000-000000000002' => 'mapa-turystyczna-tarvik-press-tatry/laminowana',
     ];
 
-    public function testReceivesTheQuantityOfEveryProductAsTheSeedAndCreatesAnEmptyStockForZero(): void
+    public function testReceivesTheQuantityOfEveryVariantAsTheSeedAndCreatesAnEmptyStockForZero(): void
     {
         $bus = new RecordingMessageBus();
-        $seeder = new DemoStockSeeder(new InMemoryProductsForInventory(self::PRODUCTS), $bus);
+        $seeder = new DemoStockSeeder(new InMemoryVariantsForInventory(self::VARIANTS), $bus);
 
         $count = $seeder->seed($this->stock());
 
@@ -34,14 +34,14 @@ final class DemoStockSeederTest extends TestCase
         $first = $bus->dispatched[0];
         self::assertInstanceOf(ReceiveStock::class, $first);
         self::assertSame(['00000000-0000-4000-8000-000000000001', 40, 'seed:00000000-0000-4000-8000-000000000001', StockChangeSource::Seed, null, null, null], [
-            $first->productId, $first->quantity, $first->receiptKey, $first->source, $first->note, $first->actorId, $first->actorName,
+            $first->variantId, $first->quantity, $first->receiptKey, $first->source, $first->note, $first->actorId, $first->actorName,
         ]);
         $second = $bus->dispatched[1];
         self::assertInstanceOf(CreateEmptyStock::class, $second);
-        self::assertSame('00000000-0000-4000-8000-000000000002', $second->productId);
+        self::assertSame('00000000-0000-4000-8000-000000000002', $second->variantId);
         $third = $bus->dispatched[2];
         self::assertInstanceOf(ReceiveStock::class, $third);
-        self::assertSame(['00000000-0000-4000-8000-000000000003', 25], [$third->productId, $third->quantity]);
+        self::assertSame(['00000000-0000-4000-8000-000000000003', 25], [$third->variantId, $third->quantity]);
     }
 
     /**
@@ -50,18 +50,18 @@ final class DemoStockSeederTest extends TestCase
      * @param list<int> $expectedPages
      */
     #[DataProvider('catalogSizes')]
-    public function testReadsTheProductsInBatches(int $productCount, array $expectedPages): void
+    public function testReadsTheVariantsInBatches(int $variantCount, array $expectedPages): void
     {
-        $products = [];
-        for ($i = 1; $i <= $productCount; ++$i) {
-            $products[\sprintf('00000000-0000-4000-8000-%012d', $i)] = 'mapa-turystyczna-'.$i;
+        $variants = [];
+        for ($i = 1; $i <= $variantCount; ++$i) {
+            $variants[\sprintf('00000000-0000-4000-8000-%012d', $i)] = 'mapa-turystyczna-'.$i.'/standard';
         }
-        $catalog = new InMemoryProductsForInventory($products);
+        $catalog = new InMemoryVariantsForInventory($variants);
         $bus = new RecordingMessageBus();
 
-        self::assertSame($productCount, new DemoStockSeeder($catalog, $bus)->seed($this->stock()));
+        self::assertSame($variantCount, new DemoStockSeeder($catalog, $bus)->seed($this->stock()));
 
-        self::assertCount($productCount, $bus->dispatched);
+        self::assertCount($variantCount, $bus->dispatched);
         self::assertSame($expectedPages, $catalog->pageLimits);
     }
 
@@ -73,35 +73,35 @@ final class DemoStockSeederTest extends TestCase
         yield 'exactly two batches' => [1000, [500, 500, 500]];
     }
 
-    public function testListsTheSlugsWithoutPattern(): void
+    public function testListsTheKeysWithoutPattern(): void
     {
-        $seeder = new DemoStockSeeder(new InMemoryProductsForInventory([
-            ...self::PRODUCTS,
-            '00000000-0000-4000-8000-000000000004' => 'kajak-turystyczny-vilmar-rzeka-1-zielony',
+        $seeder = new DemoStockSeeder(new InMemoryVariantsForInventory([
+            ...self::VARIANTS,
+            '00000000-0000-4000-8000-000000000004' => 'kajak-turystyczny-vilmar-rzeka-1/zielony',
         ]), new RecordingMessageBus());
 
-        self::assertSame(['kajak-turystyczny-vilmar-rzeka-1-zielony'], $seeder->unmatchedSlugs($this->stock()));
+        self::assertSame(['kajak-turystyczny-vilmar-rzeka-1/zielony'], $seeder->unmatchedKeys($this->stock()));
     }
 
-    public function testEveryProductMatchedGivesNoSlugs(): void
+    public function testEveryVariantMatchedGivesNoKeys(): void
     {
-        $seeder = new DemoStockSeeder(new InMemoryProductsForInventory(self::PRODUCTS), new RecordingMessageBus());
+        $seeder = new DemoStockSeeder(new InMemoryVariantsForInventory(self::VARIANTS), new RecordingMessageBus());
 
-        self::assertSame([], $seeder->unmatchedSlugs($this->stock()));
+        self::assertSame([], $seeder->unmatchedKeys($this->stock()));
     }
 
-    public function testSeedStopsAtAProductWithoutPattern(): void
+    public function testSeedStopsAtAVariantWithoutPattern(): void
     {
         $bus = new RecordingMessageBus();
-        $seeder = new DemoStockSeeder(new InMemoryProductsForInventory([
-            '00000000-0000-4000-8000-000000000001' => 'kajak-turystyczny-vilmar-rzeka-1-zielony',
+        $seeder = new DemoStockSeeder(new InMemoryVariantsForInventory([
+            '00000000-0000-4000-8000-000000000001' => 'kajak-turystyczny-vilmar-rzeka-1/zielony',
         ]), $bus);
 
         try {
             $seeder->seed($this->stock());
             self::fail('Expected a failure.');
         } catch (\RuntimeException $e) {
-            self::assertStringContainsString('kajak-turystyczny-vilmar-rzeka-1-zielony', $e->getMessage());
+            self::assertStringContainsString('kajak-turystyczny-vilmar-rzeka-1/zielony', $e->getMessage());
         }
         self::assertSame([], $bus->dispatched);
     }
@@ -109,7 +109,7 @@ final class DemoStockSeederTest extends TestCase
     private function stock(): DemoStockList
     {
         return new DemoStockList([
-            ['pattern' => 'mapa-turystyczna-*-tatry-*', 'quantity' => 0],
+            ['pattern' => 'mapa-turystyczna-*-tatry/*', 'quantity' => 0],
             ['pattern' => 'mapa-turystyczna-*', 'quantity' => 25],
             ['pattern' => 'namiot-*', 'quantity' => 40],
         ]);

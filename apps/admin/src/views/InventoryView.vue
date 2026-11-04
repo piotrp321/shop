@@ -15,14 +15,14 @@ import { computed, ref, watch } from "vue";
 import { useCategoryTree } from "@/composables/useCategoryTree";
 import { formatDelta, levelLabel, movementReasonLabel, movementSourceLabel, movementTypeLabel } from "@/inventory/format";
 import { useStockHistory } from "@/inventory/useStockHistory";
-import { MAX_SEARCH_LENGTH, type StockChange, type StockListItem, useStockList } from "@/inventory/useStockList";
+import { MAX_SEARCH_LENGTH, type StockChange, type StockRow, useStockList } from "@/inventory/useStockList";
 import { formatDateTime } from "@/prices/format";
 import { useAuthStore } from "@/stores/auth";
 
 const {
   search,
   searchTooShort,
-  items,
+  rows,
   loading,
   loaded,
   error,
@@ -54,11 +54,16 @@ const REASONS = [
 ] as const;
 type Reason = (typeof REASONS)[number]["value"];
 
+// The name of a variant in the dialogs: the product, and the label unless it is the default variant.
+function variantName(row: StockRow): string {
+  return row.label === "" ? row.name : `${row.name} – ${row.label}`;
+}
+
 // History. The dialog keeps the name it was opened with, so the title stays while the list moves to another page.
 const history = useStockHistory();
 const historyName = ref("");
 const historyVisible = computed({
-  get: () => history.productId.value !== null,
+  get: () => history.variantId.value !== null,
   set: (visible: boolean) => {
     if (!visible) {
       history.close();
@@ -66,20 +71,20 @@ const historyVisible = computed({
   },
 });
 
-function openHistory(item: StockListItem): void {
-  historyName.value = item.name;
-  void history.open(item.productId);
+function openHistory(row: StockRow): void {
+  historyName.value = variantName(row);
+  void history.open(row.variantId);
 }
 
 // Each dialog counts its openings and closings. A save answers only the dialog it was sent from: when the dialog was
-// closed or opened again meanwhile (even for the same product), the answer must not touch the new one.
+// closed or opened again meanwhile (even for the same variant), the answer must not touch the new one.
 let receiptSession = 0;
 let correctionSession = 0;
 
-// Receipt. The dialog follows the row by id, so a reload shows the current stock in it.
+// Receipt. The dialog follows the row by variant id, so a reload shows the current stock in it.
 const receivingId = ref<string | null>(null);
 const receivingName = ref("");
-const receiving = computed(() => items.value.find((item) => item.productId === receivingId.value) ?? null);
+const receiving = computed(() => rows.value.find((row) => row.variantId === receivingId.value) ?? null);
 const quantity = ref<number | null>(null);
 const receiptNote = ref("");
 // The idempotency key of the receipt, made when the dialog opens: repeating the same receipt (e.g. after the answer was
@@ -104,12 +109,12 @@ function closeReceipt(): void {
   receiptSaving.value = false;
 }
 
-function openReceipt(item: StockListItem): void {
+function openReceipt(row: StockRow): void {
   receiptSession++;
   receiptSaving.value = false;
   receiptKey = crypto.randomUUID();
-  receivingId.value = item.productId;
-  receivingName.value = item.name;
+  receivingId.value = row.variantId;
+  receivingName.value = variantName(row);
   quantity.value = null;
   receiptNote.value = "";
   quantityError.value = null;
@@ -131,7 +136,7 @@ async function saveReceipt(): Promise<void> {
   }
   receiptSaving.value = true;
   const session = receiptSession;
-  const result = await receiveStock(item.productId, { quantity: quantity.value, note: receiptNote.value, key: receiptKey });
+  const result = await receiveStock(item.variantId, { quantity: quantity.value, note: receiptNote.value, key: receiptKey });
   if (session !== receiptSession) {
     // The list has taken the outcome (the saved stock); this dialog is not the one that asked.
     return;
@@ -150,7 +155,7 @@ async function saveReceipt(): Promise<void> {
 // next attempt is based on the current stock.
 const correctingId = ref<string | null>(null);
 const correctingName = ref("");
-const correcting = computed(() => items.value.find((item) => item.productId === correctingId.value) ?? null);
+const correcting = computed(() => rows.value.find((row) => row.variantId === correctingId.value) ?? null);
 const counted = ref<number | null>(null);
 const reason = ref<Reason>("inventory_count");
 const correctionNote = ref("");
@@ -175,11 +180,11 @@ function closeCorrection(): void {
   correctionSaving.value = false;
 }
 
-function openCorrection(item: StockListItem): void {
+function openCorrection(row: StockRow): void {
   correctionSession++;
   correctionSaving.value = false;
-  correctingId.value = item.productId;
-  correctingName.value = item.name;
+  correctingId.value = row.variantId;
+  correctingName.value = variantName(row);
   counted.value = null;
   reason.value = "inventory_count";
   correctionNote.value = "";
@@ -211,7 +216,7 @@ async function saveCorrection(): Promise<void> {
   }
   correctionSaving.value = true;
   const session = correctionSession;
-  const result = await correctStock(item.productId, {
+  const result = await correctStock(item.variantId, {
     physical: counted.value,
     reason: reason.value,
     note: correctionNote.value,
@@ -308,9 +313,9 @@ function applyCorrectionResult(result: StockChange): void {
 
     <DataTable
       v-if="loaded"
-      :value="items"
+      :value="rows"
       :loading="loading"
-      data-key="productId"
+      data-key="variantId"
       :pt="{ bodyRow: { 'data-testid': 'stock-row' } }"
     >
       <template #empty>
@@ -318,7 +323,15 @@ function applyCorrectionResult(result: StockChange): void {
       </template>
       <Column header="Nazwa">
         <template #body="{ data }">
-          <span data-testid="name">{{ data.name }}</span>
+          <span
+            v-if="data.first"
+            data-testid="name"
+          >{{ data.name }}</span>
+        </template>
+      </Column>
+      <Column header="Wariant">
+        <template #body="{ data }">
+          <span data-testid="variant-label">{{ data.label }}</span>
         </template>
       </Column>
       <Column
@@ -407,7 +420,7 @@ function applyCorrectionResult(result: StockChange): void {
         data-testid="receive-dialog"
         class="change"
       >
-        <strong>{{ receiving?.name ?? receivingName }}</strong>
+        <strong>{{ receiving ? variantName(receiving) : receivingName }}</strong>
         <span
           v-if="receiving"
           class="hint"
@@ -493,7 +506,7 @@ function applyCorrectionResult(result: StockChange): void {
         data-testid="correct-dialog"
         class="change"
       >
-        <strong>{{ correcting?.name ?? correctingName }}</strong>
+        <strong>{{ correcting ? variantName(correcting) : correctingName }}</strong>
         <span
           v-if="correcting"
           class="hint"

@@ -28,7 +28,7 @@ final class ReservationSchemaTest extends KernelTestCase
         $this->expectException(ForeignKeyConstraintViolationException::class);
 
         $this->connection->executeStatement(
-            'INSERT INTO inventory_reservation_line (reservation_key, product_id, quantity) VALUES (?, ?, 1)',
+            'INSERT INTO inventory_reservation_line (reservation_key, variant_id, quantity) VALUES (?, ?, 1)',
             ['test:'.Uuid::v7()->toRfc4122(), (string) Uuid::v7()],
         );
     }
@@ -37,7 +37,7 @@ final class ReservationSchemaTest extends KernelTestCase
     {
         $key = 'test:'.Uuid::v7()->toRfc4122();
         $this->connection->executeStatement("INSERT INTO inventory_reservation (reservation_key, status, created_at, updated_at) VALUES (?, 'active', now(), now())", [$key]);
-        $this->connection->executeStatement('INSERT INTO inventory_reservation_line (reservation_key, product_id, quantity) VALUES (?, ?, 1)', [$key, (string) Uuid::v7()]);
+        $this->connection->executeStatement('INSERT INTO inventory_reservation_line (reservation_key, variant_id, quantity) VALUES (?, ?, 1)', [$key, (string) Uuid::v7()]);
 
         $this->expectException(ForeignKeyConstraintViolationException::class);
 

@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace App\Inventory\Domain\Reservation;
 
-use App\Inventory\Domain\Stock\ProductId;
+use App\Inventory\Domain\Stock\VariantId;
 
 final readonly class ReservationLine
 {
     public const int MAX_QUANTITY = 1000;
 
     private function __construct(
-        private ProductId $productId,
+        private VariantId $variantId,
         private int $quantity,
     ) {
     }
@@ -19,18 +19,18 @@ final readonly class ReservationLine
     /**
      * @throws InvalidReservation
      */
-    public static function of(ProductId $productId, int $quantity): self
+    public static function of(VariantId $variantId, int $quantity): self
     {
         if ($quantity < 1 || $quantity > self::MAX_QUANTITY) {
             throw InvalidReservation::quantityOutOfRange();
         }
 
-        return new self($productId, $quantity);
+        return new self($variantId, $quantity);
     }
 
-    public function productId(): ProductId
+    public function variantId(): VariantId
     {
-        return $this->productId;
+        return $this->variantId;
     }
 
     public function quantity(): int

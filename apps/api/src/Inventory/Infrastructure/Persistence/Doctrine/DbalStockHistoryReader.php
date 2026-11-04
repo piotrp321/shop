@@ -7,13 +7,13 @@ namespace App\Inventory\Infrastructure\Persistence\Doctrine;
 use App\Inventory\Application\Port\StockHistoryReader;
 use App\Inventory\Application\Query\StockHistoryCursor;
 use App\Inventory\Application\Query\StockHistoryItem;
-use App\Inventory\Domain\Stock\ProductId;
+use App\Inventory\Domain\Stock\VariantId;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 
 /**
- * Reads straight on the connection, one statement per page. The index (product_id, occurred_at DESC, id) serves the
- * product and the time order; the id is descending, so the later of two entries within one second comes first (the
+ * Reads straight on the connection, one statement per page. The index (variant_id, occurred_at DESC, id) serves the
+ * variant and the time order; the id is descending, so the later of two entries within one second comes first (the
  * ids are time-ordered, see DoctrineStockItemRepository), which the database finishes by sorting the few rows of
  * one second. The cursor is a row comparison of the same two columns in the same direction (EXPLAIN on PostgreSQL 18:
  * an index-only scan from the cursor position plus an incremental sort, no extra index needed). Nothing here
@@ -27,14 +27,14 @@ final readonly class DbalStockHistoryReader implements StockHistoryReader
     {
     }
 
-    public function page(ProductId $productId, ?StockHistoryCursor $after, int $limit): array
+    public function page(VariantId $variantId, ?StockHistoryCursor $after, int $limit): array
     {
         if ($limit < 1) {
             throw new \InvalidArgumentException('The limit must be at least 1.');
         }
 
-        $sql = 'SELECT '.self::COLUMNS.' FROM inventory_stock_movement WHERE product_id = CAST(:product AS uuid)';
-        $parameters = ['product' => $productId->toString(), 'limit' => $limit];
+        $sql = 'SELECT '.self::COLUMNS.' FROM inventory_stock_movement WHERE variant_id = CAST(:variant AS uuid)';
+        $parameters = ['variant' => $variantId->toString(), 'limit' => $limit];
         $types = ['limit' => ParameterType::INTEGER];
         if (null !== $after) {
             $sql .= ' AND (occurred_at, id) < (CAST(:after_time AS timestamptz), CAST(:after_id AS uuid))';

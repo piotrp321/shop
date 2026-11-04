@@ -56,7 +56,7 @@ final class ReservationCommandsTest extends KernelTestCase
         self::assertSame('active', $this->connection->fetchOne('SELECT status FROM inventory_reservation WHERE reservation_key = ?', ['order-1']));
         self::assertEquals(
             [[$a, 4], [$b, 2]],
-            array_map(static fn (array $r): array => [$r['product_id'], $r['quantity']], $this->connection->fetchAllAssociative('SELECT product_id, quantity FROM inventory_reservation_line WHERE reservation_key = ? ORDER BY product_id', ['order-1'])),
+            array_map(static fn (array $r): array => [$r['variant_id'], $r['quantity']], $this->connection->fetchAllAssociative('SELECT variant_id, quantity FROM inventory_reservation_line WHERE reservation_key = ? ORDER BY variant_id', ['order-1'])),
         );
     }
 
@@ -72,14 +72,14 @@ final class ReservationCommandsTest extends KernelTestCase
             self::fail('Expected InsufficientStock.');
         } catch (InsufficientStock $insufficient) {
             $expected = [new Shortage($short, 2, 1), new Shortage($withoutStock, 1, 0)];
-            usort($expected, static fn (Shortage $x, Shortage $y): int => strcmp($x->productId, $y->productId));
+            usort($expected, static fn (Shortage $x, Shortage $y): int => strcmp($x->variantId, $y->variantId));
             self::assertEquals($expected, $insufficient->shortages);
         }
 
         $this->assertNothingReserved('order-1', [$enough => [10, 0, 1], $short => [3, 2, 1]]);
 
-        $this->connection->executeStatement('UPDATE inventory_stock_item SET physical = 4 WHERE product_id = ?', [$short]);
-        StockFixture::stock($this->connection, 1, productId: $withoutStock);
+        $this->connection->executeStatement('UPDATE inventory_stock_item SET physical = 4 WHERE variant_id = ?', [$short]);
+        StockFixture::stock($this->connection, 1, variantId: $withoutStock);
         self::assertSame('active', $this->dispatch(new ReserveStock('order-1', $lines))->status);
     }
 
@@ -205,19 +205,19 @@ final class ReservationCommandsTest extends KernelTestCase
     /**
      * @return array<string, mixed>|false
      */
-    private function stockRow(string $productId): array|false
+    private function stockRow(string $variantId): array|false
     {
-        return $this->connection->fetchAssociative('SELECT physical, reserved, version FROM inventory_stock_item WHERE product_id = ?', [$productId]);
+        return $this->connection->fetchAssociative('SELECT physical, reserved, version FROM inventory_stock_item WHERE variant_id = ?', [$variantId]);
     }
 
     /**
      * @return list<list<mixed>> the movements other than the fixture's receipt, oldest first
      */
-    private function movements(string $productId): array
+    private function movements(string $variantId): array
     {
         return $this->connection->fetchAllNumeric(
-            "SELECT type, physical_delta, reserved_delta, physical_after, reserved_after, reference, source FROM inventory_stock_movement WHERE product_id = ? AND type <> 'receipt' ORDER BY id",
-            [$productId],
+            "SELECT type, physical_delta, reserved_delta, physical_after, reserved_after, reference, source FROM inventory_stock_movement WHERE variant_id = ? AND type <> 'receipt' ORDER BY id",
+            [$variantId],
         );
     }
 

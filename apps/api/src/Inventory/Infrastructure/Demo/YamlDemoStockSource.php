@@ -11,7 +11,7 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * The demo stock from apps/api/fixtures/stock.yaml: a mapping of slug pattern to the number of units on the shelf.
+ * The demo stock from apps/api/fixtures/stock.yaml: a mapping of variant key pattern to the number of units on the shelf.
  */
 final readonly class YamlDemoStockSource implements DemoStockSource
 {
@@ -34,13 +34,13 @@ final readonly class YamlDemoStockSource implements DemoStockSource
         }
 
         if (!\is_array($definition) || [] === $definition) {
-            throw new \InvalidArgumentException('The demo stock file must be a mapping of slug patterns to numbers of units.');
+            throw new \InvalidArgumentException('The demo stock file must be a mapping of variant key patterns to numbers of units.');
         }
 
         $rules = [];
         foreach ($definition as $pattern => $quantity) {
             if (!\is_string($pattern)) {
-                throw new \InvalidArgumentException('The demo stock file must be a mapping of slug patterns to numbers of units.');
+                throw new \InvalidArgumentException('The demo stock file must be a mapping of variant key patterns to numbers of units.');
             }
             if (!\is_int($quantity)) {
                 throw new \InvalidArgumentException(\sprintf('The demo stock of "%s" must be an integer number of units.', $pattern));

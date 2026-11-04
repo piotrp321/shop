@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Inventory\UI\Http;
 
-use App\Inventory\Application\Query\StockLevel;
+use App\Inventory\Application\Query\ProductStockLevel;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(description: 'The availability level of one product. Never the number of units.', required: ['productId', 'level'])]
@@ -18,7 +18,7 @@ final readonly class AvailabilityItemResponse
     ) {
     }
 
-    public static function of(StockLevel $stock): self
+    public static function of(ProductStockLevel $stock): self
     {
         return new self($stock->productId, $stock->level);
     }

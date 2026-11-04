@@ -10,7 +10,8 @@ use Symfony\Component\Uid\Uuid;
 
 /**
  * Catalog products for the tests whose participants ask Catalog in processes of their own (ReceiveStock and
- * CorrectStock refuse a product Catalog does not have), written as rows on a connection that commits.
+ * CorrectStock refuse a variant Catalog does not have), written as rows on a connection that commits. Every product
+ * has one default variant whose id is not the id of the product.
  */
 final class CatalogFixture
 {
@@ -33,6 +34,17 @@ final class CatalogFixture
         );
 
         return $productId;
+    }
+
+    /**
+     * @return string the id of the default variant of the product
+     */
+    public static function defaultVariant(Connection $connection, string $productId): string
+    {
+        $variantId = $connection->fetchOne('SELECT id FROM catalog_product_variant WHERE product_id = ?', [$productId]);
+        \assert(\is_string($variantId));
+
+        return $variantId;
     }
 
     /**

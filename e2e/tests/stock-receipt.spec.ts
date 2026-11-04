@@ -6,8 +6,14 @@ import { loginStaff } from "../support/staff-login";
 const STORE_AVAILABILITY_WAIT_MS = 70_000;
 // The demo product with nothing on the shelf (apps/api/fixtures/stock.yaml); it is in the category "Sporty wodne" > "Kajaki".
 const PRODUCT_NAME = "Kajak turystyczny Vilmar Rzeka 2 zielony";
+// The variant of the product to receive into: the panel lists a row per variant, the stock is kept per variant. The
+// product has only its default variant (no variant axes), whose label is empty.
+const VARIANT_LABEL = "";
 // More than the low stock threshold, so the level after the receipt is "Dostępny" and not "Ostatnie sztuki".
 const RECEIVED_QUANTITY = 10;
+
+/** The whole text, literally (also an empty one, which `getByText` cannot match). */
+const exactly = (text: string): RegExp => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 
 const storeAvailability = (page: Page) =>
   page
@@ -37,7 +43,7 @@ async function expectStoreAvailability(page: Page, label: string): Promise<void>
     .toBe(label);
 }
 
-test("a stock receipt in the panel makes the product available in the store", async ({ page }) => {
+test("a stock receipt for a variant in the panel makes the product available in the store", async ({ page }) => {
   test.setTimeout(2 * STORE_AVAILABILITY_WAIT_MS + 120_000);
 
   // The product starts out of stock. After a previous run the store may still show the cached "Dostępny" for up to
@@ -48,10 +54,14 @@ test("a stock receipt in the panel makes the product available in the store", as
   await loginStaff(page, staff.warehouse);
   await page.getByRole("link", { name: "Stany magazynowe" }).click();
   await page.getByRole("searchbox", { name: "Szukaj po nazwie produktu" }).fill(PRODUCT_NAME);
-  // The unfiltered first page has many rows: exactly one row means the (debounced) search has been applied. Changing
-  // the stock earlier would let a late search answer overwrite the row with the old stock.
-  await expect(page.getByTestId("stock-row"), "the search narrows the list to the product").toHaveCount(1);
-  const row = page.getByTestId("stock-row").filter({ has: page.getByTestId("name").getByText(PRODUCT_NAME, { exact: true }) });
+  // The unfiltered first page has many products: the product name as the only one (a name is shown on the first row of
+  // each product) means the (debounced) search has been applied. Changing the stock earlier would let a late search
+  // answer overwrite the row with the old stock.
+  await expect(page.getByTestId("name"), "the search narrows the list to the product").toHaveText([PRODUCT_NAME]);
+  // Every row left is a variant of the product; the one to receive into is found by its label.
+  const row = page
+    .getByTestId("stock-row")
+    .filter({ has: page.getByTestId("variant-label").filter({ hasText: exactly(VARIANT_LABEL) }) });
   await expect(row).toHaveCount(1);
   await expect(
     row.getByTestId("physical"),

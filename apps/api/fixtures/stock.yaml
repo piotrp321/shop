@@ -1,25 +1,26 @@
-# Demo stock (physical units on the shelf) for the demo products of fixtures/catalog.yaml, loaded by
-# `inventory:seed-demo` (`make seed`). Keys are patterns of product slugs: `*` matches any run of characters, the
-# pattern has to match the whole slug.
+# Demo stock (physical units on the shelf) for the demo variants of fixtures/catalog.yaml, loaded by
+# `inventory:seed-demo` (`make seed`). Keys are patterns of variant keys, `<product slug>/<label slug>`
+# (`<product slug>/standard` for the default variant): `*` matches any run of characters, also `/`, and the pattern
+# has to match the whole key.
 #
 # Patterns are checked in the order of this file and the FIRST one that matches wins, so a specific pattern goes
-# before a general one. A demo product that no pattern matches stops the seed with an error and nothing is changed.
+# before a general one. A demo variant that no pattern matches stops the seed with an error and nothing is changed.
 # A value is 0 to 100 000; 0 stores a stock record with nothing on the shelf (out of stock), 1-5 is low stock.
 #
-# Most products have 20-50 units, a few have 2-3 and a few have 0. The e2e tests rely on the product
-# kajak-turystyczny-vilmar-rzeka-2-zielony having none in stock.
+# Most variants have 20-50 units, a few have 2-3 and a few have 0. The e2e tests rely on the default variant of the
+# product kajak-turystyczny-vilmar-rzeka-2-zielony having none in stock.
 
 # Out of stock
-"kajak-turystyczny-vilmar-rzeka-2-zielony": 0
-"kajak-turystyczny-dravik-rzeka-2-pomaranczowy": 0
-"narty-skiturowe-stavro-gran-95-pomaranczowe": 0
-"pianka-plywacka-lumora-cieplej-5-grafitowa": 0
+"kajak-turystyczny-vilmar-rzeka-2-zielony/standard": 0
+"kajak-turystyczny-dravik-rzeka-2-pomaranczowy/standard": 0
+"narty-skiturowe-stavro-gran-95-pomaranczowe/standard": 0
+"pianka-plywacka-lumora-cieplej-5-grafitowa/standard": 0
 
 # Last units
-"rower-elektryczny-zolvia-szlak-e-grafitowy": 2
-"narty-skiturowe-vilmar-gran-95-niebieskie": 2
-"rower-elektryczny-dravik-dolina-e-niebieski": 3
-"kajak-turystyczny-dravik-rzeka-1-zielony": 3
+"rower-elektryczny-zolvia-szlak-e-grafitowy/standard": 2
+"narty-skiturowe-vilmar-gran-95-niebieskie/standard": 2
+"rower-elektryczny-dravik-dolina-e-niebieski/standard": 3
+"kajak-turystyczny-dravik-rzeka-1-zielony/standard": 3
 
 # Bieganie
 "buty-szosowe-*-asfalt-200-*": 24
@@ -64,12 +65,12 @@
 "mata-samopompujaca-*-sen-3-*": 30
 "mata-samopompujaca-*-sen-5-*": 50
 "przewodnik-*-tatry-zachodnie-*": 28
-"przewodnik-*-oprawa-miekka": 40
-"przewodnik-*-oprawa-twarda": 22
-"mapa-turystyczna-*-skladana": 32
-"mapa-turystyczna-*-laminowana": 48
-"danie-liofilizowane-*-porcja-jednoosobowa": 26
-"danie-liofilizowane-*-porcja-dwuosobowa": 38
+"przewodnik-*-oprawa-miekka/standard": 40
+"przewodnik-*-oprawa-twarda/standard": 22
+"mapa-turystyczna-*-skladana/standard": 32
+"mapa-turystyczna-*-laminowana/standard": 48
+"danie-liofilizowane-*-porcja-jednoosobowa/standard": 26
+"danie-liofilizowane-*-porcja-dwuosobowa/standard": 38
 
 # Sporty zimowe
 "narty-zjazdowe-*-stok-80-*": 34

@@ -11,24 +11,24 @@ use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
- * GET /api/v1/admin/products/{productId}/stock-history on PostgreSQL (shop_test, rolled back after each test).
+ * GET /api/v1/admin/variants/{variantId}/stock-history on PostgreSQL (shop_test, rolled back after each test).
  */
 final class StockHistoryEndpointTest extends WebTestCase
 {
     use Factories;
     use StockEndpointTestTrait;
 
-    private const string UNKNOWN_PRODUCT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
+    private const string UNKNOWN_VARIANT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
 
     public function testListsTheEntriesNewestFirstWithTheirDetails(): void
     {
-        $productId = $this->product();
-        $this->entry($productId, '2026-10-01 10:00:00+00:00', 20, ['source' => 'seed', 'reference' => 'seed:'.$productId, 'physical_after' => 20]);
-        $this->entry($productId, '2026-10-03 12:30:00+02:00', -3, ['type' => 'correction', 'reason' => 'damage', 'note' => 'Zalane', 'physical_after' => 17, 'source' => 'staff', 'actor_id' => 'sub-123', 'actor_name' => 'Anna Admin']);
-        $this->entry($productId, '2026-10-02 10:00:00+00:00', 0, ['type' => 'reservation', 'reserved_delta' => 4, 'physical_after' => 20, 'reserved_after' => 4, 'reference' => 'order-1', 'source' => 'system']);
-        $this->entry($this->product(), '2026-10-04 10:00:00+00:00', 99);
+        $variantId = $this->variant();
+        $this->entry($variantId, '2026-10-01 10:00:00+00:00', 20, ['source' => 'seed', 'reference' => 'seed:'.$variantId, 'physical_after' => 20]);
+        $this->entry($variantId, '2026-10-03 12:30:00+02:00', -3, ['type' => 'correction', 'reason' => 'damage', 'note' => 'Zalane', 'physical_after' => 17, 'source' => 'staff', 'actor_id' => 'sub-123', 'actor_name' => 'Anna Admin']);
+        $this->entry($variantId, '2026-10-02 10:00:00+00:00', 0, ['type' => 'reservation', 'reserved_delta' => 4, 'physical_after' => 20, 'reserved_after' => 4, 'reference' => 'order-1', 'source' => 'system']);
+        $this->entry($this->variant(), '2026-10-04 10:00:00+00:00', 99);
 
-        $body = $this->get($productId);
+        $body = $this->get($variantId);
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringContainsString('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
@@ -38,7 +38,7 @@ final class StockHistoryEndpointTest extends WebTestCase
             [
                 ['occurredAt' => '2026-10-03T10:30:00+00:00', 'type' => 'correction', 'physicalDelta' => -3, 'reservedDelta' => 0, 'physicalAfter' => 17, 'reservedAfter' => 0, 'reason' => 'damage', 'note' => 'Zalane', 'reference' => null, 'source' => 'staff', 'actorName' => 'Anna Admin'],
                 ['occurredAt' => '2026-10-02T10:00:00+00:00', 'type' => 'reservation', 'physicalDelta' => 0, 'reservedDelta' => 4, 'physicalAfter' => 20, 'reservedAfter' => 4, 'reason' => null, 'note' => null, 'reference' => 'order-1', 'source' => 'system', 'actorName' => null],
-                ['occurredAt' => '2026-10-01T10:00:00+00:00', 'type' => 'receipt', 'physicalDelta' => 20, 'reservedDelta' => 0, 'physicalAfter' => 20, 'reservedAfter' => 0, 'reason' => null, 'note' => null, 'reference' => 'seed:'.$productId, 'source' => 'seed', 'actorName' => null],
+                ['occurredAt' => '2026-10-01T10:00:00+00:00', 'type' => 'receipt', 'physicalDelta' => 20, 'reservedDelta' => 0, 'physicalAfter' => 20, 'reservedAfter' => 0, 'reason' => null, 'note' => null, 'reference' => 'seed:'.$variantId, 'source' => 'seed', 'actorName' => null],
             ],
             $items,
         );
@@ -48,21 +48,21 @@ final class StockHistoryEndpointTest extends WebTestCase
         $this->assertPrivateAndNotStored();
     }
 
-    public function testAProductWithoutAStockRecordHasAnEmptyHistory(): void
+    public function testAVariantWithoutAStockRecordHasAnEmptyHistory(): void
     {
-        self::assertSame(['items' => [], 'next' => null], $this->get($this->product()));
+        self::assertSame(['items' => [], 'next' => null], $this->get($this->variant()));
         self::assertResponseStatusCodeSame(200);
     }
 
     public function testDefaultPageHoldsTwentyFiveEntriesAndTheCursorLeadsToTheRest(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
         for ($n = 1; $n <= 26; ++$n) {
-            $this->entry($productId, \sprintf('2026-10-01 10:%02d:00+00:00', $n), $n);
+            $this->entry($variantId, \sprintf('2026-10-01 10:%02d:00+00:00', $n), $n);
         }
 
-        $first = $this->get($productId);
-        $second = $this->get($productId, 'after='.$this->next($first));
+        $first = $this->get($variantId);
+        $second = $this->get($variantId, 'after='.$this->next($first));
 
         self::assertCount(25, $this->items($first));
         self::assertSame(26, $this->items($first)[0]['physicalDelta']);
@@ -73,16 +73,16 @@ final class StockHistoryEndpointTest extends WebTestCase
 
     public function testPagesWithPerPageWithoutRepeatingOrSkippingEntries(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
         foreach ([1, 2, 3, 4, 5] as $n) {
             // Entries within one second: the later one has the greater, time-ordered id and comes first.
-            $this->entry($productId, '2026-10-01 10:00:00+00:00', $n);
+            $this->entry($variantId, '2026-10-01 10:00:00+00:00', $n);
         }
 
         $seen = [];
         $query = 'perPage=2';
         for ($page = 0; $page < 5; ++$page) {
-            $body = $this->get($productId, $query);
+            $body = $this->get($variantId, $query);
             array_push($seen, ...array_column($this->items($body), 'physicalDelta'));
             if (null === $body['next']) {
                 break;
@@ -110,10 +110,10 @@ final class StockHistoryEndpointTest extends WebTestCase
     #[DataProvider('staffRoles')]
     public function testEveryStaffRoleCanReadTheHistory(array $roles): void
     {
-        $productId = $this->product();
-        $this->entry($productId, '2026-10-01 10:00:00+00:00', 5);
+        $variantId = $this->variant();
+        $this->entry($variantId, '2026-10-01 10:00:00+00:00', 5);
 
-        $body = $this->get($productId, '', TestTokenFactory::staff($roles));
+        $body = $this->get($variantId, '', TestTokenFactory::staff($roles));
 
         self::assertResponseStatusCodeSame(200);
         self::assertCount(1, $this->items($body));
@@ -121,27 +121,38 @@ final class StockHistoryEndpointTest extends WebTestCase
 
     public function testWithoutATokenTheRequestIsUnauthorized(): void
     {
-        $this->request($this->product(), '', null);
+        $this->request($this->variant(), '', null);
 
         $this->assertUnauthorized();
     }
 
     public function testATokenOfTheShopRealmIsUnauthorized(): void
     {
-        $this->get($this->product(), '', TestTokenFactory::customer());
+        $this->get($this->variant(), '', TestTokenFactory::customer());
 
         $this->assertUnauthorized();
     }
 
-    public function testAnUnknownProductIsNotFoundEvenWithHistoryLeftBehind(): void
+    public function testTheIdOfAProductIsNoVariantAndIsNotFound(): void
     {
-        $this->entry(self::UNKNOWN_PRODUCT, '2026-10-01 10:00:00+00:00', 5);
+        [$productId, $variantId] = $this->productWithVariant();
+        $this->entry($variantId, '2026-10-01 10:00:00+00:00', 5);
 
-        $this->get(self::UNKNOWN_PRODUCT);
+        $this->get($productId);
 
         $problem = $this->assertProblem(404);
-        self::assertSame('Product not found.', $problem['detail']);
-        self::assertStringNotContainsString(self::UNKNOWN_PRODUCT, (string) $this->client->getResponse()->getContent());
+        self::assertSame('Wariant produktu nie istnieje.', $problem['detail']);
+    }
+
+    public function testAnUnknownVariantIsNotFoundEvenWithHistoryLeftBehind(): void
+    {
+        $this->entry(self::UNKNOWN_VARIANT, '2026-10-01 10:00:00+00:00', 5);
+
+        $this->get(self::UNKNOWN_VARIANT);
+
+        $problem = $this->assertProblem(404);
+        self::assertSame('Wariant produktu nie istnieje.', $problem['detail']);
+        self::assertStringNotContainsString(self::UNKNOWN_VARIANT, (string) $this->client->getResponse()->getContent());
     }
 
     /**
@@ -150,14 +161,14 @@ final class StockHistoryEndpointTest extends WebTestCase
     public static function idsThatAreNotUuids(): iterable
     {
         yield 'a word' => ['shoes'];
-        yield 'a uuid with a suffix' => [self::UNKNOWN_PRODUCT.'x'];
-        yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_PRODUCT)];
+        yield 'a uuid with a suffix' => [self::UNKNOWN_VARIANT.'x'];
+        yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_VARIANT)];
     }
 
     #[DataProvider('idsThatAreNotUuids')]
-    public function testAProductIdThatIsNotAUuidIsNotFound(string $productId): void
+    public function testAVariantIdThatIsNotAUuidIsNotFound(string $variantId): void
     {
-        $this->get($productId);
+        $this->get($variantId);
 
         $this->assertProblem(404);
     }
@@ -184,20 +195,20 @@ final class StockHistoryEndpointTest extends WebTestCase
     #[DataProvider('rejectedQueries')]
     public function testBadParametersAreRejectedWithProblemDetails(string $query): void
     {
-        $productId = $this->product();
-        $this->entry($productId, '2026-10-01 10:00:00+00:00', 5);
+        $variantId = $this->variant();
+        $this->entry($variantId, '2026-10-01 10:00:00+00:00', 5);
 
-        $this->get($productId, $query);
+        $this->get($variantId, $query);
 
         $this->assertProblem(400);
     }
 
     public function testBoundariesOfThePageSizeAreAccepted(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
         foreach (['perPage=1', 'perPage=100'] as $query) {
-            $this->get($productId, $query);
+            $this->get($variantId, $query);
 
             self::assertResponseStatusCodeSame(200, $query);
         }
@@ -211,16 +222,16 @@ final class StockHistoryEndpointTest extends WebTestCase
     /**
      * @param array<string, mixed> $columns more columns of the movement row
      */
-    private function entry(string $productId, string $occurredAt, int $physicalDelta, array $columns = []): void
+    private function entry(string $variantId, string $occurredAt, int $physicalDelta, array $columns = []): void
     {
         $columns += [
             'type' => 'receipt', 'reserved_delta' => 0, 'physical_after' => $physicalDelta, 'reserved_after' => 0,
             'reason' => null, 'note' => null, 'reference' => null, 'source' => 'seed', 'actor_id' => null, 'actor_name' => null,
         ];
         $this->connection->executeStatement(
-            'INSERT INTO inventory_stock_movement (id, product_id, type, physical_delta, reserved_delta, physical_after, reserved_after, reason, note, reference, source, actor_id, actor_name, occurred_at) '
-            .'VALUES (:id, :product_id, :type, :physical_delta, :reserved_delta, :physical_after, :reserved_after, :reason, :note, :reference, :source, :actor_id, :actor_name, :occurred_at)',
-            ['id' => (string) Uuid::v7(), 'product_id' => $productId, 'physical_delta' => $physicalDelta, 'occurred_at' => $occurredAt] + $columns,
+            'INSERT INTO inventory_stock_movement (id, variant_id, type, physical_delta, reserved_delta, physical_after, reserved_after, reason, note, reference, source, actor_id, actor_name, occurred_at) '
+            .'VALUES (:id, :variant_id, :type, :physical_delta, :reserved_delta, :physical_after, :reserved_after, :reason, :note, :reference, :source, :actor_id, :actor_name, :occurred_at)',
+            ['id' => (string) Uuid::v7(), 'variant_id' => $variantId, 'physical_delta' => $physicalDelta, 'occurred_at' => $occurredAt] + $columns,
         );
     }
 
@@ -229,18 +240,18 @@ final class StockHistoryEndpointTest extends WebTestCase
      *
      * @return array<mixed>
      */
-    private function get(string $productId, string $query = '', ?string $token = null): array
+    private function get(string $variantId, string $query = '', ?string $token = null): array
     {
-        return $this->request($productId, $query, 'Bearer '.($token ?? TestTokenFactory::staff(['admin'])));
+        return $this->request($variantId, $query, 'Bearer '.($token ?? TestTokenFactory::staff(['admin'])));
     }
 
     /**
      * @return array<mixed>
      */
-    private function request(string $productId, string $query, ?string $authorization): array
+    private function request(string $variantId, string $query, ?string $authorization): array
     {
         $server = null === $authorization ? [] : ['HTTP_AUTHORIZATION' => $authorization];
-        $this->client->request('GET', '/api/v1/admin/products/'.$productId.'/stock-history'.('' === $query ? '' : '?'.$query), server: $server);
+        $this->client->request('GET', '/api/v1/admin/variants/'.$variantId.'/stock-history'.('' === $query ? '' : '?'.$query), server: $server);
 
         $decoded = json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR);
         self::assertIsArray($decoded);

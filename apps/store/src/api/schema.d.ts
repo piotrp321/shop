@@ -281,7 +281,7 @@ export interface paths {
         };
         /**
          * Availability of products
-         * @description The availability level of each requested product, for the product list. A product without a stock record, or unknown, is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not what decides a purchase: the reservation at checkout does.
+         * @description The availability level of each requested product, for the product list. A product without a stock record, with more than one variant, or unknown, is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not what decides a purchase: the reservation at checkout does.
          */
         get: operations["getAvailability"];
         put?: never;

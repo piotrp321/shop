@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace App\Inventory\Application\Query;
 
+/**
+ * A product of the stock list with its variants.
+ */
 final readonly class StockListItem
 {
     /**
-     * @param ListedStock|null $stock null when the product has no stock record
+     * @param list<StockListVariant> $variants in presentation order
      */
     public function __construct(
         public string $productId,
         public string $name,
-        public ?ListedStock $stock,
+        public array $variants,
     ) {
     }
 }

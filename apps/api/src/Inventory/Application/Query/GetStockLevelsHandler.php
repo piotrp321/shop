@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Inventory\Application\Query;
 
 use App\Inventory\Domain\Stock\AvailabilityLevel;
-use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Domain\Stock\StockItemRepository;
+use App\Inventory\Domain\Stock\VariantId;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
@@ -17,7 +17,7 @@ final readonly class GetStockLevelsHandler
     }
 
     /**
-     * One read for all the products. Every requested product has a level, in the order of the request; a repeated
+     * One read for all the variants. Every requested variant has a level, in the order of the request; a repeated
      * id answers once.
      *
      * @return list<StockLevel>
@@ -26,17 +26,17 @@ final readonly class GetStockLevelsHandler
      */
     public function __invoke(GetStockLevels $query): array
     {
-        $count = \count($query->productIds);
-        if ($count < 1 || $count > GetStockLevels::MAX_PRODUCTS) {
-            throw InvalidStockLevelsQuery::productCountOutOfRange();
+        $count = \count($query->variantIds);
+        if ($count < 1 || $count > GetStockLevels::MAX_VARIANTS) {
+            throw InvalidStockLevelsQuery::variantCountOutOfRange();
         }
 
         $ids = [];
-        foreach ($query->productIds as $raw) {
+        foreach ($query->variantIds as $raw) {
             try {
-                $id = ProductId::fromString($raw);
+                $id = VariantId::fromString($raw);
             } catch (\InvalidArgumentException) {
-                throw InvalidStockLevelsQuery::notAProductId();
+                throw InvalidStockLevelsQuery::notAVariantId();
             }
             $ids[$id->toString()] = $id;
         }

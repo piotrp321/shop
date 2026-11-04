@@ -13,7 +13,7 @@ use App\Shared\Domain\Exception\Conflict;
 final class InsufficientStock extends \DomainException implements Conflict
 {
     /**
-     * @param non-empty-list<Shortage> $shortages ordered by product id
+     * @param non-empty-list<Shortage> $shortages ordered by variant id
      */
     public function __construct(public readonly array $shortages)
     {

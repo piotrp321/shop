@@ -37,8 +37,8 @@ trait CartEndpointTestTrait
     }
 
     /**
-     * A product of Catalog, with a gross price of its one variant (null: none) and a physical stock (null: no stock
-     * record).
+     * A product of Catalog, with a gross price of its one variant (null: none) and a physical stock of that variant
+     * (null: no stock record).
      *
      * @param list<string> $imageAlts
      */
@@ -53,7 +53,7 @@ trait CartEndpointTestTrait
             VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $product->variants()->toList()[0]->id()->toString(), 'gross' => $gross]);
         }
         if (null !== $stock) {
-            StockFixture::stock($this->connection, $stock, productId: $id);
+            StockFixture::stock($this->connection, $stock, variantId: $product->variants()->toList()[0]->id()->toString());
         }
         $this->entityManager->clear();
 

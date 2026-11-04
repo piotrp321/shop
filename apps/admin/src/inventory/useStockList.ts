@@ -3,6 +3,7 @@ import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 
 export type StockListItem = components["schemas"]["StockListItemResponse"];
+type ListedStock = components["schemas"]["ListedStockResponse"];
 type StockState = components["schemas"]["StockStateResponse"];
 type ReceiveStockRequest = components["schemas"]["ReceiveStockRequest"];
 type CorrectStockRequest = components["schemas"]["CorrectStockRequest"];
@@ -16,6 +17,20 @@ export type StockChange =
   | { status: "invalid"; fields: Partial<Record<ChangeField, string>>; message: string | null }
   | { status: "conflict"; message: string }
   | { status: "failed"; message: string };
+
+/**
+ * A row of the stock list: one variant with the product it belongs to. `first` marks the first variant of a product,
+ * the row that shows the name of the product above its other variants.
+ */
+export interface StockRow {
+  productId: string;
+  name: string;
+  variantId: string;
+  /** The values of the variant, empty for the default variant. */
+  label: string;
+  stock: ListedStock | null;
+  first: boolean;
+}
 
 export const CONFLICT_MESSAGE = "Stan został w międzyczasie zmieniony – odśwież";
 
@@ -82,12 +97,13 @@ function failureMessage(status: number): string {
 
 /**
  * The stock list with a search by name (from two characters, after a pause in typing), a category filter and paging
- * with the cursors of the API. The panel keeps the stack of the cursors it has visited: `cursors[i]` is the `after`
- * of page i (null for the first), so "previous" is the cursor below the current one. Changing the search or the
- * category starts again from the first page. A failed request keeps the page that is shown and can be retried.
- * Every number and level in a row is the API's; the panel only shows them.
+ * with the cursors of the API. A page holds products, each with its variants; `rows` has a row per variant, in the
+ * order of the products and of their variants. The panel keeps the stack of the cursors it has visited: `cursors[i]`
+ * is the `after` of page i (null for the first), so "previous" is the cursor below the current one. Changing the
+ * search or the category starts again from the first page. A failed request keeps the page that is shown and can be
+ * retried. Every number and level in a row is the API's; the panel only shows them.
  *
- * `receiveStock` and `correctStock` send a change and put the stock the API answers with into the row (the panel
+ * `receiveStock` and `correctStock` send a change of one variant and put the stock the API answers with into its row (the panel
  * computes nothing). A list answer that was asked before such a change is not allowed to bring back the older stock:
  * a stock saved since the newest list request started wins when its version is greater.
  */
@@ -107,10 +123,10 @@ export function useStockList() {
   let timer: ReturnType<typeof setTimeout> | undefined;
   // Only the newest request may change the state; an older one that finishes late is ignored.
   let latest = 0;
-  // The stocks saved since the newest list request started. Its answer can predate such a save, so a row it brings
-  // is replaced by the saved stock when that is newer (a greater version). Cleared when a request starts: the next
-  // one is asked after those saves, so it already has them.
-  const savedSinceLoad = new Map<string, NonNullable<StockListItem["stock"]>>();
+  // The stocks saved since the newest list request started, by variant. Its answer can predate such a save, so a row
+  // it brings is replaced by the saved stock when that is newer (a greater version). Cleared when a request starts:
+  // the next one is asked after those saves, so it already has them.
+  const savedSinceLoad = new Map<string, ListedStock>();
 
   const searchTooShort = computed(() => {
     const length = characters(search.value.trim());
@@ -119,6 +135,18 @@ export function useStockList() {
   const hasPrevious = computed(() => cursors.value.length > 1);
   const hasNext = computed(() => next.value !== null);
   const pageNumber = computed(() => cursors.value.length);
+  const rows = computed<StockRow[]>(() =>
+    items.value.flatMap((item) =>
+      item.variants.map((variant, index) => ({
+        productId: item.productId,
+        name: item.name,
+        variantId: variant.variantId,
+        label: variant.label,
+        stock: variant.stock,
+        first: index === 0,
+      })),
+    ),
+  );
 
   async function load(stack: (string | null)[]): Promise<void> {
     const request = ++latest;
@@ -162,12 +190,17 @@ export function useStockList() {
   }
 
   function withSavedStock(item: StockListItem): StockListItem {
-    const saved = savedSinceLoad.get(item.productId);
-    return saved && (item.stock === null || saved.version > item.stock.version) ? { ...item, stock: saved } : item;
+    return {
+      ...item,
+      variants: item.variants.map((variant) => {
+        const saved = savedSinceLoad.get(variant.variantId);
+        return saved && (variant.stock === null || saved.version > variant.stock.version) ? { ...variant, stock: saved } : variant;
+      }),
+    };
   }
 
-  /** The row's stock from the answer of the API; a product still without a record (version null) has none. */
-  function rowStock(state: StockState): StockListItem["stock"] {
+  /** The row's stock from the answer of the API; a variant still without a record (version null) has none. */
+  function rowStock(state: StockState): ListedStock | null {
     if (state.version === null || state.updatedAt === null) {
       return null;
     }
@@ -175,12 +208,15 @@ export function useStockList() {
     return { physical, reserved, available, level, version, updatedAt };
   }
 
-  function saveStock(productId: string, state: StockState): void {
+  function saveStock(variantId: string, state: StockState): void {
     const stock = rowStock(state);
     if (stock) {
-      savedSinceLoad.set(productId, stock);
+      savedSinceLoad.set(variantId, stock);
     }
-    items.value = items.value.map((item) => (item.productId === productId ? { ...item, stock } : item));
+    items.value = items.value.map((item) => ({
+      ...item,
+      variants: item.variants.map((variant) => (variant.variantId === variantId ? { ...variant, stock } : variant)),
+    }));
   }
 
   function blankToNull(note: string | null): string | null {
@@ -194,7 +230,7 @@ export function useStockList() {
       case 403:
         return { status: "failed", message: "Nie masz uprawnień do zmiany stanów magazynowych." };
       case 404:
-        return { status: "failed", message: "Ten produkt już nie istnieje." };
+        return { status: "failed", message: "Ten wariant już nie istnieje." };
       case 409:
         return { status: "failed", message: problemDetail(body) ?? `${fallback} (HTTP ${status}).` };
       default:
@@ -206,15 +242,15 @@ export function useStockList() {
    * A receipt. `key` is the idempotency key of the dialog: the caller sends the same one when it repeats the same
    * receipt, so a retry after a lost answer adds the units once.
    */
-  async function receiveStock(productId: string, input: { quantity: number; note: string | null; key: string }): Promise<StockChange> {
+  async function receiveStock(variantId: string, input: { quantity: number; note: string | null; key: string }): Promise<StockChange> {
     const body: ReceiveStockRequest = { quantity: input.quantity, note: blankToNull(input.note) };
     try {
-      const result = await getApiClient().POST("/api/v1/admin/products/{productId}/stock/receipts", {
-        params: { path: { productId }, header: { "Idempotency-Key": input.key } },
+      const result = await getApiClient().POST("/api/v1/admin/variants/{variantId}/stock/receipts", {
+        params: { path: { variantId }, header: { "Idempotency-Key": input.key } },
         body,
       });
       if (result.data) {
-        saveStock(productId, result.data);
+        saveStock(variantId, result.data);
         return { status: "saved" };
       }
       // A 409 here is a reused key; the API says so in `detail`. The first request with this key may have been saved
@@ -236,7 +272,7 @@ export function useStockList() {
    * was refused for another reason (below the reserved units) and the `detail` of the API is shown.
    */
   async function correctStock(
-    productId: string,
+    variantId: string,
     input: { physical: number; reason: CorrectStockRequest["reason"]; note: string | null; version: number | null },
   ): Promise<StockChange> {
     const body: CorrectStockRequest = {
@@ -246,17 +282,17 @@ export function useStockList() {
       version: input.version,
     };
     try {
-      const result = await getApiClient().POST("/api/v1/admin/products/{productId}/stock/corrections", {
-        params: { path: { productId } },
+      const result = await getApiClient().POST("/api/v1/admin/variants/{variantId}/stock/corrections", {
+        params: { path: { variantId } },
         body,
       });
       if (result.data) {
-        saveStock(productId, result.data);
+        saveStock(variantId, result.data);
         return { status: "saved" };
       }
       if (result.response.status === 409) {
         await load(cursors.value);
-        const row = items.value.find((item) => item.productId === productId);
+        const row = rows.value.find((candidate) => candidate.variantId === variantId);
         if (row && (row.stock?.version ?? null) !== input.version) {
           return { status: "conflict", message: CONFLICT_MESSAGE };
         }
@@ -325,6 +361,7 @@ export function useStockList() {
     search,
     searchTooShort,
     items,
+    rows,
     loading,
     loaded,
     error,
