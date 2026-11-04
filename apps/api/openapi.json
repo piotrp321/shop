@@ -977,6 +977,77 @@
                 }
             }
         },
+        "/api/v1/product-offers": {
+            "get": {
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Offers of products of the list",
+                "description": "For each requested product its variants (label, current gross price, availability level, whether one unit can be bought now), the lowest price among the purchasable variants (`fromGross`, with `hasPriceRange` when their prices differ) and the best level among them; a product without a purchasable variant, also one unknown to Catalog, has no price and is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it does not decide a purchase: an addition to the cart checks the price and the stock again.",
+                "operationId": "getProductOffers",
+                "parameters": [
+                    {
+                        "name": "productId",
+                        "in": "query",
+                        "description": "Product ids (UUID), 1 to 48.",
+                        "required": true,
+                        "style": "form",
+                        "explode": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            "maxItems": 48,
+                            "minItems": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "One offer per requested product, in the order of the request; a repeated id answers once.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductOfferListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without technical details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/categories": {
             "get": {
                 "tags": [
@@ -1801,6 +1872,129 @@
                         "default": 24,
                         "maximum": 48,
                         "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "VariantOfferResponse": {
+                "description": "The offer of one variant of a product. Never the number of units.",
+                "required": [
+                    "variantId",
+                    "label",
+                    "gross",
+                    "level",
+                    "purchasable"
+                ],
+                "properties": {
+                    "variantId": {
+                        "description": "Variant id (UUID): the key of a cart line.",
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "label": {
+                        "description": "The values of the variant joined with \", \"; empty for the default variant of a product without axes.",
+                        "type": "string",
+                        "example": "czarne, 42"
+                    },
+                    "gross": {
+                        "description": "The current gross price in grosze; null without a current price.",
+                        "type": "integer",
+                        "example": 30000,
+                        "nullable": true
+                    },
+                    "level": {
+                        "description": "Availability level computed by the API.",
+                        "type": "string",
+                        "example": "in_stock",
+                        "enum": [
+                            "in_stock",
+                            "low_stock",
+                            "out_of_stock"
+                        ]
+                    },
+                    "purchasable": {
+                        "description": "Whether one unit can be bought now: a current price and an available unit. The tile offers only such a variant.",
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "ProductOfferResponse": {
+                "description": "The offer of a product of the list, computed by the API from its purchasable variants (a current price and an available unit). Never the number of units.",
+                "required": [
+                    "productId",
+                    "variantAxes",
+                    "fromGross",
+                    "hasPriceRange",
+                    "currency",
+                    "level",
+                    "variants"
+                ],
+                "properties": {
+                    "productId": {
+                        "description": "Product id (UUID).",
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "variantAxes": {
+                        "description": "Names of the variant axes in order (e.g. \"Kolor, Rozmiar\"); empty for a product with the default variant only, and for a product unknown to Catalog.",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "example": [
+                            "Kolor",
+                            "Rozmiar"
+                        ]
+                    },
+                    "fromGross": {
+                        "description": "The lowest gross price in grosze among the purchasable variants; null when no variant can be bought.",
+                        "type": "integer",
+                        "example": 30000,
+                        "nullable": true
+                    },
+                    "hasPriceRange": {
+                        "description": "Whether the purchasable variants have different prices (the tile shows \"od\").",
+                        "type": "boolean"
+                    },
+                    "currency": {
+                        "description": "ISO 4217 code.",
+                        "type": "string",
+                        "enum": [
+                            "PLN"
+                        ]
+                    },
+                    "level": {
+                        "description": "The best level among the purchasable variants; out_of_stock when no variant can be bought.",
+                        "type": "string",
+                        "example": "in_stock",
+                        "enum": [
+                            "in_stock",
+                            "low_stock",
+                            "out_of_stock"
+                        ]
+                    },
+                    "variants": {
+                        "description": "Every variant in presentation order; none for a product unknown to Catalog.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/VariantOfferResponse"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "ProductOfferListResponse": {
+                "description": "One offer per requested product, in the order of the request; a repeated id answers once.",
+                "required": [
+                    "items"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductOfferResponse"
+                        }
                     }
                 },
                 "type": "object"

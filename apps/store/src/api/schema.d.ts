@@ -212,6 +212,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/product-offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Offers of products of the list
+         * @description For each requested product its variants (label, current gross price, availability level, whether one unit can be bought now), the lowest price among the purchasable variants (`fromGross`, with `hasPriceRange` when their prices differ) and the best level among them; a product without a purchasable variant, also one unknown to Catalog, has no price and is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it does not decide a purchase: an addition to the cart checks the price and the stock again.
+         */
+        get: operations["getProductOffers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/categories": {
         parameters: {
             query?: never;
@@ -534,6 +554,72 @@ export interface components {
             page: number;
             /** @default 24 */
             perPage: number;
+        };
+        /** @description The offer of one variant of a product. Never the number of units. */
+        VariantOfferResponse: {
+            /**
+             * Format: uuid
+             * @description Variant id (UUID): the key of a cart line.
+             */
+            variantId: string;
+            /**
+             * @description The values of the variant joined with ", "; empty for the default variant of a product without axes.
+             * @example czarne, 42
+             */
+            label: string;
+            /**
+             * @description The current gross price in grosze; null without a current price.
+             * @example 30000
+             */
+            gross: number | null;
+            /**
+             * @description Availability level computed by the API.
+             * @example in_stock
+             * @enum {string}
+             */
+            level: "in_stock" | "low_stock" | "out_of_stock";
+            /** @description Whether one unit can be bought now: a current price and an available unit. The tile offers only such a variant. */
+            purchasable: boolean;
+        };
+        /** @description The offer of a product of the list, computed by the API from its purchasable variants (a current price and an available unit). Never the number of units. */
+        ProductOfferResponse: {
+            /**
+             * Format: uuid
+             * @description Product id (UUID).
+             */
+            productId: string;
+            /**
+             * @description Names of the variant axes in order (e.g. "Kolor, Rozmiar"); empty for a product with the default variant only, and for a product unknown to Catalog.
+             * @example [
+             *       "Kolor",
+             *       "Rozmiar"
+             *     ]
+             */
+            variantAxes: string[];
+            /**
+             * @description The lowest gross price in grosze among the purchasable variants; null when no variant can be bought.
+             * @example 30000
+             */
+            fromGross: number | null;
+            /** @description Whether the purchasable variants have different prices (the tile shows "od"). */
+            hasPriceRange: boolean;
+            /**
+             * @description ISO 4217 code.
+             * @enum {string}
+             */
+            currency: "PLN";
+            /**
+             * @description The best level among the purchasable variants; out_of_stock when no variant can be bought.
+             * @example in_stock
+             * @enum {string}
+             */
+            level: "in_stock" | "low_stock" | "out_of_stock";
+            /** @description Every variant in presentation order; none for a product unknown to Catalog. */
+            variants: components["schemas"]["VariantOfferResponse"][];
+        };
+        /** @description One offer per requested product, in the order of the request; a repeated id answers once. */
+        ProductOfferListResponse: {
+            items: components["schemas"]["ProductOfferResponse"][];
         };
         CategoryNode: {
             id: string;
@@ -1318,6 +1404,56 @@ export interface operations {
                 };
             };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getProductOffers: {
+        parameters: {
+            query: {
+                /** @description Product ids (UUID), 1 to 48. */
+                productId: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One offer per requested product, in the order of the request; a repeated id answers once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductOfferListResponse"];
+                };
+            };
+            /** @description No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
             503: {
                 headers: {
                     [name: string]: unknown;

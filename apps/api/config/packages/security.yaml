@@ -38,7 +38,7 @@ security:
     # First match wins. Everything under /api/v1 needs a token unless it is listed as public here.
     access_control:
         - { path: ^/api/v1/admin(/|$), roles: ROLE_STAFF }
-        - { path: ^/api/v1/(products|categories|prices|availability)$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
+        - { path: ^/api/v1/(products|categories|prices|availability|product-offers)$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
         # Guest carts need no token: the random cart id is the key to the cart (spec: docs/features/cart/spec.md).
         - { path: ^/api/v1/guest-carts(/|$), roles: PUBLIC_ACCESS }
         - { path: ^/api/v1(/|$), roles: ROLE_CUSTOMER }

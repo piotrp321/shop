@@ -30,8 +30,8 @@ dostawy, strona produktu, panel administracyjny, rate limiting tworzenia koszyk�
 
 | Context | Odpowiada za |
 |---|---|
-| Cart | koszyki, pozycje, limity, scalanie, wygasanie, widok koszyka z sumami |
-| Catalog | `GetVariantSummaries` (produkt, nazwa produktu, etykieta wariantu i zdjęcie produktu dla linii koszyka) |
+| Cart | koszyki, pozycje, limity, scalanie, wygasanie, widok koszyka z sumami, oferta produktów listy (warianty możliwe do kupienia, cena „od”, poziom produktu) |
+| Catalog | `GetVariantSummaries` (produkt, nazwa produktu, etykieta wariantu i zdjęcie produktu dla linii koszyka), `ListProductVariants` (osie i warianty produktów listy dla oferty) |
 | Pricing | `GetCurrentPrices` (autorytatywna cena aktualna wariantu) |
 | Inventory | `GetStockLevels` (dostępna liczba sztuk wariantu i jej poziom, tylko w procesie API) |
 | Customer | `AuthenticatedCustomer::id()` (`sub` z tokena realmu `shop`) |
@@ -148,6 +148,27 @@ Stan linii, w kolejności priorytetu:
 - `totals.itemCount` = suma ilości wszystkich linii (licznik w nagłówku).
 - `hasExcludedLines` = istnieje linia inna niż `purchasable`.
 - Kwoty w groszach; maksimum 50 × 99 × 99 999 999 mieści się w `int`.
+
+### Oferta produktów listy (`GetProductOffers`)
+
+Kafelek produktu na liście sklepu pokazuje cenę „od” i dostępność produktu liczone z jego wariantów możliwych do kupienia
+oraz pozwala wybrać wariant (decyzje D6–D8 i E1–E3 w `docs/features/variants/spec.md`). Liczy to Cart, bo tu jest reguła
+zakupu i porty do Catalog, Pricing i Inventory.
+
+- Zapytanie `GetProductOffers(productIds)` (1–48 id; inaczej `InvalidProductOffersQuery`, `InvalidInput`) w
+  `Cart_Application`: warianty z `ProductCatalog::variantsOf` (Catalog `ListProductVariants`), ceny z `CartPrices`
+  (Pricing `GetCurrentPrices`) i stany z poziomem z `StockAvailability` (Inventory `GetStockLevels`), po jednym
+  wywołaniu każdego portu dla wszystkich wariantów strony (bez wariantów ceny i stany nie są pytane). Odczyt bez blokad.
+- Wariant jest możliwy do kupienia, gdy `ProductOffer::purchasability(1)` = `Purchasable` (aktualna cena i
+  `available > 0`; `VariantOffer::isPurchasable`): ta sama reguła co przy dodaniu do koszyka, bez drugiej implementacji.
+- Podsumowanie produktu liczy value object domeny `ProductOfferSummary`, jedyne miejsce tej reguły: `fromGross` =
+  najniższe brutto wariantów możliwych do kupienia, `hasPriceRange` = ich najwyższe brutto ≠ najniższe, `level` =
+  najlepszy poziom (`in_stock` > `low_stock`) wśród nich; bez wariantu możliwego do kupienia (także produkt nieznany
+  Catalogowi): `fromGross = null`, `hasPriceRange = false`, `level = out_of_stock`. Próg poziomu zostaje w Inventory.
+- Wynik: oferta dla każdego żądanego id (powtórzone id raz, w kolejności żądania) `{productId, variantAxes, fromGross|null,
+  hasPriceRange, currency: "PLN", level, variants: [{variantId, label, gross|null, level, purchasable}]}`, warianty
+  w kolejności pozycji; `gross` tylko z aktualnej ceny. Produkt nieznany Catalogowi: `variantAxes: []`, `variants: []`.
+  Liczba sztuk nigdy nie jest zwracana.
 
 ## Persystencja i transakcje
 
@@ -288,6 +309,13 @@ Sklep (`apps/api/openapi.json`). Błędy w formacie RFC 9457, `detail` z wyjątk
 
 `security.yaml`: `^/api/v1/guest-carts(/|$)` → `PUBLIC_ACCESS` dla wszystkich metod (przed regułą `ROLE_CUSTOMER`);
 `/api/v1/me/cart…` objęte istniejącą regułą `ROLE_CUSTOMER`.
+
+Oferta produktów listy: `GET /api/v1/product-offers?productId=…&productId=…` (`ProductOffersController` w `Cart_UI`,
+`PUBLIC_ACCESS` dla `GET` w `security.yaml`, `Cache-Control: public, max-age=60`; token wysłany i niepoprawny: 401).
+Identyfikatory jako powtórzony klucz `productId` (forma `productId[]` nie jest kontraktem). 1–48 id; brak, ponad 48
+albo id niebędące UUID: 400 z `violations`. 200 `{items: [oferta z sekcji „Oferta produktów listy”]}`, jedna pozycja na
+każde żądane id. Odpowiedź może być w cache do 60 s, więc nie decyduje o zakupie: dodanie do koszyka sprawdza cenę i stan
+od nowa.
 
 Gość (bez tokena; token wysłany mimo to i niepoprawny daje 401, a gdy nie da się pobrać kluczy wystawcy tokenu: 503):
 
@@ -509,6 +537,11 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 - Handlery: 404 dla gościa nieznanego, wygasłego i scalonego; `ProductNotFound`; `nothing_to_merge` dla nieznanego,
   wygasłego i klienckiego `guestCartId`; `GetCart` klienta bez koszyka nic nie zakłada.
 
+- `ProductOfferSummary` (TDD): pominięcie wariantów bez ceny, z ceną nieaktualną i z `available = 0`, równe i różne
+  ceny, brak wariantów możliwych do kupienia (`fromGross = null`, `out_of_stock`), najlepszy poziom.
+- `GetProductOffersHandler`: oferta na każde żądane id w kolejności żądania, produkt nieznany, jedno wywołanie
+  każdego portu, 0, 49 i niepoprawne id.
+
 ### Integracyjne (PostgreSQL)
 
 W `apps/api/tests/Integration`:
@@ -518,6 +551,7 @@ W `apps/api/tests/Integration`:
   `refresh` rekordu obecnego w identity map (także usuniętego w międzyczasie) i ponowienie po usunięciu koszyka przez
   czyszczenie.
 - `Cart/QueryBusAdaptersTest`: adaptery Catalog, Pricing i Inventory na wariantach.
+- `Cart/GetProductOffersTest`: 48 produktów po 100 wariantów to trzy zapytania (warianty, ceny, stany).
 - `Cart/Persistence/CartLinesByVariantMigrationTest`: migracja na danych sprzed zmiany (linia zachowuje `id`, ilość
   i koszyk, wskazuje wariant domyślny swojego produktu), unikalność `(cart_id, variant_id)`, `down`.
 - `Cart/MergeGuestCartTest`: wymuszony błąd w trakcie scalenia wycofuje całość (gość `open`, klient bez zmian, także
@@ -549,7 +583,10 @@ sztuk, koszyk `merged` nie ma linii.
 
 `apps/api/tests/Functional/Cart` (`GuestCartEndpointTest`, `CustomerCartEndpointTest`, `CustomerCartMergeEndpointTest`).
 Każdy endpoint: 200/201, 400 (zły JSON), 401 (`/me/cart…` bez tokena i z tokenem `backoffice`), 404 (nie-UUID,
-nieznany, wygasły i scalony koszyk gościa, nieznany produkt, brak linii), 409 (każda przyczyna), 415, 422 (każdy przypadek tabeli komunikatów: brak klucza, `null`, zły typ, zły UUID, ilość spoza 1–99; asercja na dokładną listę `violations`), `Cache-Control: private, no-store`; `merge`: każdy `result` i `truncated`.
+nieznany, wygasły i scalony koszyk gościa, nieznany wariant i id produktu zamiast wariantu, brak linii), 409 (każda przyczyna), 415, 422 (każdy przypadek tabeli komunikatów: brak klucza, `null`, zły typ, zły UUID, ilość spoza 1–99; asercja na dokładną listę `violations`), `Cache-Control: private, no-store`; `merge`: każdy `result` i `truncated`.
+`ProductOffersEndpointTest`: oferty bez tokena (cena „od”, zakres, poziom, warianty z etykietami, cena nieaktualna i brak
+stanu pominięte), kolejność i powtórzone id, produkt nieznany i id wariantu zamiast produktu, 48 id, 400 (brak, 49,
+niepoprawny UUID, forma `[]`), 401 przy złym tokenie, `public, max-age=60`, brak liczby sztuk w odpowiedzi.
 
 ### Architektura
 
