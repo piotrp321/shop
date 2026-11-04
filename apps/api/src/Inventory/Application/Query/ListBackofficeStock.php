@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Inventory\Application\Query;
 
 /**
- * One page of the stock list of the panel: products with their stock, sorted by name, then by id.
+ * One page of the stock list of the panel: products with their variants and the stock of each, sorted by name, then
+ * by id. The page size counts products.
  */
 final readonly class ListBackofficeStock
 {

@@ -9,6 +9,7 @@ import InventoryView from "@/views/InventoryView.vue";
 
 type StockList = components["schemas"]["StockListResponse"];
 type StockListItem = components["schemas"]["StockListItemResponse"];
+type ListedStock = components["schemas"]["ListedStockResponse"];
 type HistoryEntry = components["schemas"]["StockHistoryItemResponse"];
 type HistoryPage = components["schemas"]["StockHistoryResponse"];
 
@@ -17,14 +18,14 @@ const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get }) }));
 
 const STOCK = "/api/v1/admin/stock";
-const HISTORY = "/api/v1/admin/products/{productId}/stock-history";
+const HISTORY = "/api/v1/admin/variants/{variantId}/stock-history";
 
-function item(name: string, overrides: Partial<StockListItem> = {}): StockListItem {
+/** A product with one default variant (empty label) unless `variants` names others; `stock` is that variant's. */
+function item(name: string, overrides: { stock?: ListedStock | null; variants?: StockListItem["variants"] } = {}): StockListItem {
   return {
     productId: `id-${name}`,
     name,
-    stock: { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00" },
-    ...overrides,
+    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00" } : overrides.stock }],
   };
 }
 
@@ -148,7 +149,7 @@ describe("InventoryView: stock history", () => {
 
     await openHistory();
 
-    expect(historyCalls()).toEqual([{ path: { productId: "id-A" }, query: {} }]);
+    expect(historyCalls()).toEqual([{ path: { variantId: "var-A" }, query: {} }]);
     const dialog = wrapper.get("[data-testid=history-dialog]");
     expect(dialog.text()).toContain("A");
     expect(dialog.findAll("[data-testid=history-row]")).toHaveLength(3);
@@ -187,6 +188,18 @@ describe("InventoryView: stock history", () => {
     expect(cells("history-reason")).toEqual(["—", "—", "Inwentaryzacja", "Zaginięcie", "Inne"]);
   });
 
+  it("opens the history of the variant of the row, named after its product and label", async () => {
+    serve({ "": { items: [entry()], next: null } }, [
+      item("Kajak", { variants: [{ variantId: "v-green", label: "zielony", stock: null }, { variantId: "v-orange", label: "pomarańczowy", stock: null }] }),
+    ]);
+    wrapper = await mountView();
+
+    await openHistory(1);
+
+    expect(historyCalls()).toEqual([{ path: { variantId: "v-orange" }, query: {} }]);
+    expect(wrapper.get("[data-testid=history-dialog]").text()).toContain("Kajak – pomarańczowy");
+  });
+
   it("loads further entries with 'Pokaż więcej' using the cursor of the API, until the last page", async () => {
     serve({
       "": { items: [entry({ physicalDelta: 3 }), entry({ physicalDelta: 2 })], next: "c1" },
@@ -201,12 +214,12 @@ describe("InventoryView: stock history", () => {
     await wrapper.get("[data-testid=history-more]").trigger("click");
     await settle();
 
-    expect(historyCalls().at(-1)).toEqual({ path: { productId: "id-A" }, query: { after: "c1" } });
+    expect(historyCalls().at(-1)).toEqual({ path: { variantId: "var-A" }, query: { after: "c1" } });
     expect(cells("history-physical-delta")).toEqual(["+3", "+2", "+1"]);
     expect(wrapper.find("[data-testid=history-more]").exists()).toBe(false);
   });
 
-  it("says so when the product has no recorded stock change", async () => {
+  it("says so when the variant has no recorded stock change", async () => {
     serve({ "": { items: [], next: null } });
     wrapper = await mountView();
 
@@ -233,7 +246,7 @@ describe("InventoryView: stock history", () => {
     expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(1);
   });
 
-  it("closes the dialog and forgets the entries, and another product starts from its first page", async () => {
+  it("closes the dialog and forgets the entries, and another variant starts from its first page", async () => {
     serve({ "": { items: [entry()], next: null } }, [item("A"), item("B")]);
     wrapper = await mountView();
     await openHistory(0);
@@ -243,7 +256,7 @@ describe("InventoryView: stock history", () => {
     expect(wrapper.find("[data-testid=history-dialog]").exists()).toBe(false);
 
     await openHistory(1);
-    expect(historyCalls().map((params) => params.path.productId)).toEqual(["id-A", "id-B"]);
+    expect(historyCalls().map((params) => params.path.variantId)).toEqual(["var-A", "var-B"]);
     expect(wrapper.get("[data-testid=history-dialog]").text()).toContain("B");
     expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(1);
   });

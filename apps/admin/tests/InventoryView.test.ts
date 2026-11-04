@@ -24,8 +24,13 @@ function stock(overrides: Partial<ListedStock> = {}): ListedStock {
   return { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00", ...overrides };
 }
 
-function item(name: string, overrides: Partial<StockListItem> = {}): StockListItem {
-  return { productId: `id-${name}`, name, stock: stock(), ...overrides };
+/** A product with one default variant (empty label) unless `variants` names others; `stock` is that variant's. */
+function item(name: string, overrides: { stock?: ListedStock | null; variants?: StockListItem["variants"] } = {}): StockListItem {
+  return {
+    productId: `id-${name}`,
+    name,
+    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? stock() : overrides.stock }],
+  };
 }
 
 const tree: CategoryNode[] = [{ id: "c-sport", name: "Sport", children: [{ id: "c-run", name: "Bieganie", children: [] }] }];
@@ -83,6 +88,32 @@ describe("InventoryView", () => {
     expect(cells(rows[0]!)).toEqual(["Bidon", "10", "4", "6", "Dostępny"]);
     expect(cells(rows[1]!)).toEqual(["Żel", "3", "3", "0", "Niedostępny"]);
     expect(cells(rows[2]!)).toEqual(["Baton", "9", "4", "5", "Ostatnie sztuki"]);
+  });
+
+  it("shows a row per variant under the name of its product, with the label in the 'Wariant' column", async () => {
+    serve({
+      "": {
+        items: [
+          item("Kajak", {
+            variants: [
+              { variantId: "v-green", label: "zielony", stock: stock({ physical: 0, reserved: 0, available: 0, level: "out_of_stock" }) },
+              { variantId: "v-orange", label: "pomarańczowy", stock: null },
+            ],
+          }),
+          item("Bidon"),
+        ],
+        next: null,
+      },
+    });
+    wrapper = await mountView();
+
+    const rows = wrapper.findAll("[data-testid=stock-row]");
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.find("[data-testid=name]").exists() ? row.get("[data-testid=name]").text() : null)).toEqual(["Kajak", null, "Bidon"]);
+    expect(rows.map((row) => row.get("[data-testid=variant-label]").text())).toEqual(["zielony", "pomarańczowy", ""]);
+    expect(rows.map((row) => row.get("[data-testid=physical]").text())).toEqual(["0", "0", "10"]);
+    expect(rows.map((row) => row.get("[data-testid=level]").text())).toEqual(["Niedostępny", "—", "Dostępny"]);
+    expect(wrapper.findAll("th").map((th) => th.text())).toContain("Wariant");
   });
 
   it("shows zeros and no level for a product without a stock record", async () => {

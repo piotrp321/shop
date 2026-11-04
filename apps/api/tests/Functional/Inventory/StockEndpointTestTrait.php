@@ -13,7 +13,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 
 /**
- * What the tests of the stock endpoints of the panel share: a client, Catalog products, the stored stock and its
+ * What the tests of the stock endpoints of the panel share: a client, Catalog variants, the stored stock and its
  * history, and the checks of problem documents and of the OpenAPI schema. On shop_test, rolled back after each test.
  */
 trait StockEndpointTestTrait
@@ -31,14 +31,27 @@ trait StockEndpointTestTrait
         $this->connection = $entityManager->getConnection();
     }
 
-    private function product(): string
+    /**
+     * The default variant of a new Catalog product; its id is never the id of the product.
+     */
+    private function variant(): string
+    {
+        return $this->productWithVariant()[1];
+    }
+
+    /**
+     * @return array{string, string} the id of a new Catalog product and the id of its default variant
+     */
+    private function productWithVariant(): array
     {
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($this->entityManager)->save($category);
         $product = ProductFactory::createOne(['mainCategory' => $category]);
         new DoctrineProductRepository($this->entityManager)->save($product);
+        $variantId = $product->variants()->toList()[0]->id()->toString();
+        self::assertNotSame($product->id()->toString(), $variantId);
 
-        return $product->id()->toString();
+        return [$product->id()->toString(), $variantId];
     }
 
     /**
@@ -63,9 +76,9 @@ trait StockEndpointTestTrait
     /**
      * @return array{physical: int, reserved: int, version: int}|null
      */
-    private function storedStock(string $productId): ?array
+    private function storedStock(string $variantId): ?array
     {
-        $row = $this->connection->fetchAssociative('SELECT physical, reserved, version FROM inventory_stock_item WHERE product_id = ?', [$productId]);
+        $row = $this->connection->fetchAssociative('SELECT physical, reserved, version FROM inventory_stock_item WHERE variant_id = ?', [$variantId]);
         if (false === $row) {
             return null;
         }
@@ -75,15 +88,15 @@ trait StockEndpointTestTrait
     }
 
     /**
-     * The history of the product without the receipt of the stock fixture.
+     * The history of the variant without the receipt of the stock fixture.
      *
      * @return list<array<string, mixed>>
      */
-    private function movements(string $productId): array
+    private function movements(string $variantId): array
     {
         return $this->connection->fetchAllAssociative(
-            "SELECT type, physical_delta, physical_after, reason, note, reference, source, actor_id, actor_name FROM inventory_stock_movement WHERE product_id = ? AND (reference IS NULL OR reference NOT LIKE 'fixture:%') ORDER BY id",
-            [$productId],
+            "SELECT type, physical_delta, physical_after, reason, note, reference, source, actor_id, actor_name FROM inventory_stock_movement WHERE variant_id = ? AND (reference IS NULL OR reference NOT LIKE 'fixture:%') ORDER BY id",
+            [$variantId],
         );
     }
 

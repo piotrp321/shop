@@ -34,11 +34,15 @@ final class ListStockEndpointTest extends WebTestCase
         $this->category = $this->saveCategory();
     }
 
-    public function testListsProductsWithAndWithoutAStock(): void
+    public function testListsProductsWithTheirVariantsInPositionOrderWithAndWithoutAStock(): void
     {
-        $bidon = $this->saveProduct('Bidon');
+        $kayak = $this->saveProduct('Kajak', variants: [
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'values' => ['zielony']],
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['pomarańczowy']],
+        ], axes: ['Kolor']);
         $gel = $this->saveProduct('Żel malinowy');
-        StockFixture::stock($this->connection, 10, 4, 3, $bidon->id()->toString());
+        $gelVariant = $gel->variants()->toList()[0]->id()->toString();
+        StockFixture::stock($this->connection, 10, 4, 3, '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01');
 
         $body = $this->get('');
 
@@ -47,15 +51,46 @@ final class ListStockEndpointTest extends WebTestCase
         self::assertNull($body['next']);
         $items = $this->items($body);
         self::assertCount(2, $items);
-        self::assertSame(['productId' => $bidon->id()->toString(), 'name' => 'Bidon'], array_diff_key($items[0], ['stock' => 1]));
-        $stock = $items[0]['stock'];
+        self::assertSame(['productId' => $kayak->id()->toString(), 'name' => 'Kajak'], array_diff_key($items[0], ['variants' => 1]));
+        $variants = $items[0]['variants'];
+        self::assertIsArray($variants);
+        self::assertIsArray($variants[1]);
+        self::assertSame(
+            [['variantId' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'label' => 'zielony', 'stock' => null], ['variantId' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'label' => 'pomarańczowy']],
+            [$variants[0], array_diff_key($variants[1], ['stock' => 1])],
+        );
+        $stock = $variants[1]['stock'];
         self::assertIsArray($stock);
         self::assertSame(['physical' => 10, 'reserved' => 4, 'available' => 6, 'level' => 'in_stock', 'version' => 3], array_diff_key($stock, ['updatedAt' => 1]));
         self::assertUtcTimestamp($stock);
-        self::assertSame(['productId' => $gel->id()->toString(), 'name' => 'Żel malinowy', 'stock' => null], $items[1]);
+        self::assertNotSame($gel->id()->toString(), $gelVariant);
+        self::assertSame(
+            ['productId' => $gel->id()->toString(), 'name' => 'Żel malinowy', 'variants' => [['variantId' => $gelVariant, 'label' => '', 'stock' => null]]],
+            $items[1],
+        );
         $this->assertKeysMatchSchema($body, 'StockListResponse');
         $this->assertKeysMatchSchema($items[0], 'StockListItemResponse');
+        $this->assertKeysMatchSchema($variants[1], 'StockListVariantResponse');
         $this->assertKeysMatchSchema($stock, 'ListedStockResponse');
+    }
+
+    public function testAPageCountsProductsEachWithAllItsVariants(): void
+    {
+        $this->saveProduct('A kajak', variants: [
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['zielony']],
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'values' => ['niebieski']],
+            ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b03', 'values' => ['czerwony']],
+        ], axes: ['Kolor']);
+        $this->saveProduct('B bidon');
+
+        $first = $this->get('perPage=1');
+        $second = $this->get('perPage=1&after='.$this->next($first));
+
+        self::assertSame(['A kajak'], array_column($this->items($first), 'name'));
+        self::assertIsArray($this->items($first)[0]['variants']);
+        self::assertCount(3, $this->items($first)[0]['variants']);
+        self::assertSame(['B bidon'], array_column($this->items($second), 'name'));
+        self::assertNull($second['next']);
     }
 
     public function testEmptyCatalogGivesAnEmptyList(): void
@@ -197,9 +232,17 @@ final class ListStockEndpointTest extends WebTestCase
         return $category;
     }
 
-    private function saveProduct(string $name, ?Category $category = null): Product
+    /**
+     * @param list<array{id: string, values: list<string>}> $variants none for the factory's default variant
+     * @param list<string>                                  $axes
+     */
+    private function saveProduct(string $name, ?Category $category = null, array $variants = [], array $axes = []): Product
     {
-        $product = ProductFactory::createOne(['mainCategory' => $category ?? $this->category, 'name' => $name]);
+        $attributes = ['mainCategory' => $category ?? $this->category, 'name' => $name];
+        if ([] !== $variants) {
+            $attributes += ['variantAxes' => $axes, 'variants' => $variants];
+        }
+        $product = ProductFactory::createOne($attributes);
         new DoctrineProductRepository($this->entityManager)->save($product);
 
         return $product;

@@ -11,7 +11,7 @@ namespace App\Inventory\Domain\Stock;
 final readonly class StockMovement
 {
     public function __construct(
-        private ProductId $productId,
+        private VariantId $variantId,
         private StockMovementType $type,
         private int $physicalDelta,
         private int $reservedDelta,
@@ -25,9 +25,9 @@ final readonly class StockMovement
     ) {
     }
 
-    public function productId(): ProductId
+    public function variantId(): VariantId
     {
-        return $this->productId;
+        return $this->variantId;
     }
 
     public function type(): StockMovementType
@@ -87,13 +87,13 @@ final readonly class StockMovement
     }
 
     /**
-     * Whether this is the receipt of the quantity with the note into the product: a receipt sent again with its key
+     * Whether this is the receipt of the quantity with the note into the variant: a receipt sent again with its key
      * is the same receipt only then.
      */
-    public function isReceiptOf(ProductId $productId, int $quantity, StockNote $note): bool
+    public function isReceiptOf(VariantId $variantId, int $quantity, StockNote $note): bool
     {
         return StockMovementType::Receipt === $this->type
-            && $this->productId->equals($productId)
+            && $this->variantId->equals($variantId)
             && $quantity === $this->physicalDelta
             && $note->toNullableString() === $this->note;
     }

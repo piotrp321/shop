@@ -33,7 +33,7 @@ dostawy, strona produktu, warianty, panel administracyjny, rate limiting tworzen
 | Cart | koszyki, pozycje, limity, scalanie, wygasanie, widok koszyka z sumami |
 | Catalog | `GetProductSummaries` (nazwa i zdjęcie produktów) |
 | Pricing | `GetCurrentPrices` (autorytatywna cena aktualna) |
-| Inventory | `GetStockLevels` (dostępna liczba sztuk, tylko w procesie API) |
+| Inventory | `GetProductStockLevels` (dostępna liczba sztuk, tylko w procesie API; odczyt przejściowy do VARIANTS-4: stan jedynego wariantu produktu, produkt z większą liczbą wariantów jest niedostępny) |
 | Customer | `AuthenticatedCustomer::id()` (`sub` z tokena realmu `shop`) |
 | Sklep | BFF koszyka i wyświetlanie wartości z API; żadnych obliczeń |
 
@@ -257,7 +257,7 @@ Porty (`Cart_Application/Port`) i adaptery (`Cart_Infrastructure`):
 |---|---|---|
 | `ProductCatalog::summaries(ids)` → `ProductSummary {id, name, image}` | `QueryBusProductCatalog` | Catalog `GetProductSummaries` |
 | `CartPrices::current(ids)` → `CartPrice {productId, gross: Money}` | `QueryBusCartPrices` | Pricing `GetCurrentPrices` |
-| `StockAvailability::of(ids)` → `ProductAvailability {productId, available}` | `QueryBusStockAvailability` | Inventory `GetStockLevels` |
+| `StockAvailability::of(ids)` → `ProductAvailability {productId, available}` | `QueryBusStockAvailability` | Inventory `GetProductStockLevels` (przejściowo) |
 | `CartReader::find(id)`, `findForCustomer(customerId)` | `DbalCartReader` | odczyt DBAL |
 | `ExpiredCarts::purgeBatch(now, limit)` | `DbalExpiredCarts` | usunięcie partii DBAL |
 | `Clock::now()` | `SystemClock` | |

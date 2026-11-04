@@ -30,6 +30,24 @@ final class DemoStockListTest extends TestCase
         self::assertNull($list->quantityFor('duzy-kask-rowerowy-czarny'));
     }
 
+    /**
+     * The key of a variant is `<product slug>/<label slug>`: `*` runs over the slash, and a pattern may name the
+     * variant part.
+     */
+    public function testPatternMatchesTheVariantKeyAndTheWildcardRunsOverTheSlash(): void
+    {
+        $list = new DemoStockList([
+            ['pattern' => 'kajak-*/zielony', 'quantity' => 0],
+            ['pattern' => 'kajak-*-rzeka-1-zielony/standard', 'quantity' => 3],
+            ['pattern' => 'kajak-*', 'quantity' => 30],
+        ]);
+
+        self::assertSame(0, $list->quantityFor('kajak-turystyczny-vilmar-rzeka-2/zielony'));
+        self::assertSame(3, $list->quantityFor('kajak-turystyczny-dravik-rzeka-1-zielony/standard'));
+        self::assertSame(30, $list->quantityFor('kajak-turystyczny-vilmar-rzeka-2/pomaranczowy'));
+        self::assertNull(new DemoStockList([['pattern' => 'kajak-*-zielony', 'quantity' => 0]])->quantityFor('kajak-turystyczny-dravik-rzeka-1-zielony/standard'));
+    }
+
     public function testSlugWithoutMatchingPatternHasNoQuantity(): void
     {
         $list = new DemoStockList([['pattern' => 'mapa-*', 'quantity' => 25]]);
@@ -70,6 +88,8 @@ final class DemoStockListTest extends TestCase
         yield 'only wildcards and dashes' => ['*-*', 10, 'letter or digit'];
         yield 'upper case' => ['Namiot-*', 10, 'Namiot-*'];
         yield 'regex characters' => ['namiot-.+', 10, 'namiot-.+'];
+        yield 'only wildcards, dashes and slashes' => ['*/*', 10, 'letter or digit'];
+        yield 'backslash' => ['namiot-*\\standard', 10, 'namiot-*\\standard'];
         yield 'empty' => ['', 10, 'letter or digit'];
     }
 

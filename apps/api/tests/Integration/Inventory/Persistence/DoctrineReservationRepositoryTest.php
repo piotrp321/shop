@@ -8,7 +8,7 @@ use App\Inventory\Domain\Reservation\Reservation;
 use App\Inventory\Domain\Reservation\ReservationKey;
 use App\Inventory\Domain\Reservation\ReservationLine;
 use App\Inventory\Domain\Reservation\ReservationStatus;
-use App\Inventory\Domain\Stock\ProductId;
+use App\Inventory\Domain\Stock\VariantId;
 use App\Inventory\Infrastructure\Persistence\Doctrine\DoctrineReservationRepository;
 use App\Tests\Integration\Inventory\IndependentConnections;
 use Doctrine\DBAL\Connection;
@@ -153,7 +153,7 @@ final class DoctrineReservationRepositoryTest extends KernelTestCase
     {
         return Reservation::place(
             ReservationKey::fromString($key),
-            array_map(static fn (string $id, int $quantity): ReservationLine => ReservationLine::of(ProductId::fromString($id), $quantity), array_keys($lines), array_values($lines)),
+            array_map(static fn (string $id, int $quantity): ReservationLine => ReservationLine::of(VariantId::fromString($id), $quantity), array_keys($lines), array_values($lines)),
         );
     }
 
@@ -164,6 +164,6 @@ final class DoctrineReservationRepositoryTest extends KernelTestCase
     {
         self::assertNotNull($reservation);
 
-        return array_map(static fn (ReservationLine $l): array => [$l->productId()->toString(), $l->quantity()], $reservation->lines());
+        return array_map(static fn (ReservationLine $l): array => [$l->variantId()->toString(), $l->quantity()], $reservation->lines());
     }
 }

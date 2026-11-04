@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 
 vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get }) }));
 
-const HISTORY = "/api/v1/admin/products/{productId}/stock-history";
+const HISTORY = "/api/v1/admin/variants/{variantId}/stock-history";
 
 function entry(physicalDelta: number, overrides: Partial<Entry> = {}): Entry {
   return {
@@ -53,7 +53,7 @@ describe("useStockHistory", () => {
   it("starts empty and asks for nothing until a product is opened", () => {
     const history = useStockHistory();
 
-    expect(history.productId.value).toBeNull();
+    expect(history.variantId.value).toBeNull();
     expect(history.items.value).toEqual([]);
     expect(history.hasMore.value).toBe(false);
     expect(mocks.get).not.toHaveBeenCalled();
@@ -65,8 +65,8 @@ describe("useStockHistory", () => {
 
     await history.open("p-1");
 
-    expect(mocks.get).toHaveBeenCalledWith(HISTORY, { params: { path: { productId: "p-1" }, query: {} } });
-    expect(history.productId.value).toBe("p-1");
+    expect(mocks.get).toHaveBeenCalledWith(HISTORY, { params: { path: { variantId: "p-1" }, query: {} } });
+    expect(history.variantId.value).toBe("p-1");
     expect(history.items.value.map((item) => item.physicalDelta)).toEqual([5990, 5490]);
     expect(history.loaded.value).toBe(true);
     expect(history.hasMore.value).toBe(false);
@@ -176,7 +176,7 @@ describe("useStockHistory", () => {
     await first;
     await flushPromises();
 
-    expect(history.productId.value).toBe("p-2");
+    expect(history.variantId.value).toBe("p-2");
     expect(history.items.value.map((item) => item.physicalDelta)).toEqual([222]);
     expect(history.hasMore.value).toBe(false);
   });
@@ -191,7 +191,7 @@ describe("useStockHistory", () => {
     late.resolve(ok({ items: [entry(1)], next: "c1" }));
     await opening;
 
-    expect(history.productId.value).toBeNull();
+    expect(history.variantId.value).toBeNull();
     expect(history.items.value).toEqual([]);
     expect(history.loading.value).toBe(false);
     expect(history.loaded.value).toBe(false);

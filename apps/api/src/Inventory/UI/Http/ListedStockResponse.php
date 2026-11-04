@@ -7,7 +7,7 @@ namespace App\Inventory\UI\Http;
 use App\Inventory\Application\Query\ListedStock;
 use OpenApi\Attributes as OA;
 
-#[OA\Schema(description: 'The stored stock of a product, in whole units; all computed by the API.', required: ['physical', 'reserved', 'available', 'level', 'version', 'updatedAt'])]
+#[OA\Schema(description: 'The stored stock of a product variant, in whole units; all computed by the API.', required: ['physical', 'reserved', 'available', 'level', 'version', 'updatedAt'])]
 final readonly class ListedStockResponse
 {
     public function __construct(

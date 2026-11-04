@@ -10,7 +10,6 @@ use App\Inventory\Domain\Stock\CorrectionReason;
 use App\Inventory\Domain\Stock\InvalidStockNote;
 use App\Inventory\Domain\Stock\InvalidStockQuantity;
 use App\Inventory\Domain\Stock\PhysicalStockLimitExceeded;
-use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Domain\Stock\ReceiptKey;
 use App\Inventory\Domain\Stock\StockChangeOrigin;
 use App\Inventory\Domain\Stock\StockChangeSource;
@@ -18,6 +17,7 @@ use App\Inventory\Domain\Stock\StockItem;
 use App\Inventory\Domain\Stock\StockMovement;
 use App\Inventory\Domain\Stock\StockMovementType;
 use App\Inventory\Domain\Stock\StockNote;
+use App\Inventory\Domain\Stock\VariantId;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -31,7 +31,7 @@ final class StockItemReceiptAndCorrectionTest extends TestCase
 
     public function testAnUnstoredStockHasNothingAndNoVersion(): void
     {
-        $item = StockItem::unstored(ProductId::fromString(self::ID));
+        $item = StockItem::unstored(VariantId::fromString(self::ID));
 
         self::assertSame(self::ID, $item->id()->toString());
         self::assertSame([0, 0, 0, 0], [$item->physical(), $item->reserved(), $item->available(), $item->version()]);
@@ -48,7 +48,7 @@ final class StockItemReceiptAndCorrectionTest extends TestCase
         self::assertSame([35, 4, 31, 4], [$item->physical(), $item->reserved(), $item->available(), $item->version()]);
         $movement = $this->onlyMovement($item);
         self::assertSame(StockMovementType::Receipt, $movement->type());
-        self::assertSame(self::ID, $movement->productId()->toString());
+        self::assertSame(self::ID, $movement->variantId()->toString());
         self::assertSame([25, 0, 35, 4], [$movement->physicalDelta(), $movement->reservedDelta(), $movement->physicalAfter(), $movement->reservedAfter()]);
         self::assertNull($movement->reason());
         self::assertSame('Dostawa', $movement->note());
@@ -61,7 +61,7 @@ final class StockItemReceiptAndCorrectionTest extends TestCase
 
     public function testTheFirstReceiptOfAnUnstoredStockGivesItVersionOne(): void
     {
-        $item = StockItem::unstored(ProductId::fromString(self::ID));
+        $item = StockItem::unstored(VariantId::fromString(self::ID));
 
         $item->receive(1, ReceiptKey::fromString('seed:1'), StockNote::none(), StockChangeOrigin::seed());
 
@@ -168,7 +168,7 @@ final class StockItemReceiptAndCorrectionTest extends TestCase
 
     public function testCorrectOfAnUnstoredStockToZeroChangesNothing(): void
     {
-        $item = StockItem::unstored(ProductId::fromString(self::ID));
+        $item = StockItem::unstored(VariantId::fromString(self::ID));
 
         self::assertFalse($item->correct(0, CorrectionReason::Loss, StockNote::none(), $this->staff()));
 
@@ -266,22 +266,22 @@ final class StockItemReceiptAndCorrectionTest extends TestCase
      */
     public static function receiptComparisons(): iterable
     {
-        yield 'the same product, quantity and note' => [self::ID, 5, 'Dostawa', true];
+        yield 'the same variant, quantity and note' => [self::ID, 5, 'Dostawa', true];
         yield 'the same note with other white space' => [self::ID, 5, '  Dostawa ', true];
         yield 'another quantity' => [self::ID, 6, 'Dostawa', false];
         yield 'another note' => [self::ID, 5, 'Inna', false];
         yield 'no note' => [self::ID, 5, null, false];
-        yield 'another product' => [self::OTHER_ID, 5, 'Dostawa', false];
+        yield 'another variant' => [self::OTHER_ID, 5, 'Dostawa', false];
     }
 
     #[DataProvider('receiptComparisons')]
-    public function testAReceiptIsRepeatedOnlyWithTheSameProductQuantityAndNote(string $productId, int $quantity, ?string $note, bool $repeated): void
+    public function testAReceiptIsRepeatedOnlyWithTheSameVariantQuantityAndNote(string $variantId, int $quantity, ?string $note, bool $repeated): void
     {
         $item = $this->item(physical: 0, reserved: 0);
         $item->receive(5, ReceiptKey::fromString('k'), StockNote::fromNullable('Dostawa'), $this->staff());
         $receipt = $this->onlyMovement($item);
 
-        self::assertSame($repeated, $receipt->isReceiptOf(ProductId::fromString($productId), $quantity, StockNote::fromNullable($note)));
+        self::assertSame($repeated, $receipt->isReceiptOf(VariantId::fromString($variantId), $quantity, StockNote::fromNullable($note)));
     }
 
     public function testAMovementOtherThanAReceiptIsNoReceipt(): void
@@ -289,7 +289,7 @@ final class StockItemReceiptAndCorrectionTest extends TestCase
         $item = $this->item(physical: 10, reserved: 0);
         $item->correct(5, CorrectionReason::InventoryCount, StockNote::none(), $this->staff());
 
-        self::assertFalse($this->onlyMovement($item)->isReceiptOf(ProductId::fromString(self::ID), -5, StockNote::none()));
+        self::assertFalse($this->onlyMovement($item)->isReceiptOf(VariantId::fromString(self::ID), -5, StockNote::none()));
     }
 
     private function staff(): StockChangeOrigin
@@ -299,7 +299,7 @@ final class StockItemReceiptAndCorrectionTest extends TestCase
 
     private function item(int $physical, int $reserved, int $version = 1): StockItem
     {
-        return StockItem::reconstitute(ProductId::fromString(self::ID), $physical, $reserved, $version, new \DateTimeImmutable('2026-11-01 10:00:00+00:00'));
+        return StockItem::reconstitute(VariantId::fromString(self::ID), $physical, $reserved, $version, new \DateTimeImmutable('2026-11-01 10:00:00+00:00'));
     }
 
     private function onlyMovement(StockItem $item): StockMovement

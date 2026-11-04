@@ -88,14 +88,32 @@ final class QueryBusAdaptersTest extends KernelTestCase
         self::assertSame(19_999, $prices[0]->gross->amount());
     }
 
-    public function testInventoryGivesTheAvailableUnitsOfEveryProduct(): void
+    /**
+     * Transitional until the cart lines are kept per variant (VARIANTS-4): a product with exactly one variant has the
+     * available units of that variant, a product with more variants has none.
+     */
+    public function testInventoryGivesTheAvailableUnitsOfTheOnlyVariantOfEveryProduct(): void
     {
-        $stocked = StockFixture::stock($this->entityManager->getConnection(), 10, 3);
+        $connection = $this->entityManager->getConnection();
+        $stocked = $this->product([(string) Uuid::v7()]);
+        StockFixture::stock($connection, 10, 3, variantId: $stocked[1][0]);
+        $twoVariants = $this->product([(string) Uuid::v7(), (string) Uuid::v7()]);
+        foreach ($twoVariants[1] as $variantId) {
+            StockFixture::stock($connection, 10, variantId: $variantId);
+        }
         $unknown = (string) Uuid::v7();
+        self::assertNotSame($stocked[0], $stocked[1][0]);
 
-        $levels = new QueryBusStockAvailability($this->queryBus)->of([ProductId::fromString($stocked), ProductId::fromString($unknown)]);
+        $levels = new QueryBusStockAvailability($this->queryBus)->of(array_map(
+            static fn (string $id): ProductId => ProductId::fromString($id),
+            [$stocked[0], $twoVariants[0], $unknown],
+        ));
 
-        self::assertEquals([new ProductAvailability(ProductId::fromString($stocked), 7), new ProductAvailability(ProductId::fromString($unknown), 0)], $levels);
+        self::assertEquals([
+            new ProductAvailability(ProductId::fromString($stocked[0]), 7),
+            new ProductAvailability(ProductId::fromString($twoVariants[0]), 0),
+            new ProductAvailability(ProductId::fromString($unknown), 0),
+        ], $levels);
     }
 
     public function testNoProductAsksNoQuery(): void

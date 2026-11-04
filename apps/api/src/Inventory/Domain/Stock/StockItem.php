@@ -7,7 +7,7 @@ namespace App\Inventory\Domain\Stock;
 use App\Inventory\Domain\Reservation\ReservationKey;
 
 /**
- * The stock of one product in the one warehouse, in whole units: physical (on the shelf) and reserved (promised to
+ * The stock of one variant in the one warehouse, in whole units: physical (on the shelf) and reserved (promised to
  * active reservations). Available = physical − reserved is computed, never stored.
  *
  * Invariant: 0 ≤ reserved ≤ physical ≤ 1 000 000. Every change records one movement with the state after it. The
@@ -26,7 +26,7 @@ final class StockItem
     private array $unsavedMovements = [];
 
     private function __construct(
-        private readonly ProductId $id,
+        private readonly VariantId $id,
         private int $physical,
         private int $reserved,
         private int $version,
@@ -40,15 +40,15 @@ final class StockItem
      *
      * @throws StockInvariantViolation
      */
-    public static function reconstitute(ProductId $id, int $physical, int $reserved, int $version, \DateTimeImmutable $updatedAt): self
+    public static function reconstitute(VariantId $id, int $physical, int $reserved, int $version, \DateTimeImmutable $updatedAt): self
     {
         return new self($id, $physical, $reserved, $version, $updatedAt);
     }
 
     /**
-     * The stock of a product that has no stored stock: nothing on the shelf, nothing reserved, version 0.
+     * The stock of a variant that has no stored stock: nothing on the shelf, nothing reserved, version 0.
      */
-    public static function unstored(ProductId $id): self
+    public static function unstored(VariantId $id): self
     {
         return new self($id, 0, 0, 0, new \DateTimeImmutable());
     }
@@ -154,7 +154,7 @@ final class StockItem
         return $movements;
     }
 
-    public function id(): ProductId
+    public function id(): VariantId
     {
         return $this->id;
     }

@@ -170,9 +170,9 @@ final class ReservationTransitionHandlerTest extends TestCase
     /**
      * @return array{int, int, int} physical, reserved, version
      */
-    private function state(string $productId): array
+    private function state(string $variantId): array
     {
-        $item = $this->stock->stored($productId);
+        $item = $this->stock->stored($variantId);
         self::assertNotNull($item);
 
         return [$item->physical(), $item->reserved(), $item->version()];
@@ -183,6 +183,6 @@ final class ReservationTransitionHandlerTest extends TestCase
      */
     private function movementRow(StockMovement $m): array
     {
-        return [$m->productId()->toString(), $m->type()->value, $m->physicalDelta(), $m->reservedDelta(), $m->physicalAfter(), $m->reservedAfter(), $m->reference(), $m->origin()->source()->value];
+        return [$m->variantId()->toString(), $m->type()->value, $m->physicalDelta(), $m->reservedDelta(), $m->physicalAfter(), $m->reservedAfter(), $m->reference(), $m->origin()->source()->value];
     }
 }

@@ -11,14 +11,14 @@ use App\Inventory\Domain\Stock\CorrectionBelowReserved;
 use App\Inventory\Domain\Stock\InvalidCorrectionReason;
 use App\Inventory\Domain\Stock\InvalidStockNote;
 use App\Inventory\Domain\Stock\InvalidStockQuantity;
-use App\Inventory\Domain\Stock\ProductNotFound;
 use App\Inventory\Domain\Stock\StockChangeSource;
 use App\Inventory\Domain\Stock\StockModifiedConcurrently;
 use App\Inventory\Domain\Stock\StockMovementType;
-use App\Tests\Unit\Inventory\InMemoryProductCatalog;
+use App\Inventory\Domain\Stock\VariantNotFound;
 use App\Tests\Unit\Inventory\InMemoryReservationRepository;
 use App\Tests\Unit\Inventory\InMemoryStockItemRepository;
 use App\Tests\Unit\Inventory\InMemoryTransaction;
+use App\Tests\Unit\Inventory\InMemoryVariantCatalog;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -27,14 +27,14 @@ final class CorrectStockHandlerTest extends TestCase
     private const string A = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
 
     private InMemoryStockItemRepository $stock;
-    private InMemoryProductCatalog $catalog;
+    private InMemoryVariantCatalog $catalog;
     private InMemoryTransaction $transaction;
     private CorrectStockHandler $handler;
 
     protected function setUp(): void
     {
         $this->stock = new InMemoryStockItemRepository();
-        $this->catalog = new InMemoryProductCatalog();
+        $this->catalog = new InMemoryVariantCatalog();
         $this->catalog->add(self::A);
         $this->transaction = new InMemoryTransaction($this->stock, new InMemoryReservationRepository());
         $this->handler = new CorrectStockHandler($this->stock, $this->catalog);
@@ -81,7 +81,7 @@ final class CorrectStockHandlerTest extends TestCase
         self::assertSame([], $this->stock->movements);
     }
 
-    public function testTheFirstCorrectionOfAProductWithoutStockCreatesItAtVersionOne(): void
+    public function testTheFirstCorrectionOfAVariantWithoutStockCreatesItAtVersionOne(): void
     {
         $view = $this->correct(self::A, 5, null, 'inventory_count', null);
 
@@ -90,7 +90,7 @@ final class CorrectStockHandlerTest extends TestCase
         self::assertSame(5, $this->stock->movements[0]->physicalDelta());
     }
 
-    public function testCountingNothingForAProductWithoutStockStoresNothing(): void
+    public function testCountingNothingForAVariantWithoutStockStoresNothing(): void
     {
         $view = $this->correct(self::A, 0, null, 'loss', null);
 
@@ -129,14 +129,14 @@ final class CorrectStockHandlerTest extends TestCase
     /**
      * @return iterable<string, array{int}>
      */
-    public static function countsForAProductWithoutStock(): iterable
+    public static function countsForAVariantWithoutStock(): iterable
     {
         yield 'a change' => [5];
         yield 'nothing counted' => [0];
     }
 
-    #[DataProvider('countsForAProductWithoutStock')]
-    public function testAVersionForAProductWithoutStockIsAConflict(int $counted): void
+    #[DataProvider('countsForAVariantWithoutStock')]
+    public function testAVersionForAVariantWithoutStockIsAConflict(int $counted): void
     {
         try {
             $this->correct(self::A, $counted, 1, 'inventory_count', null);
@@ -162,14 +162,14 @@ final class CorrectStockHandlerTest extends TestCase
         self::assertSame([], $this->stock->movements);
     }
 
-    public function testAnUnknownProductIsNotFoundAndNothingIsCreated(): void
+    public function testAnUnknownVariantIsNotFoundAndNothingIsCreated(): void
     {
         $unknown = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a69';
 
         try {
             $this->correct($unknown, 5, null, 'inventory_count', null);
-            self::fail('Expected ProductNotFound.');
-        } catch (ProductNotFound) {
+            self::fail('Expected VariantNotFound.');
+        } catch (VariantNotFound) {
         }
 
         self::assertNull($this->stock->stored($unknown));
@@ -210,7 +210,7 @@ final class CorrectStockHandlerTest extends TestCase
      * @param class-string<\Throwable> $expected
      */
     #[DataProvider('invalidCorrections')]
-    public function testAnInvalidCorrectionOfAProductWithoutStockCreatesNothing(int $counted, string $reason, ?string $note, string $expected): void
+    public function testAnInvalidCorrectionOfAVariantWithoutStockCreatesNothing(int $counted, string $reason, ?string $note, string $expected): void
     {
         $this->expectException($expected);
 
@@ -233,27 +233,27 @@ final class CorrectStockHandlerTest extends TestCase
         }
     }
 
-    private function correct(string $productId, int $counted, ?int $version, string $reason, ?string $note): StockView
+    private function correct(string $variantId, int $counted, ?int $version, string $reason, ?string $note): StockView
     {
-        $command = CorrectStock::byStaff($productId, $counted, $version, $reason, $note, 'sub-1', 'Wanda Magazyn');
+        $command = CorrectStock::byStaff($variantId, $counted, $version, $reason, $note, 'sub-1', 'Wanda Magazyn');
 
         return $this->transaction->run(fn (): StockView => ($this->handler)($command));
     }
 
     /**
-     * @param array{string, int, int, int, string, int|null} $expected productId, physical, reserved, available, level, version
+     * @param array{string, int, int, int, string, int|null} $expected variantId, physical, reserved, available, level, version
      */
     private function assertView(array $expected, StockView $view): void
     {
-        self::assertSame($expected, [$view->productId, $view->physical, $view->reserved, $view->available, $view->level, $view->version]);
+        self::assertSame($expected, [$view->variantId, $view->physical, $view->reserved, $view->available, $view->level, $view->version]);
     }
 
     /**
      * @return array{int, int, int} physical, reserved, version
      */
-    private function state(string $productId): array
+    private function state(string $variantId): array
     {
-        $item = $this->stock->stored($productId);
+        $item = $this->stock->stored($variantId);
         self::assertNotNull($item);
 
         return [$item->physical(), $item->reserved(), $item->version()];

@@ -19,9 +19,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wzorców kluczy wariantów z `fixtures/prices.yaml` (klucz z Catalog `ListVariantIdentities`:
   `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
   pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych); na końcu `inventory:seed-demo`, który czyści stany, rezerwacje i historię stanów
-  i ustawia stan fizyczny każdemu produktowi demo według wzorców slugów z `fixtures/stock.yaml` (ta sama składnia
-  i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze źródłem `seed` i kluczem `seed:<productId>`, stan 0
-  to rekord stanu bez wpisu historii; produkt bez wzorca kończy seed błędem bez zmian w danych). Wszystkie trzy
+  i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
+  klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
+  źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
+  seed błędem bez zmian w danych). Wszystkie trzy
   komendy w `prod` wymagają `--force-reset`
 - `pricing:reconcile-tax [--apply]` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`) –
   narzędzie uruchamiane świadomie, np. po zmianie stawki w `PolishVatRates`; nie wywołuje go `make init`, `make up`
@@ -93,7 +94,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Agregaty edytowane równolegle (zamówienie, stan magazynowy, cena) mają optimistic locking (pole wersji): edycja
   z widoku sprawdza wersję, na której się opiera. Wyjątek: atomowe operacje na stanie magazynowym (przyjęcie,
   rezerwacja, zwolnienie, zatwierdzenie) nie sprawdzają wersji z widoku, tylko blokują wiersze (`SELECT … FOR UPDATE`
-  w `StockItemRepository::lockMany`, w kolejności rosnącego `product_id`; przyjęcie i korekta produktu bez stanu
+  w `StockItemRepository::lockMany`, w kolejności rosnącego `variant_id`; przyjęcie i korekta wariantu bez stanu
   zakładają wiersz przez `lockOrCreate`, `INSERT … ON CONFLICT DO NOTHING` przed blokadą) i czytają stan od nowa po
   uzyskaniu blokady; zapis i tak podnosi wersję. Korekta z panelu blokuje wiersz i dodatkowo sprawdza wersję z widoku.
 - Koszyk nie ma optimistic locking ani wersji z widoku: zmiany szereguje blokada wiersza koszyka, dodanie zwiększa
@@ -125,8 +126,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności, przyjęcie magazynowe) wymagają nagłówka
   `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Przyjęcie z tym samym kluczem i tą samą
-  treścią (produkt, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
-  treścią albo dla innego produktu to 409. Klucze przyjęć są w historii stanów na zawsze (unikalny indeks).
+  treścią (wariant, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
+  treścią albo dla innego wariantu to 409. Klucze przyjęć są w historii stanów na zawsze (unikalny indeks).
 - Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
 

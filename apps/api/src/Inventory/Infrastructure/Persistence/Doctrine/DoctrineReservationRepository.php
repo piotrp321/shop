@@ -9,7 +9,7 @@ use App\Inventory\Domain\Reservation\ReservationKey;
 use App\Inventory\Domain\Reservation\ReservationLine;
 use App\Inventory\Domain\Reservation\ReservationRepository;
 use App\Inventory\Domain\Reservation\ReservationStatus;
-use App\Inventory\Domain\Stock\ProductId;
+use App\Inventory\Domain\Stock\VariantId;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Types\Types;
 
@@ -47,10 +47,10 @@ final readonly class DoctrineReservationRepository implements ReservationReposit
         $parameters = [];
         foreach ($reservation->lines() as $line) {
             $values[] = '(?, ?, ?)';
-            array_push($parameters, $key, $line->productId()->toString(), $line->quantity());
+            array_push($parameters, $key, $line->variantId()->toString(), $line->quantity());
         }
         $this->connection->executeStatement(
-            'INSERT INTO inventory_reservation_line (reservation_key, product_id, quantity) VALUES '.implode(', ', $values),
+            'INSERT INTO inventory_reservation_line (reservation_key, variant_id, quantity) VALUES '.implode(', ', $values),
             $parameters,
         );
 
@@ -98,16 +98,16 @@ final readonly class DoctrineReservationRepository implements ReservationReposit
     {
         \assert(\is_string($status));
         $rows = $this->connection->fetchAllAssociative(
-            'SELECT product_id, quantity FROM inventory_reservation_line WHERE reservation_key = :key',
+            'SELECT variant_id, quantity FROM inventory_reservation_line WHERE reservation_key = :key',
             ['key' => $key->toString()],
         );
 
         return Reservation::reconstitute(
             $key,
             array_map(static function (array $row): ReservationLine {
-                \assert(\is_string($row['product_id']) && \is_int($row['quantity']));
+                \assert(\is_string($row['variant_id']) && \is_int($row['quantity']));
 
-                return ReservationLine::of(ProductId::fromString($row['product_id']), $row['quantity']);
+                return ReservationLine::of(VariantId::fromString($row['variant_id']), $row['quantity']);
             }, $rows),
             ReservationStatus::from($status),
         );

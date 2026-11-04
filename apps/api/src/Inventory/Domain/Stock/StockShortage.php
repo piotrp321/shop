@@ -13,16 +13,16 @@ use App\Shared\Domain\Exception\Conflict;
 final class StockShortage extends \DomainException implements Conflict
 {
     public function __construct(
-        private readonly ProductId $productId,
+        private readonly VariantId $variantId,
         private readonly int $requested,
         private readonly int $available,
     ) {
-        parent::__construct('Not enough stock of the product.');
+        parent::__construct('Not enough stock of the variant.');
     }
 
-    public function productId(): ProductId
+    public function variantId(): VariantId
     {
-        return $this->productId;
+        return $this->variantId;
     }
 
     public function requested(): int

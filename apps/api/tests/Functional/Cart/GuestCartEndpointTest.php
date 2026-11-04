@@ -139,7 +139,7 @@ final class GuestCartEndpointTest extends WebTestCase
         $this->assertProblem(409, 'Nie mamy tylu sztuk tego produktu.', $this->request('PUT', $cart.'/items/'.$three, '{"quantity": 4}'));
 
         // A decrease is always possible, also once the product cannot be bought any more.
-        $this->connection->executeStatement('UPDATE inventory_stock_item SET physical = 0 WHERE product_id = ?', [$three]);
+        $this->connection->executeStatement('UPDATE inventory_stock_item SET physical = 0 WHERE variant_id IN (SELECT id FROM catalog_product_variant WHERE product_id = ?)', [$three]);
         $this->connection->executeStatement('DELETE FROM pricing_variant_price WHERE variant_id IN (SELECT id FROM catalog_product_variant WHERE product_id = ?)', [$three]);
         $decreased = $this->request('PUT', $cart.'/items/'.$three, '{"quantity": 2}');
         self::assertResponseStatusCodeSame(200);

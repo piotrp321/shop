@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\After;
 
 /**
  * Connections of their own, outside the DAMA transaction of the test, so a test can play transactions that commit
- * or wait for each other. Inventory rows of the products and reservations named in $committedProductIds and
+ * or wait for each other. Inventory rows of the products and reservations named in $committedVariantIds and
  * $committedReservationKeys, and the Catalog products named in $committedCatalogProductIds, are deleted after the test.
  */
 trait IndependentConnections
@@ -20,7 +20,7 @@ trait IndependentConnections
     /** @var list<Connection> */
     private array $independentConnections = [];
     /** @var list<string> */
-    private array $committedProductIds = [];
+    private array $committedVariantIds = [];
     /** @var list<string> */
     private array $committedReservationKeys = [];
     /** @var list<string> */
@@ -67,13 +67,13 @@ trait IndependentConnections
                 $connection->rollBack();
             }
         }
-        StockFixture::delete($this->independentConnections[0], $this->committedProductIds, $this->committedReservationKeys);
+        StockFixture::delete($this->independentConnections[0], $this->committedVariantIds, $this->committedReservationKeys);
         CatalogFixture::delete($this->independentConnections[0], $this->committedCatalogProductIds);
         foreach ($this->independentConnections as $connection) {
             $connection->close();
         }
         $this->independentConnections = [];
-        $this->committedProductIds = [];
+        $this->committedVariantIds = [];
         $this->committedReservationKeys = [];
         $this->committedCatalogProductIds = [];
     }

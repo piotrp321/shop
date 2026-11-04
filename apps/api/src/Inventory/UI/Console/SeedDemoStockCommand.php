@@ -14,15 +14,15 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
- * Removes all stocks, reservations and the stock history, then sets the demo stock of every product (run after
- * catalog:seed-demo). The file and the products are checked before anything is removed.
- * Exit codes: 0 every product has a stock, 1 the guard refused, the stock file is invalid or a product has no
+ * Removes all stocks, reservations and the stock history, then sets the demo stock of every variant, matched by its
+ * key (run after catalog:seed-demo). The file and the variants are checked before anything is removed.
+ * Exit codes: 0 every variant has a stock, 1 the guard refused, the stock file is invalid or a variant has no
  * matching pattern (nothing was changed).
  */
-#[AsCommand(name: 'inventory:seed-demo', description: 'Removes all stocks and sets the demo stock of the catalog products.')]
+#[AsCommand(name: 'inventory:seed-demo', description: 'Removes all stocks and sets the demo stock of the catalog variants.')]
 final readonly class SeedDemoStockCommand
 {
-    private const int LISTED_SLUGS = 10;
+    private const int LISTED_KEYS = 10;
 
     public function __construct(
         private DemoStockSource $source,
@@ -52,13 +52,13 @@ final readonly class SeedDemoStockCommand
             return Command::FAILURE;
         }
 
-        $unmatched = $this->seeder->unmatchedSlugs($stock);
+        $unmatched = $this->seeder->unmatchedKeys($stock);
         if ([] !== $unmatched) {
-            $more = \count($unmatched) - self::LISTED_SLUGS;
+            $more = \count($unmatched) - self::LISTED_KEYS;
             $io->error(\sprintf(
-                'No pattern in the demo stock (fixtures/stock.yaml) matches %d demo products: %s%s. Nothing was changed.',
+                'No pattern in the demo stock (fixtures/stock.yaml) matches %d demo variants: %s%s. Nothing was changed.',
                 \count($unmatched),
-                implode(', ', \array_slice($unmatched, 0, self::LISTED_SLUGS)),
+                implode(', ', \array_slice($unmatched, 0, self::LISTED_KEYS)),
                 $more > 0 ? \sprintf(' and %d more', $more) : '',
             ));
 

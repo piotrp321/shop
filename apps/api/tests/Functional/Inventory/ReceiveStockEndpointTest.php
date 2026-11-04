@@ -15,66 +15,66 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
- * POST /api/v1/admin/products/{productId}/stock/receipts on PostgreSQL (shop_test, rolled back after each test).
+ * POST /api/v1/admin/variants/{variantId}/stock/receipts on PostgreSQL (shop_test, rolled back after each test).
  */
 final class ReceiveStockEndpointTest extends WebTestCase
 {
     use Factories;
     use StockEndpointTestTrait;
 
-    private const string UNKNOWN_PRODUCT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
+    private const string UNKNOWN_VARIANT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
     private const string KEY = '6f1b0e4a-3c1d-4c1e-9a7b-2d5e8f9a0b1c';
 
     public function testTheFirstReceiptCreatesTheStockAndAnswersWithIt(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $stock = $this->receive($productId, ['quantity' => 12, 'note' => 'Dostawa od Biegam']);
+        $stock = $this->receive($variantId, ['quantity' => 12, 'note' => 'Dostawa od Biegam']);
 
         self::assertResponseStatusCodeSame(201);
         self::assertStringContainsString('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
         self::assertSame(
-            ['productId' => $productId, 'physical' => 12, 'reserved' => 0, 'available' => 12, 'level' => 'in_stock', 'version' => 1],
+            ['variantId' => $variantId, 'physical' => 12, 'reserved' => 0, 'available' => 12, 'level' => 'in_stock', 'version' => 1],
             array_diff_key($stock, ['updatedAt' => 1]),
         );
         self::assertUtcTimestamp($stock);
         $this->assertKeysMatchSchema($stock, 'StockStateResponse');
         $this->assertPrivateAndNotStored();
-        self::assertSame(['physical' => 12, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
+        self::assertSame(['physical' => 12, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
         self::assertSame(
             [['type' => 'receipt', 'physical_delta' => 12, 'physical_after' => 12, 'reason' => null, 'note' => 'Dostawa od Biegam', 'reference' => self::KEY, 'source' => 'staff', 'actor_id' => TestTokenFactory::STAFF_ID, 'actor_name' => 'admin']],
-            $this->movements($productId),
+            $this->movements($variantId),
         );
     }
 
     public function testAReceiptAddsToTheStoredStock(): void
     {
-        $productId = $this->product();
-        StockFixture::stock($this->connection, 3, 2, 4, $productId);
+        $variantId = $this->variant();
+        StockFixture::stock($this->connection, 3, 2, 4, $variantId);
 
-        $stock = $this->receive($productId, ['quantity' => 2, 'note' => null]);
+        $stock = $this->receive($variantId, ['quantity' => 2, 'note' => null]);
 
         self::assertResponseStatusCodeSame(201);
         self::assertSame([5, 2, 3, 'low_stock', 5], [$stock['physical'], $stock['reserved'], $stock['available'], $stock['level'], $stock['version']]);
-        self::assertSame(['physical' => 5, 'reserved' => 2, 'version' => 5], $this->storedStock($productId));
+        self::assertSame(['physical' => 5, 'reserved' => 2, 'version' => 5], $this->storedStock($variantId));
     }
 
     public function testTheSameKeyAndContentAgainIsAnOkWithTheCurrentStockAndAddsNothing(): void
     {
-        $productId = $this->product();
-        $this->receive($productId, ['quantity' => 12, 'note' => 'Dostawa']);
+        $variantId = $this->variant();
+        $this->receive($variantId, ['quantity' => 12, 'note' => 'Dostawa']);
         self::assertResponseStatusCodeSame(201);
         // Something else changed the stock since.
-        $this->connection->executeStatement('UPDATE inventory_stock_item SET reserved = 4, version = 2 WHERE product_id = ?', [$productId]);
+        $this->connection->executeStatement('UPDATE inventory_stock_item SET reserved = 4, version = 2 WHERE variant_id = ?', [$variantId]);
 
-        $stock = $this->receive($productId, ['quantity' => 12, 'note' => ' Dostawa ']);
+        $stock = $this->receive($variantId, ['quantity' => 12, 'note' => ' Dostawa ']);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame([12, 4, 8, 2], [$stock['physical'], $stock['reserved'], $stock['available'], $stock['version']]);
         $this->assertKeysMatchSchema($stock, 'StockStateResponse');
         $this->assertPrivateAndNotStored();
-        self::assertSame(['physical' => 12, 'reserved' => 4, 'version' => 2], $this->storedStock($productId));
-        self::assertCount(1, $this->movements($productId));
+        self::assertSame(['physical' => 12, 'reserved' => 4, 'version' => 2], $this->storedStock($variantId));
+        self::assertCount(1, $this->movements($variantId));
     }
 
     /**
@@ -93,21 +93,21 @@ final class ReceiveStockEndpointTest extends WebTestCase
     #[DataProvider('otherContents')]
     public function testTheSameKeyWithOtherContentIsAConflictAndAddsNothing(array $body): void
     {
-        $productId = $this->product();
-        $this->receive($productId, ['quantity' => 12, 'note' => 'Dostawa']);
+        $variantId = $this->variant();
+        $this->receive($variantId, ['quantity' => 12, 'note' => 'Dostawa']);
 
-        $this->receive($productId, $body);
+        $this->receive($variantId, $body);
 
         $problem = $this->assertProblem(409);
         self::assertSame('Klucz przyjęcia został już użyty z inną treścią albo dla innego produktu.', $problem['detail']);
-        self::assertSame(['physical' => 12, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
-        self::assertCount(1, $this->movements($productId));
+        self::assertSame(['physical' => 12, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
+        self::assertCount(1, $this->movements($variantId));
     }
 
-    public function testTheSameKeyForAnotherProductIsAConflictAndCreatesNothing(): void
+    public function testTheSameKeyForAnotherVariantIsAConflictAndCreatesNothing(): void
     {
-        $first = $this->product();
-        $second = $this->product();
+        $first = $this->variant();
+        $second = $this->variant();
         $this->receive($first, ['quantity' => 12, 'note' => null]);
 
         $this->receive($second, ['quantity' => 12, 'note' => null]);
@@ -117,16 +117,16 @@ final class ReceiveStockEndpointTest extends WebTestCase
         self::assertSame([], $this->movements($second));
     }
 
-    public function testAKeyTakenByAnotherProductBetweenTheLookupAndTheWriteIsAConflictNotAnError(): void
+    public function testAKeyTakenByAnotherVariantBetweenTheLookupAndTheWriteIsAConflictNotAnError(): void
     {
-        $first = $this->product();
-        $second = $this->product();
+        $first = $this->variant();
+        $second = $this->variant();
         StockFixture::stock($this->connection, 1, 0, 1, $second);
-        // The receipt of the first product with the key, as a committed receipt leaves it.
+        // The receipt of the first variant with the key, as a committed receipt leaves it.
         StockFixture::stock($this->connection, 12, 0, 1, $first);
-        $this->connection->executeStatement('UPDATE inventory_stock_movement SET reference = ? WHERE product_id = ?', [self::KEY, $first]);
+        $this->connection->executeStatement('UPDATE inventory_stock_movement SET reference = ? WHERE variant_id = ?', [self::KEY, $first]);
         $this->client->disableReboot();
-        // The lookup of the key misses the other product's receipt, as when that receipt commits after the lookup:
+        // The lookup of the key misses the other variant's receipt, as when that receipt commits after the lookup:
         // only the unique index of receipt keys refuses the write.
         self::getContainer()->set(StockItemRepository::class, new class(new DoctrineStockItemRepository($this->connection)) implements StockItemRepository {
             public function __construct(private readonly StockItemRepository $inner)
@@ -138,7 +138,7 @@ final class ReceiveStockEndpointTest extends WebTestCase
                 return $this->inner->lockMany($ids);
             }
 
-            public function lockOrCreate(\App\Inventory\Domain\Stock\ProductId $id): \App\Inventory\Domain\Stock\StockItem
+            public function lockOrCreate(\App\Inventory\Domain\Stock\VariantId $id): \App\Inventory\Domain\Stock\StockItem
             {
                 return $this->inner->lockOrCreate($id);
             }
@@ -186,19 +186,19 @@ final class ReceiveStockEndpointTest extends WebTestCase
     #[DataProvider('missingOrMalformedKeys')]
     public function testAMissingOrMalformedKeyIsABadRequestAndAddsNothing(array $headers): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->post($this->path($productId), '{"quantity": 5, "note": null}', TestTokenFactory::staff(['admin']), $headers);
+        $this->post($this->path($variantId), '{"quantity": 5, "note": null}', TestTokenFactory::staff(['admin']), $headers);
 
         self::assertSame(['Idempotency-Key'], $this->violationPaths(400));
-        self::assertNull($this->storedStock($productId));
+        self::assertNull($this->storedStock($variantId));
     }
 
     public function testAKeyOfOneHundredAllowedCharactersIsAccepted(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->receive($productId, ['quantity' => 5, 'note' => null], key: 'Az09._:-'.str_repeat('k', 92));
+        $this->receive($variantId, ['quantity' => 5, 'note' => null], key: 'Az09._:-'.str_repeat('k', 92));
 
         self::assertResponseStatusCodeSame(201);
     }
@@ -222,52 +222,63 @@ final class ReceiveStockEndpointTest extends WebTestCase
     #[DataProvider('rolesAndStatuses')]
     public function testOnlyAnAdministratorOrTheWarehouseReceivesStock(array $roles, int $status): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->receive($productId, ['quantity' => 5, 'note' => null], TestTokenFactory::staff($roles));
+        $this->receive($variantId, ['quantity' => 5, 'note' => null], TestTokenFactory::staff($roles));
 
         if (403 === $status) {
             $this->assertProblem(403);
-            self::assertNull($this->storedStock($productId));
+            self::assertNull($this->storedStock($variantId));
         } else {
             self::assertResponseStatusCodeSame($status);
         }
     }
 
-    public function testAuthorizationIsCheckedBeforeTheBodyTheKeyAndTheProduct(): void
+    public function testAuthorizationIsCheckedBeforeTheBodyTheKeyAndTheVariant(): void
     {
-        $this->post($this->path(self::UNKNOWN_PRODUCT), '{"quantity": "garbage"', TestTokenFactory::staff(['support']));
+        $this->post($this->path(self::UNKNOWN_VARIANT), '{"quantity": "garbage"', TestTokenFactory::staff(['support']));
 
         $this->assertProblem(403);
     }
 
     public function testWithoutATokenTheRequestIsUnauthorized(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->post($this->path($productId), '{"quantity": 5, "note": null}', null, ['HTTP_IDEMPOTENCY_KEY' => self::KEY]);
+        $this->post($this->path($variantId), '{"quantity": 5, "note": null}', null, ['HTTP_IDEMPOTENCY_KEY' => self::KEY]);
 
         $this->assertUnauthorized();
-        self::assertNull($this->storedStock($productId));
+        self::assertNull($this->storedStock($variantId));
     }
 
     public function testATokenOfTheShopRealmIsUnauthorized(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->receive($productId, ['quantity' => 5, 'note' => null], TestTokenFactory::customer());
+        $this->receive($variantId, ['quantity' => 5, 'note' => null], TestTokenFactory::customer());
 
         $this->assertUnauthorized();
+        self::assertNull($this->storedStock($variantId));
+    }
+
+    public function testTheIdOfAProductIsNoVariantAndIsNotFound(): void
+    {
+        [$productId] = $this->productWithVariant();
+
+        $this->receive($productId, ['quantity' => 5, 'note' => null]);
+
+        $problem = $this->assertProblem(404);
+        self::assertSame('Wariant produktu nie istnieje.', $problem['detail']);
         self::assertNull($this->storedStock($productId));
     }
 
-    public function testAnUnknownProductIsNotFoundAndCreatesNothing(): void
+    public function testAnUnknownVariantIsNotFoundAndCreatesNothing(): void
     {
-        $this->receive(self::UNKNOWN_PRODUCT, ['quantity' => 5, 'note' => null]);
+        $this->receive(self::UNKNOWN_VARIANT, ['quantity' => 5, 'note' => null]);
 
         $problem = $this->assertProblem(404);
-        self::assertSame('Product not found.', $problem['detail']);
-        self::assertNull($this->storedStock(self::UNKNOWN_PRODUCT));
+        self::assertSame('Wariant produktu nie istnieje.', $problem['detail']);
+        self::assertNull($this->storedStock(self::UNKNOWN_VARIANT));
     }
 
     /**
@@ -276,76 +287,76 @@ final class ReceiveStockEndpointTest extends WebTestCase
     public static function idsThatAreNotUuids(): iterable
     {
         yield 'a word' => ['shoes'];
-        yield 'a uuid with a suffix' => [self::UNKNOWN_PRODUCT.'x'];
-        yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_PRODUCT)];
+        yield 'a uuid with a suffix' => [self::UNKNOWN_VARIANT.'x'];
+        yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_VARIANT)];
     }
 
     #[DataProvider('idsThatAreNotUuids')]
-    public function testAProductIdThatIsNotAUuidIsNotFound(string $productId): void
+    public function testAVariantIdThatIsNotAUuidIsNotFound(string $variantId): void
     {
-        $this->receive($productId, ['quantity' => 5, 'note' => null]);
+        $this->receive($variantId, ['quantity' => 5, 'note' => null]);
 
         $this->assertProblem(404);
     }
 
-    public function testAnUppercaseUuidNamesTheSameProduct(): void
+    public function testAnUppercaseUuidNamesTheSameVariant(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $stock = $this->receive(strtoupper($productId), ['quantity' => 5, 'note' => null]);
+        $stock = $this->receive(strtoupper($variantId), ['quantity' => 5, 'note' => null]);
 
         self::assertResponseStatusCodeSame(201);
-        self::assertSame($productId, $stock['productId']);
-        self::assertSame(['physical' => 5, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
+        self::assertSame($variantId, $stock['variantId']);
+        self::assertSame(['physical' => 5, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
     }
 
     public function testTheActorComesFromTheTokenNeverFromTheBody(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
         $this->receive(
-            $productId,
+            $variantId,
             ['quantity' => 5, 'note' => null, 'actorId' => 'forged-id', 'actorName' => 'Forged Name', 'source' => 'seed'],
             TestTokenFactory::staff(['warehouse'], ['preferred_username' => 'wanda.magazyn']),
         );
 
         self::assertResponseStatusCodeSame(201);
-        $movement = $this->movements($productId)[0];
+        $movement = $this->movements($variantId)[0];
         self::assertSame(['staff', TestTokenFactory::STAFF_ID, 'wanda.magazyn'], [$movement['source'], $movement['actor_id'], $movement['actor_name']]);
     }
 
     public function testAReceiptBeyondOneMillionUnitsIsUnprocessableAndAddsNothing(): void
     {
-        $productId = $this->product();
-        StockFixture::stock($this->connection, 999_999, 0, 3, $productId);
+        $variantId = $this->variant();
+        StockFixture::stock($this->connection, 999_999, 0, 3, $variantId);
 
-        $this->receive($productId, ['quantity' => 2, 'note' => null]);
+        $this->receive($variantId, ['quantity' => 2, 'note' => null]);
 
         $problem = $this->assertProblem(422);
         self::assertSame('Stan fizyczny nie może przekroczyć 1 000 000 szt.', $problem['detail']);
-        self::assertSame(['physical' => 999_999, 'reserved' => 0, 'version' => 3], $this->storedStock($productId));
+        self::assertSame(['physical' => 999_999, 'reserved' => 0, 'version' => 3], $this->storedStock($variantId));
     }
 
     public function testTheLimitsOfTheQuantityAndTheNoteAreAccepted(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->receive($productId, ['quantity' => 1, 'note' => str_repeat('ż', 500)], key: 'a');
+        $this->receive($variantId, ['quantity' => 1, 'note' => str_repeat('ż', 500)], key: 'a');
         self::assertResponseStatusCodeSame(201);
-        $this->receive($productId, ['quantity' => 100_000, 'note' => '  '.str_repeat('n', 500).'  '], key: 'b');
+        $this->receive($variantId, ['quantity' => 100_000, 'note' => '  '.str_repeat('n', 500).'  '], key: 'b');
         self::assertResponseStatusCodeSame(201);
 
-        self::assertSame(['physical' => 100_001, 'reserved' => 0, 'version' => 2], $this->storedStock($productId));
+        self::assertSame(['physical' => 100_001, 'reserved' => 0, 'version' => 2], $this->storedStock($variantId));
     }
 
     public function testANoteOfWhiteSpaceIsNoNote(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->receive($productId, ['quantity' => 1, 'note' => "  \n "]);
+        $this->receive($variantId, ['quantity' => 1, 'note' => "  \n "]);
 
         self::assertResponseStatusCodeSame(201);
-        self::assertNull($this->movements($productId)[0]['note']);
+        self::assertNull($this->movements($variantId)[0]['note']);
     }
 
     /**
@@ -380,19 +391,19 @@ final class ReceiveStockEndpointTest extends WebTestCase
     #[DataProvider('rejectedBodies')]
     public function testAnInvalidBodyIsUnprocessableAndAddsNothing(string $body, array $paths): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->post($this->path($productId), $body, TestTokenFactory::staff(['admin']), ['HTTP_IDEMPOTENCY_KEY' => self::KEY]);
+        $this->post($this->path($variantId), $body, TestTokenFactory::staff(['admin']), ['HTTP_IDEMPOTENCY_KEY' => self::KEY]);
 
         self::assertEqualsCanonicalizing($paths, $this->violationPaths());
-        self::assertNull($this->storedStock($productId));
+        self::assertNull($this->storedStock($variantId));
     }
 
     public function testTheViolationsOfTheRangesAreInPolish(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->receive($productId, ['quantity' => 0, 'note' => str_repeat('n', 501)]);
+        $this->receive($variantId, ['quantity' => 0, 'note' => str_repeat('n', 501)]);
 
         $problem = $this->assertProblem(422);
         self::assertIsArray($problem['violations']);
@@ -419,39 +430,39 @@ final class ReceiveStockEndpointTest extends WebTestCase
     #[DataProvider('notesWithControlCharacters')]
     public function testANoteWithAControlCharacterIsUnprocessableAndChangesNothing(string $note): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->receive($productId, ['quantity' => 5, 'note' => $note]);
+        $this->receive($variantId, ['quantity' => 5, 'note' => $note]);
 
         $problem = $this->assertProblem(422);
         self::assertIsArray($problem['violations']);
         self::assertSame(['note' => 'Notatka nie może zawierać znaków sterujących (poza tabulatorem i końcem wiersza).'], array_column($problem['violations'], 'title', 'propertyPath'));
-        self::assertNull($this->storedStock($productId));
+        self::assertNull($this->storedStock($variantId));
     }
 
     public function testMalformedJsonIsABadRequest(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->post($this->path($productId), '{"quantity": 5,', TestTokenFactory::staff(['admin']), ['HTTP_IDEMPOTENCY_KEY' => self::KEY]);
+        $this->post($this->path($variantId), '{"quantity": 5,', TestTokenFactory::staff(['admin']), ['HTTP_IDEMPOTENCY_KEY' => self::KEY]);
 
         $this->assertProblem(400);
-        self::assertNull($this->storedStock($productId));
+        self::assertNull($this->storedStock($variantId));
     }
 
     public function testAFormBodyIsNotAccepted(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->post($this->path($productId), 'quantity=5', TestTokenFactory::staff(['admin']), ['HTTP_IDEMPOTENCY_KEY' => self::KEY], 'application/x-www-form-urlencoded');
+        $this->post($this->path($variantId), 'quantity=5', TestTokenFactory::staff(['admin']), ['HTTP_IDEMPOTENCY_KEY' => self::KEY], 'application/x-www-form-urlencoded');
 
         $this->assertProblem(415);
-        self::assertNull($this->storedStock($productId));
+        self::assertNull($this->storedStock($variantId));
     }
 
-    private function path(string $productId): string
+    private function path(string $variantId): string
     {
-        return '/api/v1/admin/products/'.$productId.'/stock/receipts';
+        return '/api/v1/admin/variants/'.$variantId.'/stock/receipts';
     }
 
     /**
@@ -461,8 +472,8 @@ final class ReceiveStockEndpointTest extends WebTestCase
      *
      * @return array<mixed>
      */
-    private function receive(string $productId, array $body, ?string $token = null, string $key = self::KEY): array
+    private function receive(string $variantId, array $body, ?string $token = null, string $key = self::KEY): array
     {
-        return $this->post($this->path($productId), json_encode($body, \JSON_THROW_ON_ERROR), $token ?? TestTokenFactory::staff(['admin']), ['HTTP_IDEMPOTENCY_KEY' => $key]);
+        return $this->post($this->path($variantId), json_encode($body, \JSON_THROW_ON_ERROR), $token ?? TestTokenFactory::staff(['admin']), ['HTTP_IDEMPOTENCY_KEY' => $key]);
     }
 }

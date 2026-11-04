@@ -8,7 +8,7 @@ use App\Inventory\Application\Query\StockHistoryPage;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 
-#[OA\Schema(description: 'A page of the stock history of a product, newest entry first.', required: ['items', 'next'])]
+#[OA\Schema(description: 'A page of the stock history of a product variant, newest entry first.', required: ['items', 'next'])]
 final readonly class StockHistoryResponse
 {
     /**

@@ -11,12 +11,12 @@ use Doctrine\ORM\Mapping as ORM;
  * One entry of the stock history. Read-only: rows are inserted and never updated or deleted (only the demo reset
  * empties the table).
  *
- * The migration makes the first index (product_id, occurred_at DESC, id) for the newest-first history of a product;
+ * The migration makes the first index (variant_id, occurred_at DESC, id) for the newest-first history of a variant;
  * the mapping cannot express the direction. The partial unique index keeps a receipt key to one receipt.
  */
 #[ORM\Entity(readOnly: true)]
 #[ORM\Table(name: 'inventory_stock_movement')]
-#[ORM\Index(name: 'inventory_stock_movement_product_occurred_at_idx', columns: ['product_id', 'occurred_at', 'id'])]
+#[ORM\Index(name: 'inventory_stock_movement_variant_occurred_at_idx', columns: ['variant_id', 'occurred_at', 'id'])]
 // The predicate as PostgreSQL gives it back (pg_get_expr), so the schema comparison sees no difference.
 #[ORM\UniqueConstraint(name: self::RECEIPT_REFERENCE_INDEX, columns: ['reference'], options: ['where' => "((type)::text = 'receipt'::text)"])]
 class StockMovementRecord
@@ -28,7 +28,7 @@ class StockMovementRecord
         #[ORM\Column(type: 'guid')]
         public readonly string $id,
         #[ORM\Column(type: 'guid')]
-        public readonly string $productId,
+        public readonly string $variantId,
         #[ORM\Column(length: 16)]
         public readonly string $type,
         #[ORM\Column]

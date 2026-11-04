@@ -9,9 +9,9 @@ use App\Inventory\Domain\Reservation\Reservation;
 use App\Inventory\Domain\Reservation\ReservationKey;
 use App\Inventory\Domain\Reservation\ReservationLine;
 use App\Inventory\Domain\Reservation\ReservationRepository;
-use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Domain\Stock\StockItemRepository;
 use App\Inventory\Domain\Stock\StockShortage;
+use App\Inventory\Domain\Stock\VariantId;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'command.bus')]
@@ -27,7 +27,7 @@ final readonly class ReserveStockHandler
      * Stores the reservation first: a concurrent reservation with the same key waits on it, and a taken key answers
      * with the stored reservation (same lines, whatever its status now) or ReservationKeyReused, without touching
      * stock. A new key locks the stocks of the lines and reserves every line; a shortage of any line throws, which
-     * rolls back the transaction of command.bus, the stored key included. A product without a stored stock has
+     * rolls back the transaction of command.bus, the stored key included. A variant without a stored stock has
      * nothing available.
      *
      * @throws InvalidReservation
@@ -49,21 +49,21 @@ final readonly class ReserveStockHandler
         }
 
         $items = [];
-        foreach ($this->stock->lockMany(array_map(static fn (ReservationLine $line): ProductId => $line->productId(), $reservation->lines())) as $item) {
+        foreach ($this->stock->lockMany(array_map(static fn (ReservationLine $line): VariantId => $line->variantId(), $reservation->lines())) as $item) {
             $items[$item->id()->toString()] = $item;
         }
 
         $shortages = [];
         foreach ($reservation->lines() as $line) {
-            $item = $items[$line->productId()->toString()] ?? null;
+            $item = $items[$line->variantId()->toString()] ?? null;
             if (null === $item) {
-                $shortages[] = new Shortage($line->productId()->toString(), $line->quantity(), 0);
+                $shortages[] = new Shortage($line->variantId()->toString(), $line->quantity(), 0);
                 continue;
             }
             try {
                 $item->reserve($line->quantity(), $reservation->key());
             } catch (StockShortage $shortage) {
-                $shortages[] = new Shortage($shortage->productId()->toString(), $shortage->requested(), $shortage->available());
+                $shortages[] = new Shortage($shortage->variantId()->toString(), $shortage->requested(), $shortage->available());
             }
         }
         if ([] !== $shortages) {
@@ -99,11 +99,11 @@ final readonly class ReserveStockHandler
     private static function line(ReserveStockLine $line): ReservationLine
     {
         try {
-            $productId = ProductId::fromString($line->productId);
+            $variantId = VariantId::fromString($line->variantId);
         } catch (\InvalidArgumentException) {
-            throw InvalidReservation::notAProductId();
+            throw InvalidReservation::notAVariantId();
         }
 
-        return ReservationLine::of($productId, $line->quantity);
+        return ReservationLine::of($variantId, $line->quantity);
     }
 }

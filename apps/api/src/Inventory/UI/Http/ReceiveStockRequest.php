@@ -10,12 +10,12 @@ use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * Body of POST /api/v1/admin/products/{productId}/stock/receipts. Both keys are required. The values are taken as JSON
+ * Body of POST /api/v1/admin/variants/{variantId}/stock/receipts. Both keys are required. The values are taken as JSON
  * gives them and validated, never cast: a number in a string or with a fraction (also `5.0`) is a violation. The
  * messages of the ranges are shown to a staff member at the field, so they are in Polish. The actor is never part of
  * the body, it comes from the token.
  */
-#[OA\Schema(description: 'Delivered units of a product.', required: ['quantity', 'note'])]
+#[OA\Schema(description: 'Delivered units of a product variant.', required: ['quantity', 'note'])]
 final readonly class ReceiveStockRequest
 {
     public function __construct(

@@ -7,7 +7,7 @@ namespace App\Inventory\Application\Command;
 final readonly class ReservationLineView
 {
     public function __construct(
-        public string $productId,
+        public string $variantId,
         public int $quantity,
     ) {
     }

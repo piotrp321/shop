@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Inventory\Domain\Stock;
 
 /**
- * The idempotency key of a receipt, chosen by its sender (the `Idempotency-Key` of the panel, `seed:<productId>` of
- * the demo data). A key belongs to one receipt forever, whatever the product.
+ * The idempotency key of a receipt, chosen by its sender (the `Idempotency-Key` of the panel, `seed:<variantId>` of
+ * the demo data). A key belongs to one receipt forever, whatever the variant.
  */
 final readonly class ReceiptKey
 {

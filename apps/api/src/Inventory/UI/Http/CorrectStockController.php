@@ -28,7 +28,7 @@ final class CorrectStockController
     /** Attribute of StockVoter (Infrastructure): the controller only knows its name. */
     private const string MANAGE_STOCK = 'MANAGE_STOCK';
 
-    /** A UUID in any letter case; anything else matches no route (404), like an unknown product. */
+    /** A UUID in any letter case; anything else matches no route (404), like an unknown variant. */
     private const string UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 
     public function __construct(#[Autowire(service: 'command.bus')] MessageBusInterface $commandBus)
@@ -36,19 +36,19 @@ final class CorrectStockController
         $this->messageBus = $commandBus;
     }
 
-    #[Route('/api/v1/admin/products/{productId}/stock/corrections', name: 'inventory_correct_stock', requirements: ['productId' => self::UUID], methods: ['POST'])]
+    #[Route('/api/v1/admin/variants/{variantId}/stock/corrections', name: 'inventory_correct_stock', requirements: ['variantId' => self::UUID], methods: ['POST'])]
     #[Security(name: 'backoffice')]
     #[OA\Post(
         operationId: 'correctStock',
-        summary: 'Correct the stock of a product',
+        summary: 'Correct the stock of a product variant',
         description: 'Sets the physical stock to the counted units, with a reason (a note is required for `other`). '
-            .'Administrators and the warehouse only. Send the `version` of the stock you saw (null for a product without a stock '
+            .'Administrators and the warehouse only. Send the `version` of the stock you saw (null for a variant without a stock '
             .'record): a stock changed since then is a 409 and nothing is overwritten, so repeating a correction that succeeded '
             .'is a 409 too. Counting what the stock has changes nothing: the version stays and no history entry is recorded. '
             .'The history entry names the staff member of the token.',
         tags: ['Inventory'],
         parameters: [
-            new OA\Parameter(name: 'productId', in: 'path', required: true, description: 'Product id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'variantId', in: 'path', required: true, description: 'Variant id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
         ],
         responses: [
             new OA\Response(
@@ -73,7 +73,7 @@ final class CorrectStockController
             ),
             new OA\Response(
                 response: 404,
-                description: 'No such product, or the id is not a UUID (problem details).',
+                description: 'No such variant, or the id is not a UUID (problem details).',
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
             new OA\Response(
@@ -100,7 +100,7 @@ final class CorrectStockController
     )]
     #[IsGranted(self::MANAGE_STOCK)]
     public function __invoke(
-        string $productId,
+        string $variantId,
         #[CurrentUser] AuthenticatedStaffMember $staffMember,
         #[MapRequestPayload(
             acceptFormat: 'json',
@@ -115,7 +115,7 @@ final class CorrectStockController
         \assert(\is_string($correction->reason) && (null === $correction->note || \is_string($correction->note)));
 
         $stock = $this->handle(CorrectStock::byStaff(
-            $productId,
+            $variantId,
             $correction->physical,
             $correction->version,
             $correction->reason,
