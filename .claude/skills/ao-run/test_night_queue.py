@@ -828,6 +828,7 @@ class NextCliTest(unittest.TestCase):
         for text, status in [('', 'unreadable'), ('garbage', 'unreadable'), ('{"status": "error"}', 'error'),
                              ('{"status": "ok"}', 'unreadable')]:
             with self.subTest(text=text):
+                self.night(['a', 'b'])   # a refusal ends the night, so start each case from a fresh one
                 self.assertEqual('stan limitów: %s' % status, self.reason(self.abc(), stdin_text=text))
 
     def test_window_over_80(self):
@@ -885,6 +886,135 @@ class NextCliTest(unittest.TestCase):
         code, out, err = self.next(self.abc(), fail=['git', 'show'])
         self.assertEqual((1, ''), (code, out))
         self.assertIn('boom', err)
+
+    # --- end of the night: close, ended_at, next recording the end, approve starting a fresh night ---
+
+    def close(self, *extra):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'close'] + list(extra), run=BoardRunner([]), now=NOW)
+        return code, out.getvalue(), err.getvalue()
+
+    def night_json(self):
+        with open(os.path.join(self.state, 'night.json')) as f:
+            return json.load(f)
+
+    def test_close_sets_ended_at_and_default_reason(self):
+        self.night(['a', 'b'])
+        code, out, err = self.close()
+        self.assertEqual(0, code, err)
+        night = self.night_json()
+        self.assertEqual(NOW.isoformat(), night['ended_at'])
+        self.assertEqual('zamknięta', night['reason'])
+        self.assertEqual(['a', 'b'], night['epics'])
+        self.assertEqual(night, json.loads(out))
+
+    def test_close_with_reason(self):
+        self.night(['a'])
+        code, out, err = self.close('--reason', 'A zablokowany')
+        self.assertEqual(0, code, err)
+        self.assertEqual('A zablokowany', json.loads(out)['reason'])
+        self.assertEqual('A zablokowany', self.night_json()['reason'])
+
+    def test_close_twice_keeps_the_first(self):
+        self.night(['a'])
+        self.close('--reason', 'pierwszy')
+        code, out, err = self.close('--reason', 'drugi')
+        self.assertEqual(0, code, err)
+        night = self.night_json()
+        self.assertEqual(('pierwszy', NOW.isoformat()), (night['reason'], night['ended_at']))
+        self.assertEqual(night, json.loads(out))
+
+    def test_close_without_list_exits_2(self):
+        os.rmdir(self.state)
+        code, out, err = self.close()
+        self.assertEqual((2, ''), (code, out))
+        self.assertTrue(err)
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'night.json')))
+
+    def test_close_unreadable_night_file_exits_2(self):
+        with open(os.path.join(self.state, 'night.json'), 'w') as f:
+            f.write('{')
+        code, out, err = self.close()
+        self.assertEqual((2, ''), (code, out))
+
+    def test_next_after_close_refuses_without_reading_the_board(self):
+        self.night(['a', 'b', 'c'])
+        self.events(*self.a_done())
+        self.close('--reason', 'A bez DONE')
+        result = self.result(self.abc())
+        self.assertEqual({'epic': None, 'reason': 'noc zakończona: A bez DONE', 'started': ['a'], 'left': ['b', 'c']},
+                         result)
+        self.assertEqual([], self.runner.calls)
+
+    def test_next_after_close_refuses_before_night_over(self):
+        self.night(['a'])
+        self.close()
+        self.assertEqual('noc zakończona: zamknięta',
+                         self.reason(self.abc(), now=UNTIL + timedelta(hours=1)))
+
+    def test_next_null_records_the_end_and_second_next_refuses(self):
+        self.night(['a', 'b'])
+        self.events(*self.a_done())
+        reason = 'okno %s bez pomiaru' % LABEL
+        self.assertEqual(reason, self.reason(self.abc()))
+        night = self.night_json()
+        self.assertEqual((reason, NOW.isoformat()), (night['reason'], night['ended_at']))
+        # the situation is fixed now, but the night stays ended
+        self.events(*self.old_measurement(), *self.a_done())
+        self.assertEqual('noc zakończona: ' + reason, self.reason(self.abc()))
+
+    def test_next_night_over_records_the_end(self):
+        self.night(['a'])
+        self.reason(self.abc(), now=UNTIL + timedelta(minutes=1))
+        self.assertEqual('noc minęła (07:00)', self.night_json()['reason'])
+
+    def test_next_list_done_records_the_end(self):
+        self.night(['a'])
+        self.events(*self.a_done())
+        self.assertEqual('lista wykonana', self.reason(self.abc()))
+        self.assertEqual('lista wykonana', self.night_json()['reason'])
+
+    def test_next_with_epic_does_not_record(self):
+        self.night(['a', 'b'])
+        self.result(self.abc())
+        self.assertNotIn('ended_at', self.night_json())
+
+    def test_next_with_unreadable_night_does_not_write(self):
+        path = os.path.join(self.state, 'night.json')
+        with open(path, 'w') as f:
+            f.write('{')
+        code, out, err = self.next(self.abc())
+        self.assertEqual((2, ''), (code, out))
+        with open(path) as f:
+            self.assertEqual('{', f.read())
+
+    def test_next_with_unreadable_ended_at_exits_2(self):
+        self.night(['a'])
+        night = self.night_json()
+        night['ended_at'] = 'garbage'
+        with open(os.path.join(self.state, 'night.json'), 'w') as f:
+            json.dump(night, f)
+        code, out, err = self.next(self.abc())
+        self.assertEqual((2, ''), (code, out))
+
+    def test_next_with_offsetless_reset_exits_cleanly(self):
+        self.night(['a', 'b'])
+        self.events(*self.old_measurement(), *self.a_done())
+        text = json.dumps({'status': 'ok', 'windows': [{'label': LABEL, 'percentUsed': 10,
+                                                        'resetsAt': '2026-11-11T17:59:59'}]})
+        self.assertEqual('stan limitów: unreadable', self.reason(self.abc(), stdin_text=text))
+
+    def test_approve_after_close_starts_a_fresh_night(self):
+        self.night(['a'])
+        self.close('--reason', 'stary')
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'approve', 'a'], run=BoardRunner([epic(1, 'A', 'a')]),
+                                    now=T0, stdin=io.StringIO(''))
+        self.assertEqual(0, code, err.getvalue())
+        self.assertEqual({'approved_at', 'until', 'epics'}, set(self.night_json()))
+        self.assertNotIn('ended_at', json.loads(out.getvalue()))
 
 
 class AheadCliTest(unittest.TestCase):
@@ -960,3 +1090,69 @@ class AheadCliTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ParseTimeTest(unittest.TestCase):
+    def test_z_and_offset(self):
+        self.assertEqual(datetime(2026, 11, 11, 17, 59, 59, 640000, tzinfo=timezone.utc),
+                         night_queue.parse_time('2026-11-11T17:59:59.640Z'))
+        self.assertEqual(timedelta(hours=1), night_queue.parse_time('2026-11-11T17:59:59+01:00').utcoffset())
+
+    def test_offsetless_is_a_value_error(self):
+        for text in ['2026-11-11T17:59:59', '2026-11-11']:
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):
+                    night_queue.parse_time(text)
+
+    def test_usage_with_offsetless_reset_is_unreadable(self):
+        text = json.dumps({'status': 'ok', 'windows': [{'label': 'W', 'percentUsed': 1,
+                                                        'resetsAt': '2026-11-11T17:59:59'}]})
+        self.assertEqual({'status': 'unreadable'}, night_queue.parse_usage(text))
+
+    def test_offsetless_event_time_is_unreadable_state(self):
+        with tempfile.TemporaryDirectory() as state:
+            with open(os.path.join(state, 'measurements.jsonl'), 'w') as f:
+                f.write(json.dumps({'event': 'done', 'epic': 'a', 'at': '2026-11-04T22:00:00', 'usage': {}}) + '\n')
+            with self.assertRaises(night_queue.StateError):
+                night_queue.read_events(state)
+
+
+class ParseUntilLocalTest(unittest.TestCase):
+    """parse_until on a local `now` attaches the offset valid on the target date (DST change nights)."""
+
+    def setUp(self):
+        import time
+        if not hasattr(time, 'tzset'):
+            self.skipTest('no tzset')
+        self.old_tz = os.environ.get('TZ')
+        self.addCleanup(self.restore)
+        os.environ['TZ'] = 'Europe/Warsaw'
+        time.tzset()
+        if datetime(2026, 7, 1, 12).astimezone().utcoffset() != timedelta(hours=2):
+            self.skipTest('no tz database for Europe/Warsaw')
+
+    def restore(self):
+        import time
+        if self.old_tz is None:
+            os.environ.pop('TZ', None)
+        else:
+            os.environ['TZ'] = self.old_tz
+        time.tzset()
+
+    def test_offset_of_the_target_date_after_dst_end(self):
+        now = datetime(2026, 10, 24, 22, 0).astimezone()             # CEST, +02:00
+        self.assertEqual(timedelta(hours=2), now.utcoffset())
+        until = night_queue.parse_until('07:00', now)                  # 25 Oct 07:00 is CET, +01:00
+        self.assertEqual((2026, 10, 25, 7, 0), (until.year, until.month, until.day, until.hour, until.minute))
+        self.assertEqual(timedelta(hours=1), until.utcoffset())
+
+    def test_offset_of_the_target_date_after_dst_start(self):
+        now = datetime(2026, 3, 28, 22, 0).astimezone()              # CET, +01:00
+        until = night_queue.parse_until('07:00', now)                  # 29 Mar 07:00 is CEST, +02:00
+        self.assertEqual((2026, 3, 29, 7, 0), (until.year, until.month, until.day, until.hour, until.minute))
+        self.assertEqual(timedelta(hours=2), until.utcoffset())
+
+    def test_same_day_when_still_ahead(self):
+        now = datetime(2026, 11, 4, 5, 0).astimezone()
+        until = night_queue.parse_until('07:00', now)
+        self.assertEqual((4, 7, 0), (until.day, until.hour, until.minute))

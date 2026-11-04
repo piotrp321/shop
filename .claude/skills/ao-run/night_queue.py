@@ -6,6 +6,7 @@
   night_queue.py [--repo DIR] [--state DIR] done <dir>    (stdin: the `plan` object of get_usage)
   night_queue.py [--repo DIR] [--state DIR] propose [--until HH:MM]
   night_queue.py [--repo DIR] [--state DIR] approve [--until HH:MM] <dir>...
+  night_queue.py [--repo DIR] [--state DIR] close [--reason TEXT]
   night_queue.py [--repo DIR] [--state DIR] next          (stdin: the `plan` object of get_usage)
   night_queue.py [--repo DIR] [--state DIR] ahead
 
@@ -30,6 +31,12 @@ without a later done, list done. The first epic of the night is returned without
 the board, so its `issue` and `title` are null and `id` is the directory in upper case). Later ones must pass: still
 prepared on the board and not in progress, a time estimate, now + estimate <= until, usage status `ok`, and every
 window resetting after now + estimate has a usage estimate and stays <= 80% after adding it.
+
+close: records the end of the night: sets `ended_at` (now) and `reason` (default `zamknięta`) in night.json and prints
+it. No night.json: exit 2. A night that already ended keeps its first `ended_at` and `reason` (printed, exit 0).
+approve writes a fresh night.json without `ended_at`. next refuses a night with `ended_at` (`noc zakończona: <reason>`,
+checked right after the missing list, without reading the board); every other `epic: null` result of next records the
+end itself (`ended_at` and `reason` = its reason), so a later next refuses. An unreadable night.json is never written.
 
 ahead: reads the board and prints {"epics": [{dir, id, issue, title, tasks, minutes}], "minutes": <sum|null>,
 "full": <bool>}: prepared epics not in progress. `full` is true when the sum reaches the night (540 minutes), or, when
@@ -127,7 +134,11 @@ RESET_TOLERANCE_SECONDS = 60
 
 
 def parse_time(text):
-    return datetime.fromisoformat(text.replace('Z', '+00:00'))
+    """An ISO timestamp with a UTC offset or `Z`; ValueError for one without an offset."""
+    parsed = datetime.fromisoformat(text.replace('Z', '+00:00'))
+    if parsed.tzinfo is None:
+        raise ValueError('timestamp without UTC offset: %s' % text)
+    return parsed
 
 
 def task_count(run, directory):
@@ -308,8 +319,15 @@ def parse_until(text, now):
     match = re.fullmatch(r'(\d{2}):(\d{2})', text)
     if not match or int(match.group(1)) > 23 or int(match.group(2)) > 59:
         raise StateError('nieprawidłowa godzina --until: %s (oczekiwano HH:MM)' % text)
-    until = now.replace(hour=int(match.group(1)), minute=int(match.group(2)), second=0, microsecond=0)
-    return until if until > now else until + timedelta(days=1)
+    local = now.utcoffset() == now.replace(tzinfo=None).astimezone().utcoffset()
+
+    def at(day):
+        # Local `now`: the offset valid on the target date (DST changes); otherwise the offset of `now`.
+        naive = datetime(day.year, day.month, day.day, int(match.group(1)), int(match.group(2)))
+        return naive.astimezone() if local else naive.replace(tzinfo=now.tzinfo)
+
+    until = at(now)
+    return until if until > now else at(now + timedelta(days=1))
 
 
 def propose(run, state_dir, until_text, now):
@@ -360,14 +378,8 @@ def cmd_propose(args, run, now, stdin):
     return 0
 
 
-def cmd_approve(args, run, now, stdin):
-    result = propose(run, args.state, args.until, now)
-    listed = [e['dir'] for e in result['epics']]
-    if not listed or listed != args.dirs:
-        raise StateError('lista różni się od zatwierdzanej: propozycja [%s], podano [%s]'
-                         % (', '.join(listed), ', '.join(args.dirs)))
-    night = {'approved_at': now.isoformat(), 'until': result['until'], 'epics': listed}
-    directory = os.path.expanduser(args.state)
+def write_night(state_dir, night):
+    directory = os.path.expanduser(state_dir)
     try:
         os.makedirs(directory, exist_ok=True)
         with open(os.path.join(directory, NIGHT_FILE), 'w', encoding='utf-8') as f:
@@ -375,6 +387,16 @@ def cmd_approve(args, run, now, stdin):
             f.write('\n')
     except OSError as e:
         raise StateError('nie można zapisać %s: %s' % (NIGHT_FILE, e.strerror or e))
+
+
+def cmd_approve(args, run, now, stdin):
+    result = propose(run, args.state, args.until, now)
+    listed = [e['dir'] for e in result['epics']]
+    if not listed or listed != args.dirs:
+        raise StateError('lista różni się od zatwierdzanej: propozycja [%s], podano [%s]'
+                         % (', '.join(listed), ', '.join(args.dirs)))
+    night = {'approved_at': now.isoformat(), 'until': result['until'], 'epics': listed}
+    write_night(args.state, night)
     print(json.dumps(night, ensure_ascii=False))
     return 0
 
@@ -396,6 +418,10 @@ def read_night(state_dir):
         parse_time(night['until'])
         if not isinstance(night['epics'], list) or not all(isinstance(d, str) for d in night['epics']):
             raise ValueError('epics')
+        if 'ended_at' in night:
+            parse_time(night['ended_at'])
+            if not isinstance(night.get('reason'), str):
+                raise ValueError('reason')
     except (KeyError, TypeError, ValueError, AttributeError):
         raise StateError('nieczytelny plik %s' % path)
     return night
@@ -439,10 +465,33 @@ def _forecast_failure(name, minutes, usage_estimate, now, until, stdin):
     return None
 
 
+def _progress(state_dir, night):
+    """`started` and `left` of a night: list epics with and without a start event since the approval."""
+    approved, listed = parse_time(night['approved_at']), night['epics']
+    since = [e for e in read_events(state_dir) if e['epic'] in listed and parse_time(e['at']) >= approved]
+    started = [d for d in listed if any(e['epic'] == d and e['event'] == 'start' for e in since)]
+    return started, [d for d in listed if d not in started]
+
+
+def cmd_close(args, run, now, stdin):
+    night = read_night(args.state)
+    if night is None:
+        raise StateError('brak zatwierdzonej listy nocy')
+    if 'ended_at' not in night:
+        night = dict(night, ended_at=now.isoformat(), reason=args.reason)
+        write_night(args.state, night)
+    print(json.dumps(night, ensure_ascii=False))
+    return 0
+
+
 def cmd_next(args, run, now, stdin):
     night = read_night(args.state)
     if night is None:
         print(json.dumps(_next_result(None, 'brak zatwierdzonej listy', [], []), ensure_ascii=False))
+        return 0
+    if 'ended_at' in night:
+        print(json.dumps(_next_result(None, 'noc zakończona: %s' % night['reason'], *_progress(args.state, night)),
+                         ensure_ascii=False))
         return 0
     approved, until, listed = parse_time(night['approved_at']), parse_time(night['until']), night['epics']
     events = read_events(args.state)
@@ -452,6 +501,8 @@ def cmd_next(args, run, now, stdin):
 
     def finish(epic_, reason):
         after = unstarted if epic_ is None else unstarted[1:]
+        if epic_ is None:
+            write_night(args.state, dict(night, ended_at=now.isoformat(), reason=reason))
         print(json.dumps(_next_result(epic_, reason, started, after), ensure_ascii=False))
         return 0
 
@@ -510,6 +561,8 @@ def main(argv=None, run=None, now=None, stdin=None):
     for p in (propose_parser, approve_parser):
         p.add_argument('--until', default=DEFAULT_UNTIL)
     approve_parser.add_argument('dirs', nargs='+')
+    close_parser = sub.add_parser('close', help='record the end of the night')
+    close_parser.add_argument('--reason', default='zamknięta')
     sub.add_parser('next', help='the next epic of the night list, or the reason there is none')
     sub.add_parser('ahead', help='prepared epics with time estimates')
     try:
@@ -522,7 +575,7 @@ def main(argv=None, run=None, now=None, stdin=None):
     now = now or datetime.now().astimezone()
     try:
         return {'start': cmd_start, 'done': cmd_done, 'propose': cmd_propose, 'approve': cmd_approve,
-                'next': cmd_next, 'ahead': cmd_ahead}[args.command](args, run, now, stdin)
+                'close': cmd_close, 'next': cmd_next, 'ahead': cmd_ahead}[args.command](args, run, now, stdin)
     except StateError as e:
         print('night_queue: %s' % e, file=sys.stderr)
         return 2
