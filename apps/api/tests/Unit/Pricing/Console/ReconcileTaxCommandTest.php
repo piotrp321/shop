@@ -7,17 +7,17 @@ namespace App\Tests\Unit\Pricing\Console;
 use App\Pricing\Application\TaxReconciliation\ReconcileTax;
 use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\PriceBreakdown;
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductPrice;
-use App\Pricing\Domain\Price\ProductPriceRepository;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantPrice;
+use App\Pricing\Domain\Price\VariantPriceRepository;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\VatRate;
 use App\Pricing\UI\Console\ReconcileTaxCommand;
-use App\Tests\Unit\Pricing\ConcurrentlyEditedProductPriceRepository;
+use App\Tests\Unit\Pricing\ConcurrentlyEditedVariantPriceRepository;
 use App\Tests\Unit\Pricing\FixedVatRates;
 use App\Tests\Unit\Pricing\InMemoryPersistenceSession;
-use App\Tests\Unit\Pricing\InMemoryProductPriceRepository;
-use App\Tests\Unit\Pricing\InMemoryProductsForPricing;
+use App\Tests\Unit\Pricing\InMemoryVariantPriceRepository;
+use App\Tests\Unit\Pricing\InMemoryVariantsForPricing;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -27,17 +27,17 @@ final class ReconcileTaxCommandTest extends TestCase
     private const string FIRST = '00000000-0000-4000-8000-000000000001';
     private const string SECOND = '00000000-0000-4000-8000-000000000002';
 
-    private InMemoryProductPriceRepository $prices;
+    private InMemoryVariantPriceRepository $prices;
     private InMemoryPersistenceSession $session;
-    private ConcurrentlyEditedProductPriceRepository $repository;
+    private ConcurrentlyEditedVariantPriceRepository $repository;
     private FixedVatRates $rates;
 
     protected function setUp(): void
     {
         $this->rates = new FixedVatRates(['standard' => 2300, 'printed_book' => 500, 'energy_gel' => 800]);
-        $this->prices = new InMemoryProductPriceRepository();
+        $this->prices = new InMemoryVariantPriceRepository();
         $this->session = new InMemoryPersistenceSession();
-        $this->repository = new ConcurrentlyEditedProductPriceRepository($this->prices, $this->session, $this->rates);
+        $this->repository = new ConcurrentlyEditedVariantPriceRepository($this->prices, $this->session, $this->rates);
     }
 
     public function testConsistentPricesExitWithZero(): void
@@ -104,12 +104,12 @@ final class ReconcileTaxCommandTest extends TestCase
     public function testFailureStopsTheRunAndExitsWithTwo(): void
     {
         $this->storePrice(self::FIRST, 'energy_gel', 500);
-        $failing = new class($this->repository) implements ProductPriceRepository {
-            public function __construct(private readonly ProductPriceRepository $inner)
+        $failing = new class($this->repository) implements VariantPriceRepository {
+            public function __construct(private readonly VariantPriceRepository $inner)
             {
             }
 
-            public function find(ProductId $id): ?ProductPrice
+            public function find(VariantId $id): ?VariantPrice
             {
                 return $this->inner->find($id);
             }
@@ -119,12 +119,12 @@ final class ReconcileTaxCommandTest extends TestCase
                 return $this->inner->findMany($ids);
             }
 
-            public function page(?ProductId $after, int $limit): array
+            public function page(?VariantId $after, int $limit): array
             {
                 return $this->inner->page($after, $limit);
             }
 
-            public function save(ProductPrice $price): void
+            public function save(VariantPrice $price): void
             {
                 throw new \RuntimeException('connection to server at "postgres" failed');
             }
@@ -139,13 +139,13 @@ final class ReconcileTaxCommandTest extends TestCase
     }
 
     /**
-     * @param array<string, string> $catalog product id => tax class code
+     * @param array<string, string> $catalog variant id => tax class code
      */
-    private function tester(array $catalog, ?ProductPriceRepository $prices = null): CommandTester
+    private function tester(array $catalog, ?VariantPriceRepository $prices = null): CommandTester
     {
-        $products = new InMemoryProductsForPricing(array_map(static fn (string $class): string => 'slug', $catalog), $catalog);
+        $variants = new InMemoryVariantsForPricing(array_map(static fn (string $class): string => 'slug/standard', $catalog), $catalog);
         $application = new Application();
-        $application->addCommand(new ReconcileTaxCommand(new ReconcileTax($prices ?? $this->repository, $products, $this->rates, $this->session)));
+        $application->addCommand(new ReconcileTaxCommand(new ReconcileTax($prices ?? $this->repository, $variants, $this->rates, $this->session)));
 
         return new CommandTester($application->find('pricing:reconcile-tax'));
     }
@@ -157,8 +157,8 @@ final class ReconcileTaxCommandTest extends TestCase
 
     private function storePrice(string $id, string $taxClass, int $basisPoints): void
     {
-        $this->prices->store(ProductPrice::reconstitute(
-            ProductId::fromString($id),
+        $this->prices->store(VariantPrice::reconstitute(
+            VariantId::fromString($id),
             PriceBreakdown::fromGross(GrossPrice::pln(5490), VatRate::fromBasisPoints($basisPoints)),
             TaxClass::fromString($taxClass),
             1,

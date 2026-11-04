@@ -8,7 +8,7 @@ use App\Pricing\Application\Query\PriceHistoryPage;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 
-#[OA\Schema(description: 'A page of the price history of a product, newest change first.', required: ['items', 'next'])]
+#[OA\Schema(description: 'A page of the price history of a product variant, newest change first.', required: ['items', 'next'])]
 final readonly class PriceHistoryResponse
 {
     /**

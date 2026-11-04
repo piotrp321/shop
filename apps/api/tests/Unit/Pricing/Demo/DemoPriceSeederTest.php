@@ -4,38 +4,38 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Pricing\Demo;
 
-use App\Pricing\Application\Command\SetProductPrice;
+use App\Pricing\Application\Command\SetVariantPrice;
 use App\Pricing\Application\Demo\DemoPriceList;
 use App\Pricing\Application\Demo\DemoPriceSeeder;
 use App\Pricing\Domain\Price\PriceChangeSource;
 use App\Tests\Support\InMemory\RecordingMessageBus;
-use App\Tests\Unit\Pricing\InMemoryProductsForPricing;
+use App\Tests\Unit\Pricing\InMemoryVariantsForPricing;
 use PHPUnit\Framework\TestCase;
 
 final class DemoPriceSeederTest extends TestCase
 {
-    private const array PRODUCTS = [
-        '00000000-0000-4000-8000-000000000003' => 'mapa-turystyczna-tarvik-press-gorce-skladana',
-        '00000000-0000-4000-8000-000000000001' => 'namiot-turystyczny-norvane-biwak-2-zielony',
-        '00000000-0000-4000-8000-000000000002' => 'mapa-turystyczna-tarvik-press-tatry-laminowana',
+    private const array VARIANTS = [
+        '00000000-0000-4000-8000-000000000003' => 'mapa-turystyczna-tarvik-press-gorce-skladana/standard',
+        '00000000-0000-4000-8000-000000000001' => 'namiot-turystyczny-norvane-biwak-2-zielony/standard',
+        '00000000-0000-4000-8000-000000000002' => 'mapa-turystyczna-tarvik-press-tatry-laminowana/standard',
     ];
 
-    public function testSetsTheSeedPriceOfEveryProductThroughTheCommandBus(): void
+    public function testSetsTheSeedPriceOfEveryVariantThroughTheCommandBus(): void
     {
         $bus = new RecordingMessageBus();
-        $seeder = new DemoPriceSeeder(new InMemoryProductsForPricing(self::PRODUCTS), $bus);
+        $seeder = new DemoPriceSeeder(new InMemoryVariantsForPricing(self::VARIANTS), $bus);
 
         $count = $seeder->seed($this->prices());
 
         self::assertSame(3, $count);
-        $commands = $bus->dispatchedOf(SetProductPrice::class);
+        $commands = $bus->dispatchedOf(SetVariantPrice::class);
         self::assertSame(
             [
                 ['00000000-0000-4000-8000-000000000001', 89900],
                 ['00000000-0000-4000-8000-000000000002', 3490],
                 ['00000000-0000-4000-8000-000000000003', 2490],
             ],
-            array_map(static fn (SetProductPrice $command): array => [$command->productId, $command->gross], $commands),
+            array_map(static fn (SetVariantPrice $command): array => [$command->variantId, $command->gross], $commands),
         );
         foreach ($commands as $command) {
             self::assertSame(PriceChangeSource::Seed, $command->source);
@@ -50,19 +50,19 @@ final class DemoPriceSeederTest extends TestCase
      * @param list<int> $expectedPages
      */
     #[\PHPUnit\Framework\Attributes\DataProvider('catalogSizes')]
-    public function testReadsTheProductsInBatches(int $productCount, array $expectedPages): void
+    public function testReadsTheVariantsInBatches(int $variantCount, array $expectedPages): void
     {
-        $products = [];
-        for ($i = 1; $i <= $productCount; ++$i) {
-            $products[\sprintf('00000000-0000-4000-8000-%012d', $i)] = 'mapa-turystyczna-'.$i;
+        $variants = [];
+        for ($i = 1; $i <= $variantCount; ++$i) {
+            $variants[\sprintf('00000000-0000-4000-8000-%012d', $i)] = 'mapa-turystyczna-'.$i.'/standard';
         }
-        $catalog = new InMemoryProductsForPricing($products);
+        $catalog = new InMemoryVariantsForPricing($variants);
         $bus = new RecordingMessageBus();
 
-        self::assertSame($productCount, new DemoPriceSeeder($catalog, $bus)->seed($this->prices()));
+        self::assertSame($variantCount, new DemoPriceSeeder($catalog, $bus)->seed($this->prices()));
 
-        self::assertCount($productCount, $bus->dispatched);
-        self::assertCount($productCount, array_unique(array_map(static fn (object $command): string => $command instanceof SetProductPrice ? $command->productId : '', $bus->dispatched)));
+        self::assertCount($variantCount, $bus->dispatched);
+        self::assertCount($variantCount, array_unique(array_map(static fn (object $command): string => $command instanceof SetVariantPrice ? $command->variantId : '', $bus->dispatched)));
         self::assertSame($expectedPages, $catalog->pageLimits);
     }
 
@@ -74,35 +74,35 @@ final class DemoPriceSeederTest extends TestCase
         yield 'exactly two batches' => [1000, [500, 500, 500]];
     }
 
-    public function testListsTheSlugsWithoutPattern(): void
+    public function testListsTheKeysWithoutPattern(): void
     {
-        $seeder = new DemoPriceSeeder(new InMemoryProductsForPricing([
-            ...self::PRODUCTS,
-            '00000000-0000-4000-8000-000000000004' => 'kajak-turystyczny-vilmar-rzeka-1-zielony',
+        $seeder = new DemoPriceSeeder(new InMemoryVariantsForPricing([
+            ...self::VARIANTS,
+            '00000000-0000-4000-8000-000000000004' => 'kajak-turystyczny-vilmar-rzeka-1-zielony/standard',
         ]), new RecordingMessageBus());
 
-        self::assertSame(['kajak-turystyczny-vilmar-rzeka-1-zielony'], $seeder->unpricedSlugs($this->prices()));
+        self::assertSame(['kajak-turystyczny-vilmar-rzeka-1-zielony/standard'], $seeder->unpricedKeys($this->prices()));
     }
 
-    public function testEveryProductPricedGivesNoSlugs(): void
+    public function testEveryVariantPricedGivesNoKeys(): void
     {
-        $seeder = new DemoPriceSeeder(new InMemoryProductsForPricing(self::PRODUCTS), new RecordingMessageBus());
+        $seeder = new DemoPriceSeeder(new InMemoryVariantsForPricing(self::VARIANTS), new RecordingMessageBus());
 
-        self::assertSame([], $seeder->unpricedSlugs($this->prices()));
+        self::assertSame([], $seeder->unpricedKeys($this->prices()));
     }
 
-    public function testSeedStopsAtAProductWithoutPattern(): void
+    public function testSeedStopsAtAVariantWithoutPattern(): void
     {
         $bus = new RecordingMessageBus();
-        $seeder = new DemoPriceSeeder(new InMemoryProductsForPricing([
-            '00000000-0000-4000-8000-000000000001' => 'kajak-turystyczny-vilmar-rzeka-1-zielony',
+        $seeder = new DemoPriceSeeder(new InMemoryVariantsForPricing([
+            '00000000-0000-4000-8000-000000000001' => 'kajak-turystyczny-vilmar-rzeka-1-zielony/standard',
         ]), $bus);
 
         try {
             $seeder->seed($this->prices());
             self::fail('Expected a failure.');
         } catch (\RuntimeException $e) {
-            self::assertStringContainsString('kajak-turystyczny-vilmar-rzeka-1-zielony', $e->getMessage());
+            self::assertStringContainsString('kajak-turystyczny-vilmar-rzeka-1-zielony/standard', $e->getMessage());
         }
         self::assertSame([], $bus->dispatched);
     }

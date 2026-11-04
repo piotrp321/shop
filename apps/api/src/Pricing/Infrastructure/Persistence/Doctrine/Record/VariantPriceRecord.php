@@ -8,14 +8,14 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * Persistence model of the ProductPrice aggregate. Only DoctrineProductPriceRepository maps it to and from the domain.
+ * Persistence model of the VariantPrice aggregate. Only DoctrineVariantPriceRepository maps it to and from the domain.
  */
 #[ORM\Entity]
-#[ORM\Table(name: 'pricing_product_price')]
-class ProductPriceRecord
+#[ORM\Table(name: 'pricing_variant_price')]
+class VariantPriceRecord
 {
     /** PostgreSQL's default name of the primary key constraint of the table. */
-    public const string PRIMARY_KEY_CONSTRAINT = 'pricing_product_price_pkey';
+    public const string PRIMARY_KEY_CONSTRAINT = 'pricing_variant_price_pkey';
 
     #[ORM\Column(length: 3)]
     public string $currency;
@@ -46,7 +46,7 @@ class ProductPriceRecord
     public function __construct(
         #[ORM\Id]
         #[ORM\Column(type: 'guid')]
-        public readonly string $productId,
+        public readonly string $variantId,
     ) {
     }
 }

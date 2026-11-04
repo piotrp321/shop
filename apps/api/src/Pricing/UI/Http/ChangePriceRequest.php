@@ -9,7 +9,7 @@ use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * Body of PUT /api/v1/admin/products/{productId}/price. Both keys are required. The values are taken as JSON gives
+ * Body of PUT /api/v1/admin/variants/{variantId}/price. Both keys are required. The values are taken as JSON gives
  * them and validated, never cast: a number in a string or with a fraction (also `100.0`) is a violation, not an
  * integer. Typed `int` properties would let PHP cast such a value on the way in. The actor is never part of the body,
  * it comes from the token.
@@ -25,7 +25,7 @@ final readonly class ChangePriceRequest
         // test keeps them in step). The default message would give the range in grosze.
         #[Assert\Range(notInRangeMessage: 'Cena brutto musi wynosić od 0,01 zł do 999 999,99 zł.', min: GrossPrice::MIN, max: GrossPrice::MAX)]
         public mixed $gross,
-        #[OA\Property(type: 'integer', description: 'The `version` of the price the change is based on; null when the product has no price yet.', nullable: true, example: 1)]
+        #[OA\Property(type: 'integer', description: 'The `version` of the price the change is based on; null when the variant has no price yet.', nullable: true, example: 1)]
         #[Assert\Type('integer')]
         public mixed $version,
     ) {

@@ -4,19 +4,30 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Pricing;
 
-use App\Tests\Factory\ProductPriceRecordFactory;
+use App\Catalog\Domain\Product\Product;
+use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
+use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
+use App\Tests\Factory\CategoryFactory;
+use App\Tests\Factory\ProductFactory;
+use App\Tests\Factory\VariantPriceRecordFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Uid\Uuid;
+use Zenstruck\Foundry\Test\Factories;
 
 /**
  * GET /api/v1/prices on PostgreSQL (shop_test, rolled back after each test). The id list is sent as a repeated
  * `productId` key, as the generated client of the store does.
+ *
+ * Transitional until the product offers replace the endpoint (VARIANTS-4): prices are kept per variant, a product
+ * with exactly one variant has the price of that variant and a product with more variants is left out.
  */
 final class PricesEndpointTest extends WebTestCase
 {
+    use Factories;
+
     private KernelBrowser $client;
     private EntityManagerInterface $entityManager;
 
@@ -70,6 +81,27 @@ final class PricesEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame([$current], array_column($this->items($body), 'productId'));
+    }
+
+    public function testAProductWithMoreThanOneVariantIsLeftOutEvenWhenItsVariantsArePriced(): void
+    {
+        $single = $this->insertPrice(5490, 'printed_book', 500);
+        $twoVariants = $this->productWithVariants(2, 7000);
+
+        $body = $this->get([$twoVariants, $single]);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([['productId' => $single, 'gross' => 5490, 'currency' => 'PLN']], $this->items($body));
+    }
+
+    public function testAVariantIdIsNotAProduct(): void
+    {
+        $productId = $this->insertPrice(5490, 'printed_book', 500);
+        $variantId = $this->entityManager->getConnection()->fetchOne('SELECT id FROM catalog_product_variant WHERE product_id = ?', [$productId]);
+        self::assertIsString($variantId);
+        self::assertNotSame($productId, $variantId);
+
+        self::assertSame(['items' => []], $this->get([$variantId]));
     }
 
     public function testAnswersAnEmptyListWhenNoProductHasAPrice(): void
@@ -132,9 +164,47 @@ final class PricesEndpointTest extends WebTestCase
         yield 'bracket form is not the contract' => ['?productId[]=0192f0c4-7c1a-7c4e-9a6e-000000000001'];
     }
 
+    /**
+     * A Catalog product with one default variant (whose id is not the product's) priced as given.
+     *
+     * @return string the id of the product
+     */
     private function insertPrice(int $gross, string $taxClass, int $basisPoints): string
     {
-        return ProductPriceRecordFactory::store($this->entityManager, ['gross' => $gross, 'taxClass' => $taxClass, 'vatRateBp' => $basisPoints]);
+        $product = $this->saveProduct([]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $product->variants()->toList()[0]->id()->toString(), 'gross' => $gross, 'taxClass' => $taxClass, 'vatRateBp' => $basisPoints]);
+
+        return $product->id()->toString();
+    }
+
+    /**
+     * @return string the id of a product with the given number of variants, each priced
+     */
+    private function productWithVariants(int $count, int $gross): string
+    {
+        $product = $this->saveProduct(array_map(static fn (int $n): array => ['id' => (string) Uuid::v4(), 'values' => ['kolor '.$n]], range(1, $count)));
+        foreach ($product->variants()->toList() as $variant) {
+            VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $variant->id()->toString(), 'gross' => $gross]);
+        }
+
+        return $product->id()->toString();
+    }
+
+    /**
+     * @param list<array{id: string, values: list<string>}> $variants none for one default variant
+     */
+    private function saveProduct(array $variants): Product
+    {
+        $category = CategoryFactory::createOne();
+        new DoctrineCategoryRepository($this->entityManager)->save($category);
+        $attributes = ['mainCategory' => $category];
+        if ([] !== $variants) {
+            $attributes += ['variantAxes' => ['Kolor'], 'variants' => $variants];
+        }
+        $product = ProductFactory::createOne($attributes);
+        new DoctrineProductRepository($this->entityManager)->save($product);
+
+        return $product;
     }
 
     /**

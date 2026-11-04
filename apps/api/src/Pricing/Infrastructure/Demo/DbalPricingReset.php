@@ -15,6 +15,6 @@ final readonly class DbalPricingReset implements PricingReset
 
     public function reset(): void
     {
-        $this->connection->executeStatement('TRUNCATE pricing_price_history, pricing_product_price');
+        $this->connection->executeStatement('TRUNCATE pricing_price_history, pricing_variant_price');
     }
 }

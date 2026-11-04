@@ -153,7 +153,7 @@ export interface paths {
         };
         /**
          * Price list
-         * @description A page of products sorted by name, then by id, each with its price (null when it has none). Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listPrices"];
         put?: never;
@@ -164,7 +164,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/products/{productId}/price": {
+    "/api/v1/admin/variants/{variantId}/price": {
         parameters: {
             query?: never;
             header?: never;
@@ -173,8 +173,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Change the price of a product
-         * @description Sets the gross price; the API computes the net and the VAT at the current rate of the price's tax class (the class of the product for a first price). Administrators only. Send the `version` of the price you saw (null for a product without a price): a price changed since then is a 409 and nothing is overwritten. The same gross at the same rate changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.
+         * Change the price of a product variant
+         * @description Sets the gross price of one variant; the API computes the net and the VAT at the current rate of the price's tax class (the class of the variant's product for a first price). Administrators only. Send the `version` of the price you saw (null for a variant without a price): a price changed since then is a 409 and nothing is overwritten. The same gross at the same rate changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.
          */
         put: operations["changePrice"];
         post?: never;
@@ -184,7 +184,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/products/{productId}/price-history": {
+    "/api/v1/admin/variants/{variantId}/price-history": {
         parameters: {
             query?: never;
             header?: never;
@@ -192,8 +192,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Price history of a product
-         * @description Every recorded change of the price of a product, newest first, with the price as it was set, what made the change and, for a change by staff, who. Every staff member may read it. A product that exists but never had a price has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.
+         * Price history of a product variant
+         * @description Every recorded change of the price of a product variant, newest first, with the price as it was set, what made the change and, for a change by staff, who. Every staff member may read it. A variant that exists but never had a price has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.
          */
         get: operations["getPriceHistory"];
         put?: never;
@@ -297,7 +297,7 @@ export interface components {
              */
             gross: number;
             /**
-             * @description The `version` of the price the change is based on; null when the product has no price yet.
+             * @description The `version` of the price the change is based on; null when the variant has no price yet.
              * @example 1
              */
             version: number | null;
@@ -574,7 +574,7 @@ export interface components {
              */
             next: string | null;
         };
-        /** @description The stored price of a product. Amounts are in grosze, the rate in basis points; all computed by the API. */
+        /** @description The stored price of a product variant. Amounts are in grosze, the rate in basis points; all computed by the API. */
         ListedPriceResponse: {
             /**
              * @description Gross price (VAT included) in grosze.
@@ -617,7 +617,19 @@ export interface components {
              */
             vatRateOutdated: boolean;
         };
-        /** @description A product with its price. */
+        /** @description A variant of a product with its price. */
+        PriceListVariantResponse: {
+            /** Format: uuid */
+            variantId: string;
+            /**
+             * @description The values of the variant joined by ", "; empty for the default variant of a product without variant axes.
+             * @example oprawa twarda
+             */
+            label: string;
+            /** @description The stored price, null when the variant has no price yet. */
+            price: components["schemas"]["ListedPriceResponse"] | null;
+        };
+        /** @description A product with its variants and their prices. */
         PriceListItemResponse: {
             /** Format: uuid */
             productId: string;
@@ -633,8 +645,8 @@ export interface components {
              * @example 500
              */
             applicableVatRate: number;
-            /** @description The stored price, null when the product has no price yet. */
-            price: components["schemas"]["ListedPriceResponse"] | null;
+            /** @description The variants of the product in presentation order; one variant with an empty label for a product without variant axes. */
+            variants: components["schemas"]["PriceListVariantResponse"][];
         };
         /** @description A page of the price list. */
         PriceListResponse: {
@@ -694,7 +706,7 @@ export interface components {
              */
             actorName: string | null;
         };
-        /** @description A page of the price history of a product, newest change first. */
+        /** @description A page of the price history of a product variant, newest change first. */
         PriceHistoryResponse: {
             items: components["schemas"]["PriceHistoryItemResponse"][];
             /**
@@ -1235,8 +1247,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Product id (UUID). */
-                productId: string;
+                /** @description Variant id (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -1282,7 +1294,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such product, or the id is not a UUID (problem details). */
+            /** @description No such variant, or the id is not a UUID (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1339,8 +1351,8 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description Product id (UUID). */
-                productId: string;
+                /** @description Variant id (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -1373,7 +1385,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such product, or the id is not a UUID (problem details). */
+            /** @description No such variant, or the id is not a UUID (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;

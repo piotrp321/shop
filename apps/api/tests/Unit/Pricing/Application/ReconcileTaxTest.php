@@ -10,15 +10,15 @@ use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\PriceBreakdown;
 use App\Pricing\Domain\Price\PriceChangeSource;
 use App\Pricing\Domain\Price\PriceHistoryEntry;
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductPrice;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantPrice;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\VatRate;
-use App\Tests\Unit\Pricing\ConcurrentlyEditedProductPriceRepository;
+use App\Tests\Unit\Pricing\ConcurrentlyEditedVariantPriceRepository;
 use App\Tests\Unit\Pricing\FixedVatRates;
 use App\Tests\Unit\Pricing\InMemoryPersistenceSession;
-use App\Tests\Unit\Pricing\InMemoryProductPriceRepository;
-use App\Tests\Unit\Pricing\InMemoryProductsForPricing;
+use App\Tests\Unit\Pricing\InMemoryVariantPriceRepository;
+use App\Tests\Unit\Pricing\InMemoryVariantsForPricing;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -28,18 +28,18 @@ final class ReconcileTaxTest extends TestCase
     private const string SECOND = '00000000-0000-4000-8000-000000000002';
     private const string THIRD = '00000000-0000-4000-8000-000000000003';
 
-    private InMemoryProductPriceRepository $prices;
+    private InMemoryVariantPriceRepository $prices;
     private InMemoryPersistenceSession $session;
-    private ConcurrentlyEditedProductPriceRepository $repository;
+    private ConcurrentlyEditedVariantPriceRepository $repository;
     private FixedVatRates $rates;
 
     protected function setUp(): void
     {
         // energy_gel was 5% when the prices were stored and is 8% now.
         $this->rates = new FixedVatRates(['standard' => 2300, 'printed_book' => 500, 'energy_gel' => 800]);
-        $this->prices = new InMemoryProductPriceRepository();
+        $this->prices = new InMemoryVariantPriceRepository();
         $this->session = new InMemoryPersistenceSession();
-        $this->repository = new ConcurrentlyEditedProductPriceRepository($this->prices, $this->session, $this->rates);
+        $this->repository = new ConcurrentlyEditedVariantPriceRepository($this->prices, $this->session, $this->rates);
     }
 
     public function testConsistentPricesGiveNoDiscrepancy(): void
@@ -98,7 +98,7 @@ final class ReconcileTaxTest extends TestCase
         self::assertSame('printed_book', $book->taxClass()->toString());
         self::assertSame(
             [[self::FIRST, 'energy_gel', 800], [self::SECOND, 'printed_book', 500]],
-            array_map(static fn (PriceHistoryEntry $entry): array => [$entry->productId()->toString(), $entry->taxClass()->toString(), $entry->breakdown()->rate()->basisPoints()], $this->prices->history),
+            array_map(static fn (PriceHistoryEntry $entry): array => [$entry->variantId()->toString(), $entry->taxClass()->toString(), $entry->breakdown()->rate()->basisPoints()], $this->prices->history),
         );
         foreach ($this->prices->history as $entry) {
             self::assertSame(PriceChangeSource::TaxReconciliation, $entry->origin()->source());
@@ -110,7 +110,7 @@ final class ReconcileTaxTest extends TestCase
         self::assertSame(2, $this->prices->writes);
     }
 
-    public function testPriceOfAProductMissingInCatalogKeepsItsClassAndTakesItsCurrentRate(): void
+    public function testPriceOfAVariantMissingInCatalogKeepsItsClassAndTakesItsCurrentRate(): void
     {
         $this->storePrice(self::FIRST, 1290, 'energy_gel', 500);
 
@@ -206,7 +206,7 @@ final class ReconcileTaxTest extends TestCase
 
     /**
      * A short batch is the last one; a full one is followed by another read. Every price is checked against its
-     * own product, while both the prices and the catalog are read in batches; the catalog only as far as the prices
+     * own variant, while both the prices and the catalog are read in batches; the catalog only as far as the prices
      * need it.
      *
      * @param list<int> $expectedPages
@@ -218,17 +218,17 @@ final class ReconcileTaxTest extends TestCase
         $gels = [];
         for ($i = 1; $i <= $count; ++$i) {
             $id = \sprintf('00000000-0000-4000-8000-%012d', $i);
-            // Every third product is a gel in Catalog, the prices are all `standard`.
+            // Every third variant belongs to a gel in Catalog, the prices are all `standard`.
             $this->storePrice($id, 1000 + $i, 'standard', 2300);
             if (0 === $i % 3) {
                 $gels[] = $id;
             }
         }
-        $catalog = new InMemoryProductsForPricing(array_fill_keys(array_keys($this->allIds($count)), 'slug'), array_fill_keys($gels, 'energy_gel'));
+        $catalog = new InMemoryVariantsForPricing(array_fill_keys(array_keys($this->allIds($count)), 'slug/standard'), array_fill_keys($gels, 'energy_gel'));
         $reconcile = new ReconcileTax($this->repository, $catalog, $this->rates, $this->session);
 
         $run = $reconcile(false);
-        $found = array_map(static fn (TaxDiscrepancy $discrepancy): string => $discrepancy->productId->toString(), iterator_to_array($run, false));
+        $found = array_map(static fn (TaxDiscrepancy $discrepancy): string => $discrepancy->variantId->toString(), iterator_to_array($run, false));
 
         self::assertSame($count, $run->getReturn());
         self::assertSame($gels, $found);
@@ -246,22 +246,22 @@ final class ReconcileTaxTest extends TestCase
     }
 
     /**
-     * @param array<string, list<string>> $catalog tax class code => product ids; the products of the stored prices
+     * @param array<string, list<string>> $catalog tax class code => variant ids; the variants of the stored prices
      *                                             not listed are absent from Catalog
      *
      * @return array{list<TaxDiscrepancy>, int}
      */
     private function reconcile(array $catalog, bool $apply): array
     {
-        $slugs = [];
+        $keys = [];
         $classes = [];
         foreach ($catalog as $class => $ids) {
             foreach ($ids as $id) {
-                $slugs[$id] = 'slug-'.$id;
+                $keys[$id] = 'slug-'.$id.'/standard';
                 $classes[$id] = $class;
             }
         }
-        $run = new ReconcileTax($this->repository, new InMemoryProductsForPricing($slugs, $classes), $this->rates, $this->session)($apply);
+        $run = new ReconcileTax($this->repository, new InMemoryVariantsForPricing($keys, $classes), $this->rates, $this->session)($apply);
         $discrepancies = iterator_to_array($run, false);
 
         return [$discrepancies, $run->getReturn()];
@@ -286,7 +286,7 @@ final class ReconcileTaxTest extends TestCase
     private function summary(TaxDiscrepancy $discrepancy): array
     {
         return [
-            $discrepancy->productId->toString(),
+            $discrepancy->variantId->toString(),
             $discrepancy->storedClass->toString(),
             $discrepancy->storedRate->basisPoints(),
             $discrepancy->expectedClass->toString(),
@@ -297,8 +297,8 @@ final class ReconcileTaxTest extends TestCase
 
     private function storePrice(string $id, int $gross, string $taxClass, int $basisPoints): void
     {
-        $this->prices->store(ProductPrice::reconstitute(
-            ProductId::fromString($id),
+        $this->prices->store(VariantPrice::reconstitute(
+            VariantId::fromString($id),
             PriceBreakdown::fromGross(GrossPrice::pln($gross), VatRate::fromBasisPoints($basisPoints)),
             TaxClass::fromString($taxClass),
             1,
@@ -306,9 +306,9 @@ final class ReconcileTaxTest extends TestCase
         ));
     }
 
-    private function storedPrice(string $id): ProductPrice
+    private function storedPrice(string $id): VariantPrice
     {
-        $price = $this->prices->find(ProductId::fromString($id));
+        $price = $this->prices->find(VariantId::fromString($id));
         self::assertNotNull($price);
 
         return $price;

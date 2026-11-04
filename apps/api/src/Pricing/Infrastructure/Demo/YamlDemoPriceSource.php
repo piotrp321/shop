@@ -11,7 +11,7 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * The demo prices from apps/api/fixtures/prices.yaml: a mapping of slug pattern to gross price in grosze.
+ * The demo prices from apps/api/fixtures/prices.yaml: a mapping of variant key pattern to gross price in grosze.
  */
 final readonly class YamlDemoPriceSource implements DemoPriceSource
 {
@@ -34,13 +34,13 @@ final readonly class YamlDemoPriceSource implements DemoPriceSource
         }
 
         if (!\is_array($definition) || [] === $definition) {
-            throw new \InvalidArgumentException('The demo prices file must be a mapping of slug patterns to gross prices in grosze.');
+            throw new \InvalidArgumentException('The demo prices file must be a mapping of variant key patterns to gross prices in grosze.');
         }
 
         $rules = [];
         foreach ($definition as $pattern => $gross) {
             if (!\is_string($pattern)) {
-                throw new \InvalidArgumentException('The demo prices file must be a mapping of slug patterns to gross prices in grosze.');
+                throw new \InvalidArgumentException('The demo prices file must be a mapping of variant key patterns to gross prices in grosze.');
             }
             if (!\is_int($gross)) {
                 throw new \InvalidArgumentException(\sprintf('The demo price of "%s" must be an integer amount in grosze.', $pattern));

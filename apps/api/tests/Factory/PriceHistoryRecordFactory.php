@@ -25,7 +25,7 @@ final class PriceHistoryRecordFactory extends ObjectFactory
     /**
      * Saves a history row at once and returns its id.
      *
-     * @param array<string, mixed> $attributes any constructor argument of PriceHistoryRecord, e.g. productId, changedAt, grossAmount
+     * @param array<string, mixed> $attributes any constructor argument of PriceHistoryRecord, e.g. variantId, changedAt, grossAmount
      */
     public static function store(EntityManagerInterface $entityManager, array $attributes = []): string
     {
@@ -43,7 +43,7 @@ final class PriceHistoryRecordFactory extends ObjectFactory
     {
         return [
             'id' => (string) Uuid::v7(),
-            'productId' => self::faker()->uuid(),
+            'variantId' => self::faker()->uuid(),
             'currency' => 'PLN',
             'grossAmount' => 12300,
             'netAmount' => 10000,

@@ -7,22 +7,22 @@ namespace App\Tests\Integration\Pricing;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
-use App\Pricing\Application\Command\SetProductPrice;
+use App\Pricing\Application\Command\SetVariantPrice;
 use App\Pricing\Application\TaxReconciliation\ReconcileTax;
 use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\PriceBreakdown;
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductPrice;
-use App\Pricing\Domain\Price\ProductPriceRepository;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantPrice;
+use App\Pricing\Domain\Price\VariantPriceRepository;
 use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Domain\Tax\VatRate;
-use App\Pricing\Infrastructure\Catalog\QueryBusCatalogProducts;
+use App\Pricing\Infrastructure\Catalog\QueryBusCatalogVariants;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrinePersistenceSession;
-use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineProductPriceRepository;
+use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineVariantPriceRepository;
 use App\Pricing\UI\Console\ReconcileTaxCommand;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
-use App\Tests\Factory\ProductPriceRecordFactory;
+use App\Tests\Factory\VariantPriceRecordFactory;
 use Doctrine\DBAL\Configuration as DbalConfiguration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
@@ -54,18 +54,18 @@ final class ReconcileTaxTest extends KernelTestCase
         $this->entityManager = $entityManager;
         $this->connection = $entityManager->getConnection();
         $this->connection->executeStatement('DELETE FROM pricing_price_history');
-        $this->connection->executeStatement('DELETE FROM pricing_product_price');
+        $this->connection->executeStatement('DELETE FROM pricing_variant_price');
     }
 
     public function testReportsThenRepricesThenFindsNothing(): void
     {
-        $book = $this->catalogProduct(TaxClassCode::PrintedBook);
-        $tent = $this->catalogProduct(TaxClassCode::Standard);
-        $gel = $this->catalogProduct(TaxClassCode::EnergyGel);
+        $book = $this->catalogVariant(TaxClassCode::PrintedBook);
+        $tent = $this->catalogVariant(TaxClassCode::Standard);
+        $gel = $this->catalogVariant(TaxClassCode::EnergyGel);
         // The class differs from Catalog; the rate is not the current rate of the class; consistent.
-        ProductPriceRecordFactory::store($this->entityManager, ['productId' => $book, 'gross' => 5490, 'taxClass' => 'standard', 'vatRateBp' => 2300]);
-        ProductPriceRecordFactory::store($this->entityManager, ['productId' => $tent, 'gross' => 89900, 'taxClass' => 'standard', 'vatRateBp' => 800]);
-        ProductPriceRecordFactory::store($this->entityManager, ['productId' => $gel, 'gross' => 1290, 'taxClass' => 'energy_gel', 'vatRateBp' => 800]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $book, 'gross' => 5490, 'taxClass' => 'standard', 'vatRateBp' => 2300]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $tent, 'gross' => 89900, 'taxClass' => 'standard', 'vatRateBp' => 800]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $gel, 'gross' => 1290, 'taxClass' => 'energy_gel', 'vatRateBp' => 800]);
         $this->entityManager->clear();
         $tester = $this->containerCommand();
 
@@ -75,7 +75,7 @@ final class ReconcileTaxTest extends KernelTestCase
         self::assertStringContainsString($tent.': standard 800 bp -> standard 2300 bp: found', $display);
         self::assertStringNotContainsString($gel, $display);
         self::assertSame(0, $this->connection->fetchOne('SELECT COUNT(*) FROM pricing_price_history'));
-        self::assertSame([1, 1, 1], $this->connection->fetchFirstColumn('SELECT version FROM pricing_product_price'));
+        self::assertSame([1, 1, 1], $this->connection->fetchFirstColumn('SELECT version FROM pricing_variant_price'));
 
         self::assertSame(0, $tester->execute(['--apply' => true]), $tester->getDisplay());
         self::assertStringContainsString('Checked 3 prices: 2 fixed.', $this->display($tester));
@@ -86,7 +86,7 @@ final class ReconcileTaxTest extends KernelTestCase
             [[$book, 'printed_book', 500, 'tax_reconciliation', null], [$tent, 'standard', 2300, 'tax_reconciliation', null]],
             array_map(
                 static fn (array $row): array => array_values($row),
-                $this->connection->fetchAllAssociative('SELECT product_id, tax_class, vat_rate_bp, source, actor_id FROM pricing_price_history'),
+                $this->connection->fetchAllAssociative('SELECT variant_id, tax_class, vat_rate_bp, source, actor_id FROM pricing_price_history'),
             ),
         );
 
@@ -104,16 +104,16 @@ final class ReconcileTaxTest extends KernelTestCase
     public function testConcurrentChangeIsRetriedOnceThenReportedWithoutStoppingTheRun(): void
     {
         $ids = [
-            $this->catalogProduct(TaxClassCode::PrintedBook),
-            $this->catalogProduct(TaxClassCode::PrintedBook),
-            $this->catalogProduct(TaxClassCode::PrintedBook),
+            $this->catalogVariant(TaxClassCode::PrintedBook),
+            $this->catalogVariant(TaxClassCode::PrintedBook),
+            $this->catalogVariant(TaxClassCode::PrintedBook),
         ];
         sort($ids);
         foreach ($ids as $id) {
-            ProductPriceRecordFactory::store($this->entityManager, ['productId' => $id, 'gross' => 5490, 'taxClass' => 'standard', 'vatRateBp' => 2300]);
+            VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $id, 'gross' => 5490, 'taxClass' => 'standard', 'vatRateBp' => 2300]);
         }
         $this->entityManager->clear();
-        $tester = $this->tester(new DoctrineProductPriceRepository($this->entityManager), [$ids[0] => 2, $ids[1] => 1]);
+        $tester = $this->tester(new DoctrineVariantPriceRepository($this->entityManager), [$ids[0] => 2, $ids[1] => 1]);
 
         self::assertSame(1, $tester->execute(['--apply' => true]), $tester->getDisplay());
 
@@ -127,31 +127,31 @@ final class ReconcileTaxTest extends KernelTestCase
         // The staff change, then the reconciliation of its gross.
         self::assertSame($this->stored(5590, 500, 'printed_book', 3), $this->price($ids[1]));
         self::assertSame($this->stored(5490, 500, 'printed_book', 2), $this->price($ids[2]));
-        self::assertSame(['staff', 'tax_reconciliation'], $this->connection->fetchFirstColumn('SELECT source FROM pricing_price_history WHERE product_id = ? ORDER BY changed_at, id', [$ids[1]]));
+        self::assertSame(['staff', 'tax_reconciliation'], $this->connection->fetchFirstColumn('SELECT source FROM pricing_price_history WHERE variant_id = ? ORDER BY changed_at, id', [$ids[1]]));
 
         $this->entityManager->clear();
-        $again = $this->tester(new DoctrineProductPriceRepository($this->entityManager), []);
+        $again = $this->tester(new DoctrineVariantPriceRepository($this->entityManager), []);
         self::assertSame(0, $again->execute(['--apply' => true]), $again->getDisplay());
         self::assertSame($this->stored(5690, 500, 'printed_book', 4), $this->price($ids[0]));
     }
 
     public function testUnavailableDatabaseStopsTheRunWithTwo(): void
     {
-        $product = $this->catalogProduct(TaxClassCode::PrintedBook);
-        ProductPriceRecordFactory::store($this->entityManager, ['productId' => $product, 'gross' => 5490, 'taxClass' => 'standard', 'vatRateBp' => 2300]);
+        $variant = $this->catalogVariant(TaxClassCode::PrintedBook);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $variant, 'gross' => 5490, 'taxClass' => 'standard', 'vatRateBp' => 2300]);
         /** @var array{driver: 'pdo_pgsql', host: string, dbname: string, user: string, password: string} $params */
         $params = $this->connection->getParams();
         // Nothing listens there: every statement fails to connect, as when PostgreSQL is down. A plain DBAL
         // configuration, so the DAMA static connection is not used.
         $unreachable = DriverManager::getConnection(['host' => '127.0.0.1', 'port' => 1] + $params, new DbalConfiguration());
-        $tester = $this->tester(new DoctrineProductPriceRepository(new EntityManager($unreachable, $this->entityManager->getConfiguration())), []);
+        $tester = $this->tester(new DoctrineVariantPriceRepository(new EntityManager($unreachable, $this->entityManager->getConfiguration())), []);
 
         self::assertSame(2, $tester->execute(['--apply' => true]), $tester->getDisplay());
 
         $display = $this->display($tester);
         self::assertStringContainsString('The reconciliation stopped:', $display);
         self::assertStringContainsString('Connection refused', $display);
-        self::assertSame($this->stored(5490, 2300, 'standard', 1), $this->price($product));
+        self::assertSame($this->stored(5490, 2300, 'standard', 1), $this->price($variant));
     }
 
     private function containerCommand(): CommandTester
@@ -162,9 +162,9 @@ final class ReconcileTaxTest extends KernelTestCase
     /**
      * The command on the given repository, with competing staff changes played before a save of the prices given.
      *
-     * @param array<string, int> $competingChanges product id => number of saves preceded by a staff change
+     * @param array<string, int> $competingChanges variant id => number of saves preceded by a staff change
      */
-    private function tester(ProductPriceRepository $prices, array $competingChanges): CommandTester
+    private function tester(VariantPriceRepository $prices, array $competingChanges): CommandTester
     {
         $commandBus = self::getContainer()->get('command.bus');
         $queryBus = self::getContainer()->get('query.bus');
@@ -174,19 +174,19 @@ final class ReconcileTaxTest extends KernelTestCase
         self::assertInstanceOf(ManagerRegistry::class, $registry);
         $connection = $this->connection;
         $competing = new class($prices, $competingChanges, static function (string $id) use ($commandBus, $connection): void {
-            $row = $connection->fetchAssociative('SELECT gross_amount, version FROM pricing_product_price WHERE product_id = ?', [$id]);
+            $row = $connection->fetchAssociative('SELECT gross_amount, version FROM pricing_variant_price WHERE variant_id = ?', [$id]);
             \assert(\is_array($row) && \is_int($row['gross_amount']) && \is_int($row['version']));
-            $commandBus->dispatch(SetProductPrice::byStaff($id, $row['gross_amount'] + 100, $row['version'], 'sub-2', 'Jan Admin'));
-        }) implements ProductPriceRepository {
+            $commandBus->dispatch(SetVariantPrice::byStaff($id, $row['gross_amount'] + 100, $row['version'], 'sub-2', 'Jan Admin'));
+        }) implements VariantPriceRepository {
             /**
              * @param array<string, int>     $changes
              * @param \Closure(string): void $change
              */
-            public function __construct(private readonly ProductPriceRepository $inner, private array $changes, private readonly \Closure $change)
+            public function __construct(private readonly VariantPriceRepository $inner, private array $changes, private readonly \Closure $change)
             {
             }
 
-            public function find(ProductId $id): ?ProductPrice
+            public function find(VariantId $id): ?VariantPrice
             {
                 return $this->inner->find($id);
             }
@@ -196,12 +196,12 @@ final class ReconcileTaxTest extends KernelTestCase
                 return $this->inner->findMany($ids);
             }
 
-            public function page(?ProductId $after, int $limit): array
+            public function page(?VariantId $after, int $limit): array
             {
                 return $this->inner->page($after, $limit);
             }
 
-            public function save(ProductPrice $price): void
+            public function save(VariantPrice $price): void
             {
                 $id = $price->id()->toString();
                 if (($this->changes[$id] ?? 0) > 0) {
@@ -215,7 +215,7 @@ final class ReconcileTaxTest extends KernelTestCase
         $application = new ConsoleApplication();
         $application->addCommand(new ReconcileTaxCommand(new ReconcileTax(
             $competing,
-            new QueryBusCatalogProducts($queryBus),
+            new QueryBusCatalogVariants($queryBus),
             new PolishVatRates(),
             new DoctrinePersistenceSession($registry),
         )));
@@ -243,9 +243,9 @@ final class ReconcileTaxTest extends KernelTestCase
     /**
      * @return array<string, mixed>
      */
-    private function price(string $productId): array
+    private function price(string $variantId): array
     {
-        $row = $this->connection->fetchAssociative('SELECT gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version FROM pricing_product_price WHERE product_id = ?', [$productId]);
+        $row = $this->connection->fetchAssociative('SELECT gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version FROM pricing_variant_price WHERE variant_id = ?', [$variantId]);
         self::assertIsArray($row);
 
         return $row;
@@ -256,13 +256,13 @@ final class ReconcileTaxTest extends KernelTestCase
         return preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
     }
 
-    private function catalogProduct(TaxClassCode $taxClass): string
+    private function catalogVariant(TaxClassCode $taxClass): string
     {
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($this->entityManager)->save($category);
         $product = ProductFactory::createOne(['mainCategory' => $category, 'taxClass' => $taxClass]);
         new DoctrineProductRepository($this->entityManager)->save($product);
 
-        return $product->id()->toString();
+        return $product->variants()->toList()[0]->id()->toString();
     }
 }

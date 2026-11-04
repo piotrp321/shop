@@ -3,6 +3,23 @@ import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 
 export type PriceListItem = components["schemas"]["PriceListItemResponse"];
+type ListedPrice = components["schemas"]["ListedPriceResponse"];
+
+/**
+ * A row of the price list: one variant with the product it belongs to. `first` marks the first variant of a product,
+ * the row that shows the name of the product above its other variants.
+ */
+export interface PriceRow {
+  productId: string;
+  name: string;
+  taxClass: string;
+  applicableVatRate: number;
+  variantId: string;
+  /** The values of the variant, empty for the default variant. */
+  label: string;
+  price: ListedPrice | null;
+  first: boolean;
+}
 
 /** How a price change ended; the messages are for the staff member. */
 export type PriceChange =
@@ -64,7 +81,7 @@ function changeFailure(status: number, body: unknown): PriceChange {
     case 403:
       return { status: "failed", message: "Nie masz uprawnień do zmiany cen." };
     case 404:
-      return { status: "failed", message: "Ten produkt już nie istnieje." };
+      return { status: "failed", message: "Ten wariant już nie istnieje." };
     default:
       return { status: "failed", message: `Nie udało się zapisać ceny (HTTP ${status}).` };
   }
@@ -72,12 +89,13 @@ function changeFailure(status: number, body: unknown): PriceChange {
 
 /**
  * The price list with a search by name (from two characters, after a pause in typing), a category filter and paging
- * with the cursors of the API. The panel keeps the stack of the cursors it has visited: `cursors[i]` is the `after`
+ * with the cursors of the API. A page holds products, each with its variants; `rows` has a row per variant, in the
+ * order of the products and of their variants. The panel keeps the stack of the cursors it has visited: `cursors[i]` is the `after`
  * of page i (null for the first), so "previous" is the cursor below the current one. Changing the search or the
  * category starts again from the first page. A failed request keeps the page that is shown and can be retried.
  *
- * `changePrice` sends a new gross (in grosze) with the version the row shows. The saved price from the API replaces
- * the one in the row; a conflict (the price changed meanwhile) reloads the page shown, so the row has the current
+ * `changePrice` sends a new gross (in grosze) of one variant with the version its row shows. The saved price from the
+ * API replaces the one in the row; a conflict (the price changed meanwhile) reloads the page shown, so the row has the current
  * price and version. The API decides on the amount and the permission, the panel only shows its answer.
  */
 export function usePriceList() {
@@ -96,10 +114,10 @@ export function usePriceList() {
   let timer: ReturnType<typeof setTimeout> | undefined;
   // Only the newest request may change the state; an older one that finishes late is ignored.
   let latest = 0;
-  // The prices saved since the newest list request started. Its answer can predate such a save, so a row it brings
-  // is replaced by the saved price when that is newer (a greater version). Cleared when a request starts: the next
-  // one is asked after those saves, so it already has them.
-  const savedSinceLoad = new Map<string, PriceListItem["price"]>();
+  // The prices saved since the newest list request started, by variant. Its answer can predate such a save, so a row
+  // it brings is replaced by the saved price when that is newer (a greater version). Cleared when a request starts:
+  // the next one is asked after those saves, so it already has them.
+  const savedSinceLoad = new Map<string, ListedPrice>();
 
   const searchTooShort = computed(() => {
     const length = characters(search.value.trim());
@@ -108,6 +126,20 @@ export function usePriceList() {
   const hasPrevious = computed(() => cursors.value.length > 1);
   const hasNext = computed(() => next.value !== null);
   const pageNumber = computed(() => cursors.value.length);
+  const rows = computed<PriceRow[]>(() =>
+    items.value.flatMap((item) =>
+      item.variants.map((variant, index) => ({
+        productId: item.productId,
+        name: item.name,
+        taxClass: item.taxClass,
+        applicableVatRate: item.applicableVatRate,
+        variantId: variant.variantId,
+        label: variant.label,
+        price: variant.price,
+        first: index === 0,
+      })),
+    ),
+  );
 
   async function load(stack: (string | null)[]): Promise<void> {
     const request = ++latest;
@@ -151,8 +183,13 @@ export function usePriceList() {
   }
 
   function withSavedPrice(item: PriceListItem): PriceListItem {
-    const saved = savedSinceLoad.get(item.productId);
-    return saved && (item.price === null || saved.version > item.price.version) ? { ...item, price: saved } : item;
+    return {
+      ...item,
+      variants: item.variants.map((variant) => {
+        const saved = savedSinceLoad.get(variant.variantId);
+        return saved && (variant.price === null || saved.version > variant.price.version) ? { ...variant, price: saved } : variant;
+      }),
+    };
   }
 
   watch(search, () => {
@@ -200,16 +237,19 @@ export function usePriceList() {
     return load(attempted);
   }
 
-  async function changePrice(productId: string, gross: number, version: number | null): Promise<PriceChange> {
+  async function changePrice(variantId: string, gross: number, version: number | null): Promise<PriceChange> {
     try {
-      const result = await getApiClient().PUT("/api/v1/admin/products/{productId}/price", {
-        params: { path: { productId } },
+      const result = await getApiClient().PUT("/api/v1/admin/variants/{variantId}/price", {
+        params: { path: { variantId } },
         body: { gross, version },
       });
       if (result.data) {
         const saved = result.data;
-        savedSinceLoad.set(productId, saved);
-        items.value = items.value.map((item) => (item.productId === productId ? { ...item, price: saved } : item));
+        savedSinceLoad.set(variantId, saved);
+        items.value = items.value.map((item) => ({
+          ...item,
+          variants: item.variants.map((variant) => (variant.variantId === variantId ? { ...variant, price: saved } : variant)),
+        }));
         return { status: "saved" };
       }
       if (result.response.status === 409) {
@@ -235,6 +275,7 @@ export function usePriceList() {
     search,
     searchTooShort,
     items,
+    rows,
     loading,
     loaded,
     error,

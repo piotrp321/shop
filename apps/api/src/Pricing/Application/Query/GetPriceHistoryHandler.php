@@ -5,36 +5,36 @@ declare(strict_types=1);
 namespace App\Pricing\Application\Query;
 
 use App\Pricing\Application\Port\PriceHistoryReader;
-use App\Pricing\Application\Port\ProductTaxClasses;
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductNotFound;
+use App\Pricing\Application\Port\VariantTaxClasses;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantNotFound;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
 final readonly class GetPriceHistoryHandler
 {
     public function __construct(
-        private ProductTaxClasses $products,
+        private VariantTaxClasses $variants,
         private PriceHistoryReader $history,
     ) {
     }
 
     /**
-     * Existence of the product is decided by Catalog, like in SetProductPrice: a product that exists but has never
+     * Existence of the variant is decided by Catalog, like in SetVariantPrice: a variant that exists but has never
      * had a price has an empty history. One entry more than the page is read to know whether a next page exists.
      *
      * @throws InvalidPriceHistoryCursor
-     * @throws ProductNotFound
+     * @throws VariantNotFound
      */
     public function __invoke(GetPriceHistory $query): PriceHistoryPage
     {
         $after = null === $query->after ? null : PriceHistoryCursor::decode($query->after);
-        $productId = ProductId::fromString($query->productId);
-        if (null === $this->products->taxClassOf($productId)) {
-            throw new ProductNotFound();
+        $variantId = VariantId::fromString($query->variantId);
+        if (null === $this->variants->taxClassOf($variantId)) {
+            throw new VariantNotFound();
         }
 
-        $items = $this->history->page($productId, $after, $query->perPage + 1);
+        $items = $this->history->page($variantId, $after, $query->perPage + 1);
         if (\count($items) <= $query->perPage) {
             return new PriceHistoryPage($items, null);
         }

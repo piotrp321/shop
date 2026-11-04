@@ -10,36 +10,36 @@ use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\PriceBreakdown;
 use App\Pricing\Domain\Price\PriceHistoryEntry;
 use App\Pricing\Domain\Price\PriceModifiedConcurrently;
-use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductPrice;
-use App\Pricing\Domain\Price\ProductPriceRepository;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantPrice;
+use App\Pricing\Domain\Price\VariantPriceRepository;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\VatRate;
 use App\Pricing\Infrastructure\Persistence\Doctrine\Record\PriceHistoryRecord;
-use App\Pricing\Infrastructure\Persistence\Doctrine\Record\ProductPriceRecord;
+use App\Pricing\Infrastructure\Persistence\Doctrine\Record\VariantPriceRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
 use Symfony\Component\Uid\Uuid;
 
-final readonly class DoctrineProductPriceRepository implements ProductPriceRepository
+final readonly class DoctrineVariantPriceRepository implements VariantPriceRepository
 {
-    private const string COLUMNS = 'product_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at';
+    private const string COLUMNS = 'variant_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at';
 
     public function __construct(private EntityManagerInterface $entityManager)
     {
     }
 
-    public function find(ProductId $id): ?ProductPrice
+    public function find(VariantId $id): ?VariantPrice
     {
-        $record = $this->entityManager->find(ProductPriceRecord::class, $id->toString());
+        $record = $this->entityManager->find(VariantPriceRecord::class, $id->toString());
 
         return null === $record ? null : $this->toDomain($record);
     }
 
     /**
-     * One statement, `product_id = ANY(:ids)`, straight on the connection: the rows are not entities, so nothing is
+     * One statement, `variant_id = ANY(:ids)`, straight on the connection: the rows are not entities, so nothing is
      * taken from or left in the identity map and the result is the stored state.
      */
     public function findMany(array $ids): array
@@ -49,9 +49,9 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
         }
 
         // A PostgreSQL array literal of validated UUIDs (hex digits and dashes only), bound as one parameter.
-        $literal = '{'.implode(',', array_map(static fn (ProductId $id): string => $id->toString(), $ids)).'}';
+        $literal = '{'.implode(',', array_map(static fn (VariantId $id): string => $id->toString(), $ids)).'}';
         $rows = $this->entityManager->getConnection()->fetchAllAssociative(
-            'SELECT '.self::COLUMNS.' FROM pricing_product_price WHERE product_id = ANY(CAST(:ids AS uuid[]))',
+            'SELECT '.self::COLUMNS.' FROM pricing_variant_price WHERE variant_id = ANY(CAST(:ids AS uuid[]))',
             ['ids' => $literal],
         );
 
@@ -62,17 +62,17 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
      * Straight on the connection like findMany(). Two statements rather than "IS NULL OR", so the cursor stays an
      * index condition of the primary key.
      */
-    public function page(?ProductId $after, int $limit): array
+    public function page(?VariantId $after, int $limit): array
     {
         $connection = $this->entityManager->getConnection();
         $rows = null === $after
             ? $connection->fetchAllAssociative(
-                'SELECT '.self::COLUMNS.' FROM pricing_product_price ORDER BY product_id LIMIT :limit',
+                'SELECT '.self::COLUMNS.' FROM pricing_variant_price ORDER BY variant_id LIMIT :limit',
                 ['limit' => $limit],
                 ['limit' => ParameterType::INTEGER],
             )
             : $connection->fetchAllAssociative(
-                'SELECT '.self::COLUMNS.' FROM pricing_product_price WHERE product_id > CAST(:after AS uuid) ORDER BY product_id LIMIT :limit',
+                'SELECT '.self::COLUMNS.' FROM pricing_variant_price WHERE variant_id > CAST(:after AS uuid) ORDER BY variant_id LIMIT :limit',
                 ['after' => $after->toString(), 'limit' => $limit],
                 ['limit' => ParameterType::INTEGER],
             );
@@ -86,7 +86,7 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
      * the history entries. Any failure rolls the transaction back and closes the entity manager; the services
      * resetter (kernel.reset) gives the next request or message a new one.
      */
-    public function save(ProductPrice $price): void
+    public function save(VariantPrice $price): void
     {
         $entries = $price->releaseHistory();
         if ([] === $entries) {
@@ -100,7 +100,7 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
         } catch (OptimisticLockException) {
             throw new PriceModifiedConcurrently();
         } catch (UniqueConstraintViolationException $e) {
-            if (str_contains($e->getMessage(), ProductPriceRecord::PRIMARY_KEY_CONSTRAINT)) {
+            if (str_contains($e->getMessage(), VariantPriceRecord::PRIMARY_KEY_CONSTRAINT)) {
                 throw new PriceModifiedConcurrently();
             }
 
@@ -111,15 +111,15 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
     /**
      * @param list<PriceHistoryEntry> $entries
      */
-    private function write(ProductPrice $price, int $readVersion, array $entries): void
+    private function write(VariantPrice $price, int $readVersion, array $entries): void
     {
         $id = $price->id()->toString();
-        $record = $this->entityManager->find(ProductPriceRecord::class, $id);
+        $record = $this->entityManager->find(VariantPriceRecord::class, $id);
         if (0 === $readVersion) {
             if (null !== $record) {
                 throw new PriceModifiedConcurrently();
             }
-            $record = new ProductPriceRecord($id);
+            $record = new VariantPriceRecord($id);
             $this->entityManager->persist($record);
         } elseif (null === $record) {
             throw new PriceModifiedConcurrently();
@@ -157,7 +157,7 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
         return new PriceHistoryRecord(
             // Time-ordered, so entries of the same second keep their order.
             Uuid::v7()->toRfc4122(),
-            $entry->productId()->toString(),
+            $entry->variantId()->toString(),
             $breakdown->currency()->value,
             $breakdown->gross()->amount(),
             $breakdown->net()->amount(),
@@ -174,13 +174,13 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
     /**
      * @param array<string, mixed> $row the columns of self::COLUMNS
      */
-    private function fromRow(array $row): ProductPrice
+    private function fromRow(array $row): VariantPrice
     {
-        \assert(\is_string($row['product_id']) && \is_string($row['currency']) && \is_string($row['tax_class']) && \is_string($row['updated_at']));
+        \assert(\is_string($row['variant_id']) && \is_string($row['currency']) && \is_string($row['tax_class']) && \is_string($row['updated_at']));
         \assert(\is_int($row['gross_amount']) && \is_int($row['net_amount']) && \is_int($row['vat_amount']) && \is_int($row['vat_rate_bp']) && \is_int($row['version']));
 
-        return ProductPrice::reconstitute(
-            ProductId::fromString($row['product_id']),
+        return VariantPrice::reconstitute(
+            VariantId::fromString($row['variant_id']),
             PriceBreakdown::restore(
                 GrossPrice::of(Money::of($row['gross_amount'], Currency::from($row['currency']))),
                 $row['net_amount'],
@@ -193,10 +193,10 @@ final readonly class DoctrineProductPriceRepository implements ProductPriceRepos
         );
     }
 
-    private function toDomain(ProductPriceRecord $record): ProductPrice
+    private function toDomain(VariantPriceRecord $record): VariantPrice
     {
-        return ProductPrice::reconstitute(
-            ProductId::fromString($record->productId),
+        return VariantPrice::reconstitute(
+            VariantId::fromString($record->variantId),
             PriceBreakdown::restore(
                 GrossPrice::of(Money::of($record->grossAmount, Currency::from($record->currency))),
                 $record->netAmount,

@@ -8,7 +8,8 @@ use App\Pricing\Domain\Price\PriceChangeOrigin;
 use App\Pricing\Domain\Price\PriceChangeSource;
 use App\Pricing\Domain\Price\PriceModifiedConcurrently;
 use App\Pricing\Domain\Price\ProductId;
-use App\Pricing\Domain\Price\ProductNotFound;
+use App\Pricing\Domain\Price\VariantId;
+use App\Pricing\Domain\Price\VariantNotFound;
 use App\Shared\Domain\Exception\Conflict;
 use App\Shared\Domain\Exception\NotFound;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -30,6 +31,22 @@ final class PriceValuesTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
 
         ProductId::fromString($value);
+    }
+
+    public function testVariantIdIsALowerCaseUuid(): void
+    {
+        $id = VariantId::fromString('0192F0C4-7C1A-7C4E-9A6E-3F1D2B4C5A60');
+
+        self::assertSame('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', $id->toString());
+        self::assertTrue($id->equals(VariantId::fromString('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60')));
+    }
+
+    #[DataProvider('malformedIds')]
+    public function testVariantIdRejectsAMalformedUuid(string $value): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        VariantId::fromString($value);
     }
 
     /** @return iterable<string, array{string}> */
@@ -88,11 +105,11 @@ final class PriceValuesTest extends TestCase
         throw new PriceModifiedConcurrently();
     }
 
-    public function testUnknownProductIsNotFound(): void
+    public function testUnknownVariantIsNotFound(): void
     {
         $this->expectException(NotFound::class);
-        $this->expectExceptionMessage('Product not found.');
+        $this->expectExceptionMessage('Wariant produktu nie istnieje.');
 
-        throw new ProductNotFound();
+        throw new VariantNotFound();
     }
 }

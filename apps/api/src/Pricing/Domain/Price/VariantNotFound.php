@@ -6,10 +6,10 @@ namespace App\Pricing\Domain\Price;
 
 use App\Shared\Domain\Exception\NotFound;
 
-final class ProductNotFound extends \DomainException implements NotFound
+final class VariantNotFound extends \DomainException implements NotFound
 {
     public function __construct()
     {
-        parent::__construct('Product not found.');
+        parent::__construct('Wariant produktu nie istnieje.');
     }
 }

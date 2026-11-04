@@ -7,7 +7,7 @@ namespace App\Tests\Integration\Pricing\Persistence;
 use App\Pricing\Application\Port\PriceHistoryReader;
 use App\Pricing\Application\Query\PriceHistoryCursor;
 use App\Pricing\Application\Query\PriceHistoryItem;
-use App\Pricing\Domain\Price\ProductId;
+use App\Pricing\Domain\Price\VariantId;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DbalPriceHistoryReader;
 use App\Tests\Factory\PriceHistoryRecordFactory;
 use App\Tests\Support\StatementCounter;
@@ -40,7 +40,7 @@ final class DbalPriceHistoryReaderTest extends KernelTestCase
     public function testReadsTheSnapshotOfAnEntryWithItsActor(): void
     {
         $id = PriceHistoryRecordFactory::store($this->entityManager, [
-            'productId' => self::PRODUCT,
+            'variantId' => self::PRODUCT,
             'changedAt' => new \DateTimeImmutable('2026-10-31 12:30:45+02:00'),
             'currency' => 'EUR',
             'grossAmount' => 5490, 'netAmount' => 5229, 'vatAmount' => 261, 'vatRateBp' => 500, 'taxClass' => 'printed_book',
@@ -57,7 +57,7 @@ final class DbalPriceHistoryReaderTest extends KernelTestCase
 
     public function testASystemEntryHasNoActorName(): void
     {
-        PriceHistoryRecordFactory::store($this->entityManager, ['productId' => self::PRODUCT, 'source' => 'tax_reconciliation', 'actorId' => null, 'actorName' => null]);
+        PriceHistoryRecordFactory::store($this->entityManager, ['variantId' => self::PRODUCT, 'source' => 'tax_reconciliation', 'actorId' => null, 'actorName' => null]);
 
         $item = $this->page(self::PRODUCT, null, 10)[0];
 
@@ -116,7 +116,7 @@ final class DbalPriceHistoryReaderTest extends KernelTestCase
     {
         PriceHistoryRecordFactory::store($this->entityManager, [
             'id' => $id ?? (string) Uuid::v7(),
-            'productId' => $productId,
+            'variantId' => $productId,
             'changedAt' => \is_string($changedAt) ? new \DateTimeImmutable($changedAt) : $changedAt,
             'grossAmount' => $gross,
         ]);
@@ -127,7 +127,7 @@ final class DbalPriceHistoryReaderTest extends KernelTestCase
      */
     private function page(string $productId, ?PriceHistoryCursor $after, int $limit): array
     {
-        return $this->reader->page(ProductId::fromString($productId), $after, $limit);
+        return $this->reader->page(VariantId::fromString($productId), $after, $limit);
     }
 
     /**

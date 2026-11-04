@@ -1,9 +1,10 @@
-# Demo gross prices in grosze (5490 = 54,90 zł) for the demo products of fixtures/catalog.yaml, loaded by
-# `pricing:seed-demo` (`make seed`). Keys are patterns of product slugs: `*` matches any run of characters, the
-# pattern has to match the whole slug.
+# Demo gross prices in grosze (5490 = 54,90 zł) for the demo variants of fixtures/catalog.yaml, loaded by
+# `pricing:seed-demo` (`make seed`). Keys are patterns of variant keys, `<product slug>/<label slug>`
+# (`<product slug>/standard` for the default variant): `*` matches any run of characters, also `/`, and the pattern
+# has to match the whole key.
 #
 # Patterns are checked in the order of this file and the FIRST one that matches wins, so a specific pattern goes
-# before a general one. A demo product that no pattern matches stops the seed with an error and nothing is changed.
+# before a general one. A demo variant that no pattern matches stops the seed with an error and nothing is changed.
 
 # Bieganie
 "buty-szosowe-*-asfalt-200-*": 34900
@@ -49,12 +50,12 @@
 "mata-samopompujaca-*-sen-5-*": 34900
 # The Tatry Zachodnie guide costs the same in both bindings, the others depend on the binding.
 "przewodnik-*-tatry-zachodnie-*": 5490
-"przewodnik-*-oprawa-miekka": 4490
-"przewodnik-*-oprawa-twarda": 5990
-"mapa-turystyczna-*-skladana": 2490
-"mapa-turystyczna-*-laminowana": 3490
-"danie-liofilizowane-*-porcja-jednoosobowa": 3290
-"danie-liofilizowane-*-porcja-dwuosobowa": 5490
+"przewodnik-*-oprawa-miekka/standard": 4490
+"przewodnik-*-oprawa-twarda/standard": 5990
+"mapa-turystyczna-*-skladana/standard": 2490
+"mapa-turystyczna-*-laminowana/standard": 3490
+"danie-liofilizowane-*-porcja-jednoosobowa/standard": 3290
+"danie-liofilizowane-*-porcja-dwuosobowa/standard": 5490
 
 # Sporty zimowe
 "narty-zjazdowe-*-stok-80-*": 179900
