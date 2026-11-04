@@ -1,6 +1,6 @@
 ---
 name: integration
-description: Globalna integracja epika po zmergowaniu zadań do gałęzi epika: Architecture Review, adversarial QA i bramki jakości całego diffu, raport i wynik JSON dla AO.
+description: Globalna integracja epika po zmergowaniu zadań do gałęzi epika: Architecture Review, adversarial QA, przegląd UX (gdy diff dotyka frontów) i bramki jakości całego diffu, raport i wynik JSON dla AO.
 argument-hint: "Epik <id>: specyfikacja `<ścieżka>`, plan `<ścieżka>`, gałąź `<gałąź>`, HEAD `<sha>`, tryb FULL|DELTA, raport `<ścieżka>`."
 model: opus
 effort: high
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Zintegruj epik opisany w: $ARGUMENTS. Jesteś orkiestratorem integracji: oceniasz **całość** epika po tym, jak
 `/delivery` dostarczył i zmergowano wszystkie jego zadania do gałęzi epika. Pracę merytoryczną robią agenci
-`architecture-reviewer` i `qa-adversarial`; ty ustalasz zakres, uruchamiasz bramki, weryfikujesz zgłoszenia,
+`architecture-reviewer`, `qa-adversarial` i, gdy diff dotyka frontów, `ux-reviewer`; ty ustalasz zakres, uruchamiasz bramki, weryfikujesz zgłoszenia,
 przygotowujesz listę odbioru i składasz raport. Stosuj `CLAUDE.md` (także lokalne pliki aplikacji) i `docs/vision.md`.
 
 ## Wejście
@@ -23,12 +23,13 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
 
 ## Granice odpowiedzialności
 
-- **Robisz:** globalny Architecture Review, niezależny adversarial QA, bramki jakości (`make check`, `make test`,
-  `make e2e`), weryfikację zgłoszeń, raport do `<report_path>` i wynik JSON.
+- **Robisz:** globalny Architecture Review, niezależny adversarial QA, przegląd UX zmienionych ekranów (gdy diff dotyka
+  `apps/store/` albo `apps/admin/`), bramki jakości (`make check`, `make test`, `make e2e`), weryfikację zgłoszeń, raport do `<report_path>` i wynik JSON.
 - **Nie robisz:** kodu i poprawek (naprawy to osobne zadania `/delivery` zlecane przez AO), `git commit`, `git push`,
   `git merge`, zmiany gałęzi, `gh pr` poza odczytem opisów PR zadań (krok 6), merge, deploymentu, sprzątania stosu (`.ao/teardown` należy do AO). Jedyny
   plik, który zapisujesz, to raport. Testy napisane przez QA zostają w raporcie jako propozycje albo w polu
-  `evidence` znaleziska; nie trafiają do repo.
+  `evidence` znaleziska; nie trafiają do repo. Skrypty, zrzuty i wyniki agenta UX zostają w `AGENT_DIR` poza
+  repo (krok 3), więc `git status --porcelain` się nie zmienia.
 - **Źródłem prawdy** jest diff `origin/main...HEAD`, specyfikacja i plan, nie raporty z PR zadań ani opinie
   poprzednich review. Opisy PR zadań czytasz tylko po sekcję „Decyzje bez pytania” do listy odbioru.
 
@@ -86,7 +87,18 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
      oddziela **wykonane** (scenariusz uruchomiony przeciw stosowi: komenda lub skrypt i wynik) od **propozycji
      testu** (nieuruchomionej). Bramki uruchamiasz sam, po jego zakończeniu.
    W trybie DELTA przekaż zakres DELTA i listę znalezisk z poprzedniego raportu do sprawdzenia, czy zostały naprawione.
-4. **Bramki.** Po zakończeniu obu agentów, sekwencyjnie, z limitem czasu każdej (np. `timeout`/Bash `timeout`):
+   - `ux-reviewer` (agent UX): uruchamiasz go tylko wtedy, gdy `git diff --name-only <zakres> -- apps/store apps/admin`
+     (zakres z kroku 2) jest niepusty; inaczej `ux-review` ma status `skipped`, a raport mówi dlaczego. Uruchamiasz
+     go **po zakończeniu `qa-adversarial`** (te same konta demo i kody TOTP, więc nie równolegle z QA) i **przed
+     bramkami**. Pracuje w worktree epika (`<STOS>` = `cwd`) przeciw stosowi AO z `.env` tego worktree, przez
+     `make e2e-agent`, i nie zmienia repo. Przekaż mu w zleceniu: tryb `integration`; `<STOS>`; adresy stosu z `.env`
+     (jak dla QA, wraz ze sprawdzeniem `/health`; gdy stos nie odpowiada, napisz mu to); HEAD; ścieżkę
+     specyfikacji epika; zakres `FULL` albo `DELTA`; listę zmienionych plików frontów; `AGENT_DIR`, czyli
+     bezwzględną ścieżkę istniejącego katalogu poza repo obok `<report_path>` (np. `<katalog raportu>/ux-<sha7>`,
+     utwórz go przed zleceniem); w `DELTA` jego własne znaleziska z poprzedniego raportu (sekcja wyników UX).
+     **Nie przekazuj** wniosków `architecture-reviewer` ani `qa-adversarial`. Gdy `make e2e-agent` nie działa
+     przy działającym stosie, agent zwraca to w uwagach: wpisz uwagę do raportu i `ux-review: skipped`, bez blokera.
+4. **Bramki.** Po zakończeniu agentów (także agenta UX, jeśli był uruchamiany), sekwencyjnie, z limitem czasu każdej (np. `timeout`/Bash `timeout`):
    `make check RUN="docker compose exec -T"`, `make test RUN="docker compose exec -T"`, potem
    `make seed RUN="docker compose exec -T"` i `make e2e E2E_FLAGS=-T` (sesja nie ma terminala, więc bez `-T` komendy padają).
    Zapisy QA trafiły do bazy dev stosu. `make check` nie czyta danych, a `make test` działa na osobnych zasobach
@@ -98,11 +110,16 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    bezpieczeństwa). `make e2e`, które padło, powtórz raz: gdy przejdzie, zapisz `passed` i znalezisko `Minor`
    („niestabilny test e2e”, z nazwą testu). Awaria środowiska (stos nie odpowiada, brak Dockera, brak miejsca) to
    nie błąd kodu: pozostałe bramki oznacz `skipped` i zwróć bloker `technical`.
-5. **Weryfikacja.** Zgłoszenia agentów są hipotezami. Każde `Critical` i `Important` sprawdź w kodzie lub
+5. **Weryfikacja.** Zgłoszenia agentów (także agenta UX) są hipotezami. Każde `Critical` i `Important` sprawdź w kodzie lub
    odtwórz komendą, zanim trafi do wyniku; niepotwierdzone, niepewne i stylistyczne wpisz do raportu jako uwagi
    albo odrzuć, nie jako znaleziska. Scal duplikaty. Waga: `Critical` utrata danych lub poważna luka
    bezpieczeństwa; `Important` błędne działanie w realnym scenariuszu, naruszenie kryterium akceptacji albo zasady
    z `CLAUDE.md` / architektury, którą da się naprawić; `Minor` przypadek brzegowy o niewielkim wpływie lub drobna jakość. Nie zawyżaj wagi.
+   Dla UX: `Important` tylko problem odtworzony (2/2, powtórz komendę z `Odtworzenie` raportu UX albo przeczytaj
+   jego skrypt i wynik) na ekranie lub w zachowaniu zmienionym przez epik, który uniemożliwia albo myli wykonanie
+   zadania, także osobie korzystającej z klawiatury lub czytnika ekranu (utratę danych lub lukę opisaną przez
+   agenta UX jako `Important` oceń według wag powyżej). Pozostałe odtworzone problemy na zmienionych ekranach to
+   `Minor`. Problemy na niezmienionych ekranach i hipotezy idą do raportu jako uwagi, nie znaleziska.
    Werdykt `REWORK` albo „decyzja do rewizji” architekta, który wymaga decyzji użytkownika (sprzeczność ze
    specyfikacją, nowa zależność, zmiana granic modułów, świadome odstępstwo od `CLAUDE.md`), to bloker `architecture`, nie znalezisko; naprawialne
    naruszenie jest znaleziskiem.
@@ -132,7 +149,8 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    nie dodawaj jej do Git). Pierwsze linie: `Epik:`, `Gałąź:`, `Przegląd HEAD: <sha>`, `Tryb:`, `Zakres:` (w DELTA
    z poprzednim HEAD). Dalej: werdykt, sekcja
    `## Lista odbioru` (pozycje z kroku 6, wynik QA na stosie w jednym zdaniu, liczba znalezisk `Minor`), znaleziska (id, waga, zadanie, plik, dowód, sugerowana naprawa), bramki
-   (komenda, kod wyjścia, koniec wyjścia), werdykt i uwagi architekta, wyniki QA w dwóch grupach: **wykonane**
+   (komenda, kod wyjścia, koniec wyjścia), werdykt i uwagi architekta, wyniki UX (sekcja `## Wyniki UX`: ekrany i stany z obejrzanymi zrzutami, znaleziska, w `DELTA` poprzednie
+   znaleziska „naprawione”/„nadal”, uwagi, ścieżka `AGENT_DIR`, albo powód pominięcia), wyniki QA w dwóch grupach: **wykonane**
    przeciw stosowi (scenariusz, komenda lub skrypt, wynik) i **propozycje testu** (kod w blokach), a gdy QA
    pracował statycznie, to zdanie z powodem, niepotwierdzone ryzyka, co sprawdzono bez uwag, bloker(y). Raport
    jest dowodem dla AO i użytkownika, więc nie wklejaj pełnych logów.
@@ -181,4 +199,6 @@ Nie zadawaj pytań w tekście.
 
 `head_sha` to HEAD, który przeglądałeś (pełne 40 znaków, równe `git rev-parse HEAD`). `checks` zawiera zawsze trzy
 bramki; dodatkowe wpisy (np. `architecture-review`, `qa-adversarial` ze statusem `passed`/`failed`) są dozwolone.
+Wpis `ux-review` ma status `passed` (agent UX bez znalezisk `Important`), `failed` (jest znalezisko UX `Important`) albo
+`skipped` (diff nie dotyka frontów albo `make e2e-agent` nie działa).
 Pola poza kontraktem są niedozwolone. Pisz zwięźle po polsku.
