@@ -63,7 +63,10 @@ Reguły Deptrac (żaden inny context nie zależy od Cart w żadnej warstwie):
 - `Quantity`: liczba całkowita 1–99 (`InvalidQuantity`, `InvalidInput`).
 - `Money`: nieujemne grosze (`int`) i `Currency` (tylko `PLN`). Bez `float`.
 - `ProductOffer {hasCurrentPrice: bool, available: int}`: stan produktu z portów, podany domenie przez handler;
-  `available` nie jest ujemne.
+  `available` nie jest ujemne. Jedyne miejsce reguły „produkt do kupienia”: `purchasability(quantity)` zwraca
+  `Purchasability` (enum domeny) w kolejności `NoPrice` (brak ceny), `OutOfStock` (`available = 0`),
+  `InsufficientStock` (`quantity > available`), `Purchasable`. Używają go `Cart` (dodanie i zwiększenie) oraz
+  widok koszyka.
 - `CartLine {productId, quantity, addedAt}`; `addedAt` ustala kolejność linii i nie zmienia się wraz z ilością.
 - `MergeOutcome {result: merged | already_merged | nothing_to_merge, truncated: bool}`.
 
@@ -124,7 +127,9 @@ Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99
 
 Budowany w warstwie aplikacji z koszyka i portów (`ProductCatalog`, `CartPrices`, `StockAvailability`), po jednym
 wywołaniu każdego portu dla wszystkich linii (`ProductDataLoader`; bez linii porty nie są wołane). Reguły stanów i sum
-są w jednej klasie (`CartViewBuilder`), testowanej jednostkowo.
+są w jednej klasie (`CartViewBuilder`), testowanej jednostkowo. Reguła zakupu (cena, potem stan) jest tylko
+w `ProductOffer::purchasability`: widok sam rozstrzyga wyłącznie `unavailable_product` i mapuje wynik reguły na stan
+linii (`ProductData::offerFor`).
 
 Stan linii, w kolejności priorytetu:
 
@@ -448,8 +453,8 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 
 ### Jednostkowe (TDD, adaptery in-memory; `apps/api/tests/Unit/Cart`)
 
-- `Cart`: `add` (nowa linia, zwiększenie), granice ilości 1, 99, 100 i liczby linii 50, 51; `ProductOffer` (brak ceny,
-  `available = 0`, wynik > `available`); `changeQuantity` (zmniejszenie zawsze, zwiększenie z kontrolą, brak linii);
+- `Cart`: `add` (nowa linia, zwiększenie), granice ilości 1, 99, 100 i liczby linii 50, 51; `ProductOffer::purchasability`
+  (`ProductOfferTest`: brak ceny przed `available = 0`, granice `quantity = available` i `available + 1`); `changeQuantity` (zmniejszenie zawsze, zwiększenie z kontrolą, brak linii);
   `remove` idempotentne; zmiana koszyka `merged` odrzucona; `touch` i `isExpired` dla gościa i klienta;
   `clearIfExpired`.
 - `mergeFrom`: suma, przycięcie do 99 (`truncated`), pominięcie linii ponad 50 (`truncated`), kolejność `addedAt`,

@@ -9,9 +9,11 @@ use App\Cart\Domain\CartId;
 use App\Cart\Domain\CartLine;
 use App\Cart\Domain\Currency;
 use App\Cart\Domain\Money;
+use App\Cart\Domain\Purchasability;
 
 /**
- * The one place of the rules of the line states and of the totals of a cart.
+ * The one place of the totals of a cart and of the mapping of the line states. The rule of buying (price, then stock)
+ * is only in ProductOffer::purchasability(); a product unknown to Catalog is the only state decided here.
  */
 final readonly class CartViewBuilder
 {
@@ -28,19 +30,19 @@ final readonly class CartViewBuilder
             $productId = $line->productId();
             $summary = $data->summary($productId);
             $price = $data->price($productId);
-            $available = $data->available($productId);
             $quantity = $line->quantity()->value();
-            $state = match (true) {
-                null === $summary => CartLineState::UnavailableProduct,
-                null === $price => CartLineState::NoPrice,
-                0 === $available => CartLineState::OutOfStock,
-                $quantity > $available => CartLineState::InsufficientStock,
-                default => CartLineState::Purchasable,
-            };
+            $state = null === $summary
+                ? CartLineState::UnavailableProduct
+                : match ($data->offerFor($productId)->purchasability($quantity)) {
+                    Purchasability::NoPrice => CartLineState::NoPrice,
+                    Purchasability::OutOfStock => CartLineState::OutOfStock,
+                    Purchasability::InsufficientStock => CartLineState::InsufficientStock,
+                    Purchasability::Purchasable => CartLineState::Purchasable,
+                };
 
             $lineTotal = null;
             if (CartLineState::Purchasable === $state) {
-                $lineTotal = $price->multiply($quantity);
+                $lineTotal = ($price ?? throw new \LogicException('A purchasable line has a current price.'))->multiply($quantity);
                 $gross = $gross->add($lineTotal);
             } else {
                 $excluded = true;
