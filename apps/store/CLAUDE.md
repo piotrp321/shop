@@ -64,6 +64,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - 404 zapisu w koszyku gościa może znaczyć „koszyk zniknął”, „brak pozycji” albo „brak produktu”. BFF nie zgaduje po
   tekście `detail`, tylko pyta o `summary` koszyka: 404 oznacza koszyk, który zniknął (ciasteczko usuwane, dodanie
   zakłada nowy koszyk i powtarza się raz, zmiana zwraca 404 pozycji), w przeciwnym razie 404 jest przekazywany.
+- UI: `AddToCartButton` w `ProductTile` (tylko przy cenie i poziomie dostępności innym niż `out_of_stock`, przy braku
+  etykiety dostępności widoczny), `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
+  (`CartPage`, Client Component ładujący `/api/cart`). Po każdej zmianie koszyka komponent ogłasza `itemCount` z
+  odpowiedzi zdarzeniem (`src/cart/events.ts`), a licznik się aktualizuje. Front niczego nie liczy: kwoty, sumy i stany
+  linii pochodzą z ostatniej odpowiedzi API, a odrzucona zmiana zostawia ostatni widok.
 - Odpowiedzi: 200 z danymi API, 404/409/422 z `{ detail }` API, 401 (sesja się skończyła: usunięta z Redisa i
   ciasteczka), 403, 503 (chwilowy błąd API, Redisa lub Keycloaka; sesja zostaje). Wszystkie z `private, no-store`.
 
@@ -107,4 +112,5 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - Vitest i Testing Library. `*.test.ts(x)` to testy jednostkowe bez usług, `*.integration.test.ts` działają
   na usługach stosu (Redis).
-- Logika w komponentach (np. budowa `srcset`, aktywna kategoria) i cały `src/auth/` mają testy.
+- Logika w komponentach (np. budowa `srcset`, aktywna kategoria), cały `src/auth/` i cały `src/cart/` (BFF, przyciski,
+  strona koszyka) mają testy.
