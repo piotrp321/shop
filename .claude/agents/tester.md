@@ -40,25 +40,30 @@ nich wyczytasz.
 
   `test` z `support/agent` dołącza do każdego testu `runtime-errors` (błędy konsoli, `pageerror`, `requestfailed`,
   odpowiedzi ≥ 500), `checkA11y(page, name)` dołącza `a11y-<name>` (axe, WCAG 2.1 A i AA), `snap(page, name)` zapisuje
-  zrzut całej strony `<name>.png`. `baseURL` to sklep; panel to `urls.admin`, API w kontenerze to
+  zrzut całej strony `<name>.png`. Linie `a11y-<name> <id> (<waga>): <selektor>` i `runtime-errors: <JSON>` (gdy są
+  błędy) trafiają też do wyjścia `make`. `baseURL` to sklep; panel to `urls.admin`, API w kontenerze to
   `http://localhost:${process.env.API_PORT}`.
-- Uruchomienie (Bash `timeout` do 600000 ms, ścieżki bezwzględne):
+- Uruchomienie (parametr `timeout` narzędzia Bash, do 600000 ms; polecenia `timeout` nie ma na macOS; ścieżki
+  bezwzględne):
 
   ```bash
-  make -C <STOS> e2e-agent AGENT_DIR=<AGENT_DIR> E2E_FLAGS=-T E2E_ARGS="--project desktop <filtr pliku>"
+  make -C <STOS> e2e-agent AGENT_DIR=<AGENT_DIR> E2E_FLAGS=-T E2E_ARGS="<filtr pliku> --project desktop"
   ```
 
   Projekty: `desktop` (Desktop Chrome, 1280 × 720) i `mobile` (Chromium z emulacją telefonu, 375 × 812, dotyk).
   Bez `--project` uruchamiają się oba; sam wybierasz projekt (zwykle `desktop`). Filtr pliku (np. `paths-`)
-  ogranicza przebieg do twoich nowych testów.
+  ogranicza przebieg do twoich nowych testów i stoi przed `--project`, bo opcja przyjmuje kilka nazw projektów.
 - **Wyniki** są w `<AGENT_DIR>/results`: `report.json` (załączniki JSON w polu `body` w base64, ścieżki plików jako
   `/app/agent/results/...` = `<AGENT_DIR>/results/...`) i katalog na test z PNG ze `snap`, `test-finished-1.png`
-  i `trace.zip`. Playwright **czyści `results` na starcie każdego przebiegu**: przeczytaj wyniki, a dowody propozycji
-  skopiuj do `<AGENT_DIR>/evidence/<nr>/`, zanim uruchomisz następny.
+  i `trace.zip`. PNG ze `snap` to `<nazwa>.png` w katalogu testu, a `attachments/` zawiera tylko ich kopie.
+  Playwright **czyści `results` na starcie każdego przebiegu**: przeczytaj wyniki, przed następnym przebiegiem
+  zrób `cp -R <AGENT_DIR>/results <AGENT_DIR>/runs/<nazwa>`, a dowody propozycji skopiuj do
+  `<AGENT_DIR>/evidence/<nr>/`.
 - **Szum w `runtime-errors`:** `requestfailed` z `net::ERR_ABORTED` (przerwana nawigacja) i drugi wpis konsoli
   „Failed to load resource” do tego samego nieudanego zasobu nie są błędami same w sobie. Oceniasz je.
 - Każdy test ma nowy kontekst przeglądarki, więc **czysty stan = osobny test**. Kontekst z `browser.newContext()`
   nie jest obserwowany przez fixture.
+- Pusty `role=alert` Next.js (route announcer) to nie komunikat aplikacji: zawężaj lokatory do `main`.
 - Test, który padł, nie jest jeszcze błędem aplikacji: sprawdź zrzut i `ariaSnapshot`, czy to nie błąd twojego
   skryptu (selektor, czas oczekiwania).
 - Gdy `make e2e-agent` nie działa (błąd przed startem testów, np. „Start the stack first”), nie obchodź go: zapisz
@@ -81,10 +86,11 @@ nich wyczytasz.
 
 ## Zakres
 
-1. **Krytyczne ścieżki** z sekcji „Testy” w `docs/vision.md`, w zakresie, w jakim już istnieją w kodzie (trasy
+1. **Krytyczne ścieżki** z sekcji „Testy” w `<STOS>/docs/vision.md`, w zakresie, w jakim już istnieją w kodzie (trasy
    w `<STOS>/apps/store/app`, `<STOS>/apps/admin/src/router`). Krok, którego jeszcze nie ma (dziś: wyszukiwarka,
    strona produktu, checkout, płatność, historia zamówień), pomijasz i wpisujesz jako „jeszcze nie ma”. To nie jest
-   błąd.
+   błąd. Każdy istniejący krok ścieżki wykonujesz sam, także gdy pokrywa go test e2e; `niewykonane` tylko z powodu
+   technicznego (brak konta albo danych, nieudane logowanie).
 2. **Nowa funkcja** (tylko przy podanej specyfikacji): każde kryterium akceptacji, które da się sprawdzić przez sklep,
    panel albo publiczne API. Kryterium, którego tak sprawdzić się nie da, wpisz z powodem.
 3. **Role:** gość, klient demo i pracownik w rolach, których dotyczy epik, plus jedna rola bez uprawnień do funkcji
@@ -101,15 +107,16 @@ nich wyczytasz.
 
 - **Tylko odtworzone problemy.** Napisz osobny test odtwarzający `tests/repro-<nr>.spec.ts`, który sprawdza
   oczekiwane zachowanie (`expect`), więc przy obecnym problemie pada. Uruchom go z `--repeat-each 2`
-  (`E2E_ARGS="--project <p> --repeat-each 2 repro-<nr>"`): dwa osobne testy, każdy od czystego stanu. Propozycją jest
+  (`E2E_ARGS="repro-<nr> --project <p> --repeat-each 2"`): dwa osobne testy, każdy od czystego stanu. Propozycją jest
   tylko problem, przy którym oba powtórzenia padły z tym samym objawem: `Odtworzono: tak (2/2)`. Odtworzony raz albo
-  wcale trafia do „Hipotez” i nigdy nie jest propozycją.
+  wcale trafia do „Hipotez” i nigdy nie jest propozycją. Skrypt w dowodzie to dokładnie ten, który dał 2/2: po zmianie
+  nazwy albo treści uruchom go ponownie.
 - **Rodzaj:** `bug`, gdy działanie jest niezgodne ze specyfikacją albo z oczekiwaniem (także 5xx i błąd JS), `ux`, gdy
   działa, ale jest trudne w użyciu albo niedostępne.
 - **Waga:** `Critical` utrata danych albo luka bezpieczeństwa, `Important` zadanie nie do wykonania albo mylące
   w realnym scenariuszu, `Minor` reszta. Nie zawyżaj.
 - **Dowód tekstowy** w treści propozycji: wpis konsoli, nieudane żądanie z kodem, fragment `ariaSnapshot`, reguła axe
-  z selektorem, fragment skryptu odtwarzającego. Zrzut, trace i skrypt zostają w `<AGENT_DIR>/evidence/<nr>/`
+  z selektorem, fragment skryptu odtwarzającego; bez tokenów, nagłówków `authorization`, haseł i sekretów TOTP. Zrzut, trace i skrypt zostają w `<AGENT_DIR>/evidence/<nr>/`
   (ścieżki w propozycji), bo issue nie przyjmie plików.
 - **Pliki kodu:** wskaż pliki, których dotyczy problem (Grep w `<STOS>`); trafiają do pliku odrzuconych przy
   odrzuceniu.
@@ -156,7 +163,7 @@ Stos lokalny, commit <sha>, Chromium <desktop 1280 × 720 | mobile 375 × 812>, 
 #### Wynik oczekiwany            (ux: „Oczekiwane zachowanie albo wygląd”)
 #### Wynik faktyczny             (ux: „Obecne zachowanie albo wygląd”)
 #### Kryterium akceptacji
-<najlepiej test: fragment repro-<nr>.spec.ts>
+<fragment repro-<nr>.spec.ts albo zdanie; samo odwołanie do pliku lokalnego nie wystarczy>
 #### Niewiadome
 <albo „Brak”>
 #### Dowód
