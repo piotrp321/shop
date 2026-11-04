@@ -114,10 +114,11 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    - **Migracje:** nowe i zmienione pliki w `apps/api/migrations`: jakie tabele i kolumny zmieniają, czy usuwają albo
      przepisują dane. Operacja niszcząca bez podstawy w specyfikacji to znalezisko `Important`, a przy utracie danych
      `Critical`.
-   - **Pliki spoza zakresów zadań:** pliki, które nie pasują do `scope` żadnego zadania manifestu ani do specyfikacji.
+   - **Pliki spoza zakresów zadań:** pliki, które nie pasują do `scope` żadnego zadania manifestu ani do specyfikacji. Pliki zadań poprawek i napraw (`<EPIK>-FIX-<n>`, `<EPIK>-REPAIR-<n>`) oceniasz względem ich zgłoszeń.
      Zmiana bez podstawy w specyfikacji to znalezisko: `Important`, gdy zmienia zachowanie, inaczej `Minor`.
    - **Decyzje bez pytania:** sekcje `## Decyzje bez pytania` z opisów zmergowanych PR zadań, tylko odczyt:
      `gh pr list --base epic/<epic_id> --state merged --limit 200 --json number,title,body`. Przepisz je z numerem PR.
+     Pusta lista przy zmergowanych zadaniach (np. inna nazwa gałęzi epiku) to pozycja „Sprawdź:”, nie „OK”.
      Decyzja sprzeczna ze specyfikacją to znalezisko albo bloker według kroku 5. Gdy `gh` nie działa, napisz to w
      liście; to nie jest bloker.
    - **Odstępstwa od specyfikacji:** potwierdzone w kroku 5.

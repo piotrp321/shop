@@ -51,7 +51,7 @@ Stały proces każdego epiku. Elementy, które jeszcze nie działają, mają w n
 
 ```mermaid
 flowchart TB
-    issues[GitHub Issues<br/>epic, bug, ux]
+    issues[GitHub Issues<br/>epic, bug, ux, tech-debt]
     triage{Triage i kolejność<br/>użytkownik}
     prep["/brainstorm i /planner<br/>epik albo epik poprawek"]
     accept{"Akceptacja spec i planu<br/>końcowy PR do przejrzenia w jednym posiedzeniu?"}
