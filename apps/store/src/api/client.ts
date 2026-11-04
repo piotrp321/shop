@@ -81,11 +81,26 @@ export const loadCart = () => callCart<CartView>("/api/cart");
 
 export const loadCartSummary = () => callCart<CartSummaryBody>("/api/cart/summary");
 
+let lastWrite: Promise<unknown> = Promise.resolve();
+
+/**
+ * Runs the writes to the cart one after another. Two first additions of a guest started together would each create
+ * a guest cart, and the last cookie would win; started one after another, the second finds the cart of the first.
+ * A failed write does not hold back the next one.
+ */
+function queueWrite<T>(write: () => Promise<T>): Promise<T> {
+  const result = lastWrite.then(write, write);
+  lastWrite = result.catch(() => undefined);
+  return result;
+}
+
 export const addCartItem = (productId: string, quantity: number) =>
-  callCart<CartView>("/api/cart/items", { method: "POST", body: { productId, quantity } });
+  queueWrite(() => callCart<CartView>("/api/cart/items", { method: "POST", body: { productId, quantity } }));
 
 export const changeCartItemQuantity = (productId: string, quantity: number) =>
-  callCart<CartView>(`/api/cart/items/${encodeURIComponent(productId)}`, { method: "PATCH", body: { quantity } });
+  queueWrite(() =>
+    callCart<CartView>(`/api/cart/items/${encodeURIComponent(productId)}`, { method: "PATCH", body: { quantity } }),
+  );
 
 export const removeCartItem = (productId: string) =>
-  callCart<CartView>(`/api/cart/items/${encodeURIComponent(productId)}`, { method: "DELETE" });
+  queueWrite(() => callCart<CartView>(`/api/cart/items/${encodeURIComponent(productId)}`, { method: "DELETE" }));

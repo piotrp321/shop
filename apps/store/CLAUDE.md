@@ -26,7 +26,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session` i `/api/cart/*`
   z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
 - `src/account/` – komponent konta w nagłówku (Client Component).
-- `src/cart/` – BFF koszyka (wybór koszyka, ciasteczko `store_cart`, wywołania API, mapowanie błędów).
+- `src/cart/` – BFF koszyka (wybór koszyka, ciasteczko `store_cart`, wywołania API, mapowanie błędów) oraz komponenty
+  koszyka: `AddToCartButton`, `CartBadge` i `CartPage`.
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
 - `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`).
 - `src/components/ui/` – komponenty shadcn/ui.
@@ -68,6 +69,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   jest pusty koszyk (bez sondy). Dodanie i zmiana pytają o `summary` koszyka: 404 oznacza koszyk, który zniknął
   (ciasteczko usuwane, dodanie zakłada nowy koszyk i powtarza się raz, zmiana zwraca 404 pozycji), w przeciwnym razie
   404 jest przekazywany.
+- Zapisy koszyka z przeglądarki (`addCartItem`, `changeCartItemQuantity`, `removeCartItem` w `src/api/client.ts`) idą
+  jeden po drugim w kolejce na poziomie modułu: następny startuje po zakończeniu poprzedniego, także po błędzie.
+  Dzięki temu dwa pierwsze dodania gościa bez `store_cart` nie zakładają dwóch koszyków. Odczyty nie czekają w kolejce.
 - UI: `AddToCartButton` w `ProductTile` (tylko przy cenie i poziomie dostępności innym niż `out_of_stock`, przy braku
   etykiety dostępności widoczny), `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
   (`CartPage`, Client Component ładujący `/api/cart`). Po każdej zmianie koszyka komponent ogłasza `itemCount` z
