@@ -119,6 +119,7 @@ def watch(path, from_start, label):
     signal.signal(signal.SIGINT, stop)
     # Only a file that already exists is skipped to its end; one created later is read from its start.
     handle, inode, buffer, skip_existing = None, None, '', not from_start and os.path.exists(path)
+    ready = False
     while True:
         try:
             if handle is not None and (os.stat(path).st_ino != inode):
@@ -130,12 +131,19 @@ def watch(path, from_start, label):
                 if skip_existing:
                     handle.seek(0, os.SEEK_END)
                 skip_existing = False
+                if not ready:
+                    ready = True
+                    print('watching %s' % path, file=sys.stderr, flush=True)
             elif os.fstat(handle.fileno()).st_size < handle.tell():
                 handle.seek(0)   # truncated
+                buffer = ''
         except OSError:
             if handle is not None:
                 handle.close()
             handle = None
+            if not ready and not skip_existing:
+                ready = True   # nothing to skip: a file created later is read from its start
+                print('watching %s' % path, file=sys.stderr, flush=True)
             time.sleep(POLL_S)
             continue
         chunk = handle.read()

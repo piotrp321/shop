@@ -168,16 +168,25 @@ class WatchTest(unittest.TestCase):
                 p.kill()
             p.wait()
             p.stdout.close()
+            p.stderr.close()
         self.tmp.cleanup()
 
     def start(self, *args):
         p = subprocess.Popen([sys.executable, SCRIPT, 'watch', self.file, *args], stdout=subprocess.PIPE,
-                             stderr=subprocess.DEVNULL, text=True)
+                             stderr=subprocess.PIPE, text=True)
         self.procs.append(p)
         p.lines = queue.Queue()
         threading.Thread(target=lambda: [p.lines.put(l.strip()) for l in p.stdout], daemon=True).start()
-        time.sleep(0.5)
+        self.wait_ready(p)
         return p
+
+    def wait_ready(self, p):
+        # watch reports on stderr once the start position is decided and the signal handlers are installed
+        box = []
+        reader = threading.Thread(target=lambda: box.append(p.stderr.readline()), daemon=True)
+        reader.start()
+        reader.join(30)
+        self.assertTrue(box and box[0].startswith('watching '), 'watch did not report readiness: %r' % box)
 
     def next_line(self, p):
         try:
@@ -205,6 +214,18 @@ class WatchTest(unittest.TestCase):
         p = self.start('--epic-label', 'X')
         self.append(event('epic_done'))
         self.assertEqual(self.next_line(p), 'X: epik DONE')
+
+    def test_partial_last_line_is_one_message_once_completed(self):
+        p = self.start()
+        with open(self.file, 'a', encoding='utf-8') as f:
+            f.write('{"type": "epic_done", ')
+            f.flush()
+            time.sleep(1.5)
+            self.assertTrue(p.lines.empty())
+            f.write('"epic_id": "cart"}\n')
+        self.assertEqual(self.next_line(p), 'cart: epik DONE')
+        time.sleep(1.5)
+        self.assertTrue(p.lines.empty())
 
     def test_sigterm_exits_0(self):
         p = self.start()
