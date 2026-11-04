@@ -9,14 +9,16 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 6), nie 
 
 ## Status
 
-W toku: krok 2. Następny krok: krok 3. Blokery: brak.
+W toku: brak. Następny krok: krok 4 (etykiety są założone, brakuje listy epików z „Zakresu MVP”). Blokery: brak.
+CART przeszedł przez AO przed krokami 3–5: 0 interwencji, odbiór końcowego PR pominięty, uwagi po nim są w issues
+#80–#85. Kandydat na pierwszy epik przez cały proces (krok 6): epik poprawek z tych issues.
 
 | Krok | Zakres | Status |
 |---|---|---|
 | 1 | AO v0.3.1 i zamrożenie AO | zrobione |
-| 2 | Ten plan, zasada backlogu w `CLAUDE.md` i ADR | w toku |
-| 3 | Poprawki procesu w `shop` | do zrobienia |
-| 4 | Backlog w GitHub Issues | do zrobienia |
+| 2 | Ten plan, zasada backlogu w `CLAUDE.md` i ADR | zrobione |
+| 3 | Poprawki procesu w `shop` | zrobione |
+| 4 | Backlog w GitHub Issues | etykiety założone, lista epików do zrobienia |
 | 5 | Powiadomienia ntfy | do zrobienia |
 | 6 | Pierwszy epik przez cały proces | do zrobienia |
 | 7 | Agent tester i agent UX | do zrobienia |
@@ -49,7 +51,7 @@ Stały proces każdego epiku. Elementy, które jeszcze nie działają, mają w n
 
 ```mermaid
 flowchart TB
-    issues[GitHub Issues<br/>epic, bug, ux]
+    issues[GitHub Issues<br/>epic, bug, ux, tech-debt]
     triage{Triage i kolejność<br/>użytkownik}
     prep["/brainstorm i /planner<br/>epik albo epik poprawek"]
     accept{"Akceptacja spec i planu<br/>końcowy PR do przejrzenia w jednym posiedzeniu?"}
@@ -74,39 +76,43 @@ flowchart TB
 ```
 
 1. **Backlog: GitHub Issues** w `piotrp321/shop`.
-   - Etykieta `epic` to funkcja z „Zakresu MVP”, `bug` to błąd, `ux` to problem użyteczności albo wyglądu.
+   - Etykieta `epic` to funkcja z „Zakresu MVP”, `bug` to błąd, `ux` to problem użyteczności albo wyglądu,
+     `tech-debt` to porządki w kodzie, bazie albo dokumentacji bez zmiany zachowania.
    - Zgłaszają: użytkownik, agent tester i agent UX (krok 7). Zgłoszenia agentów mają etykietę `agent` i limit
      na jeden przebieg. Do backlogu trafiają dopiero po triage użytkownika.
-   - Zgłoszenia `bug` i `ux` mają formularz (krok 3): środowisko, kroki odtworzenia (jeden krok w linii), wynik
-     oczekiwany i faktyczny, kryterium akceptacji, niewiadome. Agenci wypełniają te same pola. Zgłoszenie
-     z brakami dostaje etykietę `needs-info` i nie idzie do przygotowania.
+   - Zgłoszenia `bug`, `ux` i `tech-debt` mają pola: środowisko, kroki odtworzenia (jeden krok w linii), wynik
+     oczekiwany i faktyczny, kryterium akceptacji, niewiadome. Dla `bug` i `ux` jest formularz
+     w `.github/ISSUE_TEMPLATE/`, agenci wypełniają te same pola. Zgłoszenie z brakami dostaje etykietę
+     `needs-info` i nie idzie do przygotowania.
    - Kolejność ustala użytkownik.
 2. **Przygotowanie (użytkownik, w dzień).**
    - Issue z góry listy → `/brainstorm` → `spec.md` → `/planner` → `plan.md`.
    - Przed akceptacją planu jedno pytanie: czy końcowy PR da się przejrzeć w jednym posiedzeniu? Jeśli nie, epik
      dzielimy na dwa, mergowane po kolei. Rozmiar pojedynczych zadań zostaje bez zmian.
-   - Zgłoszenie `ux` zawsze idzie przez `/brainstorm`. Drobne zgłoszenia `bug` trafiają razem do jednego epiku
-     poprawek: krótka specyfikacja, jedno zadanie na issue.
+   - Zgłoszenie `ux` zawsze idzie przez `/brainstorm`. Drobne zgłoszenia `bug` i `tech-debt` trafiają razem do
+     jednego epiku poprawek: krótka specyfikacja, jedno zadanie na issue.
    - Zaakceptowane `spec.md` i `plan.md` trafiają do `main`.
 3. **Wykonanie (AO, w nocy).**
    - `ao submit-plan`, potem `ao run --until-idle`. AO prowadzi zadania przez `/delivery` po jednym naraz,
      squash-merguje je do `epic/<epik>`, uruchamia `/integration` i otwiera końcowy PR `epic/<epik>` → `main`
      z raportem `ao report`.
-   - `code-reviewer` w `/delivery` i `qa-adversarial` w `/integration` sprawdzają jawnie dwie rzeczy (krok 3).
-     Usunięty, pominięty albo osłabiony istniejący test lub zmieniona wartość oczekiwana bez podstawy
-     w specyfikacji to `BLOCKER`. Plik albo zmiana spoza `scope` zadania w manifeście to zgłoszenie.
+   - `code-reviewer` w `/delivery` sprawdza każde zadanie, a `/integration` cały epik. Usunięty, wyłączony albo
+     osłabiony istniejący test lub zmieniona wartość oczekiwana bez podstawy w specyfikacji to `BLOCKER` w zadaniu
+     i `Important` w epiku. Plik albo zmiana spoza `scope` zadania to zgłoszenie. `code-reviewer` sprawdza też,
+     czy RED poprzedził implementację.
    - Przy epikach, które zmieniają `apps/store` albo `apps/admin`, `/integration` uruchamia też agenta UX
      (krok 7). Problem z zakresu epiku jest znaleziskiem do naprawy, pozostałe zostają w raporcie jako uwagi.
 4. **Blokery.**
    - `BLOCKED` i powiadomienie na telefon (ntfy, krok 5) tylko wtedy, gdy zadanie nie może iść dalej bez decyzji.
      Użytkownik odpowiada przez `ao answer`.
    - Wybory odwracalne agent rozstrzyga sam i wpisuje do sekcji „Decyzje bez pytania” w opisie PR zadania, a
-     `/integration` przenosi je do swojego raportu (krok 3).
+     `/integration` przenosi je do swojego raportu.
    - Powtarzający się bloker naprawiamy w `/brainstorm` albo w `CLAUDE.md`, nie w AO.
 5. **Odbiór (użytkownik).**
-   - Przegląd według ryzyka, nie linia po linii: raport `/integration`, zmiany istniejących testów, migracje,
-     odstępstwa od specyfikacji, pliki spoza zakresów zadań, „Decyzje bez pytania”. Na koniec główny scenariusz
-     przeklikany na stosie.
+   - Przegląd według ryzyka, nie linia po linii. Zaczyna się od sekcji „Lista odbioru” w raporcie `/integration`
+     (ścieżka raportu jest w opisie końcowego PR): dla każdej pozycji „OK” albo „Sprawdź”, czyli zmiany istniejących
+     testów, migracje, pliki spoza zakresów zadań, odstępstwa od specyfikacji i „Decyzje bez pytania”. Na koniec
+     główny scenariusz przeklikany na stosie.
    - Błąd w zakresie epiku: poprawka przez PR do `epic/<epik>` (np. `/delivery` uruchomione ręcznie z linią
      `Gałąź docelowa PR: epic/<epik>`), zmergowany przez użytkownika po zielonym CI. AO traktuje nowy HEAD jako
      kod po przeglądzie: robi rundę `DELTA` `/integration`, a końcowy PR czeka na jej wynik. Potem odbiór od nowa.
@@ -128,16 +134,13 @@ flowchart TB
 1. **AO v0.3.1 i zamrożenie.** v0.3.1 zamknięte (piotrp321/agentic-orchestrator#32). Od teraz AO jest zamrożone.
 2. **Plan i zasada backlogu.** Ten plan zastępuje poprzedni. `CLAUDE.md` dostaje zasadę backlogu, ADR wskazuje
    GitHub Issues jako intake i opisuje role agenta testera i agenta UX. Jeden PR.
-3. **Poprawki procesu w `shop`.** Jeden PR:
-   - formularze `.github/ISSUE_TEMPLATE/bug.yml` i `ux.yml` z polami z punktu 1 procesu, `needs-info` w zasadzie
-     backlogu w `CLAUDE.md`;
-   - `.claude/agents/code-reviewer.md` i zlecenie `qa-adversarial` w `.claude/skills/integration/SKILL.md`: obie
-     kontrole z punktu 3 procesu;
-   - `.claude/skills/delivery/SKILL.md`: sekcja „Decyzje bez pytania” w opisie PR zadania (dziś skill każe tylko
-     opisać istotne decyzje w PR), a `.claude/skills/integration/SKILL.md` przenosi ją do raportu.
+3. **Poprawki procesu w `shop`.** Formularze `bug` i `ux` w `.github/ISSUE_TEMPLATE/`, kontrole istniejących
+   testów, zakresu i RED w `code-reviewer`, sekcja „Decyzje bez pytania” w PR zadań i lista odbioru w raporcie
+   `/integration`.
 4. **Backlog.** Sprawdzam, które punkty „Zakresu MVP” są zrobione. Użytkownik akceptuje listę issues, ich
-   kolejność i miejsce zapisu kolejności (lista issues albo tablica GitHub Projects). Dopiero potem zakładam
-   etykiety `epic`, `bug`, `ux`, `needs-info`, `agent` i issues: repozytorium jest publiczne.
+   kolejność i miejsce zapisu kolejności (lista issues albo tablica GitHub Projects). Etykiety `epic`, `bug`, `ux`,
+   `tech-debt`, `needs-info` i `agent` są założone. Issues epików powstają dopiero po akceptacji listy: repozytorium
+   jest publiczne.
 5. **Powiadomienia.** ntfy jako `--notify-cmd` AO, próbne powiadomienie na telefon.
 6. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, razem z pomiarem z punktu 5 procesu. Każdy
    kolejny epik idzie tym samym procesem.
@@ -195,6 +198,6 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
 - **Merge do `main`:** końcowy PR epiku merguje wyłącznie użytkownik. Każde rozszerzenie autonomii wymaga jego
   jawnej zgody.
 - **Zmiana AO:** tylko przy zablokowanym prawdziwym przebiegu, za zgodą użytkownika.
-- **Krok 4:** issues powstają dopiero po akceptacji listy.
+- **Krok 4:** issues epików powstają dopiero po akceptacji listy.
 - **Kroki 7–9:** specyfikacja każdej nowej roli zaakceptowana przed implementacją.
 - **Zgłoszenia agentów:** trafiają do backlogu dopiero po triage użytkownika.

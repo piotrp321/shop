@@ -57,7 +57,7 @@ w [planie](../features/agentic-software-house/plan.md).
 
 | Komponent | Jedna odpowiedzialność |
 |---|---|
-| Intake | Zbieranie pomysłów, bugów i incydentów w jednym miejscu: GitHub Issues (`epic`, `bug`, `ux`) |
+| Intake | Zbieranie pomysłów, bugów i incydentów w jednym miejscu: GitHub Issues (`epic`, `bug`, `ux`, `tech-debt`) |
 | `/brainstorm` | Projektowanie funkcjonalności → `spec.md` |
 | `/planner` | Dekompozycja → `plan.md` i manifest zadań |
 | Backlog | Trwałe zarządzanie zadaniami i zależnościami: definicje w manifeście `plan.md`, stan w AO |

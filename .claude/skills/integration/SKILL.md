@@ -9,8 +9,8 @@ disable-model-invocation: true
 
 Zintegruj epik opisany w: $ARGUMENTS. Jesteś orkiestratorem integracji: oceniasz **całość** epika po tym, jak
 `/delivery` dostarczył i zmergowano wszystkie jego zadania do gałęzi epika. Pracę merytoryczną robią agenci
-`architecture-reviewer` i `qa-adversarial`; ty ustalasz zakres, uruchamiasz bramki, weryfikujesz zgłoszenia
-i składasz raport. Stosuj `CLAUDE.md` (także lokalne pliki aplikacji) i `docs/vision.md`.
+`architecture-reviewer` i `qa-adversarial`; ty ustalasz zakres, uruchamiasz bramki, weryfikujesz zgłoszenia,
+przygotowujesz listę odbioru i składasz raport. Stosuj `CLAUDE.md` (także lokalne pliki aplikacji) i `docs/vision.md`.
 
 ## Wejście
 
@@ -26,11 +26,11 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
 - **Robisz:** globalny Architecture Review, niezależny adversarial QA, bramki jakości (`make check`, `make test`,
   `make e2e`), weryfikację zgłoszeń, raport do `<report_path>` i wynik JSON.
 - **Nie robisz:** kodu i poprawek (naprawy to osobne zadania `/delivery` zlecane przez AO), `git commit`, `git push`,
-  `git merge`, zmiany gałęzi, `gh pr`, merge, deploymentu, sprzątania stosu (`.ao/teardown` należy do AO). Jedyny
+  `git merge`, zmiany gałęzi, `gh pr` poza odczytem opisów PR zadań (krok 6), merge, deploymentu, sprzątania stosu (`.ao/teardown` należy do AO). Jedyny
   plik, który zapisujesz, to raport. Testy napisane przez QA zostają w raporcie jako propozycje albo w polu
   `evidence` znaleziska; nie trafiają do repo.
 - **Źródłem prawdy** jest diff `origin/main...HEAD`, specyfikacja i plan, nie raporty z PR zadań ani opinie
-  poprzednich review.
+  poprzednich review. Opisy PR zadań czytasz tylko po sekcję „Decyzje bez pytania” do listy odbioru.
 
 ## Proces
 
@@ -106,19 +106,37 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    Werdykt `REWORK` albo „decyzja do rewizji” architekta, który wymaga decyzji użytkownika (sprzeczność ze
    specyfikacją, nowa zależność, zmiana granic modułów, świadome odstępstwo od `CLAUDE.md`), to bloker `architecture`, nie znalezisko; naprawialne
    naruszenie jest znaleziskiem.
-6. **Stabilność znalezisk.** AO liczy odcisk znaleziska z `severity`, znormalizowanego `title` i posortowanych
+6. **Lista odbioru.** Przygotuj ją dla właściciela, zawsze dla całego epiku (`origin/main...HEAD`), także w trybie
+   `DELTA`. Sprawdzasz sam, bez agentów:
+   - **Istniejące testy:** pliki testów zmienione, usunięte albo przemianowane względem `origin/main`
+     (`git diff --name-status -M origin/main...HEAD`). Usunięty, wyłączony albo osłabiony test lub zmieniona wartość
+     oczekiwana bez podstawy w specyfikacji to znalezisko `Important`.
+   - **Migracje:** nowe i zmienione pliki w `apps/api/migrations`: jakie tabele i kolumny zmieniają, czy usuwają albo
+     przepisują dane. Operacja niszcząca bez podstawy w specyfikacji to znalezisko `Important`, a przy utracie danych
+     `Critical`.
+   - **Pliki spoza zakresów zadań:** pliki, które nie pasują do `scope` żadnego zadania manifestu ani do specyfikacji. Pliki zadań poprawek i napraw (`<EPIK>-FIX-<n>`, `<EPIK>-REPAIR-<n>`) oceniasz względem ich zgłoszeń.
+     Zmiana bez podstawy w specyfikacji to znalezisko: `Important`, gdy zmienia zachowanie, inaczej `Minor`.
+   - **Decyzje bez pytania:** sekcje `## Decyzje bez pytania` z opisów zmergowanych PR zadań, tylko odczyt:
+     `gh pr list --base epic/<epic_id> --state merged --limit 200 --json number,title,body`. Przepisz je z numerem PR.
+     Pusta lista przy zmergowanych zadaniach (np. inna nazwa gałęzi epiku) to pozycja „Sprawdź:”, nie „OK”.
+     Decyzja sprzeczna ze specyfikacją to znalezisko albo bloker według kroku 5. Gdy `gh` nie działa, napisz to w
+     liście; to nie jest bloker.
+   - **Odstępstwa od specyfikacji:** potwierdzone w kroku 5.
+   Każda pozycja ma wynik „OK” albo „Sprawdź:” z plikiem lub PR i jednym zdaniem, dlaczego.
+7. **Stabilność znalezisk.** AO liczy odcisk znaleziska z `severity`, znormalizowanego `title` i posortowanych
    `files`, i przerywa pętlę napraw, gdy ten sam odcisk wraca po rundzie naprawczej. Dlatego: `title` opisuje problem,
    nie szczegół przebiegu (bez SHA, numerów linii i liczb); `files` to pliki, w których trzeba poprawić; ten sam
    niezmieniony problem zgłaszaj w kolejnych rundach z identycznym `title`, `severity` i `files`; nie przemianowuj
    ani nie dziel problemu, żeby uniknąć odcisku. Naprawiony problem znika z wyniku.
-7. **Raport.** Zapisz Markdown po polsku do `<report_path>` (tworząc katalog, jeśli trzeba; ścieżka leży poza repo,
+8. **Raport.** Zapisz Markdown po polsku do `<report_path>` (tworząc katalog, jeśli trzeba; ścieżka leży poza repo,
    nie dodawaj jej do Git). Pierwsze linie: `Epik:`, `Gałąź:`, `Przegląd HEAD: <sha>`, `Tryb:`, `Zakres:` (w DELTA
-   z poprzednim HEAD). Dalej: werdykt, znaleziska (id, waga, zadanie, plik, dowód, sugerowana naprawa), bramki
+   z poprzednim HEAD). Dalej: werdykt, sekcja
+   `## Lista odbioru` (pozycje z kroku 6, wynik QA na stosie w jednym zdaniu, liczba znalezisk `Minor`), znaleziska (id, waga, zadanie, plik, dowód, sugerowana naprawa), bramki
    (komenda, kod wyjścia, koniec wyjścia), werdykt i uwagi architekta, wyniki QA w dwóch grupach: **wykonane**
    przeciw stosowi (scenariusz, komenda lub skrypt, wynik) i **propozycje testu** (kod w blokach), a gdy QA
    pracował statycznie, to zdanie z powodem, niepotwierdzone ryzyka, co sprawdzono bez uwag, bloker(y). Raport
    jest dowodem dla AO i użytkownika, więc nie wklejaj pełnych logów.
-8. **Wynik.** Złóż JSON według kontraktu poniżej, zapisz go do pliku tymczasowego poza repo i zwaliduj:
+9. **Wynik.** Złóż JSON według kontraktu poniżej, zapisz go do pliku tymczasowego poza repo i zwaliduj:
 
    ```bash
    python3 .claude/skills/integration/integration_result.py validate <plik.json> --head <sha> --epic <epic_id> --mode <FULL|DELTA>
