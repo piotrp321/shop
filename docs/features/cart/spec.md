@@ -158,7 +158,11 @@ Tabele:
     `CHECK (status = 'open' OR owner_type = 'guest')`.
 - `cart_line`: `id uuid` (PK zastępczy, UUID v7), `cart_id uuid` (FK → `cart_cart` `ON DELETE CASCADE`), `product_id uuid`,
   `quantity int` (`CHECK (quantity BETWEEN 1 AND 99)`), `added_at`; unikalny indeks `(cart_id, product_id)` oraz indeks
-  `cart_id`. Migracja: `Version20261103120000CreateCartTables`.
+  `cart_id` (`cart_line_cart_id_idx`). Indeks `cart_id` jest potrzebny mimo unikalnego: Doctrine DBAL dodaje własny
+  indeks na kolumnach klucza obcego (`cart_id`, z `ManyToOne` w `CartLineRecord`), chyba że istnieje indeks o dokładnie
+  tych samych kolumnach, a unikalny `(cart_id, product_id)` się nie liczy (inna liczba kolumn). Bez nazwanego
+  `#[ORM\Index]` Doctrine wygenerowałby indeks `IDX_…` na `cart_id` i schemat rozjechałby się z mapowaniem.
+  Migracja: `Version20261103120000CreateCartTables`.
 - Bez kluczy obcych do tabel Catalog. Kaskada przy usuwaniu linii jest dozwolona, bo koszyki są krótkotrwałe
   (w odróżnieniu od rezerwacji Inventory).
 
