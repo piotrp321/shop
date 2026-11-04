@@ -228,8 +228,8 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
 
 ## Punkty zatrzymania
 
-- **Każdy epik:** `spec.md` i `plan.md` zaakceptowane przez użytkownika przed `ao submit-plan`.
-  Użytkownik akceptuje specyfikację i rozmiar końcowego PR, a `plan.md` przechodzi walidator manifestu.
+- **Każdy epik:** przed `ao submit-plan` użytkownik akceptuje w `/prepare-epic` specyfikację i rozmiar końcowego PR,
+  a `plan.md` przechodzi walidator manifestu.
 - **Start epiku:** AO rusza z epikiem dopiero po „tak” użytkownika na pytanie „Zacząć epik X?”.
 - **Merge do `main`:** końcowy PR epiku merguje wyłącznie użytkownik. Wyjątek: PR ze `spec.md` i `plan.md`
   z `/prepare-epic`, który skill merguje po akceptacji użytkownika i zielonym CI. Każde rozszerzenie

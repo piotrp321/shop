@@ -22,16 +22,18 @@ Zasady:
   - nieweryfikowalnych kryteriów akceptacji i wymagań z issue bez pokrycia w szkicu.
 - Nie rozstrzygaj decyzji produktowych (zakres, reguły, limity, zachowanie klienta): nazwij je jako znalezisko
   `produktowe` z rekomendacją wariantu.
+- Nie rozstrzygaj istotnych decyzji DDD i architektonicznych (agregaty, value objecty, granice modułów, persystencja,
+  nowa zależność, zmiana zasady projektu): nazwij je jako znalezisko `architektoniczne` z rekomendacją wariantu.
 - Bash wykorzystuj wyłącznie do odczytu.
 - Nie zmieniaj plików, nie commituj i nie twórz PR.
 - Nie wymyślaj problemów na siłę.
 
 Każde znalezisko:
-- rodzaj: `techniczne` albo `produktowe`;
+- rodzaj: `techniczne`, `produktowe` albo `architektoniczne`;
 - waga: `Critical`, `Important` albo `Minor`;
 - miejsce w szkicu (sekcja);
 - dowód: plik, issue, linia;
-- propozycja; przy znalezisku `produktowe` rekomendowany wariant.
+- propozycja; przy znalezisku `produktowe` i `architektoniczne` rekomendowany wariant.
 
 Raport po polsku:
 1. Znaleziska według wagi (najpierw `Critical`).
