@@ -1,6 +1,7 @@
 // In-memory doubles for the route handler tests. Never imported by application code.
 import { allowInsecureRequests, Configuration } from "openid-client";
 import { vi } from "vitest";
+import { createApiClient } from "@/api/client";
 import type { AuthConfig } from "./config";
 import { SESSION_COOKIE, signValue } from "./cookies";
 import type { AuthDeps, MeResult } from "./deps";
@@ -99,6 +100,15 @@ export function testDeps() {
     oidc: vi.fn(async () => oidc),
     freshAccessToken: vi.fn(async (id: string) => (await sessions.store.get(id))?.accessToken ?? null),
     fetchMe: vi.fn(async (): Promise<MeResult> => ({ kind: "ok", name: "Jan" })),
+    // No API by default: a test that expects calls puts its own double here.
+    api: (accessToken?: string) =>
+      createApiClient({
+        baseUrl: testConfig.apiInternalUrl,
+        accessToken,
+        fetch: async (request) => {
+          throw new Error(`Unexpected API call: ${request.method} ${new URL(request.url).pathname}`);
+        },
+      }),
   } satisfies AuthDeps;
   return { deps, oidc, sessions: sessions.sessions, transactions: transactions.transactions };
 }

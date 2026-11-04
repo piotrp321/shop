@@ -1,10 +1,11 @@
 import type { NextRequest } from "next/server";
-import { cookieOptions, readSignedValue, SESSION_COOKIE, signValue } from "@/auth/cookies";
+import { readSignedValue, SESSION_COOKIE, signValue } from "@/auth/cookies";
 import { clearSessionCookie, json, logFailure, noStore } from "@/auth/responses";
 import type { CartSummaryBody } from "@/api/client";
 import { type ApiResult, type CartApi, type CartView, createGuestCart, customerCart, guestCart } from "./api";
-import { CART_COOKIE, cartCookieOptions, readCartId } from "./cookies";
+import { CART_COOKIE, cartCookieOptions, clearCartCookie, clearMergeNotice, hasMergeNotice, NOTICE_COOKIE, readCartId } from "./cookies";
 import type { CartDeps } from "./deps";
+import { applyGuestCartMerge, type GuestCartMerge, mergeGuestCart } from "./merge";
 
 export type CartCommand =
   | { kind: "read" }
@@ -14,8 +15,11 @@ export type CartCommand =
   | { kind: "remove"; productId: string };
 
 type Outcome = { status: number; body: unknown };
-/** What the answer does to the browser's cookies: the guest cart cookie (set or cleared) and the session. */
-type Effects = { cart?: { id: string } | "clear"; endedSession?: boolean };
+/**
+ * What the answer does to the browser's cookies: the guest cart cookie (set or cleared), the merge of the guest cart
+ * into the customer's (which clears it and may leave a notice), the notice shown by the summary, and the session.
+ */
+type Effects = { cart?: { id: string } | "clear"; merge?: GuestCartMerge; noticeShown?: boolean; endedSession?: boolean };
 
 const LINE_MISSING = "Tej pozycji nie ma w koszyku.";
 const INVALID_BODY = "Nieprawidłowe dane.";
@@ -58,29 +62,54 @@ export const lineMissing = () => json({ detail: LINE_MISSING }, 404);
 /**
  * Chooses the cart (the customer's with a session, otherwise the guest's from `store_cart`), runs the command on
  * it and answers for the browser: 200 with the data, 404, 409 and 422 of the API with their `detail`, 401 when the
- * session ended, 503 for everything else. Nothing here computes a price or a total.
+ * session ended, 503 for everything else. With a session, a guest cart of `store_cart` is merged into the customer's
+ * first. Nothing here computes a price or a total.
  */
 export async function runCartCommand(request: NextRequest, deps: CartDeps, command: CartCommand): Promise<Response> {
   const effects: Effects = {};
+  const cartCookie = request.cookies.get(CART_COOKIE)?.value;
   let outcome: Outcome;
   try {
     const sessionId = readSignedValue(request.cookies.get(SESSION_COOKIE)?.value, deps.config.sessionSecret);
     outcome = sessionId
-      ? await runForCustomer(sessionId, deps, command, effects)
-      : await runForGuest(request.cookies.get(CART_COOKIE)?.value, deps, command, effects);
+      ? await runForCustomer(sessionId, cartCookie, deps, command, effects)
+      : await runForGuest(cartCookie, deps, command, effects);
   } catch (error) {
     logFailure("Cart request failed", error);
     outcome = { status: 503, body: {} };
   }
+  if (command.kind === "summary" && outcome.status === 200) {
+    outcome = withNotice(outcome, request.cookies.get(NOTICE_COOKIE)?.value, deps, effects);
+  }
   return finish(outcome, effects, deps);
+}
+
+/**
+ * The summary carries the notice of a truncated merge once: from the notice cookie, or from a merge of this very
+ * request. A shown notice clears the cookie, also the one the merge would have set.
+ */
+function withNotice(outcome: Outcome, noticeCookie: string | undefined, deps: CartDeps, effects: Effects): Outcome {
+  const truncatedNow = effects.merge?.kind === "merged" && effects.merge.truncated;
+  if (!truncatedNow && !hasMergeNotice(noticeCookie, deps.config.sessionSecret)) {
+    return outcome;
+  }
+  effects.noticeShown = true;
+  return { status: 200, body: { ...(outcome.body as CartSummaryBody), notice: "merge_truncated" } satisfies CartSummaryBody };
 }
 
 function finish({ status, body }: Outcome, effects: Effects, { config }: CartDeps): Response {
   const response = json(body, status);
   if (effects.cart === "clear") {
-    response.cookies.set(CART_COOKIE, "", { ...cookieOptions(config.storeUrl), maxAge: 0 });
+    clearCartCookie(response, config.storeUrl);
   } else if (effects.cart) {
     response.cookies.set(CART_COOKIE, signValue(effects.cart.id, config.sessionSecret), cartCookieOptions(config.storeUrl));
+  }
+  if (effects.merge) {
+    applyGuestCartMerge(response, effects.merge, config);
+  }
+  if (effects.noticeShown) {
+    // Replaces a notice cookie the merge set above: the notice has been shown.
+    clearMergeNotice(response, config.storeUrl);
   }
   return effects.endedSession ? clearSessionCookie(response, config.storeUrl) : noStore(response);
 }
@@ -120,7 +149,13 @@ function toOutcome(result: ApiResult<CartView | { itemCount: number }>, command:
 const emptyFor = (command: CartCommand): Outcome =>
   command.kind === "summary" ? { status: 200, body: emptySummary } : { status: 200, body: emptyCart };
 
-async function runForCustomer(sessionId: string, deps: CartDeps, command: CartCommand, effects: Effects): Promise<Outcome> {
+async function runForCustomer(
+  sessionId: string,
+  cartCookie: string | undefined,
+  deps: CartDeps,
+  command: CartCommand,
+  effects: Effects,
+): Promise<Outcome> {
   const endSession = async (): Promise<Outcome> => {
     await deps.sessions.delete(sessionId);
     effects.endedSession = true;
@@ -131,7 +166,13 @@ async function runForCustomer(sessionId: string, deps: CartDeps, command: CartCo
   if (!accessToken) {
     return endSession();
   }
-  const result = await perform(customerCart(deps.api(accessToken)), command);
+  const api = deps.api(accessToken);
+  // A failed merge keeps `store_cart`: the next request tries again, this one goes on with the customer's cart.
+  effects.merge = await mergeGuestCart(cartCookie, deps.config.sessionSecret, api);
+  if (effects.merge.kind === "rejected") {
+    return endSession();
+  }
+  const result = await perform(customerCart(api), command);
   if (!result.ok && result.status === 401) {
     return endSession();
   }

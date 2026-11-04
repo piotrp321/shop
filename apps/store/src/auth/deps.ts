@@ -1,3 +1,4 @@
+import { type ApiClient, createApiClient } from "@/api/client";
 import { type AuthConfig, readAuthConfig } from "./config";
 import { fetchMe, type MeResult } from "./me";
 import { createOidcClient, discoverOidc, type OidcClient } from "./oidc";
@@ -21,6 +22,8 @@ export type AuthDeps = {
   oidc: () => Promise<OidcClient>;
   freshAccessToken: (sessionId: string) => Promise<string | null>;
   fetchMe: (accessToken: string) => Promise<MeResult>;
+  /** The API client, with the customer's access token when there is one. */
+  api: (accessToken?: string) => ApiClient;
 };
 
 const CONNECT_WAIT_MS = 2000;
@@ -90,6 +93,7 @@ function createAuthDeps(): AuthDeps {
       }),
     ),
     fetchMe: (accessToken) => fetchMe(config.apiInternalUrl, accessToken),
+    api: (accessToken) => createApiClient({ baseUrl: config.apiInternalUrl, accessToken }),
   };
 }
 

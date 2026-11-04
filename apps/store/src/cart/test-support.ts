@@ -92,6 +92,18 @@ export function cartTestDeps() {
 export const signedCartCookie = (id: string, secret: string = testConfig.sessionSecret) =>
   `${CART_COOKIE}=${signValue(id, secret)}`;
 
+/** The cookie of the merge notice, as the store sets it after a truncated merge. */
+export const NOTICE_COOKIE_NAME = "store_cart_notice";
+export const signedNoticeCookie = (value = "merge_truncated", secret: string = testConfig.sessionSecret) =>
+  `${NOTICE_COOKIE_NAME}=${signValue(value, secret)}`;
+
+/** A 200 of `POST /api/v1/me/cart/merge`. */
+export const mergeAnswer = (
+  result: "merged" | "already_merged" | "nothing_to_merge",
+  truncated = false,
+  cart: CartView = viewWithOneLine(null, 2),
+) => Response.json({ cart, result, truncated });
+
 export const sessionCookie = (id: string) => `${SESSION_COOKIE}=${signValue(id, testConfig.sessionSecret)}`;
 
 export function cartRequest(

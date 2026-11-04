@@ -9,6 +9,7 @@ import {
   emptyView,
   GUEST_CART_ID,
   isCleared,
+  mergeAnswer,
   PRODUCT_ID,
   problem,
   sessionCookie,
@@ -137,11 +138,22 @@ describe("PATCH /api/cart/items/[productId]", () => {
   it("changes the line in the cart of the customer with the session's token", async () => {
     const id = await setup.deps.sessions.create(sessionData({ accessToken: "access-9" }));
     setup.answer("PUT", ME_LINE, () => Response.json(viewWithOneLine(null, 3)));
-    const response = await change({ body: { quantity: 3 }, cookie: `${sessionCookie(id)}; ${signedCartCookie(GUEST_CART_ID)}` });
+    const response = await change({ body: { quantity: 3 }, cookie: sessionCookie(id) });
 
     expect(response.status).toBe(200);
     expect(setup.calls).toEqual([{ method: "PUT", path: ME_LINE, authorization: "Bearer access-9", body: { quantity: 3 } }]);
     expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("merges the guest cart of store_cart first, clears the cookie and then changes the line of the customer cart", async () => {
+    const id = await setup.deps.sessions.create(sessionData({ accessToken: "access-9" }));
+    setup.answer("POST", "/api/v1/me/cart/merge", () => mergeAnswer("already_merged"));
+    setup.answer("PUT", ME_LINE, () => Response.json(viewWithOneLine(null, 3)));
+    const response = await change({ body: { quantity: 3 }, cookie: `${sessionCookie(id)}; ${signedCartCookie(GUEST_CART_ID)}` });
+
+    expect(response.status).toBe(200);
+    expect(setup.calls.map((call) => `${call.method} ${call.path}`)).toEqual(["POST /api/v1/me/cart/merge", `PUT ${ME_LINE}`]);
+    expect(isCleared(setCookie(response, CART_COOKIE))).toBe(true);
   });
 
   it("passes the 404 of a line of the customer through without any check", async () => {
