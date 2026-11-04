@@ -5,13 +5,13 @@ i kroki wdrożenia. AO jest zamrożone po v0.3.1: zmienia się tylko wtedy, gdy 
 najmniejszą poprawką i za zgodą użytkownika. Nowe role powstają jako skille i agenci w `shop`, bez kodu AO.
 
 Cel: użytkownik poświęca około godziny dziennie na decyzje, a agenci budują sklep według „Zakresu MVP”
-z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 6), nie potwierdzony fakt.
+z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 7), nie potwierdzony fakt.
 
 ## Status
 
 W toku: brak. Następny krok: krok 6. Blokery: brak. CART przeszedł przez AO przed krokami 3–5: 0 interwencji,
-odbiór końcowego PR pominięty, uwagi po nim są w issues #80–#85. Pierwszy epik przez cały proces (krok 6) to
-CART-FIXES (#88), pierwszy na tablicy backlogu.
+odbiór końcowego PR pominięty, uwagi po nim są w issues #80–#85. Pierwszy epik przez cały proces (krok 7) to
+CART-FIXES (#88), pierwszy na tablicy backlogu, przygotowany już przez `/prepare-epic`.
 
 | Krok | Zakres | Status |
 |---|---|---|
@@ -19,11 +19,12 @@ CART-FIXES (#88), pierwszy na tablicy backlogu.
 | 2 | Ten plan, zasada backlogu w `CLAUDE.md` i ADR | zrobione |
 | 3 | Poprawki procesu w `shop` | zrobione |
 | 4 | Backlog w GitHub Issues | zrobione |
-| 5 | Powiadomienia przez aplikację Claude | Remote Control włączone, skill `/ao-run`, sprawdzenie w kroku 6 |
-| 6 | Pierwszy epik przez cały proces | do zrobienia |
-| 7 | Agent tester i agent UX | do zrobienia |
-| 8 | Przed publicznym demo: bezpieczeństwo i wydajność | do zrobienia |
-| 9 | Po MVP: release i monitoring | do zrobienia |
+| 5 | Powiadomienia i kolejka epików przez aplikację Claude | Remote Control włączone, skill `/ao-run`, kolejka do zrobienia, sprawdzenie w kroku 7 |
+| 6 | Przygotowanie epiku jednym skillem `/prepare-epic` | do zrobienia |
+| 7 | Pierwszy epik przez cały proces | do zrobienia |
+| 8 | Agent tester i agent UX | do zrobienia |
+| 9 | Przed publicznym demo: bezpieczeństwo i wydajność | do zrobienia |
+| 10 | Po MVP: release i monitoring | do zrobienia |
 
 ## Role
 
@@ -32,18 +33,21 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | Dział | Rola | Kto | Stan |
 |---|---|---|---|
 | Produkt | Właściciel produktu: co budujemy, kolejność, triage, odbiór | użytkownik | działa |
-| Analiza i projekt | Analityk: specyfikacja | `/brainstorm` z użytkownikiem | działa |
+| Analiza i projekt | Analityk: specyfikacja | `/brainstorm` z użytkownikiem, w `/prepare-epic` od kroku 6 | działa |
+| | Krytyk specyfikacji: braki, sprzeczności, przypadki brzegowe | agent w `/prepare-epic` | krok 6 |
+| | Architekt: review specyfikacji | `architecture-reviewer` w `/prepare-epic` | krok 6 |
 | | Architekt: ADR, review architektury epiku | `architecture-reviewer` w `/integration` | działa |
-| | UX: ekrany, wersja mobilna, dostępność | agent UX | krok 7 |
-| Planowanie | Plan i zadania | `/planner` | działa |
+| | UX: ekrany, wersja mobilna, dostępność | agent UX | krok 8 |
+| Planowanie | Plan i zadania | `/planner`, w `/prepare-epic` od kroku 6 | działa |
 | | Koordynacja: przebieg nocny, stan, PR | AO | działa |
+| | Kolejka epików: następny epik po merge'u | sesja z Remote Control | krok 5 |
 | Wytwarzanie | Developer: zadanie z TDD | `developer` w `/delivery` | działa |
 | | Code review zadania | `code-reviewer` w `/delivery` | działa |
 | Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
-| | Tester całego sklepu | agent tester | krok 7 |
-| | Bezpieczeństwo i wydajność | ustalane w kroku 8 | krok 8 |
-| Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 9 |
-| | Monitoring → issues | Sentry i Grafana Cloud z `docs/vision.md` | krok 9 |
+| | Tester całego sklepu | agent tester | krok 8 |
+| | Bezpieczeństwo i wydajność | ustalane w kroku 9 | krok 9 |
+| Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 10 |
+| | Monitoring → issues | Sentry i Grafana Cloud z `docs/vision.md` | krok 10 |
 
 ## Proces
 
@@ -53,9 +57,10 @@ Stały proces każdego epiku. Elementy, które jeszcze nie działają, mają w n
 flowchart TB
     issues[GitHub Issues<br/>epic, bug, ux, tech-debt]
     triage{Triage i kolejność<br/>użytkownik}
-    prep["/brainstorm i /planner<br/>epik albo epik poprawek"]
-    accept{"Akceptacja spec i planu<br/>końcowy PR do przejrzenia w jednym posiedzeniu?"}
+    prep["/prepare-epic (krok 6)<br/>analityk, krytyk, architekt, planner<br/>epik albo epik poprawek"]
+    accept{"Akceptacja specyfikacji<br/>końcowy PR do przejrzenia w jednym posiedzeniu?"}
     onmain[main: spec.md i plan.md]
+    start{"Zacząć epik? (krok 5)<br/>push w aplikacji Claude"}
     subgraph night[AO w nocy]
         delivery["/delivery × N"] --> integration["/integration<br/>architektura, QA, UX"] --> finalpr[Końcowy PR do main]
     end
@@ -66,11 +71,13 @@ flowchart TB
 
     issues --> triage --> prep --> accept
     accept -- za duży, podział --> prep
-    accept -- tak --> onmain --> delivery
+    accept -- tak --> onmain --> start
+    start -- tak --> delivery
     delivery -. bloker .-> blocker -. odpowiedź .-> delivery
     finalpr --> review
     review -- błąd w zakresie epiku: PR do gałęzi epiku --> integration
     review -- odebrany --> merge --> sweep
+    merge -. następny przygotowany epik .-> start
     review -. uwagi i problemy spoza zakresu .-> issues
     sweep -. zgłoszenia z etykietą agent .-> issues
 ```
@@ -78,7 +85,7 @@ flowchart TB
 1. **Backlog: GitHub Issues** w `piotrp321/shop`.
    - Etykieta `epic` to funkcja z „Zakresu MVP”, `bug` to błąd, `ux` to problem użyteczności albo wyglądu,
      `tech-debt` to porządki w kodzie, bazie albo dokumentacji bez zmiany zachowania.
-   - Zgłaszają: użytkownik, agent tester i agent UX (krok 7). Zgłoszenia agentów mają etykietę `agent` i limit
+   - Zgłaszają: użytkownik, agent tester i agent UX (krok 8). Zgłoszenia agentów mają etykietę `agent` i limit
      na jeden przebieg. Do backlogu trafiają dopiero po triage użytkownika.
    - Zgłoszenia `bug`, `ux` i `tech-debt` mają pola: środowisko, kroki odtworzenia (jeden krok w linii), wynik
      oczekiwany i faktyczny, kryterium akceptacji, niewiadome. Dla `bug` i `ux` jest formularz
@@ -87,13 +94,29 @@ flowchart TB
    - Kolejność ustala użytkownik na tablicy GitHub Projects
      [„Backlog sklepu”](https://github.com/users/piotrp321/projects/1): epik na górze idzie pierwszy.
 2. **Przygotowanie (użytkownik, w dzień).**
-   - Issue z góry listy → `/brainstorm` → `spec.md` → `/planner` → `plan.md`.
-   - Przed akceptacją planu jedno pytanie: czy końcowy PR da się przejrzeć w jednym posiedzeniu? Jeśli nie, epik
-     dzielimy na dwa, mergowane po kolei. Rozmiar pojedynczych zadań zostaje bez zmian.
-   - Zgłoszenie `ux` zawsze idzie przez `/brainstorm`. Drobne zgłoszenia `bug` i `tech-debt` trafiają razem do
-     jednego epiku poprawek: krótka specyfikacja, jedno zadanie na issue.
+   - Issue z góry listy → `/prepare-epic` (krok 6) → `spec.md` i `plan.md`. Do czasu kroku 6: `/brainstorm`
+     → `spec.md` → `/planner` → `plan.md`, z akceptacją obu plików.
+   - `/prepare-epic` prowadzi kolejno:
+     - analityka według zasad `/brainstorm`: discovery i szkic specyfikacji;
+     - krytyka i `architecture-reviewer`: sprawdzają szkic, nie użytkownika;
+     - poprawki techniczne w szkicu;
+     - `/planner`.
+   - Decyzje produktowe (zakres, reguły, limity, zachowanie klienta) podejmuje wyłącznie użytkownik. Agenci ich
+     nie rozstrzygają między sobą. Zbierają je w jedną listę pytań, każde z rekomendacją. Użytkownik dostaje
+     pytania raz, przed akceptacją.
+   - Akceptacja jest jedna: specyfikacja i jedno pytanie, czy końcowy PR da się przejrzeć w jednym posiedzeniu.
+     Skill podaje do tego liczbę zadań i dotknięte aplikacje. Jeśli PR jest za duży, epik dzielimy na dwa,
+     mergowane po kolei. Rozmiar pojedynczych zadań zostaje bez zmian. Podziału na zadania użytkownik nie
+     akceptuje: `plan.md` musi przejść walidator manifestu.
+   - Przygotowujemy jeden epik do przodu: gdy AO w nocy robi epik N, w dzień przygotowujemy N+1. Nie
+     przygotowujemy wszystkich epików naraz, bo specyfikacja opisuje kod, którego jeszcze nie ma.
+   - Zgłoszenie `ux` zawsze idzie przez `/prepare-epic` (do kroku 6 przez `/brainstorm`). Drobne zgłoszenia `bug`
+     i `tech-debt` trafiają razem do jednego epiku poprawek: krótka specyfikacja, jedno zadanie na issue.
    - Zaakceptowane `spec.md` i `plan.md` trafiają do `main`.
 3. **Wykonanie (AO, w nocy).**
+   - Start epiku (krok 5): sesja z Remote Control bierze następny epik z tablicy, który ma zaakceptowane
+     `spec.md` i `plan.md` na `main`, i pyta w powiadomieniu push „Zacząć epik X?”. Pyta po merge'u poprzedniego
+     epiku albo na prośbę użytkownika. Bez zgody niczego nie uruchamia. Na raz trwa jeden epik.
    - Sesja z `/ao-run <epik>` uruchamia `ao epic start` i `ao run --until-idle`. AO prowadzi zadania przez
      `/delivery` po jednym naraz, squash-merguje je do `epic/<epik>`, uruchamia `/integration` i otwiera końcowy
      PR `epic/<epik>` → `main` z raportem `ao report`.
@@ -102,7 +125,7 @@ flowchart TB
      i `Important` w epiku. Plik albo zmiana spoza `scope` zadania to zgłoszenie. `code-reviewer` sprawdza też,
      czy RED poprzedził implementację.
    - Przy epikach, które zmieniają `apps/store` albo `apps/admin`, `/integration` uruchamia też agenta UX
-     (krok 7). Problem z zakresu epiku jest znaleziskiem do naprawy, pozostałe zostają w raporcie jako uwagi.
+     (krok 8). Problem z zakresu epiku jest znaleziskiem do naprawy, pozostałe zostają w raporcie jako uwagi.
 4. **Blokery.**
    - `BLOCKED` i powiadomienie w aplikacji Claude na telefonie tylko wtedy, gdy zadanie nie może iść dalej bez
      decyzji. Użytkownik odpowiada w sesji, która prowadzi przebieg, a ta wykonuje `ao answer`.
@@ -125,7 +148,7 @@ flowchart TB
      zamykają się same. Merge do `main` zostaje wyłącznie u użytkownika.
    - Po każdym epiku trzy liczby w komentarzu do issue epiku: minuty użytkownika (spec, blokery, triage, raport),
      liczba interwencji (z `ao report`) i liczba ręcznych poprawek.
-6. **Po merge'u (krok 7).** Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne
+6. **Po merge'u (krok 8).** Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne
    ścieżki z sekcji „Testy” w `docs/vision.md` i nową funkcję ze specyfikacji, jako klient i jako pracownik.
    Przed założeniem zgłoszenia sprawdzają otwarte issues, żeby nie dublować. Zgłoszenia trafiają do triage
    (punkt 1).
@@ -140,14 +163,22 @@ flowchart TB
    `/integration`.
 4. **Backlog.** Etykiety `epic`, `bug`, `ux`, `tech-debt`, `needs-info` i `agent` są założone. Epiki z niezrobionych
    punktów „Zakresu MVP” to issues #88–#97, w kolejności na tablicy „Backlog sklepu”.
-5. **Powiadomienia przez aplikację Claude.** Przebieg AO prowadzi sesja Claude Code z Remote Control (włączone
-   globalnie w aplikacji). Sesja śledzi zdarzenia AO (bloker, awaria, koniec epiku) i wysyła powiadomienie push do
-   aplikacji Claude na telefonie. Odpowiedź na bloker użytkownik pisze w tej sesji, a sesja wykonuje `ao answer`.
-   Bez zmian w kodzie AO. Mechanizm sprawdza pierwszy przebieg (krok 6). Procedurę prowadzi skill `/ao-run <epik>`
-   (`docs/features/ao-run/spec.md`).
-6. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, razem z pomiarem z punktu 5 procesu. Każdy
-   kolejny epik idzie tym samym procesem.
-7. **Agent tester i agent UX.** Rusza po kroku 6, gdy lista odbioru zadziała na prawdziwym epiku.
+5. **Powiadomienia i kolejka epików przez aplikację Claude.** Przebieg AO prowadzi sesja Claude Code z Remote
+   Control (włączone globalnie w aplikacji). Sesja śledzi zdarzenia AO (bloker, awaria, koniec epiku) i wysyła
+   powiadomienie push do aplikacji Claude na telefonie. Odpowiedź na bloker użytkownik pisze w tej sesji, a sesja
+   wykonuje `ao answer`. Po merge'u końcowego PR ta sama sesja bierze następny przygotowany epik z tablicy i pyta
+   „Zacząć epik X?” (punkt 3 procesu). Instrukcja dla sesji jest w `shop`, bez zmian w kodzie AO. Mechanizm sprawdza
+   pierwszy przebieg (krok 7). Przebieg epiku prowadzi skill `/ao-run <epik>` (`docs/features/ao-run/spec.md`).
+6. **Przygotowanie epiku jednym skillem.** Najpierw krótka specyfikacja przez `/brainstorm`, potem skill
+   `/prepare-epic` i agent krytyka w `shop`, bez zmian w AO:
+   - kolejność i podział ról jak w punkcie 2 procesu, zasady analityka i podziału na zadania brane z `/brainstorm`
+     i `/planner`; oba skille zostają do pracy poza epikami;
+   - jedna lista pytań produktowych do użytkownika i jedna akceptacja specyfikacji z pytaniem o rozmiar PR;
+   - punkt zatrzymania „spec i plan zaakceptowane”, wyjątek merge'ów AO w `CLAUDE.md` i ADR zmieniają się w tym
+     samym PR co skill.
+7. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, od `/prepare-epic` do odbioru, razem z pomiarem
+   z punktu 5 procesu. Każdy kolejny epik idzie tym samym procesem.
+8. **Agent tester i agent UX.** Rusza po kroku 7, gdy lista odbioru zadziała na prawdziwym epiku.
    Najpierw specyfikacja przez `/brainstorm`, potem skille i agenci w `shop`:
    - agent tester po merge'u epiku (punkt 6 procesu);
    - agent UX po merge'u i jako trzeci reviewer w `/integration` (punkt 3 procesu);
@@ -156,19 +187,20 @@ flowchart TB
      z projektem wizualnym;
    - na start uruchamia ich użytkownik jedną komendą po merge'u, automatyczne uruchamianie dopiero wtedy, gdy
      zgłoszenia okażą się warte czasu triage.
-8. **Przed publicznym demo: bezpieczeństwo i wydajność.** Przegląd bezpieczeństwa całego sklepu i testy
+9. **Przed publicznym demo: bezpieczeństwo i wydajność.** Przegląd bezpieczeństwa całego sklepu i testy
    obciążeniowe względem „Wymagań niefunkcjonalnych” z `docs/vision.md`. Zakres i narzędzia ustala specyfikacja
    przed demo.
-9. **Po MVP: release i monitoring.** Publiczne demo zgodnie z `docs/vision.md` (k3s, Argo CD, rollback). Błędy
+10. **Po MVP: release i monitoring.** Publiczne demo zgodnie z `docs/vision.md` (k3s, Argo CD, rollback). Błędy
    z Sentry i alerty z Grafana Cloud stają się issues `bug` z etykietą `agent` i przechodzą triage.
 
-Proces i kontrakt trafiają do ADR, gdy krok 6 potwierdzi, że działają. Plan usuwamy po ostatnim kroku.
+Proces i kontrakt trafiają do ADR, gdy krok 7 potwierdzi, że działają. Plan usuwamy po ostatnim kroku.
 
 ## Świadomie poza planem
 
 Skrzynka decyzji (zamiast niej powiadomienia w aplikacji Claude i `ao answer`), polityka autonomii jako plik, AO jako demon launchd, kilka
 zadań naraz i pula środowisk, budżet na funkcję, merge queue, automatyczne zamienianie issue w zadania, metryki
-i evale skilli, agent decydujący o produkcie, automatyczny merge do `main`, rój agentów pracujących równolegle.
+i evale skilli, agent decydujący o produkcie, automatyczny merge do `main`, rój agentów pracujących równolegle,
+`/planner` wewnątrz `/delivery` (jeden PR na epik bez review zadań), przygotowanie wszystkich epików naraz.
 Wracają tylko wtedy, gdy przebiegi pokażą, że czegoś z tego brakuje, i użytkownik o tym zdecyduje.
 
 ## Kontrakt planu i backlogu
@@ -197,10 +229,12 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
 
 ## Punkty zatrzymania
 
-- **Każdy epik:** `spec.md` i `plan.md` zaakceptowane przez użytkownika przed `ao submit-plan`.
+- **Każdy epik:** `spec.md` i `plan.md` zaakceptowane przez użytkownika przed `ao submit-plan`. Od kroku 6
+  użytkownik akceptuje specyfikację i rozmiar końcowego PR, a `plan.md` przechodzi walidator manifestu.
+- **Start epiku:** AO rusza z epikiem dopiero po „tak” użytkownika na pytanie „Zacząć epik X?”.
 - **Merge do `main`:** końcowy PR epiku merguje wyłącznie użytkownik. Każde rozszerzenie autonomii wymaga jego
   jawnej zgody.
 - **Zmiana AO:** tylko przy zablokowanym prawdziwym przebiegu, za zgodą użytkownika.
 - **Krok 4:** issues epików powstają dopiero po akceptacji listy.
-- **Kroki 7–9:** specyfikacja każdej nowej roli zaakceptowana przed implementacją.
+- **Kroki 6 i 8–10:** specyfikacja każdej nowej roli zaakceptowana przed implementacją.
 - **Zgłoszenia agentów:** trafiają do backlogu dopiero po triage użytkownika.

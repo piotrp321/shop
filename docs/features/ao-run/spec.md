@@ -62,10 +62,10 @@ naraz.
 `python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'`: `record` (poprawne zdarzenie, pusty
 i niepoprawny JSON, brak katalogu), `watch` (każdy typ zdarzenia z README AO, limit 200 znaków, pomijanie zdarzeń bez
 znaczenia, linie dopisane w trakcie). CI uruchamia testy skilli tak jak dla `delivery` i `integration`. Sam przebieg
-sprawdza krok 6 planu (CART-FIXES).
+sprawdza krok 7 planu (CART-FIXES).
 
 ## Zmiana w planie
 
 `docs/features/agentic-software-house/plan.md`: krok 5 wskazuje `/ao-run`. Odbiór (punkt 5 procesu) to przeczytanie
-raportu odbioru i merge; trzy liczby obejmują minuty na spec, blokery, triage i raport. Krok 7 rusza po kroku 6, bo
+raportu odbioru i merge; trzy liczby obejmują minuty na spec, blokery, triage i raport. Krok 8 rusza po kroku 7, bo
 lista odbioru ma najpierw zadziałać na prawdziwym epiku.
