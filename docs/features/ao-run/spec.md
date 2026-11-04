@@ -101,5 +101,5 @@ sprawdza krok 7 planu (CART-FIXES).
 
 `docs/features/agentic-software-house/plan.md`: krok 5 wskazuje `/ao-run`, kolejka epików jest w punkcie 7
 przebiegu, status kroku 5 i rola „Kolejka epików” bez „do zrobienia”, sprawdzenie w kroku 7. Odbiór (punkt 5 procesu) to przeczytanie
-raportu odbioru i merge; trzy liczby obejmują minuty na spec, blokery, triage i raport. Krok 8 rusza po kroku 7, bo
+raportu odbioru i merge; trzy liczby obejmują minuty na spec, blokery, triage i raport. Krok 9 rusza po kroku 7, bo
 lista odbioru ma najpierw zadziałać na prawdziwym epiku.
