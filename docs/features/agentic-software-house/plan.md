@@ -9,7 +9,7 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 6), nie 
 
 ## Status
 
-W toku: brak. Następny krok: krok 5. Blokery: brak. CART przeszedł przez AO przed krokami 3–5: 0 interwencji,
+W toku: brak. Następny krok: krok 6. Blokery: brak. CART przeszedł przez AO przed krokami 3–5: 0 interwencji,
 odbiór końcowego PR pominięty, uwagi po nim są w issues #80–#85. Pierwszy epik przez cały proces (krok 6) to
 CART-FIXES (#88), pierwszy na tablicy backlogu.
 
@@ -19,7 +19,7 @@ CART-FIXES (#88), pierwszy na tablicy backlogu.
 | 2 | Ten plan, zasada backlogu w `CLAUDE.md` i ADR | zrobione |
 | 3 | Poprawki procesu w `shop` | zrobione |
 | 4 | Backlog w GitHub Issues | zrobione |
-| 5 | Powiadomienia ntfy | do zrobienia |
+| 5 | Powiadomienia przez aplikację Claude | Remote Control włączone, sprawdzenie w kroku 6 |
 | 6 | Pierwszy epik przez cały proces | do zrobienia |
 | 7 | Agent tester i agent UX | do zrobienia |
 | 8 | Przed publicznym demo: bezpieczeństwo i wydajność | do zrobienia |
@@ -59,7 +59,7 @@ flowchart TB
     subgraph night[AO w nocy]
         delivery["/delivery × N"] --> integration["/integration<br/>architektura, QA, UX"] --> finalpr[Końcowy PR do main]
     end
-    blocker[Bloker: ntfy i ao answer]
+    blocker[Bloker: push w aplikacji Claude i ao answer]
     review{Odbiór według ryzyka<br/>użytkownik}
     merge[Merge i zamknięcie issue]
     sweep[Agent tester i agent UX<br/>cały sklep na main]
@@ -104,8 +104,8 @@ flowchart TB
    - Przy epikach, które zmieniają `apps/store` albo `apps/admin`, `/integration` uruchamia też agenta UX
      (krok 7). Problem z zakresu epiku jest znaleziskiem do naprawy, pozostałe zostają w raporcie jako uwagi.
 4. **Blokery.**
-   - `BLOCKED` i powiadomienie na telefon (ntfy, krok 5) tylko wtedy, gdy zadanie nie może iść dalej bez decyzji.
-     Użytkownik odpowiada przez `ao answer`.
+   - `BLOCKED` i powiadomienie w aplikacji Claude na telefonie tylko wtedy, gdy zadanie nie może iść dalej bez
+     decyzji. Użytkownik odpowiada w sesji, która prowadzi przebieg, a ta wykonuje `ao answer`.
    - Wybory odwracalne agent rozstrzyga sam i wpisuje do sekcji „Decyzje bez pytania” w opisie PR zadania, a
      `/integration` przenosi je do swojego raportu.
    - Powtarzający się bloker naprawiamy w `/brainstorm` albo w `CLAUDE.md`, nie w AO.
@@ -140,7 +140,10 @@ flowchart TB
    `/integration`.
 4. **Backlog.** Etykiety `epic`, `bug`, `ux`, `tech-debt`, `needs-info` i `agent` są założone. Epiki z niezrobionych
    punktów „Zakresu MVP” to issues #88–#97, w kolejności na tablicy „Backlog sklepu”.
-5. **Powiadomienia.** ntfy jako `--notify-cmd` AO, próbne powiadomienie na telefon.
+5. **Powiadomienia przez aplikację Claude.** Przebieg AO prowadzi sesja Claude Code z Remote Control (włączone
+   globalnie w aplikacji). Sesja śledzi zdarzenia AO (bloker, awaria, koniec epiku) i wysyła powiadomienie push do
+   aplikacji Claude na telefonie. Odpowiedź na bloker użytkownik pisze w tej sesji, a sesja wykonuje `ao answer`.
+   Bez zmian w kodzie AO. Mechanizm sprawdza pierwszy przebieg (krok 6).
 6. **Pierwszy epik.** Issue z góry backlogu przechodzi cały proces, razem z pomiarem z punktu 5 procesu. Każdy
    kolejny epik idzie tym samym procesem.
 7. **Agent tester i agent UX.** Rusza po kroku 6, żeby zgłoszenia agentów doszły dopiero wtedy, gdy znamy czas
@@ -162,7 +165,7 @@ Proces i kontrakt trafiają do ADR, gdy krok 6 potwierdzi, że działają. Plan 
 
 ## Świadomie poza planem
 
-Skrzynka decyzji (zamiast niej ntfy i `ao answer`), polityka autonomii jako plik, AO jako demon launchd, kilka
+Skrzynka decyzji (zamiast niej powiadomienia w aplikacji Claude i `ao answer`), polityka autonomii jako plik, AO jako demon launchd, kilka
 zadań naraz i pula środowisk, budżet na funkcję, merge queue, automatyczne zamienianie issue w zadania, metryki
 i evale skilli, agent decydujący o produkcie, automatyczny merge do `main`, rój agentów pracujących równolegle.
 Wracają tylko wtedy, gdy przebiegi pokażą, że czegoś z tego brakuje, i użytkownik o tym zdecyduje.
