@@ -37,6 +37,14 @@ describe("AddToCartButton", () => {
     expect(addCartItem).toHaveBeenCalledExactlyOnceWith(PRODUCT, 1);
   });
 
+  it("is disabled and adds nothing without a variant", () => {
+    render(<AddToCartButton variantId={null} />);
+
+    expect(button().disabled).toBe(true);
+    fireEvent.click(button());
+    expect(addCartItem).not.toHaveBeenCalled();
+  });
+
   it("is disabled while the request runs, so a second click adds nothing", async () => {
     let finish: (value: Awaited<ReturnType<typeof addCartItem>>) => void = () => {};
     vi.mocked(addCartItem).mockReturnValue(new Promise((resolve) => (finish = resolve)));

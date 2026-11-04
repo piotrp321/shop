@@ -38,3 +38,29 @@ export const TREE: CategoryNode[] = [
   node("bieganie", "Bieganie", [node("buty", "Buty", [node("trailowe", "Trailowe")]), node("odziez", "Odzież")]),
   node("rower", "Rower", [node("kaski", "Kaski")]),
 ];
+
+type ProductOffer = components["schemas"]["ProductOfferResponse"];
+type VariantOffer = components["schemas"]["VariantOfferResponse"];
+
+/** A variant id of product n: never the id of the product. */
+export function variantId(n: number, v: number): string {
+  return `00000000-0000-4000-9000-${String(n * 100 + v).padStart(12, "0")}`;
+}
+
+export function makeVariant(n: number, v: number, overrides: Partial<VariantOffer> = {}): VariantOffer {
+  return { variantId: variantId(n, v), label: "", gross: 12300, level: "in_stock", purchasable: true, ...overrides };
+}
+
+/** The offer of product n; by default one purchasable default variant at 123 zł. */
+export function makeOffer(n: number, overrides: Partial<ProductOffer> = {}): ProductOffer {
+  return {
+    productId: makeProduct(n).id,
+    variantAxes: [],
+    fromGross: 12300,
+    hasPriceRange: false,
+    currency: "PLN",
+    level: "in_stock",
+    variants: [makeVariant(n, 1)],
+    ...overrides,
+  };
+}

@@ -451,9 +451,17 @@ zwracana.
 
 ### UI
 
-- `AddToCartButton` („Do koszyka”, Client Component) w `ProductTile`, widoczny tylko, gdy kafelek ma cenę i poziom
-  dostępności nie jest `out_of_stock`; przy błędzie endpointu dostępności (brak etykiety) przycisk jest widoczny, a
-  decyduje API. Dodaje 1 sztukę. Na czas żądania przycisk jest zablokowany. HTML katalogu nie zależy od sesji.
+- `ProductTile` na liście (Server Component: nazwa, zdjęcie, cena „od X zł” przy `hasPriceRange`, inaczej „X zł”, i
+  etykieta poziomu produktu z oferty z `GET /api/v1/product-offers`, którą ładuje `loadCatalog` jednym wywołaniem dla
+  strony). Produkt bez wariantu możliwego do kupienia (`fromGross = null`, także z ≥ 2 wariantami albo nieznany
+  Catalogowi): „Niedostępny” bez ceny, listy i przycisku. Błąd wywołania ofert: kafelki z „Cena niedostępna”, bez etykiety,
+  listy i przycisku, błąd w logu serwera. Zdjęcie nie zmienia się przy wyborze wariantu.
+- Część kliencka kafelka (`TileOffer`, dostaje ofertę przez propsy): produkt z jednym wariantem ma przycisk
+  `AddToCartButton` („Do koszyka”), który dodaje ten wariant; produkt z ≥ 2 wariantami ma listę (opisaną nazwami osi,
+  np. „Kolor, Rozmiar”) z opcją „Wybierz wariant” i wariantami w kolejności oferty, bez wyboru domyślnego; wariant
+  z `purchasable = false` ma dopisek „niedostępny” i nie da się go wybrać. Do wyboru przycisk jest wyłączony, po wyborze
+  kafelek pokazuje cenę i etykietę poziomu wybranego wariantu, a przycisk dodaje 1 sztukę wybranego wariantu. Na czas
+  żądania przycisk jest zablokowany. HTML katalogu nie zależy od sesji.
 - `CartBadge` w nagłówku: link „Koszyk” z liczbą sztuk z `/api/cart/summary`; po każdej zmianie koszyka licznik
   aktualizuje się z `itemCount` odpowiedzi (zdarzenie w przeglądarce, `src/cart/events.ts`). Do czasu wczytania i przy
   błędzie licznik jest ukryty, link zostaje.
@@ -489,7 +497,8 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 | 100. sztuka wariantu albo 51. pozycja | 409, koszyk bez zmian |
 | dwa warianty (np. rozmiary) jednego produktu | dwie linie; limit 99 sztuk dotyczy każdej osobno |
 | koszyk z linią sprzed migracji na warianty | linia wariantu domyślnego swojego produktu, działa bez zmian |
-| dodanie wariantu bez ceny albo niedostępnego | 409 `ProductNotPurchasable`; w sklepie brak przycisku |
+| dodanie wariantu bez ceny albo niedostępnego | 409 `ProductNotPurchasable`; w sklepie opcja „niedostępny” bez wyboru, a produkt bez wariantu możliwego do kupienia nie ma przycisku |
+| błąd `GET /api/v1/product-offers` w sklepie | lista bez cen, etykiet, wyboru wariantu i przycisków |
 | ilość większa niż dostępna | 409 bez liczby sztuk |
 | zmiana ilości z nieaktualnej karty | ostatni zapis wygrywa |
 | równoległe dodania z dwóch kart | wszystkie zapisane w jednym koszyku, bez utraty zmian (zapisy kart czekają na siebie przez Web Locks API; bez niego pierwsze dodania gościa mogą założyć dwa koszyki, zob. „Ryzyka i ograniczenia”) |
@@ -603,7 +612,10 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   403 przy złym `Origin` i `Content-Type`, `no-store`, jednorazowy `notice`.
 - `/auth/callback` (`app/auth/callback/route.test.ts`): scalenie przy `store_cart` (sukces, błąd, `truncated`); logowanie kończy się sukcesem także przy
   błędzie scalenia.
-- `ProductTile` (`ProductTile.test.tsx`): przycisk przy cenie i dostępności, brak przy braku ceny i `out_of_stock`, obecny przy braku etykiety.
+- `ProductTile` (`ProductTile.test.tsx`): jeden wariant (cena, poziom, przycisk dodaje wariant), ≥ 2 warianty (lista bez
+  wyboru domyślnego, opcja niedostępna wyłączona, cena i etykieta wybranego wariantu, przycisk aktywny po wyborze), cena
+  „od”, produkt niedostępny bez ceny, listy i przycisku, błąd wywołania ofert; `load-catalog.test.ts`: jedno wywołanie
+  ofert dla strony i lista bez ofert przy błędzie.
 - `AddToCartButton` (`AddToCartButton.test.tsx`): blokada na czas żądania, sukces, 409 z `detail`, 404, błąd sieci.
 - `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, pusty koszyk, zmiana ilości z błędem 409
   (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem.
@@ -617,11 +629,12 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
 
 ### E2E (Playwright)
 
-- `cart-guest.spec.ts`: gość dodaje z listy produkt demo `in_stock`, licznik pokazuje 1, na `/cart` (po odświeżeniu
+- `cart-guest.spec.ts`: gość dodaje z listy produkt demo `in_stock` (gdy kafelek ma wybór, pierwszy dostępny wariant; linie
+  koszyka szukane po nazwie i etykiecie wariantu), licznik pokazuje 1, na `/cart` (po odświeżeniu
   koszyk zostaje) zmienia ilość na 3, wartość linii i suma są równe 3 × cena z kafelka, usuwa pozycję, koszyk jest
   pusty także po odświeżeniu. Dwie karty jednego kontekstu przeglądarki bez `store_cart` klikają równocześnie
-  „Do koszyka” na dwóch różnych produktach; po odświeżeniu licznik pokazuje 2, a `/cart` ma oba produkty.
-- `cart-merge.spec.ts`: Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
+  „Do koszyka” na dwóch różnych produktach (z wyborem wariantu, gdy kafelek go ma); po odświeżeniu licznik pokazuje 2, a `/cart` ma oba produkty.
+- `cart-merge.spec.ts` (wybór pierwszego dostępnego wariantu, gdy kafelek ma wybór): Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
   po zalogowaniu licznik pokazuje 3, ciasteczko `store_cart` znika, a koszyk ma A × 1 i B × 2; drugi kontekst
   przeglądarki zalogowany jako Jan widzi ten sam koszyk.
 

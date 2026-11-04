@@ -3,8 +3,7 @@ import type { components } from "@/api/schema";
 import { ProductTile } from "./ProductTile";
 
 type ProductListItem = components["schemas"]["ProductListItem"];
-type PriceItem = components["schemas"]["PriceItem"];
-type AvailabilityItem = components["schemas"]["AvailabilityItemResponse"];
+type ProductOffer = components["schemas"]["ProductOfferResponse"];
 
 // Matches the grid below: 4 columns from `lg` (1024px), 3 from `sm` (640px), otherwise 2.
 const TILE_SIZES = "(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw";
@@ -13,12 +12,10 @@ const EAGER_TILES = 4;
 
 export function ProductGrid({
   products,
-  prices,
-  availability,
+  offers,
 }: {
   products: ProductListItem[];
-  prices: Record<string, PriceItem>;
-  availability: Record<string, AvailabilityItem>;
+  offers: Record<string, ProductOffer>;
 }) {
   if (products.length === 0) {
     return (
@@ -36,8 +33,7 @@ export function ProductGrid({
         <li key={product.id}>
           <ProductTile
             product={product}
-            price={prices[product.id]}
-            availability={availability[product.id]}
+            offer={offers[product.id]}
             sizes={TILE_SIZES}
             priority={index < EAGER_TILES}
           />

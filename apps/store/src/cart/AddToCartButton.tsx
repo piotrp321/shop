@@ -9,14 +9,18 @@ import { PRODUCT_GONE, SAVE_FAILED, SessionExpired } from "./messages";
 type Feedback = { kind: "added" } | { kind: "error"; failure: CartFailure; returnTo: string };
 
 /**
- * Adds one unit of the product to the cart. The API decides whether it can be added (limits, price, availability);
- * its answer is shown here and the header counter gets the number of units from it.
+ * Adds one unit of the variant to the cart; without a variant (none chosen yet) the button is disabled. The API decides
+ * whether it can be added (limits, price, availability); its answer is shown here and the header counter gets the
+ * number of units from it.
  */
-export function AddToCartButton({ variantId }: { variantId: string }) {
+export function AddToCartButton({ variantId }: { variantId: string | null }) {
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   async function add() {
+    if (variantId === null) {
+      return;
+    }
     setPending(true);
     setFeedback(null);
     const result = await addCartItem(variantId, 1);
@@ -31,7 +35,7 @@ export function AddToCartButton({ variantId }: { variantId: string }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <Button type="button" size="sm" disabled={pending} onClick={() => void add()}>
+      <Button type="button" size="sm" disabled={pending || variantId === null} onClick={() => void add()}>
         Do koszyka
       </Button>
       {feedback?.kind === "added" ? (
