@@ -22,12 +22,14 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Struktura
 
-- `app/` – trasy App Router, w tym route handlery logowania w `app/auth/` i koszyka w `app/api/cart/`.
+- `app/` – trasy App Router, w tym route handlery logowania w `app/auth/`, koszyka w `app/api/cart/` i kasy
+  w `app/api/checkout/`.
 - `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session` i `/api/cart/*`
   z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
 - `src/account/` – komponent konta w nagłówku (Client Component).
 - `src/cart/` – BFF koszyka (wybór koszyka, ciasteczka `store_cart` i `store_cart_notice`, scalanie koszyka gościa
   w `merge.ts`, wywołania API, mapowanie błędów) oraz komponenty koszyka: `AddToCartButton`, `CartBadge` i `CartPage`.
+- `src/checkout/` – BFF kasy (złożenie zamówienia, ciasteczko `store_order_confirmation`).
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
 - `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`).
 - `src/components/ui/` – komponenty shadcn/ui.
@@ -99,6 +101,26 @@ Klienta API generuje `make api-client` z katalogu głównego.
   linii pochodzą z ostatniej odpowiedzi API, a odrzucona zmiana zostawia ostatni widok.
 - Odpowiedzi: 200 z danymi API, 404/409/422 z `{ detail }` API, 401 (sesja się skończyła: usunięta z Redisa i
   ciasteczka), 403, 503 (chwilowy błąd API, Redisa lub Keycloaka; sesja zostaje). Wszystkie z `private, no-store`.
+
+## Kasa
+
+- `POST /api/checkout` (`runCheckout` w `src/checkout/bff.ts`, owinięty w `withCartDeps`, testy na dublerze API
+  z `src/cart/test-support.ts`) składa zamówienie całego koszyka. Te same zabezpieczenia co zapisy koszyka (`Origin`
+  równy `STORE_URL` i `Content-Type: application/json`, inaczej 403 bez API). Nagłówek `Idempotency-Key` wybiera
+  przeglądarka; jego brak albo treść, która nie jest obiektem JSON, daje 422 „Nieprawidłowe dane.” bez API. BFF
+  przekazuje klucz do API bez zmian.
+- Koszyk wybiera sesja, jak w BFF koszyka: klient `POST /api/v1/me/orders` z tokenem z `freshAccessToken` po scaleniu
+  `store_cart` (`mergeGuestCart`), gość `POST /api/v1/orders` z `cartId` z `store_cart`. Bez `store_cart` (albo
+  z niepoprawnym podpisem, wtedy ciasteczko jest usuwane) odpowiedź to 409 „Koszyk jest pusty.” bez API.
+- Do API trafiają tylko pola kontraktu (`pickFields` w `src/checkout/api.ts`: gość `email`, `fullName`, `phone`,
+  `street`, `postalCode`, `city`, `expectedTotalGross`, klient bez `email`), z wartościami, jakie przysłała przeglądarka:
+  sprawdza je API. `cartId` pochodzi wyłącznie z ciasteczka; ceny, linie i inne pola przeglądarki są pomijane.
+- Sukces (201 albo 200 przy powtórzeniu z tym samym kluczem): odpowiedź `{ number }` i ciasteczko
+  `store_order_confirmation` z `{ number, email, totalGross, currency }` z `OrderView` (JSON w base64url, podpisany jak
+  `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina). `store_cart` zostaje (koszyk jest pusty).
+- Błędy: 404, 409 i 422 API z `{ detail, violations }`; 404 gościa (koszyk zniknął) usuwa `store_cart`; 401 sesji
+  kończy sesję jak w koszyku; 400, 415, 401 gościa, 5xx i niedostępne API dają 503. Wszystkie odpowiedzi
+  z `private, no-store`.
 
 ## Logowanie
 
