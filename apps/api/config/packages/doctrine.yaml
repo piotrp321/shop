@@ -31,6 +31,11 @@ doctrine:
                 is_bundle: false
                 dir: '%kernel.project_dir%/src/Cart/Infrastructure/Persistence/Doctrine/Record'
                 prefix: 'App\Cart\Infrastructure\Persistence\Doctrine\Record'
+            Ordering:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/Ordering/Infrastructure/Persistence/Doctrine/Record'
+                prefix: 'App\Ordering\Infrastructure\Persistence\Doctrine\Record'
 
 when@test: &test
     doctrine:
