@@ -21,15 +21,15 @@ use Symfony\Component\Validator\Constraints as Assert;
 final readonly class PlaceGuestOrderRequest
 {
     /**
-     * 9 digits, optionally after +48, with any spaces and hyphens: what Contact accepts once it drops them.
-     */
-    /**
      * The format of a cart id of Cart (CartId): 8-4-4-4-12 hex digits in any letter case, of any version and variant.
      * A strict UUID check would refuse ids Cart takes (and give several violations for one value); an id of this
      * format without a cart is a 404, like an unknown cart.
      */
     public const string CART_ID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/Di';
 
+    /**
+     * 9 digits, optionally after +48, with any spaces and hyphens: what Contact accepts once it drops them.
+     */
     public const string PHONE_PATTERN = '/^[ -]*(?:\+[ -]*4[ -]*8)?(?:[ -]*[0-9]){9}[ -]*$/D';
     public const string POSTAL_CODE_PATTERN = '/^[0-9]{2}-[0-9]{3}$/D';
 
