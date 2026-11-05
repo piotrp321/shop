@@ -20,6 +20,7 @@ use App\Tests\Integration\Ordering\Mail\MailpitInbox;
 use App\Tests\Integration\Ordering\Mail\ToggleableOrderConfirmationMailer;
 use App\Tests\Integration\Shared\Messaging\MessagingKernelTestCase;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -138,8 +139,14 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
         $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
         $real = $this->adapter();
+        // Two EntityManagers on the same connection (so the same transaction of the test), like two workers each with
+        // its own: the loser keeps the record it read in its identity map, so it passes the in-memory version check
+        // of DoctrineOrderRepository::save() and is stopped only by the UPDATE ... WHERE version = ?. With one shared
+        // EntityManager the winner would raise the version of that very record and the loser would fail the
+        // in-memory check, leaving the optimistic lock itself untested.
+        $winnerEntityManager = new EntityManager($entityManager->getConnection(), $entityManager->getConfiguration());
+        $winner = new SendOrderConfirmation(new DoctrineOrderRepository($winnerEntityManager), $real, new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:00:05+00:00')));
         $orders = new DoctrineOrderRepository($entityManager);
-        $winner = new SendOrderConfirmation($orders, $real, new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:00:05+00:00')));
         // The loser has read the order and is sending when the winner runs through: it sends and stores the marker.
         $loser = new SendOrderConfirmation($orders, new class($real, static fn () => $winner($event)) implements OrderConfirmationMailer {
             public function __construct(private readonly OrderConfirmationMailer $inner, private readonly \Closure $meanwhile)
