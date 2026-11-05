@@ -91,8 +91,9 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 - `OrderNumber`: `R-` i liczba ≥ 100001 (P6).
 - `OrderOwner`: `guest` albo `customer(customerId)`; `customerId` to `sub` z tokena (1–255 znaków).
 - `IdempotencyKey`: 1–100 znaków `[A-Za-z0-9._:-]` (ten sam format co klucze Inventory).
-- `EmailAddress`: przycięty, do 254 znaków, poprawny adres (walidacja formatu w DTO, domena sprawdza długość
-  i obecność `@`).
+- `EmailAddress`: przycięty, do 254 znaków, poprawny adres (walidacja formatu w DTO: `Assert\Email` i ograniczenie
+  `MailerAcceptsEmail`, które buduje `Symfony\Component\Mime\Address` jak Mailer, więc `a..b@…`, `.a@…` i `a.@…`
+  dają 422 zamiast zamówienia bez e-maila; domena sprawdza długość i obecność `@`).
 - `Contact {email, fullName, phone}`: `fullName` 1–100 znaków po przycięciu; `phone`: 9 cyfr, opcjonalnie poprzedzone
   `+48`; spacje i myślniki są usuwane, zapis w postaci `+48NNNNNNNNN`.
 - `ShippingAddress {street, postalCode, city, country}`: `street` 1–100, `city` 1–60 znaków po przycięciu,
@@ -322,7 +323,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | `cartId` | brak, `null` | Identyfikator koszyka jest wymagany. |
 | `cartId` | nie UUID | Identyfikator koszyka musi być UUID. |
 | `email` | brak, `null`, pusty | Adres e-mail jest wymagany. |
-| `email` | zły format albo > 254 znaki | Podaj poprawny adres e-mail. |
+| `email` | zły format (także taki, jakiego nie przyjmie Mailer) albo > 254 znaki | Podaj poprawny adres e-mail. |
 | `fullName` | brak, pusty po przycięciu | Imię i nazwisko są wymagane. |
 | `fullName` | > 100 znaków | Imię i nazwisko mogą mieć najwyżej 100 znaków. |
 | `phone` | brak, pusty | Numer telefonu jest wymagany. |

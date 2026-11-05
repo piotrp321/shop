@@ -106,6 +106,9 @@ trait OrderRequestViolationCases
         yield 'email without @' => [['email' => 'anna.example.com'], [['email', self::EMAIL_INVALID]]];
         yield 'email without a domain' => [['email' => 'anna@'], [['email', self::EMAIL_INVALID]]];
         yield 'email with a space inside' => [['email' => 'anna nowak@example.com'], [['email', self::EMAIL_INVALID]]];
+        yield 'email with two dots in a row' => [['email' => 'a..b@example.com'], [['email', self::EMAIL_INVALID]]];
+        yield 'email with a leading dot' => [['email' => '.a@example.com'], [['email', self::EMAIL_INVALID]]];
+        yield 'email with a trailing dot before the @' => [['email' => 'a.@example.com'], [['email', self::EMAIL_INVALID]]];
         yield 'email of 255 characters' => [['email' => str_repeat('a', 243).'@example.com'], [['email', self::EMAIL_INVALID]]];
         yield 'email a number' => [['email' => 5], [['email', self::EMAIL_INVALID]]];
         yield 'email an array' => [['email' => ['anna@example.com']], [['email', self::EMAIL_INVALID]]];

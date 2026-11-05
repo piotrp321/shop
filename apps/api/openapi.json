@@ -2211,7 +2211,7 @@
                         "format": "uuid"
                     },
                     "email": {
-                        "description": "Email address the order is confirmed to, at most 254 characters once trimmed.",
+                        "description": "Email address the order is confirmed to, at most 254 characters once trimmed, one the mailer accepts (no empty part between dots).",
                         "type": "string",
                         "format": "email",
                         "example": "anna.nowak@example.com",

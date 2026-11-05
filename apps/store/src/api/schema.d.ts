@@ -667,7 +667,7 @@ export interface components {
             cartId: string;
             /**
              * Format: email
-             * @description Email address the order is confirmed to, at most 254 characters once trimmed.
+             * @description Email address the order is confirmed to, at most 254 characters once trimmed, one the mailer accepts (no empty part between dots).
              * @example anna.nowak@example.com
              */
             email: string;

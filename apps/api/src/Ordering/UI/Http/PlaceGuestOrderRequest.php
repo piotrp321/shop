@@ -7,6 +7,7 @@ namespace App\Ordering\UI\Http;
 use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\EmailAddress;
 use App\Ordering\Domain\ShippingAddress;
+use App\Ordering\UI\Http\Validation\MailerAcceptsEmail;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -42,13 +43,14 @@ final readonly class PlaceGuestOrderRequest
             new Assert\Regex(pattern: self::CART_ID_PATTERN, message: 'Identyfikator koszyka musi być UUID.'),
         ])]
         public mixed $cartId,
-        #[OA\Property(type: 'string', format: 'email', maxLength: EmailAddress::MAX_LENGTH, description: 'Email address the order is confirmed to, at most 254 characters once trimmed.', example: 'anna.nowak@example.com')]
+        #[OA\Property(type: 'string', format: 'email', maxLength: EmailAddress::MAX_LENGTH, description: 'Email address the order is confirmed to, at most 254 characters once trimmed, one the mailer accepts (no empty part between dots).', example: 'anna.nowak@example.com')]
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Adres e-mail jest wymagany.'),
             new Assert\Type('string', message: 'Podaj poprawny adres e-mail.'),
             new Assert\NotBlank(message: 'Adres e-mail jest wymagany.', normalizer: 'trim'),
             new Assert\Length(max: EmailAddress::MAX_LENGTH, maxMessage: 'Podaj poprawny adres e-mail.', normalizer: 'trim'),
             new Assert\Email(message: 'Podaj poprawny adres e-mail.', normalizer: 'trim'),
+            new MailerAcceptsEmail(),
         ])]
         public mixed $email,
         #[OA\Property(type: 'string', maxLength: Contact::MAX_FULL_NAME_LENGTH, description: 'Full name, 1 to 100 characters once trimmed.', example: 'Anna Nowak')]
