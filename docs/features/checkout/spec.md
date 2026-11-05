@@ -382,6 +382,9 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   inną kwotę, która należy do odcisku żądania, a nic nie zostało złożone). Po 409 `CartEmpty`, `CartNotOrderable`,
   `InsufficientStockForOrder` i po nieznanym 409 klucz zostaje: ponowienie tym samym kluczem po ewentualnym sukcesie
   da powtórzenie 200, nie drugie zamówienie. Strona niczego nie ponawia sama: każdy POST to kliknięcie klienta.
+  Znany skutek reguły „zmiana danych = nowy klucz”: gdy wynik poprzedniej próby był niepewny (błąd sieci, 5xx, 503,
+  403), a zamówienie jednak powstało, zmiana pola i ponowne kliknięcie dają 409 `CartEmpty` (pusty koszyk), a nie
+  potwierdzenie. Drugiego zamówienia nie ma, bo koszyk jest pusty.
 - `expectedTotalGross` = `totals.gross` z ostatnio wczytanego podsumowania. Na czas żądania przycisk jest
   zablokowany.
 - Sukces: licznik koszyka 0 (zdarzenie `src/cart/events.ts`), przejście na `/checkout/confirmation`.

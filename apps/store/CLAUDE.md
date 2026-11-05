@@ -138,7 +138,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   jednej logicznej próby. Powstaje przy wejściu na stronę i wraca przy ponowieniu niepewnego wyniku (błąd sieci, 403,
   5xx) oraz po 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` i nieznanym; nowy klucz po zmianie
   pola formularza, po 409 `IdempotencyKeyReused` i po 409 `OrderTotalChanged` (inna kwota w żądaniu, nic nie zostało
-  złożone). Formularz ma `noValidate`: dane sprawdza API, a komunikaty 422 (`violations`) są przy polach.
+  złożone). Znany skutek: gdy wynik poprzedniej próby był niepewny (sieć, 5xx, 503, 403), a zamówienie jednak powstało,
+  zmiana pola i ponowne kliknięcie dają 409 `CartEmpty` (pusty koszyk), a nie potwierdzenie; drugiego zamówienia nie
+  ma, bo koszyk jest pusty. Formularz ma `noValidate`: dane sprawdza API, a komunikaty 422 (`violations`) są przy polach.
 - Odpowiedzi kasy w UI: sukces ogłasza licznik 0 (`src/cart/events.ts`) i przechodzi na `/checkout/confirmation`.
   Przyczynę 409 wyznacza wyłącznie `type` (`placeOrder` zwraca `reason` z `conflictReason`, mapa typów w
   `src/checkout/problems.ts` jest sprawdzana kompilatorem względem schematu), nigdy tekst `detail`:
