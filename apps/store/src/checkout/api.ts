@@ -2,7 +2,7 @@ import type { ApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 
 export type OrderView = components["schemas"]["OrderView"];
-export type Violation = { propertyPath: string; title: string };
+export type Violation = NonNullable<components["schemas"]["Problem"]["violations"]>[number];
 
 /** An order of the API (201 placed, 200 repeated request), or the status, `detail` and `violations` of a refusal. */
 export type OrderResult =

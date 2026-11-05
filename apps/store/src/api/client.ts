@@ -138,7 +138,7 @@ export type PlaceOrderInput = {
   expectedTotalGross: number;
 };
 
-export type OrderViolation = { propertyPath: string; title: string };
+export type OrderViolation = NonNullable<components["schemas"]["Problem"]["violations"]>[number];
 
 /** How a call to the store's `/api/checkout` ended. `detail` and `violations` are the Polish texts of the API. */
 export type PlaceOrderResult =
