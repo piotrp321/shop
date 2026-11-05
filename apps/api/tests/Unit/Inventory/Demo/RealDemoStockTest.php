@@ -55,9 +55,9 @@ final class RealDemoStockTest extends TestCase
 
         self::assertGreaterThan(\count($quantities) / 2, $plenty, 'most variants have 20-50 units');
         self::assertGreaterThanOrEqual(2, $low);
-        self::assertLessThanOrEqual(15, $low);
+        self::assertLessThanOrEqual(10, $low);
         self::assertGreaterThanOrEqual(2, $none);
-        self::assertLessThanOrEqual(15, $none);
+        self::assertLessThanOrEqual(10, $none);
         self::assertSame(\count($quantities), $plenty + $low + $none, 'no other quantities');
     }
 

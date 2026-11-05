@@ -10,8 +10,8 @@ imgproxy), a fronty rozmawiają z API wyłącznie przez klientów TS wygenerowan
 Na czystym klonie repozytorium, z zainstalowanym tylko Dockerem:
 
 1. `make up` stawia cały stos i kończy się dopiero, gdy wszystkie usługi są zdrowe.
-2. `make seed` ładuje dane demo (300–500 produktów sport/outdoor w drzewie kategorii, 20–30 zdjęć) i kończy się,
-   gdy indeks w Elasticsearch jest zgodny z Postgresem.
+2. `make seed` ładuje dane demo (191 produktów sport/outdoor z 1012 wariantami w drzewie kategorii, 20–30 zdjęć)
+   i kończy się, gdy indeks w Elasticsearch jest zgodny z Postgresem.
 3. Sklep pokazuje drzewo kategorii i siatkę produktów ze zdjęciami (WebP z imgproxy). Kliknięcie kategorii
    zawęża listę razem z podkategoriami.
 4. Klient loguje się w sklepie (realm `shop`), może się zarejestrować z weryfikacją e-mail (Mailpit), widzi
@@ -810,8 +810,8 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
   przewodniki i mapy (`printed_publication`).
 - `catalog:seed-demo` rozwija szablony deterministycznie (iloczyn kombinacji w ustalonej kolejności, bez losowości)
   do 191 produktów i 1012 wariantów: warianty produktu to iloczyn wartości jego osi w kolejności pliku (pierwsza oś
-  zmienia się najwolniej), a produkt bez osi (Hantle regulowane) ma jeden wariant domyślny. Zdjęcie produktu jest wybierane z puli kategorii według pozycji produktu w kolejności
-  rozwijania. Reguła zapisana w pliku pozostawia kilka produktów bez zdjęć.
+  zmienia się najwolniej), a produkt bez osi (Hantle regulowane) ma jeden wariant domyślny. Zdjęcie produktu jest wybierane z puli kategorii według pozycji produktu
+  w kolejności rozwijania. Reguła zapisana w pliku pozostawia kilka produktów bez zdjęć.
 - Zdjęcia: 20–30 prawdziwych zdjęć „w terenie” (ludzie w górach, na szlaku, na rowerze) w spójnej tonacji,
   z Unsplash lub Pexels, przeskalowanych do około 1600 px na dłuższym boku, w `apps/api/fixtures/images/`.
   `apps/api/fixtures/images/CREDITS.md` podaje dla każdego pliku źródło, autora i licencję.

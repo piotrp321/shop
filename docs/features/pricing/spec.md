@@ -130,8 +130,9 @@ Pricing:
 - `ReconcileTax(apply)`: opis w sekcji „Reconcile”.
 - Dane demo: `pricing:seed-demo`. `fixtures/prices.yaml` przypisuje brutto do wzorców kluczy wariantów demo
   (`key` = `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje dowolny
-  ciąg znaków, także `/`; np. `przewodnik-*/oprawa-twarda: 5990`; ceny różnią się między wariantami przewodników, map i dań liofilizowanych). Warianty z portu `VariantsForPricing`
-  (Catalog `ListVariantIdentities`), zapis przez `SetVariantPrice` ze źródłem `seed`. Wariant demo bez dopasowanego
+  ciąg znaków, także `/`; np. `przewodnik-*/oprawa-twarda: 5990`; ceny różnią się między wariantami przewodników,
+  map i dań liofilizowanych). Warianty z portu `VariantsForPricing` (Catalog `ListVariantIdentities`), zapis przez
+  `SetVariantPrice` ze źródłem `seed`. Wariant demo bez dopasowanego
   wzorca kończy seed błędem bez zmian w danych. `make seed` uruchamia go po danych katalogu, więc każdy wariant demo
   ma cenę.
 

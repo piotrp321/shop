@@ -232,7 +232,8 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 ## Dane demo
 
 Komenda ładująca realistyczny katalog sportowo-outdoorowy: około 200 produktów (marka × model) w drzewie kategorii,
-z około tysiącem wariantów (kolor, rozmiar, smak, oprawa; ceny i stany per wariant), zdjęciami (prawdziwe zdjęcia „w terenie” w spójnej tonacji, wgrywane do Garage), cenami w różnych stawkach VAT,
+z około tysiącem wariantów (kolor, rozmiar, smak, oprawa; ceny i stany per wariant), zdjęciami (prawdziwe zdjęcia
+„w terenie” w spójnej tonacji, wgrywane do Garage), cenami w różnych stawkach VAT,
 stanami magazynowymi i kilkoma aktywnymi promocjami.
 Do tego konta testowe w Keycloak: klient w realmie `shop`, pracownicy z każdą rolą w realmie `backoffice`. Po `make up` i `make seed`
 sklep ma wyglądać jak prawdziwy.
