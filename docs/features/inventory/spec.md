@@ -1,16 +1,16 @@
 # Inventory: stany magazynowe (MVP)
 
-Punkt 9 MVP z `docs/vision.md` (bez Ordering).
+Punkt 9 MVP z `docs/vision.md`. Rezerwację przy złożeniu zamówienia opisuje `docs/features/checkout/spec.md`.
 
 ## Cel i zakres
 
 Stan magazynowy wariantu produktu w jednym magazynie, w całych sztukach: fizyczny, zarezerwowany i dostępny
 (fizyczny − zarezerwowany). Kluczem stanu, rezerwacji i historii jest wariant (`variantId` z Catalog,
 `docs/features/variants/spec.md`); produkt bez osi wariantów ma jeden wariant domyślny. Przyjęcia i korekty w panelu, historia każdej operacji, rezerwacja, zwolnienie
-i zatwierdzenie z kluczem idempotencji przez port aplikacyjny dla przyszłego Ordering, poziom dostępności w sklepie.
+i zatwierdzenie z kluczem idempotencji przez port aplikacyjny dla Ordering, poziom dostępności w sklepie.
 Sprzedaż ponad stan jest niemożliwa także przy równoległych operacjach.
 
-Poza zakresem: Ordering, Cart, Checkout, wiele magazynów, lokalizacje, kompletacja, zdarzenia domenowe,
+Poza zakresem: wiele magazynów, lokalizacje, kompletacja, zdarzenia domenowe,
 Varnish i ISR. Nie powstają endpointy ani ekrany rezerwacji: port jest testowany na poziomie aplikacji.
 
 ## Bounded contexty i zależności
@@ -19,6 +19,7 @@ Varnish i ISR. Nie powstają endpointy ani ekrany rezerwacji: port jest testowan
 |---|---|
 | Inventory | stany, przyjęcia, korekty, rezerwacje i historia wariantu, poziom dostępności |
 | Catalog | warianty produktów, zapytania dla Inventory: `GetVariant`, `ListVariantIdentities`, `ListProductVariants`, `SearchBackofficeProducts` |
+| Ordering | rezerwacja stanów zamówienia przez `ReserveStock` w transakcji `PlaceOrder` |
 | Sklep, panel | wyświetlanie wartości z API; żadnego liczenia dostępności ani poziomów |
 
 - `Inventory_Infrastructure → Catalog_Application`: adaptery portów Inventory wołają zapytania Catalog przez
@@ -26,7 +27,10 @@ Varnish i ISR. Nie powstają endpointy ani ekrany rezerwacji: port jest testowan
 - `Inventory_Infrastructure → Backoffice_Application` (`StockVoter`) i `Inventory_UI → Backoffice_Application`
   (aktor operacji): wyłącznie kontrakt `AuthenticatedStaffMember`. `Inventory_Domain` i `Inventory_Application`
   nie zależą od Backoffice.
-- Catalog i Pricing nie zależą od Inventory w żadnej warstwie. Inventory nie zależy od Pricing.
+- Catalog i Pricing nie zależą od Inventory w żadnej warstwie. Inventory nie zależy od Pricing ani od Ordering.
+- `Ordering_Infrastructure → Inventory_Application`: adapter portu `StockReservations` Ordering
+  (`CommandBusStockReservations`) wysyła `ReserveStock` przez `command.bus`; Ordering zna tylko warstwę Application
+  Inventory.
 - Domena Inventory ma własne value objecty (`VariantId` itd.; `ProductId` tylko w liście stanów panelu) i nie importuje kodu innych contextów.
 - Inventory w MVP nie publikuje ani nie konsumuje zdarzeń domenowych (jak Pricing). Zdarzenie zmiany dostępności
   dochodzi razem z Varnishem i rewalidacją ISR.
@@ -196,8 +200,7 @@ Zapytania (`query.bus`):
 - `GetStockLevels(variantIds)` (1–4800 id, czyli 48 produktów po 100 wariantów) → dla każdego id
   `StockLevel {variantId, physical, reserved, available, level, version|null}` w kolejności żądania (powtórzone id
   raz); wariant bez rekordu: zera i `version = null`. Jedno zapytanie `WHERE variant_id = ANY(:ids)`, z bazy, bez
-  cache. `level` z `AvailabilityLevel`. Autorytatywny odczyt dla Cart (linie koszyka i oferta produktów listy) i
-  przyszłego Ordering.
+  cache. `level` z `AvailabilityLevel`. Autorytatywny odczyt dla Cart (linie koszyka i oferta produktów listy).
 - `ListBackofficeStock(term, categoryId, after, perPage)`: strona produktów z portu `ProductDirectory` (Catalog
   `SearchBackofficeProducts`, kursor po produktach), warianty strony z etykietami jednym wywołaniem (Catalog
   `ListProductVariants`) i ich stany jednym zapytaniem. Wynik: produkty strony, a w każdym jego warianty w kolejności
@@ -206,11 +209,15 @@ Zapytania (`query.bus`):
 - `GetStockHistory(variantId, after, perPage)`: od najnowszych, keyset po `(occurred_at, id)` malejąco. Nieznany
   wariant: 404. Wariant bez rekordu: pusta lista.
 
-Kontrakt dla przyszłego Ordering (nie jest implementowany):
-- Ordering wywołuje komendy w procesie, przez własny port, w swojej transakcji (zagnieżdżony dispatch na tym samym
-  połączeniu), więc zamówienie i rezerwacja zapisują się razem.
+Kontrakt dla Ordering:
+- Ordering wywołuje komendy w procesie, przez własny port (`StockReservations`), w swojej transakcji (zagnieżdżony
+  dispatch na tym samym połączeniu), więc zamówienie i rezerwacja zapisują się razem. Zrealizowane w `PlaceOrder`
+  (`docs/features/checkout/spec.md`): `ReserveStock` z kluczem `orderId` i liniami zamówienia jest ostatnią operacją
+  przed zapisem zamówienia; `InsufficientStock` Ordering tłumaczy na własny `InsufficientStockForOrder` (bez liczby
+  sztuk) i rzuca dalej, więc cała transakcja (koszyk, rezerwacja, zamówienie, outbox) jest wycofana.
 - Kluczem rezerwacji jest identyfikator zamówienia.
-- Zatwierdzenie przy wysyłce, zwolnienie przy anulowaniu lub nieopłaceniu. Czas na opłacenie ustala Ordering.
+- Zatwierdzenie przy wysyłce, zwolnienie przy anulowaniu lub nieopłaceniu (ORDER-MANAGEMENT, PAYMENT). Czas na
+  opłacenie ustala Ordering.
 
 Dane demo: `inventory:seed-demo`
 - Czyści tabele Inventory i przechodzi warianty z portu `VariantsForInventory` (Catalog `ListVariantIdentities`).
@@ -222,7 +229,8 @@ Dane demo: `inventory:seed-demo`
 - Stan > 0: `ReceiveStock` ze źródłem `seed` i kluczem `seed:<variantId>`. Stan 0: pusty rekord przez
   `CreateEmptyStock`, bez przyjęcia i wpisu historii.
 - Wariant demo bez dopasowanego wzorca kończy seed błędem bez zmian w danych.
-- `make seed` uruchamia go po `pricing:seed-demo`. W `prod` wymaga `--force-reset`.
+- `make seed` uruchamia go po `pricing:seed-demo` i `ordering:seed-demo` (ten usuwa zamówienia, więc po seedzie nie
+  ma zamówienia bez rezerwacji ani rezerwacji zamówienia bez zamówienia). W `prod` wymaga `--force-reset`.
 
 ## API
 
