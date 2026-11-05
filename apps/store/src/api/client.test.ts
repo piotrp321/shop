@@ -18,9 +18,9 @@ const stubFetch = (implementation: () => Promise<Response>) => {
 
 describe("loadAccountSession", () => {
   it("asks the store's own /auth/session, same origin and uncached", async () => {
-    const fetch = stubFetch(async () => Response.json({ name: "Jan" }));
+    const fetch = stubFetch(async () => Response.json({ name: "Jan", email: "jan.kowalski@example.com" }));
 
-    expect(await loadAccountSession()).toEqual({ status: "ok", session: { name: "Jan" } });
+    expect(await loadAccountSession()).toEqual({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com" } });
     expect(fetch).toHaveBeenCalledWith("/auth/session", { credentials: "same-origin", cache: "no-store" });
   });
 

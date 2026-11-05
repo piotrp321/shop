@@ -15,8 +15,11 @@ export function createApiClient(options: { baseUrl: string; accessToken?: string
   });
 }
 
-/** Body of the store's own `GET /auth/session` (route handler in app/auth/session): never tokens. */
-export type AccountSession = { name: string } | null;
+/**
+ * Body of the store's own `GET /auth/session` (route handler in app/auth/session): never tokens. `name` falls back to
+ * the e-mail when the account has no name; `email` is the address of the account (the checkout confirms orders to it).
+ */
+export type AccountSession = { name: string; email: string } | null;
 
 export type AccountSessionResult = { status: "ok"; session: AccountSession } | { status: "unavailable" };
 
