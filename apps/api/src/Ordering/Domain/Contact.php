@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Ordering\Domain;
 
 /**
- * Who to contact about an order: the email address, the full name (1 to 100 characters after trimming) and a Polish
+ * Who to contact about an order: the email address, the full name (1 to 100 characters after trimming, no control
+ * character) and a Polish
  * phone number, stored as +48 and 9 digits (spaces and hyphens are dropped, +48 is optional).
  */
 final readonly class Contact
@@ -25,6 +26,7 @@ final readonly class Contact
      */
     public static function of(EmailAddress $email, string $fullName, string $phone): self
     {
+        $raw = $fullName;
         $fullName = trim($fullName);
         $length = mb_strlen($fullName);
         if (0 === $length) {
@@ -32,6 +34,9 @@ final readonly class Contact
         }
         if ($length > self::MAX_FULL_NAME_LENGTH) {
             throw InvalidOrderInput::fullNameTooLong();
+        }
+        if (ControlCharacters::in($raw)) {
+            throw InvalidOrderInput::fullNameCharacters();
         }
 
         return new self($email, $fullName, self::normalisedPhone($phone));

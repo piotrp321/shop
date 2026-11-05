@@ -93,10 +93,14 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 - `IdempotencyKey`: 1–100 znaków `[A-Za-z0-9._:-]` (ten sam format co klucze Inventory).
 - `EmailAddress`: przycięty, do 254 znaków, poprawny adres (walidacja formatu w DTO: `Assert\Email` i ograniczenie
   `MailerAcceptsEmail`, które buduje `Symfony\Component\Mime\Address` jak Mailer, więc `a..b@…`, `.a@…` i `a.@…`
-  dają 422 zamiast zamówienia bez e-maila; domena sprawdza długość i obecność `@`).
-- `Contact {email, fullName, phone}`: `fullName` 1–100 znaków po przycięciu; `phone`: 9 cyfr, opcjonalnie poprzedzone
+  dają 422 zamiast zamówienia bez e-maila; domena sprawdza długość, obecność `@` i brak znaków sterujących).
+- Znaki sterujące `\x00-\x1F` i `\x7F` są odrzucane w `email`, `fullName`, `phone`, `street`, `postalCode` i `city`,
+  sprawdzane w wartości w takiej postaci, w jakiej przyszła (`trim` usuwa NUL, tabulator i końce linii z brzegów, więc
+  sprawdzenie po przycięciu wpuściłoby je i zmieniło wartość po cichu). Stała wzorca jest w `ControlCharacters`
+  (Ordering Domain); DTO używa jej w `Assert\Regex(match: false)`, VO rzucają `InvalidOrderInput`.
+- `Contact {email, fullName, phone}`: `fullName` 1–100 znaków po przycięciu, bez znaków sterujących; `phone`: 9 cyfr, opcjonalnie poprzedzone
   `+48`; spacje i myślniki są usuwane, zapis w postaci `+48NNNNNNNNN`.
-- `ShippingAddress {street, postalCode, city, country}`: `street` 1–100, `city` 1–60 znaków po przycięciu,
+- `ShippingAddress {street, postalCode, city, country}`: `street` 1–100, `city` 1–60 znaków po przycięciu, oba bez znaków sterujących,
   `postalCode` `NN-NNN`, `country` zawsze `PL`.
 - `Money`: nieujemne grosze (`int`) i `Currency` (tylko `PLN`).
 - `PriceCopy {net, vat, gross, vatRateBp, taxClass}`: cena jednostkowa skopiowana z Pricing; `net + vat = gross`.
@@ -323,14 +327,15 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | `cartId` | brak, `null` | Identyfikator koszyka jest wymagany. |
 | `cartId` | nie UUID | Identyfikator koszyka musi być UUID. |
 | `email` | brak, `null`, pusty | Adres e-mail jest wymagany. |
-| `email` | zły format (także taki, jakiego nie przyjmie Mailer) albo > 254 znaki | Podaj poprawny adres e-mail. |
+| `email` | zły format (także taki, jakiego nie przyjmie Mailer), znak sterujący albo > 254 znaki | Podaj poprawny adres e-mail. |
 | `fullName` | brak, pusty po przycięciu | Imię i nazwisko są wymagane. |
 | `fullName` | > 100 znaków | Imię i nazwisko mogą mieć najwyżej 100 znaków. |
+| `fullName` | znak sterujący | Imię i nazwisko zawierają niedozwolone znaki. |
 | `phone` | brak, pusty | Numer telefonu jest wymagany. |
-| `phone` | inny format | Podaj 9-cyfrowy numer telefonu. |
-| `street` | brak, pusty / > 100 | Ulica i numer są wymagane. / Ulica i numer mogą mieć najwyżej 100 znaków. |
-| `postalCode` | brak, pusty / zły format | Kod pocztowy jest wymagany. / Podaj kod pocztowy w formacie 00-000. |
-| `city` | brak, pusty / > 60 | Miejscowość jest wymagana. / Miejscowość może mieć najwyżej 60 znaków. |
+| `phone` | inny format (także ze znakiem sterującym) | Podaj 9-cyfrowy numer telefonu. |
+| `street` | brak, pusty / > 100 / znak sterujący | Ulica i numer są wymagane. / Ulica i numer mogą mieć najwyżej 100 znaków. / Ulica i numer zawierają niedozwolone znaki. |
+| `postalCode` | brak, pusty / zły format (także ze znakiem sterującym) | Kod pocztowy jest wymagany. / Podaj kod pocztowy w formacie 00-000. |
+| `city` | brak, pusty / > 60 / znak sterujący | Miejscowość jest wymagana. / Miejscowość może mieć najwyżej 60 znaków. / Miejscowość zawiera niedozwolone znaki. |
 | `expectedTotalGross` | brak, `null` / nie liczba całkowita / ujemna | Kwota zamówienia jest wymagana. / Kwota zamówienia musi być liczbą całkowitą. / Kwota zamówienia nie może być ujemna. |
 
 - Nagłówek `Idempotency-Key` brak albo zły format: 400 z naruszeniem nagłówka (jak przyjęcie magazynowe).

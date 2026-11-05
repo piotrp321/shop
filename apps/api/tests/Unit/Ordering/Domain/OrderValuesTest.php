@@ -100,6 +100,80 @@ final class OrderValuesTest extends TestCase
         }
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function withControlCharacters(): iterable
+    {
+        yield 'NUL inside' => ["A\0B"];
+        yield 'NUL at the end, which a trim would drop' => ["AB\0"];
+        yield 'tab at the end' => ["AB\t"];
+        yield 'line break at the start' => ["\nAB"];
+        yield 'carriage return inside' => ["A\rB"];
+        yield 'unit separator' => ["A\x1FB"];
+        yield 'DEL' => ["A\x7FB"];
+    }
+
+    #[DataProvider('withControlCharacters')]
+    public function testFullNameWithAControlCharacterIsRefused(string $fullName): void
+    {
+        $this->expectException(InvalidOrderInput::class);
+        $this->expectExceptionMessage('Imię i nazwisko zawierają niedozwolone znaki.');
+
+        self::contact(fullName: $fullName);
+    }
+
+    #[DataProvider('withControlCharacters')]
+    public function testStreetAndCityWithAControlCharacterAreRefused(string $value): void
+    {
+        foreach ([[$value, 'Warszawa', 'Ulica i numer zawierają niedozwolone znaki.'], ['Długa 1', $value, 'Miejscowość zawiera niedozwolone znaki.']] as [$street, $city, $message]) {
+            try {
+                ShippingAddress::inPoland($street, '00-950', $city);
+                self::fail('Expected InvalidOrderInput.');
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame($message, $invalid->getMessage());
+            }
+        }
+    }
+
+    #[DataProvider('withControlCharacters')]
+    public function testEmailWithAControlCharacterIsRefusedAlsoAtTheEnds(string $value): void
+    {
+        foreach (['jan'.$value.'@example.com', 'jan@example.com'.$value, $value.'jan@example.com'] as $email) {
+            try {
+                EmailAddress::fromString($email);
+                self::fail('Expected InvalidOrderInput.');
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame('Podaj poprawny adres e-mail.', $invalid->getMessage());
+            }
+        }
+    }
+
+    #[DataProvider('withControlCharacters')]
+    public function testPhoneAndPostalCodeWithAControlCharacterAreRefused(string $value): void
+    {
+        foreach ([static fn () => self::contact(phone: '600100'.$value.'200'), static fn () => self::contact(phone: '600100200'.$value), static fn () => ShippingAddress::inPoland('Długa 1', '00-95'.$value, 'Warszawa')] as $build) {
+            try {
+                $build();
+                self::fail('Expected InvalidOrderInput.');
+            } catch (InvalidOrderInput) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    public function testAControlCharacterDoesNotChangeWhichMessageAnEmptyOrTooLongValueGets(): void
+    {
+        foreach (["\n", "\0", " \t "] as $blank) {
+            try {
+                self::contact(fullName: $blank);
+                self::fail('Expected InvalidOrderInput.');
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame('Imię i nazwisko są wymagane.', $invalid->getMessage());
+            }
+        }
+    }
+
     public function testShippingAddressIsTrimmedAndAlwaysInPoland(): void
     {
         $address = ShippingAddress::inPoland('  ul. Długa 1/2 ', ' 00-950 ', '  Warszawa ');

@@ -6,7 +6,7 @@ namespace App\Ordering\Domain;
 
 /**
  * Where an order goes, copied into it: a street with its number (1 to 100 characters after trimming), a postal code
- * NN-NNN and a city (1 to 60 characters) in Poland, the only country.
+ * NN-NNN and a city (1 to 60 characters) in Poland, the only country. Street and city have no control character.
  */
 final readonly class ShippingAddress
 {
@@ -27,6 +27,7 @@ final readonly class ShippingAddress
      */
     public static function inPoland(string $street, string $postalCode, string $city): self
     {
+        [$rawStreet, $rawCity] = [$street, $city];
         $street = trim($street);
         $postalCode = trim($postalCode);
         $city = trim($city);
@@ -35,6 +36,9 @@ final readonly class ShippingAddress
         }
         if (mb_strlen($street) > self::MAX_STREET_LENGTH) {
             throw InvalidOrderInput::streetTooLong();
+        }
+        if (ControlCharacters::in($rawStreet)) {
+            throw InvalidOrderInput::streetCharacters();
         }
         if ('' === $postalCode) {
             throw InvalidOrderInput::postalCodeMissing();
@@ -47,6 +51,9 @@ final readonly class ShippingAddress
         }
         if (mb_strlen($city) > self::MAX_CITY_LENGTH) {
             throw InvalidOrderInput::cityTooLong();
+        }
+        if (ControlCharacters::in($rawCity)) {
+            throw InvalidOrderInput::cityCharacters();
         }
 
         return new self($street, $postalCode, $city);
