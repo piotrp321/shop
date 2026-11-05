@@ -12,9 +12,9 @@ use App\Cart\Domain\CartStatus;
 use App\Cart\Domain\GuestCartMerged;
 use App\Cart\Domain\MergeOutcome;
 use App\Cart\Domain\MergeOutcomeResult;
-use App\Cart\Domain\ProductId;
 use App\Cart\Domain\ProductOffer;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\VariantId;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -24,9 +24,9 @@ final class CartMergeTest extends TestCase
 {
     private const string GUEST = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
     private const string CUSTOMER = '1d2c3b4a-5e6f-4a70-8b9c-0d1e2f3a4b5c';
-    private const string P1 = '0192f0c4-7c1a-7c4e-9a6e-000000000001';
-    private const string P2 = '0192f0c4-7c1a-7c4e-9a6e-000000000002';
-    private const string P3 = '0192f0c4-7c1a-7c4e-9a6e-000000000003';
+    private const string V1 = '0192f0c4-7c1a-7c4e-9a6e-000000000001';
+    private const string V2 = '0192f0c4-7c1a-7c4e-9a6e-000000000002';
+    private const string V3 = '0192f0c4-7c1a-7c4e-9a6e-000000000003';
 
     private \DateTimeImmutable $now;
 
@@ -37,15 +37,15 @@ final class CartMergeTest extends TestCase
 
     public function testTheGuestLinesAreAddedWithTheirAddedAtAndTheGuestCartIsMerged(): void
     {
-        $customer = $this->customerCart('+100 days', [$this->line(self::P1, 1, '-3 days')]);
-        $guest = $this->guestCart([$this->line(self::P2, 2, '-2 days'), $this->line(self::P3, 1, '-1 day')]);
+        $customer = $this->customerCart('+100 days', [$this->line(self::V1, 1, '-3 days')]);
+        $guest = $this->guestCart([$this->line(self::V2, 2, '-2 days'), $this->line(self::V3, 1, '-1 day')]);
 
         $outcome = $customer->mergeFrom($guest, $this->now);
 
         self::assertEquals(MergeOutcome::merged(false), $outcome);
         self::assertSame(MergeOutcomeResult::Merged, $outcome->result);
         self::assertFalse($outcome->truncated);
-        self::assertSame([[self::P1, 1], [self::P2, 2], [self::P3, 1]], self::lines($customer));
+        self::assertSame([[self::V1, 1], [self::V2, 2], [self::V3, 1]], self::lines($customer));
         self::assertEquals([$this->at('-3 days'), $this->at('-2 days'), $this->at('-1 day')], self::addedAt($customer));
         self::assertEquals($this->now, $customer->updatedAt());
         self::assertEquals($this->now->modify('+180 days'), $customer->expiresAt());
@@ -58,35 +58,35 @@ final class CartMergeTest extends TestCase
 
     public function testTheQuantitiesOfAProductInBothCartsAreSummedOnTheCustomerLine(): void
     {
-        $customer = $this->customerCart('+100 days', [$this->line(self::P1, 3, '-3 days')]);
-        $guest = $this->guestCart([$this->line(self::P1, 4, '-1 day')]);
+        $customer = $this->customerCart('+100 days', [$this->line(self::V1, 3, '-3 days')]);
+        $guest = $this->guestCart([$this->line(self::V1, 4, '-1 day')]);
 
         $outcome = $customer->mergeFrom($guest, $this->now);
 
         self::assertEquals(MergeOutcome::merged(false), $outcome);
-        self::assertSame([[self::P1, 7]], self::lines($customer));
+        self::assertSame([[self::V1, 7]], self::lines($customer));
         self::assertEquals([$this->at('-3 days')], self::addedAt($customer), 'the customer line keeps its place');
     }
 
     public function testASumUpTo99IsNotTruncated(): void
     {
-        $customer = $this->customerCart('+100 days', [$this->line(self::P1, 60, '-3 days')]);
+        $customer = $this->customerCart('+100 days', [$this->line(self::V1, 60, '-3 days')]);
 
-        $outcome = $customer->mergeFrom($this->guestCart([$this->line(self::P1, 39, '-1 day')]), $this->now);
+        $outcome = $customer->mergeFrom($this->guestCart([$this->line(self::V1, 39, '-1 day')]), $this->now);
 
         self::assertEquals(MergeOutcome::merged(false), $outcome);
-        self::assertSame([[self::P1, 99]], self::lines($customer));
+        self::assertSame([[self::V1, 99]], self::lines($customer));
     }
 
     public function testASumAbove99IsCutTo99AndTruncated(): void
     {
-        $customer = $this->customerCart('+100 days', [$this->line(self::P1, 60, '-3 days'), $this->line(self::P2, 99, '-3 days')]);
-        $guest = $this->guestCart([$this->line(self::P1, 40, '-2 days'), $this->line(self::P2, 1, '-2 days'), $this->line(self::P3, 5, '-1 day')]);
+        $customer = $this->customerCart('+100 days', [$this->line(self::V1, 60, '-3 days'), $this->line(self::V2, 99, '-3 days')]);
+        $guest = $this->guestCart([$this->line(self::V1, 40, '-2 days'), $this->line(self::V2, 1, '-2 days'), $this->line(self::V3, 5, '-1 day')]);
 
         $outcome = $customer->mergeFrom($guest, $this->now);
 
         self::assertEquals(MergeOutcome::merged(true), $outcome);
-        self::assertSame([[self::P1, 99], [self::P2, 99], [self::P3, 5]], self::lines($customer));
+        self::assertSame([[self::V1, 99], [self::V2, 99], [self::V3, 5]], self::lines($customer));
         self::assertSame(CartStatus::Merged, $guest->status());
         self::assertSame([], $guest->lines());
     }
@@ -134,12 +134,12 @@ final class CartMergeTest extends TestCase
 
     public function testTheLinesFollowAddedAtAlsoWhenAGuestLineIsOlderThanTheCustomerLines(): void
     {
-        $customer = $this->customerCart('+100 days', [$this->line(self::P1, 1, '-1 day')]);
+        $customer = $this->customerCart('+100 days', [$this->line(self::V1, 1, '-1 day')]);
 
-        $customer->mergeFrom($this->guestCart([$this->line(self::P2, 1, '-5 days')]), $this->now);
+        $customer->mergeFrom($this->guestCart([$this->line(self::V2, 1, '-5 days')]), $this->now);
 
-        self::assertSame([[self::P2, 1], [self::P1, 1]], self::lines($customer));
-        self::assertSame([self::P2, self::P1], array_map(static fn (ProductId $id): string => $id->toString(), $customer->productIds()));
+        self::assertSame([[self::V2, 1], [self::V1, 1]], self::lines($customer));
+        self::assertSame([self::V2, self::V1], array_map(static fn (VariantId $id): string => $id->toString(), $customer->variantIds()));
     }
 
     public function testMergeNeitherChecksThePriceNorTheAvailability(): void
@@ -147,34 +147,34 @@ final class CartMergeTest extends TestCase
         // There is no offer to give: a merge never asks for one.
         $customer = $this->customerCart('+100 days', []);
 
-        $outcome = $customer->mergeFrom($this->guestCart([$this->line(self::P1, 99, '-1 day')]), $this->now);
+        $outcome = $customer->mergeFrom($this->guestCart([$this->line(self::V1, 99, '-1 day')]), $this->now);
 
         self::assertEquals(MergeOutcome::merged(false), $outcome);
-        self::assertSame([[self::P1, 99]], self::lines($customer));
+        self::assertSame([[self::V1, 99]], self::lines($customer));
     }
 
     public function testAnEmptyGuestCartIsMarkedMergedWithoutTruncation(): void
     {
-        $customer = $this->customerCart('+100 days', [$this->line(self::P1, 2, '-3 days')]);
+        $customer = $this->customerCart('+100 days', [$this->line(self::V1, 2, '-3 days')]);
         $guest = $this->guestCart([]);
 
         $outcome = $customer->mergeFrom($guest, $this->now);
 
         self::assertEquals(MergeOutcome::merged(false), $outcome);
         self::assertSame(CartStatus::Merged, $guest->status());
-        self::assertSame([[self::P1, 2]], self::lines($customer));
+        self::assertSame([[self::V1, 2]], self::lines($customer));
         self::assertEquals($this->now->modify('+180 days'), $customer->expiresAt());
     }
 
     public function testAnExpiredCustomerCartKeepsOnlyTheGuestLinesAndIsRenewed(): void
     {
-        $customer = $this->customerCart('-1 second', [$this->line(self::P1, 5, '-200 days'), $this->line(self::P2, 1, '-190 days')]);
-        $guest = $this->guestCart([$this->line(self::P1, 2, '-2 days'), $this->line(self::P3, 1, '-1 day')]);
+        $customer = $this->customerCart('-1 second', [$this->line(self::V1, 5, '-200 days'), $this->line(self::V2, 1, '-190 days')]);
+        $guest = $this->guestCart([$this->line(self::V1, 2, '-2 days'), $this->line(self::V3, 1, '-1 day')]);
 
         $outcome = $customer->mergeFrom($guest, $this->now);
 
         self::assertEquals(MergeOutcome::merged(false), $outcome);
-        self::assertSame([[self::P1, 2], [self::P3, 1]], self::lines($customer));
+        self::assertSame([[self::V1, 2], [self::V3, 1]], self::lines($customer));
         self::assertEquals([$this->at('-2 days'), $this->at('-1 day')], self::addedAt($customer), 'the lines are the guest lines');
         self::assertEquals($this->now->modify('+180 days'), $customer->expiresAt());
         self::assertFalse($customer->isExpired($this->now));
@@ -182,7 +182,7 @@ final class CartMergeTest extends TestCase
 
     public function testAMergedGuestCartIsAlreadyMergedAndNothingChanges(): void
     {
-        $customer = $this->customerCart('+100 days', [$this->line(self::P1, 2, '-3 days')]);
+        $customer = $this->customerCart('+100 days', [$this->line(self::V1, 2, '-3 days')]);
         $into = CartId::generate();
         $mergedAt = $this->at('-1 hour');
         $guest = Cart::reconstitute(CartId::fromString(self::GUEST), CartOwner::guest(), CartStatus::Merged, $into, $mergedAt, [], $this->at('-5 days'), $mergedAt, $this->at('+20 days'));
@@ -192,7 +192,7 @@ final class CartMergeTest extends TestCase
         self::assertEquals(MergeOutcome::alreadyMerged(), $outcome);
         self::assertSame(MergeOutcomeResult::AlreadyMerged, $outcome->result);
         self::assertFalse($outcome->truncated);
-        self::assertSame([[self::P1, 2]], self::lines($customer));
+        self::assertSame([[self::V1, 2]], self::lines($customer));
         self::assertEquals($this->at('+100 days'), $customer->expiresAt());
         self::assertSame($into, $guest->mergedInto());
         self::assertSame($mergedAt, $guest->mergedAt());
@@ -200,26 +200,26 @@ final class CartMergeTest extends TestCase
 
     public function testAnExpiredGuestCartHasNothingToMergeAndNothingChanges(): void
     {
-        $customer = $this->customerCart('-1 second', [$this->line(self::P1, 2, '-200 days')]);
-        $guest = Cart::reconstitute(CartId::fromString(self::GUEST), CartOwner::guest(), CartStatus::Open, null, null, [$this->line(self::P2, 1, '-40 days')], $this->at('-40 days'), $this->at('-31 days'), $this->at('-1 second'));
+        $customer = $this->customerCart('-1 second', [$this->line(self::V1, 2, '-200 days')]);
+        $guest = Cart::reconstitute(CartId::fromString(self::GUEST), CartOwner::guest(), CartStatus::Open, null, null, [$this->line(self::V2, 1, '-40 days')], $this->at('-40 days'), $this->at('-31 days'), $this->at('-1 second'));
 
         $outcome = $customer->mergeFrom($guest, $this->now);
 
         self::assertEquals(MergeOutcome::nothingToMerge(), $outcome);
-        self::assertSame([[self::P1, 2]], self::lines($customer), 'not even the expired customer cart is cleared');
+        self::assertSame([[self::V1, 2]], self::lines($customer), 'not even the expired customer cart is cleared');
         self::assertSame(CartStatus::Open, $guest->status());
-        self::assertSame([[self::P2, 1]], self::lines($guest));
+        self::assertSame([[self::V2, 1]], self::lines($guest));
     }
 
     public function testACustomerCartHasNothingToMerge(): void
     {
-        $customer = $this->customerCart('+100 days', [$this->line(self::P1, 2, '-3 days')]);
-        $other = Cart::reconstitute(CartId::generate(), CartOwner::customer('kc-sub-2'), CartStatus::Open, null, null, [$this->line(self::P2, 1, '-1 day')], $this->at('-5 days'), $this->at('-1 day'), $this->at('+100 days'));
+        $customer = $this->customerCart('+100 days', [$this->line(self::V1, 2, '-3 days')]);
+        $other = Cart::reconstitute(CartId::generate(), CartOwner::customer('kc-sub-2'), CartStatus::Open, null, null, [$this->line(self::V2, 1, '-1 day')], $this->at('-5 days'), $this->at('-1 day'), $this->at('+100 days'));
 
         self::assertEquals(MergeOutcome::nothingToMerge(), $customer->mergeFrom($other, $this->now));
         self::assertEquals(MergeOutcome::nothingToMerge(), $customer->mergeFrom($customer, $this->now));
-        self::assertSame([[self::P1, 2]], self::lines($customer));
-        self::assertSame([[self::P2, 1]], self::lines($other));
+        self::assertSame([[self::V1, 2]], self::lines($customer));
+        self::assertSame([[self::V2, 1]], self::lines($other));
     }
 
     public function testOutcomeWithoutMergeTellsWhetherACartCanBeMerged(): void
@@ -240,7 +240,7 @@ final class CartMergeTest extends TestCase
 
     public function testOnlyACustomerCartTakesAMerge(): void
     {
-        $guest = $this->guestCart([$this->line(self::P1, 1, '-1 day')]);
+        $guest = $this->guestCart([$this->line(self::V1, 1, '-1 day')]);
         $other = Cart::createForGuest(CartId::generate(), $this->now);
 
         $this->expectException(\LogicException::class);
@@ -249,16 +249,16 @@ final class CartMergeTest extends TestCase
 
     public function testAMergedGuestCartRefusesEveryChange(): void
     {
-        $guest = $this->guestCart([$this->line(self::P1, 1, '-1 day')]);
+        $guest = $this->guestCart([$this->line(self::V1, 1, '-1 day')]);
         $this->customerCart('+100 days', [])->mergeFrom($guest, $this->now);
 
         $this->expectException(GuestCartMerged::class);
-        $guest->add(ProductId::fromString(self::P2), Quantity::of(1), new ProductOffer(true, 10), $this->now);
+        $guest->add(VariantId::fromString(self::V2), Quantity::of(1), new ProductOffer(true, 10), $this->now);
     }
 
     public function testMarkMergedEmptiesTheGuestCartAndRecordsTheCustomerCart(): void
     {
-        $guest = $this->guestCart([$this->line(self::P1, 1, '-1 day')]);
+        $guest = $this->guestCart([$this->line(self::V1, 1, '-1 day')]);
         $expiresAt = $guest->expiresAt();
         $into = CartId::fromString(self::CUSTOMER);
 
@@ -303,9 +303,9 @@ final class CartMergeTest extends TestCase
         return Cart::reconstitute(CartId::fromString(self::GUEST), CartOwner::guest(), CartStatus::Open, null, null, $lines, $this->at('-5 days'), $this->at('-1 day'), $this->at('+29 days'));
     }
 
-    private function line(string $productId, int $quantity, string $addedAgo): CartLine
+    private function line(string $variantId, int $quantity, string $addedAgo): CartLine
     {
-        return new CartLine(ProductId::fromString($productId), Quantity::of($quantity), $this->at($addedAgo));
+        return new CartLine(VariantId::fromString($variantId), Quantity::of($quantity), $this->at($addedAgo));
     }
 
     private function at(string $modifier): \DateTimeImmutable
@@ -313,9 +313,9 @@ final class CartMergeTest extends TestCase
         return $this->now->modify($modifier);
     }
 
-    private static function numbered(int $number): ProductId
+    private static function numbered(int $number): VariantId
     {
-        return ProductId::fromString(\sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $number));
+        return VariantId::fromString(\sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $number));
     }
 
     /**
@@ -323,7 +323,7 @@ final class CartMergeTest extends TestCase
      */
     private static function lines(Cart $cart): array
     {
-        return array_map(static fn (CartLine $line): array => [$line->productId()->toString(), $line->quantity()->value()], $cart->lines());
+        return array_map(static fn (CartLine $line): array => [$line->variantId()->toString(), $line->quantity()->value()], $cart->lines());
     }
 
     /**

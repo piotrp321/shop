@@ -8,12 +8,12 @@ use App\Inventory\Domain\Reservation\Reservation;
 use App\Inventory\Domain\Reservation\ReservationLine;
 
 /**
- * A reservation as stored: its key, its status (active, released or committed) and its lines by product id.
+ * A reservation as stored: its key, its status (active, released or committed) and its lines by variant id.
  */
 final readonly class ReservationView
 {
     /**
-     * @param list<ReservationLineView> $lines ordered by product id
+     * @param list<ReservationLineView> $lines ordered by variant id
      */
     public function __construct(
         public string $key,
@@ -28,7 +28,7 @@ final readonly class ReservationView
             $reservation->key()->toString(),
             $reservation->status()->value,
             array_map(
-                static fn (ReservationLine $line): ReservationLineView => new ReservationLineView($line->productId()->toString(), $line->quantity()),
+                static fn (ReservationLine $line): ReservationLineView => new ReservationLineView($line->variantId()->toString(), $line->quantity()),
                 $reservation->lines(),
             ),
         );

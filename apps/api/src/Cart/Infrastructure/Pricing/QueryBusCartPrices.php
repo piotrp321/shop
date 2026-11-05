@@ -8,7 +8,7 @@ use App\Cart\Application\Port\CartPrice;
 use App\Cart\Application\Port\CartPrices;
 use App\Cart\Domain\Currency;
 use App\Cart\Domain\Money;
-use App\Cart\Domain\ProductId;
+use App\Cart\Domain\VariantId;
 use App\Cart\Infrastructure\QueryBusFailure;
 use App\Pricing\Application\Query\GetCurrentPrices;
 use App\Pricing\Application\Query\PriceSnapshot;
@@ -18,8 +18,8 @@ use Symfony\Component\Messenger\HandleTrait;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
- * The current gross prices through Pricing's GetCurrentPrices on the query bus. A price in a currency the cart does
- * not sell in counts as no current price.
+ * The current gross prices of variants through Pricing's GetCurrentPrices on the query bus. A price in a currency the
+ * cart does not sell in counts as no current price.
  */
 final class QueryBusCartPrices implements CartPrices
 {
@@ -37,18 +37,18 @@ final class QueryBusCartPrices implements CartPrices
         }
 
         try {
-            $snapshots = $this->handle(new GetCurrentPrices(array_map(static fn (ProductId $id): string => $id->toString(), $ids)));
+            $current = $this->handle(new GetCurrentPrices(array_map(static fn (VariantId $id): string => $id->toString(), $ids)));
         } catch (HandlerFailedException $failure) {
             throw QueryBusFailure::cause($failure);
         }
-        \assert(\is_array($snapshots));
+        \assert(\is_array($current));
 
         $prices = [];
-        foreach ($snapshots as $snapshot) {
-            \assert($snapshot instanceof PriceSnapshot);
-            $currency = Currency::tryFrom($snapshot->currency);
+        foreach ($current as $price) {
+            \assert($price instanceof PriceSnapshot);
+            $currency = Currency::tryFrom($price->currency);
             if (null !== $currency) {
-                $prices[] = new CartPrice(ProductId::fromString($snapshot->productId), Money::of($snapshot->gross, $currency));
+                $prices[] = new CartPrice(VariantId::fromString($price->variantId), Money::of($price->gross, $currency));
             }
         }
 

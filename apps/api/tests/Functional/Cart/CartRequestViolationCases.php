@@ -11,42 +11,42 @@ namespace App\Tests\Functional\Cart;
  */
 trait CartRequestViolationCases
 {
-    private const string PRODUCT_REQUIRED = 'Identyfikator produktu jest wymagany.';
-    private const string PRODUCT_UUID = 'Identyfikator produktu musi być UUID.';
+    private const string VARIANT_REQUIRED = 'Identyfikator wariantu jest wymagany.';
+    private const string VARIANT_UUID = 'Identyfikator wariantu musi być UUID.';
     private const string QUANTITY_REQUIRED = 'Ilość jest wymagana.';
     private const string QUANTITY_INTEGER = 'Ilość musi być liczbą całkowitą.';
     private const string QUANTITY_RANGE = 'Ilość musi wynosić od 1 do 99 szt.';
     private const string CART_REQUIRED = 'Identyfikator koszyka jest wymagany.';
     private const string CART_UUID = 'Identyfikator koszyka musi być UUID.';
 
-    private const string PRODUCT = '0192f0c4-7c1a-7c4e-9a6e-000000000001';
+    private const string VARIANT = '0192f0c4-7c1a-7c4e-9a6e-000000000001';
 
     /**
      * @return iterable<string, array{string, list<array{string, string}>}>
      */
     public static function invalidAddItemBodies(): iterable
     {
-        $product = self::PRODUCT;
-        yield 'no productId' => ['{"quantity": 1}', [['productId', self::PRODUCT_REQUIRED]]];
-        yield 'null productId' => ['{"productId": null, "quantity": 1}', [['productId', self::PRODUCT_REQUIRED]]];
-        yield 'productId a number' => ['{"productId": 5, "quantity": 1}', [['productId', self::PRODUCT_UUID]]];
-        yield 'productId a fraction' => ['{"productId": 1.5, "quantity": 1}', [['productId', self::PRODUCT_UUID]]];
-        yield 'productId a boolean' => ['{"productId": true, "quantity": 1}', [['productId', self::PRODUCT_UUID]]];
-        yield 'productId an array' => ['{"productId": ["'.$product.'"], "quantity": 1}', [['productId', self::PRODUCT_UUID]]];
-        yield 'productId an object' => ['{"productId": {"id": "'.$product.'"}, "quantity": 1}', [['productId', self::PRODUCT_UUID]]];
-        yield 'productId not a uuid' => ['{"productId": "abc", "quantity": 1}', [['productId', self::PRODUCT_UUID]]];
-        yield 'no quantity' => ['{"productId": "'.$product.'"}', [['quantity', self::QUANTITY_REQUIRED]]];
-        yield 'null quantity' => ['{"productId": "'.$product.'", "quantity": null}', [['quantity', self::QUANTITY_REQUIRED]]];
-        yield 'quantity in a string' => ['{"productId": "'.$product.'", "quantity": "1"}', [['quantity', self::QUANTITY_INTEGER]]];
-        yield 'quantity a fraction' => ['{"productId": "'.$product.'", "quantity": 1.5}', [['quantity', self::QUANTITY_INTEGER]]];
-        yield 'quantity a whole fraction' => ['{"productId": "'.$product.'", "quantity": 2.0}', [['quantity', self::QUANTITY_INTEGER]]];
-        yield 'quantity a boolean' => ['{"productId": "'.$product.'", "quantity": true}', [['quantity', self::QUANTITY_INTEGER]]];
-        yield 'quantity an array' => ['{"productId": "'.$product.'", "quantity": [1]}', [['quantity', self::QUANTITY_INTEGER]]];
-        yield 'quantity 0' => ['{"productId": "'.$product.'", "quantity": 0}', [['quantity', self::QUANTITY_RANGE]]];
-        yield 'quantity 100' => ['{"productId": "'.$product.'", "quantity": 100}', [['quantity', self::QUANTITY_RANGE]]];
-        yield 'quantity negative' => ['{"productId": "'.$product.'", "quantity": -1}', [['quantity', self::QUANTITY_RANGE]]];
-        yield 'empty object' => ['{}', [['productId', self::PRODUCT_REQUIRED], ['quantity', self::QUANTITY_REQUIRED]]];
-        yield 'both fields wrong' => ['{"productId": 5, "quantity": "1"}', [['productId', self::PRODUCT_UUID], ['quantity', self::QUANTITY_INTEGER]]];
+        $variant = self::VARIANT;
+        yield 'no variantId' => ['{"quantity": 1}', [['variantId', self::VARIANT_REQUIRED]]];
+        yield 'null variantId' => ['{"variantId": null, "quantity": 1}', [['variantId', self::VARIANT_REQUIRED]]];
+        yield 'variantId a number' => ['{"variantId": 5, "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
+        yield 'variantId a fraction' => ['{"variantId": 1.5, "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
+        yield 'variantId a boolean' => ['{"variantId": true, "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
+        yield 'variantId an array' => ['{"variantId": ["'.$variant.'"], "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
+        yield 'variantId an object' => ['{"variantId": {"id": "'.$variant.'"}, "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
+        yield 'variantId not a uuid' => ['{"variantId": "abc", "quantity": 1}', [['variantId', self::VARIANT_UUID]]];
+        yield 'no quantity' => ['{"variantId": "'.$variant.'"}', [['quantity', self::QUANTITY_REQUIRED]]];
+        yield 'null quantity' => ['{"variantId": "'.$variant.'", "quantity": null}', [['quantity', self::QUANTITY_REQUIRED]]];
+        yield 'quantity in a string' => ['{"variantId": "'.$variant.'", "quantity": "1"}', [['quantity', self::QUANTITY_INTEGER]]];
+        yield 'quantity a fraction' => ['{"variantId": "'.$variant.'", "quantity": 1.5}', [['quantity', self::QUANTITY_INTEGER]]];
+        yield 'quantity a whole fraction' => ['{"variantId": "'.$variant.'", "quantity": 2.0}', [['quantity', self::QUANTITY_INTEGER]]];
+        yield 'quantity a boolean' => ['{"variantId": "'.$variant.'", "quantity": true}', [['quantity', self::QUANTITY_INTEGER]]];
+        yield 'quantity an array' => ['{"variantId": "'.$variant.'", "quantity": [1]}', [['quantity', self::QUANTITY_INTEGER]]];
+        yield 'quantity 0' => ['{"variantId": "'.$variant.'", "quantity": 0}', [['quantity', self::QUANTITY_RANGE]]];
+        yield 'quantity 100' => ['{"variantId": "'.$variant.'", "quantity": 100}', [['quantity', self::QUANTITY_RANGE]]];
+        yield 'quantity negative' => ['{"variantId": "'.$variant.'", "quantity": -1}', [['quantity', self::QUANTITY_RANGE]]];
+        yield 'empty object' => ['{}', [['variantId', self::VARIANT_REQUIRED], ['quantity', self::QUANTITY_REQUIRED]]];
+        yield 'both fields wrong' => ['{"variantId": 5, "quantity": "1"}', [['variantId', self::VARIANT_UUID], ['quantity', self::QUANTITY_INTEGER]]];
     }
 
     /**
@@ -71,7 +71,7 @@ trait CartRequestViolationCases
      */
     public static function invalidMergeBodies(): iterable
     {
-        $guest = self::PRODUCT;
+        $guest = self::VARIANT;
         yield 'empty body' => ['', [['guestCartId', self::CART_REQUIRED]]];
         yield 'no guestCartId' => ['{}', [['guestCartId', self::CART_REQUIRED]]];
         yield 'null guestCartId' => ['{"guestCartId": null}', [['guestCartId', self::CART_REQUIRED]]];

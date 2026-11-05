@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Inventory;
 
+use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Inventory\Application\Query\ListBackofficeStock;
 use App\Inventory\Application\Query\StockList;
+use App\Inventory\Application\Query\StockListItem;
+use App\Inventory\Application\Query\StockListVariant;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Support\StatementCounter;
@@ -16,10 +19,12 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
+use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
- * ListBackofficeStock on PostgreSQL, through the real query bus and Catalog (shop_test, rolled back after each test).
+ * ListBackofficeStock on PostgreSQL, through the real query bus and Catalog (shop_test, rolled back after each test):
+ * products of a page with their variants.
  */
 final class ListBackofficeStockTest extends KernelTestCase
 {
@@ -44,9 +49,9 @@ final class ListBackofficeStockTest extends KernelTestCase
         $this->counter = $counter;
     }
 
-    public function testTheStocksOfAPageAreReadWithOneStatementWhateverTheSize(): void
+    public function testTheVariantsAndTheStocksOfAPageAreReadWithAFixedNumberOfStatementsWhateverTheSize(): void
     {
-        $this->products(25);
+        $this->products(25, 3);
         $this->ask(new ListBackofficeStock(null, null, null, 1)); // warms up what is read once per process
 
         $before = $this->counter->count();
@@ -59,52 +64,70 @@ final class ListBackofficeStockTest extends KernelTestCase
 
         self::assertCount(1, $one->items);
         self::assertCount(25, $page->items);
+        self::assertCount(3, $page->items[24]->variants);
         self::assertSame($statementsForOne, $statementsForPage);
     }
 
-    public function testListsTheStoredStockAndNullForAProductWithoutOne(): void
+    public function testPagesThroughProductsEachWithAllItsVariantsAndTheirStock(): void
     {
-        $ids = $this->products(2);
-        StockFixture::stock($this->connection, 10, 4, 3, $ids[0]);
+        $products = $this->products(3, 2);
+        StockFixture::stock($this->connection, 10, 4, 3, $products[0][1][1]);
+        StockFixture::stock($this->connection, 2, 0, 1, $products[2][1][0]);
 
-        $list = $this->ask(new ListBackofficeStock(null, null, null, 25));
+        $first = $this->ask(new ListBackofficeStock(null, null, null, 2));
+        self::assertNotNull($first->next);
+        $second = $this->ask(new ListBackofficeStock(null, null, $first->next, 2));
 
-        self::assertSame($ids, array_map(static fn ($item): string => $item->productId, $list->items));
-        self::assertNull($list->next);
-        $stock = $list->items[0]->stock;
+        self::assertNull($second->next);
+        $listed = array_map(
+            static fn (StockListItem $item): array => [$item->productId, array_map(static fn (StockListVariant $variant): array => [$variant->variantId, $variant->stock?->physical], $item->variants)],
+            [...$first->items, ...$second->items],
+        );
+        self::assertSame([
+            [$products[0][0], [[$products[0][1][0], null], [$products[0][1][1], 10]]],
+            [$products[1][0], [[$products[1][1][0], null], [$products[1][1][1], null]]],
+            [$products[2][0], [[$products[2][1][0], 2], [$products[2][1][1], null]]],
+        ], $listed);
+        $stock = $first->items[0]->variants[1]->stock;
         self::assertNotNull($stock);
         self::assertSame([10, 4, 6, 'in_stock', 3], [$stock->physical, $stock->reserved, $stock->available, $stock->level, $stock->version]);
-        self::assertNull($list->items[1]->stock);
     }
 
     public function testAStoredEmptyStockAtVersionZeroIsListedWithItsVersion(): void
     {
-        $ids = $this->products(1);
-        $this->connection->executeStatement('INSERT INTO inventory_stock_item (product_id, physical, reserved, version, updated_at) VALUES (?, 0, 0, 0, now())', [$ids[0]]);
+        $products = $this->products(1, 1);
+        $this->connection->executeStatement('INSERT INTO inventory_stock_item (variant_id, physical, reserved, version, updated_at) VALUES (?, 0, 0, 0, now())', [$products[0][1][0]]);
 
-        $stock = $this->ask(new ListBackofficeStock(null, null, null, 25))->items[0]->stock;
+        $stock = $this->ask(new ListBackofficeStock(null, null, null, 25))->items[0]->variants[0]->stock;
 
         self::assertNotNull($stock);
         self::assertSame([0, 0, 0, 'out_of_stock', 0], [$stock->physical, $stock->reserved, $stock->available, $stock->level, $stock->version]);
     }
 
     /**
-     * Saves products named "Produkt 01", "Produkt 02", … in one category.
+     * Saves products named "Produkt 01", "Produkt 02", … in one category, each with the given number of variants of a
+     * colour axis (one: the default variant), whose ids are never the ids of their products.
      *
-     * @return list<string> their ids in the order of the list
+     * @return list<array{string, list<string>}> the id of each product with the ids of its variants, in the order of the list
      */
-    private function products(int $count): array
+    private function products(int $count, int $variantsPerProduct): array
     {
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($this->entityManager)->save($category);
-        $ids = [];
+        $products = [];
         for ($n = 1; $n <= $count; ++$n) {
-            $product = ProductFactory::createOne(['mainCategory' => $category, 'name' => \sprintf('Produkt %02d', $n)]);
+            $attributes = ['mainCategory' => $category, 'name' => \sprintf('Produkt %02d', $n)];
+            if ($variantsPerProduct > 1) {
+                $attributes += ['variantAxes' => ['Kolor'], 'variants' => array_map(static fn (int $v): array => ['id' => (string) Uuid::v4(), 'values' => ['kolor '.$v]], range(1, $variantsPerProduct))];
+            }
+            $product = ProductFactory::createOne($attributes);
             new DoctrineProductRepository($this->entityManager)->save($product);
-            $ids[] = $product->id()->toString();
+            $variantIds = array_map(static fn (ProductVariant $variant): string => $variant->id()->toString(), $product->variants()->toList());
+            self::assertNotContains($product->id()->toString(), $variantIds);
+            $products[] = [$product->id()->toString(), $variantIds];
         }
 
-        return $ids;
+        return $products;
     }
 
     private function ask(ListBackofficeStock $query): StockList

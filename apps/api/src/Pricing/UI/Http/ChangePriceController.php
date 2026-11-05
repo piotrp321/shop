@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Pricing\UI\Http;
 
 use App\Backoffice\Application\Security\AuthenticatedStaffMember;
-use App\Pricing\Application\Command\SetProductPrice;
+use App\Pricing\Application\Command\SetVariantPrice;
 use App\Pricing\Application\Query\ListedPrice;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use Nelmio\ApiDocBundle\Attribute\Security;
@@ -28,7 +28,7 @@ final class ChangePriceController
     /** Attribute of PriceVoter (Infrastructure): the controller only knows its name. */
     private const string CHANGE_PRICE = 'CHANGE_PRICE';
 
-    /** A UUID in any letter case; anything else matches no route (404), like an unknown product. */
+    /** A UUID in any letter case; anything else matches no route (404), like an unknown variant. */
     private const string UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 
     public function __construct(#[Autowire(service: 'command.bus')] MessageBusInterface $commandBus)
@@ -36,19 +36,19 @@ final class ChangePriceController
         $this->messageBus = $commandBus;
     }
 
-    #[Route('/api/v1/admin/products/{productId}/price', name: 'pricing_change_price', requirements: ['productId' => self::UUID], methods: ['PUT'])]
+    #[Route('/api/v1/admin/variants/{variantId}/price', name: 'pricing_change_price', requirements: ['variantId' => self::UUID], methods: ['PUT'])]
     #[Security(name: 'backoffice')]
     #[OA\Put(
         operationId: 'changePrice',
-        summary: 'Change the price of a product',
-        description: 'Sets the gross price; the API computes the net and the VAT at the current rate of the price\'s tax class '
-            .'(the class of the product for a first price). Administrators only. Send the `version` of the price you saw '
-            .'(null for a product without a price): a price changed since then is a 409 and nothing is overwritten. '
+        summary: 'Change the price of a product variant',
+        description: 'Sets the gross price of one variant; the API computes the net and the VAT at the current rate of the price\'s '
+            .'tax class (the class of the variant\'s product for a first price). Administrators only. Send the `version` of the '
+            .'price you saw (null for a variant without a price): a price changed since then is a 409 and nothing is overwritten. '
             .'The same gross at the same rate changes nothing: the version stays and no history entry is recorded. '
             .'The history entry names the staff member of the token.',
         tags: ['Pricing'],
         parameters: [
-            new OA\Parameter(name: 'productId', in: 'path', required: true, description: 'Product id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'variantId', in: 'path', required: true, description: 'Variant id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
         ],
         responses: [
             new OA\Response(
@@ -73,7 +73,7 @@ final class ChangePriceController
             ),
             new OA\Response(
                 response: 404,
-                description: 'No such product, or the id is not a UUID (problem details).',
+                description: 'No such variant, or the id is not a UUID (problem details).',
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
             new OA\Response(
@@ -100,7 +100,7 @@ final class ChangePriceController
     )]
     #[IsGranted(self::CHANGE_PRICE)]
     public function __invoke(
-        string $productId,
+        string $variantId,
         #[CurrentUser] AuthenticatedStaffMember $staffMember,
         #[MapRequestPayload(
             acceptFormat: 'json',
@@ -114,7 +114,7 @@ final class ChangePriceController
         \assert(\is_int($change->gross) && (null === $change->version || \is_int($change->version)));
 
         /** @var ListedPrice $price */
-        $price = $this->handle(SetProductPrice::byStaff($productId, $change->gross, $change->version, $staffMember->id(), $staffMember->username()));
+        $price = $this->handle(SetVariantPrice::byStaff($variantId, $change->gross, $change->version, $staffMember->id(), $staffMember->username()));
 
         $response = new JsonResponse(ListedPriceResponse::of($price));
         $response->setPrivate();

@@ -30,6 +30,25 @@ final class DemoPriceListTest extends TestCase
         self::assertNull($list->grossFor('duzy-kask-rowerowy-czarny'));
     }
 
+    /**
+     * The key of a variant is `<product slug>/<label slug>`: `*` runs over the slash, and a pattern may name the
+     * variant part.
+     */
+    public function testPatternMatchesTheVariantKeyAndTheWildcardRunsOverTheSlash(): void
+    {
+        $list = new DemoPriceList([
+            ['pattern' => 'przewodnik-*/oprawa-twarda', 'gross' => 5990],
+            ['pattern' => 'przewodnik-*-oprawa-miekka/standard', 'gross' => 4490],
+            ['pattern' => 'mapa-*', 'gross' => 2490],
+        ]);
+
+        self::assertSame(5990, $list->grossFor('przewodnik-tarvik-press-bieszczady/oprawa-twarda'));
+        self::assertSame(4490, $list->grossFor('przewodnik-tarvik-press-bieszczady-oprawa-miekka/standard'));
+        self::assertSame(2490, $list->grossFor('mapa-turystyczna-tarvik-press-gorce/laminowana'));
+        self::assertNull($list->grossFor('przewodnik-tarvik-press-bieszczady/oprawa-miekka'));
+        self::assertNull($list->grossFor('przewodnik-tarvik-press-bieszczady-oprawa-miekka/czarny'));
+    }
+
     public function testSlugWithoutMatchingPatternHasNoPrice(): void
     {
         $list = new DemoPriceList([['pattern' => 'mapa-*', 'gross' => 2490]]);
@@ -63,6 +82,8 @@ final class DemoPriceListTest extends TestCase
         yield 'only wildcards and dashes' => ['*-*', 100, 'letter or digit'];
         yield 'upper case' => ['Namiot-*', 100, 'Namiot-*'];
         yield 'regex characters' => ['namiot-.+', 100, 'namiot-.+'];
+        yield 'only wildcards, dashes and slashes' => ['*/*', 100, 'letter or digit'];
+        yield 'backslash' => ['namiot-*\\standard', 100, 'namiot-*\\standard'];
         yield 'empty' => ['', 100, 'letter or digit'];
     }
 

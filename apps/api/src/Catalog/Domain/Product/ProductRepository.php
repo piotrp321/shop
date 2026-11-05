@@ -13,6 +13,7 @@ interface ProductRepository
      * Inserts the product or overwrites the one with the same id.
      *
      * @throws SlugAlreadyTaken
+     * @throws VariantAlreadyExists        when a variant id is already used by another product
      * @throws ProductAlreadyExists        when a concurrent insert of the same id wins the race
      * @throws ProductModifiedConcurrently
      */

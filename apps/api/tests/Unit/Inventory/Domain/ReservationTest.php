@@ -10,7 +10,7 @@ use App\Inventory\Domain\Reservation\ReservationKey;
 use App\Inventory\Domain\Reservation\ReservationLine;
 use App\Inventory\Domain\Reservation\ReservationStateConflict;
 use App\Inventory\Domain\Reservation\ReservationStatus;
-use App\Inventory\Domain\Stock\ProductId;
+use App\Inventory\Domain\Stock\VariantId;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -20,7 +20,7 @@ final class ReservationTest extends TestCase
     private const string B = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a61';
     private const string C = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a62';
 
-    public function testPlacedReservationIsActiveWithLinesOrderedByProduct(): void
+    public function testPlacedReservationIsActiveWithLinesOrderedByVariant(): void
     {
         $reservation = Reservation::place(ReservationKey::fromString('order-1'), [$this->line(self::C, 1), $this->line(self::A, 2), $this->line(self::B, 3)]);
 
@@ -28,7 +28,7 @@ final class ReservationTest extends TestCase
         self::assertSame(ReservationStatus::Active, $reservation->status());
         self::assertSame(
             [[self::A, 2], [self::B, 3], [self::C, 1]],
-            array_map(static fn (ReservationLine $l): array => [$l->productId()->toString(), $l->quantity()], $reservation->lines()),
+            array_map(static fn (ReservationLine $l): array => [$l->variantId()->toString(), $l->quantity()], $reservation->lines()),
         );
     }
 
@@ -60,7 +60,7 @@ final class ReservationTest extends TestCase
         Reservation::place(ReservationKey::fromString('order-1'), $lines);
     }
 
-    public function testARepeatedProductIsInvalid(): void
+    public function testARepeatedVariantIsInvalid(): void
     {
         $this->expectException(InvalidReservation::class);
 
@@ -82,13 +82,13 @@ final class ReservationTest extends TestCase
     {
         $this->expectException(InvalidReservation::class);
 
-        ReservationLine::of(ProductId::fromString(self::A), $quantity);
+        ReservationLine::of(VariantId::fromString(self::A), $quantity);
     }
 
     public function testLineQuantityLimitsAreValid(): void
     {
-        self::assertSame(1, ReservationLine::of(ProductId::fromString(self::A), 1)->quantity());
-        self::assertSame(1000, ReservationLine::of(ProductId::fromString(self::A), 1000)->quantity());
+        self::assertSame(1, ReservationLine::of(VariantId::fromString(self::A), 1)->quantity());
+        self::assertSame(1000, ReservationLine::of(VariantId::fromString(self::A), 1000)->quantity());
     }
 
     public function testReleaseOfAnActiveReservation(): void
@@ -135,7 +135,7 @@ final class ReservationTest extends TestCase
         self::assertSame(ReservationStatus::Committed, $reservation->status());
     }
 
-    public function testHasLinesComparesTheSetOfProductsAndQuantities(): void
+    public function testHasLinesComparesTheSetOfVariantsAndQuantities(): void
     {
         $reservation = Reservation::place(ReservationKey::fromString('order-1'), [$this->line(self::A, 2), $this->line(self::B, 1)]);
 
@@ -209,8 +209,8 @@ final class ReservationTest extends TestCase
         return Reservation::reconstitute(ReservationKey::fromString('order-1'), [$this->line(self::A, 1)], $status);
     }
 
-    private function line(string $productId, int $quantity): ReservationLine
+    private function line(string $variantId, int $quantity): ReservationLine
     {
-        return ReservationLine::of(ProductId::fromString($productId), $quantity);
+        return ReservationLine::of(VariantId::fromString($variantId), $quantity);
     }
 }

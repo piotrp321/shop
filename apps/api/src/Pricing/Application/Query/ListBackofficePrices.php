@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Pricing\Application\Query;
 
 /**
- * One page of the price list of the panel: products with their prices, sorted by name, then by id.
+ * One page of the price list of the panel: products sorted by name, then by id, each with its variants and their
+ * prices.
  */
 final readonly class ListBackofficePrices
 {

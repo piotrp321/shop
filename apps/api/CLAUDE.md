@@ -15,18 +15,21 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (`catalog:search-index:setup --recreate`); wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
 - dane demo ładuje `make seed` z głównego `Makefile`: najpierw `catalog:seed-demo` (katalog), potem
-  `pricing:seed-demo`, który czyści ceny i ich historię i ustawia cenę (źródło `seed`) każdemu produktowi demo według
-  wzorców slugów z `fixtures/prices.yaml` (pierwszy pasujący wzorzec w kolejności pliku; produkt bez wzorca kończy
-  seed błędem bez zmian w danych); na końcu `inventory:seed-demo`, który czyści stany, rezerwacje i historię stanów
-  i ustawia stan fizyczny każdemu produktowi demo według wzorców slugów z `fixtures/stock.yaml` (ta sama składnia
-  i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze źródłem `seed` i kluczem `seed:<productId>`, stan 0
-  to rekord stanu bez wpisu historii; produkt bez wzorca kończy seed błędem bez zmian w danych). Wszystkie trzy
+  `pricing:seed-demo`, który czyści ceny i ich historię i ustawia cenę (źródło `seed`) każdemu wariantowi demo według
+  wzorców kluczy wariantów z `fixtures/prices.yaml` (klucz z Catalog `ListVariantIdentities`:
+  `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
+  pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych); na końcu `inventory:seed-demo`, który czyści stany, rezerwacje i historię stanów
+  i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
+  klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
+  źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
+  seed błędem bez zmian w danych). Wszystkie trzy
   komendy w `prod` wymagają `--force-reset`
 - `pricing:reconcile-tax [--apply]` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`) –
   narzędzie uruchamiane świadomie, np. po zmianie stawki w `PolishVatRates`; nie wywołuje go `make init`, `make up`
-  ani `make seed`. Przechodzi wszystkie ceny partiami po `product_id` razem z produktami Catalog
-  (`ListProductsForPricing`) i wypisuje w jednej linii każdą cenę ze stawką inną niż bieżąca stawka jej klasy albo
-  z klasą inną niż klasa produktu w Catalog (cena produktu, którego nie ma w Catalog, zachowuje swoją klasę).
+  ani `make seed`. Przechodzi wszystkie ceny wariantów partiami po `variant_id` razem z wariantami Catalog
+  (`ListVariantIdentities`) i wypisuje w jednej linii każdą cenę ze stawką inną niż bieżąca stawka jej klasy albo
+  z klasą inną niż klasa produktu wariantu w Catalog (cena wariantu, którego nie ma w Catalog, zachowuje swoją
+  klasę).
   Z `--apply` przelicza je (`reprice`: to samo brutto, źródło `tax_reconciliation`), każdą w osobnej transakcji;
   zapis odrzucony przez równoległą zmianę ceny ponawia raz na cenie odczytanej od nowa (świeży EntityManager), drugi
   konflikt zostaje w raporcie. Kod wyjścia: 0 – wszystko spójne albo naprawione, 1 – zostały rozbieżności (bez
@@ -71,8 +74,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   więc nie ma zakleszczeń, a koszyk gościa jest `merged` tylko po udanym przeniesieniu linii. Scalenie bez
   przeniesienia (`nothing_to_merge`, `already_merged`) czyta koszyk klienta bez blokady, więc trzyma tylko blokadę
   wiersza wskazanego jako koszyk gościa (może to być koszyk innego klienta). Odczyty (`GetCart`, `GetCartSummary`) idą przez DBAL,
-  bez blokady i bez transakcji. Linie są zapisywane w miejscu po produkcie, więc usunięcie i ponowne dodanie produktu
-  w jednej zmianie nie trafia na unikalny indeks.
+  bez blokady i bez transakcji. Linie są zapisywane w miejscu po wariancie, więc usunięcie i ponowne dodanie wariantu
+  w jednej zmianie nie trafia na unikalny indeks `(cart_id, variant_id)`.
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
@@ -91,7 +94,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Agregaty edytowane równolegle (zamówienie, stan magazynowy, cena) mają optimistic locking (pole wersji): edycja
   z widoku sprawdza wersję, na której się opiera. Wyjątek: atomowe operacje na stanie magazynowym (przyjęcie,
   rezerwacja, zwolnienie, zatwierdzenie) nie sprawdzają wersji z widoku, tylko blokują wiersze (`SELECT … FOR UPDATE`
-  w `StockItemRepository::lockMany`, w kolejności rosnącego `product_id`; przyjęcie i korekta produktu bez stanu
+  w `StockItemRepository::lockMany`, w kolejności rosnącego `variant_id`; przyjęcie i korekta wariantu bez stanu
   zakładają wiersz przez `lockOrCreate`, `INSERT … ON CONFLICT DO NOTHING` przed blokadą) i czytają stan od nowa po
   uzyskaniu blokady; zapis i tak podnosi wersję. Korekta z panelu blokuje wiersz i dodatkowo sprawdza wersję z widoku.
 - Koszyk nie ma optimistic locking ani wersji z widoku: zmiany szereguje blokada wiersza koszyka, dodanie zwiększa
@@ -123,8 +126,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności, przyjęcie magazynowe) wymagają nagłówka
   `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Przyjęcie z tym samym kluczem i tą samą
-  treścią (produkt, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
-  treścią albo dla innego produktu to 409. Klucze przyjęć są w historii stanów na zawsze (unikalny indeks).
+  treścią (wariant, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
+  treścią albo dla innego wariantu to 409. Klucze przyjęć są w historii stanów na zawsze (unikalny indeks).
 - Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
 

@@ -34,6 +34,7 @@ final class YamlDemoCatalogSourceTest extends TestCase
         $catalog = $this->source([])->load();
 
         self::assertCount(10, $catalog->products);
+        self::assertCount(4, $catalog->products[0]->variants);
         self::assertSame(['sample.jpg', 'sample.png'], array_keys($catalog->photoPaths));
     }
 
@@ -46,6 +47,16 @@ final class YamlDemoCatalogSourceTest extends TestCase
         yield 'over-long short description' => [['templates', 0, 'models', 0, 'description'], str_repeat('x', 501), 'ShortDescription'];
         yield 'empty photo alt' => [['templates', 0, 'images', 0, 'alt'], ' ', 'alt'];
         yield 'main category repeated as additional' => [['templates', 0, 'additionalCategories'], ['bieganie/buty/szosowe'], 'once'];
+        yield 'over-long axis name' => [['templates', 0, 'variantAxes'], ['Kolor', str_repeat('R', 31)], 'product "buty-tarvik-asfalt-200"'];
+        yield 'repeated axis name' => [['templates', 0, 'variantAxes'], ['Kolor', 'kolor'], 'product "buty-tarvik-asfalt-200"'];
+        yield 'over-long axis value' => [['templates', 1, 'axisValues', 0], ['żółty', str_repeat('z', 41)], 'product "plecak-tarvik-zab-20"'];
+        yield 'more than a hundred variants' => [['templates', 0, 'axisValues'], [self::numbered(11), self::numbered(10)], 'product "buty-tarvik-asfalt-200"'];
+    }
+
+    /** @return list<string> */
+    private static function numbered(int $count): array
+    {
+        return array_map(static fn (int $n): string => 'w'.$n, range(1, $count));
     }
 
     /**

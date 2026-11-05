@@ -13,7 +13,7 @@ use App\Pricing\Domain\Tax\TaxClass;
 final readonly class PriceHistoryEntry
 {
     public function __construct(
-        private ProductId $productId,
+        private VariantId $variantId,
         private PriceBreakdown $breakdown,
         private TaxClass $taxClass,
         private \DateTimeImmutable $changedAt,
@@ -21,9 +21,9 @@ final readonly class PriceHistoryEntry
     ) {
     }
 
-    public function productId(): ProductId
+    public function variantId(): VariantId
     {
-        return $this->productId;
+        return $this->variantId;
     }
 
     public function breakdown(): PriceBreakdown

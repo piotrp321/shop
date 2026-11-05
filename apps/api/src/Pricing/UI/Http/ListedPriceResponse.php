@@ -7,7 +7,7 @@ namespace App\Pricing\UI\Http;
 use App\Pricing\Application\Query\ListedPrice;
 use OpenApi\Attributes as OA;
 
-#[OA\Schema(description: 'The stored price of a product. Amounts are in grosze, the rate in basis points; all computed by the API.')]
+#[OA\Schema(description: 'The stored price of a product variant. Amounts are in grosze, the rate in basis points; all computed by the API.')]
 final readonly class ListedPriceResponse
 {
     public function __construct(

@@ -10,7 +10,7 @@ use App\Cart\Application\ProductDataLoader;
 use App\Cart\Application\View\CartView;
 use App\Cart\Application\View\CartViewBuilder;
 use App\Cart\Domain\CartRepository;
-use App\Cart\Domain\ProductId;
+use App\Cart\Domain\VariantId;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'command.bus')]
@@ -37,12 +37,12 @@ final readonly class RemoveCartItemHandler
             return $this->views->empty(null);
         }
         try {
-            $cart->remove(ProductId::fromString($command->productId), $now);
+            $cart->remove(VariantId::fromString($command->variantId), $now);
         } catch (\InvalidArgumentException) {
-            // Not a product id, so not in the cart.
+            // Not a variant id, so not in the cart.
         }
         $this->carts->save($cart);
 
-        return $this->views->build($cart->id(), $cart->lines(), $this->products->load($cart->productIds()));
+        return $this->views->build($cart->id(), $cart->lines(), $this->products->load($cart->variantIds()));
     }
 }

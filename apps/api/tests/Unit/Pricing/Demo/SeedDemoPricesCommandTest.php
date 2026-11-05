@@ -8,7 +8,7 @@ use App\Pricing\Application\Demo\DemoPriceSeeder;
 use App\Pricing\Infrastructure\Demo\YamlDemoPriceSource;
 use App\Pricing\UI\Console\SeedDemoPricesCommand;
 use App\Tests\Support\InMemory\RecordingMessageBus;
-use App\Tests\Unit\Pricing\InMemoryProductsForPricing;
+use App\Tests\Unit\Pricing\InMemoryVariantsForPricing;
 use App\Tests\Unit\Pricing\SpyPricingReset;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Application;
@@ -18,8 +18,8 @@ use Symfony\Component\Console\Tester\CommandTester;
 final class SeedDemoPricesCommandTest extends TestCase
 {
     private const array PRICED = [
-        '00000000-0000-4000-8000-000000000001' => 'namiot-turystyczny-norvane-biwak-2-zielony',
-        '00000000-0000-4000-8000-000000000002' => 'mapa-turystyczna-tarvik-press-gorce-skladana',
+        '00000000-0000-4000-8000-000000000001' => 'namiot-turystyczny-norvane-biwak-2-zielony/standard',
+        '00000000-0000-4000-8000-000000000002' => 'mapa-turystyczna-tarvik-press-gorce-skladana/standard',
     ];
 
     private RecordingMessageBus $bus;
@@ -33,7 +33,7 @@ final class SeedDemoPricesCommandTest extends TestCase
         }
     }
 
-    public function testResetsAndSetsAPriceForEveryProduct(): void
+    public function testResetsAndSetsAPriceForEveryVariant(): void
     {
         $tester = $this->tester(self::PRICED);
 
@@ -45,37 +45,37 @@ final class SeedDemoPricesCommandTest extends TestCase
         self::assertStringContainsString('prices: 2', $tester->getDisplay());
     }
 
-    public function testProductWithoutPatternFailsBeforeAnyChange(): void
+    public function testVariantWithoutPatternFailsBeforeAnyChange(): void
     {
         $tester = $this->tester([
             ...self::PRICED,
-            '00000000-0000-4000-8000-000000000003' => 'kajak-turystyczny-vilmar-rzeka-1-zielony',
+            '00000000-0000-4000-8000-000000000003' => 'kajak-turystyczny-vilmar-rzeka-1-zielony/standard',
         ]);
 
         $exitCode = $tester->execute([]);
 
         $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
         self::assertSame(Command::FAILURE, $exitCode);
-        self::assertStringContainsString('kajak-turystyczny-vilmar-rzeka-1-zielony', $display);
+        self::assertStringContainsString('kajak-turystyczny-vilmar-rzeka-1-zielony/standard', $display);
         self::assertStringContainsString('Nothing was changed', $display);
         self::assertSame(0, $this->reset->resets);
         self::assertSame([], $this->bus->dispatched);
     }
 
-    public function testManyProductsWithoutPatternAreSummarised(): void
+    public function testManyVariantsWithoutPatternAreSummarised(): void
     {
-        $products = self::PRICED;
+        $variants = self::PRICED;
         for ($i = 10; $i < 25; ++$i) {
-            $products[\sprintf('00000000-0000-4000-8000-%012d', $i)] = 'kajak-'.$i;
+            $variants[\sprintf('00000000-0000-4000-8000-%012d', $i)] = 'kajak-'.$i.'/standard';
         }
-        $tester = $this->tester($products);
+        $tester = $this->tester($variants);
 
         self::assertSame(Command::FAILURE, $tester->execute([]));
 
         $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
-        self::assertStringContainsString('15 demo products', $display);
-        self::assertStringContainsString('kajak-19', $display);
-        self::assertStringNotContainsString('kajak-20', $display);
+        self::assertStringContainsString('15 demo variants', $display);
+        self::assertStringContainsString('kajak-19/standard', $display);
+        self::assertStringNotContainsString('kajak-20/standard', $display);
     }
 
     public function testInvalidPriceFileFailsBeforeAnyChange(): void
@@ -110,9 +110,9 @@ final class SeedDemoPricesCommandTest extends TestCase
     }
 
     /**
-     * @param array<string, string> $products product id => slug
+     * @param array<string, string> $variants variant id => key
      */
-    private function tester(array $products, string $prices = "\"namiot-*\": 89900\n\"mapa-*\": 2490\n", string $environment = 'test'): CommandTester
+    private function tester(array $variants, string $prices = "\"namiot-*\": 89900\n\"mapa-*\": 2490\n", string $environment = 'test'): CommandTester
     {
         $this->file = tempnam(sys_get_temp_dir(), 'prices');
         file_put_contents($this->file, $prices);
@@ -121,7 +121,7 @@ final class SeedDemoPricesCommandTest extends TestCase
         $application = new Application();
         $application->addCommand(new SeedDemoPricesCommand(
             new YamlDemoPriceSource($this->file),
-            new DemoPriceSeeder(new InMemoryProductsForPricing($products), $this->bus),
+            new DemoPriceSeeder(new InMemoryVariantsForPricing($variants), $this->bus),
             $this->reset,
             $environment,
         ));

@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Inventory;
 
-use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Domain\Stock\ReceiptKey;
 use App\Inventory\Domain\Stock\ReceiptKeyReused;
 use App\Inventory\Domain\Stock\StockItem;
 use App\Inventory\Domain\Stock\StockItemRepository;
 use App\Inventory\Domain\Stock\StockMovement;
 use App\Inventory\Domain\Stock\StockMovementType;
+use App\Inventory\Domain\Stock\VariantId;
 
 /**
  * Keeps stocks like the database does: reads return fresh copies, lockOrCreate() stores a missing stock at version 0,
@@ -31,14 +31,14 @@ final class InMemoryStockItemRepository implements StockItemRepository
 
     public function lockMany(array $ids): array
     {
-        $this->locks[] = array_map(static fn (ProductId $id): string => $id->toString(), $ids);
+        $this->locks[] = array_map(static fn (VariantId $id): string => $id->toString(), $ids);
         $found = $this->found($ids);
         usort($found, static fn (StockItem $a, StockItem $b): int => strcmp($a->id()->toString(), $b->id()->toString()));
 
         return $found;
     }
 
-    public function lockOrCreate(ProductId $id): StockItem
+    public function lockOrCreate(VariantId $id): StockItem
     {
         $this->items[$id->toString()] ??= StockItem::unstored($id);
 
@@ -58,7 +58,7 @@ final class InMemoryStockItemRepository implements StockItemRepository
 
     public function findMany(array $ids): array
     {
-        $this->manyReads[] = array_map(static fn (ProductId $id): string => $id->toString(), $ids);
+        $this->manyReads[] = array_map(static fn (VariantId $id): string => $id->toString(), $ids);
 
         return $this->found($ids);
     }
@@ -89,14 +89,14 @@ final class InMemoryStockItemRepository implements StockItemRepository
     /**
      * Stores a stock as if it had been saved earlier, without movements.
      */
-    public function store(string $productId, int $physical, int $reserved = 0, int $version = 1): void
+    public function store(string $variantId, int $physical, int $reserved = 0, int $version = 1): void
     {
-        $this->items[$productId] = StockItem::reconstitute(ProductId::fromString($productId), $physical, $reserved, $version, new \DateTimeImmutable('2026-11-01 10:00:00+00:00'));
+        $this->items[$variantId] = StockItem::reconstitute(VariantId::fromString($variantId), $physical, $reserved, $version, new \DateTimeImmutable('2026-11-01 10:00:00+00:00'));
     }
 
-    public function stored(string $productId): ?StockItem
+    public function stored(string $variantId): ?StockItem
     {
-        $stored = $this->items[$productId] ?? null;
+        $stored = $this->items[$variantId] ?? null;
 
         return null === $stored ? null : $this->copy($stored);
     }
@@ -118,7 +118,7 @@ final class InMemoryStockItemRepository implements StockItemRepository
     }
 
     /**
-     * @param list<ProductId> $ids
+     * @param list<VariantId> $ids
      *
      * @return list<StockItem>
      */

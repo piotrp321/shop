@@ -8,12 +8,12 @@ use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Pricing\Domain\Price\GrossPrice;
-use App\Pricing\Domain\Price\ProductPriceRepository;
-use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineProductPriceRepository;
+use App\Pricing\Domain\Price\VariantPriceRepository;
+use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineVariantPriceRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
-use App\Tests\Factory\ProductPriceRecordFactory;
-use App\Tests\Integration\Pricing\InterleavingProductPriceRepository;
+use App\Tests\Factory\VariantPriceRecordFactory;
+use App\Tests\Integration\Pricing\InterleavingVariantPriceRepository;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -23,13 +23,13 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
- * PUT /api/v1/admin/products/{productId}/price on PostgreSQL (shop_test, rolled back after each test).
+ * PUT /api/v1/admin/variants/{variantId}/price on PostgreSQL (shop_test, rolled back after each test).
  */
 final class ChangePriceEndpointTest extends WebTestCase
 {
     use Factories;
 
-    private const string UNKNOWN_PRODUCT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
+    private const string UNKNOWN_VARIANT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
 
     private KernelBrowser $client;
     private EntityManagerInterface $entityManager;
@@ -46,9 +46,9 @@ final class ChangePriceEndpointTest extends WebTestCase
 
     public function testChangesTheGrossAndReturnsTheSavedPrice(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $price = $this->put($productId, ['gross' => 5990, 'version' => 1]);
+        $price = $this->put($variantId, ['gross' => 5990, 'version' => 1]);
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringContainsString('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
@@ -59,43 +59,43 @@ final class ChangePriceEndpointTest extends WebTestCase
         self::assertIsString($price['updatedAt']);
         self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/D', $price['updatedAt']);
         $this->assertKeysMatchSchema($price, 'ListedPriceResponse');
-        self::assertSame(['gross_amount' => 5990, 'version' => 2], $this->storedPrice($productId));
-        self::assertCount(1, $this->history($productId));
+        self::assertSame(['gross_amount' => 5990, 'version' => 2], $this->storedPrice($variantId));
+        self::assertCount(1, $this->history($variantId));
     }
 
-    public function testTheFirstPriceOfAProductIsSetWithoutAVersion(): void
+    public function testTheFirstPriceOfAVariantIsSetWithoutAVersion(): void
     {
-        $productId = $this->product(TaxClassCode::EnergyGel);
+        $variantId = $this->variant(TaxClassCode::EnergyGel);
 
-        $price = $this->put($productId, ['gross' => 1080, 'version' => null]);
+        $price = $this->put($variantId, ['gross' => 1080, 'version' => null]);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame(
             ['gross' => 1080, 'net' => 1000, 'vat' => 80, 'vatRate' => 800, 'currency' => 'PLN', 'version' => 1, 'vatRateOutdated' => false],
             array_diff_key($price, ['updatedAt' => 1]),
         );
-        self::assertSame(['gross_amount' => 1080, 'version' => 1], $this->storedPrice($productId));
+        self::assertSame(['gross_amount' => 1080, 'version' => 1], $this->storedPrice($variantId));
     }
 
     public function testTheSameAmountChangesNeitherTheVersionNorTheHistory(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $price = $this->put($productId, ['gross' => 5490, 'version' => 1]);
+        $price = $this->put($variantId, ['gross' => 5490, 'version' => 1]);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame(1, $price['version']);
         self::assertSame(5490, $price['gross']);
-        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($productId));
-        self::assertSame([], $this->history($productId));
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
+        self::assertSame([], $this->history($variantId));
     }
 
     public function testTheActorOfTheHistoryEntryComesFromTheTokenNeverFromTheBody(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
         $this->put(
-            $productId,
+            $variantId,
             ['gross' => 5990, 'version' => 1, 'actorId' => 'forged-id', 'actorName' => 'Forged Name', 'source' => 'seed'],
             TestTokenFactory::staff(['admin'], ['preferred_username' => 'anna.admin']),
         );
@@ -103,15 +103,15 @@ final class ChangePriceEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         self::assertSame(
             [['source' => 'staff', 'actor_id' => TestTokenFactory::STAFF_ID, 'actor_name' => 'anna.admin', 'gross_amount' => 5990]],
-            $this->history($productId),
+            $this->history($variantId),
         );
     }
 
     public function testResponseIsPrivateAndNotStored(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->put($productId, ['gross' => 5990, 'version' => 1]);
+        $this->put($variantId, ['gross' => 5990, 'version' => 1]);
 
         $cacheControl = (string) $this->client->getResponse()->headers->get('Cache-Control');
         self::assertStringContainsString('private', $cacheControl);
@@ -137,49 +137,64 @@ final class ChangePriceEndpointTest extends WebTestCase
     #[DataProvider('rolesOtherThanAdmin')]
     public function testOnlyAnAdministratorMayChangeAPrice(array $roles): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->put($productId, ['gross' => 5990, 'version' => 1], TestTokenFactory::staff($roles));
+        $this->put($variantId, ['gross' => 5990, 'version' => 1], TestTokenFactory::staff($roles));
 
         $this->assertProblem(403);
-        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($productId));
-        self::assertSame([], $this->history($productId));
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
+        self::assertSame([], $this->history($variantId));
     }
 
-    public function testAuthorizationIsCheckedBeforeTheBodyAndTheProduct(): void
+    public function testAuthorizationIsCheckedBeforeTheBodyAndTheVariant(): void
     {
-        $this->put(self::UNKNOWN_PRODUCT, ['gross' => 'garbage'], TestTokenFactory::staff(['marketing']));
+        $this->put(self::UNKNOWN_VARIANT, ['gross' => 'garbage'], TestTokenFactory::staff(['marketing']));
 
         $this->assertProblem(403);
     }
 
     public function testWithoutATokenTheRequestIsUnauthorized(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->request($productId, json_encode(['gross' => 5990, 'version' => 1], \JSON_THROW_ON_ERROR), null);
+        $this->request($variantId, json_encode(['gross' => 5990, 'version' => 1], \JSON_THROW_ON_ERROR), null);
 
         $this->assertUnauthorized();
-        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($productId));
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
     }
 
     public function testATokenOfTheShopRealmIsUnauthorized(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->put($productId, ['gross' => 5990, 'version' => 1], TestTokenFactory::customer());
+        $this->put($variantId, ['gross' => 5990, 'version' => 1], TestTokenFactory::customer());
 
         $this->assertUnauthorized();
-        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($productId));
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
     }
 
-    public function testAnUnknownProductIsNotFound(): void
+    public function testAnUnknownVariantIsNotFound(): void
     {
-        $this->put(self::UNKNOWN_PRODUCT, ['gross' => 5990, 'version' => null]);
+        $this->put(self::UNKNOWN_VARIANT, ['gross' => 5990, 'version' => null]);
 
         $problem = $this->assertProblem(404);
-        self::assertSame('Product not found.', $problem['detail']);
-        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM pricing_product_price WHERE product_id = ?', [self::UNKNOWN_PRODUCT]));
+        self::assertSame('Wariant produktu nie istnieje.', $problem['detail']);
+        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM pricing_variant_price WHERE variant_id = ?', [self::UNKNOWN_VARIANT]));
+    }
+
+    public function testTheIdOfAProductIsNotAVariantAndTheOldPathIsGone(): void
+    {
+        $variantId = $this->variant(TaxClassCode::Standard);
+        $productId = $this->connection->fetchOne('SELECT product_id FROM catalog_product_variant WHERE id = ?', [$variantId]);
+        self::assertIsString($productId);
+        self::assertNotSame($variantId, $productId);
+
+        $this->put($productId, ['gross' => 5990, 'version' => null]);
+        self::assertSame('Wariant produktu nie istnieje.', $this->assertProblem(404)['detail']);
+
+        $this->client->request('PUT', '/api/v1/admin/products/'.$productId.'/price', server: ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.TestTokenFactory::staff(['admin'])], content: '{"gross": 5990, "version": null}');
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM pricing_variant_price'));
     }
 
     /**
@@ -188,26 +203,26 @@ final class ChangePriceEndpointTest extends WebTestCase
     public static function idsThatAreNotUuids(): iterable
     {
         yield 'a word' => ['shoes'];
-        yield 'a uuid with a suffix' => [self::UNKNOWN_PRODUCT.'x'];
-        yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_PRODUCT)];
+        yield 'a uuid with a suffix' => [self::UNKNOWN_VARIANT.'x'];
+        yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_VARIANT)];
     }
 
     #[DataProvider('idsThatAreNotUuids')]
-    public function testAProductIdThatIsNotAUuidIsNotFound(string $productId): void
+    public function testAVariantIdThatIsNotAUuidIsNotFound(string $variantId): void
     {
-        $this->put($productId, ['gross' => 5990, 'version' => null]);
+        $this->put($variantId, ['gross' => 5990, 'version' => null]);
 
         $this->assertProblem(404);
     }
 
-    public function testAnUppercaseUuidNamesTheSameProduct(): void
+    public function testAnUppercaseUuidNamesTheSameVariant(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->put(strtoupper($productId), ['gross' => 5990, 'version' => 1]);
+        $this->put(strtoupper($variantId), ['gross' => 5990, 'version' => 1]);
 
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(['gross_amount' => 5990, 'version' => 2], $this->storedPrice($productId));
+        self::assertSame(['gross_amount' => 5990, 'version' => 2], $this->storedPrice($variantId));
     }
 
     /**
@@ -223,51 +238,51 @@ final class ChangePriceEndpointTest extends WebTestCase
     #[DataProvider('staleVersions')]
     public function testAStaleVersionIsAConflictAndOverwritesNothing(?int $version): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
-        $this->put($productId, ['gross' => 5990, 'version' => 1]);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
+        $this->put($variantId, ['gross' => 5990, 'version' => 1]);
         self::assertResponseStatusCodeSame(200);
 
-        $this->put($productId, ['gross' => 6490, 'version' => $version]);
+        $this->put($variantId, ['gross' => 6490, 'version' => $version]);
 
         $problem = $this->assertProblem(409);
         self::assertSame('The price was modified concurrently. Reload it and try again.', $problem['detail']);
-        self::assertSame(['gross_amount' => 5990, 'version' => 2], $this->storedPrice($productId));
-        self::assertCount(1, $this->history($productId));
+        self::assertSame(['gross_amount' => 5990, 'version' => 2], $this->storedPrice($variantId));
+        self::assertCount(1, $this->history($variantId));
     }
 
-    public function testAVersionForAProductWithoutAPriceIsAConflict(): void
+    public function testAVersionForAVariantWithoutAPriceIsAConflict(): void
     {
-        $productId = $this->product(TaxClassCode::Standard);
+        $variantId = $this->variant(TaxClassCode::Standard);
 
-        $this->put($productId, ['gross' => 5990, 'version' => 1]);
+        $this->put($variantId, ['gross' => 5990, 'version' => 1]);
 
         $this->assertProblem(409);
-        self::assertNull($this->storedPrice($productId));
+        self::assertNull($this->storedPrice($variantId));
     }
 
     public function testAChangeSavedConcurrentlyAfterTheReadIsAConflict(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
         $this->client->disableReboot();
         // Another change moves the row to version 2 after this request has read version 1 and before it writes, so the
         // versioned UPDATE finds no row at version 1. The competing UPDATE runs on the same connection, inside the
         // command's transaction, and is rolled back with it: the row ends as it was.
-        self::getContainer()->set(ProductPriceRepository::class, new InterleavingProductPriceRepository(
-            new DoctrineProductPriceRepository($this->entityManager),
-            function () use ($productId): void {
+        self::getContainer()->set(VariantPriceRepository::class, new InterleavingVariantPriceRepository(
+            new DoctrineVariantPriceRepository($this->entityManager),
+            function () use ($variantId): void {
                 $this->connection->executeStatement(
-                    'UPDATE pricing_product_price SET gross_amount = 7000, version = version + 1 WHERE product_id = ?',
-                    [$productId],
+                    'UPDATE pricing_variant_price SET gross_amount = 7000, version = version + 1 WHERE variant_id = ?',
+                    [$variantId],
                 );
             },
         ));
 
-        $this->put($productId, ['gross' => 5990, 'version' => 1]);
+        $this->put($variantId, ['gross' => 5990, 'version' => 1]);
 
         $problem = $this->assertProblem(409);
         self::assertSame('The price was modified concurrently. Reload it and try again.', $problem['detail']);
-        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($productId));
-        self::assertSame([], $this->history($productId));
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
+        self::assertSame([], $this->history($variantId));
     }
 
     /**
@@ -301,22 +316,22 @@ final class ChangePriceEndpointTest extends WebTestCase
     #[DataProvider('rejectedBodies')]
     public function testAnInvalidAmountOrTypeIsUnprocessableAndChangesNothing(string $body): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->request($productId, $body, 'Bearer '.TestTokenFactory::staff(['admin']));
+        $this->request($variantId, $body, 'Bearer '.TestTokenFactory::staff(['admin']));
 
         $problem = $this->assertProblem(422);
         self::assertIsArray($problem['violations']);
         self::assertNotEmpty($problem['violations']);
-        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($productId));
-        self::assertSame([], $this->history($productId));
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
+        self::assertSame([], $this->history($variantId));
     }
 
     public function testTheViolationOfTheAmountNamesTheField(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->put($productId, ['gross' => 0, 'version' => 1]);
+        $this->put($variantId, ['gross' => 0, 'version' => 1]);
 
         $problem = $this->assertProblem(422);
         self::assertIsArray($problem['violations']);
@@ -340,9 +355,9 @@ final class ChangePriceEndpointTest extends WebTestCase
     #[DataProvider('amountsOutOfRange')]
     public function testTheViolationOfTheRangeSaysTheLimitsInZloty(int $gross): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->put($productId, ['gross' => $gross, 'version' => 1]);
+        $this->put($variantId, ['gross' => $gross, 'version' => 1]);
 
         $problem = $this->assertProblem(422);
         self::assertIsArray($problem['violations']);
@@ -355,54 +370,54 @@ final class ChangePriceEndpointTest extends WebTestCase
 
     public function testTheLimitsOfTheAmountAreAccepted(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->put($productId, ['gross' => 1, 'version' => 1]);
+        $this->put($variantId, ['gross' => 1, 'version' => 1]);
         self::assertResponseStatusCodeSame(200);
-        $this->put($productId, ['gross' => 99_999_999, 'version' => 2]);
+        $this->put($variantId, ['gross' => 99_999_999, 'version' => 2]);
         self::assertResponseStatusCodeSame(200);
 
-        self::assertSame(['gross_amount' => 99_999_999, 'version' => 3], $this->storedPrice($productId));
+        self::assertSame(['gross_amount' => 99_999_999, 'version' => 3], $this->storedPrice($variantId));
     }
 
     public function testMalformedJsonIsABadRequest(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->request($productId, '{"gross": 5990,', 'Bearer '.TestTokenFactory::staff(['admin']));
+        $this->request($variantId, '{"gross": 5990,', 'Bearer '.TestTokenFactory::staff(['admin']));
 
         $this->assertProblem(400);
-        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($productId));
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
     }
 
     public function testAFormBodyIsNotAccepted(): void
     {
-        $productId = $this->pricedProduct(TaxClassCode::PrintedBook, 5490, 500);
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
 
-        $this->request($productId, 'gross=5990&version=1', 'Bearer '.TestTokenFactory::staff(['admin']), 'application/x-www-form-urlencoded');
+        $this->request($variantId, 'gross=5990&version=1', 'Bearer '.TestTokenFactory::staff(['admin']), 'application/x-www-form-urlencoded');
 
         $this->assertProblem(415);
-        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($productId));
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
     }
 
-    private function product(TaxClassCode $taxClass): string
+    private function variant(TaxClassCode $taxClass): string
     {
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($this->entityManager)->save($category);
         $product = ProductFactory::createOne(['mainCategory' => $category, 'taxClass' => $taxClass]);
         new DoctrineProductRepository($this->entityManager)->save($product);
 
-        return $product->id()->toString();
+        return $product->variants()->toList()[0]->id()->toString();
     }
 
-    private function pricedProduct(TaxClassCode $taxClass, int $gross, int $basisPoints): string
+    private function pricedVariant(TaxClassCode $taxClass, int $gross, int $basisPoints): string
     {
-        $productId = $this->product($taxClass);
-        ProductPriceRecordFactory::store($this->entityManager, ['productId' => $productId, 'gross' => $gross, 'taxClass' => $taxClass->value, 'vatRateBp' => $basisPoints]);
+        $variantId = $this->variant($taxClass);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $variantId, 'gross' => $gross, 'taxClass' => $taxClass->value, 'vatRateBp' => $basisPoints]);
         // The request reads the price with its own entity manager state, as a real one would.
         $this->entityManager->clear();
 
-        return $productId;
+        return $variantId;
     }
 
     /**
@@ -412,21 +427,21 @@ final class ChangePriceEndpointTest extends WebTestCase
      *
      * @return array<mixed>
      */
-    private function put(string $productId, array $body, ?string $token = null): array
+    private function put(string $variantId, array $body, ?string $token = null): array
     {
-        return $this->request($productId, json_encode($body, \JSON_THROW_ON_ERROR), 'Bearer '.($token ?? TestTokenFactory::staff(['admin'])));
+        return $this->request($variantId, json_encode($body, \JSON_THROW_ON_ERROR), 'Bearer '.($token ?? TestTokenFactory::staff(['admin'])));
     }
 
     /**
      * @return array<mixed>
      */
-    private function request(string $productId, string $body, ?string $authorization, string $contentType = 'application/json'): array
+    private function request(string $variantId, string $body, ?string $authorization, string $contentType = 'application/json'): array
     {
         $server = ['CONTENT_TYPE' => $contentType];
         if (null !== $authorization) {
             $server['HTTP_AUTHORIZATION'] = $authorization;
         }
-        $this->client->request('PUT', '/api/v1/admin/products/'.$productId.'/price', server: $server, content: $body);
+        $this->client->request('PUT', '/api/v1/admin/variants/'.$variantId.'/price', server: $server, content: $body);
 
         $decoded = json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR);
         self::assertIsArray($decoded);
@@ -437,9 +452,9 @@ final class ChangePriceEndpointTest extends WebTestCase
     /**
      * @return array<string, mixed>|null
      */
-    private function storedPrice(string $productId): ?array
+    private function storedPrice(string $variantId): ?array
     {
-        $row = $this->connection->fetchAssociative('SELECT gross_amount, version FROM pricing_product_price WHERE product_id = ?', [$productId]);
+        $row = $this->connection->fetchAssociative('SELECT gross_amount, version FROM pricing_variant_price WHERE variant_id = ?', [$variantId]);
 
         return false === $row ? null : $row;
     }
@@ -447,11 +462,11 @@ final class ChangePriceEndpointTest extends WebTestCase
     /**
      * @return list<array<string, mixed>>
      */
-    private function history(string $productId): array
+    private function history(string $variantId): array
     {
         return $this->connection->fetchAllAssociative(
-            'SELECT source, actor_id, actor_name, gross_amount FROM pricing_price_history WHERE product_id = ? ORDER BY changed_at, id',
-            [$productId],
+            'SELECT source, actor_id, actor_name, gross_amount FROM pricing_price_history WHERE variant_id = ? ORDER BY changed_at, id',
+            [$variantId],
         );
     }
 

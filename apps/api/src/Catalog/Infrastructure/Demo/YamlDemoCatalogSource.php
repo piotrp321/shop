@@ -12,9 +12,14 @@ use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductVariant;
+use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\VariantAxes;
+use App\Catalog\Domain\Product\VariantId;
+use App\Catalog\Domain\Product\VariantValues;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
@@ -33,7 +38,8 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
 
     /**
      * @throws \InvalidArgumentException when the definition is malformed, breaks a domain rule (names, slug, tax
-     *                                   class, description, photo alt, categories) or a photo file is missing
+     *                                   class, description, photo alt, categories,
+     *                                   variant axes and values) or a photo file is missing
      */
     public function load(): DemoCatalog
     {
@@ -74,6 +80,13 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
                 foreach ($product->images as $position => $image) {
                     new ProductImage($placeholderKey, $image['alt'], $position);
                 }
+                ProductVariants::create(
+                    VariantAxes::fromList($product->variantAxes),
+                    array_map(
+                        static fn (array $variant): ProductVariant => new ProductVariant(VariantId::fromString($variant['id']), VariantValues::fromList($variant['values'])),
+                        $product->variants,
+                    ),
+                );
             });
         }
     }
@@ -85,7 +98,7 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
     {
         try {
             $validate();
-        } catch (\InvalidArgumentException|\ValueError $e) {
+        } catch (\InvalidArgumentException|\DomainException|\ValueError $e) {
             throw new \InvalidArgumentException(\sprintf('The demo %s is invalid: %s', $what, $e->getMessage()), 0, $e);
         }
     }

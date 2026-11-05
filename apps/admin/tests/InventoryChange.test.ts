@@ -19,20 +19,25 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock("@/api/client", () => ({ getApiClient: () => ({ GET: mocks.get, POST: mocks.post }) }));
 
 const STOCK = "/api/v1/admin/stock";
-const RECEIPTS = "/api/v1/admin/products/{productId}/stock/receipts";
-const CORRECTIONS = "/api/v1/admin/products/{productId}/stock/corrections";
+const RECEIPTS = "/api/v1/admin/variants/{variantId}/stock/receipts";
+const CORRECTIONS = "/api/v1/admin/variants/{variantId}/stock/corrections";
 
 function stock(overrides: Partial<ListedStock> = {}): ListedStock {
   return { physical: 10, reserved: 4, available: 6, level: "in_stock", version: 3, updatedAt: "2026-11-02T12:30:00+00:00", ...overrides };
 }
 
-function item(name: string, overrides: Partial<StockListItem> = {}): StockListItem {
-  return { productId: `id-${name}`, name, stock: stock(), ...overrides };
+/** A product with one default variant (empty label) unless `variants` names others; `stock` is that variant's. */
+function item(name: string, overrides: { stock?: ListedStock | null; variants?: StockListItem["variants"] } = {}): StockListItem {
+  return {
+    productId: `id-${name}`,
+    name,
+    variants: overrides.variants ?? [{ variantId: `var-${name}`, label: "", stock: overrides.stock === undefined ? stock() : overrides.stock }],
+  };
 }
 
 function state(overrides: Partial<StockState> = {}): StockState {
   return {
-    productId: "id-A",
+    variantId: "var-A",
     physical: 15,
     reserved: 4,
     available: 11,
@@ -176,9 +181,33 @@ describe("InventoryView: receipts and corrections", () => {
       await submitReceipt();
 
       expect(mocks.post).toHaveBeenCalledWith(RECEIPTS, {
-        params: { path: { productId: "id-A" }, header: { "Idempotency-Key": "11111111-1111-4111-8111-111111111111" } },
+        params: { path: { variantId: "var-A" }, header: { "Idempotency-Key": "11111111-1111-4111-8111-111111111111" } },
         body: { quantity: 5, note: "Dostawa" },
       });
+    });
+
+    it("receives into the variant of the row and replaces only that row, naming the variant in the dialog", async () => {
+      serve(() => ({
+        items: [
+          item("Kajak", {
+            variants: [
+              { variantId: "v-green", label: "zielony", stock: stock({ physical: 0, reserved: 0, available: 0, level: "out_of_stock", version: 1 }) },
+              { variantId: "v-orange", label: "pomarańczowy", stock: stock({ physical: 3, reserved: 0, available: 3, level: "low_stock", version: 2 }) },
+            ],
+          }),
+        ],
+        next: null,
+      }));
+      wrapper = await mountView();
+      answer(201, state({ variantId: "v-orange", physical: 8, reserved: 0, available: 8, version: 3 }));
+
+      await open("receive-stock", 1);
+      expect(dialog("receive-dialog").text()).toContain("Kajak – pomarańczowy");
+      await fillReceipt(5);
+      await submitReceipt();
+
+      expect(mocks.post).toHaveBeenCalledWith(RECEIPTS, expect.objectContaining({ params: expect.objectContaining({ path: { variantId: "v-orange" } }) }));
+      expect([physicalOfRow(0), physicalOfRow(1)]).toEqual(["0", "8"]);
     });
 
     it("shows the stock the API answered with in the row and closes", async () => {
@@ -339,6 +368,33 @@ describe("InventoryView: receipts and corrections", () => {
   });
 
   describe("a correction", () => {
+    it("corrects the variant of the row with the version of that row", async () => {
+      serve(() => ({
+        items: [
+          item("Kajak", {
+            variants: [
+              { variantId: "v-green", label: "zielony", stock: stock({ version: 7 }) },
+              { variantId: "v-orange", label: "pomarańczowy", stock: stock({ version: 2 }) },
+            ],
+          }),
+        ],
+        next: null,
+      }));
+      wrapper = await mountView();
+      answer(200, state({ variantId: "v-green", physical: 6, version: 8 }));
+
+      await open("correct-stock", 0);
+      expect(dialog("correct-dialog").text()).toContain("Kajak – zielony");
+      await fillCorrection(6);
+      await submitCorrection();
+
+      expect(mocks.post).toHaveBeenCalledWith(CORRECTIONS, {
+        params: { path: { variantId: "v-green" } },
+        body: { physical: 6, reason: "inventory_count", note: null, version: 7 },
+      });
+      expect([physicalOfRow(0), physicalOfRow(1)]).toEqual(["6", "10"]);
+    });
+
     it("sends the count, the reason and the version of the row", async () => {
       serve(one);
       wrapper = await mountView();
@@ -349,7 +405,7 @@ describe("InventoryView: receipts and corrections", () => {
       await submitCorrection();
 
       expect(mocks.post).toHaveBeenCalledWith(CORRECTIONS, {
-        params: { path: { productId: "id-A" } },
+        params: { path: { variantId: "var-A" } },
         body: { physical: 15, reason: "damage", note: "Pęknięte opakowania", version: 3 },
       });
     });

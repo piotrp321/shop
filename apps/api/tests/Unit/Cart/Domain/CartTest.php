@@ -15,18 +15,18 @@ use App\Cart\Domain\CartOwner;
 use App\Cart\Domain\CartStatus;
 use App\Cart\Domain\GuestCartMerged;
 use App\Cart\Domain\InsufficientStock;
-use App\Cart\Domain\ProductId;
 use App\Cart\Domain\ProductNotPurchasable;
 use App\Cart\Domain\ProductOffer;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\VariantId;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class CartTest extends TestCase
 {
     private const string CART = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
-    private const string P1 = '0192f0c4-7c1a-7c4e-9a6e-000000000001';
-    private const string P2 = '0192f0c4-7c1a-7c4e-9a6e-000000000002';
+    private const string V1 = '0192f0c4-7c1a-7c4e-9a6e-000000000001';
+    private const string V2 = '0192f0c4-7c1a-7c4e-9a6e-000000000002';
 
     private \DateTimeImmutable $now;
 
@@ -64,49 +64,65 @@ final class CartTest extends TestCase
         $cart = $this->guestCart();
         $later = $this->now->modify('+1 day');
 
-        $cart->add(self::product(self::P1), Quantity::of(2), self::offer(), $later);
+        $cart->add(self::variant(self::V1), Quantity::of(2), self::offer(), $later);
 
-        self::assertSame([[self::P1, 2]], self::lines($cart));
+        self::assertSame([[self::V1, 2]], self::lines($cart));
         self::assertEquals($later, $cart->lines()[0]->addedAt());
         self::assertEquals($later, $cart->updatedAt());
         self::assertEquals($later->modify('+30 days'), $cart->expiresAt());
     }
 
-    public function testAddOfAProductInTheCartIncreasesItsQuantityAndKeepsItsPlace(): void
+    public function testAddOfAVariantInTheCartIncreasesItsQuantityAndKeepsItsPlace(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(2), self::offer(), $this->now);
-        $cart->add(self::product(self::P2), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(2), self::offer(), $this->now);
+        $cart->add(self::variant(self::V2), Quantity::of(1), self::offer(), $this->now);
 
-        $cart->add(self::product(strtoupper(self::P1)), Quantity::of(3), self::offer(), $this->now->modify('+1 hour'));
+        $cart->add(self::variant(strtoupper(self::V1)), Quantity::of(3), self::offer(), $this->now->modify('+1 hour'));
 
-        self::assertSame([[self::P1, 5], [self::P2, 1]], self::lines($cart));
+        self::assertSame([[self::V1, 5], [self::V2, 1]], self::lines($cart));
         self::assertEquals($this->now, $cart->lines()[0]->addedAt());
+    }
+
+    /**
+     * Two variants (e.g. two sizes) of one product are two lines; the cart knows only variants, and the limit of 99
+     * units applies to each line on its own.
+     */
+    public function testTwoVariantsAreTwoLinesWithTheirOwnLimitOfUnits(): void
+    {
+        $cart = $this->guestCart();
+
+        $cart->add(self::variant(self::V1), Quantity::of(99), self::offer(), $this->now);
+        $cart->add(self::variant(self::V2), Quantity::of(99), self::offer(), $this->now);
+
+        self::assertSame([[self::V1, 99], [self::V2, 99]], self::lines($cart));
+        $this->expectException(CartLineQuantityLimit::class);
+        $cart->add(self::variant(self::V2), Quantity::of(1), self::offer(), $this->now);
     }
 
     public function testAddUpTo99UnitsIsAllowed(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(98), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(98), self::offer(), $this->now);
 
-        $cart->add(self::product(self::P1), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
 
-        self::assertSame([[self::P1, 99]], self::lines($cart));
+        self::assertSame([[self::V1, 99]], self::lines($cart));
     }
 
     public function testAddOver99UnitsIsRefusedWithoutChange(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(99), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(99), self::offer(), $this->now);
         $updatedAt = $cart->updatedAt();
 
         try {
-            $cart->add(self::product(self::P1), Quantity::of(1), self::offer(), $this->now->modify('+1 hour'));
+            $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now->modify('+1 hour'));
             self::fail('Expected CartLineQuantityLimit.');
         } catch (CartLineQuantityLimit $limit) {
-            self::assertSame('Można dodać najwyżej 99 sztuk jednego produktu.', $limit->getMessage());
+            self::assertSame('Można dodać najwyżej 99 sztuk jednej pozycji.', $limit->getMessage());
         }
-        self::assertSame([[self::P1, 99]], self::lines($cart));
+        self::assertSame([[self::V1, 99]], self::lines($cart));
         self::assertEquals($updatedAt, $cart->updatedAt());
     }
 
@@ -114,17 +130,17 @@ final class CartTest extends TestCase
     {
         $cart = $this->guestCart();
         for ($i = 1; $i <= 49; ++$i) {
-            $cart->add(self::numberedProduct($i), Quantity::of(1), self::offer(), $this->now);
+            $cart->add(self::numberedVariant($i), Quantity::of(1), self::offer(), $this->now);
         }
 
-        $cart->add(self::numberedProduct(50), Quantity::of(1), self::offer(), $this->now);
-        self::assertCount(50, $cart->productIds());
+        $cart->add(self::numberedVariant(50), Quantity::of(1), self::offer(), $this->now);
+        self::assertCount(50, $cart->variantIds());
 
         try {
-            $cart->add(self::numberedProduct(51), Quantity::of(1), self::offer(), $this->now);
+            $cart->add(self::numberedVariant(51), Quantity::of(1), self::offer(), $this->now);
             self::fail('Expected CartLineLimit.');
         } catch (CartLineLimit $limit) {
-            self::assertSame('Koszyk może zawierać najwyżej 50 różnych produktów.', $limit->getMessage());
+            self::assertSame('Koszyk może zawierać najwyżej 50 różnych pozycji.', $limit->getMessage());
         }
         self::assertCount(50, $cart->lines());
     }
@@ -133,10 +149,10 @@ final class CartTest extends TestCase
     {
         $cart = $this->guestCart();
         for ($i = 1; $i <= 50; ++$i) {
-            $cart->add(self::numberedProduct($i), Quantity::of(1), self::offer(), $this->now);
+            $cart->add(self::numberedVariant($i), Quantity::of(1), self::offer(), $this->now);
         }
 
-        $cart->add(self::numberedProduct(7), Quantity::of(2), self::offer(), $this->now);
+        $cart->add(self::numberedVariant(7), Quantity::of(2), self::offer(), $this->now);
 
         self::assertSame(3, $cart->lines()[6]->quantity()->value());
     }
@@ -157,7 +173,7 @@ final class CartTest extends TestCase
         $cart = $this->guestCart();
 
         try {
-            $cart->add(self::product(self::P1), Quantity::of(1), $offer, $this->now);
+            $cart->add(self::variant(self::V1), Quantity::of(1), $offer, $this->now);
             self::fail('Expected ProductNotPurchasable.');
         } catch (ProductNotPurchasable $refused) {
             self::assertSame('Ten produkt jest chwilowo niedostępny w sprzedaży.', $refused->getMessage());
@@ -168,37 +184,37 @@ final class CartTest extends TestCase
     public function testAddUpToTheAvailableUnitsIsAllowedAndBeyondRefusedWithoutTheNumber(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(2), new ProductOffer(true, 3), $this->now);
-        $cart->add(self::product(self::P1), Quantity::of(1), new ProductOffer(true, 3), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(2), new ProductOffer(true, 3), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), new ProductOffer(true, 3), $this->now);
 
         try {
-            $cart->add(self::product(self::P1), Quantity::of(1), new ProductOffer(true, 3), $this->now);
+            $cart->add(self::variant(self::V1), Quantity::of(1), new ProductOffer(true, 3), $this->now);
             self::fail('Expected InsufficientStock.');
         } catch (InsufficientStock $short) {
             self::assertSame('Nie mamy tylu sztuk tego produktu.', $short->getMessage());
         }
-        self::assertSame([[self::P1, 3]], self::lines($cart));
+        self::assertSame([[self::V1, 3]], self::lines($cart));
     }
 
     public function testTheQuantityLimitIsCheckedBeforeTheOffer(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(99), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(99), self::offer(), $this->now);
 
         $this->expectException(CartLineQuantityLimit::class);
 
-        $cart->add(self::product(self::P1), Quantity::of(1), new ProductOffer(false, 0), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), new ProductOffer(false, 0), $this->now);
     }
 
     public function testChangeQuantitySetsTheValue(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(2), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(2), self::offer(), $this->now);
         $later = $this->now->modify('+2 days');
 
-        $cart->changeQuantity(self::product(self::P1), Quantity::of(7), self::offer(), $later);
+        $cart->changeQuantity(self::variant(self::V1), Quantity::of(7), self::offer(), $later);
 
-        self::assertSame([[self::P1, 7]], self::lines($cart));
+        self::assertSame([[self::V1, 7]], self::lines($cart));
         self::assertEquals($later, $cart->updatedAt());
         self::assertEquals($later->modify('+30 days'), $cart->expiresAt());
     }
@@ -206,36 +222,36 @@ final class CartTest extends TestCase
     public function testDecreaseAndTheSameQuantityNeedNoOfferAndAreAlwaysAllowed(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(5), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(5), self::offer(), $this->now);
 
-        self::assertFalse($cart->needsOfferToChange(self::product(self::P1), Quantity::of(5)));
-        self::assertFalse($cart->needsOfferToChange(self::product(self::P1), Quantity::of(1)));
-        $cart->changeQuantity(self::product(self::P1), Quantity::of(5), null, $this->now);
-        $cart->changeQuantity(self::product(self::P1), Quantity::of(1), null, $this->now);
+        self::assertFalse($cart->needsOfferToChange(self::variant(self::V1), Quantity::of(5)));
+        self::assertFalse($cart->needsOfferToChange(self::variant(self::V1), Quantity::of(1)));
+        $cart->changeQuantity(self::variant(self::V1), Quantity::of(5), null, $this->now);
+        $cart->changeQuantity(self::variant(self::V1), Quantity::of(1), null, $this->now);
 
-        self::assertSame([[self::P1, 1]], self::lines($cart));
+        self::assertSame([[self::V1, 1]], self::lines($cart));
     }
 
     public function testDecreaseIsAllowedForAProductThatCannotBeBought(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(5), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(5), self::offer(), $this->now);
 
-        $cart->changeQuantity(self::product(self::P1), Quantity::of(2), new ProductOffer(false, 0), $this->now);
+        $cart->changeQuantity(self::variant(self::V1), Quantity::of(2), new ProductOffer(false, 0), $this->now);
 
-        self::assertSame([[self::P1, 2]], self::lines($cart));
+        self::assertSame([[self::V1, 2]], self::lines($cart));
     }
 
     public function testIncreaseNeedsTheOffer(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
 
-        self::assertTrue($cart->needsOfferToChange(self::product(self::P1), Quantity::of(2)));
-        self::assertFalse($cart->needsOfferToChange(self::product(self::P2), Quantity::of(2)), 'no line, nothing to increase');
+        self::assertTrue($cart->needsOfferToChange(self::variant(self::V1), Quantity::of(2)));
+        self::assertFalse($cart->needsOfferToChange(self::variant(self::V2), Quantity::of(2)), 'no line, nothing to increase');
 
         $this->expectException(\LogicException::class);
-        $cart->changeQuantity(self::product(self::P1), Quantity::of(2), null, $this->now);
+        $cart->changeQuantity(self::variant(self::V1), Quantity::of(2), null, $this->now);
     }
 
     /**
@@ -255,25 +271,25 @@ final class CartTest extends TestCase
     public function testIncreaseIsCheckedAgainstTheOffer(ProductOffer $offer, string $expected): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
 
         try {
-            $cart->changeQuantity(self::product(self::P1), Quantity::of(4), $offer, $this->now);
+            $cart->changeQuantity(self::variant(self::V1), Quantity::of(4), $offer, $this->now);
             self::fail('Expected '.$expected);
         } catch (\Throwable $refused) {
             self::assertInstanceOf($expected, $refused);
         }
-        self::assertSame([[self::P1, 1]], self::lines($cart));
+        self::assertSame([[self::V1, 1]], self::lines($cart));
     }
 
     public function testIncreaseUpToTheAvailableUnitsIsAllowed(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
 
-        $cart->changeQuantity(self::product(self::P1), Quantity::of(3), new ProductOffer(true, 3), $this->now);
+        $cart->changeQuantity(self::variant(self::V1), Quantity::of(3), new ProductOffer(true, 3), $this->now);
 
-        self::assertSame([[self::P1, 3]], self::lines($cart));
+        self::assertSame([[self::V1, 3]], self::lines($cart));
     }
 
     public function testChangeOfAMissingLineIsNotFound(): void
@@ -281,7 +297,7 @@ final class CartTest extends TestCase
         $cart = $this->guestCart();
 
         try {
-            $cart->changeQuantity(self::product(self::P1), Quantity::of(1), self::offer(), $this->now);
+            $cart->changeQuantity(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
             self::fail('Expected CartLineNotFound.');
         } catch (CartLineNotFound $missing) {
             self::assertSame('Tej pozycji nie ma w koszyku.', $missing->getMessage());
@@ -291,24 +307,24 @@ final class CartTest extends TestCase
     public function testRemoveDeletesTheLineAndTouchesTheCart(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(1), self::offer(), $this->now);
-        $cart->add(self::product(self::P2), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V2), Quantity::of(1), self::offer(), $this->now);
         $later = $this->now->modify('+3 days');
 
-        $cart->remove(self::product(self::P1), $later);
+        $cart->remove(self::variant(self::V1), $later);
 
-        self::assertSame([[self::P2, 1]], self::lines($cart));
+        self::assertSame([[self::V2, 1]], self::lines($cart));
         self::assertEquals($later, $cart->updatedAt());
     }
 
     public function testRemoveOfAMissingLineChangesNothing(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P1), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
 
-        $cart->remove(self::product(self::P2), $this->now->modify('+3 days'));
+        $cart->remove(self::variant(self::V2), $this->now->modify('+3 days'));
 
-        self::assertSame([[self::P1, 1]], self::lines($cart));
+        self::assertSame([[self::V1, 1]], self::lines($cart));
         self::assertEquals($this->now, $cart->updatedAt());
     }
 
@@ -317,10 +333,10 @@ final class CartTest extends TestCase
      */
     public static function changes(): iterable
     {
-        yield 'add' => [static fn (Cart $cart, \DateTimeImmutable $now) => $cart->add(self::product(self::P2), Quantity::of(1), self::offer(), $now)];
-        yield 'change quantity' => [static fn (Cart $cart, \DateTimeImmutable $now) => $cart->changeQuantity(self::product(self::P1), Quantity::of(1), null, $now)];
-        yield 'remove' => [static fn (Cart $cart, \DateTimeImmutable $now) => $cart->remove(self::product(self::P1), $now)];
-        yield 'remove of a missing line' => [static fn (Cart $cart, \DateTimeImmutable $now) => $cart->remove(self::product(self::P2), $now)];
+        yield 'add' => [static fn (Cart $cart, \DateTimeImmutable $now) => $cart->add(self::variant(self::V2), Quantity::of(1), self::offer(), $now)];
+        yield 'change quantity' => [static fn (Cart $cart, \DateTimeImmutable $now) => $cart->changeQuantity(self::variant(self::V1), Quantity::of(1), null, $now)];
+        yield 'remove' => [static fn (Cart $cart, \DateTimeImmutable $now) => $cart->remove(self::variant(self::V1), $now)];
+        yield 'remove of a missing line' => [static fn (Cart $cart, \DateTimeImmutable $now) => $cart->remove(self::variant(self::V2), $now)];
     }
 
     /**
@@ -345,7 +361,7 @@ final class CartTest extends TestCase
     #[DataProvider('changes')]
     public function testAnExpiredGuestCartIsNotFoundForEveryChange(\Closure $change): void
     {
-        $cart = $this->storedGuestCart(CartStatus::Open, $this->now->modify('-1 second'), [new CartLine(self::product(self::P1), Quantity::of(2), $this->now->modify('-40 days'))]);
+        $cart = $this->storedGuestCart(CartStatus::Open, $this->now->modify('-1 second'), [new CartLine(self::variant(self::V1), Quantity::of(2), $this->now->modify('-40 days'))]);
 
         try {
             $change($cart, $this->now);
@@ -353,7 +369,7 @@ final class CartTest extends TestCase
         } catch (CartNotFound $missing) {
             self::assertSame('Koszyk nie jest już dostępny.', $missing->getMessage());
         }
-        self::assertSame([[self::P1, 2]], self::lines($cart));
+        self::assertSame([[self::V1, 2]], self::lines($cart));
     }
 
     public function testAGuestCartExpiringRightNowIsStillValid(): void
@@ -362,7 +378,7 @@ final class CartTest extends TestCase
 
         self::assertFalse($cart->isExpired($this->now));
         self::assertTrue($cart->isExpired($this->now->modify('+1 second')));
-        $cart->add(self::product(self::P1), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
         self::assertCount(1, $cart->lines());
     }
 
@@ -383,7 +399,7 @@ final class CartTest extends TestCase
 
     public function testClearIfExpiredEmptiesAnExpiredCustomerCartOnly(): void
     {
-        $line = new CartLine(self::product(self::P1), Quantity::of(2), $this->now->modify('-200 days'));
+        $line = new CartLine(self::variant(self::V1), Quantity::of(2), $this->now->modify('-200 days'));
         $expired = $this->storedCustomerCart($this->now->modify('-1 second'), [$line]);
         $valid = $this->storedCustomerCart($this->now->modify('+1 day'), [$line]);
         $expiredGuest = $this->storedGuestCart(CartStatus::Open, $this->now->modify('-1 second'), [$line]);
@@ -393,38 +409,38 @@ final class CartTest extends TestCase
         $expiredGuest->clearIfExpired($this->now);
 
         self::assertSame([], $expired->lines());
-        self::assertSame([[self::P1, 2]], self::lines($valid));
-        self::assertSame([[self::P1, 2]], self::lines($expiredGuest), 'a guest cart is never cleared, it is gone');
+        self::assertSame([[self::V1, 2]], self::lines($valid));
+        self::assertSame([[self::V1, 2]], self::lines($expiredGuest), 'a guest cart is never cleared, it is gone');
     }
 
     public function testAChangeOfAnExpiredCustomerCartStartsFromAnEmptyCart(): void
     {
         $cart = $this->storedCustomerCart($this->now->modify('-1 second'), [
-            new CartLine(self::product(self::P1), Quantity::of(2), $this->now->modify('-200 days')),
+            new CartLine(self::variant(self::V1), Quantity::of(2), $this->now->modify('-200 days')),
         ]);
 
-        $cart->add(self::product(self::P2), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V2), Quantity::of(1), self::offer(), $this->now);
 
-        self::assertSame([[self::P2, 1]], self::lines($cart));
+        self::assertSame([[self::V2, 1]], self::lines($cart));
         self::assertEquals($this->now->modify('+180 days'), $cart->expiresAt());
     }
 
     public function testAnExpiredCustomerCartHasNoLineToChange(): void
     {
         $cart = $this->storedCustomerCart($this->now->modify('-1 second'), [
-            new CartLine(self::product(self::P1), Quantity::of(2), $this->now->modify('-200 days')),
+            new CartLine(self::variant(self::V1), Quantity::of(2), $this->now->modify('-200 days')),
         ]);
         $cart->openForChange($this->now);
 
-        self::assertFalse($cart->needsOfferToChange(self::product(self::P1), Quantity::of(5)));
+        self::assertFalse($cart->needsOfferToChange(self::variant(self::V1), Quantity::of(5)));
         $this->expectException(CartLineNotFound::class);
-        $cart->changeQuantity(self::product(self::P1), Quantity::of(5), null, $this->now);
+        $cart->changeQuantity(self::variant(self::V1), Quantity::of(5), null, $this->now);
     }
 
     public function testReadingAGuestCartShowsItsLinesUnlessItIsExpiredOrMerged(): void
     {
-        $line = new CartLine(self::product(self::P1), Quantity::of(2), $this->now);
-        $open = $this->storedGuestCart(CartStatus::Open, $this->now->modify('+1 day'), [$line, new CartLine(self::product(self::P2), Quantity::of(3), $this->now)]);
+        $line = new CartLine(self::variant(self::V1), Quantity::of(2), $this->now);
+        $open = $this->storedGuestCart(CartStatus::Open, $this->now->modify('+1 day'), [$line, new CartLine(self::variant(self::V2), Quantity::of(3), $this->now)]);
 
         self::assertSame([$line], \array_slice($open->linesAt($this->now), 0, 1));
         self::assertSame(5, $open->itemCountAt($this->now));
@@ -442,7 +458,7 @@ final class CartTest extends TestCase
     public function testReadingAnExpiredCustomerCartShowsAnEmptyCart(): void
     {
         $cart = $this->storedCustomerCart($this->now->modify('-1 second'), [
-            new CartLine(self::product(self::P1), Quantity::of(2), $this->now->modify('-200 days')),
+            new CartLine(self::variant(self::V1), Quantity::of(2), $this->now->modify('-200 days')),
         ]);
 
         self::assertSame([], $cart->linesAt($this->now));
@@ -479,13 +495,13 @@ final class CartTest extends TestCase
         Cart::reconstitute(CartId::generate(), CartOwner::customer('kc-sub-1'), CartStatus::Merged, null, null, [], $this->now, $this->now, $this->now);
     }
 
-    public function testProductIdsFollowTheOrderOfTheLines(): void
+    public function testVariantIdsFollowTheOrderOfTheLines(): void
     {
         $cart = $this->guestCart();
-        $cart->add(self::product(self::P2), Quantity::of(1), self::offer(), $this->now);
-        $cart->add(self::product(self::P1), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V2), Quantity::of(1), self::offer(), $this->now);
+        $cart->add(self::variant(self::V1), Quantity::of(1), self::offer(), $this->now);
 
-        self::assertSame([self::P2, self::P1], array_map(static fn (ProductId $id): string => $id->toString(), $cart->productIds()));
+        self::assertSame([self::V2, self::V1], array_map(static fn (VariantId $id): string => $id->toString(), $cart->variantIds()));
     }
 
     private function guestCart(): Cart
@@ -509,14 +525,14 @@ final class CartTest extends TestCase
         return Cart::reconstitute(CartId::fromString(self::CART), CartOwner::customer('kc-sub-1'), CartStatus::Open, null, null, $lines, $this->now->modify('-400 days'), $this->now->modify('-200 days'), $expiresAt);
     }
 
-    private static function product(string $id): ProductId
+    private static function variant(string $id): VariantId
     {
-        return ProductId::fromString($id);
+        return VariantId::fromString($id);
     }
 
-    private static function numberedProduct(int $number): ProductId
+    private static function numberedVariant(int $number): VariantId
     {
-        return ProductId::fromString(\sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $number));
+        return VariantId::fromString(\sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $number));
     }
 
     private static function offer(): ProductOffer
@@ -529,6 +545,6 @@ final class CartTest extends TestCase
      */
     private static function lines(Cart $cart): array
     {
-        return array_map(static fn (CartLine $line): array => [$line->productId()->toString(), $line->quantity()->value()], $cart->lines());
+        return array_map(static fn (CartLine $line): array => [$line->variantId()->toString(), $line->quantity()->value()], $cart->lines());
     }
 }

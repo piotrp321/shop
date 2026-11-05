@@ -64,7 +64,7 @@ final class ReserveStockHandlerTest extends TestCase
         self::assertSame(ReservationStatus::Active, $this->reservations->stored('order-1')?->status());
     }
 
-    public function testLocksTheProductsOnceInAscendingOrder(): void
+    public function testLocksTheVariantsOnceInAscendingOrder(): void
     {
         $this->stock->store(self::A, 10);
         $this->stock->store(self::B, 10);
@@ -161,9 +161,9 @@ final class ReserveStockHandlerTest extends TestCase
     public static function otherLines(): iterable
     {
         yield 'other quantity' => [[self::A => 3, self::B => 1]];
-        yield 'fewer products' => [[self::A => 2]];
-        yield 'more products' => [[self::A => 2, self::B => 1, self::C => 1]];
-        yield 'other product' => [[self::A => 2, self::C => 1]];
+        yield 'fewer variants' => [[self::A => 2]];
+        yield 'more variants' => [[self::A => 2, self::B => 1, self::C => 1]];
+        yield 'other variant' => [[self::A => 2, self::C => 1]];
     }
 
     /**
@@ -197,11 +197,11 @@ final class ReserveStockHandlerTest extends TestCase
     {
         yield 'malformed key' => ['order 1', [[self::A, 1]]];
         yield 'empty key' => ['', [[self::A, 1]]];
-        yield 'not a product id' => ['order-1', [['not-a-uuid', 1]]];
+        yield 'not a variant id' => ['order-1', [['not-a-uuid', 1]]];
         yield 'no lines' => ['order-1', []];
         yield 'quantity 0' => ['order-1', [[self::A, 0]]];
         yield 'quantity 1001' => ['order-1', [[self::A, 1001]]];
-        yield 'repeated product' => ['order-1', [[self::A, 1], [self::B, 1], [self::A, 1]]];
+        yield 'repeated variant' => ['order-1', [[self::A, 1], [self::B, 1], [self::A, 1]]];
         yield '101 lines' => ['order-1', array_map(static fn (int $i): array => [\sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $i), 1], range(1, 101))];
     }
 
@@ -240,7 +240,7 @@ final class ReserveStockHandlerTest extends TestCase
     }
 
     /**
-     * @param array<string, int> $lines product id => quantity
+     * @param array<string, int> $lines variant id => quantity
      */
     private function reserve(string $key, array $lines): ReservationView
     {
@@ -256,9 +256,9 @@ final class ReserveStockHandlerTest extends TestCase
     /**
      * @return array{int, int, int} physical, reserved, version
      */
-    private function state(string $productId): array
+    private function state(string $variantId): array
     {
-        $item = $this->stock->stored($productId);
+        $item = $this->stock->stored($variantId);
         self::assertNotNull($item);
 
         return [$item->physical(), $item->reserved(), $item->version()];
@@ -272,6 +272,6 @@ final class ReserveStockHandlerTest extends TestCase
         self::assertNotSame(StockMovementType::Receipt, $m->type());
         self::assertSame(StockChangeSource::System, $m->origin()->source());
 
-        return [$m->productId()->toString(), $m->type()->value, $m->physicalDelta(), $m->reservedDelta(), $m->physicalAfter(), $m->reservedAfter(), $m->reference(), $m->origin()->source()->value];
+        return [$m->variantId()->toString(), $m->type()->value, $m->physicalDelta(), $m->reservedDelta(), $m->physicalAfter(), $m->reservedAfter(), $m->reference(), $m->origin()->source()->value];
     }
 }

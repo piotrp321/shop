@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Inventory\Domain\Reservation;
 
 /**
- * Units of products promised to one caller, identified by the caller's key, which is also the idempotency key of
+ * Units of variants promised to one caller, identified by the caller's key, which is also the idempotency key of
  * the reservation. Status: active → released | committed. A reservation never expires: only a release or a commit
  * ends it.
  *
@@ -17,7 +17,7 @@ final class Reservation
     public const int MAX_LINES = 100;
 
     /**
-     * @param list<ReservationLine> $lines ordered by product id
+     * @param list<ReservationLine> $lines ordered by variant id
      */
     private function __construct(
         private readonly ReservationKey $key,
@@ -31,7 +31,7 @@ final class Reservation
      *
      * @param list<ReservationLine> $lines in any order
      *
-     * @throws InvalidReservation for no lines, more than 100 or a repeated product
+     * @throws InvalidReservation for no lines, more than 100 or a repeated variant
      */
     public static function place(ReservationKey $key, array $lines): self
     {
@@ -82,7 +82,7 @@ final class Reservation
     }
 
     /**
-     * Whether the lines are the same set of products and quantities as this reservation's, in any order.
+     * Whether the lines are the same set of variants and quantities as this reservation's, in any order.
      *
      * @param list<ReservationLine> $lines
      */
@@ -97,7 +97,7 @@ final class Reservation
     }
 
     /**
-     * @return list<ReservationLine> ordered by product id
+     * @return list<ReservationLine> ordered by variant id
      */
     public function lines(): array
     {
@@ -121,21 +121,21 @@ final class Reservation
      *
      * @return list<ReservationLine>
      *
-     * @throws InvalidReservation for a repeated product
+     * @throws InvalidReservation for a repeated variant
      */
     private static function ordered(array $lines): array
     {
-        $byProduct = [];
+        $byVariant = [];
         foreach ($lines as $line) {
-            $id = $line->productId()->toString();
-            if (isset($byProduct[$id])) {
-                throw InvalidReservation::repeatedProduct();
+            $id = $line->variantId()->toString();
+            if (isset($byVariant[$id])) {
+                throw InvalidReservation::repeatedVariant();
             }
-            $byProduct[$id] = $line;
+            $byVariant[$id] = $line;
         }
-        ksort($byProduct, \SORT_STRING);
+        ksort($byVariant, \SORT_STRING);
 
-        return array_values($byProduct);
+        return array_values($byVariant);
     }
 
     /**
@@ -147,7 +147,7 @@ final class Reservation
     {
         $quantities = [];
         foreach ($lines as $line) {
-            $quantities[$line->productId()->toString()] = $line->quantity();
+            $quantities[$line->variantId()->toString()] = $line->quantity();
         }
         ksort($quantities, \SORT_STRING);
 

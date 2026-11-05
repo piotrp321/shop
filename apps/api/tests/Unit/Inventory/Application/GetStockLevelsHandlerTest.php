@@ -28,7 +28,7 @@ final class GetStockLevelsHandlerTest extends TestCase
         $this->handler = new GetStockLevelsHandler($this->stock);
     }
 
-    public function testEveryRequestedProductHasALevelInTheOrderOfTheRequest(): void
+    public function testEveryRequestedVariantHasALevelInTheOrderOfTheRequest(): void
     {
         $this->stock->store(self::IN_STOCK, 10, 4, version: 7);
         $this->stock->store(self::LOW_STOCK, 9, 4, version: 2);
@@ -44,22 +44,25 @@ final class GetStockLevelsHandlerTest extends TestCase
         ], $levels);
     }
 
-    public function testAllProductsAreReadInOneCallAndARepeatedIdAnswersOnce(): void
+    public function testAllVariantsAreReadInOneCallAndARepeatedIdAnswersOnce(): void
     {
         $this->stock->store(self::IN_STOCK, 10);
 
         $levels = ($this->handler)(new GetStockLevels([self::IN_STOCK, strtoupper(self::WITHOUT_STOCK), self::IN_STOCK]));
 
-        self::assertSame([self::IN_STOCK, self::WITHOUT_STOCK], array_map(static fn (StockLevel $l): string => $l->productId, $levels));
+        self::assertSame([self::IN_STOCK, self::WITHOUT_STOCK], array_map(static fn (StockLevel $l): string => $l->variantId, $levels));
         self::assertSame([[self::IN_STOCK, self::WITHOUT_STOCK]], $this->stock->manyReads);
         self::assertSame([], $this->stock->locks);
     }
 
-    public function testHundredProductsAreAccepted(): void
+    /**
+     * 48 products of 100 variants: the most a page of the store list can ask for.
+     */
+    public function test4800VariantsAreAccepted(): void
     {
-        $ids = array_map(static fn (int $i): string => \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $i), range(1, 100));
+        $ids = array_map(static fn (int $i): string => \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $i), range(1, 4800));
 
-        self::assertCount(100, ($this->handler)(new GetStockLevels($ids)));
+        self::assertCount(4800, ($this->handler)(new GetStockLevels($ids)));
         self::assertCount(1, $this->stock->manyReads);
     }
 
@@ -68,9 +71,9 @@ final class GetStockLevelsHandlerTest extends TestCase
      */
     public static function invalidQueries(): iterable
     {
-        yield 'no product' => [[]];
-        yield '101 products' => [array_map(static fn (int $i): string => \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $i), range(1, 101))];
-        yield 'not a product id' => [[self::IN_STOCK, 'not-a-uuid']];
+        yield 'no variant' => [[]];
+        yield '4801 variants' => [array_map(static fn (int $i): string => \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $i), range(1, 4801))];
+        yield 'not a variant id' => [[self::IN_STOCK, 'not-a-uuid']];
     }
 
     /**

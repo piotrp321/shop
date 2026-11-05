@@ -9,7 +9,7 @@ namespace App\Cart\Application\View;
  */
 enum CartLineState: string
 {
-    /** Catalog does not know the product (e.g. after a reset of the demo data). */
+    /** Catalog does not know the variant (e.g. after a reset of the demo data). */
     case UnavailableProduct = 'unavailable_product';
     /** Pricing has no current price (none, or at an outdated VAT rate). */
     case NoPrice = 'no_price';

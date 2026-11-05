@@ -72,6 +72,7 @@ final class DbalCatalogResetTest extends KernelTestCase
     public function testRemovesCatalogRowsOutboxEventsStoredImagesAndIndexedDocuments(): void
     {
         $this->saveProductWithAdditionalCategory();
+        self::assertSame(2, $this->rowCount('catalog_product_variant'));
         $this->storage->store((string) file_get_contents(__DIR__.'/../../../Fixtures/images/sample.jpg'));
         $this->insertMessage('outbox');
         $this->insertMessage('failed');
@@ -80,7 +81,7 @@ final class DbalCatalogResetTest extends KernelTestCase
 
         $this->reset()->reset();
 
-        foreach (['catalog_product_category', 'catalog_product', 'catalog_category'] as $table) {
+        foreach (['catalog_product_category', 'catalog_product_variant', 'catalog_product', 'catalog_category'] as $table) {
             self::assertSame(0, $this->rowCount($table), $table);
         }
         self::assertSame(0, $this->rowCount('messenger_messages', 'outbox'));
@@ -113,7 +114,12 @@ final class DbalCatalogResetTest extends KernelTestCase
         $categories->save($main);
         $categories->save($extra);
         new DoctrineProductRepository($entityManager)->save(
-            ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$extra]]),
+            ProductFactory::createOne([
+                'mainCategory' => $main,
+                'additionalCategories' => [$extra],
+                'variantAxes' => ['Rozmiar'],
+                'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['S']], ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => ['M']]],
+            ]),
         );
         $entityManager->flush();
     }

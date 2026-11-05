@@ -78,7 +78,7 @@ final readonly class ReconcileTaxCommand
     {
         return \sprintf(
             '%s: %s %d bp -> %s %s: %s',
-            $discrepancy->productId->toString(),
+            $discrepancy->variantId->toString(),
             $discrepancy->storedClass->toString(),
             $discrepancy->storedRate->basisPoints(),
             $discrepancy->expectedClass->toString(),

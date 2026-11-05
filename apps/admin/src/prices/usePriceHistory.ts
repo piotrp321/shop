@@ -16,13 +16,13 @@ function failureMessage(status: number): string {
 }
 
 /**
- * The price history of one product, newest change first, as the API sends it. `open` loads the first page and
- * forgets the previous product; `loadMore` appends the page after the cursor of the last one. A failed request keeps
- * the entries already shown and `retry` repeats exactly that request. An answer that arrives after another product was
+ * The price history of one product variant, newest change first, as the API sends it. `open` loads the first page and
+ * forgets the previous variant; `loadMore` appends the page after the cursor of the last one. A failed request keeps
+ * the entries already shown and `retry` repeats exactly that request. An answer that arrives after another variant was
  * opened, or after `close`, is ignored. The API decides on the order and the amounts, the panel only shows them.
  */
 export function usePriceHistory() {
-  const productId = ref<string | null>(null);
+  const variantId = ref<string | null>(null);
   const items = ref<PriceHistoryItem[]>([]);
   const next = ref<string | null>(null);
   const loading = ref(false);
@@ -35,15 +35,15 @@ export function usePriceHistory() {
   const hasMore = computed(() => next.value !== null);
 
   async function load(after: string | null): Promise<void> {
-    const id = productId.value;
+    const id = variantId.value;
     if (id === null) {
       return;
     }
     const request = ++latest;
     loading.value = true;
     try {
-      const result = await getApiClient().GET("/api/v1/admin/products/{productId}/price-history", {
-        params: { path: { productId: id }, query: after === null ? {} : { after } },
+      const result = await getApiClient().GET("/api/v1/admin/variants/{variantId}/price-history", {
+        params: { path: { variantId: id }, query: after === null ? {} : { after } },
       });
       if (request !== latest) {
         return;
@@ -69,7 +69,7 @@ export function usePriceHistory() {
 
   function reset(id: string | null): void {
     latest++;
-    productId.value = id;
+    variantId.value = id;
     items.value = [];
     next.value = null;
     loading.value = false;
@@ -96,5 +96,5 @@ export function usePriceHistory() {
     return loading.value ? Promise.resolve() : load(next.value);
   }
 
-  return { productId, items, loading, loaded, error, hasMore, open, close, loadMore, retry };
+  return { variantId, items, loading, loaded, error, hasMore, open, close, loadMore, retry };
 }

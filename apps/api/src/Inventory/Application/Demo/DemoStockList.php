@@ -7,8 +7,9 @@ namespace App\Inventory\Application\Demo;
 use App\Inventory\Domain\Stock\StockItem;
 
 /**
- * Demo stock (physical units) by slug pattern. Patterns are checked in order and the first that matches the whole
- * slug wins; `*` matches any run of characters (also none).
+ * Demo stock (physical units) by pattern of variant keys (`<product slug>/<label slug>`, `<product slug>/standard` for
+ * the default variant). Patterns are checked in order and the first that matches the whole key wins; `*` matches any
+ * run of characters (also none, also `/`).
  */
 final readonly class DemoStockList
 {
@@ -23,7 +24,7 @@ final readonly class DemoStockList
     public function __construct(array $rules)
     {
         if ([] === $rules) {
-            throw new \InvalidArgumentException('The demo stock must name at least one slug pattern.');
+            throw new \InvalidArgumentException('The demo stock must name at least one variant key pattern.');
         }
 
         $compiled = [];
@@ -31,8 +32,8 @@ final readonly class DemoStockList
             if (1 !== preg_match('/[a-z0-9]/', $pattern)) {
                 throw new \InvalidArgumentException(\sprintf('The demo stock pattern "%s" must contain a letter or digit.', $pattern));
             }
-            if (1 !== preg_match('/^[a-z0-9*-]+$/D', $pattern)) {
-                throw new \InvalidArgumentException(\sprintf('The demo stock pattern "%s" may only contain a-z, 0-9, "-" and the wildcard "*".', $pattern));
+            if (1 !== preg_match('~^[a-z0-9*/-]+$~D', $pattern)) {
+                throw new \InvalidArgumentException(\sprintf('The demo stock pattern "%s" may only contain a-z, 0-9, "-", "/" and the wildcard "*".', $pattern));
             }
             if ($quantity < 0 || $quantity > StockItem::MAX_RECEIPT) {
                 throw new \InvalidArgumentException(\sprintf('The demo stock of "%s" must be between 0 and %d units.', $pattern, StockItem::MAX_RECEIPT));
@@ -46,10 +47,10 @@ final readonly class DemoStockList
     /**
      * @return int|null the physical stock, null when no pattern matches (0 is a stock: nothing on the shelf)
      */
-    public function quantityFor(string $slug): ?int
+    public function quantityFor(string $key): ?int
     {
         foreach ($this->rules as ['regex' => $regex, 'quantity' => $quantity]) {
-            if (1 === preg_match($regex, $slug)) {
+            if (1 === preg_match($regex, $key)) {
                 return $quantity;
             }
         }

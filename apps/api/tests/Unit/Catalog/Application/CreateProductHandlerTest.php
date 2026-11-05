@@ -10,11 +10,16 @@ use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategoryNotFound;
+use App\Catalog\Domain\Product\DuplicateVariantValues;
+use App\Catalog\Domain\Product\InvalidProductVariants;
+use App\Catalog\Domain\Product\InvalidVariantAxes;
 use App\Catalog\Domain\Product\ProductAlreadyExists;
 use App\Catalog\Domain\Product\ProductCreated;
 use App\Catalog\Domain\Product\ProductId;
+use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\VariantAlreadyExists;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use App\Tests\Support\InMemory\InMemoryProductRepository;
 use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
@@ -26,6 +31,8 @@ final class CreateProductHandlerTest extends TestCase
     private const string MAIN_ID = '00000000-0000-4000-8000-000000000001';
     private const string EXTRA_ID = '00000000-0000-4000-8000-000000000002';
     private const string UNKNOWN_ID = '00000000-0000-4000-8000-0000000000ff';
+    private const string VARIANT_ID = '20000000-0000-4000-8000-000000000001';
+    private const string OTHER_VARIANT_ID = '20000000-0000-4000-8000-000000000002';
 
     private InMemoryCategoryRepository $categories;
     private InMemoryProductRepository $products;
@@ -58,6 +65,11 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame('originals/'.str_repeat('a', 64).'.jpg', $images[0]->key()->toString());
         self::assertSame('front', $images[0]->alt());
         self::assertSame(0, $images[0]->position());
+        self::assertSame([], $product->variantAxes()->names());
+        $variants = $product->variants()->toList();
+        self::assertCount(1, $variants);
+        self::assertSame(self::VARIANT_ID, $variants[0]->id()->toString());
+        self::assertSame('', $variants[0]->label());
 
         self::assertCount(1, $this->events->published);
         $event = $this->events->published[0];
@@ -122,8 +134,84 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame([], $this->events->published);
     }
 
+    public function testAxesAndVariantsAreSavedInTheGivenOrder(): void
+    {
+        ($this->handler)($this->command(
+            variantAxes: ['Kolor', 'Rozmiar'],
+            variants: [
+                ['id' => self::VARIANT_ID, 'values' => ['czarny', ' 42 ']],
+                ['id' => self::OTHER_VARIANT_ID, 'values' => ['biały', '42']],
+            ],
+        ));
+
+        $product = $this->products->get(ProductId::fromString(self::PRODUCT_ID));
+        self::assertSame(['Kolor', 'Rozmiar'], $product->variantAxes()->names());
+        self::assertSame(
+            [self::VARIANT_ID => 'czarny, 42', self::OTHER_VARIANT_ID => 'biały, 42'],
+            array_column(array_map(static fn (ProductVariant $v): array => [$v->id()->toString(), $v->label()], $product->variants()->toList()), 1, 0),
+        );
+    }
+
+    public function testRepeatedCombinationIsRefusedAndNothingIsSavedOrPublished(): void
+    {
+        try {
+            ($this->handler)($this->command(
+                variantAxes: ['Kolor'],
+                variants: [
+                    ['id' => self::VARIANT_ID, 'values' => ['Żółty']],
+                    ['id' => self::OTHER_VARIANT_ID, 'values' => ['żółty']],
+                ],
+            ));
+            self::fail('Expected DuplicateVariantValues.');
+        } catch (DuplicateVariantValues) {
+        }
+
+        self::assertSame(0, $this->products->count());
+        self::assertSame([], $this->events->published);
+    }
+
+    public function testVariantsThatBreakAnInvariantAreRefused(): void
+    {
+        try {
+            ($this->handler)($this->command(variantAxes: ['Kolor'], variants: [['id' => self::VARIANT_ID, 'values' => []]]));
+            self::fail('Expected InvalidProductVariants.');
+        } catch (InvalidProductVariants) {
+        }
+        try {
+            ($this->handler)($this->command(variants: []));
+            self::fail('Expected InvalidProductVariants.');
+        } catch (InvalidProductVariants) {
+        }
+
+        self::assertSame(0, $this->products->count());
+    }
+
+    public function testInvalidAxesAreRefused(): void
+    {
+        $this->expectException(InvalidVariantAxes::class);
+
+        ($this->handler)($this->command(variantAxes: ['A', 'a']));
+    }
+
+    public function testVariantIdUsedByAnotherProductThrowsVariantAlreadyExistsAndPublishesNothing(): void
+    {
+        ($this->handler)($this->command());
+        $this->events->published = [];
+
+        try {
+            ($this->handler)($this->command(id: '10000000-0000-4000-8000-000000000002', slug: 'inny-slug'));
+            self::fail('Expected VariantAlreadyExists.');
+        } catch (VariantAlreadyExists) {
+        }
+
+        self::assertSame(1, $this->products->count());
+        self::assertSame([], $this->events->published);
+    }
+
     /**
-     * @param list<string> $additionalCategoryIds
+     * @param list<string>                                       $additionalCategoryIds
+     * @param list<string>                                       $variantAxes
+     * @param list<array{id: string, values: list<string>}>|null $variants              null: the default variant
      */
     private function command(
         string $id = self::PRODUCT_ID,
@@ -131,6 +219,8 @@ final class CreateProductHandlerTest extends TestCase
         string $slug = 'buty-biegowe',
         string $mainCategoryId = self::MAIN_ID,
         array $additionalCategoryIds = [self::EXTRA_ID],
+        array $variantAxes = [],
+        ?array $variants = null,
     ): CreateProduct {
         return new CreateProduct(
             $id,
@@ -141,6 +231,8 @@ final class CreateProductHandlerTest extends TestCase
             $additionalCategoryIds,
             'standard',
             [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front']],
+            $variantAxes,
+            $variants ?? [['id' => self::VARIANT_ID, 'values' => []]],
         );
     }
 }

@@ -10,8 +10,10 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Inventory\Application\Port\CategoryNotFound;
 use App\Inventory\Application\Port\DirectoryProduct;
+use App\Inventory\Application\Port\DirectoryVariant;
 use App\Inventory\Application\Port\InvalidStockListCursor;
 use App\Inventory\Application\Port\ProductDirectory;
+use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Infrastructure\Catalog\QueryBusProductDirectory;
 use App\Shared\Domain\Exception\InvalidInput;
 use App\Tests\Factory\CategoryFactory;
@@ -22,7 +24,8 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
- * Inventory's directory of Catalog products, through the real query bus and shop_test.
+ * Inventory's directory of Catalog products and their variants, through the real query bus and shop_test. The
+ * variants never have the ids of their products.
  */
 final class QueryBusProductDirectoryTest extends KernelTestCase
 {
@@ -57,6 +60,38 @@ final class QueryBusProductDirectoryTest extends KernelTestCase
         self::assertSame($gel->id()->toString(), $second->items[0]->id->toString());
         self::assertSame('Alfa żel', $second->items[0]->name);
         self::assertNull($second->next);
+    }
+
+    public function testVariantsOfTheProductsWithTheirLabelsInPositionOrderKeyedByProduct(): void
+    {
+        $category = $this->saveCategory();
+        $kayak = ProductFactory::createOne([
+            'mainCategory' => $category,
+            'variantAxes' => ['Kolor'],
+            'variants' => [
+                ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'values' => ['zielony']],
+                ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['pomarańczowy']],
+            ],
+        ]);
+        new DoctrineProductRepository($this->entityManager)->save($kayak);
+        $gel = $this->saveProduct($category, 'Żel');
+        $unknown = ProductId::fromString('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5aff');
+
+        $variants = $this->directory->variantsOf([ProductId::fromString($gel->id()->toString()), $unknown, ProductId::fromString($kayak->id()->toString())]);
+
+        $summary = array_map(
+            static fn (array $ofProduct): array => array_map(static fn (DirectoryVariant $variant): array => [$variant->id->toString(), $variant->label], $ofProduct),
+            $variants,
+        );
+        $gelVariant = $gel->variants()->toList()[0]->id()->toString();
+        self::assertNotSame($gel->id()->toString(), $gelVariant);
+        self::assertSame(
+            [
+                $gel->id()->toString() => [[$gelVariant, '']],
+                $kayak->id()->toString() => [['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'zielony'], ['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'pomarańczowy']],
+            ],
+            $summary,
+        );
     }
 
     public function testAnUnknownCategoryIsACategoryNotFoundOfInventory(): void

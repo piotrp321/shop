@@ -11,7 +11,6 @@ use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
-use Symfony\Component\Uid\Uuid;
 
 /**
  * GetStockLevels on PostgreSQL, through the real query bus (shop_test, rolled back after each test).
@@ -35,20 +34,29 @@ final class GetStockLevelsTest extends KernelTestCase
         $this->counter = $counter;
     }
 
-    public function testHundredProductsAreReadWithOneStatement(): void
+    /**
+     * 48 products of 100 variants: the most a page of the store list can ask for. Every other variant has a stock.
+     */
+    public function test4800VariantsAreReadWithOneStatement(): void
     {
-        $ids = [];
-        for ($i = 0; $i < 50; ++$i) {
-            $ids[] = StockFixture::stock($this->connection, $i, 0, 1 + $i);
-            $ids[] = (string) Uuid::v7();
-        }
+        $ids = array_map(
+            static fn (mixed $id): string => \is_string($id) ? $id : throw new \LogicException('Expected a UUID.'),
+            $this->connection->fetchFirstColumn('SELECT gen_random_uuid()::text FROM generate_series(1, 4800)'),
+        );
+        $stocked = array_values(array_filter($ids, static fn (int $i): bool => 0 === $i % 2, \ARRAY_FILTER_USE_KEY));
+        $this->connection->executeStatement(
+            'INSERT INTO inventory_stock_item (variant_id, physical, reserved, version, updated_at)
+             SELECT CAST(id AS uuid), (n - 1) % 50, 0, n, NOW() FROM unnest(CAST(:ids AS text[])) WITH ORDINALITY AS t(id, n)',
+            ['ids' => '{'.implode(',', $stocked).'}'],
+        );
 
         $before = $this->counter->count();
         $levels = $this->ask($ids);
         $statements = $this->counter->count() - $before;
 
         self::assertSame(1, $statements);
-        self::assertSame($ids, array_map(static fn (StockLevel $l): string => $l->productId, $levels));
+        self::assertCount(4800, $levels);
+        self::assertSame($ids, array_map(static fn (StockLevel $l): string => $l->variantId, $levels));
         self::assertEquals(new StockLevel($ids[0], 0, 0, 0, 'out_of_stock', 1), $levels[0]);
         self::assertEquals(new StockLevel($ids[1], 0, 0, 0, 'out_of_stock', null), $levels[1]);
         self::assertEquals(new StockLevel($ids[10], 5, 0, 5, 'low_stock', 6), $levels[10]);
@@ -60,7 +68,7 @@ final class GetStockLevelsTest extends KernelTestCase
         $id = StockFixture::stock($this->connection, 10, 2);
         self::assertEquals(new StockLevel($id, 10, 2, 8, 'in_stock', 1), $this->ask([$id])[0]);
 
-        $this->connection->executeStatement('UPDATE inventory_stock_item SET reserved = 9, version = 2 WHERE product_id = ?', [$id]);
+        $this->connection->executeStatement('UPDATE inventory_stock_item SET reserved = 9, version = 2 WHERE variant_id = ?', [$id]);
 
         self::assertEquals(new StockLevel($id, 10, 9, 1, 'low_stock', 2), $this->ask([$id])[0]);
     }

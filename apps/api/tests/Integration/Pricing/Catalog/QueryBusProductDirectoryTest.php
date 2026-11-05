@@ -11,7 +11,9 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Pricing\Application\Port\CategoryNotFound;
 use App\Pricing\Application\Port\DirectoryProduct;
+use App\Pricing\Application\Port\DirectoryVariant;
 use App\Pricing\Application\Port\InvalidPriceListCursor;
+use App\Pricing\Domain\Price\ProductId;
 use App\Pricing\Infrastructure\Catalog\QueryBusProductDirectory;
 use App\Shared\Domain\Exception\InvalidInput;
 use App\Tests\Factory\CategoryFactory;
@@ -58,6 +60,38 @@ final class QueryBusProductDirectoryTest extends KernelTestCase
         self::assertSame('Alfa żel', $second->items[0]->name);
         self::assertSame('energy_gel', $second->items[0]->taxClass->toString());
         self::assertNull($second->next);
+    }
+
+    public function testVariantsOfTheProductsWithTheirLabelsInPositionOrderKeyedByProduct(): void
+    {
+        $category = $this->saveCategory();
+        $shoes = ProductFactory::createOne([
+            'mainCategory' => $category,
+            'variantAxes' => ['Kolor', 'Rozmiar'],
+            'variants' => [
+                ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'values' => ['czarne', '41']],
+                ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['czarne', '40']],
+            ],
+        ]);
+        new DoctrineProductRepository($this->entityManager)->save($shoes);
+        $gel = $this->saveProduct($category, 'Żel', TaxClassCode::EnergyGel);
+        $unknown = ProductId::fromString('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5aff');
+
+        $variants = $this->directory->variantsOf([ProductId::fromString($gel->id()->toString()), $unknown, ProductId::fromString($shoes->id()->toString())]);
+
+        $summary = array_map(
+            static fn (array $ofProduct): array => array_map(static fn (DirectoryVariant $variant): array => [$variant->id->toString(), $variant->label], $ofProduct),
+            $variants,
+        );
+        $gelVariant = $gel->variants()->toList()[0]->id()->toString();
+        self::assertNotSame($gel->id()->toString(), $gelVariant);
+        self::assertSame(
+            [
+                $gel->id()->toString() => [[$gelVariant, '']],
+                $shoes->id()->toString() => [['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b02', 'czarne, 41'], ['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'czarne, 40']],
+            ],
+            $summary,
+        );
     }
 
     public function testAnUnknownCategoryIsACategoryNotFoundOfPricing(): void

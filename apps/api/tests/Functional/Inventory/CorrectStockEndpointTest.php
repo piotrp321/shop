@@ -11,97 +11,97 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
- * POST /api/v1/admin/products/{productId}/stock/corrections on PostgreSQL (shop_test, rolled back after each test).
+ * POST /api/v1/admin/variants/{variantId}/stock/corrections on PostgreSQL (shop_test, rolled back after each test).
  */
 final class CorrectStockEndpointTest extends WebTestCase
 {
     use Factories;
     use StockEndpointTestTrait;
 
-    private const string UNKNOWN_PRODUCT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
+    private const string UNKNOWN_VARIANT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
 
     public function testSetsTheCountedStockAndAnswersWithIt(): void
     {
-        $productId = $this->stockedProduct(10, 3, 4);
+        $variantId = $this->stockedVariant(10, 3, 4);
 
-        $stock = $this->correct($productId, ['physical' => 7, 'version' => 4, 'reason' => 'damage', 'note' => ' Zalane ']);
+        $stock = $this->correct($variantId, ['physical' => 7, 'version' => 4, 'reason' => 'damage', 'note' => ' Zalane ']);
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringContainsString('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
         self::assertSame(
-            ['productId' => $productId, 'physical' => 7, 'reserved' => 3, 'available' => 4, 'level' => 'low_stock', 'version' => 5],
+            ['variantId' => $variantId, 'physical' => 7, 'reserved' => 3, 'available' => 4, 'level' => 'low_stock', 'version' => 5],
             array_diff_key($stock, ['updatedAt' => 1]),
         );
         self::assertUtcTimestamp($stock);
         $this->assertKeysMatchSchema($stock, 'StockStateResponse');
         $this->assertPrivateAndNotStored();
-        self::assertSame(['physical' => 7, 'reserved' => 3, 'version' => 5], $this->storedStock($productId));
+        self::assertSame(['physical' => 7, 'reserved' => 3, 'version' => 5], $this->storedStock($variantId));
         self::assertSame(
             [['type' => 'correction', 'physical_delta' => -3, 'physical_after' => 7, 'reason' => 'damage', 'note' => 'Zalane', 'reference' => null, 'source' => 'staff', 'actor_id' => TestTokenFactory::STAFF_ID, 'actor_name' => 'admin']],
-            $this->movements($productId),
+            $this->movements($variantId),
         );
     }
 
-    public function testTheFirstCorrectionOfAProductWithoutStockCreatesIt(): void
+    public function testTheFirstCorrectionOfAVariantWithoutStockCreatesIt(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $stock = $this->correct($productId, ['physical' => 4, 'version' => null, 'reason' => 'inventory_count', 'note' => null]);
+        $stock = $this->correct($variantId, ['physical' => 4, 'version' => null, 'reason' => 'inventory_count', 'note' => null]);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame([4, 0, 4, 'low_stock', 1], [$stock['physical'], $stock['reserved'], $stock['available'], $stock['level'], $stock['version']]);
-        self::assertSame(['physical' => 4, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
-        self::assertCount(1, $this->movements($productId));
+        self::assertSame(['physical' => 4, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
+        self::assertCount(1, $this->movements($variantId));
     }
 
     public function testTheCurrentValueChangesNeitherTheVersionNorTheHistory(): void
     {
-        $productId = $this->stockedProduct(10, 3, 4);
+        $variantId = $this->stockedVariant(10, 3, 4);
 
-        $stock = $this->correct($productId, ['physical' => 10, 'version' => 4, 'reason' => 'inventory_count', 'note' => null]);
+        $stock = $this->correct($variantId, ['physical' => 10, 'version' => 4, 'reason' => 'inventory_count', 'note' => null]);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame([10, 3, 7, 'in_stock', 4], [$stock['physical'], $stock['reserved'], $stock['available'], $stock['level'], $stock['version']]);
         self::assertUtcTimestamp($stock);
-        self::assertSame(['physical' => 10, 'reserved' => 3, 'version' => 4], $this->storedStock($productId));
-        self::assertSame([], $this->movements($productId));
+        self::assertSame(['physical' => 10, 'reserved' => 3, 'version' => 4], $this->storedStock($variantId));
+        self::assertSame([], $this->movements($variantId));
     }
 
     public function testAnEmptyStoredStockKeepsItsVersionWhenCountedAtZeroAndIsThenCorrectedFromIt(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
         // The record that CreateEmptyStock stores: 0/0 at version 0, without a history entry.
         $this->connection->executeStatement(
-            'INSERT INTO inventory_stock_item (product_id, physical, reserved, version, updated_at) VALUES (?, 0, 0, 0, now())',
-            [$productId],
+            'INSERT INTO inventory_stock_item (variant_id, physical, reserved, version, updated_at) VALUES (?, 0, 0, 0, now())',
+            [$variantId],
         );
 
-        $stock = $this->correct($productId, ['physical' => 0, 'version' => 0, 'reason' => 'loss', 'note' => null]);
+        $stock = $this->correct($variantId, ['physical' => 0, 'version' => 0, 'reason' => 'loss', 'note' => null]);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame([0, 0, 0, 'out_of_stock', 0], [$stock['physical'], $stock['reserved'], $stock['available'], $stock['level'], $stock['version']]);
         self::assertUtcTimestamp($stock);
-        self::assertSame([], $this->movements($productId));
+        self::assertSame([], $this->movements($variantId));
 
-        $stock = $this->correct($productId, ['physical' => 5, 'version' => $stock['version'], 'reason' => 'inventory_count', 'note' => null]);
+        $stock = $this->correct($variantId, ['physical' => 5, 'version' => $stock['version'], 'reason' => 'inventory_count', 'note' => null]);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame([5, 1], [$stock['physical'], $stock['version']]);
-        self::assertSame(['physical' => 5, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
+        self::assertSame(['physical' => 5, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
     }
 
-    public function testCountingNothingForAProductWithoutStockStoresNothing(): void
+    public function testCountingNothingForAVariantWithoutStockStoresNothing(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $stock = $this->correct($productId, ['physical' => 0, 'version' => null, 'reason' => 'loss', 'note' => null]);
+        $stock = $this->correct($variantId, ['physical' => 0, 'version' => null, 'reason' => 'loss', 'note' => null]);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame(
-            ['productId' => $productId, 'physical' => 0, 'reserved' => 0, 'available' => 0, 'level' => 'out_of_stock', 'version' => null, 'updatedAt' => null],
+            ['variantId' => $variantId, 'physical' => 0, 'reserved' => 0, 'available' => 0, 'level' => 'out_of_stock', 'version' => null, 'updatedAt' => null],
             $stock,
         );
-        self::assertNull($this->storedStock($productId));
+        self::assertNull($this->storedStock($variantId));
     }
 
     /**
@@ -117,60 +117,60 @@ final class CorrectStockEndpointTest extends WebTestCase
     #[DataProvider('staleVersions')]
     public function testAStaleVersionIsAConflictAndOverwritesNothing(?int $version): void
     {
-        $productId = $this->stockedProduct(10, 0, 4);
+        $variantId = $this->stockedVariant(10, 0, 4);
 
-        $this->correct($productId, ['physical' => 8, 'version' => $version, 'reason' => 'loss', 'note' => null]);
+        $this->correct($variantId, ['physical' => 8, 'version' => $version, 'reason' => 'loss', 'note' => null]);
 
         $problem = $this->assertProblem(409);
         self::assertSame('The stock was modified concurrently. Reload it and try again.', $problem['detail']);
-        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 4], $this->storedStock($productId));
-        self::assertSame([], $this->movements($productId));
+        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 4], $this->storedStock($variantId));
+        self::assertSame([], $this->movements($variantId));
     }
 
     public function testRepeatingASuccessfulCorrectionIsAConflict(): void
     {
-        $productId = $this->stockedProduct(10, 0, 4);
+        $variantId = $this->stockedVariant(10, 0, 4);
         $body = ['physical' => 8, 'version' => 4, 'reason' => 'loss', 'note' => null];
-        $this->correct($productId, $body);
+        $this->correct($variantId, $body);
         self::assertResponseStatusCodeSame(200);
 
-        $this->correct($productId, $body);
+        $this->correct($variantId, $body);
 
         $this->assertProblem(409);
-        self::assertSame(['physical' => 8, 'reserved' => 0, 'version' => 5], $this->storedStock($productId));
-        self::assertCount(1, $this->movements($productId));
+        self::assertSame(['physical' => 8, 'reserved' => 0, 'version' => 5], $this->storedStock($variantId));
+        self::assertCount(1, $this->movements($variantId));
     }
 
-    public function testAVersionForAProductWithoutStockIsAConflict(): void
+    public function testAVersionForAVariantWithoutStockIsAConflict(): void
     {
-        $productId = $this->product();
+        $variantId = $this->variant();
 
-        $this->correct($productId, ['physical' => 5, 'version' => 1, 'reason' => 'inventory_count', 'note' => null]);
+        $this->correct($variantId, ['physical' => 5, 'version' => 1, 'reason' => 'inventory_count', 'note' => null]);
 
         $this->assertProblem(409);
-        self::assertNull($this->storedStock($productId));
+        self::assertNull($this->storedStock($variantId));
     }
 
     public function testCountingLessThanIsReservedIsAConflictNamingTheReservedQuantity(): void
     {
-        $productId = $this->stockedProduct(10, 6, 2);
+        $variantId = $this->stockedVariant(10, 6, 2);
 
-        $this->correct($productId, ['physical' => 5, 'version' => 2, 'reason' => 'loss', 'note' => null]);
+        $this->correct($variantId, ['physical' => 5, 'version' => 2, 'reason' => 'loss', 'note' => null]);
 
         $problem = $this->assertProblem(409);
         self::assertSame('Stan fizyczny nie może być niższy niż zarezerwowany (6 szt.).', $problem['detail']);
-        self::assertSame(['physical' => 10, 'reserved' => 6, 'version' => 2], $this->storedStock($productId));
-        self::assertSame([], $this->movements($productId));
+        self::assertSame(['physical' => 10, 'reserved' => 6, 'version' => 2], $this->storedStock($variantId));
+        self::assertSame([], $this->movements($variantId));
     }
 
     public function testAnotherReasonWithANoteIsAccepted(): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
-        $this->correct($productId, ['physical' => 9, 'version' => 1, 'reason' => 'other', 'note' => 'Zwrot do dostawcy']);
+        $this->correct($variantId, ['physical' => 9, 'version' => 1, 'reason' => 'other', 'note' => 'Zwrot do dostawcy']);
 
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(['other', 'Zwrot do dostawcy'], [$this->movements($productId)[0]['reason'], $this->movements($productId)[0]['note']]);
+        self::assertSame(['other', 'Zwrot do dostawcy'], [$this->movements($variantId)[0]['reason'], $this->movements($variantId)[0]['note']]);
     }
 
     /**
@@ -192,52 +192,63 @@ final class CorrectStockEndpointTest extends WebTestCase
     #[DataProvider('rolesAndStatuses')]
     public function testOnlyAnAdministratorOrTheWarehouseCorrectsStock(array $roles, int $status): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
-        $this->correct($productId, ['physical' => 8, 'version' => 1, 'reason' => 'loss', 'note' => null], TestTokenFactory::staff($roles));
+        $this->correct($variantId, ['physical' => 8, 'version' => 1, 'reason' => 'loss', 'note' => null], TestTokenFactory::staff($roles));
 
         if (403 === $status) {
             $this->assertProblem(403);
-            self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
+            self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
         } else {
             self::assertResponseStatusCodeSame($status);
         }
     }
 
-    public function testAuthorizationIsCheckedBeforeTheBodyAndTheProduct(): void
+    public function testAuthorizationIsCheckedBeforeTheBodyAndTheVariant(): void
     {
-        $this->post($this->path(self::UNKNOWN_PRODUCT), '{"physical": "garbage"}', TestTokenFactory::staff(['marketing']));
+        $this->post($this->path(self::UNKNOWN_VARIANT), '{"physical": "garbage"}', TestTokenFactory::staff(['marketing']));
 
         $this->assertProblem(403);
     }
 
     public function testWithoutATokenTheRequestIsUnauthorized(): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
-        $this->post($this->path($productId), '{"physical": 8, "version": 1, "reason": "loss", "note": null}', null);
+        $this->post($this->path($variantId), '{"physical": 8, "version": 1, "reason": "loss", "note": null}', null);
 
         $this->assertUnauthorized();
-        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
+        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
     }
 
     public function testATokenOfTheShopRealmIsUnauthorized(): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
-        $this->correct($productId, ['physical' => 8, 'version' => 1, 'reason' => 'loss', 'note' => null], TestTokenFactory::customer());
+        $this->correct($variantId, ['physical' => 8, 'version' => 1, 'reason' => 'loss', 'note' => null], TestTokenFactory::customer());
 
         $this->assertUnauthorized();
-        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
+        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
     }
 
-    public function testAnUnknownProductIsNotFound(): void
+    public function testTheIdOfAProductIsNoVariantAndIsNotFound(): void
     {
-        $this->correct(self::UNKNOWN_PRODUCT, ['physical' => 5, 'version' => null, 'reason' => 'inventory_count', 'note' => null]);
+        [$productId] = $this->productWithVariant();
+
+        $this->correct($productId, ['physical' => 5, 'version' => null, 'reason' => 'inventory_count', 'note' => null]);
 
         $problem = $this->assertProblem(404);
-        self::assertSame('Product not found.', $problem['detail']);
-        self::assertNull($this->storedStock(self::UNKNOWN_PRODUCT));
+        self::assertSame('Wariant produktu nie istnieje.', $problem['detail']);
+        self::assertNull($this->storedStock($productId));
+    }
+
+    public function testAnUnknownVariantIsNotFound(): void
+    {
+        $this->correct(self::UNKNOWN_VARIANT, ['physical' => 5, 'version' => null, 'reason' => 'inventory_count', 'note' => null]);
+
+        $problem = $this->assertProblem(404);
+        self::assertSame('Wariant produktu nie istnieje.', $problem['detail']);
+        self::assertNull($this->storedStock(self::UNKNOWN_VARIANT));
     }
 
     /**
@@ -246,43 +257,43 @@ final class CorrectStockEndpointTest extends WebTestCase
     public static function idsThatAreNotUuids(): iterable
     {
         yield 'a word' => ['shoes'];
-        yield 'a uuid with a suffix' => [self::UNKNOWN_PRODUCT.'x'];
-        yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_PRODUCT)];
+        yield 'a uuid with a suffix' => [self::UNKNOWN_VARIANT.'x'];
+        yield 'a uuid without dashes' => [str_replace('-', '', self::UNKNOWN_VARIANT)];
     }
 
     #[DataProvider('idsThatAreNotUuids')]
-    public function testAProductIdThatIsNotAUuidIsNotFound(string $productId): void
+    public function testAVariantIdThatIsNotAUuidIsNotFound(string $variantId): void
     {
-        $this->correct($productId, ['physical' => 5, 'version' => null, 'reason' => 'inventory_count', 'note' => null]);
+        $this->correct($variantId, ['physical' => 5, 'version' => null, 'reason' => 'inventory_count', 'note' => null]);
 
         $this->assertProblem(404);
     }
 
     public function testTheActorComesFromTheTokenNeverFromTheBody(): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
         $this->correct(
-            $productId,
+            $variantId,
             ['physical' => 8, 'version' => 1, 'reason' => 'loss', 'note' => null, 'actorId' => 'forged-id', 'actorName' => 'Forged Name', 'source' => 'seed'],
             TestTokenFactory::staff(['warehouse'], ['preferred_username' => 'wanda.magazyn']),
         );
 
         self::assertResponseStatusCodeSame(200);
-        $movement = $this->movements($productId)[0];
+        $movement = $this->movements($variantId)[0];
         self::assertSame(['staff', TestTokenFactory::STAFF_ID, 'wanda.magazyn'], [$movement['source'], $movement['actor_id'], $movement['actor_name']]);
     }
 
     public function testTheLimitsOfTheCountAreAccepted(): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
-        $this->correct($productId, ['physical' => 1_000_000, 'version' => 1, 'reason' => 'inventory_count', 'note' => null]);
+        $this->correct($variantId, ['physical' => 1_000_000, 'version' => 1, 'reason' => 'inventory_count', 'note' => null]);
         self::assertResponseStatusCodeSame(200);
-        $this->correct($productId, ['physical' => 0, 'version' => 2, 'reason' => 'loss', 'note' => null]);
+        $this->correct($variantId, ['physical' => 0, 'version' => 2, 'reason' => 'loss', 'note' => null]);
         self::assertResponseStatusCodeSame(200);
 
-        self::assertSame(['physical' => 0, 'reserved' => 0, 'version' => 3], $this->storedStock($productId));
+        self::assertSame(['physical' => 0, 'reserved' => 0, 'version' => 3], $this->storedStock($variantId));
     }
 
     /**
@@ -322,20 +333,20 @@ final class CorrectStockEndpointTest extends WebTestCase
     #[DataProvider('rejectedBodies')]
     public function testAnInvalidBodyIsUnprocessableAndChangesNothing(string $body, array $paths): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
-        $this->post($this->path($productId), $body, TestTokenFactory::staff(['admin']));
+        $this->post($this->path($variantId), $body, TestTokenFactory::staff(['admin']));
 
         self::assertEqualsCanonicalizing($paths, $this->violationPaths());
-        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
-        self::assertSame([], $this->movements($productId));
+        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
+        self::assertSame([], $this->movements($variantId));
     }
 
     public function testTheViolationsShownAtTheFieldsAreInPolish(): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
-        $this->correct($productId, ['physical' => -1, 'version' => 1, 'reason' => 'theft', 'note' => str_repeat('n', 501)]);
+        $this->correct($variantId, ['physical' => -1, 'version' => 1, 'reason' => 'theft', 'note' => str_repeat('n', 501)]);
         $problem = $this->assertProblem(422);
         self::assertIsArray($problem['violations']);
         self::assertSame(
@@ -347,7 +358,7 @@ final class CorrectStockEndpointTest extends WebTestCase
             array_column($problem['violations'], 'title', 'propertyPath'),
         );
 
-        $this->correct($productId, ['physical' => 5, 'version' => 1, 'reason' => 'other', 'note' => null]);
+        $this->correct($variantId, ['physical' => 5, 'version' => 1, 'reason' => 'other', 'note' => null]);
         $problem = $this->assertProblem(422);
         self::assertIsArray($problem['violations']);
         self::assertSame(['note' => 'Przy powodzie „inne” notatka jest wymagana.'], array_column($problem['violations'], 'title', 'propertyPath'));
@@ -370,45 +381,45 @@ final class CorrectStockEndpointTest extends WebTestCase
     #[DataProvider('notesWithControlCharacters')]
     public function testANoteWithAControlCharacterIsUnprocessableAndChangesNothing(string $note): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
-        $this->correct($productId, ['physical' => 8, 'version' => 1, 'reason' => 'other', 'note' => $note]);
+        $this->correct($variantId, ['physical' => 8, 'version' => 1, 'reason' => 'other', 'note' => $note]);
 
         $problem = $this->assertProblem(422);
         self::assertIsArray($problem['violations']);
         self::assertSame(['note' => 'Notatka nie może zawierać znaków sterujących (poza tabulatorem i końcem wiersza).'], array_column($problem['violations'], 'title', 'propertyPath'));
-        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
-        self::assertSame([], $this->movements($productId));
+        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
+        self::assertSame([], $this->movements($variantId));
     }
 
     public function testMalformedJsonIsABadRequest(): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
-        $this->post($this->path($productId), '{"physical": 5,', TestTokenFactory::staff(['admin']));
+        $this->post($this->path($variantId), '{"physical": 5,', TestTokenFactory::staff(['admin']));
 
         $this->assertProblem(400);
-        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
+        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
     }
 
     public function testAFormBodyIsNotAccepted(): void
     {
-        $productId = $this->stockedProduct(10, 0, 1);
+        $variantId = $this->stockedVariant(10, 0, 1);
 
-        $this->post($this->path($productId), 'physical=5&version=1&reason=loss', TestTokenFactory::staff(['admin']), contentType: 'application/x-www-form-urlencoded');
+        $this->post($this->path($variantId), 'physical=5&version=1&reason=loss', TestTokenFactory::staff(['admin']), contentType: 'application/x-www-form-urlencoded');
 
         $this->assertProblem(415);
-        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($productId));
+        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
     }
 
-    private function stockedProduct(int $physical, int $reserved, int $version): string
+    private function stockedVariant(int $physical, int $reserved, int $version): string
     {
-        return StockFixture::stock($this->connection, $physical, $reserved, $version, $this->product());
+        return StockFixture::stock($this->connection, $physical, $reserved, $version, $this->variant());
     }
 
-    private function path(string $productId): string
+    private function path(string $variantId): string
     {
-        return '/api/v1/admin/products/'.$productId.'/stock/corrections';
+        return '/api/v1/admin/variants/'.$variantId.'/stock/corrections';
     }
 
     /**
@@ -418,8 +429,8 @@ final class CorrectStockEndpointTest extends WebTestCase
      *
      * @return array<mixed>
      */
-    private function correct(string $productId, array $body, ?string $token = null): array
+    private function correct(string $variantId, array $body, ?string $token = null): array
     {
-        return $this->post($this->path($productId), json_encode($body, \JSON_THROW_ON_ERROR), $token ?? TestTokenFactory::staff(['admin']));
+        return $this->post($this->path($variantId), json_encode($body, \JSON_THROW_ON_ERROR), $token ?? TestTokenFactory::staff(['admin']));
     }
 }

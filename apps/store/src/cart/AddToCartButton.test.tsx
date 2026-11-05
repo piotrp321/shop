@@ -29,7 +29,7 @@ const button = () => screen.getByRole("button", { name: "Do koszyka" }) as HTMLB
 describe("AddToCartButton", () => {
   it("adds one unit of its product", async () => {
     vi.mocked(addCartItem).mockResolvedValue({ status: "ok", data: cartWith(1) });
-    render(<AddToCartButton productId={PRODUCT} />);
+    render(<AddToCartButton variantId={PRODUCT} />);
 
     fireEvent.click(button());
 
@@ -37,10 +37,18 @@ describe("AddToCartButton", () => {
     expect(addCartItem).toHaveBeenCalledExactlyOnceWith(PRODUCT, 1);
   });
 
+  it("is disabled and adds nothing without a variant", () => {
+    render(<AddToCartButton variantId={null} />);
+
+    expect(button().disabled).toBe(true);
+    fireEvent.click(button());
+    expect(addCartItem).not.toHaveBeenCalled();
+  });
+
   it("is disabled while the request runs, so a second click adds nothing", async () => {
     let finish: (value: Awaited<ReturnType<typeof addCartItem>>) => void = () => {};
     vi.mocked(addCartItem).mockReturnValue(new Promise((resolve) => (finish = resolve)));
-    render(<AddToCartButton productId={PRODUCT} />);
+    render(<AddToCartButton variantId={PRODUCT} />);
 
     fireEvent.click(button());
     expect(button().disabled).toBe(true);
@@ -53,7 +61,7 @@ describe("AddToCartButton", () => {
 
   it("says the product was added and announces the units of the cart from the answer", async () => {
     vi.mocked(addCartItem).mockResolvedValue({ status: "ok", data: cartWith(5) });
-    render(<AddToCartButton productId={PRODUCT} />);
+    render(<AddToCartButton variantId={PRODUCT} />);
 
     fireEvent.click(button());
 
@@ -63,7 +71,7 @@ describe("AddToCartButton", () => {
 
   it("shows the detail of a 409 next to the button and announces nothing", async () => {
     vi.mocked(addCartItem).mockResolvedValue({ status: "conflict", detail: "Nie mamy tylu sztuk tego produktu." });
-    render(<AddToCartButton productId={PRODUCT} />);
+    render(<AddToCartButton variantId={PRODUCT} />);
 
     fireEvent.click(button());
 
@@ -75,7 +83,7 @@ describe("AddToCartButton", () => {
 
   it("falls back to the general message when a 409 has no detail", async () => {
     vi.mocked(addCartItem).mockResolvedValue({ status: "conflict" });
-    render(<AddToCartButton productId={PRODUCT} />);
+    render(<AddToCartButton variantId={PRODUCT} />);
 
     fireEvent.click(button());
 
@@ -84,7 +92,7 @@ describe("AddToCartButton", () => {
 
   it("says the product is no longer available on a 404", async () => {
     vi.mocked(addCartItem).mockResolvedValue({ status: "not_found", detail: "Produkt nie jest już dostępny." });
-    render(<AddToCartButton productId={PRODUCT} />);
+    render(<AddToCartButton variantId={PRODUCT} />);
 
     fireEvent.click(button());
 
@@ -95,7 +103,7 @@ describe("AddToCartButton", () => {
   it.each([["failed" as const], ["unauthorized" as const]])("shows the right message for %s", async (status) => {
     vi.mocked(addCartItem).mockResolvedValue({ status });
     window.history.pushState({}, "", "/?category=buty&page=2");
-    render(<AddToCartButton productId={PRODUCT} />);
+    render(<AddToCartButton variantId={PRODUCT} />);
 
     fireEvent.click(button());
 
@@ -112,7 +120,7 @@ describe("AddToCartButton", () => {
 
   it("clears the previous message when it is clicked again", async () => {
     vi.mocked(addCartItem).mockResolvedValueOnce({ status: "failed" }).mockResolvedValueOnce({ status: "ok", data: cartWith(1) });
-    render(<AddToCartButton productId={PRODUCT} />);
+    render(<AddToCartButton variantId={PRODUCT} />);
 
     fireEvent.click(button());
     await screen.findByText("Nie udało się zapisać zmian. Spróbuj ponownie.");

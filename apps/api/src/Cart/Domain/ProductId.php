@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Cart\Domain;
 
 /**
- * Identifier of a product in a cart: the UUID of the product in Catalog, kept as Cart's own value.
+ * Identifier of a product in Catalog, kept as Cart's own value: the key of the product offers of the list and the product of a cart line.
  */
 final readonly class ProductId
 {

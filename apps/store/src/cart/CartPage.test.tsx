@@ -11,13 +11,14 @@ vi.mock("@/api/client", () => ({ loadCart: vi.fn(), changeCartItemQuantity: vi.f
 
 const A = "00000000-0000-4000-8000-00000000000a";
 const B = "00000000-0000-4000-8000-00000000000b";
+const PRODUCT = "00000000-0000-4000-8000-0000000000f1";
 const price = (gross: number) => formatPrice(gross, "PLN");
 
 type Line = CartView["lines"][number];
 
-const line = (productId: string, name: string, quantity: number, overrides: Partial<Line> = {}): Line => ({
-  productId,
-  product: { name, image: null },
+const line = (variantId: string, name: string, quantity: number, overrides: Partial<Line> = {}): Line => ({
+  variantId,
+  product: { productId: PRODUCT, name, variantLabel: "", image: null },
   quantity,
   unitPrice: { gross: 1000, currency: "PLN" },
   lineTotal: { gross: 1000 * quantity, currency: "PLN" },
@@ -121,8 +122,28 @@ describe("CartPage content", () => {
     expect(screen.getByTestId("cart-item-count").textContent).toBe("9");
   });
 
+  it("shows the label of the variant under the name and names the quantity field after both", async () => {
+    await renderWith(
+      view([
+        line(A, "Buty Asfalt", 1, { product: { productId: PRODUCT, name: "Buty Asfalt", variantLabel: "czarne, 42", image: null } }),
+        line(B, "Buty Asfalt", 2, { product: { productId: PRODUCT, name: "Buty Asfalt", variantLabel: "czarne, 43", image: null } }),
+      ]),
+    );
+
+    expect(screen.getAllByTestId("variant-label").map((label) => label.textContent)).toEqual(["czarne, 42", "czarne, 43"]);
+    expect(screen.getByLabelText("Ilość: Buty Asfalt, czarne, 42")).toBeTruthy();
+    expect(screen.getByLabelText("Ilość: Buty Asfalt, czarne, 43")).toBeTruthy();
+  });
+
+  it("shows no variant label for the default variant", async () => {
+    await renderWith(view([line(A, "Hantle", 1)]));
+
+    expect(screen.queryByTestId("variant-label")).toBeNull();
+    expect(screen.getByLabelText("Ilość: Hantle")).toBeTruthy();
+  });
+
   it("shows the photo of a product", async () => {
-    await renderWith(view([line(A, "Produkt A", 1, { product: { name: "Produkt A", image: makeImage({ alt: "Zdjęcie A" }) } })]));
+    await renderWith(view([line(A, "Produkt A", 1, { product: { productId: PRODUCT, name: "Produkt A", variantLabel: "", image: makeImage({ alt: "Zdjęcie A" }) } })]));
 
     expect(screen.getByRole("img", { name: "Zdjęcie A" })).toBeTruthy();
   });

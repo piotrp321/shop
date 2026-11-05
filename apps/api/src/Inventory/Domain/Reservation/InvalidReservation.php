@@ -26,8 +26,8 @@ final class InvalidReservation extends \DomainException implements InvalidInput
         return new self(\sprintf('A reservation line must reserve 1 to %d units.', ReservationLine::MAX_QUANTITY));
     }
 
-    public static function repeatedProduct(): self
+    public static function repeatedVariant(): self
     {
-        return new self('A product may appear in only one line of a reservation.');
+        return new self('A variant may appear in only one line of a reservation.');
     }
 }

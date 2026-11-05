@@ -14,14 +14,14 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
- * Removes all prices and their history, then sets the demo price of every product (run after catalog:seed-demo).
- * Exit codes: 0 every product has a price, 1 the guard refused, the price file is invalid or a product has no
- * matching pattern (nothing was changed).
+ * Removes all prices and their history, then sets the demo price of every variant, matched by its key (run after
+ * catalog:seed-demo). Exit codes: 0 every variant has a price, 1 the guard refused, the price file is invalid or a
+ * variant has no matching pattern (nothing was changed).
  */
-#[AsCommand(name: 'pricing:seed-demo', description: 'Removes all prices and sets the demo prices of the catalog products.')]
+#[AsCommand(name: 'pricing:seed-demo', description: 'Removes all prices and sets the demo prices of the catalog variants.')]
 final readonly class SeedDemoPricesCommand
 {
-    private const int LISTED_SLUGS = 10;
+    private const int LISTED_KEYS = 10;
 
     public function __construct(
         private DemoPriceSource $source,
@@ -51,13 +51,13 @@ final readonly class SeedDemoPricesCommand
             return Command::FAILURE;
         }
 
-        $unpriced = $this->seeder->unpricedSlugs($prices);
+        $unpriced = $this->seeder->unpricedKeys($prices);
         if ([] !== $unpriced) {
-            $more = \count($unpriced) - self::LISTED_SLUGS;
+            $more = \count($unpriced) - self::LISTED_KEYS;
             $io->error(\sprintf(
-                'No pattern in the demo prices (fixtures/prices.yaml) matches %d demo products: %s%s. Nothing was changed.',
+                'No pattern in the demo prices (fixtures/prices.yaml) matches %d demo variants: %s%s. Nothing was changed.',
                 \count($unpriced),
-                implode(', ', \array_slice($unpriced, 0, self::LISTED_SLUGS)),
+                implode(', ', \array_slice($unpriced, 0, self::LISTED_KEYS)),
                 $more > 0 ? \sprintf(' and %d more', $more) : '',
             ));
 

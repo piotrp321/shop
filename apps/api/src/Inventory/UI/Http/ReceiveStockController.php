@@ -35,7 +35,7 @@ final class ReceiveStockController
     /** Attribute of StockVoter (Infrastructure): the controller only knows its name. */
     private const string MANAGE_STOCK = 'MANAGE_STOCK';
 
-    /** A UUID in any letter case; anything else matches no route (404), like an unknown product. */
+    /** A UUID in any letter case; anything else matches no route (404), like an unknown variant. */
     private const string UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 
     private const string IDEMPOTENCY_KEY = 'Idempotency-Key';
@@ -45,18 +45,18 @@ final class ReceiveStockController
         $this->messageBus = $commandBus;
     }
 
-    #[Route('/api/v1/admin/products/{productId}/stock/receipts', name: 'inventory_receive_stock', requirements: ['productId' => self::UUID], methods: ['POST'])]
+    #[Route('/api/v1/admin/variants/{variantId}/stock/receipts', name: 'inventory_receive_stock', requirements: ['variantId' => self::UUID], methods: ['POST'])]
     #[Security(name: 'backoffice')]
     #[OA\Post(
         operationId: 'receiveStock',
-        summary: 'Receive stock of a product',
+        summary: 'Receive stock of a product variant',
         description: 'Adds delivered units to the physical stock. Administrators and the warehouse only. The `Idempotency-Key` '
-            .'identifies the receipt: sending it again with the same product, quantity and note adds nothing and answers 200 with '
-            .'the current stock, so a receipt can be retried safely; the same key with other content or another product is a 409. '
+            .'identifies the receipt: sending it again with the same variant, quantity and note adds nothing and answers 200 with '
+            .'the current stock, so a receipt can be retried safely; the same key with other content or another variant is a 409. '
             .'The history entry names the staff member of the token.',
         tags: ['Inventory'],
         parameters: [
-            new OA\Parameter(name: 'productId', in: 'path', required: true, description: 'Product id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'variantId', in: 'path', required: true, description: 'Variant id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
             new OA\Parameter(name: 'Idempotency-Key', in: 'header', required: true, description: 'Key of the receipt, chosen by the client (e.g. a UUID made when the dialog opens): 1 to 100 characters, letters, digits, ".", "_", ":" or "-".', schema: new OA\Schema(type: 'string', maxLength: ReceiptKey::MAX_LENGTH, minLength: 1, pattern: '^[A-Za-z0-9._:-]{1,100}$')),
         ],
         responses: [
@@ -87,12 +87,12 @@ final class ReceiveStockController
             ),
             new OA\Response(
                 response: 404,
-                description: 'No such product, or the id is not a UUID (problem details).',
+                description: 'No such variant, or the id is not a UUID (problem details).',
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
             new OA\Response(
                 response: 409,
-                description: 'The key was used for a receipt with other content or of another product (problem details).',
+                description: 'The key was used for a receipt with other content or of another variant (problem details).',
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
             new OA\Response(
@@ -114,7 +114,7 @@ final class ReceiveStockController
     )]
     #[IsGranted(self::MANAGE_STOCK)]
     public function __invoke(
-        string $productId,
+        string $variantId,
         Request $request,
         #[CurrentUser] AuthenticatedStaffMember $staffMember,
         #[MapRequestPayload(
@@ -129,7 +129,7 @@ final class ReceiveStockController
         \assert(\is_int($receipt->quantity) && (null === $receipt->note || \is_string($receipt->note)));
         $key = self::idempotencyKey($request);
 
-        $result = $this->handle(ReceiveStock::byStaff($productId, $receipt->quantity, $key, $receipt->note, $staffMember->id(), $staffMember->username()));
+        $result = $this->handle(ReceiveStock::byStaff($variantId, $receipt->quantity, $key, $receipt->note, $staffMember->id(), $staffMember->username()));
         \assert($result instanceof ReceiveStockResult);
 
         $response = new JsonResponse(StockStateResponse::of($result->stock), $result->repeated ? Response::HTTP_OK : Response::HTTP_CREATED);

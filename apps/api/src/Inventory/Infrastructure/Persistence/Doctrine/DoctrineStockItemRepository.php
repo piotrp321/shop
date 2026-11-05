@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Inventory\Infrastructure\Persistence\Doctrine;
 
-use App\Inventory\Domain\Stock\ProductId;
 use App\Inventory\Domain\Stock\ReceiptKey;
 use App\Inventory\Domain\Stock\ReceiptKeyReused;
 use App\Inventory\Domain\Stock\StockChangeOrigin;
@@ -13,6 +12,7 @@ use App\Inventory\Domain\Stock\StockItem;
 use App\Inventory\Domain\Stock\StockItemRepository;
 use App\Inventory\Domain\Stock\StockMovement;
 use App\Inventory\Domain\Stock\StockMovementType;
+use App\Inventory\Domain\Stock\VariantId;
 use App\Inventory\Infrastructure\Persistence\Doctrine\Record\StockMovementRecord;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -27,7 +27,7 @@ use Symfony\Component\Uid\Uuid;
  */
 final readonly class DoctrineStockItemRepository implements StockItemRepository
 {
-    private const string COLUMNS = 'product_id, physical, reserved, version, updated_at';
+    private const string COLUMNS = 'variant_id, physical, reserved, version, updated_at';
 
     public function __construct(private Connection $connection)
     {
@@ -35,7 +35,7 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
 
     /**
      * One statement. PostgreSQL sorts the rows by the primary key before it locks them (LockRows above the ordered
-     * scan), so the locks are taken in ascending product id whatever the order of $ids. Under READ COMMITTED a row
+     * scan), so the locks are taken in ascending variant id whatever the order of $ids. Under READ COMMITTED a row
      * changed by the transaction that held its lock is returned as that transaction committed it, so the stock is
      * read anew once locked.
      */
@@ -46,7 +46,7 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
         }
 
         $rows = $this->connection->fetchAllAssociative(
-            'SELECT '.self::COLUMNS.' FROM inventory_stock_item WHERE product_id = ANY(CAST(:ids AS uuid[])) ORDER BY product_id FOR UPDATE',
+            'SELECT '.self::COLUMNS.' FROM inventory_stock_item WHERE variant_id = ANY(CAST(:ids AS uuid[])) ORDER BY variant_id FOR UPDATE',
             ['ids' => self::uuidArray($ids)],
         );
 
@@ -59,11 +59,11 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
      * either adds the row (the other rolled back) or skips it, and the lock reads the row as the other committed it.
      * The row inserted here is locked by this transaction anyway.
      */
-    public function lockOrCreate(ProductId $id): StockItem
+    public function lockOrCreate(VariantId $id): StockItem
     {
         $this->connection->executeStatement(
-            'INSERT INTO inventory_stock_item (product_id, physical, reserved, version, updated_at) VALUES (:product_id, 0, 0, 0, :now) ON CONFLICT (product_id) DO NOTHING',
-            ['product_id' => $id->toString(), 'now' => new \DateTimeImmutable()],
+            'INSERT INTO inventory_stock_item (variant_id, physical, reserved, version, updated_at) VALUES (:variant_id, 0, 0, 0, :now) ON CONFLICT (variant_id) DO NOTHING',
+            ['variant_id' => $id->toString(), 'now' => new \DateTimeImmutable()],
             ['now' => Types::DATETIMETZ_IMMUTABLE],
         );
 
@@ -76,19 +76,19 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
     public function findReceipt(ReceiptKey $key): ?StockMovement
     {
         $row = $this->connection->fetchAssociative(
-            "SELECT product_id, physical_delta, reserved_delta, physical_after, reserved_after, note, reference, source, actor_id, actor_name, occurred_at FROM inventory_stock_movement WHERE type = 'receipt' AND reference = :reference",
+            "SELECT variant_id, physical_delta, reserved_delta, physical_after, reserved_after, note, reference, source, actor_id, actor_name, occurred_at FROM inventory_stock_movement WHERE type = 'receipt' AND reference = :reference",
             ['reference' => $key->toString()],
         );
         if (false === $row) {
             return null;
         }
-        \assert(\is_string($row['product_id']) && \is_string($row['source']) && \is_string($row['occurred_at']));
+        \assert(\is_string($row['variant_id']) && \is_string($row['source']) && \is_string($row['occurred_at']));
         \assert(\is_int($row['physical_delta']) && \is_int($row['reserved_delta']) && \is_int($row['physical_after']) && \is_int($row['reserved_after']));
         \assert((null === $row['note'] || \is_string($row['note'])) && \is_string($row['reference']));
         \assert((null === $row['actor_id'] || \is_string($row['actor_id'])) && (null === $row['actor_name'] || \is_string($row['actor_name'])));
 
         return new StockMovement(
-            ProductId::fromString($row['product_id']),
+            VariantId::fromString($row['variant_id']),
             StockMovementType::Receipt,
             $row['physical_delta'],
             $row['reserved_delta'],
@@ -107,7 +107,7 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
     }
 
     /**
-     * One statement, `product_id = ANY(:ids)`, without a lock.
+     * One statement, `variant_id = ANY(:ids)`, without a lock.
      */
     public function findMany(array $ids): array
     {
@@ -116,7 +116,7 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
         }
 
         $rows = $this->connection->fetchAllAssociative(
-            'SELECT '.self::COLUMNS.' FROM inventory_stock_item WHERE product_id = ANY(CAST(:ids AS uuid[]))',
+            'SELECT '.self::COLUMNS.' FROM inventory_stock_item WHERE variant_id = ANY(CAST(:ids AS uuid[]))',
             ['ids' => self::uuidArray($ids)],
         );
 
@@ -128,7 +128,7 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
      * version, so a write that did not hold the row lock and lost a race cannot pass silently; the CHECK constraint
      * of the table refuses a state breaking the invariant. The movements are inserted by the same transaction, so
      * there is no change without its movement and no movement without its change. The partial unique index of receipt
-     * keys refuses a receipt with a key another transaction stored after this one looked it up (two products received
+     * keys refuses a receipt with a key another transaction stored after this one looked it up (two variants received
      * with one key at the same time): the transaction fails as ReceiptKeyReused and must be rolled back.
      */
     public function save(StockItem $item): void
@@ -139,13 +139,13 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
         }
 
         $updated = $this->connection->executeStatement(
-            'UPDATE inventory_stock_item SET physical = :physical, reserved = :reserved, version = :version, updated_at = :updated_at WHERE product_id = :product_id AND version = :read_version',
+            'UPDATE inventory_stock_item SET physical = :physical, reserved = :reserved, version = :version, updated_at = :updated_at WHERE variant_id = :variant_id AND version = :read_version',
             [
                 'physical' => $item->physical(),
                 'reserved' => $item->reserved(),
                 'version' => $item->version(),
                 'updated_at' => $item->updatedAt(),
-                'product_id' => $item->id()->toString(),
+                'variant_id' => $item->id()->toString(),
                 'read_version' => $item->version() - 1,
             ],
             ['updated_at' => Types::DATETIMETZ_IMMUTABLE],
@@ -178,12 +178,12 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
     private function insert(StockMovement $movement): void
     {
         $this->connection->executeStatement(
-            'INSERT INTO inventory_stock_movement (id, product_id, type, physical_delta, reserved_delta, physical_after, reserved_after, reason, note, reference, source, actor_id, actor_name, occurred_at) '
-            .'VALUES (:id, :product_id, :type, :physical_delta, :reserved_delta, :physical_after, :reserved_after, :reason, :note, :reference, :source, :actor_id, :actor_name, :occurred_at)',
+            'INSERT INTO inventory_stock_movement (id, variant_id, type, physical_delta, reserved_delta, physical_after, reserved_after, reason, note, reference, source, actor_id, actor_name, occurred_at) '
+            .'VALUES (:id, :variant_id, :type, :physical_delta, :reserved_delta, :physical_after, :reserved_after, :reason, :note, :reference, :source, :actor_id, :actor_name, :occurred_at)',
             [
                 // Time-ordered, so the movements of one second keep their order in the history.
                 'id' => Uuid::v7()->toRfc4122(),
-                'product_id' => $movement->productId()->toString(),
+                'variant_id' => $movement->variantId()->toString(),
                 'type' => $movement->type()->value,
                 'physical_delta' => $movement->physicalDelta(),
                 'reserved_delta' => $movement->reservedDelta(),
@@ -204,11 +204,11 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
     /**
      * A PostgreSQL array literal of validated UUIDs (hex digits and dashes only), bound as one parameter.
      *
-     * @param list<ProductId> $ids
+     * @param list<VariantId> $ids
      */
     private static function uuidArray(array $ids): string
     {
-        return '{'.implode(',', array_map(static fn (ProductId $id): string => $id->toString(), $ids)).'}';
+        return '{'.implode(',', array_map(static fn (VariantId $id): string => $id->toString(), $ids)).'}';
     }
 
     /**
@@ -216,11 +216,11 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
      */
     private function fromRow(array $row): StockItem
     {
-        \assert(\is_string($row['product_id']) && \is_string($row['updated_at']));
+        \assert(\is_string($row['variant_id']) && \is_string($row['updated_at']));
         \assert(\is_int($row['physical']) && \is_int($row['reserved']) && \is_int($row['version']));
 
         return StockItem::reconstitute(
-            ProductId::fromString($row['product_id']),
+            VariantId::fromString($row['variant_id']),
             $row['physical'],
             $row['reserved'],
             $row['version'],

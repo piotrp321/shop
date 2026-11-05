@@ -7,7 +7,11 @@ namespace App\Catalog\Application\Command;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategoryRepository;
+use App\Catalog\Domain\Product\DuplicateVariantValues;
 use App\Catalog\Domain\Product\ImageKey;
+use App\Catalog\Domain\Product\InvalidProductVariants;
+use App\Catalog\Domain\Product\InvalidVariantAxes;
+use App\Catalog\Domain\Product\InvalidVariantValues;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductAlreadyExists;
 use App\Catalog\Domain\Product\ProductCategories;
@@ -17,10 +21,16 @@ use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotFound;
 use App\Catalog\Domain\Product\ProductRepository;
+use App\Catalog\Domain\Product\ProductVariant;
+use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\VariantAlreadyExists;
+use App\Catalog\Domain\Product\VariantAxes;
+use App\Catalog\Domain\Product\VariantId;
+use App\Catalog\Domain\Product\VariantValues;
 use App\Shared\Domain\Event\DomainEventPublisher;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -36,8 +46,13 @@ final readonly class CreateProductHandler
 
     /**
      * @throws ProductAlreadyExists
-     * @throws CategoryNotFound     when the main or an additional category does not exist
+     * @throws CategoryNotFound       when the main or an additional category does not exist
      * @throws SlugAlreadyTaken
+     * @throws InvalidVariantAxes
+     * @throws InvalidVariantValues
+     * @throws InvalidProductVariants
+     * @throws DuplicateVariantValues
+     * @throws VariantAlreadyExists
      */
     public function __invoke(CreateProduct $command): void
     {
@@ -63,6 +78,14 @@ final readonly class CreateProductHandler
             $images[] = new ProductImage(ImageKey::fromString($image['key']), $image['alt'], $position);
         }
 
+        $variants = ProductVariants::create(
+            VariantAxes::fromList($command->variantAxes),
+            array_map(
+                static fn (array $variant): ProductVariant => new ProductVariant(VariantId::fromString($variant['id']), VariantValues::fromList($variant['values'])),
+                $command->variants,
+            ),
+        );
+
         $product = Product::create(
             $id,
             new ProductName($command->name),
@@ -71,6 +94,7 @@ final readonly class CreateProductHandler
             $categories,
             TaxClassCode::from($command->taxClass),
             ProductImages::fromList($images),
+            $variants,
         );
 
         $this->products->save($product);

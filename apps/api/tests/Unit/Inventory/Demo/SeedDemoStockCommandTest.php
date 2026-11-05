@@ -8,7 +8,7 @@ use App\Inventory\Application\Demo\DemoStockSeeder;
 use App\Inventory\Infrastructure\Demo\YamlDemoStockSource;
 use App\Inventory\UI\Console\SeedDemoStockCommand;
 use App\Tests\Support\InMemory\RecordingMessageBus;
-use App\Tests\Unit\Inventory\InMemoryProductsForInventory;
+use App\Tests\Unit\Inventory\InMemoryVariantsForInventory;
 use App\Tests\Unit\Inventory\SpyInventoryReset;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Application;
@@ -18,8 +18,8 @@ use Symfony\Component\Console\Tester\CommandTester;
 final class SeedDemoStockCommandTest extends TestCase
 {
     private const array STOCKED = [
-        '00000000-0000-4000-8000-000000000001' => 'namiot-turystyczny-norvane-biwak-2-zielony',
-        '00000000-0000-4000-8000-000000000002' => 'mapa-turystyczna-tarvik-press-gorce-skladana',
+        '00000000-0000-4000-8000-000000000001' => 'namiot-turystyczny-norvane-biwak-2/zielony',
+        '00000000-0000-4000-8000-000000000002' => 'mapa-turystyczna-tarvik-press-gorce-skladana/standard',
     ];
 
     private RecordingMessageBus $bus;
@@ -33,7 +33,7 @@ final class SeedDemoStockCommandTest extends TestCase
         }
     }
 
-    public function testResetsAndSetsTheStockOfEveryProduct(): void
+    public function testResetsAndSetsTheStockOfEveryVariant(): void
     {
         $tester = $this->tester(self::STOCKED);
 
@@ -45,37 +45,37 @@ final class SeedDemoStockCommandTest extends TestCase
         self::assertStringContainsString('stocks: 2', $tester->getDisplay());
     }
 
-    public function testProductWithoutPatternFailsBeforeAnyChange(): void
+    public function testVariantWithoutPatternFailsBeforeAnyChange(): void
     {
         $tester = $this->tester([
             ...self::STOCKED,
-            '00000000-0000-4000-8000-000000000003' => 'kajak-turystyczny-vilmar-rzeka-1-zielony',
+            '00000000-0000-4000-8000-000000000003' => 'kajak-turystyczny-vilmar-rzeka-1/zielony',
         ]);
 
         $exitCode = $tester->execute([]);
 
         $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
         self::assertSame(Command::FAILURE, $exitCode);
-        self::assertStringContainsString('kajak-turystyczny-vilmar-rzeka-1-zielony', $display);
+        self::assertStringContainsString('kajak-turystyczny-vilmar-rzeka-1/zielony', $display);
         self::assertStringContainsString('Nothing was changed', $display);
         self::assertSame(0, $this->reset->resets);
         self::assertSame([], $this->bus->dispatched);
     }
 
-    public function testManyProductsWithoutPatternAreSummarised(): void
+    public function testManyVariantsWithoutPatternAreSummarised(): void
     {
-        $products = self::STOCKED;
+        $variants = self::STOCKED;
         for ($i = 10; $i < 25; ++$i) {
-            $products[\sprintf('00000000-0000-4000-8000-%012d', $i)] = 'kajak-'.$i;
+            $variants[\sprintf('00000000-0000-4000-8000-%012d', $i)] = 'kajak-'.$i.'/standard';
         }
-        $tester = $this->tester($products);
+        $tester = $this->tester($variants);
 
         self::assertSame(Command::FAILURE, $tester->execute([]));
 
         $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
-        self::assertStringContainsString('15 demo products', $display);
-        self::assertStringContainsString('kajak-19', $display);
-        self::assertStringNotContainsString('kajak-20', $display);
+        self::assertStringContainsString('15 demo variants', $display);
+        self::assertStringContainsString('kajak-19/standard', $display);
+        self::assertStringNotContainsString('kajak-20/standard', $display);
     }
 
     public function testInvalidStockFileFailsBeforeAnyChange(): void
@@ -97,7 +97,7 @@ final class SeedDemoStockCommandTest extends TestCase
         $application = new Application();
         $application->addCommand(new SeedDemoStockCommand(
             new YamlDemoStockSource('/nonexistent/stock.yaml'),
-            new DemoStockSeeder(new InMemoryProductsForInventory(self::STOCKED), $this->bus),
+            new DemoStockSeeder(new InMemoryVariantsForInventory(self::STOCKED), $this->bus),
             $this->reset,
             'test',
         ));
@@ -129,9 +129,9 @@ final class SeedDemoStockCommandTest extends TestCase
     }
 
     /**
-     * @param array<string, string> $products product id => slug
+     * @param array<string, string> $variants variant id => key
      */
-    private function tester(array $products, string $stock = "\"namiot-*\": 30\n\"mapa-*\": 0\n", string $environment = 'test'): CommandTester
+    private function tester(array $variants, string $stock = "\"namiot-*\": 30\n\"mapa-*\": 0\n", string $environment = 'test'): CommandTester
     {
         $this->file = tempnam(sys_get_temp_dir(), 'stock');
         file_put_contents($this->file, $stock);
@@ -140,7 +140,7 @@ final class SeedDemoStockCommandTest extends TestCase
         $application = new Application();
         $application->addCommand(new SeedDemoStockCommand(
             new YamlDemoStockSource($this->file),
-            new DemoStockSeeder(new InMemoryProductsForInventory($products), $this->bus),
+            new DemoStockSeeder(new InMemoryVariantsForInventory($variants), $this->bus),
             $this->reset,
             $environment,
         ));

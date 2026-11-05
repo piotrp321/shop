@@ -10,8 +10,8 @@ imgproxy), a fronty rozmawiają z API wyłącznie przez klientów TS wygenerowan
 Na czystym klonie repozytorium, z zainstalowanym tylko Dockerem:
 
 1. `make up` stawia cały stos i kończy się dopiero, gdy wszystkie usługi są zdrowe.
-2. `make seed` ładuje dane demo (300–500 produktów sport/outdoor w drzewie kategorii, 20–30 zdjęć) i kończy się,
-   gdy indeks w Elasticsearch jest zgodny z Postgresem.
+2. `make seed` ładuje dane demo (191 produktów sport/outdoor z 1012 wariantami w drzewie kategorii, 20–30 zdjęć)
+   i kończy się, gdy indeks w Elasticsearch jest zgodny z Postgresem.
 3. Sklep pokazuje drzewo kategorii i siatkę produktów ze zdjęciami (WebP z imgproxy). Kliknięcie kategorii
    zawęża listę razem z podkategoriami.
 4. Klient loguje się w sklepie (realm `shop`), może się zarejestrować z weryfikacją e-mail (Mailpit), widzi
@@ -205,7 +205,8 @@ Reguły Deptrac:
 **`Product`** (agregat)
 - `ProductId` (UUID), `ProductName` (niepusta, do 200 znaków), `Slug` (`^[a-z0-9]+(-[a-z0-9]+)*$`, do 200 znaków,
   unikalny), `ShortDescription` (do 500 znaków, może być pusty), `ProductCategories`, `TaxCategory`,
-  `ProductImages`.
+  `ProductImages`, `ProductVariants` (osie `VariantAxes` i warianty `ProductVariant`; opis w `docs/features/variants/spec.md`,
+  sekcja „Catalog”).
 - `ProductCategories`: dokładnie jedna kategoria główna i najwyżej 10 dodatkowych, wszystkie jako
   `CategoryId`. Kategoria nie powtarza się na liście, a główna nie jest jednocześnie dodatkową. `all()` zwraca
   główną, a po niej dodatkowe. Kolejność dodatkowych nie ma znaczenia biznesowego.
@@ -229,7 +230,10 @@ Persystencja:
 
 - `catalog_category`: `id`, `parent_id` (FK), `name`, `path` (tekst z indeksem `text_pattern_ops`).
 - `catalog_product`: `id`, `slug` (ograniczenie unikalności), `name`, `short_description`, `primary_category_id`
-  (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB), `version` (BIGINT NOT NULL).
+  (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB), `variant_axes` (JSONB), `version`
+  (BIGINT NOT NULL).
+- `catalog_product_variant`: warianty produktu (`id`, `product_id` FK `ON DELETE CASCADE`, `position`, `option_values`
+  JSONB, `values_key` liczona przez PostgreSQL; unikalne `(product_id, position)` i `(product_id, values_key)`).
 - `catalog_product_category`: dodatkowe kategorie produktu. `product_id` (FK do `catalog_product`, `ON DELETE
   CASCADE`) i `category_id` (FK do `catalog_category`), klucz główny (`product_id`, `category_id`) i indeks na
   `category_id` do wyszukiwania produktów po kategorii. Kategoria główna nie trafia do tej tabeli (niezmiennik
@@ -798,19 +802,24 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 - Branża: sport i outdoor. Drzewo kategorii na 3–4 poziomy z kategoriami najwyższego poziomu: bieganie, rower, turystyka,
   sporty zimowe, fitness, sporty wodne, sporty drużynowe.
 - `apps/api/fixtures/catalog.yaml` definiuje drzewo kategorii oraz szablony produktów dla kategorii: fikcyjne marki
-  własne sklepu, modele, kolory, szablony opisów, kategorię podatkową, pulę zdjęć i opcjonalne kategorie
-  dodatkowe (część szablonów ma kategorię dodatkową w innej gałęzi drzewa).
+  własne sklepu, modele, osie wariantów z ich wartościami (`variantAxes`: 0–2 nazwy osi, np. „Kolor”, „Rozmiar”;
+  `axisValues`: lista wartości dla każdej osi, w kolejności osi), szablony opisów, kategorię podatkową, pulę zdjęć
+  i opcjonalne kategorie dodatkowe (część szablonów ma kategorię dodatkową w innej gałęzi drzewa). Produkt to marka
+  × model, a jego nazwa i slug nie zawierają wartości wariantów (kolor, rozmiar).
 - Część asortymentu ma obniżoną kategorię podatkową: żywność sportowa (`food`), suplementy (`food_supplement`),
   przewodniki i mapy (`printed_publication`).
 - `catalog:seed-demo` rozwija szablony deterministycznie (iloczyn kombinacji w ustalonej kolejności, bez losowości)
-  do 300–500 produktów. Zdjęcie produktu jest wybierane z puli kategorii według pozycji produktu w kolejności
-  rozwijania. Reguła zapisana w pliku pozostawia kilka produktów bez zdjęć.
+  do 191 produktów i 1012 wariantów: warianty produktu to iloczyn wartości jego osi w kolejności pliku (pierwsza oś
+  zmienia się najwolniej), a produkt bez osi (Hantle regulowane) ma jeden wariant domyślny. Zdjęcie produktu jest wybierane z puli kategorii według pozycji produktu
+  w kolejności rozwijania. Reguła zapisana w pliku pozostawia kilka produktów bez zdjęć.
 - Zdjęcia: 20–30 prawdziwych zdjęć „w terenie” (ludzie w górach, na szlaku, na rowerze) w spójnej tonacji,
   z Unsplash lub Pexels, przeskalowanych do około 1600 px na dłuższym boku, w `apps/api/fixtures/images/`.
   `apps/api/fixtures/images/CREDITS.md` podaje dla każdego pliku źródło, autora i licencję.
-- Seed nadaje kategoriom i produktom UUID v5 wyliczane ze sluga w stałej przestrzeni nazw, więc identyfikatory są
-  takie same po każdym seedzie. To wyłącznie mechanizm seeda: komendy aplikacji przyjmują identyfikator
-  od wywołującego.
+- Seed nadaje kategoriom, produktom i wariantom UUID v5 wyliczane ze sluga (wariant: z klucza
+  `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`) w stałej przestrzeni nazw, więc
+  identyfikatory są takie same po każdym seedzie. Klucz buduje jedna funkcja Catalog (`VariantKey`), a powtórzony klucz
+  (np. wartości „1,5” i „1.5”) albo slug kończy seed błędem. To wyłącznie mechanizm seeda: komendy aplikacji przyjmują
+  identyfikator od wywołującego.
 - Seed tworzy dane przez komendy aplikacji (`CreateCategory`, `CreateProduct`), więc indeks powstaje drogą
   outbox → RabbitMQ → `IndexProduct`. Na koniec czeka (do 60 s), aż liczba dokumentów w ES zrówna się z liczbą
   produktów, i wypisuje podsumowanie. Jeśli indeks nie dogoni Postgresa w tym czasie (np. nie działa `worker`),

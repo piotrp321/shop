@@ -8,8 +8,9 @@ use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\GrossPriceOutOfRange;
 
 /**
- * Gross demo prices by slug pattern. Patterns are checked in order and the first that matches the whole slug wins;
- * `*` matches any run of characters (also none).
+ * Gross demo prices by pattern of variant keys (`<product slug>/<label slug>`, `<product slug>/standard` for the
+ * default variant). Patterns are checked in order and the first that matches the whole key wins; `*` matches any run
+ * of characters (also none, also `/`).
  */
 final readonly class DemoPriceList
 {
@@ -24,7 +25,7 @@ final readonly class DemoPriceList
     public function __construct(array $rules)
     {
         if ([] === $rules) {
-            throw new \InvalidArgumentException('The demo prices must name at least one slug pattern.');
+            throw new \InvalidArgumentException('The demo prices must name at least one variant key pattern.');
         }
 
         $compiled = [];
@@ -32,8 +33,8 @@ final readonly class DemoPriceList
             if (1 !== preg_match('/[a-z0-9]/', $pattern)) {
                 throw new \InvalidArgumentException(\sprintf('The demo price pattern "%s" must contain a letter or digit.', $pattern));
             }
-            if (1 !== preg_match('/^[a-z0-9*-]+$/D', $pattern)) {
-                throw new \InvalidArgumentException(\sprintf('The demo price pattern "%s" may only contain a-z, 0-9, "-" and the wildcard "*".', $pattern));
+            if (1 !== preg_match('~^[a-z0-9*/-]+$~D', $pattern)) {
+                throw new \InvalidArgumentException(\sprintf('The demo price pattern "%s" may only contain a-z, 0-9, "-", "/" and the wildcard "*".', $pattern));
             }
             try {
                 GrossPrice::pln($gross);
@@ -49,10 +50,10 @@ final readonly class DemoPriceList
     /**
      * @return int|null the gross price in grosze, null when no pattern matches
      */
-    public function grossFor(string $slug): ?int
+    public function grossFor(string $key): ?int
     {
         foreach ($this->rules as ['regex' => $regex, 'gross' => $gross]) {
-            if (1 === preg_match($regex, $slug)) {
+            if (1 === preg_match($regex, $key)) {
                 return $gross;
             }
         }

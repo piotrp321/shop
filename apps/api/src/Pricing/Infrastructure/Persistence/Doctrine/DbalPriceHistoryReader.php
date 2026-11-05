@@ -7,14 +7,14 @@ namespace App\Pricing\Infrastructure\Persistence\Doctrine;
 use App\Pricing\Application\Port\PriceHistoryReader;
 use App\Pricing\Application\Query\PriceHistoryCursor;
 use App\Pricing\Application\Query\PriceHistoryItem;
-use App\Pricing\Domain\Price\ProductId;
+use App\Pricing\Domain\Price\VariantId;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 
 /**
- * Reads straight on the connection, one statement per page. The index (product_id, changed_at DESC, id) serves the
- * product and the time order; the id is descending, so the later of two changes within one second comes first (the
- * ids are time-ordered, see DoctrineProductPriceRepository), which the database finishes by sorting the few rows of
+ * Reads straight on the connection, one statement per page. The index (variant_id, changed_at DESC, id) serves the
+ * variant and the time order; the id is descending, so the later of two changes within one second comes first (the
+ * ids are time-ordered, see DoctrineVariantPriceRepository), which the database finishes by sorting the few rows of
  * one second. The cursor is a row comparison of the same two columns in the same direction. Nothing here writes.
  */
 final readonly class DbalPriceHistoryReader implements PriceHistoryReader
@@ -25,14 +25,14 @@ final readonly class DbalPriceHistoryReader implements PriceHistoryReader
     {
     }
 
-    public function page(ProductId $productId, ?PriceHistoryCursor $after, int $limit): array
+    public function page(VariantId $variantId, ?PriceHistoryCursor $after, int $limit): array
     {
         if ($limit < 1) {
             throw new \InvalidArgumentException('The limit must be at least 1.');
         }
 
-        $sql = 'SELECT '.self::COLUMNS.' FROM pricing_price_history WHERE product_id = CAST(:product AS uuid)';
-        $parameters = ['product' => $productId->toString(), 'limit' => $limit];
+        $sql = 'SELECT '.self::COLUMNS.' FROM pricing_price_history WHERE variant_id = CAST(:variant AS uuid)';
+        $parameters = ['variant' => $variantId->toString(), 'limit' => $limit];
         $types = ['limit' => ParameterType::INTEGER];
         if (null !== $after) {
             $sql .= ' AND (changed_at, id) < (CAST(:after_time AS timestamptz), CAST(:after_id AS uuid))';

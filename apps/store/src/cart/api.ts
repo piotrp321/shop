@@ -12,9 +12,9 @@ export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; 
 export type CartApi = {
   get(): Promise<ApiResult<CartView>>;
   summary(): Promise<ApiResult<CartSummary>>;
-  add(productId: string, quantity: number): Promise<ApiResult<CartView>>;
-  change(productId: string, quantity: number): Promise<ApiResult<CartView>>;
-  remove(productId: string): Promise<ApiResult<CartView>>;
+  add(variantId: string, quantity: number): Promise<ApiResult<CartView>>;
+  change(variantId: string, quantity: number): Promise<ApiResult<CartView>>;
+  remove(variantId: string): Promise<ApiResult<CartView>>;
 };
 
 // A cart is personal and changes with every request: never served from a fetch cache.
@@ -49,16 +49,16 @@ export function customerCart(client: ApiClient): CartApi {
     async summary() {
       return result(await client.GET("/api/v1/me/cart/summary", init));
     },
-    async add(productId, quantity) {
-      return result(await client.POST("/api/v1/me/cart/items", { ...init, body: { productId, quantity } }));
+    async add(variantId, quantity) {
+      return result(await client.POST("/api/v1/me/cart/items", { ...init, body: { variantId, quantity } }));
     },
-    async change(productId, quantity) {
+    async change(variantId, quantity) {
       return result(
-        await client.PUT("/api/v1/me/cart/items/{productId}", { ...init, params: { path: { productId } }, body: { quantity } }),
+        await client.PUT("/api/v1/me/cart/items/{variantId}", { ...init, params: { path: { variantId } }, body: { quantity } }),
       );
     },
-    async remove(productId) {
-      return result(await client.DELETE("/api/v1/me/cart/items/{productId}", { ...init, params: { path: { productId } } }));
+    async remove(variantId) {
+      return result(await client.DELETE("/api/v1/me/cart/items/{variantId}", { ...init, params: { path: { variantId } } }));
     },
   };
 }
@@ -73,23 +73,23 @@ export function guestCart(client: ApiClient, cartId: string): CartApi {
     async summary() {
       return result(await client.GET("/api/v1/guest-carts/{cartId}/summary", { ...init, params: { path } }));
     },
-    async add(productId, quantity) {
+    async add(variantId, quantity) {
       return result(
-        await client.POST("/api/v1/guest-carts/{cartId}/items", { ...init, params: { path }, body: { productId, quantity } }),
+        await client.POST("/api/v1/guest-carts/{cartId}/items", { ...init, params: { path }, body: { variantId, quantity } }),
       );
     },
-    async change(productId, quantity) {
+    async change(variantId, quantity) {
       return result(
-        await client.PUT("/api/v1/guest-carts/{cartId}/items/{productId}", {
+        await client.PUT("/api/v1/guest-carts/{cartId}/items/{variantId}", {
           ...init,
-          params: { path: { cartId, productId } },
+          params: { path: { cartId, variantId } },
           body: { quantity },
         }),
       );
     },
-    async remove(productId) {
+    async remove(variantId) {
       return result(
-        await client.DELETE("/api/v1/guest-carts/{cartId}/items/{productId}", { ...init, params: { path: { cartId, productId } } }),
+        await client.DELETE("/api/v1/guest-carts/{cartId}/items/{variantId}", { ...init, params: { path: { cartId, variantId } } }),
       );
     },
   };

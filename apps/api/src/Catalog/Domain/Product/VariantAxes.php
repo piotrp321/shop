@@ -1,0 +1,65 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Catalog\Domain\Product;
+
+/**
+ * The names of the axes a product varies along, in presentation order (e.g. Kolor, Rozmiar). Up to two, each
+ * 1 to 30 characters after trimming, different without regard to case.
+ */
+final readonly class VariantAxes
+{
+    public const int MAX_AXES = 2;
+    public const int MAX_NAME_LENGTH = 30;
+
+    /**
+     * @param list<string> $names
+     */
+    private function __construct(private array $names)
+    {
+    }
+
+    /**
+     * @param list<string> $names
+     *
+     * @throws InvalidVariantAxes
+     */
+    public static function fromList(array $names): self
+    {
+        if (\count($names) > self::MAX_AXES) {
+            throw InvalidVariantAxes::tooMany();
+        }
+
+        $trimmed = [];
+        $seen = [];
+        foreach ($names as $name) {
+            $name = trim($name);
+            $length = mb_strlen($name);
+            if ($length < 1 || $length > self::MAX_NAME_LENGTH) {
+                throw InvalidVariantAxes::nameLengthOutOfRange();
+            }
+            $key = mb_strtolower($name);
+            if (isset($seen[$key])) {
+                throw InvalidVariantAxes::nameRepeated();
+            }
+            $seen[$key] = true;
+            $trimmed[] = $name;
+        }
+
+        return new self($trimmed);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function names(): array
+    {
+        return $this->names;
+    }
+
+    public function count(): int
+    {
+        return \count($this->names);
+    }
+}

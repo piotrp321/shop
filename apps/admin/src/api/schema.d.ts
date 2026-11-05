@@ -73,7 +73,7 @@ export interface paths {
         };
         /**
          * Stock list
-         * @description A page of products sorted by name, then by id, each with its stock (null when it has no stock record). Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the stock of each variant (null when it has no stock record). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listStock"];
         put?: never;
@@ -84,7 +84,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/products/{productId}/stock/corrections": {
+    "/api/v1/admin/variants/{variantId}/stock/corrections": {
         parameters: {
             query?: never;
             header?: never;
@@ -94,8 +94,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Correct the stock of a product
-         * @description Sets the physical stock to the counted units, with a reason (a note is required for `other`). Administrators and the warehouse only. Send the `version` of the stock you saw (null for a product without a stock record): a stock changed since then is a 409 and nothing is overwritten, so repeating a correction that succeeded is a 409 too. Counting what the stock has changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.
+         * Correct the stock of a product variant
+         * @description Sets the physical stock to the counted units, with a reason (a note is required for `other`). Administrators and the warehouse only. Send the `version` of the stock you saw (null for a variant without a stock record): a stock changed since then is a 409 and nothing is overwritten, so repeating a correction that succeeded is a 409 too. Counting what the stock has changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.
          */
         post: operations["correctStock"];
         delete?: never;
@@ -104,7 +104,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/products/{productId}/stock/receipts": {
+    "/api/v1/admin/variants/{variantId}/stock/receipts": {
         parameters: {
             query?: never;
             header?: never;
@@ -114,8 +114,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Receive stock of a product
-         * @description Adds delivered units to the physical stock. Administrators and the warehouse only. The `Idempotency-Key` identifies the receipt: sending it again with the same product, quantity and note adds nothing and answers 200 with the current stock, so a receipt can be retried safely; the same key with other content or another product is a 409. The history entry names the staff member of the token.
+         * Receive stock of a product variant
+         * @description Adds delivered units to the physical stock. Administrators and the warehouse only. The `Idempotency-Key` identifies the receipt: sending it again with the same variant, quantity and note adds nothing and answers 200 with the current stock, so a receipt can be retried safely; the same key with other content or another variant is a 409. The history entry names the staff member of the token.
          */
         post: operations["receiveStock"];
         delete?: never;
@@ -124,7 +124,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/products/{productId}/stock-history": {
+    "/api/v1/admin/variants/{variantId}/stock-history": {
         parameters: {
             query?: never;
             header?: never;
@@ -132,8 +132,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Stock history of a product
-         * @description Every recorded change of the stock of a product (receipts, corrections, reservations, releases and commits), newest first, with the deltas, the stock right after the change, what made it and, for a change by staff, who. Every staff member may read it. A product that exists but has no stock record has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.
+         * Stock history of a product variant
+         * @description Every recorded change of the stock of a product variant (receipts, corrections, reservations, releases and commits), newest first, with the deltas, the stock right after the change, what made it and, for a change by staff, who. Every staff member may read it. A variant that exists but has no stock record has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.
          */
         get: operations["getStockHistory"];
         put?: never;
@@ -153,7 +153,7 @@ export interface paths {
         };
         /**
          * Price list
-         * @description A page of products sorted by name, then by id, each with its price (null when it has none). Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         * @description A page of products sorted by name, then by id, each with its variants in presentation order and the price of each variant (null when it has none). Every staff member may read it. The page size counts products, each with all its variants. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
          */
         get: operations["listPrices"];
         put?: never;
@@ -164,7 +164,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/products/{productId}/price": {
+    "/api/v1/admin/variants/{variantId}/price": {
         parameters: {
             query?: never;
             header?: never;
@@ -173,8 +173,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Change the price of a product
-         * @description Sets the gross price; the API computes the net and the VAT at the current rate of the price's tax class (the class of the product for a first price). Administrators only. Send the `version` of the price you saw (null for a product without a price): a price changed since then is a 409 and nothing is overwritten. The same gross at the same rate changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.
+         * Change the price of a product variant
+         * @description Sets the gross price of one variant; the API computes the net and the VAT at the current rate of the price's tax class (the class of the variant's product for a first price). Administrators only. Send the `version` of the price you saw (null for a variant without a price): a price changed since then is a 409 and nothing is overwritten. The same gross at the same rate changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.
          */
         put: operations["changePrice"];
         post?: never;
@@ -184,7 +184,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/products/{productId}/price-history": {
+    "/api/v1/admin/variants/{variantId}/price-history": {
         parameters: {
             query?: never;
             header?: never;
@@ -192,8 +192,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Price history of a product
-         * @description Every recorded change of the price of a product, newest first, with the price as it was set, what made the change and, for a change by staff, who. Every staff member may read it. A product that exists but never had a price has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.
+         * Price history of a product variant
+         * @description Every recorded change of the price of a product variant, newest first, with the price as it was set, what made the change and, for a change by staff, who. Every staff member may read it. A variant that exists but never had a price has an empty history. Page with the opaque `next` cursor as `after`; the total is not counted.
          */
         get: operations["getPriceHistory"];
         put?: never;
@@ -236,7 +236,7 @@ export interface components {
             /** @default 25 */
             perPage: number;
         };
-        /** @description The counted physical stock of a product, based on the version of the stock the staff member saw. */
+        /** @description The counted physical stock of a product variant, based on the version of the stock the staff member saw. */
         CorrectStockRequest: {
             /**
              * @description Units counted on the shelf, from 0 to 1 000 000; not less than is reserved.
@@ -244,7 +244,7 @@ export interface components {
              */
             physical: number;
             /**
-             * @description The `version` of the stock the correction is based on; null when the product has no stock record.
+             * @description The `version` of the stock the correction is based on; null when the variant has no stock record.
              * @example 3
              */
             version: number | null;
@@ -260,7 +260,7 @@ export interface components {
              */
             note: string | null;
         };
-        /** @description Delivered units of a product. */
+        /** @description Delivered units of a product variant. */
         ReceiveStockRequest: {
             /**
              * @description Units received, from 1 to 100 000. The physical stock may not exceed 1 000 000.
@@ -297,7 +297,7 @@ export interface components {
              */
             gross: number;
             /**
-             * @description The `version` of the price the change is based on; null when the product has no price yet.
+             * @description The `version` of the price the change is based on; null when the variant has no price yet.
              * @example 1
              */
             version: number | null;
@@ -413,7 +413,7 @@ export interface components {
             name: string;
             children: components["schemas"]["CategoryNode"][];
         };
-        /** @description The stored stock of a product, in whole units; all computed by the API. */
+        /** @description The stored stock of a product variant, in whole units; all computed by the API. */
         ListedStockResponse: {
             /**
              * @description Units on the shelf.
@@ -447,14 +447,26 @@ export interface components {
              */
             updatedAt: string;
         };
-        /** @description A product with its stock. */
+        /** @description A variant of a product with its stock. */
+        StockListVariantResponse: {
+            /** Format: uuid */
+            variantId: string;
+            /**
+             * @description The values of the variant joined by ", "; empty for the default variant of a product without variant axes.
+             * @example zielony
+             */
+            label: string;
+            /** @description The stored stock, null when the variant has no stock record (nothing on the shelf, nothing reserved). */
+            stock: components["schemas"]["ListedStockResponse"] | null;
+        };
+        /** @description A product with its variants and their stock. */
         StockListItemResponse: {
             /** Format: uuid */
             productId: string;
             /** @example Bidon 750 ml */
             name: string;
-            /** @description The stored stock, null when the product has no stock record (nothing on the shelf, nothing reserved). */
-            stock: components["schemas"]["ListedStockResponse"] | null;
+            /** @description The variants of the product in presentation order; one variant with an empty label for a product without variant axes. */
+            variants: components["schemas"]["StockListVariantResponse"][];
         };
         /** @description A page of the stock list. */
         StockListResponse: {
@@ -465,13 +477,13 @@ export interface components {
              */
             next: string | null;
         };
-        /** @description The stock of a product after a receipt or a correction, in whole units; all computed by the API. */
+        /** @description The stock of a product variant after a receipt or a correction, in whole units; all computed by the API. */
         StockStateResponse: {
             /**
              * Format: uuid
-             * @description Product id (UUID).
+             * @description Variant id (UUID).
              */
-            productId: string;
+            variantId: string;
             /**
              * @description Units on the shelf.
              * @example 12
@@ -494,12 +506,12 @@ export interface components {
              */
             level: "in_stock" | "low_stock" | "out_of_stock";
             /**
-             * @description Version of the stock, to send with a correction; null when the product has no stock record.
+             * @description Version of the stock, to send with a correction; null when the variant has no stock record.
              * @example 3
              */
             version: number | null;
             /**
-             * @description When the stock last changed (RFC 3339, UTC); null when the product has no stock record.
+             * @description When the stock last changed (RFC 3339, UTC); null when the variant has no stock record.
              * @example 2026-11-02T12:30:00+00:00
              */
             updatedAt: string | null;
@@ -565,7 +577,7 @@ export interface components {
              */
             actorName: string | null;
         };
-        /** @description A page of the stock history of a product, newest entry first. */
+        /** @description A page of the stock history of a product variant, newest entry first. */
         StockHistoryResponse: {
             items: components["schemas"]["StockHistoryItemResponse"][];
             /**
@@ -574,7 +586,7 @@ export interface components {
              */
             next: string | null;
         };
-        /** @description The stored price of a product. Amounts are in grosze, the rate in basis points; all computed by the API. */
+        /** @description The stored price of a product variant. Amounts are in grosze, the rate in basis points; all computed by the API. */
         ListedPriceResponse: {
             /**
              * @description Gross price (VAT included) in grosze.
@@ -617,7 +629,19 @@ export interface components {
              */
             vatRateOutdated: boolean;
         };
-        /** @description A product with its price. */
+        /** @description A variant of a product with its price. */
+        PriceListVariantResponse: {
+            /** Format: uuid */
+            variantId: string;
+            /**
+             * @description The values of the variant joined by ", "; empty for the default variant of a product without variant axes.
+             * @example oprawa twarda
+             */
+            label: string;
+            /** @description The stored price, null when the variant has no price yet. */
+            price: components["schemas"]["ListedPriceResponse"] | null;
+        };
+        /** @description A product with its variants and their prices. */
         PriceListItemResponse: {
             /** Format: uuid */
             productId: string;
@@ -633,8 +657,8 @@ export interface components {
              * @example 500
              */
             applicableVatRate: number;
-            /** @description The stored price, null when the product has no price yet. */
-            price: components["schemas"]["ListedPriceResponse"] | null;
+            /** @description The variants of the product in presentation order; one variant with an empty label for a product without variant axes. */
+            variants: components["schemas"]["PriceListVariantResponse"][];
         };
         /** @description A page of the price list. */
         PriceListResponse: {
@@ -694,7 +718,7 @@ export interface components {
              */
             actorName: string | null;
         };
-        /** @description A page of the price history of a product, newest change first. */
+        /** @description A page of the price history of a product variant, newest change first. */
         PriceHistoryResponse: {
             items: components["schemas"]["PriceHistoryItemResponse"][];
             /**
@@ -896,8 +920,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Product id (UUID). */
-                productId: string;
+                /** @description Variant id (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -943,7 +967,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such product, or the id is not a UUID (problem details). */
+            /** @description No such variant, or the id is not a UUID (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -998,8 +1022,8 @@ export interface operations {
                 "Idempotency-Key": string;
             };
             path: {
-                /** @description Product id (UUID). */
-                productId: string;
+                /** @description Variant id (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -1054,7 +1078,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such product, or the id is not a UUID (problem details). */
+            /** @description No such variant, or the id is not a UUID (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1063,7 +1087,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The key was used for a receipt with other content or of another product (problem details). */
+            /** @description The key was used for a receipt with other content or of another variant (problem details). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1111,8 +1135,8 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description Product id (UUID). */
-                productId: string;
+                /** @description Variant id (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -1145,7 +1169,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such product, or the id is not a UUID (problem details). */
+            /** @description No such variant, or the id is not a UUID (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1235,8 +1259,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Product id (UUID). */
-                productId: string;
+                /** @description Variant id (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -1282,7 +1306,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such product, or the id is not a UUID (problem details). */
+            /** @description No such variant, or the id is not a UUID (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1339,8 +1363,8 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description Product id (UUID). */
-                productId: string;
+                /** @description Variant id (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -1373,7 +1397,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such product, or the id is not a UUID (problem details). */
+            /** @description No such variant, or the id is not a UUID (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;

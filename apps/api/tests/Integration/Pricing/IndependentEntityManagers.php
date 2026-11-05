@@ -14,14 +14,14 @@ use PHPUnit\Framework\Attributes\After;
 
 /**
  * Entity managers on their own connections, outside the DAMA transaction of the test, so a test can play two
- * requests that commit. Pricing rows of the products named in $committedProductIds are deleted after the test.
+ * requests that commit. Pricing rows of the products named in $committedVariantIds are deleted after the test.
  */
 trait IndependentEntityManagers
 {
     /** @var list<EntityManagerInterface> */
     private array $independentManagers = [];
     /** @var list<string> */
-    private array $committedProductIds = [];
+    private array $committedVariantIds = [];
     /** @var list<string> SQL run on a fresh connection after the test, before the rows are deleted */
     private array $cleanupStatements = [];
 
@@ -63,16 +63,16 @@ trait IndependentEntityManagers
         foreach ($this->cleanupStatements as $statement) {
             $cleanup->executeStatement($statement);
         }
-        foreach ($this->committedProductIds as $id) {
-            $cleanup->executeStatement('DELETE FROM pricing_price_history WHERE product_id = ?', [$id]);
-            $cleanup->executeStatement('DELETE FROM pricing_product_price WHERE product_id = ?', [$id]);
+        foreach ($this->committedVariantIds as $id) {
+            $cleanup->executeStatement('DELETE FROM pricing_price_history WHERE variant_id = ?', [$id]);
+            $cleanup->executeStatement('DELETE FROM pricing_variant_price WHERE variant_id = ?', [$id]);
         }
         $cleanup->close();
         foreach ($this->independentManagers as $manager) {
             $manager->getConnection()->close();
         }
         $this->independentManagers = [];
-        $this->committedProductIds = [];
+        $this->committedVariantIds = [];
         $this->cleanupStatements = [];
     }
 }

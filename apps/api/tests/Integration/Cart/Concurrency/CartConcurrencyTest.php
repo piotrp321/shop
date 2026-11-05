@@ -55,9 +55,9 @@ final class CartConcurrencyTest extends KernelTestCase
     {
         CartFixture::delete($this->control, $this->carts, $this->customers);
         if ([] !== $this->products) {
-            $this->control->executeStatement('DELETE FROM pricing_product_price WHERE product_id IN (?)', [$this->products], [ArrayParameterType::STRING]);
+            $this->control->executeStatement('DELETE FROM pricing_variant_price WHERE variant_id IN (SELECT id FROM catalog_product_variant WHERE product_id IN (?))', [$this->products], [ArrayParameterType::STRING]);
         }
-        StockFixture::delete($this->control, $this->products, []);
+        StockFixture::delete($this->control, array_map(fn (string $id): string => CatalogFixture::defaultVariant($this->control, $id), $this->products), []);
         CatalogFixture::delete($this->control, $this->products);
         $this->control->close();
         parent::tearDown();
@@ -88,11 +88,11 @@ final class CartConcurrencyTest extends KernelTestCase
     {
         for ($round = 1; $round <= self::ROUNDS; ++$round) {
             $customer = $this->customer();
-            $product = $this->purchasableProduct();
-            $this->carts[] = $guest = CartFixture::cart($this->control, expiresAt: '+30 days', lines: [[$product, 1]]);
+            $variant = $this->purchasableVariant();
+            $this->carts[] = $guest = CartFixture::cart($this->control, expiresAt: '+30 days', lines: [[$variant, 1]]);
             $commands = [new MergeGuestCart($customer, $guest)];
             for ($i = 0; $i < 10; ++$i) {
-                $commands[] = new AddCartItem(CartRef::guest($guest), $product, 1);
+                $commands[] = new AddCartItem(CartRef::guest($guest), $variant, 1);
             }
 
             $outcomes = ConcurrentCommands::run($this->control, $commands);
@@ -105,7 +105,7 @@ final class CartConcurrencyTest extends KernelTestCase
             $additions = self::kinds($outcomes);
             $successes = $additions[Outcome::SUCCESS] ?? 0;
             self::assertSame(10, $successes + ($additions[GuestCartMerged::class] ?? 0), $message.': every addition succeeded or found the cart merged; '.self::messages($outcomes));
-            self::assertSame([$product => 1 + $successes], $this->customerLines($customer), $message.': every successful addition is in the customer cart');
+            self::assertSame([$variant => 1 + $successes], $this->customerLines($customer), $message.': every successful addition is in the customer cart');
             $this->assertMergedInto($guest, $customer, $message);
             self::assertSame(1, $this->control->fetchOne('SELECT COUNT(*) FROM cart_cart WHERE id = ? AND updated_at = merged_at', [$guest]), $message.': the guest cart did not change after the merge');
             $this->assertInvariant($message);
@@ -117,8 +117,8 @@ final class CartConcurrencyTest extends KernelTestCase
         for ($round = 1; $round <= self::ROUNDS; ++$round) {
             $first = $this->customer();
             $second = $this->customer();
-            $product = Uuid::v7()->toRfc4122();
-            $this->carts[] = $guest = CartFixture::cart($this->control, expiresAt: '+30 days', lines: [[$product, 2]]);
+            $variant = Uuid::v7()->toRfc4122();
+            $this->carts[] = $guest = CartFixture::cart($this->control, expiresAt: '+30 days', lines: [[$variant, 2]]);
 
             $outcomes = ConcurrentCommands::run($this->control, [new MergeGuestCart($first, $guest), new MergeGuestCart($second, $guest)]);
 
@@ -126,7 +126,7 @@ final class CartConcurrencyTest extends KernelTestCase
             self::assertSame([Outcome::SUCCESS => 2], self::kinds($outcomes), $message.': '.self::messages($outcomes));
             self::assertSame(['already_merged' => 1, 'merged' => 1], self::mergeResults($outcomes), $message);
             [$winner, $loser] = 'merged' === ($outcomes[0]->result['result'] ?? null) ? [$first, $second] : [$second, $first];
-            self::assertSame([$product => 2], $this->customerLines($winner), $message);
+            self::assertSame([$variant => 2], $this->customerLines($winner), $message);
             self::assertSame([], $this->customerLines($loser), $message);
             self::assertSame(0, $this->control->fetchOne('SELECT COUNT(*) FROM cart_cart WHERE customer_id = ?', [$loser]), $message.': already_merged creates no cart');
             $this->assertMergedInto($guest, $winner, $message);
@@ -186,13 +186,13 @@ final class CartConcurrencyTest extends KernelTestCase
         for ($round = 1; $round <= self::ROUNDS; ++$round) {
             $customer = $this->customer();
             $this->carts[] = CartFixture::cart($this->control, customerId: $customer, expiresAt: '+180 days');
-            $common = $this->purchasableProduct();
+            $common = $this->purchasableVariant();
             $commands = [];
             $distinct = [];
             for ($i = 0; $i < 10; ++$i) {
                 $commands[] = new AddCartItem(CartRef::customer($customer), $common, 1);
-                $distinct[] = $product = $this->purchasableProduct();
-                $commands[] = new AddCartItem(CartRef::customer($customer), $product, 1);
+                $distinct[] = $variant = $this->purchasableVariant();
+                $commands[] = new AddCartItem(CartRef::customer($customer), $variant, 1);
             }
 
             $outcomes = ConcurrentCommands::run($this->control, $commands);
@@ -200,9 +200,9 @@ final class CartConcurrencyTest extends KernelTestCase
             $message = 'K3 round '.$round;
             self::assertSame([Outcome::SUCCESS => 20], self::kinds($outcomes), $message.': '.self::messages($outcomes));
             $lines = $this->customerLines($customer);
-            self::assertSame(10, $lines[$common] ?? null, $message.': the common product has every unit');
-            foreach ($distinct as $product) {
-                self::assertSame(1, $lines[$product] ?? null, $message.': every other product is stored');
+            self::assertSame(10, $lines[$common] ?? null, $message.': the common variant has every unit');
+            foreach ($distinct as $variant) {
+                self::assertSame(1, $lines[$variant] ?? null, $message.': every other variant is stored');
             }
             self::assertCount(11, $lines, $message);
             $this->assertInvariant($message);
@@ -213,8 +213,8 @@ final class CartConcurrencyTest extends KernelTestCase
     {
         for ($round = 1; $round <= self::ROUNDS; ++$round) {
             $customer = $this->customer();
-            $a = $this->purchasableProduct();
-            $b = $this->purchasableProduct();
+            $a = $this->purchasableVariant();
+            $b = $this->purchasableVariant();
 
             $outcomes = ConcurrentCommands::run($this->control, [
                 new AddCartItem(CartRef::customer($customer), $a, 1),
@@ -240,7 +240,7 @@ final class CartConcurrencyTest extends KernelTestCase
             $this->carts[] = $cart;
             $commands = [];
             for ($i = 0; $i < 10; ++$i) {
-                $commands[] = new AddCartItem(CartRef::guest($cart), $this->purchasableProduct(), 1);
+                $commands[] = new AddCartItem(CartRef::guest($cart), $this->purchasableVariant(), 1);
             }
 
             $outcomes = ConcurrentCommands::run($this->control, $commands);
@@ -294,19 +294,21 @@ final class CartConcurrencyTest extends KernelTestCase
     }
 
     /**
-     * A product in Catalog with a current price and 1000 units in stock, committed.
+     * The one variant of a new product in Catalog (its id differs from the id of the product), with a current price
+     * and 1000 units in stock, committed.
      */
-    private function purchasableProduct(): string
+    private function purchasableVariant(): string
     {
         $id = CatalogFixture::product($this->control);
         $this->products[] = $id;
         $this->control->executeStatement(
-            "INSERT INTO pricing_product_price (product_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at) VALUES (?, 'PLN', 1230, 1000, 230, 2300, 'standard', 1, now())",
+            "INSERT INTO pricing_variant_price (variant_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at) SELECT id, 'PLN', 1230, 1000, 230, 2300, 'standard', 1, now() FROM catalog_product_variant WHERE product_id = ?",
             [$id],
         );
-        StockFixture::stock($this->control, 1000, productId: $id);
+        $variant = CatalogFixture::defaultVariant($this->control, $id);
+        StockFixture::stock($this->control, 1000, variantId: $variant);
 
-        return $id;
+        return $variant;
     }
 
     private function customer(): string
@@ -318,15 +320,15 @@ final class CartConcurrencyTest extends KernelTestCase
     }
 
     /**
-     * @return array<string, int> quantity by product
+     * @return array<string, int> quantity by variant
      */
     private function customerLines(string $customer): array
     {
-        $rows = $this->control->fetchAllKeyValue('SELECT l.product_id, l.quantity FROM cart_line l JOIN cart_cart c ON c.id = l.cart_id WHERE c.customer_id = ?', [$customer]);
+        $rows = $this->control->fetchAllKeyValue('SELECT l.variant_id, l.quantity FROM cart_line l JOIN cart_cart c ON c.id = l.cart_id WHERE c.customer_id = ?', [$customer]);
         $lines = [];
-        foreach ($rows as $product => $quantity) {
+        foreach ($rows as $variant => $quantity) {
             \assert(\is_int($quantity));
-            $lines[(string) $product] = $quantity;
+            $lines[(string) $variant] = $quantity;
         }
 
         return $lines;

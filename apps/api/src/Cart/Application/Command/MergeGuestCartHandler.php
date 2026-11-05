@@ -14,7 +14,7 @@ use App\Cart\Domain\CartId;
 use App\Cart\Domain\CartLine;
 use App\Cart\Domain\CartRepository;
 use App\Cart\Domain\MergeOutcome;
-use App\Cart\Domain\ProductId;
+use App\Cart\Domain\VariantId;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 /**
@@ -55,7 +55,7 @@ final readonly class MergeGuestCartHandler
         $this->carts->save($guest);
         $this->carts->save($customer);
 
-        return $this->result($this->views->build($customer->id(), $customer->lines(), $this->products->load($customer->productIds())), $outcome);
+        return $this->result($this->views->build($customer->id(), $customer->lines(), $this->products->load($customer->variantIds())), $outcome);
     }
 
     /**
@@ -81,7 +81,7 @@ final readonly class MergeGuestCartHandler
 
         $lines = $customer->linesAt($now);
 
-        return $this->views->build($customer->id(), $lines, $this->products->load(array_map(static fn (CartLine $line): ProductId => $line->productId(), $lines)));
+        return $this->views->build($customer->id(), $lines, $this->products->load(array_map(static fn (CartLine $line): VariantId => $line->variantId(), $lines)));
     }
 
     private function result(CartView $view, MergeOutcome $outcome): MergeResult

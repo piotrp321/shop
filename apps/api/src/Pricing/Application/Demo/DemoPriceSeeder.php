@@ -4,34 +4,35 @@ declare(strict_types=1);
 
 namespace App\Pricing\Application\Demo;
 
-use App\Pricing\Application\Command\SetProductPrice;
-use App\Pricing\Application\Port\CatalogProduct;
-use App\Pricing\Application\Port\ProductsForPricing;
+use App\Pricing\Application\Command\SetVariantPrice;
+use App\Pricing\Application\Port\CatalogVariant;
+use App\Pricing\Application\Port\VariantsForPricing;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
- * Sets the demo price of every Catalog product through SetProductPrice (the `command.bus`, injected by the
- * parameter name), with the source `seed`. Products are read in batches, so the catalog is never held in memory.
+ * Sets the demo price of every Catalog variant, matched by its key, through SetVariantPrice (the `command.bus`,
+ * injected by the parameter name), with the source `seed`. Variants are read in batches, so the catalog is never
+ * held in memory.
  */
 final readonly class DemoPriceSeeder
 {
     private const int BATCH_SIZE = 500;
 
     public function __construct(
-        private ProductsForPricing $products,
+        private VariantsForPricing $variants,
         private MessageBusInterface $commandBus,
     ) {
     }
 
     /**
-     * @return list<string> slugs of the products no pattern matches, in id order
+     * @return list<string> keys of the variants no pattern matches, in id order
      */
-    public function unpricedSlugs(DemoPriceList $prices): array
+    public function unpricedKeys(DemoPriceList $prices): array
     {
         $unpriced = [];
-        foreach ($this->allProducts() as $product) {
-            if (null === $prices->grossFor($product->slug)) {
-                $unpriced[] = $product->slug;
+        foreach ($this->allVariants() as $variant) {
+            if (null === $prices->grossFor($variant->key)) {
+                $unpriced[] = $variant->key;
             }
         }
 
@@ -39,19 +40,19 @@ final readonly class DemoPriceSeeder
     }
 
     /**
-     * Each price is set in its own transaction. The products must have no price yet (see PricingReset).
+     * Each price is set in its own transaction. The variants must have no price yet (see PricingReset).
      *
      * @return int the number of prices set
      *
-     * @throws \RuntimeException at the first product no pattern matches
+     * @throws \RuntimeException at the first variant no pattern matches
      */
     public function seed(DemoPriceList $prices): int
     {
         $count = 0;
-        foreach ($this->allProducts() as $product) {
-            $gross = $prices->grossFor($product->slug)
-                ?? throw new \RuntimeException(\sprintf('No demo price pattern matches the product "%s".', $product->slug));
-            $this->commandBus->dispatch(SetProductPrice::bySeed($product->id->toString(), $gross));
+        foreach ($this->allVariants() as $variant) {
+            $gross = $prices->grossFor($variant->key)
+                ?? throw new \RuntimeException(\sprintf('No demo price pattern matches the variant "%s".', $variant->key));
+            $this->commandBus->dispatch(SetVariantPrice::bySeed($variant->id->toString(), $gross));
             ++$count;
         }
 
@@ -59,13 +60,13 @@ final readonly class DemoPriceSeeder
     }
 
     /**
-     * @return iterable<CatalogProduct>
+     * @return iterable<CatalogVariant>
      */
-    private function allProducts(): iterable
+    private function allVariants(): iterable
     {
         $after = null;
         do {
-            $batch = $this->products->page($after, self::BATCH_SIZE);
+            $batch = $this->variants->page($after, self::BATCH_SIZE);
             yield from $batch;
             $after = [] === $batch ? null : $batch[\count($batch) - 1]->id;
         } while (self::BATCH_SIZE === \count($batch));

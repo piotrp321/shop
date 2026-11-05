@@ -7,28 +7,28 @@ namespace App\Tests\Unit\Inventory;
 use App\Inventory\Application\Port\StockHistoryReader;
 use App\Inventory\Application\Query\StockHistoryCursor;
 use App\Inventory\Application\Query\StockHistoryItem;
-use App\Inventory\Domain\Stock\ProductId;
+use App\Inventory\Domain\Stock\VariantId;
 
 /**
- * Keeps history entries per product and pages them like the database does: newest first, then by id descending,
+ * Keeps history entries per variant and pages them like the database does: newest first, then by id descending,
  * strictly after the cursor.
  */
 final class InMemoryStockHistoryReader implements StockHistoryReader
 {
     /** @var array<string, list<StockHistoryItem>> */
     private array $entries = [];
-    /** @var list<array{string, ?StockHistoryCursor, int}> product id, cursor and limit of every call */
+    /** @var list<array{string, ?StockHistoryCursor, int}> variant id, cursor and limit of every call */
     public array $requests = [];
 
-    public function add(string $productId, StockHistoryItem $item): void
+    public function add(string $variantId, StockHistoryItem $item): void
     {
-        $this->entries[$productId][] = $item;
+        $this->entries[$variantId][] = $item;
     }
 
-    public function page(ProductId $productId, ?StockHistoryCursor $after, int $limit): array
+    public function page(VariantId $variantId, ?StockHistoryCursor $after, int $limit): array
     {
-        $this->requests[] = [$productId->toString(), $after, $limit];
-        $entries = $this->entries[$productId->toString()] ?? [];
+        $this->requests[] = [$variantId->toString(), $after, $limit];
+        $entries = $this->entries[$variantId->toString()] ?? [];
         usort($entries, static fn (StockHistoryItem $a, StockHistoryItem $b): int => [$b->occurredAt, $b->id] <=> [$a->occurredAt, $a->id]);
         if (null !== $after) {
             $entries = array_values(array_filter(

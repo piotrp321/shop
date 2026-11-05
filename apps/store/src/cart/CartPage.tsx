@@ -63,11 +63,11 @@ export function CartPage() {
     announceCartChange(cart.totals.itemCount);
   }
 
-  function resetQuantityField(productId: string) {
-    setResets((current) => ({ ...current, [productId]: (current[productId] ?? 0) + 1 }));
+  function resetQuantityField(variantId: string) {
+    setResets((current) => ({ ...current, [variantId]: (current[variantId] ?? 0) + 1 }));
   }
 
-  async function change(productId: string, run: () => Promise<CartResult<CartView>>) {
+  async function change(variantId: string, run: () => Promise<CartResult<CartView>>) {
     setBusy(true);
     setLineErrors({});
     setNotice(null);
@@ -80,24 +80,24 @@ export function CartPage() {
       const reloaded = await loadCart();
       if (reloaded.status === "ok") {
         show(reloaded.data);
-        if (reloaded.data.lines.some((line) => line.productId === productId)) {
-          setLineErrors({ [productId]: result.detail || SAVE_FAILED });
-          resetQuantityField(productId);
+        if (reloaded.data.lines.some((line) => line.variantId === variantId)) {
+          setLineErrors({ [variantId]: result.detail || SAVE_FAILED });
+          resetQuantityField(variantId);
         } else {
           setNotice("Pozycja została już usunięta");
         }
       } else {
         if (reloaded.status === "unauthorized") setSessionExpired(true);
-        else setLineErrors({ [productId]: SAVE_FAILED });
-        resetQuantityField(productId);
+        else setLineErrors({ [variantId]: SAVE_FAILED });
+        resetQuantityField(variantId);
       }
     } else {
       if (result.status === "unauthorized") {
         setSessionExpired(true);
       } else {
-        setLineErrors({ [productId]: (result.status === "conflict" && result.detail) || SAVE_FAILED });
+        setLineErrors({ [variantId]: (result.status === "conflict" && result.detail) || SAVE_FAILED });
       }
-      resetQuantityField(productId);
+      resetQuantityField(variantId);
     }
     setBusy(false);
   }
@@ -138,13 +138,13 @@ export function CartPage() {
             <ul className="flex flex-col divide-y divide-border">
               {loaded.cart.lines.map((line) => (
                 <CartLineRow
-                  key={line.productId}
+                  key={line.variantId}
                   line={line}
                   busy={busy}
-                  error={lineErrors[line.productId]}
-                  resetKey={resets[line.productId] ?? 0}
-                  onChangeQuantity={(quantity) => void change(line.productId, () => changeCartItemQuantity(line.productId, quantity))}
-                  onRemove={() => void change(line.productId, () => removeCartItem(line.productId))}
+                  error={lineErrors[line.variantId]}
+                  resetKey={resets[line.variantId] ?? 0}
+                  onChangeQuantity={(quantity) => void change(line.variantId, () => changeCartItemQuantity(line.variantId, quantity))}
+                  onRemove={() => void change(line.variantId, () => removeCartItem(line.variantId))}
                 />
               ))}
             </ul>
@@ -193,6 +193,7 @@ function CartLineRow({
   onRemove: () => void;
 }) {
   const name = line.product?.name;
+  const variantLabel = line.product?.variantLabel;
   return (
     <li className="flex flex-col gap-2 py-4">
       <div className="flex gap-4">
@@ -203,6 +204,11 @@ function CartLineRow({
         ) : null}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           {name ? <h2 className="text-sm font-medium">{name}</h2> : null}
+          {variantLabel ? (
+            <p data-testid="variant-label" className="text-sm text-muted-foreground">
+              {variantLabel}
+            </p>
+          ) : null}
           {line.unitPrice ? (
             <p data-testid="unit-price" className="text-sm text-muted-foreground">
               {formatPrice(line.unitPrice.gross, line.unitPrice.currency)}
@@ -213,7 +219,7 @@ function CartLineRow({
         <div className="flex flex-col items-end gap-2">
           <QuantityField
             key={`${line.quantity}:${resetKey}`}
-            label={name ? `Ilość: ${name}` : "Ilość"}
+            label={name ? `Ilość: ${variantLabel ? `${name}, ${variantLabel}` : name}` : "Ilość"}
             quantity={line.quantity}
             disabled={busy}
             onCommit={onChangeQuantity}

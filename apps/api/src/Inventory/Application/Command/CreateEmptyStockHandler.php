@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Inventory\Application\Command;
 
-use App\Inventory\Application\Port\ProductCatalog;
-use App\Inventory\Domain\Stock\ProductId;
-use App\Inventory\Domain\Stock\ProductNotFound;
+use App\Inventory\Application\Port\VariantCatalog;
 use App\Inventory\Domain\Stock\StockItemRepository;
+use App\Inventory\Domain\Stock\VariantId;
+use App\Inventory\Domain\Stock\VariantNotFound;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'command.bus')]
@@ -15,23 +15,23 @@ final readonly class CreateEmptyStockHandler
 {
     public function __construct(
         private StockItemRepository $stock,
-        private ProductCatalog $catalog,
+        private VariantCatalog $catalog,
     ) {
     }
 
     /**
-     * Idempotent: a product that has a stock keeps it unchanged. The row stays when the transaction commits, as the
+     * Idempotent: a variant that has a stock keeps it unchanged. The row stays when the transaction commits, as the
      * stock at version 0 that lockOrCreate() stores.
      *
-     * @throws ProductNotFound
+     * @throws VariantNotFound
      */
     public function __invoke(CreateEmptyStock $command): void
     {
-        $productId = ProductId::fromString($command->productId);
-        if (!$this->catalog->exists($productId)) {
-            throw new ProductNotFound();
+        $variantId = VariantId::fromString($command->variantId);
+        if (!$this->catalog->exists($variantId)) {
+            throw new VariantNotFound();
         }
 
-        $this->stock->lockOrCreate($productId);
+        $this->stock->lockOrCreate($variantId);
     }
 }

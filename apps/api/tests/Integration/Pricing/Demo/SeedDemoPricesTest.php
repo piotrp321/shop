@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Pricing\Demo;
 
+use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
@@ -19,11 +20,12 @@ use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
- * pricing:seed-demo on shop_test (rolled back after the test): products from Catalog through the query bus,
- * prices through SetProductPrice on the command bus.
+ * pricing:seed-demo on shop_test (rolled back after the test): variants from Catalog through the query bus,
+ * prices through SetVariantPrice on the command bus.
  */
 final class SeedDemoPricesTest extends KernelTestCase
 {
@@ -47,56 +49,61 @@ final class SeedDemoPricesTest extends KernelTestCase
         parent::tearDown();
     }
 
-    public function testEveryProductGetsASeedPriceAtTheRateOfItsClass(): void
+    public function testEveryVariantGetsASeedPriceMatchedByItsKeyAtTheRateOfItsClass(): void
     {
-        $tent = $this->catalogProduct('namiot-turystyczny-norvane-biwak-2-zielony', TaxClassCode::Standard);
-        $map = $this->catalogProduct('mapa-turystyczna-tarvik-press-gorce-1-40-000-skladana', TaxClassCode::PrintedMap);
+        $tent = $this->catalogVariants('namiot-turystyczny-norvane-biwak-2-zielony', TaxClassCode::Standard)[0];
+        [$soft, $hard] = $this->catalogVariants('przewodnik-tarvik-press-tatry', TaxClassCode::PrintedBook, ['Oprawa'], [['oprawa miękka'], ['oprawa twarda']]);
         // A price from an earlier seed is removed with its history.
         $this->connection->executeStatement(
-            "INSERT INTO pricing_price_history (id, product_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, changed_at, source) VALUES ('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', ?, 'PLN', 100, 81, 19, 2300, 'standard', NOW(), 'staff')",
+            "INSERT INTO pricing_price_history (id, variant_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, changed_at, source) VALUES ('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', ?, 'PLN', 100, 81, 19, 2300, 'standard', NOW(), 'staff')",
             [$tent],
         );
 
-        $tester = $this->tester("\"namiot-*\": 89900\n\"mapa-*\": 2490\n");
+        $tester = $this->tester("\"namiot-*/standard\": 89900\n\"przewodnik-*/oprawa-twarda\": 5990\n\"przewodnik-*\": 4490\n");
 
         self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
-        self::assertStringContainsString('prices: 2', $tester->getDisplay());
+        self::assertStringContainsString('prices: 3', $tester->getDisplay());
         self::assertSame(
             [
                 ['gross_amount' => 89900, 'vat_rate_bp' => 2300, 'tax_class' => 'standard', 'version' => 1],
-                ['gross_amount' => 2490, 'vat_rate_bp' => 500, 'tax_class' => 'printed_map', 'version' => 1],
+                ['gross_amount' => 4490, 'vat_rate_bp' => 500, 'tax_class' => 'printed_book', 'version' => 1],
+                ['gross_amount' => 5990, 'vat_rate_bp' => 500, 'tax_class' => 'printed_book', 'version' => 1],
             ],
-            [$this->price($tent), $this->price($map)],
+            [$this->price($tent), $this->price($soft), $this->price($hard)],
         );
-        self::assertSame(
-            [[$tent, 'seed', null, null], [$map, 'seed', null, null]],
+        self::assertEqualsCanonicalizing(
+            [[$tent, 'seed', null, null], [$soft, 'seed', null, null], [$hard, 'seed', null, null]],
             array_map(
-                static fn (array $row): array => [$row['product_id'], $row['source'], $row['actor_id'], $row['actor_name']],
-                $this->connection->fetchAllAssociative('SELECT product_id, source, actor_id, actor_name FROM pricing_price_history WHERE product_id IN (?, ?) ORDER BY gross_amount DESC', [$tent, $map]),
+                static fn (array $row): array => [$row['variant_id'], $row['source'], $row['actor_id'], $row['actor_name']],
+                $this->connection->fetchAllAssociative('SELECT variant_id, source, actor_id, actor_name FROM pricing_price_history'),
             ),
         );
+        self::assertSame(0, $this->connection->fetchOne('SELECT COUNT(*) FROM pricing_variant_price p JOIN catalog_product c ON c.id = p.variant_id'), 'no price is keyed by a product id');
     }
 
-    public function testProductWithoutPatternFailsAndLeavesThePricesUnchanged(): void
+    public function testVariantWithoutPatternFailsAndLeavesThePricesUnchanged(): void
     {
-        $tent = $this->catalogProduct('namiot-turystyczny-norvane-biwak-2-zielony', TaxClassCode::Standard);
+        $tent = $this->catalogVariants('namiot-turystyczny-norvane-biwak-2-zielony', TaxClassCode::Standard)[0];
         $this->tester("\"namiot-*\": 89900\n")->execute([]);
-        $this->catalogProduct('kajak-turystyczny-vilmar-rzeka-1-zielony', TaxClassCode::Standard);
+        $this->catalogVariants('kajak-turystyczny-vilmar-rzeka', TaxClassCode::Standard, ['Kolor'], [['zielony'], ['żółty']]);
 
-        $tester = $this->tester("\"namiot-*\": 99900\n");
+        $tester = $this->tester("\"namiot-*\": 99900\n\"kajak-*/zielony\": 199900\n");
 
         self::assertSame(Command::FAILURE, $tester->execute([]));
-        self::assertStringContainsString('kajak-turystyczny-vilmar-rzeka-1-zielony', preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '');
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        self::assertStringContainsString('kajak-turystyczny-vilmar-rzeka/zolty', $display);
+        self::assertStringNotContainsString('kajak-turystyczny-vilmar-rzeka/zielony', $display);
         self::assertSame(89900, $this->price($tent)['gross_amount']);
+        self::assertSame(1, $this->connection->fetchOne('SELECT COUNT(*) FROM pricing_variant_price'));
         self::assertSame(1, $this->connection->fetchOne('SELECT COUNT(*) FROM pricing_price_history'));
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function price(string $productId): array
+    private function price(string $variantId): array
     {
-        $row = $this->connection->fetchAssociative('SELECT gross_amount, vat_rate_bp, tax_class, version FROM pricing_product_price WHERE product_id = ?', [$productId]);
+        $row = $this->connection->fetchAssociative('SELECT gross_amount, vat_rate_bp, tax_class, version FROM pricing_variant_price WHERE variant_id = ?', [$variantId]);
         self::assertIsArray($row);
 
         return $row;
@@ -116,15 +123,26 @@ final class SeedDemoPricesTest extends KernelTestCase
         return new CommandTester($application->find('pricing:seed-demo'));
     }
 
-    private function catalogProduct(string $slug, TaxClassCode $taxClass): string
+    /**
+     * @param list<string>       $axes
+     * @param list<list<string>> $values the values of each variant; none for one default variant
+     *
+     * @return list<string> the ids of the variants (never the id of the product), in the order given
+     */
+    private function catalogVariants(string $slug, TaxClassCode $taxClass, array $axes = [], array $values = []): array
     {
         $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($entityManager)->save($category);
-        $product = ProductFactory::createOne(['mainCategory' => $category, 'slug' => $slug, 'taxClass' => $taxClass]);
+        $attributes = ['mainCategory' => $category, 'slug' => $slug, 'taxClass' => $taxClass];
+        if ([] !== $values) {
+            $attributes['variantAxes'] = $axes;
+            $attributes['variants'] = array_map(static fn (array $variantValues): array => ['id' => (string) Uuid::v4(), 'values' => $variantValues], $values);
+        }
+        $product = ProductFactory::createOne($attributes);
         new DoctrineProductRepository($entityManager)->save($product);
 
-        return $product->id()->toString();
+        return array_map(static fn (ProductVariant $variant): string => $variant->id()->toString(), $product->variants()->toList());
     }
 }

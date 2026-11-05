@@ -7,7 +7,7 @@ namespace App\Inventory\Domain\Stock;
 use App\Shared\Domain\Exception\Conflict;
 
 /**
- * The receipt key belongs to a receipt of another quantity, with another note or into another product. The message
+ * The receipt key belongs to a receipt of another quantity, with another note or into another variant. The message
  * is shown to the staff member as it is.
  */
 final class ReceiptKeyReused extends \DomainException implements Conflict

@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Inventory\Application\Port;
 
+use App\Inventory\Domain\Stock\ProductId;
+
 /**
- * The products of Catalog to show the stock of, found by name and category, one page at a time.
+ * The products of Catalog to show the stock of, found by name and category, one page at a time, and the variants of
+ * products.
  */
 interface ProductDirectory
 {
@@ -22,4 +25,14 @@ interface ProductDirectory
      * @throws InvalidStockListCursor
      */
     public function page(?string $term, ?string $categoryId, ?string $after, int $perPage): DirectoryPage;
+
+    /**
+     * The variants of the products, read with one query.
+     *
+     * @param list<ProductId> $productIds 1 to 100
+     *
+     * @return array<string, list<DirectoryVariant>> product id => its variants in presentation order; a product that
+     *                                               does not exist in Catalog is absent
+     */
+    public function variantsOf(array $productIds): array;
 }

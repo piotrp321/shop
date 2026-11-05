@@ -351,9 +351,9 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         );
         $this->connection->executeStatement(
             <<<'SQL'
-                INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, tax_class, images, version)
+                INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, tax_class, images, variant_axes, version)
                 SELECT gen_random_uuid(), 'bulk-'||n, 'Bulk product '||n, repeat('x', 200), '00000000-0000-4000-8000-000000000001',
-                       'standard', '[{"key": "originals/a.jpg", "alt": "front"}]'::jsonb, 1
+                       'standard', '[{"key": "originals/a.jpg", "alt": "front"}]'::jsonb, '[]'::jsonb, 1
                 FROM generate_series(1, 5000) AS n
                 SQL,
         );

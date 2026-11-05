@@ -8,9 +8,9 @@ use App\Cart\Domain\Cart;
 use App\Cart\Domain\CartId;
 use App\Cart\Domain\CartLine;
 use App\Cart\Domain\CartStatus;
-use App\Cart\Domain\ProductId;
 use App\Cart\Domain\ProductOffer;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\VariantId;
 use App\Cart\Infrastructure\Persistence\Doctrine\DbalCartReader;
 use App\Cart\Infrastructure\Persistence\Doctrine\DoctrineCartRepository;
 use App\Tests\Integration\Cart\CartFixture;
@@ -73,8 +73,8 @@ final class DoctrineCartRepositoryTest extends KernelTestCase
         $locked = $this->repository->lock($cart->id());
         self::assertNotNull($locked);
         // Same second: the order comes from the time-ordered line ids.
-        $locked->add(ProductId::fromString(self::P2), Quantity::of(2), self::offer(), $now);
-        $locked->add(ProductId::fromString(self::P1), Quantity::of(1), self::offer(), $now);
+        $locked->add(VariantId::fromString(self::P2), Quantity::of(2), self::offer(), $now);
+        $locked->add(VariantId::fromString(self::P1), Quantity::of(1), self::offer(), $now);
         $this->repository->save($locked);
         $this->connection->commit();
         $this->entityManager->clear();
@@ -90,7 +90,7 @@ final class DoctrineCartRepositoryTest extends KernelTestCase
         self::assertSame([[self::P2, 2], [self::P1, 1]], self::lines($this->lockedCart($cart->id())));
     }
 
-    public function testSavingUpdatesLinesInPlaceRemovesTheMissingOnesAndReAddsAProductAfterAClear(): void
+    public function testSavingUpdatesLinesInPlaceRemovesTheMissingOnesAndReAddsAVariantAfterAClear(): void
     {
         $id = CartFixture::cart($this->connection, customerId: 'kc-sub-1', expiresAt: '-1 day', lines: [[self::P1, 3], [self::P2, 1]]);
         $now = new \DateTimeImmutable();
@@ -100,7 +100,7 @@ final class DoctrineCartRepositoryTest extends KernelTestCase
         self::assertNotNull($cart);
         self::assertSame($id, $cart->id()->toString());
         // Expired: the lines are cleared, then P1 comes back as a new line.
-        $cart->add(ProductId::fromString(self::P1), Quantity::of(5), self::offer(), $now);
+        $cart->add(VariantId::fromString(self::P1), Quantity::of(5), self::offer(), $now);
         $this->repository->save($cart);
         $this->connection->commit();
 
@@ -172,10 +172,10 @@ final class DoctrineCartRepositoryTest extends KernelTestCase
         yield 'guest cart with a customer id' => [\sprintf($guest, '00000000-0000-4000-8000-000000000001', "'guest'", "'kc-sub-1'", "'open'"), '23514'];
         yield 'merged customer cart' => [\sprintf($guest, '00000000-0000-4000-8000-000000000001', "'customer'", "'kc-sub-1'", "'merged'"), '23514'];
         yield 'second cart of a customer' => [\sprintf($guest, '00000000-0000-4000-8000-000000000001', "'customer'", "'kc-sub-taken'", "'open'"), '23505'];
-        yield 'line of 0 units' => ["INSERT INTO cart_line (id, cart_id, product_id, quantity, added_at) VALUES ('00000000-0000-4000-8000-0000000000aa', '{cart}', '".self::P3."', 0, now())", '23514'];
-        yield 'line of 100 units' => ["INSERT INTO cart_line (id, cart_id, product_id, quantity, added_at) VALUES ('00000000-0000-4000-8000-0000000000aa', '{cart}', '".self::P3."', 100, now())", '23514'];
-        yield 'second line of a product' => ["INSERT INTO cart_line (id, cart_id, product_id, quantity, added_at) VALUES ('00000000-0000-4000-8000-0000000000aa', '{cart}', '".self::P1."', 1, now())", '23505'];
-        yield 'line of no cart' => ["INSERT INTO cart_line (id, cart_id, product_id, quantity, added_at) VALUES ('00000000-0000-4000-8000-0000000000aa', '00000000-0000-4000-8000-0000000000bb', '".self::P3."', 1, now())", '23503'];
+        yield 'line of 0 units' => ["INSERT INTO cart_line (id, cart_id, variant_id, quantity, added_at) VALUES ('00000000-0000-4000-8000-0000000000aa', '{cart}', '".self::P3."', 0, now())", '23514'];
+        yield 'line of 100 units' => ["INSERT INTO cart_line (id, cart_id, variant_id, quantity, added_at) VALUES ('00000000-0000-4000-8000-0000000000aa', '{cart}', '".self::P3."', 100, now())", '23514'];
+        yield 'second line of a variant' => ["INSERT INTO cart_line (id, cart_id, variant_id, quantity, added_at) VALUES ('00000000-0000-4000-8000-0000000000aa', '{cart}', '".self::P1."', 1, now())", '23505'];
+        yield 'line of no cart' => ["INSERT INTO cart_line (id, cart_id, variant_id, quantity, added_at) VALUES ('00000000-0000-4000-8000-0000000000aa', '00000000-0000-4000-8000-0000000000bb', '".self::P3."', 1, now())", '23503'];
     }
 
     #[DataProvider('rowsBreakingTheRules')]
@@ -211,8 +211,8 @@ final class DoctrineCartRepositoryTest extends KernelTestCase
         $this->connection->rollBack();
 
         // Another transaction changes a quantity, removes a line, adds one and moves the expiry.
-        $other->executeStatement('UPDATE cart_line SET quantity = 7 WHERE cart_id = ? AND product_id = ?', [$id, self::P1]);
-        $other->executeStatement('DELETE FROM cart_line WHERE cart_id = ? AND product_id = ?', [$id, self::P2]);
+        $other->executeStatement('UPDATE cart_line SET quantity = 7 WHERE cart_id = ? AND variant_id = ?', [$id, self::P1]);
+        $other->executeStatement('DELETE FROM cart_line WHERE cart_id = ? AND variant_id = ?', [$id, self::P2]);
         CartFixture::line($other, $id, self::P3, 4, new \DateTimeImmutable('+1 minute'));
         $other->executeStatement("UPDATE cart_cart SET expires_at = '2030-01-01 00:00:00+00' WHERE id = ?", [$id]);
 
@@ -231,7 +231,7 @@ final class DoctrineCartRepositoryTest extends KernelTestCase
 
         // And the save writes on the refreshed records (seen inside the transaction, then rolled back, so the rows
         // of the other connection are free again for its clean-up).
-        $locked->changeQuantity(ProductId::fromString(self::P3), Quantity::of(1), null, new \DateTimeImmutable());
+        $locked->changeQuantity(VariantId::fromString(self::P3), Quantity::of(1), null, new \DateTimeImmutable());
         $this->repository->save($locked);
         self::assertSame([[self::P1, 7], [self::P3, 1]], CartFixture::lines($this->connection, $id));
         $this->connection->rollBack();
@@ -328,6 +328,6 @@ final class DoctrineCartRepositoryTest extends KernelTestCase
      */
     private static function lines(Cart $cart): array
     {
-        return array_map(static fn (CartLine $line): array => [$line->productId()->toString(), $line->quantity()->value()], $cart->lines());
+        return array_map(static fn (CartLine $line): array => [$line->variantId()->toString(), $line->quantity()->value()], $cart->lines());
     }
 }

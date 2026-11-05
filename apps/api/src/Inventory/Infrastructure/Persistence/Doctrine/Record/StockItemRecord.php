@@ -36,7 +36,7 @@ class StockItemRecord
     public function __construct(
         #[ORM\Id]
         #[ORM\Column(type: 'guid')]
-        public readonly string $productId,
+        public readonly string $variantId,
     ) {
     }
 }

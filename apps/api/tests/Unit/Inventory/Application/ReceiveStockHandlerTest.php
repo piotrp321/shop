@@ -12,14 +12,15 @@ use App\Inventory\Domain\Stock\InvalidReceiptKey;
 use App\Inventory\Domain\Stock\InvalidStockNote;
 use App\Inventory\Domain\Stock\InvalidStockQuantity;
 use App\Inventory\Domain\Stock\PhysicalStockLimitExceeded;
-use App\Inventory\Domain\Stock\ProductNotFound;
 use App\Inventory\Domain\Stock\ReceiptKeyReused;
 use App\Inventory\Domain\Stock\StockChangeSource;
 use App\Inventory\Domain\Stock\StockMovementType;
-use App\Tests\Unit\Inventory\InMemoryProductCatalog;
+use App\Inventory\Domain\Stock\VariantNotFound;
+use App\Shared\Domain\Exception\NotFound;
 use App\Tests\Unit\Inventory\InMemoryReservationRepository;
 use App\Tests\Unit\Inventory\InMemoryStockItemRepository;
 use App\Tests\Unit\Inventory\InMemoryTransaction;
+use App\Tests\Unit\Inventory\InMemoryVariantCatalog;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -29,14 +30,14 @@ final class ReceiveStockHandlerTest extends TestCase
     private const string B = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a61';
 
     private InMemoryStockItemRepository $stock;
-    private InMemoryProductCatalog $catalog;
+    private InMemoryVariantCatalog $catalog;
     private InMemoryTransaction $transaction;
     private ReceiveStockHandler $handler;
 
     protected function setUp(): void
     {
         $this->stock = new InMemoryStockItemRepository();
-        $this->catalog = new InMemoryProductCatalog();
+        $this->catalog = new InMemoryVariantCatalog();
         $this->catalog->add(self::A, self::B);
         $this->transaction = new InMemoryTransaction($this->stock, new InMemoryReservationRepository());
         $this->handler = new ReceiveStockHandler($this->stock, $this->catalog);
@@ -75,7 +76,7 @@ final class ReceiveStockHandlerTest extends TestCase
         self::assertNull($this->stock->movements[0]->note());
     }
 
-    public function testTheSameKeyWithTheSameProductQuantityAndNoteIsARepeatThatChangesNothing(): void
+    public function testTheSameKeyWithTheSameVariantQuantityAndNoteIsARepeatThatChangesNothing(): void
     {
         $this->receive(ReceiveStock::byStaff(self::A, 12, 'delivery-1', 'Dostawa', 'sub-1', 'Wanda Magazyn'));
         $this->stock->store(self::A, 12, 4, version: 2);
@@ -96,16 +97,16 @@ final class ReceiveStockHandlerTest extends TestCase
         yield 'another quantity' => [self::A, 13, 'Dostawa'];
         yield 'another note' => [self::A, 12, 'Inna dostawa'];
         yield 'no note' => [self::A, 12, null];
-        yield 'another product' => [self::B, 12, 'Dostawa'];
+        yield 'another variant' => [self::B, 12, 'Dostawa'];
     }
 
     #[DataProvider('otherContents')]
-    public function testTheSameKeyWithOtherContentIsReceiptKeyReusedAndChangesNothing(string $productId, int $quantity, ?string $note): void
+    public function testTheSameKeyWithOtherContentIsReceiptKeyReusedAndChangesNothing(string $variantId, int $quantity, ?string $note): void
     {
         $this->receive(ReceiveStock::byStaff(self::A, 12, 'delivery-1', 'Dostawa', 'sub-1', 'Wanda Magazyn'));
 
         try {
-            $this->receive(ReceiveStock::byStaff($productId, $quantity, 'delivery-1', $note, 'sub-1', 'Wanda Magazyn'));
+            $this->receive(ReceiveStock::byStaff($variantId, $quantity, 'delivery-1', $note, 'sub-1', 'Wanda Magazyn'));
             self::fail('Expected ReceiptKeyReused.');
         } catch (ReceiptKeyReused) {
         }
@@ -115,28 +116,29 @@ final class ReceiveStockHandlerTest extends TestCase
         self::assertCount(1, $this->stock->movements);
     }
 
-    public function testAnUnknownProductIsNotFoundAndNothingIsCreated(): void
+    public function testAnUnknownVariantIsNotFoundAndNothingIsCreated(): void
     {
         $unknown = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a69';
 
         try {
             $this->receive(ReceiveStock::byStaff($unknown, 1, 'delivery-1', null, 'sub-1', 'Wanda Magazyn'));
-            self::fail('Expected ProductNotFound.');
-        } catch (ProductNotFound $notFound) {
-            self::assertSame('Product not found.', $notFound->getMessage());
+            self::fail('Expected VariantNotFound.');
+        } catch (VariantNotFound $notFound) {
+            self::assertContains(NotFound::class, class_implements($notFound));
+            self::assertSame('Wariant produktu nie istnieje.', $notFound->getMessage());
         }
 
         self::assertNull($this->stock->stored($unknown));
         self::assertSame([], $this->stock->locks);
     }
 
-    public function testAnUpperCaseProductIdNamesTheSameStock(): void
+    public function testAnUpperCaseVariantIdNamesTheSameStock(): void
     {
         $this->stock->store(self::A, 1);
 
         $result = $this->receive(ReceiveStock::byStaff(strtoupper(self::A), 1, 'delivery-1', null, 'sub-1', 'Wanda Magazyn'));
 
-        self::assertSame(self::A, $result->stock->productId);
+        self::assertSame(self::A, $result->stock->variantId);
         self::assertSame([2, 0, 2], $this->state(self::A));
     }
 
@@ -186,11 +188,11 @@ final class ReceiveStockHandlerTest extends TestCase
         return $this->transaction->run(fn (): ReceiveStockResult => ($this->handler)($command));
     }
 
-    private function assertView(string $productId, int $physical, int $reserved, int $available, string $level, int $version, StockView $view): void
+    private function assertView(string $variantId, int $physical, int $reserved, int $available, string $level, int $version, StockView $view): void
     {
         self::assertSame(
-            [$productId, $physical, $reserved, $available, $level, $version],
-            [$view->productId, $view->physical, $view->reserved, $view->available, $view->level, $view->version],
+            [$variantId, $physical, $reserved, $available, $level, $version],
+            [$view->variantId, $view->physical, $view->reserved, $view->available, $view->level, $view->version],
         );
         self::assertNotNull($view->updatedAt);
     }
@@ -198,9 +200,9 @@ final class ReceiveStockHandlerTest extends TestCase
     /**
      * @return array{int, int, int} physical, reserved, version
      */
-    private function state(string $productId): array
+    private function state(string $variantId): array
     {
-        $item = $this->stock->stored($productId);
+        $item = $this->stock->stored($variantId);
         self::assertNotNull($item);
 
         return [$item->physical(), $item->reserved(), $item->version()];

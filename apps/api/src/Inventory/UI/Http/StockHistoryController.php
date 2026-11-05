@@ -26,7 +26,7 @@ final class StockHistoryController
 {
     use HandleTrait;
 
-    /** A UUID in any letter case; anything else matches no route (404), like an unknown product. */
+    /** A UUID in any letter case; anything else matches no route (404), like an unknown variant. */
     private const string UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 
     public function __construct(#[Autowire(service: 'query.bus')] MessageBusInterface $queryBus)
@@ -34,18 +34,18 @@ final class StockHistoryController
         $this->messageBus = $queryBus;
     }
 
-    #[Route('/api/v1/admin/products/{productId}/stock-history', name: 'inventory_stock_history', requirements: ['productId' => self::UUID], methods: ['GET'])]
+    #[Route('/api/v1/admin/variants/{variantId}/stock-history', name: 'inventory_stock_history', requirements: ['variantId' => self::UUID], methods: ['GET'])]
     #[Security(name: 'backoffice')]
     #[OA\Get(
         operationId: 'getStockHistory',
-        summary: 'Stock history of a product',
-        description: 'Every recorded change of the stock of a product (receipts, corrections, reservations, releases and '
+        summary: 'Stock history of a product variant',
+        description: 'Every recorded change of the stock of a product variant (receipts, corrections, reservations, releases and '
             .'commits), newest first, with the deltas, the stock right after the change, what made it and, for a change by staff, who. '
-            .'Every staff member may read it. A product that exists but has no stock record has an empty history. '
+            .'Every staff member may read it. A variant that exists but has no stock record has an empty history. '
             .'Page with the opaque `next` cursor as `after`; the total is not counted.',
         tags: ['Inventory'],
         parameters: [
-            new OA\Parameter(name: 'productId', in: 'path', required: true, description: 'Product id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'variantId', in: 'path', required: true, description: 'Variant id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
             new OA\Parameter(name: 'after', in: 'query', required: false, description: 'The `next` cursor of the previous page.', schema: new OA\Schema(type: 'string', minLength: 1, maxLength: StockHistoryQuery::MAX_CURSOR_LENGTH)),
             new OA\Parameter(name: 'perPage', in: 'query', required: false, description: 'Page size.', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: GetStockHistory::MAX_PER_PAGE, default: GetStockHistory::DEFAULT_PER_PAGE)),
         ],
@@ -67,7 +67,7 @@ final class StockHistoryController
             ),
             new OA\Response(
                 response: 404,
-                description: 'No such product, or the id is not a UUID (problem details).',
+                description: 'No such variant, or the id is not a UUID (problem details).',
                 content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
             ),
             new OA\Response(
@@ -77,11 +77,11 @@ final class StockHistoryController
             ),
         ],
     )]
-    public function __invoke(string $productId, #[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] StockHistoryQuery $query = new StockHistoryQuery()): JsonResponse
+    public function __invoke(string $variantId, #[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] StockHistoryQuery $query = new StockHistoryQuery()): JsonResponse
     {
         try {
             /** @var StockHistoryPage $page */
-            $page = $this->handle(new GetStockHistory($productId, $query->after, $query->perPage));
+            $page = $this->handle(new GetStockHistory($variantId, $query->after, $query->perPage));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();

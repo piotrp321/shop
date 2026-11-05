@@ -1,123 +1,128 @@
-# Demo stock (physical units on the shelf) for the demo products of fixtures/catalog.yaml, loaded by
-# `inventory:seed-demo` (`make seed`). Keys are patterns of product slugs: `*` matches any run of characters, the
-# pattern has to match the whole slug.
+# Demo stock (physical units on the shelf) for the demo variants of fixtures/catalog.yaml, loaded by
+# `inventory:seed-demo` (`make seed`). Keys are patterns of variant keys, `<product slug>/<label slug>`
+# (`<product slug>/standard` for the default variant): `*` matches any run of characters, also `/`, and the pattern
+# has to match the whole key.
 #
 # Patterns are checked in the order of this file and the FIRST one that matches wins, so a specific pattern goes
-# before a general one. A demo product that no pattern matches stops the seed with an error and nothing is changed.
+# before a general one. A demo variant that no pattern matches stops the seed with an error and nothing is changed.
 # A value is 0 to 100 000; 0 stores a stock record with nothing on the shelf (out of stock), 1-5 is low stock.
 #
-# Most products have 20-50 units, a few have 2-3 and a few have 0. The e2e tests rely on the product
-# kajak-turystyczny-vilmar-rzeka-2-zielony having none in stock.
+# Most variants have 20-50 units, a few have 2-3 and a few have 0. The e2e tests rely on:
+# - kajak-turystyczny-vilmar-rzeka-2 (Kajak turystyczny Vilmar Rzeka 2): every variant has none; the receipt test
+#   receives into the variant "zielony" (stock-receipt.spec.ts);
+# - hantle-regulowane-* (Hantle regulowane): the default variant of every product has stock (price-change.spec.ts
+#   changes the price of one of them);
+# - buty-szosowe-tarvik-asfalt-200 (Buty szosowe Tarvik Asfalt 200): the sizes 41 and 42 in "czarne" are in stock (the
+#   test of two sizes in the cart).
+# Products with variants both in and out of stock: kajak-turystyczny-dravik-rzeka-2, narty-skiturowe-stavro-gran-95.
 
 # Out of stock
-"kajak-turystyczny-vilmar-rzeka-2-zielony": 0
-"kajak-turystyczny-dravik-rzeka-2-pomaranczowy": 0
-"narty-skiturowe-stavro-gran-95-pomaranczowe": 0
-"pianka-plywacka-lumora-cieplej-5-grafitowa": 0
+"kajak-turystyczny-vilmar-rzeka-2/*": 0
+"kajak-turystyczny-dravik-rzeka-2/pomaranczowy": 0
+"narty-skiturowe-stavro-gran-95/pomaranczowe-*": 0
 
 # Last units
-"rower-elektryczny-zolvia-szlak-e-grafitowy": 2
-"narty-skiturowe-vilmar-gran-95-niebieskie": 2
-"rower-elektryczny-dravik-dolina-e-niebieski": 3
-"kajak-turystyczny-dravik-rzeka-1-zielony": 3
+"rower-elektryczny-zolvia-szlak-e/grafitowy-s": 2
+"narty-skiturowe-vilmar-gran-95/niebieskie-164-cm": 2
+"rower-elektryczny-dravik-dolina-e/niebieski-m": 3
+"kajak-turystyczny-dravik-rzeka-1/zielony": 3
 
 # Bieganie
-"buty-szosowe-*-asfalt-200-*": 24
-"buty-szosowe-*-dystans-400-*": 36
-"buty-szosowe-*-tempo-600-*": 45
-"buty-trailowe-*-gran-300-*": 30
-"buty-trailowe-*-hala-500-*": 50
-"buty-trailowe-*-przelecz-700-*": 28
-"kurtka-biegowa-*-wiatr-100-*": 40
-"kurtka-biegowa-*-mgla-300-*": 22
-"koszulka-biegowa-*-oddech-100-*": 32
-"koszulka-biegowa-*-merino-200-*": 48
-"plecak-biegowy-*-sprint-8-*": 26
-"plecak-biegowy-*-ultra-12-*": 38
-"latarka-czolowa-*-swit-250-*": 34
-"latarka-czolowa-*-zmierzch-600-*": 42
+"buty-szosowe-*-asfalt-200/*": 24
+"buty-szosowe-*-dystans-400/*": 36
+"buty-szosowe-*-tempo-600/*": 45
+"buty-trailowe-*-gran-300/*": 30
+"buty-trailowe-*-hala-500/*": 50
+"buty-trailowe-*-przelecz-700/*": 28
+"kurtka-biegowa-*-wiatr-100/*": 40
+"kurtka-biegowa-*-mgla-300/*": 22
+"koszulka-biegowa-*-oddech-100/*": 32
+"koszulka-biegowa-*-merino-200/*": 48
+"plecak-biegowy-*-sprint-8/*": 26
+"plecak-biegowy-*-ultra-12/*": 38
+"latarka-czolowa-*-swit-250/*": 34
+"latarka-czolowa-*-zmierzch-600/*": 42
 
 # Rower
-"rower-gorski-*-singiel-29-*": 21
-"rower-gorski-*-trawers-29-*": 46
-"rower-gorski-*-zjazd-27-5-*": 24
-"rower-elektryczny-*-dolina-e-*": 36
-"rower-elektryczny-*-szlak-e-*": 45
-"kask-rowerowy-*-wiatr-*": 30
-"kask-rowerowy-*-korona-*": 50
-"torba-rowerowa-*-rama-4-*": 28
-"torba-rowerowa-*-kierownica-10-*": 40
-"bidon-termiczny-*-kropla-500-*": 22
-"bidon-termiczny-*-zrodlo-750-*": 32
+"rower-gorski-*-singiel-29/*": 21
+"rower-gorski-*-trawers-29/*": 46
+"rower-gorski-*-zjazd-27-5/*": 24
+"rower-elektryczny-*-dolina-e/*": 36
+"rower-elektryczny-*-szlak-e/*": 45
+"kask-rowerowy-*-wiatr/*": 30
+"kask-rowerowy-*-korona/*": 50
+"torba-rowerowa-*-rama-4/*": 28
+"torba-rowerowa-*-kierownica-10/*": 40
+"bidon-termiczny-*-kropla-500/*": 22
+"bidon-termiczny-*-zrodlo-750/*": 32
 
 # Turystyka
-"plecak-trekkingowy-*-wierch-45-*": 48
-"plecak-trekkingowy-*-dolina-55-*": 26
-"plecak-trekkingowy-*-przelecz-65-*": 38
-"plecak-dzienny-*-spacer-20-*": 34
-"plecak-dzienny-*-szlak-28-*": 42
-"namiot-turystyczny-*-biwak-2-*": 21
-"namiot-turystyczny-*-dolina-3-*": 46
-"namiot-turystyczny-*-halny-4-*": 24
-"spiwor-*-noc-5-*": 36
-"spiwor-*-letni-10-*": 45
-"mata-samopompujaca-*-sen-3-*": 30
-"mata-samopompujaca-*-sen-5-*": 50
-"przewodnik-*-tatry-zachodnie-*": 28
-"przewodnik-*-oprawa-miekka": 40
-"przewodnik-*-oprawa-twarda": 22
-"mapa-turystyczna-*-skladana": 32
-"mapa-turystyczna-*-laminowana": 48
-"danie-liofilizowane-*-porcja-jednoosobowa": 26
-"danie-liofilizowane-*-porcja-dwuosobowa": 38
+"plecak-trekkingowy-*-wierch-45/*": 48
+"plecak-trekkingowy-*-dolina-55/*": 26
+"plecak-trekkingowy-*-przelecz-65/*": 38
+"plecak-dzienny-*-spacer-20/*": 34
+"plecak-dzienny-*-szlak-28/*": 42
+"namiot-turystyczny-*-biwak-2/*": 21
+"namiot-turystyczny-*-dolina-3/*": 46
+"namiot-turystyczny-*-halny-4/*": 24
+"spiwor-*-noc-5/*": 36
+"spiwor-*-letni-10/*": 45
+"mata-samopompujaca-*-sen-3/*": 30
+"mata-samopompujaca-*-sen-5/*": 50
+"przewodnik-*/oprawa-miekka": 40
+"przewodnik-*/oprawa-twarda": 22
+"mapa-turystyczna-*/skladana": 32
+"mapa-turystyczna-*/laminowana": 48
+"danie-liofilizowane-*/jednoosobowa": 26
+"danie-liofilizowane-*/dwuosobowa": 38
 
 # Sporty zimowe
-"narty-zjazdowe-*-stok-80-*": 34
-"narty-zjazdowe-*-carving-72-*": 42
-"narty-zjazdowe-*-freeride-100-*": 21
-"narty-skiturowe-*-wejscie-88-*": 46
-"narty-skiturowe-*-gran-95-*": 24
-"kask-wielosportowy-*-zima-1-*": 36
-"kask-wielosportowy-*-zima-2-*": 45
-"kask-wielosportowy-*-zima-3-*": 30
-"kurtka-narciarska-*-snieg-10-*": 50
-"kurtka-narciarska-*-lawina-15-*": 28
-"kurtka-narciarska-*-szczyt-20-*": 40
+"narty-zjazdowe-*-stok-80/*": 34
+"narty-zjazdowe-*-carving-72/*": 42
+"narty-zjazdowe-*-freeride-100/*": 21
+"narty-skiturowe-*-wejscie-88/*": 46
+"narty-skiturowe-*-gran-95/*": 24
+"kask-wielosportowy-*-zima-1/*": 36
+"kask-wielosportowy-*-zima-2/*": 45
+"kask-wielosportowy-*-zima-3/*": 30
+"kurtka-narciarska-*-snieg-10/*": 50
+"kurtka-narciarska-*-lawina-15/*": 28
+"kurtka-narciarska-*-szczyt-20/*": 40
 
 # Fitness
-"mata-do-cwiczen-*-podloze-6-*": 22
-"mata-do-cwiczen-*-podloze-10-*": 32
-"hantle-regulowane-*-para-10-*": 48
-"hantle-regulowane-*-para-24-*": 26
-"baton-energetyczny-*-proteinowy-*": 38
+"mata-do-cwiczen-*-podloze-6/*": 22
+"mata-do-cwiczen-*-podloze-10/*": 32
+"hantle-regulowane-*-para-10/*": 48
+"hantle-regulowane-*-para-24/*": 26
+"baton-energetyczny-*-proteinowy/*": 38
 "baton-energetyczny-*": 34
-"zel-energetyczny-*-start-*": 42
-"zel-energetyczny-*-dystans-*": 21
-"odzywka-bialkowa-*-serwatka-900-*": 46
-"odzywka-bialkowa-*-roslinna-750-*": 24
-"elektrolity-w-tabletkach-*-nawodnienie-20-*": 36
-"elektrolity-w-tabletkach-*-nawodnienie-40-*": 45
+"zel-energetyczny-*-start/*": 42
+"zel-energetyczny-*-dystans/*": 21
+"odzywka-bialkowa-*-serwatka-900/*": 46
+"odzywka-bialkowa-*-roslinna-750/*": 24
+"elektrolity-w-tabletkach-*-nawodnienie-20/*": 36
+"elektrolity-w-tabletkach-*-nawodnienie-40/*": 45
 
 # Sporty wodne
-"deska-sup-*-jezioro-10-*": 30
-"deska-sup-*-jezioro-11-*": 50
-"deska-sup-*-wyscig-12-*": 28
-"kajak-turystyczny-*-rzeka-1-*": 40
-"kajak-turystyczny-*-rzeka-2-*": 22
-"okulary-plywackie-*-basen-*": 32
-"okulary-plywackie-*-jezioro-*": 48
-"okulary-plywackie-*-sprint-*": 26
-"pianka-plywacka-*-cieplej-3-*": 38
-"pianka-plywacka-*-cieplej-5-*": 34
+"deska-sup-*-jezioro-10/*": 30
+"deska-sup-*-jezioro-11/*": 50
+"deska-sup-*-wyscig-12/*": 28
+"kajak-turystyczny-*-rzeka-1/*": 40
+"kajak-turystyczny-*-rzeka-2/*": 22
+"okulary-plywackie-*-basen/*": 32
+"okulary-plywackie-*-jezioro/*": 48
+"okulary-plywackie-*-sprint/*": 26
+"pianka-plywacka-*-cieplej-3/*": 38
+"pianka-plywacka-*-cieplej-5/*": 34
 
 # Sporty drużynowe
-"pilka-nozna-*-trening-5-*": 42
-"pilka-nozna-*-mecz-5-*": 21
-"pilka-nozna-*-junior-4-*": 46
-"buty-pilkarskie-*-murawa-*": 24
-"buty-pilkarskie-*-orlik-*": 36
-"buty-pilkarskie-*-hala-*": 45
-"pilka-siatkowa-*-trening-*": 30
-"pilka-siatkowa-*-hala-*": 50
-"pilka-koszykowa-*-boisko-7-*": 28
-"pilka-koszykowa-*-hala-6-*": 40
+"pilka-nozna-*-trening-5/*": 42
+"pilka-nozna-*-mecz-5/*": 21
+"pilka-nozna-*-junior-4/*": 46
+"buty-pilkarskie-*-murawa/*": 24
+"buty-pilkarskie-*-orlik/*": 36
+"buty-pilkarskie-*-hala/*": 45
+"pilka-siatkowa-*-trening/*": 30
+"pilka-siatkowa-*-hala/*": 50
+"pilka-koszykowa-*-boisko-7/*": 28
+"pilka-koszykowa-*-hala-6/*": 40

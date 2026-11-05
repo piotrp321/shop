@@ -11,11 +11,11 @@ use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
- * Body of POST /api/v1/admin/products/{productId}/stock/corrections. All keys are required. The values are taken as
+ * Body of POST /api/v1/admin/variants/{variantId}/stock/corrections. All keys are required. The values are taken as
  * JSON gives them and validated, never cast. The messages a staff member sees at a field are in Polish. The actor is
  * never part of the body, it comes from the token.
  */
-#[OA\Schema(description: 'The counted physical stock of a product, based on the version of the stock the staff member saw.', required: ['physical', 'version', 'reason', 'note'])]
+#[OA\Schema(description: 'The counted physical stock of a product variant, based on the version of the stock the staff member saw.', required: ['physical', 'version', 'reason', 'note'])]
 final readonly class CorrectStockRequest
 {
     public function __construct(
@@ -24,7 +24,7 @@ final readonly class CorrectStockRequest
         #[Assert\Type('integer')]
         #[Assert\Range(notInRangeMessage: 'Stan policzony musi wynosić od 0 do 1 000 000 szt.', min: 0, max: StockItem::MAX_PHYSICAL)]
         public mixed $physical,
-        #[OA\Property(type: 'integer', description: 'The `version` of the stock the correction is based on; null when the product has no stock record.', nullable: true, example: 3)]
+        #[OA\Property(type: 'integer', description: 'The `version` of the stock the correction is based on; null when the variant has no stock record.', nullable: true, example: 3)]
         #[Assert\Type('integer')]
         public mixed $version,
         #[OA\Property(type: 'string', description: 'Why: inventory count, damage, loss or another reason (explained in the note).', enum: ['inventory_count', 'damage', 'loss', 'other'], example: 'inventory_count')]

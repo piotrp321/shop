@@ -8,16 +8,17 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
-use App\Tests\Factory\ProductPriceRecordFactory;
+use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Inventory\StockFixture;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Uid\Uuid;
 
 /**
- * What the tests of the cart endpoints share: a client, products in Catalog with a price in Pricing and a stock in
- * Inventory, requests, and the checks of problem documents, of `Cache-Control` and of the OpenAPI schema.
+ * What the tests of the cart endpoints share: a client, variants of products in Catalog with a price in Pricing and a stock
+ * in Inventory, requests, and the checks of problem documents, of `Cache-Control` and of the OpenAPI schema.
  * On shop_test, rolled back after each test.
  */
 trait CartEndpointTestTrait
@@ -36,27 +37,52 @@ trait CartEndpointTestTrait
         $this->connection = $entityManager->getConnection();
     }
 
+    /** @var array<string, string> the product of each variant created by variant() and variants() */
+    private array $productOf = [];
+
     /**
-     * A product of Catalog, with a gross price (null: none) and a physical stock (null: no stock record).
+     * The one (default) variant of a new product of Catalog, with a gross price (null: none) and a physical stock
+     * (null: no stock record). Returns the id of the variant, which differs from the id of its product.
      *
      * @param list<string> $imageAlts
      */
-    private function product(?int $gross = 10_000, ?int $stock = 50, string $name = 'Buty Puls', array $imageAlts = []): string
+    private function variant(?int $gross = 10_000, ?int $stock = 50, string $name = 'Buty Puls', array $imageAlts = []): string
+    {
+        return $this->variants([[$gross, $stock, []]], [], $name, $imageAlts)[0];
+    }
+
+    /**
+     * A new product of Catalog with the given axes and one variant per entry: gross price (null: none), physical
+     * stock (null: no stock record) and the values of the axes. Returns the ids of the variants, in order.
+     *
+     * @param list<array{?int, ?int, list<string>}> $variants
+     * @param list<string>                          $axes
+     * @param list<string>                          $imageAlts
+     *
+     * @return list<string>
+     */
+    private function variants(array $variants, array $axes, string $name = 'Buty Puls', array $imageAlts = []): array
     {
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($this->entityManager)->save($category);
-        $product = ProductFactory::createOne(['mainCategory' => $category, 'name' => $name, 'imageAlts' => $imageAlts]);
-        new DoctrineProductRepository($this->entityManager)->save($product);
-        $id = $product->id()->toString();
-        if (null !== $gross) {
-            ProductPriceRecordFactory::store($this->entityManager, ['productId' => $id, 'gross' => $gross]);
-        }
-        if (null !== $stock) {
-            StockFixture::stock($this->connection, $stock, productId: $id);
+        $definitions = array_map(static fn (array $variant): array => ['id' => Uuid::v4()->toRfc4122(), 'values' => $variant[2]], $variants);
+        $variant = ProductFactory::createOne(['mainCategory' => $category, 'name' => $name, 'imageAlts' => $imageAlts, 'variantAxes' => $axes, 'variants' => $definitions]);
+        new DoctrineProductRepository($this->entityManager)->save($variant);
+        $ids = [];
+        foreach ($variants as $index => [$gross, $stock]) {
+            $id = $definitions[$index]['id'];
+            if (null !== $gross) {
+                VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $id, 'gross' => $gross]);
+            }
+            if (null !== $stock) {
+                StockFixture::stock($this->connection, $stock, variantId: $id);
+            }
+            $this->productOf[$id] = $variant->id()->toString();
+            $ids[] = $id;
         }
         $this->entityManager->clear();
 
-        return $id;
+        return $ids;
     }
 
     /**

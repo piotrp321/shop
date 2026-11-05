@@ -11,6 +11,7 @@ import PricesView from "@/views/PricesView.vue";
 
 type PriceList = components["schemas"]["PriceListResponse"];
 type PriceListItem = components["schemas"]["PriceListItemResponse"];
+type PriceListVariant = components["schemas"]["PriceListVariantResponse"];
 type ListedPrice = components["schemas"]["ListedPriceResponse"];
 type CategoryNode = components["schemas"]["CategoryNode"];
 
@@ -35,15 +36,28 @@ function price(overrides: Partial<ListedPrice> = {}): ListedPrice {
   };
 }
 
-function item(name: string, overrides: Partial<PriceListItem> = {}): PriceListItem {
+interface ItemOverrides extends Partial<PriceListItem> {
+  /** The id of the one (default) variant of the product. */
+  variantId?: string;
+  /** The price of the one (default) variant of the product. */
+  price?: ListedPrice | null;
+}
+
+/** A product of the list; without `variants`, with one default variant (empty label) that has the given price. */
+function item(name: string, overrides: ItemOverrides = {}): PriceListItem {
+  const { variantId = `variant-${name}`, price: variantPrice = price(), ...rest } = overrides;
   return {
     productId: `id-${name}`,
     name,
     taxClass: "printed_book",
     applicableVatRate: 500,
-    price: price(),
-    ...overrides,
+    variants: [{ variantId, label: "", price: variantPrice }],
+    ...rest,
   };
+}
+
+function variant(variantId: string, label: string, variantPrice: ListedPrice | null = price()): PriceListVariant {
+  return { variantId, label, price: variantPrice };
 }
 
 const tree: CategoryNode[] = [
@@ -125,6 +139,65 @@ describe("PricesView", () => {
     expect(row.get("[data-testid=vat]").text()).toMatch(/^2,61\s*zł$/);
     expect(row.get("[data-testid=vat-rate]").text()).toBe("5%");
     expect(row.find("[data-testid=outdated]").exists()).toBe(false);
+  });
+
+  it("shows a row per variant under the name of its product, with the label in the 'Wariant' column", async () => {
+    serve({
+      pages: {
+        "": {
+          items: [
+            item("Buty Asfalt", {
+              taxClass: "standard",
+              applicableVatRate: 2300,
+              variants: [variant("v-40", "czarne, 40", price({ gross: 34900 })), variant("v-41", "czarne, 41", null)],
+            }),
+            item("Hantle"),
+          ],
+          next: null,
+        },
+      },
+    });
+    wrapper = await mountView();
+
+    const rows = wrapper.findAll("[data-testid=price-row]");
+    expect(rows).toHaveLength(3);
+    expect(wrapper.get("thead").text()).toContain("Wariant");
+    expect(rows.map((row) => row.find("[data-testid=name]").exists() ? row.get("[data-testid=name]").text() : null)).toEqual([
+      "Buty Asfalt",
+      null,
+      "Hantle",
+    ]);
+    expect(rows.map((row) => row.get("[data-testid=variant-label]").text())).toEqual(["czarne, 40", "czarne, 41", ""]);
+    expect(rows[0]!.get("[data-testid=gross]").text()).toMatch(/^349,00\s*zł$/);
+    expect(rows[1]!.get("[data-testid=gross]").text()).toBe("Brak ceny");
+  });
+
+  it("changes the price of the variant of the row and replaces only that row", async () => {
+    serve({
+      pages: {
+        "": {
+          items: [item("Buty", { variants: [variant("v-40", "40", price({ version: 2 })), variant("v-41", "41", price({ version: 5 }))] })],
+          next: null,
+        },
+      },
+    });
+    mocks.put.mockResolvedValue({ data: price({ gross: 5990, version: 6 }), response: { status: 200 } });
+    wrapper = await mountView();
+
+    await wrapper.findAll("[data-testid=change-price]")[1]!.trigger("click");
+    await settle();
+    expect(wrapper.get("[data-testid=change-dialog]").text()).toContain("Buty – 41");
+    await wrapper.get("[data-testid=gross-input]").setValue("59,90");
+    await wrapper.get("[data-testid=save-price]").trigger("click");
+    await settle();
+
+    expect(mocks.put).toHaveBeenCalledWith("/api/v1/admin/variants/{variantId}/price", {
+      params: { path: { variantId: "v-41" } },
+      body: { gross: 5990, version: 5 },
+    });
+    const rows = wrapper.findAll("[data-testid=price-row]");
+    expect(rows[0]!.get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
+    expect(rows[1]!.get("[data-testid=gross]").text()).toMatch(/^59,90\s*zł$/);
   });
 
   it("shows a product without a price as 'Brak ceny' with no amounts", async () => {
@@ -453,7 +526,7 @@ describe("PricesView", () => {
 
 describe("PricesView: changing a price", () => {
   let wrapper: Awaited<ReturnType<typeof mountView>> | undefined;
-  const PRICE = "/api/v1/admin/products/{productId}/price";
+  const PRICE = "/api/v1/admin/variants/{variantId}/price";
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -511,7 +584,7 @@ describe("PricesView: changing a price", () => {
   });
 
   it("sends the gross in grosze with the version of the row and shows the saved price", async () => {
-    serve({ pages: { "": { items: [item("A", { productId: "p-1", price: price({ version: 3 }) })], next: null } } });
+    serve({ pages: { "": { items: [item("A", { variantId: "v-1", price: price({ version: 3 }) })], next: null } } });
     wrapper = await mountView();
     answer(200, price({ gross: 5990, net: 5705, vat: 285, version: 4 }));
 
@@ -520,7 +593,7 @@ describe("PricesView: changing a price", () => {
     await submit("59,90");
 
     expect(mocks.put).toHaveBeenCalledTimes(1);
-    expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { productId: "p-1" } }, body: { gross: 5990, version: 3 } });
+    expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { variantId: "v-1" } }, body: { gross: 5990, version: 3 } });
     expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(false);
     const row = wrapper.get("[data-testid=price-row]");
     expect(row.get("[data-testid=gross]").text()).toMatch(/^59,90\s*zł$/);
@@ -555,18 +628,18 @@ describe("PricesView: changing a price", () => {
     answer(200, price({ gross: 6100, version: 3 }));
     await openDialog();
     await submit("61");
-    expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { productId: "id-A" } }, body: { gross: 6100, version: 2 } });
+    expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { variantId: "variant-A" } }, body: { gross: 6100, version: 2 } });
   });
 
   it("sends no version for a product without a price", async () => {
-    serve({ pages: { "": { items: [item("A", { productId: "p-2", price: null })], next: null } } });
+    serve({ pages: { "": { items: [item("A", { variantId: "v-2", price: null })], next: null } } });
     wrapper = await mountView();
     answer(200, price({ gross: 1200 }));
 
     await openDialog();
     await submit("12");
 
-    expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { productId: "p-2" } }, body: { gross: 1200, version: null } });
+    expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { variantId: "v-2" } }, body: { gross: 1200, version: null } });
   });
 
   it("does not send an amount it cannot read and says why at the field", async () => {
@@ -594,7 +667,7 @@ describe("PricesView: changing a price", () => {
       await openDialog();
       await submit("0");
 
-      expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { productId: "id-A" } }, body: { gross: 0, version: 1 } });
+      expect(mocks.put).toHaveBeenCalledWith(PRICE, { params: { path: { variantId: "variant-A" } }, body: { gross: 0, version: 1 } });
       expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(true);
       expect(wrapper.get("[data-testid=price-row]").get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
       return wrapper.get("[data-testid=gross-error]").text();
@@ -645,7 +718,7 @@ describe("PricesView: changing a price", () => {
   });
 
   it("on a 409 says the price was changed meanwhile and refreshes the row", async () => {
-    serve({ pages: { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B", { productId: "p-b" })], next: null } } });
+    serve({ pages: { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B", { variantId: "v-b" })], next: null } } });
     wrapper = await mountView();
     await wrapper.get("[data-testid=next-page]").trigger("click");
     await settle();
@@ -653,7 +726,7 @@ describe("PricesView: changing a price", () => {
     const callsBefore = priceCalls().length;
 
     await openDialog();
-    serve({ pages: { c1: { items: [item("B", { productId: "p-b", price: price({ gross: 7000, version: 2 }) })], next: null } } });
+    serve({ pages: { c1: { items: [item("B", { variantId: "v-b", price: price({ gross: 7000, version: 2 }) })], next: null } } });
     await submit("59,90");
 
     expect(wrapper.get("[data-testid=change-conflict]").text()).toBe("Cena została w międzyczasie zmieniona – odśwież");
@@ -664,7 +737,7 @@ describe("PricesView: changing a price", () => {
 
     answer(200, price({ gross: 5990, version: 3 }));
     await submit("59,90");
-    expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { productId: "p-b" } }, body: { gross: 5990, version: 2 } });
+    expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { variantId: "v-b" } }, body: { gross: 5990, version: 2 } });
   });
 
   it("on a 403 says the staff member may not change prices", async () => {
@@ -764,7 +837,7 @@ describe("PricesView: changing a price", () => {
     await submit("69,90");
 
     expect(mocks.put).toHaveBeenCalledTimes(2);
-    expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { productId: "id-B" } }, body: { gross: 6990, version: 1 } });
+    expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { variantId: "variant-B" } }, body: { gross: 6990, version: 1 } });
     expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(false);
     respond(200, price({ gross: 5990, version: 2 }));
     await settle();
@@ -789,7 +862,7 @@ describe("PricesView: changing a price", () => {
 
 describe("PricesView: price history", () => {
   let wrapper: Awaited<ReturnType<typeof mountView>> | undefined;
-  const HISTORY = "/api/v1/admin/products/{productId}/price-history";
+  const HISTORY = "/api/v1/admin/variants/{variantId}/price-history";
 
   type HistoryEntry = components["schemas"]["PriceHistoryItemResponse"];
   type HistoryPage = components["schemas"]["PriceHistoryResponse"];
@@ -822,9 +895,9 @@ describe("PricesView: price history", () => {
   }
 
   /** Answers the price list with one page and the history by the `after` cursor of the request ("" for the first page). */
-  function serveHistory(histories: Record<string, HistoryPage> | number, items: PriceListItem[] = [item("A", { productId: "p-1" })]) {
+  function serveHistory(histories: Record<string, HistoryPage> | number, items: PriceListItem[] = [item("A", { variantId: "v-1" })]) {
     mocks.get.mockImplementation(
-      async (path: string, options?: { params?: { path?: { productId: string }; query?: { after?: string } } }) => {
+      async (path: string, options?: { params?: { path?: { variantId: string }; query?: { after?: string } } }) => {
         if (path === CATEGORIES) {
           return { data: tree, response: { status: 200 } };
         }
@@ -874,7 +947,7 @@ describe("PricesView: price history", () => {
 
     await openHistory();
 
-    expect(historyCalls()).toEqual([{ path: { productId: "p-1" }, query: {} }]);
+    expect(historyCalls()).toEqual([{ path: { variantId: "v-1" }, query: {} }]);
     const dialog = wrapper.get("[data-testid=history-dialog]");
     expect(dialog.text()).toContain("A");
     const rows = dialog.findAll("[data-testid=history-row]");
@@ -918,9 +991,19 @@ describe("PricesView: price history", () => {
     await wrapper.get("[data-testid=history-more]").trigger("click");
     await settle();
 
-    expect(historyCalls().at(-1)).toEqual({ path: { productId: "p-1" }, query: { after: "c1" } });
+    expect(historyCalls().at(-1)).toEqual({ path: { variantId: "v-1" }, query: { after: "c1" } });
     expect(grosses()).toHaveLength(3);
     expect(wrapper.find("[data-testid=history-more]").exists()).toBe(false);
+  });
+
+  it("opens the history of the variant of the row, named by its product and label", async () => {
+    serveHistory({ "": { items: [], next: null } }, [item("Buty", { variants: [variant("v-40", "40"), variant("v-41", "41")] })]);
+    wrapper = await mountView();
+
+    await openHistory(1);
+
+    expect(historyCalls()).toEqual([{ path: { variantId: "v-41" }, query: {} }]);
+    expect(wrapper.get("[data-testid=history-dialog]").text()).toContain("Buty – 41");
   });
 
   it("says so when the product has no recorded price change", async () => {
@@ -962,7 +1045,7 @@ describe("PricesView: price history", () => {
           ? { data: undefined, response: { status: 503 } }
           : { data: options?.params?.query?.after ? { items: [entry(1000)], next: null } : { items: [entry(2000)], next: "c1" }, response: { status: 200 } };
       }
-      return { data: { items: [item("A", { productId: "p-1" })], next: null }, response: { status: 200 } };
+      return { data: { items: [item("A", { variantId: "v-1" })], next: null }, response: { status: 200 } };
     });
     wrapper = await mountView();
     await openHistory();
@@ -981,7 +1064,7 @@ describe("PricesView: price history", () => {
   it("closes without asking again, and the next product starts from its own first page", async () => {
     serveHistory(
       { "": { items: [entry(5490)], next: "c1" }, c1: { items: [entry(1)], next: null } },
-      [item("A", { productId: "p-1" }), item("B", { productId: "p-2" })],
+      [item("A", { variantId: "v-1" }), item("B", { variantId: "v-2" })],
     );
     wrapper = await mountView();
     await openHistory(0);
@@ -994,7 +1077,7 @@ describe("PricesView: price history", () => {
     expect(wrapper.find("[data-testid=history-dialog]").exists()).toBe(false);
 
     await openHistory(1);
-    expect(historyCalls().at(-1)).toEqual({ path: { productId: "p-2" }, query: {} });
+    expect(historyCalls().at(-1)).toEqual({ path: { variantId: "v-2" }, query: {} });
     expect(wrapper.findAll("[data-testid=history-row]")).toHaveLength(1);
     expect(wrapper.get("[data-testid=history-dialog]").text()).toContain("B");
   });

@@ -9,6 +9,7 @@ use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductModifiedConcurrently;
+use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -276,6 +277,7 @@ final class ProductVersionTest extends KernelTestCase
                 $reversed,
                 array_keys($reversed),
             )),
+            $product->variants(),
         );
 
         $this->products->save($reordered);
@@ -546,6 +548,11 @@ final class ProductVersionTest extends KernelTestCase
             'mainCategory' => $main,
             'additionalCategories' => $additional,
             'imageAlts' => $imageAlts,
+            'variantAxes' => $product->variantAxes()->names(),
+            'variants' => array_map(
+                static fn (ProductVariant $variant): array => ['id' => $variant->id()->toString(), 'values' => $variant->values()->toList()],
+                $product->variants()->toList(),
+            ),
             ...$overrides,
         ]);
     }
