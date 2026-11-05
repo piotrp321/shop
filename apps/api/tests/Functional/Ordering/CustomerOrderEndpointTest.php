@@ -108,11 +108,11 @@ final class CustomerOrderEndpointTest extends WebTestCase
 
     public function testACustomerWithoutACartOrWithAnExpiredOneHasAnEmptyCart(): void
     {
-        $this->assertProblem(409, 'Koszyk jest pusty.', $this->place(self::PATH, self::details(0), token: TestTokenFactory::customer()));
+        $this->assertConflict('cart-empty', 'Koszyk jest pusty.', $this->place(self::PATH, self::details(0), token: TestTokenFactory::customer()));
 
         $shoes = $this->variant(12_300, 10);
         CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, expiresAt: '-1 second', lines: [[$shoes, 1]]);
-        $this->assertProblem(409, 'Koszyk jest pusty.', $this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer()));
+        $this->assertConflict('cart-empty', 'Koszyk jest pusty.', $this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer()));
 
         self::assertSame(0, $this->orders());
         self::assertSame(0, $this->reservations());
@@ -124,7 +124,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
         $unpriced = $this->variant(null, 10);
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1], [$unpriced, 1]]);
 
-        $this->assertProblem(409, 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', $this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer()));
+        $this->assertConflict('cart-not-orderable', 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', $this->place(self::PATH, self::details(12_300), token: TestTokenFactory::customer()));
 
         self::assertSame([[$shoes, 1], [$unpriced, 1]], CartFixture::lines($this->connection, $cart));
         self::assertSame(0, $this->orders());
@@ -135,7 +135,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 1);
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 2]]);
 
-        $this->assertProblem(409, 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', $this->place(self::PATH, self::details(24_600), token: TestTokenFactory::customer()));
+        $this->assertConflict('insufficient-stock-for-order', 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', $this->place(self::PATH, self::details(24_600), token: TestTokenFactory::customer()));
 
         self::assertSame([[$shoes, 2]], CartFixture::lines($this->connection, $cart));
         self::assertSame([1, 0], OrderingFixture::stock($this->connection, $shoes));
@@ -159,7 +159,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$shoes, 1]]);
 
-        $this->assertProblem(409, 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', $this->place(self::PATH, self::details($expected), token: TestTokenFactory::customer()));
+        $this->assertConflict('order-total-changed', 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', $this->place(self::PATH, self::details($expected), token: TestTokenFactory::customer()));
 
         self::assertSame([[$shoes, 1]], CartFixture::lines($this->connection, $cart));
         self::assertSame([10, 0], OrderingFixture::stock($this->connection, $shoes));

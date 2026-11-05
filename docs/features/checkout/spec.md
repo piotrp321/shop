@@ -122,16 +122,22 @@ wariantu), `totals` (liczone), `status` (`new`), `idempotencyKey`, `requestFinge
 - Status `new` to pierwszy status cyklu z `docs/vision.md` (nowe → opłacone → wysłane → dostarczone). Przejścia
   dodają PAYMENT i ORDER-MANAGEMENT.
 
-Komunikaty `detail` (po polsku, bez danych wejściowych):
+Komunikaty `detail` (po polsku, bez danych wejściowych) i `type` problemu (RFC 9457):
 
-| Wyjątek | Typ | `detail` |
-|---|---|---|
-| `CartEmpty` | `Conflict` (409) | „Koszyk jest pusty.” |
-| `CartNotOrderable` | `Conflict` (409) | „Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.” |
-| `InsufficientStockForOrder` | `Conflict` (409) | „Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.” |
-| `OrderTotalChanged` | `Conflict` (409) | „Kwota zamówienia się zmieniła. Sprawdź podsumowanie.” |
-| `IdempotencyKeyReused` | `Conflict` (409) | „Ten klucz żądania był już użyty dla innego zamówienia.” |
-| `CartNotFound` (z Cart) | `NotFound` (404) | „Koszyk nie jest już dostępny.” (bez zmian) |
+| Wyjątek | Rodzaj | `detail` | `type` (prefiks `tag:piotrp321.github.io,2026:shop/problems/`) |
+|---|---|---|---|
+| `CartEmpty` | `Conflict` (409) | „Koszyk jest pusty.” | `…/cart-empty` |
+| `CartNotOrderable` | `Conflict` (409) | „Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.” | `…/cart-not-orderable` |
+| `InsufficientStockForOrder` | `Conflict` (409) | „Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.” | `…/insufficient-stock-for-order` |
+| `OrderTotalChanged` | `Conflict` (409) | „Kwota zamówienia się zmieniła. Sprawdź podsumowanie.” | `…/order-total-changed` |
+| `IdempotencyKeyReused` | `Conflict` (409) | „Ten klucz żądania był już użyty dla innego zamówienia.” | `…/idempotency-key-reused` |
+| `CartNotFound` (z Cart) | `NotFound` (404) | „Koszyk nie jest już dostępny.” (bez zmian) | `about:blank` |
+
+Pięć wyjątków Ordering implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType(): string`) i trzyma
+swój `type` w stałej `TYPE`; `ProblemDetailsSubscriber` wpisuje go do odpowiedzi. Wyjątki bez tego interfejsu i każda
+inna odpowiedź błędu mają `type: about:blank`. Klient rozróżnia przyczyny 409 wyłącznie po `type`; `detail` jest
+tekstem dla człowieka i może się zmienić. `type` to identyfikator (URI `tag:`), nie adres, pod którym coś jest
+serwowane.
 
 ## Złożenie zamówienia (`PlaceOrder`)
 
@@ -212,7 +218,8 @@ Ceny i kwoty liczy wyłącznie serwer:
 
 - `LockCartForOrder(cartRef)` → `list<{variantId, quantity}>`: blokada jak w innych komendach Cart (`LockedCarts`,
   `lockForCustomer` bez zakładania koszyka), `openForChange(now)` (gość: 404 dla `merged` i wygasłego; klient:
-  `clearIfExpired`), linie z `linesAt(now)`. Nie zmienia koszyka poza wyczyszczeniem wygasłego koszyka klienta.
+  wygasły koszyk czyści w pamięci), linie z `linesAt(now)`. Niczego nie zapisuje: wygasły koszyk klienta jest tylko
+  czytany jako pusty (porządkuje go `cart:purge-expired`).
 - `ClearCartAfterOrder(cartRef)`: blokuje koszyk jak każda komenda Cart (`LockedCarts`; w transakcji, która już go
   zablokowała przez `LockCartForOrder`, to odświeżenie rekordu pod tą samą blokadą), nowa metoda agregatu
   `Cart::clearAfterOrder(now)` usuwa wszystkie linie i wywołuje `touch(now)`. Klient bez koszyka: bez zmian.
@@ -285,7 +292,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią | 400 brak lub zły klucz, zły JSON; 404 koszyk; 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`; 415; 422 |
+| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią | 400 brak lub zły klucz, zły JSON; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422 |
 | `POST /api/v1/me/orders` (klient), nagłówek `Idempotency-Key`, body `{fullName, phone, street, postalCode, city, expectedTotalGross}` | jak wyżej; e-mail z tokena | 401 (bez tokena, token `backoffice`), 503 (klucze wystawcy niedostępne), pozostałe jak wyżej bez 404 |
 
 `OrderView`:
