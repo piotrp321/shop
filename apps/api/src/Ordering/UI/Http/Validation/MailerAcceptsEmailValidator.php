@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Ordering\UI\Http\Validation;
 
 use Symfony\Component\Mime\Address;
-use Symfony\Component\Mime\Exception\ExceptionInterface;
+use Symfony\Component\Mime\Exception\InvalidArgumentException;
+use Symfony\Component\Mime\Exception\RfcComplianceException;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\ConstraintValidator;
 use Symfony\Component\Validator\Exception\UnexpectedTypeException;
@@ -27,7 +28,8 @@ final class MailerAcceptsEmailValidator extends ConstraintValidator
 
         try {
             new Address(trim($value));
-        } catch (ExceptionInterface) {
+        } catch (RfcComplianceException|InvalidArgumentException) {
+            // Only a refused address: a missing validator library (a LogicException) must not turn into a 422.
             $this->context->buildViolation($constraint->message)->addViolation();
         }
     }
