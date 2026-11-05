@@ -121,9 +121,12 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    zadania, także osobie korzystającej z klawiatury lub czytnika ekranu (utratę danych lub lukę opisaną przez
    agenta UX jako `Important` oceń według wag powyżej). Pozostałe odtworzone problemy na zmienionych ekranach to
    `Minor`. Problemy na niezmienionych ekranach i hipotezy idą do raportu jako uwagi, nie znaleziska.
-   Werdykt `REWORK` albo „decyzja do rewizji” architekta, który wymaga decyzji użytkownika (sprzeczność ze
-   specyfikacją, nowa zależność, zmiana granic modułów, świadome odstępstwo od `CLAUDE.md`), to bloker `architecture`, nie znalezisko; naprawialne
-   naruszenie jest znaleziskiem.
+   Kod (także kontrakt API i zachowanie frontu) niezgodny ze specyfikacją, która jednoznacznie określa oczekiwane
+   zachowanie, to znalezisko `Important` do naprawy według specyfikacji, nie bloker: w opisie podaj fragment
+   specyfikacji i zmiany, których wymaga naprawa (np. kontrakt API, eksport OpenAPI, klient TS, testy).
+   Werdykt `REWORK` albo „decyzja do rewizji” architekta, który wymaga decyzji użytkownika (specyfikacja
+   niejednoznaczna albo milczy, naprawa wymaga zmiany specyfikacji, nowa zależność, zmiana granic modułów, świadome
+   odstępstwo od `CLAUDE.md`), to bloker `architecture`, nie znalezisko; naprawialne naruszenie jest znaleziskiem.
 6. **Lista odbioru.** Przygotuj ją dla właściciela, zawsze dla całego epiku (`origin/main...HEAD`), także w trybie
    `DELTA`. Sprawdzasz sam, bez agentów:
    - **Istniejące testy:** pliki testów zmienione, usunięte albo przemianowane względem `origin/main`
@@ -178,7 +181,8 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
 Typy: `business` (zakres, niejednoznaczna specyfikacja), `architecture` (granice modułów, kontrakt spoza specyfikacji,
 nowa zależność, odstępstwo od `CLAUDE.md`), `cost` (nowa usługa, płatne API), `technical` (awaria środowiska, HEAD
 inny niż w prompcie, brak planu). Każdy wpis: pytanie, opcje ze skutkami, rekomendacja z uzasadnieniem, dowody.
-Nie zadawaj pytań w tekście.
+Nie zadawaj pytań w tekście. Niezgodność kodu z jednoznaczną specyfikacją nie jest blokerem, tylko znaleziskiem
+(krok 5). Decyzji właściciela z promptu (odpowiedzi na blokery tej rundy) nie zgłaszaj ponownie jako bloker.
 
 ## Kontrakt wyniku
 
