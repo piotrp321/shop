@@ -292,46 +292,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/availability": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Availability of products
-         * @description The availability level of each requested product, for the product list. A product without a stock record, with more than one variant, or unknown, is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not what decides a purchase: the reservation at checkout does.
-         */
-        get: operations["getAvailability"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/prices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Gross prices of products
-         * @description The current gross price of each requested product, for the product list. A product without a price, with a price at an outdated VAT rate, with more than one variant, or unknown, is left out. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not the price to charge: checkout reads prices from the database.
-         */
-        get: operations["getCurrentPrices"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -391,24 +351,6 @@ export interface components {
                     url: string;
                 }[];
             };
-        };
-        PriceList: {
-            items: components["schemas"]["PriceItem"][];
-        };
-        /** @description The current gross price of one product. */
-        PriceItem: {
-            /** Format: uuid */
-            productId: string;
-            /**
-             * @description Gross price (VAT included) in grosze.
-             * @example 5490
-             */
-            gross: number;
-            /**
-             * @description ISO 4217 code.
-             * @example PLN
-             */
-            currency: string;
         };
         /** @description A cart with everything the store shows, computed by the API. The number of available units is never part of it. */
         CartView: {
@@ -640,24 +582,6 @@ export interface components {
              * @example Jan Kowalski
              */
             name: string;
-        };
-        /** @description The availability level of one product. Never the number of units. */
-        AvailabilityItemResponse: {
-            /**
-             * Format: uuid
-             * @description Product id (UUID).
-             */
-            productId: string;
-            /**
-             * @description Availability level computed by the API: no units available, 1 to 5 (last units), or more.
-             * @example in_stock
-             * @enum {string}
-             */
-            level: "in_stock" | "low_stock" | "out_of_stock";
-        };
-        /** @description The availability levels of the requested products. */
-        AvailabilityListResponse: {
-            items: components["schemas"]["AvailabilityItemResponse"][];
         };
     };
     responses: never;
@@ -1593,106 +1517,6 @@ export interface operations {
                 };
             };
             /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    getAvailability: {
-        parameters: {
-            query: {
-                /** @description Product ids (UUID), 1 to 48. */
-                productId: string[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The level of every requested product, in the order of the request; a repeated id answers once. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AvailabilityListResponse"];
-                };
-            };
-            /** @description No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`). */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    getCurrentPrices: {
-        parameters: {
-            query: {
-                /** @description Product ids (UUID), 1 to 48. */
-                productId: string[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The prices found, in the order of the request. Possibly an empty list. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PriceList"];
-                };
-            };
-            /** @description No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`). */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
             503: {
                 headers: {
                     [name: string]: unknown;

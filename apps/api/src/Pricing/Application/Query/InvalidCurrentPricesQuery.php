@@ -7,7 +7,7 @@ namespace App\Pricing\Application\Query;
 use App\Shared\Domain\Exception\InvalidInput;
 
 /**
- * The query names no variant (product), too many, or something that is not an id. The message never contains the
+ * The query names no variant, too many, or something that is not a variant id. The message never contains the
  * submitted value.
  */
 final class InvalidCurrentPricesQuery extends \DomainException implements InvalidInput
@@ -20,15 +20,5 @@ final class InvalidCurrentPricesQuery extends \DomainException implements Invali
     public static function notAVariantId(): self
     {
         return new self('A variant id must be a UUID.');
-    }
-
-    public static function productCountOutOfRange(): self
-    {
-        return new self(\sprintf('Between 1 and %d products must be given.', GetCurrentProductPrices::MAX_PRODUCTS));
-    }
-
-    public static function notAProductId(): self
-    {
-        return new self('A product id must be a UUID.');
     }
 }

@@ -27,8 +27,7 @@ Varnish i ISR. Nie powstają endpointy ani ekrany rezerwacji: port jest testowan
   (aktor operacji): wyłącznie kontrakt `AuthenticatedStaffMember`. `Inventory_Domain` i `Inventory_Application`
   nie zależą od Backoffice.
 - Catalog i Pricing nie zależą od Inventory w żadnej warstwie. Inventory nie zależy od Pricing.
-- Domena Inventory ma własne value objecty (`VariantId` itd.; `ProductId` tylko w liście stanów panelu i w odczycie
-  przejściowym) i nie importuje kodu innych contextów.
+- Domena Inventory ma własne value objecty (`VariantId` itd.; `ProductId` tylko w liście stanów panelu) i nie importuje kodu innych contextów.
 - Inventory w MVP nie publikuje ani nie konsumuje zdarzeń domenowych (jak Pricing). Zdarzenie zmiany dostępności
   dochodzi razem z Varnishem i rewalidacją ISR.
 
@@ -37,7 +36,7 @@ Zapytania Catalog dla Inventory (`query.bus`, DBAL; opisuje je `docs/features/va
 - `ListVariantIdentities(after, limit)`: `{variantId, key}` partiami po `variantId`, dla seeda Inventory (port
   `VariantsForInventory`).
 - `ListProductVariants(productIds)`: warianty produktów z etykietami w kolejności pozycji (port `ProductDirectory`,
-  lista panelu i odczyt przejściowy).
+  lista panelu).
 - `SearchBackofficeProducts`: strona produktów listy panelu (port `ProductDirectory`).
 
 ## Model domenowy
@@ -80,7 +79,7 @@ koordynuje handler aplikacji w jednej transakcji bazy (moduły dzielą bazę; sa
 
 ### Value objecty
 
-- `VariantId` (UUID), `ProductId` (UUID, tylko lista panelu i odczyt przejściowy).
+- `VariantId` (UUID), `ProductId` (UUID, tylko lista panelu).
 - `ReceiptKey`, `ReservationKey`: 1–100 znaków `[A-Za-z0-9._:-]`. Zły format: 422 w porcie, 400 w nagłówku HTTP.
 - `CorrectionReason`: `inventory_count` (inwentaryzacja), `damage` (uszkodzenie), `loss` (zaginięcie), `other` (inne).
   Przy `other` notatka jest wymagana.
@@ -197,14 +196,8 @@ Zapytania (`query.bus`):
 - `GetStockLevels(variantIds)` (1–4800 id, czyli 48 produktów po 100 wariantów) → dla każdego id
   `StockLevel {variantId, physical, reserved, available, level, version|null}` w kolejności żądania (powtórzone id
   raz); wariant bez rekordu: zera i `version = null`. Jedno zapytanie `WHERE variant_id = ANY(:ids)`, z bazy, bez
-  cache. `level` z `AvailabilityLevel`. Autorytatywny odczyt dla Cart i przyszłego Ordering.
-- `GetProductStockLevels(productIds)` (1–100 id), odczyt przejściowy (znika w zadaniu VARIANTS-4 razem
-  z `GET /api/v1/availability`): warianty produktów jednym wywołaniem Catalog `ListProductVariants` (port
-  `ProductDirectory`), stany jednym zapytaniem. Produkt z dokładnie jednym wariantem dostaje stan tego wariantu
-  (`{productId, available, level}`); produkt z większą liczbą wariantów, bez wariantów (nieznany Catalogowi) albo
-  bez rekordu stanu ma `available = 0` i `out_of_stock`. Wynik dla każdego żądanego id, w kolejności żądania
-  (powtórzone id raz). Używają go `GET /api/v1/availability` i adapter dostępności koszyka (Cart
-  `QueryBusStockAvailability`).
+  cache. `level` z `AvailabilityLevel`. Autorytatywny odczyt dla Cart (linie koszyka i oferta produktów listy) i
+  przyszłego Ordering.
 - `ListBackofficeStock(term, categoryId, after, perPage)`: strona produktów z portu `ProductDirectory` (Catalog
   `SearchBackofficeProducts`, kursor po produktach), warianty strony z etykietami jednym wywołaniem (Catalog
   `ListProductVariants`) i ich stany jednym zapytaniem. Wynik: produkty strony, a w każdym jego warianty w kolejności
@@ -235,13 +228,9 @@ Dane demo: `inventory:seed-demo`
 Błędy w formacie RFC 9457 (problem details).
 
 Sklep (`apps/api/openapi.json`):
-- `GET /api/v1/availability?productId=<uuid>&productId=…`: publiczny (`PUBLIC_ACCESS` dla `GET`),
-  `Cache-Control: public, max-age=60`. Tryb przejściowy (`GetProductStockLevels`) do zadania VARIANTS-4, które
-  zastępuje endpoint ofertą produktów listy: kontrakt na `productId` bez zmian.
-  - 1–48 id. Brak, za dużo lub niepoprawny UUID: 400.
-  - `200 {items: [{productId, level}]}` dla każdego żądanego id (`level`: `in_stock`, `low_stock`, `out_of_stock`),
-    poziom jedynego wariantu produktu. Produkt z więcej niż jednym wariantem, bez rekordu stanu i nieznany
-    Catalogowi: `out_of_stock`. Liczba sztuk nigdy nie jest zwracana.
+- Publicznego endpointu dostępności nie ma: poziom produktu i wariantów kafelka zwraca oferta produktów listy
+  (`GET /api/v1/product-offers`, Cart, `docs/features/cart/spec.md`), która czyta stany przez `GetStockLevels`.
+  Liczba sztuk nigdy nie jest zwracana.
 
 Panel (`apps/api/openapi-admin.json`, firewall `backoffice`, `Cache-Control: private, no-store`; bez tokena albo
 z tokenem realmu `shop`: 401):
@@ -264,9 +253,9 @@ z tokenem realmu `shop`: 401):
 
 ## Sklep (`apps/store`)
 
-- `loadCatalog` pobiera dostępność strony produktów jednym wywołaniem `GET /api/v1/availability`, równolegle z cenami.
-- `ProductTile` pokazuje etykietę „Dostępny”, „Ostatnie sztuki” albo „Niedostępny”.
-- Błąd endpointu dostępności nie psuje listy: kafelki bez etykiety dostępności, błąd w logu serwera.
+- Dostępność listy pochodzi z oferty produktów (`GET /api/v1/product-offers`, `docs/features/cart/spec.md`):
+  `ProductTile` pokazuje etykietę „Dostępny”, „Ostatnie sztuki” albo „Niedostępny” według `level` z API; przy błędzie
+  ofert kafelki są bez etykiety, a błąd trafia do logu serwera.
 - Produkty niedostępne zostają na liście, bez zmian w Elasticsearch.
 - Nowa dostępność jest widoczna najpóźniej po czasie cache odpowiedzi (60 s). Rozstrzyga rezerwacja, nie widok sklepu.
 
@@ -363,7 +352,7 @@ w 5 rundach; po każdej rundzie niezmiennik: `reserved` = suma linii aktywnych r
   od `id` produktu.
 - Funkcjonalne API: każdy endpoint z przypadkami 200/201, 400, 401 (bez tokena i z tokenem `shop`), 403 (`support`,
   `marketing` przy POST), 404, 409, 415, 422.
-- Vitest: sklep – etykiety poziomów, kafelek bez etykiety, `loadCatalog` przy błędzie dostępności; panel – widok
+- Vitest (kafelek z ofertą i etykiety poziomów opisuje `docs/features/cart/spec.md`): panel – widok
   stanów, dialogi przyjęcia (ponowne użycie klucza) i korekty (notatka przy „Inne”), 403, 409, 422, historia.
 - E2E: pracownik `warehouse` przyjmuje towar dla wariantu produktu demo ze stanem 0 (wiersz po nazwie produktu
   i etykiecie wariantu), sklep pokazuje „Dostępny” (oczekiwanie do 70 s).
