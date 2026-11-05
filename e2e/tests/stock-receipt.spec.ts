@@ -4,11 +4,11 @@ import { loginStaff } from "../support/staff-login";
 
 // The store list reads the offers (with the availability level) from `GET /api/v1/product-offers`, cached for 60 s (`public, max-age=60`); the rest is slack.
 const STORE_AVAILABILITY_WAIT_MS = 70_000;
-// The demo product with nothing on the shelf (apps/api/fixtures/stock.yaml); it is in the category "Sporty wodne" > "Kajaki".
-const PRODUCT_NAME = "Kajak turystyczny Vilmar Rzeka 2 zielony";
-// The variant of the product to receive into: the panel lists a row per variant, the stock is kept per variant. The
-// product has only its default variant (no variant axes), whose label is empty.
-const VARIANT_LABEL = "";
+// The demo product with nothing on the shelf in any variant (apps/api/fixtures/stock.yaml); it is in the category
+// "Sporty wodne" > "Kajaki".
+const PRODUCT_NAME = "Kajak turystyczny Vilmar Rzeka 2";
+// The variant of the product to receive into: the panel lists a row per variant, the stock is kept per variant.
+const VARIANT_LABEL = "zielony";
 // More than the low stock threshold, so the level after the receipt is "Dostępny" and not "Ostatnie sztuki".
 const RECEIVED_QUANTITY = 10;
 
@@ -46,7 +46,7 @@ async function expectStoreAvailability(page: Page, label: string): Promise<void>
 test("a stock receipt for a variant in the panel makes the product available in the store", async ({ page }) => {
   test.setTimeout(2 * STORE_AVAILABILITY_WAIT_MS + 120_000);
 
-  // The product starts out of stock. After a previous run the store may still show the cached "Dostępny" for up to
+  // The product starts out of stock in every variant. After a previous run the store may still show the cached "Dostępny" for up to
   // 60 s; waiting for "Niedostępny" makes the "Dostępny" after the receipt a consequence of it, not a leftover.
   await openStoreKayaks(page);
   await expectStoreAvailability(page, "Niedostępny");
@@ -55,10 +55,10 @@ test("a stock receipt for a variant in the panel makes the product available in 
   await page.getByRole("link", { name: "Stany magazynowe" }).click();
   await page.getByRole("searchbox", { name: "Szukaj po nazwie produktu" }).fill(PRODUCT_NAME);
   // The unfiltered first page has many products: the product name as the only one (a name is shown on the first row of
-  // each product) means the (debounced) search has been applied. Changing the stock earlier would let a late search
+  // each product, its variants follow) means the (debounced) search has been applied. Changing the stock earlier would let a late search
   // answer overwrite the row with the old stock.
   await expect(page.getByTestId("name"), "the search narrows the list to the product").toHaveText([PRODUCT_NAME]);
-  // Every row left is a variant of the product; the one to receive into is found by its label.
+  // Every row left is a variant of the product (pomarańczowy, zielony); the one to receive into is found by its label.
   const row = page
     .getByTestId("stock-row")
     .filter({ has: page.getByTestId("variant-label").filter({ hasText: exactly(VARIANT_LABEL) }) });
