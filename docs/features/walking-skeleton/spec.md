@@ -802,20 +802,24 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 - Branża: sport i outdoor. Drzewo kategorii na 3–4 poziomy z kategoriami najwyższego poziomu: bieganie, rower, turystyka,
   sporty zimowe, fitness, sporty wodne, sporty drużynowe.
 - `apps/api/fixtures/catalog.yaml` definiuje drzewo kategorii oraz szablony produktów dla kategorii: fikcyjne marki
-  własne sklepu, modele, kolory, szablony opisów, kategorię podatkową, pulę zdjęć i opcjonalne kategorie
-  dodatkowe (część szablonów ma kategorię dodatkową w innej gałęzi drzewa).
+  własne sklepu, modele, osie wariantów z ich wartościami (`variantAxes`: 0–2 nazwy osi, np. „Kolor”, „Rozmiar”;
+  `axisValues`: lista wartości dla każdej osi, w kolejności osi), szablony opisów, kategorię podatkową, pulę zdjęć
+  i opcjonalne kategorie dodatkowe (część szablonów ma kategorię dodatkową w innej gałęzi drzewa). Produkt to marka
+  × model, a jego nazwa i slug nie zawierają wartości wariantów (kolor, rozmiar).
 - Część asortymentu ma obniżoną kategorię podatkową: żywność sportowa (`food`), suplementy (`food_supplement`),
   przewodniki i mapy (`printed_publication`).
 - `catalog:seed-demo` rozwija szablony deterministycznie (iloczyn kombinacji w ustalonej kolejności, bez losowości)
-  do 300–500 produktów. Zdjęcie produktu jest wybierane z puli kategorii według pozycji produktu w kolejności
+  do 191 produktów i 1012 wariantów: warianty produktu to iloczyn wartości jego osi w kolejności pliku (pierwsza oś
+  zmienia się najwolniej), a produkt bez osi (Hantle regulowane) ma jeden wariant domyślny. Zdjęcie produktu jest wybierane z puli kategorii według pozycji produktu w kolejności
   rozwijania. Reguła zapisana w pliku pozostawia kilka produktów bez zdjęć.
 - Zdjęcia: 20–30 prawdziwych zdjęć „w terenie” (ludzie w górach, na szlaku, na rowerze) w spójnej tonacji,
   z Unsplash lub Pexels, przeskalowanych do około 1600 px na dłuższym boku, w `apps/api/fixtures/images/`.
   `apps/api/fixtures/images/CREDITS.md` podaje dla każdego pliku źródło, autora i licencję.
-- Seed nadaje kategoriom, produktom i wariantom UUID v5 wyliczane ze sluga (wariant: z klucza `<slug>/standard`)
-  w stałej przestrzeni nazw, więc identyfikatory są takie same po każdym seedzie. Każdy produkt demo ma jeden wariant
-  domyślny. To wyłącznie mechanizm seeda: komendy aplikacji przyjmują identyfikator
-  od wywołującego.
+- Seed nadaje kategoriom, produktom i wariantom UUID v5 wyliczane ze sluga (wariant: z klucza
+  `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`) w stałej przestrzeni nazw, więc
+  identyfikatory są takie same po każdym seedzie. Klucz buduje jedna funkcja Catalog (`VariantKey`), a powtórzony klucz
+  (np. wartości „1,5” i „1.5”) albo slug kończy seed błędem. To wyłącznie mechanizm seeda: komendy aplikacji przyjmują
+  identyfikator od wywołującego.
 - Seed tworzy dane przez komendy aplikacji (`CreateCategory`, `CreateProduct`), więc indeks powstaje drogą
   outbox → RabbitMQ → `IndexProduct`. Na koniec czeka (do 60 s), aż liczba dokumentów w ES zrówna się z liczbą
   produktów, i wypisuje podsumowanie. Jeśli indeks nie dogoni Postgresa w tym czasie (np. nie działa `worker`),
