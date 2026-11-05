@@ -358,8 +358,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   brak, gdy tak odpowiedziało API); 404 gościa (koszyk zniknął: nieznany, wygasły,
   scalony) usuwa też `store_cart`, jak BFF koszyka; 401 sesji kończy sesję; 503 przy niedostępnym API lub
   zależnościach (także 400 i 415 API oraz 401 endpointu gościa).
-- `/auth/session` zwraca `{name, email}` (`email` z `GET /api/v1/me`); typ
-  `AccountSession` w `src/api/client.ts`.
+- `/auth/session` zwraca `{name, email}` (`email` z `GET /api/v1/me`); typ `AccountSession` w `src/api/client.ts`.
 - `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (jedyne miejsce `fetch`). Wynik 409 to `conflict` z `reason`
   wyznaczonym wyłącznie z `type` (`src/checkout/problems.ts`: mapa typów ze schematu OpenAPI `OrderConflictProblem`
   na przyczyny, kompilator wymaga wpisu dla każdego typu schematu; inny albo brakujący `type` to `unknown`). `detail`
@@ -373,8 +372,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 - `/checkout` (`noindex, nofollow`, Client Component): podsumowanie z `/api/cart` (linie: nazwa, etykieta wariantu,
   ilość, wartość; suma brutto), formularz (P4, P5), przycisk „Zamawiam z obowiązkiem zapłaty” (P9). Gość: pole
   e-mail i link „Zaloguj się” (`/auth/login?returnTo=/checkout`). Klient: e-mail z `/auth/session` jako tekst,
-  imię i nazwisko wstępnie wypełnione z sesji (konto bez imienia ma w sesji e-mail jako nazwę: pole zostaje puste). Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat
-  i link do koszyka.
+  imię i nazwisko wstępnie wypełnione z sesji (konto bez imienia ma w sesji e-mail jako nazwę: pole zostaje puste).
+  Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat i link do koszyka.
 - `Idempotency-Key`: UUID (`crypto.randomUUID`) tworzony przy wejściu na `/checkout` i używany ponownie przy
   ponowieniu niepewnego wyniku (błąd sieci, 403, 5xx, 503). Klucz należy do jednej logicznej próby: nowy powstaje
   po zmianie danych formularza, po 409 `IdempotencyKeyReused` i po 409 `OrderTotalChanged` (żądanie niesie wtedy
@@ -552,7 +551,8 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 - Rezerwacja zamówienia nie wygasa do czasu PAYMENT (#91), który zwalnia rezerwacje nieopłaconych zamówień. Do tego
   czasu każde złożone zamówienie trwale zmniejsza dostępność (dane demo przywraca `make seed`), a złośliwy gość może
   zarezerwować cały stan (brak rate limitingu, decyzja T2).
-- Składanie zamówień nie ma rate limitingu (T2) wbrew zasadzie z `apps/api/CLAUDE.md` i `docs/vision.md` do kroku 10 tego planu.
+- Składanie zamówień nie ma rate limitingu (T2) wbrew zasadzie z `apps/api/CLAUDE.md` i `docs/vision.md` do kroku 10
+  planu `docs/features/agentic-software-house/plan.md`.
 - Jedna transakcja obejmuje koszyk, rezerwację i zamówienie: popularny wariant szereguje złożenia na wierszu stanu,
   a transakcja jest dłuższa niż sama rezerwacja. Wydajność przy docelowej skali nie jest potwierdzona testami
   obciążeniowymi.
