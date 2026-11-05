@@ -29,7 +29,7 @@ type FieldName = keyof Form;
 
 /** Why the last order was not placed; each is shown above the form (see the UI table of the checkout spec). */
 type Failure =
-  | { kind: "conflict"; detail: string }
+  | { kind: "conflict"; detail: string; offersCart: boolean }
   | { kind: "not_found" }
   | { kind: "unauthorized" }
   | { kind: "message"; text: string };
@@ -68,7 +68,9 @@ export function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   // Where the focus goes after a refusal: the button was locked during the request, so the focus would be on the body.
   const [attention, setAttention] = useState<{ id: string; seq: number } | null>(null);
-  // Made on entry and kept for a retry after a network error or a 5xx; a new one after a 409 and after every change of the form.
+  // The key of one logical attempt. Made on entry and kept for a retry of an uncertain result (a network error, 403,
+  // 5xx) and after a 409 that leaves the request as it was. A new one for a new attempt: after every change of the
+  // form, after `IdempotencyKeyReused` and after `OrderTotalChanged` (the request now carries another total).
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
 
   useEffect(() => {
@@ -144,9 +146,20 @@ export function CheckoutPage() {
         return first ? `${FIELD_ID_PREFIX}${first.name}` : FAILURE_ID;
       }
       case "conflict": {
-        // The cart, its total or the key no longer fit: a new key, and the summary as the API sees it now.
-        setIdempotencyKey(newIdempotencyKey());
-        setFailure({ kind: "conflict", detail: result.detail || SUBMIT_FAILED });
+        // Told by the type of the problem only. Nothing is ordered again by itself.
+        const detail = result.detail || SUBMIT_FAILED;
+        if (result.reason === "key_reused") {
+          // The key belongs to another request: the form is fine, the next click is a new attempt.
+          setIdempotencyKey(newIdempotencyKey());
+          setFailure({ kind: "conflict", detail, offersCart: false });
+          return FAILURE_ID;
+        }
+        if (result.reason === "total_changed") {
+          // Nothing was placed; the summary below is the new total, so the next click is a new request.
+          setIdempotencyKey(newIdempotencyKey());
+        }
+        setFailure({ kind: "conflict", detail, offersCart: result.reason !== "total_changed" });
+        // The cart as the API sees it now; an empty or unorderable one replaces the form.
         const reloaded = await loadCart();
         if (reloaded.status === "ok") {
           setLoaded({ status: "ready", cart: reloaded.data, session });
@@ -167,6 +180,9 @@ export function CheckoutPage() {
     }
   }
 
+  // The message that replaces the form has its own link to the cart, so a conflict does not add a second one.
+  const showsForm = loaded.status === "ready" && loaded.cart.lines.length > 0 && !loaded.cart.hasExcludedLines;
+
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
       <h1 className="text-2xl font-semibold">Kasa</h1>
@@ -184,7 +200,7 @@ export function CheckoutPage() {
           </Button>
         </div>
       ) : null}
-      {failure ? <FailureMessage failure={failure} /> : null}
+      {failure ? <FailureMessage failure={failure} cartLinkShown={showsForm} /> : null}
       {loaded.status === "ready" ? (
         <CheckoutContent
           cart={loaded.cart}
@@ -212,7 +228,7 @@ function prefilled(session: AccountSession): Form {
   return session === null || session.name === session.email ? emptyForm : { ...emptyForm, fullName: session.name };
 }
 
-function FailureMessage({ failure }: { failure: Failure }) {
+function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLinkShown: boolean }) {
   return (
     <div id={FAILURE_ID} role="alert" tabIndex={-1} className="flex flex-col items-start gap-1 text-destructive">
       {failure.kind === "unauthorized" ? (
@@ -224,15 +240,15 @@ function FailureMessage({ failure }: { failure: Failure }) {
       ) : (
         <>
           <p>{failure.kind === "conflict" ? failure.detail : CART_GONE}</p>
-          {failure.kind === "conflict" ? (
-            <Link href="/cart" className="text-sm text-foreground underline underline-offset-4">
-              Wróć do koszyka
-            </Link>
-          ) : (
+          {failure.kind === "not_found" ? (
             <Link href="/" className="text-sm text-foreground underline underline-offset-4">
               Wróć do sklepu
             </Link>
-          )}
+          ) : failure.offersCart && cartLinkShown ? (
+            <Link href="/cart" className="text-sm text-foreground underline underline-offset-4">
+              Wróć do koszyka
+            </Link>
+          ) : null}
         </>
       )}
     </div>

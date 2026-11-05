@@ -4,10 +4,10 @@ import type { components } from "@/api/schema";
 export type OrderView = components["schemas"]["OrderView"];
 export type Violation = NonNullable<components["schemas"]["Problem"]["violations"]>[number];
 
-/** An order of the API (201 placed, 200 repeated request), or the status, `detail` and `violations` of a refusal. */
+/** An order of the API (201 placed, 200 repeated request), or the status, `type`, `detail` and `violations` of a refusal. */
 export type OrderResult =
   | { ok: true; status: number; data: OrderView }
-  | { ok: false; status: number; detail?: string; violations?: Violation[] };
+  | { ok: false; status: number; type?: string; detail?: string; violations?: Violation[] };
 
 /** The fields of `PlaceCustomerOrderRequest`; the guest's contract adds `cartId` and `email`. */
 export const CUSTOMER_ORDER_FIELDS = ["fullName", "phone", "street", "postalCode", "city", "expectedTotalGross"] as const;
@@ -30,10 +30,11 @@ function result({ data, error, response }: Answer): OrderResult {
   if (data !== undefined) {
     return { ok: true, status: response.status, data };
   }
-  const problem = typeof error === "object" && error !== null ? (error as { detail?: unknown; violations?: unknown }) : {};
+  const problem = typeof error === "object" && error !== null ? (error as { type?: unknown; detail?: unknown; violations?: unknown }) : {};
   return {
     ok: false,
     status: response.status,
+    type: typeof problem.type === "string" ? problem.type : undefined,
     detail: typeof problem.detail === "string" ? problem.detail : undefined,
     violations: Array.isArray(problem.violations) ? (problem.violations as Violation[]) : undefined,
   };

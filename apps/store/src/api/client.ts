@@ -1,4 +1,5 @@
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import { conflictReason, type OrderConflictReason } from "@/checkout/problems";
 import type { components, paths } from "./schema";
 
 export type ApiClient = Client<paths>;
@@ -140,11 +141,15 @@ export type PlaceOrderInput = {
 
 export type OrderViolation = NonNullable<components["schemas"]["Problem"]["violations"]>[number];
 
-/** How a call to the store's `/api/checkout` ended. `detail` and `violations` are the Polish texts of the API. */
+/**
+ * How a call to the store's `/api/checkout` ended. `detail` and `violations` are the Polish texts of the API. The cause
+ * of a conflict is told by the `type` of the problem (`reason`), never by its text.
+ */
 export type PlaceOrderResult =
   | { status: "ok"; number: string }
   | { status: "invalid"; detail?: string; violations: OrderViolation[] }
-  | { status: "conflict" | "not_found"; detail?: string }
+  | { status: "conflict"; reason: OrderConflictReason; detail?: string }
+  | { status: "not_found"; detail?: string }
   | { status: "unauthorized" }
   | { status: "failed" };
 
@@ -161,7 +166,7 @@ export async function placeOrder(input: PlaceOrderInput, idempotencyKey: string)
       headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(input),
     });
-    const body = (await response.json().catch(() => null)) as { number?: unknown; detail?: unknown; violations?: unknown } | null;
+    const body = (await response.json().catch(() => null)) as { number?: unknown; type?: unknown; detail?: unknown; violations?: unknown } | null;
     const detail = typeof body?.detail === "string" ? body.detail : undefined;
     if (response.ok) {
       return typeof body?.number === "string" ? { status: "ok", number: body.number } : { status: "failed" };
@@ -172,7 +177,7 @@ export async function placeOrder(input: PlaceOrderInput, idempotencyKey: string)
       case 404:
         return { status: "not_found", detail };
       case 409:
-        return { status: "conflict", detail };
+        return { status: "conflict", reason: conflictReason(body?.type), detail };
       case 422:
         return { status: "invalid", detail, violations: Array.isArray(body?.violations) ? (body.violations as OrderViolation[]) : [] };
       default:

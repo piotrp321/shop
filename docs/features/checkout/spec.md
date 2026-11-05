@@ -343,16 +343,21 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   `withCartDeps`): wymaga `Origin` równego `STORE_URL` i `Content-Type: application/json` (inaczej 403 bez API),
   nagłówka `Idempotency-Key` od przeglądarki (brak: 422 „Nieprawidłowe dane.”). Wybór koszyka jak w BFF koszyka:
   sesja → `POST /api/v1/me/orders` (przed złożeniem scalenie `store_cart`, jak przy każdej operacji koszyka), bez
-  sesji → `POST /api/v1/orders` z `cartId` z `store_cart`; bez `store_cart`: 409 „Koszyk jest pusty.” bez API.
+  sesji → `POST /api/v1/orders` z `cartId` z `store_cart`; bez `store_cart`: 409 „Koszyk jest pusty.” z `type`
+  `CartEmpty` (`…/cart-empty`) bez API.
 - Sukces (201 i 200): ciasteczko `store_order_confirmation` z `{number, email, totalGross, currency}` podpisane jak
   `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina; odpowiedź `{number}`. `store_cart` zostaje
   (koszyk jest pusty).
-- Błędy: 404, 409 i 422 API przekazywane z `detail` i `violations`; 404 gościa (koszyk zniknął: nieznany, wygasły,
+- Błędy: 404, 409 i 422 API przekazywane z `detail` i `violations`, a 409 także z `type` bez zmian (`about:blank` albo
+  brak, gdy tak odpowiedziało API); 404 gościa (koszyk zniknął: nieznany, wygasły,
   scalony) usuwa też `store_cart`, jak BFF koszyka; 401 sesji kończy sesję; 503 przy niedostępnym API lub
   zależnościach (także 400 i 415 API).
 - `/auth/session` zwraca `{name, email}` (dziś `{name}`; `email` z `GET /api/v1/me`, który już go ma); typ
   `AccountSession` w `src/api/client.ts` i jego konsumenci (konto w nagłówku) dostają nowe pole.
-- `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (jedyne miejsce `fetch`).
+- `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (jedyne miejsce `fetch`). Wynik 409 to `conflict` z `reason`
+  wyznaczonym wyłącznie z `type` (`src/checkout/problems.ts`: mapa typów ze schematu OpenAPI `OrderConflictProblem`
+  na przyczyny, kompilator wymaga wpisu dla każdego typu schematu; inny albo brakujący `type` to `unknown`). `detail`
+  służy tylko do wyświetlenia.
 
 ### UI
 
@@ -365,7 +370,11 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   imię i nazwisko wstępnie wypełnione z sesji. Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat
   i link do koszyka.
 - `Idempotency-Key`: UUID (`crypto.randomUUID`) tworzony przy wejściu na `/checkout` i używany ponownie przy
-  ponowieniu po błędzie sieci, 5xx i 503; nowy klucz po każdej odpowiedzi 409 i po zmianie danych formularza.
+  ponowieniu niepewnego wyniku (błąd sieci, 403, 5xx, 503). Klucz należy do jednej logicznej próby: nowy powstaje
+  po zmianie danych formularza, po 409 `IdempotencyKeyReused` i po 409 `OrderTotalChanged` (żądanie niesie wtedy
+  inną kwotę, która należy do odcisku żądania, a nic nie zostało złożone). Po 409 `CartEmpty`, `CartNotOrderable`,
+  `InsufficientStockForOrder` i po nieznanym 409 klucz zostaje: ponowienie tym samym kluczem po ewentualnym sukcesie
+  da powtórzenie 200, nie drugie zamówienie. Strona niczego nie ponawia sama: każdy POST to kliknięcie klienta.
 - `expectedTotalGross` = `totals.gross` z ostatnio wczytanego podsumowania. Na czas żądania przycisk jest
   zablokowany.
 - Sukces: licznik koszyka 0 (zdarzenie `src/cart/events.ts`), przejście na `/checkout/confirmation`.
@@ -378,12 +387,17 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | Sytuacja | UI na `/checkout` |
 |---|---|
 | 422 | komunikaty przy polach (`violations`) |
-| 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania (nowa kwota), formularz zostaje |
-| 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka” |
-| 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje (kolejne kliknięcie składa zamówienie z nowym kluczem) |
+| 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania (nowa kwota), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
+| 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
+| 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje, bez linku do koszyka (kolejne kliknięcie składa zamówienie z nowym kluczem) |
+| 409 nieznany (inny `type` albo brak) | `detail` (bez niego „Nie udało się złożyć zamówienia. Spróbuj ponownie.”) i link „Wróć do koszyka”, klucz zostaje, bez automatycznego ponawiania |
 | 404 koszyka | „Koszyk nie jest już dostępny.” i link do sklepu |
 | 401 | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem (`returnTo=/checkout`) |
 | 403, 503, 5xx, błąd sieci | „Nie udało się złożyć zamówienia. Spróbuj ponownie.” (ponowienie z tym samym kluczem) |
+
+Po każdym odrzuceniu fokus przechodzi na komunikat błędu (`role="alert"`, `tabIndex=-1`), bo przycisk jest zablokowany na
+czas żądania; po 422 z błędami pól na pierwsze błędne pole (w kolejności formularza), które ma `aria-invalid`
+i `aria-describedby` na swój komunikat.
 
 ## Scenariusze błędów
 
@@ -498,14 +512,17 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 
 ### Vitest (`apps/store`)
 
-- BFF `app/api/checkout/route.test.ts`: gość, sesja (ze scaleniem `store_cart`), brak `store_cart`, 403 `Origin`
+- BFF `app/api/checkout/route.test.ts`: gość, sesja (ze scaleniem `store_cart`), brak `store_cart` (409 z `type`
+  `CartEmpty`), 403 `Origin`
   i `Content-Type`, brak `Idempotency-Key`, przekazanie klucza, do API trafiają tylko pola kontraktu (dodatkowe pola
   przeglądarki, np. ceny, są pomijane), 201 i 200 ustawiają `store_order_confirmation`
-  (z walutą), 404 gościa usuwa `store_cart`, 409, 422, 401, 503, `no-store`.
+  (z walutą), 404 gościa usuwa `store_cart`, 409 (przekazuje `type` każdej z pięciu przyczyn, `about:blank` i brak),
+  422, 401, 503, `no-store`.
 - `/auth/session` (`app/auth/session`): `{name, email}`.
 - `CheckoutPage`: formularz gościa i klienta (e-mail z sesji), podsumowanie, blokada przycisku, każdy wiersz tabeli
-  UI, ponowienie z tym samym kluczem, nowy klucz po 409 (także `IdempotencyKeyReused`) i po zmianie danych, pusty
-  koszyk, `hasExcludedLines`.
+  UI (pięć przyczyn 409 i nieznany 409: komunikat, link do koszyka, formularz, ten sam albo nowy klucz przy kolejnym
+  kliknięciu, brak automatycznego drugiego POST), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
+  danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`.
 - `/checkout/confirmation`: z ciasteczkiem, bez, z niepoprawnym podpisem.
 - `CartPage`: przycisk „Przejdź do kasy” aktywny i nieaktywny.
 - `src/api/client.test.ts`: `placeOrder`.

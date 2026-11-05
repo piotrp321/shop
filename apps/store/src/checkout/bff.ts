@@ -7,6 +7,7 @@ import type { CartDeps } from "@/cart/deps";
 import { applyGuestCartMerge, type GuestCartMerge, mergeGuestCart } from "@/cart/merge";
 import { CUSTOMER_ORDER_FIELDS, GUEST_ORDER_FIELDS, type OrderResult, type OrderView, pickFields, placeCustomerOrder, placeGuestOrder } from "./api";
 import { setOrderConfirmation } from "./cookies";
+import { CART_EMPTY_TYPE } from "./problems";
 
 const CART_EMPTY = "Koszyk jest pusty.";
 
@@ -18,7 +19,7 @@ type Effects = { clearCart?: boolean; merge?: GuestCartMerge; endedSession?: boo
  * `POST /api/checkout`: places the order of the whole cart. The customer's cart with a session (after the merge of
  * `store_cart`, as before every cart operation), otherwise the guest cart of `store_cart`. The browser chooses the
  * `Idempotency-Key` and sends it again on a retry. Answers 201/200 `{ number }` with the signed confirmation cookie,
- * 404, 409 and 422 of the API with their `detail` and `violations`, 401 when the session ended and 503 for the rest.
+ * 404, 409 and 422 of the API with their `detail` and `violations` (and the `type` of a 409, which names its cause), 401 when the session ended and 503 for the rest.
  * Nothing here computes a price or a total: the API takes lines and prices from the cart and Pricing.
  */
 export async function runCheckout(request: NextRequest, deps: CartDeps): Promise<Response> {
@@ -62,13 +63,19 @@ function finish({ status, body }: Outcome, effects: Effects, { config }: CartDep
   return effects.endedSession ? clearSessionCookie(response, config.storeUrl) : noStore(response);
 }
 
-/** The answer for the browser. Refusals the browser can act on keep their `detail` and `violations`; the rest is a 503. */
+/**
+ * The answer for the browser. Refusals the browser can act on keep their `detail` and `violations`, a 409 also its
+ * `type` as the API sent it; the rest is a 503.
+ */
 function toOutcome(result: OrderResult, effects: Effects): Outcome {
   if (result.ok) {
     effects.order = result.data;
     return { status: result.status, body: { number: result.data.number } };
   }
-  if (result.status === 404 || result.status === 409 || result.status === 422) {
+  if (result.status === 409) {
+    return { status: 409, body: { type: result.type, detail: result.detail, violations: result.violations } };
+  }
+  if (result.status === 404 || result.status === 422) {
     return { status: result.status, body: { detail: result.detail, violations: result.violations } };
   }
   // Includes a 400 or 415 of the API (a bug of this BFF, nothing the browser can fix) and a 401 of the guest endpoint.
@@ -118,7 +125,7 @@ async function placeForGuest(
   if (cartId === null) {
     // No cart, or a cookie the store did not issue (cleared, as in the cart BFF): nothing to order.
     effects.clearCart = cartCookie !== undefined;
-    return { status: 409, body: { detail: CART_EMPTY } };
+    return { status: 409, body: { type: CART_EMPTY_TYPE, detail: CART_EMPTY } };
   }
   const result = await placeGuestOrder(deps.api(), idempotencyKey, { cartId, ...pickFields(body, GUEST_ORDER_FIELDS) });
   if (!result.ok && result.status === 404) {

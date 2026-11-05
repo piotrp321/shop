@@ -123,7 +123,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Sukces (201 albo 200 przy powtórzeniu z tym samym kluczem): odpowiedź `{ number }` i ciasteczko
   `store_order_confirmation` z `{ number, email, totalGross, currency }` z `OrderView` (JSON w base64url, podpisany jak
   `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina). `store_cart` zostaje (koszyk jest pusty).
-- Błędy: 404, 409 i 422 API z `{ detail, violations }`; 404 gościa (koszyk zniknął) usuwa `store_cart`; 401 sesji
+- Błędy: 404, 409 i 422 API z `{ detail, violations }`, 409 także z `type` bez zmian; własne 409 bez `store_cart` ma
+  `type` `CartEmpty` (`src/checkout/problems.ts`); 404 gościa (koszyk zniknął) usuwa `store_cart`; 401 sesji
   kończy sesję jak w koszyku; 400, 415, 401 gościa, 5xx i niedostępne API dają 503. Wszystkie odpowiedzi
   z `private, no-store`.
 - `/checkout` (`noindex, nofollow`, `CheckoutPage` jako Client Component): podsumowanie z `/api/cart` (nazwa, etykieta
@@ -132,15 +133,23 @@ Klienta API generuje `make api-client` z katalogu głównego.
   ma tylko e-mail), przycisk „Zamawiam z obowiązkiem zapłaty” zablokowany na czas żądania. Pusty koszyk albo
   `hasExcludedLines`: komunikat i link do koszyka zamiast formularza. `expectedTotalGross` to `totals.gross` ostatnio
   wczytanego podsumowania.
-- `Idempotency-Key` (`crypto.randomUUID`, więc kasa wymaga bezpiecznego kontekstu: HTTPS albo `localhost`) powstaje
-  przy wejściu na stronę i wraca przy ponowieniu po błędzie sieci, 403 i 5xx; nowy klucz po każdej zmianie pola
-  formularza i po każdym 409. Formularz ma `noValidate`: dane sprawdza API, a komunikaty 422 (`violations`) są przy
-  polach.
-- Odpowiedzi kasy w UI: sukces ogłasza licznik 0 (`src/cart/events.ts`) i przechodzi na `/checkout/confirmation`;
-  każdy 409 pokazuje `detail` z linkiem „Wróć do koszyka”, daje nowy klucz i wczytuje podsumowanie ponownie (nowa
-  kwota zostaje w formularzu, pusty koszyk albo `hasExcludedLines` zastępuje formularz). Strona nie rozróżnia 409 po
-  tekście `detail`. 404: „Koszyk nie jest już dostępny.” z linkiem do sklepu; 401: „Twoja sesja wygasła. Zaloguj się
-  ponownie.” z `returnTo=/checkout`; 403, 503, 5xx i błąd sieci: „Nie udało się złożyć zamówienia. Spróbuj ponownie.”.
+- `Idempotency-Key` (`crypto.randomUUID`, więc kasa wymaga bezpiecznego kontekstu: HTTPS albo `localhost`) to klucz
+  jednej logicznej próby. Powstaje przy wejściu na stronę i wraca przy ponowieniu niepewnego wyniku (błąd sieci, 403,
+  5xx) oraz po 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` i nieznanym; nowy klucz po zmianie
+  pola formularza, po 409 `IdempotencyKeyReused` i po 409 `OrderTotalChanged` (inna kwota w żądaniu, nic nie zostało
+  złożone). Formularz ma `noValidate`: dane sprawdza API, a komunikaty 422 (`violations`) są przy polach.
+- Odpowiedzi kasy w UI: sukces ogłasza licznik 0 (`src/cart/events.ts`) i przechodzi na `/checkout/confirmation`.
+  Przyczynę 409 wyznacza wyłącznie `type` (`placeOrder` zwraca `reason` z `conflictReason`, mapa typów w
+  `src/checkout/problems.ts` jest sprawdzana kompilatorem względem schematu), nigdy tekst `detail`:
+  `OrderTotalChanged` pokazuje `detail` bez linku do koszyka i wczytuje podsumowanie ponownie (nowa kwota, formularz
+  zostaje); `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` i nieznany 409 (inny `type` albo brak; bez
+  `detail` tekst „Nie udało się złożyć zamówienia. Spróbuj ponownie.”) pokazują `detail` z linkiem „Wróć do koszyka”
+  i też wczytują podsumowanie; `IdempotencyKeyReused` pokazuje `detail` bez linku i bez wczytywania. Pusty koszyk albo
+  `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem, wtedy komunikat błędu nie ma
+  drugiego. Żadne odrzucenie nie ponawia zamówienia samo. 404: „Koszyk nie jest już dostępny.” z linkiem do sklepu;
+  401: „Twoja sesja wygasła. Zaloguj się ponownie.” z `returnTo=/checkout`; 403, 503, 5xx i błąd sieci: „Nie udało
+  się złożyć zamówienia. Spróbuj ponownie.”. Po każdym odrzuceniu fokus idzie na komunikat (`role="alert"`,
+  `tabIndex={-1}`, bo przycisk jest zablokowany na czas żądania), a po 422 z błędami pól na pierwsze błędne pole.
 - `/checkout/confirmation` (`noindex, nofollow`, Server Component) czyta `store_order_confirmation` (`cookies()`
   i `readOrderConfirmation`, sekret z `readAuthConfig`) i pokazuje „Dziękujemy za zamówienie”, numer, adres e-mail
   i kwotę brutto (`formatPrice`). Bez ciasteczka, z niepoprawnym podpisem albo treścią: „Nie znaleźliśmy informacji
