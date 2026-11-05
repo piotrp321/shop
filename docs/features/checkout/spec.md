@@ -353,7 +353,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   `CartEmpty` (`…/cart-empty`) bez API.
 - Sukces (201 i 200): ciasteczko `store_order_confirmation` z `{number, email, totalGross, currency}` podpisane jak
   `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina; odpowiedź `{number}`. `store_cart` zostaje
-  (koszyk jest pusty).
+  (koszyk jest pusty). `POST /auth/logout` usuwa to ciasteczko razem z sesją (zawiera e-mail zamówienia, więc nie
+  może przeżyć wylogowania).
 - Błędy: 404, 409 i 422 API przekazywane z `detail` i `violations`, a 409 także z `type` bez zmian (`about:blank` albo
   brak, gdy tak odpowiedziało API); 404 gościa (koszyk zniknął: nieznany, wygasły,
   scalony) usuwa też `store_cart`, jak BFF koszyka; 401 sesji kończy sesję; 503 przy niedostępnym API lub

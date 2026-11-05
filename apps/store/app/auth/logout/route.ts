@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { readSignedValue, SESSION_COOKIE } from "@/auth/cookies";
 import { clearSessionCookie, logFailure, noStore, redirectTo, withAuthDeps } from "@/auth/responses";
+import { clearOrderConfirmation } from "@/checkout/cookies";
 
 /**
  * SameSite=Lax already keeps the session cookie off cross-site POSTs. On top of that a request whose `Origin` is
@@ -23,8 +24,9 @@ export function GET() {
 }
 
 /**
- * POST only (the account menu's form). Deletes the session and its cookie, then sends the browser to Keycloak's
- * end_session endpoint with `id_token_hint`, which ends the Keycloak session and returns to the store.
+ * POST only (the account menu's form). Deletes the session and its cookie and the order confirmation cookie (it holds
+ * the e-mail address of the last order, which the next person at this browser must not read), then sends the browser
+ * to Keycloak's end_session endpoint with `id_token_hint`, which ends the Keycloak session and returns to the store.
  */
 export const POST = withAuthDeps(async (request, { config, oidc, sessions }) => {
   if (!isSameOrigin(request, config.storeUrl)) {
@@ -45,5 +47,7 @@ export const POST = withAuthDeps(async (request, { config, oidc, sessions }) => 
     // Redis or Keycloak unavailable: the cookie still goes, the Redis key expires with the refresh token.
     logFailure("Logout incomplete", error);
   }
-  return clearSessionCookie(redirectTo(target), config.storeUrl);
+  const response = clearSessionCookie(redirectTo(target), config.storeUrl);
+  clearOrderConfirmation(response, config.storeUrl);
+  return response;
 });

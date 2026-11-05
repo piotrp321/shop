@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SESSION_COOKIE } from "@/auth/cookies";
 import { getAuthDeps } from "@/auth/deps";
 import { sessionData, signedSessionCookie, testConfig, testDeps } from "@/auth/test-support";
+import { CONFIRMATION_COOKIE } from "@/checkout/cookies";
 import * as route from "./route";
 
 vi.mock("@/auth/deps", () => ({ getAuthDeps: vi.fn() }));
@@ -17,8 +18,10 @@ beforeEach(() => {
 const logout = (headers: Record<string, string> = {}) =>
   route.POST(new NextRequest("http://0.0.0.0:3000/auth/logout", { method: "POST", headers }));
 
-const clearedSessionCookie = (response: Response) =>
-  response.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=;`) && c.includes("Max-Age=0"));
+const clearedCookie = (response: Response, name: string) =>
+  response.headers.getSetCookie().find((c) => c.startsWith(`${name}=;`) && c.includes("Max-Age=0"));
+
+const clearedSessionCookie = (response: Response) => clearedCookie(response, SESSION_COOKIE);
 
 describe("POST /auth/logout", () => {
   it("answers GET with 405, Allow: POST and no-store, and keeps the session", async () => {
@@ -49,6 +52,24 @@ describe("POST /auth/logout", () => {
     expect(setup.sessions.has(id)).toBe(false);
     expect(clearedSessionCookie(response)).toBeDefined();
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("deletes the order confirmation cookie too, because it holds the e-mail address of the customer", async () => {
+    const id = await setup.deps.sessions.create(sessionData());
+    const response = await logout({ cookie: `${signedSessionCookie(id)}; ${CONFIRMATION_COOKIE}=signed-confirmation` });
+
+    expect(clearedCookie(response, CONFIRMATION_COOKIE)).toBeDefined();
+    expect(clearedSessionCookie(response)).toBeDefined();
+  });
+
+  it("deletes the order confirmation cookie also when the session is already gone or Keycloak is down", async () => {
+    const gone = await logout({ cookie: `${signedSessionCookie("expired")}; ${CONFIRMATION_COOKIE}=signed-confirmation` });
+    expect(clearedCookie(gone, CONFIRMATION_COOKIE)).toBeDefined();
+
+    const id = await setup.deps.sessions.create(sessionData());
+    setup.deps.oidc.mockRejectedValue(new Error("fetch failed"));
+    const down = await logout({ cookie: `${signedSessionCookie(id)}; ${CONFIRMATION_COOKIE}=signed-confirmation` });
+    expect(clearedCookie(down, CONFIRMATION_COOKIE)).toBeDefined();
   });
 
   it("redirects to / and clears the cookie when there is no session", async () => {

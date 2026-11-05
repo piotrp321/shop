@@ -122,7 +122,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   sprawdza je API. `cartId` pochodzi wyłącznie z ciasteczka; ceny, linie i inne pola przeglądarki są pomijane.
 - Sukces (201 albo 200 przy powtórzeniu z tym samym kluczem): odpowiedź `{ number }` i ciasteczko
   `store_order_confirmation` z `{ number, email, totalGross, currency }` z `OrderView` (JSON w base64url, podpisany jak
-  `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina). `store_cart` zostaje (koszyk jest pusty).
+  `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina). `store_cart` zostaje (koszyk jest pusty). `POST /auth/logout` usuwa to ciasteczko razem
+  z sesją (zawiera e-mail zamówienia).
 - Błędy: 404, 409 i 422 API z `{ detail, violations }`, 409 także z `type` bez zmian; własne 409 bez `store_cart` ma
   `type` `CartEmpty` (`src/checkout/problems.ts`); 404 gościa (koszyk zniknął) usuwa `store_cart`; 401 sesji
   kończy sesję jak w koszyku; 400, 415, 401 gościa, 5xx i niedostępne API dają 503. Wszystkie odpowiedzi

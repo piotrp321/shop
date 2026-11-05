@@ -738,7 +738,7 @@ Tokeny nigdy nie trafiają do przeglądarki. Serwer sklepu jest klientem confide
 | `GET /auth/login?returnTo=…` | generuje `state`, `nonce` i weryfikator PKCE; zapisuje je w Redisie pod jednorazowym kluczem (TTL 10 min), którego id trafia do krótkiego ciasteczka; przekierowuje do Keycloak (adres publiczny) |
 | `GET /auth/callback` | sprawdza `state`; wymienia kod na tokeny przez `http://keycloak:8080`; waliduje `id_token`; tworzy sesję i przekierowuje na `returnTo` |
 | `GET /auth/session` | zwraca `{ "name": "…", "email": "…" }` albo `null`; dane z `GET /api/v1/me` wołanego z tokenem z sesji; 401 z API usuwa sesję, a inny błąd API, Redisa albo Keycloak daje 503 bez usuwania sesji |
-| `POST /auth/logout` | tylko POST (`GET` dostaje 405 z `Allow: POST`); żądanie z obcym nagłówkiem `Origin` albo z `Sec-Fetch-Site` równym `cross-site` lub `same-site` dostaje 403, a żądanie bez obu nagłówków przechodzi; usuwa sesję i ciasteczko; przekierowuje do `end_session` Keycloak z `id_token_hint` i `post_logout_redirect_uri` |
+| `POST /auth/logout` | tylko POST (`GET` dostaje 405 z `Allow: POST`); żądanie z obcym nagłówkiem `Origin` albo z `Sec-Fetch-Site` równym `cross-site` lub `same-site` dostaje 403, a żądanie bez obu nagłówków przechodzi; usuwa sesję i jej ciasteczko oraz ciasteczko `store_order_confirmation` (zawiera e-mail ostatniego zamówienia; checkout); przekierowuje do `end_session` Keycloak z `id_token_hint` i `post_logout_redirect_uri` |
 
 - `returnTo` jest akceptowany tylko jako ścieżka w obrębie sklepu: zaczyna się od pojedynczego `/`, nie od `//`,
   nie zawiera `\` ani znaków sterujących (C0, DEL, C1), a `new URL(returnTo, STORE_URL).origin` równa się `STORE_URL`.
