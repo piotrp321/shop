@@ -60,7 +60,7 @@ Reguły Deptrac (żaden inny context nie zależy od Cart w żadnej warstwie):
 - `CartId`: UUID; nowy jest losowym UUID v4. Identyfikator koszyka gościa jest jednocześnie kluczem dostępu do niego.
 - `CartOwner`: `guest` albo `customer(customerId)`, gdzie `customerId` to `sub` z tokena (1–255 znaków).
 - `VariantId`: UUID wariantu (zapisywany małymi literami), klucz linii koszyka.
-- `ProductId`: UUID produktu (małymi literami), tylko w ofercie produktów listy.
+- `ProductId`: UUID produktu (małymi literami), tylko w ofercie produktów listy i w produkcie linii (`VariantSummary`).
 - `Quantity`: liczba całkowita 1–99 (`InvalidQuantity`, `InvalidInput`).
 - `Money`: nieujemne grosze (`int`) i `Currency` (tylko `PLN`). Bez `float`.
 - `ProductOffer {hasCurrentPrice: bool, available: int}`: stan wariantu z portów, podany domenie przez handler;
