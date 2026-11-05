@@ -40,12 +40,19 @@ final class DemoCatalogLoaderTest extends TestCase
         self::assertSame([], $products[2]->images);
         self::assertSame($storage->stored[0], $products[0]->images[0]['key']);
         self::assertSame('Biegacz na drodze', $products[0]->images[0]['alt']);
-        // Every product is created with its one default variant, whose id is not the id of the product.
+        // Products are created with their axes and variants; a variant id is never the id of its product.
+        self::assertSame(['Kolor', 'Rozmiar'], $products[0]->variantAxes);
+        self::assertCount(4, $products[0]->variants);
+        self::assertSame(['czarne', '40'], $products[0]->variants[0]['values']);
+        self::assertSame(['Kolor'], $products[6]->variantAxes);
+        self::assertCount(2, $products[6]->variants);
+        self::assertSame([], $products[8]->variantAxes);
+        self::assertCount(1, $products[8]->variants);
+        self::assertSame([], $products[8]->variants[0]['values']);
         foreach ($products as $product) {
-            self::assertSame([], $product->variantAxes);
-            self::assertCount(1, $product->variants);
-            self::assertSame([], $product->variants[0]['values']);
-            self::assertNotSame($product->id, $product->variants[0]['id']);
+            foreach ($product->variants as $variant) {
+                self::assertNotSame($product->id, $variant['id']);
+            }
         }
     }
 

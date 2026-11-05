@@ -119,9 +119,10 @@ templates:
         description: "Buty na długie wybiegania z podwyższoną amortyzacją i stabilną piętą."
       - name: "Tempo 600"
         description: "Dynamiczne buty startowe o niskiej masie i sprężystej podeszwie na szybkie treningi."
-    colors:
-      - "czarne"
-      - "niebieskie"
+    variantAxes: ["Kolor", "Rozmiar"]
+    axisValues:
+      - ["czarne", "niebieskie"]
+      - ["40", "41", "42", "43", "44", "45", "46"]
     images:
       - file: "runner-country-road.jpg"
         alt: "Biegacz na wiejskiej drodze wśród łąk"
@@ -140,10 +141,10 @@ templates:
         description: "Wszechstronne buty na szlaki górskie z membraną odporną na wilgoć i przyczepną podeszwą."
       - name: "Przełęcz 700"
         description: "Stabilne buty na długie górskie dystanse z ochroną śródstopia."
-    colors:
-      - "czarne"
-      - "zielone"
-      - "pomarańczowe"
+    variantAxes: ["Kolor", "Rozmiar"]
+    axisValues:
+      - ["czarne", "zielone", "pomarańczowe"]
+      - ["40", "41", "42", "43", "44", "45", "46"]
     images:
       - file: "trail-runner-mountain-ridge-italy.jpg"
         alt: "Biegacz na górskim szlaku w słoneczny dzień"
@@ -162,10 +163,10 @@ templates:
         description: "Ultralekka wiatrówka składana do kieszeni, chroni przed wiatrem i lekkim deszczem."
       - name: "Mgła 300"
         description: "Kurtka softshell z elastycznymi panelami i odblaskowymi elementami na zimne poranki."
-    colors:
-      - "czarna"
-      - "granatowa"
-      - "limonkowa"
+    variantAxes: ["Kolor", "Rozmiar"]
+    axisValues:
+      - ["czarna", "granatowa", "limonkowa"]
+      - ["S", "M", "L", "XL"]
     images:
       - file: "runner-mountain-edge-trail.jpg"
         alt: "Biegacz na ścieżce wzdłuż górskiej grani"
@@ -182,10 +183,10 @@ templates:
         description: "Szybkoschnąca koszulka z siatkowymi wstawkami wentylacyjnymi i płaskimi szwami."
       - name: "Merino 200"
         description: "Koszulka z mieszanki wełny merino, neutralna zapachowo i przyjemna w dotyku."
-    colors:
-      - "biała"
-      - "szara"
-      - "turkusowa"
+    variantAxes: ["Kolor", "Rozmiar"]
+    axisValues:
+      - ["biała", "szara", "turkusowa"]
+      - ["S", "M", "L", "XL"]
     images:
       - file: "runner-country-road.jpg"
         alt: "Biegacz na wiejskiej drodze wśród łąk"
@@ -204,9 +205,9 @@ templates:
         description: "Plecak biegowy 8 l z kieszeniami na bidony miękkie i dostępem do telefonu bez zdejmowania."
       - name: "Ultra 12"
         description: "Plecak biegowy 12 l na zawody górskie, z uchwytem na kijki i systemem nawadniającym."
-    colors:
-      - "czarny"
-      - "pomarańczowy"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["czarny", "pomarańczowy"]
     images:
       - file: "trail-runner-mountain-ridge-italy.jpg"
         alt: "Biegacz na górskim szlaku w słoneczny dzień"
@@ -225,9 +226,9 @@ templates:
         description: "Lekka czołówka 250 lumenów z regulowanym kątem świecenia i ładowaniem przez USB."
       - name: "Zmierzch 600"
         description: "Czołówka 600 lumenów z trybem czerwonym i akumulatorem na do 40 godzin pracy."
-    colors:
-      - "czarna"
-      - "szara"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["czarna", "szara"]
     images:
       - file: "headlamp-hiker-chamonix.jpg"
         alt: "Samotny turysta z czołówką na górskiej ścieżce o zmierzchu"
@@ -244,10 +245,10 @@ templates:
         description: "Rower trailowy z amortyzowanym tyłem 130 mm i hydraulicznymi hamulcami tarczowymi."
       - name: "Zjazd 27,5"
         description: "Zwrotny rower enduro z amortyzacją 150 mm do agresywnej jazdy po szlakach."
-    colors:
-      - "grafitowy"
-      - "zielony"
-      - "pomarańczowy"
+    variantAxes: ["Kolor", "Rozmiar ramy"]
+    axisValues:
+      - ["grafitowy", "zielony", "pomarańczowy"]
+      - ["S", "M", "L"]
     images:
       - file: "bikepacker-rocky-trail-pines.jpg"
         alt: "Rowerzysta z sakwami bikepackingowymi na skalistym szlaku wśród sosen"
@@ -266,10 +267,10 @@ templates:
         description: "Rower trekkingowy z silnikiem centralnym 85 Nm i akumulatorem o zasięgu do 110 km."
       - name: "Szlak E"
         description: "Elektryczny rower górski z silnikiem w osi korby i amortyzowanym przodem."
-    colors:
-      - "czarny"
-      - "grafitowy"
-      - "niebieski"
+    variantAxes: ["Kolor", "Rozmiar ramy"]
+    axisValues:
+      - ["czarny", "grafitowy", "niebieski"]
+      - ["S", "M", "L"]
     images:
       - file: "cyclist-path-canadian-rockies.jpg"
         alt: "Rowerzysta na ścieżce w pobliżu gór"
@@ -286,10 +287,10 @@ templates:
         description: "Lekki kask szosowy z dużą liczbą otworów wentylacyjnych i regulacją obwodu pokrętłem."
       - name: "Korona"
         description: "Kask MTB z wydłużonym tyłem, daszkiem i siatką przeciw owadom."
-    colors:
-      - "czarny"
-      - "biały"
-      - "czerwony"
+    variantAxes: ["Kolor", "Rozmiar"]
+    axisValues:
+      - ["czarny", "biały", "czerwony"]
+      - ["S", "M", "L"]
     images:
       - file: "cyclist-dirt-road-british-columbia.jpg"
         alt: "Rowerzysta w niebieskiej kurtce na szutrowej drodze w górach"
@@ -306,9 +307,9 @@ templates:
         description: "Wodoodporna torba pod ramę o pojemności 4 l na narzędzia i prowiant."
       - name: "Kierownica 10"
         description: "Torba na kierownicę 10 l do bikepackingu, z szybkim systemem mocowania."
-    colors:
-      - "czarna"
-      - "oliwkowa"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["czarna", "oliwkowa"]
     images:
       - file: "bikepacking-bike-mountain-trail.jpg"
         alt: "Rower z sakwami bikepackingowymi na górskim szlaku"
@@ -325,10 +326,9 @@ templates:
         description: "Bidon 500 ml z podwójną ścianką, który utrzymuje temperaturę napoju przez kilka godzin."
       - name: "Źródło 750"
         description: "Bidon 750 ml z zaworem do picia jedną ręką i szeroką szyjką do mycia."
-    colors:
-      - "czarny"
-      - "srebrny"
-      - "niebieski"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["czarny", "srebrny", "niebieski"]
     images:
       - file: "cyclist-path-canadian-rockies.jpg"
         alt: "Rowerzysta na ścieżce w pobliżu gór"
@@ -347,9 +347,9 @@ templates:
         description: "Plecak 55 l z wentylowanymi plecami i dolnym dostępem do śpiwora."
       - name: "Przełęcz 65"
         description: "Plecak 65 l na wielodniowe trekkingi, z usztywnionym pasem biodrowym."
-    colors:
-      - "zielony"
-      - "szary"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["zielony", "szary"]
     images:
       - file: "hiker-yellow-backpack-meadow.jpg"
         alt: "Turysta z żółtym plecakiem na górskiej łące"
@@ -368,10 +368,9 @@ templates:
         description: "Plecak 20 l na jednodniowe wycieczki, z kieszenią na bukłak i uchwytami na kijki."
       - name: "Szlak 28"
         description: "Plecak 28 l z kieszeniami bocznymi, wentylowanymi plecami i uchwytem na kask."
-    colors:
-      - "czarny"
-      - "granatowy"
-      - "pomarańczowy"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["czarny", "granatowy", "pomarańczowy"]
     images:
       - file: "hikers-trail-switzerland.jpg"
         alt: "Dwoje turystów z plecakami na szlaku wśród drzew"
@@ -390,9 +389,9 @@ templates:
         description: "Trzyosobowy namiot z dużą absydą na bagaż i szczelną podłogą."
       - name: "Halny 4"
         description: "Czteroosobowy namiot na każdą pogodę, ze wzmocnionym stelażem."
-    colors:
-      - "zielony"
-      - "pomarańczowy"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["zielony", "pomarańczowy"]
     images:
       - file: "tent-orange-forest-mountain.jpg"
         alt: "Pomarańczowy namiot w lesie, w tle ośnieżony górski grzbiet"
@@ -410,9 +409,9 @@ templates:
         description: "Śpiwór puchowy o temperaturze komfortu 0 stopni i dolnej granicy minus 5 stopni."
       - name: "Letni +10"
         description: "Lekki syntetyczny śpiwór na ciepłe noce, mieści się w niewielkim worku kompresyjnym."
-    colors:
-      - "niebieski"
-      - "oliwkowy"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["niebieski", "oliwkowy"]
     images:
       - file: "sleeping-bag-alpine-meadow.jpg"
         alt: "Niebieski śpiwór rozłożony na alpejskiej łące"
@@ -429,9 +428,9 @@ templates:
         description: "Mata o grubości 3 cm, która napełnia się powietrzem po otwarciu zaworu."
       - name: "Sen 5"
         description: "Mata o grubości 5 cm z wysoką izolacją, wygodna także na twardym podłożu."
-    colors:
-      - "pomarańczowa"
-      - "zielona"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["pomarańczowa", "zielona"]
     images:
       - file: "sleeping-bag-alpine-meadow.jpg"
         alt: "Niebieski śpiwór rozłożony na alpejskiej łące"
@@ -452,9 +451,9 @@ templates:
         description: "Przewodnik po Karkonoszach z trasami pieszymi i rowerowymi oraz opisem atrakcji. ISBN 978-83-99001-03-7."
       - name: "Beskid Żywiecki"
         description: "Przewodnik po Beskidzie Żywieckim z 45 trasami i mapkami szlaków. ISBN 978-83-99001-04-4."
-    colors:
-      - "oprawa miękka"
-      - "oprawa twarda"
+    variantAxes: ["Oprawa"]
+    axisValues:
+      - ["oprawa miękka", "oprawa twarda"]
     images:
       - file: "hiker-reading-map.jpg"
         alt: "Turysta z papierową mapą w dłoniach"
@@ -475,9 +474,9 @@ templates:
         description: "Mapa Karkonoszy w skali 1:35 000 z trasami narciarskimi i rowerowymi."
       - name: "Gorce 1:40 000"
         description: "Mapa Gorców w skali 1:40 000 z siecią szlaków i polan."
-    colors:
-      - "składana"
-      - "laminowana"
+    variantAxes: ["Wersja"]
+    axisValues:
+      - ["składana", "laminowana"]
     images:
       - file: "hiker-reading-map.jpg"
         alt: "Turysta z papierową mapą w dłoniach"
@@ -498,9 +497,9 @@ templates:
         description: "Liofilizowana kasza gryczana z kurczakiem i pieczarkami, lekka i sycąca."
       - name: "Owsianka jagodowa"
         description: "Liofilizowana owsianka z jagodami na szybkie śniadanie na szlaku."
-    colors:
-      - "porcja jednoosobowa"
-      - "porcja dwuosobowa"
+    variantAxes: ["Porcja"]
+    axisValues:
+      - ["jednoosobowa", "dwuosobowa"]
     images:
       - file: "tent-orange-forest-mountain.jpg"
         alt: "Pomarańczowy namiot w lesie, w tle ośnieżony górski grzbiet"
@@ -521,9 +520,10 @@ templates:
         description: "Wąskie narty typu carving do dynamicznych skrętów na twardym śniegu."
       - name: "Freeride 100"
         description: "Szerokie narty do jazdy poza trasą, z rockerem w przodzie."
-    colors:
-      - "grafitowe"
-      - "czerwone"
+    variantAxes: ["Kolor", "Długość"]
+    axisValues:
+      - ["grafitowe", "czerwone"]
+      - ["160 cm", "170 cm", "180 cm"]
     images:
       - file: "skier-val-disere.jpg"
         alt: "Narciarz w pomarańczowej kurtce na ośnieżonym stoku"
@@ -540,9 +540,10 @@ templates:
         description: "Lekkie narty skiturowe z rdzeniem z drewna paulowni, na podejścia i zjazdy."
       - name: "Grań 95"
         description: "Narty skiturowe o szerokości 95 mm z rdzeniem kompozytowym do zmiennego śniegu."
-    colors:
-      - "niebieskie"
-      - "pomarańczowe"
+    variantAxes: ["Kolor", "Długość"]
+    axisValues:
+      - ["niebieskie", "pomarańczowe"]
+      - ["164 cm", "172 cm", "180 cm"]
     images:
       - file: "ski-touring-steep-slope.jpg"
         alt: "Dwie osoby na skiturach na stromym śnieżnym stoku"
@@ -563,10 +564,10 @@ templates:
         description: "Kask z lekką skorupą, certyfikowany do narciarstwa, snowboardu i jazdy na rowerze."
       - name: "Zima 3"
         description: "Kask z mocowaniem na gogle i odpinanymi nausznikami."
-    colors:
-      - "czarny"
-      - "biały"
-      - "niebieski"
+    variantAxes: ["Kolor", "Rozmiar"]
+    axisValues:
+      - ["czarny", "biały", "niebieski"]
+      - ["S", "M", "L"]
     images:
       - file: "skier-val-disere.jpg"
         alt: "Narciarz w pomarańczowej kurtce na ośnieżonym stoku"
@@ -585,10 +586,10 @@ templates:
         description: "Kurtka z membraną 15 000 mm, kapturem na kask i kieszenią na karnet."
       - name: "Szczyt 20"
         description: "Kurtka skiturowa o wysokiej oddychalności z wentylacją pod pachami."
-    colors:
-      - "czerwona"
-      - "granatowa"
-      - "czarna"
+    variantAxes: ["Kolor", "Rozmiar"]
+    axisValues:
+      - ["czerwona", "granatowa", "czarna"]
+      - ["S", "M", "L", "XL"]
     images:
       - file: "skier-val-disere.jpg"
         alt: "Narciarz w pomarańczowej kurtce na ośnieżonym stoku"
@@ -605,10 +606,9 @@ templates:
         description: "Mata o grubości 6 mm z antypoślizgową powierzchnią do jogi i ćwiczeń na podłodze."
       - name: "Podłoże 10"
         description: "Gruba mata 10 mm chroniąca kolana i kręgosłup podczas ćwiczeń siłowych."
-    colors:
-      - "fioletowa"
-      - "zielona"
-      - "szara"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["fioletowa", "zielona", "szara"]
     images:
       - file: "yoga-park-sunset.jpg"
         alt: "Grupa ćwicząca jogę w parku o zachodzie słońca"
@@ -625,9 +625,6 @@ templates:
         description: "Para hantli z regulacją obciążenia do 10 kg każdy, z wygodnym chwytem."
       - name: "Para 24"
         description: "Para hantli z regulacją obciążenia do 24 kg każdy, w stojaku."
-    colors:
-      - "czarne"
-      - "grafitowe"
     images:
       - file: "yoga-park-sunset.jpg"
         alt: "Grupa ćwicząca jogę w parku o zachodzie słońca"
@@ -646,10 +643,9 @@ templates:
         description: "Baton z daktyli i migdałów bez dodatku cukru."
       - name: "Proteinowy"
         description: "Baton z dużą zawartością białka i niską zawartością cukrów, 50 g."
-    colors:
-      - "czekoladowy"
-      - "orzechowy"
-      - "owocowy"
+    variantAxes: ["Smak"]
+    axisValues:
+      - ["czekoladowy", "orzechowy", "owocowy"]
     images:
       - file: "runner-country-road.jpg"
         alt: "Biegacz na wiejskiej drodze wśród łąk"
@@ -669,10 +665,9 @@ templates:
         description: "Żel z węglowodanami o szybkim wchłanianiu, saszetka 40 g, do spożycia w trakcie wysiłku."
       - name: "Dystans"
         description: "Żel z dodatkiem sodu i kofeiny na długie wysiłki, saszetka 60 g."
-    colors:
-      - "cytrynowy"
-      - "malinowy"
-      - "pomarańczowy"
+    variantAxes: ["Smak"]
+    axisValues:
+      - ["cytrynowy", "malinowy", "pomarańczowy"]
     images:
       - file: "runner-road-fitz-roy.jpg"
         alt: "Biegacz na pustej asfaltowej drodze z górami w tle"
@@ -689,10 +684,9 @@ templates:
         description: "Koncentrat białka serwatkowego, opakowanie 900 g, około 30 porcji."
       - name: "Roślinna 750"
         description: "Odżywka białkowa z grochu i ryżu, opakowanie 750 g, bez laktozy."
-    colors:
-      - "czekoladowa"
-      - "waniliowa"
-      - "truskawkowa"
+    variantAxes: ["Smak"]
+    axisValues:
+      - ["czekoladowa", "waniliowa", "truskawkowa"]
     images:
       - file: "yoga-park-sunset.jpg"
         alt: "Grupa ćwicząca jogę w parku o zachodzie słońca"
@@ -709,9 +703,9 @@ templates:
         description: "Tabletki musujące z elektrolitami, 20 sztuk w tubie, uzupełniają sód i magnez."
       - name: "Nawodnienie 40"
         description: "Tabletki musujące z elektrolitami i witaminą C, 40 sztuk w dwóch tubach."
-    colors:
-      - "cytrynowe"
-      - "pomarańczowe"
+    variantAxes: ["Smak"]
+    axisValues:
+      - ["cytrynowe", "pomarańczowe"]
     images:
       - file: "cyclist-path-canadian-rockies.jpg"
         alt: "Rowerzysta na ścieżce w pobliżu gór"
@@ -730,9 +724,9 @@ templates:
         description: "Stabilna deska 11 stóp o większej nośności, na dłuższe trasy."
       - name: "Wyścig 12"
         description: "Wąska deska 12 stóp o dobrym ślizgu, na szybkie przepłynięcia."
-    colors:
-      - "niebieska"
-      - "turkusowa"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["niebieska", "turkusowa"]
     images:
       - file: "paddleboards-lake-wanaka.jpg"
         alt: "Dwie osoby na deskach SUP na górskim jeziorze"
@@ -749,9 +743,9 @@ templates:
         description: "Jednoosobowy pompowany kajak turystyczny, stabilny i odporny na przetarcia."
       - name: "Rzeka 2"
         description: "Dwuosobowy kajak pompowany z dwoma siedziskami i bagażnikiem na dziobie."
-    colors:
-      - "pomarańczowy"
-      - "zielony"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["pomarańczowy", "zielony"]
     images:
       - file: "kayak-lake-mountains.jpg"
         alt: "Dwie osoby w kajaku na spokojnym jeziorze wśród gór"
@@ -770,10 +764,9 @@ templates:
         description: "Okulary do pływania na otwartej wodzie z szerokim polem widzenia i polaryzacją."
       - name: "Sprint"
         description: "Niskoprofilowe okulary startowe o niskim oporze wody."
-    colors:
-      - "czarne"
-      - "niebieskie"
-      - "przydymione"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["czarne", "niebieskie", "przydymione"]
     images:
       - file: "open-water-swimmer-lake.jpg"
         alt: "Pływak w jeziorze"
@@ -788,9 +781,10 @@ templates:
         description: "Pianka neoprenowa 3 mm do pływania w chłodnych jeziorach, z elastycznymi ramionami."
       - name: "Cieplej 5"
         description: "Gruba pianka 5 mm na zimną wodę, z uszczelnionymi mankietami."
-    colors:
-      - "czarna"
-      - "grafitowa"
+    variantAxes: ["Kolor", "Rozmiar"]
+    axisValues:
+      - ["czarna", "grafitowa"]
+      - ["S", "M", "L", "XL"]
     images:
       - file: "open-water-swimmer-lake.jpg"
         alt: "Pływak w jeziorze"
@@ -808,9 +802,9 @@ templates:
         description: "Piłka meczowa rozmiar 5 ze zgrzewanymi panelami o stałym odbiciu."
       - name: "Junior 4"
         description: "Piłka rozmiar 4 dla młodzieży do 12 lat."
-    colors:
-      - "biała"
-      - "pomarańczowa"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["biała", "pomarańczowa"]
     images:
       - file: "soccer-ball-field-blue.jpg"
         alt: "Piłka nożna na murawie boiska"
@@ -827,9 +821,10 @@ templates:
         description: "Buty na sztuczną nawierzchnię z gumową podeszwą i licznymi nopami."
       - name: "Hala"
         description: "Buty halowe z płaską podeszwą antypoślizgową."
-    colors:
-      - "czarne"
-      - "niebieskie"
+    variantAxes: ["Kolor", "Rozmiar"]
+    axisValues:
+      - ["czarne", "niebieskie"]
+      - ["40", "41", "42", "43", "44", "45", "46"]
     images:
       - file: "soccer-ball-field-blue.jpg"
         alt: "Piłka nożna na murawie boiska"
@@ -844,9 +839,9 @@ templates:
         description: "Piłka do siatkówki na treningi i gry rekreacyjne, odporna na wilgoć, o miękkim chwycie."
       - name: "Hala"
         description: "Piłka halowa ze zszywanymi panelami, rozmiar 5, do treningów klubowych."
-    colors:
-      - "biało-niebieska"
-      - "żółto-niebieska"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["biało-niebieska", "żółto-niebieska"]
     images:
       - file: "volleyball-indoor-sports-hall.jpg"
         alt: "Mecz siatkówki w hali sportowej"
@@ -861,9 +856,9 @@ templates:
         description: "Piłka rozmiar 7 do gry na zewnątrz, ze wzmocnioną kompozytową powłoką."
       - name: "Hala 6"
         description: "Piłka rozmiar 6 do gry w hali, o dobrej przyczepności."
-    colors:
-      - "pomarańczowa"
-      - "brązowa"
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["pomarańczowa", "brązowa"]
     images:
       - file: "basketball-outdoor-court-park.jpg"
         alt: "Koszykarze na boisku miejskim wśród drzew"

@@ -26,7 +26,12 @@ templates:
         description: "Lekkie buty na asfalt."
       - name: "Dystans 400"
         description: "Buty na długie dystanse."
-    colors: ["czarne", "białe"]
+      - name: "Tempo 600"
+        description: "Buty na szybkie treningi."
+    variantAxes: ["Kolor", "Rozmiar"]
+    axisValues:
+      - ["czarne", "białe"]
+      - ["40", "41"]
     images:
       - file: "sample.jpg"
         alt: "Biegacz na drodze"
@@ -39,7 +44,21 @@ templates:
     models:
       - name: "Ząb 20"
         description: "Plecak dzienny."
-    colors: ["żółty", "zielony"]
+      - name: "Ząb 30"
+        description: "Plecak na weekend."
+    variantAxes: ["Kolor"]
+    axisValues:
+      - ["żółty", "zielony"]
     images:
       - file: "sample.jpg"
         alt: "Plecak na szlaku"
+  - category: "turystyka/plecaki"
+    productType: "Hantle"
+    taxClass: standard
+    brands: ["Lumora", "Dravik"]
+    models:
+      - name: "Para 10"
+        description: "Para hantli regulowanych."
+    images:
+      - file: "sample.jpg"
+        alt: "Hantle na macie"

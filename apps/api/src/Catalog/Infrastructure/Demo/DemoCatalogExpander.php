@@ -15,10 +15,12 @@ use Symfony\Component\Uid\Uuid;
 /**
  * Expands the definition deterministically (no randomness) into categories and products.
  *
- * Products get a global 0-based expansion index: templates in file order, then brands, models and colors. A product
+ * Products get a global 0-based expansion index: templates in file order, then brands and models. A product
  * is imageless when (index + 1) % imagelessEvery == 0; the others take pool[index % count(pool)] of their template.
- * Ids are UUID v5 of the slug in the definition's namespace: 'category:<slug path>', 'product:<slug>' and
- * 'variant:<variant key>' (<slug>/standard for the one default variant every product has).
+ * The variants of a product are the product of the values of its axes in file order (the first axis varies slowest);
+ * a product without axes has one default variant. Ids are UUID v5 in the definition's namespace: 'category:<slug path>',
+ * 'product:<slug>' and 'variant:<variant key>' (<slug>/standard for the default variant). The key is the one of
+ * Catalog's VariantKey, so a repeated key is rejected like a repeated slug.
  */
 final readonly class DemoCatalogExpander
 {
@@ -47,33 +49,36 @@ final readonly class DemoCatalogExpander
 
             foreach ($template->brands as $brand) {
                 foreach ($template->models as $model) {
-                    foreach ($template->colors as $color) {
-                        $name = \sprintf('%s %s %s %s', $template->productType, $brand, $model['name'], $color);
-                        $slug = Slug::slugify($name);
-                        $variantKey = VariantKey::of($slug, VariantValues::fromList([]));
+                    $name = \sprintf('%s %s %s', $template->productType, $brand, $model['name']);
+                    $slug = Slug::slugify($name);
+                    if (isset($slugs[$slug])) {
+                        throw new \InvalidArgumentException(\sprintf('The product slug "%s" is produced more than once.', $slug));
+                    }
+                    $slugs[$slug] = true;
+
+                    $variants = [];
+                    foreach ($this->combinations($template->axisValues) as $values) {
+                        $variantKey = $this->variantKey($slug, $values);
                         if (isset($variantKeys[$variantKey])) {
                             throw new \InvalidArgumentException(\sprintf('The variant key "%s" is produced more than once.', $variantKey));
                         }
                         $variantKeys[$variantKey] = true;
-                        if (isset($slugs[$slug])) {
-                            throw new \InvalidArgumentException(\sprintf('The product slug "%s" is produced more than once.', $slug));
-                        }
-                        $slugs[$slug] = true;
-
-                        $products[] = new DemoProduct(
-                            Uuid::v5($namespace, 'product:'.$slug)->toRfc4122(),
-                            $name,
-                            $slug,
-                            $model['description'],
-                            $main,
-                            $additional,
-                            $template->taxClass,
-                            $this->images($template, $index, $definition->imagelessEvery),
-                            [],
-                            [['id' => Uuid::v5($namespace, 'variant:'.$variantKey)->toRfc4122(), 'values' => []]],
-                        );
-                        ++$index;
+                        $variants[] = ['id' => Uuid::v5($namespace, 'variant:'.$variantKey)->toRfc4122(), 'values' => $values];
                     }
+
+                    $products[] = new DemoProduct(
+                        Uuid::v5($namespace, 'product:'.$slug)->toRfc4122(),
+                        $name,
+                        $slug,
+                        $model['description'],
+                        $main,
+                        $additional,
+                        $template->taxClass,
+                        $this->images($template, $index, $definition->imagelessEvery),
+                        $template->variantAxes,
+                        $variants,
+                    );
+                    ++$index;
                 }
             }
         }
@@ -104,6 +109,41 @@ final readonly class DemoCatalogExpander
         $categories[] = new DemoCategory($id, $node->name, $parentId, $path);
         foreach ($node->children as $child) {
             $this->addCategory($namespace, $child, $id, $path, $categories, $idsByPath);
+        }
+    }
+
+    /**
+     * The product of the value lists, the last list varying fastest; a single empty combination without lists.
+     *
+     * @param list<non-empty-list<string>> $axisValues
+     *
+     * @return list<list<string>>
+     */
+    private function combinations(array $axisValues): array
+    {
+        $combinations = [[]];
+        foreach ($axisValues as $values) {
+            $next = [];
+            foreach ($combinations as $combination) {
+                foreach ($values as $value) {
+                    $next[] = [...$combination, $value];
+                }
+            }
+            $combinations = $next;
+        }
+
+        return $combinations;
+    }
+
+    /**
+     * @param list<string> $values
+     */
+    private function variantKey(string $slug, array $values): string
+    {
+        try {
+            return VariantKey::of($slug, VariantValues::fromList($values));
+        } catch (\DomainException $e) {
+            throw new \InvalidArgumentException(\sprintf('The demo product "%s" has an invalid variant: %s', $slug, $e->getMessage()), 0, $e);
         }
     }
 

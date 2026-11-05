@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Catalog\Demo;
 
 use App\Catalog\Application\Demo\DemoCatalog;
+use App\Catalog\Application\Demo\DemoProduct;
+use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Demo\DemoCatalogDefinition;
 use App\Catalog\Infrastructure\Demo\DemoCatalogExpander;
@@ -26,10 +28,118 @@ final class RealDemoCatalogTest extends TestCase
         self::$catalog = new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromFile(self::FIXTURES.'/catalog.yaml'), self::FIXTURES.'/images');
     }
 
-    public function testExpandsToThreeHundredToFiveHundredProducts(): void
+    public function testProductIsABrandTimesModelWithAboutOneThousandVariants(): void
     {
-        self::assertGreaterThanOrEqual(300, \count(self::$catalog->products));
-        self::assertLessThanOrEqual(500, \count(self::$catalog->products));
+        self::assertCount(191, self::$catalog->products);
+
+        $variants = array_sum(array_map(static fn (DemoProduct $product): int => \count($product->variants), self::$catalog->products));
+        self::assertGreaterThanOrEqual(1000, $variants);
+        self::assertLessThanOrEqual(1200, $variants);
+        foreach (self::$catalog->products as $product) {
+            self::assertLessThanOrEqual(21, \count($product->variants), $product->name);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>, list<list<string>>}> the product type, the axes and the values of each axis
+     */
+    public static function axesOfTypes(): iterable
+    {
+        $shoeSizes = ['40', '41', '42', '43', '44', '45', '46'];
+        $clothesSizes = ['S', 'M', 'L', 'XL'];
+        $helmetSizes = ['S', 'M', 'L'];
+
+        yield 'road shoes' => ['Buty szosowe', ['Kolor', 'Rozmiar'], [['czarne', 'niebieskie'], $shoeSizes]];
+        yield 'trail shoes' => ['Buty trailowe', ['Kolor', 'Rozmiar'], [['czarne', 'zielone', 'pomarańczowe'], $shoeSizes]];
+        yield 'football boots' => ['Buty piłkarskie', ['Kolor', 'Rozmiar'], [['czarne', 'niebieskie'], $shoeSizes]];
+        yield 'running jacket' => ['Kurtka biegowa', ['Kolor', 'Rozmiar'], [['czarna', 'granatowa', 'limonkowa'], $clothesSizes]];
+        yield 'running shirt' => ['Koszulka biegowa', ['Kolor', 'Rozmiar'], [['biała', 'szara', 'turkusowa'], $clothesSizes]];
+        yield 'ski jacket' => ['Kurtka narciarska', ['Kolor', 'Rozmiar'], [['czerwona', 'granatowa', 'czarna'], $clothesSizes]];
+        yield 'wetsuit' => ['Pianka pływacka', ['Kolor', 'Rozmiar'], [['czarna', 'grafitowa'], $clothesSizes]];
+        yield 'mountain bike' => ['Rower górski', ['Kolor', 'Rozmiar ramy'], [['grafitowy', 'zielony', 'pomarańczowy'], $helmetSizes]];
+        yield 'electric bike' => ['Rower elektryczny', ['Kolor', 'Rozmiar ramy'], [['czarny', 'grafitowy', 'niebieski'], $helmetSizes]];
+        yield 'bike helmet' => ['Kask rowerowy', ['Kolor', 'Rozmiar'], [['czarny', 'biały', 'czerwony'], $helmetSizes]];
+        yield 'multisport helmet' => ['Kask wielosportowy', ['Kolor', 'Rozmiar'], [['czarny', 'biały', 'niebieski'], $helmetSizes]];
+        yield 'downhill skis' => ['Narty zjazdowe', ['Kolor', 'Długość'], [['grafitowe', 'czerwone'], ['160 cm', '170 cm', '180 cm']]];
+        yield 'touring skis' => ['Narty skiturowe', ['Kolor', 'Długość'], [['niebieskie', 'pomarańczowe'], ['164 cm', '172 cm', '180 cm']]];
+        yield 'guide' => ['Przewodnik', ['Oprawa'], [['oprawa miękka', 'oprawa twarda']]];
+        yield 'map' => ['Mapa turystyczna', ['Wersja'], [['składana', 'laminowana']]];
+        yield 'freeze-dried meal' => ['Danie liofilizowane', ['Porcja'], [['jednoosobowa', 'dwuosobowa']]];
+        yield 'energy bar' => ['Baton energetyczny', ['Smak'], [['czekoladowy', 'orzechowy', 'owocowy']]];
+        yield 'energy gel' => ['Żel energetyczny', ['Smak'], [['cytrynowy', 'malinowy', 'pomarańczowy']]];
+        yield 'protein powder' => ['Odżywka białkowa', ['Smak'], [['czekoladowa', 'waniliowa', 'truskawkowa']]];
+        yield 'electrolytes' => ['Elektrolity w tabletkach', ['Smak'], [['cytrynowe', 'pomarańczowe']]];
+        yield 'adjustable dumbbells' => ['Hantle regulowane', [], []];
+        yield 'running backpack' => ['Plecak biegowy', ['Kolor'], [['czarny', 'pomarańczowy']]];
+        yield 'kayak' => ['Kajak turystyczny', ['Kolor'], [['pomarańczowy', 'zielony']]];
+        yield 'volleyball' => ['Piłka siatkowa', ['Kolor'], [['biało-niebieska', 'żółto-niebieska']]];
+    }
+
+    /**
+     * @param list<string>       $axes
+     * @param list<list<string>> $axisValues
+     */
+    #[DataProvider('axesOfTypes')]
+    public function testProductTypeHasItsAxesAndTheProductOfTheirValuesInFileOrder(string $type, array $axes, array $axisValues): void
+    {
+        $group = array_values(array_filter(self::$catalog->products, static fn (DemoProduct $product): bool => str_starts_with($product->name, $type.' ')));
+        self::assertNotSame([], $group, $type);
+
+        $expected = [[]];
+        foreach ($axisValues as $values) {
+            $expected = array_merge(...array_map(static fn (array $combination): array => array_map(static fn (string $value): array => [...$combination, $value], $values), $expected));
+        }
+        foreach ($group as $product) {
+            self::assertSame($axes, $product->variantAxes, $product->name);
+            self::assertSame($expected, array_column($product->variants, 'values'), $product->name);
+        }
+    }
+
+    public function testEveryOtherProductTypeVariesByColourOnly(): void
+    {
+        $typed = [];
+        foreach (self::axesOfTypes() as [$type]) {
+            $typed[] = $type.' ';
+        }
+
+        $others = array_filter(
+            self::$catalog->products,
+            static fn (DemoProduct $product): bool => [] === array_filter($typed, static fn (string $prefix): bool => str_starts_with($product->name, $prefix)),
+        );
+        self::assertNotSame([], $others);
+        foreach ($others as $product) {
+            self::assertSame(['Kolor'], $product->variantAxes, $product->name);
+            self::assertGreaterThanOrEqual(2, \count($product->variants), $product->name);
+            self::assertLessThanOrEqual(3, \count($product->variants), $product->name);
+        }
+    }
+
+    public function testNeitherNameNorSlugHoldsAVariantValue(): void
+    {
+        foreach (self::$catalog->products as $product) {
+            foreach ($product->variants as $variant) {
+                foreach ($variant['values'] as $value) {
+                    // Sizes such as "S" or "40" are too short and too common to look for in a text.
+                    if (mb_strlen($value) < 4) {
+                        continue;
+                    }
+                    self::assertStringNotContainsString(mb_strtolower($value), mb_strtolower($product->name), $product->name);
+                    self::assertStringNotContainsString(Slug::slugify($value), $product->slug, $product->name);
+                }
+            }
+        }
+    }
+
+    public function testSomeProductsHaveTheDefaultVariantOnly(): void
+    {
+        $dumbbells = array_filter(self::$catalog->products, static fn (DemoProduct $product): bool => str_starts_with($product->name, 'Hantle regulowane '));
+
+        self::assertCount(4, $dumbbells);
+        foreach ($dumbbells as $product) {
+            self::assertSame([], $product->variantAxes);
+            self::assertCount(1, $product->variants);
+            self::assertSame([], $product->variants[0]['values']);
+        }
     }
 
     public function testEveryTopLevelBranchIsThreeToFourLevelsDeep(): void
