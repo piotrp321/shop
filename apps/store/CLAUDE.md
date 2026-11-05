@@ -123,6 +123,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Błędy: 404, 409 i 422 API z `{ detail, violations }`; 404 gościa (koszyk zniknął) usuwa `store_cart`; 401 sesji
   kończy sesję jak w koszyku; 400, 415, 401 gościa, 5xx i niedostępne API dają 503. Wszystkie odpowiedzi
   z `private, no-store`.
+- `/checkout/confirmation` (`noindex, nofollow`, Server Component) czyta `store_order_confirmation` (`cookies()`
+  i `readOrderConfirmation`, sekret z `readAuthConfig`) i pokazuje „Dziękujemy za zamówienie”, numer, adres e-mail
+  i kwotę brutto (`formatPrice`). Bez ciasteczka, z niepoprawnym podpisem albo treścią: „Nie znaleźliśmy informacji
+  o zamówieniu.”. Oba warianty mają link „Wróć do sklepu”.
 
 ## Logowanie
 
