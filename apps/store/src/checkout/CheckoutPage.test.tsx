@@ -299,6 +299,37 @@ describe("CheckoutPage placing the order", () => {
     expect(field("Telefon").value).toBe("600 100 200");
   });
 
+  it("moves the focus to the first wrong field, in the order of the form, after a 422 of fields", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({
+      status: "invalid",
+      violations: [
+        { propertyPath: "postalCode", title: "Podaj kod pocztowy w formacie 00-000." },
+        { propertyPath: "phone", title: "Podaj 9-cyfrowy numer telefonu." },
+      ],
+    });
+
+    expect(document.activeElement).toBe(field("Telefon"));
+  });
+
+  it.each<[string, PlaceOrderResult]>([
+    ["a 422 that names no field", { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] }],
+    ["a 409", { status: "conflict", detail: "Koszyk jest pusty." }],
+    ["a 404", { status: "not_found" }],
+    ["a 401", { status: "unauthorized" }],
+    ["a failure", { status: "failed" }],
+  ])("moves the focus to the message after %s, because the button was locked", async (_name, result) => {
+    await renderCheckout();
+    fillGuestForm();
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart() });
+    await submit(result);
+
+    const alert = screen.getByRole("alert");
+    expect(alert.getAttribute("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(alert);
+  });
+
   it("shows a 422 that names no field of the form in the message", async () => {
     await renderCheckout();
     fillGuestForm();
