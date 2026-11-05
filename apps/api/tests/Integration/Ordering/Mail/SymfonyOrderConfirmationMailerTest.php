@@ -44,7 +44,7 @@ final class SymfonyOrderConfirmationMailerTest extends KernelTestCase
 
         $mailer->send($view);
 
-        $messages = $this->inbox->messages();
+        $messages = $this->inbox->awaitMessages(1);
         self::assertCount(1, $messages, 'delivered synchronously, no worker involved');
         self::assertSame('Potwierdzenie zamówienia R-100001', $messages[0]['subject']);
         self::assertSame(self::FROM, $messages[0]['from']);

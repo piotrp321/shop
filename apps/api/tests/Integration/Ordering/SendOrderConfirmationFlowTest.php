@@ -62,7 +62,7 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
 
         $this->consumeOutboxAndEvents();
 
-        $messages = $this->inbox->messages();
+        $messages = $this->inbox->awaitMessages(1);
         self::assertCount(1, $messages);
         self::assertSame('Potwierdzenie zamówienia '.$order->number, $messages[0]['subject']);
         self::assertStringContainsString($order->number, $messages[0]['text']);
@@ -87,7 +87,7 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
 
         // A failed handler would put the message back through the retry delay (1 s ±10 %), so wait it out.
         usleep(1_500_000);
-        self::assertSame(1, $this->inbox->count());
+        self::assertCount(1, $this->inbox->awaitMessages(1));
         self::assertSame(0, $this->eventsInQueue());
         self::assertSame(0, $this->rows('failed'));
     }
@@ -108,7 +108,7 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
         $this->consume('events', 10);
 
         self::assertSame(1, $mailer->failedAttempts);
-        self::assertSame(1, $this->inbox->count());
+        self::assertCount(1, $this->inbox->awaitMessages(1));
         self::assertNotNull($this->confirmationSentAt($order->orderId));
         self::assertSame(0, $this->rows('failed'));
         self::assertSame(0, $this->eventsInQueue());
@@ -167,14 +167,14 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
         } catch (OrderModifiedConcurrently) {
             $this->addToAssertionCount(1);
         }
-        self::assertSame(2, $this->inbox->count(), 'both handlers sent: the known cost of at-least-once delivery');
+        self::assertCount(2, $this->inbox->awaitMessages(2), 'both handlers sent: the known cost of at-least-once delivery');
         self::assertEquals(new \DateTimeImmutable('2026-11-05 12:00:05+00:00'), $this->confirmationSentAt($order->orderId));
 
         // The retry of the loser reads the order again, finds the marker and sends nothing.
         $entityManager->clear();
         (new SendOrderConfirmation($orders, $real, new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:00:20+00:00'))))($event);
 
-        self::assertSame(2, $this->inbox->count());
+        self::assertCount(2, $this->inbox->awaitMessages(2));
         self::assertEquals(new \DateTimeImmutable('2026-11-05 12:00:05+00:00'), $this->confirmationSentAt($order->orderId));
     }
 

@@ -48,6 +48,27 @@ final readonly class MailpitInbox
         return $messages;
     }
 
+    /**
+     * Messages once at least $expected have been indexed, polling every 100 ms for up to 5 s (Mailpit indexes a
+     * message a moment after SMTP accepted it). Returns what is there when the time runs out, so a test asserting
+     * "exactly N" still sees extra messages and one asserting a lack fails on its own assertion, not on the wait.
+     *
+     * @return list<array{subject: string, from: string, to: list<string>, text: string}>
+     */
+    public function awaitMessages(int $expected): array
+    {
+        $deadline = microtime(true) + 5.0;
+        do {
+            $messages = $this->messages();
+            if (\count($messages) >= $expected) {
+                return $messages;
+            }
+            usleep(100_000);
+        } while (microtime(true) < $deadline);
+
+        return $this->messages();
+    }
+
     public function count(): int
     {
         return \count($this->messages());
