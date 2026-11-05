@@ -22,12 +22,15 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Struktura
 
-- `app/` – trasy App Router, w tym route handlery logowania w `app/auth/` i koszyka w `app/api/cart/`.
-- `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session` i `/api/cart/*`
-  z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
+- `app/` – trasy App Router, w tym route handlery logowania w `app/auth/`, koszyka w `app/api/cart/` i kasy
+  w `app/api/checkout/`.
+- `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session`, `/api/cart/*`
+  i `/api/checkout` z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
 - `src/account/` – komponent konta w nagłówku (Client Component).
 - `src/cart/` – BFF koszyka (wybór koszyka, ciasteczka `store_cart` i `store_cart_notice`, scalanie koszyka gościa
   w `merge.ts`, wywołania API, mapowanie błędów) oraz komponenty koszyka: `AddToCartButton`, `CartBadge` i `CartPage`.
+- `src/checkout/` – BFF kasy (złożenie zamówienia, ciasteczko `store_order_confirmation`) i strona kasy
+  `CheckoutPage`.
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
 - `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`).
 - `src/components/ui/` – komponenty shadcn/ui.
@@ -94,11 +97,54 @@ Klienta API generuje `make api-client` z katalogu głównego.
   listę wariantów (etykieta: nazwy osi) bez wyboru domyślnego, z wariantami `purchasable = false` opisanymi
   „niedostępny” i wyłączonymi; po wyborze kafelek pokazuje cenę i poziom wybranego wariantu, a przycisk (wyłączony do
   wyboru) dodaje 1 sztukę wybranego wariantu. `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
-  (`CartPage`, Client Component ładujący `/api/cart`), linia z nazwą produktu i etykietą wariantu. Po każdej zmianie koszyka komponent ogłasza `itemCount` z
+  (`CartPage`, Client Component ładujący `/api/cart`), linia z nazwą produktu i etykietą wariantu, pod podsumowaniem
+  przycisk „Przejdź do kasy” (link do `/checkout`; przy `hasExcludedLines` nieaktywny z tekstem „Usuń albo popraw
+  oznaczone pozycje, żeby złożyć zamówienie.”). Po każdej zmianie koszyka komponent ogłasza `itemCount` z
   odpowiedzi zdarzeniem (`src/cart/events.ts`), a licznik się aktualizuje. Front niczego nie liczy: kwoty, sumy i stany
   linii pochodzą z ostatniej odpowiedzi API, a odrzucona zmiana zostawia ostatni widok.
 - Odpowiedzi: 200 z danymi API, 404/409/422 z `{ detail }` API, 401 (sesja się skończyła: usunięta z Redisa i
   ciasteczka), 403, 503 (chwilowy błąd API, Redisa lub Keycloaka; sesja zostaje). Wszystkie z `private, no-store`.
+
+## Kasa
+
+- `POST /api/checkout` (`runCheckout` w `src/checkout/bff.ts`, owinięty w `withCartDeps`, testy na dublerze API
+  z `src/cart/test-support.ts`) składa zamówienie całego koszyka. Te same zabezpieczenia co zapisy koszyka (`Origin`
+  równy `STORE_URL` i `Content-Type: application/json`, inaczej 403 bez API). Nagłówek `Idempotency-Key` wybiera
+  przeglądarka; jego brak albo treść, która nie jest obiektem JSON, daje 422 „Nieprawidłowe dane.” bez API. BFF
+  przekazuje klucz do API bez zmian. Przeglądarka woła BFF przez `placeOrder(input, idempotencyKey)`
+  w `src/api/client.ts` (wynik: `ok` z numerem, `invalid` z `violations`, `conflict`, `not_found`, `unauthorized`,
+  `failed`; funkcja nigdy nie odrzuca obietnicy).
+- Koszyk wybiera sesja, jak w BFF koszyka: klient `POST /api/v1/me/orders` z tokenem z `freshAccessToken` po scaleniu
+  `store_cart` (`mergeGuestCart`), gość `POST /api/v1/orders` z `cartId` z `store_cart`. Bez `store_cart` (albo
+  z niepoprawnym podpisem, wtedy ciasteczko jest usuwane) odpowiedź to 409 „Koszyk jest pusty.” bez API.
+- Do API trafiają tylko pola kontraktu (`pickFields` w `src/checkout/api.ts`: gość `email`, `fullName`, `phone`,
+  `street`, `postalCode`, `city`, `expectedTotalGross`, klient bez `email`), z wartościami, jakie przysłała przeglądarka:
+  sprawdza je API. `cartId` pochodzi wyłącznie z ciasteczka; ceny, linie i inne pola przeglądarki są pomijane.
+- Sukces (201 albo 200 przy powtórzeniu z tym samym kluczem): odpowiedź `{ number }` i ciasteczko
+  `store_order_confirmation` z `{ number, email, totalGross, currency }` z `OrderView` (JSON w base64url, podpisany jak
+  `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina). `store_cart` zostaje (koszyk jest pusty).
+- Błędy: 404, 409 i 422 API z `{ detail, violations }`; 404 gościa (koszyk zniknął) usuwa `store_cart`; 401 sesji
+  kończy sesję jak w koszyku; 400, 415, 401 gościa, 5xx i niedostępne API dają 503. Wszystkie odpowiedzi
+  z `private, no-store`.
+- `/checkout` (`noindex, nofollow`, `CheckoutPage` jako Client Component): podsumowanie z `/api/cart` (nazwa, etykieta
+  wariantu, ilość, wartość linii, suma brutto z API), formularz (gość: pole e-mail i link „Zaloguj się” z
+  `returnTo=/checkout`; klient: e-mail z `/auth/session` jako tekst, imię i nazwisko wstępnie z sesji, chyba że konto
+  ma tylko e-mail), przycisk „Zamawiam z obowiązkiem zapłaty” zablokowany na czas żądania. Pusty koszyk albo
+  `hasExcludedLines`: komunikat i link do koszyka zamiast formularza. `expectedTotalGross` to `totals.gross` ostatnio
+  wczytanego podsumowania.
+- `Idempotency-Key` (`crypto.randomUUID`, więc kasa wymaga bezpiecznego kontekstu: HTTPS albo `localhost`) powstaje
+  przy wejściu na stronę i wraca przy ponowieniu po błędzie sieci, 403 i 5xx; nowy klucz po każdej zmianie pola
+  formularza i po każdym 409. Formularz ma `noValidate`: dane sprawdza API, a komunikaty 422 (`violations`) są przy
+  polach.
+- Odpowiedzi kasy w UI: sukces ogłasza licznik 0 (`src/cart/events.ts`) i przechodzi na `/checkout/confirmation`;
+  każdy 409 pokazuje `detail` z linkiem „Wróć do koszyka”, daje nowy klucz i wczytuje podsumowanie ponownie (nowa
+  kwota zostaje w formularzu, pusty koszyk albo `hasExcludedLines` zastępuje formularz). Strona nie rozróżnia 409 po
+  tekście `detail`. 404: „Koszyk nie jest już dostępny.” z linkiem do sklepu; 401: „Twoja sesja wygasła. Zaloguj się
+  ponownie.” z `returnTo=/checkout`; 403, 503, 5xx i błąd sieci: „Nie udało się złożyć zamówienia. Spróbuj ponownie.”.
+- `/checkout/confirmation` (`noindex, nofollow`, Server Component) czyta `store_order_confirmation` (`cookies()`
+  i `readOrderConfirmation`, sekret z `readAuthConfig`) i pokazuje „Dziękujemy za zamówienie”, numer, adres e-mail
+  i kwotę brutto (`formatPrice`). Bez ciasteczka, z niepoprawnym podpisem albo treścią: „Nie znaleźliśmy informacji
+  o zamówieniu.”. Oba warianty mają link „Wróć do sklepu”.
 
 ## Logowanie
 
@@ -109,6 +155,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `getCartDeps()` bierze z nich sesje, `freshAccessToken`, klienta API i konfigurację. Testy podmieniają zależności
   dublerami z `src/auth/test-support.ts` (domyślny klient API odrzuca każde wywołanie).
 - Nie loguj obiektów błędów openid-client (ich `cause` zawiera odpowiedzi z tokenami). Użyj `logFailure`.
+- `GET /auth/session` zwraca `{ name, email }` zalogowanego klienta (z `GET /api/v1/me`; `name` to e-mail, gdy konto
+  nie ma imienia) albo `null`. Korzystają z niego konto w nagłówku i kasa (e-mail klienta, imię i nazwisko).
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.
 - Odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`.
 
@@ -141,5 +189,5 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - Vitest i Testing Library. `*.test.ts(x)` to testy jednostkowe bez usług, `*.integration.test.ts` działają
   na usługach stosu (Redis).
-- Logika w komponentach (np. budowa `srcset`, aktywna kategoria), cały `src/auth/` i cały `src/cart/` (BFF, przyciski,
-  strona koszyka) mają testy.
+- Logika w komponentach (np. budowa `srcset`, aktywna kategoria), cały `src/auth/`, cały `src/cart/` (BFF, przyciski,
+  strona koszyka) i cały `src/checkout/` (BFF, strona kasy) oraz strona potwierdzenia mają testy.

@@ -15,8 +15,11 @@ export function createApiClient(options: { baseUrl: string; accessToken?: string
   });
 }
 
-/** Body of the store's own `GET /auth/session` (route handler in app/auth/session): never tokens. */
-export type AccountSession = { name: string } | null;
+/**
+ * Body of the store's own `GET /auth/session` (route handler in app/auth/session): never tokens. `name` falls back to
+ * the e-mail when the account has no name; `email` is the address of the account (the checkout confirms orders to it).
+ */
+export type AccountSession = { name: string; email: string } | null;
 
 export type AccountSessionResult = { status: "ok"; session: AccountSession } | { status: "unavailable" };
 
@@ -122,3 +125,60 @@ export const changeCartItemQuantity = (variantId: string, quantity: number) =>
 
 export const removeCartItem = (variantId: string) =>
   queueWrite(() => callCart<CartView>(`/api/cart/items/${encodeURIComponent(variantId)}`, { method: "DELETE" }));
+
+/** The checkout form as the browser sends it to `/api/checkout`; a signed-in customer has no `email` (the account's). */
+export type PlaceOrderInput = {
+  email?: string;
+  fullName: string;
+  phone: string;
+  street: string;
+  postalCode: string;
+  city: string;
+  /** `totals.gross` of the cart the customer saw; the API only compares it with the total it computes. */
+  expectedTotalGross: number;
+};
+
+export type OrderViolation = NonNullable<components["schemas"]["Problem"]["violations"]>[number];
+
+/** How a call to the store's `/api/checkout` ended. `detail` and `violations` are the Polish texts of the API. */
+export type PlaceOrderResult =
+  | { status: "ok"; number: string }
+  | { status: "invalid"; detail?: string; violations: OrderViolation[] }
+  | { status: "conflict" | "not_found"; detail?: string }
+  | { status: "unauthorized" }
+  | { status: "failed" };
+
+/**
+ * For the browser: places the order of the cart through the store's `/api/checkout`. `idempotencyKey` is chosen by
+ * the checkout page and sent again on a retry, so a repeated request never places a second order. Never rejects.
+ */
+export async function placeOrder(input: PlaceOrderInput, idempotencyKey: string): Promise<PlaceOrderResult> {
+  try {
+    const response = await fetch("/api/checkout", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(input),
+    });
+    const body = (await response.json().catch(() => null)) as { number?: unknown; detail?: unknown; violations?: unknown } | null;
+    const detail = typeof body?.detail === "string" ? body.detail : undefined;
+    if (response.ok) {
+      return typeof body?.number === "string" ? { status: "ok", number: body.number } : { status: "failed" };
+    }
+    switch (response.status) {
+      case 401:
+        return { status: "unauthorized" };
+      case 404:
+        return { status: "not_found", detail };
+      case 409:
+        return { status: "conflict", detail };
+      case 422:
+        return { status: "invalid", detail, violations: Array.isArray(body?.violations) ? (body.violations as OrderViolation[]) : [] };
+      default:
+        return { status: "failed" };
+    }
+  } catch {
+    return { status: "failed" };
+  }
+}

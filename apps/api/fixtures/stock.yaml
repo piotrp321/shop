@@ -14,6 +14,10 @@
 #   changes the price of one of them);
 # - buty-szosowe-tarvik-asfalt-200 (Buty szosowe Tarvik Asfalt 200): the sizes 41 and 42 in "czarne" are in stock (the
 #   test of two sizes in the cart).
+# - buty-trailowe-*-hala-500 (50 units, the most of the demo) and buty-szosowe-*-tempo-600 (45): the checkout tests
+#   order Buty trailowe Norvane Hala 500 (guest, 2 units, checkout-guest.spec.ts) and Buty szosowe Norvane Tempo 600
+#   (Jan, 1 unit, checkout-customer.spec.ts). Their reservations stay until PAYMENT, so every run takes units for good
+#   until `make seed`; the tests choose the first variant that can still be bought.
 # Products with variants both in and out of stock: kajak-turystyczny-dravik-rzeka-2, narty-skiturowe-stavro-gran-95.
 
 # Out of stock

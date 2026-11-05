@@ -27,7 +27,7 @@ describe("AccountMenu", () => {
   });
 
   it("shows the name and a logout form that POSTs to /auth/logout", async () => {
-    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan" } });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com" } });
     render(<AccountMenu />);
 
     expect(await screen.findByText("Zalogowany jako Jan")).toBeTruthy();
