@@ -20,8 +20,9 @@ Skill odmawia startu i mówi dlaczego, gdy:
 - nie ma binarki Claude Code w wersji przypiętej przez AO (`claude_pin.py` kończy się kodem różnym od 0); odmowa
   podaje wersję i komendę instalacji (`claude install <wersja> --force`) i zapada przed założeniem `AO_HOME`
   i przed `ao epic start`;
-- `ao epic start --dry-run` kończy się odmową (np. epik już zarejestrowany z innego commita planu);
-- sesja nie ma Remote Control albo komputer pracuje na baterii (ostrzeżenie, start dopiero po potwierdzeniu).
+- `ao epic start --dry-run` kończy się odmową (np. epik już zarejestrowany z innego commita planu).
+
+Skill nie sprawdza zasilania ani Remote Control i nie pyta o nie.
 
 ## Pliki
 
@@ -130,12 +131,12 @@ Z `measurements.jsonl`: czas epiku = liczba zadań × najwyższy zmierzony czas 
 
 ### Lista na noc
 
-`/ao-run --noc [HH:MM]`. Sesja pyta o Remote Control (raz na całą noc), sprawdza checkout AO
-i binarkę przypiętej wersji (`claude_pin.py`; przy błędzie nie proponuje listy, tylko podaje powód, żeby użytkownik
-naprawił to przed snem) i uruchamia `night_queue.py propose --until HH:MM`. `night_queue.py` nie uruchamia `ao run`:
-każdy epik nocy przechodzi warunki startu z punktu 1, więc binarkę sprawdza się też przed każdym z nich. Wynik
-(JSON): `epics` (lista w kolejności startu: `dir`, `id`, `issue`, `title`, `tasks`, `minutes` albo `null`, `scope`),
-`skipped` (`issue`, `id`, `reason`), `in_progress`, `until` (czas ISO), `measured` (czy jest pomiar czasu). Reguły:
+`/ao-run --noc [HH:MM]`. Sesja sprawdza checkout AO i binarkę przypiętej wersji (`claude_pin.py`; przy błędzie
+nie proponuje listy, tylko podaje powód, żeby użytkownik naprawił to przed snem) i uruchamia
+`night_queue.py propose --until HH:MM`. `night_queue.py` nie uruchamia `ao run`: każdy epik nocy przechodzi warunki
+startu z punktu 1, więc binarkę sprawdza się też przed każdym z nich. Wynik (JSON): `epics` (lista w kolejności
+startu: `dir`, `id`, `issue`, `title`, `tasks`, `minutes` albo `null`, `scope`), `skipped` (`issue`, `id`, `reason`),
+`in_progress`, `until` (czas ISO), `measured` (czy jest pomiar czasu). Reguły:
 
 - gdy jakiś epik jest w toku (jak w `next_epic.py`: gałąź `origin/epic/<katalog>` i otwarte issue), lista jest pusta:
   noc zaczyna się, gdy poprzednie epiki są zmergowane;
@@ -169,8 +170,7 @@ listy bez pomiaru od zatwierdzenia i zwraca go, gdy wszystkie warunki są spełn
   na ich cooldown AO czeka samo (`--max-cooldown-wait`).
 
 Pierwszy epik nocy rusza po „tak” bez tych warunków, jak dziś. Gdy `epic` jest, sesja wykonuje dla niego przebieg
-od punktu 1 bez pytania „Zacząć epik?”. W punkcie 1 nocą zasilanie z baterii to odmowa (nikt nie potwierdzi),
-a Remote Control jest potwierdzone przy liście. Gdy `epic` jest `null` albo punkt 1 odmawia, noc się kończy: push
+od punktu 1 bez pytania „Zacząć epik?”. Gdy `epic` jest `null` albo punkt 1 odmawia, noc się kończy: push
 „Noc: gotowe A, B; C nie ruszył: <powód>” (do 200 znaków), pozostałe epiki listy nie ruszają, a `night.json`
 przestaje obowiązywać (następna noc to nowa lista). Epik nocy, który kończy się bez `DONE` (`BLOCKED`, `FAILED`),
 też kończy noc: następny nie rusza. Sesja zapisuje koniec nocy przez `night_queue.py close`, a `next` zapisuje go sam,
