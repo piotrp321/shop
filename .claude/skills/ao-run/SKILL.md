@@ -24,6 +24,10 @@ w repo i bez uruchamiania AO):
 - Checkout AO (`AO_DIR="$HOME/Development/claude/agentic-orchestrator"`) jest czysty i na `origin/main`:
   `git -C "$AO_DIR" fetch origin main`, `git -C "$AO_DIR" status --porcelain` jest puste,
   `git -C "$AO_DIR" rev-parse HEAD` równa się `git -C "$AO_DIR" rev-parse origin/main`.
+- Binarka Claude Code w wersji przypiętej przez AO (`--claude-bin` w kroku 4), po sprawdzeniu checkoutu AO:
+  `python3 "$(git rev-parse --show-toplevel)/.claude/skills/ao-run/claude_pin.py" --ao-dir "$HOME/Development/claude/agentic-orchestrator"`
+  kończy się kodem 0 i wypisuje ścieżkę binarki. Kod różny od 0: odmowa z komunikatem ze stderr dosłownie (zawiera
+  wersję i komendę instalacji). Sam niczego nie instalujesz.
 - `ao epic start --dry-run` (krok 2) kończy się odmową, np. epik już zarejestrowany z innego commita planu.
 
 Odmowa dla epiku z listy nocy to koniec nocy: zapisz go przez `night_queue.py close --reason "<powód>"` przed pushem
@@ -94,17 +98,20 @@ skończone), sprawdź `ao status --epic <epik>` i powiadom push o stanie: koniec
 ## 4. Start
 
 Uruchom Bash z `run_in_background` (po bloku startowym), z wyjściem do `$AO_HOME/run.log`. Wrapper `ao` jest
-funkcją, więc w tle użyj tego samego `env ... python3 -m orchestrator`:
+funkcją, więc w tle użyj tego samego `env ... python3 -m orchestrator`. `--claude-bin` to binarka wersji przypiętej
+przez AO (`claude_pin.py`, jak w sekcji 1), nie `claude` z PATH, który aktualizuje się sam:
 
 ```bash
+CLAUDE_BIN="$(python3 "$SKILL_ROOT/.claude/skills/ao-run/claude_pin.py" --ao-dir "$AO_DIR" 2>>"$AO_HOME/run.log")" &&
 caffeinate -dims env $(env | sed -n 's/^\(CLAUDE[A-Za-z0-9_]*\)=.*/-u \1/p') PYTHONPATH="$AO_DIR" \
-  python3 -m orchestrator --home "$AO_HOME" run --until-idle \
+  python3 -m orchestrator --home "$AO_HOME" run --until-idle --claude-bin "$CLAUDE_BIN" \
   --max-budget-usd 30 --timeout 14400 --epic-max-attempts 24 --epic-timeout 57600 --max-qa-rounds 3 \
   --notify-cmd "python3 $SKILL_ROOT/.claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl" \
   >> "$AO_HOME/run.log" 2>&1
 ```
 
-Zapamiętaj identyfikator zadania tła: jego zakończenie budzi sesję.
+Zapamiętaj identyfikator zadania tła: jego zakończenie budzi sesję. Gdy zadanie kończy się od razu, a ostatnia linia
+`run.log` zaczyna się od `claude_pin:`, binarka zniknęła po sekcji 1: AO nie ruszył, przekaż ten komunikat w pushu.
 
 ## 5. Blokery i zatrzymania
 
@@ -214,7 +221,10 @@ Opcję `--until HH:MM` podaj tylko wtedy, gdy użytkownik podał godzinę, i tak
 
 **Lista.**
 
-1. Propozycja:
+1. Przed propozycją sprawdź checkout AO i binarkę przypiętej wersji (warunki z sekcji 1). Przy niespełnionym nie
+   proponuj listy, tylko pokaż powód (np. komendę instalacji z `claude_pin.py`), żeby użytkownik naprawił to przed
+   snem. Sekcja 1 sprawdza binarkę ponownie przed każdym epikiem nocy (aktualizacja w nocy może ją usunąć); odmowa
+   kończy noc. Propozycja:
 
    ```bash
    python3 "$SKILL_ROOT/.claude/skills/ao-run/night_queue.py" --repo "$SHOP" propose --until HH:MM
