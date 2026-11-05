@@ -24,8 +24,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - `app/` – trasy App Router, w tym route handlery logowania w `app/auth/`, koszyka w `app/api/cart/` i kasy
   w `app/api/checkout/`.
-- `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session` i `/api/cart/*`
-  z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
+- `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session`, `/api/cart/*`
+  i `/api/checkout` z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
 - `src/account/` – komponent konta w nagłówku (Client Component).
 - `src/cart/` – BFF koszyka (wybór koszyka, ciasteczka `store_cart` i `store_cart_notice`, scalanie koszyka gościa
   w `merge.ts`, wywołania API, mapowanie błędów) oraz komponenty koszyka: `AddToCartButton`, `CartBadge` i `CartPage`.
@@ -108,7 +108,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   z `src/cart/test-support.ts`) składa zamówienie całego koszyka. Te same zabezpieczenia co zapisy koszyka (`Origin`
   równy `STORE_URL` i `Content-Type: application/json`, inaczej 403 bez API). Nagłówek `Idempotency-Key` wybiera
   przeglądarka; jego brak albo treść, która nie jest obiektem JSON, daje 422 „Nieprawidłowe dane.” bez API. BFF
-  przekazuje klucz do API bez zmian.
+  przekazuje klucz do API bez zmian. Przeglądarka woła BFF przez `placeOrder(input, idempotencyKey)`
+  w `src/api/client.ts` (wynik: `ok` z numerem, `invalid` z `violations`, `conflict`, `not_found`, `unauthorized`,
+  `failed`; funkcja nigdy nie odrzuca obietnicy).
 - Koszyk wybiera sesja, jak w BFF koszyka: klient `POST /api/v1/me/orders` z tokenem z `freshAccessToken` po scaleniu
   `store_cart` (`mergeGuestCart`), gość `POST /api/v1/orders` z `cartId` z `store_cart`. Bez `store_cart` (albo
   z niepoprawnym podpisem, wtedy ciasteczko jest usuwane) odpowiedź to 409 „Koszyk jest pusty.” bez API.

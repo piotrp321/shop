@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addCartItem, changeCartItemQuantity, loadAccountSession, loadCart, loadCartSummary, removeCartItem } from "./client";
+import { addCartItem, changeCartItemQuantity, loadAccountSession, loadCart, loadCartSummary, placeOrder, removeCartItem } from "./client";
 
 // Node has its own navigator.locks; every test decides whether the browser has Web Locks API. By default it has not.
 beforeEach(() => {
@@ -314,5 +314,67 @@ describe("the lock across the tabs of the browser", () => {
 
     expect(await addCartItem(PRODUCT, 1)).toEqual({ status: "failed" });
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("placeOrder", () => {
+  const KEY = "5f0c3c1e-8d7a-4b55-9b0a-0e8e3c1d2a11";
+  const input = {
+    email: "anna.nowak@example.com",
+    fullName: "Anna Nowak",
+    phone: "600 100 200",
+    street: "ul. Długa 5/3",
+    postalCode: "00-950",
+    city: "Warszawa",
+    expectedTotalGross: 39998,
+  };
+
+  it("posts the form as JSON to the store's own /api/checkout with the Idempotency-Key, same origin and uncached", async () => {
+    const fetch = stubFetch(async () => Response.json({ number: "R-100001" }, { status: 201 }));
+
+    expect(await placeOrder(input, KEY)).toEqual({ status: "ok", number: "R-100001" });
+    expect(fetch).toHaveBeenCalledWith("/api/checkout", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": KEY },
+      body: JSON.stringify(input),
+    });
+  });
+
+  it("takes a repeated request (200) as placed", async () => {
+    stubFetch(async () => Response.json({ number: "R-100001" }));
+    expect(await placeOrder(input, KEY)).toEqual({ status: "ok", number: "R-100001" });
+  });
+
+  const violations = [{ propertyPath: "phone", title: "Podaj 9-cyfrowy numer telefonu." }];
+
+  it.each([
+    [422, { violations }, { status: "invalid", detail: undefined, violations }],
+    [422, { detail: "Nieprawidłowe dane." }, { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] }],
+    [409, { detail: "Koszyk jest pusty." }, { status: "conflict", detail: "Koszyk jest pusty." }],
+    [404, { detail: "Koszyk nie jest już dostępny." }, { status: "not_found", detail: "Koszyk nie jest już dostępny." }],
+    [401, {}, { status: "unauthorized" }],
+    [403, {}, { status: "failed" }],
+    [500, {}, { status: "failed" }],
+    [503, {}, { status: "failed" }],
+  ])("maps a %s with %j to %j", async (status, body, expected) => {
+    stubFetch(async () => Response.json(body, { status }));
+
+    expect(await placeOrder(input, KEY)).toEqual(expected);
+  });
+
+  it("reports a network error as failed", async () => {
+    stubFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+
+    expect(await placeOrder(input, KEY)).toEqual({ status: "failed" });
+  });
+
+  it("reports a success without a number as failed", async () => {
+    stubFetch(async () => Response.json({}, { status: 201 }));
+
+    expect(await placeOrder(input, KEY)).toEqual({ status: "failed" });
   });
 });
