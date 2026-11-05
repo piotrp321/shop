@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { customers } from "../support/accounts";
+import { emptyCart, logInAsJan } from "../support/shop";
 import { urls } from "../support/urls";
 import { cartLineOf, chooseFirstVariant } from "../support/variants";
 
@@ -16,18 +16,6 @@ const tileNamed = (page: Page, name: string) =>
 
 const cartLines = (page: Page) => page.getByRole("main").getByRole("listitem");
 
-
-/** Logs in as Jan from the current page; Keycloak sends the browser back to it. */
-async function logInAsJan(page: Page): Promise<void> {
-  const loginLink = page.getByRole("link", { name: "Zaloguj się" });
-  await expect(loginLink).toBeVisible();
-  await loginLink.click();
-  await page.locator("#username").fill(customers.jan.email);
-  await page.locator("#password").fill(customers.jan.password);
-  await page.locator("#kc-login").click();
-  await expect(page.getByText(/^Zalogowany jako .+/)).toBeVisible();
-}
-
 /** Adds the first purchasable variant of the tile (its only variant without a choice) and returns its label. */
 async function addToCart(tile: Locator, page: Page, expectedCount: string): Promise<string> {
   const label = await chooseFirstVariant(tile);
@@ -35,18 +23,6 @@ async function addToCart(tile: Locator, page: Page, expectedCount: string): Prom
   await expect(tile.getByText("Dodano do koszyka")).toBeVisible();
   await expect(page.getByTestId("cart-count")).toHaveText(expectedCount);
   return label;
-}
-
-/** Removes every line on the cart page: whatever earlier runs left in the customer's cart. */
-async function emptyCart(page: Page): Promise<void> {
-  await page.goto("/cart");
-  const empty = page.getByText("Twój koszyk jest pusty");
-  await expect(empty.or(cartLines(page).first())).toBeVisible();
-  for (let count = await cartLines(page).count(); count > 0; count--) {
-    await cartLines(page).first().getByRole("button", { name: /^Usuń/ }).click();
-    await expect(cartLines(page)).toHaveCount(count - 1);
-  }
-  await expect(empty).toBeVisible();
 }
 
 type Item = { name: string; label: string };
