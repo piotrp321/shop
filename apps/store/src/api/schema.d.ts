@@ -292,6 +292,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Place an order of the cart of the customer
+         * @description Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the body carries no lines, quantities or prices, unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.
+         */
+        post: operations["placeCustomerOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Place an order of a guest cart
+         * @description Orders every line of the guest cart in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied (it stays open). The body carries no lines, quantities or prices; unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The `Idempotency-Key` identifies the request: sending it again with the same cart and content answers 200 with the same order and changes nothing, also once the cart expired or was merged; the same key with another cart or other content is a 409 that tells nothing about the order. The order cannot be read later, so there is no `Location`.
+         */
+        post: operations["placeGuestOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -442,6 +482,83 @@ export interface components {
              */
             itemCount: number;
         };
+        /** @description An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze. */
+        OrderView: {
+            /** Format: uuid */
+            orderId: string;
+            /**
+             * @description The number the customer is told, `R-` and a number from 100001.
+             * @example R-100001
+             */
+            number: string;
+            /** @enum {string} */
+            status: "new";
+            /**
+             * @description The address the order is confirmed to.
+             * @example anna.nowak@example.com
+             */
+            email: string;
+            /** @example Anna Nowak */
+            fullName: string;
+            /**
+             * @description +48 and 9 digits.
+             * @example +48600100200
+             */
+            phone: string;
+            shippingAddress: components["schemas"]["OrderShippingAddress"];
+            /** @description The lines of the cart, in its order. */
+            lines: components["schemas"]["OrderLine"][];
+            totals: components["schemas"]["OrderTotals"];
+            /**
+             * Format: date-time
+             * @description When the order was placed (RFC 3339, UTC).
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            placedAt: string;
+        };
+        OrderShippingAddress: {
+            /** @example ul. Długa 5/3 */
+            street: string;
+            /** @example 00-950 */
+            postalCode: string;
+            /** @example Warszawa */
+            city: string;
+            /** @enum {string} */
+            country: "PL";
+        };
+        OrderLine: {
+            /** Format: uuid */
+            variantId: string;
+            /** @example Buty szosowe Tarvik Asfalt 200 */
+            productName: string;
+            /**
+             * @description The values of the variant joined with ", "; empty for the default variant of a product without variant axes.
+             * @example czarne, 42
+             */
+            variantLabel: string;
+            quantity: number;
+            /**
+             * @description Gross price of one unit in grosze.
+             * @example 19999
+             */
+            unitGross: number;
+            /**
+             * @description Unit gross price × quantity, in grosze.
+             * @example 39998
+             */
+            lineGross: number;
+        };
+        /** @description Sums of the lines; net + vat = gross. */
+        OrderTotals: {
+            /** @example 32519 */
+            net: number;
+            /** @example 7479 */
+            vat: number;
+            /** @example 39998 */
+            gross: number;
+            /** @enum {string} */
+            currency: "PLN";
+        };
         /** @description Problem details (RFC 9457), `application/problem+json`. */
         Problem: {
             /** @example about:blank */
@@ -496,6 +613,83 @@ export interface components {
             page: number;
             /** @default 24 */
             perPage: number;
+        };
+        /** @description The contact and the address of an order of the cart of the customer, and the total the customer saw. */
+        PlaceCustomerOrderRequest: {
+            /**
+             * @description Full name, 1 to 100 characters once trimmed.
+             * @example Jan Kowalski
+             */
+            fullName: string;
+            /**
+             * @description A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped. The order keeps +48 and the 9 digits.
+             * @example 600 100 200
+             */
+            phone: string;
+            /**
+             * @description Street and number, 1 to 100 characters once trimmed.
+             * @example ul. Długa 5/3
+             */
+            street: string;
+            /**
+             * @description Polish postal code NN-NNN.
+             * @example 00-950
+             */
+            postalCode: string;
+            /**
+             * @description City, 1 to 60 characters once trimmed. The country is always Poland.
+             * @example Warszawa
+             */
+            city: string;
+            /**
+             * @description The gross total of the cart the customer saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.
+             * @example 39998
+             */
+            expectedTotalGross: number;
+        };
+        /** @description The guest cart, the contact and the address of an order, and the total the guest saw. */
+        PlaceGuestOrderRequest: {
+            /**
+             * Format: uuid
+             * @description Id of the guest cart: a UUID, 8-4-4-4-12 hex digits in any letter case. An unknown, expired or merged cart, or the id of a customer cart, is a 404.
+             */
+            cartId: string;
+            /**
+             * Format: email
+             * @description Email address the order is confirmed to, at most 254 characters once trimmed.
+             * @example anna.nowak@example.com
+             */
+            email: string;
+            /**
+             * @description Full name, 1 to 100 characters once trimmed.
+             * @example Anna Nowak
+             */
+            fullName: string;
+            /**
+             * @description A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped. The order keeps +48 and the 9 digits.
+             * @example 600 100 200
+             */
+            phone: string;
+            /**
+             * @description Street and number, 1 to 100 characters once trimmed.
+             * @example ul. Długa 5/3
+             */
+            street: string;
+            /**
+             * @description Polish postal code NN-NNN.
+             * @example 00-950
+             */
+            postalCode: string;
+            /**
+             * @description City, 1 to 60 characters once trimmed. The country is always Poland.
+             * @example Warszawa
+             */
+            city: string;
+            /**
+             * @description The gross total of the cart the guest saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.
+             * @example 39998
+             */
+            expectedTotalGross: number;
         };
         /** @description The offer of one variant of a product. Never the number of units. */
         VariantOfferResponse: {
@@ -1517,6 +1711,195 @@ export interface operations {
                 };
             };
             /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    placeCustomerOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Key of the request, chosen by the client (e.g. a UUID made when the checkout opens) and sent again on a retry: 1 to 100 characters, letters, digits, ".", "_", ":" or "-". */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceCustomerOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description The order of an earlier request of the customer with this key and the same content: nothing changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
+            };
+            /** @description The order placed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
+            };
+            /** @description The `Idempotency-Key` header is missing or malformed (problem details with `violations`), or the body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request (problem details with a Polish `detail`). Nothing is ordered or reserved. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    placeGuestOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Key of the request, chosen by the client (e.g. a UUID made when the checkout opens) and sent again on a retry: 1 to 100 characters, letters, digits, ".", "_", ":" or "-". */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceGuestOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description The order of an earlier request with this key, the same cart and the same content: nothing changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
+            };
+            /** @description The order placed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
+            };
+            /** @description The `Idempotency-Key` header is missing or malformed (problem details with `violations`), or the body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such guest cart: unknown, expired or merged, or the id of a customer cart (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request (problem details with a Polish `detail`). Nothing is ordered or reserved. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
                     [name: string]: unknown;
