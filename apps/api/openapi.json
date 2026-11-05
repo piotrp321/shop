@@ -1236,6 +1236,253 @@
                     }
                 ]
             }
+        },
+        "/api/v1/me/orders": {
+            "post": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Place an order of the cart of the customer",
+                "description": "Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the body carries no lines, quantities or prices, unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.",
+                "operationId": "placeCustomerOrder",
+                "parameters": [
+                    {
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "description": "Key of the request, chosen by the client (e.g. a UUID made when the checkout opens) and sent again on a retry: 1 to 100 characters, letters, digits, \".\", \"_\", \":\" or \"-\".",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+                            "maxLength": 100,
+                            "minLength": 1
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PlaceCustomerOrderRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The order placed.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OrderView"
+                                }
+                            }
+                        }
+                    },
+                    "200": {
+                        "description": "The order of an earlier request of the customer with this key and the same content: nothing changed.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OrderView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The `Idempotency-Key` header is missing or malformed (problem details with `violations`), or the body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request (problem details with a Polish `detail`). Nothing is ordered or reserved.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "shop": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/orders": {
+            "post": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Place an order of a guest cart",
+                "description": "Orders every line of the guest cart in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied (it stays open). The body carries no lines, quantities or prices; unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The `Idempotency-Key` identifies the request: sending it again with the same cart and content answers 200 with the same order and changes nothing, also once the cart expired or was merged; the same key with another cart or other content is a 409 that tells nothing about the order. The order cannot be read later, so there is no `Location`.",
+                "operationId": "placeGuestOrder",
+                "parameters": [
+                    {
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "description": "Key of the request, chosen by the client (e.g. a UUID made when the checkout opens) and sent again on a retry: 1 to 100 characters, letters, digits, \".\", \"_\", \":\" or \"-\".",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9._:-]{1,100}$",
+                            "maxLength": 100,
+                            "minLength": 1
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PlaceGuestOrderRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The order placed.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OrderView"
+                                }
+                            }
+                        }
+                    },
+                    "200": {
+                        "description": "The order of an earlier request with this key, the same cart and the same content: nothing changed.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OrderView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The `Idempotency-Key` header is missing or malformed (problem details with `violations`), or the body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such guest cart: unknown, expired or merged, or the id of a customer cart (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request (problem details with a Polish `detail`). Nothing is ordered or reserved.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -1573,6 +1820,172 @@
                 },
                 "type": "object"
             },
+            "OrderView": {
+                "description": "An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze.",
+                "required": [
+                    "orderId",
+                    "number",
+                    "status",
+                    "email",
+                    "fullName",
+                    "phone",
+                    "shippingAddress",
+                    "lines",
+                    "totals",
+                    "placedAt"
+                ],
+                "properties": {
+                    "orderId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "number": {
+                        "description": "The number the customer is told, `R-` and a number from 100001.",
+                        "type": "string",
+                        "example": "R-100001"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "new"
+                        ]
+                    },
+                    "email": {
+                        "description": "The address the order is confirmed to.",
+                        "type": "string",
+                        "example": "anna.nowak@example.com"
+                    },
+                    "fullName": {
+                        "type": "string",
+                        "example": "Anna Nowak"
+                    },
+                    "phone": {
+                        "description": "+48 and 9 digits.",
+                        "type": "string",
+                        "example": "+48600100200"
+                    },
+                    "shippingAddress": {
+                        "$ref": "#/components/schemas/OrderShippingAddress"
+                    },
+                    "lines": {
+                        "description": "The lines of the cart, in its order.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrderLine"
+                        }
+                    },
+                    "totals": {
+                        "$ref": "#/components/schemas/OrderTotals"
+                    },
+                    "placedAt": {
+                        "description": "When the order was placed (RFC 3339, UTC).",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    }
+                },
+                "type": "object"
+            },
+            "OrderShippingAddress": {
+                "required": [
+                    "street",
+                    "postalCode",
+                    "city",
+                    "country"
+                ],
+                "properties": {
+                    "street": {
+                        "type": "string",
+                        "example": "ul. D\u0142uga 5/3"
+                    },
+                    "postalCode": {
+                        "type": "string",
+                        "example": "00-950"
+                    },
+                    "city": {
+                        "type": "string",
+                        "example": "Warszawa"
+                    },
+                    "country": {
+                        "type": "string",
+                        "enum": [
+                            "PL"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "OrderLine": {
+                "required": [
+                    "variantId",
+                    "productName",
+                    "variantLabel",
+                    "quantity",
+                    "unitGross",
+                    "lineGross"
+                ],
+                "properties": {
+                    "variantId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "productName": {
+                        "type": "string",
+                        "example": "Buty szosowe Tarvik Asfalt 200"
+                    },
+                    "variantLabel": {
+                        "description": "The values of the variant joined with \", \"; empty for the default variant of a product without variant axes.",
+                        "type": "string",
+                        "example": "czarne, 42"
+                    },
+                    "quantity": {
+                        "type": "integer",
+                        "maximum": 99,
+                        "minimum": 1
+                    },
+                    "unitGross": {
+                        "description": "Gross price of one unit in grosze.",
+                        "type": "integer",
+                        "example": 19999
+                    },
+                    "lineGross": {
+                        "description": "Unit gross price \u00d7 quantity, in grosze.",
+                        "type": "integer",
+                        "example": 39998
+                    }
+                },
+                "type": "object"
+            },
+            "OrderTotals": {
+                "description": "Sums of the lines; net + vat = gross.",
+                "required": [
+                    "net",
+                    "vat",
+                    "gross",
+                    "currency"
+                ],
+                "properties": {
+                    "net": {
+                        "type": "integer",
+                        "example": 32519
+                    },
+                    "vat": {
+                        "type": "integer",
+                        "example": 7479
+                    },
+                    "gross": {
+                        "type": "integer",
+                        "example": 39998
+                    },
+                    "currency": {
+                        "type": "string",
+                        "enum": [
+                            "PLN"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
             "Problem": {
                 "description": "Problem details (RFC 9457), `application/problem+json`.",
                 "required": [
@@ -1691,6 +2104,116 @@
                         "default": 24,
                         "maximum": 48,
                         "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "PlaceCustomerOrderRequest": {
+                "description": "The contact and the address of an order of the cart of the customer, and the total the customer saw.",
+                "required": [
+                    "fullName",
+                    "phone",
+                    "street",
+                    "postalCode",
+                    "city",
+                    "expectedTotalGross"
+                ],
+                "properties": {
+                    "fullName": {
+                        "description": "Full name, 1 to 100 characters once trimmed.",
+                        "type": "string",
+                        "example": "Jan Kowalski",
+                        "maxLength": 100
+                    },
+                    "phone": {
+                        "description": "A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped. The order keeps +48 and the 9 digits.",
+                        "type": "string",
+                        "example": "600 100 200"
+                    },
+                    "street": {
+                        "description": "Street and number, 1 to 100 characters once trimmed.",
+                        "type": "string",
+                        "example": "ul. D\u0142uga 5/3",
+                        "maxLength": 100
+                    },
+                    "postalCode": {
+                        "description": "Polish postal code NN-NNN.",
+                        "type": "string",
+                        "example": "00-950"
+                    },
+                    "city": {
+                        "description": "City, 1 to 60 characters once trimmed. The country is always Poland.",
+                        "type": "string",
+                        "example": "Warszawa",
+                        "maxLength": 60
+                    },
+                    "expectedTotalGross": {
+                        "description": "The gross total of the cart the customer saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.",
+                        "type": "integer",
+                        "example": 39998,
+                        "minimum": 0
+                    }
+                },
+                "type": "object"
+            },
+            "PlaceGuestOrderRequest": {
+                "description": "The guest cart, the contact and the address of an order, and the total the guest saw.",
+                "required": [
+                    "cartId",
+                    "email",
+                    "fullName",
+                    "phone",
+                    "street",
+                    "postalCode",
+                    "city",
+                    "expectedTotalGross"
+                ],
+                "properties": {
+                    "cartId": {
+                        "description": "Id of the guest cart (UUID). An unknown, expired or merged cart, or the id of a customer cart, is a 404.",
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "email": {
+                        "description": "Email address the order is confirmed to, at most 254 characters once trimmed.",
+                        "type": "string",
+                        "format": "email",
+                        "example": "anna.nowak@example.com",
+                        "maxLength": 254
+                    },
+                    "fullName": {
+                        "description": "Full name, 1 to 100 characters once trimmed.",
+                        "type": "string",
+                        "example": "Anna Nowak",
+                        "maxLength": 100
+                    },
+                    "phone": {
+                        "description": "A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped. The order keeps +48 and the 9 digits.",
+                        "type": "string",
+                        "example": "600 100 200"
+                    },
+                    "street": {
+                        "description": "Street and number, 1 to 100 characters once trimmed.",
+                        "type": "string",
+                        "example": "ul. D\u0142uga 5/3",
+                        "maxLength": 100
+                    },
+                    "postalCode": {
+                        "description": "Polish postal code NN-NNN.",
+                        "type": "string",
+                        "example": "00-950"
+                    },
+                    "city": {
+                        "description": "City, 1 to 60 characters once trimmed. The country is always Poland.",
+                        "type": "string",
+                        "example": "Warszawa",
+                        "maxLength": 60
+                    },
+                    "expectedTotalGross": {
+                        "description": "The gross total of the cart the guest saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.",
+                        "type": "integer",
+                        "example": 39998,
+                        "minimum": 0
                     }
                 },
                 "type": "object"
@@ -1887,6 +2410,10 @@
         {
             "name": "Customer",
             "description": "Customer"
+        },
+        {
+            "name": "Ordering",
+            "description": "Ordering"
         }
     ]
 }

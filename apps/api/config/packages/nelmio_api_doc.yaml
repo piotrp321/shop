@@ -208,6 +208,107 @@ nelmio_api_doc:
                                     type: integer
                                     description: Units of every line of the cart.
                                     example: 2
+                        # Response schema of a placed order (Ordering\Application\View\OrderView, `placedAt` formatted by
+                        # OrderPlacement), checked against real responses by the functional tests of the order endpoints.
+                        OrderView:
+                            type: object
+                            description: An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze.
+                            required: [orderId, number, status, email, fullName, phone, shippingAddress, lines, totals, placedAt]
+                            properties:
+                                orderId:
+                                    type: string
+                                    format: uuid
+                                number:
+                                    type: string
+                                    description: The number the customer is told, `R-` and a number from 100001.
+                                    example: R-100001
+                                status:
+                                    type: string
+                                    enum: [new]
+                                email:
+                                    type: string
+                                    description: The address the order is confirmed to.
+                                    example: anna.nowak@example.com
+                                fullName:
+                                    type: string
+                                    example: Anna Nowak
+                                phone:
+                                    type: string
+                                    description: +48 and 9 digits.
+                                    example: '+48600100200'
+                                shippingAddress:
+                                    $ref: '#/components/schemas/OrderShippingAddress'
+                                lines:
+                                    type: array
+                                    description: The lines of the cart, in its order.
+                                    items:
+                                        $ref: '#/components/schemas/OrderLine'
+                                totals:
+                                    $ref: '#/components/schemas/OrderTotals'
+                                placedAt:
+                                    type: string
+                                    format: date-time
+                                    description: When the order was placed (RFC 3339, UTC).
+                                    example: '2026-11-05T12:30:00+00:00'
+                        OrderShippingAddress:
+                            type: object
+                            required: [street, postalCode, city, country]
+                            properties:
+                                street:
+                                    type: string
+                                    example: ul. Długa 5/3
+                                postalCode:
+                                    type: string
+                                    example: '00-950'
+                                city:
+                                    type: string
+                                    example: Warszawa
+                                country:
+                                    type: string
+                                    enum: [PL]
+                        OrderLine:
+                            type: object
+                            required: [variantId, productName, variantLabel, quantity, unitGross, lineGross]
+                            properties:
+                                variantId:
+                                    type: string
+                                    format: uuid
+                                productName:
+                                    type: string
+                                    example: Buty szosowe Tarvik Asfalt 200
+                                variantLabel:
+                                    type: string
+                                    description: The values of the variant joined with ", "; empty for the default variant of a product without variant axes.
+                                    example: czarne, 42
+                                quantity:
+                                    type: integer
+                                    minimum: 1
+                                    maximum: 99
+                                unitGross:
+                                    type: integer
+                                    description: Gross price of one unit in grosze.
+                                    example: 19999
+                                lineGross:
+                                    type: integer
+                                    description: Unit gross price × quantity, in grosze.
+                                    example: 39998
+                        OrderTotals:
+                            type: object
+                            description: Sums of the lines; net + vat = gross.
+                            required: [net, vat, gross, currency]
+                            properties:
+                                net:
+                                    type: integer
+                                    example: 32519
+                                vat:
+                                    type: integer
+                                    example: 7479
+                                gross:
+                                    type: integer
+                                    example: 39998
+                                currency:
+                                    type: string
+                                    enum: [PLN]
                         Problem: &problem
                             type: object
                             description: Problem details (RFC 9457), `application/problem+json`.
