@@ -60,9 +60,15 @@ trait OrderRequestViolationCases
         yield 'street with a leading line break' => [['street' => "\nul. Długa 5"], [['street', self::STREET_CONTROL]]];
         yield 'city with a NUL' => [['city' => "War\0szawa"], [['city', self::CITY_CONTROL]]];
         yield 'city with a carriage return' => [['city' => "Warszawa\r"], [['city', self::CITY_CONTROL]]];
-        yield 'phone with a NUL' => [['phone' => "6001002\000"], [['phone', self::PHONE_INVALID]]];
-        yield 'phone with a tab' => [['phone' => "600\t100200"], [['phone', self::PHONE_INVALID]]];
-        yield 'postalCode with a NUL' => [['postalCode' => "00-95\0"], [['postalCode', self::POSTAL_CODE_INVALID]]];
+        // Valid but for the control character; at the ends a trim would drop it before the format is checked.
+        yield 'phone with a trailing NUL' => [['phone' => "600100200\0"], [['phone', self::PHONE_INVALID]]];
+        yield 'phone with a leading line break' => [['phone' => "\n600100200"], [['phone', self::PHONE_INVALID]]];
+        yield 'phone with a tab inside' => [['phone' => "600\t100200"], [['phone', self::PHONE_INVALID]]];
+        yield 'phone with a trailing tab' => [['phone' => "600100200\t"], [['phone', self::PHONE_INVALID]]];
+        yield 'postalCode with a trailing NUL' => [['postalCode' => "00-950\0"], [['postalCode', self::POSTAL_CODE_INVALID]]];
+        yield 'postalCode with a trailing tab' => [['postalCode' => "00-950\t"], [['postalCode', self::POSTAL_CODE_INVALID]]];
+        yield 'postalCode with a leading line break' => [['postalCode' => "\n00-950"], [['postalCode', self::POSTAL_CODE_INVALID]]];
+        yield 'postalCode with a carriage return inside' => [['postalCode' => "00-9\r50"], [['postalCode', self::POSTAL_CODE_INVALID]]];
         yield 'phone of spaces' => [['phone' => '  '], [['phone', self::PHONE_REQUIRED]]];
         yield 'phone of 8 digits' => [['phone' => '60010020'], [['phone', self::PHONE_INVALID]]];
         yield 'phone of 10 digits' => [['phone' => '6001002000'], [['phone', self::PHONE_INVALID]]];

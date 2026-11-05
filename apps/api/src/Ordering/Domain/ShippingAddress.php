@@ -6,7 +6,7 @@ namespace App\Ordering\Domain;
 
 /**
  * Where an order goes, copied into it: a street with its number (1 to 100 characters after trimming), a postal code
- * NN-NNN and a city (1 to 60 characters) in Poland, the only country. Street and city have no control character.
+ * NN-NNN and a city (1 to 60 characters) in Poland, the only country. Street, postal code and city have no control character.
  */
 final readonly class ShippingAddress
 {
@@ -27,7 +27,7 @@ final readonly class ShippingAddress
      */
     public static function inPoland(string $street, string $postalCode, string $city): self
     {
-        [$rawStreet, $rawCity] = [$street, $city];
+        [$rawStreet, $rawPostalCode, $rawCity] = [$street, $postalCode, $city];
         $street = trim($street);
         $postalCode = trim($postalCode);
         $city = trim($city);
@@ -43,7 +43,7 @@ final readonly class ShippingAddress
         if ('' === $postalCode) {
             throw InvalidOrderInput::postalCodeMissing();
         }
-        if (1 !== preg_match(self::POSTAL_CODE_PATTERN, $postalCode)) {
+        if (ControlCharacters::in($rawPostalCode) || 1 !== preg_match(self::POSTAL_CODE_PATTERN, $postalCode)) {
             throw InvalidOrderInput::postalCode();
         }
         if ('' === $city) {

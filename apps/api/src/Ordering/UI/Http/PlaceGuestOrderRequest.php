@@ -87,6 +87,7 @@ final readonly class PlaceGuestOrderRequest
             new Assert\NotNull(message: 'Kod pocztowy jest wymagany.'),
             new Assert\Type('string', message: 'Podaj kod pocztowy w formacie 00-000.'),
             new Assert\NotBlank(message: 'Kod pocztowy jest wymagany.', normalizer: 'trim'),
+            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Podaj kod pocztowy w formacie 00-000.'),
             new Assert\Regex(pattern: self::POSTAL_CODE_PATTERN, message: 'Podaj kod pocztowy w formacie 00-000.', normalizer: 'trim'),
         ])]
         public mixed $postalCode,

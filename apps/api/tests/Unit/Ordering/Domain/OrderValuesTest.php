@@ -149,15 +149,43 @@ final class OrderValuesTest extends TestCase
         }
     }
 
-    #[DataProvider('withControlCharacters')]
-    public function testPhoneAndPostalCodeWithAControlCharacterAreRefused(string $value): void
+    /**
+     * The control character is the only thing wrong with an otherwise valid value, also at the ends, where a trim
+     * would drop it before the format is checked.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function controlCharactersAlone(): iterable
     {
-        foreach ([static fn () => self::contact(phone: '600100'.$value.'200'), static fn () => self::contact(phone: '600100200'.$value), static fn () => ShippingAddress::inPoland('Długa 1', '00-95'.$value, 'Warszawa')] as $build) {
+        yield 'NUL' => ["\0"];
+        yield 'tab' => ["\t"];
+        yield 'line feed' => ["\n"];
+        yield 'carriage return' => ["\r"];
+        yield 'DEL' => ["\x7F"];
+    }
+
+    #[DataProvider('controlCharactersAlone')]
+    public function testPostalCodeWithOnlyAControlCharacterWrongIsRefused(string $control): void
+    {
+        foreach (['00-950'.$control, $control.'00-950', '00-9'.$control.'50'] as $postalCode) {
             try {
-                $build();
+                ShippingAddress::inPoland('Długa 1', $postalCode, 'Warszawa');
                 self::fail('Expected InvalidOrderInput.');
-            } catch (InvalidOrderInput) {
-                $this->addToAssertionCount(1);
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame('Podaj kod pocztowy w formacie 00-000.', $invalid->getMessage());
+            }
+        }
+    }
+
+    #[DataProvider('controlCharactersAlone')]
+    public function testPhoneWithOnlyAControlCharacterWrongIsRefused(string $control): void
+    {
+        foreach (['600100200'.$control, $control.'600100200', '600'.$control.'100200'] as $phone) {
+            try {
+                self::contact(phone: $phone);
+                self::fail('Expected InvalidOrderInput.');
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame('Podaj 9-cyfrowy numer telefonu.', $invalid->getMessage());
             }
         }
     }
