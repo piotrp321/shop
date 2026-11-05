@@ -32,6 +32,8 @@ ps:
 seed:
 	$(RUN) api bin/console catalog:seed-demo
 	$(RUN) api bin/console pricing:seed-demo
+	# Orders go before the stocks: inventory:seed-demo removes the reservations the orders hold.
+	$(RUN) api bin/console ordering:seed-demo
 	$(RUN) api bin/console inventory:seed-demo
 
 check:
