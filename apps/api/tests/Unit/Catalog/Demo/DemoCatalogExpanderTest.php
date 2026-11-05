@@ -8,6 +8,7 @@ use App\Catalog\Application\Demo\DemoCatalog;
 use App\Catalog\Application\Demo\DemoProduct;
 use App\Catalog\Infrastructure\Demo\DemoCatalogDefinition;
 use App\Catalog\Infrastructure\Demo\DemoCatalogExpander;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Uid\Uuid;
 use Symfony\Component\Yaml\Yaml;
@@ -28,28 +29,31 @@ final class DemoCatalogExpanderTest extends TestCase
         );
     }
 
-    public function testProductsFollowTemplateOrderThenBrandModelColor(): void
+    public function testProductsFollowTemplateOrderThenBrandThenModelWithoutTheVariantValues(): void
     {
         $products = $this->expand()->products;
 
         self::assertCount(10, $products);
-        self::assertSame('Buty Tarvik Asfalt 200 czarne', $products[0]->name);
-        self::assertSame('Buty Tarvik Asfalt 200 białe', $products[1]->name);
-        self::assertSame('Buty Tarvik Dystans 400 czarne', $products[2]->name);
-        self::assertSame('Buty Norvane Asfalt 200 czarne', $products[4]->name);
-        self::assertSame('Plecak Tarvik Ząb 20 żółty', $products[8]->name);
+        self::assertSame('Buty Tarvik Asfalt 200', $products[0]->name);
+        self::assertSame('Buty Tarvik Dystans 400', $products[1]->name);
+        self::assertSame('Buty Tarvik Tempo 600', $products[2]->name);
+        self::assertSame('Buty Norvane Asfalt 200', $products[3]->name);
+        self::assertSame('Plecak Tarvik Ząb 20', $products[6]->name);
+        self::assertSame('Plecak Tarvik Ząb 30', $products[7]->name);
+        self::assertSame('Hantle Lumora Para 10', $products[8]->name);
+        self::assertSame('Hantle Dravik Para 10', $products[9]->name);
         self::assertSame('Lekkie buty na asfalt.', $products[0]->shortDescription);
         self::assertSame('standard', $products[0]->taxClass);
-        self::assertSame('freeze_dried_meal', $products[8]->taxClass);
+        self::assertSame('freeze_dried_meal', $products[6]->taxClass);
     }
 
     public function testSlugIsTransliteratedNameWithoutPolishCharacters(): void
     {
         $products = $this->expand()->products;
 
-        self::assertSame('buty-tarvik-asfalt-200-czarne', $products[0]->slug);
-        self::assertSame('buty-tarvik-asfalt-200-biale', $products[1]->slug);
-        self::assertSame('plecak-tarvik-zab-20-zolty', $products[8]->slug);
+        self::assertSame('buty-tarvik-asfalt-200', $products[0]->slug);
+        self::assertSame('buty-norvane-asfalt-200', $products[3]->slug);
+        self::assertSame('plecak-tarvik-zab-20', $products[6]->slug);
     }
 
     public function testIdsAreUuidV5OfSlugsInTheNamespace(): void
@@ -68,45 +72,97 @@ final class DemoCatalogExpanderTest extends TestCase
         self::assertSame($byPath['bieganie/buty/szosowe'], $catalog->products[0]->mainCategoryId);
     }
 
-    public function testEveryProductHasOneDefaultVariantWithAnIdOfItsOwn(): void
+    public function testVariantsAreTheProductOfTheAxisValuesInFileOrder(): void
     {
-        $catalog = $this->expand();
+        $product = $this->expand()->products[0];
         $namespace = Uuid::fromString(self::NAMESPACE);
 
+        self::assertSame(['Kolor', 'Rozmiar'], $product->variantAxes);
+        self::assertSame(
+            [
+                ['id' => Uuid::v5($namespace, 'variant:buty-tarvik-asfalt-200/czarne-40')->toRfc4122(), 'values' => ['czarne', '40']],
+                ['id' => Uuid::v5($namespace, 'variant:buty-tarvik-asfalt-200/czarne-41')->toRfc4122(), 'values' => ['czarne', '41']],
+                ['id' => Uuid::v5($namespace, 'variant:buty-tarvik-asfalt-200/biale-40')->toRfc4122(), 'values' => ['białe', '40']],
+                ['id' => Uuid::v5($namespace, 'variant:buty-tarvik-asfalt-200/biale-41')->toRfc4122(), 'values' => ['białe', '41']],
+            ],
+            $product->variants,
+        );
+    }
+
+    public function testProductWithOneAxisHasAVariantPerValue(): void
+    {
+        $product = $this->expand()->products[6];
+        $namespace = Uuid::fromString(self::NAMESPACE);
+
+        self::assertSame(['Kolor'], $product->variantAxes);
+        self::assertSame(
+            [
+                ['id' => Uuid::v5($namespace, 'variant:plecak-tarvik-zab-20/zolty')->toRfc4122(), 'values' => ['żółty']],
+                ['id' => Uuid::v5($namespace, 'variant:plecak-tarvik-zab-20/zielony')->toRfc4122(), 'values' => ['zielony']],
+            ],
+            $product->variants,
+        );
+    }
+
+    public function testProductWithoutAxesHasOneDefaultVariantWithAnIdOfItsOwn(): void
+    {
+        $product = $this->expand()->products[8];
+        $namespace = Uuid::fromString(self::NAMESPACE);
+
+        self::assertSame([], $product->variantAxes);
+        self::assertSame(
+            [['id' => Uuid::v5($namespace, 'variant:hantle-lumora-para-10/standard')->toRfc4122(), 'values' => []]],
+            $product->variants,
+        );
+        self::assertNotSame($product->id, $product->variants[0]['id']);
+    }
+
+    public function testVariantIdsAreUniqueInTheWholeCatalog(): void
+    {
         $variantIds = [];
-        foreach ($catalog->products as $product) {
-            self::assertSame([], $product->variantAxes);
-            self::assertSame(
-                [['id' => Uuid::v5($namespace, 'variant:'.$product->slug.'/standard')->toRfc4122(), 'values' => []]],
-                $product->variants,
-            );
-            self::assertNotSame($product->id, $product->variants[0]['id']);
-            $variantIds[] = $product->variants[0]['id'];
+        foreach ($this->expand()->products as $product) {
+            foreach ($product->variants as $variant) {
+                $variantIds[] = $variant['id'];
+            }
         }
+
+        self::assertCount(4 * 6 + 2 * 2 + 2, $variantIds);
         self::assertSame($variantIds, array_values(array_unique($variantIds)));
     }
 
-    public function testRepeatedVariantKeyThrowsWithThatKey(): void
+    public function testAxisValuesDifferingOnlyInThePunctuationOfTheKeyAreRejectedWithThatKey(): void
     {
-        $data = $this->with(['templates', 0, 'colors'], ['czarne', 'Czarne']);
+        $data = $this->with(['templates', 0, 'axisValues', 1], ['1,5', '1.5']);
 
         try {
             new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES);
             self::fail('A repeated variant key must be rejected.');
         } catch (\InvalidArgumentException $e) {
-            self::assertStringContainsString('variant key "buty-tarvik-asfalt-200-czarne/standard"', $e->getMessage());
+            self::assertStringContainsString('variant key "buty-tarvik-asfalt-200/czarne-1-5"', $e->getMessage());
+        }
+    }
+
+    public function testRepeatedVariantKeyOfValuesDifferingInCaseThrowsWithThatKey(): void
+    {
+        $data = $this->with(['templates', 1, 'axisValues', 0], ['żółty', 'Żółty']);
+
+        try {
+            new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES);
+            self::fail('A repeated variant key must be rejected.');
+        } catch (\InvalidArgumentException $e) {
+            self::assertStringContainsString('variant key "plecak-tarvik-zab-20/zolty"', $e->getMessage());
         }
     }
 
     public function testDuplicateSlugThrowsWithThatSlug(): void
     {
-        $data = $this->with(['templates', 0, 'colors'], ['czarne', 'Czarne']);
+        $data = $this->with(['templates', 0, 'models', 1, 'name'], 'Asfalt 200');
 
         try {
             new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES);
             self::fail('A duplicate slug must be rejected.');
         } catch (\InvalidArgumentException $e) {
-            self::assertStringContainsString('buty-tarvik-asfalt-200-czarne', $e->getMessage());
+            self::assertStringContainsString('product slug "buty-tarvik-asfalt-200"', $e->getMessage());
         }
     }
 
@@ -123,9 +179,10 @@ final class DemoCatalogExpanderTest extends TestCase
         self::assertSame('Biegacz na drodze', $products[0]->images[0]['alt']);
         self::assertSame('sample.png', $products[1]->images[0]['file']);
         self::assertSame('sample.png', $products[3]->images[0]['file']);
+        self::assertSame('sample.jpg', $products[4]->images[0]['file']);
+        // The second and third templates have a single image each: it is the one of every product of the template.
         self::assertSame('sample.jpg', $products[6]->images[0]['file']);
-        self::assertSame('sample.png', $products[7]->images[0]['file']);
-        // The second template has a single image: index 9 (the product after the imageless one) takes it.
+        self::assertSame('sample.jpg', $products[7]->images[0]['file']);
         self::assertSame('sample.jpg', $products[9]->images[0]['file']);
         self::assertCount(1, $products[9]->images);
     }
@@ -154,7 +211,7 @@ final class DemoCatalogExpanderTest extends TestCase
         }
 
         self::assertSame([$plecaki], $catalog->products[0]->additionalCategoryIds);
-        self::assertSame([], $catalog->products[8]->additionalCategoryIds);
+        self::assertSame([], $catalog->products[6]->additionalCategoryIds);
     }
 
     public function testUnknownAdditionalCategoryPathThrowsWithThatPath(): void
@@ -185,6 +242,36 @@ final class DemoCatalogExpanderTest extends TestCase
         $this->expectExceptionMessage('bieganie');
 
         new DemoCatalogExpander()->expand(DemoCatalogDefinition::fromArray($data), self::IMAGES);
+    }
+
+    /** @return iterable<string, array{list<string|int>, mixed, string}> */
+    public static function invalidVariantDefinitions(): iterable
+    {
+        yield 'three axes' => [['templates', 0, 'variantAxes'], ['Kolor', 'Rozmiar', 'Smak'], 'variantAxes'];
+        yield 'axis name not a string' => [['templates', 0, 'variantAxes'], ['Kolor', 5], 'variantAxes'];
+        yield 'empty axis name' => [['templates', 0, 'variantAxes'], ['Kolor', ''], 'variantAxes'];
+        yield 'fewer value lists than axes' => [['templates', 0, 'axisValues'], [['czarne', 'białe']], 'axisValues'];
+        yield 'more value lists than axes' => [['templates', 1, 'axisValues'], [['żółty'], ['M']], 'axisValues'];
+        yield 'empty value list' => [['templates', 0, 'axisValues', 1], [], 'axisValues'];
+        yield 'empty value' => [['templates', 0, 'axisValues', 1], ['40', ''], 'axisValues'];
+        yield 'value not a string' => [['templates', 0, 'axisValues', 1], ['40', 41], 'axisValues'];
+        yield 'values without axes' => [['templates', 2, 'axisValues'], [['M', 'L']], 'axisValues'];
+        yield 'axes without values' => [['templates', 1, 'axisValues'], [], 'axisValues'];
+        yield 'value lists not a list' => [['templates', 1, 'axisValues'], 'żółty', 'axisValues'];
+    }
+
+    /**
+     * @param list<string|int> $path
+     */
+    #[DataProvider('invalidVariantDefinitions')]
+    public function testMalformedVariantDefinitionIsRejectedWithItsContext(array $path, mixed $value, string $expectedInMessage): void
+    {
+        $data = $this->with($path, $value);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage($expectedInMessage);
+
+        DemoCatalogDefinition::fromArray($data);
     }
 
     public function testImagelessEveryOfZeroIsRejected(): void

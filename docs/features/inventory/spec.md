@@ -216,8 +216,9 @@ Dane demo: `inventory:seed-demo`
 - Czyści tabele Inventory i przechodzi warianty z portu `VariantsForInventory` (Catalog `ListVariantIdentities`).
 - `fixtures/stock.yaml`: wzorce kluczy wariantów → stan fizyczny (`key` = `<slug produktu>/<slug etykiety>`, wariant
   domyślny `<slug produktu>/standard`; `*` dopasowuje dowolny ciąg znaków, także `/`; zasada „pierwszy pasujący” jak
-  `prices.yaml`). Większość wariantów 20–50 sztuk, kilka 2–3 (`low_stock`), kilka 0 (`out_of_stock`); co najmniej
-  jeden wariant demo ma 0 (używa go E2E).
+  `prices.yaml`). Większość wariantów 20–50 sztuk, kilka 2–3 (`low_stock`), kilka 0 (`out_of_stock`). Wszystkie
+  warianty produktu „Kajak turystyczny Vilmar Rzeka 2” mają 0, produkty „Hantle regulowane” (wariant domyślny) mają
+  stan > 0, a niektóre inne produkty mają warianty o stanie 0 i > 0 (używa ich E2E; komentarze w pliku nazywają produkty).
 - Stan > 0: `ReceiveStock` ze źródłem `seed` i kluczem `seed:<variantId>`. Stan 0: pusty rekord przez
   `CreateEmptyStock`, bez przyjęcia i wpisu historii.
 - Wariant demo bez dopasowanego wzorca kończy seed błędem bez zmian w danych.
