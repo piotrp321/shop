@@ -40,7 +40,7 @@ Adresy przy domyślnych portach:
 | http://localhost:8000/health | API (`/health`) | `API_PORT` |
 | http://localhost:8080 | Keycloak | `KEYCLOAK_PORT` |
 | http://localhost:8081 | imgproxy (adresy zdjęć podpisuje API) | `IMGPROXY_PORT` |
-| http://localhost:8025 | Mailpit (e-maile wysyłane przez Keycloak) | `MAILPIT_PORT` |
+| http://localhost:8025 | Mailpit (e-maile z Keycloak i potwierdzenia zamówień z API) | `MAILPIT_PORT` |
 | http://localhost:15672 | RabbitMQ, panel zarządzania | `RABBITMQ_MANAGEMENT_PORT` |
 
 Porty są wystawione tylko na `127.0.0.1`. Konsola administracyjna Keycloak: użytkownik `admin`, hasło
