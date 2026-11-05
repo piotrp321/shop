@@ -2158,6 +2158,7 @@
                     "fullName": {
                         "description": "Full name, 1 to 100 characters once trimmed.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "Jan Kowalski",
                         "maxLength": 100
                     },
@@ -2169,17 +2170,20 @@
                     "street": {
                         "description": "Street and number, 1 to 100 characters once trimmed.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "ul. D\u0142uga 5/3",
                         "maxLength": 100
                     },
                     "postalCode": {
                         "description": "Polish postal code NN-NNN.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "00-950"
                     },
                     "city": {
                         "description": "City, 1 to 60 characters once trimmed. The country is always Poland.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "Warszawa",
                         "maxLength": 60
                     },
@@ -2214,12 +2218,14 @@
                         "description": "Email address the order is confirmed to, at most 254 characters once trimmed, one the mailer accepts (no empty part between dots).",
                         "type": "string",
                         "format": "email",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "anna.nowak@example.com",
                         "maxLength": 254
                     },
                     "fullName": {
                         "description": "Full name, 1 to 100 characters once trimmed.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "Anna Nowak",
                         "maxLength": 100
                     },
@@ -2231,17 +2237,20 @@
                     "street": {
                         "description": "Street and number, 1 to 100 characters once trimmed.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "ul. D\u0142uga 5/3",
                         "maxLength": 100
                     },
                     "postalCode": {
                         "description": "Polish postal code NN-NNN.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "00-950"
                     },
                     "city": {
                         "description": "City, 1 to 60 characters once trimmed. The country is always Poland.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "Warszawa",
                         "maxLength": 60
                     },
