@@ -95,6 +95,17 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - numer zamówienia (`R-` i wartość od 100001) bierze `nextval('ordering_order_number_seq')` przez DBAL. Sekwencja
     nie jest częścią transakcji: wycofane złożenie zostawia lukę. Schemat Doctrine dostaje sekwencję od listenera
     `OrderNumberSequenceSchema` (mapowanie nie wyraża sekwencji poza id), więc diff migracji jej nie usuwa.
+- E-mail z potwierdzeniem zamówienia wysyła handler zdarzenia `SendOrderConfirmation` (`event.bus`, transport `events`,
+  po `OrderPlaced` z outboxa). Wysyłka idzie przez Symfony Mailer (`symfony/mailer`) synchronicznie, bez Messengera:
+  `framework.mailer.message_bus: false` (inaczej `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną
+  szynę `command.bus`, a błąd SMTP nie wróciłby do handlera i nie uruchomił ponowień transportu `events`). Konfiguracja
+  w zmiennych środowiska: `MAILER_DSN` (`smtp://mailpit:1025`) i `MAILER_FROM` (`Rytm <zamowienia@rytm.localhost>`),
+  ustawianych w `infra/docker-compose.yml` dla `api` i `worker` (testy i CI biorą je z serwisu `api`; `phpunit.dist.xml`
+  ma te same wartości domyślne). Treść składa `OrderConfirmationText` (Ordering Application), a port
+  `OrderConfirmationMailer` ma adapter `SymfonyOrderConfirmationMailer` w Ordering Infrastructure. Handler najpierw
+  wysyła, potem zapisuje `confirmationSentAt` z wersją, bez transakcji wokół SMTP: awaria między jednym a drugim albo
+  równoległe dostarczenie tego samego zdarzenia może dać drugi e-mail (konflikt wersji przy zapisie znacznika kończy
+  się wyjątkiem i ponowieniem, które widzi znacznik i nic nie wysyła).
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
