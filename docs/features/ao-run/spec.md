@@ -17,6 +17,9 @@ Skill odmawia startu i mówi dlaczego, gdy:
 
 - `docs/features/<epik>/spec.md` albo `plan.md` nie ma na `origin/main` (plan wiążący to plan na `origin/main`);
 - checkout AO (`$HOME/Development/claude/agentic-orchestrator`) nie jest czysty albo nie jest na `origin/main`;
+- nie ma binarki Claude Code w wersji przypiętej przez AO (`claude_pin.py` kończy się kodem różnym od 0); odmowa
+  podaje wersję i komendę instalacji (`claude install <wersja> --force`) i zapada przed założeniem `AO_HOME`
+  i przed `ao epic start`;
 - `ao epic start --dry-run` kończy się odmową (np. epik już zarejestrowany z innego commita planu);
 - sesja nie ma Remote Control albo komputer pracuje na baterii (ostrzeżenie, start dopiero po potwierdzeniu).
 
@@ -47,6 +50,16 @@ Skill odmawia startu i mówi dlaczego, gdy:
 - `.claude/skills/ao-run/night_queue.py` (Python 3.9+, bez zależności) i `test_night_queue.py`: lista na noc, pomiar
   i warunki startu kolejnego epiku (sekcja „Noc”). Tablicę, issues, gałęzie i pliki na `origin/main` czyta tak samo
   jak `next_epic.py` (wspólny kod w `next_epic.py`).
+- `.claude/skills/ao-run/claude_pin.py` (Python 3.9+, bez zależności) i `test_claude_pin.py`: binarka Claude Code
+  dla `ao run --claude-bin`. AO przypina wersję CLI (`LifecycleConfig.claude_version` w `orchestrator/lifecycle.py`)
+  i jego preflight odmawia startu, gdy `claude --version` zgłasza inną. `claude` z PATH aktualizuje się sam, więc
+  skill nie polega na nim. Skrypt czyta wersję z `origin/main:orchestrator/lifecycle.py` checkoutu AO (jedno źródło
+  wersji, bez kopii w `shop`), potem sprawdza po kolei ścieżki kandydatów: `~/.local/share/claude/versions/<wersja>`
+  (instalator natywny) i `/opt/homebrew/Caskroom/claude-code/<wersja>/claude` (Homebrew). Pierwszy wykonywalny plik,
+  którego `--version` zaczyna się od przypiętej wersji, wygrywa: skrypt wypisuje jego ścieżkę, kod 0. Kod 1: nie da
+  się odczytać wersji (błąd `git`, brak pliku albo pola, wartość, która nie jest wersją). Kod 2: żaden kandydat nie
+  jest tą wersją (brak pliku, plik niewykonywalny, błąd albo przekroczony czas `--version`, inna wersja); stderr
+  podaje powód dla każdego kandydata i komendę instalacji.
 - Katalog przebiegu `$HOME/.local/state/ao-<epik>/` (`AO_HOME`, poza repo) z `events.jsonl` i dziennikiem `run.log`.
 - Katalog nocy `$HOME/.local/state/ao-night/` (poza repo): `night.json` (zatwierdzona lista) i `measurements.jsonl`
   (pomiar każdego epiku prowadzonego przez `/ao-run`).
@@ -55,7 +68,8 @@ Skill odmawia startu i mówi dlaczego, gdy:
 
 1. **Przygotowanie.** Sprawdza warunki startu, zakłada `AO_HOME`, uruchamia `ao epic start --dry-run`, potem
    `ao epic start`.
-2. **Start.** Uruchamia w tle (Bash w tle sesji) `caffeinate -dims` z `ao run --until-idle` i
+2. **Start.** Uruchamia w tle (Bash w tle sesji) `caffeinate -dims` z `ao run --until-idle`,
+   `--claude-bin <ścieżka z claude_pin.py>` i
    `--notify-cmd "python3 .claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl"`, z limitami jak przy CART:
    `--max-budget-usd 30 --timeout 14400 --epic-max-attempts 24 --epic-timeout 57600 --max-qa-rounds 3`.
    Zmienne `CLAUDE*` usuwa ze środowiska AO (jak wrapper z README AO).
@@ -116,10 +130,12 @@ Z `measurements.jsonl`: czas epiku = liczba zadań × najwyższy zmierzony czas 
 
 ### Lista na noc
 
-`/ao-run --noc [HH:MM]`. Sesja pyta o Remote Control (raz na całą noc) i uruchamia
-`night_queue.py propose --until HH:MM`. Wynik (JSON): `epics` (lista w kolejności startu: `dir`, `id`, `issue`,
-`title`, `tasks`, `minutes` albo `null`, `scope`), `skipped` (`issue`, `id`, `reason`), `in_progress`, `until`
-(czas ISO), `measured` (czy jest pomiar czasu). Reguły:
+`/ao-run --noc [HH:MM]`. Sesja pyta o Remote Control (raz na całą noc), sprawdza checkout AO
+i binarkę przypiętej wersji (`claude_pin.py`; przy błędzie nie proponuje listy, tylko podaje powód, żeby użytkownik
+naprawił to przed snem) i uruchamia `night_queue.py propose --until HH:MM`. `night_queue.py` nie uruchamia `ao run`:
+każdy epik nocy przechodzi warunki startu z punktu 1, więc binarkę sprawdza się też przed każdym z nich. Wynik
+(JSON): `epics` (lista w kolejności startu: `dir`, `id`, `issue`, `title`, `tasks`, `minutes` albo `null`, `scope`),
+`skipped` (`issue`, `id`, `reason`), `in_progress`, `until` (czas ISO), `measured` (czy jest pomiar czasu). Reguły:
 
 - gdy jakiś epik jest w toku (jak w `next_epic.py`: gałąź `origin/epic/<katalog>` i otwarte issue), lista jest pusta:
   noc zaczyna się, gdy poprzednie epiki są zmergowane;
@@ -175,6 +191,8 @@ gdy końcowy PR każdego epiku nocy jest zamknięty albo zmergowany.
 
 - Zakres to deklaracja z `/prepare-epic`. Gdy epik zmieni plik spoza niej, rano końcowy PR drugiego epiku może mieć
   konflikt po merge'u pierwszego. Rozwiązanie to poprawka przez PR do `epic/<epik>` (punkt 5 procesu).
+- Binarka z Homebrew znika przy `brew upgrade` (katalog starej wersji w `Caskroom`). Gdy zniknie w trakcie epiku,
+  AO nie uruchomi kolejnego wykonawcy; trwalsza jest kopia z instalatora natywnego (`claude install <wersja>`).
 - CI końcowego PR drugiego epiku przeszło na `main` bez pierwszego. Rozłączny zakres zmniejsza, ale nie wyklucza
   konfliktu znaczeniowego.
 
@@ -188,7 +206,11 @@ listę nocy), nie przygotowuje epiku (`/prepare-epic`) i nie zmienia tablicy.
 
 `python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'`: `record` (poprawne zdarzenie, pusty
 i niepoprawny JSON, brak katalogu), `watch` (każdy typ zdarzenia z README AO, limit 200 znaków, pomijanie zdarzeń bez
-znaczenia, linie dopisane w trakcie); `next_epic.py` z podstawionymi wynikami komend (kolejność tablicy, pominięcie
+znaczenia, linie dopisane w trakcie); `claude_pin.py` z checkoutem AO w repo tymczasowym i podstawionymi binarkami
+(wersja z `origin/main`, nie z drzewa roboczego; drugi kandydat, gdy pierwszego brak albo zgłasza inną wersję; brak
+pliku i katalogu, plik niewykonywalny, inna wersja, błąd i przekroczony czas `--version` → kod 2 z komendą
+instalacji; brak `origin/main`, brak checkoutu, brak pola, nieczytelny plik, wartość, która nie jest wersją → kod 1;
+kandydat bez `{version}` → błąd użycia); `next_epic.py` z podstawionymi wynikami komend (kolejność tablicy, pominięcie
 zamkniętych, z `needs-info`, bez etykiety `epic`, z innego repo i nie-issue, tytuł bez prefiksu, plan bez manifestu,
 brak `spec.md`, epik w toku blokuje wybór, epik zakończony z gałęzią i zamkniętym issue nie blokuje, pusta tablica,
 błąd `gh` albo `git` → kod 1); `night_queue.py` z podstawionymi wynikami komend, plikami stanu w katalogu

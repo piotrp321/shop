@@ -24,6 +24,10 @@ w repo i bez uruchamiania AO):
 - Checkout AO (`AO_DIR="$HOME/Development/claude/agentic-orchestrator"`) jest czysty i na `origin/main`:
   `git -C "$AO_DIR" fetch origin main`, `git -C "$AO_DIR" status --porcelain` jest puste,
   `git -C "$AO_DIR" rev-parse HEAD` równa się `git -C "$AO_DIR" rev-parse origin/main`.
+- Binarka Claude Code w wersji przypiętej przez AO (`--claude-bin` w kroku 4), po sprawdzeniu checkoutu AO:
+  `python3 "$(git rev-parse --show-toplevel)/.claude/skills/ao-run/claude_pin.py" --ao-dir "$HOME/Development/claude/agentic-orchestrator"`
+  kończy się kodem 0 i wypisuje ścieżkę binarki. Kod różny od 0: odmowa z komunikatem ze stderr dosłownie (zawiera
+  wersję i komendę instalacji). Sam niczego nie instalujesz.
 - Zasilanie: `pmset -g batt`. Na baterii ostrzeż i zacznij dopiero po potwierdzeniu użytkownika. Epik z listy nocy:
   bateria to odmowa, bez pytania (nikt nie potwierdzi). Pierwszy raz zasilanie sprawdza początek sekcji „Noc”, przed
   zatwierdzeniem listy.
@@ -100,17 +104,20 @@ skończone), sprawdź `ao status --epic <epik>` i powiadom push o stanie: koniec
 ## 4. Start
 
 Uruchom Bash z `run_in_background` (po bloku startowym), z wyjściem do `$AO_HOME/run.log`. Wrapper `ao` jest
-funkcją, więc w tle użyj tego samego `env ... python3 -m orchestrator`:
+funkcją, więc w tle użyj tego samego `env ... python3 -m orchestrator`. `--claude-bin` to binarka wersji przypiętej
+przez AO (`claude_pin.py`, jak w sekcji 1), nie `claude` z PATH, który aktualizuje się sam:
 
 ```bash
+CLAUDE_BIN="$(python3 "$SKILL_ROOT/.claude/skills/ao-run/claude_pin.py" --ao-dir "$AO_DIR" 2>>"$AO_HOME/run.log")" &&
 caffeinate -dims env $(env | sed -n 's/^\(CLAUDE[A-Za-z0-9_]*\)=.*/-u \1/p') PYTHONPATH="$AO_DIR" \
-  python3 -m orchestrator --home "$AO_HOME" run --until-idle \
+  python3 -m orchestrator --home "$AO_HOME" run --until-idle --claude-bin "$CLAUDE_BIN" \
   --max-budget-usd 30 --timeout 14400 --epic-max-attempts 24 --epic-timeout 57600 --max-qa-rounds 3 \
   --notify-cmd "python3 $SKILL_ROOT/.claude/skills/ao-run/ao_events.py record $AO_HOME/events.jsonl" \
   >> "$AO_HOME/run.log" 2>&1
 ```
 
-Zapamiętaj identyfikator zadania tła: jego zakończenie budzi sesję.
+Zapamiętaj identyfikator zadania tła: jego zakończenie budzi sesję. Gdy zadanie kończy się od razu, a ostatnia linia
+`run.log` zaczyna się od `claude_pin:`, binarka zniknęła po sekcji 1: AO nie ruszył, przekaż ten komunikat w pushu.
 
 ## 5. Blokery i zatrzymania
 
@@ -223,7 +230,10 @@ Opcję `--until HH:MM` podaj tylko wtedy, gdy użytkownik podał godzinę, i tak
 1. Zapytaj raz, czy Remote Control jest włączone. Potwierdzenie obowiązuje całą noc. Bez niego nie proponuj listy.
    Obok sprawdź zasilanie (`pmset -g batt`), przed `propose`, żeby użytkownik mógł podłączyć ładowarkę przed
    zatwierdzeniem. Na baterii powiedz mu o tym i idź dalej dopiero, gdy potwierdzi podłączenie albo wyraźnie to
-   zaakceptuje. Odmowa z sekcji 1 dla kolejnych epików nocy zostaje.
+   zaakceptuje. Odmowa z sekcji 1 dla kolejnych epików nocy zostaje. Przed `propose` sprawdź też checkout AO
+   i binarkę przypiętej wersji (warunki z sekcji 1): przy niespełnionym nie proponuj listy, tylko pokaż powód
+   (np. komendę instalacji z `claude_pin.py`), żeby użytkownik naprawił to przed snem. Sekcja 1 sprawdza binarkę
+   ponownie przed każdym epikiem nocy (aktualizacja w nocy może ją usunąć); odmowa kończy noc.
 2. Propozycja:
 
    ```bash
