@@ -149,6 +149,7 @@ export function CartPage() {
               ))}
             </ul>
             <CartSummary cart={loaded.cart} />
+            <CheckoutButton cart={loaded.cart} />
           </>
         )
       ) : null}
@@ -174,6 +175,29 @@ function CartSummary({ cart }: { cart: CartView }) {
       </p>
       {cart.hasExcludedLines ? <p className="text-sm text-destructive">Część produktów nie jest wliczona</p> : null}
     </section>
+  );
+}
+
+const EXCLUDED_LINES_HINT = "Usuń albo popraw oznaczone pozycje, żeby złożyć zamówienie.";
+
+/** The way to the checkout; a cart with a line that cannot be bought (`hasExcludedLines` of the API) cannot be ordered. */
+function CheckoutButton({ cart }: { cart: CartView }) {
+  if (!cart.hasExcludedLines) {
+    return (
+      <Button asChild className="self-end">
+        <Link href="/checkout">Przejdź do kasy</Link>
+      </Button>
+    );
+  }
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button type="button" disabled aria-describedby="checkout-blocked">
+        Przejdź do kasy
+      </Button>
+      <p id="checkout-blocked" className="text-sm text-muted-foreground">
+        {EXCLUDED_LINES_HINT}
+      </p>
+    </div>
   );
 }
 

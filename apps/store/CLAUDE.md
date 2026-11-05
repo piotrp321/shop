@@ -96,7 +96,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   listę wariantów (etykieta: nazwy osi) bez wyboru domyślnego, z wariantami `purchasable = false` opisanymi
   „niedostępny” i wyłączonymi; po wyborze kafelek pokazuje cenę i poziom wybranego wariantu, a przycisk (wyłączony do
   wyboru) dodaje 1 sztukę wybranego wariantu. `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
-  (`CartPage`, Client Component ładujący `/api/cart`), linia z nazwą produktu i etykietą wariantu. Po każdej zmianie koszyka komponent ogłasza `itemCount` z
+  (`CartPage`, Client Component ładujący `/api/cart`), linia z nazwą produktu i etykietą wariantu, pod podsumowaniem
+  przycisk „Przejdź do kasy” (link do `/checkout`; przy `hasExcludedLines` nieaktywny z tekstem „Usuń albo popraw
+  oznaczone pozycje, żeby złożyć zamówienie.”). Po każdej zmianie koszyka komponent ogłasza `itemCount` z
   odpowiedzi zdarzeniem (`src/cart/events.ts`), a licznik się aktualizuje. Front niczego nie liczy: kwoty, sumy i stany
   linii pochodzą z ostatniej odpowiedzi API, a odrzucona zmiana zostawia ostatni widok.
 - Odpowiedzi: 200 z danymi API, 404/409/422 z `{ detail }` API, 401 (sesja się skończyła: usunięta z Redisa i

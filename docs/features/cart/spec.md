@@ -484,7 +484,10 @@ zwracana.
   zdjęcie (`ProductPhoto`), nazwa, pod nią etykieta wariantu (pusta dla wariantu domyślnego), cena jednostkowa, ilość
   (pole 1–99 opisane nazwą i etykietą wariantu, zatwierdzane po opuszczeniu pola lub Enterem;
   wartość niebędąca liczbą całkowitą 1–99 albo bez zmiany wraca do bieżącej ilości bez żądania), wartość linii, „Usuń”;
-  podsumowanie: wartość brutto i liczba sztuk. Pusty koszyk: „Twój koszyk jest pusty” i link „Zobacz produkty”.
+  podsumowanie: wartość brutto i liczba sztuk; pod nim przycisk „Przejdź do kasy” (link do `/checkout`,
+  `docs/features/checkout/spec.md`). Przy `hasExcludedLines` przycisk jest nieaktywny, a pod nim tekst „Usuń albo popraw
+  oznaczone pozycje, żeby złożyć zamówienie.”. Pusty koszyk: „Twój koszyk jest pusty” i link „Zobacz produkty”, bez
+  przycisku.
 - Kwoty przez `formatPrice`. Front niczego nie liczy: każdy widok pochodzi z ostatniej odpowiedzi API.
 
 | Sytuacja | UI |
@@ -496,7 +499,7 @@ zwracana.
 | 403, 422, 503, 5xx, błąd sieci | „Nie udało się zapisać zmian. Spróbuj ponownie.” (bez automatycznego ponowienia) |
 | 401 (sesja wygasła), także przy wczytaniu `/cart` | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem „Zaloguj się” (`/auth/login?returnTo=…`) |
 | błąd wczytania koszyka | „Nie udało się wczytać koszyka” i przycisk „Spróbuj ponownie” |
-| `hasExcludedLines` | przy sumie: „Część produktów nie jest wliczona” |
+| `hasExcludedLines` | przy sumie: „Część produktów nie jest wliczona”; „Przejdź do kasy” nieaktywny z tekstem „Usuń albo popraw oznaczone pozycje, żeby złożyć zamówienie.” |
 | `notice: merge_truncated` | „Część produktów z koszyka gościa nie zmieściła się w koszyku” (`CartBadge`, obok linku „Koszyk”) |
 | `no_price` | „Cena niedostępna” |
 | `out_of_stock` | „Niedostępny” |
@@ -638,7 +641,7 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   „od”, produkt niedostępny bez ceny, listy i przycisku, błąd wywołania ofert; `load-catalog.test.ts`: jedno wywołanie
   ofert dla strony i lista bez ofert przy błędzie.
 - `AddToCartButton` (`AddToCartButton.test.tsx`): blokada na czas żądania, sukces, 409 z `detail`, 404, błąd sieci.
-- `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, pusty koszyk, zmiana ilości z błędem 409
+- `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, przycisk „Przejdź do kasy” (aktywny, nieaktywny, brak przy pustym koszyku), pusty koszyk, zmiana ilości z błędem 409
   (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem.
 - `CartBadge` (`CartBadge.test.tsx`, `events.test.ts`): liczba sztuk, aktualizacja po zmianie, ukrycie przy błędzie,
   komunikat scalenia.
