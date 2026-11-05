@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { staff } from "../support/accounts";
 import { loginStaff } from "../support/staff-login";
 
-// The store list reads availability from `GET /api/v1/availability`, cached for 60 s (`public, max-age=60`); the rest is slack.
+// The store list reads the offers (with the availability level) from `GET /api/v1/product-offers`, cached for 60 s (`public, max-age=60`); the rest is slack.
 const STORE_AVAILABILITY_WAIT_MS = 70_000;
 // The demo product with nothing on the shelf (apps/api/fixtures/stock.yaml); it is in the category "Sporty wodne" > "Kajaki".
 const PRODUCT_NAME = "Kajak turystyczny Vilmar Rzeka 2 zielony";
@@ -30,7 +30,7 @@ async function openStoreKayaks(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { level: 1, name: "Kajaki" })).toBeVisible();
 }
 
-/** Reloads the store listing until the product shows the label; the availability may be cached for up to 60 s. */
+/** Reloads the store listing until the product shows the label; the offers may be cached for up to 60 s. */
 async function expectStoreAvailability(page: Page, label: string): Promise<void> {
   await expect
     .poll(

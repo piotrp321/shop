@@ -7,10 +7,10 @@ namespace App\Cart\Application;
 use App\Cart\Application\Port\CartPrices;
 use App\Cart\Application\Port\ProductCatalog;
 use App\Cart\Application\Port\StockAvailability;
-use App\Cart\Domain\ProductId;
+use App\Cart\Domain\VariantId;
 
 /**
- * Asks each port once for all the products; without products, no port is asked.
+ * Asks each port once for all the variants; without variants, no port is asked.
  */
 final readonly class ProductDataLoader
 {
@@ -22,7 +22,7 @@ final readonly class ProductDataLoader
     }
 
     /**
-     * @param list<ProductId> $ids
+     * @param list<VariantId> $ids
      */
     public function load(array $ids): ProductData
     {

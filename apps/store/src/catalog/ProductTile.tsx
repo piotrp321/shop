@@ -1,46 +1,39 @@
 import type { components } from "@/api/schema";
 import { Card, CardContent } from "@/components/ui/card";
-import { AddToCartButton } from "@/cart/AddToCartButton";
+import { AvailabilityLabel } from "./availability-label";
 import { formatPrice } from "./format-price";
 import { ProductPhoto } from "./ProductPhoto";
+import { TileOffer } from "./TileOffer";
 
 type ProductListItem = components["schemas"]["ProductListItem"];
-type PriceItem = components["schemas"]["PriceItem"];
-type AvailabilityItem = components["schemas"]["AvailabilityItemResponse"];
+type ProductOffer = components["schemas"]["ProductOfferResponse"];
 
-// The level is decided by the API; the store only names it.
-const AVAILABILITY_LABELS: Record<AvailabilityItem["level"], { text: string; className: string }> = {
-  in_stock: { text: "Dostępny", className: "text-primary" },
-  low_stock: { text: "Ostatnie sztuki", className: "text-destructive" },
-  out_of_stock: { text: "Niedostępny", className: "text-muted-foreground" },
-};
-
-export function ProductTile({
-  product,
-  price,
-  availability,
-  sizes,
-  priority,
-}: {
-  product: ProductListItem;
-  price?: PriceItem;
-  availability?: AvailabilityItem;
-  sizes: string;
-  priority?: boolean;
-}) {
+/**
+ * A product of the list. The server renders the name, the photo, the price („od X zł” when the purchasable variants
+ * cost differently) and the level of the product; the variant choice and the button are the client part (TileOffer).
+ * Without an offer (the call failed) the tile has no price, level, choice or button; a product without a purchasable
+ * variant is „Niedostępny” without a price, a choice or a button.
+ */
+export function ProductTile({ product, offer, sizes, priority }: { product: ProductListItem; offer?: ProductOffer; sizes: string; priority?: boolean }) {
   return (
     <Card className="h-full pt-0">
       <ProductPhoto image={product.image} sizes={sizes} priority={priority} />
       <CardContent className="flex flex-col gap-1">
         <h2 className="text-sm leading-snug font-medium">{product.name}</h2>
-        <p data-testid="price" className={price ? "text-sm font-semibold" : "text-sm text-muted-foreground"}>
-          {price ? formatPrice(price.gross, price.currency) : "Cena niedostępna"}
-        </p>
-        {availability ? (
-          <p data-testid="availability" className={`text-xs font-medium ${AVAILABILITY_LABELS[availability.level].className}`}>{AVAILABILITY_LABELS[availability.level].text}</p>
-        ) : null}
-        {/* Without a label (the availability call failed) the button stays and the API decides. */}
-        {price && availability?.level !== "out_of_stock" ? <AddToCartButton productId={product.id} /> : null}
+        {offer === undefined ? (
+          <p data-testid="price" className="text-sm text-muted-foreground">
+            Cena niedostępna
+          </p>
+        ) : offer.fromGross === null ? (
+          <AvailabilityLabel level="out_of_stock" />
+        ) : (
+          <TileOffer offer={offer}>
+            <p data-testid="price" className="text-sm font-semibold">
+              {offer.hasPriceRange ? `od ${formatPrice(offer.fromGross, offer.currency)}` : formatPrice(offer.fromGross, offer.currency)}
+            </p>
+            <AvailabilityLabel level={offer.level} />
+          </TileOffer>
+        )}
       </CardContent>
     </Card>
   );

@@ -10,7 +10,7 @@ use App\Cart\Application\ProductDataLoader;
 use App\Cart\Application\View\CartView;
 use App\Cart\Application\View\CartViewBuilder;
 use App\Cart\Domain\CartLine;
-use App\Cart\Domain\ProductId;
+use App\Cart\Domain\VariantId;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
@@ -36,6 +36,6 @@ final readonly class GetCartHandler
 
         $lines = $cart->linesAt($this->clock->now());
 
-        return $this->views->build($cart->id(), $lines, $this->products->load(array_map(static fn (CartLine $line): ProductId => $line->productId(), $lines)));
+        return $this->views->build($cart->id(), $lines, $this->products->load(array_map(static fn (CartLine $line): VariantId => $line->variantId(), $lines)));
     }
 }

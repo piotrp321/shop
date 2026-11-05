@@ -29,7 +29,7 @@ checkout, wiele krajów i walut, harmonogramy zmian stawek, edycja klasy podatko
   `Pricing_Domain` i `Pricing_Application` nie zależą od Backoffice, a żadna warstwa Pricing nie zależy od
   `Backoffice_Infrastructure`, `Backoffice_Domain` ani `Backoffice_UI`.
 - Domena Pricing ma własne value objecty (`VariantId`, `TaxClass` jako kod tekstowy; `ProductId` tylko w liście cen
-  panelu i w odczycie przejściowym) i nie importuje kodu Catalog. Adapter mapuje kod klasy z Catalog na `TaxClass`
+  panelu) i nie importuje kodu Catalog. Adapter mapuje kod klasy z Catalog na `TaxClass`
   Pricing. Klasa podatkowa wariantu to klasa jego produktu.
 - Odczyt cen (`GetCurrentPrices`) czyta wyłącznie tabele Pricing, bez odczytu z Catalog.
 - Pricing w MVP nie publikuje ani nie konsumuje zdarzeń domenowych: nie ma konsumenta, a integracje w modularnym
@@ -120,12 +120,6 @@ Pricing:
     i nie może zostać kupiony.
   - Autorytatywny odczyt dla koszyka i przyszłego checkoutu: wywoływany w procesie przez port Cart/Ordering, z bazy,
     bez cache HTTP. Ordering kopiuje te wartości do pozycji zamówienia, a `version` pozwala wykryć zmianę ceny.
-- `GetCurrentProductPrices(productIds)` (1–100 id), odczyt przejściowy (znika w zadaniu VARIANTS-4 razem
-  z `GET /api/v1/prices`): warianty produktów jednym wywołaniem Catalog `ListProductVariants` (port
-  `ProductDirectory`), ceny jednym zapytaniem. Produkt z dokładnie jednym wariantem dostaje aktualną cenę tego
-  wariantu (`{productId, gross, currency}`); produkt z większą liczbą wariantów, bez wariantów (nieznany Catalogowi)
-  albo bez aktualnej ceny jest pominięty. Używają go `GET /api/v1/prices` i adapter cen koszyka
-  (`QueryBusCartPrices`), dopóki linie koszyka są per produkt.
 - `ListBackofficePrices(q, categoryId, after, perPage)`: strona produktów z portu `ProductDirectory`
   (Catalog `SearchBackofficeProducts`, kursor po produktach), warianty strony z etykietami jednym wywołaniem
   (Catalog `ListProductVariants`) i ich ceny jednym zapytaniem. Wynik: produkty strony, a w każdym jego warianty
@@ -188,12 +182,8 @@ Dziś nic nie zmienia klasy podatkowej produktu i ten mechanizm nie jest impleme
 Błędy w formacie RFC 9457 (problem details).
 
 Sklep (`apps/api/openapi.json`):
-- `GET /api/v1/prices?productId=<uuid>&productId=…` – publiczny (`PUBLIC_ACCESS` dla `GET` w `security.yaml`),
-  `Cache-Control: public, max-age=60`. Tryb przejściowy (`GetCurrentProductPrices`) do zadania VARIANTS-4, które
-  zastępuje endpoint ofertą produktów listy: kontrakt na `productId` bez zmian.
-  - 1–48 id. Brak, za dużo lub niepoprawny UUID: 400.
-  - `200 {items: [{productId, gross, currency}]}` – `gross` w groszach, cena jedynego wariantu produktu. Produkty
-    z więcej niż jednym wariantem, bez aktualnej ceny i nieznane id są pominięte.
+- Publicznego endpointu cen nie ma: cenę „od” i ceny wariantów kafelka zwraca oferta produktów listy
+  (`GET /api/v1/product-offers`, Cart, `docs/features/cart/spec.md`), która czyta ceny przez `GetCurrentPrices`.
 - `GET /api/v1/products` bez zmian.
 
 Panel (`apps/api/openapi-admin.json`, firewall `backoffice`, `Cache-Control: private, no-store`; bez tokena albo
@@ -222,10 +212,9 @@ z tokenem realmu `shop`: 401):
 
 ## Sklep (`apps/store`)
 
-- `loadCatalog` po pobraniu strony produktów pobiera ich ceny jednym wywołaniem `GET /api/v1/prices`.
-- `ProductTile` pokazuje brutto przez `formatPrice(gross, currency)` (`Intl.NumberFormat("pl-PL")`) albo
-  „Cena niedostępna”.
-- Błąd endpointu cen nie psuje listy: produkty renderują się z „Cena niedostępna”, a błąd trafia do logu serwera.
+- Ceny listy pochodzą z oferty produktów (`GET /api/v1/product-offers`, `docs/features/cart/spec.md`): `ProductTile`
+  pokazuje brutto przez `formatPrice(gross, currency)` (`Intl.NumberFormat("pl-PL")`), „od X zł” przy różnych cenach
+  wariantów możliwych do kupienia, albo „Cena niedostępna” przy błędzie ofert.
 - Nowa cena jest widoczna w sklepie najpóźniej po czasie cache odpowiedzi (60 s).
 
 ## Panel (`apps/admin`)
@@ -293,7 +282,7 @@ z tokenem realmu `shop`: 401):
   o `id` różnym od `id` produktu (wyjątek: test migracji).
 - Funkcjonalne API: każdy endpoint z przypadkami 200, 400 lub 422, 401 (bez tokena i z tokenem `shop`), 403
   (`marketing`, `support`, `warehouse` przy `PUT`), 404 (także identyfikator produktu zamiast wariantu) i 409.
-- Vitest: sklep – `formatPrice`, kafelek z ceną i bez, `loadCatalog` przy błędzie cen; panel – zamiana kwoty
+- Vitest: sklep – `formatPrice` (kafelek z ofertą opisuje `docs/features/cart/spec.md`); panel – zamiana kwoty
   na grosze, widok cen (wiersz na wariant, kolumna „Wariant”, akcje na wierszu wariantu, 403, 409, pusty wynik),
   historia.
 - E2E: admin zmienia cenę w panelu, nowa cena jest widoczna w sklepie (oczekiwanie do 70 s).

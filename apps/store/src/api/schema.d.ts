@@ -54,8 +54,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Add a product to the cart of the customer
-         * @description Adds a line, or adds the units to the line of the product; the first change creates the cart. The product must have a current price and enough available units (the number of units is never told); the cart holds at most 50 products and 99 units of one. Nothing is reserved.
+         * Add a variant of a product to the cart of the customer
+         * @description Adds a line, or adds the units to the line of the variant; the first change creates the cart. The variant must have a current price and enough available units (the number of units is never told); the cart holds at most 50 variants and 99 units of one. Nothing is reserved.
          */
         post: operations["addCustomerCartItem"];
         delete?: never;
@@ -64,7 +64,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/me/cart/items/{productId}": {
+    "/api/v1/me/cart/items/{variantId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -80,7 +80,7 @@ export interface paths {
         post?: never;
         /**
          * Remove a line of the cart of the customer
-         * @description Removes the line of the product; a cart without it is answered as it is, a customer without a cart gets the empty one and none is created.
+         * @description Removes the line of the variant; a cart without it is answered as it is, a customer without a cart gets the empty one and none is created.
          */
         delete: operations["removeCustomerCartItem"];
         options?: never;
@@ -99,7 +99,7 @@ export interface paths {
         put?: never;
         /**
          * Merge a guest cart into the cart of the customer
-         * @description Moves the lines of the guest cart into the cart of the customer, in one transaction: the quantities of a product in both are added and cut to 99, a product of the guest beyond the 50th of the cart is skipped (either makes `truncated` true); price and availability are not checked. The guest cart is then merged and every later change of it is a 404. An expired cart of the customer is cleared first. A merged guest cart gives `already_merged`; an unknown or expired guest cart, or the id of a customer cart, gives `nothing_to_merge`; neither changes anything nor creates a cart, and `cart` is the cart as `GET /api/v1/me/cart` gives it.
+         * @description Moves the lines of the guest cart into the cart of the customer, in one transaction: the quantities of a variant in both are added and cut to 99, a variant of the guest beyond the 50th of the cart is skipped (either makes `truncated` true); price and availability are not checked. The guest cart is then merged and every later change of it is a 404. An expired cart of the customer is cleared first. A merged guest cart gives `already_merged`; an unknown or expired guest cart, or the id of a customer cart, gives `nothing_to_merge`; neither changes anything nor creates a cart, and `cart` is the cart as `GET /api/v1/me/cart` gives it.
          */
         post: operations["mergeGuestCart"];
         delete?: never;
@@ -178,8 +178,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Add a product to a guest cart
-         * @description Adds a line, or adds the units to the line of the product. The product must have a current price and enough available units (the number of units is never told); the cart holds at most 50 products and 99 units of one. Nothing is reserved.
+         * Add a variant of a product to a guest cart
+         * @description Adds a line, or adds the units to the line of the variant. The variant must have a current price and enough available units (the number of units is never told); the cart holds at most 50 variants and 99 units of one. Nothing is reserved.
          */
         post: operations["addGuestCartItem"];
         delete?: never;
@@ -188,7 +188,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/guest-carts/{cartId}/items/{productId}": {
+    "/api/v1/guest-carts/{cartId}/items/{variantId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -204,9 +204,29 @@ export interface paths {
         post?: never;
         /**
          * Remove a line of a guest cart
-         * @description Removes the line of the product; a cart without it is answered as it is.
+         * @description Removes the line of the variant; a cart without it is answered as it is.
          */
         delete: operations["removeGuestCartItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/product-offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Offers of products of the list
+         * @description For each requested product its variants (label, current gross price, availability level, whether one unit can be bought now), the lowest price among the purchasable variants (`fromGross`, with `hasPriceRange` when their prices differ) and the best level among them; a product without a purchasable variant, also one unknown to Catalog, has no price and is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it does not decide a purchase: an addition to the cart checks the price and the stock again.
+         */
+        get: operations["getProductOffers"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -264,46 +284,6 @@ export interface paths {
          * @description The customer identified by the access token of the `shop` realm.
          */
         get: operations["getMe"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/availability": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Availability of products
-         * @description The availability level of each requested product, for the product list. A product without a stock record, with more than one variant, or unknown, is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not what decides a purchase: the reservation at checkout does.
-         */
-        get: operations["getAvailability"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/prices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Gross prices of products
-         * @description The current gross price of each requested product, for the product list. A product without a price, with a price at an outdated VAT rate, with more than one variant, or unknown, is left out. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not the price to charge: checkout reads prices from the database.
-         */
-        get: operations["getCurrentPrices"];
         put?: never;
         post?: never;
         delete?: never;
@@ -372,24 +352,6 @@ export interface components {
                 }[];
             };
         };
-        PriceList: {
-            items: components["schemas"]["PriceItem"][];
-        };
-        /** @description The current gross price of one product. */
-        PriceItem: {
-            /** Format: uuid */
-            productId: string;
-            /**
-             * @description Gross price (VAT included) in grosze.
-             * @example 5490
-             */
-            gross: number;
-            /**
-             * @description ISO 4217 code.
-             * @example PLN
-             */
-            currency: string;
-        };
         /** @description A cart with everything the store shows, computed by the API. The number of available units is never part of it. */
         CartView: {
             /**
@@ -404,9 +366,12 @@ export interface components {
             hasExcludedLines: boolean;
         };
         CartLine: {
-            /** Format: uuid */
-            productId: string;
-            /** @description Null when Catalog no longer knows the product (`unavailable_product`). */
+            /**
+             * Format: uuid
+             * @description The variant of a product the line holds; the lines are unique by variant.
+             */
+            variantId: string;
+            /** @description Null when Catalog no longer knows the variant (`unavailable_product`). */
             product: components["schemas"]["CartLineProduct"] | null;
             quantity: number;
             /** @description The current gross price; null without a current price. */
@@ -414,14 +379,25 @@ export interface components {
             /** @description Unit price × quantity, only for a `purchasable` line. */
             lineTotal: components["schemas"]["GrossAmount"] | null;
             /**
-             * @description The first that applies: the product is unknown to Catalog, has no current price, has no available unit, has fewer available units than the quantity; otherwise purchasable.
+             * @description The first that applies: the variant is unknown to Catalog, has no current price, has no available unit, has fewer available units than the quantity; otherwise purchasable.
              * @enum {string}
              */
             state: "unavailable_product" | "no_price" | "out_of_stock" | "insufficient_stock" | "purchasable";
         };
+        /** @description The product of the variant of the line. */
         CartLineProduct: {
-            /** @example Buty do biegania Puls 2 granatowe */
+            /** Format: uuid */
+            productId: string;
+            /**
+             * @description Name of the product.
+             * @example Buty szosowe Tarvik Asfalt 200
+             */
             name: string;
+            /**
+             * @description The values of the variant joined with ", "; empty for the default variant of a product without variant axes.
+             * @example czarne, 42
+             */
+            variantLabel: string;
             /** @description The main image in the listing size, null when the product has no images. */
             image: components["schemas"]["ProductImage"] | null;
         };
@@ -456,7 +432,7 @@ export interface components {
              * @enum {string}
              */
             result: "merged" | "already_merged" | "nothing_to_merge";
-            /** @description Whether a sum was cut to 99 units or a product of the guest skipped because the cart had 50 products; always false unless `merged`. */
+            /** @description Whether a sum was cut to 99 units or a variant of the guest skipped because the cart had 50 variants; always false unless `merged`. */
             truncated: boolean;
         };
         CartSummary: {
@@ -484,15 +460,15 @@ export interface components {
                 title: string;
             }[];
         };
-        /** @description A product to add to the cart. */
+        /** @description A variant of a product to add to the cart. */
         AddCartItemRequest: {
             /**
              * Format: uuid
-             * @description Product id (UUID).
+             * @description Variant id (UUID) of a product.
              */
-            productId: string;
+            variantId: string;
             /**
-             * @description Units to add, from 1 to 99. The line may have at most 99 units.
+             * @description Units to add, from 1 to 99. The line of the variant may have at most 99 units.
              * @example 1
              */
             quantity: number;
@@ -521,6 +497,72 @@ export interface components {
             /** @default 24 */
             perPage: number;
         };
+        /** @description The offer of one variant of a product. Never the number of units. */
+        VariantOfferResponse: {
+            /**
+             * Format: uuid
+             * @description Variant id (UUID): the key of a cart line.
+             */
+            variantId: string;
+            /**
+             * @description The values of the variant joined with ", "; empty for the default variant of a product without axes.
+             * @example czarne, 42
+             */
+            label: string;
+            /**
+             * @description The current gross price in grosze; null without a current price.
+             * @example 30000
+             */
+            gross: number | null;
+            /**
+             * @description Availability level computed by the API.
+             * @example in_stock
+             * @enum {string}
+             */
+            level: "in_stock" | "low_stock" | "out_of_stock";
+            /** @description Whether one unit can be bought now: a current price and an available unit. The tile offers only such a variant. */
+            purchasable: boolean;
+        };
+        /** @description The offer of a product of the list, computed by the API from its purchasable variants (a current price and an available unit). Never the number of units. */
+        ProductOfferResponse: {
+            /**
+             * Format: uuid
+             * @description Product id (UUID).
+             */
+            productId: string;
+            /**
+             * @description Names of the variant axes in order (e.g. "Kolor, Rozmiar"); empty for a product with the default variant only, and for a product unknown to Catalog.
+             * @example [
+             *       "Kolor",
+             *       "Rozmiar"
+             *     ]
+             */
+            variantAxes: string[];
+            /**
+             * @description The lowest gross price in grosze among the purchasable variants; null when no variant can be bought.
+             * @example 30000
+             */
+            fromGross: number | null;
+            /** @description Whether the purchasable variants have different prices (the tile shows "od"). */
+            hasPriceRange: boolean;
+            /**
+             * @description ISO 4217 code.
+             * @enum {string}
+             */
+            currency: "PLN";
+            /**
+             * @description The best level among the purchasable variants; out_of_stock when no variant can be bought.
+             * @example in_stock
+             * @enum {string}
+             */
+            level: "in_stock" | "low_stock" | "out_of_stock";
+            /** @description Every variant in presentation order; none for a product unknown to Catalog. */
+            variants: components["schemas"]["VariantOfferResponse"][];
+        };
+        /** @description One offer per requested product, in the order of the request; a repeated id answers once. */
+        ProductOfferListResponse: {
+            items: components["schemas"]["ProductOfferResponse"][];
+        };
         CategoryNode: {
             id: string;
             name: string;
@@ -540,24 +582,6 @@ export interface components {
              * @example Jan Kowalski
              */
             name: string;
-        };
-        /** @description The availability level of one product. Never the number of units. */
-        AvailabilityItemResponse: {
-            /**
-             * Format: uuid
-             * @description Product id (UUID).
-             */
-            productId: string;
-            /**
-             * @description Availability level computed by the API: no units available, 1 to 5 (last units), or more.
-             * @example in_stock
-             * @enum {string}
-             */
-            level: "in_stock" | "low_stock" | "out_of_stock";
-        };
-        /** @description The availability levels of the requested products. */
-        AvailabilityListResponse: {
-            items: components["schemas"]["AvailabilityItemResponse"][];
         };
     };
     responses: never;
@@ -684,7 +708,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such product in Catalog (problem details). */
+            /** @description No such variant in Catalog (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -693,7 +717,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description More than 99 units of the product, a 51st product, a product without a current price or available units, or more units than available (problem details with a Polish `detail`). */
+            /** @description More than 99 units of the variant, a 51st variant, a variant without a current price or available units, or more units than available (problem details with a Polish `detail`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -711,7 +735,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description A key is missing, of a wrong type, the quantity is out of 1–99 or the product id is not a UUID (problem details with `violations`). */
+            /** @description A key is missing, of a wrong type, the quantity is out of 1–99 or the variant id is not a UUID (problem details with `violations`). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -736,8 +760,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Product id of the line (UUID). */
-                productId: string;
+                /** @description Variant id of the line (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -774,7 +798,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such line, an id that is not a UUID, or an increase of a product Catalog no longer knows (problem details). */
+            /** @description No such line, an id that is not a UUID, or an increase of a variant Catalog no longer knows (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -783,7 +807,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description An increase of a product without a current price or available units, or above the available units (problem details with a Polish `detail`). */
+            /** @description An increase of a variant without a current price or available units, or above the available units (problem details with a Polish `detail`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -826,8 +850,8 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Product id of the line (UUID). */
-                productId: string;
+                /** @description Variant id of the line (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -851,7 +875,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The product id is not a UUID (problem details). */
+            /** @description The variant id is not a UUID (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1123,7 +1147,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such cart (unknown, expired or merged, or the id is not a UUID) or no such product in Catalog (problem details). */
+            /** @description No such cart (unknown, expired or merged, or the id is not a UUID) or no such variant in Catalog (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1132,7 +1156,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description More than 99 units of the product, a 51st product, a product without a current price or available units, or more units than available (problem details with a Polish `detail`). */
+            /** @description More than 99 units of the variant, a 51st variant, a variant without a current price or available units, or more units than available (problem details with a Polish `detail`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1150,7 +1174,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description A key is missing, of a wrong type, the quantity is out of 1–99 or the product id is not a UUID (problem details with `violations`). */
+            /** @description A key is missing, of a wrong type, the quantity is out of 1–99 or the variant id is not a UUID (problem details with `violations`). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1177,8 +1201,8 @@ export interface operations {
             path: {
                 /** @description Cart id (UUID). */
                 cartId: string;
-                /** @description Product id of the line (UUID). */
-                productId: string;
+                /** @description Variant id of the line (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -1215,7 +1239,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No such cart (unknown, expired or merged, or an id is not a UUID), no such line, or an increase of a product Catalog no longer knows (problem details). */
+            /** @description No such cart (unknown, expired or merged, or an id is not a UUID), no such line, or an increase of a variant Catalog no longer knows (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1224,7 +1248,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description An increase of a product without a current price or available units, or above the available units (problem details with a Polish `detail`). */
+            /** @description An increase of a variant without a current price or available units, or above the available units (problem details with a Polish `detail`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1269,8 +1293,8 @@ export interface operations {
             path: {
                 /** @description Cart id (UUID). */
                 cartId: string;
-                /** @description Product id of the line (UUID). */
-                productId: string;
+                /** @description Variant id of the line (UUID). */
+                variantId: string;
             };
             cookie?: never;
         };
@@ -1304,6 +1328,56 @@ export interface operations {
                 };
             };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getProductOffers: {
+        parameters: {
+            query: {
+                /** @description Product ids (UUID), 1 to 48. */
+                productId: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One offer per requested product, in the order of the request; a repeated id answers once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductOfferListResponse"];
+                };
+            };
+            /** @description No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1443,106 +1517,6 @@ export interface operations {
                 };
             };
             /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    getAvailability: {
-        parameters: {
-            query: {
-                /** @description Product ids (UUID), 1 to 48. */
-                productId: string[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The level of every requested product, in the order of the request; a repeated id answers once. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AvailabilityListResponse"];
-                };
-            };
-            /** @description No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`). */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    getCurrentPrices: {
-        parameters: {
-            query: {
-                /** @description Product ids (UUID), 1 to 48. */
-                productId: string[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The prices found, in the order of the request. Possibly an empty list. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PriceList"];
-                };
-            };
-            /** @description No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`). */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
             503: {
                 headers: {
                     [name: string]: unknown;

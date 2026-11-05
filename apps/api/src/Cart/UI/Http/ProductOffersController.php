@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Inventory\UI\Http;
+namespace App\Cart\UI\Http;
 
-use App\Inventory\Application\Query\GetProductStockLevels;
-use App\Inventory\Application\Query\ProductStockLevel;
+use App\Cart\Application\Query\GetProductOffers;
+use App\Cart\Application\View\ProductOfferView;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Messenger\HandleTrait;
@@ -16,28 +17,33 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
-final class AvailabilityController
+/**
+ * The offers of the products of a page of the store list: one public, cacheable read for the whole page.
+ */
+final class ProductOffersController
 {
     use HandleTrait;
 
     private const string PARAMETER = 'productId';
 
     public function __construct(
-        MessageBusInterface $queryBus,
+        #[Autowire(service: 'query.bus')] MessageBusInterface $queryBus,
         private readonly ValidatorInterface $validator,
     ) {
         $this->messageBus = $queryBus;
     }
 
-    #[Route('/api/v1/availability', name: 'inventory_availability', methods: ['GET'])]
+    #[Route('/api/v1/product-offers', name: 'cart_product_offers', methods: ['GET'])]
     #[OA\Get(
-        operationId: 'getAvailability',
-        summary: 'Availability of products',
-        description: 'The availability level of each requested product, for the product list. A product without a stock record, '
-            .'with more than one variant, or unknown, is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key '
-            .'(`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for '
-            .'60 seconds, so it is not what decides a purchase: the reservation at checkout does.',
-        tags: ['Inventory'],
+        operationId: 'getProductOffers',
+        summary: 'Offers of products of the list',
+        description: 'For each requested product its variants (label, current gross price, availability level, whether one unit can be '
+            .'bought now), the lowest price among the purchasable variants (`fromGross`, with `hasPriceRange` when their prices differ) '
+            .'and the best level among them; a product without a purchasable variant, also one unknown to Catalog, has no price and is '
+            .'`out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key '
+            .'(`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, '
+            .'so it does not decide a purchase: an addition to the cart checks the price and the stock again.',
+        tags: ['Cart'],
         parameters: [
             new OA\Parameter(
                 name: self::PARAMETER,
@@ -46,14 +52,14 @@ final class AvailabilityController
                 description: 'Product ids (UUID), 1 to 48.',
                 style: 'form',
                 explode: true,
-                schema: new OA\Schema(type: 'array', items: new OA\Items(type: 'string', format: 'uuid'), minItems: 1, maxItems: AvailabilityQuery::MAX_PRODUCTS),
+                schema: new OA\Schema(type: 'array', items: new OA\Items(type: 'string', format: 'uuid'), minItems: 1, maxItems: GetProductOffers::MAX_PRODUCTS),
             ),
         ],
         responses: [
             new OA\Response(
                 response: 200,
-                description: 'The level of every requested product, in the order of the request; a repeated id answers once.',
-                content: new OA\JsonContent(ref: new Model(type: AvailabilityListResponse::class)),
+                description: 'One offer per requested product, in the order of the request; a repeated id answers once.',
+                content: new OA\JsonContent(ref: new Model(type: ProductOfferListResponse::class)),
             ),
             new OA\Response(
                 response: 400,
@@ -74,18 +80,19 @@ final class AvailabilityController
     )]
     public function __invoke(Request $request): JsonResponse
     {
-        $query = new AvailabilityQuery(self::productIds($request));
+        $query = new ProductOffersQuery(self::productIds($request));
         $violations = $this->validator->validate($query);
         if (\count($violations) > 0) {
             throw new ValidationFailedException($query, $violations);
         }
 
-        // Transitional until the product offers replace this endpoint (VARIANTS-4): a product with exactly one variant
-        // has the level of that variant.
-        /** @var list<ProductStockLevel> $levels */
-        $levels = $this->handle(new GetProductStockLevels($query->productId));
+        /** @var list<ProductOfferView> $offers */
+        $offers = $this->handle(new GetProductOffers($query->productId));
 
-        $response = new JsonResponse(new AvailabilityListResponse(array_map(AvailabilityItemResponse::of(...), $levels)));
+        $response = new JsonResponse(new ProductOfferListResponse(array_map(
+            static fn (ProductOfferView $offer): ProductOfferResponse => ProductOfferResponse::of($offer),
+            $offers,
+        )));
         $response->setPublic();
         $response->setMaxAge(60);
 
@@ -108,7 +115,7 @@ final class AvailabilityController
                 continue;
             }
             $ids[] = urldecode($value);
-            if (\count($ids) > AvailabilityQuery::MAX_PRODUCTS) {
+            if (\count($ids) > GetProductOffers::MAX_PRODUCTS) {
                 break;
             }
         }

@@ -4,23 +4,23 @@ Punkt 6 MVP z `docs/vision.md`, bez checkoutu.
 
 ## Cel i zakres
 
-Klient sklepu (gość albo zalogowany w realmie `shop`) dodaje produkt do koszyka z kafelka na liście, zmienia ilości,
+Klient sklepu (gość albo zalogowany w realmie `shop`) dodaje wariant produktu do koszyka z kafelka na liście, zmienia ilości,
 usuwa pozycje i widzi sumy policzone przez API. Koszyk przeżywa odświeżenie i ponowne wejście. Po zalogowaniu koszyk
 gościa łączy się z koszykiem klienta, a klient widzi ten sam koszyk na każdym urządzeniu.
 
 Poza zakresem: checkout i zamówienia (epik ORDERING), rezerwacja stanu, płatności, promocje i kody rabatowe, koszty
-dostawy, strona produktu, warianty, panel administracyjny, rate limiting tworzenia koszyków.
+dostawy, strona produktu, panel administracyjny, rate limiting tworzenia koszyków.
 
 ## Decyzje biznesowe
 
 | # | Decyzja |
 |---|---|
-| 1 | Koszyk per produkt (bez wariantów). Warianty to osobny epik Catalog; koszyk migruje się najtaniej, bo jego dane są krótkotrwałe. |
+| 1 | Pozycja koszyka to wariant produktu (epik VARIANTS): dwa warianty jednego produktu (np. dwa rozmiary) to dwie pozycje. |
 | 2 | Koszyki gości i klientów są w PostgreSQL (nie w Redisie). |
 | 3 | Scalanie przy logowaniu sumuje ilości. Suma ponad limit ilości jest przycinana, linie gościa ponad limit liczby pozycji są pomijane, a klient widzi komunikat. Scalenie nigdy nie kończy się błędem z powodu ceny ani dostępności. |
-| 4 | Najwyżej 50 różnych pozycji, najwyżej 99 sztuk jednej pozycji. |
+| 4 | Najwyżej 50 różnych pozycji (wariantów), najwyżej 99 sztuk jednej pozycji. |
 | 5 | Koszyk gościa wygasa po 30 dniach od ostatniej zmiany, koszyk klienta po 180 dniach. Wygasły koszyk zachowuje się jak pusty, fizycznie usuwa go `cart:purge-expired`. |
-| 6 | Pozycje nigdy nie znikają same. Pozycja bez ceny, niedostępna, z ilością większą niż dostępna albo z produktem usuniętym z katalogu ma etykietę i przycisk „Usuń”. Suma obejmuje tylko pozycje możliwe do kupienia. |
+| 6 | Pozycje nigdy nie znikają same. Pozycja bez ceny, niedostępna, z ilością większą niż dostępna albo z wariantem usuniętym z katalogu ma etykietę i przycisk „Usuń”. Suma obejmuje tylko pozycje możliwe do kupienia. |
 | 7 | Dostępność ogranicza ilość przy dodaniu i zwiększeniu ilości, bez rezerwacji i bez ujawniania liczby sztuk. Wiąże dopiero rezerwacja w ORDERING. |
 | 8 | Sumy: wartość brutto i liczba sztuk, bez VAT. Licznik sztuk w nagłówku. |
 | 9 | Koszyk pokazuje zawsze cenę aktualną, bez informacji o zmianie ceny. Cenę zamraża zamówienie. |
@@ -30,10 +30,10 @@ dostawy, strona produktu, warianty, panel administracyjny, rate limiting tworzen
 
 | Context | Odpowiada za |
 |---|---|
-| Cart | koszyki, pozycje, limity, scalanie, wygasanie, widok koszyka z sumami |
-| Catalog | `GetProductSummaries` (nazwa i zdjęcie produktów) |
-| Pricing | `GetCurrentPrices` (autorytatywna cena aktualna) |
-| Inventory | `GetProductStockLevels` (dostępna liczba sztuk, tylko w procesie API; odczyt przejściowy do VARIANTS-4: stan jedynego wariantu produktu, produkt z większą liczbą wariantów jest niedostępny) |
+| Cart | koszyki, pozycje, limity, scalanie, wygasanie, widok koszyka z sumami, oferta produktów listy (warianty możliwe do kupienia, cena „od”, poziom produktu) |
+| Catalog | `GetVariantSummaries` (produkt, nazwa produktu, etykieta wariantu i zdjęcie produktu dla linii koszyka), `ListProductVariants` (osie i warianty produktów listy dla oferty) |
+| Pricing | `GetCurrentPrices` (autorytatywna cena aktualna wariantu) |
+| Inventory | `GetStockLevels` (dostępna liczba sztuk wariantu i jej poziom, tylko w procesie API) |
 | Customer | `AuthenticatedCustomer::id()` (`sub` z tokena realmu `shop`) |
 | Sklep | BFF koszyka i wyświetlanie wartości z API; żadnych obliczeń |
 
@@ -59,21 +59,22 @@ Reguły Deptrac (żaden inny context nie zależy od Cart w żadnej warstwie):
 
 - `CartId`: UUID; nowy jest losowym UUID v4. Identyfikator koszyka gościa jest jednocześnie kluczem dostępu do niego.
 - `CartOwner`: `guest` albo `customer(customerId)`, gdzie `customerId` to `sub` z tokena (1–255 znaków).
-- `ProductId`: UUID (zapisywany małymi literami).
+- `VariantId`: UUID wariantu (zapisywany małymi literami), klucz linii koszyka.
+- `ProductId`: UUID produktu (małymi literami), tylko w ofercie produktów listy i w produkcie linii (`VariantSummary`).
 - `Quantity`: liczba całkowita 1–99 (`InvalidQuantity`, `InvalidInput`).
 - `Money`: nieujemne grosze (`int`) i `Currency` (tylko `PLN`). Bez `float`.
-- `ProductOffer {hasCurrentPrice: bool, available: int}`: stan produktu z portów, podany domenie przez handler;
+- `ProductOffer {hasCurrentPrice: bool, available: int}`: stan wariantu z portów, podany domenie przez handler;
   `available` nie jest ujemne. Jedyne miejsce reguły „produkt do kupienia”: `purchasability(quantity)` zwraca
   `Purchasability` (enum domeny) w kolejności `NoPrice` (brak ceny), `OutOfStock` (`available = 0`),
-  `InsufficientStock` (`quantity > available`), `Purchasable`. Używają go `Cart` (dodanie i zwiększenie) oraz
-  widok koszyka.
-- `CartLine {productId, quantity, addedAt}`; `addedAt` ustala kolejność linii i nie zmienia się wraz z ilością.
+  `InsufficientStock` (`quantity > available`), `Purchasable`. Używają go `Cart` (dodanie i zwiększenie), widok
+  koszyka oraz oferta produktów listy (`VariantOffer`).
+- `CartLine {variantId, quantity, addedAt}`; `addedAt` ustala kolejność linii i nie zmienia się wraz z ilością.
 - `MergeOutcome {result: merged | already_merged | nothing_to_merge, truncated: bool}`.
 
 ### Agregat `Cart`
 
 Pola: `id`, `owner`, `status` (`open` | `merged`; `merged` tylko dla gościa), `mergedInto` (null), `mergedAt` (null),
-linie unikalne po `productId` w kolejności `addedAt`, `createdAt`, `updatedAt`, `expiresAt`. Nowy koszyk powstaje przez
+linie unikalne po `variantId` w kolejności `addedAt`, `createdAt`, `updatedAt`, `expiresAt`. Nowy koszyk powstaje przez
 `createForGuest` i `createForCustomer`, zapisany jest odtwarzany przez `reconstitute()`.
 
 Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99`, czas życia gościa 30 dni, klienta
@@ -81,15 +82,15 @@ Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99
 
 | Metoda | Działanie | Błędy |
 |---|---|---|
-| `add(productId, quantity, offer, now)` | brak linii: nowa linia; linia istnieje: ilość += quantity | wynik > 99: `CartLineQuantityLimit` (409); nowa linia przy 50 liniach: `CartLineLimit` (409); `!hasCurrentPrice` albo `available = 0`: `ProductNotPurchasable` (409); wynik > `available`: `InsufficientStock` (409) |
-| `changeQuantity(productId, quantity, offer, now)` | ustawia ilość (wartość bezwzględna). Zmniejszenie i ta sama ilość są zawsze dozwolone. Zwiększenie wymaga `hasCurrentPrice`, `available > 0` i `quantity ≤ available` | brak linii: `CartLineNotFound` (404); błędy zwiększenia jak przy `add` |
-| `remove(productId, now)` | usuwa linię; brak linii: sukces bez zmian (bez `touch`) | |
+| `add(variantId, quantity, offer, now)` | brak linii: nowa linia; linia istnieje: ilość += quantity | wynik > 99: `CartLineQuantityLimit` (409); nowa linia przy 50 liniach: `CartLineLimit` (409); `!hasCurrentPrice` albo `available = 0`: `ProductNotPurchasable` (409); wynik > `available`: `InsufficientStock` (409) |
+| `changeQuantity(variantId, quantity, offer, now)` | ustawia ilość (wartość bezwzględna). Zmniejszenie i ta sama ilość są zawsze dozwolone. Zwiększenie wymaga `hasCurrentPrice`, `available > 0` i `quantity ≤ available` | brak linii: `CartLineNotFound` (404); błędy zwiększenia jak przy `add` |
+| `remove(variantId, now)` | usuwa linię; brak linii: sukces bez zmian (bez `touch`) | |
 | `mergeFrom(guest, now): MergeOutcome` | na koszyku klienta, opis w sekcji „Scalanie” | koszyk gościa: błąd logiczny |
 | `outcomeWithoutMerge(now)` | na koszyku, który ma zostać scalony: `already_merged` dla `merged` (także wygasłego), `nothing_to_merge` dla wygasłego gościa i dla koszyka klienta, `null` gdy można scalać | |
 | `markMerged(customerCartId, now)` | na koszyku gościa: usuwa linie, `status = merged`, `mergedInto`, `mergedAt`, `updatedAt = now`; `expiresAt` zostaje (scalony koszyk czeka na czyszczenie) | koszyk nie jest gościa albo nie jest `open`: błąd logiczny |
 | `clearIfExpired(now)` | koszyk klienta po `expiresAt`: usuwa wszystkie linie (koszyka gościa nigdy) | |
 | `openForChange(now)` | początek każdej zmiany, idempotentne: gość sprawdza dostępność (poniżej), klient `clearIfExpired` | `GuestCartMerged`, `CartNotFound` |
-| `needsOfferToChange(productId, quantity)` | czy zmiana ilości jest zwiększeniem istniejącej linii, więc potrzebuje `ProductOffer` | |
+| `needsOfferToChange(variantId, quantity)` | czy zmiana ilości jest zwiększeniem istniejącej linii, więc potrzebuje `ProductOffer` | |
 | `linesAt(now)`, `itemCountAt(now)` | linie i liczba sztuk tak, jak widzi je odczyt: wygasły koszyk klienta jest pusty | gość `merged`: `GuestCartMerged`, wygasły: `CartNotFound` |
 | `touch(now)` | `expiresAt = now + 30 dni` (gość) albo `now + 180 dni` (klient), `updatedAt = now` | |
 | `isExpired(now)` | `expiresAt < now` | |
@@ -101,7 +102,7 @@ Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99
 - `InsufficientStock` nie zawiera liczby sztuk; `detail`: „Nie mamy tylu sztuk tego produktu.”.
 - Komunikaty `detail` (po polsku, bez danych wejściowych): `InvalidQuantity` „Ilość musi wynosić od 1 do 99 szt.”,
   `CartLineQuantityLimit` „Można dodać najwyżej 99 sztuk
-  jednego produktu.”, `CartLineLimit` „Koszyk może zawierać najwyżej 50 różnych produktów.”, `ProductNotPurchasable`
+  jednej pozycji.”, `CartLineLimit` „Koszyk może zawierać najwyżej 50 różnych pozycji.”, `ProductNotPurchasable`
   „Ten produkt jest chwilowo niedostępny w sprzedaży.”, `CartLineNotFound` „Tej pozycji nie ma w koszyku.”,
   `CartNotFound` i `GuestCartMerged` „Koszyk nie jest już dostępny.”, `ProductNotFound` „Produkt nie jest już
   dostępny.”.
@@ -113,9 +114,9 @@ Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99
 2. `clearIfExpired(now)` na koszyku klienta: wygasły koszyk klienta traci swoje stare pozycje przed scaleniem,
    więc do pustego koszyka trafiają tylko pozycje gościa.
 3. Linie gościa w kolejności `addedAt`:
-   - produkt jest już w koszyku klienta: ilość = min(suma, 99); przycięcie ustawia `truncated`;
-   - produktu nie ma i koszyk ma mniej niż 50 linii: nowa linia z ilością gościa (zachowuje `addedAt` gościa);
-   - produktu nie ma i koszyk ma 50 linii: linia pominięta, `truncated`.
+   - wariant jest już w koszyku klienta: ilość = min(suma, 99); przycięcie ustawia `truncated`;
+   - wariantu nie ma i koszyk ma mniej niż 50 linii: nowa linia z ilością gościa (zachowuje `addedAt` gościa);
+   - wariantu nie ma i koszyk ma 50 linii: linia pominięta, `truncated`.
 
    Po pętli linie koszyka klienta są sortowane po `addedAt` (stabilnie), bo linia gościa może być starsza od linii klienta.
 4. Cena i dostępność nie są sprawdzane (decyzja 3); nadmiar względem dostępności widać w stanie linii.
@@ -129,12 +130,14 @@ Budowany w warstwie aplikacji z koszyka i portów (`ProductCatalog`, `CartPrices
 wywołaniu każdego portu dla wszystkich linii (`ProductDataLoader`; bez linii porty nie są wołane). Sumy i mapowanie
 stanów linii są w jednej klasie (`CartViewBuilder`), testowanej jednostkowo. Sama reguła zakupu (cena, potem stan) jest
 tylko w `ProductOffer::purchasability` (`ProductData::offerFor`); widok rozstrzyga wyłącznie `unavailable_product`.
+Linia ma `variantId` i `product {productId, name, variantLabel, image}` z `GetVariantSummaries` (etykieta wariantu pusta
+dla wariantu domyślnego).
 
 Stan linii, w kolejności priorytetu:
 
 | `state` | Warunek |
 |---|---|
-| `unavailable_product` | produkt nieznany Catalogowi (np. po resecie danych demo) |
+| `unavailable_product` | wariant nieznany Catalogowi (np. po resecie danych demo albo linia sprzed migracji, której produktu już nie ma) |
 | `no_price` | brak ceny w `GetCurrentPrices` (brak ceny, nieaktualna stawka VAT albo cena w walucie innej niż PLN) |
 | `out_of_stock` | `available = 0` (także produkt bez rekordu stanu) |
 | `insufficient_stock` | `quantity > available` |
@@ -146,6 +149,27 @@ Stan linii, w kolejności priorytetu:
 - `hasExcludedLines` = istnieje linia inna niż `purchasable`.
 - Kwoty w groszach; maksimum 50 × 99 × 99 999 999 mieści się w `int`.
 
+### Oferta produktów listy (`GetProductOffers`)
+
+Kafelek produktu na liście sklepu pokazuje cenę „od” i dostępność produktu liczone z jego wariantów możliwych do kupienia
+oraz pozwala wybrać wariant (decyzje D6–D8 i E1–E3 w `docs/features/variants/spec.md`). Liczy to Cart, bo tu jest reguła
+zakupu i porty do Catalog, Pricing i Inventory.
+
+- Zapytanie `GetProductOffers(productIds)` (1–48 id; inaczej `InvalidProductOffersQuery`, `InvalidInput`) w
+  `Cart_Application`: warianty z `ProductCatalog::variantsOf` (Catalog `ListProductVariants`), ceny z `CartPrices`
+  (Pricing `GetCurrentPrices`) i stany z poziomem z `StockAvailability` (Inventory `GetStockLevels`), po jednym
+  wywołaniu każdego portu dla wszystkich wariantów strony (bez wariantów ceny i stany nie są pytane). Odczyt bez blokad.
+- Wariant jest możliwy do kupienia, gdy `ProductOffer::purchasability(1)` = `Purchasable` (aktualna cena i
+  `available > 0`; `VariantOffer::isPurchasable`): ta sama reguła co przy dodaniu do koszyka, bez drugiej implementacji.
+- Podsumowanie produktu liczy value object domeny `ProductOfferSummary`, jedyne miejsce tej reguły: `fromGross` =
+  najniższe brutto wariantów możliwych do kupienia, `hasPriceRange` = ich najwyższe brutto ≠ najniższe, `level` =
+  najlepszy poziom (`in_stock` > `low_stock`) wśród nich; bez wariantu możliwego do kupienia (także produkt nieznany
+  Catalogowi): `fromGross = null`, `hasPriceRange = false`, `level = out_of_stock`. Próg poziomu zostaje w Inventory.
+- Wynik: oferta dla każdego żądanego id (powtórzone id raz, w kolejności żądania) `{productId, variantAxes, fromGross|null,
+  hasPriceRange, currency: "PLN", level, variants: [{variantId, label, gross|null, level, purchasable}]}`, warianty
+  w kolejności pozycji; `gross` tylko z aktualnej ceny. Produkt nieznany Catalogowi: `variantAxes: []`, `variants: []`.
+  Liczba sztuk nigdy nie jest zwracana.
+
 ## Persystencja i transakcje
 
 Tabele:
@@ -156,13 +180,17 @@ Tabele:
   - Indeks `expires_at` (czyszczenie).
   - `CHECK ((owner_type = 'customer') = (customer_id IS NOT NULL))`,
     `CHECK (status = 'open' OR owner_type = 'guest')`.
-- `cart_line`: `id uuid` (PK zastępczy, UUID v7), `cart_id uuid` (FK → `cart_cart` `ON DELETE CASCADE`), `product_id uuid`,
-  `quantity int` (`CHECK (quantity BETWEEN 1 AND 99)`), `added_at`; unikalny indeks `(cart_id, product_id)` oraz indeks
+- `cart_line`: `id uuid` (PK zastępczy, UUID v7), `cart_id uuid` (FK → `cart_cart` `ON DELETE CASCADE`), `variant_id uuid`,
+  `quantity int` (`CHECK (quantity BETWEEN 1 AND 99)`), `added_at`; unikalny indeks `(cart_id, variant_id)`
+  (`cart_line_cart_variant_key`) oraz indeks
   `cart_id` (`cart_line_cart_id_idx`). Indeks `cart_id` jest potrzebny mimo unikalnego: Doctrine DBAL dodaje własny
   indeks na kolumnach klucza obcego (`cart_id`, z `ManyToOne` w `CartLineRecord`), chyba że istnieje indeks o dokładnie
-  tych samych kolumnach, a unikalny `(cart_id, product_id)` się nie liczy (inna liczba kolumn). Bez nazwanego
+  tych samych kolumnach, a unikalny `(cart_id, variant_id)` się nie liczy (inna liczba kolumn). Bez nazwanego
   `#[ORM\Index]` Doctrine wygenerowałby indeks `IDX_…` na `cart_id` i schemat rozjechałby się z mapowaniem.
-  Migracja: `Version20261103120000CreateCartTables`.
+  Migracje: `Version20261103120000CreateCartTables`, `Version20261105120000KeyCartLinesByVariant` (przemianowanie
+  `product_id` na `variant_id` i indeksu unikalnego bez zmiany wartości: migracja Catalog dała każdemu produktowi
+  wariant domyślny o `id` produktu, więc linia sprzed zmiany wskazuje wariant domyślny swojego produktu, a istniejące
+  koszyki działają dalej).
 - Bez kluczy obcych do tabel Catalog. Kaskada przy usuwaniu linii jest dozwolona, bo koszyki są krótkotrwałe
   (w odróżnieniu od rezerwacji Inventory).
 
@@ -170,8 +198,8 @@ Zapis i odczyt:
 - Rekordy Doctrine z atrybutami w `Cart/Infrastructure/Persistence/Doctrine/Record` (`CartRecord`, `CartLineRecord`;
   mapowanie `Cart` w `config/packages/doctrine.yaml`), mapowanie agregat ↔ rekord w `DoctrineCartRepository`
   (`lock`, `lockForCustomer`, `lockOrCreateForCustomer`, `add`, `save`), `reconstitute()`. Zapis kończy transakcja
-  `command.bus` (`doctrine_transaction`). Linie są zapisywane w miejscu po produkcie, więc usunięcie i ponowne dodanie
-  produktu w jednej zmianie nie trafia na unikalny indeks.
+  `command.bus` (`doctrine_transaction`). Linie są zapisywane w miejscu po wariancie, więc usunięcie i ponowne dodanie
+  wariantu w jednej zmianie nie trafia na unikalny indeks.
 - Odczyty (`GetCart`, `GetCartSummary`) czytają przez połączenie (DBAL, `DbalCartReader`: jedno zapytanie z
   `LEFT JOIN` linii), bez blokady i bez transakcji, jak `DoctrineProductPriceRepository::findMany`.
 
@@ -236,13 +264,14 @@ Jedna transakcja `command.bus`:
 
 Komendy (`command.bus`), każda zwraca `CartView`, chyba że opisano inaczej:
 - `CreateGuestCart()` → pusty `CartView` z nowym `id`.
-- `AddCartItem(cartRef, productId, quantity)`, `ChangeCartItemQuantity(cartRef, productId, quantity)`,
-  `RemoveCartItem(cartRef, productId)`, gdzie `cartRef` (`CartRef`) to `guest(cartId)` albo `customer(customerId)`.
+- `AddCartItem(cartRef, variantId, quantity)`, `ChangeCartItemQuantity(cartRef, variantId, quantity)`,
+  `RemoveCartItem(cartRef, variantId)`, gdzie `cartRef` (`CartRef`) to `guest(cartId)` albo `customer(customerId)`.
   - Koszyk gościa (`LockedCarts`): blokada; brak, id niebędące UUID, wygasły, `merged` albo id koszyka klienta: 404.
     Koszyk klienta: `lockOrCreateForCustomer` (`RemoveCartItem` klienta bez koszyka: pusty widok, bez zakładania koszyka).
-  - `AddCartItem` i zwiększenie w `ChangeCartItemQuantity`: produkt nieznany Catalogowi (`ProductCatalog`) albo `productId`
-    niebędące UUID (dodanie) to `ProductNotFound` (404); `ProductOffer` z `CartPrices` i `StockAvailability`. Zmniejszenie
-    nie potrzebuje oferty ani znajomości produktu przez Catalog. `productId` niebędące UUID w zmianie ilości to `CartLineNotFound`, w usunięciu: sukces bez zmian.
+  - `AddCartItem` i zwiększenie w `ChangeCartItemQuantity`: wariant nieznany Catalogowi (`ProductCatalog`; także
+    identyfikator produktu zamiast wariantu) albo `variantId` niebędące UUID (dodanie) to `ProductNotFound` (404);
+    `ProductOffer` z `CartPrices` i `StockAvailability`. Zmniejszenie nie potrzebuje oferty ani znajomości wariantu przez
+    Catalog. `variantId` niebędące UUID w zmianie ilości to `CartLineNotFound`, w usunięciu: sukces bez zmian.
 - `MergeGuestCart(customerId, guestCartId)` → `MergeResult {cart: CartView, result, truncated}`.
 - `PurgeExpiredCarts(batchSize)` → liczba koszyków usuniętych w jednej partii.
 
@@ -255,9 +284,10 @@ Porty (`Cart_Application/Port`) i adaptery (`Cart_Infrastructure`):
 
 | Port | Adapter | Zapytanie |
 |---|---|---|
-| `ProductCatalog::summaries(ids)` → `ProductSummary {id, name, image}` | `QueryBusProductCatalog` | Catalog `GetProductSummaries` |
-| `CartPrices::current(ids)` → `CartPrice {productId, gross: Money}` | `QueryBusCartPrices` | Pricing `GetCurrentPrices` |
-| `StockAvailability::of(ids)` → `ProductAvailability {productId, available}` | `QueryBusStockAvailability` | Inventory `GetProductStockLevels` (przejściowo) |
+| `ProductCatalog::summaries(variantIds)` → `VariantSummary {variantId, productId, name, label, image}` | `QueryBusProductCatalog` | Catalog `GetVariantSummaries` |
+| `ProductCatalog::variantsOf(productIds)` → `ProductVariants {productId, variantAxes, variants: [{variantId, label}]}` | `QueryBusProductCatalog` | Catalog `ListProductVariants` |
+| `CartPrices::current(variantIds)` → `CartPrice {variantId, gross: Money}` | `QueryBusCartPrices` | Pricing `GetCurrentPrices` |
+| `StockAvailability::of(variantIds)` → `VariantAvailability {variantId, available, level}` | `QueryBusStockAvailability` | Inventory `GetStockLevels` |
 | `CartReader::find(id)`, `findForCustomer(customerId)` | `DbalCartReader` | odczyt DBAL |
 | `ExpiredCarts::purgeBatch(now, limit)` | `DbalExpiredCarts` | usunięcie partii DBAL |
 | `Clock::now()` | `SystemClock` | |
@@ -266,11 +296,10 @@ Adaptery zapytań nie wołają magistrali bez id i przekazują przyczynę błęd
 połączenie). `QueryBusCartPrices` pomija cenę w walucie innej niż `PLN` (jak brak ceny), `QueryBusStockAvailability`
 obcina ujemną dostępność do 0.
 
-Zapytanie Catalog `GetProductSummaries(productIds)` (1–100 id; inaczej `InvalidProductSummariesQuery`) →
-`list<ProductSummary {id, name, image: ImageView|null}>` w kolejności żądania, dla produktów obecnych w bazie
-(powtórzone id odpowiada raz); jedno zapytanie DBAL `WHERE id = ANY(:ids)` po tabeli `catalog_product` (nie
-Elasticsearch), zdjęcie główne (pierwsze z `images`) w istniejącym rozmiarze `listing` przez `ImageUrlGenerator`. Nowy
-rozmiar zdjęcia nie jest dodawany.
+Zapytanie Catalog `GetVariantSummaries(variantIds)` (1–100 id) → `{variantId, productId, name, label, image|null}` w
+kolejności żądania, dla wariantów obecnych w bazie (powtórzone id odpowiada raz); jedno zapytanie DBAL po tabelach
+Catalog (nie Elasticsearch), zdjęcie główne produktu w istniejącym rozmiarze `listing`. Opis zapytań Catalog o warianty
+jest w `docs/features/variants/spec.md`.
 
 ## API
 
@@ -281,6 +310,13 @@ Sklep (`apps/api/openapi.json`). Błędy w formacie RFC 9457, `detail` z wyjątk
 `security.yaml`: `^/api/v1/guest-carts(/|$)` → `PUBLIC_ACCESS` dla wszystkich metod (przed regułą `ROLE_CUSTOMER`);
 `/api/v1/me/cart…` objęte istniejącą regułą `ROLE_CUSTOMER`.
 
+Oferta produktów listy: `GET /api/v1/product-offers?productId=…&productId=…` (`ProductOffersController` w `Cart_UI`,
+`PUBLIC_ACCESS` dla `GET` w `security.yaml`, `Cache-Control: public, max-age=60`; token wysłany i niepoprawny: 401).
+Identyfikatory jako powtórzony klucz `productId` (forma `productId[]` nie jest kontraktem). 1–48 id; brak, ponad 48
+albo id niebędące UUID: 400 z `violations`. 200 `{items: [oferta z sekcji „Oferta produktów listy”]}`, jedna pozycja na
+każde żądane id. Odpowiedź może być w cache do 60 s, więc nie decyduje o zakupie: dodanie do koszyka sprawdza cenę i stan
+od nowa.
+
 Gość (bez tokena; token wysłany mimo to i niepoprawny daje 401, a gdy nie da się pobrać kluczy wystawcy tokenu: 503):
 
 | Endpoint | Sukces | Błędy |
@@ -288,9 +324,9 @@ Gość (bez tokena; token wysłany mimo to i niepoprawny daje 401, a gdy nie da 
 | `POST /api/v1/guest-carts` | 201 `CartView` (pusty), nagłówek `Location`; ciało nie jest czytane | |
 | `GET /api/v1/guest-carts/{cartId}` | 200 `CartView` | 404 |
 | `GET /api/v1/guest-carts/{cartId}/summary` | 200 `{itemCount}` | 404 |
-| `POST /api/v1/guest-carts/{cartId}/items`, body `{productId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo produkt; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`, komunikaty w punkcie „Komunikaty 422” niżej) |
-| `PUT /api/v1/guest-carts/{cartId}/items/{productId}`, body `{quantity: int}` | 200 `CartView` | jak wyżej oraz 404 `CartLineNotFound` |
-| `DELETE /api/v1/guest-carts/{cartId}/items/{productId}` | 200 `CartView` (brak linii: bez zmian) | 404 koszyk |
+| `POST /api/v1/guest-carts/{cartId}/items`, body `{variantId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo wariant; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`, komunikaty w punkcie „Komunikaty 422” niżej) |
+| `PUT /api/v1/guest-carts/{cartId}/items/{variantId}`, body `{quantity: int}` | 200 `CartView` | jak wyżej oraz 404 `CartLineNotFound` |
+| `DELETE /api/v1/guest-carts/{cartId}/items/{variantId}` | 200 `CartView` (brak linii: bez zmian) | 404 koszyk |
 
 Klient (token realmu `shop`; bez tokena albo z tokenem realmu `backoffice`: 401; gdy nie da się pobrać kluczy
 wystawcy tokenu: 503):
@@ -299,12 +335,12 @@ wystawcy tokenu: 503):
 |---|---|---|
 | `GET /api/v1/me/cart` | 200 `CartView` (bez koszyka: pusty, `id: null`) | 401 |
 | `GET /api/v1/me/cart/summary` | 200 `{itemCount}` | 401 |
-| `POST /api/v1/me/cart/items` | 200 `CartView` | 401 oraz jak u gościa (404 tylko produkt) |
-| `PUT /api/v1/me/cart/items/{productId}` | 200 `CartView` | 401 oraz jak u gościa (404 produkt albo linia) |
-| `DELETE /api/v1/me/cart/items/{productId}` | 200 `CartView` | 401 |
+| `POST /api/v1/me/cart/items` | 200 `CartView` | 401 oraz jak u gościa (404 tylko wariant) |
+| `PUT /api/v1/me/cart/items/{variantId}` | 200 `CartView` | 401 oraz jak u gościa (404 wariant albo linia) |
+| `DELETE /api/v1/me/cart/items/{variantId}` | 200 `CartView` | 401 |
 | `POST /api/v1/me/cart/merge`, body `{guestCartId: uuid}` | 200 `{cart: CartView, result: "merged" \| "already_merged" \| "nothing_to_merge", truncated: bool}` | 400, 401, 415, 422 (z `violations`, jak niżej) |
 
-- Identyfikator w ścieżce (`cartId`, `productId`), który nie jest UUID (w dowolnej wielkości liter): 404, bo trasa nie
+- Identyfikator w ścieżce (`cartId`, `variantId`), który nie jest UUID (w dowolnej wielkości liter): 404, bo trasa nie
   pasuje. Typy ścisłe, bez rzutowania (liczba w napisie, ułamek: 422).
 - Komunikaty 422 (`violations[*].title`, `propertyPath` to nazwa pola). Wszystkie po polsku, bez danych wejściowych,
   a jedno pole daje najwyżej jedno naruszenie (ograniczenia pola sprawdzane po kolei, `Assert\Sequentially`). Brak
@@ -313,15 +349,15 @@ wystawcy tokenu: 503):
 
   | Pole (żądanie) | Przypadek | Komunikat |
   |---|---|---|
-  | `productId` (dodanie) | brak klucza albo `null` | Identyfikator produktu jest wymagany. |
-  | `productId` | nie jest napisem albo jest niepustym napisem, który nie jest UUID | Identyfikator produktu musi być UUID. |
+  | `variantId` (dodanie) | brak klucza albo `null` | Identyfikator wariantu jest wymagany. |
+  | `variantId` | nie jest napisem albo jest niepustym napisem, który nie jest UUID | Identyfikator wariantu musi być UUID. |
   | `quantity` (dodanie, zmiana) | brak klucza albo `null` | Ilość jest wymagana. |
   | `quantity` | nie jest liczbą całkowitą (napis, ułamek, `2.0`, wartość logiczna, tablica) | Ilość musi być liczbą całkowitą. |
   | `quantity` | spoza 1–99 | Ilość musi wynosić od 1 do 99 szt. |
   | `guestCartId` (scalenie) | brak klucza (także puste ciało) albo `null` | Identyfikator koszyka jest wymagany. |
   | `guestCartId` | nie jest napisem albo jest niepustym napisem, który nie jest UUID | Identyfikator koszyka musi być UUID. |
 
-  Pusty napis `""` nie jest naruszeniem (`Assert\Uuid` pomija pusty napis). `productId: ""` przy dodaniu daje 404, jak produkt
+  Pusty napis `""` nie jest naruszeniem (`Assert\Uuid` pomija pusty napis). `variantId: ""` przy dodaniu daje 404, jak wariant
   niedostępny, a `guestCartId: ""` przy scaleniu daje 200 z `result: "nothing_to_merge"`, jak koszyk gościa, którego nie ma.
 
 - Scalony koszyk gościa odpowiada 404 jak nieznany: BFF reaguje na oba tak samo, więc format błędów
@@ -334,8 +370,8 @@ wystawcy tokenu: 503):
 {
   id: uuid | null,
   lines: [{
-    productId: uuid,
-    product: { name: string, image: ProductImage | null } | null,
+    variantId: uuid,
+    product: { productId: uuid, name: string, variantLabel: string, image: ProductImage | null } | null,
     quantity: int,
     unitPrice: { gross: int, currency: "PLN" } | null,
     lineTotal: { gross: int, currency: "PLN" } | null,
@@ -366,13 +402,13 @@ zwracana.
   - `GET /api/cart` → `CartView`;
   - `GET /api/cart/summary` → `{itemCount, notice: "merge_truncated" | null}`; komunikat zwracany raz, ciasteczko
     `store_cart_notice` usuwane;
-  - `POST /api/cart/items` `{productId, quantity}`;
-  - `PATCH /api/cart/items/[productId]` `{quantity}`;
-  - `DELETE /api/cart/items/[productId]`.
+  - `POST /api/cart/items` `{variantId, quantity}`;
+  - `PATCH /api/cart/items/[variantId]` `{quantity}`;
+  - `DELETE /api/cart/items/[variantId]`.
 - Żądania zmieniające (`POST`, `PATCH`, `DELETE`) wymagają nagłówka `Origin` równego originowi `STORE_URL` i (`POST`,
   `PATCH`) `Content-Type: application/json`; inaczej 403 (ochrona przed CSRF), bez wywołania API. Ciało `POST` bez
-  `productId` (napis) i `quantity` (liczba) albo ciało `PATCH` bez `quantity` (liczba) to 422 „Nieprawidłowe dane.”,
-  a `productId` w ścieżce `PATCH` i `DELETE`, które nie jest UUID, to 404 „Tej pozycji nie ma w koszyku.” (oba bez
+  `variantId` (napis) i `quantity` (liczba) albo ciało `PATCH` bez `quantity` (liczba) to 422 „Nieprawidłowe dane.”,
+  a `variantId` w ścieżce `PATCH` i `DELETE`, które nie jest UUID, to 404 „Tej pozycji nie ma w koszyku.” (oba bez
   wywołania API).
 - Wybór koszyka:
   1. Sesja istnieje: koszyk klienta (token z `freshAccessToken`). Jeśli jest też `store_cart`, najpierw
@@ -415,14 +451,23 @@ zwracana.
 
 ### UI
 
-- `AddToCartButton` („Do koszyka”, Client Component) w `ProductTile`, widoczny tylko, gdy kafelek ma cenę i poziom
-  dostępności nie jest `out_of_stock`; przy błędzie endpointu dostępności (brak etykiety) przycisk jest widoczny, a
-  decyduje API. Dodaje 1 sztukę. Na czas żądania przycisk jest zablokowany. HTML katalogu nie zależy od sesji.
+- `ProductTile` na liście (Server Component: nazwa, zdjęcie, cena „od X zł” przy `hasPriceRange`, inaczej „X zł”, i
+  etykieta poziomu produktu z oferty z `GET /api/v1/product-offers`, którą ładuje `loadCatalog` jednym wywołaniem dla
+  strony). Produkt bez wariantu możliwego do kupienia (`fromGross = null`, także z ≥ 2 wariantami albo nieznany
+  Catalogowi): „Niedostępny” bez ceny, listy i przycisku. Błąd wywołania ofert: kafelki z „Cena niedostępna”, bez etykiety,
+  listy i przycisku, błąd w logu serwera. Zdjęcie nie zmienia się przy wyborze wariantu.
+- Część kliencka kafelka (`TileOffer`, dostaje ofertę przez propsy): produkt z jednym wariantem ma przycisk
+  `AddToCartButton` („Do koszyka”), który dodaje ten wariant; produkt z ≥ 2 wariantami ma listę (opisaną nazwami osi,
+  np. „Kolor, Rozmiar”) z opcją „Wybierz wariant” i wariantami w kolejności oferty, bez wyboru domyślnego; wariant
+  z `purchasable = false` ma dopisek „niedostępny” i nie da się go wybrać. Do wyboru przycisk jest wyłączony, po wyborze
+  kafelek pokazuje cenę i etykietę poziomu wybranego wariantu, a przycisk dodaje 1 sztukę wybranego wariantu. Na czas
+  żądania przycisk jest zablokowany. HTML katalogu nie zależy od sesji.
 - `CartBadge` w nagłówku: link „Koszyk” z liczbą sztuk z `/api/cart/summary`; po każdej zmianie koszyka licznik
   aktualizuje się z `itemCount` odpowiedzi (zdarzenie w przeglądarce, `src/cart/events.ts`). Do czasu wczytania i przy
   błędzie licznik jest ukryty, link zostaje.
 - Strona `/cart`: `robots: noindex, nofollow`, treść (`CartPage`) jako Client Component ładujący `/api/cart`. Linie:
-  zdjęcie (`ProductPhoto`), nazwa, cena jednostkowa, ilość (pole 1–99, zatwierdzane po opuszczeniu pola lub Enterem;
+  zdjęcie (`ProductPhoto`), nazwa, pod nią etykieta wariantu (pusta dla wariantu domyślnego), cena jednostkowa, ilość
+  (pole 1–99 opisane nazwą i etykietą wariantu, zatwierdzane po opuszczeniu pola lub Enterem;
   wartość niebędąca liczbą całkowitą 1–99 albo bez zmiany wraca do bieżącej ilości bez żądania), wartość linii, „Usuń”;
   podsumowanie: wartość brutto i liczba sztuk. Pusty koszyk: „Twój koszyk jest pusty” i link „Zobacz produkty”.
 - Kwoty przez `formatPrice`. Front niczego nie liczy: każdy widok pochodzi z ostatniej odpowiedzi API.
@@ -449,8 +494,11 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 
 | Sytuacja | Wynik |
 |---|---|
-| 100. sztuka produktu albo 51. pozycja | 409, koszyk bez zmian |
-| dodanie produktu bez ceny albo niedostępnego | 409 `ProductNotPurchasable`; w sklepie brak przycisku |
+| 100. sztuka wariantu albo 51. pozycja | 409, koszyk bez zmian |
+| dwa warianty (np. rozmiary) jednego produktu | dwie linie; limit 99 sztuk dotyczy każdej osobno |
+| koszyk z linią sprzed migracji na warianty | linia wariantu domyślnego swojego produktu, działa bez zmian |
+| dodanie wariantu bez ceny albo niedostępnego | 409 `ProductNotPurchasable`; w sklepie opcja „niedostępny” bez wyboru, a produkt bez wariantu możliwego do kupienia nie ma przycisku |
+| błąd `GET /api/v1/product-offers` w sklepie | lista bez cen, etykiet, wyboru wariantu i przycisków |
 | ilość większa niż dostępna | 409 bez liczby sztuk |
 | zmiana ilości z nieaktualnej karty | ostatni zapis wygrywa |
 | równoległe dodania z dwóch kart | wszystkie zapisane w jednym koszyku, bez utraty zmian (zapisy kart czekają na siebie przez Web Locks API; bez niego pierwsze dodania gościa mogą założyć dwa koszyki, zob. „Ryzyka i ograniczenia”) |
@@ -483,7 +531,8 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 
 ### Jednostkowe (TDD, adaptery in-memory; `apps/api/tests/Unit/Cart`)
 
-- `Cart`: `add` (nowa linia, zwiększenie), granice ilości 1, 99, 100 i liczby linii 50, 51; odrzucenie przez `ProductOffer`
+- `Cart`: `add` (nowa linia, zwiększenie), granice ilości 1, 99, 100 i liczby linii 50, 51; dwa warianty jednego
+  produktu to dwie linie z osobnym limitem 99; odrzucenie przez `ProductOffer`
   (brak ceny, `available = 0`, wynik > `available` → `ProductNotPurchasable` / `InsufficientStock`); `changeQuantity`
   (zmniejszenie zawsze, zwiększenie z kontrolą, brak linii); `remove` idempotentne; zmiana koszyka `merged` odrzucona;
   `touch` i `isExpired` dla gościa i klienta; `clearIfExpired`.
@@ -497,6 +546,11 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 - Handlery: 404 dla gościa nieznanego, wygasłego i scalonego; `ProductNotFound`; `nothing_to_merge` dla nieznanego,
   wygasłego i klienckiego `guestCartId`; `GetCart` klienta bez koszyka nic nie zakłada.
 
+- `ProductOfferSummary` (TDD): pominięcie wariantów bez ceny, z ceną nieaktualną i z `available = 0`, równe i różne
+  ceny, brak wariantów możliwych do kupienia (`fromGross = null`, `out_of_stock`), najlepszy poziom.
+- `GetProductOffersHandler`: oferta na każde żądane id w kolejności żądania, produkt nieznany, jedno wywołanie
+  każdego portu, 0, 49 i niepoprawne id.
+
 ### Integracyjne (PostgreSQL)
 
 W `apps/api/tests/Integration`:
@@ -505,8 +559,10 @@ W `apps/api/tests/Integration`:
   (bezpośredni SQL łamiący reguły jest odrzucany), kaskada linii, `lockOrCreateForCustomer` (`ON CONFLICT`), blokada z
   `refresh` rekordu obecnego w identity map (także usuniętego w międzyczasie) i ponowienie po usunięciu koszyka przez
   czyszczenie.
-- `Catalog/Query/GetProductSummariesTest`: 100 id jednym zapytaniem; produkt nieobecny pominięty.
-- `Cart/QueryBusAdaptersTest`: adaptery Catalog, Pricing i Inventory.
+- `Cart/QueryBusAdaptersTest`: adaptery Catalog, Pricing i Inventory na wariantach.
+- `Cart/GetProductOffersTest`: 48 produktów po 100 wariantów to trzy zapytania (warianty, ceny, stany).
+- `Cart/Persistence/CartLinesByVariantMigrationTest`: migracja na danych sprzed zmiany (linia zachowuje `id`, ilość
+  i koszyk, wskazuje wariant domyślny swojego produktu), unikalność `(cart_id, variant_id)`, `down`.
 - `Cart/MergeGuestCartTest`: wymuszony błąd w trakcie scalenia wycofuje całość (gość `open`, klient bez zmian, także
   przy pierwszym scaleniu klienta bez koszyka); **scalenie z wygasłym koszykiem klienta zapisanym w bazie: stare linie
   usunięte, zapisane tylko linie gościa, `expires_at` odnowione**.
@@ -525,7 +581,7 @@ sztuk, koszyk `merged` nie ma linii.
 |---|---|---|
 | K1 | 10 równoległych scaleń tego samego gościa do tego samego klienta | 1 × `merged`, 9 × `already_merged`; ilości przeniesione dokładnie raz |
 | K2 | scalenie równolegle z 10 dodaniami po 1 szt. do koszyka gościa | każde dodanie zakończone sukcesem jest w koszyku klienta, pozostałe dostały 404; ilość u klienta = liczba sukcesów (+ stan początkowy); po `merged_at` brak zmian koszyka gościa |
-| K3 | 20 równoległych dodań do koszyka klienta (10 tego samego produktu, 10 różnych) | ilość wspólnego produktu = 10, wszystkie różne produkty zapisane |
+| K3 | 20 równoległych dodań do koszyka klienta (10 tego samego wariantu, 10 różnych) | ilość wspólnego wariantu = 10, wszystkie różne warianty zapisane |
 | K4 | 2 równoległe pierwsze dodania klienta bez koszyka | jeden wiersz koszyka klienta, obie linie, żadnego błędu |
 | K5 | ten sam gość scalany równolegle do 2 różnych klientów | dokładnie jeden klient dostaje linie, drugi `already_merged` |
 | K6 | 2 różne koszyki gościa scalane równolegle do tego samego klienta | oba `merged`, ilości zsumowane, brak zakleszczeń |
@@ -536,7 +592,10 @@ sztuk, koszyk `merged` nie ma linii.
 
 `apps/api/tests/Functional/Cart` (`GuestCartEndpointTest`, `CustomerCartEndpointTest`, `CustomerCartMergeEndpointTest`).
 Każdy endpoint: 200/201, 400 (zły JSON), 401 (`/me/cart…` bez tokena i z tokenem `backoffice`), 404 (nie-UUID,
-nieznany, wygasły i scalony koszyk gościa, nieznany produkt, brak linii), 409 (każda przyczyna), 415, 422 (każdy przypadek tabeli komunikatów: brak klucza, `null`, zły typ, zły UUID, ilość spoza 1–99; asercja na dokładną listę `violations`), `Cache-Control: private, no-store`; `merge`: każdy `result` i `truncated`.
+nieznany, wygasły i scalony koszyk gościa, nieznany wariant i id produktu zamiast wariantu, brak linii), 409 (każda przyczyna), 415, 422 (każdy przypadek tabeli komunikatów: brak klucza, `null`, zły typ, zły UUID, ilość spoza 1–99; asercja na dokładną listę `violations`), `Cache-Control: private, no-store`; `merge`: każdy `result` i `truncated`.
+`ProductOffersEndpointTest`: oferty bez tokena (cena „od”, zakres, poziom, warianty z etykietami, cena nieaktualna i brak
+stanu pominięte), kolejność i powtórzone id, produkt nieznany i id wariantu zamiast produktu, 48 id, 400 (brak, 49,
+niepoprawny UUID, forma `[]`), 401 przy złym tokenie, `public, max-age=60`, brak liczby sztuk w odpowiedzi.
 
 ### Architektura
 
@@ -553,7 +612,10 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   403 przy złym `Origin` i `Content-Type`, `no-store`, jednorazowy `notice`.
 - `/auth/callback` (`app/auth/callback/route.test.ts`): scalenie przy `store_cart` (sukces, błąd, `truncated`); logowanie kończy się sukcesem także przy
   błędzie scalenia.
-- `ProductTile` (`ProductTile.test.tsx`): przycisk przy cenie i dostępności, brak przy braku ceny i `out_of_stock`, obecny przy braku etykiety.
+- `ProductTile` (`ProductTile.test.tsx`): jeden wariant (cena, poziom, przycisk dodaje wariant), ≥ 2 warianty (lista bez
+  wyboru domyślnego, opcja niedostępna wyłączona, cena i etykieta wybranego wariantu, przycisk aktywny po wyborze), cena
+  „od”, produkt niedostępny bez ceny, listy i przycisku, błąd wywołania ofert; `load-catalog.test.ts`: jedno wywołanie
+  ofert dla strony i lista bez ofert przy błędzie.
 - `AddToCartButton` (`AddToCartButton.test.tsx`): blokada na czas żądania, sukces, 409 z `detail`, 404, błąd sieci.
 - `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, pusty koszyk, zmiana ilości z błędem 409
   (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem.
@@ -567,17 +629,17 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
 
 ### E2E (Playwright)
 
-- `cart-guest.spec.ts`: gość dodaje z listy produkt demo `in_stock`, licznik pokazuje 1, na `/cart` (po odświeżeniu
+- `cart-guest.spec.ts`: gość dodaje z listy produkt demo `in_stock` (gdy kafelek ma wybór, pierwszy dostępny wariant; linie
+  koszyka szukane po nazwie i etykiecie wariantu), licznik pokazuje 1, na `/cart` (po odświeżeniu
   koszyk zostaje) zmienia ilość na 3, wartość linii i suma są równe 3 × cena z kafelka, usuwa pozycję, koszyk jest
   pusty także po odświeżeniu. Dwie karty jednego kontekstu przeglądarki bez `store_cart` klikają równocześnie
-  „Do koszyka” na dwóch różnych produktach; po odświeżeniu licznik pokazuje 2, a `/cart` ma oba produkty.
-- `cart-merge.spec.ts`: Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
+  „Do koszyka” na dwóch różnych produktach (z wyborem wariantu, gdy kafelek go ma); po odświeżeniu licznik pokazuje 2, a `/cart` ma oba produkty.
+- `cart-merge.spec.ts` (wybór pierwszego dostępnego wariantu, gdy kafelek ma wybór): Jan loguje się, opróżnia swój koszyk w UI, dodaje B i wylogowuje się; jako gość dodaje A i B;
   po zalogowaniu licznik pokazuje 3, ciasteczko `store_cart` znika, a koszyk ma A × 1 i B × 2; drugi kontekst
   przeglądarki zalogowany jako Jan widzi ten sam koszyk.
 
 ## Ryzyka i ograniczenia
 
-- Koszyk jest per produkt. Warianty w Catalog wymuszą klucz per wariant w Pricing, Inventory i Cart.
 - Tworzenie koszyka gościa jest publiczne, bez rate limitu; tabelę można zaśmiecić pustymi koszykami do czasu ich
   wygaśnięcia.
 - Identyfikator koszyka gościa jest w ścieżce URL API, więc trafia do logów API. Koszyk nie zawiera danych osobowych.

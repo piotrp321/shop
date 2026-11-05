@@ -112,13 +112,13 @@ async function underCartLock<T>(write: () => Promise<CartResult<T>>): Promise<Ca
   }
 }
 
-export const addCartItem = (productId: string, quantity: number) =>
-  queueWrite(() => callCart<CartView>("/api/cart/items", { method: "POST", body: { productId, quantity } }));
+export const addCartItem = (variantId: string, quantity: number) =>
+  queueWrite(() => callCart<CartView>("/api/cart/items", { method: "POST", body: { variantId, quantity } }));
 
-export const changeCartItemQuantity = (productId: string, quantity: number) =>
+export const changeCartItemQuantity = (variantId: string, quantity: number) =>
   queueWrite(() =>
-    callCart<CartView>(`/api/cart/items/${encodeURIComponent(productId)}`, { method: "PATCH", body: { quantity } }),
+    callCart<CartView>(`/api/cart/items/${encodeURIComponent(variantId)}`, { method: "PATCH", body: { quantity } }),
   );
 
-export const removeCartItem = (productId: string) =>
-  queueWrite(() => callCart<CartView>(`/api/cart/items/${encodeURIComponent(productId)}`, { method: "DELETE" }));
+export const removeCartItem = (variantId: string) =>
+  queueWrite(() => callCart<CartView>(`/api/cart/items/${encodeURIComponent(variantId)}`, { method: "DELETE" }));

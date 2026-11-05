@@ -12,6 +12,7 @@ use App\Cart\Domain\Money;
 use App\Cart\Domain\ProductId;
 use App\Cart\Domain\ProductOffer;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\VariantId;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -44,6 +45,14 @@ final class CartValuesTest extends TestCase
     }
 
     #[DataProvider('notUuids')]
+    public function testVariantIdRefusesWhatIsNotAUuid(string $value): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        VariantId::fromString($value);
+    }
+
+    #[DataProvider('notUuids')]
     public function testProductIdRefusesWhatIsNotAUuid(string $value): void
     {
         $this->expectException(\InvalidArgumentException::class);
@@ -61,6 +70,11 @@ final class CartValuesTest extends TestCase
         }
 
         self::assertCount(50, $ids);
+    }
+
+    public function testVariantIdIsLowerCased(): void
+    {
+        self::assertSame('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', VariantId::fromString('0192F0C4-7C1A-7C4E-9A6E-3F1D2B4C5A60')->toString());
     }
 
     public function testProductIdIsLowerCased(): void

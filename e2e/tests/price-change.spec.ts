@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { staff } from "../support/accounts";
 import { loginStaff } from "../support/staff-login";
 
-// The store list reads prices from `GET /api/v1/prices`, cached for 60 s (`public, max-age=60`); the rest is slack.
+// The store list reads the offers (with the prices) from `GET /api/v1/product-offers`, cached for 60 s (`public, max-age=60`); the rest is slack.
 const STORE_PRICE_WAIT_MS = 70_000;
 // Two fixed amounts; the test takes the one the product does not have now, so every run really changes the price.
 const CANDIDATE_PRICES = [
@@ -48,7 +48,7 @@ test("a price changed in the panel shows up on the store list", async ({ page })
   await expect(page.getByTestId("change-dialog"), "the price change was rejected (conflict, validation or API error)").toBeHidden();
   await expect(row.getByTestId("gross")).toHaveText(new RegExp(`^${target.input.replace(",", "[,.]")}\\s`));
 
-  // The prices endpoint may be cached for up to 60 s: reload until the new price appears.
+  // The offers endpoint may be cached for up to 60 s: reload until the new price appears.
   const expected = normalize(formatPln(target.grosze));
   expect(priceBefore, "the store showed another price before the change").not.toBe(expected);
   await page.goto("/");

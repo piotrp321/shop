@@ -11,7 +11,7 @@ import {
   isCleared,
   mergeAnswer,
   NEW_GUEST_CART_ID,
-  PRODUCT_ID,
+  VARIANT_ID,
   problem,
   sessionCookie,
   setCookie,
@@ -32,7 +32,7 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
-const BODY = { productId: PRODUCT_ID, quantity: 1 };
+const BODY = { variantId: VARIANT_ID, quantity: 1 };
 const GUEST_ITEMS = `/api/v1/guest-carts/${GUEST_CART_ID}/items`;
 const NEW_GUEST_ITEMS = `/api/v1/guest-carts/${NEW_GUEST_CART_ID}/items`;
 const GUEST_SUMMARY = `/api/v1/guest-carts/${GUEST_CART_ID}/summary`;
@@ -66,11 +66,11 @@ describe("POST /api/cart/items: request checks", () => {
 
   it.each([
     ["is not JSON", "not json"],
-    ["is a JSON array", [PRODUCT_ID, 1]],
+    ["is a JSON array", [VARIANT_ID, 1]],
     ["is JSON null", "null"],
     ["has no product", { quantity: 1 }],
-    ["has a quantity that is not a number", { productId: PRODUCT_ID, quantity: "1" }],
-    ["has a product that is not a string", { productId: 5, quantity: 1 }],
+    ["has a quantity that is not a number", { variantId: VARIANT_ID, quantity: "1" }],
+    ["has a product that is not a string", { variantId: 5, quantity: 1 }],
   ])("answers 422 without asking the API when the body %s", async (_name, body) => {
     const response = await add({ body, cookie: signedCartCookie(GUEST_CART_ID) });
 
@@ -112,7 +112,7 @@ describe("POST /api/cart/items as a guest", () => {
 
   it("adds to the cart of the cookie and renews the cookie", async () => {
     setup.answer("POST", GUEST_ITEMS, () => Response.json(viewWithOneLine(GUEST_CART_ID, 2)));
-    const response = await add({ body: { productId: PRODUCT_ID, quantity: 1, extra: "dropped" }, cookie: signedCartCookie(GUEST_CART_ID) });
+    const response = await add({ body: { variantId: VARIANT_ID, quantity: 1, extra: "dropped" }, cookie: signedCartCookie(GUEST_CART_ID) });
 
     expect(response.status).toBe(200);
     expect(setup.calls).toHaveLength(1);

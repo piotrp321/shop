@@ -10,9 +10,9 @@ use App\Cart\Application\ProductDataLoader;
 use App\Cart\Application\View\CartView;
 use App\Cart\Application\View\CartViewBuilder;
 use App\Cart\Domain\CartRepository;
-use App\Cart\Domain\ProductId;
 use App\Cart\Domain\ProductNotFound;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\VariantId;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'command.bus')]
@@ -28,7 +28,7 @@ final readonly class AddCartItemHandler
     }
 
     /**
-     * The ports are asked once, for the lines and the added product together: the offer of the product and the view
+     * The ports are asked once, for the lines and the added variant together: the offer of the variant and the view
      * come from the same reads.
      */
     public function __invoke(AddCartItem $command): CartView
@@ -38,16 +38,16 @@ final readonly class AddCartItemHandler
         $cart = $this->locked->forChange($command->cart, $now, true);
         \assert(null !== $cart);
         try {
-            $productId = ProductId::fromString($command->productId);
+            $variantId = VariantId::fromString($command->variantId);
         } catch (\InvalidArgumentException) {
             throw new ProductNotFound();
         }
 
-        $data = $this->products->load([...$cart->productIds(), $productId]);
-        if (null === $data->summary($productId)) {
+        $data = $this->products->load([...$cart->variantIds(), $variantId]);
+        if (null === $data->summary($variantId)) {
             throw new ProductNotFound();
         }
-        $cart->add($productId, $quantity, $data->offerFor($productId), $now);
+        $cart->add($variantId, $quantity, $data->offerFor($variantId), $now);
         $this->carts->save($cart);
 
         return $this->views->build($cart->id(), $cart->lines(), $data);

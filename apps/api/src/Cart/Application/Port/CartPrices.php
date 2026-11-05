@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Cart\Application\Port;
 
-use App\Cart\Domain\ProductId;
+use App\Cart\Domain\VariantId;
 
 /**
  * The authoritative current prices (Pricing). The cart always shows the current price.
@@ -12,9 +12,9 @@ use App\Cart\Domain\ProductId;
 interface CartPrices
 {
     /**
-     * One read for all the products; a product without a current price is left out.
+     * One read for all the variants; a variant without a current price is left out.
      *
-     * @param list<ProductId> $ids 0 to 100 distinct ids
+     * @param list<VariantId> $ids 0 to 4800 distinct ids (the lines of a cart, or the variants of a page of the list)
      *
      * @return list<CartPrice>
      */

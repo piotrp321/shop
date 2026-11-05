@@ -12,9 +12,9 @@ use App\Cart\Application\View\CartView;
 use App\Cart\Application\View\CartViewBuilder;
 use App\Cart\Domain\CartLineNotFound;
 use App\Cart\Domain\CartRepository;
-use App\Cart\Domain\ProductId;
 use App\Cart\Domain\ProductNotFound;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\VariantId;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'command.bus')]
@@ -30,7 +30,7 @@ final readonly class ChangeCartItemQuantityHandler
     }
 
     /**
-     * Only an increase needs the offer and a product Catalog knows; a decrease is always possible.
+     * Only an increase needs the offer and a variant Catalog knows; a decrease is always possible.
      */
     public function __invoke(ChangeCartItemQuantity $command): CartView
     {
@@ -39,23 +39,23 @@ final readonly class ChangeCartItemQuantityHandler
         $cart = $this->locked->forChange($command->cart, $now, true);
         \assert(null !== $cart);
         try {
-            $productId = ProductId::fromString($command->productId);
+            $variantId = VariantId::fromString($command->variantId);
         } catch (\InvalidArgumentException) {
             throw new CartLineNotFound();
         }
 
         $data = null;
         $offer = null;
-        if ($cart->needsOfferToChange($productId, $quantity)) {
-            $data = $this->products->load($cart->productIds());
-            if (null === $data->summary($productId)) {
+        if ($cart->needsOfferToChange($variantId, $quantity)) {
+            $data = $this->products->load($cart->variantIds());
+            if (null === $data->summary($variantId)) {
                 throw new ProductNotFound();
             }
-            $offer = $data->offerFor($productId);
+            $offer = $data->offerFor($variantId);
         }
-        $cart->changeQuantity($productId, $quantity, $offer, $now);
+        $cart->changeQuantity($variantId, $quantity, $offer, $now);
         $this->carts->save($cart);
 
-        return $this->views->build($cart->id(), $cart->lines(), $data instanceof ProductData ? $data : $this->products->load($cart->productIds()));
+        return $this->views->build($cart->id(), $cart->lines(), $data instanceof ProductData ? $data : $this->products->load($cart->variantIds()));
     }
 }

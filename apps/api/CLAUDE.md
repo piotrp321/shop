@@ -74,8 +74,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   więc nie ma zakleszczeń, a koszyk gościa jest `merged` tylko po udanym przeniesieniu linii. Scalenie bez
   przeniesienia (`nothing_to_merge`, `already_merged`) czyta koszyk klienta bez blokady, więc trzyma tylko blokadę
   wiersza wskazanego jako koszyk gościa (może to być koszyk innego klienta). Odczyty (`GetCart`, `GetCartSummary`) idą przez DBAL,
-  bez blokady i bez transakcji. Linie są zapisywane w miejscu po produkcie, więc usunięcie i ponowne dodanie produktu
-  w jednej zmianie nie trafia na unikalny indeks.
+  bez blokady i bez transakcji. Linie są zapisywane w miejscu po wariancie, więc usunięcie i ponowne dodanie wariantu
+  w jednej zmianie nie trafia na unikalny indeks `(cart_id, variant_id)`.
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.

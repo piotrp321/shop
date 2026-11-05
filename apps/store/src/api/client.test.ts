@@ -69,7 +69,7 @@ describe("the cart calls", () => {
       credentials: "same-origin",
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId: PRODUCT, quantity: 1 }),
+      body: JSON.stringify({ variantId: PRODUCT, quantity: 1 }),
     });
   });
 
@@ -302,7 +302,7 @@ describe("the lock across the tabs of the browser", () => {
     expect(await first).toEqual({ status: "failed" });
     expect(await second).toEqual({ status: "ok", data: cart });
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledWith("/api/cart/items", expect.objectContaining({ body: JSON.stringify({ productId: OTHER, quantity: 1 }) }));
+    expect(fetch).toHaveBeenCalledWith("/api/cart/items", expect.objectContaining({ body: JSON.stringify({ variantId: OTHER, quantity: 1 }) }));
   });
 
   it("reports a lock request that throws at once as failed without calling the store", async () => {

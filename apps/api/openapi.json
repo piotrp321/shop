@@ -105,8 +105,8 @@
                 "tags": [
                     "Cart"
                 ],
-                "summary": "Add a product to the cart of the customer",
-                "description": "Adds a line, or adds the units to the line of the product; the first change creates the cart. The product must have a current price and enough available units (the number of units is never told); the cart holds at most 50 products and 99 units of one. Nothing is reserved.",
+                "summary": "Add a variant of a product to the cart of the customer",
+                "description": "Adds a line, or adds the units to the line of the variant; the first change creates the cart. The variant must have a current price and enough available units (the number of units is never told); the cart holds at most 50 variants and 99 units of one. Nothing is reserved.",
                 "operationId": "addCustomerCartItem",
                 "requestBody": {
                     "required": true,
@@ -150,7 +150,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such product in Catalog (problem details).",
+                        "description": "No such variant in Catalog (problem details).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -160,7 +160,7 @@
                         }
                     },
                     "409": {
-                        "description": "More than 99 units of the product, a 51st product, a product without a current price or available units, or more units than available (problem details with a Polish `detail`).",
+                        "description": "More than 99 units of the variant, a 51st variant, a variant without a current price or available units, or more units than available (problem details with a Polish `detail`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -180,7 +180,7 @@
                         }
                     },
                     "422": {
-                        "description": "A key is missing, of a wrong type, the quantity is out of 1\u201399 or the product id is not a UUID (problem details with `violations`).",
+                        "description": "A key is missing, of a wrong type, the quantity is out of 1\u201399 or the variant id is not a UUID (problem details with `violations`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -207,7 +207,7 @@
                 ]
             }
         },
-        "/api/v1/me/cart/items/{productId}": {
+        "/api/v1/me/cart/items/{variantId}": {
             "put": {
                 "tags": [
                     "Cart"
@@ -217,9 +217,9 @@
                 "operationId": "changeCustomerCartItemQuantity",
                 "parameters": [
                     {
-                        "name": "productId",
+                        "name": "variantId",
                         "in": "path",
-                        "description": "Product id of the line (UUID).",
+                        "description": "Variant id of the line (UUID).",
                         "required": true,
                         "schema": {
                             "type": "string",
@@ -270,7 +270,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such line, an id that is not a UUID, or an increase of a product Catalog no longer knows (problem details).",
+                        "description": "No such line, an id that is not a UUID, or an increase of a variant Catalog no longer knows (problem details).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -280,7 +280,7 @@
                         }
                     },
                     "409": {
-                        "description": "An increase of a product without a current price or available units, or above the available units (problem details with a Polish `detail`).",
+                        "description": "An increase of a variant without a current price or available units, or above the available units (problem details with a Polish `detail`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -331,13 +331,13 @@
                     "Cart"
                 ],
                 "summary": "Remove a line of the cart of the customer",
-                "description": "Removes the line of the product; a cart without it is answered as it is, a customer without a cart gets the empty one and none is created.",
+                "description": "Removes the line of the variant; a cart without it is answered as it is, a customer without a cart gets the empty one and none is created.",
                 "operationId": "removeCustomerCartItem",
                 "parameters": [
                     {
-                        "name": "productId",
+                        "name": "variantId",
                         "in": "path",
-                        "description": "Product id of the line (UUID).",
+                        "description": "Variant id of the line (UUID).",
                         "required": true,
                         "schema": {
                             "type": "string",
@@ -368,7 +368,7 @@
                         }
                     },
                     "404": {
-                        "description": "The product id is not a UUID (problem details).",
+                        "description": "The variant id is not a UUID (problem details).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -401,7 +401,7 @@
                     "Cart"
                 ],
                 "summary": "Merge a guest cart into the cart of the customer",
-                "description": "Moves the lines of the guest cart into the cart of the customer, in one transaction: the quantities of a product in both are added and cut to 99, a product of the guest beyond the 50th of the cart is skipped (either makes `truncated` true); price and availability are not checked. The guest cart is then merged and every later change of it is a 404. An expired cart of the customer is cleared first. A merged guest cart gives `already_merged`; an unknown or expired guest cart, or the id of a customer cart, gives `nothing_to_merge`; neither changes anything nor creates a cart, and `cart` is the cart as `GET /api/v1/me/cart` gives it.",
+                "description": "Moves the lines of the guest cart into the cart of the customer, in one transaction: the quantities of a variant in both are added and cut to 99, a variant of the guest beyond the 50th of the cart is skipped (either makes `truncated` true); price and availability are not checked. The guest cart is then merged and every later change of it is a 404. An expired cart of the customer is cleared first. A merged guest cart gives `already_merged`; an unknown or expired guest cart, or the id of a customer cart, gives `nothing_to_merge`; neither changes anything nor creates a cart, and `cart` is the cart as `GET /api/v1/me/cart` gives it.",
                 "operationId": "mergeGuestCart",
                 "requestBody": {
                     "required": true,
@@ -667,8 +667,8 @@
                 "tags": [
                     "Cart"
                 ],
-                "summary": "Add a product to a guest cart",
-                "description": "Adds a line, or adds the units to the line of the product. The product must have a current price and enough available units (the number of units is never told); the cart holds at most 50 products and 99 units of one. Nothing is reserved.",
+                "summary": "Add a variant of a product to a guest cart",
+                "description": "Adds a line, or adds the units to the line of the variant. The variant must have a current price and enough available units (the number of units is never told); the cart holds at most 50 variants and 99 units of one. Nothing is reserved.",
                 "operationId": "addGuestCartItem",
                 "parameters": [
                     {
@@ -725,7 +725,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such cart (unknown, expired or merged, or the id is not a UUID) or no such product in Catalog (problem details).",
+                        "description": "No such cart (unknown, expired or merged, or the id is not a UUID) or no such variant in Catalog (problem details).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -735,7 +735,7 @@
                         }
                     },
                     "409": {
-                        "description": "More than 99 units of the product, a 51st product, a product without a current price or available units, or more units than available (problem details with a Polish `detail`).",
+                        "description": "More than 99 units of the variant, a 51st variant, a variant without a current price or available units, or more units than available (problem details with a Polish `detail`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -755,7 +755,7 @@
                         }
                     },
                     "422": {
-                        "description": "A key is missing, of a wrong type, the quantity is out of 1\u201399 or the product id is not a UUID (problem details with `violations`).",
+                        "description": "A key is missing, of a wrong type, the quantity is out of 1\u201399 or the variant id is not a UUID (problem details with `violations`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -777,7 +777,7 @@
                 }
             }
         },
-        "/api/v1/guest-carts/{cartId}/items/{productId}": {
+        "/api/v1/guest-carts/{cartId}/items/{variantId}": {
             "put": {
                 "tags": [
                     "Cart"
@@ -798,9 +798,9 @@
                         }
                     },
                     {
-                        "name": "productId",
+                        "name": "variantId",
                         "in": "path",
-                        "description": "Product id of the line (UUID).",
+                        "description": "Variant id of the line (UUID).",
                         "required": true,
                         "schema": {
                             "type": "string",
@@ -851,7 +851,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such cart (unknown, expired or merged, or an id is not a UUID), no such line, or an increase of a product Catalog no longer knows (problem details).",
+                        "description": "No such cart (unknown, expired or merged, or an id is not a UUID), no such line, or an increase of a variant Catalog no longer knows (problem details).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -861,7 +861,7 @@
                         }
                     },
                     "409": {
-                        "description": "An increase of a product without a current price or available units, or above the available units (problem details with a Polish `detail`).",
+                        "description": "An increase of a variant without a current price or available units, or above the available units (problem details with a Polish `detail`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -907,7 +907,7 @@
                     "Cart"
                 ],
                 "summary": "Remove a line of a guest cart",
-                "description": "Removes the line of the product; a cart without it is answered as it is.",
+                "description": "Removes the line of the variant; a cart without it is answered as it is.",
                 "operationId": "removeGuestCartItem",
                 "parameters": [
                     {
@@ -922,9 +922,9 @@
                         }
                     },
                     {
-                        "name": "productId",
+                        "name": "variantId",
                         "in": "path",
-                        "description": "Product id of the line (UUID).",
+                        "description": "Variant id of the line (UUID).",
                         "required": true,
                         "schema": {
                             "type": "string",
@@ -966,6 +966,77 @@
                     },
                     "503": {
                         "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/product-offers": {
+            "get": {
+                "tags": [
+                    "Cart"
+                ],
+                "summary": "Offers of products of the list",
+                "description": "For each requested product its variants (label, current gross price, availability level, whether one unit can be bought now), the lowest price among the purchasable variants (`fromGross`, with `hasPriceRange` when their prices differ) and the best level among them; a product without a purchasable variant, also one unknown to Catalog, has no price and is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it does not decide a purchase: an addition to the cart checks the price and the stock again.",
+                "operationId": "getProductOffers",
+                "parameters": [
+                    {
+                        "name": "productId",
+                        "in": "query",
+                        "description": "Product ids (UUID), 1 to 48.",
+                        "required": true,
+                        "style": "form",
+                        "explode": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            "maxItems": 48,
+                            "minItems": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "One offer per requested product, in the order of the request; a repeated id answers once.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductOfferListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without technical details).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -1165,148 +1236,6 @@
                     }
                 ]
             }
-        },
-        "/api/v1/availability": {
-            "get": {
-                "tags": [
-                    "Inventory"
-                ],
-                "summary": "Availability of products",
-                "description": "The availability level of each requested product, for the product list. A product without a stock record, with more than one variant, or unknown, is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not what decides a purchase: the reservation at checkout does.",
-                "operationId": "getAvailability",
-                "parameters": [
-                    {
-                        "name": "productId",
-                        "in": "query",
-                        "description": "Product ids (UUID), 1 to 48.",
-                        "required": true,
-                        "style": "form",
-                        "explode": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string",
-                                "format": "uuid"
-                            },
-                            "maxItems": 48,
-                            "minItems": 1
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "The level of every requested product, in the order of the request; a repeated id answers once.",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/AvailabilityListResponse"
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`).",
-                        "content": {
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Problem"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
-                        "content": {
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Problem"
-                                }
-                            }
-                        }
-                    },
-                    "503": {
-                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without technical details).",
-                        "content": {
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Problem"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/prices": {
-            "get": {
-                "tags": [
-                    "Pricing"
-                ],
-                "summary": "Gross prices of products",
-                "description": "The current gross price of each requested product, for the product list. A product without a price, with a price at an outdated VAT rate, with more than one variant, or unknown, is left out. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it is not the price to charge: checkout reads prices from the database.",
-                "operationId": "getCurrentPrices",
-                "parameters": [
-                    {
-                        "name": "productId",
-                        "in": "query",
-                        "description": "Product ids (UUID), 1 to 48.",
-                        "required": true,
-                        "style": "form",
-                        "explode": true,
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string",
-                                "format": "uuid"
-                            },
-                            "maxItems": 48,
-                            "minItems": 1
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "The prices found, in the order of the request. Possibly an empty list.",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/PriceList"
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "No id, more than 48 ids, or an id that is not a UUID (problem details with `violations`).",
-                        "content": {
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Problem"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
-                        "content": {
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Problem"
-                                }
-                            }
-                        }
-                    },
-                    "503": {
-                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without technical details).",
-                        "content": {
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Problem"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     },
     "components": {
@@ -1430,45 +1359,6 @@
                 },
                 "type": "object"
             },
-            "PriceList": {
-                "required": [
-                    "items"
-                ],
-                "properties": {
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/PriceItem"
-                        }
-                    }
-                },
-                "type": "object"
-            },
-            "PriceItem": {
-                "description": "The current gross price of one product.",
-                "required": [
-                    "productId",
-                    "gross",
-                    "currency"
-                ],
-                "properties": {
-                    "productId": {
-                        "type": "string",
-                        "format": "uuid"
-                    },
-                    "gross": {
-                        "description": "Gross price (VAT included) in grosze.",
-                        "type": "integer",
-                        "example": 5490
-                    },
-                    "currency": {
-                        "description": "ISO 4217 code.",
-                        "type": "string",
-                        "example": "PLN"
-                    }
-                },
-                "type": "object"
-            },
             "CartView": {
                 "description": "A cart with everything the store shows, computed by the API. The number of available units is never part of it.",
                 "required": [
@@ -1503,7 +1393,7 @@
             },
             "CartLine": {
                 "required": [
-                    "productId",
+                    "variantId",
                     "product",
                     "quantity",
                     "unitPrice",
@@ -1511,12 +1401,13 @@
                     "state"
                 ],
                 "properties": {
-                    "productId": {
+                    "variantId": {
+                        "description": "The variant of a product the line holds; the lines are unique by variant.",
                         "type": "string",
                         "format": "uuid"
                     },
                     "product": {
-                        "description": "Null when Catalog no longer knows the product (`unavailable_product`).",
+                        "description": "Null when Catalog no longer knows the variant (`unavailable_product`).",
                         "nullable": true,
                         "allOf": [
                             {
@@ -1548,7 +1439,7 @@
                         ]
                     },
                     "state": {
-                        "description": "The first that applies: the product is unknown to Catalog, has no current price, has no available unit, has fewer available units than the quantity; otherwise purchasable.",
+                        "description": "The first that applies: the variant is unknown to Catalog, has no current price, has no available unit, has fewer available units than the quantity; otherwise purchasable.",
                         "type": "string",
                         "enum": [
                             "unavailable_product",
@@ -1562,14 +1453,27 @@
                 "type": "object"
             },
             "CartLineProduct": {
+                "description": "The product of the variant of the line.",
                 "required": [
+                    "productId",
                     "name",
+                    "variantLabel",
                     "image"
                 ],
                 "properties": {
-                    "name": {
+                    "productId": {
                         "type": "string",
-                        "example": "Buty do biegania Puls 2 granatowe"
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "description": "Name of the product.",
+                        "type": "string",
+                        "example": "Buty szosowe Tarvik Asfalt 200"
+                    },
+                    "variantLabel": {
+                        "description": "The values of the variant joined with \", \"; empty for the default variant of a product without variant axes.",
+                        "type": "string",
+                        "example": "czarne, 42"
                     },
                     "image": {
                         "description": "The main image in the listing size, null when the product has no images.",
@@ -1650,7 +1554,7 @@
                         ]
                     },
                     "truncated": {
-                        "description": "Whether a sum was cut to 99 units or a product of the guest skipped because the cart had 50 products; always false unless `merged`.",
+                        "description": "Whether a sum was cut to 99 units or a variant of the guest skipped because the cart had 50 variants; always false unless `merged`.",
                         "type": "boolean"
                     }
                 },
@@ -1718,19 +1622,19 @@
                 "type": "object"
             },
             "AddCartItemRequest": {
-                "description": "A product to add to the cart.",
+                "description": "A variant of a product to add to the cart.",
                 "required": [
-                    "productId",
+                    "variantId",
                     "quantity"
                 ],
                 "properties": {
-                    "productId": {
-                        "description": "Product id (UUID).",
+                    "variantId": {
+                        "description": "Variant id (UUID) of a product.",
                         "type": "string",
                         "format": "uuid"
                     },
                     "quantity": {
-                        "description": "Units to add, from 1 to 99. The line may have at most 99 units.",
+                        "description": "Units to add, from 1 to 99. The line of the variant may have at most 99 units.",
                         "type": "integer",
                         "example": 1,
                         "maximum": 99,
@@ -1791,6 +1695,129 @@
                 },
                 "type": "object"
             },
+            "VariantOfferResponse": {
+                "description": "The offer of one variant of a product. Never the number of units.",
+                "required": [
+                    "variantId",
+                    "label",
+                    "gross",
+                    "level",
+                    "purchasable"
+                ],
+                "properties": {
+                    "variantId": {
+                        "description": "Variant id (UUID): the key of a cart line.",
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "label": {
+                        "description": "The values of the variant joined with \", \"; empty for the default variant of a product without axes.",
+                        "type": "string",
+                        "example": "czarne, 42"
+                    },
+                    "gross": {
+                        "description": "The current gross price in grosze; null without a current price.",
+                        "type": "integer",
+                        "example": 30000,
+                        "nullable": true
+                    },
+                    "level": {
+                        "description": "Availability level computed by the API.",
+                        "type": "string",
+                        "example": "in_stock",
+                        "enum": [
+                            "in_stock",
+                            "low_stock",
+                            "out_of_stock"
+                        ]
+                    },
+                    "purchasable": {
+                        "description": "Whether one unit can be bought now: a current price and an available unit. The tile offers only such a variant.",
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "ProductOfferResponse": {
+                "description": "The offer of a product of the list, computed by the API from its purchasable variants (a current price and an available unit). Never the number of units.",
+                "required": [
+                    "productId",
+                    "variantAxes",
+                    "fromGross",
+                    "hasPriceRange",
+                    "currency",
+                    "level",
+                    "variants"
+                ],
+                "properties": {
+                    "productId": {
+                        "description": "Product id (UUID).",
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "variantAxes": {
+                        "description": "Names of the variant axes in order (e.g. \"Kolor, Rozmiar\"); empty for a product with the default variant only, and for a product unknown to Catalog.",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "example": [
+                            "Kolor",
+                            "Rozmiar"
+                        ]
+                    },
+                    "fromGross": {
+                        "description": "The lowest gross price in grosze among the purchasable variants; null when no variant can be bought.",
+                        "type": "integer",
+                        "example": 30000,
+                        "nullable": true
+                    },
+                    "hasPriceRange": {
+                        "description": "Whether the purchasable variants have different prices (the tile shows \"od\").",
+                        "type": "boolean"
+                    },
+                    "currency": {
+                        "description": "ISO 4217 code.",
+                        "type": "string",
+                        "enum": [
+                            "PLN"
+                        ]
+                    },
+                    "level": {
+                        "description": "The best level among the purchasable variants; out_of_stock when no variant can be bought.",
+                        "type": "string",
+                        "example": "in_stock",
+                        "enum": [
+                            "in_stock",
+                            "low_stock",
+                            "out_of_stock"
+                        ]
+                    },
+                    "variants": {
+                        "description": "Every variant in presentation order; none for a product unknown to Catalog.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/VariantOfferResponse"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "ProductOfferListResponse": {
+                "description": "One offer per requested product, in the order of the request; a repeated id answers once.",
+                "required": [
+                    "items"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductOfferResponse"
+                        }
+                    }
+                },
+                "type": "object"
+            },
             "CategoryNode": {
                 "required": [
                     "id",
@@ -1837,46 +1864,6 @@
                     }
                 },
                 "type": "object"
-            },
-            "AvailabilityItemResponse": {
-                "description": "The availability level of one product. Never the number of units.",
-                "required": [
-                    "productId",
-                    "level"
-                ],
-                "properties": {
-                    "productId": {
-                        "description": "Product id (UUID).",
-                        "type": "string",
-                        "format": "uuid"
-                    },
-                    "level": {
-                        "description": "Availability level computed by the API: no units available, 1 to 5 (last units), or more.",
-                        "type": "string",
-                        "example": "in_stock",
-                        "enum": [
-                            "in_stock",
-                            "low_stock",
-                            "out_of_stock"
-                        ]
-                    }
-                },
-                "type": "object"
-            },
-            "AvailabilityListResponse": {
-                "description": "The availability levels of the requested products.",
-                "required": [
-                    "items"
-                ],
-                "properties": {
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/AvailabilityItemResponse"
-                        }
-                    }
-                },
-                "type": "object"
             }
         },
         "securitySchemes": {
@@ -1900,14 +1887,6 @@
         {
             "name": "Customer",
             "description": "Customer"
-        },
-        {
-            "name": "Inventory",
-            "description": "Inventory"
-        },
-        {
-            "name": "Pricing",
-            "description": "Pricing"
         }
     ]
 }

@@ -15,7 +15,7 @@ use Symfony\Component\Uid\Uuid;
 final class CartFixture
 {
     /**
-     * @param list<array{string, int}> $lines product id and quantity, in the order they were added
+     * @param list<array{string, int}> $lines variant id and quantity, in the order they were added
      *
      * @return string the cart id
      */
@@ -34,18 +34,18 @@ final class CartFixture
                 new \DateTimeImmutable($expiresAt)->format('c'),
             ],
         );
-        foreach ($lines as $index => [$productId, $quantity]) {
-            self::line($connection, $id, $productId, $quantity, new \DateTimeImmutable(\sprintf('-%d minutes', 100 - $index)));
+        foreach ($lines as $index => [$variantId, $quantity]) {
+            self::line($connection, $id, $variantId, $quantity, new \DateTimeImmutable(\sprintf('-%d minutes', 100 - $index)));
         }
 
         return $id;
     }
 
-    public static function line(Connection $connection, string $cartId, string $productId, int $quantity, ?\DateTimeImmutable $addedAt = null): void
+    public static function line(Connection $connection, string $cartId, string $variantId, int $quantity, ?\DateTimeImmutable $addedAt = null): void
     {
         $connection->executeStatement(
-            'INSERT INTO cart_line (id, cart_id, product_id, quantity, added_at) VALUES (?, ?, ?, ?, ?)',
-            [Uuid::v7()->toRfc4122(), $cartId, $productId, $quantity, ($addedAt ?? new \DateTimeImmutable())->format('c')],
+            'INSERT INTO cart_line (id, cart_id, variant_id, quantity, added_at) VALUES (?, ?, ?, ?, ?)',
+            [Uuid::v7()->toRfc4122(), $cartId, $variantId, $quantity, ($addedAt ?? new \DateTimeImmutable())->format('c')],
         );
     }
 
@@ -64,11 +64,11 @@ final class CartFixture
     }
 
     /**
-     * @return list<array{string, int}> product id and quantity, in the order of the lines
+     * @return list<array{string, int}> variant id and quantity, in the order of the lines
      */
     public static function lines(Connection $connection, string $cartId): array
     {
-        $rows = $connection->fetchAllNumeric('SELECT product_id, quantity FROM cart_line WHERE cart_id = ? ORDER BY added_at, id', [$cartId]);
+        $rows = $connection->fetchAllNumeric('SELECT variant_id, quantity FROM cart_line WHERE cart_id = ? ORDER BY added_at, id', [$cartId]);
 
         return array_map(static function (array $row): array {
             \assert(\is_string($row[0]) && \is_int($row[1]));

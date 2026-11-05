@@ -10,8 +10,8 @@ use App\Cart\Domain\CartId;
 use App\Cart\Domain\CartLine;
 use App\Cart\Domain\CartOwner;
 use App\Cart\Domain\CartStatus;
-use App\Cart\Domain\ProductId;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\VariantId;
 use Doctrine\DBAL\Connection;
 
 /**
@@ -22,7 +22,7 @@ final readonly class DbalCartReader implements CartReader
 {
     private const string SQL = <<<'SQL'
         SELECT c.id, c.owner_type, c.customer_id, c.status, c.merged_into, c.merged_at, c.created_at, c.updated_at,
-               c.expires_at, l.product_id, l.quantity, l.added_at
+               c.expires_at, l.variant_id, l.quantity, l.added_at
         FROM cart_cart c
         LEFT JOIN cart_line l ON l.cart_id = c.id
         WHERE {condition}
@@ -55,11 +55,11 @@ final readonly class DbalCartReader implements CartReader
 
         $lines = [];
         foreach ($rows as $row) {
-            if (null === $row['product_id']) {
+            if (null === $row['variant_id']) {
                 continue;
             }
-            \assert(\is_string($row['product_id']) && \is_int($row['quantity']) && \is_string($row['added_at']));
-            $lines[] = new CartLine(ProductId::fromString($row['product_id']), Quantity::of($row['quantity']), new \DateTimeImmutable($row['added_at']));
+            \assert(\is_string($row['variant_id']) && \is_int($row['quantity']) && \is_string($row['added_at']));
+            $lines[] = new CartLine(VariantId::fromString($row['variant_id']), Quantity::of($row['quantity']), new \DateTimeImmutable($row['added_at']));
         }
 
         $cart = $rows[0];

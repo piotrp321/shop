@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Cart\Application;
 
 use App\Cart\Application\Port\CartPrice;
-use App\Cart\Application\Port\ProductAvailability;
 use App\Cart\Application\Port\ProductImage;
-use App\Cart\Application\Port\ProductSummary;
+use App\Cart\Application\Port\VariantAvailability;
+use App\Cart\Application\Port\VariantSummary;
 use App\Cart\Application\ProductData;
 use App\Cart\Application\View\CartLineState;
 use App\Cart\Application\View\CartLineView;
@@ -19,6 +19,8 @@ use App\Cart\Domain\Currency;
 use App\Cart\Domain\Money;
 use App\Cart\Domain\ProductId;
 use App\Cart\Domain\Quantity;
+use App\Cart\Domain\StockLevel;
+use App\Cart\Domain\VariantId;
 use PHPUnit\Framework\TestCase;
 
 final class CartViewBuilderTest extends TestCase
@@ -55,17 +57,19 @@ final class CartViewBuilderTest extends TestCase
     {
         $image = new ProductImage('Biegaczka', 'listing', '1:1', ['webp' => [['width' => 256, 'url' => 'https://img.test/a']]]);
         $data = new ProductData(
-            [new ProductSummary(self::id(self::A), 'Buty', $image), new ProductSummary(self::id(self::B), 'Czapka', null)],
+            [self::summary(self::A, 'Buty', $image), self::summary(self::B, 'Czapka', null)],
             [self::price(self::A, 19_999), self::price(self::B, 4_990)],
-            [new ProductAvailability(self::id(self::A), 5), new ProductAvailability(self::id(self::B), 3)],
+            [self::stock(self::A, 5), self::stock(self::B, 3)],
         );
 
         $view = new CartViewBuilder()->build(null, [self::line(self::A, 2), self::line(self::B, 3)], $data);
 
         self::assertNull($view->id);
-        self::assertSame([self::A, self::B], array_map(static fn (CartLineView $l): string => $l->productId, $view->lines));
+        self::assertSame([self::A, self::B], array_map(static fn (CartLineView $l): string => $l->variantId, $view->lines));
         $a = $view->lines[0];
         self::assertSame('Buty', $a->product?->name);
+        self::assertSame(self::productOf(self::A), $a->product->productId);
+        self::assertSame('Buty wariant', $a->product->variantLabel);
         self::assertSame($image, $a->product->image);
         self::assertSame(2, $a->quantity);
         self::assertEquals(new GrossAmount(19_999, 'PLN'), $a->unitPrice);
@@ -81,9 +85,9 @@ final class CartViewBuilderTest extends TestCase
     {
         $data = new ProductData(
             // A is unknown to Catalog but has a price and stock; B has no price and no stock.
-            [new ProductSummary(self::id(self::B), 'Bez ceny', null), new ProductSummary(self::id(self::C), 'Brak', null), new ProductSummary(self::id(self::D), 'Mało', null), new ProductSummary(self::id(self::E), 'Jest', null)],
+            [self::summary(self::B, 'Bez ceny', null), self::summary(self::C, 'Brak', null), self::summary(self::D, 'Mało', null), self::summary(self::E, 'Jest', null)],
             [self::price(self::A, 100), self::price(self::C, 300), self::price(self::D, 400), self::price(self::E, 500)],
-            [new ProductAvailability(self::id(self::A), 10), new ProductAvailability(self::id(self::C), 0), new ProductAvailability(self::id(self::D), 2), new ProductAvailability(self::id(self::E), 9)],
+            [self::stock(self::A, 10), self::stock(self::C, 0), self::stock(self::D, 2), self::stock(self::E, 9)],
         );
 
         $view = new CartViewBuilder()->build(null, [self::line(self::A, 1), self::line(self::B, 1), self::line(self::C, 1), self::line(self::D, 3), self::line(self::E, 2)], $data);
@@ -104,7 +108,7 @@ final class CartViewBuilderTest extends TestCase
 
     public function testAProductWithoutAStockLevelIsOutOfStock(): void
     {
-        $data = new ProductData([new ProductSummary(self::id(self::A), 'Buty', null)], [self::price(self::A, 100)], []);
+        $data = new ProductData([self::summary(self::A, 'Buty', null)], [self::price(self::A, 100)], []);
 
         $view = new CartViewBuilder()->build(null, [self::line(self::A, 1)], $data);
 
@@ -113,16 +117,34 @@ final class CartViewBuilderTest extends TestCase
 
     public function testTheViewNeverCarriesTheAvailableUnits(): void
     {
-        $data = new ProductData([new ProductSummary(self::id(self::A), 'Buty', null)], [self::price(self::A, 100)], [new ProductAvailability(self::id(self::A), 7357)]);
+        $data = new ProductData([self::summary(self::A, 'Buty', null)], [self::price(self::A, 100)], [self::stock(self::A, 7357)]);
 
         $view = new CartViewBuilder()->build(null, [self::line(self::A, 1)], $data);
 
         self::assertStringNotContainsString('7357', json_encode($view, \JSON_THROW_ON_ERROR));
     }
 
-    private static function id(string $id): ProductId
+    private static function id(string $id): VariantId
     {
-        return ProductId::fromString($id);
+        return VariantId::fromString($id);
+    }
+
+    /**
+     * A variant of its own product (the product id differs from the variant id), labelled after the product name.
+     */
+    private static function summary(string $id, string $name, ?ProductImage $image): VariantSummary
+    {
+        return new VariantSummary(self::id($id), ProductId::fromString(self::productOf($id)), $name, $name.' wariant', $image);
+    }
+
+    private static function productOf(string $variantId): string
+    {
+        return 'bbbbbbbb'.substr($variantId, 8);
+    }
+
+    private static function stock(string $id, int $available): VariantAvailability
+    {
+        return new VariantAvailability(self::id($id), $available, 0 === $available ? StockLevel::OutOfStock : StockLevel::InStock);
     }
 
     private static function line(string $id, int $quantity): CartLine

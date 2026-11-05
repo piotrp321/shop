@@ -10,9 +10,9 @@ import { applyGuestCartMerge, type GuestCartMerge, mergeGuestCart } from "./merg
 export type CartCommand =
   | { kind: "read" }
   | { kind: "summary" }
-  | { kind: "add"; productId: string; quantity: number }
-  | { kind: "change"; productId: string; quantity: number }
-  | { kind: "remove"; productId: string };
+  | { kind: "add"; variantId: string; quantity: number }
+  | { kind: "change"; variantId: string; quantity: number }
+  | { kind: "remove"; variantId: string };
 
 type Outcome = { status: number; body: unknown };
 /**
@@ -54,7 +54,7 @@ export async function readJsonObject(request: NextRequest): Promise<Record<strin
 export const invalidBody = () => json({ detail: INVALID_BODY }, 422);
 
 /**
- * The 404 for a product id that is not a UUID. The API would answer 404 for it too, which the BFF could mistake for a
+ * The 404 for a variant id that is not a UUID. The API would answer 404 for it too, which the BFF could mistake for a
  * cart that is gone, so such an id never reaches the API and the cookies stay as they are.
  */
 export const lineMissing = () => json({ detail: LINE_MISSING }, 404);
@@ -123,11 +123,11 @@ function perform(cart: CartApi, command: CartCommand): Promise<ApiResult<CartVie
     case "summary":
       return cart.summary();
     case "add":
-      return cart.add(command.productId, command.quantity);
+      return cart.add(command.variantId, command.quantity);
     case "change":
-      return cart.change(command.productId, command.quantity);
+      return cart.change(command.variantId, command.quantity);
     case "remove":
-      return cart.remove(command.productId);
+      return cart.remove(command.variantId);
   }
 }
 
@@ -186,7 +186,7 @@ async function runForGuest(cookie: string | undefined, deps: CartDeps, command: 
     effects.cart = "clear";
   }
 
-  // A 404 of a write is a gone cart, a missing line or an unknown product, and only the text of its `detail` tells
+  // A 404 of a write is a gone cart, a missing line or an unknown variant, and only the text of its `detail` tells
   // them apart. A change of that text must not turn a gone cart into an endless error, so the cart is asked for
   // its summary instead (404 only when the cart is gone).
   const cartIsGone = async (id: string): Promise<boolean> => {
@@ -198,7 +198,7 @@ async function runForGuest(cookie: string | undefined, deps: CartDeps, command: 
 
   if (command.kind === "add") {
     if (cartId) {
-      const result = await guestCart(api, cartId).add(command.productId, command.quantity);
+      const result = await guestCart(api, cartId).add(command.variantId, command.quantity);
       if (result.ok) {
         effects.cart = { id: cartId };
       }
@@ -213,7 +213,7 @@ async function runForGuest(cookie: string | undefined, deps: CartDeps, command: 
       return { status: 503, body: {} };
     }
     effects.cart = { id: created.data.id };
-    return toOutcome(await guestCart(api, created.data.id).add(command.productId, command.quantity), command);
+    return toOutcome(await guestCart(api, created.data.id).add(command.variantId, command.quantity), command);
   }
 
   if (!cartId) {

@@ -10,7 +10,7 @@ use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * Body of PUT …/items/{productId}: the new quantity (absolute), required, an integer as JSON gives it. The key is
+ * Body of PUT …/items/{variantId}: the new quantity (absolute), required, an integer as JSON gives it. The key is
  * required by `Assert\NotNull` (the serializer gives `null` for a missing one, the property is `mixed`), not by the
  * serializer. The constraints run in order up to the first violation, so the field gives at most one, in Polish.
  */

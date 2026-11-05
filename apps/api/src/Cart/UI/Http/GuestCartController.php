@@ -105,19 +105,19 @@ final readonly class GuestCartController
     #[Route('/api/v1/guest-carts/{cartId}/items', name: 'cart_guest_add_item', requirements: ['cartId' => self::UUID], methods: ['POST'])]
     #[OA\Post(
         operationId: 'addGuestCartItem',
-        summary: 'Add a product to a guest cart',
-        description: 'Adds a line, or adds the units to the line of the product. The product must have a current price and enough available '
-            .'units (the number of units is never told); the cart holds at most 50 products and 99 units of one. Nothing is reserved.',
+        summary: 'Add a variant of a product to a guest cart',
+        description: 'Adds a line, or adds the units to the line of the variant. The variant must have a current price and enough available '
+            .'units (the number of units is never told); the cart holds at most 50 variants and 99 units of one. Nothing is reserved.',
         tags: ['Cart'],
         parameters: [new OA\Parameter(name: 'cartId', in: 'path', required: true, description: 'Cart id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid'))],
         responses: [
             new OA\Response(response: 200, description: 'The cart after the change.', content: new OA\JsonContent(ref: '#/components/schemas/CartView')),
             new OA\Response(response: 400, description: 'The body is not valid JSON (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 401, description: 'An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
-            new OA\Response(response: 404, description: 'No such cart (unknown, expired or merged, or the id is not a UUID) or no such product in Catalog (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
-            new OA\Response(response: 409, description: 'More than 99 units of the product, a 51st product, a product without a current price or available units, or more units than available (problem details with a Polish `detail`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 404, description: 'No such cart (unknown, expired or merged, or the id is not a UUID) or no such variant in Catalog (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 409, description: 'More than 99 units of the variant, a 51st variant, a variant without a current price or available units, or more units than available (problem details with a Polish `detail`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 415, description: 'The body is not JSON (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
-            new OA\Response(response: 422, description: 'A key is missing, of a wrong type, the quantity is out of 1–99 or the product id is not a UUID (problem details with `violations`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 422, description: 'A key is missing, of a wrong type, the quantity is out of 1–99 or the variant id is not a UUID (problem details with `violations`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'A token was sent and the keys of its issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]
@@ -127,12 +127,12 @@ final readonly class GuestCartController
         AddCartItemRequest $item,
     ): JsonResponse {
         // Validated by the payload mapping: a UUID string and an integer.
-        \assert(\is_string($item->productId) && \is_int($item->quantity));
+        \assert(\is_string($item->variantId) && \is_int($item->quantity));
 
-        return new JsonResponse($this->dispatch($this->commandBus, new AddCartItem(CartRef::guest($cartId), $item->productId, $item->quantity)));
+        return new JsonResponse($this->dispatch($this->commandBus, new AddCartItem(CartRef::guest($cartId), $item->variantId, $item->quantity)));
     }
 
-    #[Route('/api/v1/guest-carts/{cartId}/items/{productId}', name: 'cart_guest_change_item', requirements: ['cartId' => self::UUID, 'productId' => self::UUID], methods: ['PUT'])]
+    #[Route('/api/v1/guest-carts/{cartId}/items/{variantId}', name: 'cart_guest_change_item', requirements: ['cartId' => self::UUID, 'variantId' => self::UUID], methods: ['PUT'])]
     #[OA\Put(
         operationId: 'changeGuestCartItemQuantity',
         summary: 'Change the quantity of a line of a guest cart',
@@ -140,14 +140,14 @@ final readonly class GuestCartController
         tags: ['Cart'],
         parameters: [
             new OA\Parameter(name: 'cartId', in: 'path', required: true, description: 'Cart id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
-            new OA\Parameter(name: 'productId', in: 'path', required: true, description: 'Product id of the line (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'variantId', in: 'path', required: true, description: 'Variant id of the line (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'The cart after the change.', content: new OA\JsonContent(ref: '#/components/schemas/CartView')),
             new OA\Response(response: 400, description: 'The body is not valid JSON (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 401, description: 'An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
-            new OA\Response(response: 404, description: 'No such cart (unknown, expired or merged, or an id is not a UUID), no such line, or an increase of a product Catalog no longer knows (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
-            new OA\Response(response: 409, description: 'An increase of a product without a current price or available units, or above the available units (problem details with a Polish `detail`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 404, description: 'No such cart (unknown, expired or merged, or an id is not a UUID), no such line, or an increase of a variant Catalog no longer knows (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 409, description: 'An increase of a variant without a current price or available units, or above the available units (problem details with a Polish `detail`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 415, description: 'The body is not JSON (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 422, description: 'The quantity is missing, not an integer or out of 1–99 (problem details with `violations`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'A token was sent and the keys of its issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
@@ -155,24 +155,24 @@ final readonly class GuestCartController
     )]
     public function changeItem(
         string $cartId,
-        string $productId,
+        string $variantId,
         #[MapRequestPayload(acceptFormat: 'json', validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY, mapWhenEmpty: true)]
         ChangeCartItemQuantityRequest $change,
     ): JsonResponse {
         \assert(\is_int($change->quantity));
 
-        return new JsonResponse($this->dispatch($this->commandBus, new ChangeCartItemQuantity(CartRef::guest($cartId), $productId, $change->quantity)));
+        return new JsonResponse($this->dispatch($this->commandBus, new ChangeCartItemQuantity(CartRef::guest($cartId), $variantId, $change->quantity)));
     }
 
-    #[Route('/api/v1/guest-carts/{cartId}/items/{productId}', name: 'cart_guest_remove_item', requirements: ['cartId' => self::UUID, 'productId' => self::UUID], methods: ['DELETE'])]
+    #[Route('/api/v1/guest-carts/{cartId}/items/{variantId}', name: 'cart_guest_remove_item', requirements: ['cartId' => self::UUID, 'variantId' => self::UUID], methods: ['DELETE'])]
     #[OA\Delete(
         operationId: 'removeGuestCartItem',
         summary: 'Remove a line of a guest cart',
-        description: 'Removes the line of the product; a cart without it is answered as it is.',
+        description: 'Removes the line of the variant; a cart without it is answered as it is.',
         tags: ['Cart'],
         parameters: [
             new OA\Parameter(name: 'cartId', in: 'path', required: true, description: 'Cart id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
-            new OA\Parameter(name: 'productId', in: 'path', required: true, description: 'Product id of the line (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'variantId', in: 'path', required: true, description: 'Variant id of the line (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'The cart after the change.', content: new OA\JsonContent(ref: '#/components/schemas/CartView')),
@@ -181,9 +181,9 @@ final readonly class GuestCartController
             new OA\Response(response: 503, description: 'A token was sent and the keys of its issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]
-    public function removeItem(string $cartId, string $productId): JsonResponse
+    public function removeItem(string $cartId, string $variantId): JsonResponse
     {
-        return new JsonResponse($this->dispatch($this->commandBus, new RemoveCartItem(CartRef::guest($cartId), $productId)));
+        return new JsonResponse($this->dispatch($this->commandBus, new RemoveCartItem(CartRef::guest($cartId), $variantId)));
     }
 
     /**

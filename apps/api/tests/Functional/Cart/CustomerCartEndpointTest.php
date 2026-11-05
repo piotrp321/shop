@@ -41,17 +41,17 @@ final class CustomerCartEndpointTest extends WebTestCase
     public function testTheFirstAdditionCreatesTheCartOfTheCustomerWhoThenChangesAndRemovesItems(): void
     {
         $token = TestTokenFactory::customer();
-        $shoes = $this->product(19_999, 10);
-        $cap = $this->product(4_990, 10);
+        $shoes = $this->variant(19_999, 10);
+        $cap = $this->variant(4_990, 10);
 
-        $added = $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $shoes, 'quantity' => 2], \JSON_THROW_ON_ERROR), $token);
+        $added = $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $shoes, 'quantity' => 2], \JSON_THROW_ON_ERROR), $token);
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
         self::assertMatchesSchema('CartView', $added);
         $cartId = $this->connection->fetchOne("SELECT id FROM cart_cart WHERE customer_id = ? AND owner_type = 'customer' AND expires_at > now() + interval '179 days'", [TestTokenFactory::CUSTOMER_ID]);
         self::assertSame($cartId, $added['id']);
 
-        $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $cap, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
+        $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $cap, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
         $changed = $this->request('PUT', '/api/v1/me/cart/items/'.$shoes, '{"quantity": 5}', $token);
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
@@ -67,8 +67,8 @@ final class CustomerCartEndpointTest extends WebTestCase
 
     public function testEachCustomerHasOwnCart(): void
     {
-        $product = $this->product();
-        $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $product, 'quantity' => 1], \JSON_THROW_ON_ERROR), TestTokenFactory::customer());
+        $variant = $this->variant();
+        $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $variant, 'quantity' => 1], \JSON_THROW_ON_ERROR), TestTokenFactory::customer());
 
         $other = $this->request('GET', '/api/v1/me/cart', token: TestTokenFactory::customer(['sub' => 'another-customer', 'email' => 'anna@example.com']));
 
@@ -78,8 +78,8 @@ final class CustomerCartEndpointTest extends WebTestCase
 
     public function testAnExpiredCartIsReadAsEmptyAndItsFirstChangeClearsItsLines(): void
     {
-        $old = $this->product();
-        $new = $this->product();
+        $old = $this->variant();
+        $new = $this->variant();
         $id = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, expiresAt: '-1 second', lines: [[$old, 3]]);
         $token = TestTokenFactory::customer();
 
@@ -89,7 +89,7 @@ final class CustomerCartEndpointTest extends WebTestCase
         self::assertSame(['itemCount' => 0], $this->request('GET', '/api/v1/me/cart/summary', token: $token));
         self::assertSame([[$old, 3]], CartFixture::lines($this->connection, $id), 'a read changes nothing');
 
-        $changed = $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $new, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
+        $changed = $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $new, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame($id, $changed['id']);
@@ -100,14 +100,14 @@ final class CustomerCartEndpointTest extends WebTestCase
     public function testTheErrorsOfTheGuestCartApplyToTheCustomerCart(): void
     {
         $token = TestTokenFactory::customer();
-        $three = $this->product(1_000, 3);
-        $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $three, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
+        $three = $this->variant(1_000, 3);
+        $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $three, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
 
-        $this->assertProblem(404, 'Produkt nie jest już dostępny.', $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => (string) Uuid::v7(), 'quantity' => 1], \JSON_THROW_ON_ERROR), $token));
+        $this->assertProblem(404, 'Produkt nie jest już dostępny.', $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => (string) Uuid::v7(), 'quantity' => 1], \JSON_THROW_ON_ERROR), $token));
         $this->assertProblem(404, 'Tej pozycji nie ma w koszyku.', $this->request('PUT', '/api/v1/me/cart/items/'.Uuid::v7(), '{"quantity": 1}', $token));
         $this->assertProblem(409, 'Nie mamy tylu sztuk tego produktu.', $this->request('PUT', '/api/v1/me/cart/items/'.$three, '{"quantity": 4}', $token));
-        $this->assertProblem(409, 'Ten produkt jest chwilowo niedostępny w sprzedaży.', $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $this->product(null), 'quantity' => 1], \JSON_THROW_ON_ERROR), $token));
-        $this->assertViolation('quantity', $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $three, 'quantity' => 100], \JSON_THROW_ON_ERROR), $token));
+        $this->assertProblem(409, 'Ten produkt jest chwilowo niedostępny w sprzedaży.', $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $this->variant(null), 'quantity' => 1], \JSON_THROW_ON_ERROR), $token));
+        $this->assertViolation('quantity', $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $three, 'quantity' => 100], \JSON_THROW_ON_ERROR), $token));
         $this->assertViolation('quantity', $this->request('PUT', '/api/v1/me/cart/items/'.$three, '{"quantity": "2"}', $token));
         $this->assertProblem(400, null, $this->request('POST', '/api/v1/me/cart/items', '{', $token));
         $this->assertProblem(415, null, $this->request('PUT', '/api/v1/me/cart/items/'.$three, 'quantity=2', $token, 'application/x-www-form-urlencoded'));
@@ -147,23 +147,23 @@ final class CustomerCartEndpointTest extends WebTestCase
     #[DataProvider('invalidChangeQuantityBodies')]
     public function testAnInvalidQuantityChangeGivesPolishViolations(string $body, array $violations): void
     {
-        $product = $this->product();
-        $id = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$product, 1]]);
+        $variant = $this->variant();
+        $id = CartFixture::cart($this->connection, customerId: TestTokenFactory::CUSTOMER_ID, lines: [[$variant, 1]]);
 
-        $this->assertViolations($violations, $this->request('PUT', '/api/v1/me/cart/items/'.$product, $body, TestTokenFactory::customer()));
-        self::assertSame([[$product, 1]], CartFixture::lines($this->connection, $id));
+        $this->assertViolations($violations, $this->request('PUT', '/api/v1/me/cart/items/'.$variant, $body, TestTokenFactory::customer()));
+        self::assertSame([[$variant, 1]], CartFixture::lines($this->connection, $id));
     }
 
     public function testBadJsonIs400AndAnotherContentTypeIs415OnBothWriteEndpoints(): void
     {
         $token = TestTokenFactory::customer();
-        $product = $this->product();
-        $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $product, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
+        $variant = $this->variant();
+        $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $variant, 'quantity' => 1], \JSON_THROW_ON_ERROR), $token);
 
-        $this->assertProblem(400, null, $this->request('POST', '/api/v1/me/cart/items', '{"productId": ', $token));
-        $this->assertProblem(400, null, $this->request('PUT', '/api/v1/me/cart/items/'.$product, '{"quantity": ', $token));
-        $this->assertProblem(415, null, $this->request('POST', '/api/v1/me/cart/items', 'productId=1&quantity=1', $token, 'application/x-www-form-urlencoded'));
-        $this->assertProblem(415, null, $this->request('PUT', '/api/v1/me/cart/items/'.$product, 'quantity=1', $token, 'text/plain'));
+        $this->assertProblem(400, null, $this->request('POST', '/api/v1/me/cart/items', '{"variantId": ', $token));
+        $this->assertProblem(400, null, $this->request('PUT', '/api/v1/me/cart/items/'.$variant, '{"quantity": ', $token));
+        $this->assertProblem(415, null, $this->request('POST', '/api/v1/me/cart/items', 'variantId=1&quantity=1', $token, 'application/x-www-form-urlencoded'));
+        $this->assertProblem(415, null, $this->request('PUT', '/api/v1/me/cart/items/'.$variant, 'quantity=1', $token, 'text/plain'));
     }
 
     public function testTheLimitOf50ProductsAppliesToTheCustomerCart(): void
@@ -173,7 +173,7 @@ final class CustomerCartEndpointTest extends WebTestCase
             CartFixture::line($this->connection, $id, \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012d', $i), 1);
         }
 
-        $this->assertProblem(409, 'Koszyk może zawierać najwyżej 50 różnych produktów.', $this->request('POST', '/api/v1/me/cart/items', json_encode(['productId' => $this->product(), 'quantity' => 1], \JSON_THROW_ON_ERROR), TestTokenFactory::customer()));
+        $this->assertProblem(409, 'Koszyk może zawierać najwyżej 50 różnych pozycji.', $this->request('POST', '/api/v1/me/cart/items', json_encode(['variantId' => $this->variant(), 'quantity' => 1], \JSON_THROW_ON_ERROR), TestTokenFactory::customer()));
     }
 
     /**
@@ -181,12 +181,12 @@ final class CustomerCartEndpointTest extends WebTestCase
      */
     public static function operations(): iterable
     {
-        $product = '0192f0c4-7c1a-7c4e-9a6e-000000000001';
+        $variant = '0192f0c4-7c1a-7c4e-9a6e-000000000001';
         yield 'get' => ['GET', '/api/v1/me/cart', null];
         yield 'summary' => ['GET', '/api/v1/me/cart/summary', null];
-        yield 'add' => ['POST', '/api/v1/me/cart/items', '{"productId": "'.$product.'", "quantity": 1}'];
-        yield 'change' => ['PUT', '/api/v1/me/cart/items/'.$product, '{"quantity": 1}'];
-        yield 'remove' => ['DELETE', '/api/v1/me/cart/items/'.$product, null];
+        yield 'add' => ['POST', '/api/v1/me/cart/items', '{"variantId": "'.$variant.'", "quantity": 1}'];
+        yield 'change' => ['PUT', '/api/v1/me/cart/items/'.$variant, '{"quantity": 1}'];
+        yield 'remove' => ['DELETE', '/api/v1/me/cart/items/'.$variant, null];
     }
 
     #[DataProvider('operations')]

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { cartLineOf, chooseFirstVariant } from "../support/variants";
 
 // A cart total in grosze from the text of a price ("1 234,50 zł" -> 123450); the amounts are never computed from
 // anything but the tile's own price, so the page must show 3 x that price.
@@ -16,6 +17,8 @@ test("a guest adds a product from the list, changes its quantity on the cart pag
     .first();
   await expect(tile).toBeVisible();
   const name = (await tile.getByRole("heading", { level: 2 }).innerText()).trim();
+  // A tile with a choice of variants shows the price of the chosen one.
+  const label = await chooseFirstVariant(tile);
   const unitGrosze = groszeOf(await tile.getByTestId("price").innerText());
   expect(unitGrosze).toBeGreaterThan(0);
 
@@ -30,7 +33,7 @@ test("a guest adds a product from the list, changes its quantity on the cart pag
   await expect(page).toHaveURL(/\/cart$/);
   await expect(page.getByRole("heading", { level: 1, name: "Koszyk" })).toBeVisible();
 
-  const line = page.getByRole("main").getByRole("listitem").filter({ has: page.getByRole("heading", { level: 2, name, exact: true }) });
+  const line = cartLineOf(page, name, label);
   await expect(line).toHaveCount(1);
   await expect(line.getByTestId("unit-price")).toBeVisible();
   const quantity = line.getByRole("spinbutton");
@@ -77,6 +80,7 @@ test("two tabs of a guest without a cart add two products at the same time and b
   const nameA = (await tileA.getByRole("heading", { level: 2 }).innerText()).trim();
   const nameB = (await tileB.getByRole("heading", { level: 2 }).innerText()).trim();
   expect(nameA).not.toBe(nameB);
+  const [labelA, labelB] = [await chooseFirstVariant(tileA), await chooseFirstVariant(tileB)];
 
   await Promise.all([
     tileA.getByRole("button", { name: "Do koszyka" }).click(),
@@ -90,9 +94,8 @@ test("two tabs of a guest without a cart add two products at the same time and b
   await expect(first.getByTestId("cart-count")).toHaveText("2");
 
   await first.goto("/cart");
-  const lines = first.getByRole("main").getByRole("listitem");
-  await expect(lines.filter({ has: first.getByRole("heading", { level: 2, name: nameA, exact: true }) })).toHaveCount(1);
-  await expect(lines.filter({ has: first.getByRole("heading", { level: 2, name: nameB, exact: true }) })).toHaveCount(1);
+  await expect(cartLineOf(first, nameA, labelA)).toHaveCount(1);
+  await expect(cartLineOf(first, nameB, labelB)).toHaveCount(1);
   await expect(first.getByTestId("cart-item-count")).toHaveText("2");
 
   await second.reload();
