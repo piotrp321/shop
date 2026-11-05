@@ -405,6 +405,25 @@ describe("CheckoutPage placing the order", () => {
     expect(announced).toEqual([0]);
   });
 
+  it.each<["cart_not_orderable" | "insufficient_stock", string]>([
+    ["cart_not_orderable", "Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk."],
+    ["insufficient_stock", "Nie mamy już tylu sztuk części produktów. Sprawdź koszyk."],
+  ])("on a 409 %s whose reloaded cart has excluded lines shows the detail and the message of the summary instead of the form, with one link to the cart", async (reason, detail) => {
+    await renderCheckout();
+    fillGuestForm();
+    const excluded = cart(1000, [line(A, "Buty", "", 1, 1000), line(B, "Baton", "", 1, 0, { state: "no_price", unitPrice: null, lineTotal: null })], true);
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: excluded });
+    await submit({ status: "conflict", reason, detail });
+    await act(async () => {});
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(detail);
+    expect(within(alert).queryByRole("link")).toBeNull();
+    expect(screen.getByText("Część pozycji w koszyku nie może zostać kupiona. Usuń albo popraw oznaczone pozycje.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
+    expect(screen.getAllByRole("link", { name: /koszyka/ })).toHaveLength(1);
+  });
+
   it("on a 409 of a reused key shows the detail without a link, keeps the form and orders with a new key on the next click", async () => {
     await renderCheckout();
     fillGuestForm();
