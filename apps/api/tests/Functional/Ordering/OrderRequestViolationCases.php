@@ -19,14 +19,17 @@ trait OrderRequestViolationCases
     private const string EMAIL_INVALID = 'Podaj poprawny adres e-mail.';
     private const string NAME_REQUIRED = 'Imię i nazwisko są wymagane.';
     private const string NAME_TOO_LONG = 'Imię i nazwisko mogą mieć najwyżej 100 znaków.';
+    private const string NAME_CONTROL = 'Imię i nazwisko zawierają niedozwolone znaki.';
     private const string PHONE_REQUIRED = 'Numer telefonu jest wymagany.';
     private const string PHONE_INVALID = 'Podaj 9-cyfrowy numer telefonu.';
     private const string STREET_REQUIRED = 'Ulica i numer są wymagane.';
     private const string STREET_TOO_LONG = 'Ulica i numer mogą mieć najwyżej 100 znaków.';
+    private const string STREET_CONTROL = 'Ulica i numer zawierają niedozwolone znaki.';
     private const string POSTAL_CODE_REQUIRED = 'Kod pocztowy jest wymagany.';
     private const string POSTAL_CODE_INVALID = 'Podaj kod pocztowy w formacie 00-000.';
     private const string CITY_REQUIRED = 'Miejscowość jest wymagana.';
     private const string CITY_TOO_LONG = 'Miejscowość może mieć najwyżej 60 znaków.';
+    private const string CITY_CONTROL = 'Miejscowość zawiera niedozwolone znaki.';
     private const string TOTAL_REQUIRED = 'Kwota zamówienia jest wymagana.';
     private const string TOTAL_INTEGER = 'Kwota zamówienia musi być liczbą całkowitą.';
     private const string TOTAL_NEGATIVE = 'Kwota zamówienia nie może być ujemna.';
@@ -47,6 +50,25 @@ trait OrderRequestViolationCases
         yield 'fullName a number' => [['fullName' => 5], [['fullName', self::NAME_REQUIRED]]];
         yield 'fullName of 101 characters' => [['fullName' => str_repeat('ż', 101)], [['fullName', self::NAME_TOO_LONG]]];
         yield 'fullName of 101 characters once trimmed' => [['fullName' => ' '.str_repeat('a', 101).' '], [['fullName', self::NAME_TOO_LONG]]];
+        // Control characters \x00-\x1F and \x7F, also at the ends, where a trim would drop them silently.
+        yield 'fullName with a NUL' => [['fullName' => "Anna\0Evil"], [['fullName', self::NAME_CONTROL]]];
+        yield 'fullName with a trailing NUL' => [['fullName' => "Anna\0"], [['fullName', self::NAME_CONTROL]]];
+        yield 'fullName with a line break' => [['fullName' => "Anna\nNowak"], [['fullName', self::NAME_CONTROL]]];
+        yield 'fullName with a trailing tab' => [['fullName' => "Anna Nowak\t"], [['fullName', self::NAME_CONTROL]]];
+        yield 'fullName with DEL' => [['fullName' => "Anna\x7FNowak"], [['fullName', self::NAME_CONTROL]]];
+        yield 'street with a NUL' => [['street' => "ul. Długa\0 5"], [['street', self::STREET_CONTROL]]];
+        yield 'street with a leading line break' => [['street' => "\nul. Długa 5"], [['street', self::STREET_CONTROL]]];
+        yield 'city with a NUL' => [['city' => "War\0szawa"], [['city', self::CITY_CONTROL]]];
+        yield 'city with a carriage return' => [['city' => "Warszawa\r"], [['city', self::CITY_CONTROL]]];
+        // Valid but for the control character; at the ends a trim would drop it before the format is checked.
+        yield 'phone with a trailing NUL' => [['phone' => "600100200\0"], [['phone', self::PHONE_INVALID]]];
+        yield 'phone with a leading line break' => [['phone' => "\n600100200"], [['phone', self::PHONE_INVALID]]];
+        yield 'phone with a tab inside' => [['phone' => "600\t100200"], [['phone', self::PHONE_INVALID]]];
+        yield 'phone with a trailing tab' => [['phone' => "600100200\t"], [['phone', self::PHONE_INVALID]]];
+        yield 'postalCode with a trailing NUL' => [['postalCode' => "00-950\0"], [['postalCode', self::POSTAL_CODE_INVALID]]];
+        yield 'postalCode with a trailing tab' => [['postalCode' => "00-950\t"], [['postalCode', self::POSTAL_CODE_INVALID]]];
+        yield 'postalCode with a leading line break' => [['postalCode' => "\n00-950"], [['postalCode', self::POSTAL_CODE_INVALID]]];
+        yield 'postalCode with a carriage return inside' => [['postalCode' => "00-9\r50"], [['postalCode', self::POSTAL_CODE_INVALID]]];
         yield 'phone of spaces' => [['phone' => '  '], [['phone', self::PHONE_REQUIRED]]];
         yield 'phone of 8 digits' => [['phone' => '60010020'], [['phone', self::PHONE_INVALID]]];
         yield 'phone of 10 digits' => [['phone' => '6001002000'], [['phone', self::PHONE_INVALID]]];
@@ -106,6 +128,11 @@ trait OrderRequestViolationCases
         yield 'email without @' => [['email' => 'anna.example.com'], [['email', self::EMAIL_INVALID]]];
         yield 'email without a domain' => [['email' => 'anna@'], [['email', self::EMAIL_INVALID]]];
         yield 'email with a space inside' => [['email' => 'anna nowak@example.com'], [['email', self::EMAIL_INVALID]]];
+        yield 'email with two dots in a row' => [['email' => 'a..b@example.com'], [['email', self::EMAIL_INVALID]]];
+        yield 'email with a leading dot' => [['email' => '.a@example.com'], [['email', self::EMAIL_INVALID]]];
+        yield 'email with a trailing dot before the @' => [['email' => 'a.@example.com'], [['email', self::EMAIL_INVALID]]];
+        yield 'email with a NUL' => [['email' => "anna\0@example.com"], [['email', self::EMAIL_INVALID]]];
+        yield 'email with a trailing line break' => [['email' => "anna@example.com\n"], [['email', self::EMAIL_INVALID]]];
         yield 'email of 255 characters' => [['email' => str_repeat('a', 243).'@example.com'], [['email', self::EMAIL_INVALID]]];
         yield 'email a number' => [['email' => 5], [['email', self::EMAIL_INVALID]]];
         yield 'email an array' => [['email' => ['anna@example.com']], [['email', self::EMAIL_INVALID]]];

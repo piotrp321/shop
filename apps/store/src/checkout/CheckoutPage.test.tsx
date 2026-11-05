@@ -299,6 +299,37 @@ describe("CheckoutPage placing the order", () => {
     expect(field("Telefon").value).toBe("600 100 200");
   });
 
+  it("moves the focus to the first wrong field, in the order of the form, after a 422 of fields", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({
+      status: "invalid",
+      violations: [
+        { propertyPath: "postalCode", title: "Podaj kod pocztowy w formacie 00-000." },
+        { propertyPath: "phone", title: "Podaj 9-cyfrowy numer telefonu." },
+      ],
+    });
+
+    expect(document.activeElement).toBe(field("Telefon"));
+  });
+
+  it.each<[string, PlaceOrderResult]>([
+    ["a 422 that names no field", { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] }],
+    ["a 409", { status: "conflict", reason: "cart_empty", detail: "Koszyk jest pusty." }],
+    ["a 404", { status: "not_found" }],
+    ["a 401", { status: "unauthorized" }],
+    ["a failure", { status: "failed" }],
+  ])("moves the focus to the message after %s, because the button was locked", async (_name, result) => {
+    await renderCheckout();
+    fillGuestForm();
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart() });
+    await submit(result);
+
+    const alert = screen.getByRole("alert");
+    expect(alert.getAttribute("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(alert);
+  });
+
   it("shows a 422 that names no field of the form in the message", async () => {
     await renderCheckout();
     fillGuestForm();
@@ -307,16 +338,19 @@ describe("CheckoutPage placing the order", () => {
     expect(screen.getByRole("alert").textContent).toContain("Nieprawidłowe dane.");
   });
 
-  it("on a 409 of a changed total shows the detail, loads the new summary and keeps the form; the next order has a new key and the new total", async () => {
+  it("on a 409 of a changed total shows the detail without a link to the cart, loads the new summary and keeps the form; the next order has a new key and the new total", async () => {
     await renderCheckout();
     fillGuestForm();
     vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart(41000) });
-    await submit({ status: "conflict", detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
+    await submit({ status: "conflict", reason: "total_changed", detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
 
-    expect(screen.getByRole("alert").textContent).toContain("Kwota zamówienia się zmieniła. Sprawdź podsumowanie.");
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Kwota zamówienia się zmieniła. Sprawdź podsumowanie.");
+    expect(within(alert).queryByRole("link")).toBeNull();
     expect(screen.getByTestId("checkout-total").textContent).toBe(price(41000));
     expect(field("Telefon").value).toBe("600 100 200");
     expect(submitButton().disabled).toBe(false);
+    expect(placeOrder).toHaveBeenCalledTimes(1);
 
     await submit({ status: "ok", number: "R-100001" });
     const [first, second] = vi.mocked(placeOrder).mock.calls;
@@ -324,35 +358,109 @@ describe("CheckoutPage placing the order", () => {
     expect(second[1]).not.toBe(first[1]);
   });
 
-  it.each([
-    ["Koszyk jest pusty.", cart(0, [])],
-    ["Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.", cart(1000, [line(A, "Buty", "", 1, 1000, { state: "no_price", unitPrice: null, lineTotal: null })], true)],
-    ["Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.", cart(39998, [line(A, "Buty", "", 2, 39998, { state: "insufficient_stock" })], true)],
-  ])("on a 409 „%s” shows the detail with a link back to the cart", async (detail, reloaded) => {
+  it("on a 409 of a changed total with a cart that cannot be ordered any more shows the message of the summary instead of the form, with one link to the cart", async () => {
     await renderCheckout();
     fillGuestForm();
-    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: reloaded });
-    await submit({ status: "conflict", detail });
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart(0, []) });
+    await submit({ status: "conflict", reason: "total_changed", detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
+
+    expect(within(screen.getByRole("alert")).queryByRole("link")).toBeNull();
+    expect(screen.getByText("Twój koszyk jest pusty.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
+    expect(screen.getAllByRole("link", { name: /koszyka/ })).toHaveLength(1);
+  });
+
+  it.each<[string, "cart_empty" | "cart_not_orderable" | "insufficient_stock", string]>([
+    ["CartEmpty", "cart_empty", "Koszyk jest pusty."],
+    ["CartNotOrderable", "cart_not_orderable", "Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk."],
+    ["InsufficientStockForOrder", "insufficient_stock", "Nie mamy już tylu sztuk części produktów. Sprawdź koszyk."],
+  ])("on a 409 %s shows the detail with a link back to the cart, keeps the form and the key, and does not order again by itself", async (_name, reason, detail) => {
+    await renderCheckout();
+    fillGuestForm();
+    const used = key(keys);
+    await submit({ status: "conflict", reason, detail });
+    await act(async () => {});
 
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain(detail);
     expect(within(alert).getByRole("link", { name: "Wróć do koszyka" }).getAttribute("href")).toBe("/cart");
+    expect(field("Telefon").value).toBe("600 100 200");
     expect(push).not.toHaveBeenCalled();
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+
+    await submit({ status: "failed" });
+    expect(vi.mocked(placeOrder).mock.calls.map((call) => call[1])).toEqual([used, used]);
   });
 
-  it("on a 409 of a reused key shows the detail, keeps the form and orders with a new key on the next click", async () => {
+  it("on a 409 that empties the cart shows the detail and the message of the summary instead of the form, with one link to the cart", async () => {
     await renderCheckout();
     fillGuestForm();
-    await submit({ status: "conflict", detail: "Ten klucz żądania był już użyty dla innego zamówienia." });
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart(0, []) });
+    await submit({ status: "conflict", reason: "cart_empty", detail: "Koszyk jest pusty." });
 
-    expect(screen.getByRole("alert").textContent).toContain("Ten klucz żądania był już użyty dla innego zamówienia.");
+    expect(screen.getByRole("alert").textContent).toBe("Koszyk jest pusty.");
+    expect(screen.getByText("Twój koszyk jest pusty.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
+    expect(screen.getAllByRole("link", { name: /koszyka/ })).toHaveLength(1);
+    expect(announced).toEqual([0]);
+  });
+
+  it.each<["cart_not_orderable" | "insufficient_stock", string]>([
+    ["cart_not_orderable", "Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk."],
+    ["insufficient_stock", "Nie mamy już tylu sztuk części produktów. Sprawdź koszyk."],
+  ])("on a 409 %s whose reloaded cart has excluded lines shows the detail and the message of the summary instead of the form, with one link to the cart", async (reason, detail) => {
+    await renderCheckout();
+    fillGuestForm();
+    const excluded = cart(1000, [line(A, "Buty", "", 1, 1000), line(B, "Baton", "", 1, 0, { state: "no_price", unitPrice: null, lineTotal: null })], true);
+    vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: excluded });
+    await submit({ status: "conflict", reason, detail });
+    await act(async () => {});
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(detail);
+    expect(within(alert).queryByRole("link")).toBeNull();
+    expect(screen.getByText("Część pozycji w koszyku nie może zostać kupiona. Usuń albo popraw oznaczone pozycje.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
+    expect(screen.getAllByRole("link", { name: /koszyka/ })).toHaveLength(1);
+  });
+
+  it("on a 409 of a reused key shows the detail without a link, keeps the form and orders with a new key on the next click", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "conflict", reason: "key_reused", detail: "Ten klucz żądania był już użyty dla innego zamówienia." });
+    await act(async () => {});
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Ten klucz żądania był już użyty dla innego zamówienia.");
+    expect(within(alert).queryByRole("link")).toBeNull();
     expect(field("E-mail").value).toBe("anna.nowak@example.com");
+    expect(placeOrder).toHaveBeenCalledTimes(1);
 
     await submit({ status: "ok", number: "R-100001" });
     const [first, second] = vi.mocked(placeOrder).mock.calls;
     expect(second[1]).not.toBe(first[1]);
     expect(second[0]).toEqual(first[0]);
     expect(push).toHaveBeenCalledWith("/checkout/confirmation");
+  });
+
+  it.each<[string, string | undefined, string]>([
+    ["with a detail", "Coś poszło nie tak.", "Coś poszło nie tak."],
+    ["without a detail", undefined, SUBMIT_FAILED],
+  ])("on a 409 of an unknown type %s shows the text with a link back to the cart and keeps the key; it does not order again by itself", async (_name, detail, shown) => {
+    await renderCheckout();
+    fillGuestForm();
+    const used = key(keys);
+    await submit({ status: "conflict", reason: "unknown", detail });
+    await act(async () => {});
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain(shown);
+    expect(within(alert).getByRole("link", { name: "Wróć do koszyka" }).getAttribute("href")).toBe("/cart");
+    expect(field("Telefon").value).toBe("600 100 200");
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+
+    await submit({ status: "failed" });
+    expect(vi.mocked(placeOrder).mock.calls.map((call) => call[1])).toEqual([used, used]);
   });
 
   it("on a 404 says the cart is gone, with a link to the store", async () => {

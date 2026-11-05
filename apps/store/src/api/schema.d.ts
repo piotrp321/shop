@@ -577,6 +577,17 @@ export interface components {
                 title: string;
             }[];
         };
+        /** @description A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, or the `Idempotency-Key` was used by another request. */
+        OrderConflictProblem: {
+            /** @enum {string} */
+            type: "tag:piotrp321.github.io,2026:shop/problems/cart-empty" | "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable" | "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order" | "tag:piotrp321.github.io,2026:shop/problems/order-total-changed" | "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused";
+            /** @example Conflict */
+            title: string;
+            /** @enum {integer} */
+            status: 409;
+            /** @description Polish text for the customer. */
+            detail: string;
+        };
         /** @description A variant of a product to add to the cart. */
         AddCartItemRequest: {
             /**
@@ -656,7 +667,7 @@ export interface components {
             cartId: string;
             /**
              * Format: email
-             * @description Email address the order is confirmed to, at most 254 characters once trimmed.
+             * @description Email address the order is confirmed to, at most 254 characters once trimmed, one the mailer accepts (no empty part between dots).
              * @example anna.nowak@example.com
              */
             email: string;
@@ -1773,13 +1784,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request (problem details with a Polish `detail`). Nothing is ordered or reserved. */
+            /** @description The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["OrderConflictProblem"];
                 };
             };
             /** @description The body is not JSON (problem details). */
@@ -1872,13 +1883,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request (problem details with a Polish `detail`). Nothing is ordered or reserved. */
+            /** @description The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["OrderConflictProblem"];
                 };
             };
             /** @description The body is not JSON (problem details). */

@@ -347,12 +347,23 @@ describe("placeOrder", () => {
     expect(await placeOrder(input, KEY)).toEqual({ status: "ok", number: "R-100001" });
   });
 
+  const PROBLEMS = "tag:piotrp321.github.io,2026:shop/problems/";
   const violations = [{ propertyPath: "phone", title: "Podaj 9-cyfrowy numer telefonu." }];
 
   it.each([
     [422, { violations }, { status: "invalid", detail: undefined, violations }],
     [422, { detail: "Nieprawidłowe dane." }, { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] }],
-    [409, { detail: "Koszyk jest pusty." }, { status: "conflict", detail: "Koszyk jest pusty." }],
+    [409, { type: `${PROBLEMS}cart-empty`, detail: "Koszyk jest pusty." }, { status: "conflict", reason: "cart_empty", detail: "Koszyk jest pusty." }],
+    [409, { type: `${PROBLEMS}cart-not-orderable`, detail: "x" }, { status: "conflict", reason: "cart_not_orderable", detail: "x" }],
+    [409, { type: `${PROBLEMS}insufficient-stock-for-order`, detail: "x" }, { status: "conflict", reason: "insufficient_stock", detail: "x" }],
+    [409, { type: `${PROBLEMS}order-total-changed`, detail: "x" }, { status: "conflict", reason: "total_changed", detail: "x" }],
+    [409, { type: `${PROBLEMS}idempotency-key-reused`, detail: "x" }, { status: "conflict", reason: "key_reused", detail: "x" }],
+    [409, { type: "about:blank", detail: "Koszyk jest pusty." }, { status: "conflict", reason: "unknown", detail: "Koszyk jest pusty." }],
+    [409, { type: `${PROBLEMS}something-new`, detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],
+    [409, { type: 42, detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],
+    [409, { type: "constructor", detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],
+    [409, { detail: "Koszyk jest pusty." }, { status: "conflict", reason: "unknown", detail: "Koszyk jest pusty." }],
+    [409, {}, { status: "conflict", reason: "unknown", detail: undefined }],
     [404, { detail: "Koszyk nie jest już dostępny." }, { status: "not_found", detail: "Koszyk nie jest już dostępny." }],
     [401, {}, { status: "unauthorized" }],
     [403, {}, { status: "failed" }],

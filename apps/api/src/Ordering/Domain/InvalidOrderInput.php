@@ -27,6 +27,11 @@ final class InvalidOrderInput extends \DomainException implements InvalidInput
         return new self(\sprintf('Imię i nazwisko mogą mieć najwyżej %d znaków.', Contact::MAX_FULL_NAME_LENGTH));
     }
 
+    public static function fullNameCharacters(): self
+    {
+        return new self('Imię i nazwisko zawierają niedozwolone znaki.');
+    }
+
     public static function phone(): self
     {
         return new self('Podaj 9-cyfrowy numer telefonu.');
@@ -40,6 +45,11 @@ final class InvalidOrderInput extends \DomainException implements InvalidInput
     public static function streetTooLong(): self
     {
         return new self(\sprintf('Ulica i numer mogą mieć najwyżej %d znaków.', ShippingAddress::MAX_STREET_LENGTH));
+    }
+
+    public static function streetCharacters(): self
+    {
+        return new self('Ulica i numer zawierają niedozwolone znaki.');
     }
 
     public static function postalCodeMissing(): self
@@ -60,6 +70,11 @@ final class InvalidOrderInput extends \DomainException implements InvalidInput
     public static function cityTooLong(): self
     {
         return new self(\sprintf('Miejscowość może mieć najwyżej %d znaków.', ShippingAddress::MAX_CITY_LENGTH));
+    }
+
+    public static function cityCharacters(): self
+    {
+        return new self('Miejscowość zawiera niedozwolone znaki.');
     }
 
     public static function idempotencyKey(): self

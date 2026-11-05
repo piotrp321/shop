@@ -98,6 +98,36 @@ trait OrderEndpointTestTrait
     }
 
     /**
+     * A 409 with the stable `type` of its cause (`tag:piotrp321.github.io,2026:shop/problems/<slug>`) and the Polish `detail`.
+     *
+     * @param array<mixed> $problem
+     */
+    private function assertConflict(string $slug, string $detail, array $problem): void
+    {
+        $this->assertProblem(409, $detail, $problem);
+        self::assertSame('tag:piotrp321.github.io,2026:shop/problems/'.$slug, $problem['type'] ?? null);
+        self::assertNotSame('', $problem['detail'] ?? '');
+
+        self::assertContains($problem['type'], self::conflictTypesOfTheSpecification(), 'the type is in the enum of OrderConflictProblem');
+    }
+
+    /**
+     * @return list<mixed> the `enum` of `type` in the schema `OrderConflictProblem` of `openapi.json`
+     */
+    private static function conflictTypesOfTheSpecification(): array
+    {
+        $node = json_decode((string) file_get_contents(\dirname(__DIR__, 3).'/openapi.json'), true, flags: \JSON_THROW_ON_ERROR);
+        foreach (['components', 'schemas', 'OrderConflictProblem', 'properties', 'type', 'enum'] as $key) {
+            self::assertIsArray($node);
+            self::assertArrayHasKey($key, $node, 'openapi.json has OrderConflictProblem');
+            $node = $node[$key];
+        }
+        self::assertIsArray($node);
+
+        return array_values($node);
+    }
+
+    /**
      * A 409 that has only the problem keys and the fixed detail, and none of the data of the order that used the key.
      *
      * @param array<mixed> $problem
@@ -105,7 +135,7 @@ trait OrderEndpointTestTrait
      */
     private function assertKeyReused(array $problem, array $earlier): void
     {
-        $this->assertProblem(409, 'Ten klucz żądania był już użyty dla innego zamówienia.', $problem);
+        $this->assertConflict('idempotency-key-reused', 'Ten klucz żądania był już użyty dla innego zamówienia.', $problem);
         self::assertSame(['type', 'title', 'status', 'detail'], array_keys($problem));
         $body = (string) $this->response()->getContent();
         foreach (['orderId', 'number', 'email'] as $field) {

@@ -1311,11 +1311,11 @@
                         }
                     },
                     "409": {
-                        "description": "The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request (problem details with a Polish `detail`). Nothing is ordered or reserved.",
+                        "description": "The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/Problem"
+                                    "$ref": "#/components/schemas/OrderConflictProblem"
                                 }
                             }
                         }
@@ -1442,11 +1442,11 @@
                         }
                     },
                     "409": {
-                        "description": "The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request (problem details with a Polish `detail`). Nothing is ordered or reserved.",
+                        "description": "The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/Problem"
+                                    "$ref": "#/components/schemas/OrderConflictProblem"
                                 }
                             }
                         }
@@ -2034,6 +2034,42 @@
                 },
                 "type": "object"
             },
+            "OrderConflictProblem": {
+                "description": "A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, or the `Idempotency-Key` was used by another request.",
+                "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "tag:piotrp321.github.io,2026:shop/problems/cart-empty",
+                            "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable",
+                            "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order",
+                            "tag:piotrp321.github.io,2026:shop/problems/order-total-changed",
+                            "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused"
+                        ]
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Conflict"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "enum": [
+                            409
+                        ]
+                    },
+                    "detail": {
+                        "description": "Polish text for the customer.",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "AddCartItemRequest": {
                 "description": "A variant of a product to add to the cart.",
                 "required": [
@@ -2122,6 +2158,7 @@
                     "fullName": {
                         "description": "Full name, 1 to 100 characters once trimmed.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "Jan Kowalski",
                         "maxLength": 100
                     },
@@ -2133,17 +2170,20 @@
                     "street": {
                         "description": "Street and number, 1 to 100 characters once trimmed.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "ul. D\u0142uga 5/3",
                         "maxLength": 100
                     },
                     "postalCode": {
                         "description": "Polish postal code NN-NNN.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "00-950"
                     },
                     "city": {
                         "description": "City, 1 to 60 characters once trimmed. The country is always Poland.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "Warszawa",
                         "maxLength": 60
                     },
@@ -2175,15 +2215,17 @@
                         "format": "uuid"
                     },
                     "email": {
-                        "description": "Email address the order is confirmed to, at most 254 characters once trimmed.",
+                        "description": "Email address the order is confirmed to, at most 254 characters once trimmed, one the mailer accepts (no empty part between dots).",
                         "type": "string",
                         "format": "email",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "anna.nowak@example.com",
                         "maxLength": 254
                     },
                     "fullName": {
                         "description": "Full name, 1 to 100 characters once trimmed.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "Anna Nowak",
                         "maxLength": 100
                     },
@@ -2195,17 +2237,20 @@
                     "street": {
                         "description": "Street and number, 1 to 100 characters once trimmed.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "ul. D\u0142uga 5/3",
                         "maxLength": 100
                     },
                     "postalCode": {
                         "description": "Polish postal code NN-NNN.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "00-950"
                     },
                     "city": {
                         "description": "City, 1 to 60 characters once trimmed. The country is always Poland.",
                         "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "Warszawa",
                         "maxLength": 60
                     },

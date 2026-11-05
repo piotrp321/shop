@@ -35,6 +35,11 @@ export function setOrderConfirmation(response: NextResponse, confirmation: Order
   });
 }
 
+/** Deletes the confirmation, e.g. at logout: it holds the e-mail address of the order. */
+export function clearOrderConfirmation(response: NextResponse, storeUrl: string) {
+  response.cookies.set(CONFIRMATION_COOKIE, "", { ...cookieOptions(storeUrl), maxAge: 0 });
+}
+
 /** The confirmation of a `store_order_confirmation` cookie, or null when it is missing, forged or malformed. */
 export function readOrderConfirmation(signed: string | undefined, secret: string): OrderConfirmation | null {
   const value = readSignedValue(signed, secret);

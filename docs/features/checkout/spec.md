@@ -91,11 +91,16 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 - `OrderNumber`: `R-` i liczba ≥ 100001 (P6).
 - `OrderOwner`: `guest` albo `customer(customerId)`; `customerId` to `sub` z tokena (1–255 znaków).
 - `IdempotencyKey`: 1–100 znaków `[A-Za-z0-9._:-]` (ten sam format co klucze Inventory).
-- `EmailAddress`: przycięty, do 254 znaków, poprawny adres (walidacja formatu w DTO, domena sprawdza długość
-  i obecność `@`).
-- `Contact {email, fullName, phone}`: `fullName` 1–100 znaków po przycięciu; `phone`: 9 cyfr, opcjonalnie poprzedzone
+- `EmailAddress`: przycięty, do 254 znaków, poprawny adres (walidacja formatu w DTO: `Assert\Email` i ograniczenie
+  `MailerAcceptsEmail`, które buduje `Symfony\Component\Mime\Address` jak Mailer, więc `a..b@…`, `.a@…` i `a.@…`
+  dają 422 zamiast zamówienia bez e-maila; domena sprawdza długość, obecność `@` i brak znaków sterujących).
+- Znaki sterujące `\x00-\x1F` i `\x7F` są odrzucane w `email`, `fullName`, `phone`, `street`, `postalCode` i `city`,
+  sprawdzane w wartości w takiej postaci, w jakiej przyszła (`trim` usuwa NUL, tabulator i końce linii z brzegów, więc
+  sprawdzenie po przycięciu wpuściłoby je i zmieniło wartość po cichu). Stała wzorca jest w `ControlCharacters`
+  (Ordering Domain); DTO używa jej w `Assert\Regex(match: false)`, VO rzucają `InvalidOrderInput`.
+- `Contact {email, fullName, phone}`: `fullName` 1–100 znaków po przycięciu, bez znaków sterujących; `phone`: 9 cyfr, opcjonalnie poprzedzone
   `+48`; spacje i myślniki są usuwane, zapis w postaci `+48NNNNNNNNN`.
-- `ShippingAddress {street, postalCode, city, country}`: `street` 1–100, `city` 1–60 znaków po przycięciu,
+- `ShippingAddress {street, postalCode, city, country}`: `street` 1–100, `city` 1–60 znaków po przycięciu, oba bez znaków sterujących,
   `postalCode` `NN-NNN`, `country` zawsze `PL`.
 - `Money`: nieujemne grosze (`int`) i `Currency` (tylko `PLN`).
 - `PriceCopy {net, vat, gross, vatRateBp, taxClass}`: cena jednostkowa skopiowana z Pricing; `net + vat = gross`.
@@ -122,16 +127,22 @@ wariantu), `totals` (liczone), `status` (`new`), `idempotencyKey`, `requestFinge
 - Status `new` to pierwszy status cyklu z `docs/vision.md` (nowe → opłacone → wysłane → dostarczone). Przejścia
   dodają PAYMENT i ORDER-MANAGEMENT.
 
-Komunikaty `detail` (po polsku, bez danych wejściowych):
+Komunikaty `detail` (po polsku, bez danych wejściowych) i `type` problemu (RFC 9457):
 
-| Wyjątek | Typ | `detail` |
-|---|---|---|
-| `CartEmpty` | `Conflict` (409) | „Koszyk jest pusty.” |
-| `CartNotOrderable` | `Conflict` (409) | „Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.” |
-| `InsufficientStockForOrder` | `Conflict` (409) | „Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.” |
-| `OrderTotalChanged` | `Conflict` (409) | „Kwota zamówienia się zmieniła. Sprawdź podsumowanie.” |
-| `IdempotencyKeyReused` | `Conflict` (409) | „Ten klucz żądania był już użyty dla innego zamówienia.” |
-| `CartNotFound` (z Cart) | `NotFound` (404) | „Koszyk nie jest już dostępny.” (bez zmian) |
+| Wyjątek | Rodzaj | `detail` | `type` (prefiks `tag:piotrp321.github.io,2026:shop/problems/`) |
+|---|---|---|---|
+| `CartEmpty` | `Conflict` (409) | „Koszyk jest pusty.” | `…/cart-empty` |
+| `CartNotOrderable` | `Conflict` (409) | „Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.” | `…/cart-not-orderable` |
+| `InsufficientStockForOrder` | `Conflict` (409) | „Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.” | `…/insufficient-stock-for-order` |
+| `OrderTotalChanged` | `Conflict` (409) | „Kwota zamówienia się zmieniła. Sprawdź podsumowanie.” | `…/order-total-changed` |
+| `IdempotencyKeyReused` | `Conflict` (409) | „Ten klucz żądania był już użyty dla innego zamówienia.” | `…/idempotency-key-reused` |
+| `CartNotFound` (z Cart) | `NotFound` (404) | „Koszyk nie jest już dostępny.” (bez zmian) | `about:blank` |
+
+Pięć wyjątków Ordering implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType(): string`) i trzyma
+swój `type` w stałej `TYPE`; `ProblemDetailsSubscriber` wpisuje go do odpowiedzi. Wyjątki bez tego interfejsu i każda
+inna odpowiedź błędu mają `type: about:blank`. Klient rozróżnia przyczyny 409 wyłącznie po `type`; `detail` jest
+tekstem dla człowieka i może się zmienić. `type` to identyfikator (URI `tag:`), nie adres, pod którym coś jest
+serwowane.
 
 ## Złożenie zamówienia (`PlaceOrder`)
 
@@ -212,7 +223,8 @@ Ceny i kwoty liczy wyłącznie serwer:
 
 - `LockCartForOrder(cartRef)` → `list<{variantId, quantity}>`: blokada jak w innych komendach Cart (`LockedCarts`,
   `lockForCustomer` bez zakładania koszyka), `openForChange(now)` (gość: 404 dla `merged` i wygasłego; klient:
-  `clearIfExpired`), linie z `linesAt(now)`. Nie zmienia koszyka poza wyczyszczeniem wygasłego koszyka klienta.
+  wygasły koszyk czyści w pamięci), linie z `linesAt(now)`. Niczego nie zapisuje: wygasły koszyk klienta jest tylko
+  czytany jako pusty (porządkuje go `cart:purge-expired`).
 - `ClearCartAfterOrder(cartRef)`: blokuje koszyk jak każda komenda Cart (`LockedCarts`; w transakcji, która już go
   zablokowała przez `LockCartForOrder`, to odświeżenie rekordu pod tą samą blokadą), nowa metoda agregatu
   `Cart::clearAfterOrder(now)` usuwa wszystkie linie i wywołuje `touch(now)`. Klient bez koszyka: bez zmian.
@@ -285,7 +297,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią | 400 brak lub zły klucz, zły JSON; 404 koszyk; 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`; 415; 422 |
+| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią | 400 brak lub zły klucz, zły JSON; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422 |
 | `POST /api/v1/me/orders` (klient), nagłówek `Idempotency-Key`, body `{fullName, phone, street, postalCode, city, expectedTotalGross}` | jak wyżej; e-mail z tokena | 401 (bez tokena, token `backoffice`), 503 (klucze wystawcy niedostępne), pozostałe jak wyżej bez 404 |
 
 `OrderView`:
@@ -315,14 +327,15 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | `cartId` | brak, `null` | Identyfikator koszyka jest wymagany. |
 | `cartId` | nie UUID | Identyfikator koszyka musi być UUID. |
 | `email` | brak, `null`, pusty | Adres e-mail jest wymagany. |
-| `email` | zły format albo > 254 znaki | Podaj poprawny adres e-mail. |
+| `email` | zły format (także taki, jakiego nie przyjmie Mailer), znak sterujący albo > 254 znaki | Podaj poprawny adres e-mail. |
 | `fullName` | brak, pusty po przycięciu | Imię i nazwisko są wymagane. |
 | `fullName` | > 100 znaków | Imię i nazwisko mogą mieć najwyżej 100 znaków. |
+| `fullName` | znak sterujący | Imię i nazwisko zawierają niedozwolone znaki. |
 | `phone` | brak, pusty | Numer telefonu jest wymagany. |
-| `phone` | inny format | Podaj 9-cyfrowy numer telefonu. |
-| `street` | brak, pusty / > 100 | Ulica i numer są wymagane. / Ulica i numer mogą mieć najwyżej 100 znaków. |
-| `postalCode` | brak, pusty / zły format | Kod pocztowy jest wymagany. / Podaj kod pocztowy w formacie 00-000. |
-| `city` | brak, pusty / > 60 | Miejscowość jest wymagana. / Miejscowość może mieć najwyżej 60 znaków. |
+| `phone` | inny format (także ze znakiem sterującym) | Podaj 9-cyfrowy numer telefonu. |
+| `street` | brak, pusty / > 100 / znak sterujący | Ulica i numer są wymagane. / Ulica i numer mogą mieć najwyżej 100 znaków. / Ulica i numer zawierają niedozwolone znaki. |
+| `postalCode` | brak, pusty / zły format (także ze znakiem sterującym) | Kod pocztowy jest wymagany. / Podaj kod pocztowy w formacie 00-000. |
+| `city` | brak, pusty / > 60 / znak sterujący | Miejscowość jest wymagana. / Miejscowość może mieć najwyżej 60 znaków. / Miejscowość zawiera niedozwolone znaki. |
 | `expectedTotalGross` | brak, `null` / nie liczba całkowita / ujemna | Kwota zamówienia jest wymagana. / Kwota zamówienia musi być liczbą całkowitą. / Kwota zamówienia nie może być ujemna. |
 
 - Nagłówek `Idempotency-Key` brak albo zły format: 400 z naruszeniem nagłówka (jak przyjęcie magazynowe).
@@ -336,16 +349,22 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   `withCartDeps`): wymaga `Origin` równego `STORE_URL` i `Content-Type: application/json` (inaczej 403 bez API),
   nagłówka `Idempotency-Key` od przeglądarki (brak: 422 „Nieprawidłowe dane.”). Wybór koszyka jak w BFF koszyka:
   sesja → `POST /api/v1/me/orders` (przed złożeniem scalenie `store_cart`, jak przy każdej operacji koszyka), bez
-  sesji → `POST /api/v1/orders` z `cartId` z `store_cart`; bez `store_cart`: 409 „Koszyk jest pusty.” bez API.
+  sesji → `POST /api/v1/orders` z `cartId` z `store_cart`; bez `store_cart`: 409 „Koszyk jest pusty.” z `type`
+  `CartEmpty` (`…/cart-empty`) bez API.
 - Sukces (201 i 200): ciasteczko `store_order_confirmation` z `{number, email, totalGross, currency}` podpisane jak
   `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina; odpowiedź `{number}`. `store_cart` zostaje
-  (koszyk jest pusty).
-- Błędy: 404, 409 i 422 API przekazywane z `detail` i `violations`; 404 gościa (koszyk zniknął: nieznany, wygasły,
+  (koszyk jest pusty). `POST /auth/logout` usuwa to ciasteczko razem z sesją (zawiera e-mail zamówienia, więc nie
+  może przeżyć wylogowania).
+- Błędy: 404, 409 i 422 API przekazywane z `detail` i `violations`, a 409 także z `type` bez zmian (`about:blank` albo
+  brak, gdy tak odpowiedziało API); 404 gościa (koszyk zniknął: nieznany, wygasły,
   scalony) usuwa też `store_cart`, jak BFF koszyka; 401 sesji kończy sesję; 503 przy niedostępnym API lub
   zależnościach (także 400 i 415 API).
 - `/auth/session` zwraca `{name, email}` (dziś `{name}`; `email` z `GET /api/v1/me`, który już go ma); typ
   `AccountSession` w `src/api/client.ts` i jego konsumenci (konto w nagłówku) dostają nowe pole.
-- `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (jedyne miejsce `fetch`).
+- `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (jedyne miejsce `fetch`). Wynik 409 to `conflict` z `reason`
+  wyznaczonym wyłącznie z `type` (`src/checkout/problems.ts`: mapa typów ze schematu OpenAPI `OrderConflictProblem`
+  na przyczyny, kompilator wymaga wpisu dla każdego typu schematu; inny albo brakujący `type` to `unknown`). `detail`
+  służy tylko do wyświetlenia.
 
 ### UI
 
@@ -358,7 +377,14 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   imię i nazwisko wstępnie wypełnione z sesji. Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat
   i link do koszyka.
 - `Idempotency-Key`: UUID (`crypto.randomUUID`) tworzony przy wejściu na `/checkout` i używany ponownie przy
-  ponowieniu po błędzie sieci, 5xx i 503; nowy klucz po każdej odpowiedzi 409 i po zmianie danych formularza.
+  ponowieniu niepewnego wyniku (błąd sieci, 403, 5xx, 503). Klucz należy do jednej logicznej próby: nowy powstaje
+  po zmianie danych formularza, po 409 `IdempotencyKeyReused` i po 409 `OrderTotalChanged` (żądanie niesie wtedy
+  inną kwotę, która należy do odcisku żądania, a nic nie zostało złożone). Po 409 `CartEmpty`, `CartNotOrderable`,
+  `InsufficientStockForOrder` i po nieznanym 409 klucz zostaje: ponowienie tym samym kluczem po ewentualnym sukcesie
+  da powtórzenie 200, nie drugie zamówienie. Strona niczego nie ponawia sama: każdy POST to kliknięcie klienta.
+  Znany skutek reguły „zmiana danych = nowy klucz”: gdy wynik poprzedniej próby był niepewny (błąd sieci, 5xx, 503,
+  403), a zamówienie jednak powstało, zmiana pola i ponowne kliknięcie dają 409 `CartEmpty` (pusty koszyk), a nie
+  potwierdzenie. Drugiego zamówienia nie ma, bo koszyk jest pusty.
 - `expectedTotalGross` = `totals.gross` z ostatnio wczytanego podsumowania. Na czas żądania przycisk jest
   zablokowany.
 - Sukces: licznik koszyka 0 (zdarzenie `src/cart/events.ts`), przejście na `/checkout/confirmation`.
@@ -371,12 +397,17 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | Sytuacja | UI na `/checkout` |
 |---|---|
 | 422 | komunikaty przy polach (`violations`) |
-| 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania (nowa kwota), formularz zostaje |
-| 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka” |
-| 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje (kolejne kliknięcie składa zamówienie z nowym kluczem) |
+| 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania (nowa kwota), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
+| 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
+| 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje, bez linku do koszyka (kolejne kliknięcie składa zamówienie z nowym kluczem) |
+| 409 nieznany (inny `type` albo brak) | `detail` (bez niego „Nie udało się złożyć zamówienia. Spróbuj ponownie.”) i link „Wróć do koszyka”, klucz zostaje, bez automatycznego ponawiania |
 | 404 koszyka | „Koszyk nie jest już dostępny.” i link do sklepu |
 | 401 | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem (`returnTo=/checkout`) |
 | 403, 503, 5xx, błąd sieci | „Nie udało się złożyć zamówienia. Spróbuj ponownie.” (ponowienie z tym samym kluczem) |
+
+Po każdym odrzuceniu fokus przechodzi na komunikat błędu (`role="alert"`, `tabIndex=-1`), bo przycisk jest zablokowany na
+czas żądania; po 422 z błędami pól na pierwsze błędne pole (w kolejności formularza), które ma `aria-invalid`
+i `aria-describedby` na swój komunikat.
 
 ## Scenariusze błędów
 
@@ -491,14 +522,17 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 
 ### Vitest (`apps/store`)
 
-- BFF `app/api/checkout/route.test.ts`: gość, sesja (ze scaleniem `store_cart`), brak `store_cart`, 403 `Origin`
+- BFF `app/api/checkout/route.test.ts`: gość, sesja (ze scaleniem `store_cart`), brak `store_cart` (409 z `type`
+  `CartEmpty`), 403 `Origin`
   i `Content-Type`, brak `Idempotency-Key`, przekazanie klucza, do API trafiają tylko pola kontraktu (dodatkowe pola
   przeglądarki, np. ceny, są pomijane), 201 i 200 ustawiają `store_order_confirmation`
-  (z walutą), 404 gościa usuwa `store_cart`, 409, 422, 401, 503, `no-store`.
+  (z walutą), 404 gościa usuwa `store_cart`, 409 (przekazuje `type` każdej z pięciu przyczyn, `about:blank` i brak),
+  422, 401, 503, `no-store`.
 - `/auth/session` (`app/auth/session`): `{name, email}`.
 - `CheckoutPage`: formularz gościa i klienta (e-mail z sesji), podsumowanie, blokada przycisku, każdy wiersz tabeli
-  UI, ponowienie z tym samym kluczem, nowy klucz po 409 (także `IdempotencyKeyReused`) i po zmianie danych, pusty
-  koszyk, `hasExcludedLines`.
+  UI (pięć przyczyn 409 i nieznany 409: komunikat, link do koszyka, formularz, ten sam albo nowy klucz przy kolejnym
+  kliknięciu, brak automatycznego drugiego POST), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
+  danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`.
 - `/checkout/confirmation`: z ciasteczkiem, bez, z niepoprawnym podpisem.
 - `CartPage`: przycisk „Przejdź do kasy” aktywny i nieaktywny.
 - `src/api/client.test.ts`: `placeOrder`.

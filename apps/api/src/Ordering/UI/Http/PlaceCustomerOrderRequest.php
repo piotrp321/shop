@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Ordering\UI\Http;
 
 use App\Ordering\Domain\Contact;
+use App\Ordering\Domain\ControlCharacters;
 use App\Ordering\Domain\ShippingAddress;
 use OpenApi\Attributes as OA;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -26,6 +27,7 @@ final readonly class PlaceCustomerOrderRequest
             new Assert\Type('string', message: 'Imię i nazwisko są wymagane.'),
             new Assert\NotBlank(message: 'Imię i nazwisko są wymagane.', normalizer: 'trim'),
             new Assert\Length(max: Contact::MAX_FULL_NAME_LENGTH, maxMessage: 'Imię i nazwisko mogą mieć najwyżej 100 znaków.', normalizer: 'trim'),
+            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Imię i nazwisko zawierają niedozwolone znaki.'),
         ])]
         public mixed $fullName,
         #[OA\Property(type: 'string', description: 'A Polish phone number: 9 digits, optionally after +48; spaces and hyphens are allowed and dropped. The order keeps +48 and the 9 digits.', example: '600 100 200')]
@@ -42,6 +44,7 @@ final readonly class PlaceCustomerOrderRequest
             new Assert\Type('string', message: 'Ulica i numer są wymagane.'),
             new Assert\NotBlank(message: 'Ulica i numer są wymagane.', normalizer: 'trim'),
             new Assert\Length(max: ShippingAddress::MAX_STREET_LENGTH, maxMessage: 'Ulica i numer mogą mieć najwyżej 100 znaków.', normalizer: 'trim'),
+            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Ulica i numer zawierają niedozwolone znaki.'),
         ])]
         public mixed $street,
         #[OA\Property(type: 'string', description: 'Polish postal code NN-NNN.', example: '00-950')]
@@ -49,6 +52,7 @@ final readonly class PlaceCustomerOrderRequest
             new Assert\NotNull(message: 'Kod pocztowy jest wymagany.'),
             new Assert\Type('string', message: 'Podaj kod pocztowy w formacie 00-000.'),
             new Assert\NotBlank(message: 'Kod pocztowy jest wymagany.', normalizer: 'trim'),
+            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Podaj kod pocztowy w formacie 00-000.'),
             new Assert\Regex(pattern: PlaceGuestOrderRequest::POSTAL_CODE_PATTERN, message: 'Podaj kod pocztowy w formacie 00-000.', normalizer: 'trim'),
         ])]
         public mixed $postalCode,
@@ -58,6 +62,7 @@ final readonly class PlaceCustomerOrderRequest
             new Assert\Type('string', message: 'Miejscowość jest wymagana.'),
             new Assert\NotBlank(message: 'Miejscowość jest wymagana.', normalizer: 'trim'),
             new Assert\Length(max: ShippingAddress::MAX_CITY_LENGTH, maxMessage: 'Miejscowość może mieć najwyżej 60 znaków.', normalizer: 'trim'),
+            new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Miejscowość zawiera niedozwolone znaki.'),
         ])]
         public mixed $city,
         #[OA\Property(type: 'integer', minimum: 0, description: 'The gross total of the cart the customer saw, in grosze (`totals.gross` of the cart). Only compared with the total the API computes; another one is a 409.', example: 39998)]

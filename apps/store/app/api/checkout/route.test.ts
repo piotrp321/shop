@@ -33,6 +33,11 @@ const KEY = "5f0c3c1e-8d7a-4b55-9b0a-0e8e3c1d2a11";
 const GUEST_ORDERS = "/api/v1/orders";
 const CUSTOMER_ORDERS = "/api/v1/me/orders";
 const MERGE = "/api/v1/me/cart/merge";
+const PROBLEMS = "tag:piotrp321.github.io,2026:shop/problems/";
+
+/** A 409 of the API with the type of its cause. */
+const conflict = (slug: string, detail: string) =>
+  Response.json({ type: `${PROBLEMS}${slug}`, title: "Conflict", status: 409, detail }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
 
 const CONTACT = { fullName: "Anna Nowak", phone: "600 100 200", street: "ul. Długa 5/3", postalCode: "00-950", city: "Warszawa" };
 const GUEST_FORM = { email: "anna.nowak@example.com", ...CONTACT, expectedTotalGross: 39998 };
@@ -131,7 +136,7 @@ describe("POST /api/checkout as a guest", () => {
     const response = await checkout();
 
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ detail: "Koszyk jest pusty." });
+    expect(await response.json()).toEqual({ type: `${PROBLEMS}cart-empty`, detail: "Koszyk jest pusty." });
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(setup.calls).toEqual([]);
   });
@@ -220,12 +225,12 @@ describe("POST /api/checkout as a guest", () => {
     expect(setCookie(response, CONFIRMATION_COOKIE)).toBeUndefined();
   });
 
-  it("passes a 409 with its detail and keeps store_cart", async () => {
-    setup.answer("POST", GUEST_ORDERS, () => problem(409, "Kwota zamówienia się zmieniła. Sprawdź podsumowanie."));
+  it("passes a 409 with its type and detail and keeps store_cart", async () => {
+    setup.answer("POST", GUEST_ORDERS, () => conflict("order-total-changed", "Kwota zamówienia się zmieniła. Sprawdź podsumowanie."));
     const response = await checkout({ cookie: signedCartCookie(GUEST_CART_ID) });
 
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
+    expect(await response.json()).toEqual({ type: `${PROBLEMS}order-total-changed`, detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("set-cookie")).toBeNull();
   });
@@ -355,12 +360,31 @@ describe("POST /api/checkout with a session", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
-  it("passes a 409 with its detail", async () => {
+  it.each(["cart-empty", "cart-not-orderable", "insufficient-stock-for-order", "order-total-changed", "idempotency-key-reused"])(
+    "passes a 409 %s with its type and detail",
+    async (slug) => {
+      const { cookie } = await signedIn();
+      setup.answer("POST", CUSTOMER_ORDERS, () => conflict(slug, "Tekst."));
+      const response = await checkout({ cookie, body: CUSTOMER_FORM });
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ type: `${PROBLEMS}${slug}`, detail: "Tekst." });
+    },
+  );
+
+  it("passes the type of a 409 as it is, also about:blank", async () => {
     const { cookie } = await signedIn();
     setup.answer("POST", CUSTOMER_ORDERS, () => problem(409, "Koszyk jest pusty."));
     const response = await checkout({ cookie, body: CUSTOMER_FORM });
 
-    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ type: "about:blank", detail: "Koszyk jest pusty." });
+  });
+
+  it("passes a 409 without a type without one", async () => {
+    const { cookie } = await signedIn();
+    setup.answer("POST", CUSTOMER_ORDERS, () => Response.json({ detail: "Koszyk jest pusty." }, { status: 409 }));
+    const response = await checkout({ cookie, body: CUSTOMER_FORM });
+
     expect(await response.json()).toEqual({ detail: "Koszyk jest pusty." });
   });
 

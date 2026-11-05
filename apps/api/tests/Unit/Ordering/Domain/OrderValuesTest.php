@@ -100,6 +100,108 @@ final class OrderValuesTest extends TestCase
         }
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function withControlCharacters(): iterable
+    {
+        yield 'NUL inside' => ["A\0B"];
+        yield 'NUL at the end, which a trim would drop' => ["AB\0"];
+        yield 'tab at the end' => ["AB\t"];
+        yield 'line break at the start' => ["\nAB"];
+        yield 'carriage return inside' => ["A\rB"];
+        yield 'unit separator' => ["A\x1FB"];
+        yield 'DEL' => ["A\x7FB"];
+    }
+
+    #[DataProvider('withControlCharacters')]
+    public function testFullNameWithAControlCharacterIsRefused(string $fullName): void
+    {
+        $this->expectException(InvalidOrderInput::class);
+        $this->expectExceptionMessage('Imię i nazwisko zawierają niedozwolone znaki.');
+
+        self::contact(fullName: $fullName);
+    }
+
+    #[DataProvider('withControlCharacters')]
+    public function testStreetAndCityWithAControlCharacterAreRefused(string $value): void
+    {
+        foreach ([[$value, 'Warszawa', 'Ulica i numer zawierają niedozwolone znaki.'], ['Długa 1', $value, 'Miejscowość zawiera niedozwolone znaki.']] as [$street, $city, $message]) {
+            try {
+                ShippingAddress::inPoland($street, '00-950', $city);
+                self::fail('Expected InvalidOrderInput.');
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame($message, $invalid->getMessage());
+            }
+        }
+    }
+
+    #[DataProvider('withControlCharacters')]
+    public function testEmailWithAControlCharacterIsRefusedAlsoAtTheEnds(string $value): void
+    {
+        foreach (['jan'.$value.'@example.com', 'jan@example.com'.$value, $value.'jan@example.com'] as $email) {
+            try {
+                EmailAddress::fromString($email);
+                self::fail('Expected InvalidOrderInput.');
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame('Podaj poprawny adres e-mail.', $invalid->getMessage());
+            }
+        }
+    }
+
+    /**
+     * The control character is the only thing wrong with an otherwise valid value, also at the ends, where a trim
+     * would drop it before the format is checked.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function controlCharactersAlone(): iterable
+    {
+        yield 'NUL' => ["\0"];
+        yield 'tab' => ["\t"];
+        yield 'line feed' => ["\n"];
+        yield 'carriage return' => ["\r"];
+        yield 'DEL' => ["\x7F"];
+    }
+
+    #[DataProvider('controlCharactersAlone')]
+    public function testPostalCodeWithOnlyAControlCharacterWrongIsRefused(string $control): void
+    {
+        foreach (['00-950'.$control, $control.'00-950', '00-9'.$control.'50'] as $postalCode) {
+            try {
+                ShippingAddress::inPoland('Długa 1', $postalCode, 'Warszawa');
+                self::fail('Expected InvalidOrderInput.');
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame('Podaj kod pocztowy w formacie 00-000.', $invalid->getMessage());
+            }
+        }
+    }
+
+    #[DataProvider('controlCharactersAlone')]
+    public function testPhoneWithOnlyAControlCharacterWrongIsRefused(string $control): void
+    {
+        foreach (['600100200'.$control, $control.'600100200', '600'.$control.'100200'] as $phone) {
+            try {
+                self::contact(phone: $phone);
+                self::fail('Expected InvalidOrderInput.');
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame('Podaj 9-cyfrowy numer telefonu.', $invalid->getMessage());
+            }
+        }
+    }
+
+    public function testAControlCharacterDoesNotChangeWhichMessageAnEmptyOrTooLongValueGets(): void
+    {
+        foreach (["\n", "\0", " \t "] as $blank) {
+            try {
+                self::contact(fullName: $blank);
+                self::fail('Expected InvalidOrderInput.');
+            } catch (InvalidOrderInput $invalid) {
+                self::assertSame('Imię i nazwisko są wymagane.', $invalid->getMessage());
+            }
+        }
+    }
+
     public function testShippingAddressIsTrimmedAndAlwaysInPoland(): void
     {
         $address = ShippingAddress::inPoland('  ul. Długa 1/2 ', ' 00-950 ', '  Warszawa ');

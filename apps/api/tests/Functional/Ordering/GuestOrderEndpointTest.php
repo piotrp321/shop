@@ -169,7 +169,7 @@ final class GuestOrderEndpointTest extends WebTestCase
     {
         $cart = CartFixture::cart($this->connection);
 
-        $this->assertProblem(409, 'Koszyk jest pusty.', $this->place(self::PATH, $this->body($cart, 0)));
+        $this->assertConflict('cart-empty', 'Koszyk jest pusty.', $this->place(self::PATH, $this->body($cart, 0)));
         self::assertSame(0, $this->orders());
     }
 
@@ -179,7 +179,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         foreach (['no price' => $this->variant(null, 10), 'unknown to Catalog' => (string) Uuid::v7()] as $kind => $variant) {
             $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1], [$variant, 1]]);
 
-            $this->assertProblem(409, 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', $this->place(self::PATH, $this->body($cart, 12_300), key: 'key-'.$cart));
+            $this->assertConflict('cart-not-orderable', 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', $this->place(self::PATH, $this->body($cart, 12_300), key: 'key-'.$cart));
 
             self::assertSame([[$shoes, 1], [$variant, 1]], CartFixture::lines($this->connection, $cart), $kind);
         }
@@ -193,7 +193,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         $last = $this->variant(1_230, 1);
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 2], [$last, 2]]);
 
-        $this->assertProblem(409, 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', $this->place(self::PATH, $this->body($cart, 2 * 12_300 + 2 * 1_230)));
+        $this->assertConflict('insufficient-stock-for-order', 'Nie mamy już tylu sztuk części produktów. Sprawdź koszyk.', $this->place(self::PATH, $this->body($cart, 2 * 12_300 + 2 * 1_230)));
 
         self::assertSame([[$shoes, 2], [$last, 2]], CartFixture::lines($this->connection, $cart));
         self::assertSame([10, 0], OrderingFixture::stock($this->connection, $shoes));
@@ -219,7 +219,7 @@ final class GuestOrderEndpointTest extends WebTestCase
         $shoes = $this->variant(12_300, 10);
         $cart = CartFixture::cart($this->connection, lines: [[$shoes, 2]]);
 
-        $this->assertProblem(409, 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', $this->place(self::PATH, $this->body($cart, $expected)));
+        $this->assertConflict('order-total-changed', 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', $this->place(self::PATH, $this->body($cart, $expected)));
 
         self::assertSame([[$shoes, 2]], CartFixture::lines($this->connection, $cart));
         self::assertSame([10, 0], OrderingFixture::stock($this->connection, $shoes));
