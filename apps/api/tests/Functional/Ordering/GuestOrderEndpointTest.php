@@ -142,6 +142,29 @@ final class GuestOrderEndpointTest extends WebTestCase
         self::assertSame(0, $this->reservations());
     }
 
+    /**
+     * The format of a cart id is the one of Cart (any 8-4-4-4-12 hex, any letter case), not a strict RFC UUID: an id
+     * with another version or variant, like the nil UUID, is an unknown cart, not a violation.
+     */
+    public function testAnIdOfTheFormatOfCartWithoutACartIsNotFound(): void
+    {
+        foreach (['00000000-0000-0000-0000-000000000000', '0192f0c4-7c1a-0c4e-0a6e-000000000001'] as $cartId) {
+            $this->assertProblem(404, 'Koszyk nie jest już dostępny.', $this->place(self::PATH, $this->body($cartId, 12_300), key: 'key-'.$cartId));
+        }
+        self::assertSame(0, $this->orders());
+    }
+
+    public function testTheIdOfTheCartInUpperCaseIsTheSameCart(): void
+    {
+        $cart = CartFixture::cart($this->connection, lines: [[$this->variant(12_300, 10), 1]]);
+
+        $order = $this->place(self::PATH, $this->body(strtoupper($cart), 12_300));
+
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame($order, $this->place(self::PATH, $this->body($cart, 12_300)), 'a repeat with the id in lower case');
+        self::assertResponseStatusCodeSame(200);
+    }
+
     public function testAnEmptyCartIsAConflict(): void
     {
         $cart = CartFixture::cart($this->connection);

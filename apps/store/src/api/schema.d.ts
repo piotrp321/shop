@@ -651,7 +651,7 @@ export interface components {
         PlaceGuestOrderRequest: {
             /**
              * Format: uuid
-             * @description Id of the guest cart (UUID). An unknown, expired or merged cart, or the id of a customer cart, is a 404.
+             * @description Id of the guest cart: a UUID, 8-4-4-4-12 hex digits in any letter case. An unknown, expired or merged cart, or the id of a customer cart, is a 404.
              */
             cartId: string;
             /**

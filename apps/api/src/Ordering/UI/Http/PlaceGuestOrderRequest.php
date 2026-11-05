@@ -23,16 +23,23 @@ final readonly class PlaceGuestOrderRequest
     /**
      * 9 digits, optionally after +48, with any spaces and hyphens: what Contact accepts once it drops them.
      */
+    /**
+     * The format of a cart id of Cart (CartId): 8-4-4-4-12 hex digits in any letter case, of any version and variant.
+     * A strict UUID check would refuse ids Cart takes (and give several violations for one value); an id of this
+     * format without a cart is a 404, like an unknown cart.
+     */
+    public const string CART_ID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/Di';
+
     public const string PHONE_PATTERN = '/^[ -]*(?:\+[ -]*4[ -]*8)?(?:[ -]*[0-9]){9}[ -]*$/D';
     public const string POSTAL_CODE_PATTERN = '/^[0-9]{2}-[0-9]{3}$/D';
 
     public function __construct(
-        #[OA\Property(type: 'string', format: 'uuid', description: 'Id of the guest cart (UUID). An unknown, expired or merged cart, or the id of a customer cart, is a 404.')]
+        #[OA\Property(type: 'string', format: 'uuid', description: 'Id of the guest cart: a UUID, 8-4-4-4-12 hex digits in any letter case. An unknown, expired or merged cart, or the id of a customer cart, is a 404.')]
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Identyfikator koszyka jest wymagany.'),
             new Assert\Type('string', message: 'Identyfikator koszyka musi być UUID.'),
             new Assert\NotBlank(message: 'Identyfikator koszyka musi być UUID.'),
-            new Assert\Uuid(message: 'Identyfikator koszyka musi być UUID.'),
+            new Assert\Regex(pattern: self::CART_ID_PATTERN, message: 'Identyfikator koszyka musi być UUID.'),
         ])]
         public mixed $cartId,
         #[OA\Property(type: 'string', format: 'email', maxLength: EmailAddress::MAX_LENGTH, description: 'Email address the order is confirmed to, at most 254 characters once trimmed.', example: 'anna.nowak@example.com')]

@@ -94,6 +94,11 @@ trait OrderRequestViolationCases
         yield 'cartId an array' => [['cartId' => ['0192f0c4-7c1a-7c4e-9a6e-000000000001']], [['cartId', self::CART_UUID]]];
         yield 'cartId empty' => [['cartId' => ''], [['cartId', self::CART_UUID]]];
         yield 'cartId not a uuid' => [['cartId' => 'not-a-uuid'], [['cartId', self::CART_UUID]]];
+        yield 'cartId of 37 characters with a wrong version and variant' => [['cartId' => '0192f0c4-7c1a-0c4e-0a6e-0000000000011'], [['cartId', self::CART_UUID]]];
+        yield 'cartId of 35 characters' => [['cartId' => '0192f0c4-7c1a-7c4e-9a6e-00000000001'], [['cartId', self::CART_UUID]]];
+        yield 'cartId without hyphens' => [['cartId' => '0192f0c47c1a7c4e9a6e000000000001'], [['cartId', self::CART_UUID]]];
+        yield 'cartId in braces' => [['cartId' => '{0192f0c4-7c1a-7c4e-9a6e-000000000001}'], [['cartId', self::CART_UUID]]];
+        yield 'cartId with a line break' => [['cartId' => "0192f0c4-7c1a-7c4e-9a6e-000000000001\n"], [['cartId', self::CART_UUID]]];
         yield 'no email' => [['email' => self::MISSING], [['email', self::EMAIL_REQUIRED]]];
         yield 'null email' => [['email' => null], [['email', self::EMAIL_REQUIRED]]];
         yield 'empty email' => [['email' => ''], [['email', self::EMAIL_REQUIRED]]];
