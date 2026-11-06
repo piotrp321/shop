@@ -139,8 +139,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   przez DBAL `INSERT … ON CONFLICT DO NOTHING` (rekord tylko definiuje schemat): powtórzenie nie jest naruszeniem
   unikalności, które zamknęłoby `EntityManager`, a wiersz wycofanej transakcji nie zostaje w identity map jako
   „już obsłużony”.
-  - Payment sięga do Ordering tylko przez swój port `PayableOrders` (adapter `QueryBusPayableOrders`: Ordering
-    `GetOrderForPayment` na `query.bus`, wynik przetłumaczony na `OrderToPay` z domeny Payment) i ma własne value objecty
+  - Payment sięga do Ordering tylko przez dwa swoje porty: `PayableOrders` (adapter `QueryBusPayableOrders`: Ordering
+    `GetOrderForPayment` na `query.bus`, wynik przetłumaczony na `OrderToPay` z domeny Payment) i `OrderPayments` (adapter
+    `CommandBusOrderPayments`: Ordering `MarkOrderPaid` zagnieżdżony na `command.bus` w transakcji webhooka, wynik
+    przetłumaczony na `OrderPaymentResult`, `OrderChangedConcurrently` na `OrderBusy`), i ma własne value objecty
     (`OrderId`, `Amount`, `Currency`). Deptrac: tylko `Payment_Infrastructure → Ordering_Application`; Ordering ani żaden
     inny context nie zależy od Payment.
   - Port `PaymentProvider` (`code`, `createSession`, `cancelSession`, `parseWebhook`) z rejestrem `PaymentProviders` (tag

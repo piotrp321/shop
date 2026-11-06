@@ -201,7 +201,7 @@ interface PaymentProvider {
   code(): ProviderCode
   createSession(PaymentId, Amount, orderNumber, returnUrl, expiresAt): ProviderSession {providerPaymentId, redirectUrl}
   cancelSession(providerPaymentId): SessionCancellation (cancelled | alreadyPaid | alreadyRejected)
-  parseWebhook(headers, rawBody, now): ProviderEvent {eventId, providerPaymentId, outcome: succeeded|failed, amount, executedAt?} | Ignored
+  parseWebhook(headers, rawBody, now): ProviderEvent {eventId, providerPaymentId, outcome: succeeded|failed, amount, executedAt?} | null  // null: zdarzenie innego typu
 }
 ```
 
@@ -270,7 +270,7 @@ Weryfikacja podpisu i parsowanie to walidacja wejścia na granicy (jak `MapReque
   → 400 (stały ogólny `detail`, bez rozróżnienia przyczyny w odpowiedzi; przyczyna w logu). Zdarzenie innego typu
   → 204 bez komendy. Port zgłasza błąd wyjątkiem `Payment_Application` (`InvalidWebhook`), który kontroler tłumaczy
   na 400; adaptery nie znają HTTP.
-- Komenda `HandleProviderWebhook(provider, eventId, providerPaymentId, outcome, amount, executedAt)`, transakcja
+- Komenda `HandleProviderWebhook(provider, ProviderEvent {eventId, providerPaymentId, outcome, amount, executedAt})`, transakcja
   `command.bus`:
 
 1. Blokada płatności po `(provider, providerPaymentId)` (`PESSIMISTIC_WRITE`, jak koszyk; równoległe dostawy tego
