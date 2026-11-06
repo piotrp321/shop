@@ -21,7 +21,11 @@ API (`apps/api`):
 
 Sklep (`apps/store`):
 - `loadCatalog` zwraca `{ kind: "unknown-category" }`, gdy lista produktów odpowiada `404`.
-- Strona katalogu (`app/page.tsx`) dla `unknown-category` wywołuje `notFound()` z Next.js (odpowiedź 404).
+- Strona `/c/<ścieżka>` rozwiązuje kategorię po ścieżce slugów w drzewie kategorii; brak ścieżki w drzewie albo
+  `unknown-category` z listy wywołuje `notFound()` z Next.js (odpowiedź 404).
+- Stary adres `/?category=<id>`: kategoria istnieje w drzewie → trwałe przekierowanie (`permanentRedirect`, 308) na
+  `/c/<ścieżka>` z pozostałymi parametrami; nieznany identyfikator (`unknown-category`) daje 404 z Next.js, niepoprawny
+  (`400`) „Nieprawidłowy filtr”.
 - Pozostałe zachowanie bez zmian (`400` → `invalid-filter`, inne błędy rzucane dalej).
 
 ## Kryteria akceptacji
@@ -30,7 +34,8 @@ Sklep (`apps/store`):
 2. `GET /api/v1/products?category=<istniejąca kategoria bez produktów>` → `200`, `items: []`, `total: 0`.
 3. `GET /api/v1/products` i `?category=abc` (`400`) działają jak dotąd.
 4. `openapi.json` zawiera `404` dla `listProducts`; klient TS sklepu jest aktualny.
-5. `loadCatalog` dla `404` zwraca `unknown-category`, a strona katalogu daje 404.
+5. `loadCatalog` dla `404` zwraca `unknown-category`; `/c/<nieznana ścieżka>` i `/?category=<nieznany UUID>` dają 404,
+   a `/?category=<id istniejącej kategorii>` przekierowuje trwale na `/c/<ścieżka>`.
 6. Przechodzą `make -C apps/api check`, `make -C apps/api test`, `make -C apps/store check`, `make -C apps/store test`.
 
 ## Zakres i ograniczenia

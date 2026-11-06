@@ -760,18 +760,18 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
 - Komponenty i układy przenoszone później z vercel/shop podlegają zasadom z `apps/store/CLAUDE.md`
   (informacja o licencji MIT, dane tylko z naszego API, obrazy przez `ProductPhoto`).
 
-### Strona `/`
+### Strony `/` i `/c/<ścieżka>`
 
-- Server Component. Równolegle pobiera z API przez Varnish (`API_CATALOG_URL`, `http://varnish`, wygenerowany klient)
-  drzewo kategorii i stronę produktów dla `?category=<uuid>&page=<n>`.
-- Lewa kolumna: drzewo kategorii jako linki `?category=<id>`. Aktywna kategoria jest wyróżniona, a jej przodkowie
-  rozwinięci.
+- Server Components, renderowane przy każdym żądaniu. Odczyty przez Varnish (`API_CATALOG_URL`, `http://varnish`,
+  wygenerowany klient): strona produktów dla `page` (na `/c/` dla kategorii wskazanej ścieżką slugów w drzewie),
+  oferty strony, a drzewo kategorii raz na żądanie dla nagłówka, metadanych i strony (szczegóły: `apps/store/CLAUDE.md`).
+- Nagłówek z menu działów zbudowanym z drzewa kategorii (zamiast lewej kolumny z drzewem).
 - Siatka produktów: kafel (`card`) ze zdjęciem i nazwą. Responsywnie 2, 3 albo 4 kolumny.
-- Paginacja (`pagination`): linki „Poprzednia” i „Następna” z zachowaniem filtra.
+- Paginacja (`pagination`): linki „Poprzednia” i „Następna” w adresach strony (`/c/<ścieżka>?page=n`).
 - Pusty wynik pokazuje komunikat z linkiem do całego katalogu. Produkt bez zdjęcia ma neutralny placeholder.
 - 400 z API pokazuje „Nieprawidłowy filtr” z linkiem do całego katalogu. 404 dla listy produktów (nieznana kategoria)
-  daje stronę 404 (`notFound()`). Niedostępne API kończy się w `error.tsx`.
-- Nagłówek: nazwa sklepu oraz komponent konta (niżej).
+  i nieznana ścieżka `/c/` dają stronę 404 (`notFound()`). Niedostępne API kończy się w `error.tsx`.
+- Nagłówek: nazwa sklepu, menu działów oraz komponent konta (niżej).
 - Tytuł, opis, adres kanoniczny i `noindex` strony zależą od kategorii i numeru strony (szczegóły:
   `docs/features/catalog-page-metadata/spec.md`).
 
@@ -888,7 +888,7 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 | Aplikacja | Testy jednostkowe (bez usług) | Testy integracyjne i funkcjonalne (na stosie) |
 |---|---|---|
 | api | domena: ścieżka kategorii, niezmienniki produktu, `TaxCategory`, `Slug`; handlery z adapterami in-memory; budowa dokumentu wyszukiwarki; przebieg przebudowy indeksu na fake'ach portów; routing Messengera na transportach `in-memory://` | repozytoria Doctrine (z wersją produktu); odczyt paczkami; adapter ES (filtr po przodkach, sortowanie, paginacja, wersje, bulk, alias); zapis do Garage; podpis imgproxy na żywym imgproxy; droga seed → outbox → RabbitMQ → ES; sondy usług; testy funkcjonalne endpointów |
-| store | reguły ESLint (kolory, klasy spoza tokenów, `fetch`); walidacja `returnTo`; budowa `srcset` z wariantów; `CategoryTree`; `ProductGrid` | blokada odświeżania na prawdziwym Redisie |
+| store | reguły ESLint (kolory, klasy spoza tokenów, `fetch`); walidacja `returnTo`; budowa `srcset` z wariantów; `MegaMenu`; `ProductGrid` | blokada odświeżania na prawdziwym Redisie |
 | admin | dashboard; `useIdleLogout`; 401 → `signinRedirect`; guard routera | — |
 
 Wymagane przypadki:
