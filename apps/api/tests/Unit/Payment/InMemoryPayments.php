@@ -28,6 +28,8 @@ final class InMemoryPayments implements PaymentRepository
     public array $journal = [];
     /** @var array<string, string> "<provider> <event id>" => payment id */
     public array $webhookEvents = [];
+    /** What a concurrent transaction commits while lockPendingOfOrder waits for the lock (e.g. a webhook). */
+    public ?\Closure $whileWaitingForTheLock = null;
 
     public function add(Payment $payment): void
     {
@@ -62,6 +64,9 @@ final class InMemoryPayments implements PaymentRepository
     public function lockPendingOfOrder(OrderId $orderId): ?Payment
     {
         $this->journal[] = 'lock '.$orderId->toString();
+        if (null !== $this->whileWaitingForTheLock) {
+            ($this->whileWaitingForTheLock)();
+        }
         foreach ($this->payments as $payment) {
             if (PaymentStatus::Pending === $payment->status() && $payment->orderId()->equals($orderId)) {
                 return clone $payment;

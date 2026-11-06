@@ -209,6 +209,28 @@ final class StartPaymentHandlerTest extends TestCase
     }
 
     /**
+     * The webhook of the earlier payment committed the order paid while the start waited for the lock of that payment
+     * (no pending payment is left): the order read anew after the lock stops the start.
+     */
+    public function testAnOrderPaidWhileWaitingForTheLockOfThePendingPaymentCannotBePaidAgain(): void
+    {
+        $this->payments->whileWaitingForTheLock = function (): void {
+            $this->orders->add(self::order(OrderState::Paid, payable: false), PaymentAccess::guest(self::TOKEN));
+        };
+
+        try {
+            $this->start();
+            self::fail('An order paid meanwhile started a payment.');
+        } catch (OrderAlreadyPaid $paid) {
+            $this->assertConflict('order-already-paid', 'Zamówienie jest już opłacone.', $paid);
+        }
+
+        self::assertSame(2, $this->orders->asked, 'read again after the lock');
+        self::assertSame(['lock '.PaymentExamples::ORDER], $this->payments->journal);
+        $this->assertNothingStarted();
+    }
+
+    /**
      * @return iterable<string, array{OrderState}>
      */
     public static function pastTheDeadline(): iterable
