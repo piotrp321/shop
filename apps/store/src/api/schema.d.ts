@@ -375,11 +375,11 @@ export interface components {
             total: number;
             facets: components["schemas"]["ProductFacets"];
         };
-        /** @description Counts for the filters of the list. Each one is computed with every condition of the search except its own, so a count is the `total` the search would return after adding that value. */
+        /** @description Counts for the filters of the list. Each one is computed with every condition of the search except its own. The count of an axis value is the number of products that have a variant with that value meeting the other variant conditions (other axes, price, availability). For an axis without a selection it is the `total` the search would return after adding that value; for an axis with a selection it is the result of selecting only that value of the axis. */
         ProductFacets: {
             /** @description The subcategories of the `category` filter (the top-level categories without it) that have products, in the order of the category tree. */
             categories: components["schemas"]["CategoryFacet"][];
-            /** @description The variant axes of the products found, most products first (at most 10). A selected value stays in its list with a count of 0 when nothing matches. */
+            /** @description The variant axes of the products found, most products first (at most 10; the selected axes are always listed, beyond that limit). A selected value stays in its list with a count of 0 when nothing matches. */
             options: components["schemas"]["OptionFacet"][];
             /** @description The lowest and the highest gross price of the variants that can be bought now and have the selected `option` values, ignoring `priceMin` and `priceMax`; null without such a variant. */
             price: components["schemas"]["PriceRange"] | null;
@@ -410,14 +410,14 @@ export interface components {
         OptionFacet: {
             /** @example Kolor */
             axis: string;
-            /** @description Most products first, then by value (at most 30). */
+            /** @description Most products first, then by value (at most 30; the selected values are always listed, beyond that limit). */
             values: components["schemas"]["OptionValue"][];
         };
         OptionValue: {
             /** @example czarne */
             value: string;
             /**
-             * @description The `total` the search would return with this value added to the filter.
+             * @description The number of products that have a variant with this value meeting the other variant conditions (other axes, price, availability). For an axis without a selection it is the `total` after adding the value; for an axis with a selection, the result of selecting only this value of the axis.
              * @example 4
              */
             count: number;

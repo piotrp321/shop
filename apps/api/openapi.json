@@ -1661,7 +1661,7 @@
                 "type": "object"
             },
             "ProductFacets": {
-                "description": "Counts for the filters of the list. Each one is computed with every condition of the search except its own, so a count is the `total` the search would return after adding that value.",
+                "description": "Counts for the filters of the list. Each one is computed with every condition of the search except its own. The count of an axis value is the number of products that have a variant with that value meeting the other variant conditions (other axes, price, availability). For an axis without a selection it is the `total` the search would return after adding that value; for an axis with a selection it is the result of selecting only that value of the axis.",
                 "required": [
                     "categories",
                     "options",
@@ -1677,7 +1677,7 @@
                         }
                     },
                     "options": {
-                        "description": "The variant axes of the products found, most products first (at most 10). A selected value stays in its list with a count of 0 when nothing matches.",
+                        "description": "The variant axes of the products found, most products first (at most 10; the selected axes are always listed, beyond that limit). A selected value stays in its list with a count of 0 when nothing matches.",
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/OptionFacet"
@@ -1745,7 +1745,7 @@
                         "example": "Kolor"
                     },
                     "values": {
-                        "description": "Most products first, then by value (at most 30).",
+                        "description": "Most products first, then by value (at most 30; the selected values are always listed, beyond that limit).",
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/OptionValue"
@@ -1765,7 +1765,7 @@
                         "example": "czarne"
                     },
                     "count": {
-                        "description": "The `total` the search would return with this value added to the filter.",
+                        "description": "The number of products that have a variant with this value meeting the other variant conditions (other axes, price, availability). For an axis without a selection it is the `total` after adding the value; for an axis with a selection, the result of selecting only this value of the axis.",
                         "type": "integer",
                         "example": 4
                     }
@@ -2524,13 +2524,13 @@
                     },
                     "priceMin": {
                         "type": "string",
-                        "pattern": "\\d{1,12}",
+                        "pattern": "\\d{1,12}\\z.*",
                         "nullable": true,
                         "default": null
                     },
                     "priceMax": {
                         "type": "string",
-                        "pattern": "\\d{1,12}",
+                        "pattern": "\\d{1,12}\\z.*",
                         "nullable": true,
                         "default": null
                     },

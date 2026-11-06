@@ -40,7 +40,10 @@ nelmio_api_doc:
                             type: object
                             description: >-
                                 Counts for the filters of the list. Each one is computed with every condition of the search
-                                except its own, so a count is the `total` the search would return after adding that value.
+                                except its own. The count of an axis value is the number of products that have a variant with
+                                that value meeting the other variant conditions (other axes, price, availability). For an axis
+                                without a selection it is the `total` the search would return after adding that value; for an
+                                axis with a selection it is the result of selecting only that value of the axis.
                             required: [categories, options, price, availableCount]
                             properties:
                                 categories:
@@ -53,8 +56,9 @@ nelmio_api_doc:
                                 options:
                                     type: array
                                     description: >-
-                                        The variant axes of the products found, most products first (at most 10). A selected
-                                        value stays in its list with a count of 0 when nothing matches.
+                                        The variant axes of the products found, most products first (at most 10; the selected
+                                        axes are always listed, beyond that limit). A selected value stays in its list with a count
+                                        of 0 when nothing matches.
                                     items:
                                         $ref: '#/components/schemas/OptionFacet'
                                 price:
@@ -98,7 +102,9 @@ nelmio_api_doc:
                                     example: Kolor
                                 values:
                                     type: array
-                                    description: Most products first, then by value (at most 30).
+                                    description: >-
+                                        Most products first, then by value (at most 30; the selected values are always listed,
+                                        beyond that limit).
                                     items:
                                         $ref: '#/components/schemas/OptionValue'
                         OptionValue:
@@ -110,7 +116,11 @@ nelmio_api_doc:
                                     example: czarne
                                 count:
                                     type: integer
-                                    description: The `total` the search would return with this value added to the filter.
+                                    description: >-
+                                        The number of products that have a variant with this value meeting the other variant
+                                        conditions (other axes, price, availability). For an axis without a selection it is the
+                                        `total` after adding the value; for an axis with a selection, the result of selecting only
+                                        this value of the axis.
                                     example: 4
                         PriceRange:
                             type: object

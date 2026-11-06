@@ -122,7 +122,7 @@ final readonly class ElasticsearchProductSearch implements ProductSearch
             }
             usort($list, static fn (OptionValue $a, OptionValue $b): int => $b->count <=> $a->count ?: strcmp($a->value, $b->value));
             $kept = \array_slice($list, 0, ProductSearchQuery::MAX_VALUES_PER_AXIS);
-            // A selected value cut by the limit still goes in, in place of the last ones.
+            // A selected value cut by the limit is added after the kept ones, so the list may exceed the limit.
             foreach ($list as $value) {
                 if (\in_array($value->value, $selected, true) && !\in_array($value, $kept, true)) {
                     $kept[] = $value;
