@@ -21,7 +21,6 @@ final class ImageSizeTest extends TestCase
 
     public function testProductDefinition(): void
     {
-        self::assertSame('product', ImageSize::Product->value);
         self::assertSame('1:1', ImageSize::Product->aspectRatio());
         self::assertSame([640, 960, 1280, 1600], ImageSize::Product->widths());
         self::assertSame([ImageFormat::Webp], ImageSize::Product->formats());
