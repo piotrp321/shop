@@ -406,9 +406,10 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 **Zapis**
 - Wersja dokumentu (`version` w dokumencie i wersja Elasticsearch) to znacznik czasu w mikrosekundach pobrany przed
   odczytem stanu, zapisywany z `version_type=external_gte`. Elasticsearch odrzuca zapis z wersją mniejszą niż
-  zapisana (409). To wynik „przestarzały”, a nie błąd. Odczyt rozpoczęty później widzi co najmniej te same
-  zatwierdzone dane, więc przy dwóch równoległych obsługach wygrywa nowszy odczyt, a ta sama wersja zapisuje się
-  ponownie. Przy kilku workerach na różnych hostach przesunięcie zegarów może przepuścić starszy odczyt; skutek
+  zapisana (409). To wynik „przestarzały”, a nie błąd. Przy dwóch równoległych obsługach wygrywa ta z późniejszym
+  znacznikiem czasu (pobranym przed odczytem). Obsługa z wcześniejszym znacznikiem może czytać później i zostać
+  odrzucona jako przestarzała, ale odczyt rozpoczęty po znaczniku widzi co najmniej dane zatwierdzone przed nim,
+  więc stan końcowy jest aktualny. Ta sama wersja zapisuje się ponownie. Przy kilku workerach na różnych hostach przesunięcie zegarów może przepuścić starszy odczyt; skutek
   naprawia następna zmiana produktu albo przebudowa.
 - Pojedynczy zapis (`ProductIndexer`) idzie przez alias z `require_alias=true`, więc nigdy nie utworzy indeksu
   o nazwie aliasu. Zapis paczki przy przebudowie idzie bulkiem bezpośrednio do wskazanego indeksu fizycznego.

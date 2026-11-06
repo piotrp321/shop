@@ -62,12 +62,14 @@ final class ProductSearchIndexRebuilderTest extends TestCase
 
     public function testEveryBatchHasTheTimeTakenBeforeItsReadsAsTheVersion(): void
     {
+        // Both reads of a batch take time: the one of the products and the one of their offers.
+        $this->source->onRead = fn () => $this->clock->advance('+1 second');
         $this->offers->onRead = fn () => $this->clock->advance('+1 second');
 
         $this->rebuilder()->rebuild(3);
 
         self::assertSame(
-            [[1_793_966_400_000_001], [1_793_966_401_000_001], [1_793_966_402_000_001]],
+            [[1_793_966_400_000_001], [1_793_966_402_000_001], [1_793_966_404_000_001]],
             array_map(
                 static fn (array $batch): array => array_values(array_unique(array_map(static fn (ProductDocument $d): int => $d->version, $batch))),
                 $this->maintenance->written['products_new'],

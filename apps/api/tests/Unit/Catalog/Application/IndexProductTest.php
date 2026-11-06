@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Catalog\Application;
 
 use App\Catalog\Application\EventHandler\IndexProduct;
 use App\Catalog\Application\Search\IndexOutcome;
+use App\Catalog\Application\Search\OfferFactsUnavailable;
 use App\Catalog\Application\Search\ProductDocumentBuilder;
 use App\Catalog\Application\Search\ProductFacts;
 use App\Catalog\Application\Search\ProductIndexing;
@@ -29,6 +30,7 @@ final class IndexProductTest extends TestCase
     private const string VARIANT_ID = '20000000-0000-4000-8000-000000000001';
 
     private RecordingProductIndexer $indexer;
+    private InMemoryProductOfferFacts $offers;
     private IndexProduct $handler;
 
     protected function setUp(): void
@@ -77,6 +79,19 @@ final class IndexProductTest extends TestCase
         ($this->handler)($this->event());
     }
 
+    public function testUnreadableOffersAreLeftToTheRetryStrategyAndNothingIsWritten(): void
+    {
+        $this->offers->failure = new OfferFactsUnavailable('Reading the product offers failed: connection lost.');
+
+        try {
+            ($this->handler)($this->event());
+            self::fail('The failure of the offers was swallowed.');
+        } catch (OfferFactsUnavailable) {
+        }
+
+        self::assertSame([], $this->indexer->indexed);
+    }
+
     public function testPermanentSearchFailureIsNotRetried(): void
     {
         $failure = new SearchIndexError('Mapping rejected.');
@@ -108,13 +123,13 @@ final class IndexProductTest extends TestCase
      */
     private function handlerFor(array $snapshots): IndexProduct
     {
-        $offers = new InMemoryProductOfferFacts([
+        $this->offers = new InMemoryProductOfferFacts([
             self::PRODUCT_ID => new ProductFacts(4_900, [self::VARIANT_ID => new VariantFacts(4_900, true)]),
         ]);
 
         return new IndexProduct(new ProductIndexing(
             new InMemoryProductSearchSource($snapshots),
-            $offers,
+            $this->offers,
             $this->indexer,
             new ProductDocumentBuilder(),
             new FixedCatalogClock(),

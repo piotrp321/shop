@@ -13,10 +13,11 @@ use App\Catalog\Application\Port\ProductSearchSource;
  * Writes the current state of one product to the search index: Catalog's data and the facts of its offer. Only
  * reads the database, so it runs outside command.bus (no transaction).
  *
- * The version of the document is the time, in microseconds, taken before the reads. A read started later sees at
- * least the same committed data, so of two concurrent handlings the later read wins, and the index rejects the
- * write of the older one (Stale). Clocks of several hosts that drift apart may let an older read through; the next
- * change of the product or a rebuild repairs it.
+ * The version of the document is the time, in microseconds, taken before the reads. Of two concurrent handlings
+ * the one with the later timestamp wins, and the index rejects the write of the other (Stale). The one with the
+ * earlier timestamp may read later and still be rejected, but a read started after a timestamp sees at least the
+ * data committed before it, so the final state is current. Clocks of several hosts that drift apart may let an
+ * older read through; the next change of the product or a rebuild repairs it.
  */
 final readonly class ProductIndexing
 {
