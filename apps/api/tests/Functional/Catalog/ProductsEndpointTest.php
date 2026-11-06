@@ -349,13 +349,35 @@ final class ProductsEndpointTest extends WebTestCase
         $this->assertNotStored();
     }
 
-    public function testViolationsOfTheOptionsAndOfOtherParametersAreReportedOneAtATime(): void
+    public function testViolationsOfTheParametersStopTheRequestBeforeTheOptionsAreValidated(): void
     {
         $problem = $this->get('/api/v1/products?option=Kolor&priceMin=-1');
 
         self::assertResponseStatusCodeSame(400);
+        self::assertSame(['priceMin'], $this->violationPaths($problem));
+
+        $problem = $this->get('/api/v1/products?option=Kolor');
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame(['option'], $this->violationPaths($problem));
+    }
+
+    /**
+     * @param array<mixed> $problem
+     *
+     * @return list<string>
+     */
+    private function violationPaths(array $problem): array
+    {
         self::assertIsArray($problem['violations']);
-        self::assertNotSame([], $problem['violations']);
+        $paths = [];
+        foreach ($problem['violations'] as $violation) {
+            self::assertIsArray($violation);
+            self::assertIsString($violation['propertyPath']);
+            $paths[] = $violation['propertyPath'];
+        }
+
+        return array_values(array_unique($paths));
     }
 
     /**
