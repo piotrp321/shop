@@ -53,35 +53,38 @@ final class MeEndpointTest extends WebTestCase
     }
 
     /**
-     * @return iterable<string, array{string}>
+     * @return iterable<string, array{\Closure(): string}>
      */
     public static function invalidTokens(): iterable
     {
-        yield 'staff token (other issuer)' => [TestTokenFactory::staff(['admin'])];
-        yield 'staff audience' => [TestTokenFactory::customer(['aud' => 'backoffice-api'])];
-        yield 'no audience' => [TestTokenFactory::customer(['aud' => null])];
-        yield 'id token of the store client' => [TestTokenFactory::customer(['aud' => 'store', 'typ' => 'ID'])];
-        yield 'shop audience with backoffice issuer' => [TestTokenFactory::customer(['iss' => TestTokenFactory::issuer('backoffice')])];
-        yield 'issuer of the internal URL' => [TestTokenFactory::customer(['iss' => 'http://keycloak:8080/realms/shop'])];
-        yield 'unknown realm' => [TestTokenFactory::customer(['iss' => TestTokenFactory::issuer('master')])];
-        yield 'expired' => [TestTokenFactory::customer(['iat' => time() - 600, 'exp' => time() - 1])];
-        yield 'not yet valid' => [TestTokenFactory::customer(['nbf' => time() + 600])];
-        yield 'issued in the future' => [TestTokenFactory::customer(['iat' => time() + 600])];
-        yield 'no expiry' => [TestTokenFactory::customer(['exp' => null])];
-        yield 'no issued-at' => [TestTokenFactory::customer(['iat' => null])];
-        yield 'no issuer' => [TestTokenFactory::customer(['iss' => null])];
-        yield 'audience list without the shop audience' => [TestTokenFactory::customer(['aud' => ['account', 'store']])];
-        yield 'empty audience list' => [TestTokenFactory::customer(['aud' => []])];
-        yield 'no subject' => [TestTokenFactory::customer(['sub' => null])];
-        yield 'no email' => [TestTokenFactory::customer(['email' => null])];
-        yield 'garbage' => ['abc'];
-        yield 'three garbage segments' => ['abc.def.ghi'];
+        yield 'staff token (other issuer)' => [static fn (): string => TestTokenFactory::staff(['admin'])];
+        yield 'staff audience' => [static fn (): string => TestTokenFactory::customer(['aud' => 'backoffice-api'])];
+        yield 'no audience' => [static fn (): string => TestTokenFactory::customer(['aud' => null])];
+        yield 'id token of the store client' => [static fn (): string => TestTokenFactory::customer(['aud' => 'store', 'typ' => 'ID'])];
+        yield 'shop audience with backoffice issuer' => [static fn (): string => TestTokenFactory::customer(['iss' => TestTokenFactory::issuer('backoffice')])];
+        yield 'issuer of the internal URL' => [static fn (): string => TestTokenFactory::customer(['iss' => 'http://keycloak:8080/realms/shop'])];
+        yield 'unknown realm' => [static fn (): string => TestTokenFactory::customer(['iss' => TestTokenFactory::issuer('master')])];
+        yield 'expired' => [static fn (): string => TestTokenFactory::customer(['iat' => time() - 600, 'exp' => time() - 1])];
+        yield 'not yet valid' => [static fn (): string => TestTokenFactory::customer(['nbf' => time() + 600])];
+        yield 'issued in the future' => [static fn (): string => TestTokenFactory::customer(['iat' => time() + 600])];
+        yield 'no expiry' => [static fn (): string => TestTokenFactory::customer(['exp' => null])];
+        yield 'no issued-at' => [static fn (): string => TestTokenFactory::customer(['iat' => null])];
+        yield 'no issuer' => [static fn (): string => TestTokenFactory::customer(['iss' => null])];
+        yield 'audience list without the shop audience' => [static fn (): string => TestTokenFactory::customer(['aud' => ['account', 'store']])];
+        yield 'empty audience list' => [static fn (): string => TestTokenFactory::customer(['aud' => []])];
+        yield 'no subject' => [static fn (): string => TestTokenFactory::customer(['sub' => null])];
+        yield 'no email' => [static fn (): string => TestTokenFactory::customer(['email' => null])];
+        yield 'garbage' => [static fn (): string => 'abc'];
+        yield 'three garbage segments' => [static fn (): string => 'abc.def.ghi'];
     }
 
+    /**
+     * @param \Closure(): string $token
+     */
     #[DataProvider('invalidTokens')]
-    public function testInvalidTokenIsUnauthorized(string $token): void
+    public function testInvalidTokenIsUnauthorized(\Closure $token): void
     {
-        $this->assertUnauthorized($this->requestMe($token)->getResponse());
+        $this->assertUnauthorized($this->requestMe($token())->getResponse());
     }
 
     /**
@@ -109,27 +112,27 @@ final class MeEndpointTest extends WebTestCase
      * What Symfony's header extractor recognises: "Bearer" with exact case followed by whitespace and a token that
      * ends the header. Anything else is no token at all, so a protected endpoint answers 401 as for an anonymous call.
      *
+     * The header is a sprintf() format for the token.
+     *
      * @return iterable<string, array{string, int}>
      */
     public static function authorizationHeaders(): iterable
     {
-        $token = TestTokenFactory::customer();
-
-        yield 'exact scheme' => ['Bearer '.$token, 200];
-        yield 'two spaces' => ['Bearer  '.$token, 200];
-        yield 'tab separator' => ["Bearer\t".$token, 200];
-        yield 'lower case scheme' => ['bearer '.$token, 401];
-        yield 'upper case scheme' => ['BEARER '.$token, 401];
-        yield 'trailing space' => ['Bearer '.$token.' ', 401];
-        yield 'no separator' => ['Bearer'.$token, 401];
-        yield 'token only' => [$token, 401];
+        yield 'exact scheme' => ['Bearer %s', 200];
+        yield 'two spaces' => ['Bearer  %s', 200];
+        yield 'tab separator' => ["Bearer\t%s", 200];
+        yield 'lower case scheme' => ['bearer %s', 401];
+        yield 'upper case scheme' => ['BEARER %s', 401];
+        yield 'trailing space' => ['Bearer %s ', 401];
+        yield 'no separator' => ['Bearer%s', 401];
+        yield 'token only' => ['%s', 401];
     }
 
     #[DataProvider('authorizationHeaders')]
     public function testAuthorizationHeaderSyntaxIsMatchedAsTheExtractorDefines(string $header, int $status): void
     {
         $client = static::createClient();
-        $client->request('GET', '/api/v1/me', server: ['HTTP_AUTHORIZATION' => $header]);
+        $client->request('GET', '/api/v1/me', server: ['HTTP_AUTHORIZATION' => \sprintf($header, TestTokenFactory::customer())]);
 
         self::assertResponseStatusCodeSame($status);
         if (401 === $status) {
