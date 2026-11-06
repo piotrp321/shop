@@ -17,6 +17,7 @@ use App\Inventory\Domain\Stock\VariantId;
 use App\Inventory\Infrastructure\Persistence\Doctrine\DoctrineStockItemRepository;
 use App\Tests\Integration\Inventory\IndependentConnections;
 use App\Tests\Integration\Inventory\StockFixture;
+use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Uid\Uuid;
@@ -38,7 +39,7 @@ final class DoctrineStockItemRepositoryReceiptsTest extends KernelTestCase
         $connection = self::getContainer()->get('doctrine.dbal.default_connection');
         self::assertInstanceOf(Connection::class, $connection);
         $this->connection = $connection;
-        $this->repository = new DoctrineStockItemRepository($connection);
+        $this->repository = new DoctrineStockItemRepository($connection, new RecordingDomainEventPublisher());
     }
 
     public function testLockOrCreateOfAVariantWithoutStockCreatesItWithZerosAtVersionZero(): void
@@ -76,7 +77,7 @@ final class DoctrineStockItemRepositoryReceiptsTest extends KernelTestCase
         $other = $this->independentConnection();
 
         $holder->beginTransaction();
-        new DoctrineStockItemRepository($holder)->lockOrCreate(VariantId::fromString($id));
+        new DoctrineStockItemRepository($holder, new RecordingDomainEventPublisher())->lockOrCreate(VariantId::fromString($id));
 
         self::assertLockNotAvailable(static fn () => $other->fetchOne('SELECT 1 FROM inventory_stock_item WHERE variant_id = ? FOR UPDATE NOWAIT', [$id]));
         $holder->commit();
@@ -92,10 +93,10 @@ final class DoctrineStockItemRepositoryReceiptsTest extends KernelTestCase
         $second->executeStatement("SET lock_timeout = '200ms'");
 
         $first->beginTransaction();
-        new DoctrineStockItemRepository($first)->lockOrCreate(VariantId::fromString($id));
+        new DoctrineStockItemRepository($first, new RecordingDomainEventPublisher())->lockOrCreate(VariantId::fromString($id));
 
         $second->beginTransaction();
-        self::assertLockNotAvailable(static fn () => new DoctrineStockItemRepository($second)->lockOrCreate(VariantId::fromString($id)));
+        self::assertLockNotAvailable(static fn () => new DoctrineStockItemRepository($second, new RecordingDomainEventPublisher())->lockOrCreate(VariantId::fromString($id)));
         $second->rollBack();
         $first->commit();
     }
