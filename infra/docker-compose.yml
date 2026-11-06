@@ -327,8 +327,24 @@ services:
   store:
     build:
       context: ./apps/store
-    # Dependencies are installed into the node_modules volume when package-lock.json is newer than the install.
-    command: ["sh", "-c", "[ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; exec npm run dev"]
+    # STORE_MODE selects the server: `dev` (default) runs `next dev`; `production` runs `next build` and then
+    # `next start` (CI runs the end-to-end tests on this one). Any other value stops the container before anything
+    # is installed. Dependencies are installed into the node_modules volume when package-lock.json is newer than
+    # the install. A failing `next build` exits the container, so `make up` fails instead of waiting for a server.
+    command:
+      - sh
+      - -c
+      - |
+        case "$$STORE_MODE" in
+          dev | production) ;;
+          *) echo "Unknown STORE_MODE '$$STORE_MODE': use 'dev' or 'production'" >&2; exit 1 ;;
+        esac
+        [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci || exit 1
+        if [ "$$STORE_MODE" = production ]; then
+          npm run build || exit 1
+          exec npm run start -- -H 0.0.0.0
+        fi
+        exec npm run dev
     depends_on:
       redis:
         condition: service_healthy
@@ -337,6 +353,8 @@ services:
       - path: ./.env.local
         required: true
     environment:
+      # `dev` (`next dev`, default) or `production` (`next build` + `next start`), see command.
+      STORE_MODE: ${STORE_MODE:-dev}
       # The server calls the API over the compose network, never through the browser-facing port.
       API_INTERNAL_URL: http://api
       # The catalog reads (list, categories, offers) go through Varnish; the cart, checkout and login never do.
@@ -363,8 +381,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-      # `npm ci` runs on first start before the dev server is up.
-      start_period: 180s
+      # `npm ci` runs on first start and, in production, `next build` after it, both before the server is up.
+      start_period: 600s
 
   admin:
     build:
@@ -403,6 +421,8 @@ services:
     ipc: host
     init: true
     environment:
+      # The mode the store runs in: tests of the production build (ISR cache) run only when it is `production`.
+      STORE_MODE: ${STORE_MODE:-dev}
       STORE_PORT: ${STORE_PORT:-3000}
       ADMIN_PORT: ${ADMIN_PORT:-5173}
       API_PORT: ${API_PORT:-8000}
