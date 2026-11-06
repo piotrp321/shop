@@ -157,6 +157,7 @@ jobs:
           make -C apps/store test RUN="$CI_RUN"
           make -C apps/admin test RUN="$CI_RUN"
           make varnish-test
+          make init-env-test
 
       # The committed OpenAPI files and generated clients must equal a fresh export and generation
       # (no services needed, so --no-deps works).

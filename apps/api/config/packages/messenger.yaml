@@ -55,6 +55,17 @@ framework:
                     max_retries: 5
                     delay: 1000
                     multiplier: 3
+            # Webhook deliveries of the payment simulator (DeliverSimulatedWebhook), written in the transaction of the
+            # customer's decision on the same connection. A 5xx or a network error of the shop is retried by this
+            # strategy: 5 tries after 1, 3, 9, 27 and 81 s (about 2 minutes), then `failed`.
+            payment_simulator:
+                dsn: 'doctrine://default?queue_name=payment_simulator&auto_setup=false&redeliver_timeout=300'
+                options:
+                    use_notify: false
+                retry_strategy:
+                    max_retries: 5
+                    delay: 1000
+                    multiplier: 3
             failed:
                 dsn: 'doctrine://default?queue_name=failed&auto_setup=false'
                 options:
@@ -63,3 +74,4 @@ framework:
         routing:
             App\Shared\Domain\Event\DomainEvent: outbox
             App\Ordering\Application\Command\ExpireUnpaidOrder: scheduled
+            App\PaymentSimulator\DeliverSimulatedWebhook: payment_simulator
