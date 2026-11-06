@@ -45,6 +45,40 @@ final class ProductSearchFacetsTest extends TestCase
         self::assertSame(FacetFixtures::expected($documents, new ProductSearchCriteria(1, 24))['options'], $this->shape($facets));
     }
 
+    public function testAxesAreCutByProductsNotByNestedPairs(): void
+    {
+        $documents = FacetFixtures::axisWithManyVariantsOnFewProducts();
+        $this->index($documents);
+
+        $facets = $this->search(new ProductSearchCriteria(1, 24))->facets;
+
+        $axes = array_map(static fn (OptionFacet $facet): string => $facet->axis, $facets->options);
+        self::assertSame(['A01', 'A02', 'A03', 'A04', 'A05', 'A06', 'A07', 'A08', 'A09', 'A10'], $axes);
+        self::assertSame(FacetFixtures::expected($documents, new ProductSearchCriteria(1, 24))['options'], $this->shape($facets));
+    }
+
+    /**
+     * @return iterable<string, array{ProductSearchCriteria}>
+     */
+    public static function criteriaOnTheValueAxis(): iterable
+    {
+        yield 'axis not selected' => [new ProductSearchCriteria(1, 24)];
+        yield 'axis selected' => [new ProductSearchCriteria(1, 24, options: ['Rozmiar' => ['v01']])];
+    }
+
+    #[DataProvider('criteriaOnTheValueAxis')]
+    public function testValuesAreCutByProductsNotByNestedPairs(ProductSearchCriteria $criteria): void
+    {
+        $documents = FacetFixtures::valueWithManyVariantsOnOneProduct();
+        $this->index($documents);
+
+        $facets = $this->search($criteria)->facets;
+
+        $values = array_map(static fn (array $pair): string => $pair[0], $this->pairs($facets->options[0]));
+        self::assertSame(array_map(static fn (int $n): string => \sprintf('v%02d', $n), range(1, 30)), $values);
+        self::assertSame(FacetFixtures::expected($documents, $criteria)['options'], $this->shape($facets));
+    }
+
     public function testSeveralSelectedAxesWithPriceAndAvailability(): void
     {
         $this->index(self::shoes());

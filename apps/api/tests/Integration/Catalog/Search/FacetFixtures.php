@@ -78,6 +78,52 @@ final class FacetFixtures
     }
 
     /**
+     * 10 products with one variant carrying the axes A01..A10 (10 products and 10 pairs per axis) and 5 products with
+     * four variants each carrying the axis "Zeta" (5 products, but 20 pairs). By products Zeta is the eleventh axis and
+     * is cut off, by the count of nested pairs it would be the first and push A10 out.
+     *
+     * @return list<ProductDocument>
+     */
+    public static function axisWithManyVariantsOnFewProducts(): array
+    {
+        $products = [];
+        for ($p = 1; $p <= 10; ++$p) {
+            $options = [];
+            for ($axis = 1; $axis <= 10; ++$axis) {
+                $options[\sprintf('A%02d', $axis)] = \sprintf('a%d', $p);
+            }
+            $products[] = self::product(\sprintf('a%02d', $p), [self::variant($options, 1000, true)]);
+        }
+        for ($p = 1; $p <= 5; ++$p) {
+            $variants = [];
+            for ($v = 1; $v <= 4; ++$v) {
+                $variants[] = self::variant(['Zeta' => \sprintf('z%d%d', $p, $v)], 1000, true);
+            }
+            $products[] = self::product(\sprintf('z%02d', $p), $variants);
+        }
+
+        return $products;
+    }
+
+    /**
+     * One axis "Rozmiar" with 31 values "v01".."v31" on two products each (one variant per product) and the value
+     * "zzz" on one product with three variants (1 product, 3 pairs). By products "zzz" is the last of 32 values and is
+     * cut off (with "v31"), by the count of nested pairs it would be the first and push "v30" out.
+     *
+     * @return list<ProductDocument>
+     */
+    public static function valueWithManyVariantsOnOneProduct(): array
+    {
+        $products = [];
+        for ($p = 0; $p < 62; ++$p) {
+            $products[] = self::product(\sprintf('v%02d', $p), [self::variant(['Rozmiar' => \sprintf('v%02d', intdiv($p, 2) + 1)], 1000, true)]);
+        }
+        $products[] = self::product('zzz', array_map(static fn (): VariantDocument => self::variant(['Rozmiar' => 'zzz'], 1000, true), [1, 2, 3]));
+
+        return $products;
+    }
+
+    /**
      * A skewed random set: 10 axes with 45 values each (common values first), products with 3-5 axes and 1-6 variants
      * of 2-4 axis values, a price on 90% of the variants, 60% of the priced ones buyable.
      *

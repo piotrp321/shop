@@ -13,7 +13,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * A measurement, not a check: the `took` of the facet aggregations on a generated catalog and the size of the index.
- * Skipped unless SEARCH_PERF is set, so the usual test run does not pay for it:
+ * Skipped unless SEARCH_PERF=1, so the usual test run does not pay for it:
  *
  *   docker compose exec -e SEARCH_PERF=1 api vendor/bin/phpunit --filter SearchFacetsPerformanceTest
  *
@@ -29,7 +29,7 @@ final class SearchFacetsPerformanceTest extends TestCase
 
     public function testMeasureTheFacetAggregations(): void
     {
-        if (false === getenv('SEARCH_PERF')) {
+        if ('1' !== getenv('SEARCH_PERF')) {
             self::markTestSkipped('Set SEARCH_PERF=1 to run the measurement.');
         }
         $products = (int) (getenv('SEARCH_PERF_PRODUCTS') ?: 5000);
