@@ -20,7 +20,6 @@ final class InvalidTokenOnPublicEndpointTest extends WebTestCase
     public static function invalidTokens(): iterable
     {
         yield 'garbage on the product list' => ['/api/v1/products', static fn (): string => 'garbage'];
-        yield 'garbage on the product details' => ['/api/v1/products/buty-szosowe', static fn (): string => 'garbage'];
         yield 'garbage on the product offers' => ['/api/v1/product-offers?productId=0192f0c4-7c1a-7c4e-9a6e-000000000001', static fn (): string => 'garbage'];
         yield 'garbage on the category tree' => ['/api/v1/categories', static fn (): string => 'garbage'];
         yield 'staff token on the category tree' => ['/api/v1/categories', static fn (): string => TestTokenFactory::staff(['admin'])];
@@ -107,5 +106,10 @@ final class InvalidTokenOnPublicEndpointTest extends WebTestCase
         $client->request('GET', '/api/v1/products', server: ['HTTP_AUTHORIZATION' => \sprintf($header, $token)]);
 
         self::assertResponseStatusCodeSame($status);
+    }
+
+    public function testInvalidTokenOnProductDetailsIsUnauthorized(): void
+    {
+        $this->testInvalidTokenIsUnauthorized('/api/v1/products/buty-szosowe', static fn (): string => 'garbage');
     }
 }
