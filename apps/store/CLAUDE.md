@@ -32,7 +32,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/checkout/` – BFF kasy (złożenie zamówienia, ciasteczko `store_order_confirmation`) i strona kasy
   `CheckoutPage`.
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
-- `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`).
+- `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`),
+  `load-product.ts` (odczyty strony produktu), `ProductDetailsView`, `product-metadata.ts` i `product-json-ld.ts`.
+- `app/p/[slug]/` – strona produktu (ISR).
 - `src/components/ui/` – komponenty shadcn/ui.
 - `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu.
 
@@ -47,14 +49,45 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `ProductTile` pokazuje etykietę według `level` z API („Dostępny”, „Ostatnie sztuki”, „Niedostępny”), bez liczenia na
   froncie (API nie zwraca liczby sztuk); liczba wariantów, ich kolejność i etykiety pochodzą tylko z oferty.
 - Sklep woła API tylko z serwera, pod jednym z dwóch adresów w sieci compose:
-  - `API_CATALOG_URL` (`http://varnish`): odczyty katalogu `loadCatalog` (lista, kategorie, oferty) idą przez Varnish,
+  - `API_CATALOG_URL` (`http://varnish`): odczyty katalogu `loadCatalog` (lista, kategorie, oferty) oraz `loadProduct` (szczegóły i oferta
+    strony produktu) idą przez Varnish,
     który trzyma je według `Cache-Control` API; brak zmiennej to błąd, bez obejścia na adres bezpośredni;
   - `API_INTERNAL_URL` (`http://api`): koszyk, kasa, scalanie koszyka i logowanie (`/api/v1/me`) idą do API
     bezpośrednio (klient z `getAuthDeps()`), nigdy przez Varnish.
+- Klient API (`createApiClient`) przyjmuje `tags`: trafiają do fetch jako `next: { tags }` (przez `requestInitExt`
+  openapi-fetch, bo biblioteka wywołuje fetch gotowym `Request`). Tylko tak odczyty dostają tagi cache Next.js.
 - Domyślnie Server Components. Client Component tylko tam, gdzie potrzebna jest interakcja.
 - `generateMetadata` i strona pobierają dane katalogu przez `loadCatalogForRequest` (`React.cache`), więc jedno wejście
   to jedno żądanie na endpoint. Metadane katalogu (`src/catalog/page-metadata.ts`) opierają się na `STORE_URL`.
 - HTML katalogu nie zależy od sesji. To, co zależy od zalogowania, ładuje Client Component przez `/auth/session`.
+
+## Strona produktu `/p/[slug]`
+
+- ISR: `revalidate = 3600` (siatka bezpieczeństwa), `generateStaticParams` zwraca `[]` (strony powstają przy pierwszym
+  wejściu, nie przy buildzie). HTML nie zależy od sesji. Cache ISR istnieje tylko w buildzie produkcyjnym
+  (`STORE_MODE=production`); `next dev` renderuje przy każdym żądaniu.
+- Dane (`loadProduct` w `src/catalog/load-product.ts`, wspólne dla `generateMetadata` i strony przez `React.cache`
+  jako `loadProductForRequest`): `GET /api/v1/products/{slug}`, potem `GET /api/v1/product-offers?productId=<id>`, oba
+  przez `API_CATALOG_URL`. Tagi cache Next to te same nazwy, które API wystawia w `xkey`: szczegóły `catalog`, oferta
+  `catalog` i `product-<id>` (UUID małymi literami). Strona dziedziczy sumę tagów odczytów, więc `revalidateTag`
+  tych nazw unieważnia jej HTML.
+- 404 szczegółów → `notFound()` (strona 404 z `noindex`; `generateMetadata` zwraca wtedy `{}`). Każdy inny błąd
+  szczegółów albo oferty (status, sieć, nieoczekiwana treść, brak oferty produktu) to wyjątek, czyli `app/error.tsx`,
+  którego ISR nie cache'uje; strona bez ceny nigdy nie powstaje.
+- `ProductDetailsView` (Server Component): ścieżka „Wszystkie produkty” › kategorie (linki `/?category=<id>`), `h1`,
+  zdjęcia jedno pod drugim przez `ProductPhoto` (pierwsze `priority`, bez zdjęć `PhotoPlaceholder`), krótki opis,
+  cena „od X zł” (gdy `hasPriceRange`) albo „X zł” i etykieta `level` produktu; produkt bez wariantu możliwego do kupienia
+  (`fromGross = null`): „Niedostępny” bez ceny. Wartości pochodzą z oferty, front niczego nie liczy. Wybór wariantu
+  i „Do koszyka” dochodzą w osobnym zadaniu epiku.
+- Metadane (`buildProductMetadata`): tytuł `<nazwa> | Rytm`, opis = krótki opis (bez opisu: brak), kanoniczny
+  `<STORE_URL>/p/<slug>`, Open Graph (tytuł, opis, adres, obraz = pierwsze zdjęcie w największej szerokości; bez zdjęć
+  bez obrazu).
+- JSON-LD (`product-json-ld.ts`, dwa `<script type="application/ld+json">`): `Product` z `Offer` tylko dla wariantów
+  z ceną (`gross` ≠ `null`; `name` = etykieta, `price` w złotych z kropką, `availability` z `level`) i `BreadcrumbList`
+  z adresami bezwzględnymi. `serializeJsonLd` zamienia każdy `<` na ucieczkę Unicode, więc tekst produktu nie zamknie
+  elementu `script`.
+- Kafelek listy (`ProductTile`): nazwa i zdjęcie to linki do `/p/<slug>`; link zdjęcia jest `aria-hidden` i poza
+  kolejnością tabulatora, nazwa jest linkiem dla klawiatury i czytników.
 
 ## Koszyk
 

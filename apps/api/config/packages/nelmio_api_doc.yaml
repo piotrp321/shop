@@ -86,6 +86,71 @@ nelmio_api_doc:
                                                 url:
                                                     type: string
                                                     example: http://localhost:8081/signature/rs:fill:256:256/g:sm/czM6Ly9idWNrZXQva2V5/plain.webp
+                        # Response schema of the product page (Catalog\Application\Query\ProductDetails); checked against
+                        # real responses by ProductDetailsEndpointTest.
+                        ProductDetails:
+                            type: object
+                            required: [id, slug, name, shortDescription, breadcrumb, images, variantAxes, variants]
+                            properties:
+                                id:
+                                    type: string
+                                    format: uuid
+                                slug:
+                                    type: string
+                                    example: buty-szosowe-tarvik-asfalt-200
+                                name:
+                                    type: string
+                                    example: Buty szosowe Tarvik Asfalt 200
+                                shortDescription:
+                                    type: string
+                                breadcrumb:
+                                    type: array
+                                    description: The categories from the root to the main category of the product.
+                                    items:
+                                        $ref: '#/components/schemas/BreadcrumbItem'
+                                images:
+                                    type: array
+                                    description: All the images of the product in position order, the first is the main one (size `product`).
+                                    items:
+                                        $ref: '#/components/schemas/ProductImage'
+                                variantAxes:
+                                    type: array
+                                    description: Names of the variant axes, in order; empty for a product with one default variant.
+                                    items:
+                                        type: string
+                                    example: [Kolor, Rozmiar]
+                                variants:
+                                    type: array
+                                    description: The variants in position order.
+                                    items:
+                                        $ref: '#/components/schemas/ProductDetailsVariant'
+                        BreadcrumbItem:
+                            type: object
+                            required: [id, name]
+                            properties:
+                                id:
+                                    type: string
+                                    format: uuid
+                                name:
+                                    type: string
+                                    example: Obuwie
+                        ProductDetailsVariant:
+                            type: object
+                            required: [variantId, label, values]
+                            properties:
+                                variantId:
+                                    type: string
+                                    format: uuid
+                                label:
+                                    type: string
+                                    description: The values joined with a comma; empty for the default variant.
+                                    example: czarne, 42
+                                values:
+                                    type: array
+                                    description: One value per axis, in the order of the axes.
+                                    items:
+                                        type: string
+                                    example: [czarne, '42']
                         # Response schemas of the cart (Cart\Application\View), checked against real responses by the
                         # functional tests of the cart endpoints.
                         CartView:

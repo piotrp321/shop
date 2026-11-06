@@ -38,7 +38,7 @@ describe("ProductGrid", () => {
 
   it("renders a placeholder for a product without a photo", () => {
     render(<ProductGrid products={[makeProduct(1, { image: null })]} offers={{}} />);
-    expect(screen.getByRole("img", { name: "Brak zdjęcia" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Brak zdjęcia", hidden: true })).toBeTruthy();
     expect(screen.getByText("Produkt 1")).toBeTruthy();
   });
 
@@ -46,7 +46,7 @@ describe("ProductGrid", () => {
     const product = makeProduct(1);
     product.image = { ...product.image!, variants: {} };
     render(<ProductGrid products={[product]} offers={{}} />);
-    expect(screen.getByRole("img", { name: "Brak zdjęcia" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Brak zdjęcia", hidden: true })).toBeTruthy();
   });
 
   it("shows a message with a link to the whole catalogue for an empty list", () => {

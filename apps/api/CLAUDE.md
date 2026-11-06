@@ -183,7 +183,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `xkey: <tag> <tag>` (spacje) ustawia w kontrolerze `CacheTagger::tag()`. Varnish usuwa `xkey` przed wysłaniem
   odpowiedzi. Dziś: lista produktów (`catalog` i `product-<id>` każdego produktu strony), drzewo kategorii
   (`catalog`), oferty (`catalog` i `product-<id>` każdego żądanego id), wszystkie z `Cache-Control: public,
-  max-age=60`.
+  max-age=60`; szczegóły produktu `GET /api/v1/products/{slug}` (`ProductDetailsController`): 200 z `public,
+  max-age=60, s-maxage=3600` i tagami `catalog` `product-<id>`, 404 „Produkt nie istnieje.” (też dla sluga
+  niezgodnego z formatem `Slug`) z `public, max-age=60` i tagiem `catalog`. Zdjęcia szczegółów są w rozmiarze
+  `product` (`ImageSize`), a `GetProductBySlug` czyta wprost z tabel Catalog przez port `ProductDetailsSource`.
 - Trasa publicznego odczytu ma domyślną wartość `PublicReadErrorCacheSubscriber::ROUTE_DEFAULT`
   (`defaults: [... => true]` w `#[Route]`): jej 400, 401 (także z firewalla) i 503 dostają `private, no-store` bez tagów.
 - Nowy publiczny endpoint katalogu = ścieżka na liście w VCL, jawny `Cache-Control`, tagi w odpowiedzi, znacznik
