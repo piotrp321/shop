@@ -37,6 +37,7 @@ final readonly class ListProductsHandler
             // The database decides whether the category exists; the search index is only a read model.
             $this->categories->get(CategoryId::fromString($query->categoryId));
         }
+        $facetCategories = $this->facetCategories($query->categoryId);
 
         $result = $this->search->search(new ProductSearchCriteria(
             $query->page,
@@ -48,6 +49,7 @@ final readonly class ListProductsHandler
             $query->priceMax,
             $query->availableOnly,
             $query->sort,
+            array_map(static fn (CategoryNode $node): string => $node->id, $facetCategories),
         ));
 
         return new ProductPage(
@@ -55,7 +57,65 @@ final readonly class ListProductsHandler
             $query->page,
             $query->perPage,
             $result->total,
+            new ProductFacets(
+                $this->categoryFacets($facetCategories, $result->facets->categoryCounts),
+                $result->facets->options,
+                $result->facets->price,
+                $result->facets->availableCount,
+            ),
         );
+    }
+
+    /**
+     * The children of the filter category, the roots without one, in tree order.
+     *
+     * @return list<CategoryNode>
+     */
+    private function facetCategories(?string $categoryId): array
+    {
+        $nodes = CategoryTreeBuilder::build($this->categories->all());
+        if (null === $categoryId) {
+            return $nodes;
+        }
+
+        return self::find($nodes, $categoryId)->children ?? [];
+    }
+
+    /**
+     * @param list<CategoryNode> $nodes
+     */
+    private static function find(array $nodes, string $id): ?CategoryNode
+    {
+        foreach ($nodes as $node) {
+            if ($node->id === $id) {
+                return $node;
+            }
+            $found = self::find($node->children, $id);
+            if (null !== $found) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param list<CategoryNode> $nodes
+     * @param array<string, int> $counts
+     *
+     * @return list<CategoryFacet>
+     */
+    private function categoryFacets(array $nodes, array $counts): array
+    {
+        $facets = [];
+        foreach ($nodes as $node) {
+            $count = $counts[$node->id] ?? 0;
+            if ($count > 0) {
+                $facets[] = new CategoryFacet($node->id, $node->name, $node->slug, $node->path, $count);
+            }
+        }
+
+        return $facets;
     }
 
     private function item(ProductDocument $document): ProductListItem

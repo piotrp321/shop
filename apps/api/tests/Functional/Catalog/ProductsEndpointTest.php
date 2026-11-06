@@ -68,7 +68,7 @@ final class ProductsEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringContainsString('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
-        self::assertSame(['items', 'page', 'perPage', 'total'], array_keys($body));
+        self::assertSame(['items', 'page', 'perPage', 'total', 'facets'], array_keys($body));
         self::assertSame(1, $body['page']);
         self::assertSame(24, $body['perPage']);
         self::assertSame(2, $body['total']);
@@ -325,7 +325,7 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertIsArray($ok['content']);
         self::assertSame(['application/json'], array_keys($ok['content']));
         self::assertIsArray($operation['parameters']);
-        self::assertEqualsCanonicalizing(['category', 'page', 'perPage'], array_column($operation['parameters'], 'name'));
+        self::assertEqualsCanonicalizing(['category', 'q', 'option', 'priceMin', 'priceMax', 'available', 'sort', 'page', 'perPage'], array_column($operation['parameters'], 'name'));
         self::assertIsArray($spec['components']);
         self::assertIsArray($spec['components']['schemas']);
         foreach (['ProductPage', 'ProductListItem', 'ProductImage', 'Problem'] as $schema) {
