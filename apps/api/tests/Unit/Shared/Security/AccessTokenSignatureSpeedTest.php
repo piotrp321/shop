@@ -17,10 +17,13 @@ use PHPUnit\Framework\TestCase;
  * Every authenticated request verifies an RS256 access token, and the functional tests sign one per request.
  * web-token converts the RSA JWK to PEM with brick/math before openssl runs; without the gmp extension that
  * conversion is pure PHP and costs about 0.2 s per verification and 0.6 s per signature instead of well under 1 ms.
+ *
+ * The fastest of three runs is compared, with a limit well between the two, so a busy machine (CI runs other suites
+ * next to this one) does not fail the test while pure PHP math still does.
  */
 final class AccessTokenSignatureSpeedTest extends TestCase
 {
-    private const float LIMIT_SECONDS = 0.025;
+    private const float LIMIT_SECONDS = 0.1;
 
     public function testAnRs256AccessTokenIsSignedAndVerifiedWithoutPurePhpBigIntegerMath(): void
     {
@@ -28,23 +31,23 @@ final class AccessTokenSignatureSpeedTest extends TestCase
         $publicKey = $privateKey->toPublic();
         $algorithms = new AlgorithmManager([new RS256()]);
 
-        $slowestSignature = 0.0;
-        $slowestVerification = 0.0;
+        $fastestSignature = \INF;
+        $fastestVerification = \INF;
         for ($i = 0; $i < 3; ++$i) {
             $start = hrtime(true);
             $token = $this->sign($algorithms, $privateKey);
-            $slowestSignature = max($slowestSignature, (hrtime(true) - $start) / 1e9);
+            $fastestSignature = min($fastestSignature, (hrtime(true) - $start) / 1e9);
 
             $start = hrtime(true);
             $verified = (new JWSVerifier($algorithms))->verifyWithKey((new CompactSerializer())->unserialize($token), $publicKey, 0);
-            $slowestVerification = max($slowestVerification, (hrtime(true) - $start) / 1e9);
+            $fastestVerification = min($fastestVerification, (hrtime(true) - $start) / 1e9);
 
             self::assertTrue($verified);
         }
 
         $hint = ' (is the gmp extension loaded?)';
-        self::assertLessThan(self::LIMIT_SECONDS, $slowestSignature, \sprintf('Signing took %.3f s%s.', $slowestSignature, $hint));
-        self::assertLessThan(self::LIMIT_SECONDS, $slowestVerification, \sprintf('Verification took %.3f s%s.', $slowestVerification, $hint));
+        self::assertLessThan(self::LIMIT_SECONDS, $fastestSignature, \sprintf('Signing took %.3f s%s.', $fastestSignature, $hint));
+        self::assertLessThan(self::LIMIT_SECONDS, $fastestVerification, \sprintf('Verification took %.3f s%s.', $fastestVerification, $hint));
     }
 
     private function sign(AlgorithmManager $algorithms, JWK $key): string
