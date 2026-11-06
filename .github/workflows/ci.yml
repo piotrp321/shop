@@ -75,9 +75,10 @@ jobs:
         if: env.FULL_CI == 'true'
 
       # Standard-library scripts of the Claude Code skills (/delivery state, /planner manifest, /ao-run events) and the AO hooks.
-      - name: Skill script tests
+      - name: Skill and CI script tests
         if: env.FULL_CI == 'true'
         run: |
+          sh .github/scripts/test_background.sh
           python3 -m unittest discover -s .ao -p 'test_*.py'
           python3 -m unittest discover -s .claude/skills/delivery -p 'test_*.py'
           python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'
@@ -90,6 +91,22 @@ jobs:
       - name: Generate .env.local
         if: env.FULL_CI == 'true'
         run: sh infra/scripts/init-env.sh
+
+      # The api integration tests need PostgreSQL (database shop_test, created by its init script),
+      # the image services: Garage (buckets created by garage-init) and imgproxy, RabbitMQ with the
+      # `test` vhost (created by the one-shot rabbitmq-init), Elasticsearch (the test index is created by
+      # init-test, which `make -C apps/api test` runs first) and Keycloak with the imported realms (discovery tests).
+      # The dashboard probes (ProbesTest and the dashboard endpoint test) reach all of them, plus Redis and Mailpit;
+      # the store integration tests (sessions, refresh lock) need Redis too. Mailpit also receives the order
+      # confirmation emails of the api mailer tests (MAILER_DSN and MAILER_FROM come from the api service of
+      # docker-compose.yml, which `docker compose run` applies).
+      # They start in the background while the images are built and `make check` runs; the tests wait for them.
+      - name: Start PostgreSQL, Redis, Garage, imgproxy, RabbitMQ, Elasticsearch, Keycloak and Mailpit in the background
+        if: env.FULL_CI == 'true'
+        run: >-
+          sh .github/scripts/background.sh start services sh -c
+          'docker compose up -d --wait postgres redis garage imgproxy rabbitmq elasticsearch keycloak mailpit
+          && docker compose run --rm rabbitmq-init'
 
       - name: Build api image
         if: env.FULL_CI == 'true'
@@ -122,39 +139,36 @@ jobs:
           cache-from: type=gha,scope=admin
           cache-to: type=gha,mode=max,scope=admin
 
-      # Dependencies go into the named volumes, as in local development.
+      # Dependencies go into the named volumes, as in local development: the api entrypoint runs `composer install`;
+      # the store and admin images carry node_modules, which Docker copies into their empty volumes on first use.
       - name: Install dependencies
         if: env.FULL_CI == 'true'
-        run: |
-          $CI_RUN api true
-          $CI_RUN store npm ci --no-audit --no-fund
-          $CI_RUN admin npm ci --no-audit --no-fund
+        run: $CI_RUN api true
 
       - name: make check
         if: env.FULL_CI == 'true'
         run: make check RUN="$CI_RUN"
 
-      # The api integration tests need PostgreSQL (database shop_test, created by its init script),
-      # the image services: Garage (buckets created by garage-init) and imgproxy, RabbitMQ with the
-      # `test` vhost (created by the one-shot rabbitmq-init), Elasticsearch (the test index is created by
-      # init-test, which `make -C apps/api test` runs first) and Keycloak with the imported realms (discovery tests).
-      # The dashboard probes (ProbesTest and the dashboard endpoint test) reach all of them, plus Redis and Mailpit;
-      # the store integration tests (sessions, refresh lock) need Redis too. Mailpit also receives the order
-      # confirmation emails of the api mailer tests (MAILER_DSN and MAILER_FROM come from the api service of
-      # docker-compose.yml, which `docker compose run` applies).
-      - name: Start PostgreSQL, Redis, Garage, imgproxy, RabbitMQ, Elasticsearch, Keycloak and Mailpit
+      - name: Wait for the services
         if: env.FULL_CI == 'true'
-        run: |
-          docker compose up -d --wait postgres redis garage imgproxy rabbitmq elasticsearch keycloak mailpit
-          docker compose run --rm rabbitmq-init
+        run: sh .github/scripts/background.sh wait services
 
-      # All suites of every app; api `test` migrates shop_test first.
+      # All suites of every app; api `test` migrates shop_test first. The store and admin suites run in the
+      # background next to the api one; every suite runs to the end and any failure fails the step.
       - name: Tests
         if: env.FULL_CI == 'true'
         run: |
-          make -C apps/api test RUN="$CI_RUN"
-          make -C apps/store test RUN="$CI_RUN"
-          make -C apps/admin test RUN="$CI_RUN"
+          sh .github/scripts/background.sh start store-tests make -C apps/store test RUN="$CI_RUN"
+          sh .github/scripts/background.sh start admin-tests make -C apps/admin test RUN="$CI_RUN"
+          status=0
+          make -C apps/api test RUN="$CI_RUN" || status=$?
+          echo "::group::store tests"
+          sh .github/scripts/background.sh wait store-tests || status=$?
+          echo "::endgroup::"
+          echo "::group::admin tests"
+          sh .github/scripts/background.sh wait admin-tests || status=$?
+          echo "::endgroup::"
+          exit "$status"
 
       # The committed OpenAPI files and generated clients must equal a fresh export and generation
       # (no services needed, so --no-deps works).
@@ -221,6 +235,20 @@ jobs:
           load: true
           cache-from: type=gha,scope=admin
 
+      # The store and admin images carry node_modules installed from these lock files (the cached image layer is keyed
+      # on their content), and Docker copies them into the empty volumes. Their containers run `npm ci` only when
+      # package-lock.json is newer than that install, and the checkout is always newer than a cached layer: an old
+      # date keeps the install from the image.
+      - name: Date the front lock files before the image install
+        if: env.FULL_CI == 'true'
+        run: touch -d '2000-01-01T00:00:00Z' apps/store/package-lock.json apps/admin/package-lock.json
+
+      # Starts every service, runs the migrations and starts the worker (`exec` needs -T), in the background while
+      # the e2e image is built and the tests are type-checked.
+      - name: Start the stack in the background
+        if: env.FULL_CI == 'true'
+        run: sh .github/scripts/background.sh start stack make up RUN="docker compose exec -T"
+
       # Only this job builds the Playwright image, so it also writes its cache.
       - name: Build e2e image
         if: env.FULL_CI == 'true'
@@ -237,10 +265,9 @@ jobs:
         if: env.FULL_CI == 'true'
         run: make e2e-check E2E_FLAGS=-T E2E_BUILD=
 
-      # Starts every service, runs the migrations and starts the worker (`exec` needs -T).
-      - name: Start the stack
+      - name: Wait for the stack
         if: env.FULL_CI == 'true'
-        run: make up RUN="docker compose exec -T"
+        run: sh .github/scripts/background.sh wait stack
 
       - name: Seed demo data
         if: env.FULL_CI == 'true'
