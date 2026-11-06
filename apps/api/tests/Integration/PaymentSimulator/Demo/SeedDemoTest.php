@@ -115,7 +115,7 @@ final class SeedDemoTest extends KernelTestCase
     }
 
     /**
-     * @return array<string, int|string>
+     * @return array<mixed>
      */
     private function queues(): array
     {
