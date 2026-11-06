@@ -17,10 +17,16 @@ describe("CatalogPagination", () => {
     expect(screen.getByRole("link", { name: /następnej/ }).getAttribute("href")).toBe("/?page=2");
   });
 
-  it("links both ways on a middle page and keeps the category", () => {
-    render(<CatalogPagination page={2} perPage={24} total={60} category="abc" />);
-    expect(screen.getByRole("link", { name: /poprzedniej/ }).getAttribute("href")).toBe("/?category=abc");
-    expect(screen.getByRole("link", { name: /następnej/ }).getAttribute("href")).toBe("/?category=abc&page=3");
+  it("links both ways on a middle page", () => {
+    render(<CatalogPagination page={2} perPage={24} total={60} />);
+    expect(screen.getByRole("link", { name: /poprzedniej/ }).getAttribute("href")).toBe("/");
+    expect(screen.getByRole("link", { name: /następnej/ }).getAttribute("href")).toBe("/?page=3");
+  });
+
+  it("links to the pages of the category path on a category page", () => {
+    render(<CatalogPagination page={2} perPage={24} total={60} categoryPath="bieganie/buty" />);
+    expect(screen.getByRole("link", { name: /poprzedniej/ }).getAttribute("href")).toBe("/c/bieganie/buty");
+    expect(screen.getByRole("link", { name: /następnej/ }).getAttribute("href")).toBe("/c/bieganie/buty?page=3");
   });
 
   it("links only back on the last page", () => {

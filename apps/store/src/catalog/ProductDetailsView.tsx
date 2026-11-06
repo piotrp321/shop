@@ -1,7 +1,7 @@
-import Link from "next/link";
 import type { components } from "@/api/schema";
 import { AvailabilityLabel } from "./availability-label";
-import { catalogHref } from "./catalog-href";
+import { crumbsOf } from "./breadcrumb";
+import { Breadcrumbs } from "./Breadcrumbs";
 import { formatPrice } from "./format-price";
 import { ProductPhoto } from "./ProductPhoto";
 import { VariantChoice } from "./VariantChoice";
@@ -23,23 +23,7 @@ const PHOTO_SIZES = "(min-width: 1152px) 560px, (min-width: 768px) 50vw, 100vw";
 export function ProductDetailsView({ details, offer }: { details: ProductDetails; offer: ProductOffer }) {
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
-      <nav aria-label="Ścieżka">
-        <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-          <li>
-            <Link href={catalogHref({})} className="underline-offset-4 hover:underline">
-              Wszystkie produkty
-            </Link>
-          </li>
-          {details.breadcrumb.map((category) => (
-            <li key={category.id} className="flex items-center gap-x-2">
-              <span aria-hidden="true">›</span>
-              <Link href={catalogHref({ category: category.id })} className="underline-offset-4 hover:underline">
-                {category.name}
-              </Link>
-            </li>
-          ))}
-        </ol>
-      </nav>
+      <Breadcrumbs items={crumbsOf(details.breadcrumb)} />
       <div className="grid gap-8 md:grid-cols-2">
         <div className="flex flex-col gap-4 md:col-start-2 md:row-start-1">
           <h1 className="text-2xl font-semibold">{details.name}</h1>

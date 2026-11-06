@@ -33,9 +33,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `CheckoutPage`.
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
 - `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`),
+  `load-catalog.ts` (lista produktów i oferty), `category-tree.ts` (drzewo kategorii) z `category-path.ts` (ścieżka
+  slugów → kategorie), `CatalogListing`, `Breadcrumbs` z `breadcrumb.ts`, `SiteHeader` i `MegaMenu`,
   `load-product.ts` (odczyty strony produktu), `ProductDetailsView`, `VariantChoice` z `variant-choice.ts` (wybór wariantu),
   `product-metadata.ts` i `product-json-ld.ts`.
-- `app/p/[slug]/` – strona produktu (ISR).
+- `app/page.tsx` (`/`) i `app/c/[...path]/` (kategoria) – listing (SSR przy każdym żądaniu); `app/p/[slug]/` – strona
+  produktu (ISR).
 - `src/components/ui/` – komponenty shadcn/ui.
 - `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu.
 
@@ -50,7 +53,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `ProductTile` pokazuje etykietę według `level` z API („Dostępny”, „Ostatnie sztuki”, „Niedostępny”), bez liczenia na
   froncie (API nie zwraca liczby sztuk); liczba wariantów, ich kolejność i etykiety pochodzą tylko z oferty.
 - Sklep woła API tylko z serwera, pod jednym z dwóch adresów w sieci compose:
-  - `API_CATALOG_URL` (`http://varnish`): odczyty katalogu `loadCatalog` (lista, kategorie, oferty) oraz `loadProduct` (szczegóły i oferta
+  - `API_CATALOG_URL` (`http://varnish`): odczyty katalogu `loadCatalog` (lista, oferty) i `loadCategoryTree` (drzewo kategorii) oraz `loadProduct` (szczegóły i oferta
     strony produktu) idą przez Varnish,
     który trzyma je według `Cache-Control` API; brak zmiennej to błąd, bez obejścia na adres bezpośredni;
   - `API_INTERNAL_URL` (`http://api`): koszyk, kasa, scalanie koszyka i logowanie (`/api/v1/me`) idą do API
@@ -58,9 +61,48 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Klient API (`createApiClient`) przyjmuje `tags`: trafiają do fetch jako `next: { tags }` (przez `requestInitExt`
   openapi-fetch, bo biblioteka wywołuje fetch gotowym `Request`). Tylko tak odczyty dostają tagi cache Next.js.
 - Domyślnie Server Components. Client Component tylko tam, gdzie potrzebna jest interakcja.
-- `generateMetadata` i strona pobierają dane katalogu przez `loadCatalogForRequest` (`React.cache`), więc jedno wejście
-  to jedno żądanie na endpoint. Metadane katalogu (`src/catalog/page-metadata.ts`) opierają się na `STORE_URL`.
+- `generateMetadata` i strona pobierają listę przez `loadCatalogForRequest`, a drzewo kategorii przez
+  `loadCategoryTreeForRequest` (oba `React.cache`), więc jedno wejście to jedno żądanie na endpoint. Metadane katalogu
+  (`src/catalog/page-metadata.ts`) opierają się na `STORE_URL`.
 - HTML katalogu nie zależy od sesji. To, co zależy od zalogowania, ładuje Client Component przez `/auth/session`.
+
+## Listing `/` i `/c/[...path]`
+
+- Oba są Server Components renderowanymi przy każdym żądaniu (SSR, bez ISR) i wspólnym widokiem `CatalogListing`. Jedynym
+  cache list jest Varnish: odczyty listy i ofert (`loadCatalog`) mają `cache: "no-store"` (bez `next.revalidate`
+  i tagów), więc nie trafiają do data cache Next.
+- `/c/[...path]`: kategoria wskazana ścieżką slugów w drzewie (`path` i `slug` z `GET /api/v1/categories`,
+  `resolveCategoryPath`); brak w drzewie albo `unknown-category` z listy → `notFound()`. Kolejność odczytów: drzewo
+  (jeden odczyt na żądanie, `React.cache`, wspólny dla layoutu, `generateMetadata` i strony), potem lista z id
+  kategorii z drzewa, potem oferty. Błąd drzewa na tej stronie to wyjątek, czyli `app/error.tsx`.
+- `/`: lista wszystkich produktów, bez breadcrumbów. `/?category=<id>` czyta drzewo i listę razem; kategoria z drzewa →
+  `permanentRedirect` (308) na `/c/<ścieżka>` z pozostałymi parametrami (bez `category`); nieznana → 404, niepoprawna
+  (`400` API) → „Nieprawidłowy filtr”.
+- `CatalogListing`: breadcrumby „Wszystkie produkty” › kategorie ścieżki (linki `/c/<ścieżka>`, ostatni element bez
+  linku, tylko na `/c/`), `h1` z nazwą, obok liczba produktów (`formatProductCount`: „1 produkt”, „2–4 produkty”,
+  22–24 itd., reszta „produktów”, także 12–14), siatka i paginacja w adresach `/c/<ścieżka>?page=n`.
+- SEO: tytuł `/c/` to `<nazwa>[ – strona n] | Rytm`, kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1);
+  pusta strona poza zakresem i niepoprawny `page` mają `noindex`. `/c/` ma JSON-LD `BreadcrumbList` (bezwzględne
+  adresy, ten sam `serializeJsonLd` co strona produktu).
+
+## Nagłówek i mega menu
+
+- Layout czyta drzewo przez `loadMenuCategories` (to samo `React.cache` co listing) i renderuje `SiteHeader` z menu
+  działów (`MegaMenu`, `nav` „Działy”, Client Component). Na stronie produktu (ISR) odczyt drzewa ma tag `catalog`
+  (`loadCategoryTree`), więc strona rewaliduje się razem z katalogiem; odczyt nie ustawia trybu cache.
+- Szeroki ekran: przyciski działów (kategorie główne); panel działu (poziomy 2–3 i „Wszystko z działu”) otwiera się
+  kliknięciem, Enter, Spacją i najechaniem myszą, zamyka Escape, kliknięciem poza menu, przejściem fokusu poza menu,
+  kliknięciem linku i przejściem na inny dział; przyciski mają `aria-expanded`. Escape zamyka menu przy dowolnym
+  fokusie (pomija zdarzenie z `defaultPrevented`), a fokus wraca na przycisk tylko wtedy, gdy był w menu albo nigdzie
+  (`body`); fokus w polu poza menu zostaje tam, gdzie był. Wąski ekran: przycisk „Menu” z listą trzech poziomów.
+  Głębsze poziomy są na stronie kategorii.
+- Wszystkie linki są w HTML także przy zamkniętym menu (panele mają atrybut `hidden`), JavaScript tylko je otwiera.
+- Błąd odczytu drzewa w layoucie: `console.error` na serwerze, nagłówek bez menu, strona renderuje się dalej (koszyk
+  działa). Strona produktu w ISR może zostać zapisana bez menu do następnej rewalidacji.
+- Strony prerenderowane statycznie w buildzie (`/cart`, `/checkout`, strona 404) też dziedziczą z layoutu odczyt drzewa
+  i tag `catalog`: mają menu z ostatniego renderu (z builda albo z rewalidacji tagu `catalog`, np. po `make seed`).
+  Build bez dostępnego drzewa daje te strony bez menu aż do następnej rewalidacji tagu. Strony dynamiczne (`/`,
+  `/c/...`, `/checkout/confirmation`) czytają drzewo przy każdym żądaniu.
 
 ## Strona produktu `/p/[slug]`
 
@@ -75,7 +117,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - 404 szczegółów → `notFound()` (strona 404 z `noindex`; `generateMetadata` zwraca wtedy `{}`). Każdy inny błąd
   szczegółów albo oferty (status, sieć, nieoczekiwana treść, brak oferty produktu) to wyjątek, czyli `app/error.tsx`,
   którego ISR nie cache'uje; strona bez ceny nigdy nie powstaje.
-- `ProductDetailsView` (Server Component): ścieżka „Wszystkie produkty” › kategorie (linki `/?category=<id>`), `h1`,
+- `ProductDetailsView` (Server Component): ścieżka „Wszystkie produkty” › kategorie (linki `/c/<ścieżka>`, `Breadcrumbs`), `h1`,
   zdjęcia jedno pod drugim przez `ProductPhoto` (pierwsze `priority`, bez zdjęć `PhotoPlaceholder`), krótki opis,
   cena „od X zł” (gdy `hasPriceRange`) albo „X zł” i etykieta `level` produktu; produkt bez wariantu możliwego do kupienia
   (`fromGross = null`): „Niedostępny” bez ceny, wyboru i przycisku. Wartości pochodzą z oferty, front niczego nie liczy.
@@ -265,5 +307,5 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - Vitest i Testing Library. `*.test.ts(x)` to testy jednostkowe bez usług, `*.integration.test.ts` działają
   na usługach stosu (Redis).
-- Logika w komponentach (np. budowa `srcset`, aktywna kategoria), cały `src/auth/`, cały `src/cart/` (BFF, przyciski,
+- Logika w komponentach (np. budowa `srcset`, mega menu), cały `src/auth/`, cały `src/cart/` (BFF, przyciski,
   strona koszyka) i cały `src/checkout/` (BFF, strona kasy) oraz strona potwierdzenia mają testy.
