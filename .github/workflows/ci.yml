@@ -152,9 +152,46 @@ jobs:
       - name: Tests
         if: env.FULL_CI == 'true'
         run: |
-          make -C apps/api test RUN="$CI_RUN"
+          make -C apps/api test RUN="$CI_RUN" PHPUNIT_ARGS="--log-junit var/junit.xml"
           make -C apps/store test RUN="$CI_RUN"
           make -C apps/admin test RUN="$CI_RUN"
+
+      # TEMPORARY measurement: the slowest api tests, classes and directories from the JUnit report.
+      - name: Slowest api tests
+        if: ${{ always() && env.FULL_CI == 'true' }}
+        run: |
+          python3 - apps/api/var/junit.xml <<'EOF'
+          import collections, sys, xml.etree.ElementTree as ET
+          cases = [c for c in ET.parse(sys.argv[1]).iter('testcase')]
+          total = sum(float(c.get('time', 0)) for c in cases)
+          print(f'{len(cases)} test cases, {total:.1f} s in total')
+          by_class, by_dir = collections.Counter(), collections.Counter()
+          count_class, count_dir = collections.Counter(), collections.Counter()
+          for c in cases:
+              t = float(c.get('time', 0))
+              cls = c.get('class') or c.get('classname') or '?'
+              path = (c.get('file') or '').replace('/app/tests/', '').split('/')
+              d = '/'.join(path[:2]) if len(path) > 2 else '?'
+              by_class[cls] += t; count_class[cls] += 1
+              by_dir[d] += t; count_dir[d] += 1
+          print('\n== Directories')
+          for d, t in by_dir.most_common():
+              print(f'{t:8.1f} s {100 * t / total:5.1f}% {count_dir[d]:5d}  {d}')
+          print('\n== Top 40 classes')
+          for cls, t in by_class.most_common(40):
+              print(f'{t:8.1f} s {100 * t / total:5.1f}% {count_class[cls]:5d}  {cls}')
+          print('\n== Top 40 test cases')
+          for c in sorted(cases, key=lambda c: -float(c.get('time', 0)))[:40]:
+              print(f"{float(c.get('time', 0)):8.2f} s  {c.get('class')}::{c.get('name')}")
+          EOF
+
+      - name: Upload the api JUnit report
+        if: ${{ always() && env.FULL_CI == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: api-junit
+          path: apps/api/var/junit.xml
+          if-no-files-found: warn
 
       # The committed OpenAPI files and generated clients must equal a fresh export and generation
       # (no services needed, so --no-deps works).
