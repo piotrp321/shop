@@ -6,3 +6,8 @@ export function catalogHref({ category, page }: { category?: string; page?: numb
   const search = query.toString();
   return search ? `/?${search}` : "/";
 }
+
+/** Category page URL for the slug path from the API (`bieganie/buty`); later pages add `?page=n`. */
+export function categoryHref(path: string, page?: number): string {
+  return page && page > 1 ? `/c/${path}?page=${page}` : `/c/${path}`;
+}

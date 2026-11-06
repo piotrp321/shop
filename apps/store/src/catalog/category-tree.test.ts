@@ -7,7 +7,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": status === 200 ? "application/json" : "application/problem+json" } });
 
 function stubFetch(handler: () => Response | Promise<Response>) {
-  const fetchMock = vi.fn(async (_input: Request | string | URL, _init?: RequestInit) => handler());
+  const fetchMock = vi.fn<(input: Request | string | URL, init?: RequestInit) => Promise<Response>>(async () => handler());
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
