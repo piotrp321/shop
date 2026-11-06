@@ -33,6 +33,11 @@ final class DemoCatalogLoaderTest extends TestCase
         self::assertSame([...$categories, ...$products], $bus->dispatched);
         self::assertNull($categories[0]->parentId);
         self::assertSame($categories[0]->id, $categories[1]->parentId);
+        // Every category is created with the slug of its node in the definition.
+        self::assertSame(
+            ['bieganie', 'buty', 'szosowe', 'turystyka', 'plecaki'],
+            array_map(static fn (CreateCategory $category): string => $category->slug, $categories),
+        );
         // Two distinct files (sample.jpg, sample.png) are used by 7 products; each is stored once.
         self::assertCount(2, $storage->stored);
         $keys = array_column(array_merge(...array_map(static fn (CreateProduct $p): array => $p->images, $products)), 'key');

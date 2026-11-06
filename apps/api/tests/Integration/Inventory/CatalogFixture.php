@@ -23,7 +23,7 @@ final class CatalogFixture
         $categoryId = (string) Uuid::v7();
         $productId = (string) Uuid::v7();
         $variantId = (string) Uuid::v7();
-        $connection->executeStatement('INSERT INTO catalog_category (id, name, path, parent_id) VALUES (?, ?, ?, NULL)', [$categoryId, 'Concurrency', '/'.$categoryId.'/']);
+        $connection->executeStatement('INSERT INTO catalog_category (id, name, slug, path, parent_id) VALUES (?, ?, ?, ?, NULL)', [$categoryId, 'Concurrency', $categoryId, '/'.$categoryId.'/']);
         $connection->executeStatement(
             "INSERT INTO catalog_product (id, slug, name, short_description, tax_class, images, variant_axes, primary_category_id, version) VALUES (?, ?, 'Concurrency', '', 'standard', '[]', '[]', ?, 1)",
             [$productId, 'concurrency-'.$productId, $categoryId],

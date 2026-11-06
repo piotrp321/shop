@@ -7,10 +7,12 @@ namespace App\Tests\Factory;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
+use App\Catalog\Domain\Category\CategorySlug;
 use Zenstruck\Foundry\ObjectFactory;
 
 /**
  * Builds Category aggregates through their domain factory methods; tests persist them through the repository.
+ * The slug defaults to the id (in the slug format and unique), so categories built without one never collide.
  *
  * @extends ObjectFactory<Category>
  */
@@ -29,6 +31,7 @@ final class CategoryFactory extends ObjectFactory
         return [
             'id' => self::faker()->uuid(),
             'name' => self::faker()->words(2, true),
+            'slug' => null,
             'parent' => null,
         ];
     }
@@ -43,11 +46,12 @@ final class CategoryFactory extends ObjectFactory
      */
     private static function instantiate(array $attributes): Category
     {
-        ['id' => $id, 'name' => $name, 'parent' => $parent] = $attributes;
-        \assert(\is_string($id) && \is_string($name) && (null === $parent || $parent instanceof Category));
+        ['id' => $id, 'name' => $name, 'slug' => $slug, 'parent' => $parent] = $attributes;
+        \assert(\is_string($id) && \is_string($name) && (null === $slug || \is_string($slug)) && (null === $parent || $parent instanceof Category));
+        $slug = new CategorySlug($slug ?? strtolower($id));
 
         return null === $parent
-            ? Category::createRoot(CategoryId::fromString($id), new CategoryName($name))
-            : Category::createChild(CategoryId::fromString($id), new CategoryName($name), $parent);
+            ? Category::createRoot(CategoryId::fromString($id), new CategoryName($name), $slug)
+            : Category::createChild(CategoryId::fromString($id), new CategoryName($name), $slug, $parent);
     }
 }

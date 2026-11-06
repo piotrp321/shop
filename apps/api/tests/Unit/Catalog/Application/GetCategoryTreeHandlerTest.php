@@ -10,6 +10,7 @@ use App\Catalog\Application\Query\GetCategoryTreeHandler;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
+use App\Catalog\Domain\Category\CategorySlug;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use PHPUnit\Framework\TestCase;
 
@@ -48,9 +49,9 @@ final class GetCategoryTreeHandlerTest extends TestCase
 
     public function testBuildsTreeRegardlessOfRepositoryOrder(): void
     {
-        $sport = Category::createRoot(CategoryId::fromString('00000000-0000-4000-8000-000000000001'), new CategoryName('Sport'));
-        $running = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000002'), new CategoryName('Bieganie'), $sport);
-        $shoes = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000003'), new CategoryName('Buty'), $running);
+        $sport = Category::createRoot(CategoryId::fromString('00000000-0000-4000-8000-000000000001'), new CategoryName('Sport'), new CategorySlug('sport'));
+        $running = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000002'), new CategoryName('Bieganie'), new CategorySlug('bieganie'), $sport);
+        $shoes = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000003'), new CategoryName('Buty'), new CategorySlug('buty'), $running);
         foreach ([$shoes, $running, $sport] as $category) {
             $this->categories->save($category);
         }
@@ -114,7 +115,7 @@ final class GetCategoryTreeHandlerTest extends TestCase
 
     private function root(string $id, string $name): Category
     {
-        $category = Category::createRoot(CategoryId::fromString($id), new CategoryName($name));
+        $category = Category::createRoot(CategoryId::fromString($id), new CategoryName($name), new CategorySlug($id));
         $this->categories->save($category);
 
         return $category;
@@ -122,7 +123,7 @@ final class GetCategoryTreeHandlerTest extends TestCase
 
     private function child(string $id, string $name, Category $parent): Category
     {
-        $category = Category::createChild(CategoryId::fromString($id), new CategoryName($name), $parent);
+        $category = Category::createChild(CategoryId::fromString($id), new CategoryName($name), new CategorySlug($id), $parent);
         $this->categories->save($category);
 
         return $category;
