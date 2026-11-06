@@ -75,15 +75,18 @@ jobs:
         if: env.FULL_CI == 'true'
 
       # Standard-library scripts of the Claude Code skills (/delivery state, /planner manifest, /ao-run events) and the AO hooks.
-      - name: Skill and CI script tests
+      # They run in the background next to the steps below; `Wait for the script tests` at the end reports them.
+      - name: Skill and CI script tests in the background
         if: env.FULL_CI == 'true'
-        run: |
-          sh .github/scripts/test_background.sh
-          python3 -m unittest discover -s .ao -p 'test_*.py'
-          python3 -m unittest discover -s .claude/skills/delivery -p 'test_*.py'
-          python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'
-          python3 -m unittest discover -s .claude/skills/integration -p 'test_*.py'
-          python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'
+        run: >-
+          sh .github/scripts/background.sh start script-tests sh -c
+          'set -e;
+          sh .github/scripts/test_background.sh;
+          python3 -m unittest discover -s .ao -p "test_*.py";
+          python3 -m unittest discover -s .claude/skills/delivery -p "test_*.py";
+          python3 -m unittest discover -s .claude/skills/planner -p "test_*.py";
+          python3 -m unittest discover -s .claude/skills/integration -p "test_*.py";
+          python3 -m unittest discover -s .claude/skills/ao-run -p "test_*.py"'
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: env.FULL_CI == 'true'
@@ -100,7 +103,8 @@ jobs:
       # the store integration tests (sessions, refresh lock) need Redis too. Mailpit also receives the order
       # confirmation emails of the api mailer tests (MAILER_DSN and MAILER_FROM come from the api service of
       # docker-compose.yml, which `docker compose run` applies).
-      # They start in the background while the images are built and `make check` runs; the tests wait for them.
+      # They start in the background (pulling their images first) while the app images are built; the tests wait
+      # for them.
       - name: Start PostgreSQL, Redis, Garage, imgproxy, RabbitMQ, Elasticsearch, Keycloak and Mailpit in the background
         if: env.FULL_CI == 'true'
         run: >-
@@ -145,9 +149,10 @@ jobs:
         if: env.FULL_CI == 'true'
         run: $CI_RUN api true
 
-      - name: make check
+      # Static analysis needs no services: it runs in the background next to the tests.
+      - name: make check in the background
         if: env.FULL_CI == 'true'
-        run: make check RUN="$CI_RUN"
+        run: sh .github/scripts/background.sh start check make check RUN="$CI_RUN"
 
       - name: Wait for the services
         if: env.FULL_CI == 'true'
@@ -170,6 +175,10 @@ jobs:
           echo "::endgroup::"
           exit "$status"
 
+      - name: Wait for make check
+        if: env.FULL_CI == 'true'
+        run: sh .github/scripts/background.sh wait check
+
       # The committed OpenAPI files and generated clients must equal a fresh export and generation
       # (no services needed, so --no-deps works).
       - name: Contract freshness
@@ -178,6 +187,10 @@ jobs:
           make -C apps/api openapi RUN="$CI_RUN"
           make api-client RUN="$CI_RUN"
           git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json apps/store/src/api/schema.d.ts apps/admin/src/api/schema.d.ts
+
+      - name: Wait for the script tests
+        if: env.FULL_CI == 'true'
+        run: sh .github/scripts/background.sh wait script-tests
 
   # End-to-end tests on the full stack: Playwright drives the store and the panel in a browser.
   e2e:
@@ -201,6 +214,14 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: env.FULL_CI == 'true'
+
+      # The service images are pulled in the background while the application images are built; the stack starts once
+      # the pull is done (compose needs .env.local to read its configuration).
+      - name: Pull the service images in the background
+        if: env.FULL_CI == 'true'
+        run: |
+          sh infra/scripts/init-env.sh
+          sh .github/scripts/background.sh start pull docker compose pull --quiet --ignore-buildable
 
       # The application images come from the GitHub Actions cache that the `checks` job writes (same contexts,
       # targets and scopes), so this job only reads it. `make up` then finds the images and builds only garage-init.
@@ -247,7 +268,9 @@ jobs:
       # the e2e image is built and the tests are type-checked.
       - name: Start the stack in the background
         if: env.FULL_CI == 'true'
-        run: sh .github/scripts/background.sh start stack make up RUN="docker compose exec -T"
+        run: >-
+          sh .github/scripts/background.sh start stack sh -c
+          'sh .github/scripts/background.sh wait pull && make up RUN="docker compose exec -T"'
 
       # Only this job builds the Playwright image, so it also writes its cache.
       - name: Build e2e image
