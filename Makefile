@@ -56,17 +56,20 @@ varnish-test:
 
 # Extra `docker compose run` flags for the e2e targets; CI passes -T (no terminal).
 E2E_FLAGS ?=
+# `--build` keeps the e2e image in step with e2e/package-lock.json (cached when nothing changed). CI builds the image
+# with the GitHub Actions cache before and passes E2E_BUILD= to use it as it is.
+E2E_BUILD ?= --build
 
-# Playwright tests against the running stack (`make up` and `make seed` first). `--build` keeps the image in step
-# with e2e/package-lock.json (cached when nothing changed); a failing test or an unreachable service fails the target.
+# Playwright tests against the running stack (`make up` and `make seed` first). A failing test or an unreachable service
+# fails the target.
 e2e:
 	mkdir -p e2e/test-results
-	docker compose --profile e2e run --rm --build $(E2E_FLAGS) e2e
+	docker compose --profile e2e run --rm $(E2E_BUILD) $(E2E_FLAGS) e2e
 
 # Type-checks the e2e package. Needs no running services, only the e2e image (not part of `check`, which would pull
 # the Playwright image for every developer; CI runs it in the e2e job).
 e2e-check:
-	docker compose --profile e2e run --rm --build --no-deps $(E2E_FLAGS) --entrypoint npx e2e tsc --noEmit
+	docker compose --profile e2e run --rm $(E2E_BUILD) --no-deps $(E2E_FLAGS) --entrypoint npx e2e tsc --noEmit
 
 # Playwright scripts written by an agent, outside the repo (see docs/features/agent-tester-ux/spec.md). AGENT_DIR is the
 # absolute path of an existing directory: scripts are read from $(AGENT_DIR)/tests, results go to $(AGENT_DIR)/results.
@@ -78,7 +81,7 @@ e2e-agent:
 	esac; \
 	if [ ! -d "$(AGENT_DIR)" ]; then echo "e2e-agent: AGENT_DIR '$(AGENT_DIR)' is not an existing directory" >&2; exit 2; fi
 	mkdir -p "$(AGENT_DIR)/results"
-	docker compose --profile e2e run --rm --build $(E2E_FLAGS) -v "$(AGENT_DIR):/app/agent" e2e --config playwright.agent.config.ts $(E2E_ARGS)
+	docker compose --profile e2e run --rm $(E2E_BUILD) $(E2E_FLAGS) -v "$(AGENT_DIR):/app/agent" e2e --config playwright.agent.config.ts $(E2E_ARGS)
 
 # Generates the TypeScript API client types of the store and of the admin panel from the committed OpenAPI files.
 api-client:
