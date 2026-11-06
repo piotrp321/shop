@@ -9,17 +9,20 @@ type CategoryNode = components["schemas"]["CategoryNode"];
 
 const linkClass = "block rounded-md px-2 py-1 text-sm hover:bg-muted";
 
-/** The category and its descendants as nested lists of links (levels 2 and 3 below a department). */
-function Branch({ category, onNavigate }: { category: CategoryNode; onNavigate: () => void }) {
+// The menu shows the department (level 1) and levels 2 and 3; deeper categories are reached from the category page.
+const LAST_LEVEL = 3;
+
+/** The category (at `level`, a department is 1) and its descendants down to the last level as nested lists of links. */
+function Branch({ category, level, onNavigate }: { category: CategoryNode; level: number; onNavigate: () => void }) {
   return (
     <li>
       <Link href={categoryHref(category.path)} onClick={onNavigate} className={linkClass}>
         {category.name}
       </Link>
-      {category.children.length > 0 && (
+      {level < LAST_LEVEL && category.children.length > 0 && (
         <ul className="ml-3 border-l border-border pl-2">
           {category.children.map((child) => (
-            <Branch key={child.id} category={child} onNavigate={onNavigate} />
+            <Branch key={child.id} category={child} level={level + 1} onNavigate={onNavigate} />
           ))}
         </ul>
       )}
@@ -124,7 +127,7 @@ export function MegaMenu({ categories }: { categories: CategoryNode[] }) {
                   </Link>
                   <ul className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                     {department.children.map((category) => (
-                      <Branch key={category.id} category={category} onNavigate={closeAll} />
+                      <Branch key={category.id} category={category} level={2} onNavigate={closeAll} />
                     ))}
                   </ul>
                 </div>
@@ -149,7 +152,7 @@ export function MegaMenu({ categories }: { categories: CategoryNode[] }) {
         </button>
         <ul id={`${id}-list`} hidden={!menuOpen} className="mt-2 flex flex-col gap-0.5">
           {categories.map((department) => (
-            <Branch key={department.id} category={department} onNavigate={closeAll} />
+            <Branch key={department.id} category={department} level={1} onNavigate={closeAll} />
           ))}
         </ul>
       </div>

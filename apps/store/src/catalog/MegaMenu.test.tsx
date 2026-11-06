@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
-import { TREE } from "./fixtures";
+import { TREE, node } from "./fixtures";
 import { MegaMenu } from "./MegaMenu";
 
 afterEach(cleanup);
@@ -28,6 +28,14 @@ describe("MegaMenu", () => {
     );
     expect(html).toContain("Trailowe");
     expect(html).toContain("Kaski");
+  });
+
+  it("stops at level 3: deeper categories are reached through the subcategories on the category page", () => {
+    const deep = [node("turystyka", "Turystyka", [node("biwak", "Biwak", [node("spanie", "Spanie", [node("maty", "Maty")])])])];
+    const html = renderToStaticMarkup(<MegaMenu categories={deep} />);
+    expect(hrefs(html)).toContain("/c/turystyka/biwak/spanie");
+    expect(hrefs(html)).not.toContain("/c/turystyka/biwak/spanie/maty");
+    expect(html).not.toContain("Maty");
   });
 
   it("uses real buttons, so Enter and Space (the keyboard click of a button) open a department", () => {
