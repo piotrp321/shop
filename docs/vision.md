@@ -28,6 +28,8 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
 
 - **PostgreSQL** – źródło prawdy dla wszystkich contextów.
 - **Elasticsearch** – wyszukiwanie i filtrowanie produktów w sklepie. Tylko model odczytu, odbudowywany z Postgresa.
+  Analizę tekstu polskiego (stemming) robi oficjalna wtyczka `analysis-stempel`, dlatego usługa działa na własnym
+  obrazie (`infra/elasticsearch/Dockerfile`: obraz Elasticsearch z zainstalowaną wtyczką).
 - **Redis** – cache (odczyty katalogu), limity dla rate limitera.
 - **RabbitMQ** – komunikaty asynchroniczne przez Symfony Messenger: zdarzenia domenowe między contextami,
   indeksowanie w ES, e-maile, rewalidacja stron sklepu.
@@ -305,7 +307,8 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
   a jego rekordy służą tylko za definicję schematu (uzasadnienie w `apps/api/CLAUDE.md`).
 - Osobne value objecty w każdym contexcie zamiast wspólnej klasy bazowej.
 - Transactional outbox dla zdarzeń domenowych.
-- Elasticsearch wyłącznie jako model odczytu.
+- Elasticsearch wyłącznie jako model odczytu, z polską analizą tekstu przez wtyczkę `analysis-stempel` (własny obraz
+  zamiast gotowego z rejestru).
 - ISR z rewalidacją na żądanie zamiast SSR przy każdym żądaniu dla stron katalogu.
 - Varnish z tagami (xkey) tylko przed publicznymi odczytami API; trzy warstwy cache i ich unieważnianie.
 - Model mieszany: optimistic locking i klucze idempotencji dla edycji z widoku i operacji powtarzanych przez klienta,
