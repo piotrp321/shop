@@ -92,13 +92,17 @@ final class ProductOffersEndpointTest extends WebTestCase
         self::assertStringNotContainsString('7357', (string) $this->client->getResponse()->getContent());
     }
 
-    public function testResponseIsPubliclyCachedForSixtySeconds(): void
+    /**
+     * A shared cache (Varnish) keeps it for an hour: a change of a price or a level purges the product's tag. The
+     * browser keeps it for 60 seconds.
+     */
+    public function testResponseIsPubliclyCachedForAnHourInASharedCache(): void
     {
         [$id] = $this->product([], [[[], 1000, 2300, 5]]);
 
         $this->get([$id]);
 
-        self::assertSame('max-age=60, public', $this->client->getResponse()->headers->get('Cache-Control'));
+        self::assertSame('max-age=60, public, s-maxage=3600', $this->client->getResponse()->headers->get('Cache-Control'));
     }
 
     public function testResponseIsTaggedWithTheCatalogAndEveryRequestedProduct(): void
@@ -115,7 +119,7 @@ final class ProductOffersEndpointTest extends WebTestCase
             'catalog product-'.strtolower($kayak).' product-'.strtolower($unknown).' product-'.strtolower($priced),
             $this->client->getResponse()->headers->get('xkey'),
         );
-        self::assertSame('max-age=60, public', $this->client->getResponse()->headers->get('Cache-Control'));
+        self::assertSame('max-age=60, public, s-maxage=3600', $this->client->getResponse()->headers->get('Cache-Control'));
     }
 
     public function testEveryRequestedIdHasOneOfferInTheOrderOfTheRequest(): void
