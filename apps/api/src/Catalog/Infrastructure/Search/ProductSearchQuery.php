@@ -16,10 +16,11 @@ final readonly class ProductSearchQuery
 {
     public const int MAX_AXES = 10;
     public const int MAX_VALUES_PER_AXIS = 30;
-    /** The most axis values read for all unselected axes together, before they are grouped by axis. */
-    public const int MAX_FREE_VALUES = 400;
 
     private const string VARIANTS = 'variants';
+    private const string PAIRS = 'variants.pairs';
+    /** The buckets of a facet: most products first (the reverse_nested count, not the nested documents), then by name. */
+    private const array BY_PRODUCTS = [['product' => 'desc'], ['_key' => 'asc']];
 
     /**
      * @return array<string, mixed>
@@ -126,39 +127,50 @@ final readonly class ProductSearchQuery
             self::conditions($criteria, withPrice: false, forceAvailable: true),
             ['min' => ['min' => ['field' => 'variants.gross']], 'max' => ['max' => ['field' => 'variants.gross']]],
         );
-        // The axes the products have, whatever the variant conditions; the values below decide which of them show.
-        $aggregations['axes'] = [
-            'nested' => ['path' => self::VARIANTS],
-            'aggs' => ['axes' => [
-                'terms' => ['field' => 'variants.axes', 'size' => self::MAX_AXES, 'order' => [['product' => 'desc'], ['_key' => 'asc']]],
-                'aggs' => ['product' => ['reverse_nested' => (object) []]],
-            ]],
-        ];
-
         // PHP turns a numeric axis name into an int key.
         $selected = array_map(strval(...), array_keys($criteria->options));
-        $free = [
-            'terms' => ['field' => 'variants.options', 'size' => self::MAX_FREE_VALUES, 'order' => [['product' => 'desc'], ['_key' => 'asc']]],
-            'aggs' => ['product' => ['reverse_nested' => (object) []]],
+        // The unselected axes of the variants that meet every condition, the ten with most products, each with its
+        // thirty values with most products. The selected axes are left out: all of them have `total` products and
+        // their values come from the aggregation of the axis below. The index has one shard, so the sorted terms are
+        // exact; with more shards they would need a shard_size of at least the number of distinct buckets.
+        $axes = [
+            'terms' => ['field' => self::PAIRS.'.axis', 'size' => self::MAX_AXES, 'order' => self::BY_PRODUCTS],
+            'aggs' => [
+                'product' => ['reverse_nested' => (object) []],
+                'values' => [
+                    'terms' => ['field' => self::PAIRS.'.value', 'size' => self::MAX_VALUES_PER_AXIS, 'order' => self::BY_PRODUCTS],
+                    'aggs' => ['product' => ['reverse_nested' => (object) []]],
+                ],
+            ],
         ];
         if ([] !== $selected) {
-            $free['terms']['exclude'] = '('.implode('|', array_map(static fn (string $axis): string => self::axisPrefixRegex($axis), $selected)).')';
+            $axes['terms']['exclude'] = $selected;
         }
-        $aggregations['free'] = self::nestedAggregation(self::conditions($criteria), ['values' => $free]);
+        $aggregations['free'] = self::nestedAggregation(self::conditions($criteria), [
+            'pairs' => ['nested' => ['path' => self::PAIRS], 'aggs' => ['axes' => $axes]],
+        ]);
 
         foreach ($selected as $position => $axis) {
+            // The values of a selected axis are counted without its own condition: the other values stay on offer.
             $aggregations[self::selectedAxisAggregation($position)] = self::nestedAggregation(
                 self::conditions($criteria, exceptAxis: $axis),
-                [
-                    'top' => [
-                        'terms' => ['field' => 'variants.options', 'include' => self::axisPrefixRegex($axis), 'size' => self::MAX_VALUES_PER_AXIS, 'order' => [['product' => 'desc'], ['_key' => 'asc']]],
-                        'aggs' => ['product' => ['reverse_nested' => (object) []]],
-                    ],
-                    'chosen' => [
-                        'terms' => ['field' => 'variants.options', 'include' => array_map(static fn (string $value): string => self::option($axis, $value), $criteria->options[$axis]), 'size' => \count($criteria->options[$axis])],
-                        'aggs' => ['product' => ['reverse_nested' => (object) []]],
-                    ],
-                ],
+                ['pairs' => [
+                    'nested' => ['path' => self::PAIRS],
+                    'aggs' => ['axis' => [
+                        'filter' => ['term' => [self::PAIRS.'.axis' => $axis]],
+                        'aggs' => [
+                            'top' => [
+                                'terms' => ['field' => self::PAIRS.'.value', 'size' => self::MAX_VALUES_PER_AXIS, 'order' => self::BY_PRODUCTS],
+                                'aggs' => ['product' => ['reverse_nested' => (object) []]],
+                            ],
+                            // The selected values, also those cut off by the limit of `top`.
+                            'chosen' => [
+                                'terms' => ['field' => self::PAIRS.'.value', 'include' => $criteria->options[$axis], 'size' => \count($criteria->options[$axis])],
+                                'aggs' => ['product' => ['reverse_nested' => (object) []]],
+                            ],
+                        ],
+                    ]],
+                ]],
             );
         }
 
@@ -241,13 +253,5 @@ final readonly class ProductSearchQuery
     private static function option(string $axis, string $value): string
     {
         return $axis.VariantDocument::OPTION_SEPARATOR.$value;
-    }
-
-    /**
-     * A Lucene regular expression that matches every option of the axis ("<axis>" U+001F anything).
-     */
-    private static function axisPrefixRegex(string $axis): string
-    {
-        return preg_replace('/[.?+*|{}\[\]()"\\\\#@&<>~]/', '\\\\$0', $axis).VariantDocument::OPTION_SEPARATOR.'.*';
     }
 }

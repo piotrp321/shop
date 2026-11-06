@@ -67,8 +67,9 @@ final readonly class ProductIndexDefinition
                 // No price: no field, so a price range never matches the variant.
                 ...(null === $variant->gross ? [] : ['gross' => $variant->gross]),
                 'purchasable' => $variant->purchasable,
-                'axes' => $variant->axes,
                 'options' => $variant->options,
+                // The same pairs as objects, for the facets: they list the axes and values without knowing the names.
+                'pairs' => array_map(self::pair(...), $variant->options),
             ], $document->variants),
             ...(null === $document->fromGross ? [] : ['from_gross' => $document->fromGross]),
         ];
@@ -119,13 +120,28 @@ final readonly class ProductIndexDefinition
     {
         $gross = \is_array($variant) ? ($variant['gross'] ?? null) : null;
         if (!\is_array($variant) || !\is_bool($variant['purchasable'] ?? null)
-            || !self::isStringList($variant['axes'] ?? null) || !self::isStringList($variant['options'] ?? null)
+            || !self::isStringList($variant['options'] ?? null)
             || !(null === $gross || \is_int($gross))
         ) {
             throw new SearchIndexError('A search document does not match the index definition.');
         }
 
-        return new VariantDocument($gross, $variant['purchasable'], $variant['axes'], $variant['options']);
+        return new VariantDocument($gross, $variant['purchasable'], $variant['options']);
+    }
+
+    /**
+     * @return array{axis: string, value: string}
+     *
+     * @throws SearchIndexError when the option has no axis separator
+     */
+    private static function pair(string $option): array
+    {
+        $parts = explode(VariantDocument::OPTION_SEPARATOR, $option, 2);
+        if (2 !== \count($parts)) {
+            throw new SearchIndexError('An option of a variant has no axis separator.');
+        }
+
+        return ['axis' => $parts[0], 'value' => $parts[1]];
     }
 
     /**
@@ -192,9 +208,11 @@ final readonly class ProductIndexDefinition
                         // Absent without a price.
                         'gross' => ['type' => 'long'],
                         'purchasable' => ['type' => 'boolean'],
-                        'axes' => $keyword,
-                        // "<axis>" U+001F "<value>", as in Catalog (case kept).
+                        // "<axis>" U+001F "<value>", as in Catalog (case kept); the variant conditions match here.
                         'options' => $keyword,
+                        // The same pairs as {axis, value}, nested in the variant (not in the product): the facets
+                        // count axes, then values, per variant that meets the conditions.
+                        'pairs' => ['type' => 'nested', 'properties' => ['axis' => $keyword, 'value' => $keyword]],
                     ],
                 ],
                 // The lowest price of the purchasable variants; absent without one.

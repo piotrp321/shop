@@ -12,7 +12,6 @@ use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\SearchFacets;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchResult;
-use App\Catalog\Application\Search\VariantDocument;
 use Elastic\Elasticsearch\Client;
 
 final readonly class ElasticsearchProductSearch implements ProductSearch
@@ -45,13 +44,14 @@ final readonly class ElasticsearchProductSearch implements ProductSearch
             $items[] = ProductIndexDefinition::document(\is_array($hit) ? ($hit['_source'] ?? null) : null);
         }
 
-        return new SearchResult($items, $total, self::facets($criteria, self::map($response['aggregations'] ?? null)));
+        return new SearchResult($items, $total, self::facets($criteria, $total, self::map($response['aggregations'] ?? null)));
     }
 
     /**
+     * @param int                  $total        the products that meet every condition
      * @param array<string, mixed> $aggregations
      */
-    private static function facets(ProductSearchCriteria $criteria, array $aggregations): SearchFacets
+    private static function facets(ProductSearchCriteria $criteria, int $total, array $aggregations): SearchFacets
     {
         $categoryCounts = [];
         if ([] !== $criteria->facetCategoryIds) {
@@ -67,57 +67,56 @@ final readonly class ElasticsearchProductSearch implements ProductSearch
 
         $availableCount = self::int(self::map(self::matching($aggregations['available'] ?? null)['product'] ?? null)['doc_count'] ?? null);
 
-        return new SearchFacets($categoryCounts, self::options($criteria, $aggregations), $priceRange, $availableCount);
+        return new SearchFacets($categoryCounts, self::options($criteria, $total, $aggregations), $priceRange, $availableCount);
     }
 
     /**
+     * The unselected axes come from one aggregation (the ten with most products, each with its values), the selected
+     * ones from an aggregation each (without their own condition). Axes in the order of their products (the selected
+     * ones have all `total` of them), then by name.
+     *
+     * @param int                  $total        the products that meet every condition
      * @param array<string, mixed> $aggregations
      *
      * @return list<OptionFacet>
      */
-    private static function options(ProductSearchCriteria $criteria, array $aggregations): array
+    private static function options(ProductSearchCriteria $criteria, int $total, array $aggregations): array
     {
-        // The axes the products have, most products first, then the selected ones that are not among them.
+        /** @var array<string, array{int, array<string, int>}> $axes axis => products, value => products */
         $axes = [];
-        foreach (self::buckets(self::map($aggregations['axes'] ?? null)['axes'] ?? null) as $bucket) {
-            $axes[] = self::string($bucket['key'] ?? null);
-        }
-
-        /** @var array<string, array<string, int>> $counts axis => value => products */
-        $counts = [];
-        foreach (self::buckets(self::map(self::matching($aggregations['free'] ?? null)['values'] ?? null)) as $bucket) {
-            [$axis, $value] = self::splitOption(self::string($bucket['key'] ?? null));
-            $counts[$axis][$value] = self::int(self::map($bucket['product'] ?? null)['doc_count'] ?? null);
+        $free = self::map(self::map(self::matching($aggregations['free'] ?? null)['pairs'] ?? null)['axes'] ?? null);
+        foreach (self::buckets($free) as $bucket) {
+            $values = [];
+            foreach (self::buckets($bucket['values'] ?? null) as $valueBucket) {
+                $values[self::string($valueBucket['key'] ?? null)] = self::productCount($valueBucket);
+            }
+            $axes[self::string($bucket['key'] ?? null)] = [self::productCount($bucket), $values];
         }
 
         $selectedAxes = array_map(strval(...), array_keys($criteria->options));
         foreach ($selectedAxes as $position => $axis) {
-            $matching = self::matching($aggregations[ProductSearchQuery::selectedAxisAggregation($position)] ?? null);
-            $counts[$axis] = [];
+            $matching = self::map(self::map(self::matching($aggregations[ProductSearchQuery::selectedAxisAggregation($position)] ?? null)['pairs'] ?? null)['axis'] ?? null);
+            $values = [];
             foreach (['top', 'chosen'] as $name) {
                 foreach (self::buckets($matching[$name] ?? null) as $bucket) {
-                    [, $value] = self::splitOption(self::string($bucket['key'] ?? null));
-                    $counts[$axis][$value] = self::int(self::map($bucket['product'] ?? null)['doc_count'] ?? null);
+                    $values[self::string($bucket['key'] ?? null)] = self::productCount($bucket);
                 }
             }
             // A selected value without products stays in the list with 0.
             foreach ($criteria->options[$axis] as $value) {
-                $counts[$axis][$value] ??= 0;
+                $values[$value] ??= 0;
             }
-            if (!\in_array($axis, $axes, true)) {
-                $axes[] = $axis;
-            }
+            $axes[$axis] = [$total, $values];
         }
 
+        $order = array_map(strval(...), array_keys($axes));
+        usort($order, static fn (string $a, string $b): int => $axes[$b][0] <=> $axes[$a][0] ?: strcmp($a, $b));
+
         $facets = [];
-        foreach ($axes as $axis) {
-            $values = $counts[$axis] ?? [];
-            if ([] === $values) {
-                continue;
-            }
+        foreach ($order as $axis) {
             $selected = $criteria->options[$axis] ?? [];
             $list = [];
-            foreach ($values as $value => $count) {
+            foreach ($axes[$axis][1] as $value => $count) {
                 $list[] = new OptionValue((string) $value, $count);
             }
             usort($list, static fn (OptionValue $a, OptionValue $b): int => $b->count <=> $a->count ?: strcmp($a->value, $b->value));
@@ -135,16 +134,11 @@ final readonly class ElasticsearchProductSearch implements ProductSearch
     }
 
     /**
-     * @return array{string, string} axis and value
+     * @param array<string, mixed> $bucket a bucket with a reverse_nested sub-aggregation `product`
      */
-    private static function splitOption(string $option): array
+    private static function productCount(array $bucket): int
     {
-        $parts = explode(VariantDocument::OPTION_SEPARATOR, $option, 2);
-        if (2 !== \count($parts)) {
-            throw new SearchIndexError('An option in the search index has no axis separator.');
-        }
-
-        return [$parts[0], $parts[1]];
+        return self::int(self::map($bucket['product'] ?? null)['doc_count'] ?? null);
     }
 
     /**

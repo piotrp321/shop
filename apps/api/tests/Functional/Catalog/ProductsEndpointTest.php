@@ -428,7 +428,7 @@ final class ProductsEndpointTest extends WebTestCase
     {
         $axes = array_map(strval(...), array_keys($options));
 
-        return new VariantDocument($gross, $purchasable, $axes, array_map(static fn (string $axis, string $value): string => $axis.VariantDocument::OPTION_SEPARATOR.$value, $axes, $options));
+        return new VariantDocument($gross, $purchasable, array_map(static fn (string $axis, string $value): string => $axis.VariantDocument::OPTION_SEPARATOR.$value, $axes, $options));
     }
 
     /**

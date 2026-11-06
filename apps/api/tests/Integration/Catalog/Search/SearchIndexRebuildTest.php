@@ -113,7 +113,7 @@ final class SearchIndexRebuildTest extends KernelTestCase
 
         $source = $this->indexedSource($product->id()->toString());
         self::assertSame(12_900, $source['from_gross']);
-        self::assertSame([['gross' => 12_900, 'purchasable' => true, 'axes' => [], 'options' => []]], $source['variants']);
+        self::assertSame([['gross' => 12_900, 'purchasable' => true, 'options' => [], 'pairs' => []]], $source['variants']);
     }
 
     public function testAFailureOfTheOfferFactsStopsTheRebuildAndKeepsTheAlias(): void

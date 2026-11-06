@@ -7,7 +7,7 @@ namespace App\Catalog\Application\Search;
 /**
  * A variant as stored in the search index. `options` pairs each axis with the variant's value as
  * "<axis>" U+001F "<value>", exactly as in Catalog (case kept); the default variant of a product without axes has
- * neither axes nor options.
+ * no options.
  */
 final readonly class VariantDocument
 {
@@ -15,13 +15,11 @@ final readonly class VariantDocument
 
     /**
      * @param int|null     $gross   the current gross price in grosze, null without one
-     * @param list<string> $axes    the names of the product's axes, in order
-     * @param list<string> $options "<axis>" U+001F "<value>" for each axis, in the order of the axes
+     * @param list<string> $options "<axis>" U+001F "<value>" for each axis, in the order of the product's axes
      */
     public function __construct(
         public ?int $gross,
         public bool $purchasable,
-        public array $axes,
         public array $options,
     ) {
     }

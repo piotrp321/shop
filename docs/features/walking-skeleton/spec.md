@@ -397,9 +397,9 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   produktu i wszystkich ich przodków), `main_category_id`, `category_ids` (keyword, wszystkie kategorie produktu,
   główna pierwsza), `category_ancestor_ids` (keyword, suma kategorii produktu i wszystkich ich przodków, bez
   powtórzeń), `main_image` (obiekt z `enabled: false`: `key`, `alt`), `variants` (`nested`, obiekt na wariant
-  w kolejności Catalog: `gross` long, brak przy braku ceny; `purchasable` boolean; `axes` keyword, nazwy osi produktu;
-  `options` keyword, pary `<oś>` U+001F `<wartość>` dokładnie jak w Catalog; wariant domyślny bez osi ma puste `axes`
-  i `options`), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia).
+  w kolejności Catalog: `gross` long, brak przy braku ceny; `purchasable` boolean;
+  `options` keyword, pary `<oś>` U+001F `<wartość>` dokładnie jak w Catalog; `pairs` nested w wariancie, obiekt
+  `{axis, value}` (keyword) na parę; wariant domyślny bez osi ma puste `options` i `pairs`), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia).
   `nested` sprawia, że warunki na osie, cenę i dostępność dotyczą jednego wariantu. `gross`, `purchasable`
   i `from_gross` pochodzą z oferty Cart (port `ProductOfferFacts`, opis w `docs/features/search/spec.md`).
 

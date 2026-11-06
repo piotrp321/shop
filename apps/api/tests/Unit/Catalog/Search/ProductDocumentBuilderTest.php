@@ -102,9 +102,9 @@ final class ProductDocumentBuilderTest extends TestCase
         ]));
 
         self::assertEquals([
-            new VariantDocument(19_900, true, ['Kolor', 'Rozmiar'], ["Kolor\u{1F}czarne", "Rozmiar\u{1F}42"]),
-            new VariantDocument(21_900, false, ['Kolor', 'Rozmiar'], ["Kolor\u{1F}czarne", "Rozmiar\u{1F}43"]),
-            new VariantDocument(null, false, ['Kolor', 'Rozmiar'], ["Kolor\u{1F}Białe", "Rozmiar\u{1F}42"]),
+            new VariantDocument(19_900, true, ["Kolor\u{1F}czarne", "Rozmiar\u{1F}42"]),
+            new VariantDocument(21_900, false, ["Kolor\u{1F}czarne", "Rozmiar\u{1F}43"]),
+            new VariantDocument(null, false, ["Kolor\u{1F}Białe", "Rozmiar\u{1F}42"]),
         ], $document->variants);
         self::assertSame(19_900, $document->fromGross);
     }
@@ -126,7 +126,7 @@ final class ProductDocumentBuilderTest extends TestCase
             new ProductFacts(4_900, [self::BLACK_42 => new VariantFacts(4_900, true)]),
         );
 
-        self::assertEquals([new VariantDocument(4_900, true, [], [])], $document->variants);
+        self::assertEquals([new VariantDocument(4_900, true, [])], $document->variants);
         self::assertSame(4_900, $document->fromGross);
     }
 
@@ -151,8 +151,8 @@ final class ProductDocumentBuilderTest extends TestCase
         ]));
 
         self::assertCount(3, $document->variants);
-        self::assertEquals(new VariantDocument(null, false, ['Kolor', 'Rozmiar'], ["Kolor\u{1F}czarne", "Rozmiar\u{1F}43"]), $document->variants[1]);
-        self::assertEquals(new VariantDocument(null, false, ['Kolor', 'Rozmiar'], ["Kolor\u{1F}Białe", "Rozmiar\u{1F}42"]), $document->variants[2]);
+        self::assertEquals(new VariantDocument(null, false, ["Kolor\u{1F}czarne", "Rozmiar\u{1F}43"]), $document->variants[1]);
+        self::assertEquals(new VariantDocument(null, false, ["Kolor\u{1F}Białe", "Rozmiar\u{1F}42"]), $document->variants[2]);
     }
 
     private function build(ProductSearchSnapshot $snapshot, ?ProductFacts $facts = null): \App\Catalog\Application\Search\ProductDocument

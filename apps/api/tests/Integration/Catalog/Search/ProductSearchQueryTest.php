@@ -604,7 +604,6 @@ final class ProductSearchQueryTest extends TestCase
         return new VariantDocument(
             $gross,
             $purchasable,
-            $axes,
             array_map(static fn (string $axis, string $value): string => $axis.VariantDocument::OPTION_SEPARATOR.$value, $axes, $options),
         );
     }
