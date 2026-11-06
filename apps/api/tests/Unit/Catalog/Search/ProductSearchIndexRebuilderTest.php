@@ -265,6 +265,9 @@ final class ProductSearchIndexRebuilderTest extends TestCase
                 [],
                 [[$category]],
                 null,
+                [],
+                [],
+                [],
             );
         }
 

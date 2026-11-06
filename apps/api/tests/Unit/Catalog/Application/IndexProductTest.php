@@ -111,6 +111,6 @@ final class IndexProductTest extends TestCase
 
     private static function snapshot(string $id, int $version): ProductSearchSnapshot
     {
-        return new ProductSearchSnapshot($id, $version, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::MAIN_ID, [], [[self::MAIN_ID]], null);
+        return new ProductSearchSnapshot($id, $version, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::MAIN_ID, [], [[self::MAIN_ID]], null, [], [], []);
     }
 }

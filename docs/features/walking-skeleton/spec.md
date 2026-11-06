@@ -376,11 +376,20 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 - `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy i repliki pochodzą z parametrów
   (domyślnie 1 i 0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
   shardów i replik), z którym porównujemy indeks przy `setup` i przed przepięciem.
-- Mapping ma `dynamic: strict`. Pola: `id` (keyword), `version` (long), `name` (text oraz `name.sort` typu
-  keyword z normalizerem lowercase + asciifolding), `slug` (keyword), `short_description` (text, `index: false`),
-  `main_category_id`, `category_ids` (keyword, wszystkie kategorie produktu, główna pierwsza),
-  `category_ancestor_ids` (keyword, suma kategorii produktu i wszystkich ich przodków, bez powtórzeń),
-  `main_image` (obiekt z `enabled: false`: `key`, `alt`).
+- Analiza: `polish_text` (tokenizer standardowy, `lowercase`, `polish_stem` z wtyczki `analysis-stempel`,
+  `asciifolding`: „kurtki” i „kurtka” dają ten sam token) i `folded_text` (tokenizer standardowy, `lowercase`,
+  `asciifolding`, bez stemmera: „Śpiwór” daje „spiwor”).
+- Mapping ma `dynamic: strict`. Pola: `id` (keyword), `version` (long), `name` (text z `polish_text`, podpola
+  `name.sort` typu keyword z normalizerem lowercase + asciifolding i `name.folded` z `folded_text`), `slug` (keyword),
+  `short_description` i `category_names` (text z `polish_text` i podpolem `folded`; `category_names` to nazwy kategorii
+  produktu i wszystkich ich przodków), `main_category_id`, `category_ids` (keyword, wszystkie kategorie produktu,
+  główna pierwsza), `category_ancestor_ids` (keyword, suma kategorii produktu i wszystkich ich przodków, bez
+  powtórzeń), `main_image` (obiekt z `enabled: false`: `key`, `alt`), `variants` (`nested`, obiekt na wariant
+  w kolejności Catalog: `gross` long, brak przy braku ceny; `purchasable` boolean; `axes` keyword, nazwy osi produktu;
+  `options` keyword, pary `<oś>` U+001F `<wartość>` dokładnie jak w Catalog; wariant domyślny bez osi ma puste `axes`
+  i `options`), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia).
+  `nested` sprawia, że warunki na osie, cenę i dostępność dotyczą jednego wariantu. `gross`, `purchasable`
+  i `from_gross` pochodzą z oferty Cart (port `ProductOfferFacts`, opis w `docs/features/search/spec.md`).
 
 **Zapis**
 - Każdy zapis ma `version` dokumentu równe wersji produktu i `version_type=external`. Elasticsearch odrzuca zapis

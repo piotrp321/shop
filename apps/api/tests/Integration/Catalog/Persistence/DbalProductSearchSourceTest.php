@@ -141,6 +141,56 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         self::assertSame(['key' => $firstImage->key()->toString(), 'alt' => 'front'], $snapshot->mainImage);
     }
 
+    public function testSnapshotCarriesTheVariantsWithTheirValuesAndTheCategoryNames(): void
+    {
+        $sport = $this->savedCategory(name: 'Sport');
+        $shoes = $this->savedCategory($sport, 'Buty');
+        $running = $this->savedCategory($shoes, 'Biegowe');
+        $clothes = $this->savedCategory($sport, 'Odzież');
+        $sale = $this->savedCategory(name: 'Wyprzedaż');
+        $this->savedCategory($sport, 'Rowery');
+        $product = ProductFactory::createOne([
+            'mainCategory' => $running,
+            'additionalCategories' => [$clothes, $sale],
+            'variantAxes' => ['Kolor', 'Rozmiar'],
+            'variants' => [
+                ['id' => '10000000-0000-4000-8000-000000000002', 'values' => ['czarne', '42']],
+                ['id' => '10000000-0000-4000-8000-000000000001', 'values' => ['Białe', '43']],
+            ],
+        ]);
+        $this->products->save($product);
+
+        $snapshot = $this->source->page(null, 10)[0];
+
+        self::assertSame(['Kolor', 'Rozmiar'], $snapshot->variantAxes);
+        // In the order of the variants of the product, not of their ids.
+        self::assertSame([
+            ['id' => '10000000-0000-4000-8000-000000000002', 'values' => ['czarne', '42']],
+            ['id' => '10000000-0000-4000-8000-000000000001', 'values' => ['Białe', '43']],
+        ], $snapshot->variants);
+        // Every category of the product and every ancestor once; a sibling that is neither is not there.
+        $names = $snapshot->categoryNames;
+        sort($names);
+        self::assertSame(['Biegowe', 'Buty', 'Odzież', 'Sport', 'Wyprzedaż'], $names);
+        self::assertEquals($snapshot, $this->source->find($product->id()->toString()));
+    }
+
+    public function testTheDefaultVariantHasNoAxesAndNoValues(): void
+    {
+        $product = ProductFactory::createOne([
+            'mainCategory' => $this->savedCategory(name: 'Kosmetyki'),
+            'variants' => [['id' => '10000000-0000-4000-8000-000000000001', 'values' => []]],
+        ]);
+        $this->products->save($product);
+
+        $snapshot = $this->source->find($product->id()->toString());
+
+        self::assertNotNull($snapshot);
+        self::assertSame([], $snapshot->variantAxes);
+        self::assertSame([['id' => '10000000-0000-4000-8000-000000000001', 'values' => []]], $snapshot->variants);
+        self::assertSame(['Kosmetyki'], $snapshot->categoryNames);
+    }
+
     public function testProductWithoutImagesHasNoMainImage(): void
     {
         $this->products->save(ProductFactory::createOne(['mainCategory' => $this->savedCategory()]));
@@ -426,9 +476,9 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         return $id;
     }
 
-    private function savedCategory(?Category $parent = null): Category
+    private function savedCategory(?Category $parent = null, ?string $name = null): Category
     {
-        $category = CategoryFactory::createOne(['parent' => $parent]);
+        $category = CategoryFactory::createOne(['parent' => $parent, ...(null === $name ? [] : ['name' => $name])]);
         $this->categories->save($category);
 
         return $category;

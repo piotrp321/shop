@@ -33,15 +33,21 @@ final class ProductIndexerTest extends TestCase
         self::assertSame('Second', $source['name']);
     }
 
-    public function testSameVersionTwiceIsStaleWithoutAnError(): void
+    public function testTheSameVersionAgainIsWritten(): void
     {
+        // Two handlings that took the same timestamp read the same or newer data; the later write wins.
         $this->maintenance()->setup();
 
-        self::assertSame(IndexOutcome::Indexed, $this->indexer()->index(self::document(self::ID, 3)));
-        self::assertSame(IndexOutcome::Stale, $this->indexer()->index(self::document(self::ID, 3)));
+        self::assertSame(IndexOutcome::Indexed, $this->indexer()->index(self::document(self::ID, 3, 'First')));
+        self::assertSame(IndexOutcome::Indexed, $this->indexer()->index(self::document(self::ID, 3, 'Second')));
 
         $this->refresh();
         self::assertSame(1, $this->indexer()->countDocuments());
+        $stored = self::esClient()->get(['index' => $this->alias(), 'id' => self::ID]);
+        \assert($stored instanceof Elasticsearch);
+        $source = $stored['_source'];
+        \assert(\is_array($source));
+        self::assertSame('Second', $source['name']);
     }
 
     public function testWriteWithoutTheAliasIsRejectedAndCreatesNoIndex(): void
@@ -90,16 +96,20 @@ final class ProductIndexerTest extends TestCase
         self::assertSame(2, $this->indexer()->countDocuments());
     }
 
-    public function testBulkRepeatingAVersionReportsTheItemAsStale(): void
+    public function testBulkWithAnOlderVersionReportsTheItemAsStale(): void
     {
         $this->maintenance()->setup();
         $index = $this->maintenance()->activeIndex();
-        $this->maintenance()->write($index, [self::document(self::ID, 2)]);
+        $this->maintenance()->write($index, [self::document(self::ID, 2), self::document('0198a1f0-0000-7000-8000-000000000003', 2)]);
 
-        $result = $this->maintenance()->write($index, [self::document(self::ID, 2), self::document('0198a1f0-0000-7000-8000-000000000002', 1)]);
+        $result = $this->maintenance()->write($index, [
+            self::document(self::ID, 1),
+            self::document('0198a1f0-0000-7000-8000-000000000003', 2),
+            self::document('0198a1f0-0000-7000-8000-000000000002', 1),
+        ]);
 
         self::assertSame([self::ID], $result->stale);
-        self::assertSame(['0198a1f0-0000-7000-8000-000000000002'], $result->indexed);
+        self::assertSame(['0198a1f0-0000-7000-8000-000000000003', '0198a1f0-0000-7000-8000-000000000002'], $result->indexed);
     }
 
     public function testEmptyBulkWritesNothing(): void
@@ -121,6 +131,6 @@ final class ProductIndexerTest extends TestCase
 
     private static function document(string $id, int $version, string $name = 'Name', ?string $slug = null): ProductDocument
     {
-        return new ProductDocument($id, $version, $name, $slug ?? 'slug-'.$id, '', 'c', ['c'], ['c'], ['key' => 'originals/x.jpg', 'alt' => 'Alt']);
+        return new ProductDocument($id, $version, $name, $slug ?? 'slug-'.$id, '', 'c', ['c'], ['c'], ['key' => 'originals/x.jpg', 'alt' => 'Alt'], [], [], null);
     }
 }

@@ -115,7 +115,7 @@ final readonly class ProductSearchIndexRebuilder
         $written = 0;
         $afterId = null;
         while ([] !== $page = $this->source->page($afterId, $batchSize)) {
-            $result = $this->maintenance->write($index, array_map($this->builder->build(...), $page));
+            $result = $this->maintenance->write($index, array_map(fn (ProductSearchSnapshot $snapshot): ProductDocument => $this->builder->build($snapshot, null, $snapshot->version), $page));
             if (!$result->allIndexed()) {
                 throw new SearchIndexError(\sprintf('Writing to "%s" failed: %s.', $index, $result->describeProblems()));
             }

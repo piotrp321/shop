@@ -43,7 +43,7 @@ final readonly class IndexProduct
 
         try {
             // Stale is a handled message too: the index already holds this version or a newer one.
-            $this->indexer->index($this->documents->build($snapshot));
+            $this->indexer->index($this->documents->build($snapshot, null, $snapshot->version));
         } catch (SearchIndexError $e) {
             throw new UnrecoverableMessageHandlingException($e->getMessage(), previous: $e);
         }

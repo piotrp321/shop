@@ -6,6 +6,7 @@ namespace App\Catalog\Infrastructure\Search;
 
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
+use App\Catalog\Application\Search\VariantDocument;
 
 /**
  * Settings and mapping of a physical product index. The hash of the definition (mapping and analysis, without
@@ -15,6 +16,8 @@ use App\Catalog\Application\Search\SearchIndexError;
 final readonly class ProductIndexDefinition
 {
     private const string SORT_NORMALIZER = 'sort_normalizer';
+    private const string POLISH_TEXT = 'polish_text';
+    private const string FOLDED_TEXT = 'folded_text';
 
     public function __construct(private int $shards, private int $replicas)
     {
@@ -59,6 +62,15 @@ final readonly class ProductIndexDefinition
             'category_ids' => $document->categoryIds,
             'category_ancestor_ids' => $document->categoryAncestorIds,
             'main_image' => $document->mainImage,
+            'category_names' => $document->categoryNames,
+            'variants' => array_map(static fn (VariantDocument $variant): array => [
+                // No price: no field, so a price range never matches the variant.
+                ...(null === $variant->gross ? [] : ['gross' => $variant->gross]),
+                'purchasable' => $variant->purchasable,
+                'axes' => $variant->axes,
+                'options' => $variant->options,
+            ], $document->variants),
+            ...(null === $document->fromGross ? [] : ['from_gross' => $document->fromGross]),
         ];
     }
 
@@ -67,11 +79,14 @@ final readonly class ProductIndexDefinition
      */
     public static function document(mixed $source): ProductDocument
     {
+        $fromGross = \is_array($source) ? ($source['from_gross'] ?? null) : null;
         if (!\is_array($source)
             || !\is_string($source['id'] ?? null) || !\is_int($source['version'] ?? null)
             || !\is_string($source['name'] ?? null) || !\is_string($source['slug'] ?? null)
             || !\is_string($source['short_description'] ?? null) || !\is_string($source['main_category_id'] ?? null)
             || !self::isStringList($source['category_ids'] ?? null) || !self::isStringList($source['category_ancestor_ids'] ?? null)
+            || !self::isStringList($source['category_names'] ?? null) || !\is_array($source['variants'] ?? null)
+            || !array_is_list($source['variants']) || !(null === $fromGross || \is_int($fromGross))
         ) {
             throw new SearchIndexError('A search document does not match the index definition.');
         }
@@ -91,7 +106,26 @@ final readonly class ProductIndexDefinition
             $source['category_ids'],
             $source['category_ancestor_ids'],
             $mainImage,
+            $source['category_names'],
+            array_map(self::variant(...), $source['variants']),
+            $fromGross,
         );
+    }
+
+    /**
+     * @throws SearchIndexError when the variant does not have the shape written by {@see source()}
+     */
+    private static function variant(mixed $variant): VariantDocument
+    {
+        $gross = \is_array($variant) ? ($variant['gross'] ?? null) : null;
+        if (!\is_array($variant) || !\is_bool($variant['purchasable'] ?? null)
+            || !self::isStringList($variant['axes'] ?? null) || !self::isStringList($variant['options'] ?? null)
+            || !(null === $gross || \is_int($gross))
+        ) {
+            throw new SearchIndexError('A search document does not match the index definition.');
+        }
+
+        return new VariantDocument($gross, $variant['purchasable'], $variant['axes'], $variant['options']);
     }
 
     /**
@@ -108,6 +142,13 @@ final readonly class ProductIndexDefinition
     private static function analysis(): array
     {
         return [
+            'analyzer' => [
+                // Polish inflection: "kurtki" and "kurtka" give the same token (polish_stem of analysis-stempel).
+                self::POLISH_TEXT => ['type' => 'custom', 'tokenizer' => 'standard', 'filter' => ['lowercase', 'polish_stem', 'asciifolding']],
+                // Without the stemmer: a phrase typed without Polish characters ("spiwor"), and forms the stemmer
+                // does not reduce.
+                self::FOLDED_TEXT => ['type' => 'custom', 'tokenizer' => 'standard', 'filter' => ['lowercase', 'asciifolding']],
+            ],
             'normalizer' => [
                 // "Żel", "buty", "Ajax" sort as "Ajax", "buty", "Żel".
                 self::SORT_NORMALIZER => ['type' => 'custom', 'filter' => ['lowercase', 'asciifolding']],
@@ -121,6 +162,7 @@ final readonly class ProductIndexDefinition
     private static function mappings(): array
     {
         $keyword = ['type' => 'keyword'];
+        $folded = ['folded' => ['type' => 'text', 'analyzer' => self::FOLDED_TEXT]];
 
         return [
             'dynamic' => 'strict',
@@ -129,10 +171,11 @@ final readonly class ProductIndexDefinition
                 'version' => ['type' => 'long'],
                 'name' => [
                     'type' => 'text',
-                    'fields' => ['sort' => ['type' => 'keyword', 'normalizer' => self::SORT_NORMALIZER]],
+                    'analyzer' => self::POLISH_TEXT,
+                    'fields' => ['sort' => ['type' => 'keyword', 'normalizer' => self::SORT_NORMALIZER], ...$folded],
                 ],
                 'slug' => $keyword,
-                'short_description' => ['type' => 'text', 'index' => false],
+                'short_description' => ['type' => 'text', 'analyzer' => self::POLISH_TEXT, 'fields' => $folded],
                 'main_category_id' => $keyword,
                 // All categories of the product, the main one first.
                 'category_ids' => $keyword,
@@ -140,6 +183,22 @@ final readonly class ProductIndexDefinition
                 'category_ancestor_ids' => $keyword,
                 // Stored for display only: {key, alt}.
                 'main_image' => ['type' => 'object', 'enabled' => false],
+                // The names of the product's categories and all their ancestors.
+                'category_names' => ['type' => 'text', 'analyzer' => self::POLISH_TEXT, 'fields' => $folded],
+                // Nested, so conditions on axes, price and availability hold for one and the same variant.
+                'variants' => [
+                    'type' => 'nested',
+                    'properties' => [
+                        // Absent without a price.
+                        'gross' => ['type' => 'long'],
+                        'purchasable' => ['type' => 'boolean'],
+                        'axes' => $keyword,
+                        // "<axis>" U+001F "<value>", as in Catalog (case kept).
+                        'options' => $keyword,
+                    ],
+                ],
+                // The lowest price of the purchasable variants; absent without one.
+                'from_gross' => ['type' => 'long'],
             ],
         ];
     }

@@ -117,6 +117,6 @@ final class ListProductsHandlerTest extends TestCase
      */
     private static function document(string $name, ?array $mainImage): ProductDocument
     {
-        return new ProductDocument('id-'.$name, 1, $name, 'slug-'.$name, 'Short '.$name, self::CATEGORY, [self::CATEGORY], [self::CATEGORY], $mainImage);
+        return new ProductDocument('id-'.$name, 1, $name, 'slug-'.$name, 'Short '.$name, self::CATEGORY, [self::CATEGORY], [self::CATEGORY], $mainImage, [], [], null);
     }
 }
