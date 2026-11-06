@@ -35,6 +35,7 @@ seed:
 	$(RUN) api bin/console catalog:seed-demo
 	$(RUN) api bin/console pricing:seed-demo
 	$(RUN) api bin/console payment-simulator:seed-demo
+	$(RUN) api bin/console payment:seed-demo
 	$(RUN) api bin/console ordering:seed-demo
 	$(RUN) api bin/console inventory:seed-demo
 	$(RUN) api bin/console storefront:cache:purge-all
