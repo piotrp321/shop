@@ -12,7 +12,14 @@ vi.mock("next/headers", () => ({ cookies: vi.fn() }));
 vi.mock("@/auth/config", () => ({ readAuthConfig: vi.fn() }));
 
 const COOKIE = "store_order_confirmation";
-const confirmation = { number: "R-100001", email: "anna.nowak@example.com", totalGross: 39998, currency: "PLN" };
+const confirmation = {
+  orderId: "0199a0b0-0000-7000-8000-000000000001",
+  number: "R-100001",
+  email: "anna.nowak@example.com",
+  totalGross: 39998,
+  currency: "PLN",
+  accessToken: "dGhpcy1pcy1hLXRva2VuLW9mLXRoZS1ndWVzdC0xMjM",
+};
 const encoded = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 
 const withCookie = (value: string | undefined) =>

@@ -46,7 +46,14 @@ export const problem = (status: number, detail?: string) =>
   );
 
 /** `idempotencyKey` only when the request has the header (`toEqual` ignores a property that is undefined). */
-export type ApiCall = { method: string; path: string; authorization: string | null; body: unknown; idempotencyKey?: string };
+export type ApiCall = {
+  method: string;
+  path: string;
+  authorization: string | null;
+  body: unknown;
+  idempotencyKey?: string;
+  orderAccessToken?: string;
+};
 
 /** The API client of the BFF on a fake network: every request is recorded and answered by `respond`. */
 export function cartTestDeps() {
@@ -70,6 +77,7 @@ export function cartTestDeps() {
             authorization: request.headers.get("authorization"),
             body: text === "" ? undefined : JSON.parse(text),
             idempotencyKey: request.headers.get("idempotency-key") ?? undefined,
+            orderAccessToken: request.headers.get("order-access-token") ?? undefined,
           };
           calls.push(call);
           for (const handler of handlers) {
