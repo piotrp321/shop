@@ -14,6 +14,9 @@
         <env name="KERNEL_CLASS" value="App\Kernel" force="true"/>
         <env name="APP_ENV" value="test" force="true"/>
         <env name="APP_DEBUG" value="0" force="true"/>
+        <!-- Same values as infra/docker-compose.yml; the environment of the container wins when it sets them. -->
+        <env name="MAILER_DSN" value="smtp://mailpit:1025"/>
+        <env name="MAILER_FROM" value="Rytm &lt;zamowienia@rytm.localhost&gt;"/>
     </php>
 
     <testsuites>

@@ -139,7 +139,9 @@ jobs:
       # `test` vhost (created by the one-shot rabbitmq-init), Elasticsearch (the test index is created by
       # init-test, which `make -C apps/api test` runs first) and Keycloak with the imported realms (discovery tests).
       # The dashboard probes (ProbesTest and the dashboard endpoint test) reach all of them, plus Redis and Mailpit;
-      # the store integration tests (sessions, refresh lock) need Redis too.
+      # the store integration tests (sessions, refresh lock) need Redis too. Mailpit also receives the order
+      # confirmation emails of the api mailer tests (MAILER_DSN and MAILER_FROM come from the api service of
+      # docker-compose.yml, which `docker compose run` applies).
       - name: Start PostgreSQL, Redis, Garage, imgproxy, RabbitMQ, Elasticsearch, Keycloak and Mailpit
         if: env.FULL_CI == 'true'
         run: |

@@ -8,6 +8,7 @@ use App\Shared\Domain\Exception\Conflict;
 use App\Shared\Domain\Exception\InvalidInput;
 use App\Shared\Domain\Exception\NotFound;
 use App\Shared\Domain\Exception\ProblemException;
+use App\Shared\Domain\Exception\TypedProblem;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -28,7 +29,8 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
  * Only the thrown exception itself decides about `detail`, its `previous` chain is never inspected for it.
  * The one exception: a Messenger HandlerFailedException that wraps exactly one exception is replaced by that
  * exception, repeatedly for nested buses, because a sync bus wraps whatever a handler throws.
- * - {@see ProblemException}: status by kind (see PROBLEM_STATUSES), message as `detail` (written for clients).
+ * - {@see ProblemException}: status by kind (see PROBLEM_STATUSES), message as `detail` (written for clients), `type`
+ *   from {@see TypedProblem} when the exception has one, otherwise `about:blank`.
  *   If a class is also an HttpExceptionInterface, the ProblemException rules win and its headers are ignored,
  * - framework HTTP exceptions: status and headers are kept, `detail` is a fixed text per status, never the message
  *   (router messages contain the requested URL),
@@ -141,7 +143,8 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
     private function projectProblem(ProblemException $exception): JsonResponse
     {
         $status = $this->problemStatus($exception);
-        $problem = ['type' => 'about:blank', 'title' => Response::$statusTexts[$status] ?? 'Error', 'status' => $status];
+        $type = $exception instanceof TypedProblem ? $exception->problemType() : 'about:blank';
+        $problem = ['type' => $type, 'title' => Response::$statusTexts[$status] ?? 'Error', 'status' => $status];
         if ($status < 500 && '' !== $exception->getMessage()) {
             $problem['detail'] = $exception->getMessage();
         }

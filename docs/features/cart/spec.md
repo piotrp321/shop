@@ -1,6 +1,6 @@
 # Cart: koszyk gościa i zalogowanego klienta (MVP)
 
-Punkt 6 MVP z `docs/vision.md`, bez checkoutu.
+Punkt 6 MVP z `docs/vision.md`. Złożenie zamówienia z koszyka opisuje `docs/features/checkout/spec.md`.
 
 ## Cel i zakres
 
@@ -8,7 +8,7 @@ Klient sklepu (gość albo zalogowany w realmie `shop`) dodaje wariant produktu 
 usuwa pozycje i widzi sumy policzone przez API. Koszyk przeżywa odświeżenie i ponowne wejście. Po zalogowaniu koszyk
 gościa łączy się z koszykiem klienta, a klient widzi ten sam koszyk na każdym urządzeniu.
 
-Poza zakresem: checkout i zamówienia (epik ORDERING), rezerwacja stanu, płatności, promocje i kody rabatowe, koszty
+Poza zakresem: rezerwacja stanu (robi ją złożenie zamówienia w Ordering), płatności, promocje i kody rabatowe, koszty
 dostawy, strona produktu, panel administracyjny, rate limiting tworzenia koszyków.
 
 ## Decyzje biznesowe
@@ -21,7 +21,7 @@ dostawy, strona produktu, panel administracyjny, rate limiting tworzenia koszyk�
 | 4 | Najwyżej 50 różnych pozycji (wariantów), najwyżej 99 sztuk jednej pozycji. |
 | 5 | Koszyk gościa wygasa po 30 dniach od ostatniej zmiany, koszyk klienta po 180 dniach. Wygasły koszyk zachowuje się jak pusty, fizycznie usuwa go `cart:purge-expired`. |
 | 6 | Pozycje nigdy nie znikają same. Pozycja bez ceny, niedostępna, z ilością większą niż dostępna albo z wariantem usuniętym z katalogu ma etykietę i przycisk „Usuń”. Suma obejmuje tylko pozycje możliwe do kupienia. |
-| 7 | Dostępność ogranicza ilość przy dodaniu i zwiększeniu ilości, bez rezerwacji i bez ujawniania liczby sztuk. Wiąże dopiero rezerwacja w ORDERING. |
+| 7 | Dostępność ogranicza ilość przy dodaniu i zwiększeniu ilości, bez rezerwacji i bez ujawniania liczby sztuk. Wiąże dopiero rezerwacja przy złożeniu zamówienia (Ordering). |
 | 8 | Sumy: wartość brutto i liczba sztuk, bez VAT. Licznik sztuk w nagłówku. |
 | 9 | Koszyk pokazuje zawsze cenę aktualną, bez informacji o zmianie ceny. Cenę zamraża zamówienie. |
 | 10 | Po wylogowaniu przeglądarka pokazuje pusty koszyk gościa; koszyk klienta zostaje na koncie. |
@@ -35,9 +35,11 @@ dostawy, strona produktu, panel administracyjny, rate limiting tworzenia koszyk�
 | Pricing | `GetCurrentPrices` (autorytatywna cena aktualna wariantu) |
 | Inventory | `GetStockLevels` (dostępna liczba sztuk wariantu i jej poziom, tylko w procesie API) |
 | Customer | `AuthenticatedCustomer::id()` (`sub` z tokena realmu `shop`) |
+| Ordering | składa zamówienie z koszyka: blokuje go i czyta jego linie (`LockCartForOrder`), po złożeniu opróżnia (`ClearCartAfterOrder`) |
 | Sklep | BFF koszyka i wyświetlanie wartości z API; żadnych obliczeń |
 
-Reguły Deptrac (żaden inny context nie zależy od Cart w żadnej warstwie):
+Reguły Deptrac (od Cart zależy tylko Ordering: `Ordering_Infrastructure → Cart_Application`; Cart nie zależy od Ordering
+w żadnej warstwie):
 
 | Warstwa | Może zależeć od |
 |---|---|
@@ -52,6 +54,8 @@ Reguły Deptrac (żaden inny context nie zależy od Cart w żadnej warstwie):
   `Pricing_UI → Backoffice_Application`). `Cart_Domain` i `Cart_Application` nie znają Customer.
 - Domena Cart ma własne value objecty i nie importuje kodu innych contextów.
 - Cart w MVP nie publikuje ani nie konsumuje zdarzeń domenowych.
+- Ordering woła dwie komendy Cart przez `command.bus` w swojej transakcji (zagnieżdżony dispatch, adapter
+  `Ordering\Infrastructure\Cart\CommandBusOrderCart`). Komendy są w `Cart_Application` i nie znają Ordering.
 
 ## Model domenowy
 
@@ -89,6 +93,7 @@ Stałe domeny (jedyne miejsce tych reguł): `MAX_LINES = 50`, `MAX_QUANTITY = 99
 | `outcomeWithoutMerge(now)` | na koszyku, który ma zostać scalony: `already_merged` dla `merged` (także wygasłego), `nothing_to_merge` dla wygasłego gościa i dla koszyka klienta, `null` gdy można scalać | |
 | `markMerged(customerCartId, now)` | na koszyku gościa: usuwa linie, `status = merged`, `mergedInto`, `mergedAt`, `updatedAt = now`; `expiresAt` zostaje (scalony koszyk czeka na czyszczenie) | koszyk nie jest gościa albo nie jest `open`: błąd logiczny |
 | `clearIfExpired(now)` | koszyk klienta po `expiresAt`: usuwa wszystkie linie (koszyka gościa nigdy) | |
+| `clearAfterOrder(now)` | po złożeniu zamówienia z koszyka (Ordering): `openForChange`, usuwa wszystkie linie i `touch(now)`; koszyk gościa zostaje `open` | `GuestCartMerged`, `CartNotFound` |
 | `openForChange(now)` | początek każdej zmiany, idempotentne: gość sprawdza dostępność (poniżej), klient `clearIfExpired` | `GuestCartMerged`, `CartNotFound` |
 | `needsOfferToChange(variantId, quantity)` | czy zmiana ilości jest zwiększeniem istniejącej linii, więc potrzebuje `ProductOffer` | |
 | `linesAt(now)`, `itemCountAt(now)` | linie i liczba sztuk tak, jak widzi je odczyt: wygasły koszyk klienta jest pusty | gość `merged`: `GuestCartMerged`, wygasły: `CartNotFound` |
@@ -273,6 +278,16 @@ Komendy (`command.bus`), każda zwraca `CartView`, chyba że opisano inaczej:
     `ProductOffer` z `CartPrices` i `StockAvailability`. Zmniejszenie nie potrzebuje oferty ani znajomości wariantu przez
     Catalog. `variantId` niebędące UUID w zmianie ilości to `CartLineNotFound`, w usunięciu: sukces bez zmian.
 - `MergeGuestCart(customerId, guestCartId)` → `MergeResult {cart: CartView, result, truncated}`.
+- `LockCartForOrder(cartRef)` → `list<CartLineForOrder {variantId, quantity}>` w kolejności `addedAt`, dla Ordering:
+  blokada jak w innych komendach (`LockedCarts`, koszyk klienta przez `lockForCustomer`, bez zakładania koszyka),
+  `openForChange(now)` i linie z `linesAt(now)`. Koszyk gościa nieznany, id niebędące UUID, wygasły albo id koszyka
+  klienta: `CartNotFound` (404); `merged`: `GuestCartMerged` (404). Klient bez koszyka albo z wygasłym koszykiem: brak
+  linii. Niczego nie zapisuje: wygasły koszyk klienta jest tylko czytany jako pusty. Blokada trwa do końca transakcji
+  Ordering, więc zmiany koszyka i inne złożenia z niego czekają.
+- `ClearCartAfterOrder(cartRef)` → nic, dla Ordering po złożeniu zamówienia: blokada jak w każdej komendzie (w transakcji,
+  która już zablokowała koszyk przez `LockCartForOrder`, to odświeżenie rekordu pod tą samą blokadą),
+  `Cart::clearAfterOrder(now)` (usuwa wszystkie linie i wywołuje `touch(now)`; koszyk gościa zostaje `open`) i zapis.
+  Klient bez koszyka: bez zmian. Wycofanie transakcji Ordering (np. przy niedoborze stanu) przywraca linie.
 - `PurgeExpiredCarts(batchSize)` → liczba koszyków usuniętych w jednej partii.
 
 Zapytania (`query.bus`):
@@ -469,7 +484,10 @@ zwracana.
   zdjęcie (`ProductPhoto`), nazwa, pod nią etykieta wariantu (pusta dla wariantu domyślnego), cena jednostkowa, ilość
   (pole 1–99 opisane nazwą i etykietą wariantu, zatwierdzane po opuszczeniu pola lub Enterem;
   wartość niebędąca liczbą całkowitą 1–99 albo bez zmiany wraca do bieżącej ilości bez żądania), wartość linii, „Usuń”;
-  podsumowanie: wartość brutto i liczba sztuk. Pusty koszyk: „Twój koszyk jest pusty” i link „Zobacz produkty”.
+  podsumowanie: wartość brutto i liczba sztuk; pod nim przycisk „Przejdź do kasy” (link do `/checkout`,
+  `docs/features/checkout/spec.md`). Przy `hasExcludedLines` przycisk jest nieaktywny, a pod nim tekst „Usuń albo popraw
+  oznaczone pozycje, żeby złożyć zamówienie.”. Pusty koszyk: „Twój koszyk jest pusty” i link „Zobacz produkty”, bez
+  przycisku.
 - Kwoty przez `formatPrice`. Front niczego nie liczy: każdy widok pochodzi z ostatniej odpowiedzi API.
 
 | Sytuacja | UI |
@@ -481,7 +499,7 @@ zwracana.
 | 403, 422, 503, 5xx, błąd sieci | „Nie udało się zapisać zmian. Spróbuj ponownie.” (bez automatycznego ponowienia) |
 | 401 (sesja wygasła), także przy wczytaniu `/cart` | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem „Zaloguj się” (`/auth/login?returnTo=…`) |
 | błąd wczytania koszyka | „Nie udało się wczytać koszyka” i przycisk „Spróbuj ponownie” |
-| `hasExcludedLines` | przy sumie: „Część produktów nie jest wliczona” |
+| `hasExcludedLines` | przy sumie: „Część produktów nie jest wliczona”; „Przejdź do kasy” nieaktywny z tekstem „Usuń albo popraw oznaczone pozycje, żeby złożyć zamówienie.” |
 | `notice: merge_truncated` | „Część produktów z koszyka gościa nie zmieściła się w koszyku” (`CartBadge`, obok linku „Koszyk”) |
 | `no_price` | „Cena niedostępna” |
 | `out_of_stock` | „Niedostępny” |
@@ -523,7 +541,8 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
    Wygasły koszyk klienta jest czyszczony przed scaleniem.
 5. Koszyki wygasają po 30 (gość) i 180 dniach (klient) od ostatniej zmiany; `cart:purge-expired` usuwa wygasłe.
 6. Odpowiedzi koszyka mają `private, no-store`, strona `/cart` ma `noindex`.
-7. Żaden context nie zależy od Cart; Deptrac odrzuca zależności spoza reguł Cart.
+7. Od Cart zależy tylko Ordering (`Ordering_Infrastructure → Cart_Application`); Deptrac odrzuca zależności spoza
+   reguł Cart.
 8. Przechodzą `make -C apps/api check`, `make -C apps/api test`, `make -C apps/store check`,
    `make -C apps/store test` oraz `make e2e`.
 
@@ -545,6 +564,10 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
   linii, `hasExcludedLines`, pusty koszyk.
 - Handlery: 404 dla gościa nieznanego, wygasłego i scalonego; `ProductNotFound`; `nothing_to_merge` dla nieznanego,
   wygasłego i klienckiego `guestCartId`; `GetCart` klienta bez koszyka nic nie zakłada.
+- `Cart::clearAfterOrder` (`CartClearAfterOrderTest`) i komendy dla Ordering (`CartOrderCommandsTest`):
+  `LockCartForOrder` (linie w kolejności dodania bez zapisu, gość `merged`, wygasły, nieznany i id koszyka klienta,
+  wygasły koszyk klienta i klient bez koszyka bez linii), `ClearCartAfterOrder` (gość zostaje `open` z nowym
+  `expiresAt`, klient, klient bez koszyka bez zmian, gość `merged`).
 
 - `ProductOfferSummary` (TDD): pominięcie wariantów bez ceny, z ceną nieaktualną i z `available = 0`, równe i różne
   ceny, brak wariantów możliwych do kupienia (`fromGross = null`, `out_of_stock`), najlepszy poziom.
@@ -601,6 +624,7 @@ niepoprawny UUID, forma `[]`), 401 przy złym tokenie, `public, max-age=60`, bra
 
 Deptrac (`apps/api/deptrac.yaml`, `make -C apps/api check`) z regułami Cart z sekcji „Bounded contexty i zależności”.
 Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inventory_*`, `Customer_*` → `Cart_*`;
+`Ordering_*` → `Cart_*` poza `Ordering_Infrastructure → Cart_Application`; `Cart_*` → `Ordering_*`;
 `Cart_Domain` → inne contexty i `Vendor`; `Cart_Application` → inne contexty; `Cart_Infrastructure` →
 `Catalog_Domain`, `Pricing_Domain`, `Inventory_Domain`, `*_Infrastructure` innych contextów; `Cart_UI` →
 `Customer_Infrastructure`.
@@ -617,7 +641,7 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
   „od”, produkt niedostępny bez ceny, listy i przycisku, błąd wywołania ofert; `load-catalog.test.ts`: jedno wywołanie
   ofert dla strony i lista bez ofert przy błędzie.
 - `AddToCartButton` (`AddToCartButton.test.tsx`): blokada na czas żądania, sukces, 409 z `detail`, 404, błąd sieci.
-- `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, pusty koszyk, zmiana ilości z błędem 409
+- `CartPage` (`CartPage.test.tsx`, `app/cart/page.test.tsx`): każdy stan linii i etykieta, sumy, `hasExcludedLines`, przycisk „Przejdź do kasy” (aktywny, nieaktywny, brak przy pustym koszyku), pusty koszyk, zmiana ilości z błędem 409
   (poprzednia ilość), 404 linii (odświeżenie: linia zniknęła, linia nadal jest z `detail` albo bez, wczytanie z 401 i z innym błędem), 401, błąd wczytania z ponowieniem.
 - `CartBadge` (`CartBadge.test.tsx`, `events.test.ts`): liczba sztuk, aktualizacja po zmianie, ukrycie przy błędzie,
   komunikat scalenia.

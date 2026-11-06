@@ -99,7 +99,7 @@ export function testDeps() {
     transactions: transactions.store,
     oidc: vi.fn(async () => oidc),
     freshAccessToken: vi.fn(async (id: string) => (await sessions.store.get(id))?.accessToken ?? null),
-    fetchMe: vi.fn(async (): Promise<MeResult> => ({ kind: "ok", name: "Jan" })),
+    fetchMe: vi.fn(async (): Promise<MeResult> => ({ kind: "ok", name: "Jan", email: "jan.kowalski@example.com" })),
     // No API by default: a test that expects calls puts its own double here.
     api: (accessToken?: string) =>
       createApiClient({

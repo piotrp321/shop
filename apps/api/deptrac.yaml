@@ -101,6 +101,22 @@ deptrac:
       collectors:
         - type: classNameRegex
           value: '#^App\\Cart\\UI\\#'
+    - name: Ordering_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Ordering\\Domain\\#'
+    - name: Ordering_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Ordering\\Application\\#'
+    - name: Ordering_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Ordering\\Infrastructure\\#'
+    - name: Ordering_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Ordering\\UI\\#'
     - name: Shared_Domain
       collectors:
         - type: classNameRegex
@@ -268,8 +284,9 @@ deptrac:
       # The controllers of receipts and corrections take the actor from AuthenticatedStaffMember, the security
       # contract of Backoffice. Inventory_Domain and Inventory_Application stay free of Backoffice.
       - Backoffice_Application
-    # No other module depends on Cart in any layer. Cart_Domain and Cart_Application never see another module: the
-    # ports speak Cart's own ProductId, Money and product data.
+    # Only Ordering depends on Cart, one way (Ordering_Infrastructure → Cart_Application: the commands LockCartForOrder
+    # and ClearCartAfterOrder); Cart depends on Ordering in no layer. Cart_Domain and Cart_Application never see
+    # another module: the ports speak Cart's own ProductId, Money and product data.
     Cart_Domain:
       - Native
       - Shared_Domain
@@ -300,6 +317,41 @@ deptrac:
       - Vendor
       # The controllers of the customer cart take the owner from AuthenticatedCustomer (the `sub` of the token), the
       # security contract of Customer, never CustomerUser of Customer_Infrastructure.
+      - Customer_Application
+    # No other module depends on Ordering in any layer. Ordering_Domain and Ordering_Application never see another
+    # module: the ports speak Ordering's own VariantId, PriceCopy and order data.
+    Ordering_Domain:
+      - Native
+      - Shared_Domain
+    Ordering_Application:
+      - Native
+      - Ordering_Domain
+      - Shared_Domain
+      - Vendor
+    Ordering_Infrastructure:
+      - Native
+      - Ordering_Application
+      - Ordering_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      # Adapters of Ordering's ports (OrderCart, OrderPrices, OrderCatalog, StockReservations) dispatch the commands
+      # and queries of the other modules on command.bus and query.bus, nested in the transaction of PlaceOrder: Cart
+      # LockCartForOrder and ClearCartAfterOrder, Pricing GetCurrentPrices, Catalog GetVariantSummaries, Inventory
+      # ReserveStock. Only their Application layer, never their Domain or Infrastructure.
+      - Cart_Application
+      - Catalog_Application
+      - Pricing_Application
+      - Inventory_Application
+    Ordering_UI:
+      - Native
+      - Ordering_Application
+      - Ordering_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      # The controller of a customer's order takes the customer from AuthenticatedCustomer, the security contract of
+      # Customer, never CustomerUser of Customer_Infrastructure.
       - Customer_Application
     Shared_Domain:
       - Native

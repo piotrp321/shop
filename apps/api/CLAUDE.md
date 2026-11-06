@@ -18,12 +18,14 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `pricing:seed-demo`, który czyści ceny i ich historię i ustawia cenę (źródło `seed`) każdemu wariantowi demo według
   wzorców kluczy wariantów z `fixtures/prices.yaml` (klucz z Catalog `ListVariantIdentities`:
   `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
-  pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych); na końcu `inventory:seed-demo`, który czyści stany, rezerwacje i historię stanów
+  pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych); potem
+  `ordering:seed-demo`, który usuwa wszystkie zamówienia i ich linie jednym `TRUNCATE` (sekwencja numerów zostaje,
+  luki są dopuszczalne); na końcu `inventory:seed-demo`, który czyści stany, rezerwacje i historię stanów
   i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
-  seed błędem bez zmian w danych). Wszystkie trzy
-  komendy w `prod` wymagają `--force-reset`
+  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
+  w `prod` wymagają `--force-reset`
 - `pricing:reconcile-tax [--apply]` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`) –
   narzędzie uruchamiane świadomie, np. po zmianie stawki w `PolishVatRates`; nie wywołuje go `make init`, `make up`
   ani `make seed`. Przechodzi wszystkie ceny wariantów partiami po `variant_id` razem z wariantami Catalog
@@ -76,6 +78,34 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wiersza wskazanego jako koszyk gościa (może to być koszyk innego klienta). Odczyty (`GetCart`, `GetCartSummary`) idą przez DBAL,
   bez blokady i bez transakcji. Linie są zapisywane w miejscu po wariancie, więc usunięcie i ponowne dodanie wariantu
   w jednej zmianie nie trafia na unikalny indeks `(cart_id, variant_id)`.
+- Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
+  `ClearCartAfterOrder`) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony
+  dispatch na tym samym połączeniu (savepoint), a ceny (Pricing `GetCurrentPrices`) i nazwy (Catalog
+  `GetVariantSummaries`) przez `query.bus`. Zasady:
+  - handler nigdy nie łapie wyjątku zagnieżdżonej komendy, żeby pisać dalej: każdy błąd wycofuje całą transakcję
+    (koszyk, rezerwację, zamówienie, outbox). Adapter tłumaczy tylko niedobór Inventory (`InsufficientStock`) na
+    `InsufficientStockForOrder` i rzuca go dalej, inne wyjątki przekazuje bez zmian;
+  - zamówienie zapisuje się na końcu (po rezerwacji), więc `flush` komend zagnieżdżonych nie zapisuje niczego
+    z Ordering; Ordering zapisuje przez rekordy Doctrine według ogólnej zasady;
+  - kolejność blokad: wiersz koszyka (`LockCartForOrder`), potem wiersze stanów (`lockMany` Inventory, rosnąco po
+    `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, więc nie ma cyklu;
+  - idempotencja: zamówienie z tym samym `Idempotency-Key` i tym samym odciskiem żądania (koszyk i treść) jest
+    zwracane jako powtórzenie przed blokadą koszyka i jeszcze raz pod nią; inny odcisk to `IdempotencyKeyReused` (409),
+    także z unikalnego indeksu `idempotency_key` przy równoległym złożeniu z innego koszyka;
+  - numer zamówienia (`R-` i wartość od 100001) bierze `nextval('ordering_order_number_seq')` przez DBAL. Sekwencja
+    nie jest częścią transakcji: wycofane złożenie zostawia lukę. Schemat Doctrine dostaje sekwencję od listenera
+    `OrderNumberSequenceSchema` (mapowanie nie wyraża sekwencji poza id), więc diff migracji jej nie usuwa.
+- E-mail z potwierdzeniem zamówienia wysyła handler zdarzenia `SendOrderConfirmation` (`event.bus`, transport `events`,
+  po `OrderPlaced` z outboxa). Wysyłka idzie przez Symfony Mailer (`symfony/mailer`) synchronicznie, bez Messengera:
+  `framework.mailer.message_bus: false` (inaczej `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną
+  szynę `command.bus`, a błąd SMTP nie wróciłby do handlera i nie uruchomił ponowień transportu `events`). Konfiguracja
+  w zmiennych środowiska: `MAILER_DSN` (`smtp://mailpit:1025`) i `MAILER_FROM` (`Rytm <zamowienia@rytm.localhost>`),
+  ustawianych w `infra/docker-compose.yml` dla `api` i `worker` (testy i CI biorą je z serwisu `api`; `phpunit.dist.xml`
+  ma te same wartości domyślne). Treść składa `OrderConfirmationText` (Ordering Application), a port
+  `OrderConfirmationMailer` ma adapter `SymfonyOrderConfirmationMailer` w Ordering Infrastructure. Handler najpierw
+  wysyła, potem zapisuje `confirmationSentAt` z wersją, bez transakcji wokół SMTP: awaria między jednym a drugim albo
+  równoległe dostarczenie tego samego zdarzenia może dać drugi e-mail (konflikt wersji przy zapisie znacznika kończy
+  się wyjątkiem i ponowieniem, które widzi znacznik i nic nie wysyła).
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
@@ -118,7 +148,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Uprawnienia w voterach. Pracownik: na podstawie ról z tokena (`admin`, `support`, `warehouse`, `marketing`).
   Klient: tylko własne dane (właściciel zasobu = `sub` z tokena).
 - Zmiany z panelu zapisują identyfikator pracownika (`sub` z tokena realmu `backoffice`).
-- Błędy w formacie RFC 9457 (problem details).
+- Błędy w formacie RFC 9457 (problem details). `type` to domyślnie `about:blank`. Wyjątek projektu, którego przyczynę
+  klient ma rozróżniać maszynowo, implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType()`) i trzyma
+  wartość w stałej `TYPE`; subscriber wpisuje ją do odpowiedzi, a Shared nie zna contextów. Format wartości:
+  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je pięć 409 Ordering
+  (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`; nowy typ dopisz też tam).
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
   (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Domena nie zna statusów
   HTTP, mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
@@ -128,6 +162,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Przyjęcie z tym samym kluczem i tą samą
   treścią (wariant, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
   treścią albo dla innego wariantu to 409. Klucze przyjęć są w historii stanów na zawsze (unikalny indeks).
+  Złożenie zamówienia (`POST /api/v1/orders` gościa, `POST /api/v1/me/orders` klienta) z tym samym kluczem, z tego
+  samego koszyka (id koszyka gościa z treści albo `sub` z tokena) i z tą samą treścią niczego nie zmienia i zwraca 200
+  z tym samym zamówieniem zamiast 201, także gdy koszyk gościa w międzyczasie wygasł albo został scalony; ten sam klucz
+  z innego koszyka, od innego klienta albo z inną treścią to 409 `IdempotencyKeyReused` bez żadnych danych zamówienia,
+  które go użyło. Klucze zamówień są w `ordering_order` na zawsze (unikalny indeks).
 - Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
 

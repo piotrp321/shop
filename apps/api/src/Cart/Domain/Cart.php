@@ -280,6 +280,21 @@ final class Cart
     }
 
     /**
+     * Empties the cart an order was just placed from: every line goes and the cart is touched. A guest cart stays
+     * open, so the guest keeps adding to the same cart.
+     *
+     * @throws GuestCartMerged
+     * @throws CartNotFound    an expired guest cart
+     */
+    public function clearAfterOrder(\DateTimeImmutable $now): void
+    {
+        $this->openForChange($now);
+
+        $this->lines = [];
+        $this->touch($now);
+    }
+
+    /**
      * What a merge of this cart into a customer cart ends with when it moves nothing: already_merged for a merged
      * guest cart (also an expired one), nothing_to_merge for an expired guest cart and for a customer cart; null when
      * the cart can be merged.

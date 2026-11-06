@@ -425,3 +425,32 @@ describe("CartPage removing a line", () => {
     expect(announced).toEqual([]);
   });
 });
+
+describe("CartPage checkout button", () => {
+  const EXCLUDED_HINT = "Usuń albo popraw oznaczone pozycje, żeby złożyć zamówienie.";
+
+  it("links to the checkout when the cart has lines that can all be bought", async () => {
+    await renderWith(view([line(A, "Produkt A", 2)], { gross: 2000 }));
+
+    expect(screen.getByRole("link", { name: "Przejdź do kasy" }).getAttribute("href")).toBe("/checkout");
+    expect(screen.queryByText(EXCLUDED_HINT)).toBeNull();
+  });
+
+  it("is inactive, with the reason, when a line cannot be bought", async () => {
+    await renderWith(
+      view([line(A, "Produkt A", 1), line(B, "Produkt B", 1, { state: "no_price", unitPrice: null, lineTotal: null })], { gross: 1000 }, true),
+    );
+
+    expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+    const button = screen.getByRole("button", { name: "Przejdź do kasy" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText(EXCLUDED_HINT)).toBeTruthy();
+  });
+
+  it("is not there for an empty cart", async () => {
+    await renderWith(view([]));
+
+    expect(screen.queryByRole("link", { name: "Przejdź do kasy" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Przejdź do kasy" })).toBeNull();
+  });
+});

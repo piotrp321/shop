@@ -248,6 +248,9 @@ services:
       GARAGE_ADMIN_URL: http://garage:3903
       IMGPROXY_INTERNAL_URL: http://imgproxy:8080
       MAILPIT_INTERNAL_URL: http://mailpit:8025
+      # Order confirmation emails: SMTP of Mailpit (not secrets) and the sender address.
+      MAILER_DSN: smtp://mailpit:1025
+      MAILER_FROM: Rytm <zamowienia@rytm.localhost>
     volumes:
       - ./apps/api:/app
       # Dependencies live in a volume, not on the host.

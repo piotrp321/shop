@@ -32,12 +32,12 @@ describe("GET /auth/session", () => {
     expect(setup.deps.fetchMe).not.toHaveBeenCalled();
   });
 
-  it("returns the name from GET /api/v1/me, called with the session's access token", async () => {
+  it("returns the name and the e-mail from GET /api/v1/me, called with the session's access token", async () => {
     const id = await setup.deps.sessions.create(sessionData({ accessToken: "access-9" }));
     const response = await session(signedSessionCookie(id));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ name: "Jan" });
+    expect(await response.json()).toEqual({ name: "Jan", email: "jan.kowalski@example.com" });
     expect(setup.deps.freshAccessToken).toHaveBeenCalledWith(id);
     expect(setup.deps.fetchMe).toHaveBeenCalledWith("access-9");
     expect(response.headers.get("cache-control")).toBe("private, no-store");

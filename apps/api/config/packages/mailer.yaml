@@ -1,0 +1,6 @@
+framework:
+    mailer:
+        dsn: '%env(MAILER_DSN)%'
+        # Messages are sent synchronously by the transport, never as a SendEmailMessage on the default bus
+        # (command.bus): the SMTP error must come back to the event handler that sends the email.
+        message_bus: false

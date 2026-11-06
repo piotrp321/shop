@@ -1,4 +1,4 @@
-// Doubles for the cart BFF tests. Never imported by application code.
+// Doubles for the cart and checkout BFF tests. Never imported by application code.
 import { NextRequest } from "next/server";
 import { vi } from "vitest";
 import { createApiClient } from "@/api/client";
@@ -45,7 +45,8 @@ export const problem = (status: number, detail?: string) =>
     { status, headers: { "Content-Type": "application/problem+json" } },
   );
 
-export type ApiCall = { method: string; path: string; authorization: string | null; body: unknown };
+/** `idempotencyKey` only when the request has the header (`toEqual` ignores a property that is undefined). */
+export type ApiCall = { method: string; path: string; authorization: string | null; body: unknown; idempotencyKey?: string };
 
 /** The API client of the BFF on a fake network: every request is recorded and answered by `respond`. */
 export function cartTestDeps() {
@@ -68,6 +69,7 @@ export function cartTestDeps() {
             path: new URL(request.url).pathname,
             authorization: request.headers.get("authorization"),
             body: text === "" ? undefined : JSON.parse(text),
+            idempotencyKey: request.headers.get("idempotency-key") ?? undefined,
           };
           calls.push(call);
           for (const handler of handlers) {
