@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import type { ApiListQuery } from "./listing-query";
 
 type ProductPage = components["schemas"]["ProductPage"];
 type ProductOffer = components["schemas"]["ProductOfferResponse"];
@@ -53,15 +54,28 @@ async function loadOffers(client: ReturnType<typeof catalogClient>, products: Pr
 
 /**
  * Loads one page of products, then the offers of that page. `category` is the id of the category (the page resolved it
- * in the category tree) or, on `/`, the raw `category` parameter. A 400 for the filter becomes `invalid-filter` and a
+ * in the category tree) or, on `/`, the raw `category` parameter; the other parameters are the phrase, the filters and
+ * the sort, already in the words of the API (`toApiQuery`). A 400 for the filter becomes `invalid-filter` and a
  * 404 for the product list (the category does not exist) becomes `unknown-category`; any other failure (5xx,
  * network) is thrown and handled by `app/error.tsx`.
  */
-export async function loadCatalog(params: { category?: string; page?: string }): Promise<CatalogResult> {
+export async function loadCatalog(params: ApiListQuery): Promise<CatalogResult> {
   const client = catalogClient();
-  // The API validates the filter. A malformed value is sent as it came and comes back as 400.
+  // The API validates the filter. A malformed value is sent as it came and comes back as 400, so the numbers (typed
+  // as numbers in the schema) go on as the strings they are.
   const products = await client.GET("/api/v1/products", {
-    params: { query: { category: params.category, page: params.page as unknown as number } },
+    params: {
+      query: {
+        category: params.category,
+        q: params.q,
+        option: params.option,
+        priceMin: params.priceMin as unknown as number,
+        priceMax: params.priceMax as unknown as number,
+        available: params.available,
+        sort: params.sort,
+        page: params.page as unknown as number,
+      },
+    },
     cache: "no-store",
   });
 
@@ -78,8 +92,11 @@ export async function loadCatalog(params: { category?: string; page?: string }):
   return { kind: "ok", products: products.data, offers };
 }
 
+const loadCatalogByKey = cache((key: string) => loadCatalog(JSON.parse(key) as ApiListQuery));
+
 /**
  * `loadCatalog` shared by `generateMetadata` and the page within one request, so entering the page calls the API
- * once per endpoint. The arguments are strings (not an object) because `cache` compares them by identity.
+ * once per endpoint. `cache` compares arguments by identity, so the query goes in as its JSON (`toApiQuery` always
+ * builds the keys in the same order).
  */
-export const loadCatalogForRequest = cache((category?: string, page?: string) => loadCatalog({ category, page }));
+export const loadCatalogForRequest = (query: ApiListQuery) => loadCatalogByKey(JSON.stringify(query));

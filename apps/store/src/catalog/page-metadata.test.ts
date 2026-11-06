@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_FACETS, makeProduct, node } from "./fixtures";
-import { buildCatalogMetadata, buildCategoryMetadata } from "./page-metadata";
+import { buildCatalogMetadata, buildCategoryMetadata, buildSearchMetadata } from "./page-metadata";
 
 const STORE = "http://store.test";
 const page = (n: number, items = [makeProduct(1)]) => ({ items, page: n, perPage: 24, total: items.length, facets: EMPTY_FACETS });
@@ -123,5 +123,65 @@ describe("buildCategoryMetadata (a category page)", () => {
       alternates: { canonical: "http://store.test/c/bieganie/buty" },
     });
     expect(metadata).not.toHaveProperty("description");
+  });
+});
+
+describe("a refined listing (a sort or a filter in the address)", () => {
+  const NOINDEX_FOLLOW = { index: false, follow: true };
+
+  it("is noindex, follow with the plain catalogue address as canonical, without the page", () => {
+    expect(buildCatalogMetadata(ok(3), { page: "3", refined: true }, STORE)).toMatchObject({
+      title: "Wszystkie produkty – strona 3 | Rytm",
+      robots: NOINDEX_FOLLOW,
+      alternates: { canonical: "http://store.test/" },
+    });
+  });
+
+  it("is noindex, follow with the category address as canonical, without the page", () => {
+    expect(buildCategoryMetadata(ok(2), BUTY, "2", STORE, true)).toMatchObject({
+      robots: NOINDEX_FOLLOW,
+      alternates: { canonical: "http://store.test/c/bieganie/buty" },
+    });
+  });
+
+  it("stays noindex, follow for an empty result", () => {
+    expect(buildCategoryMetadata(ok(1, []), BUTY, undefined, STORE, true)).toMatchObject({ robots: NOINDEX_FOLLOW });
+  });
+
+  it("keeps the plain pages indexable: no robots without `refined`", () => {
+    expect(buildCatalogMetadata(ok(), { refined: false }, STORE)).not.toHaveProperty("robots");
+    expect(buildCategoryMetadata(ok(), BUTY, undefined, STORE, false)).not.toHaveProperty("robots");
+  });
+
+  it("is noindex for an invalid filter, as before", () => {
+    expect(buildCategoryMetadata({ kind: "invalid-filter" }, BUTY, undefined, STORE, true)).toMatchObject({
+      title: "Nieprawidłowy filtr | Rytm",
+      robots: { index: false },
+    });
+  });
+});
+
+describe("buildSearchMetadata (/szukaj)", () => {
+  it("titles the page with the phrase, is noindex, follow and has no canonical address", () => {
+    const metadata = buildSearchMetadata(ok(), "kurtki");
+    expect(metadata).toMatchObject({ title: "Wyniki dla „kurtki” | Rytm", robots: { index: false, follow: true } });
+    expect(metadata).not.toHaveProperty("alternates");
+  });
+
+  it("is noindex, follow also for an empty result and a later page", () => {
+    expect(buildSearchMetadata(ok(1, []), "xyz")).toMatchObject({ robots: { index: false, follow: true } });
+    expect(buildSearchMetadata(ok(2), "kurtki")).toMatchObject({ title: "Wyniki dla „kurtki” – strona 2 | Rytm" });
+  });
+
+  it("has a title without a phrase when the phrase is too short to search", () => {
+    const metadata = buildSearchMetadata({ kind: "short-phrase" }, undefined);
+    expect(metadata).toMatchObject({ title: "Wyszukiwanie | Rytm", robots: { index: false, follow: true } });
+    expect(metadata).not.toHaveProperty("alternates");
+  });
+
+  it("is noindex for an invalid filter and keeps the phrase out of the title", () => {
+    const metadata = buildSearchMetadata({ kind: "invalid-filter" }, "<script>");
+    expect(metadata).toMatchObject({ title: "Nieprawidłowy filtr | Rytm", robots: { index: false } });
+    expect(metadata).not.toHaveProperty("alternates");
   });
 });

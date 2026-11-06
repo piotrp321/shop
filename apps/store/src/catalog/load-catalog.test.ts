@@ -130,6 +130,34 @@ describe("loadCatalog", () => {
     expect(products.origin).toBe("http://catalog.test");
   });
 
+  it("forwards the phrase, the filters and the sort; the options as a repeated key, the numbers as given", async () => {
+    const fetchMock = stubApi(okApi);
+    await loadCatalog({
+      q: "kurtka zimowa",
+      option: ["Kolor:czarne", "Kolor:biały", "Rozmiar:42"],
+      priceMin: "10000",
+      priceMax: "25000",
+      available: true,
+      sort: "price_asc",
+      page: "2",
+    });
+    const products = urlsOf(fetchMock).find((url) => url.pathname === "/api/v1/products")!;
+    expect(products.searchParams.get("q")).toBe("kurtka zimowa");
+    expect(products.searchParams.getAll("option")).toEqual(["Kolor:czarne", "Kolor:biały", "Rozmiar:42"]);
+    expect(products.searchParams.get("priceMin")).toBe("10000");
+    expect(products.searchParams.get("priceMax")).toBe("25000");
+    expect(products.searchParams.get("available")).toBe("true");
+    expect(products.searchParams.get("sort")).toBe("price_asc");
+    expect(products.searchParams.get("page")).toBe("2");
+    expect(products.searchParams.has("category")).toBe(false);
+  });
+
+  it("forwards a malformed price so that the API rejects it", async () => {
+    const fetchMock = stubApi(() => problem(400));
+    expect(await loadCatalog({ priceMin: "12.5" })).toEqual({ kind: "invalid-filter" });
+    expect(urlsOf(fetchMock)[0].searchParams.get("priceMin")).toBe("12.5");
+  });
+
   it("omits absent parameters", async () => {
     const fetchMock = stubApi(okApi);
     await loadCatalog({});
