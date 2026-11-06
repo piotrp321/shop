@@ -49,7 +49,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `ProductTile` pokazuje etykietę według `level` z API („Dostępny”, „Ostatnie sztuki”, „Niedostępny”), bez liczenia na
   froncie (API nie zwraca liczby sztuk); liczba wariantów, ich kolejność i etykiety pochodzą tylko z oferty.
 - Sklep woła API tylko z serwera, pod jednym z dwóch adresów w sieci compose:
-  - `API_CATALOG_URL` (`http://varnish`): odczyty katalogu `loadCatalog` (lista, kategorie, oferty) idą przez Varnish,
+  - `API_CATALOG_URL` (`http://varnish`): odczyty katalogu `loadCatalog` (lista, kategorie, oferty) oraz `loadProduct` (szczegóły i oferta
+    strony produktu) idą przez Varnish,
     który trzyma je według `Cache-Control` API; brak zmiennej to błąd, bez obejścia na adres bezpośredni;
   - `API_INTERNAL_URL` (`http://api`): koszyk, kasa, scalanie koszyka i logowanie (`/api/v1/me`) idą do API
     bezpośrednio (klient z `getAuthDeps()`), nigdy przez Varnish.
