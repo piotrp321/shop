@@ -376,7 +376,7 @@ deptrac:
       # Customer, never CustomerUser of Customer_Infrastructure.
       - Customer_Application
     # Only Payment depends on Ordering, one way (Payment_Infrastructure → Ordering_Application: the query
-    # GetOrderForPayment, later the command MarkOrderPaid); Ordering depends on Payment in no layer, and no other
+    # GetOrderForPayment and the command MarkOrderPaid); Ordering depends on Payment in no layer, and no other
     # module depends on Payment. Payment_Domain and Payment_Application never see another module: the ports speak
     # Payment's own OrderId, Amount and order data.
     Payment_Domain:
@@ -394,8 +394,8 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
-      # PayableOrders asks Ordering through GetOrderForPayment on query.bus. Only its Application layer, never its
-      # Domain or Infrastructure.
+      # PayableOrders asks Ordering through GetOrderForPayment on query.bus, OrderPayments pays orders through
+      # MarkOrderPaid on command.bus. Only its Application layer, never its Domain or Infrastructure.
       - Ordering_Application
     Payment_UI:
       - Native
