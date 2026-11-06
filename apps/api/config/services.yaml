@@ -1,6 +1,8 @@
 parameters:
     app.images_bucket: '%env(IMAGES_BUCKET)%'
     app.imgproxy_public_url: '%env(IMGPROXY_PUBLIC_URL)%'
+    # Seconds between the attempts of storefront:cache:purge-all (5 per layer).
+    app.storefront_cache.retry_delay: 5.0
     # Search index (spec: "Indeks Elasticsearch"). The application reads and writes through the alias.
     app.search.alias: products
     app.search.shards: 1
@@ -176,6 +178,8 @@ when@test: &test
         app.search.alias: test_products
         # The `events` transport of the tests runs on its own vhost (config/packages/test_messaging/messenger.yaml).
         app.rabbitmq.vhost: test
+        # The tests of storefront:cache:purge-all do not wait between the attempts.
+        app.storefront_cache.retry_delay: 0.0
 
     services:
         _defaults:
