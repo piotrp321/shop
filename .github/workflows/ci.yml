@@ -175,6 +175,8 @@ jobs:
     timeout-minutes: 45
     env:
       FULL_CI: ${{ needs.scope.outputs.docs_only != 'true' }}
+      # The store runs the production build (`next build` + `next start`); compose passes the mode on to the e2e container.
+      STORE_MODE: production
     steps:
       - name: Require the scope job
         if: needs.scope.result != 'success'
