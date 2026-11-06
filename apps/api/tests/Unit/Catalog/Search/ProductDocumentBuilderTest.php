@@ -188,7 +188,6 @@ final class ProductDocumentBuilderTest extends TestCase
     ): ProductSearchSnapshot {
         return new ProductSearchSnapshot(
             '0198a1f0-0000-7000-8000-000000000001',
-            1,
             'Żel do mycia',
             'zel-do-mycia',
             'Short text',

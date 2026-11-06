@@ -20,13 +20,13 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
     // "IS NULL OR" form would not, and paging a large catalog would scan from the start on every page.
     private const string PAGE_SQL = <<<'SQL'
         WITH page AS (
-            SELECT id, version, name, slug, short_description, primary_category_id, images, variant_axes
+            SELECT id, name, slug, short_description, primary_category_id, images, variant_axes
             FROM catalog_product
             {cursor}
             ORDER BY id
             LIMIT :limit
         )
-        SELECT p.id, p.version, p.name, p.slug, p.short_description, p.primary_category_id, p.images->0 AS main_image,
+        SELECT p.id, p.name, p.slug, p.short_description, p.primary_category_id, p.images->0 AS main_image,
                main.path AS main_path, COALESCE(extra.ids, '[]') AS additional_ids, COALESCE(extra.paths, '[]') AS additional_paths,
                p.variant_axes, COALESCE(variants.list, '[]') AS variants, COALESCE(names.list, '[]') AS category_names
         FROM page p
@@ -120,7 +120,7 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
     {
         \assert(\is_string($row['id']) && \is_string($row['name']) && \is_string($row['slug']) && \is_string($row['short_description']));
         \assert(\is_string($row['primary_category_id']) && \is_string($row['main_path']));
-        \assert(is_numeric($row['version']) && \is_string($row['additional_ids']) && \is_string($row['additional_paths']));
+        \assert(\is_string($row['additional_ids']) && \is_string($row['additional_paths']));
         \assert(\is_string($row['variant_axes']) && \is_string($row['variants']) && \is_string($row['category_names']));
 
         /** @var list<string> $additionalIds */
@@ -141,7 +141,6 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
 
         return new ProductSearchSnapshot(
             $row['id'],
-            (int) $row['version'],
             $row['name'],
             $row['slug'],
             $row['short_description'],

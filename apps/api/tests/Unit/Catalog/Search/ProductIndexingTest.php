@@ -152,7 +152,6 @@ final class ProductIndexingTest extends TestCase
     {
         return new ProductSearchSnapshot(
             self::PRODUCT_ID,
-            1,
             'Buty biegowe',
             'buty-biegowe',
             'Lekkie',

@@ -37,7 +37,7 @@ final class MessengerRoutingTest extends KernelTestCase
         $container->set(ElasticsearchProductIndexer::class, $this->indexer);
         $container->set(QueryBusProductOfferFacts::class, new InMemoryProductOfferFacts());
         $container->set(DbalProductSearchSource::class, new InMemoryProductSearchSource([
-            new ProductSearchSnapshot(self::PRODUCT_ID, 1, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::CATEGORY_ID, [], [[self::CATEGORY_ID]], null, [], [], []),
+            new ProductSearchSnapshot(self::PRODUCT_ID, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::CATEGORY_ID, [], [[self::CATEGORY_ID]], null, [], [], []),
         ]));
     }
 

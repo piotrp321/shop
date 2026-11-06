@@ -22,7 +22,6 @@ final readonly class ProductSearchSnapshot
      */
     public function __construct(
         public string $id,
-        public int $version,
         public string $name,
         public string $slug,
         public string $shortDescription,

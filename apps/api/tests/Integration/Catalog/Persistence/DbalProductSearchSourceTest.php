@@ -116,7 +116,6 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         self::assertCount(1, $page);
         $snapshot = $page[0];
         self::assertSame($product->id()->toString(), $snapshot->id);
-        self::assertSame(1, $snapshot->version);
         self::assertSame($product->name()->value(), $snapshot->name);
         self::assertSame($product->slug()->value(), $snapshot->slug);
         self::assertSame('Short text', $snapshot->shortDescription);
@@ -200,15 +199,6 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         self::assertNull($page[0]->mainImage);
         self::assertSame([], $page[0]->additionalCategoryIds);
         self::assertCount(1, $page[0]->categoryPaths);
-    }
-
-    public function testVersionIsReadFromTheStoredRow(): void
-    {
-        $product = ProductFactory::createOne(['mainCategory' => $this->savedCategory()]);
-        $this->products->save($product);
-        $this->connection->executeStatement('UPDATE catalog_product SET version = 7 WHERE id = ?', [$product->id()->toString()]);
-
-        self::assertSame(7, $this->source->page(null, 1)[0]->version);
     }
 
     public function testRejectsALimitBelowOne(): void
@@ -326,15 +316,6 @@ final class DbalProductSearchSourceTest extends KernelTestCase
 
         self::assertCount(1, $expected);
         self::assertEquals($expected[0], $this->source->find($id));
-    }
-
-    public function testFindReadsTheStoredVersion(): void
-    {
-        $product = ProductFactory::createOne(['mainCategory' => $this->savedCategory()]);
-        $this->products->save($product);
-        $this->connection->executeStatement('UPDATE catalog_product SET version = 7 WHERE id = ?', [$product->id()->toString()]);
-
-        self::assertSame(7, $this->source->find($product->id()->toString())?->version);
     }
 
     public function testFindReturnsNullForAnUnknownProduct(): void

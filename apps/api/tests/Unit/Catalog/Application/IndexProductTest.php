@@ -34,7 +34,7 @@ final class IndexProductTest extends TestCase
     protected function setUp(): void
     {
         $this->indexer = new RecordingProductIndexer();
-        $this->handler = $this->handlerFor([self::snapshot(self::PRODUCT_ID, 4)]);
+        $this->handler = $this->handlerFor([self::snapshot(self::PRODUCT_ID)]);
     }
 
     public function testIndexesTheCurrentStateOfTheProductWithItsOfferFacts(): void
@@ -126,8 +126,8 @@ final class IndexProductTest extends TestCase
         return new ProductCreated(self::PRODUCT_ID, new \DateTimeImmutable('2026-10-29T12:00:00+00:00'));
     }
 
-    private static function snapshot(string $id, int $version): ProductSearchSnapshot
+    private static function snapshot(string $id): ProductSearchSnapshot
     {
-        return new ProductSearchSnapshot($id, $version, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::MAIN_ID, [], [[self::MAIN_ID]], null, ['Buty'], [], [['id' => self::VARIANT_ID, 'values' => []]]);
+        return new ProductSearchSnapshot($id, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::MAIN_ID, [], [[self::MAIN_ID]], null, ['Buty'], [], [['id' => self::VARIANT_ID, 'values' => []]]);
     }
 }

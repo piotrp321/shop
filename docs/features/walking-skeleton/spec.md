@@ -436,8 +436,10 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 2. Odczytuje aktualny cel aliasu. Musi to być dokładnie jeden indeks.
 3. Tworzy nowy indeks fizyczny z aktualną definicją.
 4. Czyta produkty paczkami (`ProductSearchSource::page`, domyślnie po 500, z parametru i opcji
-   `--batch-size`) i zapisuje każdą paczkę bulkiem. Pierwszy błąd przejściowy, trwały albo wynik „przestarzały”
-   (w nowym indeksie nie powinien wystąpić) przerywa przebudowę.
+   `--batch-size`), pobiera fakty ofert produktów paczki (`ProductOfferFacts`) i zapisuje każdą paczkę bulkiem.
+   Wersja dokumentów paczki to znacznik czasu pobrany przed jej odczytem (jak w `ProductIndexing`). Pierwszy błąd
+   przejściowy, trwały, błąd faktów ofert (`OfferFactsUnavailable`) albo wynik „przestarzały” (w nowym indeksie nie
+   powinien wystąpić) przerywa przebudowę.
 5. Weryfikuje: odświeżenie, liczba dokumentów równa liczbie zapisanych, `definition_hash` zgodny, indeks
    istnieje i ma zdrowe shardy. Liczba dokumentów to dodatkowy test, a nie dowód pełnej spójności.
 6. Przepina alias jednym żądaniem `_aliases`: `remove` starego celu z `must_exist: true` i `add` nowego.
@@ -463,10 +465,11 @@ i usuwa stary, tak jak przebudowa, tylko bez zasilania. Alias nie znika ani na c
 
 To świadome ograniczenia szkieletu, a nie docelowe rozwiązanie dla katalogu rzędu 10 mln produktów:
 
-- To nie jest przebudowa online. Zapisy przyrostowe w trakcie przebudowy (`IndexProduct`) trafiają przez alias
-  do starego indeksu. Produkt zmieniony po tym, jak przebudowa minęła jego pozycję, nie trafi do nowego indeksu.
-  Poprawny wynik wymaga braku równoległych zapisów katalogu (w szkielecie zapisuje tylko seed, który używa
-  `reset()`).
+- To nie jest przebudowa online. Zapisy przyrostowe w trakcie przebudowy (`IndexProduct` i reindeksacja po zmianie
+  ceny albo poziomu stanu, `ProductIndexing`) trafiają przez alias do starego indeksu i znikają po przepięciu aliasu.
+  Produkt, którego katalog, cena albo stan zmieniły się po tym, jak przebudowa minęła jego pozycję, ma w nowym
+  indeksie stary stan aż do następnej zmiany produktu. Poprawny wynik wymaga braku równoległych zmian (`make seed`
+  uruchamia przebudowę po wszystkich seedach).
 - Brak checkpointów i wznowienia: przerwana przebudowa zaczyna się od początku. Indeks osierocony po awarii
   procesu zostaje i jest wypisywany przez `setup`.
 - Brak równoległego zasilania przez wielu consumerów, okresu retencji starego indeksu i rollbacku.
