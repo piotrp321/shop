@@ -215,6 +215,25 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   trasy i unieważnianie po zmianie danych (zdarzenie i konsument wołający `StorefrontCache`). Bez tego zmiana danych
   nie będzie widoczna w sklepie przed końcem `max-age`/`s-maxage`.
 
+- Indeks wyszukiwania (Elasticsearch, alias `products`) należy do Catalog. Dokument (`ProductIndexDefinition`,
+  `dynamic: strict`): dane produktu, `name`, `category_names` (nazwy kategorii produktu i ich przodków)
+  i `short_description` z analizatorem `polish_text` (`lowercase`, `polish_stem`, `asciifolding`) i podpolem `folded`
+  (bez stemmera), `variants` (`nested`: `gross` brutto w groszach, brak bez ceny; `purchasable`; `axes`; `options` jako
+  `<oś>` U+001F `<wartość>` jak w Catalog) i `from_gross` (cena „od”, brak bez wariantu możliwego do kupienia).
+  Ceny i dostępność daje port `ProductOfferFacts` (`Catalog_Application`) z adapterem `QueryBusProductOfferFacts`
+  w `Cart_Infrastructure` (Cart `GetProductOffers` na `query.bus`, paczki po 48): reguła „możliwy do kupienia” i cena
+  „od” są tylko w Cart. Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
+  Inventory.
+- Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, poza `command.bus`): znacznik
+  czasu w mikrosekundach pobrany przed odczytem (DBAL Catalog i `ProductOfferFacts`) jest wersją dokumentu
+  z `version_type=external_gte`, więc zapis starszego odczytu po nowszym to wynik „przestarzały”. Wyzwalacze na
+  transporcie `events`: `IndexProduct` (`ProductCreated`; brak produktu to `failed`), `ReindexProductOnPriceChange`
+  (`Pricing_Infrastructure`, `VariantPriceChanged`) i `ReindexProductOnStockLevelChange` (`Inventory_Infrastructure`,
+  `StockLevelChanged`): produkt z Catalog `GetVariant`, wariant nieznany, brak produktu i źródło `seed` to wiadomość
+  obsłużona bez zapisu; `SearchUnavailable` i `OfferFactsUnavailable` są ponawiane, `SearchIndexError` idzie do
+  `failed`. Przebudowa (`catalog:reindex`) pobiera fakty ofert każdej paczki; ich błąd przerywa przebudowę, a zmiany
+  cen i stanów obsłużone w jej trakcie trafiają do starego indeksu (przebudowa nie jest online).
+
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
 - Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.

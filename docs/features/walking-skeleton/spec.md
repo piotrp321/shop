@@ -181,7 +181,7 @@ w aplikacji uwierzytelniającej. W realmie sekret jest zapisany jako zwykły tek
 
 | Moduł | Domain | Application | Infrastructure | UI |
 |---|---|---|---|---|
-| `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetProductBySlug`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; przebudowa indeksu `ProductSearchIndexRebuilder`; porty `ProductSearch`, `ProductIndexer`, `ProductSearchSource`, `SearchIndexMaintenance`, `SearchIndexRebuildLock`, `ProductImageStorage`, `ImageUrlGenerator`, `DemoCatalogSource`, `CatalogReset`; ładowanie danych demo `DemoCatalogLoader` (przez `command.bus`); lista rozmiarów `ImageSize` | Doctrine (rekordy z atrybutami), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, źródło danych demo z `catalog.yaml` (parsowanie, rozwijanie szablonów, UUID v5) i `CatalogReset` | `GET /api/v1/products`, `GET /api/v1/products/{slug}`, `GET /api/v1/categories`, komendy konsoli |
+| `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetProductBySlug`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; zapis produktu do indeksu `ProductIndexing`; przebudowa indeksu `ProductSearchIndexRebuilder`; porty `ProductSearch`, `ProductIndexer`, `ProductSearchSource`, `ProductOfferFacts` (adapter w Cart), `Clock`, `SearchIndexMaintenance`, `SearchIndexRebuildLock`, `ProductImageStorage`, `ImageUrlGenerator`, `DemoCatalogSource`, `CatalogReset`; ładowanie danych demo `DemoCatalogLoader` (przez `command.bus`); lista rozmiarów `ImageSize` | Doctrine (rekordy z atrybutami), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, źródło danych demo z `catalog.yaml` (parsowanie, rozwijanie szablonów, UUID v5) i `CatalogReset` | `GET /api/v1/products`, `GET /api/v1/products/{slug}`, `GET /api/v1/categories`, komendy konsoli |
 | `Customer` | — | interfejs `AuthenticatedCustomer` (klient z tokena) | `CustomerUser` (implementuje `AuthenticatedCustomer`) i `CustomerUserProvider` (z tokena realmu `shop`) | `GET /api/v1/me` |
 | `Backoffice` | — | zapytanie `GetDashboard`; porty `CatalogStatistics`, `SystemHealth`, `MessagingStatistics`; interfejs `AuthenticatedStaffMember` (pracownik z tokena) | `StaffUser` (implementuje `AuthenticatedStaffMember`) i `StaffUserProvider` (z tokena realmu `backoffice`), `DashboardVoter`, adaptery portów | `GET /api/v1/admin/me`, `GET /api/v1/admin/dashboard` |
 | `Shared` | interfejs `DomainEvent` (`occurredAt()`), port `DomainEventPublisher`, interfejsy-znaczniki wyjątków `ProblemException`, `NotFound`, `Conflict`, `InvalidInput` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
@@ -338,8 +338,9 @@ Przepływ:
    na stary kanał. Nieudana publikacja to wyjątek przekaźnika i ponowienie wiersza outboxa.
    Kolejkę i binding transport deklaruje raz na proces. Gdy znikną, przekaźnik ponawia wiersze, a worker przy
    pobieraniu z `events` kończy się błędem 404; po restarcie (`restart: unless-stopped`) deklaruje je od nowa.
-3. `worker` konsumuje `events`. Handlery odbiorców mają `from_transport: events`, w szkielecie jest to
-   `IndexProduct` dla `ProductCreated`.
+3. `worker` konsumuje `events`. Handlery odbiorców mają `from_transport: events`, dla indeksu wyszukiwarki są to
+   `IndexProduct` (`ProductCreated`), `ReindexProductOnPriceChange` (`VariantPriceChanged`) i
+   `ReindexProductOnStockLevelChange` (`StockLevelChanged`).
 4. Każdy handler zdarzenia ma jawny `from_transport`. Przekaźnik nigdy nie działa przy konsumpcji z `events`,
    a odbiorcy nigdy przy konsumpcji z `outbox`, więc nie ma pętli ani podwójnej obsługi.
 5. Ponowienia (z domyślnym jitterem ±10 %), potem transport `failed`, gdzie zdarzenie czeka na
@@ -364,6 +365,14 @@ jako obsłużoną wiadomość, bez ponowienia. Handler jest więc idempotentny i
 Błąd przejściowy (`SearchUnavailable`, `OfferFactsUnavailable`) ponawia Messenger według strategii `events`. Błąd
 trwały (`SearchIndexError`) i produkt, którego nie da się odczytać (wynik „brak produktu”; katalog nie ma usuwania,
 więc to niespójność), kończą się `UnrecoverableMessageHandlingException`: wiadomość od razu trafia do `failed`.
+
+Zmiana ceny i poziomu stanu reindeksuje produkt: `ReindexProductOnPriceChange` (`Pricing_Infrastructure`,
+`VariantPriceChanged`) i `ReindexProductOnStockLevelChange` (`Inventory_Infrastructure`, `StockLevelChanged`) biorą
+produkt z Catalog `GetVariant` (`query.bus`) i wołają `ProductIndexing::reindex`. Są niezależne od konsumentów
+unieważniania cache sklepu na tych samych zdarzeniach. Wariant nieznany Catalogowi, wynik „brak produktu” i wynik
+„przestarzały” to wiadomość obsłużona bez zapisu. Zdarzenie ze źródła `seed` jest obsłużone bez reindeksacji, bo
+`make seed` przebudowuje indeks po wszystkich seedach. Błędy jak w `IndexProduct`: przejściowy (`SearchUnavailable`,
+`OfferFactsUnavailable`) ponawia Messenger, trwały (`SearchIndexError`) idzie od razu do `failed`.
 
 ### Indeks Elasticsearch
 
@@ -484,9 +493,10 @@ z wieloma consumerami, która zastąpi pętlę w `ProductSearchIndexRebuilder`.
   koniec. `afterId` musi być UUID (wielkość liter bez znaczenia, wartość jest normalizowana do małych liter) albo
   `null`, w przeciwnym razie metoda rzuca `\InvalidArgumentException`. `limit` musi wynosić co najmniej 1.
 - `find(id)` czyta jeden produkt tym samym zapytaniem co `page`, z warunkiem `WHERE id = :id` zamiast kursora, i zwraca
-  `null`, gdy produktu nie ma. `id` ma te same wymagania co `afterId`. Używa go `IndexProduct`.
+  `null`, gdy produktu nie ma. `id` ma te same wymagania co `afterId`. Używa go `ProductIndexing`.
 - Jedno zapytanie SQL na paczkę, czyli jeden spójny snapshot. Najpierw CTE wybiera identyfikatory paczki
-  z `LIMIT` na `catalog_product`, dopiero potem zapytanie dołącza kategorie dodatkowe i ścieżki kategorii
+  z `LIMIT` na `catalog_product`, dopiero potem zapytanie dołącza kategorie dodatkowe i ścieżki kategorii, warianty
+  z wartościami osi (w kolejności pozycji) i nazwy kategorii produktu i ich przodków (każda kategoria raz)
   i agreguje je dla każdego produktu. `LIMIT` nigdy nie działa na wierszach po złączeniu.
   Pierwsza paczka nie ma warunku kursora, kolejne mają `WHERE id > :after`, dzięki czemu kursor pozostaje warunkiem
   indeksu klucza głównego także w planie generycznym (test przypina to przez `EXPLAIN`).
@@ -699,7 +709,7 @@ w tej kolejności:
 | Komenda | Działanie |
 |---|---|
 | `catalog:search-index:setup [--recreate]` | tworzy indeks i alias `products`, jeśli nie istnieją, i sprawdza ich stan (sekcja „Indeks Elasticsearch”) |
-| `catalog:reindex [--batch-size=N]` | przebudowa synchroniczna z Postgresa z przepięciem aliasu; kod 0 po przepięciu, 1 gdy alias zostaje przy starym indeksie, 2 gdy stan aliasu jest nieznany |
+| `catalog:reindex [--batch-size=N]` | przebudowa synchroniczna z Postgresa i faktów ofert (`ProductOfferFacts`) z przepięciem aliasu; kod 0 po przepięciu, 1 gdy alias zostaje przy starym indeksie, 2 gdy stan aliasu jest nieznany |
 | `catalog:seed-demo` | resetuje dane katalogu (tabele, outbox, indeks, bucket) i ładuje dane demo (opis niżej); przy `APP_ENV=prod` odmawia działania (kod 1, bez zmian w danych), chyba że dostanie flagę `--force-reset` |
 
 ## Kontrakt API i klienci TS

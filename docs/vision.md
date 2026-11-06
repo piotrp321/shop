@@ -29,7 +29,10 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
 - **PostgreSQL** – źródło prawdy dla wszystkich contextów.
 - **Elasticsearch** – wyszukiwanie i filtrowanie produktów w sklepie. Tylko model odczytu, odbudowywany z Postgresa.
   Analizę tekstu polskiego (stemming) robi oficjalna wtyczka `analysis-stempel`, dlatego usługa działa na własnym
-  obrazie (`infra/elasticsearch/Dockerfile`: obraz Elasticsearch z zainstalowaną wtyczką).
+  obrazie (`infra/elasticsearch/Dockerfile`: obraz Elasticsearch z zainstalowaną wtyczką). Indeks należy do Catalog
+  i zawiera warianty produktów z cenami i dostępnością. Catalog bierze je przez port do oferty Cart
+  (`ProductOfferFacts`), więc „możliwy do kupienia” i cena „od” liczą się tak samo jak na kafelku, a Catalog nie
+  zależy od Pricing, Inventory ani Cart. Zmiany cen i stanów aktualizują indeks przez zdarzenia.
 - **Redis** – cache (odczyty katalogu), limity dla rate limitera.
 - **RabbitMQ** – komunikaty asynchroniczne przez Symfony Messenger: zdarzenia domenowe między contextami,
   indeksowanie w ES, e-maile, rewalidacja stron sklepu.
