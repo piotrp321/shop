@@ -218,6 +218,7 @@ final class ProductsEndpointTest extends WebTestCase
         if (\strlen($value) >= 3) {
             self::assertStringNotContainsString($value, (string) $this->client->getResponse()->getContent());
         }
+        $this->assertNotStored();
     }
 
     public function testResponseIsPubliclyCachedAndVariesOnOrigin(): void
@@ -229,6 +230,35 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertSame('60', $headers->getCacheControlDirective('max-age'));
         self::assertStringContainsString('Origin', (string) $headers->get('Vary'));
         self::assertSame('max-age=60, public', $headers->get('Cache-Control'));
+    }
+
+    public function testResponseIsTaggedWithTheCatalogAndEveryProductOfThePage(): void
+    {
+        $this->index(
+            $this->document('Buty', self::LEAF, [self::LEAF]),
+            $this->document('Czapka', self::OTHER, [self::OTHER]),
+            $this->document('Kask', self::OTHER, [self::OTHER]),
+        );
+
+        $body = $this->get('/api/v1/products?perPage=2');
+
+        self::assertResponseStatusCodeSame(200);
+        [$first, $second] = array_column($this->items($body), 'id');
+        self::assertIsString($first);
+        self::assertIsString($second);
+        self::assertSame(
+            'catalog product-'.strtolower($first).' product-'.strtolower($second),
+            $this->client->getResponse()->headers->get('xkey'),
+        );
+        self::assertSame('max-age=60, public', $this->client->getResponse()->headers->get('Cache-Control'));
+    }
+
+    public function testAnEmptyPageIsTaggedWithTheCatalogOnly(): void
+    {
+        $this->get('/api/v1/products?category='.self::OTHER);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('catalog', $this->client->getResponse()->headers->get('xkey'));
     }
 
     public function testUnavailableSearchGivesProblemDetailsWithoutTechnicalDetails(): void
@@ -245,7 +275,7 @@ final class ProductsEndpointTest extends WebTestCase
         $content = (string) $this->client->getResponse()->getContent();
         self::assertStringNotContainsString('elasticsearch', strtolower($content));
         self::assertStringNotContainsString('refused', $content);
-        self::assertFalse($this->client->getResponse()->headers->hasCacheControlDirective('public'));
+        $this->assertNotStored();
     }
 
     public function testPermanentSearchFailureIsAnOpaque500(): void
@@ -320,6 +350,18 @@ final class ProductsEndpointTest extends WebTestCase
 
         self::assertEqualsCanonicalizing(array_keys($schema['properties']), array_keys($object), $schemaName.' keys must match the schema.');
         self::assertEqualsCanonicalizing($schema['required'], array_keys($object), $schemaName.' requires every key.');
+    }
+
+    /**
+     * An error of a catalog read is never kept by a cache, and carries no cache tags.
+     */
+    private function assertNotStored(): void
+    {
+        $headers = $this->client->getResponse()->headers;
+        $directives = array_map('trim', explode(',', (string) $headers->get('Cache-Control')));
+        sort($directives);
+        self::assertSame(['no-store', 'private'], $directives);
+        self::assertFalse($headers->has('xkey'));
     }
 
     private function saveCategory(string $id, ?Category $parent = null): Category
