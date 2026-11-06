@@ -8,6 +8,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 import { EMPTY_FACETS } from "./fixtures";
 import { ListingFilters } from "./ListingFilters";
+import { ListingProvider } from "./listing-context";
 import type { ListingState, ProductFacets } from "./listing-query";
 
 beforeEach(() => push.mockReset());
@@ -28,7 +29,11 @@ const FACETS: ProductFacets = {
 
 function setup(state: Partial<ListingState> = {}, facets: ProductFacets = FACETS, over: { basePath?: string; mode?: "list" | "search" } = {}) {
   const full: ListingState = { options: [], ...state };
-  render(<ListingFilters basePath={over.basePath ?? "/c/bieganie"} mode={over.mode ?? "list"} state={full} facets={facets} />);
+  render(
+    <ListingProvider basePath={over.basePath ?? "/c/bieganie"} state={full}>
+      <ListingFilters mode={over.mode ?? "list"} facets={facets} />
+    </ListingProvider>,
+  );
 }
 
 const box = (name: string) => screen.getByRole("checkbox", { name }) as HTMLInputElement;
@@ -84,7 +89,9 @@ describe("ListingFilters: the panel", () => {
 
   it("is a GET form to the listing address carrying the phrase and the category of the search", () => {
     const html = renderToStaticMarkup(
-      <ListingFilters basePath="/szukaj" mode="search" state={{ q: "kurtka zimowa", options: [], category: "bieganie/buty" }} facets={FACETS} />,
+      <ListingProvider basePath="/szukaj" state={{ q: "kurtka zimowa", options: [], category: "bieganie/buty" }}>
+        <ListingFilters mode="search" facets={FACETS} />
+      </ListingProvider>,
     );
     expect(html).toMatch(/<form[^>]*id="listing-filters"/);
     expect(html).toMatch(/<form[^>]*method="get"/);
@@ -94,7 +101,11 @@ describe("ListingFilters: the panel", () => {
   });
 
   it("has the „Pokaż wyniki” button for a browser without JavaScript, and no hidden phrase on a listing", () => {
-    const html = renderToStaticMarkup(<ListingFilters basePath="/c/bieganie" mode="list" state={{ options: [] }} facets={FACETS} />);
+    const html = renderToStaticMarkup(
+      <ListingProvider basePath="/c/bieganie" state={{ options: [] }}>
+        <ListingFilters mode="list" facets={FACETS} />
+      </ListingProvider>,
+    );
     expect(html).toMatch(/<noscript>.*<button[^>]*type="submit"[^>]*>Pokaż wyniki<\/button>.*<\/noscript>/);
     expect(html).not.toContain('name="q"');
     expect(html).not.toContain('name="kategoria"');

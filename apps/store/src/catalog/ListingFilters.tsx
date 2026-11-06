@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type FocusEvent, type FormEvent, type KeyboardEvent, useOptimistic, useRef, useState, useTransition } from "react";
+import { type FocusEvent, type FormEvent, type KeyboardEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatPrice } from "./format-price";
-import { categoryFacetHref, listingHref, type ListingMode, type ListingState, type ProductFacets, toggleOption } from "./listing-query";
+import { useListing } from "./listing-context";
+import { categoryFacetHref, type ListingMode, type ProductFacets, toggleOption } from "./listing-query";
 import { FILTER_FORM_ID } from "./SortSelect";
 
 // Prices are in PLN: the facet has the amounts in grosze and no currency.
@@ -15,11 +15,9 @@ const CURRENCY = "PLN";
 const checkboxClass = "size-4 accent-primary";
 
 /** The filter panel built from the facets of the API: categories, the values of every axis, the price and availability. */
-export function ListingFilters({ basePath, mode, state, facets }: { basePath: string; mode: ListingMode; state: ListingState; facets: ProductFacets }) {
-  const router = useRouter();
-  const [, startTransition] = useTransition();
-  // What the panel shows until the new page arrives: the change just made.
-  const [current, setCurrent] = useOptimistic(state);
+export function ListingFilters({ mode, facets }: { mode: ListingMode; facets: ProductFacets }) {
+  // `current` is what the panel shows until the new page arrives: the change just made, here or in the sort.
+  const { basePath, state: current, go } = useListing();
   const [open, setOpen] = useState(false);
   const priceGroup = useRef<HTMLFieldSetElement>(null);
 
@@ -36,13 +34,6 @@ export function ListingFilters({ basePath, mode, state, facets }: { basePath: st
     setSyncedTo(current.priceTo);
     setPriceTo(current.priceTo ?? "");
   }
-
-  const go = (next: ListingState) => {
-    startTransition(() => {
-      setCurrent(next);
-      router.push(listingHref(basePath, next));
-    });
-  };
 
   // Whole zloty exactly as typed (trimmed); the conversion to grosze and the judgement are for the page and the API.
   const applyPrice = () => {

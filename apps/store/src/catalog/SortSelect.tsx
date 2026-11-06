@@ -1,8 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useOptimistic, useTransition } from "react";
-import { defaultSort, listingHref, type ListingState } from "./listing-query";
+import { useListing } from "./listing-context";
+import { defaultSort } from "./listing-query";
 
 export const FILTER_FORM_ID = "listing-filters";
 
@@ -18,18 +17,11 @@ const SORTS = [
  * without JavaScript; with JavaScript a change navigates at once. „Trafność” is offered only with a phrase, and the
  * default sort leaves `sort` out of the address.
  */
-export function SortSelect({ basePath, state }: { basePath: string; state: ListingState }) {
-  const router = useRouter();
-  const [, startTransition] = useTransition();
-  const fallback = defaultSort(state);
-  // The chosen sort shows at once, until the new page arrives.
-  const [selected, setSelected] = useOptimistic(state.sort ?? fallback);
-  const choose = (value: string) => {
-    startTransition(() => {
-      setSelected(value);
-      router.push(listingHref(basePath, state, { sort: value === fallback ? undefined : value }));
-    });
-  };
+export function SortSelect() {
+  const { state, go } = useListing();
+  // The sort chosen shows at once, until the new page arrives.
+  const selected = state.sort ?? defaultSort(state);
+  const choose = (value: string) => go({ ...state, sort: value === defaultSort(state) ? undefined : value, page: undefined });
   return (
     <div className="flex items-center gap-2 text-sm">
       <label htmlFor="listing-sort">Sortuj</label>

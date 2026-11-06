@@ -35,7 +35,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`),
   `load-catalog.ts` (lista produktów i oferty), `category-tree.ts` (drzewo kategorii) z `category-path.ts` (ścieżka
   slugów → kategorie), `CatalogListing`, `Breadcrumbs` z `breadcrumb.ts`, `SiteHeader`, `MegaMenu` i `SearchBox`,
-  `listing-query.ts` (parametry URL ↔ zapytanie API, adresy listingu), `ListingFilters`, `ActiveFilters`, `SortSelect`
+  `listing-query.ts` (parametry URL ↔ zapytanie API, adresy listingu), `listing-context.tsx`, `ListingFilters`, `ActiveFilters`, `SortSelect`
   i `EmptyResults` (panel filtrów i sortowanie),
   `load-product.ts` (odczyty strony produktu), `ProductDetailsView`, `VariantChoice` z `variant-choice.ts` (wybór wariantu),
   `product-metadata.ts` i `product-json-ld.ts`.
@@ -112,7 +112,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   wybrana wartość z 0 zostaje na liście), „Cena (zł)” (pola „Cena od” i „Cena do”) i „Tylko dostępne” (z `availableCount`).
   Pola wyboru, „Tylko dostępne” i lista „Sortuj” (`SortSelect`, natywny `select`, domyślne sortowanie zostawia `sort`
   poza adresem) nawigują od razu (`router.push` w tranzycji z `useOptimistic`, więc zaznaczenie widać przed nową
-  stroną); cena po Enter (obsługa klawisza, bo formularz bez przycisku z kilkoma polami tekstowymi nie wysyła się
+  stroną). Panel i sortowanie dzielą jeden stan optymistyczny (`ListingProvider` w `CatalogListing`, `useListing`),
+  więc zmiany wykonane jedna po drugiej budują adres z poprzedniej zmiany i nie nadpisują się; cena po Enter (obsługa klawisza, bo formularz bez przycisku z kilkoma polami tekstowymi nie wysyła się
   Enterem) albo po opuszczeniu pola (przejście z jednego pola ceny do drugiego nie nawiguje); wpisana wartość jest
   przycinana i idzie bez przeliczania, pusta usuwa filtr. Każda zmiana filtra lub sortowania usuwa `page` (`listingHref`).
 - Bez JavaScriptu panel jest formularzem `GET` (`id="listing-filters"`, ukryte pola `q` i `kategoria`; `select` „Sortuj”
@@ -129,7 +130,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - `SiteHeader` ma pole wyszukiwania (`SearchBox`, Client Component): formularz `GET /szukaj` (`next/form`) z polem `q`
   (etykieta „Szukaj produktów”). HTML nagłówka jest taki sam dla wszystkich (strona produktu jest ISR), więc pole jest
-  w nim puste; fraza na `/szukaj` wpisuje przeglądarka z `useSearchParams` (w `Suspense` z pustym polem jako zapasowym).
+  w nim puste; fraza na `/szukaj` trafia do pola z `useSearchParams` (mały komponent w `Suspense` bez wyniku: formularz i pole są poza
+  nim, więc element pola się nie wymienia przy hydratacji i wpisany wcześniej tekst zostaje). Pole jest nadpisywane tylko
+  przy zmianie frazy (nowe wyszukiwanie, wyjście z `/szukaj`), nie przy zmianie innych parametrów.
 - Layout czyta drzewo przez `loadMenuCategories` (to samo `React.cache` co listing) i renderuje `SiteHeader` z menu
   działów (`MegaMenu`, `nav` „Działy”, Client Component). Na stronie produktu (ISR) odczyt drzewa ma tag `catalog`
   (`loadCategoryTree`), więc strona rewaliduje się razem z katalogiem; odczyt nie ustawia trybu cache.
