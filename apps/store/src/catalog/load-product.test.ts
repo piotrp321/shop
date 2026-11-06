@@ -98,6 +98,8 @@ describe("loadProduct", () => {
       ["no variants", { ...DETAILS, variants: undefined }],
       ["no images", { ...DETAILS, images: "x" }],
       ["no breadcrumb", { ...DETAILS, breadcrumb: null }],
+      ["no short description", { ...DETAILS, shortDescription: undefined }],
+      ["a numeric short description", { ...DETAILS, shortDescription: 5 }],
     ])("details with an unexpected body (%s)", async (_name, body) => {
       stubApi((url) => (url.pathname.startsWith("/api/v1/products/") ? json(body) : json({ items: [OFFER] })));
       await expect(loadProduct("produkt-1")).rejects.toThrow("unexpected");

@@ -28,6 +28,7 @@ function isDetails(value: ProductDetails | undefined): value is ProductDetails {
     typeof value.id === "string" &&
     typeof value.slug === "string" &&
     typeof value.name === "string" &&
+    typeof value.shortDescription === "string" &&
     isList(value.breadcrumb) &&
     isList(value.images) &&
     isList(value.variantAxes) &&
