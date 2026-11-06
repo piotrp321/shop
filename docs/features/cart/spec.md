@@ -326,7 +326,9 @@ Sklep (`apps/api/openapi.json`). Błędy w formacie RFC 9457, `detail` z wyjątk
 `/api/v1/me/cart…` objęte istniejącą regułą `ROLE_CUSTOMER`.
 
 Oferta produktów listy: `GET /api/v1/product-offers?productId=…&productId=…` (`ProductOffersController` w `Cart_UI`,
-`PUBLIC_ACCESS` dla `GET` w `security.yaml`, `Cache-Control: public, max-age=60`; token wysłany i niepoprawny: 401).
+`PUBLIC_ACCESS` dla `GET` w `security.yaml`, `Cache-Control: public, max-age=60` i `xkey: catalog product-<id> …` dla
+każdego żądanego id (UUID małymi literami, powtórzone id raz); token wysłany i niepoprawny: 401; 400, 401 i 503 mają
+`private, no-store` bez tagów). Sklep czyta ofertę przez Varnish (`API_CATALOG_URL`).
 Identyfikatory jako powtórzony klucz `productId` (forma `productId[]` nie jest kontraktem). 1–48 id; brak, ponad 48
 albo id niebędące UUID: 400 z `violations`. 200 `{items: [oferta z sekcji „Oferta produktów listy”]}`, jedna pozycja na
 każde żądane id. Odpowiedź może być w cache do 60 s, więc nie decyduje o zakupie: dodanie do koszyka sprawdza cenę i stan

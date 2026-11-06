@@ -265,9 +265,11 @@ Błędy RFC 9457. Typy ścisłe i kody jak w specyfikacjach funkcji, chyba że o
 
 Sklep (`openapi.json`):
 - `GET /api/v1/products`: strona produktów bez wariantów (`ProductListItem`).
-- `GET /api/v1/product-offers?productId=…&productId=…` (`Cart_UI`, `PUBLIC_ACCESS` dla `GET`, `public, max-age=60`):
+- `GET /api/v1/product-offers?productId=…&productId=…` (`Cart_UI`, `PUBLIC_ACCESS` dla `GET`, `public, max-age=60`,
+  `xkey: catalog product-<id> …` dla każdego żądanego id, UUID małymi literami; sklep czyta ją przez Varnish):
   1–48 id w powtórzonym kluczu `productId` (forma `productId[]` nie jest przyjmowana); brak id, za dużo albo
   niepoprawny UUID: 400; `200 {items: [oferta z sekcji „Oferta produktów listy”]}` dla każdego żądanego id.
+  400, 401 i 503: `private, no-store` bez tagów.
   Tablica `variants` służy wyborowi wariantu na kafelku; stronę produktu projektuje PRODUCT-PAGE.
 - Koszyk: `{variantId}` w ścieżkach `items/{variantId}`; treść dodania `{variantId: uuid, quantity}`; `CartView`
   jak w sekcji „Cart”. Komunikaty `violations` dla `variantId`: „Identyfikator wariantu jest wymagany.” i

@@ -40,7 +40,9 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
   i nie obciąży serwera. W produkcji przed imgproxy stoi CDN, który cache'uje wyniki.
 - **Varnish** – HTTP cache przed publicznymi endpointami odczytu API (katalog, wyszukiwarka, filtry).
   Odciąża API i Elasticsearch przy stronach wyszukiwarki renderowanych przez SSR, gdzie te same zapytania
-  powtarzają się bardzo często. Unieważnianie precyzyjne przez tagi (xkey), opisane niżej.
+  powtarzają się bardzo często. Serwer sklepu czyta przez niego katalog pod osobnym adresem (`API_CATALOG_URL`);
+  koszyk, kasa i logowanie idą do API bezpośrednio (`API_INTERNAL_URL`). Varnish nie ma portu na hoście,
+  a `PURGE` wymaga sekretu. Unieważnianie precyzyjne przez tagi (xkey), opisane niżej.
 - **Mailpit** – przechwytuje e-maile wysyłane lokalnie (potwierdzenia zamówień), z podglądem w przeglądarce.
 
 ## Zdjęcia produktów
@@ -93,8 +95,9 @@ Trzy warstwy cache, każda z jasną rolą:
 | Varnish | odpowiedzi publicznych endpointów `GET` katalogu i wyszukiwarki | purge po tagach (xkey) po zdarzeniu domenowym |
 | Cloudflare | obrazy z imgproxy, statyczne zasoby | adresy obrazów są niezmienne, więc bez unieważniania |
 
-- Każda odpowiedź katalogu dostaje tagi obiektów, które zawiera (np. `product-123`, `category-7`),
-  przez FOSHttpCacheBundle.
+- Każda odpowiedź katalogu dostaje tagi obiektów, które zawiera (`catalog` i np.
+  `product-0192f0c4-7c1a-7c4e-9a6e-000000000001`), w nagłówku `xkey` ustawianym przez własny mały serwis tagów
+  w API (bez FOSHttpCacheBundle). Varnish usuwa nagłówek przed wysłaniem odpowiedzi.
 - Zmiana produktu, ceny lub stanu publikuje zdarzenie domenowe. Jeden konsument unieważnia w Varnishu
   odpowiedzi z danym tagiem, drugi rewaliduje odpowiednie strony w Next.js. Reszta cache zostaje.
 - Varnish nigdy nie cache'uje: koszyka, checkoutu, konta klienta, panelu admina ani żadnego żądania
