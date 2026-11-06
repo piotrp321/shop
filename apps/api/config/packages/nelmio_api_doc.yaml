@@ -16,7 +16,7 @@ nelmio_api_doc:
                         # Application layer stays free of OpenAPI; ProductsEndpointTest checks them against real responses.
                         ProductPage:
                             type: object
-                            required: [items, page, perPage, total]
+                            required: [items, page, perPage, total, facets]
                             properties:
                                 items:
                                     type: array
@@ -34,6 +34,105 @@ nelmio_api_doc:
                                     type: integer
                                     description: All products matching the filter, not only this page.
                                     example: 412
+                                facets:
+                                    $ref: '#/components/schemas/ProductFacets'
+                        ProductFacets:
+                            type: object
+                            description: >-
+                                Counts for the filters of the list. Each one is computed with every condition of the search
+                                except its own. The count of an axis value is the number of products that have a variant with
+                                that value meeting the other variant conditions (other axes, price, availability). For an axis
+                                without a selection it is the `total` the search would return after adding that value; for an
+                                axis with a selection it is the result of selecting only that value of the axis.
+                            required: [categories, options, price, availableCount]
+                            properties:
+                                categories:
+                                    type: array
+                                    description: >-
+                                        The subcategories of the `category` filter (the top-level categories without it) that have
+                                        products, in the order of the category tree.
+                                    items:
+                                        $ref: '#/components/schemas/CategoryFacet'
+                                options:
+                                    type: array
+                                    description: >-
+                                        The variant axes of the products found, most products first (at most 10; the selected
+                                        axes are always listed, beyond that limit). A selected value stays in its list with a count
+                                        of 0 when nothing matches.
+                                    items:
+                                        $ref: '#/components/schemas/OptionFacet'
+                                price:
+                                    nullable: true
+                                    description: >-
+                                        The lowest and the highest gross price of the variants that can be bought now and have the
+                                        selected `option` values, ignoring `priceMin` and `priceMax`; null without such a variant.
+                                    allOf:
+                                        - $ref: '#/components/schemas/PriceRange'
+                                availableCount:
+                                    type: integer
+                                    description: The `total` the search would return with `available=true` added.
+                                    example: 18
+                        CategoryFacet:
+                            type: object
+                            required: [id, name, slug, path, count]
+                            properties:
+                                id:
+                                    type: string
+                                    format: uuid
+                                name:
+                                    type: string
+                                    example: Buty
+                                slug:
+                                    type: string
+                                    example: buty
+                                path:
+                                    type: string
+                                    description: The slugs from the top-level category joined with `/`.
+                                    example: bieganie/buty
+                                count:
+                                    type: integer
+                                    description: The products of the category (and its subcategories) found, with the variant conditions of the search.
+                                    example: 7
+                        OptionFacet:
+                            type: object
+                            required: [axis, values]
+                            properties:
+                                axis:
+                                    type: string
+                                    example: Kolor
+                                values:
+                                    type: array
+                                    description: >-
+                                        Most products first, then by value (at most 30; the selected values are always listed,
+                                        beyond that limit).
+                                    items:
+                                        $ref: '#/components/schemas/OptionValue'
+                        OptionValue:
+                            type: object
+                            required: [value, count]
+                            properties:
+                                value:
+                                    type: string
+                                    example: czarne
+                                count:
+                                    type: integer
+                                    description: >-
+                                        The number of products that have a variant with this value meeting the other variant
+                                        conditions (other axes, price, availability). For an axis without a selection it is the
+                                        `total` after adding the value; for an axis with a selection, the result of selecting only
+                                        this value of the axis.
+                                    example: 4
+                        PriceRange:
+                            type: object
+                            description: Gross prices in grosze.
+                            required: [min, max]
+                            properties:
+                                min:
+                                    type: integer
+                                    example: 24900
+                                max:
+                                    type: integer
+                                    example: 49900
                         ProductListItem:
                             type: object
                             required: [id, name, slug, shortDescription, image]

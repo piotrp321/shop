@@ -52,7 +52,7 @@ final class ProductIndexingTest extends TestCase
         $document = $this->indexer->indexed[0];
         self::assertSame(self::PRODUCT_ID, $document->id);
         self::assertSame(['Buty'], $document->categoryNames);
-        self::assertEquals([new VariantDocument(4_900, true, [], [])], $document->variants);
+        self::assertEquals([new VariantDocument(4_900, true, [])], $document->variants);
         self::assertSame(4_900, $document->fromGross);
     }
 
@@ -106,7 +106,7 @@ final class ProductIndexingTest extends TestCase
         self::assertSame(ReindexOutcome::Indexed, $this->indexing()->reindex(self::PRODUCT_ID));
 
         $document = $this->indexer->indexed[0];
-        self::assertEquals([new VariantDocument(null, false, [], [])], $document->variants);
+        self::assertEquals([new VariantDocument(null, false, [])], $document->variants);
         self::assertNull($document->fromGross);
     }
 

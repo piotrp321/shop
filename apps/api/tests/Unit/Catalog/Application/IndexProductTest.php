@@ -48,7 +48,7 @@ final class IndexProductTest extends TestCase
         self::assertSame(self::PRODUCT_ID, $document->id);
         self::assertSame('Buty biegowe', $document->name);
         self::assertSame(4_900, $document->fromGross);
-        self::assertEquals([new VariantDocument(4_900, true, [], [])], $document->variants);
+        self::assertEquals([new VariantDocument(4_900, true, [])], $document->variants);
     }
 
     public function testStaleOutcomeEndsHandlingWithoutAnError(): void

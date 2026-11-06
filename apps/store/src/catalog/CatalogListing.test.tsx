@@ -2,13 +2,13 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CatalogListing } from "./CatalogListing";
-import { makeOffer, makeProduct } from "./fixtures";
+import { EMPTY_FACETS, makeOffer, makeProduct } from "./fixtures";
 
 afterEach(cleanup);
 
 const listing = (total: number, items = [makeProduct(1)], page = 1) => ({
   kind: "ok" as const,
-  products: { items, page, perPage: 24, total },
+  products: { items, page, perPage: 24, total, facets: EMPTY_FACETS },
   offers: { [makeProduct(1).id]: makeOffer(1) },
 });
 

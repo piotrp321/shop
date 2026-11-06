@@ -219,8 +219,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Indeks wyszukiwania (Elasticsearch, alias `products`) należy do Catalog. Dokument (`ProductIndexDefinition`,
   `dynamic: strict`): dane produktu, `name`, `category_names` (nazwy kategorii produktu i ich przodków)
   i `short_description` z analizatorem `polish_text` (`lowercase`, `polish_stem`, `asciifolding`) i podpolem `folded`
-  (bez stemmera), `variants` (`nested`: `gross` brutto w groszach, brak bez ceny; `purchasable`; `axes`; `options` jako
-  `<oś>` U+001F `<wartość>` jak w Catalog) i `from_gross` (cena „od”, brak bez wariantu możliwego do kupienia).
+  (bez stemmera), `variants` (`nested`: `gross` brutto w groszach, brak bez ceny; `purchasable`; `options` jako
+  `<oś>` U+001F `<wartość>` jak w Catalog, po nich dopasowuje się warunek wariantu; `pairs`: `nested` w wariancie,
+  obiekt `{axis, value}` na parę, po nich liczą się fasety osi) i `from_gross` (cena „od”, brak bez wariantu możliwego do kupienia).
   Ceny i dostępność daje port `ProductOfferFacts` (`Catalog_Application`) z adapterem `QueryBusProductOfferFacts`
   w `Cart_Infrastructure` (Cart `GetProductOffers` na `query.bus`, paczki po 48): reguła „możliwy do kupienia” i cena
   „od” są tylko w Cart. Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
@@ -234,6 +235,28 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   obsłużona bez zapisu; `SearchUnavailable` i `OfferFactsUnavailable` są ponawiane, `SearchIndexError` idzie do
   `failed`. Przebudowa (`catalog:reindex`) pobiera fakty ofert każdej paczki; ich błąd przerywa przebudowę, a zmiany
   cen i stanów obsłużone w jej trakcie trafiają do starego indeksu (przebudowa nie jest online).
+
+- `GET /api/v1/products` (`listProducts`) szuka i filtruje w indeksie (`ElasticsearchProductSearch`, zapytanie składa
+  `ProductSearchQuery`). Parametry, każdy niepoprawny to 400 z `violations`: `category` (UUID, z podkategoriami; nieznana
+  to 404), `q` (fraza, po przycięciu 2–100 znaków), `option` (powtarzany klucz `<oś>:<wartość>`, podział na pierwszym
+  `:`, do 50 wpisów, do 5 różnych osi, oś 1–30 i wartość 1–40 znaków; formę `option[]` odrzuca; PHP zostawia przy
+  powtórzonym kluczu tylko ostatnią wartość, więc `OptionFilter` czyta surowy `QUERY_STRING`, jak `productId` w ofertach),
+  `priceMin` i `priceMax` (grosze, liczby całkowite ≥ 0, `priceMin ≤ priceMax`; w DTO to napisy z `Regex`, bo denormalizer
+  zapytania ucinałby `10.5` do `10`), `available` (tylko `true`), `sort` (`relevance` tylko z `q` i domyślne z `q`, `name`
+  domyślne bez `q`, `price_asc`, `price_desc`), `page`, `perPage` (jak dotąd). Fraza: wszystkie słowa muszą pasować
+  (nazwa, nazwy kategorii, krótki opis; odmiana, brak polskich znaków, literówki w gałęzi o wadze 0,3). Warunki na
+  wariantach (`option`, `priceMin`/`priceMax`, `available`) dotyczą jednego wariantu (jedno `nested` w `post_filter`);
+  cena i dostępność liczą się tylko dla wariantów możliwych do kupienia. Kilka wartości jednej osi to „lub”, różne osie
+  „i”. Sortowanie po cenie idzie po `from_gross` (produkty bez ceny na końcu), remisy po `name.sort` i `id`.
+  Odpowiedź ma `facets`: `categories` (dzieci kategorii z filtra albo kategorie główne, z pełnym warunkiem wariantu, w
+  kolejności drzewa), `options` (osie do 10, wartości do 30 na oś; liczba przy wartości to liczba produktów z wariantem
+  o tej wartości spełniającym pozostałe warunki, osi wybranej bez jej własnego warunku, więc dla osi bez wyboru jest to
+  `total` po dodaniu wartości; wybrana wartość zostaje z 0), `price` (min i max brutto wariantów możliwych do kupienia
+  spełniających warunki osi, bez warunku ceny; `null` bez takich), `availableCount` (`total` po dodaniu `available=true`).
+  Nagłówki bez zmian (`public, max-age=60`, `xkey`). Osie bez wyboru liczy jedna agregacja: `nested` `variants` →
+  filtr warunków wariantu → `nested` `variants.pairs` → `terms` osi (10) → `terms` wartości (30), oba sortowane po liczbie
+  produktów z `reverse_nested`, potem po nazwie (bez globalnego limitu par); osie wybrane mają osobne agregacje.
+  Kolejność osi: liczba produktów w wynikach malejąco, potem nazwa; oś wybrana zawsze jest w liście.
 
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
 - Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { makeProduct, node } from "./fixtures";
+import { EMPTY_FACETS, makeProduct, node } from "./fixtures";
 import { buildCatalogMetadata, buildCategoryMetadata } from "./page-metadata";
 
 const STORE = "http://store.test";
-const page = (n: number, items = [makeProduct(1)]) => ({ items, page: n, perPage: 24, total: items.length });
+const page = (n: number, items = [makeProduct(1)]) => ({ items, page: n, perPage: 24, total: items.length, facets: EMPTY_FACETS });
 const ok = (n = 1, items = [makeProduct(1)]) => ({ kind: "ok" as const, products: page(n, items), offers: {} });
 // Buty at /c/bieganie/buty.
 const BUTY = { ...node("buty", "Buty"), path: "bieganie/buty" };

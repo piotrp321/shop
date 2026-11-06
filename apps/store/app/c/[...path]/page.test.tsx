@@ -5,7 +5,7 @@ vi.mock("@/catalog/load-catalog", () => ({ loadCatalogForRequest: vi.fn() }));
 vi.mock("@/catalog/category-tree", () => ({ loadCategoryTreeForRequest: vi.fn() }));
 
 import { loadCategoryTreeForRequest as loadTree } from "@/catalog/category-tree";
-import { TREE, makeOffer, makeProduct, node } from "@/catalog/fixtures";
+import { EMPTY_FACETS, TREE, makeOffer, makeProduct, node } from "@/catalog/fixtures";
 import { loadCatalogForRequest as loadCatalog } from "@/catalog/load-catalog";
 import CategoryPage, { generateMetadata } from "./page";
 
@@ -16,7 +16,7 @@ const metaProps = (path: string[], query: Query = {}) => props(path, query) as u
 
 const okPage = (page = 1, total = 1) => ({
   kind: "ok" as const,
-  products: { items: [makeProduct(1)], page, perPage: 24, total },
+  products: { items: [makeProduct(1)], page, perPage: 24, total, facets: EMPTY_FACETS },
   offers: { [makeProduct(1).id]: makeOffer(1) },
 });
 const html = async (path: string[], query: Query = {}) => renderToStaticMarkup(await CategoryPage(props(path, query)));
@@ -145,7 +145,7 @@ describe("generateMetadata of the category page", () => {
   });
 
   it("marks an empty page beyond the range and an invalid page number noindex", async () => {
-    vi.mocked(loadCatalog).mockResolvedValue({ ...okPage(99), products: { items: [], page: 99, perPage: 24, total: 3 } });
+    vi.mocked(loadCatalog).mockResolvedValue({ ...okPage(99), products: { items: [], page: 99, perPage: 24, total: 3, facets: EMPTY_FACETS } });
     expect(await generateMetadata(metaProps(["bieganie"], { page: "99" }))).toMatchObject({ robots: { index: false } });
     vi.mocked(loadCatalog).mockResolvedValue({ kind: "invalid-filter" });
     expect(await generateMetadata(metaProps(["bieganie"], { page: "abc" }))).toMatchObject({

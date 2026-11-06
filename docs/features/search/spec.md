@@ -94,14 +94,15 @@ Pola dochodzące do mapowania (`ProductIndexDefinition`, `dynamic: strict`):
 | `name` | `text` z analizatorem `polish_text` (dziś standardowy), podpola `name.sort` (jak dziś) i `name.folded` | nazwa |
 | `category_names` | `text` z `polish_text`, podpole `folded` | nazwy kategorii produktu i ich przodków |
 | `short_description` | `text` z `polish_text` (dziś `index: false`), podpole `folded` | krótki opis |
-| `variants` | `nested` | jeden obiekt na wariant: `gross` (`long`, brak przy braku ceny), `purchasable` (`boolean`), `axes` (`keyword`, nazwy osi), `options` (`keyword`, pary `<oś>␟<wartość>`, separator U+001F) |
+| `variants` | `nested` | jeden obiekt na wariant: `gross` (`long`, brak przy braku ceny), `purchasable` (`boolean`), `options` (`keyword`, pary `<oś>␟<wartość>`, separator U+001F; na nich dopasowuje się warunek wariantu), `pairs` (`nested` w wariancie: obiekt `{axis, value}` (`keyword`) na każdą parę; po nich liczą się fasety osi) |
 | `from_gross` | `long` | cena „od” (najniższa cena wariantów możliwych do kupienia); brak, gdy produkt nie ma takiego wariantu |
 
 - Analizator `polish_text`: tokenizer standardowy, `lowercase`, `polish_stem` (wtyczka `analysis-stempel`, A2),
   `asciifolding`. Podpola `folded`: tokenizer standardowy, `lowercase`, `asciifolding` (bez stemmera):
   łapie frazy bez polskich znaków i formy, których stemmer nie sprowadza.
-- `options` wariantu: pary oś–wartość dokładnie jak w Catalog (bez zmiany wielkości liter). Wariant domyślny (produkt
-  bez osi) ma puste `axes` i `options`.
+- `options` i `pairs` wariantu: te same pary oś–wartość, dokładnie jak w Catalog (bez zmiany wielkości liter); osie
+  i wartości nie mają identyfikatorów, więc indeks używa ich nazw. Wariant domyślny (produkt bez osi) ma puste
+  `options` i `pairs`. `pairs` jest zapisywane z `options` przy zapisie dokumentu, nie jest czytane z powrotem.
 - `gross`, `purchasable` i `from_gross` pochodzą z portu `ProductOfferFacts` (A1). Reguła „możliwy do kupienia”
   (`VariantOffer::isPurchasable`: cena istnieje i `available > 0`) i cena „od” (`ProductOfferSummary`) są tylko w Cart,
   więc indeks liczy je tak samo jak kafelek.
@@ -192,10 +193,20 @@ wybraną oś, cenę i `available`):
   slug, path, count}`, w kolejności drzewa. Liczone z pełnym warunkiem wariantu.
 - `options`: osie występujące w wynikach, `{axis, values: [{value, count}]}`. Liczba przy wartości v osi X to liczba
   produktów, które mają wariant z wartością v spełniający wszystkie pozostałe warunki wariantu (inne osie, cena,
-  dostępność), czyli `total` po dodaniu v do filtra (agregacja `nested` → filtr pozostałych warunków → `terms`
-  na `variants.options` z prefiksem osi → `reverse_nested`). Osie w kolejności liczby produktów malejąco (najwyżej 10;
-  `terms` na `variants.axes` z `reverse_nested`), wartości malejąco po liczbie, potem rosnąco po wartości (najwyżej 30
-  na oś). Wybrana wartość jest zawsze w liście, także z liczbą 0.
+  dostępność), czyli `total` po dodaniu v do filtra. Bez globalnego limitu par oś–wartość; limity dotyczą tylko
+  wyniku: 10 osi bez wyboru i 30 wartości na oś.
+  - Osie bez wyboru: jedna agregacja `nested` na `variants` → filtr wszystkich warunków wariantu → `nested` na
+    `variants.pairs` → `terms` na `axis` (10, bez osi wybranych) → w nim `terms` na `value` (30). Warunki i para
+    należą do tego samego wariantu, więc nie ma kombinacji z różnych wariantów. Każdy `terms` sortuje po liczbie
+    produktów z `reverse_nested` do korzenia (produkt raz, nie raz na obiekt zagnieżdżony), malejąco, potem po `_key`
+    rosnąco.
+  - Oś wybrana (z `option`): osobna agregacja z warunkami wariantu bez warunku tej osi → `nested` na `pairs` → filtr
+    `axis` = oś → `terms` na `value` (30) i `terms` z wybranymi wartościami (żeby wybrana wartość ucięta limitem miała
+    prawdziwą liczbę). Wybrana wartość jest zawsze w liście, także z liczbą 0; ucięta limitem dochodzi po pozostałych,
+    więc lista może przekroczyć 30.
+  - Kolejność osi: liczba produktów w wynikach (z wszystkimi warunkami) malejąco, potem nazwa; oś wybrana ma ich
+    `total`. Oś wybrana jest zawsze w liście (także przy `total` = 0), ponad limit 10 osi bez wyboru; oś bez wartości
+    się nie pojawia.
 - `price`: `{min, max}` z `gross` wariantów możliwych do kupienia, które spełniają warunki osi (bez warunku ceny);
   `null`, gdy takich nie ma.
 - `availableCount`: liczba produktów z wariantem możliwym do kupienia spełniającym warunki osi i ceny, czyli `total`
@@ -345,7 +356,7 @@ złożonym przez wygenerowanego klienta (powtarzany `option`).
 ## Testy
 
 - Jednostkowe: `CategorySlug` (format, granice), `Category` ze slugiem, `CreateCategory` z zajętym slugiem (rodzeństwo
-  i korzenie), `VariantAxes` z `:`; budowa dokumentu (warianty, `options`, `axes`, `from_gross`, nazwy kategorii,
+  i korzenie), `VariantAxes` z `:`; budowa dokumentu (warianty, `options`, `from_gross`, nazwy kategorii,
   produkt i wariant bez faktów ofert); `ProductIndexing` („brak produktu”, błędy); handlery w Pricing/Inventory
   (wariant nieznany, źródło `seed`, błąd przejściowy); walidacja parametrów listy; `path` w `GetCategoryTreeHandler`.
 - Integracyjne: migracja slugów i unikalne indeksy (rodzeństwo, korzenie); adapter `ProductOfferFacts` (paczki po 48,
@@ -354,7 +365,9 @@ złożonym przez wygenerowanego klienta (powtarzany `option`).
   ranking: trafienie w nazwie przed trafieniem w opisie, dokładne przed literówką), filtr wariantu (para
   wartości na jednym wariancie, nie na dwóch), cena i dostępność na tym samym wariancie, sortowania, fasety (liczba
   przy wartości = `total` po jej dodaniu, kilka wartości jednej osi, wybrana wartość z 0, `price`, `availableCount`,
-  kategorie), wersja `external_gte` (starszy odczyt przestarzały), przebudowa z faktami ofert.
+  kategorie; ponad 10 osi i 30 wartości z rzadkimi wartościami na osi z pierwszej dziesiątki, kilka wybranych osi
+  z ceną i dostępnością, brak kombinacji z różnych wariantów, porównanie całej odpowiedzi faset z modelem policzonym
+  w PHP na wygenerowanym zbiorze setek produktów; pomiar `took` agregacji pod `SEARCH_PERF=1`, poza zwykłym `make test`), wersja `external_gte` (starszy odczyt przestarzały), przebudowa z faktami ofert.
 - Funkcjonalne API: `GET /api/v1/products` z każdym parametrem (adres złożony jak przez klienta) i błędami 400 (każdy
   niepoprawny parametr, `relevance` bez `q`), `facets` w odpowiedzi, nagłówki bez zmian; `GET /api/v1/categories`
   i `GET /api/v1/admin/categories` ze `slug` i `path`; `breadcrumb` z `path` w szczegółach produktu.
@@ -388,4 +401,9 @@ złożonym przez wygenerowanego klienta (powtarzany `option`).
 - Wersja dokumentu z zegara: przy kilku workerach na różnych hostach przesunięcie zegarów może przepuścić starszy
   odczyt; skutek naprawia następna zmiana albo przebudowa.
 - Fasety na 10 mln produktów (agregacje `nested` z `reverse_nested`) nie są potwierdzone testami obciążeniowymi.
+- `pairs` to obiekty `nested` w `nested`: każda para jest osobnym dokumentem Lucene, więc indeks ma więcej dokumentów
+  (w danych demo ok. 2,4 raza) i jest większy. Produkt ma najwyżej 100 wariantów po 2 osie, czyli do 300 obiektów
+  zagnieżdżonych, daleko od limitu `index.mapping.nested_objects.limit` (10 000).
+- `terms` sortowane po liczbie z `reverse_nested` jest dokładne przy jednym shardzie (`app.search.shards`). Przy kilku
+  shardach wymagałoby `shard_size` nie mniejszego niż liczba różnych osi i wartości na shardzie.
 - Obraz Elasticsearch budowany lokalnie pobiera wtyczkę z sieci przy pierwszym buildzie.

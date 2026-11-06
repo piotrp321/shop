@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Support;
 
 use App\Catalog\Application\Port\ProductSearch;
+use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\SearchResult;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
 
@@ -25,8 +26,8 @@ final class SwitchableProductSearch implements ProductSearch
         $this->replacement = $replacement;
     }
 
-    public function search(?string $categoryId, int $page, int $perPage): SearchResult
+    public function search(ProductSearchCriteria $criteria): SearchResult
     {
-        return ($this->replacement ?? $this->default)->search($categoryId, $page, $perPage);
+        return ($this->replacement ?? $this->default)->search($criteria);
     }
 }

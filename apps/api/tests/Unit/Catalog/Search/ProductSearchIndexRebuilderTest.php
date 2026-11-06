@@ -52,12 +52,12 @@ final class ProductSearchIndexRebuilderTest extends TestCase
         self::assertSame([\array_slice($ids, 0, 3), \array_slice($ids, 3, 3), \array_slice($ids, 6)], $this->offers->asked);
         $documents = array_merge(...$this->maintenance->written['products_new']);
         self::assertSame(4_900, $documents[0]->fromGross);
-        self::assertEquals([new VariantDocument(4_900, true, [], [])], $documents[0]->variants);
+        self::assertEquals([new VariantDocument(4_900, true, [])], $documents[0]->variants);
         // Without facts: no price and nothing to buy.
         self::assertNull($documents[1]->fromGross);
-        self::assertEquals([new VariantDocument(null, false, [], [])], $documents[1]->variants);
+        self::assertEquals([new VariantDocument(null, false, [])], $documents[1]->variants);
         self::assertNull($documents[6]->fromGross);
-        self::assertEquals([new VariantDocument(9_900, false, [], [])], $documents[6]->variants);
+        self::assertEquals([new VariantDocument(9_900, false, [])], $documents[6]->variants);
     }
 
     public function testEveryBatchHasTheTimeTakenBeforeItsReadsAsTheVersion(): void

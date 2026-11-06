@@ -26,7 +26,6 @@ final readonly class ProductDocumentBuilder
             $variants[] = new VariantDocument(
                 $offer?->gross,
                 $offer->purchasable ?? false,
-                $snapshot->variantAxes,
                 array_map(
                     static fn (string $axis, string $value): string => $axis.VariantDocument::OPTION_SEPARATOR.$value,
                     $snapshot->variantAxes,

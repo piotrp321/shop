@@ -5,7 +5,7 @@ vi.mock("@/catalog/load-catalog", () => ({ loadCatalogForRequest: vi.fn() }));
 vi.mock("@/catalog/category-tree", () => ({ loadCategoryTreeForRequest: vi.fn() }));
 
 import { loadCategoryTreeForRequest as loadTree } from "@/catalog/category-tree";
-import { TREE, makeOffer, makeProduct } from "@/catalog/fixtures";
+import { EMPTY_FACETS, TREE, makeOffer, makeProduct } from "@/catalog/fixtures";
 import { loadCatalogForRequest as loadCatalog } from "@/catalog/load-catalog";
 import Home, { generateMetadata } from "./page";
 
@@ -15,7 +15,7 @@ const metaProps = (query: Query = {}) => props(query) as unknown as Parameters<t
 
 const okPage = (page = 1, items = [makeProduct(1)]) => ({
   kind: "ok" as const,
-  products: { items, page, perPage: 24, total: items.length },
+  products: { items, page, perPage: 24, total: items.length, facets: EMPTY_FACETS },
   offers: { [makeProduct(1).id]: makeOffer(1) },
 });
 

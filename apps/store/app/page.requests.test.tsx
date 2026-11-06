@@ -20,12 +20,12 @@ const memo = vi.hoisted(() => {
 vi.mock("react", async (importOriginal) => ({ ...(await importOriginal<typeof import("react")>()), cache: memo.cache }));
 
 import { loadMenuCategories } from "@/catalog/category-tree";
-import { TREE, makeOffer, makeProduct } from "@/catalog/fixtures";
+import { EMPTY_FACETS, TREE, makeOffer, makeProduct } from "@/catalog/fixtures";
 import CategoryPage, { generateMetadata as categoryMetadata } from "./c/[...path]/page";
 import Home, { generateMetadata } from "./page";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
-const PAGE = { items: [makeProduct(1)], page: 2, perPage: 24, total: 40 };
+const PAGE = { items: [makeProduct(1)], page: 2, perPage: 24, total: 40, facets: EMPTY_FACETS };
 
 let requested: string[];
 
