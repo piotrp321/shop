@@ -41,7 +41,10 @@ final class InvalidTokenOnPublicEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(401);
         self::assertSame('Bearer', $client->getResponse()->headers->get('WWW-Authenticate'));
         self::assertStringStartsWith('application/problem+json', (string) $client->getResponse()->headers->get('Content-Type'));
-        self::assertStringNotContainsString('public', (string) $client->getResponse()->headers->get('Cache-Control'));
+        $directives = array_map('trim', explode(',', (string) $client->getResponse()->headers->get('Cache-Control')));
+        sort($directives);
+        self::assertSame(['no-store', 'private'], $directives);
+        self::assertFalse($client->getResponse()->headers->has('xkey'));
     }
 
     public function testValidCustomerTokenIsAccepted(): void
@@ -103,5 +106,10 @@ final class InvalidTokenOnPublicEndpointTest extends WebTestCase
         $client->request('GET', '/api/v1/products', server: ['HTTP_AUTHORIZATION' => \sprintf($header, $token)]);
 
         self::assertResponseStatusCodeSame($status);
+    }
+
+    public function testInvalidTokenOnProductDetailsIsUnauthorized(): void
+    {
+        $this->testInvalidTokenIsUnauthorized('/api/v1/products/buty-szosowe', static fn (): string => 'garbage');
     }
 }

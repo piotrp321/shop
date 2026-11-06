@@ -6,8 +6,8 @@ endpointami katalogu z unieważnianiem po tagach (xkey) oraz rewalidacją ISR po
 Issues: #93
 Zakres: `apps/api/src/Catalog`, `apps/api/src/Pricing`, `apps/api/src/Inventory`, `apps/api/src/Shared`, `apps/api/src/Cart/UI/Http/ProductOffersController.php`, `apps/api/tests`, `apps/api/config`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `apps/store/src/catalog`, `apps/store/src/api/client.ts`, `apps/store/app`, `infra/docker-compose.yml`, `infra/scripts/init-env.sh`, `Makefile`, `.github/workflows/ci.yml`, `e2e/tests/price-change.spec.ts`, `e2e/tests/stock-receipt.spec.ts`, `e2e/support`, `infra/varnish`, `docs/vision.md`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `docs/features/variants/spec.md`, `docs/features/cart/spec.md`, `docs/features/pricing/spec.md`, `docs/features/inventory/spec.md`, `docs/features/walking-skeleton/spec.md`
 
-**Zależność od VARIANTS (#89).** Specyfikacja opisuje kod po VARIANTS (zmergowane do `main`): warianty produktu
-w Catalog, oferta produktów listy `GET /api/v1/product-offers` w Cart (`docs/features/variants/spec.md`).
+Funkcja opiera się na wariantach produktu w Catalog i na ofercie produktów `GET /api/v1/product-offers` w Cart
+(`docs/features/variants/spec.md`).
 
 ## Cel i zakres
 
@@ -15,7 +15,7 @@ w Catalog, oferta produktów listy `GET /api/v1/product-offers` w Cart (`docs/fe
   i dodanie do koszyka. HTML renderuje serwer i cache'uje ISR; metadane, adres kanoniczny i JSON-LD `Product`
   oraz `BreadcrumbList`.
 - Kafelek listy prowadzi do strony produktu.
-- Varnish (nowa usługa w `infra`) przed publicznymi `GET` katalogu: `/api/v1/products`, `/api/v1/products/{slug}`,
+- Varnish (usługa w `infra`) przed publicznymi `GET` katalogu: `/api/v1/products`, `/api/v1/products/{slug}`,
   `/api/v1/categories`, `/api/v1/product-offers`. Odpowiedzi mają jawny `Cache-Control` i tagi xkey.
 - Zmiana ceny wariantu (Pricing) i poziomu dostępności wariantu (Inventory) publikuje zdarzenie domenowe; konsument
   unieważnia w Varnishu odpowiedzi z tagiem produktu, a potem rewaliduje strony sklepu z tym tagiem.
@@ -33,7 +33,7 @@ Poza zakresem:
 - adres wariantu w URL (`?variant=`);
 - Varnish w panelu „Stan systemu” (dashboard).
 
-## Decyzje użytkownika
+## Decyzje
 
 | # | Decyzja |
 |---|---|
@@ -44,7 +44,6 @@ Poza zakresem:
 | P5 | Po rewalidacji pierwszy odwiedzający dostaje już nową stronę (rewalidacja blokująca, `expire: 0`); sprawdza to E2E na buildzie produkcyjnym. |
 | P6 | Produkt bez wariantu możliwego do kupienia: „Niedostępny”, bez ceny, wyboru i przycisku (jak E3). |
 | P7 | Błąd oferty na stronie produktu to błąd strony (nie jest cache'owany przez ISR), nie strona bez ceny. |
-| P8 | Poza zakresem jak w sekcji „Poza zakresem” (m.in. 301 po zmianie sluga, `sitemap.xml`, `robots.txt`, `Organization`, `/c/<slug>`, wariant w URL, Lighthouse, Varnish na dashboardzie). |
 | A1 | Sklep czyta katalog przez Varnish pod osobnym adresem (`API_CATALOG_URL`); koszyk, checkout i logowanie idą do API bezpośrednio. |
 | A2 | Tagi i purge bez FOSHttpCacheBundle: własny nagłówek `xkey` i własny klient purge (bez nowych zależności PHP). Varnish z `vmod_xkey`; `PURGE` wymaga sekretu, nie tylko adresu z ACL. |
 | A3 | Zdarzenia przez istniejący outbox: `VariantPriceChanged` przy każdym zapisie ceny; `StockLevelChanged` tylko przy zmianie poziomu dostępności wariantu; oba ze źródłem zmiany, a zdarzenia ze źródła `seed` nie unieważniają cache (robi to `purge-all`). |
@@ -67,7 +66,8 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 - Słownik tagów, wspólny dla Varnisha i ISR: `catalog` (każda odpowiedź katalogu i każda strona produktu)
   i `product-<productId>` (UUID małymi literami) dla każdego produktu, którego dane zawiera odpowiedź.
 - Nazwy tagów buduje jedna klasa w `Shared_Infrastructure` (`product(id)` z UUID małymi literami i stała `catalog`);
-  używają jej nagłówki odpowiedzi i `StorefrontCache` (`invalidateProduct(id)`, `invalidateAll()`), konsumenci nie
+  używają jej nagłówki odpowiedzi i `StorefrontCache` (`invalidateProduct(id)`; `purgeAll()` i `revalidateAll()`
+  dla tagu `catalog`, każda warstwa osobno, żeby `purge-all` ponawiał każdą z nich), konsumenci nie
   składają napisów, więc nagłówek i purge nie mogą się rozjechać.
 - Nagłówek odpowiedzi `xkey: <tag> <tag> …` (spacje). Ustawia go mały serwis tagów w `Shared_Infrastructure`
   (A2), wołany z kontrolerów. Varnish usuwa nagłówek przed wysłaniem odpowiedzi.
@@ -93,7 +93,7 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
   - `breadcrumb`: ścieżka od korzenia do kategorii głównej produktu (`ProductCategories::main`), z `CategoryPath`.
   - `images`: wszystkie zdjęcia produktu w kolejności pozycji (0–10), w rozmiarze `product`.
   - `variants` w kolejności pozycji; `label` z `ProductVariant::label()`, `values` w kolejności osi.
-- Nowy rozmiar w `ImageSize`: `product` (karta produktu): 1:1, szerokości 640, 960, 1280, 1600, WebP, `fill`, `sm`.
+- Rozmiar `product` (karta produktu) w `ImageSize`: 1:1, szerokości 640, 960, 1280, 1600, WebP, `fill`, `sm`.
 - `GET /api/v1/products/{slug}` (`Catalog_UI`, `PUBLIC_ACCESS`): 200 `ProductDetails`; nieznany slug albo slug
   niezgodny z formatem `Slug`: 404 „Produkt nie istnieje.” (problem details). Nagłówki z tabeli wyżej. Kontrakt
   w `openapi.json`, klient sklepu wygenerowany.
@@ -121,7 +121,8 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 
 ## Unieważnianie (konsumenci zdarzeń)
 
-- `StorefrontCache` w `Shared_Infrastructure`: `invalidate(tags)`:
+- `StorefrontCache` w `Shared_Infrastructure` (interfejs; implementacja `HttpStorefrontCache`): `invalidateProduct(id)`
+  (tag `product-<id>`) robi kolejno:
   1. Varnish: `PURGE` z nagłówkami `xkey-purge: <tagi>` i `X-Purge-Token: <VARNISH_PURGE_SECRET>` (twarde usunięcie, `xkey.purge`, nie `softpurge`, żeby
      regenerowana strona nie dostała starej odpowiedzi);
   2. sklep: `POST <STORE_INTERNAL_URL>/api/revalidate` z `{tags}` i sekretem `STORE_REVALIDATE_SECRET`.
@@ -129,7 +130,7 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
   Własne limity czasu klienta HTTP (domyślny klient API ma 2 s i 5 s): Varnish 5 s, sklep 30 s (pierwsze wywołanie
   trasy w `next dev` ją kompiluje).
 - Konsumenci (transport `events`, idempotentni, A4):
-  - `Pricing_Infrastructure`: `VariantPriceChanged` → `productId` z Catalog `GetVariant` → `invalidate([product-<id>])`;
+  - `Pricing_Infrastructure`: `VariantPriceChanged` → `productId` z Catalog `GetVariant` → `invalidateProduct(productId)`;
     wariant nieznany Catalogowi: nic do unieważnienia, wiadomość obsłużona.
   - `Inventory_Infrastructure`: `StockLevelChanged` → to samo.
   - Zdarzenie ze źródła `seed` konsument potwierdza bez unieważnienia (A3): seed kończy się `purge-all`, a ok. 2 tys.
@@ -156,15 +157,14 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 
 - Usługa `varnish` w `infra/docker-compose.yml`: oficjalny obraz `varnish` z przypiętą wersją (gałąź 9.x). Obraz od
   wersji 7.1 zawiera zestaw varnish-modules, w tym `vmod_xkey`. VCL importuje `xkey`, więc obraz bez modułu kończy
-  się błędem kompilacji VCL przy starcie. Zadanie infrastruktury pokazuje to komendami: plik
-  `libvmod_xkey.so` w katalogu vmodów obrazu i `varnishd -C` z naszym VCL. Healthcheck, bez portu na hoście
+  się błędem kompilacji VCL przy starcie. Healthcheck, bez portu na hoście
   (tylko sieć compose), backend `api:80`. Plik `infra/varnish/default.vcl`.
 - `PURGE` ma trzy zabezpieczenia: Varnish nie ma portu na hoście; ACL (prywatne zakresy RFC 1918 i `localhost`,
   bo podsieć compose różni się między projektami; to tani dodatek, nie zabezpieczenie: w sieci compose przepuszcza
   każdą usługę); nagłówek `X-Purge-Token` równy sekretowi `VARNISH_PURGE_SECRET`. Realnie chronią brak portu na
   hoście i token. VCL czyta sekret przez `std.getenv("VARNISH_PURGE_SECRET")` (standardowe polecenie obrazu,
   statyczny `default.vcl`); brak albo pusty sekret: `vcl_init` kończy się `fail`, kontener nie startuje (sprawdza
-  to zadanie infrastruktury komendą i `.vtc`).
+  to `init_secret.vtc`).
 - VCL dokłada do wbudowanego VCL Varnisha tylko: `PURGE`, listę ścieżek, usuwanie `xkey` i `X-Cache`, oraz
   `default_ttl = 0` (`-t 0`) dla odpowiedzi bez `Cache-Control`. `pass` przy `Authorization` i `Cookie` oraz TTL
   z `s-maxage`/`max-age` daje wbudowany VCL; własny `vcl_recv` nie robi `return (hash)` przed jego sprawdzeniami.
@@ -195,8 +195,8 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
   pierwszym wejściu, bez prerenderu 10 mln produktów przy buildzie). HTML nie zależy od sesji: licznik koszyka
   i konto ładują Client Components.
 - Dane: `GET /api/v1/products/{slug}`, potem `GET /api/v1/product-offers?productId=<id>`, oba przez
-  `API_CATALOG_URL`, wspólne dla `generateMetadata` i strony (`React.cache`). Tagi przekazuje `next: { tags }`
-  w opcjach wywołania klienta (`src/api/client.ts`): odczyt szczegółów ma tag `catalog` (id nie jest jeszcze znane),
+  `API_CATALOG_URL`, wspólne dla `generateMetadata` i strony (`React.cache`). Tagi przekazuje opcja `tags`
+  klienta (`createApiClient` w `src/api/client.ts`, do `fetch` jako `next: { tags }`): odczyt szczegółów ma tag `catalog` (id nie jest jeszcze znane),
   odczyt oferty `catalog` i `product-<id>`. Strona dziedziczy sumę tagów odczytów, więc rewalidacja `product-<id>`
   albo `catalog` unieważnia HTML, a następne wejście pobiera od nowa oba odczyty (przez Varnish, już po purge).
   Odczyty nie trafiają do data cache Next na dłużej niż HTML strony.
@@ -250,7 +250,7 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 
 ## Infrastruktura i środowisko
 
-- Dwa nowe sekrety w `infra/scripts/init-env.sh` (generowane jak inne): `STORE_REVALIDATE_SECRET` (czytają go `api`,
+- Sekrety w `infra/scripts/init-env.sh` (generowane jak inne): `STORE_REVALIDATE_SECRET` (czytają go `api`,
   `worker` i `store`) i `VARNISH_PURGE_SECRET` (czytają go `api`, `worker` i `varnish`), z `.env.local`. `STORE_INTERNAL_URL` (`http://store:3000`) i `VARNISH_URL` (`http://varnish`) w środowisku
   API (nie sekrety). `API_CATALOG_URL` w środowisku sklepu.
 - Tryb sklepu: zmienna `STORE_MODE` (`dev` domyślnie: `next dev`; `production`: `next build`, potem `next start`)
@@ -260,24 +260,7 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
   workera nie trafiają w startujący sklep.
 - Varnish dostaje healthcheck; `api` i `worker` nie zależą od jego startu (worker przy niedostępnym Varnishu
   ponawia wiadomość).
-- `make seed`: po trzech seedach `storefront:cache:purge-all`.
-
-## Zadania dokumentacyjne (razem z implementacją)
-
-- `docs/vision.md`, „Cache HTTP i unieważnianie”: jeden konsument robi kolejno purge Varnisha i rewalidację ISR
-  (zamiast dwóch konsumentów); tagi przez własny serwis zamiast FOSHttpCacheBundle (A2); Varnish przed odczytami
-  pod osobnym adresem sklepu (A1); przykład tagów bez `category-<id>` (epik go nie wprowadza).
-- `CLAUDE.md` (główny): `STORE_MODE` i E2E na buildzie produkcyjnym w CI.
-- `apps/api/CLAUDE.md`, „Infrastruktura”: słownik tagów, serwis tagów, `StorefrontCache`, `storefront:cache:purge-all`,
-  bez wzmianki o FOSHttpCacheBundle; „Reguły modelu”: kiedy zdarzenia publikuje handler (Catalog), a kiedy `save`
-  repozytorium (Pricing, Inventory: wiele ścieżek zapisu, także poza `command.bus`).
-- `apps/store/CLAUDE.md`: strona produktu (ISR, tagi, `API_CATALOG_URL`), `/api/revalidate`, oba adresy API.
-- Specyfikacje istniejących funkcji, które opisują cache 60 s ofert, list i dostępności: `docs/features/variants/spec.md`
-  (oferta `public, max-age=60`, ryzyko „opóźnienie do 60 s”), `docs/features/cart/spec.md` (nagłówki i cache oferty),
-  `docs/features/pricing/spec.md` („widoczna najpóźniej po 60 s”), `docs/features/inventory/spec.md` (to samo dla
-  dostępności), `docs/features/walking-skeleton/spec.md` (nagłówki `products` i `categories`, tagi `xkey`).
-- Opis OpenAPI `getProductOffers` (`ProductOffersController`, „may be cached for 60 seconds”) i nowy opis cache
-  w endpointach katalogu.
+- `make seed`: po seedach katalogu, cen, zamówień i stanów `storefront:cache:purge-all`.
 
 ## Scenariusze błędów
 
@@ -294,15 +277,14 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 
 ## Koszyk i checkout: weryfikacja ceny i dostępności
 
-Bez zmian w tym epiku. Backend już weryfikuje cenę i dostępność przy każdej operacji, niezależnie od cache:
+Cache nie wpływa na koszyk ani checkout. Backend weryfikuje cenę i dostępność przy każdej operacji, niezależnie od cache:
 - dodanie do koszyka (`AddCartItemHandler` → `Cart::add` z ofertą wariantu z portów `CartPrices` i
   `StockAvailability`, czyli Pricing `GetCurrentPrices` i Inventory `GetStockLevels` z bazy): wariant bez aktualnej
   ceny albo z `available = 0` daje 409 `ProductNotPurchasable`;
 - widok koszyka (`CartViewBuilder`) liczy kwoty i stany linii z bieżących cen i stanów;
-- złożenie zamówienia: kodu jeszcze nie ma w `main` (CHECKOUT #90 w realizacji). Specyfikacja CHECKOUT
-  (`docs/features/checkout/spec.md`) przewiduje bieżące ceny (`OrderPrices`), 409 `OrderTotalChanged`, gdy kwota różni
-  się od widzianej przez klienta, i rezerwację z blokadą wiersza (`ReserveStock`, 409 `InsufficientStockForOrder`).
-  Ten epik tego nie implementuje.
+- złożenie zamówienia (`PlaceOrderHandler`, `docs/features/checkout/spec.md`): bieżące ceny (`OrderPrices`),
+  409 `OrderTotalChanged`, gdy kwota różni się od widzianej przez klienta, i rezerwacja zapasu (`ReserveStock`,
+  409 `InsufficientStockForOrder`).
 Koszyk i checkout idą do API bezpośrednio (`API_INTERNAL_URL`, A1), nigdy przez Varnish ani ISR.
 
 ## Kryteria akceptacji
@@ -348,7 +330,7 @@ Koszyk i checkout idą do API bezpośrednio (`API_INTERNAL_URL`, A1), nigdy prze
     „czarne” i „42”, cena i poziom wariantu, dodanie do koszyka jako gość, linia z etykietą; to samo jako zalogowany
     klient; nieznany slug → 404; drugie wejście
     na stronę z `x-nextjs-cache: HIT` (tylko przy `STORE_MODE=production`);
-  - `price-change.spec.ts`: nowa cena widoczna na stronie produktu i na liście w ciągu 20 s (zamiast obecnych 70 s);
+  - `price-change.spec.ts`: nowa cena widoczna na stronie produktu i na liście w ciągu 20 s;
   - `stock-receipt.spec.ts`: po przyjęciu strona produktu pokazuje „Dostępny” w ciągu 20 s;
   - `product-page-freshness.spec.ts` (tylko `STORE_MODE=production`, czyli w CI; w trybie dev pominięty z adnotacją)
     sprawdza P5: produkt z wariantem domyślnym („Hantle regulowane Lumora Para 10”); dwa wejścia na `/p/<slug>`,
@@ -365,9 +347,9 @@ Koszyk i checkout idą do API bezpośrednio (`API_INTERNAL_URL`, A1), nigdy prze
   nie sprawdzają cache ISR (sprawdza je CI).
 - Między zapisem a unieważnieniem mijają sekundy (outbox → RabbitMQ → konsument); w tym czasie strona i Varnish
   pokazują poprzedni stan. Dodanie do koszyka i tak sprawdza cenę i stan w API.
-- Rezerwacje w CHECKOUT (#90) zmieniają poziom dostępności i będą publikować `StockLevelChanged` (więcej purge
-  przy dużym ruchu). CHECKOUT jest w realizacji i zmienia Inventory, Cart i sklep: możliwe konflikty przy merge'u.
-- Dwa nowe sekrety w `init-env.sh`: istniejący lokalny `.env.local` bez nich zatrzymuje `make up` z komunikatem.
+- Rezerwacje składanych zamówień zmieniają poziom dostępności i publikują `StockLevelChanged` (więcej purge przy
+  dużym ruchu).
+- Lokalny `.env.local` bez `VARNISH_PURGE_SECRET` albo `STORE_REVALIDATE_SECRET` zatrzymuje `make up` z komunikatem.
   Te dwa sekrety nie wymagają świeżych wolumenów: wystarczy dopisać je ręcznie (losowa wartość hex), mimo że komunikat
   skryptu proponuje odtworzenie stosu.
 - Wyścig: odczyt API rozpoczęty przed commitem zmiany i zapisany w Varnishu już po purge zostaje jako stara wersja do

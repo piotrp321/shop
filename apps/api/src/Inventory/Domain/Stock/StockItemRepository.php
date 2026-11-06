@@ -53,7 +53,8 @@ interface StockItemRepository
 
     /**
      * Writes a stock locked by lockMany() in this transaction with the version of the stock, and appends its unsaved
-     * movements. A stock without unsaved movements is unchanged and nothing is written.
+     * movements. Its StockLevelChanged, if any, is published in the same transaction. A stock without unsaved movements
+     * is unchanged and nothing is written.
      *
      * @throws ReceiptKeyReused when a receipt with the key of a receipt among the movements is already stored
      * @throws \LogicException  when the stored version is not the one the stock was read with, i.e. it was changed

@@ -6,6 +6,9 @@ namespace App\Catalog\UI\Http;
 
 use App\Catalog\Application\Query\CategoryNode;
 use App\Catalog\Application\Query\GetCategoryTree;
+use App\Shared\Infrastructure\Http\Cache\CacheTagger;
+use App\Shared\Infrastructure\Http\Cache\CacheTags;
+use App\Shared\Infrastructure\Http\Cache\PublicReadErrorCacheSubscriber;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -17,12 +20,12 @@ final class CategoryTreeController
 {
     use HandleTrait;
 
-    public function __construct(MessageBusInterface $queryBus)
+    public function __construct(MessageBusInterface $queryBus, private readonly CacheTagger $cacheTagger)
     {
         $this->messageBus = $queryBus;
     }
 
-    #[Route('/api/v1/categories', name: 'catalog_category_tree', methods: ['GET'])]
+    #[Route('/api/v1/categories', name: 'catalog_category_tree', methods: ['GET'], defaults: [PublicReadErrorCacheSubscriber::ROUTE_DEFAULT => true])]
     #[OA\Get(
         operationId: 'getCategoryTree',
         summary: 'Category tree',
@@ -54,6 +57,7 @@ final class CategoryTreeController
         $response = new JsonResponse($tree);
         $response->setPublic();
         $response->setMaxAge(60);
+        $this->cacheTagger->tag($response, [CacheTags::CATALOG]);
 
         return $response;
     }

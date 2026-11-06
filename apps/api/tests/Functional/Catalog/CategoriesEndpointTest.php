@@ -88,6 +88,18 @@ final class CategoriesEndpointTest extends WebTestCase
         self::assertStringContainsString('Origin', (string) $headers->get('Vary'));
     }
 
+    public function testResponseIsTaggedWithTheCatalog(): void
+    {
+        $client = static::createClient();
+        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000001', 'name' => 'Sport']));
+
+        $client->request('GET', '/api/v1/categories');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('catalog', $client->getResponse()->headers->get('xkey'));
+        self::assertSame('max-age=60, public', $client->getResponse()->headers->get('Cache-Control'));
+    }
+
     public function testWrongMethodReturns405Problem(): void
     {
         $client = static::createClient();

@@ -26,3 +26,12 @@ export function buildImageProps(image: components["schemas"]["ProductImage"], si
     height: Math.round((largest.width * ratioHeight) / ratioWidth),
   };
 }
+
+/** The widest WebP variant of the image (the one for Open Graph and JSON-LD), or null when the image has none. */
+export function largestVariant(image: components["schemas"]["ProductImage"]): { url: string; width: number; height: number } | null {
+  if (!image.variants.webp?.length) {
+    return null;
+  }
+  const { src, width, height } = buildImageProps(image, "");
+  return { url: src, width, height };
+}

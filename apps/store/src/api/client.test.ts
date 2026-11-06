@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addCartItem, changeCartItemQuantity, loadAccountSession, loadCart, loadCartSummary, placeOrder, removeCartItem } from "./client";
+import { addCartItem, changeCartItemQuantity, createApiClient, loadAccountSession, loadCart, loadCartSummary, placeOrder, removeCartItem } from "./client";
 
 // Node has its own navigator.locks; every test decides whether the browser has Web Locks API. By default it has not.
 beforeEach(() => {
@@ -387,5 +387,28 @@ describe("placeOrder", () => {
     stubFetch(async () => Response.json({}, { status: 201 }));
 
     expect(await placeOrder(input, KEY)).toEqual({ status: "failed" });
+  });
+});
+
+describe("createApiClient cache tags", () => {
+  it("passes the tags to fetch as next.tags, so the page that reads the data is tagged", async () => {
+    const fetch = vi.fn(async () => Response.json([]));
+    const client = createApiClient({ baseUrl: "http://api.test", fetch, tags: ["catalog", "product-1"] });
+
+    await client.GET("/api/v1/categories");
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const calls = fetch.mock.calls as unknown as [Request, { next?: { tags?: string[] } }][];
+    expect(calls[0][0].url).toBe("http://api.test/api/v1/categories");
+    expect(calls[0][1]).toEqual({ next: { tags: ["catalog", "product-1"] } });
+  });
+
+  it("leaves fetch alone without tags", async () => {
+    const fetch = vi.fn(async () => Response.json([]));
+    const client = createApiClient({ baseUrl: "http://api.test", fetch });
+
+    await client.GET("/api/v1/categories");
+
+    expect((fetch.mock.calls as unknown as unknown[][])[0][1]).toBeUndefined();
   });
 });

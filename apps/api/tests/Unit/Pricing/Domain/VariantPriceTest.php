@@ -176,6 +176,77 @@ final class VariantPriceTest extends TestCase
         self::assertCount(1, $price->releaseHistory());
     }
 
+    public function testCreateRecordsAPriceChangeWithItsSource(): void
+    {
+        $before = new \DateTimeImmutable();
+        $price = VariantPrice::create(VariantId::fromString(self::ID), GrossPrice::pln(5490), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::seed());
+        $after = new \DateTimeImmutable();
+
+        $events = $price->releaseEvents();
+
+        self::assertCount(1, $events);
+        self::assertSame(self::ID, $events[0]->variantId);
+        self::assertSame(PriceChangeSource::Seed, $events[0]->source);
+        self::assertGreaterThanOrEqual($before, $events[0]->occurredAt());
+        self::assertLessThanOrEqual($after, $events[0]->occurredAt());
+        self::assertSame([], $price->releaseEvents());
+    }
+
+    public function testReconstituteRecordsNoPriceChange(): void
+    {
+        self::assertSame([], $this->stored(version: 2)->releaseEvents());
+    }
+
+    public function testChangeGrossRecordsAPriceChangeWithTheSourceOfTheChange(): void
+    {
+        $price = $this->stored(version: 3);
+
+        $price->changeGross(GrossPrice::pln(12300), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'Anna Admin'));
+
+        $events = $price->releaseEvents();
+        self::assertCount(1, $events);
+        self::assertSame(self::ID, $events[0]->variantId);
+        self::assertSame(PriceChangeSource::Staff, $events[0]->source);
+        self::assertEquals($price->updatedAt(), $events[0]->occurredAt());
+    }
+
+    public function testRepriceRecordsAPriceChangeFromTheTaxReconciliation(): void
+    {
+        $price = $this->stored(version: 2);
+
+        $price->reprice(TaxClass::fromString('printed_book'), new PolishVatRates(), PriceChangeOrigin::taxReconciliation());
+
+        $events = $price->releaseEvents();
+        self::assertCount(1, $events);
+        self::assertSame(PriceChangeSource::TaxReconciliation, $events[0]->source);
+    }
+
+    public function testAChangeToTheSamePriceRecordsNoPriceChange(): void
+    {
+        $price = $this->stored(version: 3);
+
+        $price->changeGross(GrossPrice::pln(10000), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'Anna Admin'));
+        $price->reprice(TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::taxReconciliation());
+
+        self::assertSame([], $price->releaseEvents());
+    }
+
+    public function testChangesBeforeTheNextSaveShareOnePriceChangeWithTheLastSource(): void
+    {
+        $price = $this->stored(version: 3);
+        $rates = new PolishVatRates();
+
+        $price->changeGross(GrossPrice::pln(11000), $rates, PriceChangeOrigin::seed());
+        $price->reprice(TaxClass::fromString('printed_book'), $rates, PriceChangeOrigin::taxReconciliation());
+
+        $events = $price->releaseEvents();
+        self::assertCount(1, $events);
+        self::assertSame(PriceChangeSource::TaxReconciliation, $events[0]->source);
+
+        $price->changeGross(GrossPrice::pln(13000), $rates, PriceChangeOrigin::staff('sub-1', 'Anna Admin'));
+        self::assertCount(1, $price->releaseEvents());
+    }
+
     public function testIsCurrentWhenTheStoredRateIsTheRateOfItsClass(): void
     {
         $price = $this->stored(version: 1);
