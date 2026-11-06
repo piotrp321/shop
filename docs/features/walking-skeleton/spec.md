@@ -247,7 +247,7 @@ Persystencja:
 
 - `catalog_category`: `id`, `parent_id` (FK), `name`, `slug` (NOT NULL; unikalne indeksy `(parent_id, slug)`
   i częściowy `(slug) WHERE parent_id IS NULL`, bo `NULL` w pierwszym nie koliduje), `path` (tekst z indeksem
-  `text_pattern_ops`). Kategorie sprzed sluga dostały w migracji swój identyfikator jako slug.
+  `text_pattern_ops`).
 - `catalog_product`: `id`, `slug` (ograniczenie unikalności), `name`, `short_description`, `primary_category_id`
   (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB), `variant_axes` (JSONB), `version`
   (BIGINT NOT NULL).
