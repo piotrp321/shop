@@ -6,10 +6,12 @@ FROM dunglas/frankenphp:1.13.4-php8.5.12-trixie AS base
 # Composer is a tool here, not a project dependency.
 COPY --from=composer:2.10.3 /usr/bin/composer /usr/local/bin/composer
 
+# gmp: web-token converts every RSA JWK to PEM with brick/math before openssl signs or verifies; without gmp the
+# conversion runs in pure PHP (about 0.2 s per access token verification, 0.6 s per signature).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git unzip \
     && rm -rf /var/lib/apt/lists/* \
-    && install-php-extensions pdo_pgsql amqp redis intl opcache pcntl
+    && install-php-extensions pdo_pgsql amqp redis intl opcache pcntl gmp
 
 ENV COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_HOME=/tmp/composer
