@@ -13,6 +13,9 @@ final readonly class ProductDocument
      * @param list<string>                         $categoryIds         every category of the product, the main one first
      * @param list<string>                         $categoryAncestorIds the product's categories and all their ancestors, without duplicates
      * @param array{key: string, alt: string}|null $mainImage
+     * @param list<string>                         $categoryNames       the names of the product's categories and all their ancestors
+     * @param list<VariantDocument>                $variants            in Catalog's order
+     * @param int|null                             $fromGross           the "from" price of the offer in grosze, null without a purchasable variant
      */
     public function __construct(
         public string $id,
@@ -24,6 +27,9 @@ final readonly class ProductDocument
         public array $categoryIds,
         public array $categoryAncestorIds,
         public ?array $mainImage,
+        public array $categoryNames,
+        public array $variants,
+        public ?int $fromGross,
     ) {
     }
 }

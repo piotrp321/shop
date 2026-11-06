@@ -28,7 +28,8 @@ Poza zakresem:
 - zamówienia (CHECKOUT #90): kontrakt rezerwacji ma klucz wariantu, zamówień jeszcze nie ma;
 - dodawanie i edycja produktów i wariantów w panelu (CATALOG-ADMIN #95); warianty powstają tylko w danych demo
   i w migracji;
-- wyszukiwanie i filtry po wartościach wariantów (SEARCH #94); indeks Elasticsearch nie zawiera wariantów;
+- wyszukiwanie i filtry po wartościach wariantów (SEARCH #94); indeks Elasticsearch zawiera warianty z wartościami
+  osi, cenami i dostępnością (`docs/features/search/spec.md`);
 - zdjęcia per wariant i galeria, kody SKU i EAN, cena „od” w Varnishu i ISR;
 - usuwanie wariantu i zmiana osi istniejącego produktu.
 

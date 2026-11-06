@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Catalog\Search;
 
+use App\Cart\Infrastructure\Catalog\QueryBusProductOfferFacts;
 use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Port\SearchIndexMaintenance;
 use App\Catalog\Application\Port\SearchIndexRebuildLock;
+use App\Catalog\Application\Search\OfferFactsUnavailable;
 use App\Catalog\Application\Search\ProductDocumentBuilder;
+use App\Catalog\Application\Search\ProductIndexing;
 use App\Catalog\Application\Search\ProductSearchIndexRebuilder;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
@@ -15,9 +18,13 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLo
 use App\Catalog\Infrastructure\Search\ElasticsearchClientFactory;
 use App\Catalog\Infrastructure\Search\ElasticsearchSearchIndexMaintenance;
 use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
+use App\Catalog\Infrastructure\SystemClock;
 use App\Catalog\UI\Console\ReindexCommand;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
+use App\Tests\Factory\VariantPriceRecordFactory;
+use App\Tests\Integration\Inventory\StockFixture;
+use App\Tests\Support\InMemory\InMemoryProductOfferFacts;
 use App\Tests\Support\Search\ResponseDroppingHttpClient;
 use Doctrine\DBAL\Configuration as DbalConfiguration;
 use Doctrine\DBAL\Connection;
@@ -30,6 +37,8 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
@@ -68,8 +77,9 @@ final class SearchIndexRebuildTest extends KernelTestCase
 
     public function testRebuildsInBatchesAndSwitchesTheAlias(): void
     {
-        $versions = $this->createProducts(7);
+        $ids = $this->createProducts(7);
         $previous = $this->maintenance->activeIndex();
+        $before = ProductIndexing::version(new \DateTimeImmutable());
 
         $tester = $this->reindexCommand();
         self::assertSame(Command::SUCCESS, $tester->execute(['--batch-size' => '3']), $tester->getDisplay());
@@ -77,8 +87,50 @@ final class SearchIndexRebuildTest extends KernelTestCase
         $current = $this->maintenance->activeIndex();
         self::assertNotSame($previous, $current);
         self::assertFalse($this->indexExists($previous), 'The previous index was not deleted.');
-        self::assertSame($versions, $this->indexedVersions());
+        $versions = $this->indexedVersions();
+        self::assertSame($ids, array_keys($versions));
+        // One version per batch: the time taken before its reads.
+        self::assertCount(3, array_unique($versions));
+        foreach ($versions as $version) {
+            self::assertGreaterThanOrEqual($before, $version);
+        }
         self::assertStringContainsString($current, $tester->getDisplay());
+    }
+
+    public function testTheRebuiltDocumentsCarryTheOfferFacts(): void
+    {
+        $this->createProducts(2);
+        $entityManager = $this->entityManager();
+        $category = CategoryFactory::createOne();
+        new DoctrineCategoryRepository($entityManager)->save($category);
+        $variantId = (string) Uuid::v4();
+        $product = ProductFactory::createOne(['mainCategory' => $category, 'variants' => [['id' => $variantId, 'values' => []]]]);
+        new DoctrineProductRepository($entityManager)->save($product);
+        VariantPriceRecordFactory::store($entityManager, ['variantId' => $variantId, 'gross' => 12_900]);
+        StockFixture::stock($entityManager->getConnection(), 2, variantId: $variantId);
+
+        self::assertSame(Command::SUCCESS, $this->reindexCommand()->execute([]));
+
+        $source = $this->indexedSource($product->id()->toString());
+        self::assertSame(12_900, $source['from_gross']);
+        self::assertSame([['gross' => 12_900, 'purchasable' => true, 'axes' => [], 'options' => []]], $source['variants']);
+    }
+
+    public function testAFailureOfTheOfferFactsStopsTheRebuildAndKeepsTheAlias(): void
+    {
+        $this->createProducts(2);
+        $previous = $this->maintenance->activeIndex();
+        $indexesBefore = $this->aliasIndexes();
+        $offers = new InMemoryProductOfferFacts();
+        $offers->failure = new OfferFactsUnavailable('Reading the product offers failed: connection lost.');
+        self::getContainer()->set(QueryBusProductOfferFacts::class, $offers);
+
+        $tester = $this->reindexCommand();
+        self::assertSame(Command::FAILURE, $tester->execute([]));
+
+        self::assertStringContainsString('connection lost', $tester->getDisplay());
+        self::assertSame($previous, $this->maintenance->activeIndex());
+        self::assertSame($indexesBefore, $this->aliasIndexes());
     }
 
     public function testRebuildWhileAnotherProcessHoldsTheLockExitsWithOneAndChangesNothing(): void
@@ -114,7 +166,9 @@ final class SearchIndexRebuildTest extends KernelTestCase
         $source = self::getContainer()->get(ProductSearchSource::class);
         self::assertInstanceOf(ProductSearchSource::class, $source);
         $application = new Application();
-        $application->addCommand(new ReindexCommand(new ProductSearchIndexRebuilder($source, $maintenance, $lock, new ProductDocumentBuilder()), 500));
+        $queryBus = self::getContainer()->get('query.bus');
+        self::assertInstanceOf(MessageBusInterface::class, $queryBus);
+        $application->addCommand(new ReindexCommand(new ProductSearchIndexRebuilder($source, $maintenance, $lock, new ProductDocumentBuilder(), new QueryBusProductOfferFacts($queryBus), new SystemClock()), 500));
         $tester = new CommandTester($application->find('catalog:reindex'));
 
         self::assertSame(2, $tester->execute([]));
@@ -153,31 +207,46 @@ final class SearchIndexRebuildTest extends KernelTestCase
     }
 
     /**
-     * @return array<string, int> product id => version, sorted by id
+     * @return list<string> the product ids, sorted
      */
     private function createProducts(int $count): array
     {
-        $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
-        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $entityManager = $this->entityManager();
         $categories = new DoctrineCategoryRepository($entityManager);
         $products = new DoctrineProductRepository($entityManager);
         $category = CategoryFactory::createOne();
         $categories->save($category);
 
-        $versions = [];
+        $ids = [];
         for ($i = 0; $i < $count; ++$i) {
             $product = ProductFactory::createOne(['mainCategory' => $category]);
             $products->save($product);
-            $versions[$product->id()->toString()] = 1;
+            $ids[] = $product->id()->toString();
         }
-        // Distinct versions, so the test sees that each document carries its product's version.
-        foreach (array_keys($versions) as $position => $id) {
-            $versions[$id] = $position + 1;
-            $this->connection->executeStatement('UPDATE catalog_product SET version = ? WHERE id = ?', [$position + 1, $id]);
-        }
-        ksort($versions);
+        sort($ids);
 
-        return $versions;
+        return $ids;
+    }
+
+    private function entityManager(): EntityManagerInterface
+    {
+        $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+
+        return $entityManager;
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    private function indexedSource(string $id): array
+    {
+        $response = $this->client()->get(['index' => $this->alias, 'id' => $id]);
+        \assert($response instanceof Elasticsearch);
+        $source = $response['_source'];
+        self::assertIsArray($source);
+
+        return $source;
     }
 
     /**

@@ -261,7 +261,7 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
   workera nie trafiają w startujący sklep.
 - Varnish dostaje healthcheck; `api` i `worker` nie zależą od jego startu (worker przy niedostępnym Varnishu
   ponawia wiadomość).
-- `make seed`: po seedach katalogu, cen, zamówień i stanów `storefront:cache:purge-all`.
+- `make seed`: po seedach katalogu, cen, zamówień i stanów i po `catalog:reindex` `storefront:cache:purge-all`.
 
 ## Scenariusze błędów
 

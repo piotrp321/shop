@@ -11,7 +11,10 @@ Na czystym klonie repozytorium, z zainstalowanym tylko Dockerem:
 
 1. `make up` stawia cały stos i kończy się dopiero, gdy wszystkie usługi są zdrowe.
 2. `make seed` ładuje dane demo (191 produktów sport/outdoor z 1012 wariantami w drzewie kategorii, 20–30 zdjęć)
-   i kończy się, gdy indeks w Elasticsearch jest zgodny z Postgresem.
+   i kończy się, gdy indeks w Elasticsearch jest zgodny z Postgresem. Kolejno: `catalog:seed-demo`,
+   `pricing:seed-demo`, `ordering:seed-demo`, `inventory:seed-demo`, `catalog:reindex` (indeks z cenami
+   i dostępnością; zdarzenia cen i stanów ze źródła `seed` nie reindeksują produktów) i `storefront:cache:purge-all`.
+   Błąd kroku przerywa `make seed`.
 3. Sklep pokazuje drzewo kategorii i siatkę produktów ze zdjęciami (WebP z imgproxy). Kliknięcie kategorii
    zawęża listę razem z podkategoriami.
 4. Klient loguje się w sklepie (realm `shop`), może się zarejestrować z weryfikacją e-mail (Mailpit), widzi
@@ -181,7 +184,7 @@ w aplikacji uwierzytelniającej. W realmie sekret jest zapisany jako zwykły tek
 
 | Moduł | Domain | Application | Infrastructure | UI |
 |---|---|---|---|---|
-| `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetProductBySlug`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; przebudowa indeksu `ProductSearchIndexRebuilder`; porty `ProductSearch`, `ProductIndexer`, `ProductSearchSource`, `SearchIndexMaintenance`, `SearchIndexRebuildLock`, `ProductImageStorage`, `ImageUrlGenerator`, `DemoCatalogSource`, `CatalogReset`; ładowanie danych demo `DemoCatalogLoader` (przez `command.bus`); lista rozmiarów `ImageSize` | Doctrine (rekordy z atrybutami), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, źródło danych demo z `catalog.yaml` (parsowanie, rozwijanie szablonów, UUID v5) i `CatalogReset` | `GET /api/v1/products`, `GET /api/v1/products/{slug}`, `GET /api/v1/categories`, komendy konsoli |
+| `Catalog` | `Category`, `Product`, value objecty, zdarzenie `ProductCreated`, interfejsy repozytoriów | komendy `CreateCategory`, `CreateProduct`; zapytania `ListProducts`, `GetProductBySlug`, `GetCategoryTree`, `GetCatalogStatistics`; handler zdarzenia `IndexProduct`; zapis produktu do indeksu `ProductIndexing`; przebudowa indeksu `ProductSearchIndexRebuilder`; porty `ProductSearch`, `ProductIndexer`, `ProductSearchSource`, `ProductOfferFacts` (adapter w Cart), `Clock`, `SearchIndexMaintenance`, `SearchIndexRebuildLock`, `ProductImageStorage`, `ImageUrlGenerator`, `DemoCatalogSource`, `CatalogReset`; ładowanie danych demo `DemoCatalogLoader` (przez `command.bus`); lista rozmiarów `ImageSize` | Doctrine (rekordy z atrybutami), adapter Elasticsearch, Flysystem → Garage, generator podpisanych adresów imgproxy, źródło danych demo z `catalog.yaml` (parsowanie, rozwijanie szablonów, UUID v5) i `CatalogReset` | `GET /api/v1/products`, `GET /api/v1/products/{slug}`, `GET /api/v1/categories`, komendy konsoli |
 | `Customer` | — | interfejs `AuthenticatedCustomer` (klient z tokena) | `CustomerUser` (implementuje `AuthenticatedCustomer`) i `CustomerUserProvider` (z tokena realmu `shop`) | `GET /api/v1/me` |
 | `Backoffice` | — | zapytanie `GetDashboard`; porty `CatalogStatistics`, `SystemHealth`, `MessagingStatistics`; interfejs `AuthenticatedStaffMember` (pracownik z tokena) | `StaffUser` (implementuje `AuthenticatedStaffMember`) i `StaffUserProvider` (z tokena realmu `backoffice`), `DashboardVoter`, adaptery portów | `GET /api/v1/admin/me`, `GET /api/v1/admin/dashboard` |
 | `Shared` | interfejs `DomainEvent` (`occurredAt()`), port `DomainEventPublisher`, interfejsy-znaczniki wyjątków `ProblemException`, `NotFound`, `Conflict`, `InvalidInput` | — | konfiguracja szyn Messengera, przekaźnik outboxa, problem details, nagłówki cache, `GET /health`, sondy usług | — |
@@ -293,12 +296,11 @@ Persystencja:
   `catalog_product_category`. Stan odczytany we wcześniejszym żądaniu nie jest wykrywany, bo `Product` nie niesie
   wersji. Ochrona między żądaniami wymagałaby wersji w komendzie i nie jest teraz w zakresie. Dwa różne stany produktu nigdy nie
   mają tej samej wersji.
-- Wersja chroni tylko dane z wiersza produktu i jego przypisań do kategorii. Pola dokumentu wyszukiwarki pochodzące
-  z innych agregatów (ścieżki kategorii, w przyszłości ceny, dostępność, atrybuty) nie są nią objęte. Wymaga to
-  osobnego wersjonowania całej projekcji wyszukiwania. Do tego czasu zmiana drzewa kategorii wymaga pełnej
-  przebudowy indeksu (w szkielecie drzewo się nie zmienia).
-- Wersje mogą się cofnąć tylko przy wyczyszczeniu albo odtworzeniu bazy. Seed zawsze resetuje też indeks, a po
-  odtworzeniu bazy z kopii obowiązuje pełna przebudowa indeksu.
+- Wersja produktu chroni tylko dane z wiersza produktu i jego przypisań do kategorii. Dokument wyszukiwarki nie
+  używa jej: jego wersja to znacznik czasu odczytu (opis w „Indeks Elasticsearch”), który obejmuje też ceny
+  i dostępność. Zmiana drzewa kategorii (ścieżki, nazwy) nie ma zdarzenia i wymaga pełnej przebudowy indeksu
+  (w szkielecie drzewo się nie zmienia).
+- Po odtworzeniu bazy z kopii obowiązuje pełna przebudowa indeksu.
 
 Identyfikatory nadaje wywołujący komendę (komendy przyjmują `id`). Domena nigdy nie wylicza identyfikatora
 z innych pól. Seed używa UUID v5 ze sluga (opis niżej), przyszłe kontrolery będą nadawać UUID v7.
@@ -339,8 +341,9 @@ Przepływ:
    na stary kanał. Nieudana publikacja to wyjątek przekaźnika i ponowienie wiersza outboxa.
    Kolejkę i binding transport deklaruje raz na proces. Gdy znikną, przekaźnik ponawia wiersze, a worker przy
    pobieraniu z `events` kończy się błędem 404; po restarcie (`restart: unless-stopped`) deklaruje je od nowa.
-3. `worker` konsumuje `events`. Handlery odbiorców mają `from_transport: events`, w szkielecie jest to
-   `IndexProduct` dla `ProductCreated`.
+3. `worker` konsumuje `events`. Handlery odbiorców mają `from_transport: events`, dla indeksu wyszukiwarki są to
+   `IndexProduct` (`ProductCreated`), `ReindexProductOnPriceChange` (`VariantPriceChanged`) i
+   `ReindexProductOnStockLevelChange` (`StockLevelChanged`).
 4. Każdy handler zdarzenia ma jawny `from_transport`. Przekaźnik nigdy nie działa przy konsumpcji z `events`,
    a odbiorcy nigdy przy konsumpcji z `outbox`, więc nie ma pętli ani podwójnej obsługi.
 5. Ponowienia (z domyślnym jitterem ±10 %), potem transport `failed`, gdzie zdarzenie czeka na
@@ -357,13 +360,22 @@ milisekundy plus najwyżej 5 s oczekiwania na potwierdzenie) i zdarzenie trafia
 do RabbitMQ drugi raz. Tak samo RabbitMQ doręcza ponownie wiadomość bez ack odbiorcy. Kilka workerów nie bierze
 tego samego wiersza (`SELECT … FOR UPDATE SKIP LOCKED`), ale kolejność zdarzeń nie jest gwarantowana.
 
-Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` czyta aktualny stan produktu z wersją przez
-`ProductSearchSource` i zapisuje dokument z tą wersją. Starszy albo powtórzony zapis Elasticsearch odrzuca, a handler
-traktuje to jako obsłużoną wiadomość, bez ponowienia. Handler jest więc idempotentny i niezależny od kolejności
-zdarzeń.
-Błąd przejściowy (`SearchUnavailable`) ponawia Messenger według strategii `events`. Błąd trwały (`SearchIndexError`)
-i produkt, którego nie da się odczytać (katalog nie ma usuwania, więc to niespójność), kończą się
-`UnrecoverableMessageHandlingException`: wiadomość od razu trafia do `failed`.
+Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` deleguje do `ProductIndexing::reindex` (Catalog
+Application, poza `command.bus`, bo tylko czyta bazę): bierze znacznik czasu w mikrosekundach, potem czyta aktualny
+stan produktu (`ProductSearchSource`) i fakty jego oferty (`ProductOfferFacts`) i zapisuje dokument z tym znacznikiem
+jako wersją. Zapis starszego odczytu po nowszym Elasticsearch odrzuca (wynik „przestarzały”), a handler traktuje to
+jako obsłużoną wiadomość, bez ponowienia. Handler jest więc idempotentny i niezależny od kolejności zdarzeń.
+Błąd przejściowy (`SearchUnavailable`, `OfferFactsUnavailable`) ponawia Messenger według strategii `events`. Błąd
+trwały (`SearchIndexError`) i produkt, którego nie da się odczytać (wynik „brak produktu”; katalog nie ma usuwania,
+więc to niespójność), kończą się `UnrecoverableMessageHandlingException`: wiadomość od razu trafia do `failed`.
+
+Zmiana ceny i poziomu stanu reindeksuje produkt: `ReindexProductOnPriceChange` (`Pricing_Infrastructure`,
+`VariantPriceChanged`) i `ReindexProductOnStockLevelChange` (`Inventory_Infrastructure`, `StockLevelChanged`) biorą
+produkt z Catalog `GetVariant` (`query.bus`) i wołają `ProductIndexing::reindex`. Są niezależne od konsumentów
+unieważniania cache sklepu na tych samych zdarzeniach. Wariant nieznany Catalogowi, wynik „brak produktu” i wynik
+„przestarzały” to wiadomość obsłużona bez zapisu. Zdarzenie ze źródła `seed` jest obsłużone bez reindeksacji, bo
+`make seed` przebudowuje indeks po wszystkich seedach. Błędy jak w `IndexProduct`: przejściowy (`SearchUnavailable`,
+`OfferFactsUnavailable`) ponawia Messenger, trwały (`SearchIndexError`) idzie od razu do `failed`.
 
 ### Indeks Elasticsearch
 
@@ -376,16 +388,29 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 - `ProductIndexDefinition` w kodzie definiuje ustawienia i mapping. Shardy i repliki pochodzą z parametrów
   (domyślnie 1 i 0). W `_meta.definition_hash` indeksu zapisany jest hash definicji (mapping i analiza, bez
   shardów i replik), z którym porównujemy indeks przy `setup` i przed przepięciem.
-- Mapping ma `dynamic: strict`. Pola: `id` (keyword), `version` (long), `name` (text oraz `name.sort` typu
-  keyword z normalizerem lowercase + asciifolding), `slug` (keyword), `short_description` (text, `index: false`),
-  `main_category_id`, `category_ids` (keyword, wszystkie kategorie produktu, główna pierwsza),
-  `category_ancestor_ids` (keyword, suma kategorii produktu i wszystkich ich przodków, bez powtórzeń),
-  `main_image` (obiekt z `enabled: false`: `key`, `alt`).
+- Analiza: `polish_text` (tokenizer standardowy, `lowercase`, `polish_stem` z wtyczki `analysis-stempel`,
+  `asciifolding`: „kurtki” i „kurtka” dają ten sam token) i `folded_text` (tokenizer standardowy, `lowercase`,
+  `asciifolding`, bez stemmera: „Śpiwór” daje „spiwor”).
+- Mapping ma `dynamic: strict`. Pola: `id` (keyword), `version` (long), `name` (text z `polish_text`, podpola
+  `name.sort` typu keyword z normalizerem lowercase + asciifolding i `name.folded` z `folded_text`), `slug` (keyword),
+  `short_description` i `category_names` (text z `polish_text` i podpolem `folded`; `category_names` to nazwy kategorii
+  produktu i wszystkich ich przodków), `main_category_id`, `category_ids` (keyword, wszystkie kategorie produktu,
+  główna pierwsza), `category_ancestor_ids` (keyword, suma kategorii produktu i wszystkich ich przodków, bez
+  powtórzeń), `main_image` (obiekt z `enabled: false`: `key`, `alt`), `variants` (`nested`, obiekt na wariant
+  w kolejności Catalog: `gross` long, brak przy braku ceny; `purchasable` boolean; `axes` keyword, nazwy osi produktu;
+  `options` keyword, pary `<oś>` U+001F `<wartość>` dokładnie jak w Catalog; wariant domyślny bez osi ma puste `axes`
+  i `options`), `from_gross` (long, cena „od”; brak, gdy produkt nie ma wariantu możliwego do kupienia).
+  `nested` sprawia, że warunki na osie, cenę i dostępność dotyczą jednego wariantu. `gross`, `purchasable`
+  i `from_gross` pochodzą z oferty Cart (port `ProductOfferFacts`, opis w `docs/features/search/spec.md`).
 
 **Zapis**
-- Każdy zapis ma `version` dokumentu równe wersji produktu i `version_type=external`. Elasticsearch odrzuca zapis
-  z wersją nie większą niż zapisana (409). To wynik „przestarzały”, a nie błąd: dotyczy zarówno starszego stanu,
-  jak i powtórzenia tej samej wersji.
+- Wersja dokumentu (`version` w dokumencie i wersja Elasticsearch) to znacznik czasu w mikrosekundach pobrany przed
+  odczytem stanu, zapisywany z `version_type=external_gte`. Elasticsearch odrzuca zapis z wersją mniejszą niż
+  zapisana (409). To wynik „przestarzały”, a nie błąd. Przy dwóch równoległych obsługach wygrywa ta z późniejszym
+  znacznikiem czasu (pobranym przed odczytem). Obsługa z wcześniejszym znacznikiem może czytać później i zostać
+  odrzucona jako przestarzała, ale odczyt rozpoczęty po znaczniku widzi co najmniej dane zatwierdzone przed nim,
+  więc stan końcowy jest aktualny. Ta sama wersja zapisuje się ponownie. Przy kilku workerach na różnych hostach przesunięcie zegarów może przepuścić starszy odczyt; skutek
+  naprawia następna zmiana produktu albo przebudowa.
 - Pojedynczy zapis (`ProductIndexer`) idzie przez alias z `require_alias=true`, więc nigdy nie utworzy indeksu
   o nazwie aliasu. Zapis paczki przy przebudowie idzie bulkiem bezpośrednio do wskazanego indeksu fizycznego.
 - Wynik bulka jest sprawdzany pozycja po pozycji: zapisany, przestarzały, błąd przejściowy albo błąd trwały.
@@ -424,8 +449,10 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
 2. Odczytuje aktualny cel aliasu. Musi to być dokładnie jeden indeks.
 3. Tworzy nowy indeks fizyczny z aktualną definicją.
 4. Czyta produkty paczkami (`ProductSearchSource::page`, domyślnie po 500, z parametru i opcji
-   `--batch-size`) i zapisuje każdą paczkę bulkiem. Pierwszy błąd przejściowy, trwały albo wynik „przestarzały”
-   (w nowym indeksie nie powinien wystąpić) przerywa przebudowę.
+   `--batch-size`), pobiera fakty ofert produktów paczki (`ProductOfferFacts`) i zapisuje każdą paczkę bulkiem.
+   Wersja dokumentów paczki to znacznik czasu pobrany przed jej odczytem (jak w `ProductIndexing`). Pierwszy błąd
+   przejściowy, trwały, błąd faktów ofert (`OfferFactsUnavailable`) albo wynik „przestarzały” (w nowym indeksie nie
+   powinien wystąpić) przerywa przebudowę.
 5. Weryfikuje: odświeżenie, liczba dokumentów równa liczbie zapisanych, `definition_hash` zgodny, indeks
    istnieje i ma zdrowe shardy. Liczba dokumentów to dodatkowy test, a nie dowód pełnej spójności.
 6. Przepina alias jednym żądaniem `_aliases`: `remove` starego celu z `must_exist: true` i `add` nowego.
@@ -451,10 +478,11 @@ i usuwa stary, tak jak przebudowa, tylko bez zasilania. Alias nie znika ani na c
 
 To świadome ograniczenia szkieletu, a nie docelowe rozwiązanie dla katalogu rzędu 10 mln produktów:
 
-- To nie jest przebudowa online. Zapisy przyrostowe w trakcie przebudowy (`IndexProduct`) trafiają przez alias
-  do starego indeksu. Produkt zmieniony po tym, jak przebudowa minęła jego pozycję, nie trafi do nowego indeksu.
-  Poprawny wynik wymaga braku równoległych zapisów katalogu (w szkielecie zapisuje tylko seed, który używa
-  `reset()`).
+- To nie jest przebudowa online. Zapisy przyrostowe w trakcie przebudowy (`IndexProduct` i reindeksacja po zmianie
+  ceny albo poziomu stanu, `ProductIndexing`) trafiają przez alias do starego indeksu i znikają po przepięciu aliasu.
+  Produkt, którego katalog, cena albo stan zmieniły się po tym, jak przebudowa minęła jego pozycję, ma w nowym
+  indeksie stary stan aż do następnej zmiany produktu. Poprawny wynik wymaga braku równoległych zmian (`make seed`
+  uruchamia przebudowę po wszystkich seedach).
 - Brak checkpointów i wznowienia: przerwana przebudowa zaczyna się od początku. Indeks osierocony po awarii
   procesu zostaje i jest wypisywany przez `setup`.
 - Brak równoległego zasilania przez wielu consumerów, okresu retencji starego indeksu i rollbacku.
@@ -469,9 +497,10 @@ z wieloma consumerami, która zastąpi pętlę w `ProductSearchIndexRebuilder`.
   koniec. `afterId` musi być UUID (wielkość liter bez znaczenia, wartość jest normalizowana do małych liter) albo
   `null`, w przeciwnym razie metoda rzuca `\InvalidArgumentException`. `limit` musi wynosić co najmniej 1.
 - `find(id)` czyta jeden produkt tym samym zapytaniem co `page`, z warunkiem `WHERE id = :id` zamiast kursora, i zwraca
-  `null`, gdy produktu nie ma. `id` ma te same wymagania co `afterId`. Używa go `IndexProduct`.
+  `null`, gdy produktu nie ma. `id` ma te same wymagania co `afterId`. Używa go `ProductIndexing`.
 - Jedno zapytanie SQL na paczkę, czyli jeden spójny snapshot. Najpierw CTE wybiera identyfikatory paczki
-  z `LIMIT` na `catalog_product`, dopiero potem zapytanie dołącza kategorie dodatkowe i ścieżki kategorii
+  z `LIMIT` na `catalog_product`, dopiero potem zapytanie dołącza kategorie dodatkowe i ścieżki kategorii, warianty
+  z wartościami osi (w kolejności pozycji) i nazwy kategorii produktu i ich przodków (każda kategoria raz)
   i agreguje je dla każdego produktu. `LIMIT` nigdy nie działa na wierszach po złączeniu.
   Pierwsza paczka nie ma warunku kursora, kolejne mają `WHERE id > :after`, dzięki czemu kursor pozostaje warunkiem
   indeksu klucza głównego także w planie generycznym (test przypina to przez `EXPLAIN`).
@@ -684,7 +713,7 @@ w tej kolejności:
 | Komenda | Działanie |
 |---|---|
 | `catalog:search-index:setup [--recreate]` | tworzy indeks i alias `products`, jeśli nie istnieją, i sprawdza ich stan (sekcja „Indeks Elasticsearch”) |
-| `catalog:reindex [--batch-size=N]` | przebudowa synchroniczna z Postgresa z przepięciem aliasu; kod 0 po przepięciu, 1 gdy alias zostaje przy starym indeksie, 2 gdy stan aliasu jest nieznany |
+| `catalog:reindex [--batch-size=N]` | przebudowa synchroniczna z Postgresa i faktów ofert (`ProductOfferFacts`) z przepięciem aliasu; kod 0 po przepięciu, 1 gdy alias zostaje przy starym indeksie, 2 gdy stan aliasu jest nieznany |
 | `catalog:seed-demo` | resetuje dane katalogu (tabele, outbox, indeks, bucket) i ładuje dane demo (opis niżej); przy `APP_ENV=prod` odmawia działania (kod 1, bez zmian w danych), chyba że dostanie flagę `--force-reset` |
 
 ## Kontrakt API i klienci TS
@@ -849,7 +878,8 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
   identyfikator od wywołującego.
 - Seed tworzy dane przez komendy aplikacji (`CreateCategory`, `CreateProduct`), więc indeks powstaje drogą
   outbox → RabbitMQ → `IndexProduct`. Na koniec czeka (do 60 s), aż liczba dokumentów w ES zrówna się z liczbą
-  produktów, i wypisuje podsumowanie. Jeśli indeks nie dogoni Postgresa w tym czasie (np. nie działa `worker`),
+  produktów, i wypisuje podsumowanie. Ceny i stany powstają później, więc `make seed` przebudowuje indeks
+  (`catalog:reindex`) po wszystkich seedach. Jeśli indeks nie dogoni Postgresa w tym czasie (np. nie działa `worker`),
   komenda kończy się kodem różnym od 0 i komunikatem z obiema liczbami.
 - Konta demo w Keycloak pochodzą z importu realmów, nie z seeda.
 
