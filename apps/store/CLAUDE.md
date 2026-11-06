@@ -79,7 +79,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `permanentRedirect` (308) na `/c/<ścieżka>` z pozostałymi parametrami (bez `category`); nieznana → 404, niepoprawna
   (`400` API) → „Nieprawidłowy filtr”.
 - `CatalogListing`: breadcrumby „Wszystkie produkty” › kategorie ścieżki (linki `/c/<ścieżka>`, ostatni element bez
-  linku, tylko na `/c/`), `h1` z nazwą i liczbą produktów (`formatProductCount`: „1 produkt”, „2–4 produkty”,
+  linku, tylko na `/c/`), `h1` z nazwą, obok liczba produktów (`formatProductCount`: „1 produkt”, „2–4 produkty”,
   22–24 itd., reszta „produktów”, także 12–14), siatka i paginacja w adresach `/c/<ścieżka>?page=n`.
 - SEO: tytuł `/c/` to `<nazwa>[ – strona n] | Rytm`, kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1);
   pusta strona poza zakresem i niepoprawny `page` mają `noindex`. `/c/` ma JSON-LD `BreadcrumbList` (bezwzględne
@@ -91,9 +91,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   działów (`MegaMenu`, `nav` „Działy”, Client Component). Na stronie produktu (ISR) odczyt drzewa ma tag `catalog`
   (`loadCategoryTree`), więc strona rewaliduje się razem z katalogiem; odczyt nie ustawia trybu cache.
 - Szeroki ekran: przyciski działów (kategorie główne); panel działu (poziomy 2–3 i „Wszystko z działu”) otwiera się
-  kliknięciem, Enter, Spacją i najechaniem myszą, zamyka Escape (fokus wraca na przycisk), kliknięciem poza menu,
-  przejściem fokusu poza menu, kliknięciem linku i przejściem na inny dział; przyciski mają `aria-expanded`. Wąski
-  ekran: przycisk „Menu” z listą trzech poziomów. Głębsze poziomy są na stronie kategorii.
+  kliknięciem, Enter, Spacją i najechaniem myszą, zamyka Escape, kliknięciem poza menu, przejściem fokusu poza menu,
+  kliknięciem linku i przejściem na inny dział; przyciski mają `aria-expanded`. Escape zamyka menu przy dowolnym
+  fokusie (pomija zdarzenie z `defaultPrevented`), a fokus wraca na przycisk tylko wtedy, gdy był w menu albo nigdzie
+  (`body`); fokus w polu poza menu zostaje tam, gdzie był. Wąski ekran: przycisk „Menu” z listą trzech poziomów.
+  Głębsze poziomy są na stronie kategorii.
 - Wszystkie linki są w HTML także przy zamkniętym menu (panele mają atrybut `hidden`), JavaScript tylko je otwiera.
 - Błąd odczytu drzewa w layoucie: `console.error` na serwerze, nagłówek bez menu, strona renderuje się dalej (koszyk
   działa). Strona produktu w ISR może zostać zapisana bez menu do następnej rewalidacji.

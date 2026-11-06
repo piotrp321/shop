@@ -64,14 +64,17 @@ export function MegaMenu({ categories }: { categories: CategoryNode[] }) {
   }, [anythingOpen]);
 
   // Escape closes the menu wherever the focus is: a panel opened by hover leaves it on the body, and Safari and Firefox
-  // do not focus a button on click. The focus goes back to the button that opened the panel.
+  // do not focus a button on click. The focus goes back to the button that opened the panel only when it was in the menu
+  // or nowhere; a field elsewhere on the page keeps it. An Escape that something else already handled is left alone.
   useEffect(() => {
     if (!anythingOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const active = document.activeElement;
+      const focusBelongsToMenu = active === null || active === document.body || !!navRef.current?.contains(active);
       const focusTarget = openId !== null ? departmentButtons.current.get(openId) : menuButton.current;
       closeAll();
-      focusTarget?.focus();
+      if (focusBelongsToMenu) focusTarget?.focus();
     };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);

@@ -119,6 +119,36 @@ describe("MegaMenu", () => {
     expect(document.activeElement).toBe(department("Bieganie"));
   });
 
+  it("closes with Escape but leaves the focus in a field outside the menu", () => {
+    render(
+      <>
+        <MegaMenu categories={TREE} />
+        <input aria-label="Pole poza menu" />
+      </>,
+    );
+    fireEvent.pointerEnter(department("Bieganie"), { pointerType: "mouse" });
+    const field = screen.getByLabelText("Pole poza menu");
+    act(() => field.focus());
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(department("Bieganie").getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(field);
+  });
+
+  it("leaves the menu open when something else already handled Escape", () => {
+    render(
+      <>
+        <MegaMenu categories={TREE} />
+        <input aria-label="Pole poza menu" onKeyDown={(event) => event.preventDefault()} />
+      </>,
+    );
+    fireEvent.pointerEnter(department("Bieganie"), { pointerType: "mouse" });
+    const field = screen.getByLabelText("Pole poza menu");
+    act(() => field.focus());
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(department("Bieganie").getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(field);
+  });
+
   it("ignores Escape while nothing is open and does not take the focus", () => {
     render(<MegaMenu categories={TREE} />);
     fireEvent.keyDown(document.body, { key: "Escape" });
