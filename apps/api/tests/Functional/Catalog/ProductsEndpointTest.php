@@ -57,7 +57,8 @@ final class ProductsEndpointTest extends WebTestCase
         $child = $this->saveCategory(self::CHILD, $root, 'Buty', 'buty');
         $this->saveCategory(self::LEAF, $child, 'Szosowe', 'szosowe');
         $this->saveCategory(self::CHILD_B, $root, 'Akcesoria', 'akcesoria');
-        $this->saveCategory(self::OTHER);
+        // After "Bieganie" in the order of the roots, which is by name.
+        $this->saveCategory(self::OTHER, null, 'Rower', 'rower');
     }
 
     public function testResponseHasTheDocumentedShape(): void
