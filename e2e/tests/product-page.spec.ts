@@ -1,4 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { emptyCart, logInAsJan } from "../support/shop";
+import { cartLineOf } from "../support/variants";
 
 // Demo product with variants and a photo (apps/api/fixtures/catalog.yaml), in Bieganie > Buty biegowe > Buty szosowe.
 const PRODUCT_NAME = "Buty szosowe Tarvik Asfalt 200";
@@ -61,4 +63,59 @@ test("the second request of a product page comes from the ISR cache", async ({ r
   const second = await request.get(PRODUCT_PATH);
   expect(second.status()).toBe(200);
   expect(second.headers()["x-nextjs-cache"]).toBe("HIT");
+});
+
+// Every variant of this product is in stock (apps/api/fixtures/stock.yaml), so no value is disabled here; the
+// disabled values are covered by the unit tests.
+async function chooseBlack42AndAdd(page: Page): Promise<void> {
+  const choose = (name: string) => page.getByRole("main").getByRole("button", { name, exact: true });
+  const add = page.getByRole("button", { name: "Do koszyka" });
+
+  // Nothing is chosen yet: the later axis waits and the button is off.
+  await expect(add).toBeDisabled();
+  await expect(choose("42")).toBeDisabled();
+
+  await choose("czarne").click();
+  await expect(choose("czarne")).toHaveAttribute("aria-pressed", "true");
+  await expect(add).toBeDisabled();
+  await choose("czarne").click(); // a second click does not unselect
+  await expect(choose("czarne")).toHaveAttribute("aria-pressed", "true");
+  await choose("42").click();
+
+  // The price and the level of the chosen variant replace the "od X zł" of the product.
+  await expect(page.getByTestId("price")).toHaveText(/^\d/);
+  await expect(page.getByTestId("availability")).toHaveText(/^(Dostępny|Ostatnie sztuki)$/);
+  await expect(add).toBeEnabled();
+  await add.click();
+  await expect(page.getByText("Dodano do koszyka")).toBeVisible();
+  await expect(page.getByTestId("cart-count")).toHaveText("1");
+}
+
+test("a guest chooses the colour and the size on the product page and adds the variant to the cart", async ({ page }) => {
+  await page.goto(PRODUCT_PATH);
+  await expect(page.getByTestId("cart-count")).toHaveText("0");
+  await chooseBlack42AndAdd(page);
+
+  await page.getByRole("link", { name: /^Koszyk/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Koszyk" })).toBeVisible();
+  const line = cartLineOf(page, PRODUCT_NAME, "czarne, 42");
+  await expect(line).toHaveCount(1);
+  await expect(line.getByRole("spinbutton")).toHaveValue("1");
+});
+
+test("a signed-in customer chooses the colour and the size on the product page and adds the variant to the cart", async ({ page }) => {
+  await page.goto("/");
+  await logInAsJan(page);
+  await emptyCart(page);
+
+  await page.goto(PRODUCT_PATH);
+  await expect(page.getByTestId("cart-count")).toHaveText("0");
+  await chooseBlack42AndAdd(page);
+
+  await page.getByRole("link", { name: /^Koszyk/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Koszyk" })).toBeVisible();
+  const line = cartLineOf(page, PRODUCT_NAME, "czarne, 42");
+  await expect(line).toHaveCount(1);
+  await expect(line.getByRole("spinbutton")).toHaveValue("1");
+  await emptyCart(page);
 });

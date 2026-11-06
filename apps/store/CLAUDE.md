@@ -33,7 +33,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `CheckoutPage`.
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
 - `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`),
-  `load-product.ts` (odczyty strony produktu), `ProductDetailsView`, `product-metadata.ts` i `product-json-ld.ts`.
+  `load-product.ts` (odczyty strony produktu), `ProductDetailsView`, `VariantChoice` z `variant-choice.ts` (wybór wariantu),
+  `product-metadata.ts` i `product-json-ld.ts`.
 - `app/p/[slug]/` – strona produktu (ISR).
 - `src/components/ui/` – komponenty shadcn/ui.
 - `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu.
@@ -77,8 +78,21 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `ProductDetailsView` (Server Component): ścieżka „Wszystkie produkty” › kategorie (linki `/?category=<id>`), `h1`,
   zdjęcia jedno pod drugim przez `ProductPhoto` (pierwsze `priority`, bez zdjęć `PhotoPlaceholder`), krótki opis,
   cena „od X zł” (gdy `hasPriceRange`) albo „X zł” i etykieta `level` produktu; produkt bez wariantu możliwego do kupienia
-  (`fromGross = null`): „Niedostępny” bez ceny. Wartości pochodzą z oferty, front niczego nie liczy. Wybór wariantu
-  i „Do koszyka” dochodzą w osobnym zadaniu epiku.
+  (`fromGross = null`): „Niedostępny” bez ceny, wyboru i przycisku. Wartości pochodzą z oferty, front niczego nie liczy.
+- Wybór wariantu (`VariantChoice`, Client Component osadzony w `ProductDetailsView`; reguły w czystych funkcjach
+  `variant-choice.ts`, z testami): jedna grupa przycisków (`fieldset`, `aria-pressed`) na oś z `variantAxes`, wartości
+  w kolejności pierwszego wystąpienia w `variants` szczegółów. Wariant ze szczegółów jest możliwy do kupienia tylko, gdy
+  oferta ma go (po `variantId`) z `purchasable = true`; cena, poziom i `purchasable` pochodzą z oferty, front tylko
+  dopasowuje wybrane wartości do wariantu. Dostępność wartości jest hierarchiczna, w kolejności osi: wartość pierwszej
+  osi jest wyłączona (z dopiskiem „niedostępny”) tylko wtedy, gdy żaden wariant możliwy do kupienia jej nie ma; wartość
+  kolejnej osi liczy się względem wyborów osi wcześniejszych (wybory osi późniejszych się nie liczą); oś późniejsza jest
+  wyłączona (bez dopiska), dopóki wcześniejsze nie mają wyboru. Zmiana wartości osi czyści wybory osi późniejszych, które
+  przestały pasować, więc wybór nigdy się nie blokuje. Kliknięcie wybranej wartości niczego nie zmienia (bez odznaczania).
+  Wariant możliwy do kupienia, jeśli jest jedyny (także spośród wielu), jest wybrany od pierwszego renderu (stan
+  początkowy zależy tylko od danych, więc HTML ISR jest taki sam dla każdego). Produkt z jednym wariantem pokazuje
+  wartości osi jako tekst („Kolor: czarne”), bez wyboru. Do pełnego wyboru strona pokazuje cenę i poziom produktu
+  (`children` z serwera), po nim cenę i poziom wybranego wariantu. `AddToCartButton` jest wyłączony do pełnego wyboru
+  i dodaje 1 sztukę wybranego wariantu (ilość zmienia się w koszyku). Wariantu nie ma w URL.
 - Metadane (`buildProductMetadata`): tytuł `<nazwa> | Rytm`, opis = krótki opis (bez opisu: brak), kanoniczny
   `<STORE_URL>/p/<slug>`, Open Graph (tytuł, opis, adres, obraz = pierwsze zdjęcie w największej szerokości; bez zdjęć
   bez obrazu).

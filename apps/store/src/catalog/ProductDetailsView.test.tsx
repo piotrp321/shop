@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
-import { makeDetails, makeOffer, makeVariant } from "./fixtures";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { makeDetails, makeOffer, makeVariant, variantId } from "./fixtures";
 import { ProductDetailsView } from "./ProductDetailsView";
+
+vi.mock("@/api/client", () => ({ addCartItem: vi.fn() }));
 
 afterEach(cleanup);
 
@@ -14,6 +16,15 @@ const SHOES = makeOffer(1, {
   variants: [
     makeVariant(1, 1, { label: "czarne, 42", gross: 30000, level: "in_stock" }),
     makeVariant(1, 2, { label: "czarne, 44", gross: 32000, level: "low_stock" }),
+  ],
+});
+
+// The details that go with SHOES: the same two variants, the ids of the offer.
+const SHOES_DETAILS = makeDetails(1, {
+  variantAxes: ["Kolor", "Rozmiar"],
+  variants: [
+    { variantId: variantId(1, 1), label: "czarne, 42", values: ["czarne", "42"] },
+    { variantId: variantId(1, 2), label: "czarne, 44", values: ["czarne", "44"] },
   ],
 });
 
@@ -62,7 +73,7 @@ describe("ProductDetailsView", () => {
 
   describe("price and level", () => {
     it("shows 'od X zł' when the purchasable variants cost differently, with the level of the product", () => {
-      render(<ProductDetailsView details={makeDetails(1)} offer={SHOES} />);
+      render(<ProductDetailsView details={SHOES_DETAILS} offer={SHOES} />);
       expect(screen.getByTestId("price").textContent).toBe("od 300,00\u00a0zł");
       expect(screen.getByTestId("availability").textContent).toBe("Dostępny");
     });
@@ -73,7 +84,7 @@ describe("ProductDetailsView", () => {
     });
 
     it("names the level of the product as the API gave it", () => {
-      render(<ProductDetailsView details={makeDetails(1)} offer={makeOffer(1, { level: "low_stock" })} />);
+      render(<ProductDetailsView details={makeDetails(1)} offer={makeOffer(1, { level: "low_stock", variants: [makeVariant(1, 1, { level: "low_stock" })] })} />);
       expect(screen.getByTestId("availability").textContent).toBe("Ostatnie sztuki");
     });
 
@@ -82,6 +93,21 @@ describe("ProductDetailsView", () => {
       render(<ProductDetailsView details={makeDetails(1)} offer={offer} />);
       expect(screen.queryByTestId("price")).toBeNull();
       expect(screen.getByTestId("availability").textContent).toBe("Niedostępny");
+    });
+  });
+  describe("variant choice and add to cart", () => {
+    it("offers a choice per axis and a disabled 'Do koszyka' button for a product with several variants", () => {
+      render(<ProductDetailsView details={SHOES_DETAILS} offer={SHOES} />);
+      expect(screen.getAllByRole("group").map((group) => group.querySelector("legend")?.textContent)).toEqual(["Kolor", "Rozmiar"]);
+      expect((screen.getByRole("button", { name: "Do koszyka" }) as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId("price").textContent).toBe("od 300,00\u00a0zł");
+    });
+
+    it("offers no choice and no button for a product without a purchasable variant", () => {
+      const offer = makeOffer(1, { fromGross: null, level: "out_of_stock", variants: [makeVariant(1, 1, { gross: 12300, level: "out_of_stock", purchasable: false })] });
+      render(<ProductDetailsView details={makeDetails(1)} offer={offer} />);
+      expect(screen.queryByRole("button")).toBeNull();
+      expect(screen.queryByRole("group")).toBeNull();
     });
   });
 });
