@@ -73,7 +73,12 @@ idempotentny krok, uruchamiany jawnie:
 | CI | usługi potrzebne testom startują przed `make -C apps/api test`, który sam wywołuje `init-test` |
 | wdrożenie (Kubernetes) | osobny Job z tymi samymi komendami co `init`, przed wdrożeniem nowej wersji aplikacji |
 
-`node_modules` i `vendor` są w wolumenach Dockera.
+`node_modules` i `vendor` są w wolumenach Dockera. Obrazy `store` i `admin` mają `node_modules` zainstalowane
+z `package-lock.json` z chwili budowania. Docker kopiuje je do pustego wolumenu przy jego utworzeniu, więc świeży
+stos (CI) startuje bez `npm ci`. Kontener uruchamia `npm ci`, gdy `package-lock.json` jest nowszy od instalacji.
+Istniejący wolumen zachowuje swoją zawartość. Healthchecki usług sprawdzają stan co sekundę w okresie startu
+(`start_interval`), więc `make up` i zależności widzą usługę gotową od razu, a nie przy następnym zwykłym
+sprawdzeniu.
 
 ### Adresy: przeglądarka i kontenery
 
