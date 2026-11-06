@@ -43,7 +43,7 @@ final class OrderConfirmationTextTest extends TestCase
             00-950 Warszawa
             Telefon: +48600100200
 
-            O płatności poinformujemy w osobnej wiadomości.
+            Zamówienie czeka na płatność do 13:30 (05.11.2026). Bez płatności anulujemy je automatycznie.
 
             TEXT;
         self::assertSame($expected, (new OrderConfirmationText())->body($view));
@@ -83,6 +83,26 @@ final class OrderConfirmationTextTest extends TestCase
         yield 'a moment given in another zone' => ['2026-11-05 07:00:00-05:00', '05.11.2026 o 13:00'];
     }
 
+    #[DataProvider('deadlines')]
+    public function testTheDeadlineIsShownInWarsawTime(string $deadline, string $expected): void
+    {
+        $body = (new OrderConfirmationText())->body(self::view(deadline: new \DateTimeImmutable($deadline)));
+
+        self::assertStringContainsString("\nZamówienie czeka na płatność do ".$expected.'. Bez płatności anulujemy je automatycznie.'."\n", $body);
+        self::assertStringNotContainsString('O płatności poinformujemy', $body);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function deadlines(): iterable
+    {
+        yield 'winter time (UTC+1)' => ['2026-11-05 12:30:00+00:00', '13:30 (05.11.2026)'];
+        yield 'summer time (UTC+2)' => ['2026-07-01 12:35:00+00:00', '14:35 (01.07.2026)'];
+        yield 'the next day in Warsaw' => ['2026-12-31 23:20:00+00:00', '00:20 (01.01.2027)'];
+        yield 'a moment given in another zone' => ['2026-11-05 07:30:00-05:00', '13:30 (05.11.2026)'];
+    }
+
     #[DataProvider('amounts')]
     public function testAmountsAreFormattedAsGroszeWithSpacesAndAComma(int $grosze, string $expected): void
     {
@@ -116,7 +136,7 @@ final class OrderConfirmationTextTest extends TestCase
     /**
      * @param list<OrderLineView> $lines
      */
-    private static function view(array $lines = [], int $gross = 0, ?\DateTimeImmutable $placedAt = null): OrderView
+    private static function view(array $lines = [], int $gross = 0, ?\DateTimeImmutable $placedAt = null, ?\DateTimeImmutable $deadline = null): OrderView
     {
         return new OrderView(
             '0192f0c4-7c1a-7c4e-9a6e-0000000000aa',
@@ -129,7 +149,7 @@ final class OrderConfirmationTextTest extends TestCase
             [] === $lines ? [self::line('Czapka', '', 1, 100)] : $lines,
             new OrderTotalsView(0, 0, $gross, 'PLN'),
             $placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'),
-            ($placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'))->modify('+30 minutes'),
+            $deadline ?? ($placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'))->modify('+30 minutes'),
             null,
         );
     }
