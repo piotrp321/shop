@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openCategoryFromMenu } from "../support/menu";
 import { emptyCart, logInAsJan } from "../support/shop";
 import { cartLineOf } from "../support/variants";
 
@@ -8,11 +9,9 @@ const PRODUCT_PATH = "/p/buty-szosowe-tarvik-asfalt-200";
 
 test("from the list to the product page: the path, the photo and the structured data", async ({ page }) => {
   await page.goto("/");
-  const categories = page.getByRole("navigation", { name: "Kategorie" });
-  await categories.getByRole("link", { name: "Bieganie", exact: true }).click();
-  await categories.getByRole("link", { name: "Buty biegowe", exact: true }).click();
-  await categories.getByRole("link", { name: "Buty szosowe", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Buty szosowe" })).toBeVisible();
+  await openCategoryFromMenu(page, "Bieganie", "Buty szosowe");
+  await expect(page).toHaveURL(/\/c\/bieganie\/buty\/szosowe$/);
+  await expect(page.getByRole("heading", { level: 1, name: /^Buty szosowe/ })).toBeVisible();
 
   await page.getByRole("main").getByRole("heading", { level: 2, name: PRODUCT_NAME, exact: true }).getByRole("link").click();
 
@@ -42,10 +41,13 @@ test("from the list to the product page: the path, the photo and the structured 
   expect(product.offers.length).toBeGreaterThan(0);
   expect(product.offers[0]).toMatchObject({ "@type": "Offer", priceCurrency: "PLN" });
   expect(breadcrumb.itemListElement.map((item: { name: string }) => item.name)).toEqual(["Wszystkie produkty", "Bieganie", "Buty biegowe", "Buty szosowe"]);
+  expect(breadcrumb.itemListElement.map((item: { item: string }) => new URL(item.item).pathname)).toEqual(["/", "/c/bieganie", "/c/bieganie/buty", "/c/bieganie/buty/szosowe"]);
+  expect(await path.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("href")))).toEqual(["/", "/c/bieganie", "/c/bieganie/buty", "/c/bieganie/buty/szosowe"]);
 
   // The last category of the path leads back to the list of that category.
   await path.getByRole("link", { name: "Buty szosowe", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Buty szosowe" })).toBeVisible();
+  await expect(page).toHaveURL(/\/c\/bieganie\/buty\/szosowe$/);
+  await expect(page.getByRole("heading", { level: 1, name: /^Buty szosowe/ })).toBeVisible();
 });
 
 test("an unknown product is a 404 that search engines do not index", async ({ page }) => {

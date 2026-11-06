@@ -25,11 +25,8 @@ async function readProductPage(request: APIRequestContext): Promise<Reading> {
 const jsonLdPrice = (grosze: number) => (grosze / 100).toFixed(2);
 
 async function openStoreTraining(page: Page): Promise<void> {
-  await page.goto("/");
-  const categories = page.getByRole("navigation", { name: "Kategorie" });
-  await categories.getByRole("link", { name: "Fitness", exact: true }).click();
-  await categories.getByRole("link", { name: "Trening", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Trening" })).toBeVisible();
+  await page.goto("/c/fitness/trening");
+  await expect(page.getByRole("heading", { level: 1, name: /^Trening/ })).toBeVisible();
 }
 
 const tilePrice = (page: Page) =>
