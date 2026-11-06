@@ -35,7 +35,7 @@ w panelu i upload zdjęć, wyszukiwanie pełnotekstowe, strona produktu, SEO poz
 
 Stos jest zdefiniowany w `infra/docker-compose.yml`, dołączanym (`include`) przez `compose.yaml` w korzeniu repo,
 więc `docker compose` działa z korzenia i czyta `.env` z korzenia. Wersje główne poniżej, dokładne wersje obrazów
-są przypięte w pliku compose.
+są przypięte w pliku compose, a wersja Elasticsearch w `infra/elasticsearch/Dockerfile`.
 
 | Usługa | Obraz | Rola | Health check |
 |---|---|---|---|
