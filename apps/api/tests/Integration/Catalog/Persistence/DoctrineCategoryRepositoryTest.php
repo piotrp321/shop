@@ -162,6 +162,23 @@ final class DoctrineCategoryRepositoryTest extends KernelTestCase
         $this->repository->save($child);
     }
 
+    public function testRootSlugViolationOnInsertThrowsCategorySlugTaken(): void
+    {
+        $root = CategoryFactory::createOne(['slug' => 'sport']);
+        $competingId = '99999999-9999-4999-8999-999999999999';
+        // The competing request commits another root with the same slug after the handler found the slug free.
+        $this->commitRowBeforeNextInsert($this->entityManager, 'catalog_category', [
+            'id' => $competingId,
+            'name' => 'Competing',
+            'slug' => 'sport',
+            'path' => '/'.$competingId.'/',
+        ]);
+
+        $this->expectException(CategorySlugTaken::class);
+
+        $this->repository->save($root);
+    }
+
     public function testDirectInsertOfASecondRootWithTheSameSlugIsRejected(): void
     {
         $this->insertRow('00000000-0000-4000-8000-000000000001', null, 'sport');
