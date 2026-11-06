@@ -14,9 +14,10 @@ export const metadata: Metadata = {
 
 /** The providers of the API, or null when the list or the store's configuration is not available. */
 async function loadProviders(): Promise<{ providers: PaymentProvider[] | null; pendingOrderNumber: string | null }> {
+  // Outside the try: reading cookies is what makes the page dynamic, and Next signals that by throwing while it builds.
+  const signed = (await cookies()).get(CONFIRMATION_COOKIE)?.value;
   try {
     const { api, config } = await getCartDeps();
-    const signed = (await cookies()).get(CONFIRMATION_COOKIE)?.value;
     return {
       providers: await listPaymentProviders(api()),
       pendingOrderNumber: readOrderConfirmation(signed, config.sessionSecret)?.number ?? null,
