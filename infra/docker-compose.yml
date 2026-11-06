@@ -315,14 +315,16 @@ services:
       # Its own compiled container: with the cache on the shared bind mount, a rebuild by the api (after a code
       # change) deletes the container files this long-running process still loads lazily, and the worker crashes.
       APP_CACHE_DIR: /tmp/cache
-    command: ["bin/console", "messenger:consume", "outbox", "events"]
+    # The transports one after another: the outbox relay, the events of RabbitMQ and the delayed commands
+    # (ExpireUnpaidOrder) whose moment has come.
+    command: ["bin/console", "messenger:consume", "outbox", "events", "scheduled"]
     restart: unless-stopped
     volumes:
       - ./apps/api:/app
       - api-vendor:/app/vendor
     healthcheck:
       # Healthy once PID 1 is the consumer itself, not the entrypoint that may still be installing dependencies.
-      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events'"]
+      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled'"]
       interval: 10s
       timeout: 3s
       retries: 3

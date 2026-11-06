@@ -20,8 +20,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
   pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych); potem
   `ordering:seed-demo`, który usuwa wszystkie zamówienia i ich linie jednym `TRUNCATE` (sekwencja numerów zostaje,
-  luki są dopuszczalne); na końcu `inventory:seed-demo`, który czyści stany, rezerwacje i historię stanów
-  i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
+  luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
+  rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
   seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
@@ -100,6 +101,31 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - numer zamówienia (`R-` i wartość od 100001) bierze `nextval('ordering_order_number_seq')` przez DBAL. Sekwencja
     nie jest częścią transakcji: wycofane złożenie zostawia lukę. Schemat Doctrine dostaje sekwencję od listenera
     `OrderNumberSequenceSchema` (mapowanie nie wyraża sekwencji poza id), więc diff migracji jej nie usuwa.
+- Cykl płatności zamówienia (Ordering, `docs/features/payment/spec.md`): zamówienie ma termin płatności (`placedAt`
+  + 30 min), a zamówienie gościa losowy `accessToken` (32 bajty w base64url, 43 znaki, generuje `PlaceOrder`; zwracany
+  w `OrderView`, klient ma `null`). Przejścia `new → paid` i `new → cancelled` to metody agregatu `Order` (bez Symfony
+  Workflow) i szereguje je wersja zamówienia: przegrany zapis kończy się konfliktem wersji i ponowieniem, więc nie ma
+  przejścia `cancelled → paid` ani zwolnienia rezerwacji opłaconego zamówienia.
+  - `markPaid` decyduje po czasie wykonania płatności u dostawcy (`executedAt ≤ paymentDeadline` opłaca), nie po czasie
+    odebrania webhooka; zwraca enum domenowy (także `paidAfterDeadline`, `alreadyPaid`, `paidByAnotherPayment`,
+    `orderCancelled` bez zmian), zła kwota albo waluta to `InvalidOrder`.
+  - Dla Payment (jedyny context zależny od Ordering) wszystko jest w `Ordering_Application`: zapytanie
+    `GetOrderForPayment(orderId, OrderAccess)` (`query.bus`) zwraca `OrderForPayment` albo `null` przy każdym braku
+    dostępu (nieznane zamówienie, id spoza UUID, zły token porównywany `hash_equals`, cudze zamówienie, inny rodzaj
+    właściciela); komenda `MarkOrderPaid` (`command.bus`, zagnieżdżona w transakcji webhooka) zwraca
+    `MarkOrderPaidResult`, a nieznane zamówienie i konflikt wersji to `OrderToPayNotFound` i `OrderChangedConcurrently`.
+  - Anulowanie nieopłaconego: `PlaceOrder` w swojej transakcji wysyła `ExpireUnpaidOrder(orderId)` z `DelayStamp` na
+    termin + 5 min (port `UnpaidOrderExpiry`; powtórzenie złożenia nic nie wysyła). Handler w transakcji `command.bus`
+    przy anulowaniu najpierw zwalnia rezerwację (port `StockReservations::release`, Inventory `ReleaseReservation`,
+    zagnieżdżony dispatch), potem zapisuje zamówienie z `OrderCancelled` w outboxie; wiadomość za wczesna (zegar,
+    zaokrąglenie `available_at`) wraca na termin + 5 min + 1 s, opłacone albo anulowane zamówienie nic nie zmienia,
+    nieznane (po `make seed`) to wpis w logu. Konflikt wersji i błędy Inventory (`ReservationNotFound`,
+    `ReservationStateConflict`) idą dalej: ponowienia transportu, potem `failed` (zamówienie zostaje `new`).
+  - E-maile „Płatność przyjęta” (`SendPaymentReceived` po `OrderPaid`) i „Zamówienie … anulowane”
+    (`SendOrderCancelled` po `OrderCancelled`) działają jak `SendOrderConfirmation` (poniżej), każdy z własnym znacznikiem
+    (`paymentNotificationSentAt`, `cancellationNotificationSentAt`); port `OrderStatusMailer`, adapter
+    `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. E-mail z potwierdzeniem podaje
+    termin płatności w strefie `Europe/Warsaw`.
 - E-mail z potwierdzeniem zamówienia wysyła handler zdarzenia `SendOrderConfirmation` (`event.bus`, transport `events`,
   po `OrderPlaced` z outboxa). Wysyłka idzie przez Symfony Mailer (`symfony/mailer`) synchronicznie, bez Messengera:
   `framework.mailer.message_bus: false` (inaczej `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną
@@ -136,8 +162,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
   Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`; Catalog
-  `ProductCreated`, Ordering `OrderPlaced`), gdy jedyną drogą zapisu jest ta komenda. Gdy agregat ma wiele ścieżek
-  zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
+  `ProductCreated`, Ordering `OrderPlaced`, `OrderPaid`, `OrderCancelled`), gdy jedyną drogą zapisu jest ta komenda.
+  Gdy agregat ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
   rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
   w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
   pominie, a odrzucony albo wycofany zapis nie zostawia zdarzenia.
@@ -215,6 +241,13 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   trasy i unieważnianie po zmianie danych (zdarzenie i konsument wołający `StorefrontCache`). Bez tego zmiana danych
   nie będzie widoczna w sklepie przed końcem `max-age`/`s-maxage`.
 
+- Transport Messengera `scheduled` (Doctrine,
+  `doctrine://default?queue_name=scheduled&auto_setup=false&redeliver_timeout=300`, `use_notify: false`, ta sama tabela `messenger_messages` i to samo połączenie co `outbox`) trzyma komendy opóźnione
+  `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
+  Wiadomość powstaje w transakcji wywołującego, a restart albo przestój workera tylko opóźnia jej obsługę; wiadomość
+  pobrana przez worker, który padł przed potwierdzeniem, wraca po 5 minutach. Ponowienia: 5 prób, 1 s, ×3, potem
+  `failed`. Worker (`infra/docker-compose.yml`, komenda i healthcheck) konsumuje `outbox events scheduled` po kolei.
+  W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging` prawdziwy (Doctrine na `shop_test`).
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
 - Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.

@@ -16,14 +16,16 @@ zapytanie `GetVariantSummaries`, Pricing `GetCurrentPrices(variantIds)`, a Inven
   w Polsce i składają zamówienie z całego koszyka.
 - Złożenie zamówienia w jednej transakcji: odczyt i blokada koszyka, kopia cen z Pricing i nazw z Catalog w pozycjach
   zamówienia, rezerwacja stanów w Inventory (bez sprzedaży ponad stan przy równoległych zakupach), zapis zamówienia
-  w statusie `new`, opróżnienie koszyka.
+  w statusie `new` z terminem płatności (30 minut od złożenia), opróżnienie koszyka. Zamówienie gościa dostaje losowy
+  token dostępu (`accessToken`), którym gość rozpoczyna płatność (`docs/features/payment/spec.md`).
 - `Idempotency-Key`: powtórzone żądanie (podwójne kliknięcie, ponowienie po błędzie sieci) nie tworzy drugiego
   zamówienia.
 - Strona potwierdzenia w sklepie i e-mail z potwierdzeniem (Mailpit), wysyłany asynchronicznie po złożeniu.
 
 Poza zakresem:
-- płatność, status „opłacone”, zwolnienie rezerwacji nieopłaconych zamówień (PAYMENT #91);
-- statusy po złożeniu, anulowanie, zamówienia w panelu, historia zamówień klienta (ORDER-MANAGEMENT #92);
+- płatność, statusy `paid` i `cancelled`, anulowanie nieopłaconych zamówień ze zwolnieniem rezerwacji (PAYMENT #91,
+  `docs/features/payment/spec.md`);
+- statusy po opłaceniu, anulowanie z panelu, zamówienia w panelu, historia zamówień klienta (ORDER-MANAGEMENT #92);
 - kody rabatowe i promocje (PROMOTIONS #96);
 - metody i koszty dostawy (decyzja P3, #120), adresy zapisane na koncie klienta (decyzja P5, #117), faktury i dane
   firmy, kraje inne niż Polska;
@@ -110,21 +112,26 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 
 ### Agregat `Order`
 
-Pola: `id`, `number`, `owner`, `contact`, `shippingAddress`, `lines` (1–50, w kolejności koszyka, bez powtórzonego
-wariantu), `totals` (liczone), `status` (`new`), `idempotencyKey`, `requestFingerprint`, `placedAt`,
-`confirmationSentAt` (null), `version`.
+Pola: `id`, `number`, `owner`, `accessToken` (gość: 32 losowe bajty w base64url, 43 znaki, generuje handler; klient:
+null), `contact`, `shippingAddress`, `lines` (1–50, w kolejności koszyka, bez powtórzonego wariantu), `totals`
+(liczone), `status` (`new`), `idempotencyKey`, `requestFingerprint`, `placedAt`, `paymentDeadline` (`placedAt` +
+30 min), `confirmationSentAt` (null), `version`. Pola cyklu płatności (`paidAt`, `paymentId`, `cancelledAt`,
+`cancellationReason`, znaczniki e-maili o płatności i anulowaniu) opisuje `docs/features/payment/spec.md`.
 
 | Metoda | Działanie | Błędy |
 |---|---|---|
-| `place(id, number, owner, contact, address, lines, idempotencyKey, fingerprint, now)` | nowe zamówienie w statusie `new`, zapisuje zdarzenie `OrderPlaced {orderId, occurredAt}` | 0 albo > 50 linii, powtórzony wariant: `InvalidOrder` (błąd logiczny: handler buduje linie z koszyka, który pilnuje tych limitów); ilość linii poza 1–99 odrzuca już `OrderLine::of` (też `InvalidOrder`) |
+| `place(id, number, owner, accessToken, contact, address, lines, idempotencyKey, fingerprint, now)` | nowe zamówienie w statusie `new` z terminem płatności `now` + 30 min, zapisuje zdarzenie `OrderPlaced {orderId, occurredAt}` | 0 albo > 50 linii, powtórzony wariant, zamówienie gościa bez tokenu albo klienta z tokenem: `InvalidOrder` (błąd logiczny: handler buduje linie z koszyka, który pilnuje tych limitów); ilość linii poza 1–99 odrzuca już `OrderLine::of` (też `InvalidOrder`) |
 | `isReplayOf(fingerprint)` | to samo żądanie (ten sam koszyk i ta sama treść) powtórzone z tym samym kluczem | |
 | `markConfirmationSent(now)` | `confirmationSentAt = now`; powtórzenie: bez zmian | |
 
 - `reconstitute()` odtwarza zamówienie bez zdarzeń.
-- `version` (optimistic locking) istnieje od początku, bo zamówienie będą zmieniać ORDER-MANAGEMENT i PAYMENT
-  (`apps/api/CLAUDE.md`, „Reguły modelu”). W tym epiku zmienia ją tylko `markConfirmationSent`.
-- Status `new` to pierwszy status cyklu z `docs/vision.md` (nowe → opłacone → wysłane → dostarczone). Przejścia
-  dodają PAYMENT i ORDER-MANAGEMENT.
+- `version` (optimistic locking): zapis podnosi ją przy każdej zmianie (znacznik e-maila, opłacenie, anulowanie;
+  `apps/api/CLAUDE.md`, „Reguły modelu”), więc z równoległych zmian zapisuje się jedna.
+- Status po złożeniu to `new`, pierwszy status cyklu z `docs/vision.md` (nowe → opłacone → wysłane → dostarczone).
+  Z `new` zamówienie przechodzi w `paid` (płatność wykonana do terminu) albo w `cancelled` (brak płatności 5 minut
+  po terminie; rezerwacja zwolniona) według `docs/features/payment/spec.md`. Dalsze przejścia doda ORDER-MANAGEMENT.
+- Złożenie w swojej transakcji zapisuje też opóźnioną wiadomość `ExpireUnpaidOrder` (transport `scheduled`) na
+  termin + 5 min; powtórzenie złożenia jej nie wysyła.
 
 Komunikaty `detail` (po polsku, bez danych wejściowych) i `type` problemu (RFC 9457):
 
@@ -235,8 +242,10 @@ Ceny i kwoty liczy wyłącznie serwer:
   `customer`), `customer_id varchar(255) NULL`, `email varchar(254)`, `full_name varchar(100)`, `phone varchar(12)`,
   `street varchar(100)`, `postal_code char(6)`, `city varchar(60)`, `country char(2)`, `currency char(3)`,
   `total_net`, `total_vat`, `total_gross` (`bigint`), `idempotency_key varchar(100)` (unikalny),
-  `request_fingerprint char(64)`, `placed_at`, `confirmation_sent_at NULL`, `version int`;
-  `CHECK ((owner_type = 'customer') = (customer_id IS NOT NULL))`, `CHECK (total_net + total_vat = total_gross)`.
+  `request_fingerprint char(64)`, `placed_at`, `payment_deadline`, `access_token varchar(43) NULL`,
+  `confirmation_sent_at NULL`, `version int` oraz kolumny cyklu płatności (`docs/features/payment/spec.md`,
+  „Persystencja”); `CHECK ((owner_type = 'customer') = (customer_id IS NOT NULL))`,
+  `CHECK ((owner_type = 'guest') = (access_token IS NOT NULL))`, `CHECK (total_net + total_vat = total_gross)`.
 - `ordering_order_line`: `id uuid` (v7, PK), `order_id uuid` (FK → `ordering_order`, bez `ON DELETE CASCADE`:
   zamówienia są przechowywane na zawsze), `position int`, `variant_id uuid`, `product_id uuid`,
   `product_name varchar(255)`, `variant_label varchar(255)`, `quantity int` (`CHECK 1–99`), `unit_net`, `unit_vat`,
@@ -248,7 +257,7 @@ Ceny i kwoty liczy wyłącznie serwer:
   w `DoctrineOrderRepository` (`add`, `save`, `get`, `findByIdempotencyKey`), `#[Version]` na rekordzie zamówienia.
   Długości kolumn z wartościami z innych contextów (`product_name`, `variant_label`, `tax_class`) zgadzają się
   z kolumnami źródłowymi.
-- Migracja: `Version…CreateOrderingTables`.
+- Migracje: `Version…CreateOrderingTables`, `Version…AddOrderPaymentCycle`.
 
 ## E-mail z potwierdzeniem
 
@@ -275,14 +284,16 @@ Ceny i kwoty liczy wyłącznie serwer:
   R-100001”. Treść składa jedna klasa w `Ordering_Application` (`OrderConfirmationText`), testowana jednostkowo.
 - Treść: powitanie z imieniem i nazwiskiem, numer, data i godzina złożenia w strefie `Europe/Warsaw`, pozycje
   (nazwa, etykieta wariantu po przecinku; wariant domyślny z pustą etykietą: sama nazwa, bez separatora; ilość,
-  wartość brutto linii), suma brutto, adres dostawy, telefon, zdanie „O płatności poinformujemy w osobnej
-  wiadomości.”. Kwoty w formacie `1 234,56 zł`.
+  wartość brutto linii), suma brutto, adres dostawy, telefon, zdanie „Zamówienie czeka na płatność do 14:35
+  (dd.mm.rrrr). Bez płatności anulujemy je automatycznie.” (termin płatności w strefie `Europe/Warsaw`). Kwoty
+  w formacie `1 234,56 zł`.
 
 ## Dane demo (`make seed`)
 
 - Komenda `ordering:seed-demo` czyści tabele Ordering (`ordering_order_line`, `ordering_order`) jednym
-  `TRUNCATE` (`DbalOrderingReset`); sekwencja numerów zostaje (luki są dopuszczalne). W `prod` wymaga
-  `--force-reset`, jak pozostałe seedy.
+  `TRUNCATE` i usuwa kolejkę `scheduled` (`DELETE FROM messenger_messages WHERE queue_name = 'scheduled'`, wiadomości
+  `ExpireUnpaidOrder` usuniętych zamówień) (`DbalOrderingReset`); `outbox` i `failed` zostają, sekwencja numerów też
+  (luki są dopuszczalne). W `prod` wymaga `--force-reset`, jak pozostałe seedy.
 - `make seed` uruchamia ją przed `inventory:seed-demo`, który czyści rezerwacje: po seedzie nie ma zamówienia bez
   rezerwacji o kluczu `orderId`.
 - Wiersze outboxa `OrderPlaced` dla usuniętych zamówień kończą się w handlerze e-maila
@@ -305,16 +316,20 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 {
   orderId: uuid,
   number: string,
-  status: "new",
+  status: "new" | "paid" | "cancelled" (po złożeniu "new"),
   email: string,
   fullName: string,
   phone: string,
   shippingAddress: { street, postalCode, city, country: "PL" },
   lines: [{ variantId, productName, variantLabel, quantity, unitGross: int, lineGross: int }],
   totals: { net: int, vat: int, gross: int, currency: "PLN" },
-  placedAt: string (RFC 3339, UTC)
+  placedAt: string (RFC 3339, UTC),
+  paymentDeadline: string (RFC 3339, UTC; placedAt + 30 min),
+  accessToken: string | null (gość: 43 znaki base64url; klient: null)
 }
 ```
+
+- Powtórzenie złożenia (200) zwraca to samo zamówienie, także ten sam `accessToken`.
 
 - Token wysłany do `POST /api/v1/orders` i niepoprawny: 401 (jak koszyk gościa). Token poprawny nie zmienia
   endpointu gościa (klient używa `/me/orders`).
@@ -422,7 +437,7 @@ i `aria-describedby` na swój komunikat.
 | Błąd wysyłki e-maila | zamówienie złożone; ponowienia transportu, potem `failed` |
 | Zdarzenie dostarczone dwa razy, jedno po drugim | jeden e-mail (znacznik `confirmationSentAt`) |
 | `make seed` po złożeniu zamówień | zamówienia i rezerwacje usunięte razem |
-| Zamówienie nieopłacone | rezerwacja trwa do PAYMENT (ryzyko) |
+| Zamówienie nieopłacone | anulowane 5 minut po terminie płatności, rezerwacja zwolniona, e-mail o anulowaniu (`docs/features/payment/spec.md`) |
 
 ## Kryteria akceptacji
 
@@ -548,9 +563,8 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 
 ## Ryzyka i ograniczenia
 
-- Rezerwacja zamówienia nie wygasa do czasu PAYMENT (#91), który zwalnia rezerwacje nieopłaconych zamówień. Do tego
-  czasu każde złożone zamówienie trwale zmniejsza dostępność (dane demo przywraca `make seed`), a złośliwy gość może
-  zarezerwować cały stan (brak rate limitingu, decyzja T2).
+- Nieopłacone zamówienie trzyma rezerwację do 35 minut (termin płatności i 5 minut na webhooki), a złośliwy gość może
+  w tym czasie zarezerwować cały stan (brak rate limitingu, decyzja T2).
 - Składanie zamówień nie ma rate limitingu (T2) wbrew zasadzie z `apps/api/CLAUDE.md` i `docs/vision.md` do kroku 10
   planu `docs/features/agentic-software-house/plan.md`.
 - Jedna transakcja obejmuje koszyk, rezerwację i zamówienie: popularny wariant szereguje złożenia na wierszu stanu,
@@ -560,9 +574,8 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 - Drugi e-mail jest możliwy przy awarii między wysyłką a zapisem znacznika oraz przy równoległym dostarczeniu tego
   samego zdarzenia do dwóch workerów (outbox daje „co najmniej raz”).
 - Dane osobowe gościa (e-mail, telefon, adres) są w zamówieniu bez anonimizacji (RODO później).
-- Gość nie ma dostępu do zamówienia po zamknięciu strony potwierdzenia (P7); szczegóły ma w e-mailu. PAYMENT (#91)
-  musi dać gościowi uprawnienie do jego zamówienia (np. token dostępu), żeby rozpoczął płatność, i zmieni stronę
-  potwierdzenia.
+- Gość nie ma odczytu zamówienia po zamknięciu strony potwierdzenia (P7); szczegóły ma w e-mailu. Do płatności za
+  zamówienie służy mu `accessToken` z odpowiedzi złożenia (`docs/features/payment/spec.md`, decyzja A5).
 - `make seed` usuwa zamówienia razem z rezerwacjami (dane demo); wiersze outboxa usuniętych zamówień trafiają do
   `failed`.
 - `cartId` gościa jest w treści żądania (nie w ścieżce), więc nie trafia do logów dostępu API.
