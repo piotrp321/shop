@@ -24,6 +24,9 @@ final class VersionedOrders implements OrderRepository
     /** @var list<string> ids of the orders saved, in the order of the saves */
     public array $saved = [];
 
+    /** Runs once at the start of the next save, e.g. to let a concurrent handler save first. */
+    public ?\Closure $beforeSave = null;
+
     public function add(Order $order): void
     {
         $this->stored[$order->id()->toString()] = ['order' => OrderExamples::copy($order), 'version' => $order->version()];
@@ -31,6 +34,11 @@ final class VersionedOrders implements OrderRepository
 
     public function save(Order $order): void
     {
+        if (null !== $this->beforeSave) {
+            $beforeSave = $this->beforeSave;
+            $this->beforeSave = null;
+            $beforeSave();
+        }
         $id = $order->id()->toString();
         $stored = $this->stored[$id] ?? throw new OrderNotFound();
         if ($stored['version'] !== $order->version()) {
