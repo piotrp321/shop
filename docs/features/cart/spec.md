@@ -331,8 +331,8 @@ każdego żądanego id (UUID małymi literami, powtórzone id raz); token wysła
 `private, no-store` bez tagów). Sklep czyta ofertę przez Varnish (`API_CATALOG_URL`).
 Identyfikatory jako powtórzony klucz `productId` (forma `productId[]` nie jest kontraktem). 1–48 id; brak, ponad 48
 albo id niebędące UUID: 400 z `violations`. 200 `{items: [oferta z sekcji „Oferta produktów listy”]}`, jedna pozycja na
-każde żądane id. Odpowiedź może być w cache do 60 s, więc nie decyduje o zakupie: dodanie do koszyka sprawdza cenę i stan
-od nowa.
+każde żądane id. Odpowiedź może być w cache do `max-age` (60 s) plus domyślny grace Varnisha (10 s), więc nie decyduje o zakupie:
+dodanie do koszyka sprawdza cenę i stan od nowa.
 
 Gość (bez tokena; token wysłany mimo to i niepoprawny daje 401, a gdy nie da się pobrać kluczy wystawcy tokenu: 503):
 

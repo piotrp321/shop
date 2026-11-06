@@ -188,7 +188,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (`defaults: [... => true]` w `#[Route]`): jej 400, 401 (także z firewalla) i 503 dostają `private, no-store` bez tagów.
 - Nowy publiczny endpoint katalogu = ścieżka na liście w VCL, jawny `Cache-Control`, tagi w odpowiedzi, znacznik
   trasy i unieważnianie po zmianie danych. Bez tego zmiana danych nie będzie widoczna w sklepie. Unieważniania po
-  zdarzeniach jeszcze nie ma: odpowiedź żyje w Varnishu do końca `max-age` (60 s).
+  zdarzeniach jeszcze nie ma: odpowiedź żyje w Varnishu do końca `max-age` (60 s) plus domyślny grace Varnisha
+  (10 s).
 
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
 - Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.
