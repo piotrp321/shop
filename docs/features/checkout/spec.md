@@ -1,8 +1,8 @@
 # CHECKOUT: złożenie zamówienia przez gościa i klienta
 
 Punkty 6 (checkout), 7 (nowe zamówienie i e-mail z potwierdzeniem) i 9 (rezerwacja stanów przy zakupie) „Zakresu MVP”
-z `docs/vision.md`. Ścieżka E2E nr 1 z `docs/vision.md` kończy się w tym epiku na złożeniu zamówienia (płatność:
-PAYMENT #91).
+z `docs/vision.md`. Ścieżka E2E nr 1 z `docs/vision.md` kończy się w tym epiku na złożeniu zamówienia; płatność,
+z którą kasa się domyka, opisuje PAYMENT #91 (`docs/features/payment/spec.md`).
 
 Issues: #90
 
@@ -20,7 +20,8 @@ zapytanie `GetVariantSummaries`, Pricing `GetCurrentPrices(variantIds)`, a Inven
   token dostępu (`accessToken`), którym gość rozpoczyna płatność (`docs/features/payment/spec.md`).
 - `Idempotency-Key`: powtórzone żądanie (podwójne kliknięcie, ponowienie po błędzie sieci) nie tworzy drugiego
   zamówienia.
-- Strona potwierdzenia w sklepie i e-mail z potwierdzeniem (Mailpit), wysyłany asynchronicznie po złożeniu.
+- Strona potwierdzenia w sklepie (po płatności pokazuje jej status) i e-mail z potwierdzeniem (Mailpit), wysyłany
+  asynchronicznie po złożeniu.
 
 Poza zakresem:
 - płatność, statusy `paid` i `cancelled`, anulowanie nieopłaconych zamówień ze zwolnieniem rezerwacji (PAYMENT #91,
@@ -44,7 +45,7 @@ Decyzje użytkownika:
 | P4 | Dane: e-mail, imię i nazwisko, telefon (wymagany), adres w Polsce: ulica i numer, kod pocztowy `NN-NNN`, miejscowość. |
 | P5 | Klient zalogowany: e-mail z konta (bez edycji), imię i nazwisko wstępnie z konta, adres wpisywany przy każdym zamówieniu (bez zapisywania na koncie). |
 | P6 | Numer zamówienia: `R-` i kolejny numer z sekwencji od 100001 (np. `R-100001`). |
-| P7 | Strona potwierdzenia: numer zamówienia, adres e-mail i kwota brutto; szczegóły pozycji w e-mailu. Gość nie ma odczytu zamówienia po jego złożeniu. |
+| P7 | Strona potwierdzenia: numer zamówienia, kwota brutto i status płatności; adres e-mail po opłaceniu; szczegóły pozycji w e-mailu. Gość nie czyta zamówienia, tylko status jego płatności: tokenem dostępu (`accessToken`) z ciasteczka potwierdzenia (`docs/features/payment/spec.md`, decyzja A5), klient sesją. |
 | P8 | E-mail: tekstowy, po polsku, z numerem, pozycjami (nazwa, wariant, ilość, wartość), sumą i adresem dostawy. |
 | P9 | Przycisk złożenia: „Zamawiam z obowiązkiem zapłaty”. Bez akceptacji regulaminu (sklep nie ma regulaminu). |
 | P10 | Gość na stronie kasy widzi link „Zaloguj się” (powrót do kasy, scalenie koszyka jak dziś). Zamówienie gościa nie jest wiązane z kontem o tym samym e-mailu. |
@@ -361,21 +362,32 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 ### BFF
 
 - `POST /api/checkout` (route handler w `app/api/checkout/`, `Cache-Control: private, no-store`, owinięty jak
-  `withCartDeps`): wymaga `Origin` równego `STORE_URL` i `Content-Type: application/json` (inaczej 403 bez API),
+  `withCartDeps`; kasa z płatnością: `docs/features/payment/spec.md`, „Sklep”): wymaga `Origin` równego `STORE_URL` i `Content-Type: application/json` (inaczej 403 bez API),
   nagłówka `Idempotency-Key` od przeglądarki (brak: 422 „Nieprawidłowe dane.”). Wybór koszyka jak w BFF koszyka:
   sesja → `POST /api/v1/me/orders` (przed złożeniem scalenie `store_cart`, jak przy każdej operacji koszyka), bez
   sesji → `POST /api/v1/orders` z `cartId` z `store_cart`; bez `store_cart`: 409 „Koszyk jest pusty.” z `type`
   `CartEmpty` (`…/cart-empty`) bez API.
-- Sukces (201 i 200): ciasteczko `store_order_confirmation` z `{number, email, totalGross, currency}` podpisane jak
-  `store_cart`, `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina; odpowiedź `{number}`. `store_cart` zostaje
-  (koszyk jest pusty). `POST /auth/logout` usuwa to ciasteczko razem z sesją (zawiera e-mail zamówienia, więc nie
-  może przeżyć wylogowania).
+- Body niesie też `provider` (kod z `GET /api/v1/payment-providers`). Brak albo kod spoza listy: 422 z naruszeniem pola
+  `provider` („Wybierz sposób płatności.”), lista niedostępna: 503, w obu przypadkach przed scaleniem koszyka i bez
+  składania zamówienia.
+- Sukces (201 i 200): ciasteczko `store_order_confirmation` z `{orderId, number, email, totalGross, currency,
+  accessToken}` (`accessToken` z `OrderView`: gość token, klient `null`) podpisane jak `store_cart`, `HttpOnly`,
+  `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina. Potem BFF rozpoczyna płatność tym samym `Idempotency-Key`
+  (gość z `Order-Access-Token`, klient przez `/me/...`); odpowiedź `{number, redirectUrl}`, gdzie `redirectUrl` jest
+  `null`, gdy płatności nie udało się rozpocząć (zamówienie stoi, klient płaci ze strony potwierdzenia).
+  `store_cart` zostaje (koszyk jest pusty). `POST /auth/logout` usuwa to ciasteczko razem z sesją (zawiera e-mail
+  zamówienia i token dostępu, więc nie może przeżyć wylogowania).
+- `POST` i `GET /api/checkout/payment` (`src/checkout/payment-bff.ts`): rozpoczęcie płatności i odczyt jej statusu dla
+  zamówienia z ciasteczka. Endpoint wybiera ciasteczko, nie sesja: `accessToken` → endpointy gościa z
+  `Order-Access-Token` (także gdy gość zalogował się po złożeniu), `accessToken: null` → `/me/...` z tokenem sesji (bez
+  sesji 401 bez API). Strona potwierdzenia czyta ten sam status po stronie serwera (`readPaymentStatus`).
 - Błędy: 404, 409 i 422 API przekazywane z `detail` i `violations`, a 409 także z `type` bez zmian (`about:blank` albo
   brak, gdy tak odpowiedziało API); 404 gościa (koszyk zniknął: nieznany, wygasły,
   scalony) usuwa też `store_cart`, jak BFF koszyka; 401 sesji kończy sesję; 503 przy niedostępnym API lub
   zależnościach (także 400 i 415 API oraz 401 endpointu gościa).
 - `/auth/session` zwraca `{name, email}` (`email` z `GET /api/v1/me`); typ `AccountSession` w `src/api/client.ts`.
-- `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (jedyne miejsce `fetch`). Wynik 409 to `conflict` z `reason`
+- `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (wynik `ok` z `number` i `redirectUrl`), `startPayment`
+  i `getPaymentStatus` (jedyne miejsce `fetch`). Wynik 409 to `conflict` z `reason`
   wyznaczonym wyłącznie z `type` (`src/checkout/problems.ts`: mapa typów ze schematu OpenAPI `OrderConflictProblem`
   na przyczyny, kompilator wymaga wpisu dla każdego typu schematu; inny albo brakujący `type` to `unknown`). `detail`
   służy tylko do wyświetlenia.
@@ -386,10 +398,13 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   `hasExcludedLines`; przy `hasExcludedLines` nieaktywny z tekstem „Usuń albo popraw oznaczone pozycje, żeby złożyć
   zamówienie.”.
 - `/checkout` (`noindex, nofollow`, Client Component): podsumowanie z `/api/cart` (linie: nazwa, etykieta wariantu,
-  ilość, wartość; suma brutto), formularz (P4, P5), przycisk „Zamawiam z obowiązkiem zapłaty” (P9). Gość: pole
+  ilość, wartość; suma brutto), formularz (P4, P5), grupa radiowa „Sposób płatności” (dostawcy z API, wymagany wybór, bez domyślnego), przycisk
+  „Zamawiam z obowiązkiem zapłaty” (P9). Gość: pole
   e-mail i link „Zaloguj się” (`/auth/login?returnTo=/checkout`). Klient: e-mail z `/auth/session` jako tekst,
   imię i nazwisko wstępnie wypełnione z sesji (konto bez imienia ma w sesji e-mail jako nazwę: pole zostaje puste).
-  Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat i link do koszyka.
+  Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat i link do koszyka; przy pustym koszyku
+  i poprawnym `store_order_confirmation` także link „Opłać zamówienie R-…” na `/checkout/confirmation` (powrót ze
+  strony dostawcy bez decyzji, `docs/features/payment/spec.md`, P7).
 - `Idempotency-Key`: UUID (`crypto.randomUUID`) tworzony przy wejściu na `/checkout` i używany ponownie przy
   ponowieniu niepewnego wyniku (błąd sieci, 403, 5xx, 503). Klucz należy do jednej logicznej próby: nowy powstaje
   po zmianie danych formularza, po 409 `IdempotencyKeyReused` i po 409 `OrderTotalChanged` (żądanie niesie wtedy
@@ -401,11 +416,14 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   potwierdzenie. Drugiego zamówienia nie ma, bo koszyk jest pusty.
 - `expectedTotalGross` = `totals.gross` z ostatnio wczytanego podsumowania. Na czas żądania przycisk jest
   zablokowany.
-- Sukces: licznik koszyka 0 (zdarzenie `src/cart/events.ts`), przejście na `/checkout/confirmation`.
-- `/checkout/confirmation` (`noindex, nofollow`, Server Component czytający podpisane `store_order_confirmation`):
-  „Dziękujemy za zamówienie”, numer, „Potwierdzenie wysłaliśmy na adres …”, kwota brutto
-  (`formatPrice(totalGross, currency)`), link
-  „Wróć do sklepu”. Bez ciasteczka albo z niepoprawnym podpisem: „Nie znaleźliśmy informacji o zamówieniu.” i link do
+- Sukces: licznik koszyka 0 (zdarzenie `src/cart/events.ts`), przejście na stronę dostawcy (`redirectUrl`) albo,
+  bez niego, na `/checkout/confirmation`.
+- `/checkout/confirmation` (`noindex, nofollow`, Server Component czytający podpisane `store_order_confirmation`
+  i status płatności z API tokenem gościa albo sesją klienta; odświeżanie i ponowienie płatności w Client Component
+  `PaymentConfirmation`): „Dziękujemy za zamówienie”, numer, kwota brutto (`formatPrice`) i stan płatności według
+  `docs/features/payment/spec.md` (po opłaceniu „Płatność przyjęta. Potwierdzenie wysłaliśmy na adres …”), link
+  „Wróć do sklepu”. Token dostępu i `orderId` zostają na serwerze, do przeglądarki idą numer, e-mail, kwota, status
+  i lista dostawców. Bez ciasteczka albo z niepoprawnym podpisem: „Nie znaleźliśmy informacji o zamówieniu.” i link do
   sklepu.
 
 | Sytuacja | UI na `/checkout` |
@@ -454,7 +472,7 @@ i `aria-describedby` na swój komunikat.
    zamówienia pochodzą wyłącznie z koszyka, Pricing i domeny; pola żądania ich nie zmieniają.
 5. Po złożeniu przychodzi jeden e-mail z potwierdzeniem do Mailpit, także przy powtórzonej dostawie zdarzenia po
    kolei; wycofane złożenie nie zostawia zdarzenia w outboxie.
-6. Strona potwierdzenia pokazuje numer, e-mail i kwotę; strony kasy mają `noindex`, odpowiedzi `private, no-store`.
+6. Strona potwierdzenia pokazuje numer, kwotę i status płatności (e-mail po opłaceniu); strony kasy mają `noindex`, odpowiedzi `private, no-store`.
 7. Żaden context nie zależy od Ordering; Deptrac odrzuca zależności spoza reguł Ordering.
 8. Przechodzą `make -C apps/api check`, `make -C apps/api test`, `make -C apps/store check`,
    `make -C apps/store test` oraz `make e2e`.
@@ -547,20 +565,25 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   UI (pięć przyczyn 409 i nieznany 409: komunikat, link do koszyka, formularz, ten sam albo nowy klucz przy kolejnym
   kliknięciu, brak automatycznego drugiego POST), ponowienie z tym samym kluczem po błędzie, nowy klucz po zmianie
   danych, fokus po odrzuceniu, pusty koszyk, `hasExcludedLines`.
-- `/checkout/confirmation`: z ciasteczkiem, bez, z niepoprawnym podpisem.
+- `/checkout/confirmation` i `PaymentConfirmation`: z ciasteczkiem, bez, z niepoprawnym podpisem, każdy stan płatności
+  (`docs/features/payment/spec.md`).
 - `CartPage`: przycisk „Przejdź do kasy” aktywny i nieaktywny.
-- `src/api/client.test.ts`: `placeOrder`.
+- `src/api/client.test.ts`: `placeOrder`, `startPayment`, `getPaymentStatus`.
 
 ### E2E (Playwright)
 
-- `checkout-guest.spec.ts` (ścieżka nr 1 do złożenia zamówienia): gość wybiera wariant na kafelku, dodaje 2 szt., na
-  `/cart` „Przejdź do kasy”, wypełnia formularz, składa zamówienie; strona potwierdzenia pokazuje numer `R-…`, e-mail
-  i kwotę równą sumie z koszyka; licznik koszyka 0; w Mailpit e-mail na podany adres z tym numerem.
+- `checkout-guest.spec.ts` (ścieżka nr 1): gość wybiera wariant na kafelku, dodaje 2 szt., na `/cart` „Przejdź do
+  kasy”, wypełnia formularz, wybiera „Szybki przelew (demo)”, składa zamówienie i płaci w symulatorze; strona
+  potwierdzenia pokazuje numer `R-…`, „Płatność przyjęta” i kwotę równą sumie z koszyka; licznik koszyka 0; w Mailpit
+  e-mail z potwierdzeniem i e-mail o płatności na podany adres z tym numerem.
 - `checkout-customer.spec.ts`: Jan loguje się, opróżnia koszyk, dodaje wariant, składa zamówienie (e-mail z konta,
-  bez pola e-mail); w Mailpit e-mail na adres Jana z numerem tego zamówienia (wyszukiwanie po adresie i numerze, bo
-  Jan dostaje e-mail przy każdym uruchomieniu).
-- E2E składają zamówienia na wariantach z dużym stanem (rezerwacje zostają do PAYMENT), z komentarzem w
-  `fixtures/stock.yaml`.
+  bez pola e-mail), odrzuca płatność „Kartą płatniczą (demo)”, wybiera ponownie i płaci; w Mailpit e-maile na adres
+  Jana z numerem tego zamówienia (wyszukiwanie po adresie i temacie z numerem, bo Jan dostaje e-maile przy każdym
+  uruchomieniu).
+- `payment-resume.spec.ts`: powrót ze strony symulatora na `/checkout`, link „Opłać zamówienie R-…”, „Wróć do
+  płatności” otwiera tę samą sesję, płatność się udaje.
+- E2E składają zamówienia na wariantach z dużym stanem i je opłacają; rezerwacje opłaconych zamówień zostają do
+  wysyłki (ORDER-MANAGEMENT), z komentarzem w `fixtures/stock.yaml`.
 
 ## Ryzyka i ograniczenia
 
@@ -575,8 +598,9 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 - Drugi e-mail jest możliwy przy awarii między wysyłką a zapisem znacznika oraz przy równoległym dostarczeniu tego
   samego zdarzenia do dwóch workerów (outbox daje „co najmniej raz”).
 - Dane osobowe gościa (e-mail, telefon, adres) są w zamówieniu bez anonimizacji (RODO później).
-- Gość nie ma odczytu zamówienia po zamknięciu strony potwierdzenia (P7); szczegóły ma w e-mailu. Do płatności za
-  zamówienie służy mu `accessToken` z odpowiedzi złożenia (`docs/features/payment/spec.md`, decyzja A5).
+- Gość nie czyta zamówienia, tylko status jego płatności, i tylko dopóki ma ciasteczko potwierdzenia (1 godzina,
+  P7); szczegóły ma w e-mailu. `accessToken` z odpowiedzi złożenia jest w ciasteczku `HttpOnly` i nie trafia do skryptów
+  strony (`docs/features/payment/spec.md`, decyzja A5).
 - `make seed` usuwa zamówienia razem z rezerwacjami (dane demo); wiersze outboxa usuniętych zamówień trafiają do
   `failed`.
 - `cartId` gościa jest w treści żądania (nie w ścieżce), więc nie trafia do logów dostępu API.
