@@ -19,13 +19,16 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wzorców kluczy wariantów z `fixtures/prices.yaml` (klucz z Catalog `ListVariantIdentities`:
   `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
   pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych); potem
+  `payment-simulator:seed-demo`, który w jednej transakcji opróżnia (`TRUNCATE`) tabelę transakcji symulatora płatności
+  i usuwa jego kolejkę `payment_simulator` (`DELETE FROM messenger_messages WHERE queue_name = 'payment_simulator'`;
+  `outbox`, `scheduled`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `ordering:seed-demo`, który usuwa wszystkie zamówienia i ich linie jednym `TRUNCATE` (sekwencja numerów zostaje,
   luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
   WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
-  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
+  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie pięć komend
   w `prod` wymagają `--force-reset`. Na końcu `make seed` woła `storefront:cache:purge-all` (zdarzenia cen i stanów
   ze źródła `seed` niczego nie unieważniają)
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
@@ -126,6 +129,54 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     (`paymentNotificationSentAt`, `cancellationNotificationSentAt`); port `OrderStatusMailer`, adapter
     `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. E-mail z potwierdzeniem podaje
     termin płatności w strefie `Europe/Warsaw`.
+- PaymentSimulator (`src/PaymentSimulator`, `docs/features/payment/spec.md`) udaje dwóch zewnętrznych dostawców płatności
+  (`demo-transfer`, `demo-card`) w tym samym API, ale poza `/api/v1` (`/payment-simulator/...`, bez firewalla, poza
+  dokumentami OpenAPI) i poza contextami: płaski moduł (kontrolery, encja Doctrine, komendy z handlerami, podpisy), jedna
+  warstwa Deptrac `PaymentSimulator` z dostępem tylko do `Native`, `Vendor` i `Shared_Infrastructure`; żaden context nie
+  zależy od niego, on od żadnego. Z sklepem rozmawia wyłącznie przez HTTP (api ↔ worker ↔ przeglądarka), jak z prawdziwym
+  dostawcą.
+  - Tabela `payment_simulator_transaction` (`Transaction`, UUID v4, `provider`, `reference`, kwota w groszach, adresy
+    powrotu, `expires_at`, `status` `open` | `paid` | `rejected` | `cancelled`, `decided_at` = czas wykonania płatności,
+    który webhook podaje jako `paidAt` / `completedAt`); CHECK-i w migracji pilnują statusów, kształtu adresów dostawcy
+    i `decided_at` dokładnie dla `paid` i `rejected`.
+  - API dostawców (z `PAYMENT_DEMO_*_API_KEY`, `hash_equals`, zły klucz to 401): `demo-transfer` Bearer, kwota w groszach,
+    czasy RFC 3339, `POST …/demo-transfer/api/transactions` → 201 `{transactionId, paymentUrl}` i `…/{id}/cancel` →
+    200 `{status: "CANCELLED"}` albo 409 `{status: "PAID" | "REJECTED"}`; `demo-card` HTTP Basic (`merchant`, klucz), kwota
+    `"123.45"`, czas uniksowy, `POST …/demo-card/v1/checkout-sessions` → 200 `{id, url}` i `…/{id}/expire` → 200
+    `{status: "expired"}` albo 409 `{status: "complete" | "failed"}`. Zła treść to 400 `{error, field}`, nieznane id 404.
+    Adres strony płatności buduje `PAYMENT_SIMULATOR_PUBLIC_URL`.
+  - Decyzja klienta (`DecideTransaction`) i anulowanie (`CancelTransaction`) to komendy na `command.bus`, każda blokuje
+    wiersz transakcji (`SELECT … FOR UPDATE` przez ORM; encja już w identity map jest odczytywana pod blokadą przez
+    `refresh()`), więc idą po kolei i transakcja kończy w jednym stanie: anulowana nigdy nie zostanie opłacona,
+    opłaconej nie da się anulować, druga decyzja nic nie zmienia. Zastosowana decyzja zapisuje status, `decided_at` i
+    wiadomość `DeliverSimulatedWebhook` (transport `payment_simulator`) w jednej transakcji.
+  - Strona płatności `GET|POST /payment-simulator/{provider}/pay/{id}`: HTML bez JS i bez nowych zależności (wszystkie
+    wartości escapowane), napis „To symulacja…”, przyciski „Zapłać” i „Odrzuć płatność”, link „Wróć do sklepu”;
+    zamknięta (rozstrzygnięta, anulowana, po `expires_at`) pokazuje „Ta płatność jest już zamknięta.” bez przycisków;
+    nieznane id to HTML 404. Formularz niesie token CSRF (HMAC-SHA256 id transakcji sekretem webhooków dostawcy);
+    zły albo brak tokenu to 403 bez zmian, poprawny `POST` daje 303 na adres powrotu (`demo-card`: `successUrl` po
+    płatności, `cancelUrl` w pozostałych przypadkach).
+  - `DeliverSimulatedWebhook` (handler w workerze): podpisany `POST` na `PAYMENT_WEBHOOK_BASE_URL` +
+    `/api/v1/payments/webhooks/<dostawca>`. `demo-transfer`: `X-Signature` = hex HMAC-SHA256 surowej treści;
+    `demo-card`: `Card-Signature: t=<unix>,v1=<hex HMAC-SHA256("<t>.<treść>")>` z `t` z chwili każdej próby. Identyfikator
+    zdarzenia (`evt_<id transakcji bez myślników>`) jest stały, więc ponowienie trafia na deduplikację sklepu. 2xx i 4xx
+    kończą dostawę (4xx z logiem), 5xx, inny status i błąd sieci rzucają `WebhookDeliveryFailed` i transport ponawia;
+    transakcja, której już nie ma (po `make seed`), kończy dostawę bez żądania.
+  - Klucze API i sekrety webhooków (`PAYMENT_DEMO_TRANSFER_API_KEY`, `…_WEBHOOK_SECRET`, `PAYMENT_DEMO_CARD_API_KEY`,
+    `…_WEBHOOK_SECRET`) generuje `infra/scripts/init-env.sh` do `.env.local`; brakujące dopisuje do istniejącego pliku
+    (jedyne klucze, które skrypt dopisuje; brak jakiegokolwiek innego kończy się błędem i odtworzeniem stosu). Adresy
+    `PAYMENT_PROVIDER_BASE_URL`, `PAYMENT_SIMULATOR_PUBLIC_URL` i `PAYMENT_WEBHOOK_BASE_URL` (nie sekrety) są w
+    `infra/docker-compose.yml` dla `api` i `worker` oraz w `phpunit.dist.xml`. Skrypt testuje
+    `infra/scripts/test-init-env.sh` (`make init-env-test`, w CI).
+  - Wszystkie wywołania HTTP między sklepem a symulatorem idą przez serwis `app.payment_http_client` (w produkcji
+    `http_client`). W środowisku `test` to `KernelForwardingHttpClient` (`tests/Support`): `MockHttpClient`, który
+    przekazuje żądanie do osobnej instancji kernela (własny kontener i `EntityManager`; to samo połączenie DAMA i baza
+    `shop_test`), więc `flush` i błąd symulatora nie dotykają `UnitOfWork` wywołującego; testy błędów dostawcy podmieniają
+    serwis na klienta ze stałymi odpowiedziami. Wektor podpisów do wspólnych testów symulatora i adapterów Payment to
+    `WebhookSignatureVector` (`tests/Support`).
+  - Symulator działa w kontenerze API i `StartPayment` woła go przez HTTP z transakcji: przy tylu równoległych
+    rozpoczęciach płatności, ile wątków FrankenPHP, grozi samoblokada (opis w spec, „Ryzyka”); przed testami obciążeniowymi
+    płatności symulator przechodzi do osobnej usługi.
 - E-mail z potwierdzeniem zamówienia wysyła handler zdarzenia `SendOrderConfirmation` (`event.bus`, transport `events`,
   po `OrderPlaced` z outboxa). Wysyłka idzie przez Symfony Mailer (`symfony/mailer`) synchronicznie, bez Messengera:
   `framework.mailer.message_bus: false` (inaczej `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną
@@ -191,8 +242,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je pięć 409 Ordering
   (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`; nowy typ dopisz też tam).
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
-  (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Domena nie zna statusów
-  HTTP, mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
+  (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Wyjątek: znacznik
+  `Unavailable` (zależność nieosiągalna albo przegrany wyścig, który ponowienie rozwiązuje) to 503 bez `detail`, jak
+  każdy 5xx: klient może tylko spróbować później, a komunikat wyjątku zostaje w logu. Domena nie zna statusów HTTP,
+  mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
   (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności, przyjęcie magazynowe) wymagają nagłówka
@@ -246,8 +299,14 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
   Wiadomość powstaje w transakcji wywołującego, a restart albo przestój workera tylko opóźnia jej obsługę; wiadomość
   pobrana przez worker, który padł przed potwierdzeniem, wraca po 5 minutach. Ponowienia: 5 prób, 1 s, ×3, potem
-  `failed`. Worker (`infra/docker-compose.yml`, komenda i healthcheck) konsumuje `outbox events scheduled` po kolei.
-  W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging` prawdziwy (Doctrine na `shop_test`).
+  `failed`. Worker (`infra/docker-compose.yml`, komenda i healthcheck) konsumuje `outbox events scheduled
+  payment_simulator` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
+  prawdziwy (Doctrine na `shop_test`).
+- Transport `payment_simulator` (Doctrine, `queue_name=payment_simulator`, ten sam DSN i opcje co `scheduled`:
+  `redeliver_timeout=300`, `use_notify: false`, ta sama tabela i połączenie) trzyma wiadomości `DeliverSimulatedWebhook`
+  symulatora płatności, zapisywane w transakcji decyzji klienta. Ponowienia: 5 prób po 1, 3, 9, 27 i 81 s (około
+  2 minut), potem `failed` (`messenger:failed:retry`). Kolejka czeka w bazie, więc przestój workera tylko opóźnia
+  webhooki. Długa kolejka `events` opóźnia je też, bo worker obsługuje transporty po kolei.
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
 - Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.

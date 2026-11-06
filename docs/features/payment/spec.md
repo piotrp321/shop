@@ -569,7 +569,7 @@ przez innego klienta (404), 400, 401, 404 (każdy przypadek dostępu), 409 (każ
 415, 422, 503 (dostawca niedostępny), `no-store`; webhook: każdy przypadek podpisu, deduplikacja, kwota, nieznany
 dostawca i płatność, 503 przy konflikcie wersji. Symulator: 401 klucza API, strona płatności (otwarta, opłacona,
 odrzucona, anulowana, po terminie), CSRF, anulowanie (otwarta, anulowana drugi raz, opłacona, odrzucona). Marker
-`Unavailable`: 503 z `detail`.
+`Unavailable`: 503 bez `detail`.
 
 ### Architektura
 
