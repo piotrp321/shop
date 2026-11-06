@@ -12,7 +12,9 @@ use App\Inventory\Domain\Reservation\ReservationKey;
  *
  * Invariant: 0 ≤ reserved ≤ physical ≤ 1 000 000. Every change records one movement with the state after it. The
  * version is the one the state will have once saved: the changes made before the next save share one version step,
- * as they are saved by one write. Version 0 is a stock that no change was saved for yet.
+ * as they are saved by one write. Version 0 is a stock that no change was saved for yet. An operation that changes
+ * the availability level records StockLevelChanged; the changes before the next save share one event, with the level
+ * and the source of the last change of the level.
  *
  * All operations are serialised by a row lock (see StockItemRepository::lockMany), not by the version; a correction
  * from the panel also checks the version of the view it is based on (the handler does).
@@ -24,6 +26,8 @@ final class StockItem
 
     /** @var list<StockMovement> */
     private array $unsavedMovements = [];
+
+    private ?StockLevelChanged $unsavedLevelChange = null;
 
     private function __construct(
         private readonly VariantId $id,
@@ -154,6 +158,17 @@ final class StockItem
         return $movements;
     }
 
+    /**
+     * @return list<StockLevelChanged> the level change recorded since the last call (at most one), then nothing
+     */
+    public function releaseEvents(): array
+    {
+        $change = $this->unsavedLevelChange;
+        $this->unsavedLevelChange = null;
+
+        return null === $change ? [] : [$change];
+    }
+
     public function id(): VariantId
     {
         return $this->id;
@@ -193,6 +208,7 @@ final class StockItem
         $physical = $this->physical + $physicalDelta;
         $reserved = $this->reserved + $reservedDelta;
         self::guard($physical, $reserved);
+        $levelBefore = AvailabilityLevel::of($this->available());
 
         if ([] === $this->unsavedMovements) {
             ++$this->version;
@@ -213,6 +229,11 @@ final class StockItem
             $origin,
             $this->updatedAt,
         );
+
+        $level = AvailabilityLevel::of($this->available());
+        if ($level !== $levelBefore) {
+            $this->unsavedLevelChange = new StockLevelChanged($this->id->toString(), $level, $origin->source(), $this->updatedAt);
+        }
     }
 
     private static function guard(int $physical, int $reserved): void
