@@ -18,4 +18,14 @@ final class ImageSizeTest extends TestCase
         self::assertSame('fill', ImageSize::Listing->resize());
         self::assertSame('sm', ImageSize::Listing->gravity());
     }
+
+    public function testProductDefinition(): void
+    {
+        self::assertSame('product', ImageSize::Product->value);
+        self::assertSame('1:1', ImageSize::Product->aspectRatio());
+        self::assertSame([640, 960, 1280, 1600], ImageSize::Product->widths());
+        self::assertSame([ImageFormat::Webp], ImageSize::Product->formats());
+        self::assertSame('fill', ImageSize::Product->resize());
+        self::assertSame('sm', ImageSize::Product->gravity());
+    }
 }
