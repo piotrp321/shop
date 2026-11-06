@@ -208,10 +208,15 @@ jobs:
           done
 
       # Dependencies go into the named volumes, as in local development: the api entrypoint runs `composer install`;
-      # the store and admin images carry node_modules, which Docker copies into their empty volumes on first use.
+      # the store and admin images carry node_modules, which Docker copies into a volume when it creates it. The
+      # volumes are created here, one at a time, because the steps below use them in parallel: a container that mounts
+      # a volume while another one is still creating it sees it empty.
       - name: Install dependencies
         if: env.FULL_CI == 'true'
-        run: $CI_RUN api true
+        run: |
+          $CI_RUN api true
+          $CI_RUN store true
+          $CI_RUN admin true
 
       # Static analysis needs no services: it runs in the background next to the tests.
       - name: make check in the background
