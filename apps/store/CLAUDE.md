@@ -205,8 +205,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   sam `withCartDeps`): płatność zamówienia z `store_order_confirmation` (brak ciasteczka, zły podpis albo ciasteczko
   bez `orderId`: 404 „Nie znaleźliśmy zamówienia.” bez API). Endpoint wybiera ciasteczko, nie sesja: `accessToken`
   w ciasteczku → endpointy gościa z `Order-Access-Token` (także gdy gość zalogował się po złożeniu zamówienia),
-  `accessToken: null` → `/me/...` z tokenem sesji (bez sesji albo bez odświeżalnego tokenu 401 bez API, token
-  niepodlegający odświeżeniu kończy sesję). `POST` ma te same zabezpieczenia i `Idempotency-Key` co kasa, treść
+  `accessToken: null` → `/me/...` z tokenem sesji (bez sesji 401 bez API; sesja, której tokenu nie da się
+  odświeżyć, kończy się z 401). `POST` ma te same zabezpieczenia i `Idempotency-Key` co kasa, treść
   `{ provider }` (inne pola są pomijane, brak `provider` przekazuje API, które nazywa pole), odpowiedź `{ redirectUrl }`;
   404, 409 (z `type`) i 422 API przechodzą z `detail` i `violations`, 401 klienta (sesja) kończy sesję, reszta (także 400,
   415 i 401 endpointu gościa) to 503. `GET` odpowiada `PaymentStatusView` API: 404 bez ciasteczka i przy 404 API, 401 dla
