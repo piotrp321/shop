@@ -347,7 +347,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
     public function testMemoryDependsOnThePageSizeNotOnTheCatalogSize(): void
     {
         $this->connection->executeStatement(
-            "INSERT INTO catalog_category (id, name, path) VALUES ('00000000-0000-4000-8000-000000000001', 'Root', '/00000000-0000-4000-8000-000000000001/')",
+            "INSERT INTO catalog_category (id, name, slug, path) VALUES ('00000000-0000-4000-8000-000000000001', 'Root', 'root', '/00000000-0000-4000-8000-000000000001/')",
         );
         $this->connection->executeStatement(
             <<<'SQL'

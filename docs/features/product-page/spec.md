@@ -88,9 +88,10 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 
 - Zapytanie `GetProductBySlug(slug)` (`query.bus`, DBAL, odczyt z PostgreSQL, nie z Elasticsearch) → `ProductDetails`
   albo `null`:
-  `{id, slug, name, shortDescription, breadcrumb: [{id, name}], images: [ImageView], variantAxes: [string],
+  `{id, slug, name, shortDescription, breadcrumb: [{id, name, path}], images: [ImageView], variantAxes: [string],
   variants: [{variantId, label, values: [string]}]}`.
-  - `breadcrumb`: ścieżka od korzenia do kategorii głównej produktu (`ProductCategories::main`), z `CategoryPath`.
+  - `breadcrumb`: ścieżka od korzenia do kategorii głównej produktu (`ProductCategories::main`), z `CategoryPath`;
+    `path` elementu to slugi kategorii od korzenia do niego połączone `/` (jak `path` w drzewie kategorii).
   - `images`: wszystkie zdjęcia produktu w kolejności pozycji (0–10), w rozmiarze `product`.
   - `variants` w kolejności pozycji; `label` z `ProductVariant::label()`, `values` w kolejności osi.
 - Rozmiar `product` (karta produktu) w `ImageSize`: 1:1, szerokości 640, 960, 1280, 1600, WebP, `fill`, `sm`.

@@ -317,7 +317,8 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
 - Garage jako magazyn S3 i imgproxy (przetwarzanie obrazów na żądanie, format w podpisanym adresie) zamiast
   generowania miniatur przy uploadzie.
 - Drzewo kategorii jako lista sąsiedztwa (`parent_id`, źródło prawdy) ze zmaterializowaną ścieżką do zapytań
-  o poddrzewo, bez nested set i Gedmo Tree.
+  o poddrzewo, bez nested set i Gedmo Tree. Kategoria ma slug unikalny wśród rodzeństwa (nie globalnie); adres
+  kategorii to ścieżka slugów od korzenia, liczona przy odczycie drzewa, bez kolumny w bazie.
 - Klasa podatkowa produktu (`taxClass`) w Catalog zamiast stawki VAT; stawkę dla PL wyznacza Pricing, tabela w kodzie.
 - SPX zamiast Blackfire do profilowania (darmowe, wystarczające przy tej skali).
 - k3s + Argo CD na jednym serwerze; Grafana Cloud i Sentry SaaS zamiast hostowania obserwowalności u siebie.

@@ -26,7 +26,7 @@ final readonly class DemoCatalogLoader
     public function load(DemoCatalog $catalog): void
     {
         foreach ($catalog->categories as $category) {
-            $this->commandBus->dispatch(new CreateCategory($category->id, $category->name, $category->parentId));
+            $this->commandBus->dispatch(new CreateCategory($category->id, $category->name, $category->slug, $category->parentId));
         }
 
         $keys = [];

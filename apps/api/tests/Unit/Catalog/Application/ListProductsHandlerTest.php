@@ -17,6 +17,7 @@ use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategoryNotFound;
+use App\Catalog\Domain\Category\CategorySlug;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use PHPUnit\Framework\TestCase;
 
@@ -101,7 +102,7 @@ final class ListProductsHandlerTest extends TestCase
     private function handle(FakeProductSearch $search, ListProducts $query): ProductPage
     {
         $categories = new InMemoryCategoryRepository();
-        $categories->save(Category::createRoot(CategoryId::fromString(self::CATEGORY), new CategoryName('Buty')));
+        $categories->save(Category::createRoot(CategoryId::fromString(self::CATEGORY), new CategoryName('Buty'), new CategorySlug('buty')));
 
         return (new ListProductsHandler($search, new class implements ImageUrlGenerator {
             public function url(string $imageKey, ImageSize $size, int $width, ImageFormat $format): string

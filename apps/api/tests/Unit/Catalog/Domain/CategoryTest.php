@@ -8,6 +8,7 @@ use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategoryPath;
+use App\Catalog\Domain\Category\CategorySlug;
 use PHPUnit\Framework\TestCase;
 
 final class CategoryTest extends TestCase
@@ -20,8 +21,9 @@ final class CategoryTest extends TestCase
     {
         $id = CategoryId::fromString('11111111-1111-4111-8111-111111111111');
 
-        $root = Category::createRoot($id, new CategoryName('Shoes'));
+        $root = Category::createRoot($id, new CategoryName('Shoes'), new CategorySlug('shoes'));
 
+        self::assertSame('shoes', $root->slug()->value());
         self::assertSame('/11111111-1111-4111-8111-111111111111/', $root->path()->toString());
         self::assertEquals([$id], $root->path()->ancestorIds());
         self::assertNull($root->parentId());
@@ -32,11 +34,12 @@ final class CategoryTest extends TestCase
         $r = CategoryId::fromString('11111111-1111-4111-8111-111111111111');
         $c = CategoryId::fromString('22222222-2222-4222-8222-222222222222');
         $g = CategoryId::fromString('33333333-3333-4333-8333-333333333333');
-        $root = Category::createRoot($r, new CategoryName('A'));
-        $child = Category::createChild($c, new CategoryName('B'), $root);
+        $root = Category::createRoot($r, new CategoryName('A'), new CategorySlug('a'));
+        $child = Category::createChild($c, new CategoryName('B'), new CategorySlug('b'), $root);
 
-        $grandchild = Category::createChild($g, new CategoryName('C'), $child);
+        $grandchild = Category::createChild($g, new CategoryName('C'), new CategorySlug('c'), $child);
 
+        self::assertSame('c', $grandchild->slug()->value());
         self::assertSame('/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333/', $grandchild->path()->toString());
         self::assertEquals([$r, $c, $g], $grandchild->path()->ancestorIds());
         self::assertEquals($c, $grandchild->parentId());
@@ -87,12 +90,14 @@ final class CategoryTest extends TestCase
         $category = Category::reconstitute(
             CategoryId::fromString(self::CHILD),
             new CategoryName('Running'),
+            new CategorySlug('running'),
             CategoryId::fromString(self::ROOT),
             CategoryPath::fromString('/'.self::ROOT.'/'.self::CHILD.'/'),
         );
 
         self::assertSame(self::CHILD, $category->id()->toString());
         self::assertSame('Running', $category->name()->value());
+        self::assertSame('running', $category->slug()->value());
         self::assertSame(self::ROOT, $category->parentId()?->toString());
         self::assertSame('/'.self::ROOT.'/'.self::CHILD.'/', $category->path()->toString());
     }
@@ -102,6 +107,7 @@ final class CategoryTest extends TestCase
         $category = Category::reconstitute(
             CategoryId::fromString(self::ROOT),
             new CategoryName('Shoes'),
+            new CategorySlug('shoes'),
             null,
             CategoryPath::fromString('/'.self::ROOT.'/'),
         );
@@ -117,6 +123,7 @@ final class CategoryTest extends TestCase
         Category::reconstitute(
             CategoryId::fromString(self::CHILD),
             new CategoryName('Running'),
+            new CategorySlug('running'),
             CategoryId::fromString(self::ROOT),
             CategoryPath::fromString('/'.self::ROOT.'/'.self::OTHER.'/'),
         );
@@ -129,6 +136,7 @@ final class CategoryTest extends TestCase
         Category::reconstitute(
             CategoryId::fromString(self::CHILD),
             new CategoryName('Running'),
+            new CategorySlug('running'),
             CategoryId::fromString(self::OTHER),
             CategoryPath::fromString('/'.self::ROOT.'/'.self::CHILD.'/'),
         );
@@ -141,6 +149,7 @@ final class CategoryTest extends TestCase
         Category::reconstitute(
             CategoryId::fromString(self::CHILD),
             new CategoryName('Running'),
+            new CategorySlug('running'),
             null,
             CategoryPath::fromString('/'.self::ROOT.'/'.self::CHILD.'/'),
         );
@@ -153,6 +162,7 @@ final class CategoryTest extends TestCase
         Category::reconstitute(
             CategoryId::fromString(self::ROOT),
             new CategoryName('Shoes'),
+            new CategorySlug('shoes'),
             CategoryId::fromString(self::OTHER),
             CategoryPath::fromString('/'.self::ROOT.'/'),
         );

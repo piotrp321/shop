@@ -205,13 +205,18 @@ Reguły Deptrac:
 ### Model Catalog
 
 **`Category`** (agregat)
-- `CategoryId` (UUID), `CategoryName` (niepusta, do 100 znaków), `parentId` (`?CategoryId`), `CategoryPath`.
+- `CategoryId` (UUID), `CategoryName` (niepusta, do 100 znaków), `CategorySlug`, `parentId` (`?CategoryId`),
+  `CategoryPath`.
+- `CategorySlug`: format jak `Slug` produktu (małe litery `a-z`, cyfry, pojedyncze myślniki, bez myślnika na początku
+  i końcu), 1–60 znaków. Slug jest unikalny wśród rodzeństwa (także wśród korzeni), nie globalnie: pilnuje tego
+  `CreateCategory` (`CategorySlugTaken`, 409) przez `CategoryRepository::slugTakenAmongSiblings`, a w bazie unikalne
+  indeksy (wyścig zapisu `save()` zamienia na `CategorySlugTaken`).
 - Drzewo jako lista sąsiedztwa (`parent_id`) będąca źródłem prawdy oraz zmaterializowana ścieżka do zapytań
   o poddrzewo. Ścieżka to identyfikatory od korzenia do kategorii włącznie, w bazie jako tekst
   `/<id-korzenia>/…/<id>/` z indeksem `text_pattern_ops`. Poddrzewo: `path LIKE '/…/<id>/%'`.
-- Tworzenie: `Category::createRoot(id, name)` albo `Category::createChild(id, name, parent)`. Ścieżkę liczy
-  domena z ścieżki rodzica.
-- Odtworzenie z zapisanego stanu: `Category::reconstitute(id, name, parentId, path)`. Odrzuca stan niespójny:
+- Tworzenie: `Category::createRoot(id, name, slug)` albo `Category::createChild(id, name, slug, parent)`. Ścieżkę
+  liczy domena z ścieżki rodzica.
+- Odtworzenie z zapisanego stanu: `Category::reconstitute(id, name, slug, parentId, path)`. Odrzuca stan niespójny:
   ścieżka nie kończy się własnym id, rodzic nie jest przedostatnim elementem ścieżki albo korzeń ma rodzica.
 
 **`Product`** (agregat)
@@ -240,7 +245,9 @@ Reguły Deptrac:
 
 Persystencja:
 
-- `catalog_category`: `id`, `parent_id` (FK), `name`, `path` (tekst z indeksem `text_pattern_ops`).
+- `catalog_category`: `id`, `parent_id` (FK), `name`, `slug` (NOT NULL; unikalne indeksy `(parent_id, slug)`
+  i częściowy `(slug) WHERE parent_id IS NULL`, bo `NULL` w pierwszym nie koliduje), `path` (tekst z indeksem
+  `text_pattern_ops`).
 - `catalog_product`: `id`, `slug` (ograniczenie unikalności), `name`, `short_description`, `primary_category_id`
   (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB), `variant_axes` (JSONB), `version`
   (BIGINT NOT NULL).
@@ -557,10 +564,13 @@ Wszystkie pod `/api/v1`, JSON, opisane w OpenAPI (żądanie, odpowiedzi, błędy
 
 `image` jest `null`, gdy produkt nie ma zdjęć.
 
-**`GET /api/v1/categories`**: całe drzewo, rodzeństwo posortowane po nazwie.
+**`GET /api/v1/categories`**: całe drzewo, rodzeństwo posortowane po nazwie. Węzeł (`CategoryNode`) ma `slug`
+i `path`: slugi od korzenia do węzła połączone `/`, liczone w `GetCategoryTreeHandler`. Ten sam schemat zwraca
+`GET /api/v1/admin/categories` (panel).
 
 ```json
-[{ "id": "…", "name": "Bieganie", "children": [{ "id": "…", "name": "Buty", "children": [] }] }]
+[{ "id": "…", "name": "Bieganie", "slug": "bieganie", "path": "bieganie",
+   "children": [{ "id": "…", "name": "Buty", "slug": "buty", "path": "bieganie/buty", "children": [] }] }]
 ```
 
 **`GET /api/v1/me`**: `{ "id": "<sub>", "email": "…", "name": "…" }`.
@@ -817,7 +827,8 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
 
 - Branża: sport i outdoor. Drzewo kategorii na 3–4 poziomy z kategoriami najwyższego poziomu: bieganie, rower, turystyka,
   sporty zimowe, fitness, sporty wodne, sporty drużynowe.
-- `apps/api/fixtures/catalog.yaml` definiuje drzewo kategorii oraz szablony produktów dla kategorii: fikcyjne marki
+- `apps/api/fixtures/catalog.yaml` definiuje drzewo kategorii (każdy węzeł ma nazwę i `slug`, który seed przekazuje
+  do `CreateCategory`; szablony wskazują kategorie ścieżką slugów) oraz szablony produktów dla kategorii: fikcyjne marki
   własne sklepu, modele, osie wariantów z ich wartościami (`variantAxes`: 0–2 nazwy osi, np. „Kolor”, „Rozmiar”;
   `axisValues`: lista wartości dla każdej osi, w kolejności osi), szablony opisów, kategorię podatkową, pulę zdjęć
   i opcjonalne kategorie dodatkowe (część szablonów ma kategorię dodatkową w innej gałęzi drzewa). Produkt to marka

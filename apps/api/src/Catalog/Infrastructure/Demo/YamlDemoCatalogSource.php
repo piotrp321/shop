@@ -8,6 +8,7 @@ use App\Catalog\Application\Demo\DemoCatalog;
 use App\Catalog\Application\Port\DemoCatalogSource;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
+use App\Catalog\Domain\Category\CategorySlug;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductImage;
@@ -37,7 +38,7 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
     }
 
     /**
-     * @throws \InvalidArgumentException when the definition is malformed, breaks a domain rule (names, slug, tax
+     * @throws \InvalidArgumentException when the definition is malformed, breaks a domain rule (names, slugs, tax
      *                                   class, description, photo alt, categories,
      *                                   variant axes and values) or a photo file is missing
      */
@@ -63,6 +64,7 @@ final readonly class YamlDemoCatalogSource implements DemoCatalogSource
             $this->check(\sprintf('category "%s"', $category->slugPath), static function () use ($category): void {
                 CategoryId::fromString($category->id);
                 new CategoryName($category->name);
+                new CategorySlug($category->slug);
             });
         }
 

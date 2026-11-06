@@ -7,9 +7,12 @@ namespace App\Tests\Integration\Catalog\Persistence;
 use App\Catalog\Domain\Category\CategoryAlreadyExists;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryNotFound;
+use App\Catalog\Domain\Category\CategorySlug;
+use App\Catalog\Domain\Category\CategorySlugTaken;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Tests\Factory\CategoryFactory;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -36,7 +39,7 @@ final class DoctrineCategoryRepositoryTest extends KernelTestCase
     public function testSavedChildIsReadBackWithPathAndParent(): void
     {
         $root = CategoryFactory::createOne();
-        $child = CategoryFactory::createOne(['parent' => $root]);
+        $child = CategoryFactory::createOne(['parent' => $root, 'slug' => 'buty-szosowe']);
         $this->repository->save($root);
         $this->repository->save($child);
         $this->entityManager->clear();
@@ -45,6 +48,7 @@ final class DoctrineCategoryRepositoryTest extends KernelTestCase
 
         self::assertTrue($loaded->id()->equals($child->id()));
         self::assertSame($child->name()->value(), $loaded->name()->value());
+        self::assertSame('buty-szosowe', $loaded->slug()->value());
         self::assertSame($root->id()->toString(), $loaded->parentId()?->toString());
         self::assertSame($child->path()->toString(), $loaded->path()->toString());
     }
@@ -104,6 +108,7 @@ final class DoctrineCategoryRepositoryTest extends KernelTestCase
         $this->commitRowBeforeNextInsert($this->entityManager, 'catalog_category', [
             'id' => $category->id()->toString(),
             'name' => 'Competing',
+            'slug' => 'competing',
             'path' => $category->path()->toString(),
         ]);
 
@@ -114,5 +119,101 @@ final class DoctrineCategoryRepositoryTest extends KernelTestCase
         }
 
         self::assertSame('Competing', $this->committedValue($this->entityManager, 'SELECT name FROM catalog_category WHERE id = ?', $category->id()->toString()));
+    }
+
+    public function testSlugTakenAmongSiblingsLooksOnlyAtTheChildrenOfTheParent(): void
+    {
+        $sport = CategoryFactory::createOne(['slug' => 'sport']);
+        $other = CategoryFactory::createOne(['slug' => 'turystyka']);
+        $this->repository->save($sport);
+        $this->repository->save($other);
+        $this->repository->save(CategoryFactory::createOne(['parent' => $sport, 'slug' => 'buty']));
+
+        self::assertTrue($this->repository->slugTakenAmongSiblings(null, new CategorySlug('sport')));
+        self::assertFalse($this->repository->slugTakenAmongSiblings(null, new CategorySlug('buty')));
+        self::assertTrue($this->repository->slugTakenAmongSiblings($sport->id(), new CategorySlug('buty')));
+        self::assertFalse($this->repository->slugTakenAmongSiblings($sport->id(), new CategorySlug('sport')));
+        self::assertFalse($this->repository->slugTakenAmongSiblings($other->id(), new CategorySlug('buty')));
+    }
+
+    public function testSiblingSlugViolationOnInsertThrowsCategorySlugTaken(): void
+    {
+        $root = CategoryFactory::createOne();
+        $child = CategoryFactory::createOne(['parent' => $root, 'slug' => 'buty']);
+        $competingId = '99999999-9999-4999-8999-999999999999';
+        // The parent is committed on the second connection, so the competing sibling can refer to it. Then the
+        // competing request commits a sibling with the same slug after the handler found the slug free.
+        $this->commitRow($this->entityManager, 'catalog_category', [
+            'id' => $root->id()->toString(),
+            'name' => 'Committed parent',
+            'slug' => $root->slug()->value(),
+            'path' => $root->path()->toString(),
+        ]);
+        $this->commitRowBeforeNextInsert($this->entityManager, 'catalog_category', [
+            'id' => $competingId,
+            'name' => 'Competing',
+            'slug' => 'buty',
+            'parent_id' => $root->id()->toString(),
+            'path' => $root->path()->toString().$competingId.'/',
+        ]);
+
+        $this->expectException(CategorySlugTaken::class);
+
+        $this->repository->save($child);
+    }
+
+    public function testRootSlugViolationOnInsertThrowsCategorySlugTaken(): void
+    {
+        $root = CategoryFactory::createOne(['slug' => 'sport']);
+        $competingId = '99999999-9999-4999-8999-999999999999';
+        // The competing request commits another root with the same slug after the handler found the slug free.
+        $this->commitRowBeforeNextInsert($this->entityManager, 'catalog_category', [
+            'id' => $competingId,
+            'name' => 'Competing',
+            'slug' => 'sport',
+            'path' => '/'.$competingId.'/',
+        ]);
+
+        $this->expectException(CategorySlugTaken::class);
+
+        $this->repository->save($root);
+    }
+
+    public function testDirectInsertOfASecondRootWithTheSameSlugIsRejected(): void
+    {
+        $this->insertRow('00000000-0000-4000-8000-000000000001', null, 'sport');
+
+        $this->expectException(UniqueConstraintViolationException::class);
+
+        $this->insertRow('00000000-0000-4000-8000-000000000002', null, 'sport');
+    }
+
+    public function testDirectInsertOfASiblingWithTheSameSlugIsRejected(): void
+    {
+        $this->insertRow('00000000-0000-4000-8000-000000000001', null, 'sport');
+        $this->insertRow('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001', 'buty');
+
+        $this->expectException(UniqueConstraintViolationException::class);
+
+        $this->insertRow('00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000001', 'buty');
+    }
+
+    public function testDirectInsertOfTheSameSlugUnderAnotherParentOrLevelIsAccepted(): void
+    {
+        $this->insertRow('00000000-0000-4000-8000-000000000001', null, 'buty');
+        $this->insertRow('00000000-0000-4000-8000-000000000002', null, 'sport');
+        $this->insertRow('00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000001', 'buty');
+        $this->insertRow('00000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-000000000002', 'buty');
+
+        self::assertEquals(3, $this->entityManager->getConnection()->fetchOne("SELECT count(*) FROM catalog_category WHERE slug = 'buty'"));
+    }
+
+    private function insertRow(string $id, ?string $parentId, string $slug): void
+    {
+        $path = null === $parentId ? '/'.$id.'/' : '/'.$parentId.'/'.$id.'/';
+        $this->entityManager->getConnection()->executeStatement(
+            'INSERT INTO catalog_category (id, name, slug, parent_id, path) VALUES (?, ?, ?, ?, ?)',
+            [$id, 'Category '.$id, $slug, $parentId, $path],
+        );
     }
 }

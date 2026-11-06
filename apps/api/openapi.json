@@ -1058,7 +1058,7 @@
                 "operationId": "getCategoryTree",
                 "responses": {
                     "200": {
-                        "description": "Root categories with their descendants. An empty catalogue gives an empty array.",
+                        "description": "Root categories with their descendants. Every node has its `slug` (unique among its siblings) and `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`). An empty catalogue gives an empty array.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1734,7 +1734,8 @@
             "BreadcrumbItem": {
                 "required": [
                     "id",
-                    "name"
+                    "name",
+                    "path"
                 ],
                 "properties": {
                     "id": {
@@ -1743,7 +1744,12 @@
                     },
                     "name": {
                         "type": "string",
-                        "example": "Obuwie"
+                        "example": "Buty"
+                    },
+                    "path": {
+                        "description": "The slugs from the root to this category joined with `/`, as `path` of `CategoryNode`.",
+                        "type": "string",
+                        "example": "bieganie/buty"
                     }
                 },
                 "type": "object"
@@ -2562,6 +2568,8 @@
                 "required": [
                     "id",
                     "name",
+                    "slug",
+                    "path",
                     "children"
                 ],
                 "properties": {
@@ -2569,6 +2577,12 @@
                         "type": "string"
                     },
                     "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "path": {
                         "type": "string"
                     },
                     "children": {
