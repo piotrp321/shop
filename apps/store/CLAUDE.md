@@ -46,7 +46,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   („Cena niedostępna”), bez etykiety dostępności, bez wyboru wariantu i bez przycisku, a błąd trafia do logu serwera.
   `ProductTile` pokazuje etykietę według `level` z API („Dostępny”, „Ostatnie sztuki”, „Niedostępny”), bez liczenia na
   froncie (API nie zwraca liczby sztuk); liczba wariantów, ich kolejność i etykiety pochodzą tylko z oferty.
-- Sklep woła API tylko z serwera, pod adresem wewnętrznym.
+- Sklep woła API tylko z serwera, pod jednym z dwóch adresów w sieci compose:
+  - `API_CATALOG_URL` (`http://varnish`): odczyty katalogu `loadCatalog` (lista, kategorie, oferty) idą przez Varnish,
+    który trzyma je według `Cache-Control` API; brak zmiennej to błąd, bez obejścia na adres bezpośredni;
+  - `API_INTERNAL_URL` (`http://api`): koszyk, kasa, scalanie koszyka i logowanie (`/api/v1/me`) idą do API
+    bezpośrednio (klient z `getAuthDeps()`), nigdy przez Varnish.
 - Domyślnie Server Components. Client Component tylko tam, gdzie potrzebna jest interakcja.
 - `generateMetadata` i strona pobierają dane katalogu przez `loadCatalogForRequest` (`React.cache`), więc jedno wejście
   to jedno żądanie na endpoint. Metadane katalogu (`src/catalog/page-metadata.ts`) opierają się na `STORE_URL`.
