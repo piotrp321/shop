@@ -392,6 +392,109 @@ nelmio_api_doc:
                                 currency:
                                     type: string
                                     enum: [PLN]
+                        # Response schemas of Payment (Payment\Application\View\PaymentView, Query\PaymentStatusView,
+                        # Query\PaymentProviderView, formatted by PaymentEndpoints), checked against real responses by the
+                        # functional tests of the payment endpoints.
+                        PaymentProvider:
+                            type: object
+                            required: [code, name]
+                            properties:
+                                code:
+                                    type: string
+                                    enum: [demo-transfer, demo-card]
+                                name:
+                                    type: string
+                                    description: The name the customer sees.
+                                    example: Szybki przelew (demo)
+                        PaymentView:
+                            type: object
+                            description: A payment of an order at a provider.
+                            required: [paymentId, provider, status, redirectUrl]
+                            properties:
+                                paymentId:
+                                    type: string
+                                    format: uuid
+                                provider:
+                                    type: string
+                                    enum: [demo-transfer, demo-card]
+                                status:
+                                    type: string
+                                    description: '`pending` until the provider confirms the payment (`succeeded`) or refuses it (`failed`); `cancelled` when a newer attempt cancelled it at the provider.'
+                                    enum: [pending, succeeded, failed, cancelled]
+                                redirectUrl:
+                                    type: string
+                                    nullable: true
+                                    description: The page of the provider where the customer pays.
+                                    example: http://localhost:8000/payment-simulator/demo-transfer/pay/7d3f0a8e-4a1b-4c55-9f1e-2b3c4d5e6f70
+                        PaymentStatusView:
+                            type: object
+                            description: The order and its newest payment, as the confirmation page shows them. Amounts in grosze.
+                            required: [orderNumber, orderStatus, paymentDeadline, totalGross, currency, canStartPayment, latestPayment]
+                            properties:
+                                orderNumber:
+                                    type: string
+                                    example: R-100001
+                                orderStatus:
+                                    type: string
+                                    enum: [new, paid, cancelled]
+                                paymentDeadline:
+                                    type: string
+                                    format: date-time
+                                    description: The order is to be paid by this moment (RFC 3339, UTC).
+                                    example: '2026-11-05T13:00:00+00:00'
+                                totalGross:
+                                    type: integer
+                                    example: 39998
+                                currency:
+                                    type: string
+                                    enum: [PLN]
+                                canStartPayment:
+                                    type: boolean
+                                    description: Whether a payment can be started now (the order is new and before its deadline). A new attempt cancels a pending payment at its provider first.
+                                latestPayment:
+                                    nullable: true
+                                    description: The newest payment of the order, null before the first one.
+                                    allOf:
+                                        - $ref: '#/components/schemas/LatestPayment'
+                        LatestPayment:
+                            type: object
+                            required: [provider, status, resumeUrl]
+                            properties:
+                                provider:
+                                    type: string
+                                    enum: [demo-transfer, demo-card]
+                                status:
+                                    type: string
+                                    enum: [pending, succeeded, failed, cancelled]
+                                resumeUrl:
+                                    type: string
+                                    nullable: true
+                                    description: The page of the provider of a pending payment, to go back to it while the order is payable; null otherwise.
+                        PaymentConflictProblem:
+                            type: object
+                            description: >-
+                                A 409 of the payment endpoints. `type` names the cause (the `detail` is Polish text for people
+                                and may change): the order is paid, the order is cancelled or past its payment deadline, another
+                                payment of the order is in progress (a concurrent start, or the pending payment was executed at its
+                                provider and waits for its confirmation), or the `Idempotency-Key` was used by another request.
+                            required: [type, title, status, detail]
+                            properties:
+                                type:
+                                    type: string
+                                    enum:
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/order-already-paid'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/payment-deadline-passed'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/payment-in-progress'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/payment-idempotency-key-reused'
+                                title:
+                                    type: string
+                                    example: Conflict
+                                status:
+                                    type: integer
+                                    enum: [409]
+                                detail:
+                                    type: string
+                                    description: Polish text for the customer.
                         Problem: &problem
                             type: object
                             description: Problem details (RFC 9457), `application/problem+json`.
