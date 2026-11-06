@@ -192,12 +192,56 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: env.FULL_CI == 'true'
 
-      # Builds the e2e image and type-checks the tests; no services needed, so it fails fast.
+      # The application images come from the GitHub Actions cache that the `checks` job writes (same contexts,
+      # targets and scopes), so this job only reads it. `make up` then finds the images and builds only garage-init.
+      # The worker runs the api image (same context and target), hence the second tag.
+      - name: Build api and worker image
+        if: env.FULL_CI == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/api
+          target: dev
+          tags: |
+            shop-api
+            shop-worker
+          load: true
+          cache-from: type=gha,scope=api
+
+      - name: Build store image
+        if: env.FULL_CI == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/store
+          tags: shop-store
+          load: true
+          cache-from: type=gha,scope=store
+
+      - name: Build admin image
+        if: env.FULL_CI == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/admin
+          tags: shop-admin
+          load: true
+          cache-from: type=gha,scope=admin
+
+      # Only this job builds the Playwright image, so it also writes its cache.
+      - name: Build e2e image
+        if: env.FULL_CI == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: e2e
+          tags: shop-e2e
+          load: true
+          cache-from: type=gha,scope=e2e
+          cache-to: type=gha,mode=max,scope=e2e
+
+      # Type-checks the tests; no services needed, so it fails fast. E2E_BUILD= uses the image built above.
       - name: Type-check the e2e tests
         if: env.FULL_CI == 'true'
-        run: make e2e-check E2E_FLAGS=-T
+        run: make e2e-check E2E_FLAGS=-T E2E_BUILD=
 
-      # Builds the images, starts every service, runs the migrations and starts the worker (`exec` needs -T).
+      # Starts every service, runs the migrations and starts the worker (`exec` needs -T).
       - name: Start the stack
         if: env.FULL_CI == 'true'
         run: make up RUN="docker compose exec -T"
@@ -208,7 +252,7 @@ jobs:
 
       - name: make e2e
         if: env.FULL_CI == 'true'
-        run: make e2e E2E_FLAGS=-T
+        run: make e2e E2E_FLAGS=-T E2E_BUILD=
 
       - name: Service logs
         if: failure()

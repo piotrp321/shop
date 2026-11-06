@@ -49,21 +49,24 @@ final class KeycloakOutageTest extends WebTestCase
     }
 
     /**
-     * @return iterable<string, array{string, string, string}>
+     * @return iterable<string, array{string, string, \Closure(): string}>
      */
     public static function requestsWithTokens(): iterable
     {
         foreach (self::brokenKeySources() as $name => [$url]) {
-            yield "customer endpoint, key source $name" => [$url, '/api/v1/me', TestTokenFactory::customer()];
-            yield "staff endpoint, key source $name" => [$url, '/api/v1/admin/me', TestTokenFactory::staff(['admin'])];
-            yield "public endpoint, key source $name" => [$url, '/api/v1/categories', 'garbage'];
+            yield "customer endpoint, key source $name" => [$url, '/api/v1/me', static fn (): string => TestTokenFactory::customer()];
+            yield "staff endpoint, key source $name" => [$url, '/api/v1/admin/me', static fn (): string => TestTokenFactory::staff(['admin'])];
+            yield "public endpoint, key source $name" => [$url, '/api/v1/categories', static fn (): string => 'garbage'];
         }
     }
 
+    /**
+     * @param \Closure(): string $token
+     */
     #[DataProvider('requestsWithTokens')]
-    public function testUnreadableKeySourceIsServiceUnavailable(string $keySource, string $path, string $token): void
+    public function testUnreadableKeySourceIsServiceUnavailable(string $keySource, string $path, \Closure $token): void
     {
-        $response = $this->request($keySource, $path, $token)->getResponse();
+        $response = $this->request($keySource, $path, $token())->getResponse();
 
         self::assertSame(503, $response->getStatusCode());
         self::assertNull($response->headers->get('WWW-Authenticate'));
@@ -83,21 +86,24 @@ final class KeycloakOutageTest extends WebTestCase
     }
 
     /**
-     * @return iterable<string, array{string, string}>
+     * @return iterable<string, array{string, \Closure(): string}>
      */
     public static function tokensRejectedByTheRealKeys(): iterable
     {
         // Valid claims, but signed with the test key, which the real Keycloak never published.
-        yield 'customer token with a foreign signature' => ['/api/v1/me', TestTokenFactory::customer()];
-        yield 'staff token with a foreign signature' => ['/api/v1/admin/me', TestTokenFactory::staff(['admin'])];
-        yield 'garbage on the customer endpoint' => ['/api/v1/me', 'garbage'];
-        yield 'garbage on a public endpoint' => ['/api/v1/categories', 'garbage'];
+        yield 'customer token with a foreign signature' => ['/api/v1/me', static fn (): string => TestTokenFactory::customer()];
+        yield 'staff token with a foreign signature' => ['/api/v1/admin/me', static fn (): string => TestTokenFactory::staff(['admin'])];
+        yield 'garbage on the customer endpoint' => ['/api/v1/me', static fn (): string => 'garbage'];
+        yield 'garbage on a public endpoint' => ['/api/v1/categories', static fn (): string => 'garbage'];
     }
 
+    /**
+     * @param \Closure(): string $token
+     */
     #[DataProvider('tokensRejectedByTheRealKeys')]
-    public function testInvalidTokenWithReachableKeysIsUnauthorized(string $path, string $token): void
+    public function testInvalidTokenWithReachableKeysIsUnauthorized(string $path, \Closure $token): void
     {
-        $response = $this->request('http://keycloak:8080', $path, $token)->getResponse();
+        $response = $this->request('http://keycloak:8080', $path, $token())->getResponse();
 
         self::assertSame(401, $response->getStatusCode());
         self::assertSame('Bearer', $response->headers->get('WWW-Authenticate'));
