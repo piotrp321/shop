@@ -19,7 +19,7 @@ final readonly class ListProductsQuery
     public const string SORT_PRICE_DESC = 'price_desc';
     public const string AVAILABLE = 'true';
     // Strings, not ints: the query-string denormalizer would silently cut "10.5" to 10 (and deprecate doing so).
-    private const string GROSZE_PATTERN = '/^\d{1,12}$/';
+    private const string GROSZE_PATTERN = '/^\d{1,12}\z/';
 
     public function __construct(
         #[Assert\NotBlank(allowNull: true)]

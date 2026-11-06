@@ -84,6 +84,11 @@ final readonly class OptionFilter
             return;
         }
         foreach ($this->entries as $entry) {
+            if (!mb_check_encoding($entry, 'UTF-8')) {
+                $context->buildViolation('An option must be valid UTF-8.')->atPath(self::PARAMETER)->addViolation();
+
+                return;
+            }
             if (!str_contains($entry, ':')) {
                 $context->buildViolation('An option must have the form `<axis>:<value>`.')->atPath(self::PARAMETER)->addViolation();
 

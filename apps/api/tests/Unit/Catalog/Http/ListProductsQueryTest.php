@@ -60,6 +60,8 @@ final class ListProductsQueryTest extends TestCase
         yield 'priceMax is a decimal' => [new ListProductsQuery(priceMax: '10.5'), 'priceMax'];
         yield 'priceMin is empty' => [new ListProductsQuery(priceMin: ''), 'priceMin'];
         yield 'priceMax has a sign' => [new ListProductsQuery(priceMax: '+5'), 'priceMax'];
+        yield 'priceMin has a trailing newline' => [new ListProductsQuery(priceMin: "10\n"), 'priceMin'];
+        yield 'priceMax has a trailing newline' => [new ListProductsQuery(priceMax: "10\n"), 'priceMax'];
         yield 'priceMin is 13 digits' => [new ListProductsQuery(priceMin: '1000000000000'), 'priceMin'];
         yield 'priceMin above priceMax' => [new ListProductsQuery(priceMin: '101', priceMax: '100'), 'priceMin'];
         yield 'available is false' => [new ListProductsQuery(available: 'false'), 'available'];

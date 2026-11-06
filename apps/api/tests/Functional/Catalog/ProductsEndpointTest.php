@@ -471,6 +471,8 @@ final class ProductsEndpointTest extends WebTestCase
         yield 'option with an empty value' => ['option=Kolor%3A', 'option'];
         yield 'option axis over 30 characters' => ['option='.str_repeat('a', 31).'%3Ax', 'option'];
         yield 'option value over 40 characters' => ['option=Kolor%3A'.str_repeat('a', 41), 'option'];
+        yield 'option value with malformed UTF-8' => ['option=Kolor%3A%FF', 'option'];
+        yield 'option axis with malformed UTF-8' => ['option=%FF%3Ax', 'option'];
         yield 'option in the bracket form' => ['option%5B%5D=Kolor%3Aczarne', 'option'];
         yield 'over 50 options' => [implode('&', array_map(static fn (int $i): string => 'option=Kolor%3A'.$i, range(1, 51))), 'option'];
         yield 'options of 6 axes' => [implode('&', array_map(static fn (int $i): string => 'option=Os'.$i.'%3Ax', range(1, 6))), 'option'];
@@ -478,6 +480,8 @@ final class ProductsEndpointTest extends WebTestCase
         yield 'priceMax is negative' => ['priceMax=-1', 'priceMax'];
         yield 'priceMin is not a number' => ['priceMin=cheap', 'priceMin'];
         yield 'priceMax is a decimal' => ['priceMax=10.5', 'priceMax'];
+        yield 'priceMin has a trailing newline' => ['priceMin=10%0A', 'priceMin'];
+        yield 'priceMax has a trailing newline' => ['priceMax=10%0A', 'priceMax'];
         yield 'priceMin above priceMax' => ['priceMin=200&priceMax=100', 'priceMin'];
         yield 'available is false' => ['available=false', 'available'];
         yield 'available is a number' => ['available=1', 'available'];
@@ -503,8 +507,9 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertSame($property, $violation['propertyPath']);
         self::assertIsString($violation['title']);
         $value = explode('=', explode('&', $query)[0], 2)[1];
-        if (\strlen($value) >= 3 && !str_contains($value, '%')) {
-            self::assertStringNotContainsString($value, (string) $this->client->getResponse()->getContent());
+        $submitted = rawurldecode($value);
+        if (\strlen($submitted) >= 3) {
+            self::assertStringNotContainsString($submitted, (string) $this->client->getResponse()->getContent());
         }
         $this->assertNotStored();
     }

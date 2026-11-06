@@ -64,6 +64,8 @@ final class OptionFilterTest extends TestCase
         yield 'empty entry' => ['option='];
         yield 'axis of 31 characters' => ['option='.str_repeat('o', 31).'%3Ax'];
         yield 'value of 41 characters' => ['option=Kolor%3A'.str_repeat('w', 41)];
+        yield 'value with malformed UTF-8' => ['option=Kolor%3A%FF'];
+        yield 'axis with malformed UTF-8' => ['option=%FF%3Ax'];
         yield 'bracket form' => ['option%5B%5D=Kolor%3Aczarne'];
         yield 'indexed bracket form' => ['option[0]=Kolor%3Aczarne'];
         yield '51 entries' => [implode('&', array_map(static fn (int $i): string => 'option=Kolor%3A'.$i, range(1, 51)))];
