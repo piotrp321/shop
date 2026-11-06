@@ -14,6 +14,7 @@ use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Pricing\InterleavingVariantPriceRepository;
+use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -268,7 +269,7 @@ final class ChangePriceEndpointTest extends WebTestCase
         // versioned UPDATE finds no row at version 1. The competing UPDATE runs on the same connection, inside the
         // command's transaction, and is rolled back with it: the row ends as it was.
         self::getContainer()->set(VariantPriceRepository::class, new InterleavingVariantPriceRepository(
-            new DoctrineVariantPriceRepository($this->entityManager),
+            new DoctrineVariantPriceRepository($this->entityManager, new RecordingDomainEventPublisher()),
             function () use ($variantId): void {
                 $this->connection->executeStatement(
                     'UPDATE pricing_variant_price SET gross_amount = 7000, version = version + 1 WHERE variant_id = ?',

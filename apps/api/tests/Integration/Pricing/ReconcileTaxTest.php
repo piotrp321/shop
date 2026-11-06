@@ -23,6 +23,7 @@ use App\Pricing\UI\Console\ReconcileTaxCommand;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
+use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use Doctrine\DBAL\Configuration as DbalConfiguration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
@@ -113,7 +114,7 @@ final class ReconcileTaxTest extends KernelTestCase
             VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $id, 'gross' => 5490, 'taxClass' => 'standard', 'vatRateBp' => 2300]);
         }
         $this->entityManager->clear();
-        $tester = $this->tester(new DoctrineVariantPriceRepository($this->entityManager), [$ids[0] => 2, $ids[1] => 1]);
+        $tester = $this->tester(new DoctrineVariantPriceRepository($this->entityManager, new RecordingDomainEventPublisher()), [$ids[0] => 2, $ids[1] => 1]);
 
         self::assertSame(1, $tester->execute(['--apply' => true]), $tester->getDisplay());
 
@@ -130,7 +131,7 @@ final class ReconcileTaxTest extends KernelTestCase
         self::assertSame(['staff', 'tax_reconciliation'], $this->connection->fetchFirstColumn('SELECT source FROM pricing_price_history WHERE variant_id = ? ORDER BY changed_at, id', [$ids[1]]));
 
         $this->entityManager->clear();
-        $again = $this->tester(new DoctrineVariantPriceRepository($this->entityManager), []);
+        $again = $this->tester(new DoctrineVariantPriceRepository($this->entityManager, new RecordingDomainEventPublisher()), []);
         self::assertSame(0, $again->execute(['--apply' => true]), $again->getDisplay());
         self::assertSame($this->stored(5690, 500, 'printed_book', 4), $this->price($ids[0]));
     }
@@ -144,7 +145,7 @@ final class ReconcileTaxTest extends KernelTestCase
         // Nothing listens there: every statement fails to connect, as when PostgreSQL is down. A plain DBAL
         // configuration, so the DAMA static connection is not used.
         $unreachable = DriverManager::getConnection(['host' => '127.0.0.1', 'port' => 1] + $params, new DbalConfiguration());
-        $tester = $this->tester(new DoctrineVariantPriceRepository(new EntityManager($unreachable, $this->entityManager->getConfiguration())), []);
+        $tester = $this->tester(new DoctrineVariantPriceRepository(new EntityManager($unreachable, $this->entityManager->getConfiguration()), new RecordingDomainEventPublisher()), []);
 
         self::assertSame(2, $tester->execute(['--apply' => true]), $tester->getDisplay());
 
