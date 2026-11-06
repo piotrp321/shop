@@ -11,15 +11,15 @@ namespace App\Catalog\Application\Search;
 final readonly class ProductSearchCriteria
 {
     /**
-     * @param int                         $page             from 1
-     * @param int                         $perPage          from 1
-     * @param string|null                 $categoryId       the category and all its descendants
-     * @param string|null                 $phrase           the trimmed phrase, every word of it must match
-     * @param array<string, list<string>> $options          wanted values per axis name: any of the values of an axis, and every axis
-     * @param int|null                    $priceMin         gross, in grosze
-     * @param int|null                    $priceMax         gross, in grosze
-     * @param bool                        $availableOnly    only products with a variant that can be bought now
-     * @param list<string>                $facetCategoryIds the categories to count in the category facet, in the order wanted
+     * @param int                             $page             from 1
+     * @param int                             $perPage          from 1
+     * @param string|null                     $categoryId       the category and all its descendants
+     * @param string|null                     $phrase           the trimmed phrase, every word of it must match
+     * @param array<int|string, list<string>> $options          wanted values per axis name: any of the values of an axis, and every axis
+     * @param int|null                        $priceMin         gross, in grosze
+     * @param int|null                        $priceMax         gross, in grosze
+     * @param bool                            $availableOnly    only products with a variant that can be bought now
+     * @param list<string>                    $facetCategoryIds the categories to count in the category facet, in the order wanted
      *
      * @throws \InvalidArgumentException when a number is out of range, the price range is inverted or the relevance sort has no phrase
      */

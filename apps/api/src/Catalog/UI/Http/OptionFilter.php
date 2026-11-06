@@ -57,7 +57,7 @@ final readonly class OptionFilter
     /**
      * The values of each axis in the order sent, without repeats. Only meaningful for a valid filter.
      *
-     * @return array<string, list<string>>
+     * @return array<int|string, list<string>> keyed by axis name (PHP turns a numeric name into an int key)
      */
     public function axes(): array
     {
