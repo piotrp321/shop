@@ -36,6 +36,12 @@ doctrine:
                 is_bundle: false
                 dir: '%kernel.project_dir%/src/Ordering/Infrastructure/Persistence/Doctrine/Record'
                 prefix: 'App\Ordering\Infrastructure\Persistence\Doctrine\Record'
+            # The flat simulator module: its one entity is mapped in place (it is no domain of the shop).
+            PaymentSimulator:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/PaymentSimulator'
+                prefix: 'App\PaymentSimulator'
 
 when@test: &test
     doctrine:
