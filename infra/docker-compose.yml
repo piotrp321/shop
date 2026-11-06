@@ -265,6 +265,32 @@ services:
       # The entrypoint runs `composer install` on first start.
       start_period: 120s
 
+  # Cache in front of the public catalog reads of the API (infra/varnish/default.vcl). Only the store's server reads
+  # through it (API_CATALOG_URL), over the compose network: no port on the host. PURGE needs the X-Purge-Token
+  # header equal to VARNISH_PURGE_SECRET from .env.local; without the secret the VCL does not load and Varnish
+  # does not start.
+  varnish:
+    image: varnish:9.1.0
+    depends_on:
+      # The backend host `api` is resolved when the VCL is loaded, so Varnish restarts when the api is recreated.
+      api:
+        condition: service_started
+        restart: true
+    env_file:
+      - path: ./.env.local
+        required: true
+    # Extra flags of the image's standard varnishd command: default TTL 0, so a response without Cache-Control
+    # is not cached.
+    command: ["-t", "0"]
+    volumes:
+      - ./infra/varnish/default.vcl:/etc/varnish/default.vcl:ro
+    healthcheck:
+      # The child process runs and has loaded the VCL.
+      test: ["CMD-SHELL", "varnishadm status | grep -q running"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   # Consumes the outbox (relay to RabbitMQ) before events. `make up` starts it last, once the migrations have
   # created the outbox table.
   worker:

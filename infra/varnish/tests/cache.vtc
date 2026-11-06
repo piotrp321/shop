@@ -1,0 +1,75 @@
+varnishtest "Allowlisted GET is cached by the full URL; X-Cache tells MISS from HIT; xkey never leaves Varnish"
+
+# The backend of default.vcl is api:80; the test runner maps api to 127.0.0.1.
+server s1 -listen 127.0.0.1:80 {
+	rxreq
+	expect req.url == "/api/v1/products?page=1"
+	txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog product-a" -body "list page 1"
+	rxreq
+	expect req.url == "/api/v1/products?page=2"
+	txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog product-b" -body "list page 2"
+	rxreq
+	expect req.url == "/api/v1/products/buty-szosowe"
+	txresp -hdr "Cache-Control: public, max-age=60, s-maxage=3600" -hdr "xkey: catalog product-a" -body "details"
+	rxreq
+	expect req.url == "/api/v1/categories"
+	txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog" -body "categories"
+	rxreq
+	expect req.url == "/api/v1/product-offers?productId=a&productId=b"
+	txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog product-a product-b" -body "offers"
+} -start
+
+setenv VARNISH_PURGE_SECRET "s3cret"
+# -t 0: the default TTL of the varnish service in infra/docker-compose.yml.
+varnish v1 -arg "-t 0" -cliok "vcl.load main /etc/varnish/default.vcl" -cliok "vcl.use main" -start
+
+client c1 {
+	txreq -url "/api/v1/products?page=1"
+	rxresp
+	expect resp.status == 200
+	expect resp.body == "list page 1"
+	expect resp.http.X-Cache == "MISS"
+	expect resp.http.xkey == <undef>
+
+	txreq -url "/api/v1/products?page=1"
+	rxresp
+	expect resp.body == "list page 1"
+	expect resp.http.X-Cache == "HIT"
+	expect resp.http.xkey == <undef>
+
+	# The query string is part of the cache key.
+	txreq -url "/api/v1/products?page=2"
+	rxresp
+	expect resp.body == "list page 2"
+	expect resp.http.X-Cache == "MISS"
+
+	txreq -url "/api/v1/products/buty-szosowe"
+	rxresp
+	expect resp.http.X-Cache == "MISS"
+	txreq -url "/api/v1/products/buty-szosowe"
+	rxresp
+	expect resp.body == "details"
+	expect resp.http.X-Cache == "HIT"
+	expect resp.http.xkey == <undef>
+
+	txreq -url "/api/v1/categories"
+	rxresp
+	expect resp.http.X-Cache == "MISS"
+	txreq -req HEAD -url "/api/v1/categories"
+	rxresp -no_obj
+	expect resp.status == 200
+	expect resp.http.X-Cache == "HIT"
+
+	txreq -url "/api/v1/product-offers?productId=a&productId=b"
+	rxresp
+	expect resp.http.X-Cache == "MISS"
+	txreq -url "/api/v1/product-offers?productId=a&productId=b"
+	rxresp
+	expect resp.body == "offers"
+	expect resp.http.X-Cache == "HIT"
+	expect resp.http.xkey == <undef>
+} -run
+
+# Five objects fetched once each; everything else came from the cache.
+varnish v1 -expect cache_hit == 4
+varnish v1 -expect backend_req == 5

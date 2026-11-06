@@ -29,6 +29,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - Główny `Makefile` zarządza stosem i uruchamia wszystkie aplikacje:
     `make up` / `make down` / `make logs`, `make seed`, `make check`, `make test`, `make e2e`,
     `make e2e-agent AGENT_DIR=<katalog> [E2E_ARGS=...]` (skrypty agentów tester i UX, wyniki poza repo).
+    `make test` uruchamia też `make varnish-test`: testy VCL (`infra/varnish/tests/*.vtc`, `varnishtest` z obrazu
+    usługi `varnish`, bez stosu).
   - Każda aplikacja ma własny `Makefile` z tymi samymi podstawowymi celami (`check`, `test`)
     oraz swoimi (np. `make migrate` w api). Pracując w jednej aplikacji, używaj jej Makefile:
     `make -C apps/api check`.
