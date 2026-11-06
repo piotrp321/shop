@@ -21,11 +21,18 @@ concurrency:
 
 permissions:
   contents: read
+  # Prebuilt CI images in GitHub Container Registry (.github/scripts/ghcr-image.sh): pulled, and pushed when missing.
+  packages: write
 
 env:
-  # Compose names the images <project>-<service>; the build steps below tag them to match.
+  # Compose names the images <project>-<service>; the pull and build steps below tag them to match.
   COMPOSE_PROJECT_NAME: shop
   CI_RUN: docker compose run --rm --no-deps -T
+  # The files each CI image is built from (its Dockerfile and what it copies); their content is the image tag.
+  API_IMAGE_FILES: apps/api/Dockerfile apps/api/docker
+  STORE_IMAGE_FILES: apps/store/Dockerfile apps/store/package.json apps/store/package-lock.json
+  ADMIN_IMAGE_FILES: apps/admin/Dockerfile apps/admin/package.json apps/admin/package-lock.json
+  E2E_IMAGE_FILES: e2e/Dockerfile e2e/package.json e2e/package-lock.json e2e/entrypoint.sh
 
 jobs:
   scope:
@@ -82,14 +89,35 @@ jobs:
           sh .github/scripts/background.sh start script-tests sh -c
           'set -e;
           sh .github/scripts/test_background.sh;
+          sh .github/scripts/test_ghcr_image.sh;
           python3 -m unittest discover -s .ao -p "test_*.py";
           python3 -m unittest discover -s .claude/skills/delivery -p "test_*.py";
           python3 -m unittest discover -s .claude/skills/planner -p "test_*.py";
           python3 -m unittest discover -s .claude/skills/integration -p "test_*.py";
           python3 -m unittest discover -s .claude/skills/ao-run -p "test_*.py"'
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The CI images come prebuilt from GitHub Container Registry, tagged by the content of the files they are built
+      # from, and are pulled in the background next to the steps below. An image the registry does not have yet (its
+      # files changed) is built from the GitHub Actions cache and pushed, so the next run pulls it.
+      - name: Pull the prebuilt images in the background
+        id: images
         if: env.FULL_CI == 'true'
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          prefix="ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/shop"
+          # shellcheck disable=SC2086 # the file lists split on spaces
+          {
+            echo "api=$prefix-api:$(sh .github/scripts/ghcr-image.sh key $API_IMAGE_FILES)"
+            echo "store=$prefix-store:$(sh .github/scripts/ghcr-image.sh key $STORE_IMAGE_FILES)"
+            echo "admin=$prefix-admin:$(sh .github/scripts/ghcr-image.sh key $ADMIN_IMAGE_FILES)"
+            echo "e2e=$prefix-e2e:$(sh .github/scripts/ghcr-image.sh key $E2E_IMAGE_FILES)"
+          } | tee refs >> "$GITHUB_OUTPUT"
+          . ./refs && rm refs
+          sh .github/scripts/background.sh start image-api sh .github/scripts/ghcr-image.sh pull "$api" shop-api shop-worker
+          sh .github/scripts/background.sh start image-store sh .github/scripts/ghcr-image.sh pull "$store" shop-store
+          sh .github/scripts/background.sh start image-admin sh .github/scripts/ghcr-image.sh pull "$admin" shop-admin
 
       - name: Generate .env.local
         if: env.FULL_CI == 'true'
@@ -112,36 +140,72 @@ jobs:
           'docker compose up -d --wait postgres redis garage imgproxy rabbitmq elasticsearch keycloak mailpit
           && docker compose run --rm rabbitmq-init'
 
-      - name: Build api image
+      # `missing` lists the images the registry does not have: the steps below build and push them.
+      - name: Wait for the prebuilt images
+        id: missing
         if: env.FULL_CI == 'true'
+        run: |
+          missing=
+          for image in api store admin; do
+            sh .github/scripts/background.sh wait "image-$image" || missing="$missing $image"
+          done
+          echo "apps=$missing" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: env.FULL_CI == 'true' && steps.missing.outputs.apps != ''
+
+      - name: Build api image
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'api')
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/api
           target: dev
-          tags: shop-api
+          tags: |
+            shop-api
+            ${{ steps.images.outputs.api }}
           load: true
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
       - name: Build store image
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'store')
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/store
-          tags: shop-store
+          tags: |
+            shop-store
+            ${{ steps.images.outputs.store }}
           load: true
           cache-from: type=gha,scope=store
           cache-to: type=gha,mode=max,scope=store
 
       - name: Build admin image
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'admin')
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/admin
-          tags: shop-admin
+          tags: |
+            shop-admin
+            ${{ steps.images.outputs.admin }}
           load: true
           cache-from: type=gha,scope=admin
           cache-to: type=gha,mode=max,scope=admin
+
+      - name: Push the app images built here
+        if: env.FULL_CI == 'true' && steps.missing.outputs.apps != ''
+        env:
+          MISSING: ${{ steps.missing.outputs.apps }}
+          API_REF: ${{ steps.images.outputs.api }}
+          STORE_REF: ${{ steps.images.outputs.store }}
+          ADMIN_REF: ${{ steps.images.outputs.admin }}
+        run: |
+          for image in $MISSING; do
+            case "$image" in
+              api) sh .github/scripts/ghcr-image.sh push "$API_REF" ;;
+              store) sh .github/scripts/ghcr-image.sh push "$STORE_REF" ;;
+              admin) sh .github/scripts/ghcr-image.sh push "$ADMIN_REF" ;;
+            esac
+          done
 
       # Dependencies go into the named volumes, as in local development: the api entrypoint runs `composer install`;
       # the store and admin images carry node_modules, which Docker copies into their empty volumes on first use.
@@ -215,8 +279,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.FULL_CI == 'true'
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The CI images come prebuilt from GitHub Container Registry, tagged by the content of the files they are built
+      # from, and are pulled in the background next to the steps below. An image the registry does not have yet (its
+      # files changed) is built from the GitHub Actions cache and pushed, so the next run pulls it.
+      - name: Pull the prebuilt images in the background
+        id: images
         if: env.FULL_CI == 'true'
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          prefix="ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/shop"
+          # shellcheck disable=SC2086 # the file lists split on spaces
+          {
+            echo "api=$prefix-api:$(sh .github/scripts/ghcr-image.sh key $API_IMAGE_FILES)"
+            echo "store=$prefix-store:$(sh .github/scripts/ghcr-image.sh key $STORE_IMAGE_FILES)"
+            echo "admin=$prefix-admin:$(sh .github/scripts/ghcr-image.sh key $ADMIN_IMAGE_FILES)"
+            echo "e2e=$prefix-e2e:$(sh .github/scripts/ghcr-image.sh key $E2E_IMAGE_FILES)"
+          } | tee refs >> "$GITHUB_OUTPUT"
+          . ./refs && rm refs
+          sh .github/scripts/background.sh start image-api sh .github/scripts/ghcr-image.sh pull "$api" shop-api shop-worker
+          sh .github/scripts/background.sh start image-store sh .github/scripts/ghcr-image.sh pull "$store" shop-store
+          sh .github/scripts/background.sh start image-admin sh .github/scripts/ghcr-image.sh pull "$admin" shop-admin
+          sh .github/scripts/background.sh start image-e2e sh .github/scripts/ghcr-image.sh pull "$e2e" shop-e2e
 
       # The service images are pulled in the background while the application images are built; the stack starts once
       # the pull is done (compose needs .env.local to read its configuration).
@@ -226,11 +311,25 @@ jobs:
           sh infra/scripts/init-env.sh
           sh .github/scripts/background.sh start pull docker compose pull --quiet --ignore-buildable
 
-      # The application images come from the GitHub Actions cache that the `checks` job writes (same contexts,
-      # targets and scopes), so this job only reads it. `make up` then finds the images and builds only garage-init.
-      # The worker runs the api image (same context and target), hence the second tag.
-      - name: Build api and worker image
+      # An app image the registry does not have is built from the GitHub Actions cache that the `checks` job writes
+      # (same contexts, targets and scopes), so this job only reads it. `make up` then finds the images and builds only
+      # garage-init. The worker runs the api image (same context and target), hence the second tag.
+      # `missing` lists the images the registry does not have: the steps below build and push them.
+      - name: Wait for the prebuilt images
+        id: missing
         if: env.FULL_CI == 'true'
+        run: |
+          missing=
+          for image in api store admin; do
+            sh .github/scripts/background.sh wait "image-$image" || missing="$missing $image"
+          done
+          echo "apps=$missing" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: env.FULL_CI == 'true' && steps.missing.outputs.apps != ''
+
+      - name: Build api and worker image
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'api')
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/api
@@ -238,26 +337,47 @@ jobs:
           tags: |
             shop-api
             shop-worker
+            ${{ steps.images.outputs.api }}
           load: true
           cache-from: type=gha,scope=api
 
       - name: Build store image
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'store')
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/store
-          tags: shop-store
+          tags: |
+            shop-store
+            ${{ steps.images.outputs.store }}
           load: true
           cache-from: type=gha,scope=store
 
       - name: Build admin image
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'admin')
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/admin
-          tags: shop-admin
+          tags: |
+            shop-admin
+            ${{ steps.images.outputs.admin }}
           load: true
           cache-from: type=gha,scope=admin
+
+      - name: Push the app images built here
+        if: env.FULL_CI == 'true' && steps.missing.outputs.apps != ''
+        env:
+          MISSING: ${{ steps.missing.outputs.apps }}
+          API_REF: ${{ steps.images.outputs.api }}
+          STORE_REF: ${{ steps.images.outputs.store }}
+          ADMIN_REF: ${{ steps.images.outputs.admin }}
+        run: |
+          for image in $MISSING; do
+            case "$image" in
+              api) sh .github/scripts/ghcr-image.sh push "$API_REF" ;;
+              store) sh .github/scripts/ghcr-image.sh push "$STORE_REF" ;;
+              admin) sh .github/scripts/ghcr-image.sh push "$ADMIN_REF" ;;
+            esac
+          done
 
       # The store and admin images carry node_modules installed from these lock files (the cached image layer is keyed
       # on their content), and Docker copies them into the empty volumes. Their containers run `npm ci` only when
@@ -275,18 +395,37 @@ jobs:
           sh .github/scripts/background.sh start stack sh -c
           'sh .github/scripts/background.sh wait pull && make up RUN="docker compose exec -T"'
 
+      - name: Wait for the prebuilt e2e image
+        id: missing-e2e
+        if: env.FULL_CI == 'true'
+        run: |
+          status=pulled
+          sh .github/scripts/background.sh wait image-e2e || status=missing
+          echo "e2e=$status" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: env.FULL_CI == 'true' && steps.missing-e2e.outputs.e2e == 'missing' && steps.missing.outputs.apps == ''
+
       # Only this job builds the Playwright image, so it also writes its cache.
       - name: Build e2e image
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && steps.missing-e2e.outputs.e2e == 'missing'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: e2e
-          tags: shop-e2e
+          tags: |
+            shop-e2e
+            ${{ steps.images.outputs.e2e }}
           load: true
           cache-from: type=gha,scope=e2e
           cache-to: type=gha,mode=max,scope=e2e
 
-      # Type-checks the tests; no services needed, so it fails fast. E2E_BUILD= uses the image built above.
+      - name: Push the e2e image built here
+        if: env.FULL_CI == 'true' && steps.missing-e2e.outputs.e2e == 'missing'
+        env:
+          E2E_REF: ${{ steps.images.outputs.e2e }}
+        run: sh .github/scripts/ghcr-image.sh push "$E2E_REF"
+
+      # Type-checks the tests; no services needed, so it fails fast. E2E_BUILD= uses the image pulled or built above.
       - name: Type-check the e2e tests
         if: env.FULL_CI == 'true'
         run: make e2e-check E2E_FLAGS=-T E2E_BUILD=

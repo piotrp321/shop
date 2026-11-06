@@ -80,6 +80,12 @@ Istniejący wolumen zachowuje swoją zawartość. Healthchecki usług sprawdzaj�
 (`start_interval`), więc `make up` i zależności widzą usługę gotową od razu, a nie przy następnym zwykłym
 sprawdzeniu.
 
+CI pobiera obrazy `api`, `store`, `admin` i `e2e` z GitHub Container Registry
+(`ghcr.io/piotrp321/shop-<obraz>`, pakiety publiczne). Tagiem jest skrót treści plików, z których obraz powstaje
+(`.github/scripts/ghcr-image.sh key`). Obraz, którego rejestr jeszcze nie ma, bo zmienił się jego Dockerfile albo
+lock, CI buduje z cache GitHub Actions i wypycha, więc następny przebieg już go pobiera. Lokalnie `make up` nadal
+buduje obrazy samo.
+
 ### Adresy: przeglądarka i kontenery
 
 - Przeglądarka używa `http://localhost:<port>`. Kontenery rozmawiają ze sobą po nazwach usług.
