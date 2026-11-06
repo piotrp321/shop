@@ -12,8 +12,9 @@ use App\Catalog\Application\Port\SearchIndexRebuildLock;
 
 /**
  * Synchronous rebuild of the search index from the database and the offer facts: a new physical index is filled in
- * batches, verified and the alias is switched to it in one request. A failure of the offer facts stops the rebuild. Not an online rebuild: writes made through the alias while it
- * runs go to the previous index (see the spec, "Ograniczenia tej przebudowy").
+ * batches, verified and the alias is switched to it in one request. A failure of the offer facts stops the rebuild.
+ * Not an online rebuild: writes made through the alias while it runs go to the previous index (see the spec,
+ * "Ograniczenia tej przebudowy").
  */
 final readonly class ProductSearchIndexRebuilder
 {
