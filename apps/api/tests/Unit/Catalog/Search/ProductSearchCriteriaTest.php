@@ -57,13 +57,4 @@ final class ProductSearchCriteriaTest extends TestCase
 
         new ProductSearchCriteria(1, 24, priceMin: -1);
     }
-
-    public function testVariantConditionExistsOnlyWithAnOptionAPriceOrAvailability(): void
-    {
-        self::assertFalse((new ProductSearchCriteria(1, 24, phrase: 'x', categoryId: 'c'))->hasVariantCondition());
-        self::assertTrue((new ProductSearchCriteria(1, 24, options: ['Kolor' => ['czarne']]))->hasVariantCondition());
-        self::assertTrue((new ProductSearchCriteria(1, 24, priceMin: 0))->hasVariantCondition());
-        self::assertTrue((new ProductSearchCriteria(1, 24, priceMax: 5))->hasVariantCondition());
-        self::assertTrue((new ProductSearchCriteria(1, 24, availableOnly: true))->hasVariantCondition());
-    }
 }

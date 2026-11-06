@@ -56,9 +56,4 @@ final readonly class ProductSearchCriteria
     {
         return $this->sort ?? (null === $this->phrase ? ProductSort::Name : ProductSort::Relevance);
     }
-
-    public function hasVariantCondition(): bool
-    {
-        return [] !== $this->options || null !== $this->priceMin || null !== $this->priceMax || $this->availableOnly;
-    }
 }
