@@ -28,8 +28,9 @@ interface VariantPriceRepository
     public function page(?VariantId $after, int $limit): array;
 
     /**
-     * Writes the price and appends its unsaved history entries in one transaction. A price without unsaved entries
-     * is unchanged and nothing is written. History is never changed or deleted.
+     * Writes the price and appends its unsaved history entries in one transaction, which also publishes its
+     * VariantPriceChanged. A price without unsaved entries is unchanged and nothing is written. History is never
+     * changed or deleted.
      *
      * After an exception nothing is stored, but the price is spent: its history entries were already released and
      * its version counts the unsaved change. The persistence session may be unusable too (Doctrine closes the
