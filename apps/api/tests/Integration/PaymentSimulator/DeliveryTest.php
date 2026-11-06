@@ -34,6 +34,8 @@ final class DeliveryTest extends MessagingKernelTestCase
     private EntityManagerInterface $entityManager;
     /** @var list<array{method: string, url: string, headers: array<string, string>, body: string}> */
     private array $requests = [];
+    /** @var list<float> the time limit of each request */
+    private array $timeouts = [];
     /** @var list<MockResponse> answers in order; the last one repeats */
     private array $answers = [];
 
@@ -74,6 +76,15 @@ final class DeliveryTest extends MessagingKernelTestCase
         self::assertSame(Vector::CARD_BODY, $this->requests[0]['body']);
         self::assertSame(Vector::CARD_HEADER, $this->requests[0]['headers']['card-signature']);
         self::assertSame(0, $this->rows('payment_simulator'));
+    }
+
+    public function testTheRequestToTheShopHasAFiveSecondTimeLimit(): void
+    {
+        $this->decided(Provider::DemoTransfer, Vector::EXECUTED_AT);
+
+        $this->consume('payment_simulator');
+
+        self::assertSame([5.0], $this->timeouts, 'a shop that does not answer must not hold the worker for the default minute');
     }
 
     /**
@@ -200,6 +211,10 @@ final class DeliveryTest extends MessagingKernelTestCase
         }
         $body = $options['body'];
         \assert(\is_string($body));
+        $timeout = $options['timeout'] ?? null;
+        if (\is_int($timeout) || \is_float($timeout)) {
+            $this->timeouts[] = (float) $timeout;
+        }
         $this->requests[] = ['method' => $method, 'url' => $url, 'headers' => $headers, 'body' => $body];
         $index = min(\count($this->requests), \count($this->answers)) - 1;
 

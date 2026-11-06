@@ -16,11 +16,15 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * provider). Any 2xx and any 4xx end the delivery (a 4xx is logged: the shop refused the webhook and a retry would be
  * refused again). A 5xx, any other status and a network error throw, so the transport retries the message: the event
  * id is the same each time, the receiver deduplicates, and a demo-card signature is made again with the time of the
- * attempt. A transaction that is gone (the demo data was reset) or has no decision needs no delivery.
+ * attempt. A request waits 5 seconds at most for the shop (a timeout is a network error). A transaction that is gone
+ * (the demo data was reset) or has no decision needs no delivery.
  */
 #[AsMessageHandler(bus: 'command.bus')]
 final readonly class DeliverSimulatedWebhookHandler
 {
+    /** A shop that stays silent must not hold the worker, which serves the other queues one after another, for the default minute. */
+    private const float TIMEOUT_SECONDS = 5.0;
+
     public function __construct(
         private EntityManagerInterface $entityManager,
         private SimulatedWebhooks $webhooks,
@@ -46,6 +50,7 @@ final readonly class DeliverSimulatedWebhookHandler
         $status = $this->httpClient->request('POST', rtrim($this->webhookBaseUrl, '/').$webhook->path, [
             'headers' => $webhook->headers,
             'body' => $webhook->body,
+            'timeout' => self::TIMEOUT_SECONDS,
         ])->getStatusCode();
 
         if ($status >= 200 && $status < 300) {

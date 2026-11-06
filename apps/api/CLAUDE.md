@@ -160,8 +160,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `/api/v1/payments/webhooks/<dostawca>`. `demo-transfer`: `X-Signature` = hex HMAC-SHA256 surowej treści;
     `demo-card`: `Card-Signature: t=<unix>,v1=<hex HMAC-SHA256("<t>.<treść>")>` z `t` z chwili każdej próby. Identyfikator
     zdarzenia (`evt_<id transakcji bez myślników>`) jest stały, więc ponowienie trafia na deduplikację sklepu. 2xx i 4xx
-    kończą dostawę (4xx z logiem), 5xx, inny status i błąd sieci rzucają `WebhookDeliveryFailed` i transport ponawia;
-    transakcja, której już nie ma (po `make seed`), kończy dostawę bez żądania.
+    kończą dostawę (4xx z logiem). Żądanie czeka na sklep najwyżej 5 s (`timeout`), żeby milczący sklep nie blokował
+    workera, który obsługuje kolejki po kolei. 5xx i inny status rzucają `WebhookDeliveryFailed`, a błąd sieci (także
+    przekroczenie czasu) wyjątek `TransportExceptionInterface` klienta HTTP, który handler przepuszcza; w obu
+    przypadkach transport ponawia. Transakcja, której już nie ma (po `make seed`), kończy dostawę bez żądania.
   - Klucze API i sekrety webhooków (`PAYMENT_DEMO_TRANSFER_API_KEY`, `…_WEBHOOK_SECRET`, `PAYMENT_DEMO_CARD_API_KEY`,
     `…_WEBHOOK_SECRET`) generuje `infra/scripts/init-env.sh` do `.env.local`; brakujące dopisuje do istniejącego pliku
     (jedyne klucze, które skrypt dopisuje; brak jakiegokolwiek innego kończy się błędem i odtworzeniem stosu). Adresy
@@ -174,9 +176,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `shop_test`), więc `flush` i błąd symulatora nie dotykają `UnitOfWork` wywołującego; testy błędów dostawcy podmieniają
     serwis na klienta ze stałymi odpowiedziami. Wektor podpisów do wspólnych testów symulatora i adapterów Payment to
     `WebhookSignatureVector` (`tests/Support`).
-  - Symulator działa w kontenerze API i `StartPayment` woła go przez HTTP z transakcji: przy tylu równoległych
-    rozpoczęciach płatności, ile wątków FrankenPHP, grozi samoblokada (opis w spec, „Ryzyka”); przed testami obciążeniowymi
-    płatności symulator przechodzi do osobnej usługi.
+  - Symulator działa w kontenerze API, więc wywołanie go przez HTTP z tego samego kontenera zajmuje drugi wątek
+    FrankenPHP: przy tylu równoległych wywołaniach, ile wątków, grozi samoblokada (opis w spec, „Ryzyka”); przed testami
+    obciążeniowymi płatności symulator przechodzi do osobnej usługi.
 - E-mail z potwierdzeniem zamówienia wysyła handler zdarzenia `SendOrderConfirmation` (`event.bus`, transport `events`,
   po `OrderPlaced` z outboxa). Wysyłka idzie przez Symfony Mailer (`symfony/mailer`) synchronicznie, bez Messengera:
   `framework.mailer.message_bus: false` (inaczej `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną
