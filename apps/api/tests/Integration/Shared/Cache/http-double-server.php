@@ -15,11 +15,8 @@ $server = stream_socket_server('tcp://127.0.0.1:'.$port) ?: exit(1);
 $config = json_decode((string) file_get_contents($dir.'/config.json'), true, flags: \JSON_THROW_ON_ERROR);
 $served = ['varnish' => 0, 'store' => 0];
 
-while (true) {
-    $connection = @stream_socket_accept($server, -1);
-    if (false === $connection) {
-        continue;
-    }
+// HttpDouble::stop() ends the process while it waits here.
+while (false !== ($connection = @stream_socket_accept($server, -1))) {
     $requestLine = (string) fgets($connection);
     if ('' === trim($requestLine)) {
         // A connection without a request: the readiness check of HttpDouble.

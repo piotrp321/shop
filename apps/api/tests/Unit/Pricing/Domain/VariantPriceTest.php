@@ -11,7 +11,6 @@ use App\Pricing\Domain\Price\PriceChangeSource;
 use App\Pricing\Domain\Price\PriceHistoryEntry;
 use App\Pricing\Domain\Price\VariantId;
 use App\Pricing\Domain\Price\VariantPrice;
-use App\Pricing\Domain\Price\VariantPriceChanged;
 use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\TaxClassWithoutRate;
@@ -186,7 +185,6 @@ final class VariantPriceTest extends TestCase
         $events = $price->releaseEvents();
 
         self::assertCount(1, $events);
-        self::assertInstanceOf(VariantPriceChanged::class, $events[0]);
         self::assertSame(self::ID, $events[0]->variantId);
         self::assertSame(PriceChangeSource::Seed, $events[0]->source);
         self::assertGreaterThanOrEqual($before, $events[0]->occurredAt());

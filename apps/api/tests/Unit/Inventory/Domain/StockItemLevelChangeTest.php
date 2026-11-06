@@ -11,7 +11,6 @@ use App\Inventory\Domain\Stock\ReceiptKey;
 use App\Inventory\Domain\Stock\StockChangeOrigin;
 use App\Inventory\Domain\Stock\StockChangeSource;
 use App\Inventory\Domain\Stock\StockItem;
-use App\Inventory\Domain\Stock\StockLevelChanged;
 use App\Inventory\Domain\Stock\StockNote;
 use App\Inventory\Domain\Stock\VariantId;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -53,7 +52,6 @@ final class StockItemLevelChangeTest extends TestCase
 
         $events = $item->releaseEvents();
         self::assertCount(1, $events);
-        self::assertInstanceOf(StockLevelChanged::class, $events[0]);
         self::assertSame(self::ID, $events[0]->variantId);
         self::assertSame($level, $events[0]->level);
         self::assertSame($source, $events[0]->source);

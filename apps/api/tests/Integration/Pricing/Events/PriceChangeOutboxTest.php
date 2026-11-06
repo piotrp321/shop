@@ -83,6 +83,7 @@ final class PriceChangeOutboxTest extends MessagingKernelTestCase
     {
         $price = $this->newPrice(PriceChangeOrigin::seed());
 
+        $failure = null;
         try {
             $this->entityManager->wrapInTransaction(function () use ($price): void {
                 $this->prices->save($price);
@@ -90,11 +91,11 @@ final class PriceChangeOutboxTest extends MessagingKernelTestCase
 
                 throw new \LogicException('Failure before commit.');
             });
-            self::fail('The transaction was not rolled back.');
         } catch (\LogicException $e) {
-            self::assertSame('Failure before commit.', $e->getMessage());
+            $failure = $e;
         }
 
+        self::assertSame('Failure before commit.', $failure->getMessage());
         self::assertSame(0, $this->rows('outbox'));
         self::assertSame(0, $this->connection()->fetchOne('SELECT count(*) FROM pricing_variant_price WHERE variant_id = ?', [$price->id()->toString()]));
     }

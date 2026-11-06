@@ -61,6 +61,7 @@ final class StockLevelChangeOutboxTest extends MessagingKernelTestCase
     {
         $id = StockFixture::stock($this->connection(), 0);
 
+        $failure = null;
         try {
             $this->connection()->transactional(function () use ($id): void {
                 $this->receive($id, 10);
@@ -68,11 +69,11 @@ final class StockLevelChangeOutboxTest extends MessagingKernelTestCase
 
                 throw new \LogicException('Failure before commit.');
             });
-            self::fail('The transaction was not rolled back.');
         } catch (\LogicException $e) {
-            self::assertSame('Failure before commit.', $e->getMessage());
+            $failure = $e;
         }
 
+        self::assertSame('Failure before commit.', $failure->getMessage());
         self::assertSame(0, $this->rows('outbox'));
         self::assertSame(0, $this->connection()->fetchOne('SELECT physical FROM inventory_stock_item WHERE variant_id = ?', [$id]));
     }
