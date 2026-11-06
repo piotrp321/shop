@@ -34,11 +34,13 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/auth/` – BFF: OIDC, sesje w Redisie, odświeżanie tokenów, walidacja `returnTo`.
 - `src/catalog/` – komponenty i ładowanie danych katalogu, w tym `formatPrice` (formatowanie kwoty z API, `pl-PL`),
   `load-catalog.ts` (lista produktów i oferty), `category-tree.ts` (drzewo kategorii) z `category-path.ts` (ścieżka
-  slugów → kategorie), `CatalogListing`, `Breadcrumbs` z `breadcrumb.ts`, `SiteHeader` i `MegaMenu`,
+  slugów → kategorie), `CatalogListing`, `Breadcrumbs` z `breadcrumb.ts`, `SiteHeader`, `MegaMenu` i `SearchBox`,
+  `listing-query.ts` (parametry URL ↔ zapytanie API, adresy listingu), `ListingFilters`, `ActiveFilters`, `SortSelect`
+  i `EmptyResults` (panel filtrów i sortowanie),
   `load-product.ts` (odczyty strony produktu), `ProductDetailsView`, `VariantChoice` z `variant-choice.ts` (wybór wariantu),
   `product-metadata.ts` i `product-json-ld.ts`.
-- `app/page.tsx` (`/`) i `app/c/[...path]/` (kategoria) – listing (SSR przy każdym żądaniu); `app/p/[slug]/` – strona
-  produktu (ISR).
+- `app/page.tsx` (`/`), `app/c/[...path]/` (kategoria) i `app/szukaj/` (wyszukiwanie) – listing (SSR przy każdym
+  żądaniu); `app/p/[slug]/` – strona produktu (ISR).
 - `src/components/ui/` – komponenty shadcn/ui.
 - `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu.
 
@@ -62,13 +64,14 @@ Klienta API generuje `make api-client` z katalogu głównego.
   openapi-fetch, bo biblioteka wywołuje fetch gotowym `Request`). Tylko tak odczyty dostają tagi cache Next.js.
 - Domyślnie Server Components. Client Component tylko tam, gdzie potrzebna jest interakcja.
 - `generateMetadata` i strona pobierają listę przez `loadCatalogForRequest`, a drzewo kategorii przez
-  `loadCategoryTreeForRequest` (oba `React.cache`), więc jedno wejście to jedno żądanie na endpoint. Metadane katalogu
-  (`src/catalog/page-metadata.ts`) opierają się na `STORE_URL`.
+  `loadCategoryTreeForRequest` (oba `React.cache`), więc jedno wejście to jedno żądanie na endpoint
+  (`loadCatalogForRequest` bierze zapytanie API; klucz cache to jego JSON, a `toApiQuery` buduje klucze zawsze w tej samej
+  kolejności). Metadane katalogu (`src/catalog/page-metadata.ts`) opierają się na `STORE_URL`.
 - HTML katalogu nie zależy od sesji. To, co zależy od zalogowania, ładuje Client Component przez `/auth/session`.
 
-## Listing `/` i `/c/[...path]`
+## Listing `/`, `/c/[...path]` i `/szukaj`
 
-- Oba są Server Components renderowanymi przy każdym żądaniu (SSR, bez ISR) i wspólnym widokiem `CatalogListing`. Jedynym
+- Wszystkie trzy są Server Components renderowanymi przy każdym żądaniu (SSR, bez ISR) i wspólnym widokiem `CatalogListing`. Jedynym
   cache list jest Varnish: odczyty listy i ofert (`loadCatalog`) mają `cache: "no-store"` (bez `next.revalidate`
   i tagów), więc nie trafiają do data cache Next.
 - `/c/[...path]`: kategoria wskazana ścieżką slugów w drzewie (`path` i `slug` z `GET /api/v1/categories`,
@@ -79,14 +82,54 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `permanentRedirect` (308) na `/c/<ścieżka>` z pozostałymi parametrami (bez `category`); nieznana → 404, niepoprawna
   (`400` API) → „Nieprawidłowy filtr”.
 - `CatalogListing`: breadcrumby „Wszystkie produkty” › kategorie ścieżki (linki `/c/<ścieżka>`, ostatni element bez
-  linku, tylko na `/c/`), `h1` z nazwą, obok liczba produktów (`formatProductCount`: „1 produkt”, „2–4 produkty”,
-  22–24 itd., reszta „produktów”, także 12–14), siatka i paginacja w adresach `/c/<ścieżka>?page=n`.
+  linku, tylko na `/c/` i `/szukaj`), `h1` z nazwą, obok liczba produktów (`formatProductCount`: „1 produkt”,
+  „2–4 produkty”, 22–24 itd., reszta „produktów”, także 12–14), panel filtrów (po lewej od `lg`), nad siatką aktywne
+  filtry i lista „Sortuj”, siatka i paginacja. Wszystkie adresy strony (paginacja, linki kategorii, chipy) buduje
+  `listingHref(basePath, state, patch)` z adresu listingu bez parametrów (`basePath`) i jego parametrów (`state`).
 - SEO: tytuł `/c/` to `<nazwa>[ – strona n] | Rytm`, kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1);
   pusta strona poza zakresem i niepoprawny `page` mają `noindex`. `/c/` ma JSON-LD `BreadcrumbList` (bezwzględne
   adresy, ten sam `serializeJsonLd` co strona produktu).
 
+## Wyszukiwanie `/szukaj` i parametry URL
+
+- Parametry URL (`readListingState` czyta pierwszą wartość, puste wartości pomija, bo formularz bez JavaScriptu wysyła
+  każde pole; `o` czyta wszystkie): `q` (fraza, po przycięciu i do 100 znaków; tylko `/szukaj`), `sort` (`trafnosc`,
+  `nazwa`, `cena-rosnaco`, `cena-malejaco`), `cena-od` i `cena-do` (pełne złote), `dostepne=1`, `o=<oś>:<wartość>`
+  (powtarzany; filtr osi), `kategoria=<ścieżka slugów>` (tylko `/szukaj`), `page`. Na `/` i `/c/` `q` i `kategoria` są
+  pomijane (nie trafiają do API ani do adresów), kategoria jest w ścieżce.
+- `toApiQuery` mapuje stan na zapytanie `GET /api/v1/products`: `sort` na nazwę API, `dostepne=1` na `available=true`,
+  `o` na powtarzane `option`. Jedyne, co front liczy, to złote na grosze: napis z samych cyfr dostaje `00` (`100` →
+  `10000`), każda inna wartość idzie bez zmian, więc API odpowiada 400. Liczby, zakresy cen, liczby przy wartościach
+  i dostępność pochodzą z `facets` API; podpowiedź zakresu ceny to kwoty z API sformatowane `formatPrice`.
+  Nieznany `sort`, `dostepne` inne niż `1` i 400 API to „Nieprawidłowy filtr” (z `noindex`); dla nieznanego `sort`
+  i `dostepne` sklep nie woła API.
+- `/szukaj`: `q` bez frazy albo krótsze niż 2 znaki (po przycięciu) → „Wpisz co najmniej 2 znaki.” bez wywołania listy
+  produktów i drzewa kategorii. `kategoria` czyta drzewo (to samo `React.cache`), zamienia ścieżkę na `category` API;
+  nieznana ścieżka (też kategoria, której API już nie zna) → „Nieprawidłowy filtr”. `h1` `Wyniki dla „<fraza>”`,
+  breadcrumby „Wszystkie produkty” › „Wyniki wyszukiwania” (z `kategoria` link do wyszukiwania i ścieżka kategorii).
+- Panel filtrów (`ListingFilters`, Client Component, dane z `facets` listy): „Kategorie” (linki z liczbą: na `/` i `/c/`
+  do `/c/<ścieżka>`, na `/szukaj` z `kategoria`; zachowują filtry), grupa pól wyboru dla każdej osi (`o`, z liczbą,
+  wybrana wartość z 0 zostaje na liście), „Cena (zł)” (pola „Cena od” i „Cena do”) i „Tylko dostępne” (z `availableCount`).
+  Pola wyboru, „Tylko dostępne” i lista „Sortuj” (`SortSelect`, natywny `select`, domyślne sortowanie zostawia `sort`
+  poza adresem) nawigują od razu (`router.push` w tranzycji z `useOptimistic`, więc zaznaczenie widać przed nową
+  stroną); cena po Enter (obsługa klawisza, bo formularz bez przycisku z kilkoma polami tekstowymi nie wysyła się
+  Enterem) albo po opuszczeniu pola (przejście z jednego pola ceny do drugiego nie nawiguje); wpisana wartość jest
+  przycinana i idzie bez przeliczania, pusta usuwa filtr. Każda zmiana filtra lub sortowania usuwa `page` (`listingHref`).
+- Bez JavaScriptu panel jest formularzem `GET` (`id="listing-filters"`, ukryte pola `q` i `kategoria`; `select` „Sortuj”
+  należy do niego przez atrybut `form`) z przyciskiem „Pokaż wyniki” w `noscript`; `noscript` pokazuje też panel
+  na wąskim ekranie. Na wąskim ekranie panel rozwija przycisk „Filtry” (`aria-expanded`).
+- Aktywne filtry (`ActiveFilters`, zwykłe linki, więc działają bez JavaScriptu): link usuwający jeden filtr (osie, cena
+  od, cena do, „Tylko dostępne”, kategoria wyszukiwania) i „Wyczyść filtry” (zostają fraza i sortowanie). Brak wyników:
+  „Nie znaleźliśmy produktów.”, przy filtrach przycisk „Wyczyść filtry”, przy frazie link „Zobacz wszystkie produkty”.
+- SEO: parametry `sort`, `cena-od`, `cena-do`, `dostepne` i `o` (niepuste) dają `noindex, follow` i kanoniczny listingu
+  bez nich i bez `page`; `/szukaj` zawsze `noindex, follow` bez kanonicznego (`buildSearchMetadata`); szczegóły
+  w `docs/features/catalog-page-metadata/spec.md`.
+
 ## Nagłówek i mega menu
 
+- `SiteHeader` ma pole wyszukiwania (`SearchBox`, Client Component): formularz `GET /szukaj` (`next/form`) z polem `q`
+  (etykieta „Szukaj produktów”). HTML nagłówka jest taki sam dla wszystkich (strona produktu jest ISR), więc pole jest
+  w nim puste; fraza na `/szukaj` wpisuje przeglądarka z `useSearchParams` (w `Suspense` z pustym polem jako zapasowym).
 - Layout czyta drzewo przez `loadMenuCategories` (to samo `React.cache` co listing) i renderuje `SiteHeader` z menu
   działów (`MegaMenu`, `nav` „Działy”, Client Component). Na stronie produktu (ISR) odczyt drzewa ma tag `catalog`
   (`loadCategoryTree`), więc strona rewaliduje się razem z katalogiem; odczyt nie ustawia trybu cache.
@@ -307,5 +350,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - Vitest i Testing Library. `*.test.ts(x)` to testy jednostkowe bez usług, `*.integration.test.ts` działają
   na usługach stosu (Redis).
-- Logika w komponentach (np. budowa `srcset`, mega menu), cały `src/auth/`, cały `src/cart/` (BFF, przyciski,
+- Logika w komponentach (np. budowa `srcset`, mega menu, panel filtrów i sortowanie), `listing-query.ts` (mapowanie
+  parametrów URL na zapytanie API i adresy), strony listingów (`app/page.test.tsx`, `app/c/`, `app/szukaj/`, liczba
+  żądań w `app/page.requests.test.tsx`), cały `src/auth/`, cały `src/cart/` (BFF, przyciski,
   strona koszyka) i cały `src/checkout/` (BFF, strona kasy) oraz strona potwierdzenia mają testy.
