@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The page renders client components (filters, sort) that need a router; the tests only read their markup.
+vi.mock("next/navigation", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/navigation")>()), useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/catalog/load-catalog", () => ({ loadCatalogForRequest: vi.fn() }));
 vi.mock("@/catalog/category-tree", () => ({ loadCategoryTreeForRequest: vi.fn() }));
 
@@ -34,8 +36,72 @@ describe("Home page", () => {
     const markup = renderToStaticMarkup(await Home(props({ page: ["2", "3"] })));
     expect(markup).toMatch(/<h1[^>]*>Wszystkie produkty<\/h1><p[^>]*>1 produkt<\/p>/);
     expect(markup).not.toContain('aria-label="Ścieżka"');
-    expect(loadCatalog).toHaveBeenCalledWith(undefined, "2");
+    expect(loadCatalog).toHaveBeenCalledWith({ page: "2" });
     expect(loadTree).not.toHaveBeenCalled();
+  });
+
+  describe("filters and sorting", () => {
+    const FILTERED: Query = {
+      sort: "cena-rosnaco",
+      "cena-od": "100",
+      "cena-do": "250",
+      dostepne: "1",
+      o: ["Kolor:czarne", "Rozmiar:42"],
+      page: "2",
+    };
+
+    it("asks the API for the sort, the filters (whole zloty as grosze), the options and the page", async () => {
+      await Home(props(FILTERED));
+      expect(loadCatalog).toHaveBeenCalledExactlyOnceWith({
+        option: ["Kolor:czarne", "Rozmiar:42"],
+        priceMin: "10000",
+        priceMax: "25000",
+        available: true,
+        sort: "price_asc",
+        page: "2",
+      });
+    });
+
+    it("ignores the phrase and the category of the search page: neither reaches the API nor the addresses", async () => {
+      const markup = renderToStaticMarkup(await Home(props({ q: "kurtka", kategoria: "bieganie", sort: "nazwa" })));
+      expect(loadCatalog).toHaveBeenCalledExactlyOnceWith({ sort: "name" });
+      expect(markup).not.toContain("kurtka");
+      expect(markup).not.toContain("kategoria");
+      expect(markup).not.toContain("q=");
+    });
+
+    it("passes a price that is not whole zloty unchanged, so that the API's 400 becomes the invalid filter message", async () => {
+      vi.mocked(loadCatalog).mockResolvedValue({ kind: "invalid-filter" });
+      expect(renderToStaticMarkup(await Home(props({ "cena-od": "12,5" })))).toContain("Nieprawidłowy filtr");
+      expect(loadCatalog).toHaveBeenCalledExactlyOnceWith({ priceMin: "12,5" });
+    });
+
+    it("shows the invalid filter message without asking for products for an unknown sort or a dostepne other than 1", async () => {
+      const queries: Query[] = [{ sort: "popularne" }, { dostepne: "0" }];
+      for (const query of queries) {
+        expect(renderToStaticMarkup(await Home(props(query)))).toContain("Nieprawidłowy filtr");
+        expect(await generateMetadata(metaProps(query))).toMatchObject({ title: "Nieprawidłowy filtr | Rytm", robots: { index: false } });
+      }
+      expect(loadCatalog).not.toHaveBeenCalled();
+    });
+
+    it("shows the filters in the page: active filters, sort and the pagination keep them", async () => {
+      vi.mocked(loadCatalog).mockResolvedValue({ ...okPage(2), products: { ...okPage(2).products, total: 60 } });
+      const markup = renderToStaticMarkup(await Home(props(FILTERED)));
+      expect(markup).toContain("Usuń filtr: Kolor: czarne");
+      expect(markup).toMatch(/<option[^>]*selected=""[^>]*>Cena rosnąco<\/option>/);
+      expect(markup).toContain("/?sort=cena-rosnaco&amp;cena-od=100&amp;cena-do=250&amp;dostepne=1&amp;o=Kolor%3Aczarne&amp;o=Rozmiar%3A42&amp;page=3");
+    });
+
+    it("is noindex, follow with the plain catalogue address as canonical for a sort or any filter, and not for a page alone", async () => {
+      for (const query of [{ sort: "nazwa" }, { "cena-od": "1" }, { "cena-do": "1" }, { dostepne: "1" }, { o: "Kolor:czarne" }, FILTERED]) {
+        expect(await generateMetadata(metaProps(query))).toMatchObject({
+          robots: { index: false, follow: true },
+          alternates: { canonical: "http://store.test/" },
+        });
+      }
+      expect(await generateMetadata(metaProps({ page: "2", q: "x", kategoria: "y" }))).not.toHaveProperty("robots");
+    });
   });
 
   describe("/?category=<id>", () => {
@@ -60,7 +126,7 @@ describe("Home page", () => {
       vi.mocked(loadTree).mockReturnValue(new Promise((resolve) => (release = resolve)));
       const rendering = Home(props({ category: "buty" })).catch((error: unknown) => error);
       await vi.waitFor(() => expect(loadTree).toHaveBeenCalled());
-      expect(loadCatalog).toHaveBeenCalledWith("buty", undefined);
+      expect(loadCatalog).toHaveBeenCalledWith({ category: "buty" });
       release(TREE);
       await rendering;
       vi.mocked(loadTree).mockResolvedValue(TREE);
@@ -97,7 +163,7 @@ describe("Home page", () => {
     it("loads the list for the first value of each repeated parameter", async () => {
       vi.mocked(loadCatalog).mockResolvedValue(okPage(2));
       const metadata = await generateMetadata(metaProps({ page: ["2", "3"], utm_source: "x" }));
-      expect(loadCatalog).toHaveBeenCalledWith(undefined, "2");
+      expect(loadCatalog).toHaveBeenCalledWith({ page: "2" });
       expect(metadata).toMatchObject({
         title: "Wszystkie produkty – strona 2 | Rytm",
         alternates: { canonical: "http://store.test/?page=2" },

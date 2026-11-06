@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The page renders client components (filters, sort) that need a router; the tests only read their markup.
+vi.mock("next/navigation", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/navigation")>()), useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/catalog/load-catalog", () => ({ loadCatalogForRequest: vi.fn() }));
 vi.mock("@/catalog/category-tree", () => ({ loadCategoryTreeForRequest: vi.fn() }));
 
@@ -35,14 +37,14 @@ afterEach(() => {
 describe("the category page", () => {
   it("lists the products of the category found by the slug path, asking the API for its id and the page", async () => {
     await html(["bieganie", "buty"], { page: ["2", "3"] });
-    expect(loadCatalog).toHaveBeenCalledWith("buty", "2");
+    expect(loadCatalog).toHaveBeenCalledWith({ category: "buty", page: "2" });
   });
 
   it("resolves a department and a third level category too", async () => {
     await html(["bieganie"]);
-    expect(loadCatalog).toHaveBeenLastCalledWith("bieganie", undefined);
+    expect(loadCatalog).toHaveBeenLastCalledWith({ category: "bieganie" });
     await html(["bieganie", "buty", "trailowe"]);
-    expect(loadCatalog).toHaveBeenLastCalledWith("trailowe", undefined);
+    expect(loadCatalog).toHaveBeenLastCalledWith({ category: "trailowe" });
   });
 
   it("answers 404 for a path that is not in the tree, without asking for products", async () => {
@@ -67,7 +69,7 @@ describe("the category page", () => {
     expect(loadCatalog).not.toHaveBeenCalled();
     release(TREE);
     await rendering;
-    expect(loadCatalog).toHaveBeenCalledWith("buty", undefined);
+    expect(loadCatalog).toHaveBeenCalledWith({ category: "buty" });
   });
 
   it("fails (the error page) when the tree cannot be read", async () => {
@@ -126,6 +128,54 @@ describe("the category page", () => {
   });
 });
 
+describe("filters and sorting on the category page", () => {
+  const FILTERED: Query = { sort: "cena-malejaco", "cena-od": "100", dostepne: "1", o: ["Kolor:czarne"], page: "3" };
+
+  it("asks the API for the category, the sort, the filters and the page", async () => {
+    await html(["bieganie", "buty"], FILTERED);
+    expect(loadCatalog).toHaveBeenCalledExactlyOnceWith({
+      category: "buty",
+      option: ["Kolor:czarne"],
+      priceMin: "10000",
+      available: true,
+      sort: "price_desc",
+      page: "3",
+    });
+  });
+
+  it("ignores the phrase and the category of the search page", async () => {
+    const markup = await html(["bieganie", "buty"], { q: "kurtka", kategoria: "rower" });
+    expect(loadCatalog).toHaveBeenCalledExactlyOnceWith({ category: "buty" });
+    expect(markup).not.toContain("kurtka");
+    expect(markup).not.toContain("kategoria");
+  });
+
+  it("shows the invalid filter message without asking for products for an unknown sort, after the 404 check of the path", async () => {
+    expect(await html(["bieganie", "buty"], { sort: "popularne" })).toContain("Nieprawidłowy filtr");
+    expect(loadCatalog).not.toHaveBeenCalled();
+    const failure = await CategoryPage(props(["nie-ma"], { sort: "popularne" })).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ digest: "NEXT_HTTP_ERROR_FALLBACK;404" });
+  });
+
+  it("keeps the filters in the pagination under the category address", async () => {
+    vi.mocked(loadCatalog).mockResolvedValue(okPage(3, 100));
+    const markup = await html(["bieganie", "buty"], FILTERED);
+    expect(markup).toContain("/c/bieganie/buty?sort=cena-malejaco&amp;cena-od=100&amp;dostepne=1&amp;o=Kolor%3Aczarne&amp;page=4");
+  });
+
+  it("is noindex, follow with the category address as canonical, without the page, for a sort or a filter", async () => {
+    expect(await generateMetadata(metaProps(["bieganie", "buty"], FILTERED))).toMatchObject({
+      robots: { index: false, follow: true },
+      alternates: { canonical: "http://store.test/c/bieganie/buty" },
+    });
+    expect(await generateMetadata(metaProps(["bieganie", "buty"], { o: "Kolor:czarne" }))).toMatchObject({ robots: { index: false, follow: true } });
+  });
+
+  it("keeps the JSON-LD BreadcrumbList on a filtered page", async () => {
+    expect(ldOf(await html(["bieganie", "buty"], FILTERED))).toHaveLength(1);
+  });
+});
+
 describe("generateMetadata of the category page", () => {
   it("titles the page with the category name and makes the category address canonical, with the page above 1", async () => {
     vi.mocked(loadCatalog).mockResolvedValue(okPage(2, 60));
@@ -134,7 +184,7 @@ describe("generateMetadata of the category page", () => {
       description: "Produkty z kategorii Buty w sklepie Rytm.",
       alternates: { canonical: "http://store.test/c/bieganie/buty?page=2" },
     });
-    expect(loadCatalog).toHaveBeenCalledWith("buty", "2");
+    expect(loadCatalog).toHaveBeenCalledWith({ category: "buty", page: "2" });
   });
 
   it("has the plain category address as canonical on the first page", async () => {

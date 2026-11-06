@@ -49,10 +49,8 @@ describe("ProductGrid", () => {
     expect(screen.getByRole("img", { name: "Brak zdjęcia", hidden: true })).toBeTruthy();
   });
 
-  it("shows a message with a link to the whole catalogue for an empty list", () => {
+  it("renders no list for an empty page (the listing shows the message)", () => {
     render(<ProductGrid products={[]} offers={{}} />);
-    expect(screen.getByText("Brak produktów do wyświetlenia.")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Zobacz cały katalog" }).getAttribute("href")).toBe("/");
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
   });
 });
