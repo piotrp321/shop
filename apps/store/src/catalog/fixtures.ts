@@ -64,3 +64,41 @@ export function makeOffer(n: number, overrides: Partial<ProductOffer> = {}): Pro
     ...overrides,
   };
 }
+
+type ProductDetails = components["schemas"]["ProductDetails"];
+
+export const PRODUCT_WIDTHS = [640, 960, 1280, 1600] as const;
+
+/** A photo of the product page: the `product` size (640 to 1600 px). */
+export function makeProductPhoto(overrides: Partial<ProductImage> = {}): ProductImage {
+  return {
+    alt: "Zdjęcie produktu",
+    size: "product",
+    aspectRatio: "1:1",
+    variants: {
+      webp: PRODUCT_WIDTHS.map((width) => ({ width, url: `http://imgproxy.test/p${width}/plain.webp` })),
+    },
+    ...overrides,
+  };
+}
+
+/** The details of product n: two photos, the path Bieganie > Buty and one default variant (the id of makeVariant(n, 1)). */
+export function makeDetails(n: number, overrides: Partial<ProductDetails> = {}): ProductDetails {
+  return {
+    id: makeProduct(n).id,
+    slug: `produkt-${n}`,
+    name: `Produkt ${n}`,
+    shortDescription: `Opis ${n}`,
+    breadcrumb: [
+      { id: "bieganie", name: "Bieganie" },
+      { id: "buty", name: "Buty" },
+    ],
+    images: [
+      makeProductPhoto({ alt: `Zdjęcie ${n}, pierwsze`, variants: { webp: PRODUCT_WIDTHS.map((width) => ({ width, url: `http://imgproxy.test/a${n}-${width}/plain.webp` })) } }),
+      makeProductPhoto({ alt: `Zdjęcie ${n}, drugie`, variants: { webp: PRODUCT_WIDTHS.map((width) => ({ width, url: `http://imgproxy.test/b${n}-${width}/plain.webp` })) } }),
+    ],
+    variantAxes: [],
+    variants: [{ variantId: variantId(n, 1), label: "", values: [] }],
+    ...overrides,
+  };
+}
