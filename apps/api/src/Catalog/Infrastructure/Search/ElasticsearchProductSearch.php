@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Catalog\Infrastructure\Search;
 
 use App\Catalog\Application\Port\ProductSearch;
+use App\Catalog\Application\Search\ProductSearchCriteria;
+use App\Catalog\Application\Search\SearchFacets;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchResult;
 use Elastic\Elasticsearch\Client;
@@ -18,11 +20,11 @@ final readonly class ElasticsearchProductSearch implements ProductSearch
     {
     }
 
-    public function search(?string $categoryId, int $page, int $perPage): SearchResult
+    public function search(ProductSearchCriteria $criteria): SearchResult
     {
-        if ($page < 1 || $perPage < 1) {
-            throw new \InvalidArgumentException('The page and the page size must be at least 1.');
-        }
+        $categoryId = $criteria->categoryId;
+        $page = $criteria->page;
+        $perPage = $criteria->perPage;
 
         // Elasticsearch rejects from + size beyond the result window. A page starting at or after its end only
         // counts the matches; a page crossing it is cut at its end.
@@ -49,6 +51,6 @@ final readonly class ElasticsearchProductSearch implements ProductSearch
             $items[] = ProductIndexDefinition::document(\is_array($hit) ? ($hit['_source'] ?? null) : null);
         }
 
-        return new SearchResult($items, $total);
+        return new SearchResult($items, $total, SearchFacets::empty());
     }
 }

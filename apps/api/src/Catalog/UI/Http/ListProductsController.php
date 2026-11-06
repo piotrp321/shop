@@ -7,12 +7,14 @@ namespace App\Catalog\UI\Http;
 use App\Catalog\Application\Query\ListProducts;
 use App\Catalog\Application\Query\ProductListItem;
 use App\Catalog\Application\Query\ProductPage;
+use App\Catalog\Application\Search\ProductSort;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Shared\Infrastructure\Http\Cache\CacheTagger;
 use App\Shared\Infrastructure\Http\Cache\CacheTags;
 use App\Shared\Infrastructure\Http\Cache\PublicReadErrorCacheSubscriber;
 use OpenApi\Attributes as OA;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapQueryString;
 use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
@@ -20,13 +22,18 @@ use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\HandleTrait;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Validator\Exception\ValidationFailedException;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 final class ListProductsController
 {
     use HandleTrait;
 
-    public function __construct(MessageBusInterface $queryBus, private readonly CacheTagger $cacheTagger)
-    {
+    public function __construct(
+        MessageBusInterface $queryBus,
+        private readonly CacheTagger $cacheTagger,
+        private readonly ValidatorInterface $validator,
+    ) {
         $this->messageBus = $queryBus;
     }
 
@@ -72,11 +79,27 @@ final class ListProductsController
             ),
         ],
     )]
-    public function __invoke(#[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] ListProductsQuery $query = new ListProductsQuery()): JsonResponse
+    public function __invoke(Request $request, #[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] ListProductsQuery $query = new ListProductsQuery()): JsonResponse
     {
+        $options = OptionFilter::fromQueryString($request->server->getString('QUERY_STRING'));
+        $violations = $this->validator->validate($options);
+        if (\count($violations) > 0) {
+            throw new ValidationFailedException($options, $violations);
+        }
+
         try {
             /** @var ProductPage $page */
-            $page = $this->handle(new ListProducts($query->category, $query->page, $query->perPage));
+            $page = $this->handle(new ListProducts(
+                $query->category,
+                $query->page,
+                $query->perPage,
+                $query->phrase(),
+                $options->axes(),
+                $query->priceMin,
+                $query->priceMax,
+                ListProductsQuery::AVAILABLE === $query->available,
+                null === $query->sort ? null : ProductSort::from($query->sort),
+            ));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; only a transient search failure becomes a 503.
             $wrapped = $failure->getWrappedExceptions();

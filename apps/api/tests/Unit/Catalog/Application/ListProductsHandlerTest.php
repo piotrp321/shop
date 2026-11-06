@@ -24,6 +24,9 @@ use PHPUnit\Framework\TestCase;
 final class ListProductsHandlerTest extends TestCase
 {
     private const string CATEGORY = '00000000-0000-4000-8000-0000000000a1';
+    private const string RUNNING = '00000000-0000-4000-8000-0000000000a2';
+    private const string TREKKING = '00000000-0000-4000-8000-0000000000a3';
+    private const string GRANDCHILD = '00000000-0000-4000-8000-0000000000a4';
     private const string UNKNOWN = '00000000-0000-4000-8000-0000000000ff';
     private const string KEY = 'originals/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.jpg';
 
@@ -35,7 +38,7 @@ final class ListProductsHandlerTest extends TestCase
             $this->handle($search, new ListProducts(self::UNKNOWN, 1, 24));
             self::fail('Expected CategoryNotFound.');
         } catch (CategoryNotFound) {
-            self::assertNull($search->lastCall);
+            self::assertNull($search->lastCriteria);
         }
     }
 
@@ -87,7 +90,10 @@ final class ListProductsHandlerTest extends TestCase
             2,
             412,
         ), $page);
-        self::assertSame(['categoryId' => self::CATEGORY, 'page' => 3, 'perPage' => 2], $search->lastCall);
+        self::assertNotNull($search->lastCriteria);
+        self::assertSame(self::CATEGORY, $search->lastCriteria->categoryId);
+        self::assertSame(3, $search->lastCriteria->page);
+        self::assertSame(2, $search->lastCriteria->perPage);
     }
 
     public function testPageBeyondTheEndKeepsTheRealTotal(): void
@@ -102,7 +108,14 @@ final class ListProductsHandlerTest extends TestCase
     private function handle(FakeProductSearch $search, ListProducts $query): ProductPage
     {
         $categories = new InMemoryCategoryRepository();
-        $categories->save(Category::createRoot(CategoryId::fromString(self::CATEGORY), new CategoryName('Buty'), new CategorySlug('buty')));
+        $root = Category::createRoot(CategoryId::fromString(self::CATEGORY), new CategoryName('Buty'), new CategorySlug('buty'));
+        $categories->save($root);
+        // Saved in the reverse of the tree order on purpose.
+        $trekking = Category::createChild(CategoryId::fromString(self::TREKKING), new CategoryName('Trekking'), new CategorySlug('trekking'), $root);
+        $running = Category::createChild(CategoryId::fromString(self::RUNNING), new CategoryName('Bieganie'), new CategorySlug('bieganie'), $root);
+        $categories->save($trekking);
+        $categories->save($running);
+        $categories->save(Category::createChild(CategoryId::fromString(self::GRANDCHILD), new CategoryName('Górskie'), new CategorySlug('gorskie'), $trekking));
 
         return (new ListProductsHandler($search, new class implements ImageUrlGenerator {
             public function url(string $imageKey, ImageSize $size, int $width, ImageFormat $format): string

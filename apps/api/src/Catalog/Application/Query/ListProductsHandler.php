@@ -8,6 +8,7 @@ use App\Catalog\Application\Image\ListingImage;
 use App\Catalog\Application\Port\ImageUrlGenerator;
 use App\Catalog\Application\Port\ProductSearch;
 use App\Catalog\Application\Search\ProductDocument;
+use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Domain\Category\CategoryId;
@@ -37,7 +38,17 @@ final readonly class ListProductsHandler
             $this->categories->get(CategoryId::fromString($query->categoryId));
         }
 
-        $result = $this->search->search($query->categoryId, $query->page, $query->perPage);
+        $result = $this->search->search(new ProductSearchCriteria(
+            $query->page,
+            $query->perPage,
+            $query->categoryId,
+            $query->phrase,
+            $query->options,
+            $query->priceMin,
+            $query->priceMax,
+            $query->availableOnly,
+            $query->sort,
+        ));
 
         return new ProductPage(
             array_map($this->item(...), $result->items),

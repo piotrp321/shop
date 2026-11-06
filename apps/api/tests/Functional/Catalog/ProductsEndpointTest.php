@@ -6,6 +6,7 @@ namespace App\Tests\Functional\Catalog;
 
 use App\Catalog\Application\Port\ProductSearch;
 use App\Catalog\Application\Search\ProductDocument;
+use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchResult;
 use App\Catalog\Application\Search\SearchUnavailable;
@@ -391,7 +392,7 @@ final class ProductsEndpointTest extends WebTestCase
             {
             }
 
-            public function search(?string $categoryId, int $page, int $perPage): SearchResult
+            public function search(ProductSearchCriteria $criteria): SearchResult
             {
                 throw $this->failure;
             }
