@@ -5,6 +5,7 @@ framework:
         transports:
             outbox: 'in-memory://'
             scheduled: 'in-memory://'
+            payment_simulator: 'in-memory://'
             # Serialized, so the JSON serializer of `events` is exercised.
             events: 'in-memory://?serialize=true'
             failed: 'in-memory://'

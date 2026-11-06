@@ -1,0 +1,71 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Tests\Support;
+
+use App\Kernel;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
+use Symfony\Contracts\HttpClient\ResponseInterface;
+
+/**
+ * The HTTP client of the calls between the shop and the payment simulator in the tests (spec: "Testy wywołań HTTP
+ * dostawców"): a MockHttpClient that does not leave the process but hands every request, whatever its host, to
+ * another instance of the `test` kernel and returns its response. The other instance has its own container and
+ * EntityManager, so a `flush` or an error on the called side never touches the UnitOfWork of the caller; the
+ * database is the same (the connection of DAMA, the transaction of the test), so what one side stores the other
+ * reads. A test of a failing provider replaces the client with a MockHttpClient of constant responses.
+ *
+ * The request is built from the client's normalized options (the body is already a string, `auth_basic` and
+ * `auth_bearer` are already in the headers). Redirects are followed by MockHttpClient as by any client.
+ */
+final class KernelForwardingHttpClient
+{
+    public static function create(): MockHttpClient
+    {
+        return new MockHttpClient(static fn (string $method, string $url, array $options): ResponseInterface => self::forward($method, $url, $options));
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function forward(string $method, string $url, array $options): ResponseInterface
+    {
+        $server = [];
+        /** @var array<string, list<string>> $headers */
+        $headers = $options['normalized_headers'] ?? [];
+        foreach ($headers as $lines) {
+            foreach ($lines as $line) {
+                [$name, $value] = explode(':', $line, 2) + [1 => ''];
+                $key = strtoupper(str_replace('-', '_', trim($name)));
+                $server[\in_array($key, ['CONTENT_TYPE', 'CONTENT_LENGTH'], true) ? $key : 'HTTP_'.$key] = ltrim($value);
+            }
+        }
+        $body = $options['body'] ?? '';
+        if ($body instanceof \Closure) {
+            $content = '';
+            while ('' !== $chunk = (string) $body(16_372)) {
+                $content .= $chunk;
+            }
+            $body = $content;
+        }
+
+        $request = Request::create($url, $method, [], [], [], $server, \is_string($body) ? $body : '');
+        $kernel = new Kernel('test', false);
+        $kernel->boot();
+        try {
+            $response = $kernel->handle($request, HttpKernelInterface::MAIN_REQUEST, true);
+            $kernel->terminate($request, $response);
+        } finally {
+            $kernel->shutdown();
+        }
+
+        return new MockResponse((string) $response->getContent(), [
+            'http_code' => $response->getStatusCode(),
+            'response_headers' => $response->headers->allPreserveCase(),
+        ]);
+    }
+}

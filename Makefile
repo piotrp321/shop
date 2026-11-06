@@ -1,4 +1,4 @@
-.PHONY: up down logs ps seed check test varnish-test e2e e2e-check e2e-agent api-client keycloak-reset
+.PHONY: up down logs ps seed check test init-env-test varnish-test e2e e2e-check e2e-agent api-client keycloak-reset
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -47,6 +47,11 @@ test:
 	$(MAKE) -C apps/store test
 	$(MAKE) -C apps/admin test
 	$(MAKE) varnish-test
+
+# Tests of infra/scripts/init-env.sh in a temporary copy (a real .env.local is never touched); runs on the host, like
+# the script itself, and needs only sh and openssl. Not part of `test`; CI runs it as a step of its own.
+init-env-test:
+	sh infra/scripts/test-init-env.sh
 
 # VCL tests (infra/varnish/tests/*.vtc) with varnishtest from the image of the varnish service; no running stack and
 # no network. The backend of default.vcl is api:80: in the test container api is 127.0.0.1, where the .vtc servers listen.
