@@ -267,6 +267,10 @@ services:
       # Order confirmation emails: SMTP of Mailpit (not secrets) and the sender address.
       MAILER_DSN: smtp://mailpit:1025
       MAILER_FROM: Rytm <zamowienia@rytm.localhost>
+      # The caches of the store invalidated after a price or stock change (StorefrontCache): PURGE to Varnish with
+      # VARNISH_PURGE_SECRET, then POST /api/revalidate to the store server with STORE_REVALIDATE_SECRET (.env.local).
+      VARNISH_URL: http://varnish
+      STORE_INTERNAL_URL: http://store:3000
     volumes:
       - ./apps/api:/app
       # Dependencies live in a volume, not on the host.
@@ -281,6 +285,32 @@ services:
       retries: 10
       # The entrypoint runs `composer install` on first start.
       start_period: 120s
+
+  # Cache in front of the public catalog reads of the API (infra/varnish/default.vcl). Only the store's server reads
+  # through it (API_CATALOG_URL), over the compose network: no port on the host. PURGE needs the X-Purge-Token
+  # header equal to VARNISH_PURGE_SECRET from .env.local; without the secret the VCL does not load and Varnish
+  # does not start.
+  varnish:
+    image: varnish:9.1.0
+    depends_on:
+      # The backend host `api` is resolved when the VCL is loaded, so Varnish restarts when the api is recreated.
+      api:
+        condition: service_started
+        restart: true
+    env_file:
+      - path: ./.env.local
+        required: true
+    # Extra flags of the image's standard varnishd command: default TTL 0, so a response without Cache-Control
+    # is not cached.
+    command: ["-t", "0"]
+    volumes:
+      - ./infra/varnish/default.vcl:/etc/varnish/default.vcl:ro
+    healthcheck:
+      # The child process runs and has loaded the VCL.
+      test: ["CMD-SHELL", "varnishadm status | grep -q running"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # Consumes the outbox (relay to RabbitMQ) before events. `make up` starts it last, once the migrations have
   # created the outbox table.
@@ -319,18 +349,39 @@ services:
   store:
     build:
       context: ./apps/store
-    # Dependencies are installed into the node_modules volume when package-lock.json is newer than the install.
-    command: ["sh", "-c", "[ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; exec npm run dev"]
+    # STORE_MODE selects the server: `dev` (default) runs `next dev`; `production` runs `next build` and then
+    # `next start` (CI runs the end-to-end tests on this one). Any other value stops the container before anything
+    # is installed. Dependencies are installed into the node_modules volume when package-lock.json is newer than
+    # the install. A failing `next build` exits the container, so `make up` fails instead of waiting for a server.
+    command:
+      - sh
+      - -c
+      - |
+        case "$$STORE_MODE" in
+          dev | production) ;;
+          *) echo "Unknown STORE_MODE '$$STORE_MODE': use 'dev' or 'production'" >&2; exit 1 ;;
+        esac
+        [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci || exit 1
+        if [ "$$STORE_MODE" = production ]; then
+          npm run build || exit 1
+          exec npm run start -- -H 0.0.0.0
+        fi
+        exec npm run dev
     depends_on:
       redis:
         condition: service_healthy
-    # STORE_CLIENT_SECRET (Keycloak client `store`) and STORE_SESSION_SECRET (cookie signatures) come from .env.local.
+    # STORE_CLIENT_SECRET (Keycloak client `store`), STORE_SESSION_SECRET (cookie signatures) and
+    # STORE_REVALIDATE_SECRET (POST /api/revalidate from the API worker) come from .env.local.
     env_file:
       - path: ./.env.local
         required: true
     environment:
+      # `dev` (`next dev`, default) or `production` (`next build` + `next start`), see command.
+      STORE_MODE: ${STORE_MODE:-dev}
       # The server calls the API over the compose network, never through the browser-facing port.
       API_INTERNAL_URL: http://api
+      # The catalog reads (list, categories, offers) go through Varnish; the cart, checkout and login never do.
+      API_CATALOG_URL: http://varnish
       # Public browser-facing URL of the store (not a secret): redirect URIs, returnTo checks, cookie flags.
       STORE_URL: http://localhost:${STORE_PORT:-3000}
       # Login sessions; the store's integration tests use database 1 of the same Redis.
@@ -354,8 +405,8 @@ services:
       start_interval: 1s
       timeout: 5s
       retries: 10
-      # `npm ci` runs on first start before the dev server is up.
-      start_period: 180s
+      # `npm ci` runs on first start and, in production, `next build` after it, both before the server is up.
+      start_period: 600s
 
   admin:
     build:
@@ -395,6 +446,8 @@ services:
     ipc: host
     init: true
     environment:
+      # The mode the store runs in: tests of the production build (ISR cache) run only when it is `production`.
+      STORE_MODE: ${STORE_MODE:-dev}
       STORE_PORT: ${STORE_PORT:-3000}
       ADMIN_PORT: ${ADMIN_PORT:-5173}
       API_PORT: ${API_PORT:-8000}

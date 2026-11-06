@@ -14,6 +14,7 @@ use App\Inventory\Domain\Stock\StockMovement;
 use App\Inventory\Domain\Stock\StockMovementType;
 use App\Inventory\Domain\Stock\VariantId;
 use App\Inventory\Infrastructure\Persistence\Doctrine\Record\StockMovementRecord;
+use App\Shared\Domain\Event\DomainEventPublisher;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\Types\Types;
@@ -23,14 +24,18 @@ use Symfony\Component\Uid\Uuid;
  * Maps the StockItem aggregate to and from its row (see Record\StockItemRecord) and appends its movements (see
  * Record\StockMovementRecord), with plain statements on the connection of the entity manager, so they join the
  * transaction of command.bus. No identity map: a row is always read as stored, and a rolled-back write leaves no
- * managed record behind. The locking and the versioned write are explicit SQL.
+ * managed record behind. The locking and the versioned write are explicit SQL. The StockLevelChanged of a save goes
+ * to the outbox (the same connection) in the same transaction, so a rollback, also to the savepoint of a nested
+ * dispatch, takes the event back with the change.
  */
 final readonly class DoctrineStockItemRepository implements StockItemRepository
 {
     private const string COLUMNS = 'variant_id, physical, reserved, version, updated_at';
 
-    public function __construct(private Connection $connection)
-    {
+    public function __construct(
+        private Connection $connection,
+        private DomainEventPublisher $events,
+    ) {
     }
 
     /**
@@ -129,11 +134,13 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
      * of the table refuses a state breaking the invariant. The movements are inserted by the same transaction, so
      * there is no change without its movement and no movement without its change. The partial unique index of receipt
      * keys refuses a receipt with a key another transaction stored after this one looked it up (two variants received
-     * with one key at the same time): the transaction fails as ReceiptKeyReused and must be rolled back.
+     * with one key at the same time): the transaction fails as ReceiptKeyReused and must be rolled back. The level
+     * change of the save, if any, is published last, in the same transaction.
      */
     public function save(StockItem $item): void
     {
         $movements = $item->releaseMovements();
+        $events = $item->releaseEvents();
         if ([] === $movements) {
             return;
         }
@@ -157,6 +164,7 @@ final readonly class DoctrineStockItemRepository implements StockItemRepository
         foreach ($movements as $movement) {
             $this->append($movement);
         }
+        $this->events->publish(...$events);
     }
 
     /**

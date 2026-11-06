@@ -158,21 +158,22 @@ jobs:
         if: env.FULL_CI == 'true'
         run: sh .github/scripts/background.sh wait services
 
-      # All suites of every app; api `test` migrates shop_test first. The store and admin suites run in the
-      # background next to the api one; every suite runs to the end and any failure fails the step.
+      # All suites of every app; api `test` migrates shop_test first. The store and admin suites and the VCL tests
+      # (varnishtest in the image of the varnish service, without the stack) run in the background next to the api
+      # suite; every suite runs to the end and any failure fails the step.
       - name: Tests
         if: env.FULL_CI == 'true'
         run: |
           sh .github/scripts/background.sh start store-tests make -C apps/store test RUN="$CI_RUN"
           sh .github/scripts/background.sh start admin-tests make -C apps/admin test RUN="$CI_RUN"
+          sh .github/scripts/background.sh start varnish-tests make varnish-test
           status=0
           make -C apps/api test RUN="$CI_RUN" || status=$?
-          echo "::group::store tests"
-          sh .github/scripts/background.sh wait store-tests || status=$?
-          echo "::endgroup::"
-          echo "::group::admin tests"
-          sh .github/scripts/background.sh wait admin-tests || status=$?
-          echo "::endgroup::"
+          for suite in store-tests admin-tests varnish-tests; do
+            echo "::group::$suite"
+            sh .github/scripts/background.sh wait "$suite" || status=$?
+            echo "::endgroup::"
+          done
           exit "$status"
 
       - name: Wait for make check
@@ -200,6 +201,8 @@ jobs:
     timeout-minutes: 45
     env:
       FULL_CI: ${{ needs.scope.outputs.docs_only != 'true' }}
+      # The store runs the production build (`next build` + `next start`); compose passes the mode on to the e2e container.
+      STORE_MODE: production
     steps:
       - name: Require the scope job
         if: needs.scope.result != 'success'

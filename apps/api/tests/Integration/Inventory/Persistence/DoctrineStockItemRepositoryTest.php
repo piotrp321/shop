@@ -11,6 +11,7 @@ use App\Inventory\Infrastructure\Persistence\Doctrine\DoctrineStockItemRepositor
 use App\Inventory\Infrastructure\Persistence\Doctrine\Record\StockItemRecord;
 use App\Tests\Integration\Inventory\IndependentConnections;
 use App\Tests\Integration\Inventory\StockFixture;
+use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use App\Tests\Support\StatementCounter;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
@@ -34,7 +35,7 @@ final class DoctrineStockItemRepositoryTest extends KernelTestCase
         $connection = self::getContainer()->get('doctrine.dbal.default_connection');
         self::assertInstanceOf(Connection::class, $connection);
         $this->connection = $connection;
-        $this->repository = new DoctrineStockItemRepository($connection);
+        $this->repository = new DoctrineStockItemRepository($connection, new RecordingDomainEventPublisher());
     }
 
     public function testLockManyReturnsTheStoredStocksInAscendingVariantIdWithoutTheMissingOnes(): void
@@ -60,7 +61,7 @@ final class DoctrineStockItemRepositoryTest extends KernelTestCase
         $other = $this->independentConnection();
 
         $holder->beginTransaction();
-        new DoctrineStockItemRepository($holder)->lockMany([VariantId::fromString($locked)]);
+        new DoctrineStockItemRepository($holder, new RecordingDomainEventPublisher())->lockMany([VariantId::fromString($locked)]);
 
         self::assertLockNotAvailable(static fn () => $other->fetchOne('SELECT 1 FROM inventory_stock_item WHERE variant_id = ? FOR UPDATE NOWAIT', [$locked]));
         self::assertSame(1, $other->fetchOne('SELECT 1 FROM inventory_stock_item WHERE variant_id = ? FOR UPDATE NOWAIT', [$free]));
@@ -78,7 +79,7 @@ final class DoctrineStockItemRepositoryTest extends KernelTestCase
         $other = $this->independentConnection();
 
         $reader->beginTransaction();
-        $items = new DoctrineStockItemRepository($reader)->findMany([VariantId::fromString($id), VariantId::fromString((string) Uuid::v7())]);
+        $items = new DoctrineStockItemRepository($reader, new RecordingDomainEventPublisher())->findMany([VariantId::fromString($id), VariantId::fromString((string) Uuid::v7())]);
 
         self::assertCount(1, $items);
         self::assertSame([5, 2], [$items[0]->physical(), $items[0]->reserved()]);

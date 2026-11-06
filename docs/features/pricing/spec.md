@@ -32,8 +32,11 @@ checkout, wiele krajów i walut, harmonogramy zmian stawek, edycja klasy podatko
   panelu) i nie importuje kodu Catalog. Adapter mapuje kod klasy z Catalog na `TaxClass`
   Pricing. Klasa podatkowa wariantu to klasa jego produktu.
 - Odczyt cen (`GetCurrentPrices`) czyta wyłącznie tabele Pricing, bez odczytu z Catalog.
-- Pricing w MVP nie publikuje ani nie konsumuje zdarzeń domenowych: nie ma konsumenta, a integracje w modularnym
-  monolicie są synchroniczne. Zdarzenie zmiany ceny (outbox) dochodzi razem z Varnishem i rewalidacją ISR.
+- Każdy zapis zmiany ceny (panel, seed, `pricing:reconcile-tax`) publikuje `VariantPriceChanged {variantId, source,
+  occurredAt}`: `DoctrineVariantPriceRepository::save` wpisuje je do outboxu w transakcji zapisu ceny i historii, więc
+  zapis odrzucony albo wycofany nie zostawia zdarzenia. Jedyny konsument (`Pricing_Infrastructure`) unieważnia cache
+  sklepu produktu wariantu (`docs/features/product-page/spec.md`, „Unieważnianie”); zdarzenie ze źródła `seed`
+  potwierdza bez unieważnienia. Poza tym integracje w modularnym monolicie są synchroniczne.
 
 ## Klasa podatkowa produktu (Catalog)
 
@@ -216,7 +219,8 @@ z tokenem realmu `shop`: 401):
 - Ceny listy pochodzą z oferty produktów (`GET /api/v1/product-offers`, `docs/features/cart/spec.md`): `ProductTile`
   pokazuje brutto przez `formatPrice(gross, currency)` (`Intl.NumberFormat("pl-PL")`), „od X zł” przy różnych cenach
   wariantów możliwych do kupienia, albo „Cena niedostępna” przy błędzie ofert.
-- Nowa cena jest widoczna w sklepie najpóźniej po czasie cache odpowiedzi (60 s).
+- Nowa cena jest widoczna w sklepie po obsłużeniu zdarzenia zmiany ceny (purge w Varnishu i rewalidacja strony
+  produktu), w sekundach; bez zdarzenia (np. koniec okresu stawki VAT) najpóźniej po `s-maxage` oferty (1 h).
 
 ## Panel (`apps/admin`)
 

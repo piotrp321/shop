@@ -16,6 +16,7 @@ use App\Pricing\Domain\Tax\VatRate;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineVariantPriceRepository;
 use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Pricing\IndependentEntityManagers;
+use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use App\Tests\Support\StatementCounter;
 use Doctrine\Common\EventManager;
 use Doctrine\DBAL\Connection;
@@ -43,7 +44,7 @@ final class DoctrineVariantPriceRepositoryTest extends KernelTestCase
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
         $this->entityManager = $entityManager;
         $this->connection = $entityManager->getConnection();
-        $this->prices = new DoctrineVariantPriceRepository($entityManager);
+        $this->prices = new DoctrineVariantPriceRepository($entityManager, new RecordingDomainEventPublisher());
     }
 
     public function testNewPriceIsStoredWithItsFirstHistoryEntry(): void
@@ -165,8 +166,8 @@ final class DoctrineVariantPriceRepositoryTest extends KernelTestCase
     {
         $first = $this->independentManager();
         $second = $this->independentManager();
-        $firstPrices = new DoctrineVariantPriceRepository($first);
-        $secondPrices = new DoctrineVariantPriceRepository($second);
+        $firstPrices = new DoctrineVariantPriceRepository($first, new RecordingDomainEventPublisher());
+        $secondPrices = new DoctrineVariantPriceRepository($second, new RecordingDomainEventPublisher());
         $price = $this->newPrice(10000, 'standard', PriceChangeOrigin::seed());
         $this->committedVariantIds[] = $price->id()->toString();
         $firstPrices->save($price);
@@ -211,8 +212,8 @@ final class DoctrineVariantPriceRepositoryTest extends KernelTestCase
     {
         $first = $this->independentManager();
         $second = $this->independentManager();
-        $firstPrices = new DoctrineVariantPriceRepository($first);
-        $secondPrices = new DoctrineVariantPriceRepository($second);
+        $firstPrices = new DoctrineVariantPriceRepository($first, new RecordingDomainEventPublisher());
+        $secondPrices = new DoctrineVariantPriceRepository($second, new RecordingDomainEventPublisher());
         $id = VariantId::fromString((string) Uuid::v4());
         $this->committedVariantIds[] = $id->toString();
 
@@ -241,7 +242,7 @@ final class DoctrineVariantPriceRepositoryTest extends KernelTestCase
     public function testFirstPriceCommittedBetweenTheReadAndTheInsertIsRefusedByThePrimaryKey(): void
     {
         $underTest = $this->independentManager();
-        $competing = new DoctrineVariantPriceRepository($this->independentManager());
+        $competing = new DoctrineVariantPriceRepository($this->independentManager(), new RecordingDomainEventPublisher());
         $id = VariantId::fromString((string) Uuid::v4());
         $this->committedVariantIds[] = $id->toString();
         $listener = new class(static function () use ($competing, $id): void {
@@ -265,7 +266,7 @@ final class DoctrineVariantPriceRepositoryTest extends KernelTestCase
         $eventManager->addEventListener(Events::preFlush, $listener);
 
         try {
-            new DoctrineVariantPriceRepository($underTest)->save(
+            new DoctrineVariantPriceRepository($underTest, new RecordingDomainEventPublisher())->save(
                 VariantPrice::create($id, GrossPrice::pln(11000), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'First')),
             );
             self::fail('Expected PriceModifiedConcurrently.');
@@ -317,7 +318,7 @@ final class DoctrineVariantPriceRepositoryTest extends KernelTestCase
     public function testFailedHistoryWriteRollsBackThePrice(bool $change): void
     {
         $manager = $this->independentManager();
-        $prices = new DoctrineVariantPriceRepository($manager);
+        $prices = new DoctrineVariantPriceRepository($manager, new RecordingDomainEventPublisher());
         $price = $this->newPrice(10000, 'standard', PriceChangeOrigin::seed());
         $id = $price->id()->toString();
         $this->committedVariantIds[] = $id;

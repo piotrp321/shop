@@ -40,7 +40,9 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
   i nie obciąży serwera. W produkcji przed imgproxy stoi CDN, który cache'uje wyniki.
 - **Varnish** – HTTP cache przed publicznymi endpointami odczytu API (katalog, wyszukiwarka, filtry).
   Odciąża API i Elasticsearch przy stronach wyszukiwarki renderowanych przez SSR, gdzie te same zapytania
-  powtarzają się bardzo często. Unieważnianie precyzyjne przez tagi (xkey), opisane niżej.
+  powtarzają się bardzo często. Serwer sklepu czyta przez niego katalog pod osobnym adresem (`API_CATALOG_URL`);
+  koszyk, kasa i logowanie idą do API bezpośrednio (`API_INTERNAL_URL`). Varnish nie ma portu na hoście,
+  a `PURGE` wymaga sekretu. Unieważnianie precyzyjne przez tagi (xkey), opisane niżej.
 - **Mailpit** – przechwytuje e-maile wysyłane lokalnie (potwierdzenia zamówień), z podglądem w przeglądarce.
 
 ## Zdjęcia produktów
@@ -93,10 +95,14 @@ Trzy warstwy cache, każda z jasną rolą:
 | Varnish | odpowiedzi publicznych endpointów `GET` katalogu i wyszukiwarki | purge po tagach (xkey) po zdarzeniu domenowym |
 | Cloudflare | obrazy z imgproxy, statyczne zasoby | adresy obrazów są niezmienne, więc bez unieważniania |
 
-- Każda odpowiedź katalogu dostaje tagi obiektów, które zawiera (np. `product-123`, `category-7`),
-  przez FOSHttpCacheBundle.
-- Zmiana produktu, ceny lub stanu publikuje zdarzenie domenowe. Jeden konsument unieważnia w Varnishu
-  odpowiedzi z danym tagiem, drugi rewaliduje odpowiednie strony w Next.js. Reszta cache zostaje.
+- Każda odpowiedź katalogu dostaje tagi obiektów, które zawiera (`catalog` i np.
+  `product-0192f0c4-7c1a-7c4e-9a6e-000000000001`), w nagłówku `xkey` ustawianym przez własny mały serwis tagów
+  w API (bez FOSHttpCacheBundle). Varnish usuwa nagłówek przed wysłaniem odpowiedzi.
+- Zmiana ceny lub poziomu dostępności publikuje zdarzenie domenowe (outbox). Jeden konsument robi kolejno: purge
+  w Varnishu odpowiedzi z tagiem produktu, potem rewalidację stron Next.js z tym tagiem (`POST /api/revalidate`
+  sklepu). Kolejność jest stała, więc regenerowana strona czyta już odświeżone dane. Reszta cache zostaje.
+  Zmiany bez zdarzenia odświeża `s-maxage` odpowiedzi i `revalidate` stron (siatka bezpieczeństwa, 1 h), a `make seed`
+  kończy się pełnym unieważnieniem (tag `catalog`).
 - Varnish nigdy nie cache'uje: koszyka, checkoutu, konta klienta, panelu admina ani żadnego żądania
   z nagłówkiem `Authorization` lub ciasteczkiem sesji.
 - Odpowiedzi publiczne mają jawne nagłówki `Cache-Control` ustawiane w API, a nie domyślne zachowanie Varnisha.
@@ -117,7 +123,8 @@ Trzy warstwy cache, każda z jasną rolą:
 Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie Server Components.
 
 - **Strony produktów i kategorii**: renderowane na serwerze (ISR). Gotowy HTML jest cache'owany,
-  a po zmianie ceny, stanu lub opisu API wysyła rewalidację na żądanie (zdarzenie domenowe → webhook do Next.js).
+  a po zmianie ceny lub stanu API wysyła rewalidację na żądanie (zdarzenie domenowe → purge Varnisha → webhook do
+  Next.js).
   Wyszukiwarka zawsze dostaje pełną treść, a ruch nie obciąża API przy każdym wejściu.
 - **Wyszukiwarka i filtry**: SSR, parametry w URL, kanoniczne adresy dla kombinacji filtrów,
   `noindex` dla kombinacji bez wartości SEO.

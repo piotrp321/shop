@@ -12,6 +12,7 @@ use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Infrastructure\Demo\DbalPricingReset;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineVariantPriceRepository;
+use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Uid\Uuid;
@@ -25,7 +26,7 @@ final class DbalPricingResetTest extends KernelTestCase
     {
         $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
-        $prices = new DoctrineVariantPriceRepository($entityManager);
+        $prices = new DoctrineVariantPriceRepository($entityManager, new RecordingDomainEventPublisher());
         foreach ([1000, 2000] as $gross) {
             $price = VariantPrice::create(VariantId::fromString((string) Uuid::v4()), GrossPrice::pln($gross), TaxClass::fromString('standard'), new PolishVatRates(), PriceChangeOrigin::seed());
             $prices->save($price);

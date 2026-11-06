@@ -17,6 +17,7 @@ use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\VatRate;
 use App\Pricing\Infrastructure\Persistence\Doctrine\Record\PriceHistoryRecord;
 use App\Pricing\Infrastructure\Persistence\Doctrine\Record\VariantPriceRecord;
+use App\Shared\Domain\Event\DomainEventPublisher;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\ORM\EntityManagerInterface;
@@ -27,8 +28,10 @@ final readonly class DoctrineVariantPriceRepository implements VariantPriceRepos
 {
     private const string COLUMNS = 'variant_id, currency, gross_amount, net_amount, vat_amount, vat_rate_bp, tax_class, version, updated_at';
 
-    public function __construct(private EntityManagerInterface $entityManager)
-    {
+    public function __construct(
+        private EntityManagerInterface $entityManager,
+        private DomainEventPublisher $events,
+    ) {
     }
 
     public function find(VariantId $id): ?VariantPrice
@@ -83,19 +86,24 @@ final readonly class DoctrineVariantPriceRepository implements VariantPriceRepos
     /**
      * The price was read at version() − 1 when it has unsaved history (0 for a new one). The versioned UPDATE checks
      * that version and the primary key refuses a second first price, both inside the transaction that appends
-     * the history entries. Any failure rolls the transaction back and closes the entity manager; the services
-     * resetter (kernel.reset) gives the next request or message a new one.
+     * the history entries. The VariantPriceChanged of the write goes to the outbox in the same transaction, after
+     * the row is written: this is the one place every path of a price change passes (command.bus handlers, the demo
+     * seed, pricing:reconcile-tax outside the bus), and a refused or rolled back write leaves no event. Any failure
+     * rolls the transaction back and closes the entity manager; the services resetter (kernel.reset) gives the next
+     * request or message a new one.
      */
     public function save(VariantPrice $price): void
     {
         $entries = $price->releaseHistory();
+        $events = $price->releaseEvents();
         if ([] === $entries) {
             return;
         }
 
         try {
-            $this->entityManager->wrapInTransaction(function () use ($price, $entries): void {
+            $this->entityManager->wrapInTransaction(function () use ($price, $entries, $events): void {
                 $this->write($price, $price->version() - 1, $entries);
+                $this->events->publish(...$events);
             });
         } catch (OptimisticLockException) {
             throw new PriceModifiedConcurrently();

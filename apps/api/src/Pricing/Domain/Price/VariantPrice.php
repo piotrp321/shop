@@ -15,11 +15,14 @@ use App\Pricing\Domain\Tax\VatRates;
  * Every change of the gross, net, VAT, rate or class records one history entry; a change to the identical set
  * records nothing and keeps the version. The version is the one the state will have once saved: a new price has
  * version 1, and the changes made before the next save share one version step, as they are saved by one write.
+ * They share one VariantPriceChanged too, with the source of the last change: one event per saved write.
  */
 final class VariantPrice
 {
     /** @var list<PriceHistoryEntry> */
     private array $unsavedHistory = [];
+
+    private ?VariantPriceChanged $unsavedChange = null;
 
     private function __construct(
         private readonly VariantId $id,
@@ -97,6 +100,17 @@ final class VariantPrice
         return $entries;
     }
 
+    /**
+     * @return list<VariantPriceChanged> the change recorded since the last call (at most one), then nothing
+     */
+    public function releaseEvents(): array
+    {
+        $change = $this->unsavedChange;
+        $this->unsavedChange = null;
+
+        return null === $change ? [] : [$change];
+    }
+
     public function id(): VariantId
     {
         return $this->id;
@@ -142,5 +156,6 @@ final class VariantPrice
     private function record(\DateTimeImmutable $changedAt, PriceChangeOrigin $origin): void
     {
         $this->unsavedHistory[] = new PriceHistoryEntry($this->id, $this->breakdown, $this->taxClass, $changedAt, $origin);
+        $this->unsavedChange = new VariantPriceChanged($this->id->toString(), $origin->source(), $changedAt);
     }
 }

@@ -34,6 +34,27 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ProductTile", () => {
+  describe("links to the product page", () => {
+    it("links the name and the photo to /p/<slug>", () => {
+      const { container } = render(<ProductTile product={product} offer={makeOffer(1)} sizes={SIZES} />);
+
+      expect(screen.getByRole("link", { name: product.name }).getAttribute("href")).toBe("/p/produkt-1");
+      const links = [...container.querySelectorAll("a")];
+      expect(links.map((link) => link.getAttribute("href"))).toEqual(["/p/produkt-1", "/p/produkt-1"]);
+      expect(links[0].contains(container.querySelector("img"))).toBe(true);
+    });
+
+    it("links a tile without a photo and without an offer too", () => {
+      render(<ProductTile product={{ ...product, image: null }} sizes={SIZES} />);
+      expect(screen.getByRole("link", { name: product.name }).getAttribute("href")).toBe("/p/produkt-1");
+    });
+
+    it("keeps the price and the level out of the link", () => {
+      render(<ProductTile product={product} offer={makeOffer(1)} sizes={SIZES} />);
+      expect(screen.getByRole("link", { name: product.name }).contains(screen.getByTestId("price"))).toBe(false);
+    });
+  });
+
   describe("a product with one variant", () => {
     it("shows the gross price formatted for Poland, the level and the button that adds the variant", async () => {
       render(<ProductTile product={product} offer={makeOffer(1)} sizes={SIZES} />);
