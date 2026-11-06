@@ -1,5 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addCartItem, changeCartItemQuantity, createApiClient, loadAccountSession, loadCart, loadCartSummary, placeOrder, removeCartItem } from "./client";
+import {
+  addCartItem,
+  changeCartItemQuantity,
+  createApiClient,
+  getPaymentStatus,
+  loadAccountSession,
+  loadCart,
+  loadCartSummary,
+  placeOrder,
+  removeCartItem,
+  startPayment,
+} from "./client";
 
 // Node has its own navigator.locks; every test decides whether the browser has Web Locks API. By default it has not.
 beforeEach(() => {
@@ -327,12 +338,14 @@ describe("placeOrder", () => {
     postalCode: "00-950",
     city: "Warszawa",
     expectedTotalGross: 39998,
+    provider: "demo-transfer",
   };
+  const REDIRECT_URL = "http://localhost:8000/payment-simulator/demo-transfer/pay/7d3f0a8e-4a1b-4c55-9f1e-2b3c4d5e6f70";
 
   it("posts the form as JSON to the store's own /api/checkout with the Idempotency-Key, same origin and uncached", async () => {
-    const fetch = stubFetch(async () => Response.json({ number: "R-100001" }, { status: 201 }));
+    const fetch = stubFetch(async () => Response.json({ number: "R-100001", redirectUrl: REDIRECT_URL }, { status: 201 }));
 
-    expect(await placeOrder(input, KEY)).toEqual({ status: "ok", number: "R-100001" });
+    expect(await placeOrder(input, KEY)).toEqual({ status: "ok", number: "R-100001", redirectUrl: REDIRECT_URL });
     expect(fetch).toHaveBeenCalledWith("/api/checkout", {
       method: "POST",
       credentials: "same-origin",
@@ -343,8 +356,17 @@ describe("placeOrder", () => {
   });
 
   it("takes a repeated request (200) as placed", async () => {
-    stubFetch(async () => Response.json({ number: "R-100001" }));
-    expect(await placeOrder(input, KEY)).toEqual({ status: "ok", number: "R-100001" });
+    stubFetch(async () => Response.json({ number: "R-100001", redirectUrl: REDIRECT_URL }));
+    expect(await placeOrder(input, KEY)).toEqual({ status: "ok", number: "R-100001", redirectUrl: REDIRECT_URL });
+  });
+
+  it.each([
+    ["null", { number: "R-100001", redirectUrl: null }],
+    ["missing", { number: "R-100001" }],
+    ["not a string", { number: "R-100001", redirectUrl: 5 }],
+  ])("takes an order whose payment did not start (address %s) as placed, without an address", async (_name, body) => {
+    stubFetch(async () => Response.json(body, { status: 201 }));
+    expect(await placeOrder(input, KEY)).toEqual({ status: "ok", number: "R-100001", redirectUrl: null });
   });
 
   const PROBLEMS = "tag:piotrp321.github.io,2026:shop/problems/";
@@ -387,6 +409,109 @@ describe("placeOrder", () => {
     stubFetch(async () => Response.json({}, { status: 201 }));
 
     expect(await placeOrder(input, KEY)).toEqual({ status: "failed" });
+  });
+});
+
+describe("startPayment", () => {
+  const KEY = "5f0c3c1e-8d7a-4b55-9b0a-0e8e3c1d2a11";
+  const REDIRECT_URL = "http://localhost:8000/payment-simulator/demo-card/pay/7d3f0a8e-4a1b-4c55-9f1e-2b3c4d5e6f70";
+  const PROBLEMS = "tag:piotrp321.github.io,2026:shop/problems/";
+
+  it("posts the provider as JSON to the store's own /api/checkout/payment with the Idempotency-Key, same origin and uncached", async () => {
+    const fetch = stubFetch(async () => Response.json({ redirectUrl: REDIRECT_URL }));
+
+    expect(await startPayment("demo-card", KEY)).toEqual({ status: "ok", redirectUrl: REDIRECT_URL });
+    expect(fetch).toHaveBeenCalledWith("/api/checkout/payment", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": KEY },
+      body: JSON.stringify({ provider: "demo-card" }),
+    });
+  });
+
+  it.each([
+    ["null", { redirectUrl: null }],
+    ["missing", {}],
+    ["not a string", { redirectUrl: 5 }],
+  ])("answers ok without an address when it is %s", async (_name, body) => {
+    stubFetch(async () => Response.json(body));
+    expect(await startPayment("demo-card", KEY)).toEqual({ status: "ok", redirectUrl: null });
+  });
+
+  const violations = [{ propertyPath: "provider", title: "Wybierz sposób płatności." }];
+
+  it.each([
+    [409, { type: `${PROBLEMS}order-already-paid`, detail: "x" }, { status: "conflict", reason: "already_paid", detail: "x" }],
+    [409, { type: `${PROBLEMS}payment-deadline-passed`, detail: "x" }, { status: "conflict", reason: "deadline_passed", detail: "x" }],
+    [409, { type: `${PROBLEMS}payment-in-progress`, detail: "x" }, { status: "conflict", reason: "in_progress", detail: "x" }],
+    [409, { type: `${PROBLEMS}payment-idempotency-key-reused`, detail: "x" }, { status: "conflict", reason: "key_reused", detail: "x" }],
+    [409, { type: `${PROBLEMS}something-new`, detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],
+    [409, { type: "constructor", detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],
+    [409, {}, { status: "conflict", reason: "unknown", detail: undefined }],
+    [422, { detail: "Wybierz sposób płatności.", violations }, { status: "invalid", detail: "Wybierz sposób płatności.", violations }],
+    [422, { detail: "Nieprawidłowe dane." }, { status: "invalid", detail: "Nieprawidłowe dane.", violations: [] }],
+    [404, { detail: "Nie znaleźliśmy zamówienia." }, { status: "not_found", detail: "Nie znaleźliśmy zamówienia." }],
+    [401, {}, { status: "unauthorized" }],
+    [403, {}, { status: "failed" }],
+    [500, {}, { status: "failed" }],
+    [503, {}, { status: "failed" }],
+  ])("maps a %s with %j to %j", async (status, body, expected) => {
+    stubFetch(async () => Response.json(body, { status }));
+
+    expect(await startPayment("demo-card", KEY)).toEqual(expected);
+  });
+
+  it("reports a network error as failed", async () => {
+    stubFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+
+    expect(await startPayment("demo-card", KEY)).toEqual({ status: "failed" });
+  });
+});
+
+describe("getPaymentStatus", () => {
+  const view = {
+    orderNumber: "R-100001",
+    orderStatus: "new",
+    paymentDeadline: "2026-11-05T13:00:00+00:00",
+    totalGross: 39998,
+    currency: "PLN",
+    canStartPayment: true,
+    latestPayment: null,
+  };
+
+  it("reads the store's own /api/checkout/payment, same origin and uncached", async () => {
+    const fetch = stubFetch(async () => Response.json(view));
+
+    expect(await getPaymentStatus()).toEqual({ status: "ok", data: view });
+    expect(fetch).toHaveBeenCalledWith("/api/checkout/payment", { method: "GET", credentials: "same-origin", cache: "no-store" });
+  });
+
+  it.each([
+    [404, { detail: "Nie znaleźliśmy zamówienia." }, { status: "not_found" }],
+    [401, {}, { status: "unauthorized" }],
+    [503, {}, { status: "failed" }],
+    [500, {}, { status: "failed" }],
+  ])("maps a %s to %j", async (status, body, expected) => {
+    stubFetch(async () => Response.json(body, { status }));
+
+    expect(await getPaymentStatus()).toEqual(expected);
+  });
+
+  it("reports a success that is not a status as failed", async () => {
+    stubFetch(async () => Response.json({ nothing: true }));
+
+    expect(await getPaymentStatus()).toEqual({ status: "failed" });
+  });
+
+  it("reports a network error as failed", async () => {
+    stubFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+
+    expect(await getPaymentStatus()).toEqual({ status: "failed" });
   });
 });
 
