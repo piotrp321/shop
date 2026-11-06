@@ -117,6 +117,11 @@ deptrac:
       collectors:
         - type: classNameRegex
           value: '#^App\\Ordering\\UI\\#'
+    # A fake external system, not a domain of the shop (flat module, one layer): see the ruleset.
+    - name: PaymentSimulator
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\PaymentSimulator\\#'
     - name: Shared_Domain
       collectors:
         - type: classNameRegex
@@ -353,6 +358,12 @@ deptrac:
       # The controller of a customer's order takes the customer from AuthenticatedCustomer, the security contract of
       # Customer, never CustomerUser of Customer_Infrastructure.
       - Customer_Application
+    # The simulator of the payment providers talks to the shop over HTTP only, like a real provider: it depends on no
+    # context and no context depends on it (nor does Payment, which calls it through its HTTP adapters).
+    PaymentSimulator:
+      - Native
+      - Vendor
+      - Shared_Infrastructure
     Shared_Domain:
       - Native
     Shared_Application:
