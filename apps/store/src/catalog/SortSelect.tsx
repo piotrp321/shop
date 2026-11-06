@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useOptimistic, useTransition } from "react";
 import { defaultSort, listingHref, type ListingState } from "./listing-query";
 
 export const FILTER_FORM_ID = "listing-filters";
@@ -19,7 +20,16 @@ const SORTS = [
  */
 export function SortSelect({ basePath, state }: { basePath: string; state: ListingState }) {
   const router = useRouter();
+  const [, startTransition] = useTransition();
   const fallback = defaultSort(state);
+  // The chosen sort shows at once, until the new page arrives.
+  const [selected, setSelected] = useOptimistic(state.sort ?? fallback);
+  const choose = (value: string) => {
+    startTransition(() => {
+      setSelected(value);
+      router.push(listingHref(basePath, state, { sort: value === fallback ? undefined : value }));
+    });
+  };
   return (
     <div className="flex items-center gap-2 text-sm">
       <label htmlFor="listing-sort">Sortuj</label>
@@ -27,8 +37,8 @@ export function SortSelect({ basePath, state }: { basePath: string; state: Listi
         id="listing-sort"
         name="sort"
         form={FILTER_FORM_ID}
-        value={state.sort ?? fallback}
-        onChange={(event) => router.push(listingHref(basePath, state, { sort: event.target.value === fallback ? undefined : event.target.value }))}
+        value={selected}
+        onChange={(event) => choose(event.target.value)}
         className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
       >
         {SORTS.filter((sort) => sort.value !== "trafnosc" || state.q !== undefined).map((sort) => (
