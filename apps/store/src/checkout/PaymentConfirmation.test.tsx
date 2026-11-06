@@ -506,6 +506,42 @@ describe("paying", () => {
     expect(screen.queryByRole("radiogroup")).toBeNull();
   });
 
+  it("on 404 moves the focus to the message, because the button was locked", async () => {
+    vi.mocked(startPayment).mockResolvedValue({ status: "not_found", detail: NOT_FOUND });
+    showRetry();
+    choose("Szybki przelew (demo)");
+    await click("Zapłać");
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(NOT_FOUND);
+    expect(alert.getAttribute("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(alert);
+  });
+
+  it("on 401 moves the focus to the message with the login link", async () => {
+    vi.mocked(startPayment).mockResolvedValue({ status: "unauthorized" });
+    showRetry();
+    choose("Szybki przelew (demo)");
+    await click("Zapłać");
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Twoja sesja wygasła. Zaloguj się ponownie.");
+    expect(alert.getAttribute("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(alert);
+  });
+
+  it("when the API had no address to give moves the focus to the heading of the refreshed page", async () => {
+    vi.mocked(startPayment).mockResolvedValue({ status: "ok", redirectUrl: null });
+    vi.mocked(getPaymentStatus).mockResolvedValue({ status: "ok", data: paid() });
+    showRetry();
+    choose("Szybki przelew (demo)");
+    await click("Zapłać");
+
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.getAttribute("tabindex")).toBe("-1");
+    expect(document.activeElement).toBe(heading);
+  });
+
   it("on 422 shows the message at the group", async () => {
     vi.mocked(startPayment).mockResolvedValue({ status: "invalid", violations: [{ propertyPath: "provider", title: "Nieznany sposób płatności." }] });
     showRetry();

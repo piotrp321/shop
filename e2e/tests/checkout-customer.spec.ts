@@ -43,9 +43,10 @@ test("Jan orders his cart with the e-mail of his account, his card payment is re
 
   // ...he chooses again (no provider is chosen for him) and pays the same order.
   await expect(page.getByRole("radio", { name: "Karta płatnicza (demo)" })).not.toBeChecked();
-  await chooseProvider(page, "Szybki przelew (demo)");
+  await expect(page.getByRole("radio", { name: "Szybki przelew (demo)" })).not.toBeChecked();
+  await chooseProvider(page, "Karta płatnicza (demo)");
   await page.getByRole("button", { name: "Zapłać", exact: true }).click();
-  await expectSimulatorPage(page, "demo-transfer");
+  await expectSimulatorPage(page, "demo-card");
   await decideAtSimulator(page, "Zapłać");
 
   await expect(page.getByTestId("order-number")).toHaveText(number);

@@ -29,6 +29,7 @@ const NOT_FOUND = "Nie znaleźliśmy zamówienia.";
 const PROVIDER_PREFIX = "payment-provider-";
 const PROVIDER_ERROR_ID = "payment-provider-error";
 const MESSAGE_ID = "payment-message";
+const HEADING_ID = "payment-heading";
 
 /**
  * The phase is told by the API: `canStartPayment` is false for a new order only after its deadline (before the
@@ -148,6 +149,8 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
           return;
         }
         await refresh();
+        // No message to point at: the page itself changed, so the focus goes to its heading.
+        attentionTarget = HEADING_ID;
         break;
       case "conflict":
         // Only `reason` (told by the type of the problem) decides; `unknown` is an uncertain result like a failure.
@@ -230,7 +233,7 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col items-start gap-4 px-4 py-6">
-      <h1 className="text-2xl font-semibold">{closed ? "Zamówienie" : "Dziękujemy za zamówienie"}</h1>
+      <h1 id={HEADING_ID} tabIndex={-1} className="text-2xl font-semibold">{closed ? "Zamówienie" : "Dziękujemy za zamówienie"}</h1>
       {showsFacts ? (
         <>
           <p>
@@ -254,11 +257,15 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
         </div>
       ) : null}
       {view.kind === "unauthorized" ? (
-        <p role="alert">
+        <p id={MESSAGE_ID} role="alert" tabIndex={-1}>
           <SessionExpired returnTo={CONFIRMATION_PATH} />
         </p>
       ) : null}
-      {view.kind === "not_found" ? <p>{NOT_FOUND}</p> : null}
+      {view.kind === "not_found" ? (
+        <p id={MESSAGE_ID} role="alert" tabIndex={-1}>
+          {NOT_FOUND}
+        </p>
+      ) : null}
 
       {status && phase === "paid" ? <p>Płatność przyjęta. Potwierdzenie wysłaliśmy na adres {order.email}.</p> : null}
       {status && phase === "cancelled" ? <p>Zamówienie zostało anulowane, bo nie otrzymaliśmy płatności w terminie.</p> : null}

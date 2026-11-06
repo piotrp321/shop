@@ -33,8 +33,9 @@ async function loadPayment(confirmation: OrderConfirmation, sessionCookie: strin
   try {
     const deps = await getCartDeps();
     const [read, providers] = await Promise.all([readPaymentStatus(confirmation, sessionCookie, deps), listPaymentProviders(deps.api())]);
-    // A server component cannot end the session (no cookie writes while rendering): the `GET /api/checkout/payment` of
-    // the page does that, should the customer log in again from here.
+    // A server component cannot end the session (no cookie writes while rendering), so an `unauthorized` read leaves the
+    // session as it is. The page only offers the login; the next call of a BFF route that meets the same 401 (e.g. after
+    // logging in again) ends the old session.
     return { initial: read.kind === "ok" ? { kind: "ok", status: read.status } : { kind: read.kind }, providers };
   } catch (error) {
     logFailure("The payment status cannot be loaded", error);

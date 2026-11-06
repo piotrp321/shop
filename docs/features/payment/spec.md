@@ -426,8 +426,8 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
   sesję; 503 przy niedostępnym API (także 400, 415 API).
 - `GET /api/checkout/payment`: `PaymentStatusView` z API dla zamówienia z ciasteczka; 404 bez ciasteczka i przy 404
   API; 401 (brak sesji przy zamówieniu klienta, 401 API kończy sesję); 503 przy innym błędzie API.
-- `src/api/client.ts`: `placeOrder` (wynik z `redirectUrl`), `startPayment`, `getPaymentStatus`,
-  `listPaymentProviders` (serwer).
+- `src/api/client.ts`: `placeOrder` (wynik z `redirectUrl`), `startPayment`, `getPaymentStatus`;
+  `src/checkout/payment-api.ts`: `listPaymentProviders` (serwer).
 
 ### UI
 
