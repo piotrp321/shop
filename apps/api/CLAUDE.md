@@ -22,13 +22,14 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `payment-simulator:seed-demo`, który w jednej transakcji opróżnia (`TRUNCATE`) tabelę transakcji symulatora płatności
   i usuwa jego kolejkę `payment_simulator` (`DELETE FROM messenger_messages WHERE queue_name = 'payment_simulator'`;
   `outbox`, `scheduled`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
-  `ordering:seed-demo`, który usuwa wszystkie zamówienia i ich linie jednym `TRUNCATE` (sekwencja numerów zostaje,
-  luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
+  `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia i ich
+  linie jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
   WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
-  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie pięć komend
+  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień, płatności ani ich rezerwacji. Wszystkie sześć komend
   w `prod` wymagają `--force-reset`. Na końcu `make seed` woła `storefront:cache:purge-all` (zdarzenia cen i stanów
   ze źródła `seed` niczego nie unieważniają)
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
@@ -129,6 +130,36 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     (`paymentNotificationSentAt`, `cancellationNotificationSentAt`); port `OrderStatusMailer`, adapter
     `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. E-mail z potwierdzeniem podaje
     termin płatności w strefie `Europe/Warsaw`.
+- Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
+  dostawcy (`pending` → `succeeded` | `failed` | `cancelled`; `succeed` także z `failed` i `cancelled`, bo pieniądze ważą
+  więcej niż wcześniejsza odmowa; `requireRefund` tylko dla `succeeded`, pierwszy powód zostaje), bez pola wersji:
+  istniejącą płatność zmieniają tylko operacje pod blokadą jej wiersza. Zapis przez rekordy Doctrine według ogólnej zasady
+  (`payment_payment`, `payment_webhook_event`), bez kluczy obcych do Ordering.
+  - Payment sięga do Ordering tylko przez swój port `PayableOrders` (adapter `QueryBusPayableOrders`: Ordering
+    `GetOrderForPayment` na `query.bus`, wynik przetłumaczony na `OrderToPay` z domeny Payment) i ma własne value objecty
+    (`OrderId`, `Amount`, `Currency`). Deptrac: tylko `Payment_Infrastructure → Ordering_Application`; Ordering ani żaden
+    inny context nie zależy od Payment.
+  - Port `PaymentProvider` (`code`, `createSession`, `cancelSession`) z rejestrem `PaymentProviders` (tag
+    `app.payment_provider`) i dwoma adapterami HTTP do symulatora (`DemoTransferProvider`: Bearer, grosze, RFC 3339;
+    `DemoCardProvider`: Basic `merchant`, kwota `"123.45"` przez `CardAmount`, czas uniksowy) na `app.payment_http_client`
+    pod `PAYMENT_PROVIDER_BASE_URL`. Każde wywołanie ma 5 s (`timeout` i `max_duration`); błąd sieci, przekroczenie
+    czasu, inny status albo nieczytelna odpowiedź to `PaymentProviderUnavailable` (marker `Unavailable`, 503).
+  - `StartPayment` (`command.bus`, jedna transakcja): dostęp do zamówienia przed powtórzeniem (sam klucz nie daje
+    płatności; brak dostępu to `OrderNotFound` 404 „Nie znaleźliśmy zamówienia.”), powtórzenie po `Idempotency-Key` i
+    odcisku (zamówienie i dostawca; inny odcisk to 409), stan zamówienia (opłacone, anulowane, po terminie: 409),
+    oczekująca płatność zamówienia blokowana `SELECT … FOR UPDATE` z odświeżeniem rekordu z identity map i anulowana
+    u swojego dostawcy (anulowana → `cancel`, odrzucona → `fail`, wykonana → 409 `PaymentInProgress` bez zmian, błąd →
+    503 bez zmian), potem nowa płatność zapisana przed wywołaniem dostawcy i sesja do terminu płatności zamówienia
+    (adres powrotu `STORE_URL` + `/checkout/confirmation` buduje API). Wywołania HTTP są w transakcji: każdy błąd
+    wycofuje całość. Równoległe rozpoczęcia odrzuca unikalny indeks `idempotency_key` albo częściowy unikalny indeks
+    `(order_id) WHERE status = 'pending'` (w mapowaniu warunek zapisany tak, jak zwraca go PostgreSQL, żeby schemat
+    mapowania był równy zmigrowanemu): naruszenie to `PaymentInProgress` „Płatność za to zamówienie jest w toku.”.
+  - `GetPaymentStatus` (`query.bus`): ta sama reguła dostępu, `canStartPayment` = zamówienie płatne, najnowsza płatność
+    z `resumeUrl` tylko dla `pending` i płatnego zamówienia.
+  - Endpointy: `GET /api/v1/payment-providers` (publiczny), gość `POST /api/v1/orders/{id}/payments` i
+    `GET /api/v1/orders/{id}/payment` z nagłówkiem `Order-Access-Token` (brak to 404, sesja niczego nie zmienia),
+    klient to samo pod `/api/v1/me/orders/{id}/...`. Każda odpowiedź `private, no-store`
+    (`PaymentResponseCacheSubscriber`). `security.yaml` ma też regułę publiczną dla `/api/v1/payments/webhooks/`.
 - PaymentSimulator (`src/PaymentSimulator`, `docs/features/payment/spec.md`) udaje dwóch zewnętrznych dostawców płatności
   (`demo-transfer`, `demo-card`) w tym samym API, ale poza `/api/v1` (`/payment-simulator/...`, bez firewalla, poza
   dokumentami OpenAPI) i poza contextami: płaski moduł (kontrolery, encja Doctrine, komendy z handlerami, podpisy), jedna
@@ -242,7 +273,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   klient ma rozróżniać maszynowo, implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType()`) i trzyma
   wartość w stałej `TYPE`; subscriber wpisuje ją do odpowiedzi, a Shared nie zna contextów. Format wartości:
   `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je pięć 409 Ordering
-  (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`; nowy typ dopisz też tam).
+  (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`) i cztery 409 Payment: `order-already-paid`,
+  `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
+  Nowy typ dopisz do `enum` schematu swojego contextu.
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
   (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Wyjątek: znacznik
   `Unavailable` (zależność nieosiągalna albo przegrany wyścig, który ponowienie rozwiązuje) to 503 bez `detail`, jak
@@ -259,6 +292,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   z tym samym zamówieniem zamiast 201, także gdy koszyk gościa w międzyczasie wygasł albo został scalony; ten sam klucz
   z innego koszyka, od innego klienta albo z inną treścią to 409 `IdempotencyKeyReused` bez żadnych danych zamówienia,
   które go użyło. Klucze zamówień są w `ordering_order` na zawsze (unikalny indeks).
+  Rozpoczęcie płatności z tym samym kluczem dla tego samego zamówienia i dostawcy zwraca 200 z tą płatnością w bieżącym
+  stanie zamiast 201; ten sam klucz dla innego zamówienia albo dostawcy to 409 `PaymentIdempotencyKeyReused`, a bez
+  dostępu do zamówienia (inny token, inny klient) 404. Klucze płatności są w `payment_payment` na zawsze.
 - Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
 
