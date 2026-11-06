@@ -67,7 +67,8 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 - Słownik tagów, wspólny dla Varnisha i ISR: `catalog` (każda odpowiedź katalogu i każda strona produktu)
   i `product-<productId>` (UUID małymi literami) dla każdego produktu, którego dane zawiera odpowiedź.
 - Nazwy tagów buduje jedna klasa w `Shared_Infrastructure` (`product(id)` z UUID małymi literami i stała `catalog`);
-  używają jej nagłówki odpowiedzi i `StorefrontCache` (`invalidateProduct(id)`, `invalidateAll()`), konsumenci nie
+  używają jej nagłówki odpowiedzi i `StorefrontCache` (`invalidateProduct(id)`; `purgeAll()` i `revalidateAll()`
+  dla tagu `catalog`, każda warstwa osobno, żeby `purge-all` ponawiał każdą z nich), konsumenci nie
   składają napisów, więc nagłówek i purge nie mogą się rozjechać.
 - Nagłówek odpowiedzi `xkey: <tag> <tag> …` (spacje). Ustawia go mały serwis tagów w `Shared_Infrastructure`
   (A2), wołany z kontrolerów. Varnish usuwa nagłówek przed wysłaniem odpowiedzi.
@@ -121,7 +122,8 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 
 ## Unieważnianie (konsumenci zdarzeń)
 
-- `StorefrontCache` w `Shared_Infrastructure`: `invalidate(tags)`:
+- `StorefrontCache` w `Shared_Infrastructure` (interfejs; implementacja `HttpStorefrontCache`): `invalidateProduct(id)`
+  (tag `product-<id>`) robi kolejno:
   1. Varnish: `PURGE` z nagłówkami `xkey-purge: <tagi>` i `X-Purge-Token: <VARNISH_PURGE_SECRET>` (twarde usunięcie, `xkey.purge`, nie `softpurge`, żeby
      regenerowana strona nie dostała starej odpowiedzi);
   2. sklep: `POST <STORE_INTERNAL_URL>/api/revalidate` z `{tags}` i sekretem `STORE_REVALIDATE_SECRET`.

@@ -45,8 +45,9 @@ final class ProductOffersController
             .'bought now), the lowest price among the purchasable variants (`fromGross`, with `hasPriceRange` when their prices differ) '
             .'and the best level among them; a product without a purchasable variant, also one unknown to Catalog, has no price and is '
             .'`out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key '
-            .'(`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, '
-            .'so it does not decide a purchase: an addition to the cart checks the price and the stock again.',
+            .'(`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response is public and tagged for '
+            .'purging: a shared cache keeps it until a change of a price or an availability level purges it (an hour at most). It '
+            .'does not decide a purchase: an addition to the cart checks the price and the stock again.',
         tags: ['Cart'],
         parameters: [
             new OA\Parameter(
@@ -99,6 +100,8 @@ final class ProductOffersController
         )));
         $response->setPublic();
         $response->setMaxAge(60);
+        // A safety net for changes without an event; the price and stock events purge the products' tags at once.
+        $response->setSharedMaxAge(3600);
         $this->cacheTagger->tag($response, [
             CacheTags::CATALOG,
             ...array_map(CacheTags::product(...), $query->productId),

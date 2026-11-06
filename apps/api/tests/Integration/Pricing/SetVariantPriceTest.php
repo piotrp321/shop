@@ -15,6 +15,7 @@ use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineVariantPriceRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
+use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use App\Tests\Unit\Pricing\InMemoryVariantTaxClasses;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -171,7 +172,7 @@ final class SetVariantPriceTest extends KernelTestCase
     private function handler(EntityManagerInterface $entityManager, string $variantId, ?\Closure $afterRead = null): \Closure
     {
         $handler = new SetVariantPriceHandler(
-            new InterleavingVariantPriceRepository(new DoctrineVariantPriceRepository($entityManager), $afterRead),
+            new InterleavingVariantPriceRepository(new DoctrineVariantPriceRepository($entityManager, new RecordingDomainEventPublisher()), $afterRead),
             new InMemoryVariantTaxClasses([$variantId => 'standard']),
             new PolishVatRates(),
         );

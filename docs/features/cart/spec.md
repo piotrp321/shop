@@ -326,12 +326,13 @@ Sklep (`apps/api/openapi.json`). Błędy w formacie RFC 9457, `detail` z wyjątk
 `/api/v1/me/cart…` objęte istniejącą regułą `ROLE_CUSTOMER`.
 
 Oferta produktów listy: `GET /api/v1/product-offers?productId=…&productId=…` (`ProductOffersController` w `Cart_UI`,
-`PUBLIC_ACCESS` dla `GET` w `security.yaml`, `Cache-Control: public, max-age=60` i `xkey: catalog product-<id> …` dla
+`PUBLIC_ACCESS` dla `GET` w `security.yaml`, `Cache-Control: public, max-age=60, s-maxage=3600` i `xkey: catalog product-<id> …` dla
 każdego żądanego id (UUID małymi literami, powtórzone id raz); token wysłany i niepoprawny: 401; 400, 401 i 503 mają
 `private, no-store` bez tagów). Sklep czyta ofertę przez Varnish (`API_CATALOG_URL`).
 Identyfikatory jako powtórzony klucz `productId` (forma `productId[]` nie jest kontraktem). 1–48 id; brak, ponad 48
 albo id niebędące UUID: 400 z `violations`. 200 `{items: [oferta z sekcji „Oferta produktów listy”]}`, jedna pozycja na
-każde żądane id. Odpowiedź może być w cache do `max-age` (60 s) plus domyślny grace Varnisha (10 s), więc nie decyduje o zakupie:
+każde żądane id. Varnish trzyma odpowiedź do purge tagu produktu po zdarzeniu zmiany ceny albo poziomu dostępności
+(`docs/features/product-page/spec.md`, „Unieważnianie”), najwyżej `s-maxage` (1 h). Nie decyduje więc o zakupie:
 dodanie do koszyka sprawdza cenę i stan od nowa.
 
 Gość (bez tokena; token wysłany mimo to i niepoprawny daje 401, a gdy nie da się pobrać kluczy wystawcy tokenu: 503):
@@ -620,7 +621,7 @@ Każdy endpoint: 200/201, 400 (zły JSON), 401 (`/me/cart…` bez tokena i z tok
 nieznany, wygasły i scalony koszyk gościa, nieznany wariant i id produktu zamiast wariantu, brak linii), 409 (każda przyczyna), 415, 422 (każdy przypadek tabeli komunikatów: brak klucza, `null`, zły typ, zły UUID, ilość spoza 1–99; asercja na dokładną listę `violations`), `Cache-Control: private, no-store`; `merge`: każdy `result` i `truncated`.
 `ProductOffersEndpointTest`: oferty bez tokena (cena „od”, zakres, poziom, warianty z etykietami, cena nieaktualna i brak
 stanu pominięte), kolejność i powtórzone id, produkt nieznany i id wariantu zamiast produktu, 48 id, 400 (brak, 49,
-niepoprawny UUID, forma `[]`), 401 przy złym tokenie, `public, max-age=60`, brak liczby sztuk w odpowiedzi.
+niepoprawny UUID, forma `[]`), 401 przy złym tokenie, `public, max-age=60, s-maxage=3600`, brak liczby sztuk w odpowiedzi.
 
 ### Architektura
 

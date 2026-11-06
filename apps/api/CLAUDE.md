@@ -25,7 +25,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
   seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
-  w `prod` wymagają `--force-reset`
+  w `prod` wymagają `--force-reset`. Na końcu `make seed` woła `storefront:cache:purge-all` (zdarzenia cen i stanów
+  ze źródła `seed` niczego nie unieważniają)
+- `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
+  rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
+  `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
+  nie odpowiedziała 200 po ostatniej próbie (np. niedostępny Varnish albo sklep), z komunikatem bez sekretów
 - `pricing:reconcile-tax [--apply]` (przez `make -C apps/api shell` albo `docker compose exec api bin/console`) –
   narzędzie uruchamiane świadomie, np. po zmianie stawki w `PolishVatRates`; nie wywołuje go `make init`, `make up`
   ani `make seed`. Przechodzi wszystkie ceny wariantów partiami po `variant_id` razem z wariantami Catalog
@@ -130,6 +135,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Koszyk nie ma optimistic locking ani wersji z widoku: zmiany szereguje blokada wiersza koszyka, dodanie zwiększa
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
+  Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`; Catalog
+  `ProductCreated`, Ordering `OrderPlaced`), gdy jedyną drogą zapisu jest ta komenda. Gdy agregat ma wiele ścieżek
+  zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
+  rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
+  w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
+  pominie, a odrzucony albo wycofany zapis nie zostawia zdarzenia.
 - Odbiorcy zdarzeń muszą być idempotentni: to samo zdarzenie może przyjść więcej niż raz.
 - Zamówienie przechowuje kopię cen, rabatów i adresu z chwili złożenia, nie referencje.
 - Elasticsearch to tylko model odczytu. Nigdy nie podejmuj na jego podstawie decyzji biznesowych.
@@ -181,18 +192,28 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   literami) dla każdego produktu, którego dane zawiera odpowiedź. Nazwy buduje wyłącznie `CacheTags`
   (`Shared\Infrastructure\Http\Cache`: stała `CATALOG`, `product(id)`, inny napis niż UUID to wyjątek), a nagłówek
   `xkey: <tag> <tag>` (spacje) ustawia w kontrolerze `CacheTagger::tag()`. Varnish usuwa `xkey` przed wysłaniem
-  odpowiedzi. Dziś: lista produktów (`catalog` i `product-<id>` każdego produktu strony), drzewo kategorii
-  (`catalog`), oferty (`catalog` i `product-<id>` każdego żądanego id), wszystkie z `Cache-Control: public,
-  max-age=60`; szczegóły produktu `GET /api/v1/products/{slug}` (`ProductDetailsController`): 200 z `public,
+  odpowiedzi. Dziś: lista produktów (`catalog` i `product-<id>` każdego produktu strony) i drzewo kategorii
+  (`catalog`) z `Cache-Control: public, max-age=60`; oferty (`catalog` i `product-<id>` każdego żądanego id) z `public,
+  max-age=60, s-maxage=3600`; szczegóły produktu `GET /api/v1/products/{slug}` (`ProductDetailsController`): 200 z `public,
   max-age=60, s-maxage=3600` i tagami `catalog` `product-<id>`, 404 „Produkt nie istnieje.” (też dla sluga
   niezgodnego z formatem `Slug`) z `public, max-age=60` i tagiem `catalog`. Zdjęcia szczegółów są w rozmiarze
   `product` (`ImageSize`), a `GetProductBySlug` czyta wprost z tabel Catalog przez port `ProductDetailsSource`.
 - Trasa publicznego odczytu ma domyślną wartość `PublicReadErrorCacheSubscriber::ROUTE_DEFAULT`
   (`defaults: [... => true]` w `#[Route]`): jej 400, 401 (także z firewalla) i 503 dostają `private, no-store` bez tagów.
+- Unieważnianie: `StorefrontCache` (`Shared\Infrastructure\Http\Cache`, implementacja `HttpStorefrontCache` na
+  kliencie HTTP Symfony) robi twardy `PURGE` do `VARNISH_URL` z `xkey-purge` i `X-Purge-Token`
+  (`VARNISH_PURGE_SECRET`), a dopiero po nim `POST <STORE_INTERNAL_URL>/api/revalidate` z `{tags}` i
+  `Authorization: Bearer <STORE_REVALIDATE_SECRET>`; własne limity czasu (Varnish 5 s, sklep 30 s, zamiast domyślnych
+  2 s i 5 s klienta). Każdy błąd (status inny niż 200, sieć, timeout) to `StorefrontCacheFailure`, a błąd purge
+  zatrzymuje rewalidację. Wołają go konsumenci zdarzeń na transporcie `events`: `InvalidateStorefrontOnPriceChange`
+  (`Pricing_Infrastructure`, `VariantPriceChanged`) i `InvalidateStorefrontOnStockLevelChange`
+  (`Inventory_Infrastructure`, `StockLevelChanged`): produkt z Catalog `GetVariant` (`query.bus`), `invalidateProduct`.
+  Wariant nieznany Catalogowi i źródło `seed` to wiadomość obsłużona bez unieważnienia; błąd `StorefrontCache` idzie
+  dalej (ponowienia transportu `events`, potem `failed`). Bez zdarzenia (np. koniec okresu stawki VAT) odpowiedź
+  żyje do `s-maxage`.
 - Nowy publiczny endpoint katalogu = ścieżka na liście w VCL, jawny `Cache-Control`, tagi w odpowiedzi, znacznik
-  trasy i unieważnianie po zmianie danych. Bez tego zmiana danych nie będzie widoczna w sklepie. Unieważniania po
-  zdarzeniach jeszcze nie ma: odpowiedź żyje w Varnishu do końca `max-age` (60 s) plus domyślny grace Varnisha
-  (10 s).
+  trasy i unieważnianie po zmianie danych (zdarzenie i konsument wołający `StorefrontCache`). Bez tego zmiana danych
+  nie będzie widoczna w sklepie przed końcem `max-age`/`s-maxage`.
 
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
 - Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.

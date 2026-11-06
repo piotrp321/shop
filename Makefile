@@ -35,6 +35,7 @@ seed:
 	$(RUN) api bin/console pricing:seed-demo
 	$(RUN) api bin/console ordering:seed-demo
 	$(RUN) api bin/console inventory:seed-demo
+	$(RUN) api bin/console storefront:cache:purge-all
 
 check:
 	$(MAKE) -C apps/api check

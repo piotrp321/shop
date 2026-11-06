@@ -983,7 +983,7 @@
                     "Cart"
                 ],
                 "summary": "Offers of products of the list",
-                "description": "For each requested product its variants (label, current gross price, availability level, whether one unit can be bought now), the lowest price among the purchasable variants (`fromGross`, with `hasPriceRange` when their prices differ) and the best level among them; a product without a purchasable variant, also one unknown to Catalog, has no price and is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it does not decide a purchase: an addition to the cart checks the price and the stock again.",
+                "description": "For each requested product its variants (label, current gross price, availability level, whether one unit can be bought now), the lowest price among the purchasable variants (`fromGross`, with `hasPriceRange` when their prices differ) and the best level among them; a product without a purchasable variant, also one unknown to Catalog, has no price and is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response is public and tagged for purging: a shared cache keeps it until a change of a price or an availability level purges it (an hour at most). It does not decide a purchase: an addition to the cart checks the price and the stock again.",
                 "operationId": "getProductOffers",
                 "parameters": [
                     {

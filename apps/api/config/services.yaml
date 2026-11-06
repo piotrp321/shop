@@ -1,6 +1,8 @@
 parameters:
     app.images_bucket: '%env(IMAGES_BUCKET)%'
     app.imgproxy_public_url: '%env(IMGPROXY_PUBLIC_URL)%'
+    # Seconds between the attempts of storefront:cache:purge-all (5 per layer).
+    app.storefront_cache.retry_delay: 5.0
     # Search index (spec: "Indeks Elasticsearch"). The application reads and writes through the alias.
     app.search.alias: products
     app.search.shards: 1
@@ -135,6 +137,15 @@ services:
         arguments:
             $baseUrl: '%env(MAILPIT_INTERNAL_URL)%'
 
+    # The caches of the store: Varnish (purge by xkey) and the ISR pages (revalidation), see the class.
+    App\Shared\Infrastructure\Http\Cache\HttpStorefrontCache:
+        arguments: &storefront_cache_arguments
+            $varnishUrl: '%env(VARNISH_URL)%'
+            $purgeSecret: '%env(VARNISH_PURGE_SECRET)%'
+            $storeUrl: '%env(STORE_INTERNAL_URL)%'
+            $revalidateSecret: '%env(STORE_REVALIDATE_SECRET)%'
+    App\Shared\Infrastructure\Http\Cache\StorefrontCache: '@App\Shared\Infrastructure\Http\Cache\HttpStorefrontCache'
+
     App\Backoffice\Infrastructure\MessagingStatisticsAdapter:
         arguments:
             $managementUrl: '%env(RABBITMQ_MANAGEMENT_URL)%'
@@ -167,6 +178,8 @@ when@test: &test
         app.search.alias: test_products
         # The `events` transport of the tests runs on its own vhost (config/packages/test_messaging/messenger.yaml).
         app.rabbitmq.vhost: test
+        # The tests of storefront:cache:purge-all do not wait between the attempts.
+        app.storefront_cache.retry_delay: 0.0
 
     services:
         _defaults:
@@ -217,6 +230,10 @@ when@test: &test
                 $alias: '%app.search.alias%'
         App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource:
             public: true
+        # Public (and so never inlined), so a test can point it at an HTTP double or replace it with a spy.
+        App\Shared\Infrastructure\Http\Cache\HttpStorefrontCache:
+            public: true
+            arguments: *storefront_cache_arguments
         # Replaced by a test that makes the database fail under the statistics query.
         App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository:
             public: true
