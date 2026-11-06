@@ -126,14 +126,18 @@ nelmio_api_doc:
                                         $ref: '#/components/schemas/ProductDetailsVariant'
                         BreadcrumbItem:
                             type: object
-                            required: [id, name]
+                            required: [id, name, path]
                             properties:
                                 id:
                                     type: string
                                     format: uuid
                                 name:
                                     type: string
-                                    example: Obuwie
+                                    example: Buty
+                                path:
+                                    type: string
+                                    description: The slugs from the root to this category joined with `/`, as `path` of `CategoryNode`.
+                                    example: bieganie/buty
                         ProductDetailsVariant:
                             type: object
                             required: [variantId, label, values]

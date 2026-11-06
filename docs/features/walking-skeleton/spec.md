@@ -564,10 +564,13 @@ Wszystkie pod `/api/v1`, JSON, opisane w OpenAPI (żądanie, odpowiedzi, błędy
 
 `image` jest `null`, gdy produkt nie ma zdjęć.
 
-**`GET /api/v1/categories`**: całe drzewo, rodzeństwo posortowane po nazwie.
+**`GET /api/v1/categories`**: całe drzewo, rodzeństwo posortowane po nazwie. Węzeł (`CategoryNode`) ma `slug`
+i `path`: slugi od korzenia do węzła połączone `/`, liczone w `GetCategoryTreeHandler`. Ten sam schemat zwraca
+`GET /api/v1/admin/categories` (panel).
 
 ```json
-[{ "id": "…", "name": "Bieganie", "children": [{ "id": "…", "name": "Buty", "children": [] }] }]
+[{ "id": "…", "name": "Bieganie", "slug": "bieganie", "path": "bieganie",
+   "children": [{ "id": "…", "name": "Buty", "slug": "buty", "path": "bieganie/buty", "children": [] }] }]
 ```
 
 **`GET /api/v1/me`**: `{ "id": "<sub>", "email": "…", "name": "…" }`.

@@ -438,8 +438,13 @@ export interface components {
         BreadcrumbItem: {
             /** Format: uuid */
             id: string;
-            /** @example Obuwie */
+            /** @example Buty */
             name: string;
+            /**
+             * @description The slugs from the root to this category joined with `/`, as `path` of `CategoryNode`.
+             * @example bieganie/buty
+             */
+            path: string;
         };
         ProductDetailsVariant: {
             /** Format: uuid */
@@ -837,6 +842,8 @@ export interface components {
         CategoryNode: {
             id: string;
             name: string;
+            slug: string;
+            path: string;
             children: components["schemas"]["CategoryNode"][];
         };
         /** @description The customer identified by the access token. */
@@ -1668,7 +1675,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Root categories with their descendants. An empty catalogue gives an empty array. */
+            /** @description Root categories with their descendants. Every node has its `slug` (unique among its siblings) and `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`). An empty catalogue gives an empty array. */
             200: {
                 headers: {
                     [name: string]: unknown;
