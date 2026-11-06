@@ -81,7 +81,7 @@ describe("the category page", () => {
     expect(markup).toContain('href="/c/bieganie">Bieganie</a>');
     expect(markup).toContain('<span aria-current="page">Buty</span>');
     expect(markup).not.toContain('href="/c/bieganie/buty">Buty</a>');
-    expect(markup).toMatch(/<h1[^>]*>Buty <span[^>]*>1 produkt<\/span><\/h1>/);
+    expect(markup).toMatch(/<h1[^>]*>Buty<\/h1><p[^>]*>1 produkt<\/p>/);
   });
 
   it("paginates under the category address", async () => {

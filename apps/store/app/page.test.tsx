@@ -32,7 +32,7 @@ afterEach(() => {
 describe("Home page", () => {
   it("lists all the products with the count, without breadcrumbs and without reading the tree itself", async () => {
     const markup = renderToStaticMarkup(await Home(props({ page: ["2", "3"] })));
-    expect(markup).toMatch(/<h1[^>]*>Wszystkie produkty <span[^>]*>1 produkt<\/span><\/h1>/);
+    expect(markup).toMatch(/<h1[^>]*>Wszystkie produkty<\/h1><p[^>]*>1 produkt<\/p>/);
     expect(markup).not.toContain('aria-label="Ścieżka"');
     expect(loadCatalog).toHaveBeenCalledWith(undefined, "2");
     expect(loadTree).not.toHaveBeenCalled();
