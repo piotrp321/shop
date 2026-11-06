@@ -38,6 +38,7 @@ final class CatalogReadKeycloakOutageTest extends WebTestCase
     public static function paths(): iterable
     {
         yield 'product list' => ['/api/v1/products'];
+        yield 'product details' => ['/api/v1/products/buty-szosowe'];
         yield 'category tree' => ['/api/v1/categories'];
         yield 'product offers' => ['/api/v1/product-offers?productId=0192f0c4-7c1a-7c4e-9a6e-000000000001'];
     }

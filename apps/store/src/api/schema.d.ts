@@ -272,6 +272,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/products/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product details
+         * @description The product page data: the category path from the root to the main category, all the images in position order, the variant axes and the variants (label and values in the order of the axes) in position order. The price and the availability are in the product offer. A slug that names no product, also one that is not in the format of a slug, gives 404. The 200 may be kept by a shared cache for an hour and is tagged for purging; the 404 for 60 seconds.
+         */
+        get: operations["getProduct"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -391,6 +411,52 @@ export interface components {
                     url: string;
                 }[];
             };
+        };
+        ProductDetails: {
+            /** Format: uuid */
+            id: string;
+            /** @example buty-szosowe-tarvik-asfalt-200 */
+            slug: string;
+            /** @example Buty szosowe Tarvik Asfalt 200 */
+            name: string;
+            shortDescription: string;
+            /** @description The categories from the root to the main category of the product. */
+            breadcrumb: components["schemas"]["BreadcrumbItem"][];
+            /** @description All the images of the product in position order, the first is the main one (size `product`). */
+            images: components["schemas"]["ProductImage"][];
+            /**
+             * @description Names of the variant axes, in order; empty for a product with one default variant.
+             * @example [
+             *       "Kolor",
+             *       "Rozmiar"
+             *     ]
+             */
+            variantAxes: string[];
+            /** @description The variants in position order. */
+            variants: components["schemas"]["ProductDetailsVariant"][];
+        };
+        BreadcrumbItem: {
+            /** Format: uuid */
+            id: string;
+            /** @example Obuwie */
+            name: string;
+        };
+        ProductDetailsVariant: {
+            /** Format: uuid */
+            variantId: string;
+            /**
+             * @description The values joined with a comma; empty for the default variant.
+             * @example czarne, 42
+             */
+            label: string;
+            /**
+             * @description One value per axis, in the order of the axes.
+             * @example [
+             *       "czarne",
+             *       "42"
+             *     ]
+             */
+            values: string[];
         };
         /** @description A cart with everything the store shows, computed by the API. The number of available units is never part of it. */
         CartView: {
@@ -1684,6 +1750,56 @@ export interface operations {
                 };
             };
             /** @description The search service is unavailable, or a token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the product. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The product. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductDetails"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No product has the slug (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
             503: {
                 headers: {
                     [name: string]: unknown;
