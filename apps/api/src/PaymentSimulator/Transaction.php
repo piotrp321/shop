@@ -27,25 +27,25 @@ class Transaction
     private function __construct(
         #[ORM\Id]
         #[ORM\Column(type: 'guid')]
-        public readonly string $id,
+        public private(set) string $id,
         #[ORM\Column(length: 16, enumType: Provider::class)]
-        public readonly Provider $provider,
+        public private(set) Provider $provider,
         #[ORM\Column(length: 100)]
-        public readonly string $reference,
+        public private(set) string $reference,
         #[ORM\Column(type: Types::BIGINT)]
-        public readonly int $amount,
+        public private(set) int $amount,
         #[ORM\Column(length: 3, options: ['fixed' => true])]
-        public readonly string $currency,
+        public private(set) string $currency,
         #[ORM\Column(type: Types::TEXT, nullable: true)]
-        private readonly ?string $returnUrl,
+        private ?string $returnUrl,
         #[ORM\Column(type: Types::TEXT, nullable: true)]
-        private readonly ?string $successUrl,
+        private ?string $successUrl,
         #[ORM\Column(type: Types::TEXT, nullable: true)]
-        private readonly ?string $cancelUrl,
+        private ?string $cancelUrl,
         #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
-        public readonly \DateTimeImmutable $expiresAt,
+        public private(set) \DateTimeImmutable $expiresAt,
         #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
-        public readonly \DateTimeImmutable $createdAt,
+        public private(set) \DateTimeImmutable $createdAt,
     ) {
     }
 
