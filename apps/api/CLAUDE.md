@@ -140,9 +140,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     który webhook podaje jako `paidAt` / `completedAt`); CHECK-i w migracji pilnują statusów, kształtu adresów dostawcy
     i `decided_at` dokładnie dla `paid` i `rejected`.
   - API dostawców (z `PAYMENT_DEMO_*_API_KEY`, `hash_equals`, zły klucz to 401): `demo-transfer` Bearer, kwota w groszach,
-    czasy RFC 3339, `POST …/demo-transfer/api/transactions` → 201 `{transactionId, paymentUrl}` i `…/{id}/cancel` →
+    czasy RFC 3339 (także z ułamkiem sekundy), `POST …/demo-transfer/api/transactions` → 201 `{transactionId, paymentUrl}` i `…/{id}/cancel` →
     200 `{status: "CANCELLED"}` albo 409 `{status: "PAID" | "REJECTED"}`; `demo-card` HTTP Basic (`merchant`, klucz), kwota
-    `"123.45"`, czas uniksowy, `POST …/demo-card/v1/checkout-sessions` → 200 `{id, url}` i `…/{id}/expire` → 200
+    `"123.45"`, czas uniksowy (do 9999-12-31T23:59:59Z, większy to 400), `POST …/demo-card/v1/checkout-sessions` → 200 `{id, url}` i `…/{id}/expire` → 200
     `{status: "expired"}` albo 409 `{status: "complete" | "failed"}`. Zła treść to 400 `{error, field}`, nieznane id 404.
     Adres strony płatności buduje `PAYMENT_SIMULATOR_PUBLIC_URL`.
   - Decyzja klienta (`DecideTransaction`) i anulowanie (`CancelTransaction`) to komendy na `command.bus`, każda blokuje

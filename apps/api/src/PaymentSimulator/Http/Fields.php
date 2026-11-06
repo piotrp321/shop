@@ -16,6 +16,9 @@ final class Fields
 {
     private const int MAX_URL_LENGTH = 2000;
     private const int MAX_REFERENCE_LENGTH = 100;
+    private const string RFC3339_WITH_FRACTION = 'Y-m-d\TH:i:s.uP';
+    /** 9999-12-31T23:59:59Z: the last second with a four-digit year. */
+    private const int MAX_UNIX_TIME = 253_402_300_799;
 
     /**
      * @return array<string, mixed>
@@ -94,31 +97,41 @@ final class Fields
     }
 
     /**
-     * A time as RFC 3339 text ("2026-11-06T12:30:00Z", "2026-11-06T14:30:00+02:00").
+     * A time as RFC 3339 text, with or without a fraction of a second ("2026-11-06T12:30:00Z",
+     * "2026-11-06T14:30:00.250+02:00").
      *
      * @param array<string, mixed> $data
      */
     public static function rfc3339(array $data, string $field): \DateTimeImmutable
     {
         $value = $data[$field] ?? null;
-        $time = \is_string($value) ? \DateTimeImmutable::createFromFormat(\DATE_RFC3339, $value) : false;
-        // A date that does not exist ("2026-13-45") is parsed with a warning and rolled over; refuse it.
-        $problems = \DateTimeImmutable::getLastErrors();
-        if (false === $time || (false !== $problems && ($problems['warning_count'] > 0 || $problems['error_count'] > 0))) {
-            throw new InvalidRequest($field);
+        if (\is_string($value)) {
+            foreach ([\DATE_RFC3339, self::RFC3339_WITH_FRACTION] as $format) {
+                $time = \DateTimeImmutable::createFromFormat($format, $value);
+                $problems = \DateTimeImmutable::getLastErrors();
+                // A date that does not exist ("2026-13-45") is parsed with a warning and rolled over; refuse it.
+                if (false !== $time && (false === $problems || (0 === $problems['warning_count'] && 0 === $problems['error_count']))) {
+                    return $time;
+                }
+            }
         }
 
-        return $time;
+        throw new InvalidRequest($field);
     }
 
     /**
-     * A time as Unix seconds.
+     * A time as Unix seconds, up to 9999-12-31T23:59:59Z.
      *
      * @param array<string, mixed> $data
      */
     public static function unixTime(array $data, string $field): \DateTimeImmutable
     {
-        return new \DateTimeImmutable('@'.self::positiveInt($data, $field));
+        $seconds = self::positiveInt($data, $field);
+        if ($seconds > self::MAX_UNIX_TIME) {
+            throw new InvalidRequest($field);
+        }
+
+        return new \DateTimeImmutable('@'.$seconds);
     }
 
     public static function refuse(InvalidRequest $invalid): JsonResponse

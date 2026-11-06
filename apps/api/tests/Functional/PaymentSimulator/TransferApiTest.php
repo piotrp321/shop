@@ -84,6 +84,27 @@ final class TransferApiTest extends WebTestCase
     }
 
     /**
+     * @return iterable<string, array{string}> times of the same moment, 2026-11-06T12:30:00Z
+     */
+    public static function validExpiries(): iterable
+    {
+        yield 'UTC' => ['2026-11-06T12:30:00Z'];
+        yield 'an offset' => ['2026-11-06T14:30:00+02:00'];
+        yield 'milliseconds' => ['2026-11-06T12:30:00.000Z'];
+        yield 'a longer fraction with an offset' => ['2026-11-06T14:30:00.000000+02:00'];
+    }
+
+    #[DataProvider('validExpiries')]
+    public function testAnExpiryIsAcceptedAsRfc3339WithOrWithoutAFraction(string $expiresAt): void
+    {
+        $this->post(self::CREATE, [...$this->validBody(), 'expiresAt' => $expiresAt]);
+
+        self::assertResponseStatusCodeSame(201);
+        $answer = $this->json();
+        self::assertSame(1_793_968_200, $this->connection()->fetchOne('SELECT EXTRACT(EPOCH FROM expires_at)::bigint FROM payment_simulator_transaction WHERE id = ?', [$answer['transactionId']]));
+    }
+
+    /**
      * @return iterable<string, array{array<string, mixed>}> the body with one field changed (null removes it)
      */
     public static function invalidChanges(): iterable
@@ -106,6 +127,11 @@ final class TransferApiTest extends WebTestCase
         yield 'no expiry' => [['expiresAt' => null]];
         yield 'an expiry that is not a time' => [['expiresAt' => 'tomorrow']];
         yield 'an expiry as a number' => [['expiresAt' => 1_793_968_200]];
+        yield 'an expiry without a zone' => [['expiresAt' => '2026-11-06T12:30:00']];
+        yield 'an expiry with a space instead of T' => [['expiresAt' => '2026-11-06 12:30:00Z']];
+        yield 'an expiry with an empty fraction' => [['expiresAt' => '2026-11-06T12:30:00.Z']];
+        yield 'an expiry with a date that does not exist' => [['expiresAt' => '2026-13-45T12:30:00Z']];
+        yield 'an expiry with trailing text' => [['expiresAt' => '2026-11-06T12:30:00Z and more']];
     }
 
     /**

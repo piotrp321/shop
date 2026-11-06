@@ -84,6 +84,13 @@ final class CardApiTest extends WebTestCase
         ], $row);
     }
 
+    public function testTheLastSecondOfTheYear9999IsStillAnAcceptedExpiry(): void
+    {
+        $this->post(self::CREATE, [...$this->validBody(), 'expiresAt' => 253_402_300_799]);
+
+        self::assertResponseStatusCodeSame(200);
+    }
+
     /**
      * @return iterable<string, array{array<string, mixed>}> the body with one field changed (null removes it)
      */
@@ -109,6 +116,8 @@ final class CardApiTest extends WebTestCase
         yield 'an expiry as a string' => [['expiresAt' => '2026-11-06T12:30:00Z']];
         yield 'a negative expiry' => [['expiresAt' => -5]];
         yield 'an expiry with decimals' => [['expiresAt' => 1.5]];
+        yield 'an expiry in the year 10000' => [['expiresAt' => 253_402_300_800]];
+        yield 'an absurdly large expiry' => [['expiresAt' => 1_000_000_000_000_000]];
     }
 
     /**
