@@ -8,6 +8,7 @@ use App\Shared\Domain\Exception\Conflict;
 use App\Shared\Domain\Exception\InvalidInput;
 use App\Shared\Domain\Exception\NotFound;
 use App\Shared\Domain\Exception\ProblemException;
+use App\Shared\Domain\Exception\Unavailable;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -95,6 +96,21 @@ final class TestErrorController
     public function projectBare(): Response
     {
         throw new class('Something is wrong.') extends \RuntimeException implements ProblemException {};
+    }
+
+    #[Route('/_test/project-unavailable', methods: ['GET'])]
+    public function projectUnavailable(): Response
+    {
+        throw new class('The provider is down.') extends \RuntimeException implements Unavailable {};
+    }
+
+    /** What a sync bus throws when a handler fails with the Unavailable marker. */
+    #[Route('/_test/handler-unavailable', methods: ['GET'])]
+    public function handlerUnavailable(): Response
+    {
+        $unavailable = new class('The provider is down.') extends \RuntimeException implements Unavailable {};
+
+        throw new HandlerFailedException(new Envelope(new \stdClass()), [$unavailable]);
     }
 
     #[Route('/_test/project-and-http', methods: ['GET'])]
