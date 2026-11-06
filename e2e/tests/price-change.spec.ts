@@ -12,7 +12,7 @@ const PRODUCT_PATH = "/p/hantle-regulowane-lumora-para-10";
 
 async function openStoreTraining(page: Page): Promise<void> {
   await page.goto("/c/fitness/trening");
-  await expect(page.getByRole("heading", { level: 1, name: /^Trening/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Trening" })).toBeVisible();
 }
 
 const storeTile = (page: Page, name: string) =>

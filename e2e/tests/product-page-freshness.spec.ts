@@ -26,7 +26,7 @@ const jsonLdPrice = (grosze: number) => (grosze / 100).toFixed(2);
 
 async function openStoreTraining(page: Page): Promise<void> {
   await page.goto("/c/fitness/trening");
-  await expect(page.getByRole("heading", { level: 1, name: /^Trening/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Trening" })).toBeVisible();
 }
 
 const tilePrice = (page: Page) =>

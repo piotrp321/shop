@@ -11,7 +11,7 @@ test("from the list to the product page: the path, the photo and the structured 
   await page.goto("/");
   await openCategoryFromMenu(page, "Bieganie", "Buty szosowe");
   await expect(page).toHaveURL(/\/c\/bieganie\/buty\/szosowe$/);
-  await expect(page.getByRole("heading", { level: 1, name: /^Buty szosowe/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Buty szosowe" })).toBeVisible();
 
   await page.getByRole("main").getByRole("heading", { level: 2, name: PRODUCT_NAME, exact: true }).getByRole("link").click();
 
@@ -47,7 +47,7 @@ test("from the list to the product page: the path, the photo and the structured 
   // The last category of the path leads back to the list of that category.
   await path.getByRole("link", { name: "Buty szosowe", exact: true }).click();
   await expect(page).toHaveURL(/\/c\/bieganie\/buty\/szosowe$/);
-  await expect(page.getByRole("heading", { level: 1, name: /^Buty szosowe/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Buty szosowe" })).toBeVisible();
 });
 
 test("an unknown product is a 404 that search engines do not index", async ({ page }) => {

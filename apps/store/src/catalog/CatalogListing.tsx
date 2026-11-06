@@ -23,9 +23,10 @@ export function CatalogListing({
   return (
     <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6">
       {crumbs && <Breadcrumbs items={crumbs} />}
-      <h1 className="text-2xl font-semibold">
-        {title} <span className="text-base font-normal text-muted-foreground">{formatProductCount(products.total)}</span>
-      </h1>
+      <div className="flex flex-wrap items-baseline gap-x-3">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        <p className="text-base text-muted-foreground">{formatProductCount(products.total)}</p>
+      </div>
       <ProductGrid products={products.items} offers={offers} />
       <CatalogPagination page={products.page} perPage={products.perPage} total={products.total} categoryPath={categoryPath} />
     </main>

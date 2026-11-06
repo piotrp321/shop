@@ -43,12 +43,12 @@ test("a category shows the products of its subcategories too", async ({ page }) 
 
   await openCategoryFromMenu(page, "Bieganie", "Buty biegowe");
   await expect(page).toHaveURL(/\/c\/bieganie\/buty$/);
-  await expect(page.getByRole("heading", { level: 1, name: /^Buty biegowe/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Buty biegowe" })).toBeVisible();
   const parentNames = await allProductNames(page);
 
   await openCategoryFromMenu(page, "Bieganie", "Buty trailowe");
   await expect(page).toHaveURL(/\/c\/bieganie\/buty\/trailowe$/);
-  await expect(page.getByRole("heading", { level: 1, name: /^Buty trailowe/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Buty trailowe" })).toBeVisible();
   const childNames = await allProductNames(page);
 
   expect(childNames.length).toBeGreaterThan(0);
@@ -64,7 +64,8 @@ test("a category page has the path, the number of products, its own canonical ad
   const path = page.getByRole("navigation", { name: "Ścieżka" });
   await expect(path.getByRole("link")).toHaveText(["Wszystkie produkty", "Bieganie", "Buty biegowe"]);
   await expect(path.getByText("Buty trailowe", { exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^Buty trailowe \d+ (produkt|produkty|produktów)$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Buty trailowe");
+  await expect(page.getByRole("main").getByText(/^\d+ (produkt|produkty|produktów)$/)).toBeVisible();
   await expect(page).toHaveTitle("Buty trailowe | Rytm");
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/c\/bieganie\/buty\/trailowe$/);
 

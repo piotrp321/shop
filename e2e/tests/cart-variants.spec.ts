@@ -8,7 +8,7 @@ const VARIANT_LABELS = ["czarne, 41", "czarne, 42"];
 
 test("a guest chooses two sizes of one product on the tile and the cart has two lines with the variant labels", async ({ page }) => {
   await page.goto("/c/bieganie/buty/szosowe");
-  await expect(page.getByRole("heading", { level: 1, name: /^Buty szosowe/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Buty szosowe" })).toBeVisible();
 
   const tile = page
     .getByRole("main")

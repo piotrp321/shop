@@ -13,20 +13,25 @@ const listing = (total: number, items = [makeProduct(1)], page = 1) => ({
 });
 
 describe("CatalogListing", () => {
-  it("shows the title and the number of products in the h1, with the Polish form", () => {
+  const heading = () => screen.getByRole("heading", { level: 1 });
+
+  it("keeps the title alone in the h1 and shows the number of products next to it, with the Polish form", () => {
     render(<CatalogListing title="Buty" listing={listing(1)} />);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Buty 1 produkt");
+    expect(screen.getByRole("heading", { level: 1, name: "Buty" })).toBeTruthy();
+    expect(screen.getByText("1 produkt")).toBeTruthy();
+    expect(heading().contains(screen.getByText("1 produkt"))).toBe(false);
     cleanup();
     render(<CatalogListing title="Buty" listing={listing(23)} />);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Buty 23 produkty");
+    expect(screen.getByText("23 produkty")).toBeTruthy();
     cleanup();
     render(<CatalogListing title="Buty" listing={listing(12)} />);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Buty 12 produktów");
+    expect(screen.getByText("12 produktów")).toBeTruthy();
   });
 
   it("counts all the products, not the ones on the page", () => {
     render(<CatalogListing title="Wszystkie produkty" listing={listing(60)} />);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Wszystkie produkty 60 produktów");
+    expect(screen.getByRole("heading", { level: 1, name: "Wszystkie produkty" })).toBeTruthy();
+    expect(screen.getByText("60 produktów")).toBeTruthy();
   });
 
   it("shows the products as tiles", () => {
@@ -52,6 +57,6 @@ describe("CatalogListing", () => {
   it("says there are no products on an empty page and still counts them", () => {
     render(<CatalogListing title="Buty" listing={listing(0, [])} />);
     expect(screen.getByText("Brak produktów do wyświetlenia.")).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Buty 0 produktów");
+    expect(screen.getByText("0 produktów")).toBeTruthy();
   });
 });
