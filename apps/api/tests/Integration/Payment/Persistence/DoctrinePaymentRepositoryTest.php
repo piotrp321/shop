@@ -6,9 +6,12 @@ namespace App\Tests\Integration\Payment\Persistence;
 
 use App\Payment\Domain\IdempotencyKey;
 use App\Payment\Domain\OrderId;
+use App\Payment\Domain\PaymentId;
 use App\Payment\Domain\PaymentInProgress;
 use App\Payment\Domain\PaymentStatus;
 use App\Payment\Domain\ProviderCode;
+use App\Payment\Domain\ProviderEventId;
+use App\Payment\Domain\ProviderPaymentId;
 use App\Payment\Domain\RefundReason;
 use App\Payment\Infrastructure\Persistence\Doctrine\DoctrinePaymentRepository;
 use App\Tests\Unit\Payment\PaymentExamples;
@@ -115,6 +118,65 @@ final class DoctrinePaymentRepositoryTest extends KernelTestCase
         } finally {
             $this->connection->rollBack();
         }
+    }
+
+    public function testThePaymentOfASessionOfItsProviderIsReadUnderALock(): void
+    {
+        $this->payments->add(PaymentExamples::withSession());
+        $this->entityManager->clear();
+
+        $this->connection->beginTransaction();
+        try {
+            $locked = $this->payments->lockByProviderPayment(ProviderCode::DemoTransfer, ProviderPaymentId::fromString(PaymentExamples::SESSION));
+            self::assertSame(PaymentExamples::PAYMENT, $locked?->id()->toString());
+            self::assertTrue($this->holdsARowLock(), 'the row is locked by this transaction');
+            self::assertNull($this->payments->lockByProviderPayment(ProviderCode::DemoCard, ProviderPaymentId::fromString(PaymentExamples::SESSION)), 'the same id at another provider');
+            self::assertNull($this->payments->lockByProviderPayment(ProviderCode::DemoTransfer, ProviderPaymentId::fromString('tx_unknown')));
+        } finally {
+            $this->connection->rollBack();
+        }
+    }
+
+    public function testTheLockOfASessionReadsTheRowAnewWhenItsRecordIsInTheIdentityMap(): void
+    {
+        $this->payments->add(PaymentExamples::withSession());
+        // Another transaction (a webhook before) changed the payment; the record in the identity map is older.
+        $this->connection->executeStatement("UPDATE payment_payment SET status = 'succeeded', executed_at = now(), completed_at = now() WHERE id = ?", [PaymentExamples::PAYMENT]);
+
+        $this->connection->beginTransaction();
+        try {
+            $locked = $this->payments->lockByProviderPayment(ProviderCode::DemoTransfer, ProviderPaymentId::fromString(PaymentExamples::SESSION));
+            self::assertSame(PaymentStatus::Succeeded, $locked?->status(), 'refreshed under the lock');
+        } finally {
+            $this->connection->rollBack();
+        }
+    }
+
+    public function testAWebhookEventIsRecordedOnceAndItsRepeatIsReported(): void
+    {
+        $payment = PaymentId::fromString(PaymentExamples::PAYMENT);
+        $event = ProviderEventId::fromString('evt_1');
+        $received = new \DateTimeImmutable('2026-11-05 12:21:00+00:00');
+
+        self::assertTrue($this->payments->recordWebhookEvent(ProviderCode::DemoTransfer, $event, $payment, $received));
+        self::assertFalse($this->payments->recordWebhookEvent(ProviderCode::DemoTransfer, $event, $payment, $received->modify('+1 minute')), 'a repeat');
+        self::assertTrue($this->payments->recordWebhookEvent(ProviderCode::DemoCard, $event, $payment, $received), 'the same id at another provider');
+
+        self::assertSame(
+            [['provider' => 'demo-transfer', 'event_id' => 'evt_1', 'payment_id' => PaymentExamples::PAYMENT, 'received_at' => '2026-11-05 12:21:00+00']],
+            $this->connection->fetchAllAssociative("SELECT provider, event_id, payment_id, received_at AT TIME ZONE 'UTC' || '+00' AS received_at FROM payment_webhook_event WHERE provider = 'demo-transfer'"),
+        );
+    }
+
+    public function testARepeatedWebhookEventLeavesTheEntityManagerOpen(): void
+    {
+        $payment = PaymentId::fromString(PaymentExamples::PAYMENT);
+        $this->payments->recordWebhookEvent(ProviderCode::DemoCard, ProviderEventId::fromString('evt_2'), $payment, new \DateTimeImmutable());
+
+        $this->payments->recordWebhookEvent(ProviderCode::DemoCard, ProviderEventId::fromString('evt_2'), $payment, new \DateTimeImmutable());
+
+        self::assertTrue($this->entityManager->isOpen(), 'no unique violation that would close it');
+        $this->payments->add(PaymentExamples::withSession());
     }
 
     public function testTheLatestPaymentOfAnOrderIsTheNewest(): void

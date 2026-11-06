@@ -9,7 +9,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 /**
  * A webhook event of a provider that was handled, kept forever: the deduplication of the deliveries by
- * `(provider, event_id)`. Written by the handling of the webhooks.
+ * `(provider, event_id)`. Only defines the schema: DoctrinePaymentRepository writes the rows by DBAL
+ * (`INSERT … ON CONFLICT DO NOTHING`).
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'payment_webhook_event')]

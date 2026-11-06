@@ -7,20 +7,27 @@ namespace App\Tests\Unit\Payment;
 use App\Payment\Domain\IdempotencyKey;
 use App\Payment\Domain\OrderId;
 use App\Payment\Domain\Payment;
+use App\Payment\Domain\PaymentId;
 use App\Payment\Domain\PaymentInProgress;
 use App\Payment\Domain\PaymentRepository;
 use App\Payment\Domain\PaymentStatus;
+use App\Payment\Domain\ProviderCode;
+use App\Payment\Domain\ProviderEventId;
+use App\Payment\Domain\ProviderPaymentId;
 
 /**
  * Payments in memory, with the two unique indexes of payment_payment (the Idempotency-Key, one pending payment per
- * order) and a journal of the locks and writes. Stores clones, so a change counts only once saved.
+ * order), the handled webhook events and a journal of the locks and writes. Stores clones, so a change counts only
+ * once saved.
  */
 final class InMemoryPayments implements PaymentRepository
 {
     /** @var array<string, Payment> by id, in the order they were added */
     private array $payments = [];
-    /** @var list<string> "lock <order>", "add <payment>", "save <payment> <status>" */
+    /** @var list<string> "lock <order>", "lock session <provider> <session>", "event <provider> <event>", "add <payment>", "save <payment> <status>" */
     public array $journal = [];
+    /** @var array<string, string> "<provider> <event id>" => payment id */
+    public array $webhookEvents = [];
 
     public function add(Payment $payment): void
     {
@@ -62,6 +69,31 @@ final class InMemoryPayments implements PaymentRepository
         }
 
         return null;
+    }
+
+    public function lockByProviderPayment(ProviderCode $provider, ProviderPaymentId $providerPaymentId): ?Payment
+    {
+        $this->journal[] = 'lock session '.$provider->value.' '.$providerPaymentId->toString();
+        foreach ($this->payments as $payment) {
+            $session = $payment->providerPaymentId();
+            if ($payment->provider() === $provider && null !== $session && $session->equals($providerPaymentId)) {
+                return clone $payment;
+            }
+        }
+
+        return null;
+    }
+
+    public function recordWebhookEvent(ProviderCode $provider, ProviderEventId $eventId, PaymentId $paymentId, \DateTimeImmutable $receivedAt): bool
+    {
+        $key = $provider->value.' '.$eventId->toString();
+        if (\array_key_exists($key, $this->webhookEvents)) {
+            return false;
+        }
+        $this->journal[] = 'event '.$key;
+        $this->webhookEvents[$key] = $paymentId->toString();
+
+        return true;
     }
 
     public function latestOfOrder(OrderId $orderId): ?Payment
