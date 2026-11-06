@@ -97,6 +97,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Wszystkie linki są w HTML także przy zamkniętym menu (panele mają atrybut `hidden`), JavaScript tylko je otwiera.
 - Błąd odczytu drzewa w layoucie: `console.error` na serwerze, nagłówek bez menu, strona renderuje się dalej (koszyk
   działa). Strona produktu w ISR może zostać zapisana bez menu do następnej rewalidacji.
+- Strony prerenderowane statycznie w buildzie (`/cart`, `/checkout`, strona 404) też dziedziczą z layoutu odczyt drzewa
+  i tag `catalog`: mają menu z ostatniego renderu (z builda albo z rewalidacji tagu `catalog`, np. po `make seed`).
+  Build bez dostępnego drzewa daje te strony bez menu aż do następnej rewalidacji tagu. Strony dynamiczne (`/`,
+  `/c/...`, `/checkout/confirmation`) czytają drzewo przy każdym żądaniu.
 
 ## Strona produktu `/p/[slug]`
 
