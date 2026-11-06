@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { TREE, makeProduct } from "./fixtures";
+import { EMPTY_FACETS, TREE, makeProduct } from "./fixtures";
 import { buildCatalogMetadata } from "./page-metadata";
 
 const STORE = "http://store.test";
-const page = (n: number, items = [makeProduct(1)]) => ({ items, page: n, perPage: 24, total: items.length });
+const page = (n: number, items = [makeProduct(1)]) => ({ items, page: n, perPage: 24, total: items.length, facets: EMPTY_FACETS });
 const ok = (n = 1, items = [makeProduct(1)]) => ({ kind: "ok" as const, categories: TREE, products: page(n, items), offers: {} });
 
 describe("buildCatalogMetadata", () => {

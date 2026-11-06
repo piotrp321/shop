@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TREE, makeOffer, makeProduct } from "./fixtures";
+import { EMPTY_FACETS, TREE, makeOffer, makeProduct } from "./fixtures";
 import { loadCatalog } from "./load-catalog";
 
 const json = (body: unknown, status = 200, contentType = "application/json") =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": contentType } });
 const problem = (status: number) => json({ type: "about:blank", title: "Error", status }, status, "application/problem+json");
 
-const PAGE = { items: [makeProduct(1)], page: 1, perPage: 24, total: 1 };
-const TWO = { items: [makeProduct(1), makeProduct(2)], page: 1, perPage: 24, total: 2 };
+const PAGE = { items: [makeProduct(1)], page: 1, perPage: 24, total: 1, facets: EMPTY_FACETS };
+const TWO = { items: [makeProduct(1), makeProduct(2)], page: 1, perPage: 24, total: 2, facets: EMPTY_FACETS };
 const OFFER_1 = makeOffer(1, { fromGross: 5490, level: "low_stock" });
 const OFFERS = { items: [OFFER_1] };
 

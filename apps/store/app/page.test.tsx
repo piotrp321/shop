@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/catalog/load-catalog", () => ({ loadCatalogForRequest: vi.fn() }));
 
 import { loadCatalogForRequest as loadCatalog } from "@/catalog/load-catalog";
-import { TREE, makeProduct } from "@/catalog/fixtures";
+import { EMPTY_FACETS, TREE, makeProduct } from "@/catalog/fixtures";
 import Home, { generateMetadata } from "./page";
 
 const props = { searchParams: Promise.resolve({ category: "00000000-0000-4000-8000-0000000000ff" }) } as unknown as Parameters<typeof Home>[0];
@@ -35,7 +35,7 @@ describe("Home page", () => {
     const okPage = (page: number, items = [makeProduct(1)]) => ({
       kind: "ok" as const,
       categories: TREE,
-      products: { items, page, perPage: 24, total: items.length },
+      products: { items, page, perPage: 24, total: items.length, facets: EMPTY_FACETS },
       offers: {},
     });
 

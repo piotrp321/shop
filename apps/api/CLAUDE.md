@@ -235,6 +235,27 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `failed`. Przebudowa (`catalog:reindex`) pobiera fakty ofert każdej paczki; ich błąd przerywa przebudowę, a zmiany
   cen i stanów obsłużone w jej trakcie trafiają do starego indeksu (przebudowa nie jest online).
 
+- `GET /api/v1/products` (`listProducts`) szuka i filtruje w indeksie (`ElasticsearchProductSearch`, zapytanie składa
+  `ProductSearchQuery`). Parametry, każdy niepoprawny to 400 z `violations`: `category` (UUID, z podkategoriami; nieznana
+  to 404), `q` (fraza, po przycięciu 2–100 znaków), `option` (powtarzany klucz `<oś>:<wartość>`, podział na pierwszym
+  `:`, do 50 wpisów, do 5 różnych osi, oś 1–30 i wartość 1–40 znaków; formę `option[]` odrzuca; PHP zostawia przy
+  powtórzonym kluczu tylko ostatnią wartość, więc `OptionFilter` czyta surowy `QUERY_STRING`, jak `productId` w ofertach),
+  `priceMin` i `priceMax` (grosze, liczby całkowite ≥ 0, `priceMin ≤ priceMax`; w DTO to napisy z `Regex`, bo denormalizer
+  zapytania ucinałby `10.5` do `10`), `available` (tylko `true`), `sort` (`relevance` tylko z `q` i domyślne z `q`, `name`
+  domyślne bez `q`, `price_asc`, `price_desc`), `page`, `perPage` (jak dotąd). Fraza: wszystkie słowa muszą pasować
+  (nazwa, nazwy kategorii, krótki opis; odmiana, brak polskich znaków, literówki w gałęzi o wadze 0,3). Warunki na
+  wariantach (`option`, `priceMin`/`priceMax`, `available`) dotyczą jednego wariantu (jedno `nested` w `post_filter`);
+  cena i dostępność liczą się tylko dla wariantów możliwych do kupienia. Kilka wartości jednej osi to „lub”, różne osie
+  „i”. Sortowanie po cenie idzie po `from_gross` (produkty bez ceny na końcu), remisy po `name.sort` i `id`.
+  Odpowiedź ma `facets`: `categories` (dzieci kategorii z filtra albo kategorie główne, z pełnym warunkiem wariantu, w
+  kolejności drzewa), `options` (osie do 10, wartości do 30 na oś; liczba przy wartości to liczba produktów z wariantem
+  o tej wartości spełniającym pozostałe warunki, osi wybranej bez jej własnego warunku, więc dla osi bez wyboru jest to
+  `total` po dodaniu wartości; wybrana wartość zostaje z 0), `price` (min i max brutto wariantów możliwych do kupienia
+  spełniających warunki osi, bez warunku ceny; `null` bez takich), `availableCount` (`total` po dodaniu `available=true`).
+  Nagłówki bez zmian (`public, max-age=60`, `xkey`). Wartości osi dla osi bez wyboru czyta jedno zapytanie `terms`
+  (`ProductSearchQuery::MAX_FREE_VALUES` = 400 wartości wszystkich osi razem), więc przy większej liczbie par oś–wartość
+  w wynikach lista osi bez wyboru może być niepełna.
+
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
 - Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.

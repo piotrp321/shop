@@ -3,6 +3,9 @@ import type { components } from "@/api/schema";
 type ProductImage = components["schemas"]["ProductImage"];
 type ProductListItem = components["schemas"]["ProductListItem"];
 type CategoryNode = components["schemas"]["CategoryNode"];
+type ProductFacets = components["schemas"]["ProductFacets"];
+
+export const EMPTY_FACETS: ProductFacets = { categories: [], options: [], price: null, availableCount: 0 };
 
 export const WIDTHS = [256, 384, 512, 768] as const;
 
