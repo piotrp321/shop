@@ -1,9 +1,10 @@
 # Light CI: static analysis and tests of the three apps.
 # Runs without the full stack: app containers start with --no-deps; only the services the tests need are started.
 # The `e2e` job is the exception: it starts the full stack and runs the Playwright tests.
-# Both jobs run for every change, so they can be required status checks. For a pull request that changes
-# documentation only (docs/** and *.md outside .github/, see .github/scripts/docs-only.sh) the `scope` job
-# says so, and both jobs skip their steps and pass within seconds.
+# Both jobs run for every change, so they can be required status checks. For a pull request the `scope` job says
+# what it changes (.github/scripts/scope.sh): documentation only (docs/** and *.md outside .github/) skips every
+# step; repository tooling only (.claude/**, .ao/**, tools/**, possibly with documentation) runs just the script
+# tests in `checks`. Skipped steps let both jobs pass within seconds. Anything else, and every push, runs it all.
 name: CI
 
 on:
@@ -32,27 +33,27 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      docs_only: ${{ steps.scope.outputs.docs_only }}
+      scope: ${{ steps.scope.outputs.scope }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Scope script tests
-        run: sh .github/scripts/test_docs_only.sh
+        run: sh .github/scripts/test_scope.sh
 
       # Pushes (main, epic/**) always run the full CI.
-      - name: Detect a documentation-only change
+      - name: Detect the scope of the change
         id: scope
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          docs_only=false
+          scope=full
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            docs_only="$(sh .github/scripts/docs-only.sh "$BASE_SHA" "$HEAD_SHA")"
+            scope="$(sh .github/scripts/scope.sh "$BASE_SHA" "$HEAD_SHA")"
           fi
-          echo "docs_only=$docs_only" | tee -a "$GITHUB_OUTPUT"
+          echo "scope=$scope" | tee -a "$GITHUB_OUTPUT"
 
   checks:
     needs: scope
@@ -61,23 +62,29 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      FULL_CI: ${{ needs.scope.outputs.docs_only != 'true' }}
+      SCOPE: ${{ needs.scope.outputs.scope }}
+      FULL_CI: ${{ needs.scope.outputs.scope == 'full' }}
     steps:
       - name: Require the scope job
         if: needs.scope.result != 'success'
         run: echo "::error::The scope job did not succeed" && exit 1
 
       - name: Documentation-only change, skipping the checks
-        if: env.FULL_CI != 'true'
+        if: env.SCOPE == 'docs'
         run: echo "Only docs/** and *.md changed"
 
+      - name: Tooling-only change, running the script tests only
+        if: env.SCOPE == 'tooling'
+        run: echo "Only .claude/**, .ao/**, tools/** and documentation changed"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling'
 
       # Standard-library scripts of the Claude Code skills (/delivery state, /planner manifest, /ao-run events) and the AO hooks.
       # They run in the background next to the steps below; `Wait for the script tests` at the end reports them.
+      # A tooling-only change runs only these.
       - name: Skill and CI script tests in the background
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling'
         run: >-
           sh .github/scripts/background.sh start script-tests sh -c
           'set -e;
@@ -195,7 +202,7 @@ jobs:
           git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json apps/store/src/api/schema.d.ts apps/admin/src/api/schema.d.ts
 
       - name: Wait for the script tests
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling'
         run: sh .github/scripts/background.sh wait script-tests
 
   # End-to-end tests on the full stack: Playwright drives the store and the panel in a browser.
@@ -205,7 +212,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      FULL_CI: ${{ needs.scope.outputs.docs_only != 'true' }}
+      SCOPE: ${{ needs.scope.outputs.scope }}
+      FULL_CI: ${{ needs.scope.outputs.scope == 'full' }}
       # The store runs the production build (`next build` + `next start`); compose passes the mode on to the e2e container.
       STORE_MODE: production
     steps:
@@ -213,9 +221,9 @@ jobs:
         if: needs.scope.result != 'success'
         run: echo "::error::The scope job did not succeed" && exit 1
 
-      - name: Documentation-only change, skipping the end-to-end tests
+      - name: Documentation or tooling only change, skipping the end-to-end tests
         if: env.FULL_CI != 'true'
-        run: echo "Only docs/** and *.md changed"
+        run: echo "The change is $SCOPE only"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.FULL_CI == 'true'
