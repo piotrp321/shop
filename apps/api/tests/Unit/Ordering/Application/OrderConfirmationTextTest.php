@@ -129,6 +129,8 @@ final class OrderConfirmationTextTest extends TestCase
             [] === $lines ? [self::line('Czapka', '', 1, 100)] : $lines,
             new OrderTotalsView(0, 0, $gross, 'PLN'),
             $placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'),
+            ($placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'))->modify('+30 minutes'),
+            null,
         );
     }
 

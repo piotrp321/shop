@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Ordering\Domain;
 
+use App\Ordering\Domain\AccessToken;
 use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\EmailAddress;
@@ -13,6 +14,7 @@ use App\Ordering\Domain\Money;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderNumber;
 use App\Ordering\Domain\OrderOwner;
+use App\Ordering\Domain\PaymentId;
 use App\Ordering\Domain\PriceCopy;
 use App\Ordering\Domain\RequestFingerprint;
 use App\Ordering\Domain\ShippingAddress;
@@ -397,5 +399,46 @@ final class OrderValuesTest extends TestCase
     private static function contact(string $email = 'jan@example.com', string $fullName = 'Jan Kowalski', string $phone = '600100200'): Contact
     {
         return Contact::of(EmailAddress::fromString($email), $fullName, $phone);
+    }
+
+    public function testAnAccessTokenIsFortyThreeCharactersOfBase64Url(): void
+    {
+        $token = 'Ab0_-Ab0_-Ab0_-Ab0_-Ab0_-Ab0_-Ab0_-Ab0_-Ab0';
+
+        self::assertSame($token, AccessToken::fromString($token)->toString());
+        self::assertTrue(AccessToken::fromString($token)->matches($token));
+        self::assertFalse(AccessToken::fromString($token)->matches(strtolower($token)));
+        self::assertFalse(AccessToken::fromString($token)->matches(''));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function invalidTokens(): iterable
+    {
+        yield 'empty' => [''];
+        yield '42 characters' => [str_repeat('a', 42)];
+        yield '44 characters' => [str_repeat('a', 44)];
+        yield 'base64 with plus' => [str_repeat('a', 42).'+'];
+        yield 'base64 with slash' => [str_repeat('a', 42).'/'];
+        yield 'padding' => [str_repeat('a', 42).'='];
+        yield 'a new line at the end' => [str_repeat('a', 43)."\n"];
+    }
+
+    #[DataProvider('invalidTokens')]
+    public function testAnyOtherAccessTokenIsRefused(string $token): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        AccessToken::fromString($token);
+    }
+
+    public function testAPaymentIdIsAUuid(): void
+    {
+        self::assertSame('0192f0c4-7c1a-7c4e-9a6e-00000000000a', PaymentId::fromString('0192F0C4-7C1A-7C4E-9A6E-00000000000A')->toString());
+        self::assertTrue(PaymentId::fromString('0192f0c4-7c1a-7c4e-9a6e-00000000000a')->equals(PaymentId::fromString('0192F0C4-7C1A-7C4E-9A6E-00000000000A')));
+
+        $this->expectException(\InvalidArgumentException::class);
+        PaymentId::fromString('not-a-uuid');
     }
 }

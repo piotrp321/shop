@@ -108,6 +108,41 @@ final class PlaceOrderHandlerTest extends TestCase
         self::assertSame([[self::SHOES, self::CAP]], $this->catalog->asked, 'one call for all the lines');
     }
 
+    public function testAGuestOrderGetsARandomAccessTokenAndTheDeadline(): void
+    {
+        $view = $this->place(self::command())->order;
+
+        self::assertIsString($view->accessToken);
+        self::assertMatchesRegularExpression('/^[A-Za-z0-9_-]{43}$/D', $view->accessToken, '32 random bytes in base64url');
+        self::assertSame($view->accessToken, $this->onlyOrder()->accessToken()?->toString());
+        self::assertEquals(new \DateTimeImmutable('2026-11-05 12:30:00+00:00'), $view->paymentDeadline);
+
+        $this->carts->put(CartReference::guest(self::OTHER_CART), [self::MAP => 1]);
+        $other = $this->place(self::command(cart: CartReference::guest(self::OTHER_CART), expectedTotalGross: 1_230, key: 'key-2'))->order;
+        self::assertNotSame($view->accessToken, $other->accessToken, 'every guest order has a token of its own');
+    }
+
+    public function testACustomerOrderHasNoAccessToken(): void
+    {
+        $this->carts->put(CartReference::customer(self::CUSTOMER), [self::MAP => 3]);
+
+        $view = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690))->order;
+
+        self::assertNull($view->accessToken);
+        self::assertNull($this->onlyOrder()->accessToken());
+    }
+
+    public function testAReplayGivesTheSameAccessToken(): void
+    {
+        $first = $this->place(self::command())->order;
+
+        $replayed = $this->place(self::command());
+
+        self::assertTrue($replayed->replayed);
+        self::assertNotNull($first->accessToken);
+        self::assertSame($first->accessToken, $replayed->order->accessToken);
+    }
+
     public function testTheStepsRunInTheOrderOfTheSpecification(): void
     {
         $this->place(self::command());

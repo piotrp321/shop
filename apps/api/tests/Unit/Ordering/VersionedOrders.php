@@ -13,17 +13,20 @@ use App\Ordering\Domain\OrderRepository;
 
 /**
  * Orders that behave like the database: get() returns a fresh copy at the stored version, and save() refuses a copy
- * whose version is no longer the stored one, then raises the stored version. confirmElsewhere() is another handler
- * saving the marker first.
+ * whose version is no longer the stored one, then stores the copy and raises the stored version. changeElsewhere()
+ * is another handler saving a change first.
  */
 final class VersionedOrders implements OrderRepository
 {
     /** @var array<string, array{order: Order, version: int}> */
     private array $stored = [];
 
+    /** @var list<string> ids of the orders saved, in the order of the saves */
+    public array $saved = [];
+
     public function add(Order $order): void
     {
-        $this->stored[$order->id()->toString()] = ['order' => $order, 'version' => $order->version()];
+        $this->stored[$order->id()->toString()] = ['order' => OrderExamples::copy($order), 'version' => $order->version()];
     }
 
     public function save(Order $order): void
@@ -33,31 +36,15 @@ final class VersionedOrders implements OrderRepository
         if ($stored['version'] !== $order->version()) {
             throw new OrderModifiedConcurrently();
         }
-        if (null !== $order->confirmationSentAt()) {
-            $stored['order']->markConfirmationSent($order->confirmationSentAt());
-        }
-        $this->stored[$id]['version'] = $stored['version'] + 1;
+        $this->stored[$id] = ['order' => OrderExamples::copy($order), 'version' => $stored['version'] + 1];
+        $this->saved[] = $id;
     }
 
     public function get(OrderId $id): Order
     {
         $stored = $this->stored[$id->toString()] ?? throw new OrderNotFound();
-        $order = $stored['order'];
 
-        return Order::reconstitute(
-            $order->id(),
-            $order->number(),
-            $order->owner(),
-            $order->contact(),
-            $order->shippingAddress(),
-            $order->lines(),
-            $order->status(),
-            $order->idempotencyKey(),
-            $order->requestFingerprint(),
-            $order->placedAt(),
-            $order->confirmationSentAt(),
-            $stored['version'],
-        );
+        return OrderExamples::copy($stored['order'], $stored['version']);
     }
 
     public function findByIdempotencyKey(IdempotencyKey $key): ?Order
@@ -65,10 +52,20 @@ final class VersionedOrders implements OrderRepository
         return null;
     }
 
-    public function confirmElsewhere(OrderId $id, \DateTimeImmutable $at): void
+    /**
+     * Another handler reads the order, changes it and saves it first.
+     *
+     * @param \Closure(Order): mixed $change
+     */
+    public function changeElsewhere(OrderId $id, \Closure $change): void
     {
         $copy = $this->get($id);
-        $copy->markConfirmationSent($at);
+        $change($copy);
         $this->save($copy);
+    }
+
+    public function confirmElsewhere(OrderId $id, \DateTimeImmutable $at): void
+    {
+        $this->changeElsewhere($id, static fn (Order $order) => $order->markConfirmationSent($at));
     }
 }

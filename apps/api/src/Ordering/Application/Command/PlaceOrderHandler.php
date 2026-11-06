@@ -12,6 +12,7 @@ use App\Ordering\Application\Port\OrderNumbers;
 use App\Ordering\Application\Port\OrderPrices;
 use App\Ordering\Application\Port\StockReservations;
 use App\Ordering\Application\View\OrderView;
+use App\Ordering\Domain\AccessToken;
 use App\Ordering\Domain\CartEmpty;
 use App\Ordering\Domain\CartNotOrderable;
 use App\Ordering\Domain\Contact;
@@ -108,11 +109,19 @@ final readonly class PlaceOrderHandler
         $id = OrderId::fromString(Uuid::v7()->toRfc4122());
         $this->reservations->reserve($id, $cartLines);
 
-        $order = Order::place($id, $number, $owner, $contact, $address, $lines, $key, $fingerprint, $this->clock->now());
+        $order = Order::place($id, $number, $owner, $owner->isGuest() ? self::newAccessToken() : null, $contact, $address, $lines, $key, $fingerprint, $this->clock->now());
         $this->orders->add($order);
         $this->events->publish(...$order->releaseEvents());
 
         return new PlacedOrder(OrderView::of($order), false);
+    }
+
+    /**
+     * 32 random bytes in base64url without padding: the guest's key to the order, like the id of a guest cart.
+     */
+    private static function newAccessToken(): AccessToken
+    {
+        return AccessToken::fromString(rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '='));
     }
 
     /**
