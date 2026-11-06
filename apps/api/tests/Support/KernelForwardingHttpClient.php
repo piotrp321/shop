@@ -20,19 +20,23 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
  * reads. A test of a failing provider replaces the client with a MockHttpClient of constant responses.
  *
  * The request is built from the client's normalized options (the body is already a string, `auth_basic` and
- * `auth_bearer` are already in the headers). Redirects are followed by MockHttpClient as by any client.
+ * `auth_bearer` are already in the headers; a form body also fills the request parameters, as PHP does). Redirects are followed by MockHttpClient as by any client.
  */
 final class KernelForwardingHttpClient
 {
-    public static function create(): MockHttpClient
+    /**
+     * @param string $environment the environment of the other kernel: the one of the caller, so `test_messaging` tests
+     *                            reach real Doctrine transports on both sides
+     */
+    public static function create(string $environment = 'test'): MockHttpClient
     {
-        return new MockHttpClient(static fn (string $method, string $url, array $options): ResponseInterface => self::forward($method, $url, $options));
+        return new MockHttpClient(static fn (string $method, string $url, array $options): ResponseInterface => self::forward($environment, $method, $url, $options));
     }
 
     /**
      * @param array<mixed> $options
      */
-    private static function forward(string $method, string $url, array $options): ResponseInterface
+    private static function forward(string $environment, string $method, string $url, array $options): ResponseInterface
     {
         $server = [];
         /** @var array<string, list<string>> $headers */
@@ -54,8 +58,14 @@ final class KernelForwardingHttpClient
             $body = $content;
         }
 
-        $request = Request::create($url, $method, [], [], [], $server, $body);
-        $kernel = new Kernel('test', false);
+        // PHP fills $_POST from a form body; Request::create takes the parameters apart from the content.
+        $parameters = [];
+        if (str_starts_with(strtolower($server['CONTENT_TYPE'] ?? ''), 'application/x-www-form-urlencoded')) {
+            parse_str($body, $parameters);
+        }
+
+        $request = Request::create($url, $method, $parameters, [], [], $server, $body);
+        $kernel = new Kernel($environment, false);
         $kernel->boot();
         try {
             $response = $kernel->handle($request, HttpKernelInterface::MAIN_REQUEST, true);

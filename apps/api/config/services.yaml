@@ -285,6 +285,7 @@ when@test: &test
         app.payment_http_client:
             class: Symfony\Component\HttpClient\MockHttpClient
             factory: ['App\Tests\Support\KernelForwardingHttpClient', 'create']
+            arguments: ['%kernel.environment%']
             public: true
         # Replaced by the delivery tests with a builder that signs with the secrets of the shared test vector.
         App\PaymentSimulator\SimulatedWebhooks:
