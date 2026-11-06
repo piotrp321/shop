@@ -61,15 +61,18 @@ final class DecisionTest extends MessagingKernelTestCase
     {
         $transaction = SimulatorTransactions::transfer($this->entityManager);
 
+        $failure = null;
         try {
             $this->entityManager->wrapInTransaction(function () use ($transaction): void {
                 $this->decide($transaction->id, Provider::DemoTransfer, true);
 
                 throw new \RuntimeException('Failure before commit.');
             });
-            self::fail('Expected the failure.');
-        } catch (\RuntimeException) {
+        } catch (\RuntimeException $e) {
+            $failure = $e;
         }
+
+        self::assertSame('Failure before commit.', $failure->getMessage());
 
         self::assertSame(['open', false], $this->state($transaction->id));
         self::assertSame(0, $this->rows('payment_simulator'));
@@ -175,6 +178,8 @@ final class DecisionTest extends MessagingKernelTestCase
         $row = $this->connection()->fetchAssociative('SELECT status, decided_at IS NOT NULL AS decided FROM payment_simulator_transaction WHERE id = ?', [$id]);
         self::assertIsArray($row);
 
+        self::assertIsString($row['status']);
+
         return [$row['status'], (bool) $row['decided']];
     }
 
@@ -186,6 +191,6 @@ final class DecisionTest extends MessagingKernelTestCase
         $transport = $this->transport('payment_simulator');
         self::assertInstanceOf(ListableReceiverInterface::class, $transport);
 
-        return array_map(static fn ($envelope): object => $envelope->getMessage(), [...$transport->all()]);
+        return array_values(array_map(static fn ($envelope): object => $envelope->getMessage(), [...$transport->all()]));
     }
 }

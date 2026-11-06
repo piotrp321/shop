@@ -286,7 +286,8 @@ when@test: &test
             class: Symfony\Component\HttpClient\MockHttpClient
             factory: ['App\Tests\Support\KernelForwardingHttpClient', 'create']
             public: true
-        App\PaymentSimulator\ProviderCredentials:
+        # Replaced by the delivery tests with a builder that signs with the secrets of the shared test vector.
+        App\PaymentSimulator\SimulatedWebhooks:
             public: true
 
 when@test_messaging: *test

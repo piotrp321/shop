@@ -30,7 +30,7 @@ final class KernelForwardingHttpClient
     }
 
     /**
-     * @param array<string, mixed> $options
+     * @param array<mixed> $options
      */
     private static function forward(string $method, string $url, array $options): ResponseInterface
     {
@@ -45,15 +45,16 @@ final class KernelForwardingHttpClient
             }
         }
         $body = $options['body'] ?? '';
+        \assert(\is_string($body) || $body instanceof \Closure);
         if ($body instanceof \Closure) {
             $content = '';
-            while ('' !== $chunk = (string) $body(16_372)) {
+            while (\is_string($chunk = $body(16_372)) && '' !== $chunk) {
                 $content .= $chunk;
             }
             $body = $content;
         }
 
-        $request = Request::create($url, $method, [], [], [], $server, \is_string($body) ? $body : '');
+        $request = Request::create($url, $method, [], [], [], $server, $body);
         $kernel = new Kernel('test', false);
         $kernel->boot();
         try {
