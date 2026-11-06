@@ -2,11 +2,13 @@ import { expect, test, type Page } from "@playwright/test";
 import { staff } from "../support/accounts";
 import { loginStaff } from "../support/staff-login";
 
-// The store list reads the offers (with the availability level) from `GET /api/v1/product-offers`, cached for 60 s (`public, max-age=60`); the rest is slack.
-const STORE_AVAILABILITY_WAIT_MS = 70_000;
+// A change of the availability level purges the product in Varnish and revalidates its page in the store (no waiting
+// for a cache time): the product page must show the new level within this time.
+const STORE_AVAILABILITY_WAIT_MS = 20_000;
 // The demo product with nothing on the shelf in any variant (apps/api/fixtures/stock.yaml); it is in the category
 // "Sporty wodne" > "Kajaki".
 const PRODUCT_NAME = "Kajak turystyczny Vilmar Rzeka 2";
+const PRODUCT_PATH = "/p/kajak-turystyczny-vilmar-rzeka-2";
 // The variant of the product to receive into: the panel lists a row per variant, the stock is kept per variant.
 const VARIANT_LABEL = "zielony";
 // More than the low stock threshold, so the level after the receipt is "Dostępny" and not "Ostatnie sztuki".
@@ -15,41 +17,28 @@ const RECEIVED_QUANTITY = 10;
 /** The whole text, literally (also an empty one, which `getByText` cannot match). */
 const exactly = (text: string): RegExp => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 
-const storeAvailability = (page: Page) =>
-  page
-    .getByRole("main")
-    .getByRole("listitem")
-    .filter({ has: page.getByRole("heading", { level: 2, name: PRODUCT_NAME, exact: true }) })
-    .getByTestId("availability");
-
-async function openStoreKayaks(page: Page): Promise<void> {
-  await page.goto("/");
-  const categories = page.getByRole("navigation", { name: "Kategorie" });
-  await categories.getByRole("link", { name: "Sporty wodne", exact: true }).click();
-  await categories.getByRole("link", { name: "Kajaki", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Kajaki" })).toBeVisible();
-}
-
-/** Reloads the store listing until the product shows the label; the offers may be cached for up to 60 s. */
-async function expectStoreAvailability(page: Page, label: string): Promise<void> {
+/**
+ * Opens the product page until it shows the level of the product (before a variant is chosen); the level event of the
+ * last change has to be handled first.
+ */
+async function expectProductPageAvailability(page: Page, label: string): Promise<void> {
   await expect
     .poll(
       async () => {
-        await page.reload();
-        return (await storeAvailability(page).innerText()).trim();
+        await page.goto(PRODUCT_PATH);
+        return (await page.getByRole("main").getByTestId("availability").first().innerText()).trim();
       },
-      { message: `the store did not show "${label}" for "${PRODUCT_NAME}"`, timeout: STORE_AVAILABILITY_WAIT_MS, intervals: [2_000] },
+      { message: `the product page did not show "${label}" for "${PRODUCT_NAME}" within 20 s`, timeout: STORE_AVAILABILITY_WAIT_MS, intervals: [1_000] },
     )
     .toBe(label);
 }
 
-test("a stock receipt for a variant in the panel makes the product available in the store", async ({ page }) => {
+test("a stock receipt for a variant in the panel makes the product available on its page", async ({ page }) => {
   test.setTimeout(2 * STORE_AVAILABILITY_WAIT_MS + 120_000);
 
-  // The product starts out of stock in every variant. After a previous run the store may still show the cached "Dostępny" for up to
-  // 60 s; waiting for "Niedostępny" makes the "Dostępny" after the receipt a consequence of it, not a leftover.
-  await openStoreKayaks(page);
-  await expectStoreAvailability(page, "Niedostępny");
+  // The product starts out of stock in every variant. Right after a previous run the event of its final correction
+  // may still be on its way; waiting for "Niedostępny" makes the "Dostępny" after the receipt a consequence of it.
+  await expectProductPageAvailability(page, "Niedostępny");
 
   await loginStaff(page, staff.warehouse);
   await page.getByRole("link", { name: "Stany magazynowe" }).click();
@@ -84,8 +73,7 @@ test("a stock receipt for a variant in the panel makes the product available in 
     // A second tab keeps the panel page, with its row and session, for the cleanup below.
     const store = await page.context().newPage();
     try {
-      await openStoreKayaks(store);
-      await expectStoreAvailability(store, "Dostępny");
+      await expectProductPageAvailability(store, "Dostępny");
     } finally {
       await store.close();
     }

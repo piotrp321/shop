@@ -1,23 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
-import { staff } from "../support/accounts";
-import { loginStaff } from "../support/staff-login";
+import { changePriceInPanel, formatPln, normalize } from "../support/price-change";
 
-// The store list reads the offers (with the prices) from `GET /api/v1/product-offers`, cached for 60 s (`public, max-age=60`); the rest is slack.
-const STORE_PRICE_WAIT_MS = 70_000;
+// The price event purges the product in Varnish and revalidates its page in the store (no waiting for a cache time):
+// the new price must show up on the product page and on the list within this time after the change.
+const STORE_PRICE_WAIT_MS = 20_000;
 // A demo product without variant axes (apps/api/fixtures/catalog.yaml): it has the default variant only, so the panel
 // lists one row for it and its tile has no variant choice and no "od" before the price. It is in the category
 // "Fitness" > "Trening".
 const PRODUCT_NAME = "Hantle regulowane Lumora Para 10";
-// Two fixed amounts; the test takes the one the product does not have now, so every run really changes the price.
-const CANDIDATE_PRICES = [
-  { input: "123,45", grosze: 12345 },
-  { input: "234,56", grosze: 23456 },
-] as const;
-
-const formatPln = (grosze: number) => new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" }).format(grosze / 100);
-// Intl separates thousands and the currency sign with non-breaking spaces, which a browser may pick differently.
-const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
-const digitsOf = (text: string) => Number(text.replace(/\D/g, ""));
+const PRODUCT_PATH = "/p/hantle-regulowane-lumora-para-10";
 
 async function openStoreTraining(page: Page): Promise<void> {
   await page.goto("/");
@@ -33,44 +24,41 @@ const storeTile = (page: Page, name: string) =>
     .getByRole("listitem")
     .filter({ has: page.getByRole("heading", { level: 2, name, exact: true }) });
 
-test("a price changed in the panel shows up on the store list", async ({ page }) => {
-  test.setTimeout(STORE_PRICE_WAIT_MS + 80_000);
+test("a price changed in the panel shows up on the product page and on the store list", async ({ page, context }) => {
+  test.setTimeout(STORE_PRICE_WAIT_MS + 90_000);
 
-  const productName = PRODUCT_NAME;
-  await openStoreTraining(page);
-  const priceBefore = normalize(await storeTile(page, productName).getByTestId("price").innerText());
+  // Both readings come before the change, so Varnish (and the ISR cache) hold the old price.
+  const store = await context.newPage();
+  await store.goto(PRODUCT_PATH);
+  const pageBefore = normalize(await store.getByTestId("price").innerText());
+  await openStoreTraining(store);
+  const listBefore = normalize(await storeTile(store, PRODUCT_NAME).getByTestId("price").innerText());
 
-  await loginStaff(page, staff.admin);
-  await page.getByRole("link", { name: "Ceny" }).click();
-  await page.getByRole("searchbox", { name: "Szukaj po nazwie produktu" }).fill(productName);
-  // The unfiltered first page has many rows: exactly one row means the (debounced) search has been applied. Changing
-  // the price earlier would let a late search answer overwrite the row with the old price.
-  await expect(page.getByTestId("price-row"), "the search narrows the list to the one row of the product's default variant").toHaveCount(1);
-  const row = page.getByTestId("price-row").filter({ has: page.getByTestId("name").getByText(productName, { exact: true }) });
-  await expect(row).toHaveCount(1);
+  const change = await changePriceInPanel(page, PRODUCT_NAME);
+  const changedAt = Date.now();
+  const expected = formatPln(change.after);
+  expect(pageBefore, "the product page showed another price before the change").toBe(formatPln(change.before));
+  expect(listBefore, "the list showed another price before the change").toBe(formatPln(change.before));
 
-  const currentGross = digitsOf(await row.getByTestId("gross").innerText());
-  const target = CANDIDATE_PRICES.find((candidate) => candidate.grosze !== currentGross);
-  if (target === undefined) throw new Error("no candidate price differs from the current one");
-
-  await row.getByRole("button", { name: "Zmień cenę" }).click();
-  await page.getByTestId("gross-input").fill(target.input);
-  await page.getByRole("button", { name: "Zapisz" }).click();
-  await expect(page.getByTestId("change-dialog"), "the price change was rejected (conflict, validation or API error)").toBeHidden();
-  await expect(row.getByTestId("gross")).toHaveText(new RegExp(`^${target.input.replace(",", "[,.]")}\\s`));
-
-  // The offers endpoint may be cached for up to 60 s: reload until the new price appears. The text is compared whole,
-  // so a price with "od" would not match: the product has one variant.
-  const expected = normalize(formatPln(target.grosze));
-  expect(priceBefore, "the store showed another price before the change").not.toBe(expected);
-  await openStoreTraining(page);
+  // The text is compared whole, so a price with "od" would not match: the product has one variant.
+  const remaining = () => Math.max(1, STORE_PRICE_WAIT_MS - (Date.now() - changedAt));
   await expect
     .poll(
       async () => {
-        await page.reload();
-        return normalize(await storeTile(page, productName).getByTestId("price").innerText());
+        await store.goto(PRODUCT_PATH);
+        return normalize(await store.getByTestId("price").innerText());
       },
-      { message: `the store did not show ${expected} for "${productName}"`, timeout: STORE_PRICE_WAIT_MS, intervals: [2_000] },
+      { message: `the product page did not show ${expected} within 20 s`, timeout: remaining(), intervals: [1_000] },
+    )
+    .toBe(expected);
+  await openStoreTraining(store);
+  await expect
+    .poll(
+      async () => {
+        await store.reload();
+        return normalize(await storeTile(store, PRODUCT_NAME).getByTestId("price").innerText());
+      },
+      { message: `the list did not show ${expected} for "${PRODUCT_NAME}" within 20 s`, timeout: remaining(), intervals: [1_000] },
     )
     .toBe(expected);
 });
