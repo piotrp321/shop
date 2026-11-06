@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FocusEvent, type FormEvent, useOptimistic, useRef, useState, useTransition } from "react";
+import { type FocusEvent, type FormEvent, type KeyboardEvent, useOptimistic, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatPrice } from "./format-price";
@@ -55,6 +55,13 @@ export function ListingFilters({ basePath, mode, state, facets }: { basePath: st
   const leavePriceField = (event: FocusEvent<HTMLInputElement>) => {
     // Moving from one price field to the other is not leaving the price.
     if (event.relatedTarget instanceof Node && priceGroup.current?.contains(event.relatedTarget)) return;
+    applyPrice();
+  };
+
+  // A form with several text fields and no submit button is not submitted by Enter, so the key is handled here.
+  const priceKey = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
     applyPrice();
   };
 
@@ -122,11 +129,11 @@ export function ListingFilters({ basePath, mode, state, facets }: { basePath: st
           <div className="flex items-center gap-2">
             <label className="flex flex-1 flex-col gap-1 text-sm">
               Cena od
-              <Input name="cena-od" type="text" inputMode="numeric" value={priceFrom} onChange={(event) => setPriceFrom(event.target.value)} onBlur={leavePriceField} />
+              <Input name="cena-od" type="text" inputMode="numeric" value={priceFrom} onChange={(event) => setPriceFrom(event.target.value)} onKeyDown={priceKey} onBlur={leavePriceField} />
             </label>
             <label className="flex flex-1 flex-col gap-1 text-sm">
               Cena do
-              <Input name="cena-do" type="text" inputMode="numeric" value={priceTo} onChange={(event) => setPriceTo(event.target.value)} onBlur={leavePriceField} />
+              <Input name="cena-do" type="text" inputMode="numeric" value={priceTo} onChange={(event) => setPriceTo(event.target.value)} onKeyDown={priceKey} onBlur={leavePriceField} />
             </label>
           </div>
           {facets.price !== null && (

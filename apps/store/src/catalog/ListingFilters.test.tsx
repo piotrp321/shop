@@ -129,9 +129,24 @@ describe("ListingFilters: navigation", () => {
     fireEvent.change(priceFrom(), { target: { value: "100" } });
     fireEvent.change(priceTo(), { target: { value: " 250 " } });
     expect(push).not.toHaveBeenCalled(); // typing does not navigate
-    const notPrevented = fireEvent.submit(priceTo().form!);
-    expect(notPrevented).toBe(false);
+    const notPrevented = fireEvent.keyDown(priceTo(), { key: "Enter" });
+    expect(notPrevented).toBe(false); // the default action (submitting the form) is cancelled
     expect(push).toHaveBeenCalledExactlyOnceWith("/c/bieganie?cena-od=100&cena-do=250&o=Kolor%3Aczarne");
+  });
+
+  it("applies the price when the form is submitted too (a submit button, an assistive technology)", () => {
+    setup();
+    fireEvent.change(priceFrom(), { target: { value: "100" } });
+    expect(fireEvent.submit(priceFrom().form!)).toBe(false);
+    expect(push).toHaveBeenCalledExactlyOnceWith("/c/bieganie?cena-od=100");
+  });
+
+  it("ignores the other keys in the price fields", () => {
+    setup();
+    fireEvent.change(priceFrom(), { target: { value: "100" } });
+    fireEvent.keyDown(priceFrom(), { key: "a" });
+    fireEvent.keyDown(priceFrom(), { key: "Tab" });
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("applies the price when a field loses focus", () => {
