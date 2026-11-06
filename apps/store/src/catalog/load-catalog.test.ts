@@ -30,6 +30,8 @@ const urlsOf = (fetchMock: ReturnType<typeof stubApi>) =>
   fetchMock.mock.calls.map(([input]) => new URL(String(input instanceof Request ? input.url : input)));
 
 beforeEach(() => {
+  // Catalog reads go through Varnish; the direct API address is set too, so a read sent there would be seen.
+  vi.stubEnv("API_CATALOG_URL", "http://catalog.test");
   vi.stubEnv("API_INTERNAL_URL", "http://api.test");
 });
 
@@ -48,6 +50,14 @@ describe("loadCatalog", () => {
       products: PAGE,
       offers: { [OFFER_1.productId]: OFFER_1 },
     });
+  });
+
+  it("sends every catalog read (categories, products, offers) to API_CATALOG_URL, none to API_INTERNAL_URL", async () => {
+    const fetchMock = stubApi(okApi);
+    await loadCatalog({ category: "buty", page: "2" });
+    const urls = urlsOf(fetchMock);
+    expect(urls.map((url) => url.pathname).sort()).toEqual(["/api/v1/categories", "/api/v1/product-offers", "/api/v1/products"]);
+    expect(urls.map((url) => url.origin)).toEqual(["http://catalog.test", "http://catalog.test", "http://catalog.test"]);
   });
 
   describe("offers", () => {
@@ -96,7 +106,7 @@ describe("loadCatalog", () => {
     });
   });
 
-  it("fetches categories and products in parallel from the internal address", async () => {
+  it("fetches categories and products in parallel", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
     const started: string[] = [];
@@ -118,7 +128,7 @@ describe("loadCatalog", () => {
     const products = urls.find((url) => url.pathname === "/api/v1/products")!;
     expect(products.searchParams.get("category")).toBe("abc");
     expect(products.searchParams.get("page")).toBe("3");
-    expect(products.origin).toBe("http://api.test");
+    expect(products.origin).toBe("http://catalog.test");
   });
 
   it("omits absent parameters", async () => {
@@ -167,9 +177,10 @@ describe("loadCatalog", () => {
     await expect(loadCatalog({})).rejects.toThrow("fetch failed");
   });
 
-  it("fails clearly when the internal API address is not configured", async () => {
-    vi.stubEnv("API_INTERNAL_URL", "");
-    stubApi(okApi);
-    await expect(loadCatalog({})).rejects.toThrow(/API_INTERNAL_URL/);
+  it("fails clearly when the catalog API address is not configured, without falling back to the direct one", async () => {
+    vi.stubEnv("API_CATALOG_URL", "");
+    const fetchMock = stubApi(okApi);
+    await expect(loadCatalog({})).rejects.toThrow(/API_CATALOG_URL/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

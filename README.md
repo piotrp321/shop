@@ -11,7 +11,7 @@ z niezależnym review i CI. Cele i architektura: [docs/vision.md](docs/vision.md
 | `apps/api` | PHP 8.5, Symfony 8, Doctrine, PostgreSQL; DDD i architektura heksagonalna |
 | `apps/store` | Next.js (App Router), React, TypeScript, Tailwind CSS 4, shadcn/ui |
 | `apps/admin` | Vue 3, Vite, TypeScript, Pinia, Vue Router, PrimeVue |
-| `infra` | Docker Compose: PostgreSQL, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Mailpit |
+| `infra` | Docker Compose: PostgreSQL, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Varnish, Mailpit |
 
 ## Wymagania
 

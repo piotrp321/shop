@@ -265,9 +265,11 @@ Błędy RFC 9457. Typy ścisłe i kody jak w specyfikacjach funkcji, chyba że o
 
 Sklep (`openapi.json`):
 - `GET /api/v1/products`: strona produktów bez wariantów (`ProductListItem`).
-- `GET /api/v1/product-offers?productId=…&productId=…` (`Cart_UI`, `PUBLIC_ACCESS` dla `GET`, `public, max-age=60`):
+- `GET /api/v1/product-offers?productId=…&productId=…` (`Cart_UI`, `PUBLIC_ACCESS` dla `GET`, `public, max-age=60`,
+  `xkey: catalog product-<id> …` dla każdego żądanego id, UUID małymi literami; sklep czyta ją przez Varnish):
   1–48 id w powtórzonym kluczu `productId` (forma `productId[]` nie jest przyjmowana); brak id, za dużo albo
   niepoprawny UUID: 400; `200 {items: [oferta z sekcji „Oferta produktów listy”]}` dla każdego żądanego id.
+  400, 401 i 503: `private, no-store` bez tagów.
   Tablica `variants` służy wyborowi wariantu na kafelku; stronę produktu projektuje PRODUCT-PAGE.
 - Koszyk: `{variantId}` w ścieżkach `items/{variantId}`; treść dodania `{variantId: uuid, quantity}`; `CartView`
   jak w sekcji „Cart”. Komunikaty `violations` dla `variantId`: „Identyfikator wariantu jest wymagany.” i
@@ -385,8 +387,8 @@ Nieznany wariant: 404.
   stronę). Wydajność nie jest potwierdzona testami obciążeniowymi.
 - Strona panelu ma `perPage` produktów, więc liczba wierszy zależy od liczby wariantów (do `perPage × 100`; w danych
   demo najwyżej 21 wariantów na produkt).
-- Oferta jest odczytem z opóźnieniem cache do 60 s: wariant może zostać wykupiony po wyrenderowaniu listy; wiąże
-  dodanie do koszyka (409) i rezerwacja w CHECKOUT.
+- Oferta jest odczytem z opóźnieniem cache do 60 s plus domyślny grace Varnisha (10 s): wariant może zostać wykupiony po wyrenderowaniu
+  listy; wiąże dodanie do koszyka (409) i rezerwacja w CHECKOUT.
 - Zdjęcie produktu jest poglądowe (E2): w danych demo zdjęcia namiotu, śpiwora, plecaka trekkingowego i kurtki
   narciarskiej pokazują produkt w jednym kolorze, także przy wyborze innego. Zdjęcia wariantów to PRODUCT-PAGE albo
   CATALOG-ADMIN.

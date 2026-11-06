@@ -11,10 +11,14 @@ export type CatalogResult =
   | { kind: "invalid-filter" }
   | { kind: "unknown-category" };
 
-function serverClient() {
-  const baseUrl = process.env.API_INTERNAL_URL;
+/**
+ * The catalog reads go through Varnish (`API_CATALOG_URL`), never straight to the API: they are public and cached.
+ * The cart, the merge and the login use `API_INTERNAL_URL` (see `src/auth/deps.ts`).
+ */
+function catalogClient() {
+  const baseUrl = process.env.API_CATALOG_URL;
   if (!baseUrl) {
-    throw new Error("API_INTERNAL_URL is not set.");
+    throw new Error("API_CATALOG_URL is not set.");
   }
   return createApiClient({ baseUrl });
 }
@@ -24,7 +28,7 @@ function serverClient() {
  * request. They are an addition to the list, so a failure (status, network, unexpected body) does not fail the page:
  * it is logged on the server and the products show without prices, levels, variant choice and button.
  */
-async function loadOffers(client: ReturnType<typeof serverClient>, products: ProductPage["items"]): Promise<Record<string, ProductOffer>> {
+async function loadOffers(client: ReturnType<typeof catalogClient>, products: ProductPage["items"]): Promise<Record<string, ProductOffer>> {
   if (products.length === 0) {
     return {};
   }
@@ -50,7 +54,7 @@ async function loadOffers(client: ReturnType<typeof serverClient>, products: Pro
  * (5xx, network) is thrown and handled by `app/error.tsx`.
  */
 export async function loadCatalog(params: { category?: string; page?: string }): Promise<CatalogResult> {
-  const client = serverClient();
+  const client = catalogClient();
   const [categories, products] = await Promise.all([
     client.GET("/api/v1/categories"),
     // The API validates the filter. A malformed value is sent as it came and comes back as 400.

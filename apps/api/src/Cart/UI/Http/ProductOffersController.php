@@ -6,6 +6,9 @@ namespace App\Cart\UI\Http;
 
 use App\Cart\Application\Query\GetProductOffers;
 use App\Cart\Application\View\ProductOfferView;
+use App\Shared\Infrastructure\Http\Cache\CacheTagger;
+use App\Shared\Infrastructure\Http\Cache\CacheTags;
+use App\Shared\Infrastructure\Http\Cache\PublicReadErrorCacheSubscriber;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -29,11 +32,12 @@ final class ProductOffersController
     public function __construct(
         #[Autowire(service: 'query.bus')] MessageBusInterface $queryBus,
         private readonly ValidatorInterface $validator,
+        private readonly CacheTagger $cacheTagger,
     ) {
         $this->messageBus = $queryBus;
     }
 
-    #[Route('/api/v1/product-offers', name: 'cart_product_offers', methods: ['GET'])]
+    #[Route('/api/v1/product-offers', name: 'cart_product_offers', methods: ['GET'], defaults: [PublicReadErrorCacheSubscriber::ROUTE_DEFAULT => true])]
     #[OA\Get(
         operationId: 'getProductOffers',
         summary: 'Offers of products of the list',
@@ -95,6 +99,10 @@ final class ProductOffersController
         )));
         $response->setPublic();
         $response->setMaxAge(60);
+        $this->cacheTagger->tag($response, [
+            CacheTags::CATALOG,
+            ...array_map(CacheTags::product(...), $query->productId),
+        ]);
 
         return $response;
     }

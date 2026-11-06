@@ -1,0 +1,59 @@
+varnishtest "The TTL comes only from Cache-Control: no header, private or no-store is never cached"
+
+server s1 -listen 127.0.0.1:80 {
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/products?case=none"
+		txresp -hdr "xkey: catalog" -body "no cache-control"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/products?case=private"
+		txresp -hdr "Cache-Control: private, max-age=60" -hdr "xkey: catalog" -body "private"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/products?case=no-store"
+		txresp -hdr "Cache-Control: no-store" -hdr "xkey: catalog" -body "no-store"
+	}
+	rxreq
+	expect req.url == "/api/v1/products?case=s-maxage"
+	txresp -hdr "Cache-Control: max-age=0, s-maxage=60" -hdr "xkey: catalog" -body "s-maxage"
+} -start
+
+setenv VARNISH_PURGE_SECRET "s3cret"
+# -t 0: the default TTL of the varnish service in infra/docker-compose.yml.
+varnish v1 -arg "-t 0" -cliok "vcl.load main /etc/varnish/default.vcl" -cliok "vcl.use main" -start
+
+client c1 {
+	loop 2 {
+		txreq -url "/api/v1/products?case=none"
+		rxresp
+		expect resp.body == "no cache-control"
+		expect resp.http.X-Cache == "MISS"
+	}
+	loop 2 {
+		txreq -url "/api/v1/products?case=private"
+		rxresp
+		expect resp.body == "private"
+		expect resp.http.X-Cache == "MISS"
+	}
+	loop 2 {
+		txreq -url "/api/v1/products?case=no-store"
+		rxresp
+		expect resp.body == "no-store"
+		expect resp.http.X-Cache == "MISS"
+		expect resp.http.xkey == <undef>
+	}
+	# s-maxage wins over max-age for the shared cache.
+	txreq -url "/api/v1/products?case=s-maxage"
+	rxresp
+	expect resp.http.X-Cache == "MISS"
+	txreq -url "/api/v1/products?case=s-maxage"
+	rxresp
+	expect resp.body == "s-maxage"
+	expect resp.http.X-Cache == "HIT"
+} -run
+
+varnish v1 -expect cache_hit == 1
+varnish v1 -expect backend_req == 7

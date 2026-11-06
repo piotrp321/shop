@@ -501,8 +501,8 @@ Wszystkie pod `/api/v1`, JSON, opisane w OpenAPI (żądanie, odpowiedzi, błędy
 
 | Metoda i ścieżka | Dostęp | Źródło danych | Cache |
 |---|---|---|---|
-| `GET /api/v1/products` | publiczny | Elasticsearch | `public, max-age=60`, `Vary: Origin` |
-| `GET /api/v1/categories` | publiczny | Postgres | `public, max-age=60`, `Vary: Origin` |
+| `GET /api/v1/products` | publiczny | Elasticsearch | `public, max-age=60`, `Vary: Origin`, `xkey: catalog product-<id> …` (każdy produkt strony) |
+| `GET /api/v1/categories` | publiczny | Postgres | `public, max-age=60`, `Vary: Origin`, `xkey: catalog` |
 | `GET /api/v1/me` | klient (`ROLE_CUSTOMER`) | token | `private, no-store` |
 | `GET /api/v1/admin/me` | pracownik (dowolna rola) | token | `private, no-store` |
 | `GET /api/v1/admin/dashboard` | pracownik; sekcja `system` tylko `admin` | Postgres, ES, RabbitMQ, sondy | `private, no-store` |
@@ -649,6 +649,9 @@ w tej kolejności:
     pierwszy dostaje ogólny opis frameworka, drugi 500 bez `detail`,
   - 5xx nigdy nie ma `detail`.
 - Każda odpowiedź z `Cache-Control: public` ma `Vary: Origin` (ustawia jeden subscriber).
+- Odczyty katalogu (`products`, `categories`) czyta sklep przez Varnish. Tagi w nagłówku `xkey` (spacje; `catalog`
+  i `product-<id>` z UUID małymi literami) ustawia `CacheTagger` z nazwami z `CacheTags`; Varnish usuwa nagłówek
+  przed wysłaniem odpowiedzi. 400, 401 i 503 tych endpointów mają `private, no-store` i nie mają tagów.
 - CORS (NelmioCorsBundle) dla `^/api/v1` tylko z `ADMIN_URL`. Sklep woła API wyłącznie z serwera, więc jego
   domena nie dostaje CORS.
 - Logi Monolog w JSON na stderr.
@@ -707,8 +710,8 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
 
 ### Strona `/`
 
-- Server Component. Równolegle pobiera z API (`http://api`, wygenerowany klient) drzewo kategorii i stronę
-  produktów dla `?category=<uuid>&page=<n>`.
+- Server Component. Równolegle pobiera z API przez Varnish (`API_CATALOG_URL`, `http://varnish`, wygenerowany klient)
+  drzewo kategorii i stronę produktów dla `?category=<uuid>&page=<n>`.
 - Lewa kolumna: drzewo kategorii jako linki `?category=<id>`. Aktywna kategoria jest wyróżniona, a jej przodkowie
   rozwinięci.
 - Siatka produktów: kafel (`card`) ze zdjęciem i nazwą. Responsywnie 2, 3 albo 4 kolumny.

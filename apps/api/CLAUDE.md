@@ -172,11 +172,24 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 
 ## Infrastruktura
 
-- Varnish stoi tylko przed publicznymi endpointami `GET` katalogu i wyszukiwarki. Każda taka odpowiedź
-  ma jawny `Cache-Control` i tagi obiektów (FOSHttpCacheBundle, xkey). Endpointy z autoryzacją,
-  koszyk i checkout zawsze `private, no-store`.
-- Nowy publiczny endpoint katalogu = tagi w odpowiedzi + unieważnianie w konsumencie zdarzeń. Bez tego
-  zmiana danych nie będzie widoczna w sklepie.
+- Varnish (`infra/varnish/default.vcl`) stoi tylko przed publicznymi odczytami `GET` katalogu: `/api/v1/products`,
+  `/api/v1/products/*`, `/api/v1/categories`, `/api/v1/product-offers`. Czyta przez niego wyłącznie serwer sklepu
+  (`API_CATALOG_URL`); inne ścieżki, żądania z `Authorization` albo `Cookie` i metody inne niż `GET`/`HEAD` Varnish
+  przepuszcza do API bez cache. TTL bierze tylko z `Cache-Control` odpowiedzi; bez nagłówka, z `private` albo
+  `no-store` nic nie trzyma. Endpointy z autoryzacją, koszyk i checkout zawsze `private, no-store`.
+- Tagi cache (xkey) bez FOSHttpCacheBundle. Słownik: `catalog` (każdy odczyt katalogu) i `product-<id>` (UUID małymi
+  literami) dla każdego produktu, którego dane zawiera odpowiedź. Nazwy buduje wyłącznie `CacheTags`
+  (`Shared\Infrastructure\Http\Cache`: stała `CATALOG`, `product(id)`, inny napis niż UUID to wyjątek), a nagłówek
+  `xkey: <tag> <tag>` (spacje) ustawia w kontrolerze `CacheTagger::tag()`. Varnish usuwa `xkey` przed wysłaniem
+  odpowiedzi. Dziś: lista produktów (`catalog` i `product-<id>` każdego produktu strony), drzewo kategorii
+  (`catalog`), oferty (`catalog` i `product-<id>` każdego żądanego id), wszystkie z `Cache-Control: public,
+  max-age=60`.
+- Trasa publicznego odczytu ma domyślną wartość `PublicReadErrorCacheSubscriber::ROUTE_DEFAULT`
+  (`defaults: [... => true]` w `#[Route]`): jej 400, 401 (także z firewalla) i 503 dostają `private, no-store` bez tagów.
+- Nowy publiczny endpoint katalogu = ścieżka na liście w VCL, jawny `Cache-Control`, tagi w odpowiedzi, znacznik
+  trasy i unieważnianie po zmianie danych. Bez tego zmiana danych nie będzie widoczna w sklepie. Unieważniania po
+  zdarzeniach jeszcze nie ma: odpowiedź żyje w Varnishu do końca `max-age` (60 s) plus domyślny grace Varnisha
+  (10 s).
 
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
 - Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.
