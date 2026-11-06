@@ -43,6 +43,9 @@ final class GuestOrderEndpointTest extends WebTestCase
             ['variantId' => $size42, 'productName' => 'Buty Asfalt', 'variantLabel' => 'czarne, 42', 'quantity' => 1, 'unitGross' => 12_300, 'lineGross' => 12_300],
         ], $order['lines'], 'the lines of the cart in its order, with the names of Catalog and the prices of Pricing');
         self::assertSame(['net' => 31_000, 'vat' => 7_130, 'gross' => 38_130, 'currency' => 'PLN'], $order['totals']);
+        self::assertIsString($order['accessToken']);
+        self::assertMatchesRegularExpression('/^[A-Za-z0-9_-]{43}$/D', $order['accessToken'], 'the access token of the guest');
+        self::assertSame($order['accessToken'], $this->connection->fetchOne('SELECT access_token FROM ordering_order WHERE id = ?', [$order['orderId']]));
 
         self::assertSame(1, OrderingFixture::count($this->connection, "SELECT COUNT(*) FROM ordering_order WHERE id = ? AND number = ? AND owner_type = 'guest' AND customer_id IS NULL AND email = ? AND idempotency_key = ?", [$order['orderId'], $order['number'], self::EMAIL, self::KEY]));
         self::assertIsString($order['orderId']);
@@ -66,6 +69,8 @@ final class GuestOrderEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
         self::assertSame($first, $repeated);
+        self::assertIsString($repeated['accessToken']);
+        self::assertSame($first['accessToken'], $repeated['accessToken'], 'the same token on a replay');
         self::assertSame(1, $this->orders());
         self::assertSame(1, $this->reservations());
         self::assertSame([10, 2], OrderingFixture::stock($this->connection, $shoes));
