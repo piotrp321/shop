@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Ordering\Domain;
 
 /**
- * The first status of the order cycle (new → paid → shipped → delivered); PAYMENT and ORDER-MANAGEMENT add the
- * transitions.
+ * The statuses of the order cycle so far: a new order is paid or, left unpaid past its deadline, cancelled
+ * (shipped and delivered come with ORDER-MANAGEMENT).
  */
 enum OrderStatus: string
 {
     case New = 'new';
+    case Paid = 'paid';
+    case Cancelled = 'cancelled';
 }

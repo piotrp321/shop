@@ -273,12 +273,13 @@ nelmio_api_doc:
                                     type: integer
                                     description: Units of every line of the cart.
                                     example: 2
-                        # Response schema of a placed order (Ordering\Application\View\OrderView, `placedAt` formatted by
-                        # OrderPlacement), checked against real responses by the functional tests of the order endpoints.
+                        # Response schema of a placed order (Ordering\Application\View\OrderView, `placedAt` and
+                        # `paymentDeadline` formatted by OrderPlacement), checked against real responses by the functional
+                        # tests of the order endpoints.
                         OrderView:
                             type: object
                             description: An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze.
-                            required: [orderId, number, status, email, fullName, phone, shippingAddress, lines, totals, placedAt]
+                            required: [orderId, number, status, email, fullName, phone, shippingAddress, lines, totals, placedAt, paymentDeadline, accessToken]
                             properties:
                                 orderId:
                                     type: string
@@ -289,7 +290,8 @@ nelmio_api_doc:
                                     example: R-100001
                                 status:
                                     type: string
-                                    enum: [new]
+                                    description: '`new` right after the placement; `paid` once paid, `cancelled` when unpaid five minutes after `paymentDeadline`.'
+                                    enum: [new, paid, cancelled]
                                 email:
                                     type: string
                                     description: The address the order is confirmed to.
@@ -315,6 +317,22 @@ nelmio_api_doc:
                                     format: date-time
                                     description: When the order was placed (RFC 3339, UTC).
                                     example: '2026-11-05T12:30:00+00:00'
+                                paymentDeadline:
+                                    type: string
+                                    format: date-time
+                                    description: The order is to be paid by this moment, 30 minutes after the placement (RFC 3339, UTC).
+                                    example: '2026-11-05T13:00:00+00:00'
+                                accessToken:
+                                    type: string
+                                    nullable: true
+                                    description: >-
+                                        The key of a guest to the order (starting a payment, reading its status), 43 characters of
+                                        base64url; the same on a replay. Null for an order of a customer, who reaches it with the
+                                        token of the session.
+                                    minLength: 43
+                                    maxLength: 43
+                                    pattern: '^[A-Za-z0-9_-]{43}$'
+                                    example: dGhpcy1pcy1hLXRva2VuLW9mLXRoZS1ndWVzdC0xMjM
                         OrderShippingAddress:
                             type: object
                             required: [street, postalCode, city, country]

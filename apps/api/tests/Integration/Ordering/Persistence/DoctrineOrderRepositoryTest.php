@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Ordering\Persistence;
 
+use App\Ordering\Domain\AccessToken;
+use App\Ordering\Domain\CancellationReason;
 use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\EmailAddress;
@@ -16,6 +18,9 @@ use App\Ordering\Domain\OrderModifiedConcurrently;
 use App\Ordering\Domain\OrderNotFound;
 use App\Ordering\Domain\OrderNumber;
 use App\Ordering\Domain\OrderOwner;
+use App\Ordering\Domain\OrderStatus;
+use App\Ordering\Domain\PaymentId;
+use App\Ordering\Domain\PaymentResult;
 use App\Ordering\Domain\PriceCopy;
 use App\Ordering\Domain\ProductId;
 use App\Ordering\Domain\RequestFingerprint;
@@ -31,11 +36,13 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * DoctrineOrderRepository and the Ordering schema on shop_test (rolled back after each test): the mapping, the CHECK
- * constraints and unique indexes that refuse direct SQL breaking the rules, and the number sequence.
+ * DoctrineOrderRepository and the Ordering schema on shop_test (rolled back after each test): the mapping (also of the
+ * payment cycle), the CHECK constraints and unique indexes that refuse direct SQL breaking the rules, and the number sequence.
  */
 final class DoctrineOrderRepositoryTest extends KernelTestCase
 {
+    private const string TOKEN = 'dGhpcy1pcy1hLXRva2VuLW9mLXRoZS1ndWVzdC0xMjM';
+
     private EntityManagerInterface $entityManager;
     private Connection $connection;
     private DoctrineOrderRepository $orders;
@@ -88,6 +95,80 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
 
         self::assertTrue($this->orders->get($order->id())->owner()->isGuest());
         self::assertSame(['guest', null], $this->connection->fetchNumeric('SELECT owner_type, customer_id FROM ordering_order WHERE id = ?', [$order->id()->toString()]));
+    }
+
+    public function testTheAccessTokenOfAGuestAndTheDeadlineAreStored(): void
+    {
+        $guest = $this->order('key-guest');
+        $customer = $this->order('key-customer', OrderOwner::customer('kc-sub-1'));
+        $this->orders->add($guest);
+        $this->orders->add($customer);
+        $this->entityManager->clear();
+
+        $storedGuest = $this->orders->get($guest->id());
+        $storedCustomer = $this->orders->get($customer->id());
+
+        self::assertSame(self::TOKEN, $storedGuest->accessToken()?->toString());
+        self::assertNull($storedCustomer->accessToken());
+        self::assertEquals($guest->paymentDeadline(), $storedGuest->paymentDeadline());
+        self::assertSame(OrderStatus::New, $storedGuest->status());
+        self::assertNull($storedGuest->paidAt());
+        self::assertNull($storedGuest->paymentId());
+        self::assertNull($storedGuest->cancelledAt());
+        self::assertNull($storedGuest->cancellationReason());
+        self::assertNull($storedGuest->paymentNotificationSentAt());
+        self::assertNull($storedGuest->cancellationNotificationSentAt());
+        self::assertSame(
+            ['access_token' => self::TOKEN, 'deadline' => 1800],
+            $this->connection->fetchAssociative('SELECT access_token, EXTRACT(EPOCH FROM payment_deadline - placed_at)::int AS deadline FROM ordering_order WHERE id = ?', [$guest->id()->toString()]),
+        );
+    }
+
+    public function testSaveWritesThePaymentAndItsNotificationMarker(): void
+    {
+        $order = $this->order('key-1');
+        $this->orders->add($order);
+        $this->entityManager->clear();
+        $stored = $this->orders->get($order->id());
+        $paidAt = new \DateTimeImmutable('@'.(time() + 60));
+        $paymentId = Uuid::v7()->toRfc4122();
+
+        self::assertSame(PaymentResult::Paid, $stored->markPaid(PaymentId::fromString($paymentId), 77_800, 'PLN', $stored->placedAt(), $paidAt));
+        $this->orders->save($stored);
+        $this->entityManager->clear();
+        $paid = $this->orders->get($order->id());
+        $paid->markPaymentNotificationSent($paidAt->modify('+5 seconds'));
+        $this->orders->save($paid);
+        $this->entityManager->clear();
+
+        $again = $this->orders->get($order->id());
+        self::assertSame(OrderStatus::Paid, $again->status());
+        self::assertEquals($paidAt, $again->paidAt());
+        self::assertSame($paymentId, $again->paymentId()?->toString());
+        self::assertEquals($paidAt->modify('+5 seconds'), $again->paymentNotificationSentAt());
+        self::assertSame(3, $again->version());
+        self::assertSame('paid', $this->connection->fetchOne('SELECT status FROM ordering_order WHERE id = ?', [$order->id()->toString()]));
+    }
+
+    public function testSaveWritesTheCancellationAndItsNotificationMarker(): void
+    {
+        $order = $this->order('key-1');
+        $this->orders->add($order);
+        $this->entityManager->clear();
+        $stored = $this->orders->get($order->id());
+        $cancelledAt = $stored->expiryDueAt();
+
+        $stored->expireUnpaid($cancelledAt);
+        $stored->markCancellationNotificationSent($cancelledAt->modify('+5 seconds'));
+        $this->orders->save($stored);
+        $this->entityManager->clear();
+
+        $again = $this->orders->get($order->id());
+        self::assertSame(OrderStatus::Cancelled, $again->status());
+        self::assertEquals($cancelledAt, $again->cancelledAt());
+        self::assertSame(CancellationReason::PaymentTimeout, $again->cancellationReason());
+        self::assertEquals($cancelledAt->modify('+5 seconds'), $again->cancellationNotificationSentAt());
+        self::assertSame(['cancelled', 'payment_timeout'], $this->connection->fetchNumeric('SELECT status, cancellation_reason FROM ordering_order WHERE id = ?', [$order->id()->toString()]));
     }
 
     public function testFindByIdempotencyKeyGivesTheOrderOfTheKeyOnly(): void
@@ -168,6 +249,15 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
     {
         yield 'guest with a customer id' => ["UPDATE ordering_order SET customer_id = 'kc-sub-1' WHERE id = :id", '23514'];
         yield 'customer without a customer id' => ["UPDATE ordering_order SET owner_type = 'customer' WHERE id = :id", '23514'];
+        yield 'guest without an access token' => ['UPDATE ordering_order SET access_token = NULL WHERE id = :id', '23514'];
+        yield 'customer with an access token' => ["UPDATE ordering_order SET owner_type = 'customer', customer_id = 'kc-sub-1' WHERE id = :id", '23514'];
+        yield 'no deadline' => ['UPDATE ordering_order SET payment_deadline = NULL WHERE id = :id', '23502'];
+        yield 'paid without paid_at' => ["UPDATE ordering_order SET status = 'paid', payment_id = gen_random_uuid() WHERE id = :id", '23514'];
+        yield 'paid without payment_id' => ["UPDATE ordering_order SET status = 'paid', paid_at = now() WHERE id = :id", '23514'];
+        yield 'new with paid_at and payment_id' => ['UPDATE ordering_order SET paid_at = now(), payment_id = gen_random_uuid() WHERE id = :id', '23514'];
+        yield 'cancelled without cancelled_at' => ["UPDATE ordering_order SET status = 'cancelled', cancellation_reason = 'payment_timeout' WHERE id = :id", '23514'];
+        yield 'cancelled without a reason' => ["UPDATE ordering_order SET status = 'cancelled', cancelled_at = now() WHERE id = :id", '23514'];
+        yield 'new with cancelled_at and a reason' => ["UPDATE ordering_order SET cancelled_at = now(), cancellation_reason = 'payment_timeout' WHERE id = :id", '23514'];
         yield 'net + vat is not gross' => ['UPDATE ordering_order SET total_gross = total_gross + 1 WHERE id = :id', '23514'];
         yield 'quantity 0' => ['UPDATE ordering_order_line SET quantity = 0 WHERE order_id = :id', '23514'];
         yield 'quantity 100' => ['UPDATE ordering_order_line SET quantity = 100 WHERE order_id = :id', '23514'];
@@ -199,10 +289,13 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $contact = Contact::of(EmailAddress::fromString('jan@example.com'), 'Jan Kowalski', '600 100 200');
         $address = ShippingAddress::inPoland('Długa 1', '00-950', 'Warszawa');
 
+        $owner ??= OrderOwner::guest();
+
         return Order::place(
             OrderId::fromString(Uuid::v7()->toRfc4122()),
             new DbalOrderNumbers($this->connection)->next(),
-            $owner ?? OrderOwner::guest(),
+            $owner,
+            $owner->isGuest() ? AccessToken::fromString(self::TOKEN) : null,
             $contact,
             $address,
             [

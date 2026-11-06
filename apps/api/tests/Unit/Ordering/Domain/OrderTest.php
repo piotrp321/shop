@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Ordering\Domain;
 
+use App\Ordering\Domain\AccessToken;
 use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\EmailAddress;
@@ -27,6 +28,7 @@ final class OrderTest extends TestCase
 {
     private const string ORDER = '0192f0c4-7c1a-7c4e-9a6e-0000000000aa';
     private const string PRODUCT = 'c0ffee00-7c1a-7c4e-9a6e-000000000042';
+    private const string TOKEN = 'dGhpcy1pcy1hLXRva2VuLW9mLXRoZS1ndWVzdC0xMjM';
 
     private \DateTimeImmutable $now;
 
@@ -52,6 +54,8 @@ final class OrderTest extends TestCase
         self::assertTrue($order->requestFingerprint()->equals(self::fingerprint()));
         self::assertEquals($this->now, $order->placedAt());
         self::assertNull($order->confirmationSentAt());
+        self::assertSame(self::TOKEN, $order->accessToken()?->toString());
+        self::assertEquals($this->now->modify('+30 minutes'), $order->paymentDeadline());
         self::assertSame(1, $order->version());
 
         $events = $order->releaseEvents();
@@ -114,24 +118,33 @@ final class OrderTest extends TestCase
         $lines = [self::line(1, 3, 12_300)];
 
         $order = Order::reconstitute(
-            OrderId::fromString(self::ORDER),
-            OrderNumber::fromSequence(100042),
-            OrderOwner::customer('kc-sub-1'),
-            self::contact(),
-            ShippingAddress::inPoland('Długa 1', '00-950', 'Warszawa'),
-            $lines,
-            OrderStatus::New,
-            IdempotencyKey::fromString('key-1'),
-            self::fingerprint(),
-            $this->now,
-            $sentAt,
-            7,
+            id: OrderId::fromString(self::ORDER),
+            number: OrderNumber::fromSequence(100042),
+            owner: OrderOwner::customer('kc-sub-1'),
+            accessToken: null,
+            contact: self::contact(),
+            shippingAddress: ShippingAddress::inPoland('Długa 1', '00-950', 'Warszawa'),
+            lines: $lines,
+            status: OrderStatus::New,
+            idempotencyKey: IdempotencyKey::fromString('key-1'),
+            requestFingerprint: self::fingerprint(),
+            placedAt: $this->now,
+            paymentDeadline: $this->now->modify('+30 minutes'),
+            paidAt: null,
+            paymentId: null,
+            cancelledAt: null,
+            cancellationReason: null,
+            confirmationSentAt: $sentAt,
+            paymentNotificationSentAt: null,
+            cancellationNotificationSentAt: null,
+            version: 7,
         );
 
         self::assertSame('R-100042', $order->number()->toString());
         self::assertSame('kc-sub-1', $order->owner()->customerId());
         self::assertSame(36_900, $order->totals()->gross()->amount());
         self::assertEquals($sentAt, $order->confirmationSentAt());
+        self::assertNull($order->accessToken());
         self::assertSame(7, $order->version());
         self::assertSame([], $order->releaseEvents());
     }
@@ -145,6 +158,7 @@ final class OrderTest extends TestCase
             OrderId::fromString(self::ORDER),
             OrderNumber::fromSequence(100001),
             OrderOwner::guest(),
+            AccessToken::fromString(self::TOKEN),
             self::contact(),
             ShippingAddress::inPoland('Długa 1', '00-950', 'Warszawa'),
             $lines,

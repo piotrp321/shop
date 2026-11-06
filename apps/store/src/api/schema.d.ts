@@ -557,8 +557,11 @@ export interface components {
              * @example R-100001
              */
             number: string;
-            /** @enum {string} */
-            status: "new";
+            /**
+             * @description `new` right after the placement; `paid` once paid, `cancelled` when unpaid five minutes after `paymentDeadline`.
+             * @enum {string}
+             */
+            status: "new" | "paid" | "cancelled";
             /**
              * @description The address the order is confirmed to.
              * @example anna.nowak@example.com
@@ -581,6 +584,17 @@ export interface components {
              * @example 2026-11-05T12:30:00+00:00
              */
             placedAt: string;
+            /**
+             * Format: date-time
+             * @description The order is to be paid by this moment, 30 minutes after the placement (RFC 3339, UTC).
+             * @example 2026-11-05T13:00:00+00:00
+             */
+            paymentDeadline: string;
+            /**
+             * @description The key of a guest to the order (starting a payment, reading its status), 43 characters of base64url; the same on a replay. Null for an order of a customer, who reaches it with the token of the session.
+             * @example dGhpcy1pcy1hLXRva2VuLW9mLXRoZS1ndWVzdC0xMjM
+             */
+            accessToken: string | null;
         };
         OrderShippingAddress: {
             /** @example ul. Długa 5/3 */

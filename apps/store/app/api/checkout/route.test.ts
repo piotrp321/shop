@@ -54,6 +54,8 @@ const orderView = (overrides: Partial<components["schemas"]["OrderView"]> = {}):
   lines: [{ variantId: VARIANT_ID, productName: "Produkt 1", variantLabel: "", quantity: 2, unitGross: 19999, lineGross: 39998 }],
   totals: { net: 32519, vat: 7479, gross: 39998, currency: "PLN" },
   placedAt: "2026-11-05T12:30:00+00:00",
+  paymentDeadline: "2026-11-05T13:00:00+00:00",
+  accessToken: "dGhpcy1pcy1hLXRva2VuLW9mLXRoZS1ndWVzdC0xMjM",
   ...overrides,
 });
 

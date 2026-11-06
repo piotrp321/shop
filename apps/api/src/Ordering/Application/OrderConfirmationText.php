@@ -8,14 +8,11 @@ use App\Ordering\Application\View\OrderLineView;
 use App\Ordering\Application\View\OrderView;
 
 /**
- * The subject and the plain text of the order confirmation email, in Polish. Amounts are written as `1 234,56 zł`
- * with plain spaces (a plain-text email has no markup to keep the number together, and a no-break space may not
- * survive a mail client). The moment of placement is shown in Warsaw time.
+ * The subject and the plain text of the order confirmation email, in Polish (MailFormat). The moment of placement
+ * and the payment deadline are shown in Warsaw time.
  */
 final readonly class OrderConfirmationText
 {
-    private const string TIME_ZONE = 'Europe/Warsaw';
-
     public function subject(OrderView $order): string
     {
         return 'Potwierdzenie zamówienia '.$order->number;
@@ -23,7 +20,8 @@ final readonly class OrderConfirmationText
 
     public function body(OrderView $order): string
     {
-        $placedAt = $order->placedAt->setTimezone(new \DateTimeZone(self::TIME_ZONE));
+        $placedAt = MailFormat::inWarsaw($order->placedAt);
+        $deadline = MailFormat::inWarsaw($order->paymentDeadline);
         $address = $order->shippingAddress;
 
         $lines = [
@@ -34,7 +32,7 @@ final readonly class OrderConfirmationText
             'Zamówione pozycje:',
             ...array_map(self::line(...), $order->lines),
             '',
-            'Suma brutto: '.self::amount($order->totals->gross),
+            'Suma brutto: '.MailFormat::amount($order->totals->gross),
             '',
             'Adres dostawy:',
             $order->fullName,
@@ -42,7 +40,7 @@ final readonly class OrderConfirmationText
             $address->postalCode.' '.$address->city,
             'Telefon: '.$order->phone,
             '',
-            'O płatności poinformujemy w osobnej wiadomości.',
+            \sprintf('Zamówienie czeka na płatność do %s. Bez płatności anulujemy je automatycznie.', $deadline->format('H:i (d.m.Y)')),
         ];
 
         return implode("\n", $lines)."\n";
@@ -52,11 +50,6 @@ final readonly class OrderConfirmationText
     {
         $name = '' === $line->variantLabel ? $line->productName : $line->productName.', '.$line->variantLabel;
 
-        return \sprintf('- %s × %d: %s', $name, $line->quantity, self::amount($line->lineGross));
-    }
-
-    private static function amount(int $grosze): string
-    {
-        return \sprintf('%s,%02d zł', number_format(intdiv($grosze, 100), 0, '', ' '), $grosze % 100);
+        return \sprintf('- %s × %d: %s', $name, $line->quantity, MailFormat::amount($line->lineGross));
     }
 }

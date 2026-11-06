@@ -77,7 +77,8 @@ final readonly class OrderPlacement
     }
 
     /**
-     * The OrderView schema of the specification (nelmio_api_doc.yaml), `placedAt` in RFC 3339 and UTC.
+     * The OrderView schema of the specification (nelmio_api_doc.yaml), `placedAt` and `paymentDeadline` in RFC 3339
+     * and UTC; `accessToken` only for a guest (null for a customer).
      *
      * @return array<string, mixed>
      */
@@ -110,7 +111,14 @@ final readonly class OrderPlacement
                 'gross' => $order->totals->gross,
                 'currency' => $order->totals->currency,
             ],
-            'placedAt' => $order->placedAt->setTimezone(new \DateTimeZone('UTC'))->format(\DATE_ATOM),
+            'placedAt' => self::utc($order->placedAt),
+            'paymentDeadline' => self::utc($order->paymentDeadline),
+            'accessToken' => $order->accessToken,
         ];
+    }
+
+    private static function utc(\DateTimeImmutable $moment): string
+    {
+        return $moment->setTimezone(new \DateTimeZone('UTC'))->format(\DATE_ATOM);
     }
 }

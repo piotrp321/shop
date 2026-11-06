@@ -11,7 +11,9 @@ use App\Ordering\Application\Port\OrderCatalog;
 use App\Ordering\Application\Port\OrderNumbers;
 use App\Ordering\Application\Port\OrderPrices;
 use App\Ordering\Application\Port\StockReservations;
+use App\Ordering\Application\Port\UnpaidOrderExpiry;
 use App\Ordering\Application\View\OrderView;
+use App\Ordering\Domain\AccessToken;
 use App\Ordering\Domain\CartEmpty;
 use App\Ordering\Domain\CartNotOrderable;
 use App\Ordering\Domain\Contact;
@@ -36,7 +38,8 @@ use Symfony\Component\Uid\Uuid;
 
 /**
  * Places an order in the one transaction of command.bus: the cart lock, the copies of prices and names, the
- * reservation and the order with its OrderPlaced in the outbox are written together or not at all. The commands of
+ * reservation, the order with its OrderPlaced in the outbox and its delayed ExpireUnpaidOrder (due five minutes
+ * after the payment deadline) are written together or not at all. A replay schedules nothing. The commands of
  * Cart and Inventory run nested in this transaction (through the ports); their exceptions are never caught to go on
  * writing: Inventory's shortage becomes InsufficientStockForOrder and is thrown on, every other one is thrown as is.
  *
@@ -56,6 +59,7 @@ final readonly class PlaceOrderHandler
         private OrderCatalog $catalog,
         private StockReservations $reservations,
         private OrderNumbers $numbers,
+        private UnpaidOrderExpiry $expiry,
         private DomainEventPublisher $events,
         private Clock $clock,
     ) {
@@ -108,11 +112,20 @@ final readonly class PlaceOrderHandler
         $id = OrderId::fromString(Uuid::v7()->toRfc4122());
         $this->reservations->reserve($id, $cartLines);
 
-        $order = Order::place($id, $number, $owner, $contact, $address, $lines, $key, $fingerprint, $this->clock->now());
+        $order = Order::place($id, $number, $owner, $owner->isGuest() ? self::newAccessToken() : null, $contact, $address, $lines, $key, $fingerprint, $this->clock->now());
         $this->orders->add($order);
         $this->events->publish(...$order->releaseEvents());
+        $this->expiry->schedule($order->id(), $order->expiryDueAt());
 
         return new PlacedOrder(OrderView::of($order), false);
+    }
+
+    /**
+     * 32 random bytes in base64url without padding: the guest's key to the order, like the id of a guest cart.
+     */
+    private static function newAccessToken(): AccessToken
+    {
+        return AccessToken::fromString(rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '='));
     }
 
     /**
