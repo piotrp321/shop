@@ -114,9 +114,10 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 
 Pola: `id`, `number`, `owner`, `accessToken` (gość: 32 losowe bajty w base64url, 43 znaki, generuje handler; klient:
 null), `contact`, `shippingAddress`, `lines` (1–50, w kolejności koszyka, bez powtórzonego wariantu), `totals`
-(liczone), `status` (`new`), `idempotencyKey`, `requestFingerprint`, `placedAt`, `paymentDeadline` (`placedAt` +
-30 min), `confirmationSentAt` (null), `version`. Pola cyklu płatności (`paidAt`, `paymentId`, `cancelledAt`,
-`cancellationReason`, znaczniki e-maili o płatności i anulowaniu) opisuje `docs/features/payment/spec.md`.
+(liczone), `status` (`new`, `paid`, `cancelled`; po złożeniu `new`), `idempotencyKey`, `requestFingerprint`,
+`placedAt`, `paymentDeadline` (`placedAt` + 30 min), `confirmationSentAt` (null), `version`. Pola cyklu płatności
+(`paidAt`, `paymentId`, `cancelledAt`, `cancellationReason`, znaczniki e-maili o płatności i anulowaniu) opisuje
+`docs/features/payment/spec.md`.
 
 | Metoda | Działanie | Błędy |
 |---|---|---|
