@@ -69,8 +69,8 @@ describe("buildBreadcrumbJsonLd", () => {
       "@type": "BreadcrumbList",
       itemListElement: [
         { "@type": "ListItem", position: 1, name: "Wszystkie produkty", item: "http://store.test/" },
-        { "@type": "ListItem", position: 2, name: "Bieganie", item: "http://store.test/?category=bieganie" },
-        { "@type": "ListItem", position: 3, name: "Buty", item: "http://store.test/?category=buty" },
+        { "@type": "ListItem", position: 2, name: "Bieganie", item: "http://store.test/c/bieganie" },
+        { "@type": "ListItem", position: 3, name: "Buty", item: "http://store.test/c/bieganie/buty" },
       ],
     });
   });

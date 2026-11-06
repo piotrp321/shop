@@ -19,7 +19,9 @@ const memo = vi.hoisted(() => {
 });
 vi.mock("react", async (importOriginal) => ({ ...(await importOriginal<typeof import("react")>()), cache: memo.cache }));
 
+import { loadMenuCategories } from "@/catalog/category-tree";
 import { TREE, makeOffer, makeProduct } from "@/catalog/fixtures";
+import CategoryPage, { generateMetadata as categoryMetadata } from "./c/[...path]/page";
 import Home, { generateMetadata } from "./page";
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
@@ -51,18 +53,34 @@ afterEach(() => {
 
 const props = (params: Record<string, string>) =>
   ({ searchParams: Promise.resolve(params) }) as unknown as Parameters<typeof Home>[0];
+const categoryProps = (path: string[], params: Record<string, string> = {}) =>
+  ({ params: Promise.resolve({ path }), searchParams: Promise.resolve(params) }) as unknown as Parameters<typeof CategoryPage>[0];
 
+// The root layout reads the tree through `loadMenuCategories`, in parallel with the page.
 describe("catalogue page requests", () => {
-  it("makes one categories, one products and one product offers request for the metadata and the page together", async () => {
-    const request = props({ category: "buty", page: "2" });
-    await Promise.all([generateMetadata(request), Home(request)]);
+  it("makes one categories, one products and one product offers request for the layout, the metadata and the page together", async () => {
+    const request = props({ page: "2" });
+    await Promise.all([loadMenuCategories(), generateMetadata(request), Home(request)]);
     expect(requested.sort()).toEqual(["/api/v1/categories", "/api/v1/product-offers", "/api/v1/products"]);
+  });
+
+  it("makes one request per endpoint for a category page too", async () => {
+    const request = categoryProps(["bieganie", "buty"], { page: "2" });
+    await Promise.all([loadMenuCategories(), categoryMetadata(request as never), CategoryPage(request)]);
+    expect(requested.sort()).toEqual(["/api/v1/categories", "/api/v1/product-offers", "/api/v1/products"]);
+  });
+
+  it("makes one request per endpoint for the redirect from /?category=<id>", async () => {
+    const request = props({ category: "buty" });
+    await Promise.all([loadMenuCategories(), generateMetadata(request), Home(request).catch(() => undefined)]);
+    expect(requested.filter((path) => path === "/api/v1/categories")).toHaveLength(1);
+    expect(requested.filter((path) => path === "/api/v1/products")).toHaveLength(1);
   });
 
   it("asks again on the next request", async () => {
     await generateMetadata(props({}));
     memo.newRequest();
     await generateMetadata(props({}));
-    expect(requested).toHaveLength(6);
+    expect(requested).toHaveLength(4);
   });
 });

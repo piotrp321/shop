@@ -1,5 +1,5 @@
 import type { components } from "@/api/schema";
-import { catalogHref } from "./catalog-href";
+import { buildBreadcrumbListJsonLd, crumbsOf } from "./breadcrumb";
 import { largestVariant } from "./image-props";
 import { productUrl } from "./product-metadata";
 
@@ -47,15 +47,7 @@ export function buildProductJsonLd(details: ProductDetails, offer: ProductOffer,
 
 /** The path of the product (schema.org `BreadcrumbList`): All products and the categories, with absolute addresses. */
 export function buildBreadcrumbJsonLd(details: ProductDetails, storeUrl: string) {
-  const absolute = (href: string) => new URL(href, storeUrl).toString();
-  return {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      { name: "Wszystkie produkty", href: catalogHref({}) },
-      ...details.breadcrumb.map((category) => ({ name: category.name, href: catalogHref({ category: category.id }) })),
-    ].map(({ name, href }, index) => ({ "@type": "ListItem", position: index + 1, name, item: absolute(href) })),
-  };
+  return buildBreadcrumbListJsonLd(crumbsOf(details.breadcrumb), storeUrl);
 }
 
 /** JSON for a `<script type="application/ld+json">`: every `<` becomes a Unicode escape, so no text can close the element. */
