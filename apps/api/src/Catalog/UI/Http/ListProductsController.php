@@ -116,8 +116,8 @@ final class ListProductsController
                 $query->perPage,
                 $query->phrase(),
                 $options->axes(),
-                $query->priceMin,
-                $query->priceMax,
+                $query->priceMin(),
+                $query->priceMax(),
                 ListProductsQuery::AVAILABLE === $query->available,
                 null === $query->sort ? null : ProductSort::from($query->sort),
             ));

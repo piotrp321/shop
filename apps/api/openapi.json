@@ -2523,16 +2523,16 @@
                         "minLength": 2
                     },
                     "priceMin": {
-                        "type": "integer",
+                        "type": "string",
+                        "pattern": "\\d{1,12}",
                         "nullable": true,
-                        "default": null,
-                        "minimum": 0
+                        "default": null
                     },
                     "priceMax": {
-                        "type": "integer",
+                        "type": "string",
+                        "pattern": "\\d{1,12}",
                         "nullable": true,
-                        "default": null,
-                        "minimum": 0
+                        "default": null
                     },
                     "available": {
                         "type": "string",

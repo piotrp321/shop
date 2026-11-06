@@ -21,8 +21,8 @@ final class ListProductsQueryTest extends TestCase
         $query = new ListProductsQuery(
             category: '00000000-0000-4000-8000-0000000000a1',
             q: '  '.str_repeat('ż', 100).'  ',
-            priceMin: 0,
-            priceMax: 0,
+            priceMin: '0',
+            priceMax: '999999999999',
             available: 'true',
             sort: 'price_desc',
             page: 1,
@@ -54,9 +54,14 @@ final class ListProductsQueryTest extends TestCase
         yield 'phrase is blank' => [new ListProductsQuery(q: '   '), 'q'];
         yield 'phrase is one character' => [new ListProductsQuery(q: 'a'), 'q'];
         yield 'phrase is 101 characters' => [new ListProductsQuery(q: str_repeat('ż', 101)), 'q'];
-        yield 'priceMin is negative' => [new ListProductsQuery(priceMin: -1), 'priceMin'];
-        yield 'priceMax is negative' => [new ListProductsQuery(priceMax: -1), 'priceMax'];
-        yield 'priceMin above priceMax' => [new ListProductsQuery(priceMin: 101, priceMax: 100), 'priceMin'];
+        yield 'priceMin is negative' => [new ListProductsQuery(priceMin: '-1'), 'priceMin'];
+        yield 'priceMax is negative' => [new ListProductsQuery(priceMax: '-1'), 'priceMax'];
+        yield 'priceMin is not a number' => [new ListProductsQuery(priceMin: 'cheap'), 'priceMin'];
+        yield 'priceMax is a decimal' => [new ListProductsQuery(priceMax: '10.5'), 'priceMax'];
+        yield 'priceMin is empty' => [new ListProductsQuery(priceMin: ''), 'priceMin'];
+        yield 'priceMax has a sign' => [new ListProductsQuery(priceMax: '+5'), 'priceMax'];
+        yield 'priceMin is 13 digits' => [new ListProductsQuery(priceMin: '1000000000000'), 'priceMin'];
+        yield 'priceMin above priceMax' => [new ListProductsQuery(priceMin: '101', priceMax: '100'), 'priceMin'];
         yield 'available is false' => [new ListProductsQuery(available: 'false'), 'available'];
         yield 'available is empty' => [new ListProductsQuery(available: ''), 'available'];
         yield 'available is a number' => [new ListProductsQuery(available: '1'), 'available'];
@@ -72,6 +77,16 @@ final class ListProductsQueryTest extends TestCase
     public function testInvalidParameterIsReportedOnItsOwnPath(ListProductsQuery $query, string $path): void
     {
         self::assertSame([$path], $this->paths($query));
+    }
+
+    public function testPricesAreIntegers(): void
+    {
+        $query = new ListProductsQuery(priceMin: '007', priceMax: '1500');
+
+        self::assertSame(7, $query->priceMin());
+        self::assertSame(1500, $query->priceMax());
+        self::assertNull((new ListProductsQuery())->priceMin());
+        self::assertNull((new ListProductsQuery())->priceMax());
     }
 
     public function testPhraseAndSortAreNormalized(): void

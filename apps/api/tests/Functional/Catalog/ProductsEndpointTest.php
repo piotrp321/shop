@@ -10,6 +10,7 @@ use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchResult;
 use App\Catalog\Application\Search\SearchUnavailable;
+use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
@@ -37,6 +38,7 @@ final class ProductsEndpointTest extends WebTestCase
     private const string ROOT = '00000000-0000-4000-8000-0000000000a1';
     private const string CHILD = '00000000-0000-4000-8000-0000000000a2';
     private const string LEAF = '00000000-0000-4000-8000-0000000000a3';
+    private const string CHILD_B = '00000000-0000-4000-8000-0000000000a5';
     private const string OTHER = '00000000-0000-4000-8000-0000000000b1';
     private const string EMPTY_CATEGORY = '00000000-0000-4000-8000-0000000000c1';
     private const string UNKNOWN = '00000000-0000-4000-8000-0000000000ff';
@@ -51,9 +53,10 @@ final class ProductsEndpointTest extends WebTestCase
         $this->client->disableReboot();
         $this->maintenance()->setup();
         $this->searchService()->use(new ElasticsearchProductSearch(self::clientFactory()->create(2.0), $this->alias()));
-        $root = $this->saveCategory(self::ROOT);
-        $child = $this->saveCategory(self::CHILD, $root);
-        $this->saveCategory(self::LEAF, $child);
+        $root = $this->saveCategory(self::ROOT, null, 'Bieganie', 'bieganie');
+        $child = $this->saveCategory(self::CHILD, $root, 'Buty', 'buty');
+        $this->saveCategory(self::LEAF, $child, 'Szosowe', 'szosowe');
+        $this->saveCategory(self::CHILD_B, $root, 'Akcesoria', 'akcesoria');
         $this->saveCategory(self::OTHER);
     }
 
@@ -185,6 +188,267 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
     }
 
+    public function testPhraseSearchesTheNameTheCategoryNamesAndTheDescription(): void
+    {
+        $this->index(
+            $this->shoe('Buty szosowe Tarvik Asfalt 200', [], 'Lekkie'),
+            $this->shoe('Plecak', [], 'Na asfalt i szutry'),
+            $this->shoe('Kurtka', [], 'Opis'),
+        );
+
+        $body = $this->get($this->url(['q' => 'asfalt']));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(['Buty szosowe Tarvik Asfalt 200', 'Plecak'], array_column($this->items($body), 'name'));
+        self::assertSame(2, $body['total']);
+        self::assertSame(['Kurtka'], array_column($this->items($this->get($this->url(['q' => '  kurtki  ']))), 'name'));
+        self::assertSame([], $this->items($this->get($this->url(['q' => 'kurtka xyzzy']))));
+    }
+
+    public function testOptionsAreSentAsARepeatedKeyAndBelongToOneVariant(): void
+    {
+        $this->index(...$this->shoes());
+
+        $body = $this->get($this->url(['option' => ['Kolor:czarne', 'Rozmiar:42']]));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(['Buty A', 'Buty C'], array_column($this->items($body), 'name'));
+        self::assertSame(2, $body['total']);
+        // Black in one variant and 42 in another is not a match.
+        self::assertSame(['Buty A', 'Buty B', 'Buty C'], array_column($this->items($this->get($this->url(['option' => ['Kolor:czarne']]))), 'name'));
+    }
+
+    public function testSeveralValuesOfOneAxisAndPolishCharactersAndColonsInValues(): void
+    {
+        $this->index(
+            ...$this->shoes(),
+            ...[$this->shoe('Skala', [$this->variant(['Skala' => '1:50'], 100, true)])],
+        );
+
+        self::assertSame(
+            ['Buty A', 'Buty B'],
+            array_column($this->items($this->get($this->url(['option' => ['Kolor:białe', 'Kolor:czarne'], 'priceMin' => 9000, 'priceMax' => 15000]))), 'name'),
+        );
+        self::assertSame(['Skala'], array_column($this->items($this->get($this->url(['option' => ['Skala:1:50']]))), 'name'));
+    }
+
+    public function testPriceRangeAndAvailabilityHoldForTheSameVariant(): void
+    {
+        $this->index(...$this->shoes());
+
+        self::assertSame(['Buty A'], array_column($this->items($this->get($this->url(['option' => ['Kolor:czarne', 'Rozmiar:42'], 'available' => true]))), 'name'));
+        self::assertSame(['Buty A'], array_column($this->items($this->get($this->url(['option' => ['Kolor:czarne', 'Rozmiar:42'], 'priceMin' => 9000, 'priceMax' => 11000]))), 'name'));
+        self::assertSame(['Buty B'], array_column($this->items($this->get($this->url(['priceMin' => 14000]))), 'name'));
+        self::assertSame(['Buty A', 'Buty B'], array_column($this->items($this->get($this->url(['available' => true]))), 'name'));
+    }
+
+    public function testSorting(): void
+    {
+        $this->index(...$this->shoes());
+
+        self::assertSame(['Buty A', 'Buty B', 'Buty C'], array_column($this->items($this->get($this->url(['sort' => 'name']))), 'name'));
+        self::assertSame(['Buty A', 'Buty B', 'Buty C'], array_column($this->items($this->get($this->url(['sort' => 'price_asc']))), 'name'));
+        self::assertSame(['Buty B', 'Buty A', 'Buty C'], array_column($this->items($this->get($this->url(['sort' => 'price_desc']))), 'name'));
+        self::assertSame(['Buty A', 'Buty B', 'Buty C'], array_column($this->items($this->get($this->url(['q' => 'buty', 'sort' => 'relevance']))), 'name'));
+    }
+
+    public function testFacetsHaveTheDocumentedShapeAndCounts(): void
+    {
+        $this->index(...$this->shoes());
+
+        $facets = self::object($this->get($this->url(['option' => ['Kolor:czarne']]))['facets']);
+
+        self::assertSame(['categories', 'options', 'price', 'availableCount'], array_keys($facets));
+        $this->assertKeysMatchSchema($facets, 'ProductFacets');
+        self::assertSame(
+            [['axis' => 'Kolor', 'values' => [['value' => 'czarne', 'count' => 3], ['value' => 'białe', 'count' => 2]]], ['axis' => 'Rozmiar', 'values' => [['value' => '42', 'count' => 2], ['value' => '43', 'count' => 1]]]],
+            $facets['options'],
+        );
+        $axis = self::object(self::list($facets['options'])[0]);
+        $this->assertKeysMatchSchema($axis, 'OptionFacet');
+        $this->assertKeysMatchSchema(self::object(self::list($axis['values'])[0]), 'OptionValue');
+        self::assertSame(['min' => 10000, 'max' => 15000], $facets['price']);
+        $this->assertKeysMatchSchema(self::object($facets['price']), 'PriceRange');
+        self::assertSame(2, $facets['availableCount']);
+    }
+
+    public function testSelectedValueWithoutProductsStaysInTheFacetWithZero(): void
+    {
+        $this->index(...$this->shoes());
+
+        $body = $this->get($this->url(['option' => ['Kolor:zielone']]));
+        $facets = self::object($body['facets']);
+
+        self::assertSame(0, $body['total']);
+        self::assertSame([['axis' => 'Kolor', 'values' => [['value' => 'czarne', 'count' => 3], ['value' => 'białe', 'count' => 2], ['value' => 'zielone', 'count' => 0]]]], \array_slice(self::list($facets['options']), 0, 1));
+        self::assertNull($facets['price']);
+    }
+
+    public function testCategoryFacetListsTheChildrenOfTheFilterCategoryInTreeOrder(): void
+    {
+        $this->index(
+            $this->document('Szosowe', self::LEAF, [self::ROOT, self::CHILD, self::LEAF]),
+            $this->document('Trailowe', self::CHILD, [self::ROOT, self::CHILD]),
+            $this->document('Bidon', self::CHILD_B, [self::ROOT, self::CHILD_B]),
+            $this->document('Czapka', self::OTHER, [self::OTHER]),
+        );
+
+        $categories = self::list(self::object($this->get('/api/v1/products?category='.self::ROOT)['facets'])['categories']);
+
+        self::assertSame(
+            [
+                ['id' => self::CHILD_B, 'name' => 'Akcesoria', 'slug' => 'akcesoria', 'path' => 'bieganie/akcesoria', 'count' => 1],
+                ['id' => self::CHILD, 'name' => 'Buty', 'slug' => 'buty', 'path' => 'bieganie/buty', 'count' => 2],
+            ],
+            $categories,
+        );
+        $this->assertKeysMatchSchema(self::object($categories[0]), 'CategoryFacet');
+
+        // Without a filter the top-level categories are counted: Bieganie has 3 products, the other root 1.
+        $roots = self::list(self::object($this->get('/api/v1/products')['facets'])['categories']);
+        self::assertSame(['bieganie', 'bieganie'], [self::object($roots[0])['slug'], self::object($roots[0])['path']]);
+        self::assertSame([3], [self::object($roots[0])['count']]);
+
+        self::assertSame([], self::object($this->get('/api/v1/products?category='.self::LEAF)['facets'])['categories']);
+    }
+
+    public function testCategoryFacetCountsOnlyProductsWithTheVariantCondition(): void
+    {
+        $this->index(
+            $this->shoe('Czarne w butach', [$this->variant(['Kolor' => 'czarne'], 100, true)], categories: [self::ROOT, self::CHILD]),
+            $this->shoe('Białe w butach', [$this->variant(['Kolor' => 'białe'], 100, true)], categories: [self::ROOT, self::CHILD]),
+        );
+
+        $categories = self::list(self::object($this->get($this->url(['category' => self::ROOT, 'option' => ['Kolor:czarne']]))['facets'])['categories']);
+
+        self::assertSame([1], array_column($categories, 'count'));
+    }
+
+    public function testSearchResponsesKeepTheCacheHeaders(): void
+    {
+        $this->index(...$this->shoes());
+
+        $body = $this->get($this->url(['q' => 'buty', 'option' => ['Kolor:czarne'], 'available' => true, 'sort' => 'price_desc', 'priceMin' => 0]));
+
+        self::assertResponseStatusCodeSame(200);
+        $headers = $this->client->getResponse()->headers;
+        self::assertSame('max-age=60, public', $headers->get('Cache-Control'));
+        [$first, $second] = array_column($this->items($body), 'id');
+        self::assertIsString($first);
+        self::assertIsString($second);
+        self::assertSame('catalog product-'.strtolower($first).' product-'.strtolower($second), $headers->get('xkey'));
+    }
+
+    public function testUnavailableSearchWithFiltersIsStillA503(): void
+    {
+        $this->searchService()->use($this->failingSearch(new SearchUnavailable('down')));
+
+        $this->get($this->url(['q' => 'buty', 'option' => ['Kolor:czarne']]));
+
+        self::assertResponseStatusCodeSame(503);
+        $this->assertNotStored();
+    }
+
+    public function testViolationsOfTheOptionsAndOfOtherParametersAreReportedOneAtATime(): void
+    {
+        $problem = $this->get('/api/v1/products?option=Kolor&priceMin=-1');
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertIsArray($problem['violations']);
+        self::assertNotSame([], $problem['violations']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function object(mixed $value): array
+    {
+        self::assertIsArray($value);
+        self::assertFalse(array_is_list($value) && [] !== $value, 'A JSON object was expected.');
+
+        /** @var array<string, mixed> $value */
+        return $value;
+    }
+
+    /**
+     * @return list<mixed>
+     */
+    private static function list(mixed $value): array
+    {
+        self::assertIsArray($value);
+        self::assertTrue(array_is_list($value), 'A JSON list was expected.');
+
+        return $value;
+    }
+
+    /**
+     * The query string the way the generated client (openapi-fetch) builds it: an array is a repeated key without
+     * `[]`, a value is percent-encoded like encodeURIComponent, `true` is `true`.
+     *
+     * @param array<string, scalar|list<string>> $parameters
+     */
+    private function url(array $parameters): string
+    {
+        $pairs = [];
+        foreach ($parameters as $name => $value) {
+            foreach (\is_array($value) ? $value : [$value] as $item) {
+                $pairs[] = rawurlencode($name).'='.rawurlencode(true === $item ? 'true' : (string) $item);
+            }
+        }
+
+        return '/api/v1/products?'.implode('&', $pairs);
+    }
+
+    /**
+     * @param array<string, string> $options axis => value
+     */
+    private function variant(array $options, ?int $gross, bool $purchasable): VariantDocument
+    {
+        $axes = array_map(strval(...), array_keys($options));
+
+        return new VariantDocument($gross, $purchasable, $axes, array_map(static fn (string $axis, string $value): string => $axis.VariantDocument::OPTION_SEPARATOR.$value, $axes, $options));
+    }
+
+    /**
+     * @param list<VariantDocument> $variants
+     * @param list<string>          $categories the ancestors of the product's category, the category last
+     */
+    private function shoe(string $name, array $variants, string $description = 'Opis', array $categories = [self::ROOT, self::CHILD]): ProductDocument
+    {
+        $fromGross = null;
+        foreach ($variants as $variant) {
+            if ($variant->purchasable && null !== $variant->gross) {
+                $fromGross = min($fromGross ?? $variant->gross, $variant->gross);
+            }
+        }
+
+        return ProductDocumentFactory::createOne([
+            'name' => $name,
+            'slug' => 'slug-'.strtolower(str_replace(' ', '-', $name)),
+            'shortDescription' => $description,
+            'mainCategoryId' => end($categories),
+            'categoryIds' => [end($categories)],
+            'categoryAncestorIds' => $categories,
+            'variants' => $variants,
+            'fromGross' => $fromGross,
+        ]);
+    }
+
+    /**
+     * A: black 42 buyable 100 zł, white 43 buyable 120 zł; B: black 43 buyable 150 zł, white 42 not buyable 90 zł;
+     * C: black 42 not buyable 200 zł.
+     *
+     * @return list<ProductDocument>
+     */
+    private function shoes(): array
+    {
+        return [
+            $this->shoe('Buty A', [$this->variant(['Kolor' => 'czarne', 'Rozmiar' => '42'], 10000, true), $this->variant(['Kolor' => 'białe', 'Rozmiar' => '43'], 12000, true)]),
+            $this->shoe('Buty B', [$this->variant(['Kolor' => 'czarne', 'Rozmiar' => '43'], 15000, true), $this->variant(['Kolor' => 'białe', 'Rozmiar' => '42'], 9000, false)]),
+            $this->shoe('Buty C', [$this->variant(['Kolor' => 'czarne', 'Rozmiar' => '42'], 20000, false)]),
+        ];
+    }
+
     /**
      * @return iterable<string, array{string, string}>
      */
@@ -198,6 +462,29 @@ final class ProductsEndpointTest extends WebTestCase
         yield 'perPage is not a number' => ['perPage=lots', 'perPage'];
         yield 'page is zero' => ['page=0', 'page'];
         yield 'page is not a number' => ['page=first', 'page'];
+        yield 'q is empty' => ['q=', 'q'];
+        yield 'q is blank' => ['q=%20%20', 'q'];
+        yield 'q is one character' => ['q=a', 'q'];
+        yield 'q is 101 characters' => ['q='.str_repeat('a', 101), 'q'];
+        yield 'option without a colon' => ['option=Kolor', 'option'];
+        yield 'option with an empty axis' => ['option=%3Aczarne', 'option'];
+        yield 'option with an empty value' => ['option=Kolor%3A', 'option'];
+        yield 'option axis over 30 characters' => ['option='.str_repeat('a', 31).'%3Ax', 'option'];
+        yield 'option value over 40 characters' => ['option=Kolor%3A'.str_repeat('a', 41), 'option'];
+        yield 'option in the bracket form' => ['option%5B%5D=Kolor%3Aczarne', 'option'];
+        yield 'over 50 options' => [implode('&', array_map(static fn (int $i): string => 'option=Kolor%3A'.$i, range(1, 51))), 'option'];
+        yield 'options of 6 axes' => [implode('&', array_map(static fn (int $i): string => 'option=Os'.$i.'%3Ax', range(1, 6))), 'option'];
+        yield 'priceMin is negative' => ['priceMin=-1', 'priceMin'];
+        yield 'priceMax is negative' => ['priceMax=-1', 'priceMax'];
+        yield 'priceMin is not a number' => ['priceMin=cheap', 'priceMin'];
+        yield 'priceMax is a decimal' => ['priceMax=10.5', 'priceMax'];
+        yield 'priceMin above priceMax' => ['priceMin=200&priceMax=100', 'priceMin'];
+        yield 'available is false' => ['available=false', 'available'];
+        yield 'available is a number' => ['available=1', 'available'];
+        yield 'available is empty' => ['available=', 'available'];
+        yield 'sort is unknown' => ['sort=popular', 'sort'];
+        yield 'sort is empty' => ['sort=', 'sort'];
+        yield 'relevance without a phrase' => ['sort=relevance', 'sort'];
     }
 
     #[DataProvider('invalidQueries')]
@@ -215,8 +502,8 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertIsArray($violation);
         self::assertSame($property, $violation['propertyPath']);
         self::assertIsString($violation['title']);
-        $value = explode('=', $query, 2)[1];
-        if (\strlen($value) >= 3) {
+        $value = explode('=', explode('&', $query)[0], 2)[1];
+        if (\strlen($value) >= 3 && !str_contains($value, '%')) {
             self::assertStringNotContainsString($value, (string) $this->client->getResponse()->getContent());
         }
         $this->assertNotStored();
@@ -365,9 +652,9 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertFalse($headers->has('xkey'));
     }
 
-    private function saveCategory(string $id, ?Category $parent = null): Category
+    private function saveCategory(string $id, ?Category $parent = null, ?string $name = null, ?string $slug = null): Category
     {
-        $category = CategoryFactory::createOne(['id' => $id, 'parent' => $parent]);
+        $category = CategoryFactory::createOne(['id' => $id, 'parent' => $parent, ...(null === $name ? [] : ['name' => $name]), 'slug' => $slug]);
         $doctrine = self::getContainer()->get('doctrine');
         self::assertInstanceOf(ManagerRegistry::class, $doctrine);
         $entityManager = $doctrine->getManager();
