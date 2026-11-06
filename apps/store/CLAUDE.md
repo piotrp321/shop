@@ -22,8 +22,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Struktura
 
-- `app/` – trasy App Router, w tym route handlery logowania w `app/auth/`, koszyka w `app/api/cart/` i kasy
-  w `app/api/checkout/`.
+- `app/` – trasy App Router, w tym route handlery logowania w `app/auth/`, koszyka w `app/api/cart/`, kasy
+  w `app/api/checkout/` i rewalidacji ISR w `app/api/revalidate/`.
 - `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session`, `/api/cart/*`
   i `/api/checkout` z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
 - `src/account/` – komponent konta w nagłówku (Client Component).
@@ -102,6 +102,19 @@ Klienta API generuje `make api-client` z katalogu głównego.
   elementu `script`.
 - Kafelek listy (`ProductTile`): nazwa i zdjęcie to linki do `/p/<slug>`; link zdjęcia jest `aria-hidden` i poza
   kolejnością tabulatora, nazwa jest linkiem dla klawiatury i czytników.
+
+## Rewalidacja (`POST /api/revalidate`)
+
+- Woła ją tylko worker API (`StorefrontCache`) po purge Varnisha: po zmianie ceny albo poziomu dostępności z tagiem
+  `product-<id>`, w `storefront:cache:purge-all` (koniec `make seed`) z tagiem `catalog`. Przeglądarka jej nie woła.
+- `Authorization: Bearer <STORE_REVALIDATE_SECRET>` (z `.env.local`), porównany w stałym czasie (skróty SHA-256
+  i `timingSafeEqual`, więc nie zdradza też długości); treść JSON `{ tags }`, 1–100 tagów, każdy `catalog` albo
+  `product-<uuid małymi literami>` (słownik tagów API).
+- Każdy tag: `revalidateTag(tag, { expire: 0 })`: następne wejście czeka na świeży render zamiast dostać starą stronę
+  (P5). Odpowiedź 200 `{ revalidated: <liczba tagów> }`.
+- Kolejność sprawdzeń: brak sekretu w środowisku 503, brak lub zły sekret 401, `Content-Type` inny niż
+  `application/json`, zły JSON albo zła lista tagów 400 (bez rewalidacji). Wszystkie odpowiedzi `private, no-store`.
+  Sekret nie trafia do logów.
 
 ## Koszyk
 
