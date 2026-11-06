@@ -15,25 +15,28 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class InvalidTokenOnPublicEndpointTest extends WebTestCase
 {
     /**
-     * @return iterable<string, array{string, string}>
+     * @return iterable<string, array{string, \Closure(): string}>
      */
     public static function invalidTokens(): iterable
     {
-        yield 'garbage on the product list' => ['/api/v1/products', 'garbage'];
-        yield 'garbage on the product offers' => ['/api/v1/product-offers?productId=0192f0c4-7c1a-7c4e-9a6e-000000000001', 'garbage'];
-        yield 'garbage on the category tree' => ['/api/v1/categories', 'garbage'];
-        yield 'staff token on the category tree' => ['/api/v1/categories', TestTokenFactory::staff(['admin'])];
-        yield 'expired customer token on the category tree' => ['/api/v1/categories', TestTokenFactory::customer(['iat' => time() - 600, 'exp' => time() - 1])];
-        yield 'customer token without issued-at' => ['/api/v1/categories', TestTokenFactory::customer(['iat' => null])];
-        yield 'customer token without issuer' => ['/api/v1/categories', TestTokenFactory::customer(['iss' => null])];
-        yield 'audience list without the shop audience' => ['/api/v1/products', TestTokenFactory::customer(['aud' => ['account', 'store']])];
+        yield 'garbage on the product list' => ['/api/v1/products', static fn (): string => 'garbage'];
+        yield 'garbage on the product offers' => ['/api/v1/product-offers?productId=0192f0c4-7c1a-7c4e-9a6e-000000000001', static fn (): string => 'garbage'];
+        yield 'garbage on the category tree' => ['/api/v1/categories', static fn (): string => 'garbage'];
+        yield 'staff token on the category tree' => ['/api/v1/categories', static fn (): string => TestTokenFactory::staff(['admin'])];
+        yield 'expired customer token on the category tree' => ['/api/v1/categories', static fn (): string => TestTokenFactory::customer(['iat' => time() - 600, 'exp' => time() - 1])];
+        yield 'customer token without issued-at' => ['/api/v1/categories', static fn (): string => TestTokenFactory::customer(['iat' => null])];
+        yield 'customer token without issuer' => ['/api/v1/categories', static fn (): string => TestTokenFactory::customer(['iss' => null])];
+        yield 'audience list without the shop audience' => ['/api/v1/products', static fn (): string => TestTokenFactory::customer(['aud' => ['account', 'store']])];
     }
 
+    /**
+     * @param \Closure(): string $token
+     */
     #[DataProvider('invalidTokens')]
-    public function testInvalidTokenIsUnauthorized(string $path, string $token): void
+    public function testInvalidTokenIsUnauthorized(string $path, \Closure $token): void
     {
         $client = static::createClient();
-        $client->request('GET', $path, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+        $client->request('GET', $path, server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token()]);
 
         self::assertResponseStatusCodeSame(401);
         self::assertSame('Bearer', $client->getResponse()->headers->get('WWW-Authenticate'));
@@ -78,25 +81,26 @@ final class InvalidTokenOnPublicEndpointTest extends WebTestCase
      * not recognise is no token, so the public endpoint answers as to an anonymous client, even though the token in
      * it is expired. A recognised one is validated and rejected.
      *
+     * The header is a sprintf() format for the token.
+     *
      * @return iterable<string, array{string, int}>
      */
     public static function authorizationHeadersWithExpiredToken(): iterable
     {
-        $token = TestTokenFactory::customer(['iat' => time() - 600, 'exp' => time() - 1]);
-
-        yield 'exact scheme' => ['Bearer '.$token, 401];
-        yield 'two spaces' => ['Bearer  '.$token, 401];
-        yield 'tab separator' => ["Bearer\t".$token, 401];
-        yield 'lower case scheme' => ['bearer '.$token, 200];
-        yield 'trailing space' => ['Bearer '.$token.' ', 200];
-        yield 'token only' => [$token, 200];
+        yield 'exact scheme' => ['Bearer %s', 401];
+        yield 'two spaces' => ['Bearer  %s', 401];
+        yield 'tab separator' => ["Bearer\t%s", 401];
+        yield 'lower case scheme' => ['bearer %s', 200];
+        yield 'trailing space' => ['Bearer %s ', 200];
+        yield 'token only' => ['%s', 200];
     }
 
     #[DataProvider('authorizationHeadersWithExpiredToken')]
     public function testAuthorizationHeaderSyntaxDecidesWhetherAnExpiredTokenIsEvaluated(string $header, int $status): void
     {
+        $token = TestTokenFactory::customer(['iat' => time() - 600, 'exp' => time() - 1]);
         $client = static::createClient();
-        $client->request('GET', '/api/v1/products', server: ['HTTP_AUTHORIZATION' => $header]);
+        $client->request('GET', '/api/v1/products', server: ['HTTP_AUTHORIZATION' => \sprintf($header, $token)]);
 
         self::assertResponseStatusCodeSame($status);
     }

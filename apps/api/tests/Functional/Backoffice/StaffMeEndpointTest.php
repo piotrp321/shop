@@ -78,33 +78,36 @@ final class StaffMeEndpointTest extends WebTestCase
     }
 
     /**
-     * @return iterable<string, array{string}>
+     * @return iterable<string, array{\Closure(): string}>
      */
     public static function invalidTokens(): iterable
     {
-        yield 'customer token (other issuer)' => [TestTokenFactory::customer()];
-        yield 'customer audience' => [TestTokenFactory::staff(['admin'], ['aud' => 'shop-api'])];
-        yield 'admin client id as audience' => [TestTokenFactory::staff(['admin'], ['aud' => 'admin'])];
-        yield 'backoffice audience with shop issuer' => [TestTokenFactory::staff(['admin'], ['iss' => TestTokenFactory::issuer('shop')])];
-        yield 'expired' => [TestTokenFactory::staff(['admin'], ['iat' => time() - 600, 'exp' => time() - 1])];
-        yield 'not yet valid' => [TestTokenFactory::staff(['admin'], ['nbf' => time() + 600])];
-        yield 'issued in the future' => [TestTokenFactory::staff(['admin'], ['iat' => time() + 600])];
-        yield 'no expiry' => [TestTokenFactory::staff(['admin'], ['exp' => null])];
-        yield 'no audience' => [TestTokenFactory::staff(['admin'], ['aud' => null])];
-        yield 'no issued-at' => [TestTokenFactory::staff(['admin'], ['iat' => null])];
-        yield 'no issuer' => [TestTokenFactory::staff(['admin'], ['iss' => null])];
-        yield 'audience list without the backoffice audience' => [TestTokenFactory::staff(['admin'], ['aud' => ['account', 'admin']])];
-        yield 'empty audience list' => [TestTokenFactory::staff(['admin'], ['aud' => []])];
-        yield 'no username' => [TestTokenFactory::staff(['admin'], ['preferred_username' => null])];
-        yield 'no subject' => [TestTokenFactory::staff(['admin'], ['sub' => null])];
-        yield 'garbage' => ['abc'];
-        yield 'three garbage segments' => ['abc.def.ghi'];
+        yield 'customer token (other issuer)' => [static fn (): string => TestTokenFactory::customer()];
+        yield 'customer audience' => [static fn (): string => TestTokenFactory::staff(['admin'], ['aud' => 'shop-api'])];
+        yield 'admin client id as audience' => [static fn (): string => TestTokenFactory::staff(['admin'], ['aud' => 'admin'])];
+        yield 'backoffice audience with shop issuer' => [static fn (): string => TestTokenFactory::staff(['admin'], ['iss' => TestTokenFactory::issuer('shop')])];
+        yield 'expired' => [static fn (): string => TestTokenFactory::staff(['admin'], ['iat' => time() - 600, 'exp' => time() - 1])];
+        yield 'not yet valid' => [static fn (): string => TestTokenFactory::staff(['admin'], ['nbf' => time() + 600])];
+        yield 'issued in the future' => [static fn (): string => TestTokenFactory::staff(['admin'], ['iat' => time() + 600])];
+        yield 'no expiry' => [static fn (): string => TestTokenFactory::staff(['admin'], ['exp' => null])];
+        yield 'no audience' => [static fn (): string => TestTokenFactory::staff(['admin'], ['aud' => null])];
+        yield 'no issued-at' => [static fn (): string => TestTokenFactory::staff(['admin'], ['iat' => null])];
+        yield 'no issuer' => [static fn (): string => TestTokenFactory::staff(['admin'], ['iss' => null])];
+        yield 'audience list without the backoffice audience' => [static fn (): string => TestTokenFactory::staff(['admin'], ['aud' => ['account', 'admin']])];
+        yield 'empty audience list' => [static fn (): string => TestTokenFactory::staff(['admin'], ['aud' => []])];
+        yield 'no username' => [static fn (): string => TestTokenFactory::staff(['admin'], ['preferred_username' => null])];
+        yield 'no subject' => [static fn (): string => TestTokenFactory::staff(['admin'], ['sub' => null])];
+        yield 'garbage' => [static fn (): string => 'abc'];
+        yield 'three garbage segments' => [static fn (): string => 'abc.def.ghi'];
     }
 
+    /**
+     * @param \Closure(): string $token
+     */
     #[DataProvider('invalidTokens')]
-    public function testInvalidTokenIsUnauthorized(string $token): void
+    public function testInvalidTokenIsUnauthorized(\Closure $token): void
     {
-        $this->assertUnauthorized($this->requestStaffMe($token)->getResponse());
+        $this->assertUnauthorized($this->requestStaffMe($token())->getResponse());
     }
 
     public function testTokenSignedWithAnotherKeyIsUnauthorized(): void
@@ -166,25 +169,25 @@ final class StaffMeEndpointTest extends WebTestCase
      * Same extractor rules as on the shop firewall: only "Bearer" with exact case, whitespace and a token that ends
      * the header is a token; anything else is anonymous.
      *
+     * The header is a sprintf() format for the token.
+     *
      * @return iterable<string, array{string, int}>
      */
     public static function authorizationHeaders(): iterable
     {
-        $token = TestTokenFactory::staff(['admin']);
-
-        yield 'exact scheme' => ['Bearer '.$token, 200];
-        yield 'two spaces' => ['Bearer  '.$token, 200];
-        yield 'tab separator' => ["Bearer\t".$token, 200];
-        yield 'lower case scheme' => ['bearer '.$token, 401];
-        yield 'trailing space' => ['Bearer '.$token.' ', 401];
-        yield 'token only' => [$token, 401];
+        yield 'exact scheme' => ['Bearer %s', 200];
+        yield 'two spaces' => ['Bearer  %s', 200];
+        yield 'tab separator' => ["Bearer\t%s", 200];
+        yield 'lower case scheme' => ['bearer %s', 401];
+        yield 'trailing space' => ['Bearer %s ', 401];
+        yield 'token only' => ['%s', 401];
     }
 
     #[DataProvider('authorizationHeaders')]
     public function testAuthorizationHeaderSyntaxIsMatchedAsTheExtractorDefines(string $header, int $status): void
     {
         $client = static::createClient();
-        $client->request('GET', '/api/v1/admin/me', server: ['HTTP_AUTHORIZATION' => $header]);
+        $client->request('GET', '/api/v1/admin/me', server: ['HTTP_AUTHORIZATION' => \sprintf($header, TestTokenFactory::staff(['admin']))]);
 
         self::assertResponseStatusCodeSame($status);
         if (401 === $status) {
