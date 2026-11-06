@@ -10,8 +10,7 @@ Stan magazynowy wariantu produktu w jednym magazynie, w całych sztukach: fizycz
 i zatwierdzenie z kluczem idempotencji przez port aplikacyjny dla Ordering, poziom dostępności w sklepie.
 Sprzedaż ponad stan jest niemożliwa także przy równoległych operacjach.
 
-Poza zakresem: wiele magazynów, lokalizacje, kompletacja, zdarzenia domenowe,
-Varnish i ISR. Nie powstają endpointy ani ekrany rezerwacji: port jest testowany na poziomie aplikacji.
+Poza zakresem: wiele magazynów, lokalizacje, kompletacja. Nie powstają endpointy ani ekrany rezerwacji: port jest testowany na poziomie aplikacji.
 
 ## Bounded contexty i zależności
 
@@ -32,8 +31,12 @@ Varnish i ISR. Nie powstają endpointy ani ekrany rezerwacji: port jest testowan
   (`CommandBusStockReservations`) wysyła `ReserveStock` przez `command.bus`; Ordering zna tylko warstwę Application
   Inventory.
 - Domena Inventory ma własne value objecty (`VariantId` itd.; `ProductId` tylko w liście stanów panelu) i nie importuje kodu innych contextów.
-- Inventory w MVP nie publikuje ani nie konsumuje zdarzeń domenowych (jak Pricing). Zdarzenie zmiany dostępności
-  dochodzi razem z Varnishem i rewalidacją ISR.
+- Operacja, która zmienia poziom dostępności wariantu (`AvailabilityLevel::of(available)`), publikuje
+  `StockLevelChanged {variantId, level, source, occurredAt}` (`level` po zmianie); operacja bez zmiany poziomu nie
+  publikuje nic. `DoctrineStockItemRepository::save` wpisuje zdarzenie do outboxu na tym samym połączeniu w transakcji
+  `command.bus`, więc rollback (także do savepointu) wycofuje je ze zmianą stanu. Jedyny konsument
+  (`Inventory_Infrastructure`) unieważnia cache sklepu produktu wariantu (`docs/features/product-page/spec.md`,
+  „Unieważnianie”); zdarzenie ze źródła `seed` potwierdza bez unieważnienia.
 
 Zapytania Catalog dla Inventory (`query.bus`, DBAL; opisuje je `docs/features/variants/spec.md`):
 - `GetVariant(variantId)`: wariant albo `null` (port `VariantCatalog`, istnienie wariantu).
@@ -266,7 +269,8 @@ z tokenem realmu `shop`: 401):
   `ProductTile` pokazuje etykietę „Dostępny”, „Ostatnie sztuki” albo „Niedostępny” według `level` z API; przy błędzie
   ofert kafelki są bez etykiety, a błąd trafia do logu serwera.
 - Produkty niedostępne zostają na liście, bez zmian w Elasticsearch.
-- Nowa dostępność jest widoczna najpóźniej po czasie cache odpowiedzi (60 s). Rozstrzyga rezerwacja, nie widok sklepu.
+- Nowy poziom dostępności jest widoczny w sklepie po obsłużeniu zdarzenia (purge w Varnishu i rewalidacja strony
+  produktu), w sekundach. Rozstrzyga rezerwacja, nie widok sklepu.
 
 ## Panel (`apps/admin`)
 
@@ -372,5 +376,5 @@ w 5 rundach; po każdej rundzie niezmiennik: `reserved` = suma linii aktywnych r
   w transakcji Ordering wydłuża blokadę. Wydajność nie jest potwierdzona testami obciążeniowymi.
 - Wersja rośnie przy każdej rezerwacji, więc korekta w trakcie ruchu częściej kończy się 409.
 - Historia rośnie o 2–3 wpisy na linię zamówienia, bez partycjonowania w MVP.
-- Sklep pokazuje dostępność z opóźnieniem do 60 s i wykonuje dodatkowe wywołanie API na stronę listy (obok kategorii,
-  produktów i cen).
+- Sklep pokazuje dostępność z opóźnieniem obsługi zdarzenia (sekundy; utracone unieważnienie: do 1 h) i wykonuje
+  dodatkowe wywołanie API na stronę listy (obok kategorii, produktów i cen).

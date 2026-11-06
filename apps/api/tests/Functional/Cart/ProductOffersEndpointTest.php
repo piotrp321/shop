@@ -92,13 +92,34 @@ final class ProductOffersEndpointTest extends WebTestCase
         self::assertStringNotContainsString('7357', (string) $this->client->getResponse()->getContent());
     }
 
-    public function testResponseIsPubliclyCachedForSixtySeconds(): void
+    /**
+     * A shared cache (Varnish) keeps it for an hour: a change of a price or a level purges the product's tag. The
+     * browser keeps it for 60 seconds.
+     */
+    public function testResponseIsPubliclyCachedForAnHourInASharedCache(): void
     {
         [$id] = $this->product([], [[[], 1000, 2300, 5]]);
 
         $this->get([$id]);
 
-        self::assertSame('max-age=60, public', $this->client->getResponse()->headers->get('Cache-Control'));
+        self::assertSame('max-age=60, public, s-maxage=3600', $this->client->getResponse()->headers->get('Cache-Control'));
+    }
+
+    public function testResponseIsTaggedWithTheCatalogAndEveryRequestedProduct(): void
+    {
+        [$kayak] = $this->product(['Kolor'], [[['zielony'], 150_000, 2300, 0]]);
+        [$priced] = $this->product([], [[[], 1000, 2300, 5]]);
+        // Unknown to Catalog, and sent in upper case: still a requested product, tagged by its id in lower case.
+        $unknown = strtoupper((string) Uuid::v7());
+
+        $this->get([$kayak, $unknown, $priced, $kayak]);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(
+            'catalog product-'.strtolower($kayak).' product-'.strtolower($unknown).' product-'.strtolower($priced),
+            $this->client->getResponse()->headers->get('xkey'),
+        );
+        self::assertSame('max-age=60, public, s-maxage=3600', $this->client->getResponse()->headers->get('Cache-Control'));
     }
 
     public function testEveryRequestedIdHasOneOfferInTheOrderOfTheRequest(): void
@@ -169,7 +190,10 @@ final class ProductOffersEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(400);
         $response = $this->client->getResponse();
         self::assertStringContainsString('application/problem+json', (string) $response->headers->get('Content-Type'));
-        self::assertFalse($response->headers->hasCacheControlDirective('public'));
+        $directives = array_map('trim', explode(',', (string) $response->headers->get('Cache-Control')));
+        sort($directives);
+        self::assertSame(['no-store', 'private'], $directives);
+        self::assertFalse($response->headers->has('xkey'));
         $problem = $this->json();
         self::assertSame(400, $problem['status']);
         self::assertIsArray($problem['violations']);

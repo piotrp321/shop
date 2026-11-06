@@ -10,11 +10,12 @@ namespace App\Catalog\Application\Image;
 enum ImageSize: string
 {
     case Listing = 'listing';
+    case Product = 'product';
 
     public function aspectRatio(): string
     {
         return match ($this) {
-            self::Listing => '1:1',
+            self::Listing, self::Product => '1:1',
         };
     }
 
@@ -23,6 +24,7 @@ enum ImageSize: string
     {
         return match ($this) {
             self::Listing => [256, 384, 512, 768],
+            self::Product => [640, 960, 1280, 1600],
         };
     }
 
@@ -30,21 +32,21 @@ enum ImageSize: string
     public function formats(): array
     {
         return match ($this) {
-            self::Listing => [ImageFormat::Webp],
+            self::Listing, self::Product => [ImageFormat::Webp],
         };
     }
 
     public function resize(): string
     {
         return match ($this) {
-            self::Listing => 'fill',
+            self::Listing, self::Product => 'fill',
         };
     }
 
     public function gravity(): string
     {
         return match ($this) {
-            self::Listing => 'sm',
+            self::Listing, self::Product => 'sm',
         };
     }
 }

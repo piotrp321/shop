@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace App\Catalog\UI\Http;
 
 use App\Catalog\Application\Query\ListProducts;
+use App\Catalog\Application\Query\ProductListItem;
 use App\Catalog\Application\Query\ProductPage;
 use App\Catalog\Application\Search\SearchUnavailable;
+use App\Shared\Infrastructure\Http\Cache\CacheTagger;
+use App\Shared\Infrastructure\Http\Cache\CacheTags;
+use App\Shared\Infrastructure\Http\Cache\PublicReadErrorCacheSubscriber;
 use OpenApi\Attributes as OA;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,12 +25,12 @@ final class ListProductsController
 {
     use HandleTrait;
 
-    public function __construct(MessageBusInterface $queryBus)
+    public function __construct(MessageBusInterface $queryBus, private readonly CacheTagger $cacheTagger)
     {
         $this->messageBus = $queryBus;
     }
 
-    #[Route('/api/v1/products', name: 'catalog_product_list', methods: ['GET'])]
+    #[Route('/api/v1/products', name: 'catalog_product_list', methods: ['GET'], defaults: [PublicReadErrorCacheSubscriber::ROUTE_DEFAULT => true])]
     #[OA\Get(
         operationId: 'listProducts',
         summary: 'Product list',
@@ -86,6 +90,10 @@ final class ListProductsController
         $response = new JsonResponse($page);
         $response->setPublic();
         $response->setMaxAge(60);
+        $this->cacheTagger->tag($response, [
+            CacheTags::CATALOG,
+            ...array_map(static fn (ProductListItem $item): string => CacheTags::product($item->id), $page->items),
+        ]);
 
         return $response;
     }

@@ -1,0 +1,107 @@
+varnishtest "Authorization, Cookie, POST and paths outside the allowlist always go to the API"
+
+server s1 -listen 127.0.0.1:80 {
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/products"
+		expect req.http.Authorization == "Bearer token"
+		txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog" -body "with token"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/categories"
+		expect req.http.Cookie == "store_session=abc"
+		txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog" -body "with cookie"
+	}
+	loop 2 {
+		rxreq
+		expect req.method == "POST"
+		expect req.url == "/api/v1/products"
+		txresp -hdr "Cache-Control: max-age=60, public" -body "post"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/guest-carts/0192f0c4-7c1a-7c4e-9a6e-000000000001"
+		txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog" -body "guest cart"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/products/buty-szosowe/variants"
+		txresp -hdr "Cache-Control: max-age=60, public" -body "nested"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/productsx"
+		txresp -hdr "Cache-Control: max-age=60, public" -body "prefix"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/categories/x"
+		txresp -hdr "Cache-Control: max-age=60, public" -body "under categories"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/health"
+		txresp -hdr "Cache-Control: max-age=60, public" -body "health"
+	}
+} -start
+
+setenv VARNISH_PURGE_SECRET "s3cret"
+varnish v1 -arg "-t 0" -cliok "vcl.load main /etc/varnish/default.vcl" -cliok "vcl.use main" -start
+
+client c1 {
+	loop 2 {
+		txreq -url "/api/v1/products" -hdr "Authorization: Bearer token"
+		rxresp
+		expect resp.body == "with token"
+		expect resp.http.X-Cache == "MISS"
+		expect resp.http.xkey == <undef>
+	}
+	loop 2 {
+		txreq -url "/api/v1/categories" -hdr "Cookie: store_session=abc"
+		rxresp
+		expect resp.body == "with cookie"
+		expect resp.http.X-Cache == "MISS"
+		expect resp.http.xkey == <undef>
+	}
+	loop 2 {
+		txreq -req POST -url "/api/v1/products" -body "{}"
+		rxresp
+		expect resp.body == "post"
+		expect resp.http.X-Cache == "MISS"
+	}
+	loop 2 {
+		txreq -url "/api/v1/guest-carts/0192f0c4-7c1a-7c4e-9a6e-000000000001"
+		rxresp
+		expect resp.body == "guest cart"
+		expect resp.http.X-Cache == "MISS"
+		expect resp.http.xkey == <undef>
+	}
+	loop 2 {
+		txreq -url "/api/v1/products/buty-szosowe/variants"
+		rxresp
+		expect resp.body == "nested"
+		expect resp.http.X-Cache == "MISS"
+	}
+	loop 2 {
+		txreq -url "/api/v1/productsx"
+		rxresp
+		expect resp.body == "prefix"
+		expect resp.http.X-Cache == "MISS"
+	}
+	loop 2 {
+		txreq -url "/api/v1/categories/x"
+		rxresp
+		expect resp.body == "under categories"
+		expect resp.http.X-Cache == "MISS"
+	}
+	loop 2 {
+		txreq -url "/health"
+		rxresp
+		expect resp.body == "health"
+		expect resp.http.X-Cache == "MISS"
+	}
+} -run
+
+varnish v1 -expect cache_hit == 0
+varnish v1 -expect backend_req == 16

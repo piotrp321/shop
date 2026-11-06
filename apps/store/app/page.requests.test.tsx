@@ -30,7 +30,7 @@ let requested: string[];
 beforeEach(() => {
   memo.newRequest();
   requested = [];
-  vi.stubEnv("API_INTERNAL_URL", "http://api.test");
+  vi.stubEnv("API_CATALOG_URL", "http://catalog.test");
   vi.stubEnv("STORE_URL", "http://store.test");
   vi.stubGlobal(
     "fetch",

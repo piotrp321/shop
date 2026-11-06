@@ -983,7 +983,7 @@
                     "Cart"
                 ],
                 "summary": "Offers of products of the list",
-                "description": "For each requested product its variants (label, current gross price, availability level, whether one unit can be bought now), the lowest price among the purchasable variants (`fromGross`, with `hasPriceRange` when their prices differ) and the best level among them; a product without a purchasable variant, also one unknown to Catalog, has no price and is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response may be cached for 60 seconds, so it does not decide a purchase: an addition to the cart checks the price and the stock again.",
+                "description": "For each requested product its variants (label, current gross price, availability level, whether one unit can be bought now), the lowest price among the purchasable variants (`fromGross`, with `hasPriceRange` when their prices differ) and the best level among them; a product without a purchasable variant, also one unknown to Catalog, has no price and is `out_of_stock`. The number of units is never returned. Send the ids as a repeated `productId` key (`?productId=<uuid>&productId=<uuid>`); the `productId[]` form is not accepted. The response is public and tagged for purging: a shared cache keeps it until a change of a price or an availability level purges it (an hour at most). It does not decide a purchase: an addition to the cart checks the price and the stock again.",
                 "operationId": "getProductOffers",
                 "parameters": [
                     {
@@ -1179,6 +1179,69 @@
                     },
                     "503": {
                         "description": "The search service is unavailable, or a token was sent and the keys of its issuer cannot be fetched (problem details without technical details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/products/{slug}": {
+            "get": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Product details",
+                "description": "The product page data: the category path from the root to the main category, all the images in position order, the variant axes and the variants (label and values in the order of the axes) in position order. The price and the availability are in the product offer. A slug that names no product, also one that is not in the format of a slug, gives 404. The 200 may be kept by a shared cache for an hour and is tagged for purging; the 404 for 60 seconds.",
+                "operationId": "getProduct",
+                "parameters": [
+                    {
+                        "name": "slug",
+                        "in": "path",
+                        "description": "Slug of the product.",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The product.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductDetails"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No product has the slug (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without technical details).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -1602,6 +1665,115 @@
                                 "type": "object"
                             }
                         }
+                    }
+                },
+                "type": "object"
+            },
+            "ProductDetails": {
+                "required": [
+                    "id",
+                    "slug",
+                    "name",
+                    "shortDescription",
+                    "breadcrumb",
+                    "images",
+                    "variantAxes",
+                    "variants"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "slug": {
+                        "type": "string",
+                        "example": "buty-szosowe-tarvik-asfalt-200"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Buty szosowe Tarvik Asfalt 200"
+                    },
+                    "shortDescription": {
+                        "type": "string"
+                    },
+                    "breadcrumb": {
+                        "description": "The categories from the root to the main category of the product.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BreadcrumbItem"
+                        }
+                    },
+                    "images": {
+                        "description": "All the images of the product in position order, the first is the main one (size `product`).",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductImage"
+                        }
+                    },
+                    "variantAxes": {
+                        "description": "Names of the variant axes, in order; empty for a product with one default variant.",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "example": [
+                            "Kolor",
+                            "Rozmiar"
+                        ]
+                    },
+                    "variants": {
+                        "description": "The variants in position order.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductDetailsVariant"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "BreadcrumbItem": {
+                "required": [
+                    "id",
+                    "name"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Obuwie"
+                    }
+                },
+                "type": "object"
+            },
+            "ProductDetailsVariant": {
+                "required": [
+                    "variantId",
+                    "label",
+                    "values"
+                ],
+                "properties": {
+                    "variantId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "label": {
+                        "description": "The values joined with a comma; empty for the default variant.",
+                        "type": "string",
+                        "example": "czarne, 42"
+                    },
+                    "values": {
+                        "description": "One value per axis, in the order of the axes.",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "example": [
+                            "czarne",
+                            "42"
+                        ]
                     }
                 },
                 "type": "object"

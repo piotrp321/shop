@@ -1,0 +1,57 @@
+varnishtest "PURGE from an address outside the ACL is 403 even with the token; from a private address it purges"
+
+server s1 -listen 127.0.0.1:80 {
+	rxreq
+	expect req.url == "/api/v1/products/a"
+	txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog product-a" -body "a1"
+	rxreq
+	expect req.method == "GET"
+	expect req.url == "/api/v1/products/a"
+	txresp -hdr "Cache-Control: max-age=60, public" -hdr "xkey: catalog product-a" -body "a2"
+} -start
+
+setenv VARNISH_PURGE_SECRET "s3cret"
+# The PROXY protocol sets client.ip, so the test can speak from an address outside the private ranges.
+varnish v1 -proto PROXY -arg "-t 0" -cliok "vcl.load main /etc/varnish/default.vcl" -cliok "vcl.use main" -start
+
+client c1 -proxy1 "10.1.2.3:40000 10.1.2.4:80" {
+	txreq -url "/api/v1/products/a"
+	rxresp
+	expect resp.http.X-Cache == "MISS"
+} -run
+
+# 203.0.113.7 (TEST-NET-3): outside 127.0.0.0/8, ::1 and the RFC 1918 ranges.
+client c2 -proxy1 "203.0.113.7:40000 10.1.2.4:80" {
+	txreq -req PURGE -url "/" -hdr "xkey-purge: product-a" -hdr "X-Purge-Token: s3cret"
+	rxresp
+	expect resp.status == 403
+} -run
+
+# 172.32.0.1 is just past 172.16.0.0/12.
+client c3 -proxy1 "172.32.0.1:40000 10.1.2.4:80" {
+	txreq -req PURGE -url "/" -hdr "xkey-purge: product-a" -hdr "X-Purge-Token: s3cret"
+	rxresp
+	expect resp.status == 403
+} -run
+
+client c4 -proxy1 "10.1.2.3:40000 10.1.2.4:80" {
+	txreq -url "/api/v1/products/a"
+	rxresp
+	expect resp.body == "a1"
+	expect resp.http.X-Cache == "HIT"
+} -run
+
+# A private address with the token purges.
+client c5 -proxy1 "172.18.0.5:40000 10.1.2.4:80" {
+	txreq -req PURGE -url "/" -hdr "xkey-purge: product-a" -hdr "X-Purge-Token: s3cret"
+	rxresp
+	expect resp.status == 200
+	expect resp.reason == "Purged 1"
+
+	txreq -url "/api/v1/products/a"
+	rxresp
+	expect resp.body == "a2"
+	expect resp.http.X-Cache == "MISS"
+} -run
+
+varnish v1 -expect backend_req == 2

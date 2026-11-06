@@ -9,6 +9,7 @@ use App\Inventory\Domain\Stock\StockItemRepository;
 use App\Inventory\Domain\Stock\StockMovement;
 use App\Inventory\Infrastructure\Persistence\Doctrine\DoctrineStockItemRepository;
 use App\Tests\Integration\Inventory\StockFixture;
+use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -128,7 +129,7 @@ final class ReceiveStockEndpointTest extends WebTestCase
         $this->client->disableReboot();
         // The lookup of the key misses the other variant's receipt, as when that receipt commits after the lookup:
         // only the unique index of receipt keys refuses the write.
-        self::getContainer()->set(StockItemRepository::class, new class(new DoctrineStockItemRepository($this->connection)) implements StockItemRepository {
+        self::getContainer()->set(StockItemRepository::class, new class(new DoctrineStockItemRepository($this->connection, new RecordingDomainEventPublisher())) implements StockItemRepository {
             public function __construct(private readonly StockItemRepository $inner)
             {
             }

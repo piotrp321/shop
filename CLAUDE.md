@@ -29,11 +29,22 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - Główny `Makefile` zarządza stosem i uruchamia wszystkie aplikacje:
     `make up` / `make down` / `make logs`, `make seed`, `make check`, `make test`, `make e2e`,
     `make e2e-agent AGENT_DIR=<katalog> [E2E_ARGS=...]` (skrypty agentów tester i UX, wyniki poza repo).
+    `make test` uruchamia też `make varnish-test`: testy VCL (`infra/varnish/tests/*.vtc`, `varnishtest` z obrazu
+    usługi `varnish`, bez stosu).
   - Każda aplikacja ma własny `Makefile` z tymi samymi podstawowymi celami (`check`, `test`)
     oraz swoimi (np. `make migrate` w api). Pracując w jednej aplikacji, używaj jej Makefile:
     `make -C apps/api check`.
   - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc).
 - `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.
+- Tryb sklepu wybiera zmienna `STORE_MODE` dla `make up`: `dev` (domyślnie) uruchamia `next dev`, `production` robi
+  `next build` i uruchamia `next start`. Inna wartość zatrzymuje kontener sklepu, a nieudany build też, więc `make up`
+  kończy się błędem. Tryb podaje się przy każdym `make up` (`STORE_MODE=production make up`); bez zmiennej
+  sklep wraca do `dev`. Powtórzone `STORE_MODE=production make up` nie przebuduje działającego sklepu (compose
+  odtwarza kontener tylko przy zmianie konfiguracji): po zmianie kodu użyj `docker compose restart store`, który
+  uruchamia `next build` od nowa w tym samym trybie. Kontener `e2e` czyta `STORE_MODE` ze środowiska `make e2e`,
+  nie z działającego sklepu, więc ten sam tryb podaj też tam (`STORE_MODE=production make e2e`); bez tego testy
+  tylko produkcyjne są pomijane, a asercje ISR nie przechodzą. Lokalnie E2E działa domyślnie na `next dev`;
+  E2E w CI działa na buildzie produkcyjnym (`STORE_MODE=production`), bo tylko on ma cache ISR.
 - Każdy worktree ma lokalny `.env` (poza repo) z własnym `COMPOSE_PROJECT_NAME` i wolnymi portami, żeby stosy
   z różnych worktree nie kolidowały ze sobą ani z innymi projektami.
 
