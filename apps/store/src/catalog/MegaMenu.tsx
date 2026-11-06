@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type FocusEvent, type KeyboardEvent, type PointerEvent, useEffect, useId, useRef, useState } from "react";
+import { type FocusEvent, type PointerEvent, useEffect, useId, useRef, useState } from "react";
 import type { components } from "@/api/schema";
 import { categoryHref } from "./catalog-href";
 
@@ -33,7 +33,7 @@ function Branch({ category, level, onNavigate }: { category: CategoryNode; level
 /**
  * The menu of the departments (the top categories) from the category tree. Wide screens show a bar of department
  * buttons; the panel of a department (its levels 2 and 3 and „Wszystko z działu”) opens with a click, Enter, Space or
- * hover and closes with Escape, a click outside, the focus leaving the menu, a link or another department. Narrow
+ * hover and closes with Escape (wherever the focus is), a click outside, the focus leaving the menu, a link or another department. Narrow
  * screens show a „Menu” button with the list of all three levels. Every link is in the HTML while the menu is closed
  * (the panels are `hidden`), so crawlers see the whole tree; JavaScript only opens and closes them.
  */
@@ -63,13 +63,19 @@ export function MegaMenu({ categories }: { categories: CategoryNode[] }) {
     return () => document.removeEventListener("mousedown", closeOutside);
   }, [anythingOpen]);
 
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key !== "Escape") return;
-    const focusTarget = openId !== null ? departmentButtons.current.get(openId) : menuOpen ? menuButton.current : null;
-    if (!focusTarget) return;
-    closeAll();
-    focusTarget.focus();
-  };
+  // Escape closes the menu wherever the focus is: a panel opened by hover leaves it on the body, and Safari and Firefox
+  // do not focus a button on click. The focus goes back to the button that opened the panel.
+  useEffect(() => {
+    if (!anythingOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const focusTarget = openId !== null ? departmentButtons.current.get(openId) : menuButton.current;
+      closeAll();
+      focusTarget?.focus();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [anythingOpen, openId]);
 
   // Only a move of the focus to an element outside the menu closes it: a null target (a click on a non-focusable area,
   // a browser that does not focus buttons on click) is left to the click-outside handler.
@@ -97,7 +103,7 @@ export function MegaMenu({ categories }: { categories: CategoryNode[] }) {
   };
 
   return (
-    <nav ref={navRef} aria-label="Działy" onKeyDown={onKeyDown} onBlur={onBlur} className="relative mx-auto max-w-7xl px-4">
+    <nav ref={navRef} aria-label="Działy" onBlur={onBlur} className="relative mx-auto max-w-7xl px-4">
       <div className="hidden md:block">
         <ul className="flex flex-wrap gap-1 py-1">
           {categories.map((department) => {

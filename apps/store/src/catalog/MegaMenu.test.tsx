@@ -76,6 +76,7 @@ describe("MegaMenu", () => {
   it("keeps a department opened by hover open for the click that follows, and closes it with the next click", () => {
     render(<MegaMenu categories={TREE} />);
     fireEvent.pointerEnter(department("Bieganie"), { pointerType: "mouse" });
+    expect(department("Bieganie").getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(department("Bieganie"));
     expect(department("Bieganie").getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(department("Bieganie"));
@@ -106,6 +107,22 @@ describe("MegaMenu", () => {
     fireEvent.keyDown(link, { key: "Escape" });
     expect(department("Bieganie").getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(department("Bieganie"));
+  });
+
+  it("closes with Escape pressed outside the menu (a panel opened by hover, the focus on the body)", () => {
+    render(<MegaMenu categories={TREE} />);
+    fireEvent.pointerEnter(department("Bieganie"), { pointerType: "mouse" });
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(department("Bieganie").getAttribute("aria-expanded")).toBe("false");
+    expect(panelOf(department("Bieganie")).hidden).toBe(true);
+    expect(document.activeElement).toBe(department("Bieganie"));
+  });
+
+  it("ignores Escape while nothing is open and does not take the focus", () => {
+    render(<MegaMenu categories={TREE} />);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(document.activeElement).toBe(document.body);
   });
 
   it("ignores other keys", () => {
@@ -178,6 +195,15 @@ describe("MegaMenu", () => {
       const link = within(list()).getByRole("link", { name: "Kaski" });
       act(() => link.focus());
       fireEvent.keyDown(link, { key: "Escape" });
+      expect(menuButton().getAttribute("aria-expanded")).toBe("false");
+      expect(document.activeElement).toBe(menuButton());
+    });
+
+    it("closes with Escape pressed outside the menu (the button without the focus, as after a click in Safari)", () => {
+      render(<MegaMenu categories={TREE} />);
+      fireEvent.click(menuButton());
+      expect(document.activeElement).toBe(document.body);
+      fireEvent.keyDown(document.body, { key: "Escape" });
       expect(menuButton().getAttribute("aria-expanded")).toBe("false");
       expect(document.activeElement).toBe(menuButton());
     });
