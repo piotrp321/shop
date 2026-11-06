@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Shared\Messaging;
 
+use App\Cart\Infrastructure\Catalog\QueryBusProductOfferFacts;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
 use App\Catalog\Domain\Product\ProductCreated;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Shared\Domain\Event\DomainEventPublisher;
+use App\Tests\Support\InMemory\InMemoryProductOfferFacts;
 use App\Tests\Support\InMemory\RecordingProductIndexer;
 use App\Tests\Unit\Catalog\Search\InMemoryProductSearchSource;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
@@ -18,8 +20,8 @@ use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 /**
  * The route of a domain event on the in-memory transports of the test kernel: publish → outbox → events → handlers.
- * The product index and the product source are replaced by a spy and an in-memory source, so the test needs neither
- * Elasticsearch nor the database.
+ * The product index, the product source and the offer facts are replaced by a spy and in-memory sources, so the test
+ * needs neither Elasticsearch nor the database.
  */
 final class MessengerRoutingTest extends KernelTestCase
 {
@@ -33,6 +35,7 @@ final class MessengerRoutingTest extends KernelTestCase
         $this->indexer = new RecordingProductIndexer();
         $container = self::getContainer();
         $container->set(ElasticsearchProductIndexer::class, $this->indexer);
+        $container->set(QueryBusProductOfferFacts::class, new InMemoryProductOfferFacts());
         $container->set(DbalProductSearchSource::class, new InMemoryProductSearchSource([
             new ProductSearchSnapshot(self::PRODUCT_ID, 1, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::CATEGORY_ID, [], [[self::CATEGORY_ID]], null, [], [], []),
         ]));

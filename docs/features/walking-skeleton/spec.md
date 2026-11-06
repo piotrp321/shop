@@ -293,12 +293,11 @@ Persystencja:
   `catalog_product_category`. Stan odczytany we wcześniejszym żądaniu nie jest wykrywany, bo `Product` nie niesie
   wersji. Ochrona między żądaniami wymagałaby wersji w komendzie i nie jest teraz w zakresie. Dwa różne stany produktu nigdy nie
   mają tej samej wersji.
-- Wersja chroni tylko dane z wiersza produktu i jego przypisań do kategorii. Pola dokumentu wyszukiwarki pochodzące
-  z innych agregatów (ścieżki kategorii, w przyszłości ceny, dostępność, atrybuty) nie są nią objęte. Wymaga to
-  osobnego wersjonowania całej projekcji wyszukiwania. Do tego czasu zmiana drzewa kategorii wymaga pełnej
-  przebudowy indeksu (w szkielecie drzewo się nie zmienia).
-- Wersje mogą się cofnąć tylko przy wyczyszczeniu albo odtworzeniu bazy. Seed zawsze resetuje też indeks, a po
-  odtworzeniu bazy z kopii obowiązuje pełna przebudowa indeksu.
+- Wersja produktu chroni tylko dane z wiersza produktu i jego przypisań do kategorii. Dokument wyszukiwarki nie
+  używa jej: jego wersja to znacznik czasu odczytu (opis w „Indeks Elasticsearch”), który obejmuje też ceny
+  i dostępność. Zmiana drzewa kategorii (ścieżki, nazwy) nie ma zdarzenia i wymaga pełnej przebudowy indeksu
+  (w szkielecie drzewo się nie zmienia).
+- Po odtworzeniu bazy z kopii obowiązuje pełna przebudowa indeksu.
 
 Identyfikatory nadaje wywołujący komendę (komendy przyjmują `id`). Domena nigdy nie wylicza identyfikatora
 z innych pól. Seed używa UUID v5 ze sluga (opis niżej), przyszłe kontrolery będą nadawać UUID v7.
@@ -357,13 +356,14 @@ milisekundy plus najwyżej 5 s oczekiwania na potwierdzenie) i zdarzenie trafia
 do RabbitMQ drugi raz. Tak samo RabbitMQ doręcza ponownie wiadomość bez ack odbiorcy. Kilka workerów nie bierze
 tego samego wiersza (`SELECT … FOR UPDATE SKIP LOCKED`), ale kolejność zdarzeń nie jest gwarantowana.
 
-Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` czyta aktualny stan produktu z wersją przez
-`ProductSearchSource` i zapisuje dokument z tą wersją. Starszy albo powtórzony zapis Elasticsearch odrzuca, a handler
-traktuje to jako obsłużoną wiadomość, bez ponowienia. Handler jest więc idempotentny i niezależny od kolejności
-zdarzeń.
-Błąd przejściowy (`SearchUnavailable`) ponawia Messenger według strategii `events`. Błąd trwały (`SearchIndexError`)
-i produkt, którego nie da się odczytać (katalog nie ma usuwania, więc to niespójność), kończą się
-`UnrecoverableMessageHandlingException`: wiadomość od razu trafia do `failed`.
+Zdarzenia niosą tylko identyfikatory i czas. `IndexProduct` deleguje do `ProductIndexing::reindex` (Catalog
+Application, poza `command.bus`, bo tylko czyta bazę): bierze znacznik czasu w mikrosekundach, potem czyta aktualny
+stan produktu (`ProductSearchSource`) i fakty jego oferty (`ProductOfferFacts`) i zapisuje dokument z tym znacznikiem
+jako wersją. Zapis starszego odczytu po nowszym Elasticsearch odrzuca (wynik „przestarzały”), a handler traktuje to
+jako obsłużoną wiadomość, bez ponowienia. Handler jest więc idempotentny i niezależny od kolejności zdarzeń.
+Błąd przejściowy (`SearchUnavailable`, `OfferFactsUnavailable`) ponawia Messenger według strategii `events`. Błąd
+trwały (`SearchIndexError`) i produkt, którego nie da się odczytać (wynik „brak produktu”; katalog nie ma usuwania,
+więc to niespójność), kończą się `UnrecoverableMessageHandlingException`: wiadomość od razu trafia do `failed`.
 
 ### Indeks Elasticsearch
 
@@ -392,9 +392,12 @@ Elasticsearch jest wyłącznie modelem odczytu, odtwarzanym z Postgresa.
   i `from_gross` pochodzą z oferty Cart (port `ProductOfferFacts`, opis w `docs/features/search/spec.md`).
 
 **Zapis**
-- Każdy zapis ma `version` dokumentu równe wersji produktu i `version_type=external`. Elasticsearch odrzuca zapis
-  z wersją nie większą niż zapisana (409). To wynik „przestarzały”, a nie błąd: dotyczy zarówno starszego stanu,
-  jak i powtórzenia tej samej wersji.
+- Wersja dokumentu (`version` w dokumencie i wersja Elasticsearch) to znacznik czasu w mikrosekundach pobrany przed
+  odczytem stanu, zapisywany z `version_type=external_gte`. Elasticsearch odrzuca zapis z wersją mniejszą niż
+  zapisana (409). To wynik „przestarzały”, a nie błąd. Odczyt rozpoczęty później widzi co najmniej te same
+  zatwierdzone dane, więc przy dwóch równoległych obsługach wygrywa nowszy odczyt, a ta sama wersja zapisuje się
+  ponownie. Przy kilku workerach na różnych hostach przesunięcie zegarów może przepuścić starszy odczyt; skutek
+  naprawia następna zmiana produktu albo przebudowa.
 - Pojedynczy zapis (`ProductIndexer`) idzie przez alias z `require_alias=true`, więc nigdy nie utworzy indeksu
   o nazwie aliasu. Zapis paczki przy przebudowie idzie bulkiem bezpośrednio do wskazanego indeksu fizycznego.
 - Wynik bulka jest sprawdzany pozycja po pozycji: zapisany, przestarzały, błąd przejściowy albo błąd trwały.
