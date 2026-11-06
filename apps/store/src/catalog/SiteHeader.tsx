@@ -4,11 +4,12 @@ import { AccountMenu } from "@/account/AccountMenu";
 import type { components } from "@/api/schema";
 import { CartBadge } from "@/cart/CartBadge";
 import { MegaMenu } from "./MegaMenu";
+import { SearchBox } from "./SearchBox";
 
 type CategoryNode = components["schemas"]["CategoryNode"];
 
 /**
- * The header of every page: the logo, the cart and the account, and the department menu under them. `categories` is
+ * The header of every page: the logo, the search box, the cart and the account, and the department menu under them. `categories` is
  * `null` when the tree could not be read, and the header then has no menu. Nothing here depends on the session.
  */
 export function SiteHeader({ categories }: { categories: CategoryNode[] | null }) {
@@ -19,6 +20,7 @@ export function SiteHeader({ categories }: { categories: CategoryNode[] | null }
           Rytm
         </Link>
         <div className="flex items-center gap-4">
+          <SearchBox />
           {/* The counter loads in the browser, so the HTML is the same for everybody. */}
           <CartBadge />
           {/* The account box reads the URL for returnTo and loads the session in the browser. */}
