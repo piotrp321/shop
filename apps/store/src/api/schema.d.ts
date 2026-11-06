@@ -452,6 +452,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/webhooks/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Webhook of a payment provider
+         * @description Called by the provider (not by the store) when a payment session is paid or refused. The signature of the raw body is verified first: `demo-transfer` sends `X-Signature` (hex HMAC-SHA256 of the body), `demo-card` sends `Card-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">` valid for 300 s. Each event is handled once (by its id); a repeated delivery answers 204 and changes nothing. A succeeded payment pays its order when it was executed before the payment deadline; otherwise (or for a cancelled order, or an order paid by another payment) it is kept for a refund by hand.
+         */
+        post: operations["receivePaymentWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2551,6 +2571,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentProvider"][];
+                };
+            };
+        };
+    };
+    receivePaymentWebhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `demo-transfer`: hex HMAC-SHA256 of the raw body with the webhook secret. */
+                "X-Signature"?: string;
+                /** @description `demo-card`: `t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`. */
+                "Card-Signature"?: string;
+            };
+            path: {
+                /** @description Code of the provider. */
+                provider: "demo-transfer" | "demo-card";
+            };
+            cookie?: never;
+        };
+        /** @description The event as the provider sends it. `demo-transfer`: `{eventId, transactionId, merchantRef, status: PAID | REJECTED, amount (grosze), currency, paidAt (RFC 3339, with PAID)}`. `demo-card`: `{id, type: checkout.completed | checkout.failed, data: {sessionId, reference, amount ("123.45"), currency, completedAt (Unix seconds, with checkout.completed)}}`; other types are acknowledged and ignored. */
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description The event was handled, was handled before, or is of a type the shop ignores. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong signature, a timestamp outside the tolerance, or a body that breaks the format of the provider (problem details, one text for every cause). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token of a session was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). None is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unknown provider, or no payment of the session at this provider (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The amount is not the amount of the payment; nothing changed (problem details). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The order changed concurrently; nothing changed and the provider retries (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

@@ -133,17 +133,30 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
   dostawcy (`pending` → `succeeded` | `failed` | `cancelled`; `succeed` także z `failed` i `cancelled`, bo pieniądze ważą
   więcej niż wcześniejsza odmowa; `requireRefund` tylko dla `succeeded`, pierwszy powód zostaje), bez pola wersji:
-  istniejącą płatność zmieniają tylko operacje pod blokadą jej wiersza. Zapis przez rekordy Doctrine według ogólnej zasady
-  (`payment_payment`, `payment_webhook_event`), bez kluczy obcych do Ordering.
-  - Payment sięga do Ordering tylko przez swój port `PayableOrders` (adapter `QueryBusPayableOrders`: Ordering
-    `GetOrderForPayment` na `query.bus`, wynik przetłumaczony na `OrderToPay` z domeny Payment) i ma własne value objecty
+  istniejącą płatność zmieniają tylko operacje pod blokadą jej wiersza. Zapis płatności przez rekordy Doctrine według
+  ogólnej zasady (`payment_payment`), bez kluczy obcych do Ordering. Wyjątek: obsłużone zdarzenie webhooka
+  (`payment_webhook_event`, PK `(provider, event_id)`, na zawsze) zapisuje `DoctrinePaymentRepository::recordWebhookEvent`
+  przez DBAL `INSERT … ON CONFLICT DO NOTHING` (rekord tylko definiuje schemat): powtórzenie nie jest naruszeniem
+  unikalności, które zamknęłoby `EntityManager`, a wiersz wycofanej transakcji nie zostaje w identity map jako
+  „już obsłużony”.
+  - Payment sięga do Ordering tylko przez dwa swoje porty: `PayableOrders` (adapter `QueryBusPayableOrders`: Ordering
+    `GetOrderForPayment` na `query.bus`, wynik przetłumaczony na `OrderToPay` z domeny Payment) i `OrderPayments` (adapter
+    `CommandBusOrderPayments`: Ordering `MarkOrderPaid` zagnieżdżony na `command.bus` w transakcji webhooka, wynik
+    przetłumaczony na `OrderPaymentResult`, `OrderChangedConcurrently` na `OrderBusy`), i ma własne value objecty
     (`OrderId`, `Amount`, `Currency`). Deptrac: tylko `Payment_Infrastructure → Ordering_Application`; Ordering ani żaden
     inny context nie zależy od Payment.
-  - Port `PaymentProvider` (`code`, `createSession`, `cancelSession`) z rejestrem `PaymentProviders` (tag
+  - Port `PaymentProvider` (`code`, `createSession`, `cancelSession`, `parseWebhook`) z rejestrem `PaymentProviders` (tag
     `app.payment_provider`) i dwoma adapterami HTTP do symulatora (`DemoTransferProvider`: Bearer, grosze, RFC 3339;
     `DemoCardProvider`: Basic `merchant`, kwota `"123.45"` przez `CardAmount`, czas uniksowy) na `app.payment_http_client`
     pod `PAYMENT_PROVIDER_BASE_URL`. Każde wywołanie ma 5 s (`timeout` i `max_duration`); błąd sieci, przekroczenie
     czasu, inny status albo nieczytelna odpowiedź to `PaymentProviderUnavailable` (marker `Unavailable`, 503).
+    `parseWebhook(headers, rawBody, now)` najpierw sprawdza podpis (`hash_equals`, sekrety
+    `PAYMENT_DEMO_*_WEBHOOK_SECRET`): `demo-transfer` `X-Signature` = hex HMAC-SHA256 surowej treści, `demo-card`
+    `Card-Signature: t=<unix>,v1=<hex HMAC-SHA256("<t>.<treść>")>` (jeden z kilku `v1`) z tolerancją 300 s w obie strony;
+    potem czyta treść ściśle (`WebhookFields`, bez rzutowania typów; kwota `demo-card` przez `CardAmount`, bez floatów;
+    `paidAt` RFC 3339 ze strefą, `completedAt` sekundy uniksowe) do `ProviderEvent {eventId, providerPaymentId, outcome
+    succeeded|failed, amount, executedAt}` (`executedAt` wymagany przy sukcesie) albo `null` dla innego typu zdarzenia
+    `demo-card`. Każdy błąd to `InvalidWebhook` (`Payment_Application`) z przyczyną do logu, bez sekretu i treści.
   - `StartPayment` (`command.bus`, jedna transakcja): dostęp do zamówienia przed powtórzeniem (sam klucz nie daje
     płatności; brak dostępu to `OrderNotFound` 404 „Nie znaleźliśmy zamówienia.”), powtórzenie po `Idempotency-Key` i
     odcisku (zamówienie i dostawca; inny odcisk to 409), stan zamówienia (opłacone, anulowane, po terminie: 409),
@@ -156,10 +169,27 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     mapowania był równy zmigrowanemu): naruszenie to `PaymentInProgress` „Płatność za to zamówienie jest w toku.”.
   - `GetPaymentStatus` (`query.bus`): ta sama reguła dostępu, `canStartPayment` = zamówienie płatne, najnowsza płatność
     z `resumeUrl` tylko dla `pending` i płatnego zamówienia.
+  - Webhook `POST /api/v1/payments/webhooks/{provider}` (publiczny, `security.yaml` `PUBLIC_ACCESS`; `WebhookController`):
+    podpis i treść sprawdza adapter dostawcy, jak mapowanie treści żądania; nieznany dostawca 404, `InvalidWebhook` 400 ze
+    stałym ogólnym `detail` (przyczyna w logu `warning`), zdarzenie innego typu 204 bez komendy, inaczej
+    `HandleProviderWebhook(provider, event)` i 204. Komenda (`command.bus`, jedna transakcja): blokada płatności po
+    `(provider, providerPaymentId)` (`lockByProviderPayment`, `PESSIMISTIC_WRITE` z odświeżeniem rekordu, więc równoległe
+    dostawy idą po kolei; nieznana to `PaymentNotFound` 404 „Nie znaleźliśmy płatności.”), deduplikacja (zdarzenie już
+    obsłużone: 204 bez zmian), `fail` albo `succeed` (inna kwota: `PaymentAmountMismatch` 422 i log `error`). Płatność,
+    która właśnie przeszła w `succeeded`, opłaca zamówienie przez port `OrderPayments` (adapter `CommandBusOrderPayments`:
+    Ordering `MarkOrderPaid` zagnieżdżony na `command.bus`, w tej samej transakcji, więc płatność i status zamówienia
+    zmieniają się razem). Wynik `paid` i `alreadyPaid` nic nie dodaje; przy `orderCancelled`, `paidAfterDeadline` i
+    `paidByAnotherPayment` płatność zostaje `succeeded` z oznaczeniem zwrotu (`requireRefund`: `order_cancelled`,
+    `paid_after_deadline`, `duplicate`; `OrderPaymentResult::refundReason()`), handler loguje `error` „requires a manual
+    refund”, a odpowiedź to 204 (dostawa kończy się bez ponowień). Zwrot jest ręczny, poza systemem: płatności do zwrotu
+    to `payment_payment.refund_required_reason IS NOT NULL`. Konflikt wersji zamówienia (`OrderChangedConcurrently`, np.
+    równoległe `ExpireUnpaidOrder` albo `SendOrderConfirmation`) adapter tłumaczy na `OrderBusy` (marker `Unavailable`,
+    503), inne błędy Ordering przekazuje bez zmian (500); w obu przypadkach wycofana jest cała transakcja, także wiersz
+    deduplikacji, a symulator ponawia dostawę.
   - Endpointy: `GET /api/v1/payment-providers` (publiczny), gość `POST /api/v1/orders/{id}/payments` i
     `GET /api/v1/orders/{id}/payment` z nagłówkiem `Order-Access-Token` (brak to 404, sesja niczego nie zmienia),
-    klient to samo pod `/api/v1/me/orders/{id}/...`. Każda odpowiedź `private, no-store`
-    (`PaymentResponseCacheSubscriber`). `security.yaml` ma też regułę publiczną dla `/api/v1/payments/webhooks/`.
+    klient to samo pod `/api/v1/me/orders/{id}/...`, oraz webhook dostawców (wyżej). Każda odpowiedź `private, no-store`
+    (`PaymentResponseCacheSubscriber`).
 - PaymentSimulator (`src/PaymentSimulator`, `docs/features/payment/spec.md`) udaje dwóch zewnętrznych dostawców płatności
   (`demo-transfer`, `demo-card`) w tym samym API, ale poza `/api/v1` (`/payment-simulator/...`, bez firewalla, poza
   dokumentami OpenAPI) i poza contextami: płaski moduł (kontrolery, encja Doctrine, komendy z handlerami, podpisy), jedna

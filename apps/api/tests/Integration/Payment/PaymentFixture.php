@@ -40,7 +40,8 @@ final class PaymentFixture
     }
 
     /**
-     * Deletes the payments of the orders, the sessions of the simulator of their numbers, and the orders.
+     * Deletes the payments of the orders with their handled webhook events, the sessions of the simulator of their
+     * numbers, and the orders.
      *
      * @param list<string> $orderIds
      */
@@ -50,6 +51,7 @@ final class PaymentFixture
             return;
         }
         $numbers = $connection->fetchFirstColumn('SELECT number FROM ordering_order WHERE id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
+        $connection->executeStatement('DELETE FROM payment_webhook_event WHERE payment_id IN (SELECT id FROM payment_payment WHERE order_id IN (?))', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM payment_payment WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM payment_simulator_transaction WHERE reference IN (?)', [$numbers], [ArrayParameterType::STRING]);
         OrderingFixture::deleteOrders($connection, $orderIds);

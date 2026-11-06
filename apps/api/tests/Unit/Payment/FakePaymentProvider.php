@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Payment;
 
 use App\Payment\Application\PaymentProviderUnavailable;
 use App\Payment\Application\Port\PaymentProvider;
+use App\Payment\Application\ProviderEvent;
 use App\Payment\Application\ProviderSession;
 use App\Payment\Application\SessionCancellation;
 use App\Payment\Domain\Amount;
@@ -54,5 +55,10 @@ final class FakePaymentProvider implements PaymentProvider
         $this->cancelled[] = $providerPaymentId->toString();
 
         return $this->cancellation;
+    }
+
+    public function parseWebhook(array $headers, string $rawBody, \DateTimeImmutable $now): ?ProviderEvent
+    {
+        throw new \LogicException('The webhooks are read by the adapters, not by the handlers.');
     }
 }

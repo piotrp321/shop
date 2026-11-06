@@ -52,7 +52,7 @@ final class DemoCardProviderTest extends TestCase
 
     public function testTheCodeIsDemoCard(): void
     {
-        self::assertSame(ProviderCode::DemoCard, new DemoCardProvider(new ProviderCalls()->client, 'http://api', self::KEY)->code());
+        self::assertSame(ProviderCode::DemoCard, new DemoCardProvider(new ProviderCalls()->client, 'http://api', self::KEY, 'webhook-secret')->code());
     }
 
     /**
@@ -141,6 +141,6 @@ final class DemoCardProviderTest extends TestCase
 
     private function provider(ProviderCalls $calls): DemoCardProvider
     {
-        return new DemoCardProvider($calls->client, 'http://api', self::KEY);
+        return new DemoCardProvider($calls->client, 'http://api', self::KEY, 'webhook-secret');
     }
 }

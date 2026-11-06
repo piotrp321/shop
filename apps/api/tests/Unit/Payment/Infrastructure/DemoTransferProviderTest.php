@@ -53,7 +53,7 @@ final class DemoTransferProviderTest extends TestCase
 
     public function testTheCodeIsDemoTransfer(): void
     {
-        self::assertSame(ProviderCode::DemoTransfer, new DemoTransferProvider(new ProviderCalls()->client, 'http://api', self::KEY)->code());
+        self::assertSame(ProviderCode::DemoTransfer, new DemoTransferProvider(new ProviderCalls()->client, 'http://api', self::KEY, 'webhook-secret')->code());
     }
 
     /**
@@ -148,6 +148,6 @@ final class DemoTransferProviderTest extends TestCase
 
     private function provider(ProviderCalls $calls): DemoTransferProvider
     {
-        return new DemoTransferProvider($calls->client, 'http://api/', self::KEY);
+        return new DemoTransferProvider($calls->client, 'http://api/', self::KEY, 'webhook-secret');
     }
 }

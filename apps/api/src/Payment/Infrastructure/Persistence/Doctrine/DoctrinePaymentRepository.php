@@ -14,12 +14,14 @@ use App\Payment\Domain\PaymentInProgress;
 use App\Payment\Domain\PaymentRepository;
 use App\Payment\Domain\PaymentStatus;
 use App\Payment\Domain\ProviderCode;
+use App\Payment\Domain\ProviderEventId;
 use App\Payment\Domain\ProviderPaymentId;
 use App\Payment\Domain\RefundReason;
 use App\Payment\Domain\RequestFingerprint;
 use App\Payment\Infrastructure\Persistence\Doctrine\Record\PaymentRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\LockMode;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Query;
 
@@ -32,7 +34,12 @@ use Doctrine\ORM\Query;
  *
  * The pending payment of an order is read under the lock of its row (`SELECT … FOR UPDATE`), and read anew even when
  * its record is in the identity map (a hint to refresh): PostgreSQL checks the condition again once the lock is
- * granted, so a payment a concurrent transaction ended meanwhile is not returned.
+ * granted, so a payment a concurrent transaction ended meanwhile is not returned. The payment of a session of its
+ * provider (the webhook) is locked the same way.
+ *
+ * A handled webhook event is written by DBAL with `INSERT … ON CONFLICT DO NOTHING` (its record only defines the
+ * schema): a repeat is reported without a unique violation that would close the EntityManager, and a row of a
+ * transaction that was rolled back never lingers in the identity map to look like a repeat.
  */
 final readonly class DoctrinePaymentRepository implements PaymentRepository
 {
@@ -97,6 +104,33 @@ final readonly class DoctrinePaymentRepository implements PaymentRepository
         \assert(null === $record || $record instanceof PaymentRecord);
 
         return null === $record ? null : self::toDomain($record);
+    }
+
+    public function lockByProviderPayment(ProviderCode $provider, ProviderPaymentId $providerPaymentId): ?Payment
+    {
+        $record = $this->entityManager->createQueryBuilder()
+            ->select('p')
+            ->from(PaymentRecord::class, 'p')
+            ->where('p.provider = :provider')
+            ->andWhere('p.providerPaymentId = :providerPaymentId')
+            ->setParameter('provider', $provider->value)
+            ->setParameter('providerPaymentId', $providerPaymentId->toString())
+            ->getQuery()
+            ->setLockMode(LockMode::PESSIMISTIC_WRITE)
+            ->setHint(Query::HINT_REFRESH, true)
+            ->getOneOrNullResult();
+        \assert(null === $record || $record instanceof PaymentRecord);
+
+        return null === $record ? null : self::toDomain($record);
+    }
+
+    public function recordWebhookEvent(ProviderCode $provider, ProviderEventId $eventId, PaymentId $paymentId, \DateTimeImmutable $receivedAt): bool
+    {
+        return 1 === $this->entityManager->getConnection()->executeStatement(
+            'INSERT INTO payment_webhook_event (provider, event_id, payment_id, received_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+            [$provider->value, $eventId->toString(), $paymentId->toString(), $receivedAt],
+            [Types::STRING, Types::STRING, Types::GUID, Types::DATETIMETZ_IMMUTABLE],
+        );
     }
 
     public function latestOfOrder(OrderId $orderId): ?Payment

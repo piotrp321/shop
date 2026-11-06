@@ -365,7 +365,7 @@ final class GuestPaymentEndpointTest extends WebTestCase
     {
         $this->client->request('POST', '/api/v1/payments/webhooks/demo-transfer');
 
-        self::assertResponseStatusCodeSame(404, 'public (no 401); its endpoint comes with the webhooks');
+        self::assertResponseStatusCodeSame(400, 'public (no 401): the endpoint refuses the missing signature (WebhookEndpointTest)');
         $this->assertNoStore();
     }
 
