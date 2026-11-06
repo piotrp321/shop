@@ -35,13 +35,13 @@ w panelu i upload zdjęć, wyszukiwanie pełnotekstowe, strona produktu, SEO poz
 
 Stos jest zdefiniowany w `infra/docker-compose.yml`, dołączanym (`include`) przez `compose.yaml` w korzeniu repo,
 więc `docker compose` działa z korzenia i czyta `.env` z korzenia. Wersje główne poniżej, dokładne wersje obrazów
-są przypięte w pliku compose.
+są przypięte w pliku compose, a wersja Elasticsearch w `infra/elasticsearch/Dockerfile`.
 
 | Usługa | Obraz | Rola | Health check |
 |---|---|---|---|
 | `postgres` | PostgreSQL 18 | bazy `shop`, `shop_test` (API, właścicielem jest rola `shop`) i `keycloak` | `pg_isready` |
 | `redis` | Redis 8 | sesje sklepu; sonda w dashboardzie | `redis-cli ping` |
-| `elasticsearch` | Elasticsearch 9, jeden węzeł, security wyłączone lokalnie, `ES_JAVA_OPTS=-Xms512m -Xmx512m` | indeks `products` | `_cluster/health` (yellow lub green) |
+| `elasticsearch` | Elasticsearch 9 z wtyczką `analysis-stempel` (własny obraz z `infra/elasticsearch/Dockerfile`: oficjalny obraz + `elasticsearch-plugin install --batch analysis-stempel`, budowany przez `build` w compose), jeden węzeł, security wyłączone lokalnie, `ES_JAVA_OPTS=-Xms512m -Xmx512m` | indeks `products` | `_cluster/health` (yellow lub green) |
 | `rabbitmq` | RabbitMQ 4 z wtyczką management | transport `events` Messengera; vhost `/` dla dev, vhost `test` dla testów | `rabbitmq-diagnostics ping` jako użytkownik `rabbitmq` (sonda jako root tworzy na świeżym wolumenie `.erlang.cookie`, którego serwer nie może odczytać) |
 | `rabbitmq-init` | jednorazowy | idempotentnie, przez Management API: vhost `test` i uprawnienia użytkownika aplikacji | kończy się kodem 0 |
 | `keycloak` | Keycloak 26, `start-dev --import-realm`, baza `keycloak` w Postgresie, ograniczony heap | realmy `shop` i `backoffice` | `/health/ready` na porcie zarządzania |
@@ -83,8 +83,9 @@ sprawdzeniu.
 CI pobiera obrazy `api`, `store`, `admin` i `e2e` z GitHub Container Registry
 (`ghcr.io/piotrp321/shop-<obraz>`, pakiety publiczne). Tagiem jest skrót treści plików, z których obraz powstaje
 (`.github/scripts/ghcr-image.sh key`). Obraz, którego rejestr jeszcze nie ma, bo zmienił się jego Dockerfile albo
-lock, CI buduje z cache GitHub Actions i wypycha, więc następny przebieg już go pobiera. Lokalnie `make up` nadal
-buduje obrazy samo.
+lock, CI buduje z cache GitHub Actions i wypycha, więc następny przebieg już go pobiera. Obraz `elasticsearch`
+(oficjalny obraz z wtyczką, `infra/elasticsearch/Dockerfile`) nie trafia do rejestru: oba joby budują go przez
+compose w tle, obok budowy obrazów aplikacji. Lokalnie `make up` nadal buduje obrazy samo.
 
 ### Adresy: przeglądarka i kontenery
 
