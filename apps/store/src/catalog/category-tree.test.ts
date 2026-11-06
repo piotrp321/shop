@@ -52,6 +52,15 @@ describe("loadCategoryTree", () => {
     expect(init).toMatchObject({ next: { tags: ["catalog"] } });
   });
 
+  it("sets no cache mode, so the product page stays ISR and a request-time listing does not keep the tree in the data cache", async () => {
+    const fetchMock = stubFetch(() => json(TREE));
+    await loadCategoryTree();
+    const [input, init] = fetchMock.mock.calls[0];
+    expect(init).not.toHaveProperty("cache");
+    expect(input).toBeInstanceOf(Request);
+    expect((input as Request).cache).toBe("default");
+  });
+
   it("throws on a failing status", async () => {
     stubFetch(() => json({ status: 503 }, 503));
     await expect(loadCategoryTree()).rejects.toThrow(/categories failed with status 503/);
