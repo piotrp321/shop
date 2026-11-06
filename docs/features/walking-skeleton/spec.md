@@ -11,7 +11,10 @@ Na czystym klonie repozytorium, z zainstalowanym tylko Dockerem:
 
 1. `make up` stawia cały stos i kończy się dopiero, gdy wszystkie usługi są zdrowe.
 2. `make seed` ładuje dane demo (191 produktów sport/outdoor z 1012 wariantami w drzewie kategorii, 20–30 zdjęć)
-   i kończy się, gdy indeks w Elasticsearch jest zgodny z Postgresem.
+   i kończy się, gdy indeks w Elasticsearch jest zgodny z Postgresem. Kolejno: `catalog:seed-demo`,
+   `pricing:seed-demo`, `ordering:seed-demo`, `inventory:seed-demo`, `catalog:reindex` (indeks z cenami
+   i dostępnością; zdarzenia cen i stanów ze źródła `seed` nie reindeksują produktów) i `storefront:cache:purge-all`.
+   Błąd kroku przerywa `make seed`.
 3. Sklep pokazuje drzewo kategorii i siatkę produktów ze zdjęciami (WebP z imgproxy). Kliknięcie kategorii
    zawęża listę razem z podkategoriami.
 4. Klient loguje się w sklepie (realm `shop`), może się zarejestrować z weryfikacją e-mail (Mailpit), widzi
@@ -874,7 +877,8 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
   identyfikator od wywołującego.
 - Seed tworzy dane przez komendy aplikacji (`CreateCategory`, `CreateProduct`), więc indeks powstaje drogą
   outbox → RabbitMQ → `IndexProduct`. Na koniec czeka (do 60 s), aż liczba dokumentów w ES zrówna się z liczbą
-  produktów, i wypisuje podsumowanie. Jeśli indeks nie dogoni Postgresa w tym czasie (np. nie działa `worker`),
+  produktów, i wypisuje podsumowanie. Ceny i stany powstają później, więc `make seed` przebudowuje indeks
+  (`catalog:reindex`) po wszystkich seedach. Jeśli indeks nie dogoni Postgresa w tym czasie (np. nie działa `worker`),
   komenda kończy się kodem różnym od 0 i komunikatem z obiema liczbami.
 - Konta demo w Keycloak pochodzą z importu realmów, nie z seeda.
 
