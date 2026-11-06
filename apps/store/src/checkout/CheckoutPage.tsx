@@ -17,6 +17,8 @@ import { SessionExpired } from "@/cart/messages";
 import { formatPrice } from "@/catalog/format-price";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { navigateTo } from "./navigate";
+import type { PaymentProvider } from "./payment-api";
 
 type Loaded =
   | { status: "loading" }
@@ -43,6 +45,9 @@ const FIELDS: { name: FieldName; label: string; type: string; autoComplete: stri
   { name: "city", label: "Miejscowość", type: "text", autoComplete: "address-level2" },
 ];
 
+const CHOOSE_PROVIDER = "Wybierz sposób płatności.";
+const PROVIDER_ID_PREFIX = "checkout-provider-";
+const PROVIDER_ERROR_ID = "checkout-provider-error";
 const SUBMIT_FAILED = "Nie udało się złożyć zamówienia. Spróbuj ponownie.";
 const CART_GONE = "Koszyk nie jest już dostępny.";
 const FIELD_ID_PREFIX = "checkout-";
@@ -55,16 +60,26 @@ const emptyForm: Form = { email: "", fullName: "", phone: "", street: "", postal
 const newIdempotencyKey = () => crypto.randomUUID();
 
 /**
- * The checkout: the summary of the cart from `/api/cart`, the contact and the address, and the order of the whole
- * cart through `/api/checkout`. Every amount comes from the API; the expected total is `totals.gross` of the summary
- * shown. A signed-in customer orders with the e-mail of the account.
+ * The checkout: the summary of the cart from `/api/cart`, the contact and the address, the choice of the payment
+ * provider and the order of the whole cart through `/api/checkout`, which also starts the payment: the browser then
+ * goes to the page of the provider, or to the confirmation page when the payment could not be started. Every amount
+ * comes from the API; the expected total is `totals.gross` of the summary shown. A signed-in customer orders with the
+ * e-mail of the account.
+ *
+ * `providers` is the list of the API read by the server (null when it was not available) and `pendingOrderNumber` the
+ * number of the order of the `store_order_confirmation` cookie, if there is one: after a "back" from the provider the
+ * cart is empty, and the page offers to pay that order.
  */
-export function CheckoutPage() {
+export function CheckoutPage({ providers, pendingOrderNumber }: { providers: PaymentProvider[] | null; pendingOrderNumber: string | null }) {
   const router = useRouter();
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const [form, setForm] = useState<Form>(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [failure, setFailure] = useState<Failure | null>(null);
+  // No default: a customer chooses how to pay. The key of the order does not depend on it (the provider is not part of
+  // the order, only of the payment started after it).
+  const [provider, setProvider] = useState<string | null>(null);
+  const [providerError, setProviderError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Where the focus goes after a refusal: the button was locked during the request, so the focus would be on the body.
   const [attention, setAttention] = useState<{ id: string; seq: number } | null>(null);
@@ -105,8 +120,14 @@ export function CheckoutPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (loaded.status !== "ready" || submitting) return;
+    if (loaded.status !== "ready" || submitting || providers === null || providers.length === 0) return;
+    if (provider === null) {
+      setProviderError(CHOOSE_PROVIDER);
+      setAttention((current) => ({ id: `${PROVIDER_ID_PREFIX}${providers[0].code}`, seq: (current?.seq ?? 0) + 1 }));
+      return;
+    }
     setSubmitting(true);
+    setProviderError(null);
     setFailure(null);
     setFieldErrors({});
     const { email, ...contact } = form;
@@ -114,12 +135,17 @@ export function CheckoutPage() {
       ...(loaded.session === null ? { email } : {}),
       ...contact,
       expectedTotalGross: loaded.cart.totals.gross,
+      provider,
     };
     const result = await placeOrder(input, idempotencyKey);
     if (result.status === "ok") {
       announceCartChange(0);
-      // The button stays locked: the confirmation page is on its way.
-      router.push("/checkout/confirmation");
+      // The button stays locked: the page of the provider, or the confirmation page, is on its way.
+      if (result.redirectUrl === null) {
+        router.push("/checkout/confirmation");
+      } else {
+        navigateTo(result.redirectUrl);
+      }
       return;
     }
     const target = await showFailure(result, loaded.session);
@@ -133,17 +159,24 @@ export function CheckoutPage() {
       case "invalid": {
         const errors: Partial<Record<FieldName, string>> = {};
         const others: string[] = [];
+        let providerMessage: string | null = null;
         for (const violation of result.violations) {
+          if (violation.propertyPath === "provider") {
+            providerMessage ??= violation.title;
+            continue;
+          }
           const name = FIELDS.find((candidate) => candidate.name === violation.propertyPath)?.name;
           if (name && (name !== "email" || session === null)) errors[name] ??= violation.title;
           else others.push(violation.title);
         }
         setFieldErrors(errors);
-        if (others.length > 0 || Object.keys(errors).length === 0) {
+        setProviderError(providerMessage);
+        if (others.length > 0 || (Object.keys(errors).length === 0 && providerMessage === null)) {
           setFailure({ kind: "message", text: others.length > 0 ? others.join(" ") : result.detail || SUBMIT_FAILED });
         }
         const first = FIELDS.find((candidate) => errors[candidate.name]);
-        return first ? `${FIELD_ID_PREFIX}${first.name}` : FAILURE_ID;
+        if (first) return `${FIELD_ID_PREFIX}${first.name}`;
+        return providerMessage !== null && providers?.length ? `${PROVIDER_ID_PREFIX}${providers[0].code}` : FAILURE_ID;
       }
       case "conflict": {
         // Told by the type of the problem only. Nothing is ordered again by itself.
@@ -207,8 +240,16 @@ export function CheckoutPage() {
           session={loaded.session}
           form={form}
           fieldErrors={fieldErrors}
+          providers={providers}
+          provider={provider}
+          providerError={providerError}
+          pendingOrderNumber={pendingOrderNumber}
           submitting={submitting}
           onChange={change}
+          onProviderChange={(code) => {
+            setProvider(code);
+            setProviderError(null);
+          }}
           onSubmit={(event) => void submit(event)}
         />
       ) : null}
@@ -260,16 +301,26 @@ function CheckoutContent({
   session,
   form,
   fieldErrors,
+  providers,
+  provider,
+  providerError,
+  pendingOrderNumber,
   submitting,
   onChange,
+  onProviderChange,
   onSubmit,
 }: {
   cart: CartView;
   session: AccountSession;
   form: Form;
   fieldErrors: Partial<Record<FieldName, string>>;
+  providers: PaymentProvider[] | null;
+  provider: string | null;
+  providerError: string | null;
+  pendingOrderNumber: string | null;
   submitting: boolean;
   onChange: (name: FieldName, value: string) => void;
+  onProviderChange: (code: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   if (cart.lines.length === 0 || cart.hasExcludedLines) {
@@ -283,6 +334,11 @@ function CheckoutContent({
         <Link href="/cart" className="text-sm underline underline-offset-4">
           Przejdź do koszyka
         </Link>
+        {cart.lines.length === 0 && pendingOrderNumber !== null ? (
+          <Link href="/checkout/confirmation" className="text-sm underline underline-offset-4">
+            Opłać zamówienie {pendingOrderNumber}
+          </Link>
+        ) : null}
       </div>
     );
   }
@@ -306,11 +362,66 @@ function CheckoutContent({
         {FIELDS.filter((field) => field.name !== "email" || session === null).map((field) => (
           <FormField key={field.name} {...field} value={form[field.name]} error={fieldErrors[field.name]} onChange={onChange} />
         ))}
-        <Button type="submit" className="self-end" disabled={submitting}>
-          Zamawiam z obowiązkiem zapłaty
-        </Button>
+        {providers === null || providers.length === 0 ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            Płatności są chwilowo niedostępne. Spróbuj za chwilę.
+          </p>
+        ) : (
+          <>
+            <ProviderChoice providers={providers} value={provider} error={providerError} onChange={onProviderChange} />
+            <Button type="submit" className="self-end" disabled={submitting}>
+              Zamawiam z obowiązkiem zapłaty
+            </Button>
+          </>
+        )}
       </form>
     </>
+  );
+}
+
+function ProviderChoice({
+  providers,
+  value,
+  error,
+  onChange,
+}: {
+  providers: PaymentProvider[];
+  value: string | null;
+  error: string | null;
+  onChange: (code: string) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-labelledby="checkout-provider-label"
+      aria-required="true"
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error ? PROVIDER_ERROR_ID : undefined}
+      className="flex flex-col gap-2"
+    >
+      <span id="checkout-provider-label" className="text-sm font-medium">
+        Sposób płatności
+      </span>
+      {providers.map(({ code, name }) => (
+        <label key={code} htmlFor={`${PROVIDER_ID_PREFIX}${code}`} className="flex items-center gap-2 text-sm">
+          <input
+            id={`${PROVIDER_ID_PREFIX}${code}`}
+            type="radio"
+            name="provider"
+            value={code}
+            checked={value === code}
+            onChange={() => onChange(code)}
+            className="accent-primary"
+          />
+          {name}
+        </label>
+      ))}
+      {error ? (
+        <p id={PROVIDER_ERROR_ID} className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

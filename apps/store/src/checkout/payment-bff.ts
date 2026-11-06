@@ -7,11 +7,11 @@ import type { CartDeps } from "@/cart/deps";
 import { pickFields } from "./api";
 import { CONFIRMATION_COOKIE, type OrderConfirmation, readOrderConfirmation } from "./cookies";
 import {
-  type PaymentStatusResult,
+  type PaymentStatusAnswer,
   type PaymentStatusView,
   readCustomerPaymentStatus,
   readGuestPaymentStatus,
-  type StartPaymentResult,
+  type PaymentStartAnswer,
   startCustomerPayment,
   startGuestPayment,
 } from "./payment-api";
@@ -60,7 +60,7 @@ async function finish(outcome: Outcome, deps: CartDeps): Promise<Response> {
 const unavailable = (): Outcome => ({ status: 503, body: {} });
 const notFound = (): Outcome => ({ status: 404, body: { detail: ORDER_NOT_FOUND } });
 
-function toStartOutcome(result: StartPaymentResult, channel: Channel): Outcome {
+function toStartOutcome(result: PaymentStartAnswer, channel: Channel): Outcome {
   if (result.ok) {
     return { status: 200, body: { redirectUrl: result.data.redirectUrl } };
   }
@@ -142,7 +142,7 @@ function isStatusView(data: unknown): data is PaymentStatusView {
   );
 }
 
-function toStatusOutcome(result: PaymentStatusResult, channel: Channel): PaymentStatusOutcome {
+function toStatusOutcome(result: PaymentStatusAnswer, channel: Channel): PaymentStatusOutcome {
   if (result.ok) {
     return isStatusView(result.data) ? { kind: "ok", status: result.data } : { kind: "failed" };
   }
