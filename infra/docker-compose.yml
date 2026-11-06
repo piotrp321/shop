@@ -309,6 +309,8 @@ services:
       # The child process runs and has loaded the VCL.
       test: ["CMD-SHELL", "varnishadm status | grep -q running"]
       interval: 10s
+      start_interval: 1s
+      start_period: 30s
       timeout: 5s
       retries: 10
 
