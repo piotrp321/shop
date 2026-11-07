@@ -49,9 +49,6 @@ final class Order
         private ?PaymentId $paymentId,
         private ?\DateTimeImmutable $cancelledAt,
         private ?CancellationReason $cancellationReason,
-        private ?\DateTimeImmutable $confirmationSentAt,
-        private ?\DateTimeImmutable $paymentNotificationSentAt,
-        private ?\DateTimeImmutable $cancellationNotificationSentAt,
         private readonly int $version,
     ) {
     }
@@ -81,7 +78,7 @@ final class Order
         if ($owner->isGuest() !== (null !== $accessToken)) {
             throw new InvalidOrder('A guest order has an access token, a customer order has none.');
         }
-        $order = new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, OrderTotals::of($lines), OrderStatus::New, $idempotencyKey, $requestFingerprint, $now, $now->modify(self::PAYMENT_TIME), null, null, null, null, null, null, null, 1);
+        $order = new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, OrderTotals::of($lines), OrderStatus::New, $idempotencyKey, $requestFingerprint, $now, $now->modify(self::PAYMENT_TIME), null, null, null, null, 1);
         $order->events[] = new OrderPlaced($id->toString(), $now);
 
         return $order;
@@ -109,12 +106,9 @@ final class Order
         ?PaymentId $paymentId,
         ?\DateTimeImmutable $cancelledAt,
         ?CancellationReason $cancellationReason,
-        ?\DateTimeImmutable $confirmationSentAt,
-        ?\DateTimeImmutable $paymentNotificationSentAt,
-        ?\DateTimeImmutable $cancellationNotificationSentAt,
         int $version,
     ): self {
-        return new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, OrderTotals::of($lines), $status, $idempotencyKey, $requestFingerprint, $placedAt, $paymentDeadline, $paidAt, $paymentId, $cancelledAt, $cancellationReason, $confirmationSentAt, $paymentNotificationSentAt, $cancellationNotificationSentAt, $version);
+        return new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, OrderTotals::of($lines), $status, $idempotencyKey, $requestFingerprint, $placedAt, $paymentDeadline, $paidAt, $paymentId, $cancelledAt, $cancellationReason, $version);
     }
 
     /**
@@ -207,30 +201,6 @@ final class Order
     public function expiryDueAt(): \DateTimeImmutable
     {
         return $this->paymentDeadline->modify(self::DELIVERY_WINDOW);
-    }
-
-    /**
-     * The confirmation email went out; a repetition keeps the first moment.
-     */
-    public function markConfirmationSent(\DateTimeImmutable $now): void
-    {
-        $this->confirmationSentAt ??= $now;
-    }
-
-    /**
-     * The email about the payment went out; a repetition keeps the first moment.
-     */
-    public function markPaymentNotificationSent(\DateTimeImmutable $now): void
-    {
-        $this->paymentNotificationSentAt ??= $now;
-    }
-
-    /**
-     * The email about the cancellation went out; a repetition keeps the first moment.
-     */
-    public function markCancellationNotificationSent(\DateTimeImmutable $now): void
-    {
-        $this->cancellationNotificationSentAt ??= $now;
     }
 
     /**
@@ -330,21 +300,6 @@ final class Order
     public function cancellationReason(): ?CancellationReason
     {
         return $this->cancellationReason;
-    }
-
-    public function confirmationSentAt(): ?\DateTimeImmutable
-    {
-        return $this->confirmationSentAt;
-    }
-
-    public function paymentNotificationSentAt(): ?\DateTimeImmutable
-    {
-        return $this->paymentNotificationSentAt;
-    }
-
-    public function cancellationNotificationSentAt(): ?\DateTimeImmutable
-    {
-        return $this->cancellationNotificationSentAt;
     }
 
     public function version(): int

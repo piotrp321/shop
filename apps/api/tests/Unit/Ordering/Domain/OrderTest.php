@@ -53,7 +53,6 @@ final class OrderTest extends TestCase
         self::assertSame('key-1', $order->idempotencyKey()->toString());
         self::assertTrue($order->requestFingerprint()->equals(self::fingerprint()));
         self::assertEquals($this->now, $order->placedAt());
-        self::assertNull($order->confirmationSentAt());
         self::assertSame(self::TOKEN, $order->accessToken()?->toString());
         self::assertEquals($this->now->modify('+30 minutes'), $order->paymentDeadline());
         self::assertSame(1, $order->version());
@@ -99,22 +98,8 @@ final class OrderTest extends TestCase
         self::assertFalse($order->isReplayOf(RequestFingerprint::of('guest:cart', self::contact(), $address, 101)));
     }
 
-    public function testMarkConfirmationSentIsIdempotent(): void
-    {
-        $order = $this->place([self::line(1, 1, 100)]);
-        $order->releaseEvents();
-        $first = $this->now->modify('+1 minute');
-
-        $order->markConfirmationSent($first);
-        $order->markConfirmationSent($first->modify('+1 minute'));
-
-        self::assertEquals($first, $order->confirmationSentAt());
-        self::assertSame([], $order->releaseEvents());
-    }
-
     public function testReconstituteKeepsTheStoredStateWithoutEvents(): void
     {
-        $sentAt = $this->now->modify('+5 minutes');
         $lines = [self::line(1, 3, 12_300)];
 
         $order = Order::reconstitute(
@@ -134,16 +119,12 @@ final class OrderTest extends TestCase
             paymentId: null,
             cancelledAt: null,
             cancellationReason: null,
-            confirmationSentAt: $sentAt,
-            paymentNotificationSentAt: null,
-            cancellationNotificationSentAt: null,
             version: 7,
         );
 
         self::assertSame('R-100042', $order->number()->toString());
         self::assertSame('kc-sub-1', $order->owner()->customerId());
         self::assertSame(36_900, $order->totals()->gross()->amount());
-        self::assertEquals($sentAt, $order->confirmationSentAt());
         self::assertNull($order->accessToken());
         self::assertSame(7, $order->version());
         self::assertSame([], $order->releaseEvents());

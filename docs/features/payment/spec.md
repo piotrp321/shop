@@ -90,7 +90,8 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 - `OrderStatus`: `new`, `paid`, `cancelled`.
 - Pola `Order` cyklu płatności: `paymentDeadline` (`placedAt` + 30 min, P1), `accessToken` (gość: 32 losowe bajty w base64url,
   43 znaki; klient: `null`), `paidAt`, `paymentId` (id udanej płatności Payment, kopia), `cancelledAt`,
-  `cancellationReason` (`payment_timeout`), `paymentNotificationSentAt`, `cancellationNotificationSentAt`.
+  `cancellationReason` (`payment_timeout`). Znaczników wysłanych e-maili zamówienie nie ma: są w tabeli powiadomień
+  poza agregatem (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”).
 - `Order::place(…)` przyjmuje `accessToken` (generuje handler: `random_bytes`, tylko gość) i liczy `paymentDeadline`.
 - `grantsAccess(claim)` (`AccessClaim`): `guest(token)` — zamówienie gościa i `hash_equals` tokenu;
   `customer(customerId)` — zamówienie klienta o tym `customerId`. Każdy inny przypadek `false`.
@@ -110,7 +111,6 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
   `cancellationReason = payment_timeout`, zdarzenie `OrderCancelled {orderId, reason, occurredAt}`, wynik
   `cancelled`; `new` przed tą chwilą → `tooEarly` bez zmian; `paid`, `cancelled` → `notApplicable` bez zmian.
 - `isPayable(now)`: `new` i `now < paymentDeadline`.
-- `markPaymentNotificationSent(now)`, `markCancellationNotificationSent(now)`: jak `markConfirmationSent`.
 
 ### Komendy i zapytania (Ordering Application)
 
@@ -140,10 +140,10 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 
 ### E-maile
 
-- `OrderPaid` → handler `SendPaymentReceived` (`event.bus`, jak `SendOrderConfirmation`, ten sam wzorzec znacznika
-  i wersji): temat „Płatność przyjęta – zamówienie R-100001”, treść: powitanie, numer, kwota, „Zamówienie
+- `OrderPaid` → handler `SendPaymentReceived` (`event.bus`, jak `SendOrderConfirmation`: zajęcie wysyłki rodzaju
+  `payment_received` w tabeli powiadomień, wysyłka, znacznik; zamówienie i jego wersja bez zmian): temat „Płatność przyjęta – zamówienie R-100001”, treść: powitanie, numer, kwota, „Zamówienie
   przekazujemy do realizacji.”.
-- `OrderCancelled` → `SendOrderCancelled`: temat „Zamówienie R-100001 anulowane”, treść: powitanie, numer,
+- `OrderCancelled` → `SendOrderCancelled` (tak samo, rodzaj `cancelled`): temat „Zamówienie R-100001 anulowane”, treść: powitanie, numer,
   „Nie otrzymaliśmy płatności w terminie, więc anulowaliśmy zamówienie.”.
 - E-mail z potwierdzeniem złożenia kończy się zdaniem „Zamówienie czeka na płatność do 14:35 (dd.mm.rrrr). Bez
   płatności anulujemy je automatycznie.” (`Europe/Warsaw`).
@@ -157,8 +157,7 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 ### Persystencja
 
 - `ordering_order`: `payment_deadline timestamp`, `access_token varchar(43) NULL`, `paid_at NULL`,
-  `payment_id uuid NULL`, `cancelled_at NULL`, `cancellation_reason varchar(30) NULL`,
-  `payment_notification_sent_at NULL`, `cancellation_notification_sent_at NULL`;
+  `payment_id uuid NULL`, `cancelled_at NULL`, `cancellation_reason varchar(30) NULL`;
   `CHECK ((owner_type = 'guest') = (access_token IS NOT NULL))`,
   `CHECK ((status = 'paid') = (paid_at IS NOT NULL AND payment_id IS NOT NULL))`,
   `CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL))`.
@@ -289,7 +288,7 @@ Weryfikacja podpisu i parsowanie to walidacja wejścia na granicy (jak `MapReque
    - `orderCancelled` → `requireRefund(order_cancelled)`; `paidAfterDeadline` → `requireRefund(paid_after_deadline)`;
      `paidByAnotherPayment` → `requireRefund(duplicate)`; do tego log błędu „wymaga ręcznego zwrotu” (P1, P5).
      Płatność zostaje `succeeded`, odpowiedź 204: dostawa kończy się bez ponowień.
-   - `OrderChangedConcurrently` (np. równoległe `SendOrderConfirmation` albo `ExpireUnpaidOrder`) i każdy inny błąd
+   - `OrderChangedConcurrently` (np. równoległe `ExpireUnpaidOrder`) i każdy inny błąd
      `MarkOrderPaid`: adapter tłumaczy konflikt wersji na `OrderBusy` (marker `Unavailable`, 503), inne wyjątki
      przekazuje bez zmian (500); całość wycofana (także wiersz deduplikacji), dostawca ponawia.
 5. Zapis płatności. Odpowiedź 204.
@@ -566,7 +565,7 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | W7 | webhook sukcesu poprzedniej płatności trzyma blokadę jej wiersza (płatność `succeeded` i zamówienie `paid` zapisane, transakcja otwarta), `StartPayment` z nowym kluczem czeka na blokadę, webhook zatwierdza | `OrderAlreadyPaid` (409), żadna nowa płatność, zamówienie `paid` |
 
 - E-maile `SendPaymentReceived`, `SendOrderCancelled` w Mailpit; zdarzenie dostarczone drugi raz po kolei: jeden
-  e-mail.
+  e-mail, wersja zamówienia bez zmian; dwie równoległe dostawy `OrderPaid`: jeden e-mail.
 
 ### Funkcjonalne API
 
@@ -609,8 +608,9 @@ przekierowanie, link „Opłać zamówienie” przy pustym koszyku i ciasteczku)
 - Płatność wykonana po terminie, potwierdzona po anulowaniu albo druga udana płatność zamówienia wymagają ręcznego
   zwrotu (poza zakresem): są oznaczone w `payment_payment.refund_required_reason` i w logu, bez ekranu w panelu.
   Klient takiego zamówienia widzi „anulowane” i dostaje e-mail o anulowaniu.
-- Drugi e-mail (o płatności, o anulowaniu) jest możliwy przy awarii między wysyłką a zapisem znacznika i przy
-  równoległym dostarczeniu tego samego zdarzenia do dwóch workerów, jak przy potwierdzeniu zamówienia (CHECKOUT).
+- Drugi e-mail (o płatności, o anulowaniu) jest możliwy tylko przy awarii procesu między wysyłką a zapisem znacznika:
+  wychodzi po wygaśnięciu zajęcia wysyłki (5 min). Równoległe dostarczenie tego samego zdarzenia do dwóch workerów
+  wysyła jeden e-mail (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”).
 - Czas wykonania płatności pochodzi od dostawcy (podpisana treść webhooka); API mu ufa.
 - Wywołanie HTTP dostawcy w transakcji rozpoczęcia płatności (limit 5 s); przy symulatorze w tym samym API jedno
   rozpoczęcie zajmuje dwa wątki FrankenPHP. Przy prawdziwym dostawcy do przeniesienia poza transakcję.

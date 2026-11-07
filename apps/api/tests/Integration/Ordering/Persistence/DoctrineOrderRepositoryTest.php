@@ -77,7 +77,6 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertSame('key-1', $stored->idempotencyKey()->toString());
         self::assertTrue($stored->isReplayOf($order->requestFingerprint()));
         self::assertEquals($order->placedAt(), $stored->placedAt());
-        self::assertNull($stored->confirmationSentAt());
         self::assertSame(1, $stored->version());
         self::assertSame([], $stored->releaseEvents());
 
@@ -116,15 +115,13 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertNull($storedGuest->paymentId());
         self::assertNull($storedGuest->cancelledAt());
         self::assertNull($storedGuest->cancellationReason());
-        self::assertNull($storedGuest->paymentNotificationSentAt());
-        self::assertNull($storedGuest->cancellationNotificationSentAt());
         self::assertSame(
             ['access_token' => self::TOKEN, 'deadline' => 1800],
             $this->connection->fetchAssociative('SELECT access_token, EXTRACT(EPOCH FROM payment_deadline - placed_at)::int AS deadline FROM ordering_order WHERE id = ?', [$guest->id()->toString()]),
         );
     }
 
-    public function testSaveWritesThePaymentAndItsNotificationMarker(): void
+    public function testSaveWritesThePaymentAndRaisesTheVersion(): void
     {
         $order = $this->order('key-1');
         $this->orders->add($order);
@@ -136,21 +133,16 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertSame(PaymentResult::Paid, $stored->markPaid(PaymentId::fromString($paymentId), 77_800, 'PLN', $stored->placedAt(), $paidAt));
         $this->orders->save($stored);
         $this->entityManager->clear();
-        $paid = $this->orders->get($order->id());
-        $paid->markPaymentNotificationSent($paidAt->modify('+5 seconds'));
-        $this->orders->save($paid);
-        $this->entityManager->clear();
 
         $again = $this->orders->get($order->id());
         self::assertSame(OrderStatus::Paid, $again->status());
         self::assertEquals($paidAt, $again->paidAt());
         self::assertSame($paymentId, $again->paymentId()?->toString());
-        self::assertEquals($paidAt->modify('+5 seconds'), $again->paymentNotificationSentAt());
-        self::assertSame(3, $again->version());
+        self::assertSame(2, $again->version());
         self::assertSame('paid', $this->connection->fetchOne('SELECT status FROM ordering_order WHERE id = ?', [$order->id()->toString()]));
     }
 
-    public function testSaveWritesTheCancellationAndItsNotificationMarker(): void
+    public function testSaveWritesTheCancellation(): void
     {
         $order = $this->order('key-1');
         $this->orders->add($order);
@@ -159,7 +151,6 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $cancelledAt = $stored->expiryDueAt();
 
         $stored->expireUnpaid($cancelledAt);
-        $stored->markCancellationNotificationSent($cancelledAt->modify('+5 seconds'));
         $this->orders->save($stored);
         $this->entityManager->clear();
 
@@ -167,7 +158,6 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertSame(OrderStatus::Cancelled, $again->status());
         self::assertEquals($cancelledAt, $again->cancelledAt());
         self::assertSame(CancellationReason::PaymentTimeout, $again->cancellationReason());
-        self::assertEquals($cancelledAt->modify('+5 seconds'), $again->cancellationNotificationSentAt());
         self::assertSame(['cancelled', 'payment_timeout'], $this->connection->fetchNumeric('SELECT status, cancellation_reason FROM ordering_order WHERE id = ?', [$order->id()->toString()]));
     }
 
@@ -197,23 +187,6 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $this->orders->add($this->order('key-1'));
     }
 
-    public function testSaveWritesTheConfirmationMarkerAndRaisesTheVersion(): void
-    {
-        $order = $this->order('key-1');
-        $this->orders->add($order);
-        $this->entityManager->clear();
-        $stored = $this->orders->get($order->id());
-        $sentAt = new \DateTimeImmutable('@'.(time() + 60));
-
-        $stored->markConfirmationSent($sentAt);
-        $this->orders->save($stored);
-        $this->entityManager->clear();
-
-        $again = $this->orders->get($order->id());
-        self::assertEquals($sentAt, $again->confirmationSentAt());
-        self::assertSame(2, $again->version());
-    }
-
     public function testSaveOfAnOrderReadAtAnOlderVersionIsRefused(): void
     {
         $order = $this->order('key-1');
@@ -223,7 +196,7 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $this->connection->executeStatement('UPDATE ordering_order SET version = version + 1 WHERE id = ?', [$order->id()->toString()]);
         $this->entityManager->clear();
 
-        $stale->markConfirmationSent(new \DateTimeImmutable());
+        $stale->expireUnpaid($stale->expiryDueAt());
 
         $this->expectException(OrderModifiedConcurrently::class);
         $this->orders->save($stale);

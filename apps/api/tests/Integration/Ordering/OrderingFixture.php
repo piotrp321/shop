@@ -122,6 +122,18 @@ final class OrderingFixture
     }
 
     /**
+     * The moment the email of the kind (`confirmation`, `payment_received`, …) of the order went out, null when it
+     * has not.
+     */
+    public static function notificationSentAt(Connection $connection, string $orderId, string $kind): ?\DateTimeImmutable
+    {
+        $value = $connection->fetchOne('SELECT sent_at FROM ordering_order_notification WHERE order_id = ? AND kind = ?', [$orderId, $kind]);
+        \assert(false === $value || null === $value || \is_string($value));
+
+        return \is_string($value) ? new \DateTimeImmutable($value) : null;
+    }
+
+    /**
      * Deletes the orders (their notifications and lines first) and the reservations they hold, on a connection that
      * commits.
      *

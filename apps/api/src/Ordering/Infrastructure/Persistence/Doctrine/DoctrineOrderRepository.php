@@ -87,9 +87,9 @@ final readonly class DoctrineOrderRepository implements OrderRepository
     }
 
     /**
-     * Writes what changes after placement: the status with the payment or the cancellation, and the markers of the
-     * emails. The version the order was read at must still be stored: the UPDATE checks it (and raises it), so of
-     * two concurrent saves (e.g. paying and cancelling) only one succeeds.
+     * Writes what changes after placement: the status with the payment or the cancellation (the emails are recorded
+     * outside the order, in OrderNotifications). The version the order was read at must still be stored: the UPDATE
+     * checks it (and raises it), so of two concurrent saves (e.g. paying and cancelling) only one succeeds.
      */
     public function save(Order $order): void
     {
@@ -168,9 +168,6 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         $record->paymentId = $order->paymentId()?->toString();
         $record->cancelledAt = $order->cancelledAt();
         $record->cancellationReason = $order->cancellationReason()?->value;
-        $record->confirmationSentAt = $order->confirmationSentAt();
-        $record->paymentNotificationSentAt = $order->paymentNotificationSentAt();
-        $record->cancellationNotificationSentAt = $order->cancellationNotificationSentAt();
     }
 
     private static function toDomain(OrderRecord $record): Order
@@ -205,9 +202,6 @@ final readonly class DoctrineOrderRepository implements OrderRepository
             paymentId: null === $record->paymentId ? null : PaymentId::fromString($record->paymentId),
             cancelledAt: $record->cancelledAt,
             cancellationReason: null === $record->cancellationReason ? null : CancellationReason::from($record->cancellationReason),
-            confirmationSentAt: $record->confirmationSentAt,
-            paymentNotificationSentAt: $record->paymentNotificationSentAt,
-            cancellationNotificationSentAt: $record->cancellationNotificationSentAt,
             version: $record->version,
         );
     }

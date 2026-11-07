@@ -116,18 +116,18 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 Pola: `id`, `number`, `owner`, `accessToken` (gość: 32 losowe bajty w base64url, 43 znaki, generuje handler; klient:
 null), `contact`, `shippingAddress`, `lines` (1–50, w kolejności koszyka, bez powtórzonego wariantu), `totals`
 (liczone), `status` (`new`, `paid`, `cancelled`; po złożeniu `new`), `idempotencyKey`, `requestFingerprint`,
-`placedAt`, `paymentDeadline` (`placedAt` + 30 min), `confirmationSentAt` (null), `version`. Pola cyklu płatności
-(`paidAt`, `paymentId`, `cancelledAt`, `cancellationReason`, znaczniki e-maili o płatności i anulowaniu) opisuje
-`docs/features/payment/spec.md`.
+`placedAt`, `paymentDeadline` (`placedAt` + 30 min), `version`. Pola cyklu płatności (`paidAt`, `paymentId`,
+`cancelledAt`, `cancellationReason`) opisuje `docs/features/payment/spec.md`. Znaczniki wysłanych e-maili nie są
+w zamówieniu: są w tabeli powiadomień (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”).
 
 | Metoda | Działanie | Błędy |
 |---|---|---|
 | `place(id, number, owner, accessToken, contact, address, lines, idempotencyKey, fingerprint, now)` | nowe zamówienie w statusie `new` z terminem płatności `now` + 30 min, zapisuje zdarzenie `OrderPlaced {orderId, occurredAt}` | 0 albo > 50 linii, powtórzony wariant, zamówienie gościa bez tokenu albo klienta z tokenem: `InvalidOrder` (błąd logiczny: handler buduje linie z koszyka, który pilnuje tych limitów); ilość linii poza 1–99 odrzuca już `OrderLine::of` (też `InvalidOrder`) |
 | `isReplayOf(fingerprint)` | to samo żądanie (ten sam koszyk i ta sama treść) powtórzone z tym samym kluczem | |
-| `markConfirmationSent(now)` | `confirmationSentAt = now`; powtórzenie: bez zmian | |
 
 - `reconstitute()` odtwarza zamówienie bez zdarzeń.
-- `version` (optimistic locking): zapis podnosi ją przy każdej zmianie (znacznik e-maila, opłacenie, anulowanie;
+- `version` (optimistic locking): zapis podnosi ją przy każdej zmianie (opłacenie, anulowanie; wysłanie e-maila nie
+  zmienia zamówienia;
   `apps/api/CLAUDE.md`, „Reguły modelu”), więc z równoległych zmian zapisuje się jedna.
 - Status po złożeniu to `new`, pierwszy status cyklu z `docs/vision.md` (nowe → opłacone → wysłane → dostarczone).
   Z `new` zamówienie przechodzi w `paid` (płatność wykonana do terminu) albo w `cancelled` (brak płatności 5 minut
@@ -245,7 +245,7 @@ Ceny i kwoty liczy wyłącznie serwer:
   `street varchar(100)`, `postal_code char(6)`, `city varchar(60)`, `country char(2)`, `currency char(3)`,
   `total_net`, `total_vat`, `total_gross` (`bigint`), `idempotency_key varchar(100)` (unikalny),
   `request_fingerprint char(64)`, `placed_at`, `payment_deadline`, `access_token varchar(43) NULL`,
-  `confirmation_sent_at NULL`, `version int` oraz kolumny cyklu płatności (`docs/features/payment/spec.md`,
+  `version int` oraz kolumny cyklu płatności (`docs/features/payment/spec.md`,
   „Persystencja”); `CHECK ((owner_type = 'customer') = (customer_id IS NOT NULL))`,
   `CHECK ((owner_type = 'guest') = (access_token IS NOT NULL))`, `CHECK (total_net + total_vat = total_gross)`.
 - `ordering_order_line`: `id uuid` (v7, PK), `order_id uuid` (FK → `ordering_order`, bez `ON DELETE CASCADE`:
@@ -259,25 +259,30 @@ Ceny i kwoty liczy wyłącznie serwer:
   w `DoctrineOrderRepository` (`add`, `save`, `get`, `findByIdempotencyKey`), `#[Version]` na rekordzie zamówienia.
   Długości kolumn z wartościami z innych contextów (`product_name`, `variant_label`, `tax_class`) zgadzają się
   z kolumnami źródłowymi.
-- Migracje: `Version…CreateOrderingTables`, `Version…AddOrderPaymentCycle`.
+- `ordering_order_notification`: znaczniki e-maili zamówienia (`docs/features/order-management/spec.md`).
+- Migracje: `Version…CreateOrderingTables`, `Version…AddOrderPaymentCycle`, `Version…CreateOrderNotifications`,
+  `Version…MoveOrderEmailMarkers`.
 
 ## E-mail z potwierdzeniem
 
 - Zdarzenie `OrderPlaced {orderId, occurredAt}` (outbox → RabbitMQ, jak `ProductCreated`). Handler zdarzenia
   `SendOrderConfirmation` (`event.bus`, transport `events`, jak `IndexProduct`) robi całą pracę sam, bez komendy
   i bez transakcji wokół SMTP:
-  - odczyt zamówienia; nieznane zamówienie: `UnrecoverableMessageHandlingException` (jak `IndexProduct`);
-  - `confirmationSentAt` ustawione: nic (odbiorca idempotentny);
-  - inaczej port `OrderConfirmationMailer::send(OrderView)`, potem `markConfirmationSent(now)` i zapis repozytorium
-    (`flush`, `UPDATE` z wersją). Konflikt wersji przy zapisie (równoległe dostarczenie): wyjątek, ponowienie
-    wiadomości, które widzi już ustawiony znacznik.
+  - odczyt zamówienia; nieznane zamówienie: `UnrecoverableMessageHandlingException` (jak `IndexProduct`), bez
+    zajęcia wysyłki;
+  - zajęcie wysyłki rodzaju `confirmation` w tabeli powiadomień (port `OrderNotifications`, lease 5 min): e-mail już
+    wysłany: nic (odbiorca idempotentny); wysyłkę trzyma inny handler: ponowienie sekundę po końcu jego lease;
+  - inaczej port `OrderConfirmationMailer::send(OrderView)`, potem znacznik wysyłki w tabeli powiadomień. Zamówienie
+    i jego wersja się nie zmieniają. Szczegóły: `docs/features/order-management/spec.md`, „Znaczniki wysyłki poza
+    agregatem”.
 - Outbox: wiersz `OrderPlaced` powstaje w transakcji złożenia, więc wycofane złożenie nie zostawia zdarzenia ani
   e-maila. Relay outbox → RabbitMQ i dostawa do workera działają „co najmniej raz”: to samo zdarzenie może przyjść
   ponownie (ponowienie relaya po braku potwierdzenia, `redeliver_timeout`, ponowienie po błędzie handlera).
-  Odbiorca jest idempotentny dzięki znacznikowi `confirmationSentAt` i wersji zamówienia.
-- Wysyłka i zapis znacznika nie są atomowe: awaria między nimi albo równoległe dostarczenie tego samego zdarzenia do
-  dwóch workerów daje drugi e-mail (świadome, w ryzykach; odwrotna kolejność groziłaby brakiem e-maila). Błąd SMTP:
-  ponowienia według strategii transportu `events`, potem `failed`.
+  Odbiorca jest idempotentny dzięki znacznikowi wysyłki, a równoległe dostarczenie wysyła jeden e-mail dzięki
+  zajęciu wysyłki.
+- Wysyłka i zapis znacznika nie są atomowe: awaria procesu między nimi daje drugi e-mail po wygaśnięciu zajęcia
+  (świadome, w ryzykach; odwrotna kolejność groziłaby brakiem e-maila). Błąd SMTP: zwolnienie zajęcia, ponowienia
+  według strategii transportu `events`, potem `failed`.
 - Adapter `SymfonyOrderConfirmationMailer` (`Ordering_Infrastructure`, Symfony Mailer): wysyłka synchroniczna przez
   transport Mailera, bez Messengera (`framework.mailer.message_bus: false`; inaczej `MailerInterface::send()` wysłałby
   `SendEmailMessage` na domyślną szynę `command.bus`), więc błąd SMTP wraca do handlera. `MAILER_DSN`
@@ -454,7 +459,7 @@ i `aria-describedby` na swój komunikat.
 | Dodanie do koszyka równolegle ze złożeniem | blokada koszyka: dodanie przed złożeniem jest w zamówieniu, po złożeniu zostaje w pustym koszyku |
 | Błąd w trakcie złożenia (np. zapis zamówienia) | całość wycofana: koszyk bez zmian, brak rezerwacji, brak zdarzenia |
 | Błąd wysyłki e-maila | zamówienie złożone; ponowienia transportu, potem `failed` |
-| Zdarzenie dostarczone dwa razy, jedno po drugim | jeden e-mail (znacznik `confirmationSentAt`) |
+| Zdarzenie dostarczone dwa razy, jedno po drugim albo równolegle | jeden e-mail (znacznik i zajęcie wysyłki w tabeli powiadomień) |
 | `make seed` po złożeniu zamówień | zamówienia i rezerwacje usunięte razem |
 | Zamówienie nieopłacone | anulowane 5 minut po terminie płatności, rezerwacja zwolniona, e-mail o anulowaniu (`docs/features/payment/spec.md`) |
 
@@ -483,14 +488,14 @@ i `aria-describedby` na swój komunikat.
 
 - Value objecty: telefon (normalizacja, `+48`, 8 i 10 cyfr), kod pocztowy, długości po przycięciu, `OrderNumber`.
 - `OrderLine` i `OrderTotals`: wartości linii, sumy, `net + vat = gross`, maksimum 50 × 99 × 99 999 999 w `int`.
-- `Order`: `place` (zdarzenie, status `new`), limity linii, `isReplayOf`, `markConfirmationSent` idempotentne.
+- `Order`: `place` (zdarzenie, status `new`), limity linii, `isReplayOf`.
 - `PlaceOrder`: pusty koszyk, wariant bez ceny i nieznany, kwota inna, niedobór z Inventory, powtórzenie (bez zmian,
   koszyk nie opróżniony; szybka ścieżka bez blokady koszyka, także dla koszyka gościa scalonego albo wygasłego), klucz
   z inną treścią, z innego koszyka gościa przy tych samych danych i innego klienta (409), kolejność kroków (rezerwacja
   po sprawdzeniu kwoty, numerze i opróżnieniu koszyka; zapis na końcu).
 - `PlaceOrder` liczy kwoty z portu `OrderPrices` niezależnie od `expectedTotalGross` (kwota niższa i wyższa: 409).
-- `SendOrderConfirmation`: wysyłka i znacznik, drugi raz bez wysyłki, nieznane zamówienie, konflikt wersji przy
-  zapisie znacznika rzuca wyjątek (ponowienie), a ponowienie widzi znacznik i nie wysyła; `OrderConfirmationText`
+- `SendOrderConfirmation`: przypadki z `docs/features/order-management/spec.md` („Znaczniki wysyłki poza
+  agregatem”, testy jednostkowe); `OrderConfirmationText`
   (treść, formatowanie kwot, data w `Europe/Warsaw`, wariant domyślny bez etykiety).
 - Cart: `clearAfterOrder`, `LockCartForOrder` (gość `merged`, wygasły, koszyk klienta wygasły).
 
@@ -511,10 +516,9 @@ i `aria-describedby` na swój komunikat.
   daje wyjątek w handlerze, bez wiadomości na `command.bus`.
 - Powtórna dostawa przez worker (outbox → RabbitMQ → `events`): to samo `OrderPlaced` dostarczone dwa razy po kolei
   daje jeden e-mail; błąd SMTP przy pierwszej próbie daje ponowienie i jeden e-mail po przywróceniu SMTP, a po
-  wyczerpaniu ponowień wiadomość jest w `failed`, a zamówienie bez znacznika; dwa równoległe handlery tego samego
-  zdarzenia: jeden zapis znacznika się udaje, drugi dostaje konflikt wersji, a jego ponowienie niczego nie wysyła
-  (najwyżej dwa e-maile, ryzyko z „Ryzyk”).
-- `ordering:seed-demo`: czyści zamówienia i linie; w `prod` bez `--force-reset` odmowa bez zmian; `make seed` po
+  wyczerpaniu ponowień wiadomość jest w `failed`, a wysyłka bez znacznika i zajęcia; wysyłka zajęta przez inny
+  handler wraca sekundę po końcu jego lease i kończy się jednym e-mailem.
+- `ordering:seed-demo`: czyści zamówienia, linie i powiadomienia; w `prod` bez `--force-reset` odmowa bez zmian; `make seed` po
   złożonych zamówieniach zostawia zero zamówień i zero rezerwacji.
 
 ### Współbieżność (`Ordering/Concurrency/PlaceOrderConcurrencyTest`, jak C1–C6 i K1–K8, 5 rund)
@@ -595,8 +599,8 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   a transakcja jest dłuższa niż sama rezerwacja. Wydajność przy docelowej skali nie jest potwierdzona testami
   obciążeniowymi.
 - Numeracja ma luki (wycofane złożenia) i ujawnia przybliżoną liczbę zamówień.
-- Drugi e-mail jest możliwy przy awarii między wysyłką a zapisem znacznika oraz przy równoległym dostarczeniu tego
-  samego zdarzenia do dwóch workerów (outbox daje „co najmniej raz”).
+- Drugi e-mail jest możliwy przy awarii procesu między wysyłką a zapisem znacznika (po wygaśnięciu zajęcia wysyłki,
+  5 min; outbox daje „co najmniej raz”).
 - Dane osobowe gościa (e-mail, telefon, adres) są w zamówieniu bez anonimizacji (RODO później).
 - Gość nie czyta zamówienia, tylko status jego płatności, i tylko dopóki ma ciasteczko potwierdzenia (1 godzina,
   P7); szczegóły ma w e-mailu. `accessToken` z odpowiedzi złożenia jest w ciasteczku `HttpOnly` i nie trafia do skryptów

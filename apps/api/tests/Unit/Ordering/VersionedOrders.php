@@ -71,9 +71,4 @@ final class VersionedOrders implements OrderRepository
         $change($copy);
         $this->save($copy);
     }
-
-    public function confirmElsewhere(OrderId $id, \DateTimeImmutable $at): void
-    {
-        $this->changeElsewhere($id, static fn (Order $order) => $order->markConfirmationSent($at));
-    }
 }

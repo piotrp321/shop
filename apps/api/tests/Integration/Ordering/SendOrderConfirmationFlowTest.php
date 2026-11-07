@@ -7,21 +7,19 @@ namespace App\Tests\Integration\Ordering;
 use App\Ordering\Application\CartReference;
 use App\Ordering\Application\Command\PlacedOrder;
 use App\Ordering\Application\Command\PlaceOrder;
-use App\Ordering\Application\EventHandler\SendOrderConfirmation;
 use App\Ordering\Application\OrderConfirmationText;
-use App\Ordering\Application\Port\OrderConfirmationMailer;
+use App\Ordering\Application\Port\NotificationKind;
 use App\Ordering\Application\View\OrderView;
-use App\Ordering\Domain\OrderModifiedConcurrently;
+use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderPlaced;
 use App\Ordering\Infrastructure\Mail\SymfonyOrderConfirmationMailer;
-use App\Ordering\Infrastructure\Persistence\Doctrine\DoctrineOrderRepository;
+use App\Ordering\Infrastructure\Persistence\Doctrine\DbalOrderNotifications;
+use App\Ordering\Infrastructure\SystemClock;
 use App\Tests\Integration\Cart\CartFixture;
 use App\Tests\Integration\Ordering\Mail\MailpitInbox;
 use App\Tests\Integration\Ordering\Mail\ToggleableOrderConfirmationMailer;
 use App\Tests\Integration\Shared\Messaging\MessagingKernelTestCase;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
-use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Mailer\Mailer;
@@ -130,52 +128,38 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
         self::assertSame(0, $this->eventsInQueue());
         self::assertSame(0, $this->inbox->count());
         self::assertNull($this->confirmationSentAt($order->orderId));
+        self::assertSame(
+            [null],
+            $this->connection()->fetchFirstColumn("SELECT claimed_until FROM ordering_order_notification WHERE order_id = ? AND kind = 'confirmation'", [$order->orderId]),
+            'every failed attempt released its claim',
+        );
     }
 
-    public function testOfTwoHandlersOfTheSameEventOneStoresTheMarkerAndTheOtherGetsAVersionConflict(): void
+    public function testAHeldClaimComesBackAfterTheLeaseAndEndsWithOneEmail(): void
     {
+        $clock = new FixedOrderingClock(new \DateTimeImmutable('@'.time()));
+        self::getContainer()->set(SystemClock::class, $clock);
         $order = $this->place();
-        $event = new OrderPlaced($order->orderId, new \DateTimeImmutable('2026-11-05 12:00:00+00:00'));
-        $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
-        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
-        $real = $this->adapter();
-        // Two EntityManagers on the same connection (so the same transaction of the test), like two workers each with
-        // its own: the loser keeps the record it read in its identity map, so it passes the in-memory version check
-        // of DoctrineOrderRepository::save() and is stopped only by the UPDATE ... WHERE version = ?. With one shared
-        // EntityManager the winner would raise the version of that very record and the loser would fail the
-        // in-memory check, leaving the optimistic lock itself untested.
-        $winnerEntityManager = new EntityManager($entityManager->getConnection(), $entityManager->getConfiguration());
-        $winner = new SendOrderConfirmation(new DoctrineOrderRepository($winnerEntityManager), $real, new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:00:05+00:00')));
-        $orders = new DoctrineOrderRepository($entityManager);
-        // The loser has read the order and is sending when the winner runs through: it sends and stores the marker.
-        $loser = new SendOrderConfirmation($orders, new class($real, static fn () => $winner($event)) implements OrderConfirmationMailer {
-            public function __construct(private readonly OrderConfirmationMailer $inner, private readonly \Closure $meanwhile)
-            {
-            }
+        // Another handler claimed the sending of the confirmation and died before it marked the email sent; its lease
+        // ends in 3 seconds.
+        new DbalOrderNotifications($this->connection())->claim(OrderId::fromString($order->orderId), NotificationKind::Confirmation, $clock->now->modify('-5 minutes')->modify('+3 seconds'));
 
-            public function send(OrderView $order): void
-            {
-                $this->inner->send($order);
-                ($this->meanwhile)();
-            }
-        }, new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:00:09+00:00')));
-        $entityManager->clear();
+        $this->consumeOutboxAndEvents();
 
-        try {
-            $loser($event);
-            self::fail('Expected OrderModifiedConcurrently.');
-        } catch (OrderModifiedConcurrently) {
-            $this->addToAssertionCount(1);
-        }
-        self::assertCount(2, $this->inbox->awaitMessages(2), 'both handlers sent: the known cost of at-least-once delivery');
-        self::assertEquals(new \DateTimeImmutable('2026-11-05 12:00:05+00:00'), $this->confirmationSentAt($order->orderId));
+        self::assertSame(0, $this->inbox->count(), 'the claim of the other handler holds the sending');
+        self::assertNull($this->confirmationSentAt($order->orderId));
+        self::assertSame(0, $this->rows('failed'));
 
-        // The retry of the loser reads the order again, finds the marker and sends nothing.
-        $entityManager->clear();
-        (new SendOrderConfirmation($orders, $real, new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:00:20+00:00'))))($event);
+        // The message comes back one second after the end of the lease, 4 seconds after the first attempt.
+        $clock->now = $clock->now->modify('+4 seconds');
+        $start = microtime(true);
+        $this->consume('events', 15);
 
-        self::assertCount(2, $this->inbox->awaitMessages(2));
-        self::assertEquals(new \DateTimeImmutable('2026-11-05 12:00:05+00:00'), $this->confirmationSentAt($order->orderId));
+        self::assertGreaterThanOrEqual(2.5, microtime(true) - $start, 'the retry waited for the end of the lease');
+        self::assertCount(1, $this->inbox->awaitMessages(1));
+        self::assertEquals($clock->now, $this->confirmationSentAt($order->orderId));
+        self::assertSame(0, $this->rows('failed'));
+        self::assertSame(0, $this->eventsInQueue());
     }
 
     /**
@@ -217,10 +201,7 @@ final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
 
     private function confirmationSentAt(string $orderId): ?\DateTimeImmutable
     {
-        $value = $this->connection()->fetchOne('SELECT confirmation_sent_at FROM ordering_order WHERE id = ?', [$orderId]);
-        self::assertTrue(false === $value || \is_string($value) || null === $value);
-
-        return \is_string($value) ? new \DateTimeImmutable($value) : null;
+        return OrderingFixture::notificationSentAt($this->connection(), $orderId, 'confirmation');
     }
 
     private function consumeOutboxAndEvents(): void

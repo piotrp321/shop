@@ -85,9 +85,6 @@ final class OrderExamples
             paymentId: $order->paymentId(),
             cancelledAt: $order->cancelledAt(),
             cancellationReason: $order->cancellationReason(),
-            confirmationSentAt: $order->confirmationSentAt(),
-            paymentNotificationSentAt: $order->paymentNotificationSentAt(),
-            cancellationNotificationSentAt: $order->cancellationNotificationSentAt(),
             version: $version ?? $order->version(),
         );
     }
