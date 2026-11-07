@@ -31,6 +31,7 @@ use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
+use Doctrine\ORM\Query;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -105,9 +106,22 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         }
     }
 
+    /**
+     * Reads the order from the database even when its record is in the identity map (a hint to refresh), so a read
+     * later in a transaction sees what others committed meanwhile (e.g. StartPayment after it waited for the lock of
+     * a payment).
+     */
     public function get(OrderId $id): Order
     {
-        $record = $this->entityManager->find(OrderRecord::class, $id->toString());
+        $record = $this->entityManager->createQueryBuilder()
+            ->select('o')
+            ->from(OrderRecord::class, 'o')
+            ->where('o.id = :id')
+            ->setParameter('id', $id->toString())
+            ->getQuery()
+            ->setHint(Query::HINT_REFRESH, true)
+            ->getOneOrNullResult();
+        \assert(null === $record || $record instanceof OrderRecord);
 
         return null === $record ? throw new OrderNotFound() : self::toDomain($record);
     }

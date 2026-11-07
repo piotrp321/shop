@@ -96,7 +96,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     (koszyk, rezerwację, zamówienie, outbox). Adapter tłumaczy tylko niedobór Inventory (`InsufficientStock`) na
     `InsufficientStockForOrder` i rzuca go dalej, inne wyjątki przekazuje bez zmian;
   - zamówienie zapisuje się na końcu (po rezerwacji), więc `flush` komend zagnieżdżonych nie zapisuje niczego
-    z Ordering; Ordering zapisuje przez rekordy Doctrine według ogólnej zasady;
+    z Ordering; Ordering zapisuje przez rekordy Doctrine według ogólnej zasady, a `OrderRepository::get` czyta
+    zamówienie z bazy z odświeżeniem rekordu z identity map, więc kolejny odczyt w tej samej transakcji widzi zmiany
+    zatwierdzone w międzyczasie;
   - kolejność blokad: wiersz koszyka (`LockCartForOrder`), potem wiersze stanów (`lockMany` Inventory, rosnąco po
     `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, więc nie ma cyklu;
   - idempotencja: zamówienie z tym samym `Idempotency-Key` i tym samym odciskiem żądania (koszyk i treść) jest
@@ -162,7 +164,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     odcisku (zamówienie i dostawca; inny odcisk to 409), stan zamówienia (opłacone, anulowane, po terminie: 409),
     oczekująca płatność zamówienia blokowana `SELECT … FOR UPDATE` z odświeżeniem rekordu z identity map i anulowana
     u swojego dostawcy (anulowana → `cancel`, odrzucona → `fail`, wykonana → 409 `PaymentInProgress` bez zmian, błąd →
-    503 bez zmian), potem nowa płatność zapisana przed wywołaniem dostawcy i sesja do terminu płatności zamówienia
+    503 bez zmian), potem stan zamówienia jest sprawdzany ponownie na świeżym odczycie (webhook, który trzymał
+    blokadę, mógł zatwierdzić zamówienie jako opłacone: 409), potem nowa płatność zapisana przed wywołaniem dostawcy i sesja do terminu płatności zamówienia
     (adres powrotu `STORE_URL` + `/checkout/confirmation` buduje API). Wywołania HTTP są w transakcji: każdy błąd
     wycofuje całość. Równoległe rozpoczęcia odrzuca unikalny indeks `idempotency_key` albo częściowy unikalny indeks
     `(order_id) WHERE status = 'pending'` (w mapowaniu warunek zapisany tak, jak zwraca go PostgreSQL, żeby schemat

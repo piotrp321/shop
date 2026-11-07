@@ -117,7 +117,9 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 - `GetOrderForPayment(orderId, access)` (`query.bus`), `access` = `guest(token)` albo `customer(customerId)` →
   `OrderForPayment {orderId, number, status, totalGross, currency, paymentDeadline, payable}` albo `null`, gdy
   zamówienia nie ma, `orderId` nie jest UUID albo `grantsAccess` daje `false` (jeden wynik dla wszystkich przypadków).
-  Bez danych osobowych i bez tokenu.
+  Bez danych osobowych i bez tokenu. Zamówienie jest czytane z bazy także wtedy, gdy transakcja czytała je
+  wcześniej (bez kopii z pamięci ORM), więc kolejny odczyt w tej samej transakcji widzi zmiany zatwierdzone
+  w międzyczasie.
 - `MarkOrderPaid(orderId, paymentId, amount, currency, executedAt)` (`command.bus`) → `MarkOrderPaidResult`
   (`Ordering_Application`: `paid`, `alreadyPaid`, `paidByAnotherPayment`, `paidAfterDeadline`, `orderCancelled`). Nieznane zamówienie: `OrderToPayNotFound`;
   konflikt wersji przy zapisie: `OrderChangedConcurrently` (oba wyjątki w `Ordering_Application`).
@@ -252,7 +254,11 @@ Komenda `StartPayment(orderId, access, provider, idempotencyKey)` (`access` jak 
    - `alreadyPaid` → `PaymentInProgress` (409, „Płatność została już wykonana. Czekamy na jej potwierdzenie.”),
      bez zmian; potwierdzenie przyniesie webhook;
    - błąd dostawcy → `PaymentProviderUnavailable` (503), bez zmian.
-5. `Payment::start(…)`, zapis (`add`), potem `PaymentProvider::createSession(…, expiresAt = paymentDeadline)`
+5. Stan zamówienia z kroku 3 jest sprawdzany ponownie na świeżym odczycie `PayableOrders::find` (po blokadzie
+   z kroku 4): webhook poprzedniej płatności, który trzymał blokadę jej wiersza, mógł w tym czasie zatwierdzić
+   płatność `succeeded` i zamówienie `paid`, a wtedy krok 4 nie znajduje oczekującej płatności. Zamówienie `paid`:
+   `OrderAlreadyPaid` (409), `cancelled` albo po terminie: `PaymentDeadlinePassed` (409), bez zmian.
+6. `Payment::start(…)`, zapis (`add`), potem `PaymentProvider::createSession(…, expiresAt = paymentDeadline)`
    i `attachProviderSession`, zapis. Wywołania HTTP są w transakcji (5 s limit każde): błąd dostawcy wycofuje całość
    (także lokalne anulowanie poprzedniej płatności). Sesja anulowana u dostawcy zostaje anulowana, a anulowanie
    u dostawcy jest idempotentne (anulowana sesja: znów `200`), więc ponowienie przechodzi krok 4 tak samo.
@@ -558,6 +564,7 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | W4 | 10 równoległych `StartPayment` z tym samym kluczem | jedna płatność, pozostałe powtórzenia albo 409 |
 | W5 | 2 równoległe `StartPayment` z różnymi kluczami | jedna płatność `pending`, drugie 409 `PaymentInProgress` |
 | W6 | nowa próba (anulowanie sesji) równolegle z decyzją „Zapłać” w symulatorze | albo sesja anulowana i nowa płatność, albo 409 i zamówienie opłacone przez webhook; nigdy obie płatności udane |
+| W7 | webhook sukcesu poprzedniej płatności trzyma blokadę jej wiersza (płatność `succeeded` i zamówienie `paid` zapisane, transakcja otwarta), `StartPayment` z nowym kluczem czeka na blokadę, webhook zatwierdza | `OrderAlreadyPaid` (409), żadna nowa płatność, zamówienie `paid` |
 
 - E-maile `SendPaymentReceived`, `SendOrderCancelled` w Mailpit; zdarzenie dostarczone drugi raz po kolei: jeden
   e-mail.

@@ -38,7 +38,9 @@ use Symfony\Component\Uid\Uuid;
  * 4. the pending payment of the order, under the lock of its row, is cancelled at its provider first: cancelled
  *    there → cancelled here; rejected there → failed here; paid there → 409, nothing changes (the webhook confirms
  *    it); the provider unavailable → 503, nothing changes;
- * 5. the new payment is written (the unique indexes refuse a concurrent start before the provider is called), then
+ * 5. the order is read anew and its state checked again as in step 3: a webhook of the earlier payment that held the
+ *    lock of step 4 has committed the order paid meanwhile, and no pending payment is left to stop the start;
+ * 6. the new payment is written (the unique indexes refuse a concurrent start before the provider is called), then
  *    the provider opens its session until the deadline of the order and the payment keeps it.
  *
  * The calls of the providers run in the transaction (5 s each): any failure rolls back everything, also the local
@@ -87,6 +89,8 @@ final readonly class StartPaymentHandler
 
         $order->ensurePaymentCanStart();
         $this->endPendingPayment($order->orderId);
+        $order = $this->order($command->orderId, $command->access);
+        $order->ensurePaymentCanStart();
 
         $payment = Payment::start(PaymentId::fromString(Uuid::v7()->toRfc4122()), $order->orderId, $provider, $order->amount(), $key, $fingerprint, $this->clock->now());
         $this->payments->add($payment);
