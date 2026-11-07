@@ -574,7 +574,10 @@ describe("useProductForm", () => {
       expect(form.errorsAt("images[1]")).toEqual(["Opis zdjęcia jest wymagany.", "To zdjęcie już jest w produkcie."]);
       expect(form.errorsAt("images[0]")).toEqual([]);
       expect(form.errorsAt("images[1].alt")).toEqual(["Opis zdjęcia jest wymagany."]);
-      expect(form.variantsErrors.value).toEqual(["Zła oś.", "Zła liczba wartości."]);
+      // The section shows only what is about the lists themselves; the rest is at the axis and at the row.
+      expect(form.variantsErrors.value).toEqual([]);
+      expect(form.errorsAt("variantAxes[0]")).toEqual(["Zła oś."]);
+      expect(form.errorsAt("variants[0]")).toEqual(["Zła liczba wartości."]);
       expect(form.error.value).toBeNull();
       expect(form.dirty.value).toBe(true);
     });
@@ -677,6 +680,222 @@ describe("useProductForm", () => {
       await form.publish();
 
       expect(form.error.value).toContain("uprawnień");
+    });
+  });
+
+  describe("editing variants", () => {
+    const sentVariants = () => mocks.put.mock.calls.at(-1)![1].body;
+
+    it("adds an axis with an empty value in every row, up to two axes", async () => {
+      const { form } = await start();
+
+      form.addAxis();
+      form.setAxis(1, "Rozmiar");
+      form.addAxis();
+
+      expect(form.form.value.variantAxes).toEqual(["Kolor", "Rozmiar"]);
+      expect(form.form.value.variants).toEqual([
+        { variantId: "v-1", values: ["czarne", ""] },
+        { variantId: "v-2", values: ["białe", ""] },
+      ]);
+      expect(form.dirty.value).toBe(true);
+    });
+
+    it("renames an axis without touching the values", async () => {
+      const { form } = await start();
+
+      form.setAxis(0, "Barwa");
+
+      expect(form.form.value.variantAxes).toEqual(["Barwa"]);
+      expect(form.form.value.variants[0]!.values).toEqual(["czarne"]);
+    });
+
+    it("removes the values of a removed axis at its position", async () => {
+      const { form } = await start({ id: null });
+      form.addAxis();
+      form.addAxis();
+      form.setAxis(0, "Kolor");
+      form.setAxis(1, "Rozmiar");
+      form.setValue(0, 0, "czarne");
+      form.setValue(0, 1, "M");
+      form.addVariant();
+      form.setValue(1, 0, "białe");
+      form.setValue(1, 1, "L");
+
+      form.removeAxis(0);
+
+      expect(form.form.value.variantAxes).toEqual(["Rozmiar"]);
+      expect(form.form.value.variants).toEqual([
+        { variantId: null, values: ["M"] },
+        { variantId: null, values: ["L"] },
+      ]);
+    });
+
+    it("moves an axis together with the values in the rows", async () => {
+      const { form } = await start({ id: null });
+      form.addAxis();
+      form.addAxis();
+      form.setAxis(0, "Kolor");
+      form.setAxis(1, "Rozmiar");
+      form.setValue(0, 0, "czarne");
+      form.setValue(0, 1, "M");
+
+      form.moveAxis(0, 1);
+
+      expect(form.form.value.variantAxes).toEqual(["Rozmiar", "Kolor"]);
+      expect(form.form.value.variants[0]!.values).toEqual(["M", "czarne"]);
+
+      form.moveAxis(0, -1);
+      expect(form.form.value.variantAxes).toEqual(["Rozmiar", "Kolor"]);
+    });
+
+    it("does not add a third axis", async () => {
+      const { form } = await start({ id: null });
+      form.addAxis();
+      form.addAxis();
+      form.addAxis();
+
+      expect(form.form.value.variantAxes).toHaveLength(2);
+    });
+
+    it("keeps the default variant, with its id, as the first row when the first axis is added", async () => {
+      const { form } = await start({ id: "p-1" });
+      serveReads(view({ variantAxes: [], variants: [{ variantId: "v-default", values: [] }] }));
+      await form.refresh();
+
+      form.addAxis();
+      form.setAxis(0, "Kolor");
+      form.setValue(0, 0, "czarne");
+      form.addVariant();
+      form.setValue(1, 0, "białe");
+      mocks.put.mockResolvedValue(ok(view()));
+      await form.save();
+
+      expect(sentVariants().variants).toEqual([
+        { variantId: "v-default", values: ["czarne"] },
+        { variantId: null, values: ["białe"] },
+      ]);
+    });
+
+    it("collapses to the first row, without values and with its id, when the last axis is removed", async () => {
+      const { form } = await start();
+
+      form.removeAxis(0);
+
+      expect(form.form.value.variantAxes).toEqual([]);
+      expect(form.form.value.variants).toEqual([{ variantId: "v-1", values: [] }]);
+    });
+
+    it("adds a row with an empty value per axis and sends null for it", async () => {
+      const { form } = await start();
+
+      form.addVariant();
+      form.setValue(2, 0, "zielone");
+      mocks.put.mockResolvedValue(ok(view()));
+      await form.save();
+
+      expect(sentVariants().variants).toEqual([
+        { variantId: "v-1", values: ["czarne"] },
+        { variantId: "v-2", values: ["białe"] },
+        { variantId: null, values: ["zielone"] },
+      ]);
+    });
+
+    it("removes a row, keeps the ids of the others and sends them", async () => {
+      const { form } = await start();
+
+      form.removeVariant(0);
+      mocks.put.mockResolvedValue(ok(view()));
+      await form.save();
+
+      expect(sentVariants().variants).toEqual([{ variantId: "v-2", values: ["białe"] }]);
+    });
+
+    it("keeps at least one row and does not add a row to a product without axes", async () => {
+      const { form } = await start();
+      form.removeVariant(0);
+      form.removeVariant(0);
+      expect(form.form.value.variants).toHaveLength(1);
+
+      form.removeAxis(0);
+      form.addVariant();
+      expect(form.form.value.variants).toHaveLength(1);
+    });
+
+    it("does not add more than 100 rows", async () => {
+      const { form } = await start();
+      for (let i = 0; i < 120; i++) {
+        form.addVariant();
+      }
+
+      expect(form.form.value.variants).toHaveLength(100);
+    });
+
+    it("tells whether the axes are locked by the first publication", async () => {
+      expect((await start()).form.axesLocked.value).toBe(false);
+      expect((await start({ id: null })).form.axesLocked.value).toBe(false);
+
+      serveReads(view({ status: "draft", firstPublishedAt: "2026-10-01T10:00:00+00:00" }));
+      expect((await start()).form.axesLocked.value).toBe(true);
+    });
+
+    it("leaves the axes alone after the first publication but still edits values and rows", async () => {
+      serveReads(view({ status: "published", firstPublishedAt: "2026-10-01T10:00:00+00:00" }));
+      const { form } = await start();
+
+      form.addAxis();
+      form.removeAxis(0);
+      form.moveAxis(0, 1);
+      expect(form.form.value.variantAxes).toEqual(["Kolor"]);
+
+      form.setAxis(0, "kolor");
+      form.setValue(0, 0, "Czarne");
+      form.addVariant();
+      form.removeVariant(1);
+      expect(form.form.value.variantAxes).toEqual(["kolor"]);
+      expect(form.form.value.variants).toEqual([
+        { variantId: "v-1", values: ["Czarne"] },
+        { variantId: null, values: [""] },
+      ]);
+    });
+
+    it("changes nothing without the permission to manage products", async () => {
+      const { form } = await start({ canManage: false });
+
+      form.addAxis();
+      form.setAxis(0, "Barwa");
+      form.setValue(0, 0, "x");
+      form.addVariant();
+      form.removeVariant(0);
+
+      expect(form.dirty.value).toBe(false);
+    });
+
+    it("shows the 422 at the axis, the row and the value, and forgets them when the rows move", async () => {
+      const { form } = await start();
+      form.setValue(1, 0, "czarne");
+      mocks.put.mockResolvedValue(
+        problem(422, {
+          violations: [
+            { propertyPath: "variantAxes[0]", title: "Nazwa osi jest za długa." },
+            { propertyPath: "variants[1].values[0]", title: "Ta kombinacja już istnieje." },
+            { propertyPath: "variants[1].values", title: "Zła liczba wartości." },
+            { propertyPath: "variants", title: "Za dużo wariantów." },
+          ],
+        }),
+      );
+
+      await form.save();
+
+      expect(form.errorsAt("variants[1].values[0]")).toEqual(["Ta kombinacja już istnieje."]);
+      expect(form.errorsAt("variants[0]")).toEqual([]);
+      expect(form.errorsExactly("variants[1].values")).toEqual(["Zła liczba wartości."]);
+      expect(form.variantsErrors.value).toEqual(["Za dużo wariantów."]);
+
+      form.removeVariant(0);
+
+      expect(form.errorsAt("variants[1]")).toEqual([]);
+      expect(form.errorsAt("variantAxes[0]")).toEqual([]);
     });
   });
 });

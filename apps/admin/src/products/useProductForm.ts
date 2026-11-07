@@ -47,6 +47,9 @@ export interface ProductFormOptions {
 const PROBLEM_PREFIX = "tag:piotrp321.github.io,2026:shop/problems/";
 const FIELD_ROOTS = new Set(["name", "slug", "shortDescription", "mainCategoryId", "additionalCategoryIds", "taxClass", "images", "variantAxes", "variants"]);
 
+export const MAX_AXES = 2;
+export const MAX_VARIANTS = 100;
+
 export const MODIFIED_MESSAGE = "Produkt został w międzyczasie zmieniony – odśwież";
 export const SLUG_TAKEN_MESSAGE = "Ten slug ma już inny produkt. Podaj własny slug.";
 export const NOT_PUBLISHABLE_MESSAGE = "Dodaj co najmniej jedno zdjęcie przed publikacją.";
@@ -135,7 +138,9 @@ function violationsOf(body: unknown): { propertyPath: string; title: string }[] 
  * The product form: loads a product (or starts an empty one), tracks unsaved changes, saves, publishes and withdraws
  * with the version of the view it shows, and turns the answers of the API into messages at the right place. The
  * API computes everything (the slug, `slugLocked`, the status, the version); the form only holds and sends what the
- * staff member typed. Variants are held and sent unchanged for now.
+ * staff member typed. The variant editor changes the axes and the rows; it keeps the `variantId` of every row that
+ * exists (null for a new row) and never computes the comparison key or the uniqueness of the combinations, the API
+ * does.
  *
  * Every action is off while a request or an image upload runs, and publishing or withdrawing is off while there are
  * unsaved changes (the API acts on the saved product). Without the permission to manage products the form is read-only.
@@ -176,10 +181,13 @@ export function useProductForm(options: ProductFormOptions) {
   const canUnpublish = computed(() => idle.value && !dirty.value && view.value?.status === "published");
   /** The messages for the list of images as a whole (`images`), not for a single image. */
   const imagesErrors = computed(() => fieldErrors.value.images ?? []);
+  /** After the first publication the axes cannot be added, removed or moved (the API enforces it as well). */
+  const axesLocked = computed(() => view.value?.firstPublishedAt != null);
+  /** The messages for the variants as a whole; the ones for an axis, a row or a value are shown there. */
   const variantsErrors = computed(() => [
     ...(variantsConflict.value === null ? [] : [variantsConflict.value]),
-    ...errorsAt("variantAxes"),
-    ...errorsAt("variants"),
+    ...errorsExactly("variantAxes"),
+    ...errorsExactly("variants"),
   ]);
 
   /** The messages for a field path and everything under it (`images[1]` includes `images[1].alt`). */
@@ -187,6 +195,11 @@ export function useProductForm(options: ProductFormOptions) {
     return Object.entries(fieldErrors.value)
       .filter(([key]) => key === path || key.startsWith(`${path}[`) || key.startsWith(`${path}.`))
       .flatMap(([, titles]) => titles);
+  }
+
+  /** The messages for exactly this path, without the ones under it. */
+  function errorsExactly(path: string): string[] {
+    return fieldErrors.value[path] ?? [];
   }
 
   function addFieldError(path: string, title: string): void {
@@ -439,6 +452,94 @@ export function useProductForm(options: ProductFormOptions) {
     fieldErrors.value = Object.fromEntries(Object.entries(fieldErrors.value).filter(([key]) => !key.startsWith("images")));
   }
 
+  // The paths of the messages count axes and rows by position, which adding, moving or removing changes.
+  function clearVariantErrors(): void {
+    fieldErrors.value = Object.fromEntries(Object.entries(fieldErrors.value).filter(([key]) => !key.startsWith("variant")));
+  }
+
+  function changeRows(change: (values: string[]) => string[]): void {
+    form.value.variants = form.value.variants.map((row) => ({ variantId: row.variantId, values: change(row.values) }));
+  }
+
+  const canEditAxes = () => !readOnly.value && !axesLocked.value;
+
+  /** Appends an axis with an empty name and an empty value in every row. */
+  function addAxis(): void {
+    if (!canEditAxes() || form.value.variantAxes.length >= MAX_AXES) {
+      return;
+    }
+    form.value.variantAxes = [...form.value.variantAxes, ""];
+    changeRows((values) => [...values, ""]);
+    clearVariantErrors();
+  }
+
+  function setAxis(index: number, name: string): void {
+    if (readOnly.value || index < 0 || index >= form.value.variantAxes.length) {
+      return;
+    }
+    form.value.variantAxes = form.value.variantAxes.map((axis, position) => (position === index ? name : axis));
+  }
+
+  /**
+   * Removes an axis and the values at its position. Without axes the product has one default variant, so the first
+   * row stays (with its id, without values) and the others go.
+   */
+  function removeAxis(index: number): void {
+    if (!canEditAxes() || index < 0 || index >= form.value.variantAxes.length) {
+      return;
+    }
+    form.value.variantAxes = form.value.variantAxes.filter((_, position) => position !== index);
+    if (form.value.variantAxes.length === 0) {
+      form.value.variants = form.value.variants.slice(0, 1).map((row) => ({ variantId: row.variantId, values: [] }));
+    } else {
+      changeRows((values) => values.filter((_, position) => position !== index));
+    }
+    clearVariantErrors();
+  }
+
+  /** Moves an axis one place left (-1) or right (1), with the values of every row. */
+  function moveAxis(index: number, direction: -1 | 1): void {
+    const target = index + direction;
+    const axes = form.value.variantAxes;
+    if (!canEditAxes() || index < 0 || index >= axes.length || target < 0 || target >= axes.length) {
+      return;
+    }
+    const swap = <T>(list: T[]): T[] => {
+      const moved = [...list];
+      [moved[index], moved[target]] = [moved[target]!, moved[index]!];
+      return moved;
+    };
+    form.value.variantAxes = swap(axes);
+    changeRows(swap);
+    clearVariantErrors();
+  }
+
+  /** Appends a new row (no id) with an empty value per axis; a product without axes has only the default variant. */
+  function addVariant(): void {
+    if (readOnly.value || form.value.variantAxes.length === 0 || form.value.variants.length >= MAX_VARIANTS) {
+      return;
+    }
+    form.value.variants = [...form.value.variants, { variantId: null, values: form.value.variantAxes.map(() => "") }];
+    clearVariantErrors();
+  }
+
+  /** Removes a row; the product keeps at least one. Asking for confirmation before an existing variant goes is up to the view. */
+  function removeVariant(index: number): void {
+    if (readOnly.value || form.value.variants.length <= 1 || index < 0 || index >= form.value.variants.length) {
+      return;
+    }
+    form.value.variants = form.value.variants.filter((_, position) => position !== index);
+    clearVariantErrors();
+  }
+
+  function setValue(row: number, position: number, value: string): void {
+    const target = form.value.variants[row];
+    if (readOnly.value || !target || position < 0 || position >= target.values.length) {
+      return;
+    }
+    target.values = target.values.map((current, index) => (index === position ? value : current));
+  }
+
   return {
     form,
     view,
@@ -457,7 +558,9 @@ export function useProductForm(options: ProductFormOptions) {
     conflict,
     imagesErrors,
     variantsErrors,
+    axesLocked,
     errorsAt,
+    errorsExactly,
     upload,
     save,
     publish,
@@ -465,5 +568,12 @@ export function useProductForm(options: ProductFormOptions) {
     refresh,
     moveImage,
     removeImage,
+    addAxis,
+    setAxis,
+    removeAxis,
+    moveAxis,
+    addVariant,
+    removeVariant,
+    setValue,
   };
 }
