@@ -8,16 +8,21 @@ export const tileNamed = (page: Page, name: string): Locator =>
 
 const cartLines = (page: Page) => page.getByRole("main").getByRole("listitem");
 
-/** Logs in as Jan from the current page; Keycloak sends the browser back to it. */
-export async function logInAsJan(page: Page): Promise<void> {
+type CustomerAccount = (typeof customers)[keyof typeof customers];
+
+/** Logs in as a demo customer from the current page; Keycloak sends the browser back to it. */
+export async function logInAs(page: Page, customer: CustomerAccount): Promise<void> {
   const loginLink = page.getByRole("banner").getByRole("link", { name: "Zaloguj się" });
   await expect(loginLink).toBeVisible();
   await loginLink.click();
-  await page.locator("#username").fill(customers.jan.email);
-  await page.locator("#password").fill(customers.jan.password);
+  await page.locator("#username").fill(customer.email);
+  await page.locator("#password").fill(customer.password);
   await page.locator("#kc-login").click();
   await expect(page.getByText(/^Zalogowany jako .+/)).toBeVisible();
 }
+
+/** Logs in as Jan from the current page; Keycloak sends the browser back to it. */
+export const logInAsJan = (page: Page): Promise<void> => logInAs(page, customers.jan);
 
 /** Removes every line on the cart page: whatever earlier runs left in the customer's cart. */
 export async function emptyCart(page: Page): Promise<void> {
