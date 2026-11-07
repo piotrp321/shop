@@ -135,7 +135,9 @@ Model i decyzje: `docs/features/promotions/spec.md` (Q1–Q5, Q13, A1). Pricing 
   historii mają czas odczytany po blokadzie, więc cena zapisana równolegle z promocją „od teraz” ma `changed_at` przed
   jej startem albo jest odrzucona, nigdy zmieniona w aktywnej promocji. Przy promocji zaplanowanej i zakończonej cena
   się zmienia.
-- `ReconcileTax`, przeliczenie po zmianie klasy (`reprice`, brutto bez zmian) i seed cen nie biorą blokady.
+- `ReconcileTax` i przeliczenie po zmianie klasy (`reprice`, brutto bez zmian) nie biorą blokady. Seed cen idzie
+  przez `SetVariantPrice` (`bySeed`), więc bierze blokadę współdzieloną i ma tę samą odmowę dla wariantu w aktywnej
+  promocji.
 
 ## Persystencja i transakcje
 
