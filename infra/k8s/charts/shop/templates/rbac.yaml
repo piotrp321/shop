@@ -1,4 +1,4 @@
-{{- /* The initContainer that waits for the worker (it has no endpoint) reads the status of the deployments. */ -}}
+{{- /* The initContainers of the jobs initialize and purge-caches that wait for the rollout of the api, varnish, store and worker read the status of the deployments. */ -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:

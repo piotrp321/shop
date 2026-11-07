@@ -154,6 +154,10 @@ AUTH_BYPASSES = (
     "/realms/shop/..%2fmaster/.well-known/openid-configuration",
     "/realms/shop/..%2Fmaster/.well-known/openid-configuration",
     "/realms/shop/%2e%2e%2fmaster/.well-known/openid-configuration",
+    "/realms/shop/..;/master/.well-known/openid-configuration",
+    "/realms/shop/%252e%252e/master/.well-known/openid-configuration",
+    "/realms/shop/..%5cmaster/.well-known/openid-configuration",
+    "/realms/shop/./../master/.well-known/openid-configuration",
     "//realms/master/.well-known/openid-configuration",
     "/realms/backoffice/../../admin/master/console/",
     "/realms/backoffice/%2e%2e/%2e%2e/admin/master/console/",
@@ -252,13 +256,18 @@ def snapshot():
 
 
 def differences(before, after):
+    """What differs between two snapshots, over the union of the parts: one that only one side has counts too."""
     found = []
     if before["products"] != after["products"]:
         found.append(f"products {before['products']} -> {after['products']}")
-    for realm, parts in before["realms"].items():
-        for part, value in parts.items():
-            if after["realms"][realm].get(part) != value:
-                found.append(f"{realm}: {part}")
+    for realm in sorted(set(before["realms"]) | set(after["realms"])):
+        if realm not in after["realms"]:
+            found.append(f"{realm}: missing after the upgrade")
+        elif realm not in before["realms"]:
+            found.append(f"{realm}: missing before the upgrade")
+        else:
+            old, new = before["realms"][realm], after["realms"][realm]
+            found += [f"{realm}: {part}" for part in sorted(set(old) | set(new)) if old.get(part) != new.get(part)]
     return found
 
 

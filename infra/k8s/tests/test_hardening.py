@@ -30,6 +30,14 @@ class RolloutWaitTest(unittest.TestCase):
             self.assertEqual("shop-wait", pod_spec(jobs[job])["serviceAccountName"], job)
 
 
+class RolloutDeadlineTest(unittest.TestCase):
+    def test_a_deployment_may_progress_as_long_as_the_jobs_wait_for_it(self):
+        """kubectl rollout status gives up when the deployment reports ProgressDeadlineExceeded (600 s by default)."""
+        for case in ("prod", "ci"):
+            for name, deployment in by_logical(case, "Deployment").items():
+                self.assertGreaterEqual(deployment["spec"]["progressDeadlineSeconds"], 1500, f"{case} {name}")
+
+
 class TokenTest(unittest.TestCase):
     def test_no_pod_gets_a_token_by_default(self):
         for case in ("prod", "ci"):

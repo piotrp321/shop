@@ -167,6 +167,8 @@ metadata:
 spec:
   replicas: 1
   revisionHistoryLimit: 2
+  # At least as long as the jobs wait for the rollout (kubectl rollout status in shop.waitRollout stops at the deadline).
+  progressDeadlineSeconds: 1500
   strategy:
     type: RollingUpdate
     rollingUpdate:
