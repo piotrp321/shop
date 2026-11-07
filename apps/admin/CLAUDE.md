@@ -21,7 +21,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`).
 - `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania.
 - `src/layout/` – menu boczne, topbar i `AppLayout` (uruchamia `useIdleLogout`, 15 min).
-- `src/views/` – widoki przypisane do tras.
+- `src/views/` – widoki przypisane do tras (m.in. `ProductsView`, `ProductFormView`).
 - `src/dashboard/` – komponenty i ładowanie danych dashboardu (`useDashboard`).
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
   list cen i stanów).
@@ -57,6 +57,31 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `useStockHistory` (dialog „Historia” w `InventoryView`, dostępny dla każdego pracownika): pierwsza strona historii
   stanów wariantu wiersza i „Pokaż więcej” po kursorze z API, odpowiedź po zamknięciu dialogu albo otwarciu innego
   wariantu jest ignorowana, błąd kolejnej strony zostawia wczytane wpisy i pozwala ponowić tę stronę.
+- `src/products/` – produkty (menu „Produkty”, trasy `/products`, `/products/new`, `/products/:id`). `useProductList`
+  (widok `ProductsView`): wyszukiwanie od 2 znaków z opóźnieniem, filtr kategorii (`useCategoryTree`) i statusu
+  (Wszystkie, Szkice, Opublikowane), stronicowanie po kursorach ze stosem kursorów w panelu, jak w `usePriceList`.
+  `useProductForm` (widok `ProductFormView`): ładuje produkt (`GET /products/{id}`) albo zaczyna pusty formularz
+  z wariantem domyślnym (bez osi, jeden wiersz `{variantId: null, values: []}`) i klasy podatkowe
+  (`GET /tax-classes`). Panel niczego nie liczy: slug, `slugLocked`, status i wersja pochodzą z odpowiedzi API, a po
+  każdym sukcesie formularz jest budowany z odpowiedzi. `dirty` porównuje formularz ze stanem z API. „Zapisz”:
+  nowy produkt `POST` i `onCreated(id)` (widok przechodzi na `/products/:id` tą samą instancją, bez ponownego
+  pobrania), istniejący `PUT` z `version`. „Opublikuj” i „Wycofaj z publikacji” wysyłają `version` i są wyłączone
+  przy niezapisanych zmianach; wszystkie akcje są wyłączone w trakcie żądania i uploadu zdjęcia. Błędy: 422
+  z `violations[].propertyPath` trafia do pól (`errorsAt(ścieżka)` zwraca też zagnieżdżone ścieżki, np. `images[1]`),
+  ścieżka spoza formularza i 422 bez `violations` dają komunikat formularza; 409 po `type`: `product-modified`
+  (komunikat i „Odśwież”, które odrzuca zmiany), `slug-taken` i `slug-locked` przy polu slug, `product-not-publishable`
+  (inny tekst przy publikacji i przy zapisie), `variant-locked` i `variant-in-use` z `detail` w sekcji „Warianty”
+  (`variantsErrors`); 403, 404, 503 i sieć to komunikat bez utraty danych formularza. Formularz widzi tylko do
+  odczytu (bez akcji) pracownik bez roli `admin` ani `marketing` (`permissions.ts`, role z `/me`); `/products/new`
+  bez tej roli przekierowuje na listę (`beforeEnter` w routerze, który w razie potrzeby sam pobiera `/me`).
+  `ProductFormView` pyta o potwierdzenie przy opuszczeniu formularza z niezapisanymi zmianami (globalny guard
+  routera, bo po utworzeniu produktu ta sama instancja przechodzi między trasami) i ostrzega przy zamknięciu karty.
+  `useImageUpload` (sekcja „Zdjęcia”, `ProductImages.vue`): pliki wysyłane po kolei jako `multipart` z osobnym
+  statusem (oczekuje, wysyłanie, gotowe, błąd z `detail` 422 albo ogólnym komunikatem, ponowienie), klucz już
+  obecny w formularzu nie jest dodawany drugi raz, z wybranych plików wysyłane są tylko te, które mieszczą się
+  w limicie 10 zdjęć (pozostałe dostają błąd bez żądania). Nowe zdjęcie ma alt równy nazwie produktu.
+  `thumbnail.ts` buduje `src` i `srcset` z podpisanych adresów API. `ProductVariants.vue` pokazuje warianty tylko do
+  odczytu i jest miejscem na edytor wariantów; formularz wysyła osie i wiersze z `variantId` bez zmian.
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 
 ## Dane i API
