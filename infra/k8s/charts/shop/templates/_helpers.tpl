@@ -84,6 +84,45 @@ ready); optional: secret (true: the container reads the secret).
 {{- end }}
 
 {{/*
+An initContainer that waits for the rollout of a Deployment of this release (kubectl rollout status), so that the
+order also holds when the chart is installed without sync waves (D8) and when a Service is still answered by an old pod.
+It is the only kind of container that gets a Kubernetes API token (see shop.kubeApiAccessVolume).
+Parameters: root, name (the Deployment).
+*/}}
+{{- define "shop.waitRollout" -}}
+- name: wait-for-{{ .name }}
+  image: {{ .root.Values.images.kubectl }}
+  args: ["rollout", "status", "deployment/{{ .name }}", "--timeout=1500s"]
+  volumeMounts:
+    - name: kube-api-access
+      mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      readOnly: true
+  resources:
+    {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 4 }}
+{{- end }}
+
+{{/* The volume of the token for the containers of shop.waitRollout: the pods do not get a token automatically. */}}
+{{- define "shop.kubeApiAccessVolume" -}}
+- name: kube-api-access
+  projected:
+    defaultMode: 0444
+    sources:
+      - serviceAccountToken:
+          expirationSeconds: 3607
+          path: token
+      - configMap:
+          name: kube-root-ca.crt
+          items:
+            - key: ca.crt
+              path: ca.crt
+      - downwardAPI:
+          items:
+            - path: namespace
+              fieldRef:
+                fieldPath: metadata.namespace
+{{- end }}
+
+{{/*
 A ClusterIP service. Parameters: root, name, ports (a list of dicts with name, port and optional targetPort); optional:
 publishNotReady (true: the service routes to the pod before it is ready, for a service whose own probe connects to it).
 */}}
@@ -147,6 +186,7 @@ spec:
     spec:
       # The variables of the services (API_PORT, STORE_PORT, ...) would collide with the settings of the applications.
       enableServiceLinks: false
+      automountServiceAccountToken: false
       {{- if .initContainers }}
       initContainers:
         {{- .initContainers | nindent 8 }}
@@ -193,6 +233,7 @@ spec:
       {{- end }}
     spec:
       enableServiceLinks: false
+      automountServiceAccountToken: false
       {{- if .initContainers }}
       initContainers:
         {{- .initContainers | nindent 8 }}
@@ -234,6 +275,8 @@ metadata:
   name: {{ .name }}-{{ printf "%s%s" .template (toJson $settings) | sha256sum | trunc 10 }}
   labels:
     {{- include "shop.labels" . | nindent 4 }}
+    # Tells the jobs of a version from the runs of the cron job.
+    shop/job-kind: version
   annotations:
     {{- include "shop.wave" .wave | nindent 4 }}
 spec:

@@ -26,6 +26,7 @@ render() {
 }
 
 render prod prod --set image.tag=$rev1
+render prod-again prod --set image.tag=$rev1
 render prod-rev2 prod --set image.tag=$rev2
 render prod-domain prod --set image.tag=$rev1 --set global.domain=other.example.net
 render prod-indexable prod --set image.tag=$rev1 --set noindex=false

@@ -11,6 +11,7 @@ Every failed check raises with a message that says what was expected; the exit c
 """
 
 import hashlib
+import http.client
 import json
 import os
 import sys
@@ -42,6 +43,19 @@ def request(method, url, host=None, body=None, headers=None, form=None):
             return response.status, response.headers, response.read().decode(errors="replace")
     except urllib.error.HTTPError as error:
         return error.code, error.headers, error.read().decode(errors="replace")
+
+
+def raw_get(path, sub):
+    """GET with the path exactly as given (no normalization on the client side). Returns (status, text)."""
+    connection = http.client.HTTPConnection(TRAEFIK.split("//", 1)[1], timeout=60)
+    try:
+        connection.putrequest("GET", path, skip_host=True, skip_accept_encoding=True)
+        connection.putheader("Host", f"{sub}.{DOMAIN}")
+        connection.endheaders()
+        response = connection.getresponse()
+        return response.status, response.read().decode(errors="replace")
+    finally:
+        connection.close()
 
 
 def through_ingress(path, sub="", **kwargs):
@@ -128,6 +142,32 @@ def check_realms():
     token = admin_token()
     for realm in ("shop", "backoffice"):
         expect(admin_get(f"/{realm}/users", token) == [], f"the realm {realm} has no users")
+    check_auth_bypasses()
+
+
+# Paths that try to get from an allowed prefix of the auth host to the realm master or to the administration console:
+# dot segments, encoded dots and slashes (any case), a doubled slash. Sent as they are, without normalization.
+AUTH_BYPASSES = (
+    "/realms/shop/../master/.well-known/openid-configuration",
+    "/realms/shop/%2e%2e/master/.well-known/openid-configuration",
+    "/realms/shop/%2E%2E/master/.well-known/openid-configuration",
+    "/realms/shop/..%2fmaster/.well-known/openid-configuration",
+    "/realms/shop/..%2Fmaster/.well-known/openid-configuration",
+    "/realms/shop/%2e%2e%2fmaster/.well-known/openid-configuration",
+    "//realms/master/.well-known/openid-configuration",
+    "/realms/backoffice/../../admin/master/console/",
+    "/realms/backoffice/%2e%2e/%2e%2e/admin/master/console/",
+    "/resources/../admin/master/console/",
+    "/resources/%2e%2e/admin/master/console/",
+    "/resources/..;/admin/master/console/",
+)
+
+
+def check_auth_bypasses():
+    for path in AUTH_BYPASSES:
+        status, text = raw_get(path, "auth")
+        leaked = status == 200 or '"issuer"' in text or "Keycloak Administration" in text
+        expect(status in (400, 404) and not leaked, f"auth.{DOMAIN}{path} does not reach the realm master or the console (got {status})")
 
 
 def check_image():

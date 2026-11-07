@@ -12,6 +12,8 @@ initContainer installs the plugin into a volume that the server container mounts
   volumeMounts:
     - name: plugins
       mountPath: /usr/share/elasticsearch/plugins
+  resources:
+    {{- include "shop.resources" (dict "root" . "resources" "job") | nindent 4 }}
 {{- end }}
 
 {{- define "shop.elasticsearch.container" -}}

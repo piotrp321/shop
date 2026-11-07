@@ -14,9 +14,12 @@ metadata:
 
 {{- define "shop.job.garageInit" -}}
 {{ include "shop.job.metadata" . }}
+  annotations:
+    checksum/garage-config: {{ printf "%s%s" (.root.Files.Get "files/garage.toml") (.root.Files.Get "files/garage-init.sh") | sha256sum | quote }}
 spec:
   restartPolicy: Never
   enableServiceLinks: false
+  automountServiceAccountToken: false
   initContainers:
     {{- include "shop.wait" (dict "root" .root "name" "garage" "check" "nc -z garage 3903") | nindent 4 }}
     # The image of Garage has only the binary: it is mounted from the image (a volume of type image) and the script of
@@ -57,6 +60,7 @@ spec:
 spec:
   restartPolicy: Never
   enableServiceLinks: false
+  automountServiceAccountToken: false
   initContainers:
     {{- include "shop.wait" (dict "root" .root "name" "postgres" "check" "nc -z postgres 5432") | nindent 4 }}
     {{- include "shop.wait" (dict "root" .root "name" "elasticsearch" "check" "wget -qO /dev/null 'http://elasticsearch:9200/_cluster/health?wait_for_status=yellow&timeout=2s'") | nindent 4 }}
@@ -85,6 +89,7 @@ spec:
 spec:
   restartPolicy: Never
   enableServiceLinks: false
+  automountServiceAccountToken: false
   initContainers:
     {{- include "shop.wait" (dict "root" .root "name" "keycloak" "check" "wget -qO /dev/null http://keycloak:9000/health/ready") | nindent 4 }}
   containers:
@@ -134,17 +139,14 @@ spec:
 spec:
   restartPolicy: Never
   enableServiceLinks: false
+  automountServiceAccountToken: false
   serviceAccountName: shop-wait
   initContainers:
-    {{- include "shop.wait" (dict "root" .root "name" "api" "check" "wget -qO /dev/null http://api/health") | nindent 4 }}
-    {{- include "shop.wait" (dict "root" .root "name" "varnish" "check" "wget -qO /dev/null http://varnish/health") | nindent 4 }}
-    {{- include "shop.wait" (dict "root" .root "name" "store" "check" "wget -qO /dev/null http://store:3000/favicon.ico") | nindent 4 }}
-    # The worker has no endpoint: wait for the rollout of its deployment.
-    - name: wait-for-worker
-      image: {{ .root.Values.images.kubectl }}
-      args: ["rollout", "status", "deployment/worker", "--timeout=1500s"]
-      resources:
-        {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
+    {{- include "shop.waitRollout" (dict "root" .root "name" "api") | nindent 4 }}
+    {{- include "shop.waitRollout" (dict "root" .root "name" "varnish") | nindent 4 }}
+    {{- include "shop.waitRollout" (dict "root" .root "name" "store") | nindent 4 }}
+    {{- /* The worker has no endpoint either. */}}
+    {{- include "shop.waitRollout" (dict "root" .root "name" "worker") | nindent 4 }}
   containers:
     - name: initialize
       image: {{ include "shop.appImage" (dict "root" .root "app" "api") }}
@@ -163,6 +165,7 @@ spec:
     - name: scripts
       configMap:
         name: shop-scripts
+    {{- include "shop.kubeApiAccessVolume" . | nindent 4 }}
 {{- end }}
 
 {{- define "shop.job.purgeCaches" -}}
@@ -170,10 +173,12 @@ spec:
 spec:
   restartPolicy: Never
   enableServiceLinks: false
+  automountServiceAccountToken: false
+  serviceAccountName: shop-wait
   initContainers:
-    {{- include "shop.wait" (dict "root" .root "name" "api" "check" "wget -qO /dev/null http://api/health") | nindent 4 }}
-    {{- include "shop.wait" (dict "root" .root "name" "varnish" "check" "wget -qO /dev/null http://varnish/health") | nindent 4 }}
-    {{- include "shop.wait" (dict "root" .root "name" "store" "check" "wget -qO /dev/null http://store:3000/favicon.ico") | nindent 4 }}
+    {{- include "shop.waitRollout" (dict "root" .root "name" "api") | nindent 4 }}
+    {{- include "shop.waitRollout" (dict "root" .root "name" "varnish") | nindent 4 }}
+    {{- include "shop.waitRollout" (dict "root" .root "name" "store") | nindent 4 }}
   containers:
     - name: purge-caches
       image: {{ include "shop.appImage" (dict "root" .root "app" "api") }}
@@ -184,6 +189,8 @@ spec:
       {{- include "shop.envFromSecret" .root | nindent 6 }}
       resources:
         {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
+  volumes:
+    {{- include "shop.kubeApiAccessVolume" . | nindent 4 }}
 {{- end }}
 
 {{ include "shop.job" (dict "root" . "name" "garage-init" "wave" "0" "template" (include "shop.job.garageInit" (dict "root" . "name" "garage-init"))) }}
@@ -223,6 +230,7 @@ spec:
         spec:
           restartPolicy: Never
           enableServiceLinks: false
+          automountServiceAccountToken: false
           containers:
             - name: cart-purge-expired
               image: {{ include "shop.appImage" (dict "root" . "app" "api") }}

@@ -23,7 +23,8 @@ class JobNamesTest(unittest.TestCase):
             self.assertRegex(full, rf"^{re.escape(job)}-[0-9a-f]{{8,10}}$")
 
     def test_same_state_same_names(self):
-        self.assertEqual(job_names("prod"), job_names("prod"))
+        # Two renders of the same values: nothing in the names depends on the time or on chance.
+        self.assertEqual(job_names("prod"), job_names("prod-again"))
 
     def test_a_new_revision_gives_new_jobs(self):
         old, new = job_names("prod"), job_names("prod-rev2")
@@ -40,6 +41,13 @@ class JobNamesTest(unittest.TestCase):
         self.assertNotEqual(old["keycloak-config"], new["keycloak-config"])
         self.assertNotEqual(old["migrate"], new["migrate"])
         self.assertEqual(old["garage-init"], new["garage-init"])
+
+    def test_version_jobs_are_labelled_so_that_the_smoke_test_can_tell_them_from_cron_runs(self):
+        for case in ("prod", "ci"):
+            for job in of_kind(case, "Job"):
+                self.assertEqual("version", job["metadata"]["labels"]["shop/job-kind"], logical(job))
+            cron = of_kind(case, "CronJob")[0]
+            self.assertNotIn("shop/job-kind", cron["spec"]["jobTemplate"].get("metadata", {}).get("labels", {}))
 
     def test_no_ttl_so_that_the_finished_job_is_kept(self):
         for case in ("prod", "ci"):

@@ -67,10 +67,10 @@ do_schema() {
 do_kubeconform() {
   step "kubeconform (Kubernetes $KUBERNETES_VERSION)"
   for case_name in prod ci; do
-    # The CRDs of Traefik (Middleware) are validated against the schemas of the CRDs catalog.
+    # The CRDs of Traefik (Middleware) are validated against the schemas of the CRDs catalog, pinned to a commit.
     if ! output="$(kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
       -schema-location default \
-      -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+      -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/c86448cbf1a840ca62d119259864863897c8748a/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
       "/cache/render-$$/$case_name.yaml" 2>&1)"; then
       echo "$output" | sed "s/^/$case_name: /" >&2
       return 1

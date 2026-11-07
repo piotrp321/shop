@@ -5,7 +5,7 @@
 #   smoke.sh                       the whole test
 #   SMOKE_BREAK=migration smoke.sh the api image gets a migration that fails: the test must fail
 #   SMOKE_BREAK=image smoke.sh     the store image is unable to start: the test must fail
-#   SMOKE_BUILD=0 smoke.sh         use the images shop-smoke/<app>:r1 that are already there
+#   SMOKE_BUILD=0 smoke.sh         use the images shop-smoke-<cluster>/<app>:r1 that are already there
 #   SMOKE_KEEP=1 smoke.sh          keep the cluster after a failure, to look at it (delete it by hand)
 #   SMOKE_REUSE=1 smoke.sh         go on with the later phases on the cluster that SMOKE_KEEP=1 left (a debugging aid)
 #   SMOKE_TIMEOUT=900              seconds to wait for the cluster to settle after each install or upgrade
@@ -14,6 +14,10 @@
 # with an image whose migration fails (the previous api and worker keep serving); upgrade with a good image on a
 # database that has orders and no products (initialize fails and changes nothing). The peak memory and disk of the
 # cluster are printed at the end. The cluster is deleted on every exit (success, error, interrupt).
+#
+# The images are tagged shop-smoke-<cluster>/<app>:r1..r4 (a registry name of their own per cluster) and removed at the
+# end, so runs from several worktrees never overwrite or delete each other's images; the profile ci only supplies a
+# default registry, the script passes its own.
 #
 # The tools run in containers on the Docker network of the cluster, so no port of the host is used and several
 # clusters (one per COMPOSE_PROJECT_NAME) can run side by side. The cluster is called sm-<COMPOSE_PROJECT_NAME>.
@@ -31,7 +35,6 @@ case "$SMOKE_BREAK" in
   *) echo "smoke: SMOKE_BREAK must be empty, migration or image, got '$SMOKE_BREAK'" >&2; exit 2 ;;
 esac
 
-registry=shop-smoke
 namespace=shop
 
 log() { printf '\n== %s (%ss)\n' "$1" "$(( $(date +%s) - started ))"; }
@@ -48,6 +51,9 @@ if [ "${#cluster}" -gt 32 ]; then
   cluster="$(printf '%s' "$cluster" | cut -c1-22)-$(printf '%s' "$project" | cksum | cut -d' ' -f1 | cut -c1-8)"
 fi
 node="k3d-$cluster-server-0"
+# The images of this run are tagged <registry>/<app>:rN with a registry of their own (the name of the cluster, which
+# comes from COMPOSE_PROJECT_NAME), so that runs from several worktrees never overwrite or delete each other's images.
+registry="shop-smoke-$cluster"
 KUBE_NETWORK="k3d-$cluster"
 mkdir -p "$TOOLS_CACHE"
 KUBE_DIR="$(mktemp -d "$TOOLS_CACHE/kube-XXXXXX")"
@@ -181,7 +187,7 @@ dump_state() {
 
 # Fails at once on what cannot recover: a job out of attempts, a container that keeps crashing, an image that is not there.
 check_failures() {
-  failed="$(kc get jobs -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.conditions[?(@.type=="Failed")].status}{"\n"}{end}' | awk '$2 == "True" {print $1}')"
+  failed="$(kc get jobs -l shop/job-kind=version -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.conditions[?(@.type=="Failed")].status}{"\n"}{end}' | awk '$2 == "True" {print $1}')"
   if [ -n "$failed" ]; then
     echo "smoke: failed jobs: $failed" >&2
     dump_state
@@ -199,7 +205,7 @@ check_failures() {
 
 # All jobs complete (there must be five), all deployments and statefulsets rolled out with the new pods ready.
 all_ready() {
-  jobs="$(kc get jobs -o jsonpath='{range .items[*]}{.status.succeeded}{"\n"}{end}')"
+  jobs="$(kc get jobs -l shop/job-kind=version -o jsonpath='{range .items[*]}{.status.succeeded}{"\n"}{end}')"
   [ "$(echo "$jobs" | grep -c .)" -ge 5 ] || return 1
   [ -z "$(echo "$jobs" | grep -vx 1 | grep . || true)" ] || return 1
   # name generation observedGeneration replicas updatedReplicas readyReplicas availableReplicas
@@ -260,7 +266,7 @@ esac
 
 install() {
   helm_cluster upgrade --install shop charts/shop --namespace "$namespace" --create-namespace \
-    -f environments/ci/values.yaml --set "image.tag=$1" >/dev/null
+    -f environments/ci/values.yaml --set "image.tag=$1" --set "image.registry=$registry" >/dev/null
 }
 
 # k3s installs Traefik and its CRDs (the Middleware of the chart) in the background after the node is ready.
