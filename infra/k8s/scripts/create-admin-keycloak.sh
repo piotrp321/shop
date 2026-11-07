@@ -23,8 +23,10 @@ realm=backoffice
 lifespan=43200
 
 umask 077
-config="$(mktemp)"
-trap 'rm -f "$config"' EXIT
+# The token of kcadm lives in a file of this run only.
+config_dir="$(mktemp -d)"
+trap 'rm -rf "$config_dir"' EXIT
+config="$config_dir/kcadm.config"
 kc() { "$kcadm" "$@" --config "$config"; }
 
 KC_CLI_PASSWORD="$KC_BOOTSTRAP_ADMIN_PASSWORD" kc config credentials --server "$server" --realm master \

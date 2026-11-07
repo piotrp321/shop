@@ -10,10 +10,12 @@
 #   SMOKE_REUSE=1 smoke.sh         go on with the later phases on the cluster that SMOKE_KEEP=1 left (a debugging aid)
 #   SMOKE_TIMEOUT=900              seconds to wait for the cluster to settle after each install or upgrade
 #
-# Phases: install and checks; upgrade with a new revision (initialize and keycloak-config change nothing); upgrade
-# with an image whose migration fails (the previous api and worker keep serving); upgrade with a good image on a
-# database that has orders and no products (initialize fails and changes nothing). The peak memory and disk of the
-# cluster are printed at the end. The cluster is deleted on every exit (success, error, interrupt).
+# Phases: install and checks (also the store in a browser and create-admin); upgrade with a new revision (initialize
+# and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
+# the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
+# serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
+# nothing). The peak memory and disk of the cluster are printed at the end. The cluster is deleted on every exit
+# (success, error, interrupt).
 #
 # The images (api, store, admin and elasticsearch from infra/elasticsearch/Dockerfile) are tagged
 # shop-smoke-<cluster>/<app>:r1..r4 (a registry name of their own per cluster) and removed at the end, so runs from
@@ -62,6 +64,12 @@ work="$KUBE_DIR"
 sampler_pid=""
 # The images built here: the production stage of each application and Elasticsearch with its plugin.
 apps="api store admin elasticsearch"
+# The password of the customer the checks create in the realm shop and log in with (before and after an upgrade).
+customer_password="smoke-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
+# The administrator create-admin makes.
+admin_login=smoke.admin
+admin_email=smoke.admin@example.com
+demo_notice="Sklep demonstracyjny: płatności i zamówienia są symulowane"
 
 cleanup() {
   status=$?
@@ -88,7 +96,12 @@ trap 'exit 143' TERM
 kc() { kubectl -n "$namespace" "$@"; }
 # Runs the checks of smoke/checks.py inside the cluster (python in the pod smoke-tools).
 checks() {
-  kc exec -i smoke-tools -- env "KC_ADMIN_PASSWORD=$kc_password" python -I - "$@" < "$here/../smoke/checks.py"
+  kc exec -i smoke-tools -- env "KC_ADMIN_PASSWORD=$kc_password" "STORE_CLIENT_SECRET=$store_secret" \
+    "SMOKE_CUSTOMER_PASSWORD=$customer_password" python -I - "$@" < "$here/../smoke/checks.py"
+}
+read_secrets() {
+  kc_password="$(kc get secret shop-secrets -o jsonpath='{.data.KC_BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d)"
+  store_secret="$(kc get secret shop-secrets -o jsonpath='{.data.STORE_CLIENT_SECRET}' | base64 -d)"
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -270,9 +283,91 @@ case "$SMOKE_BREAK" in
   image) break_image r1 ;;
 esac
 
+# install <revision> [chart]: the chart of the repository unless another directory is given (a path in the container).
 install() {
-  helm_cluster upgrade --install shop charts/shop --namespace "$namespace" --create-namespace \
+  helm_cluster upgrade --install shop "${2:-charts/shop}" --namespace "$namespace" --create-namespace \
     -f environments/ci/values.yaml --set "image.tag=$1" --set "image.registry=$registry" >/dev/null
+}
+
+# The store of the image built without flags, in a real browser (the bar and the login link come from /api/site, read by
+# a client component): the bar is there and the login link is not, on / and on /cart. Chromium runs on the Docker
+# network of the cluster and reaches Traefik on the node port of its service.
+check_store_in_browser() {
+  port="$(kubectl -n kube-system get service traefik -o jsonpath='{.spec.ports[?(@.name=="web")].nodePort}')"
+  [ -n "$port" ] || { echo "smoke: the service of Traefik has no node port for the browser" >&2; return 1; }
+  for path in / /cart; do
+    attempt=1
+    while :; do
+      dom="$(browser_dom "http://$node:$port" "http://localhost$path" || true)"
+      case "$dom" in *"$demo_notice"*) break ;; esac
+      if [ "$attempt" -ge 3 ]; then
+        echo "smoke: $path in the browser has no demo bar; the end of its DOM:" >&2
+        printf '%s\n' "$dom" | tail -c 3000 >&2
+        return 1
+      fi
+      attempt=$((attempt + 1))
+      sleep 5
+    done
+    case "$dom" in
+      *'href="/auth/login'* | *"Zaloguj się"*) echo "smoke: $path in the browser shows the login link" >&2; return 1 ;;
+    esac
+    echo "ok: $path in the browser has the demo bar and no login link"
+  done
+}
+
+# create_admin <answer> <name of the log>: make -C infra/k8s create-admin with the answer on the standard input.
+create_admin() {
+  printf '%s\n' "$1" | KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" \
+    sh "$here/create-admin.sh" "$admin_login" "$admin_email" > "$work/create-admin-$2.log" 2>&1
+}
+
+check_create_admin() {
+  if create_admin nie refused; then
+    echo "smoke: create-admin went on without the word tak:" >&2; cat "$work/create-admin-refused.log" >&2; return 1
+  fi
+  grep -q 'nothing changed' "$work/create-admin-refused.log" || { cat "$work/create-admin-refused.log" >&2; return 1; }
+  checks admin-absent "$admin_login" "$admin_email"
+  echo "ok: create-admin without tak changed nothing"
+  create_admin tak created || { echo "smoke: create-admin failed:" >&2; cat "$work/create-admin-created.log" >&2; return 1; }
+  checks admin-mail "$admin_login" "$admin_email" > "$work/admin-mail"
+  sed '$d' "$work/admin-mail"
+  users_before="$(checks users | tail -n 1)"
+  status=0
+  create_admin tak again || status=$?
+  if [ "$status" -ne 3 ] || ! grep -q "$admin_login exists" "$work/create-admin-again.log"; then
+    echo "smoke: create-admin for an existing login ended with $status, not 3 with 'exists':" >&2
+    cat "$work/create-admin-again.log" >&2
+    return 1
+  fi
+  [ "$(checks admin-mail "$admin_login" "$admin_email" | tail -n 1)" = "$(tail -n 1 "$work/admin-mail")" ] \
+    || { echo "smoke: the refused create-admin changed the administrator or sent an e-mail" >&2; return 1; }
+  [ "$(checks users | tail -n 1)" = "$users_before" ] || { echo "smoke: the refused create-admin changed the users" >&2; return 1; }
+  echo "ok: create-admin refused the existing login with exit 3 and changed nothing"
+  # Nothing create-admin printed is a secret: none of the values of the secret of the profile ci, nor the customer's password.
+  for value in $(yq '.secrets.values[]' environments/ci/values.yaml) "$customer_password"; do
+    if cat "$work"/create-admin-*.log | grep -qF -- "$value"; then
+      echo "smoke: the output of create-admin contains a secret" >&2
+      return 1
+    fi
+  done
+  echo "ok: the output of create-admin contains no secret"
+}
+
+# A copy of the chart whose realm file of shop has one more client (smoke-extra), in <work>/chart-extra.
+add_realm_client() {
+  rm -rf "$work/chart-extra"
+  cp -RL "$here/../charts/shop" "$work/chart-extra"
+  # shellcheck disable=SC2016 # ${STORE_URL} is the placeholder of the realm file, not a variable of this shell
+  tools_run "$PYTHON_IMAGE" python -I -c '
+import json, sys
+path = sys.argv[1]
+with open(path) as file:
+    realm = json.load(file)
+realm["clients"].append({"clientId": "smoke-extra", "enabled": True, "publicClient": True, "standardFlowEnabled": True,
+                         "redirectUris": ["${STORE_URL}/smoke-extra/*"], "webOrigins": []})
+with open(path, "w") as file:
+    json.dump(realm, file, indent=2)
+' "/cache/${work##*/}/chart-extra/files/realms/shop.json"
 }
 
 # k3s installs Traefik and its CRDs (the Middleware of the chart) in the background after the node is ready.
@@ -306,7 +401,7 @@ if [ "${SMOKE_REUSE:-}" = 1 ]; then
   log "cluster $cluster (reused, at the state after the upgrade to r2)"
   k3d kubeconfig get "$cluster" | sed -E "s#server: https://[^:]+:[0-9]+#server: https://$node:6443#" > "$KUBE_DIR/config"
   start_sampler
-  kc_password="$(kc get secret shop-secrets -o jsonpath='{.data.KC_BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d)"
+  read_secrets
   orders_before="$(count ordering_order)"
   new_keycloak_config="$(job_name keycloak-config)"
 else
@@ -324,10 +419,16 @@ else
   create_tools_pod
   wait_ready "install r1"
   kc wait --for=condition=Ready pod/smoke-tools --timeout=180s >/dev/null
-  kc_password="$(kc get secret shop-secrets -o jsonpath='{.data.KC_BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d)"
+  read_secrets
 
   log "checks of the installation"
   checks basic
+
+  log "the store in a browser"
+  check_store_in_browser
+
+  log "create-admin"
+  check_create_admin
 
   log "upgrade r2: the same code, a new revision"
   snapshot_before="$(checks snapshot | tail -n 1)"
@@ -352,6 +453,17 @@ else
   [ "$(count ordering_order)" = "$orders_before" ] || { echo "smoke: the number of orders changed" >&2; exit 1; }
   [ "$(count catalog_product)" = "$products_before" ] || { echo "smoke: the number of products changed" >&2; exit 1; }
   echo "smoke: the upgrade changed no products, orders or realms ($products_before products, $orders_before orders)"
+
+  log "upgrade r2 with a client added to the realm file of shop"
+  users_before="$(checks users | tail -n 1)"
+  add_realm_client
+  old_keycloak_config="$new_keycloak_config"
+  install r2 "/cache/${work##*/}/chart-extra"
+  wait_ready "client added"
+  new_keycloak_config="$(job_name keycloak-config)"
+  [ "$new_keycloak_config" != "$old_keycloak_config" ] || { echo "smoke: keycloak-config did not run again for a changed realm file" >&2; exit 1; }
+  job_log "$new_keycloak_config" | grep -q 'realm shop exists: 1 added' || { echo "smoke: keycloak-config did not add one resource to shop:" >&2; job_log "$new_keycloak_config" >&2; exit 1; }
+  checks client-added "$users_before"
 
 fi
 
