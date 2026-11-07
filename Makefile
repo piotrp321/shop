@@ -31,10 +31,12 @@ ps:
 seed:
 	$(RUN) api bin/seed-demo
 
+# The last one checks the Helm chart of infra/k8s (render, manifests, scripts, tests of the render); it needs only Docker.
 check:
 	$(MAKE) -C apps/api check
 	$(MAKE) -C apps/store check
 	$(MAKE) -C apps/admin check
+	$(MAKE) -C infra/k8s check
 
 test:
 	$(MAKE) -C apps/api test

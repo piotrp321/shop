@@ -36,8 +36,8 @@ Zakres: `infra/k8s`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.docker
 
 ## Cel i zakres
 
-- Produkcyjne obrazy `api` (także dla workera, Jobów i CronJobów), `store` i `admin`, budowane w GitHub Actions
-  z każdego commita na `main` i wypychane do GHCR.
+- Produkcyjne obrazy `api` (także dla workera, Jobów i CronJobów), `store`, `admin` i `elasticsearch`, budowane
+  w GitHub Actions z każdego commita na `main` i wypychane do GHCR.
 - Helm chart całego stosu w `infra/k8s/`, wdrażany przez Argo CD z gałęzi `deploy`.
 - Sekrety w repo tylko zaszyfrowane (Sealed Secrets).
 - Migracje i przygotowanie indeksu jako Job przed startem nowej wersji, nigdy przy starcie kontenera aplikacji.
@@ -73,11 +73,14 @@ Zakres: `infra/k8s`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.docker
 
 - **D1. k3s na jednym węźle, Traefik z k3s jako ingress, `local-path` jako storage.**
 - **D2. Własny chart zamiast gotowych chartów usług.** Jeden chart `infra/k8s/charts/shop` z szablonami dla każdej
-  usługi compose, na tych samych obrazach i wersjach co `infra/docker-compose.yml`. Gotowe charty tylko dla
+  usługi compose, na tych samych obrazach i wersjach co `infra/docker-compose.yml`. Elasticsearch działa na obrazie
+  budowanym z tego samego Dockerfile co w compose (`infra/elasticsearch/Dockerfile`). Gotowe charty tylko dla
   platformy: Argo CD i Sealed Secrets.
 - **D3. Nazwy usług w klastrze takie jak w compose**; wewnętrzne adresy i VCL (`api:80`) bez zmian.
 - **D4. Wdrażana gałąź `deploy`, przesuwana fast-forwardem.** Argo CD śledzi `deploy` i ustawia tag obrazów na
-  `$ARGOCD_APP_REVISION` (parametr Helma aplikacji Argo), czyli SHA commita. Workflow wdrożenia po zbudowaniu obrazów
+  `$ARGOCD_APP_REVISION` (parametr Helma aplikacji Argo), czyli SHA commita. Obrazy są wdrażane po digeście
+  (`image.digests`); sposób, w jaki digesty trafiają do aplikacji Argo CD przy zachowaniu fast-forwardu `deploy`,
+  ustalają DEPLOY-5 i DEPLOY-6. Workflow wdrożenia po zbudowaniu obrazów
   z tagiem SHA i zielonym smoke teście przesuwa `deploy` fast-forwardem na ten commit z `main` (historia `main` jest
   liniowa, więc `deploy` jest zawsze jej przodkiem). Bez commitów z tagami i bez force pusha. Wypycha deploy key
   z prawem zapisu (sekret repo). Ruleset `deploy` (`tools/rulesets/deploy.json`) zabrania usunięcia i force pusha
@@ -128,8 +131,8 @@ Argo CD, RabbitMQ, Mailpit, Garage, Elasticsearch i Postgres nie mają publiczne
 
 ## Obrazy produkcyjne
 
-Nazwy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `admin`), publiczne (runbook ustawia widoczność
-pakietów; k3s pobiera je bez `imagePullSecret`).
+Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `admin`, `elasticsearch`), publiczne
+(runbook ustawia widoczność pakietów; k3s pobiera je bez `imagePullSecret`).
 
 - **api:** etapy: `runtime` (FrankenPHP, rozszerzenia, konfiguracja PHP i Caddy), `base` z niego (Composer, git,
   unzip, entrypoint z `composer install`, jak dziś), `build` z `base` (`composer install --no-dev
@@ -143,9 +146,26 @@ pakietów; k3s pobiera je bez `imagePullSecret`).
   (`window.__ADMIN_CONFIG__`), fallbackiem SPA na `index.html` i `Cache-Control: no-cache` dla `index.html`
   i `/config.js`. Panel czyta najpierw `window.__ADMIN_CONFIG__`, a bez niego `import.meta.env`; lokalnie
   `public/config.js` jest pusty (bez 404 w `vite dev`). Brak wymaganego klucza w obu źródłach: błąd z nazwą klucza.
+- **elasticsearch:** `infra/elasticsearch/Dockerfile`, ten sam, który buduje compose: oficjalny obraz Elasticsearch
+  przypięty digestem i wtyczka `analysis-stempel` instalowana w czasie buildu (jej wersja jest wersją Elasticsearch).
+  Wersje w compose i w klastrze są zgodne z definicji.
+- Wdrożenie po digeście, nigdy `latest`: obraz własny to `<rejestr>/<app>:<sha>@<digest>`, gdy wartość
+  `image.digests.<app>` jest podana, inaczej `<rejestr>/<app>:<sha>`. `image.requireDigests: true` (profil `prod`)
+  wymaga wszystkich czterech digestów (`sha256:` i 64 znaki hex); podany digest zawsze musi mieć ten format,
+  a `image.tag` nie może być `latest` (schemat wartości, błąd renderu z nazwą wartości). Profil `ci` digestów nie
+  wymaga (smoke test importuje obrazy lokalne po tagu).
+- Obrazy usług bez własnego kodu (`images.*` w wartościach chartu) mają postać `nazwa:tag@sha256:<digest indeksu
+  wieloarchitekturowego>`, z tagiem takim jak w `infra/docker-compose.yml`; compose zostaje przy samych tagach.
+- Kontenery przy starcie niczego nie pobierają (wtyczek ani innych artefaktów); klaster pobiera tylko obrazy
+  o przypiętych digestach.
 - Etap używany przez compose pozostaje ostatni; lokalny `make up` działa jak dziś.
-- Usługi bez własnego kodu używają obrazów i wersji z `infra/docker-compose.yml`. `garage-init` w klastrze: initContainer
-  z obrazu Garage kopiuje binarkę do `emptyDir`, kontener Alpine uruchamia `infra/garage/init.sh`. Konfiguracja z repo
+- Usługi bez własnego kodu używają obrazów i wersji z `infra/docker-compose.yml`. `garage-init` w klastrze: kontener
+  Alpine uruchamia `infra/garage/init.sh` z binarką Garage zamontowaną z jej obrazu wolumenem typu `image` (bez kopii
+  w `emptyDir`). Wolumen `image` (ImageVolume) jest alfa w Kubernetes 1.31–1.32, betą domyślnie wyłączoną w 1.33–1.34,
+  betą domyślnie włączoną w 1.35 i stabilny od 1.36; wymaga też runtime'u z obsługą wolumenów obrazów (containerd 2.1
+  lub nowszy). Wymaganie: k3s/Kubernetes ≥ 1.36. Pilnuje go `kubeVersion: ">=1.36.0-0"` w `Chart.yaml` (Helm, a przez
+  niego Argo CD, odmawia renderu dla starszego klastra), a smoke test działa na k3s `v1.36.6-k3s1`; bootstrap
+  (DEPLOY-6) przypina k3s ≥ v1.36. Konfiguracja z repo
   (VCL, `garage.toml`, init Postgresa, `init.sh`, realmy) trafia do ConfigMap przez symlinki
   w `infra/k8s/charts/shop/files/`. Pierwsze zadanie sprawdza, że Helm i Argo CD czytają symlinki wewnątrz repo; jeśli
   nie, chart trzyma kopie, a `check` sprawdza ich zgodność z oryginałami.
@@ -166,10 +186,15 @@ pakietów; k3s pobiera je bez `imagePullSecret`).
   | −1 | StatefulSety, Keycloak, Mailpit | Keycloak: Postgres |
   | 0 | Joby `garage-init`, `migrate` (`doctrine:migrations:migrate --no-interaction`, `catalog:search-index:setup`), `keycloak-config` | Garage; Postgres i Elasticsearch; gotowy Keycloak |
   | 1 | Deploymenty api, worker, store, admin, imgproxy, varnish | api i worker: `doctrine:migrations:up-to-date`; imgproxy: Garage z bucketami |
-  | 2 | Job `initialize` (dane startowe) | gotowe api, worker, varnish, store |
-  | 3 | Job `purge-caches` (`storefront:cache:purge-all`) | gotowe api, varnish, store |
+  | 2 | Job `initialize` (dane startowe) | zakończony rollout Deploymentów api, varnish, store, worker |
+  | 3 | Job `purge-caches` (`storefront:cache:purge-all`) | zakończony rollout Deploymentów api, varnish, store |
 
   Nieudana migracja: nowe `api` i `worker` nigdy nie są gotowe, stare działają (`maxUnavailable: 0`).
+- `initialize` i `purge-caches` czekają na rollout (`kubectl rollout status`) w initContainerach z obrazem `kubectl`,
+  a nie na odpowiedź Service, którą mógłby jeszcze dać stary pod. Te Joby działają na ServiceAccount `shop-wait`
+  (Role: tylko `get`, `list`, `watch` na `deployments`), a token API Kubernetes (wolumen `projected`) montują tylko te
+  initContainery. Pozostałe pody i kontenery nie montują tokenu (`automountServiceAccountToken: false`). Deploymenty
+  mają `progressDeadlineSeconds` nie krótszy niż czas oczekiwania Jobów (1500 s).
 - Middleware Traefika: `ipAllowList` (D6) na wszystkich ingressach; `X-Robots-Tag: noindex` na wszystkich hostach,
   gdy `noindex: true`.
 - CronJob `cart:purge-expired` (co godzinę, `concurrencyPolicy: Forbid`, strefa `Europe/Warsaw`).
@@ -186,7 +211,8 @@ pakietów; k3s pobiera je bez `imagePullSecret`).
 
 1. Merge PR do `main` uruchamia `.github/workflows/deploy.yml`. Grupa `concurrency` bez anulowania trwającego runu:
    działa jeden, czeka najwyżej jeden, pośrednie są pomijane, więc wdraża się najnowszy commit.
-2. Workflow buduje i wypycha obrazy `api`, `store`, `admin` z tagiem SHA.
+2. Workflow buduje i wypycha obrazy `api`, `store`, `admin`, `elasticsearch` z tagiem SHA; wdrażane są po digeście
+   (D4).
 3. Smoke test na k3d (niżej) na tych obrazach.
 4. Po zielonym smoke teście workflow przesuwa `deploy` fast-forwardem na ten commit (D4). Bez sekretu z deploy keyem
    (przed krokiem runbooka) workflow kończy się po smoke teście z ostrzeżeniem, bez błędu.
@@ -205,10 +231,13 @@ w chartcie w tym samym PR.
 - Wspólny skrypt `apps/api/bin/seed-demo` uruchamia komendy `<moduł>:seed-demo` w kolejności z `make seed`
   (z modułami PAYMENT) i `storefront:cache:purge-all`; w `prod` przekazuje `--force-reset`. `make seed` woła ten sam
   skrypt.
-- Job `initialize` (fala 2) wczytuje dane tylko wtedy, gdy baza `shop` nie ma żadnego produktu, ceny, stanu ani
-  zamówienia (zapytania tylko do odczytu w skrypcie). Gdy wszystkie te tabele mają dane – sukces bez zmian. Gdy
-  katalog jest pusty, a inne dane istnieją – błąd z opisem stanu, bez zmian (seed z `--force-reset` skasowałby
-  zamówienia). Wyłączany wartością `initialize.enabled: false` (na potrzeby odtwarzania kopii w DEPLOY-OPS).
+- Job `initialize` (fala 2, skrypt `files/scripts/initialize.sh`) liczy produkty, ceny, stany i zamówienia w bazie
+  `shop` (zapytania tylko do odczytu) i rozróżnia trzy stany:
+  - wszystkie cztery liczby są zerowe – wczytuje dane demo (`bin/seed-demo`, w `prod` z `--force-reset`);
+  - są produkty, ceny i stany – sukces bez zmian, niezależnie od zamówień;
+  - każdy inny stan jest mieszany – błąd z liczbami i bez zmian, np. pusty katalog z zamówieniami albo cenami (reset
+    seeda by je skasował) albo produkty bez cen lub stanów (przerwana inicjalizacja, wymaga decyzji człowieka).
+- Wyłączany wartością `initialize.enabled: false` (na potrzeby odtwarzania kopii w DEPLOY-OPS).
 - Inicjalizacja przerwana w połowie: kolejne uruchomienie kończy się błędem stanu mieszanego; runbook opisuje ponowne
   wymuszone wczytanie (`make -C infra/k8s reinitialize`), które kasuje dane i wymaga zgody użytkownika.
 
@@ -263,7 +292,7 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 
 - Cele `infra/k8s/Makefile` działają z komputera użytkownika (narzędzia w kontenerach) i łączą się z serwerem po SSH
   (`HOST=user@adres`):
-  - `bootstrap`: na czystym Ubuntu 24.04 LTS przypięta wersja k3s, `vm.max_map_count=262144`, ufw (SSH i API k3s;
+  - `bootstrap`: na czystym Ubuntu 24.04 LTS przypięta wersja k3s (≥ v1.36, wymaganie chartu), `vm.max_map_count=262144`, ufw (SSH i API k3s;
     D6), automatyczne poprawki bezpieczeństwa, Sealed Secrets (z kluczem z kopii, jeśli jest; inaczej zapis
     certyfikatu do repo), Argo CD z aplikacją `root` (app-of-apps w `infra/k8s/argocd/`). Idempotentny; brak uprawnień
     root albo inny system kończą go błędem przed zmianami.
@@ -282,11 +311,15 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 - `make -C infra/k8s check`: `helm lint`, render dla `prod` i `ci` (`prod` z testowym SHA), `kubeconform`,
   `shellcheck`, test sekretów, (przy kopiach) zgodność kopii z oryginałami, `actionlint` workflowu, testy renderu:
   przełączniki D10, CronJoby, ścieżki ingressu `auth`, middleware, fale (każdy Job i Deployment ma zależności we
-  wcześniejszych falach), nazwy Jobów D11. Główny `make check` go wywołuje, więc działa w wymaganym jobie `checks`
+  wcześniejszych falach), nazwy Jobów D11, obrazy (własne z rejestru, z digestem w `prod`; pozostałe z tagiem jak
+  w compose i digestem; Elasticsearch z `infra/elasticsearch/Dockerfile`, bez `elasticsearch-plugin` w kontenerach).
+  Render (z wersją Kubernetes klastra smoke testu, `--kube-version`), który musi się nie udać: `prod` bez digestów,
+  `image.tag=latest`, digest w złym formacie, obraz usługi bez digestu, klaster Kubernetes 1.35 (`kubeVersion`). Główny `make check` go wywołuje, więc działa w wymaganym jobie `checks`
   i w bramkach AO.
-- `make -C infra/k8s smoke`: buduje obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa klastra
-  i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze, czeka na
-  Joby i Deploymenty, a potem sprawdza: `/health` API, stronę główną sklepu z produktem, pasek i brak linku logowania
+- `make -C infra/k8s smoke`: buduje cztery obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa
+  klastra i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze,
+  czeka na Joby i Deploymenty, a potem sprawdza: wtyczkę `analysis-stempel` w Elasticsearchu (`_cat/plugins`)
+  i działanie filtra `polish_stem` (`_analyze`: „koszulkami” → „koszulka”), `/health` API, stronę główną sklepu z produktem, pasek i brak linku logowania
   na `/` i `/cart`, nagłówek `X-Robots-Tag`, `/config.js` panelu, discovery obu realmów, brak użytkowników demo
   i rejestracji w realmie `shop`, zdjęcie przez imgproxy, potwierdzenie zamówienia w Mailpicie, idempotencję (upgrade
   z nową rewizją: `initialize` i `keycloak-config` nie zmieniają danych ani realmów). Wypisuje szczytowe zużycie pamięci i dysku. Na koniec usuwa

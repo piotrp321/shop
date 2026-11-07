@@ -1,0 +1,24 @@
+{{- define "shop.admin.container" -}}
+imagePullPolicy: {{ .Values.image.pullPolicy }}
+# The panel runs in the browser and talks to the API and Keycloak directly: /config.js is generated from these.
+env:
+  - name: VITE_API_URL
+    value: {{ include "shop.url" (dict "root" . "sub" "api") | quote }}
+  - name: VITE_KEYCLOAK_URL
+    value: {{ include "shop.url" (dict "root" . "sub" "auth") | quote }}
+  - name: VITE_ADMIN_URL
+    value: {{ include "shop.url" (dict "root" . "sub" "admin") | quote }}
+ports:
+  - name: http
+    containerPort: 8080
+readinessProbe:
+  httpGet:
+    path: /
+    port: 8080
+  periodSeconds: 5
+  timeoutSeconds: 5
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "admin" "ports" (list (dict "name" "http" "port" 8080))) }}
+---
+{{ include "shop.deployment" (dict "root" . "name" "admin" "wave" "1" "image" (include "shop.appImage" (dict "root" . "app" "admin"))
+  "container" (include "shop.admin.container" .)) }}

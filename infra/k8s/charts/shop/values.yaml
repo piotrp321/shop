@@ -1,0 +1,114 @@
+# Values common to every environment. The environments override them: ../../environments/prod/values.yaml (the
+# server) and ../../environments/ci/values.yaml (the smoke test). values.schema.json says which ones are required.
+
+global:
+  # Base domain; required. The shop is served at <domain>, the other hosts are admin., api., auth. and img. of it.
+  domain: ""
+  # http or https: the scheme of the public addresses (the browser-facing URLs of the services).
+  scheme: https
+
+image:
+  # <registry>/<api|store|admin|elasticsearch>:<tag>[@<digest>]; elasticsearch is built from
+  # infra/elasticsearch/Dockerfile, the same Dockerfile compose builds (the official image with the Polish analysis
+  # plugin installed at build time).
+  registry: ghcr.io/piotrp321/shop
+  # The revision (commit SHA); required, never `latest`. Argo CD sets it from the revision it syncs.
+  tag: ""
+  # The digests (sha256:<64 hex>) of the images pushed for the revision: with a digest the image is pulled by it, the
+  # tag only names it. requireDigests (true in prod) makes all four required.
+  digests:
+    api: ""
+    store: ""
+    admin: ""
+    elasticsearch: ""
+  requireDigests: false
+  pullPolicy: IfNotPresent
+
+# The images of the services we do not build: name:tag as in infra/docker-compose.yml, pinned by the digest of the
+# multi-arch index of that tag (`docker buildx imagetools inspect <name:tag>`); `make check` compares the tags with
+# compose and requires the digests.
+# `kubectl` is the image of the initContainers of the jobs initialize and purge-caches that wait for the rollout of the
+# deployments they need (api, varnish, store, worker).
+images:
+  postgres: postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+  redis: redis:8.10.3@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
+  rabbitmq: rabbitmq:4.4.0-management@sha256:af6f50d38098d8bd52fef7f3fa85015dd8b2bf6def58e995bf584ae9ba0f6407
+  keycloak: quay.io/keycloak/keycloak:26.6.0@sha256:b0e5dbced1775de4d629f103c0a9cfc057decc62ce8d3cb1c54f8849a6c6eb62
+  garage: dxflrs/garage:v2.4.0@sha256:715d176efc35384bf72cf6052fd61b74b3e27a1e31a9dfedabe646bd1e92f137
+  imgproxy: darthsim/imgproxy:v3.31.1@sha256:2b7a56dbf9c8a8e12e7109a5bdd27d31a8c1aa49f2116c927c6aedc37e18db98
+  mailpit: axllent/mailpit:v1.27.11@sha256:e22dce5b36f93c77082e204a3942fb6b283b7896e057458400a4c88344c3df68
+  varnish: varnish:9.1.0@sha256:f97e894d90bccc585e5847e766696b7785c98046c29f76007f06d2e2c3228a4e
+  alpine: alpine:3.22@sha256:bfe7ceb9f09ec0566c48fb93356e45a47a00be5a1dd14fa5b909e7709c66b034
+  kubectl: registry.k8s.io/kubectl:v1.36.6@sha256:0650805141538d13ccbb6bb9e0dd647bc415bc002898357970211c4d47224396
+
+ingress:
+  className: traefik
+  # true: entrypoint websecure with TLS (the certificate is the default one of Traefik); false: plain HTTP (web).
+  tls: true
+
+# Adds X-Robots-Tag: noindex, nofollow to every host.
+noindex: false
+
+# Only the listed ranges may reach any host (Traefik middleware ipAllowList on every ingress).
+ipAllowList:
+  enabled: true
+  sourceRange: []
+
+secrets:
+  # true: the chart renders the Secret from `values` (the ci profile). false: the Secret `name` is created outside the
+  # chart (a SealedSecret in prod).
+  create: false
+  name: shop-secrets
+  # The keys of infra/scripts/init-env.sh; every one is required when `create` is true.
+  values: {}
+
+mailer:
+  # MAILER_DSN of the API (Mailpit in the cluster).
+  dsn: smtp://mailpit:1025
+  # MAILER_FROM; empty: "Rytm <zamowienia@<domain>>".
+  from: ""
+
+# The job `initialize` loads the demo data into an empty database (see files/scripts/initialize.sh).
+initialize:
+  enabled: true
+
+jobs:
+  backoffLimit: 3
+  activeDeadlineSeconds: 1800
+
+cartPurge:
+  schedule: "0 * * * *"
+  timeZone: Europe/Warsaw
+
+storage:
+  className: local-path
+  postgres: 10Gi
+  elasticsearch: 10Gi
+  rabbitmq: 2Gi
+  redis: 1Gi
+  garageMeta: 1Gi
+  garageData: 20Gi
+
+elasticsearch:
+  javaOpts: -Xms1g -Xmx1g
+
+keycloak:
+  javaHeap: -Xms256m -Xmx768m
+
+# Requests and limits per service; the profiles override them as a whole.
+resources:
+  postgres: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
+  redis: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 256Mi } }
+  elasticsearch: { requests: { cpu: 500m, memory: 1536Mi }, limits: { memory: 2Gi } }
+  rabbitmq: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 768Mi } }
+  garage: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 512Mi } }
+  keycloak: { requests: { cpu: 250m, memory: 768Mi }, limits: { memory: 1280Mi } }
+  mailpit: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 128Mi } }
+  api: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
+  worker: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 768Mi } }
+  store: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
+  admin: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 128Mi } }
+  imgproxy: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 768Mi } }
+  varnish: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 384Mi } }
+  # Jobs, the cron job and the waiting initContainers.
+  job: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 1Gi } }

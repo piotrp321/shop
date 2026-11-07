@@ -1,0 +1,11 @@
+apiVersion: v2
+name: shop
+description: The whole shop stack (the services of infra/docker-compose.yml) on one k3s node.
+type: application
+# The chart is deployed from the repository, never published: the version does not change with the revision. The
+# revision of the images is image.tag (Argo CD sets it to the commit SHA).
+version: 0.1.0
+# The job garage-init mounts the binary of Garage from its image with a volume of type image (ImageVolume: alpha in
+# 1.31-1.32, beta off by default in 1.33-1.34, on by default in 1.35, stable since 1.36; the runtime needs image volume
+# support, containerd 2.1 or newer). Helm, and Argo CD through it, refuse to render the chart for an older cluster.
+kubeVersion: ">=1.36.0-0"

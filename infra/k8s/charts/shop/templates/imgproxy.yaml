@@ -1,0 +1,48 @@
+{{- /* Waits until garage-init has created the buckets and given the key access to them. */ -}}
+{{- define "shop.imgproxy.checkBuckets" -}}
+for bucket in product-images product-images-test; do
+  wget -qO- --header "Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
+    "http://garage:3903/v2/GetBucketInfo?globalAlias=$bucket" 2>/dev/null \
+    | grep -q "\"accessKeyId\": \"$GARAGE_ACCESS_KEY_ID\"" || return 1
+done
+{{- end }}
+
+{{- define "shop.imgproxy.container" -}}
+# Maps our secret names to the AWS names read by the S3 client.
+command:
+  - /bin/sh
+  - -c
+  - 'export AWS_ACCESS_KEY_ID="$GARAGE_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$GARAGE_SECRET_ACCESS_KEY"; exec entrypoint.sh "$@"'
+  - imgproxy
+args: ["imgproxy"]
+env:
+  - name: IMGPROXY_USE_S3
+    value: "true"
+  - name: IMGPROXY_S3_ENDPOINT
+    value: http://garage:3900
+  - name: IMGPROXY_S3_REGION
+    value: garage
+  # Both buckets: the second one is used by the integration tests.
+  - name: IMGPROXY_ALLOWED_SOURCES
+    value: s3://product-images/,s3://product-images-test/
+  # Same limits as ProductImageStorage (64 MB, 50 MP); imgproxy is the second line of defence.
+  - name: IMGPROXY_MAX_SRC_FILE_SIZE
+    value: "67108864"
+  - name: IMGPROXY_MAX_SRC_RESOLUTION
+    value: "50"
+{{ include "shop.envFromSecret" . }}
+ports:
+  - name: http
+    containerPort: 8080
+readinessProbe:
+  exec:
+    command: ["imgproxy", "health"]
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 10
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "imgproxy" "ports" (list (dict "name" "http" "port" 8080))) }}
+---
+{{ include "shop.deployment" (dict "root" . "name" "imgproxy" "wave" "1" "image" .Values.images.imgproxy
+  "initContainers" (include "shop.wait" (dict "root" . "name" "garage-init" "secret" true "script" (include "shop.imgproxy.checkBuckets" .)))
+  "container" (include "shop.imgproxy.container" .)) }}

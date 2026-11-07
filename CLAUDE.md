@@ -15,6 +15,9 @@ Monorepo e-commerce. Przed planowaniem jakiejkolwiek funkcji przeczytaj `docs/vi
 - `apps/admin` – Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue. Panel administracyjny.
 - `infra` – Docker Compose i konfiguracja usług
   (Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Varnish, Mailpit).
+- `infra/k8s` – chart Helm całego stosu (`charts/shop`, te same usługi i wersje obrazów co compose), profile wartości
+  (`environments/prod`, `environments/ci`) i skrypty sprawdzeń. Narzędzia (helm, kubeconform, shellcheck, k3d, kubectl)
+  działają w kontenerach z przypiętymi wersjami, bez instalacji na hoście.
 - `e2e` – testy end-to-end (Playwright) na pełnym stosie, uruchamiane przez `make e2e`.
 - `docs` – wizja, ADR-y (`docs/adr/`), specyfikacje i plany funkcji (`docs/features/`).
 
@@ -34,7 +37,14 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - Każda aplikacja ma własny `Makefile` z tymi samymi podstawowymi celami (`check`, `test`)
     oraz swoimi (np. `make migrate` w api). Pracując w jednej aplikacji, używaj jej Makefile:
     `make -C apps/api check`.
-  - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc).
+  - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc). Główny
+    `make check` woła też `make -C infra/k8s check`: `helm lint`, render chartu dla `prod` i `ci`, schemat wartości,
+    `kubeconform`, `shellcheck` i testy renderu (fale, ścieżki ingressu `auth`, middleware, klucze sekretu, nazwy Jobów,
+    CronJob, obrazy: własne z rejestru po digeście, pozostałe `tag@digest` z tagiem jak w compose, bez `latest`).
+  - `infra/k8s` ma własny `Makefile` (potrzebuje tylko Dockera): `make -C infra/k8s check`; `make -C infra/k8s smoke`
+    (test dymny: chart z profilem `ci` na pustym klastrze k3d z obrazami produkcyjnymi zbudowanymi lokalnie, kilka minut;
+    `SMOKE_BREAK=migration|image` psuje go celowo); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
+    samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje).
 - `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.
 - Tryb sklepu wybiera zmienna `STORE_MODE` dla `make up`: `dev` (domyślnie) uruchamia `next dev`, `production` robi
   `next build` i uruchamia `next start`. Inna wartość zatrzymuje kontener sklepu, a nieudany build też, więc `make up`
@@ -125,6 +135,13 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   co kod, razem z uruchomieniem usług, których potrzebują.
 - Zadania ustawiające reguły (lint, Deptrac, CORS i podobne) sprawdzają też próby obejścia, nie tylko
   przypadek podstawowy.
+- Chart `infra/k8s/charts/shop` odzwierciedla compose. Zmiana usług, obrazów i ich wersji, zmiennych środowiska,
+  transportów workera, sekretów w compose (`infra/scripts/init-env.sh`) i zmiana realmów Keycloaka
+  (`infra/keycloak/realms`: nowy klient, rola, adres) wymaga tej samej zmiany w chartcie w tym samym PR. Pilnuje tego
+  `make -C infra/k8s check` (każdy klucz z `init-env.sh` jest w szablonie sekretu, obrazy usług bez naszego kodu mają
+  tag jak w compose i digest, Elasticsearch to obraz z `infra/elasticsearch/Dockerfile` jak w compose) i test dymny;
+  nowej zmiennej z wartością domyślną ani zmiany istniejącego klienta realmu żaden z nich nie wyłapie. Zmiana wersji
+  obrazu w compose wymaga nowego digestu w chartcie (`docker buildx imagetools inspect <obraz:tag>`).
 - Zadanie jest skończone dopiero, gdy przechodzą `make check` i testy aplikacji, której dotyczy zmiana.
   Pokaż wynik, nie deklaruj.
 - Zmiana dotykająca kilku aplikacji (np. nowy endpoint i ekran w panelu) jest skończona, gdy przechodzą

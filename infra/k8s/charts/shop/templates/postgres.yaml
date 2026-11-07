@@ -1,0 +1,31 @@
+{{- define "shop.postgres.container" -}}
+ports:
+  - name: postgres
+    containerPort: 5432
+{{ include "shop.envFromSecret" . }}
+volumeMounts:
+  - name: data
+    mountPath: /var/lib/postgresql
+  - name: init
+    mountPath: /docker-entrypoint-initdb.d
+    readOnly: true
+readinessProbe:
+  exec:
+    command: ["pg_isready", "-h", "localhost", "-U", "postgres"]
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 20
+{{- end }}
+
+{{- define "shop.postgres.volumes" -}}
+- name: init
+  configMap:
+    name: postgres-init
+    defaultMode: 0755
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "postgres" "ports" (list (dict "name" "postgres" "port" 5432))) }}
+---
+{{ include "shop.statefulset" (dict "root" . "name" "postgres" "wave" "-1" "image" .Values.images.postgres
+  "claims" (list (dict "name" "data" "size" .Values.storage.postgres))
+  "container" (include "shop.postgres.container" .)
+  "volumes" (include "shop.postgres.volumes" .)) }}
