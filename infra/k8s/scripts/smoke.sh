@@ -345,7 +345,9 @@ else
   [ "$new_initialize" != "$old_initialize" ] || { echo "smoke: initialize did not run again for a new revision" >&2; exit 1; }
   [ "$new_keycloak_config" != "$old_keycloak_config" ] || { echo "smoke: keycloak-config did not run again for a new revision" >&2; exit 1; }
   job_log "$new_initialize" | grep -q 'nothing to do' || { echo "smoke: initialize did not report that the data is there:" >&2; job_log "$new_initialize" >&2; exit 1; }
-  job_log "$new_keycloak_config" | grep -q 'left as it is' || { echo "smoke: keycloak-config did not leave the realms alone:" >&2; job_log "$new_keycloak_config" >&2; exit 1; }
+  for realm in shop backoffice; do
+    job_log "$new_keycloak_config" | grep -q "realm $realm exists: 0 added" || { echo "smoke: keycloak-config added resources to $realm:" >&2; job_log "$new_keycloak_config" >&2; exit 1; }
+  done
   checks compare "$snapshot_before"
   [ "$(count ordering_order)" = "$orders_before" ] || { echo "smoke: the number of orders changed" >&2; exit 1; }
   [ "$(count catalog_product)" = "$products_before" ] || { echo "smoke: the number of products changed" >&2; exit 1; }
@@ -356,7 +358,7 @@ fi
 log "rerun of a finished job"
 KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" sh "$here/rerun.sh" "$new_keycloak_config" >/dev/null
 kc wait --for=condition=complete "job/$new_keycloak_config" --timeout=300s >/dev/null
-job_log "$new_keycloak_config" | grep -q 'left as it is' || { echo "smoke: the rerun job did not run" >&2; exit 1; }
+job_log "$new_keycloak_config" | grep -q 'keycloak-config: done' || { echo "smoke: the rerun job did not run" >&2; exit 1; }
 echo "smoke: rerun of $new_keycloak_config completed"
 
 log "upgrade r3: a migration that fails"

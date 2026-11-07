@@ -95,7 +95,7 @@ spec:
   containers:
     - name: keycloak-config
       image: {{ .root.Values.images.keycloak }}
-      command: ["/bin/bash", "/scripts/keycloak-config.sh"]
+      command: ["/bin/sh", "/scripts/keycloak-config.sh"]
       env:
         - name: KC_BOOTSTRAP_ADMIN_USERNAME
           value: admin
