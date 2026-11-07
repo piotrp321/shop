@@ -25,9 +25,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
   seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
-  w `prod` wymagają `--force-reset`. Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem `make seed` woła `catalog:reindex`, który przebudowuje indeks wyszukiwania
-  z cenami i dostępnością, a na końcu `storefront:cache:purge-all` (zdarzenia cen i stanów ze źródła `seed` niczego
-  nie reindeksują ani nie unieważniają). Błąd kroku przerywa `make seed`
+  w `prod` wymagają `--force-reset`. Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika).
+  Potem `make seed` woła `catalog:reindex`, który przebudowuje indeks wyszukiwania z cenami i dostępnością, a na
+  końcu `storefront:cache:purge-all` (zdarzenia cen i stanów ze źródła `seed` niczego nie reindeksują ani nie
+  unieważniają). Błąd kroku przerywa `make seed`
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
   rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
   `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
@@ -127,8 +128,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## Reguły modelu
 
 - Pieniądze zawsze jako liczba całkowita w groszach plus waluta, nigdy float. Zaokrąglanie VAT jawnie, w jednym miejscu.
-- Agregaty edytowane równolegle (zamówienie, stan magazynowy, cena, produkt) mają optimistic locking (pole wersji): edycja
-  z widoku sprawdza wersję, na której się opiera. Wyjątek: atomowe operacje na stanie magazynowym (przyjęcie,
+- Agregaty edytowane równolegle (zamówienie, stan magazynowy, cena, produkt) mają optimistic locking (pole wersji):
+  edycja z widoku sprawdza wersję, na której się opiera. Wyjątek: atomowe operacje na stanie magazynowym (przyjęcie,
   rezerwacja, zwolnienie, zatwierdzenie) nie sprawdzają wersji z widoku, tylko blokują wiersze (`SELECT … FOR UPDATE`
   w `StockItemRepository::lockMany`, w kolejności rosnącego `variant_id`; przyjęcie i korekta wariantu bez stanu
   zakładają wiersz przez `lockOrCreate`, `INSERT … ON CONFLICT DO NOTHING` przed blokadą) i czytają stan od nowa po
@@ -152,8 +153,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
   Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`; Catalog
-  `ProductCreated` i `ProductChanged`, Ordering `OrderPlaced`), gdy jedyną drogą zapisu jest ta komenda. Gdy agregat ma wiele ścieżek
-  zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
+  `ProductCreated` i `ProductChanged`, Ordering `OrderPlaced`), gdy jedyną drogą zapisu jest ta komenda. Gdy agregat
+  ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
   rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
   w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
   pominie, a odrzucony albo wycofany zapis nie zostawia zdarzenia.
