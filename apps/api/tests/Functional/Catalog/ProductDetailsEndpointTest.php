@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Catalog;
 
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -110,20 +111,24 @@ final class ProductDetailsEndpointTest extends WebTestCase
     }
 
     /**
-     * @return iterable<string, array{string}>
+     * The 404 of a slug in the format of a product slug carries its tag, so the publication of a product with the
+     * slug drops it; a malformed slug can never be published and has the catalog tag only.
+     *
+     * @return iterable<string, array{string, string}>
      */
     public static function missingProducts(): iterable
     {
-        yield 'unknown slug' => ['/api/v1/products/nie-ma-takiego'];
-        yield 'slug in a wrong case' => ['/api/v1/products/Buty-Szosowe-Asfalt'];
-        yield 'malformed slug with a dash at the end' => ['/api/v1/products/buty-'];
-        yield 'malformed slug with a space' => ['/api/v1/products/buty%20szosowe'];
-        yield 'malformed slug with a dot' => ['/api/v1/products/buty.szosowe'];
-        yield 'slug too long' => ['/api/v1/products/'.str_repeat('a', 201)];
+        yield 'unknown slug' => ['/api/v1/products/nie-ma-takiego', 'catalog product-slug-nie-ma-takiego'];
+        yield 'slug in a wrong case' => ['/api/v1/products/Buty-Szosowe-Asfalt', 'catalog'];
+        yield 'malformed slug with a dash at the end' => ['/api/v1/products/buty-', 'catalog'];
+        yield 'malformed slug with a space' => ['/api/v1/products/buty%20szosowe', 'catalog'];
+        yield 'malformed slug with a dot' => ['/api/v1/products/buty.szosowe', 'catalog'];
+        yield 'malformed slug with a line break' => ['/api/v1/products/buty%0Aszosowe', 'catalog'];
+        yield 'slug too long' => ['/api/v1/products/'.str_repeat('a', 201), 'catalog'];
     }
 
     #[DataProvider('missingProducts')]
-    public function testAnUnknownOrMalformedSlugIsNotFound(string $path): void
+    public function testAnUnknownOrMalformedSlugIsNotFound(string $path, string $xkey): void
     {
         $problem = $this->get($path);
 
@@ -136,7 +141,28 @@ final class ProductDetailsEndpointTest extends WebTestCase
         self::assertTrue($headers->hasCacheControlDirective('public'));
         self::assertSame('60', $headers->getCacheControlDirective('max-age'));
         self::assertFalse($headers->hasCacheControlDirective('s-maxage'));
-        self::assertSame('catalog', $headers->get('xkey'));
+        self::assertSame($xkey, $headers->get('xkey'));
+    }
+
+    public function testADraftIsNotFoundLikeAnUnknownSlugAndTaggedWithItsSlug(): void
+    {
+        $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $category = CategoryFactory::createOne();
+        new DoctrineCategoryRepository($entityManager)->save($category);
+        $draft = ProductFactory::createOne(['slug' => 'kurtka-szkic', 'mainCategory' => $category, 'imageAlts' => ['Kurtka'], 'status' => ProductStatus::Draft]);
+        new DoctrineProductRepository($entityManager)->save($draft, null, null, new \DateTimeImmutable());
+
+        $draftProblem = $this->get('/api/v1/products/kurtka-szkic');
+        $draftHeaders = [$this->client->getResponse()->headers->get('Cache-Control'), $this->client->getResponse()->headers->get('Content-Type')];
+        $unknownProblem = $this->get('/api/v1/products/nie-ma-takiego');
+
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame($unknownProblem, $draftProblem);
+        self::assertSame([$this->client->getResponse()->headers->get('Cache-Control'), $this->client->getResponse()->headers->get('Content-Type')], $draftHeaders);
+        $this->get('/api/v1/products/kurtka-szkic');
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame('catalog product-slug-kurtka-szkic', $this->client->getResponse()->headers->get('xkey'));
     }
 
     public function testAnInvalidTokenIsUnauthorizedAndNotStored(): void

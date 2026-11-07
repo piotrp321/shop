@@ -7,7 +7,7 @@ namespace App\Catalog\Application\Port;
 use App\Catalog\Domain\Product\Slug;
 
 /**
- * The data of the product page, read straight from the Catalog tables.
+ * The data of the product page, read straight from the Catalog tables, also of a draft (`published` false).
  */
 interface ProductDetailsSource
 {
@@ -20,7 +20,8 @@ interface ProductDetailsSource
      *     breadcrumb: list<array{id: string, name: string, slug: string}>,
      *     images: list<array{key: string, alt: string}>,
      *     axes: list<string>,
-     *     variants: list<array{id: string, values: list<string>}>
+     *     variants: list<array{id: string, values: list<string>}>,
+     *     published: bool
      * }|null null when no product has the slug; breadcrumb from the root to the main category, images and
      *        variants in position order
      */

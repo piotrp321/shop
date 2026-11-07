@@ -7,6 +7,7 @@ namespace App\Catalog\Infrastructure\Persistence\Doctrine;
 use App\Catalog\Application\Port\ProductDetailsSource;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryPath;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\Slug;
 use Doctrine\DBAL\Connection;
 
@@ -23,17 +24,17 @@ final readonly class DbalProductDetailsSource implements ProductDetailsSource
     public function bySlug(Slug $slug): ?array
     {
         $product = $this->connection->fetchAssociative(
-            'SELECT p.id, p.slug, p.name, p.short_description, p.images, p.variant_axes, main.path
+            'SELECT p.id, p.slug, p.name, p.short_description, p.images, p.variant_axes, main.path, p.status = :published AS published
              FROM catalog_product p
              JOIN catalog_category main ON main.id = p.primary_category_id
              WHERE p.slug = :slug',
-            ['slug' => $slug->value()],
+            ['slug' => $slug->value(), 'published' => ProductStatus::Published->value],
         );
         if (false === $product) {
             return null;
         }
         \assert(\is_string($product['id']) && \is_string($product['slug']) && \is_string($product['name']));
-        \assert(\is_string($product['short_description']) && \is_string($product['path']));
+        \assert(\is_string($product['short_description']) && \is_string($product['path']) && \is_bool($product['published']));
 
         $variants = $this->connection->fetchAllAssociative(
             'SELECT id, option_values FROM catalog_product_variant WHERE product_id = CAST(:id AS uuid) ORDER BY position',
@@ -53,6 +54,7 @@ final readonly class DbalProductDetailsSource implements ProductDetailsSource
 
                 return ['id' => $variant['id'], 'values' => self::strings($variant['option_values'])];
             }, $variants),
+            'published' => $product['published'],
         ];
     }
 
