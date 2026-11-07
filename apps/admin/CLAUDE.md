@@ -78,6 +78,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   routera, bo po utworzeniu produktu ta sama instancja przechodzi między trasami) i ostrzega przy zamknięciu karty, ale nie przy wylogowaniu (`signingOut` w store `auth`; blokada wylogowania po bezczynności
   zostawiłaby sesję bez limitu). Odpowiedź żądania, które skończyło się po opuszczeniu formularza, jest ignorowana.
   Błąd 422 dla całej listy zdjęć (`images`) pokazuje sekcja „Zdjęcia”, dla jednego zdjęcia (`images[i]`) jego wiersz.
+  Zapis, publikacja i wycofanie zwracają wynik (`ActionResult`), po którym `ProductFormView` przewija i ustawia fokus
+  na pierwszym błędzie w kolejności dokumentu (pole z błędem albo komunikat, także w sekcjach „Zdjęcia” i „Warianty”),
+  a po sukcesie na komunikacie sukcesu; formularz jest długi, a wynik pojawia się daleko od przycisku.
   `useImageUpload` (sekcja „Zdjęcia”, `ProductImages.vue`): pliki wysyłane po kolei jako `multipart` z osobnym
   statusem (oczekuje, wysyłanie, gotowe, błąd z `detail` 422 albo ogólnym komunikatem, ponowienie), klucz już
   obecny w formularzu nie jest dodawany drugi raz, z wybranych plików wysyłane są tylko te, które mieszczą się

@@ -2,7 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import PrimeVue from "primevue/config";
 import TreeSelect from "primevue/treeselect";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type Mock, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouterView, createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { primeVueOptions } from "@/primevue";
@@ -85,7 +85,7 @@ async function mountForm(path: string, roles: StaffMe["roles"] = ["admin"]) {
     ],
   });
   await router.push(path);
-  const wrapper = mount({ components: { RouterView }, template: "<RouterView />" }, { global: { plugins: [pinia, router, [PrimeVue, primeVueOptions]] as never[] } });
+  const wrapper = mount({ components: { RouterView }, template: "<RouterView />" }, { attachTo: document.body, global: { plugins: [pinia, router, [PrimeVue, primeVueOptions]] as never[], stubs: { transition: false } } });
   await flushPromises();
   return { wrapper, router };
 }
@@ -98,6 +98,7 @@ function files(wrapper: Awaited<ReturnType<typeof mountForm>>["wrapper"], chosen
 
 describe("ProductFormView", () => {
   let mounted: Awaited<ReturnType<typeof mountForm>> | undefined;
+  let scrollIntoView: Mock<Element["scrollIntoView"]>;
 
   beforeEach(() => {
     mocks.get.mockReset();
@@ -105,12 +106,16 @@ describe("ProductFormView", () => {
     mocks.put.mockReset();
     // jsdom has no matchMedia, which the Select of PrimeVue asks for when it is mounted.
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    // jsdom does not scroll and has no scrollIntoView either.
+    scrollIntoView = vi.fn<Element["scrollIntoView"]>();
+    Element.prototype.scrollIntoView = scrollIntoView;
     serve();
   });
 
   afterEach(() => {
     mounted?.wrapper.unmount();
     mounted = undefined;
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -287,6 +292,156 @@ describe("ProductFormView", () => {
       finish({ data: view({ version: 4 }), response: { status: 200 } });
       await flushPromises();
       expect(mounted.wrapper.get("[data-testid=save]").attributes("disabled")).toBeUndefined();
+    });
+  });
+
+  describe("showing the result of an action", () => {
+    async function edited(path: string, name = "Inne") {
+      mounted = await mountForm(path);
+      await mounted.wrapper.get("[data-testid=name]").setValue(name);
+      scrollIntoView.mockClear();
+    }
+
+    async function click(testId: string) {
+      await mounted!.wrapper.get(`[data-testid=${testId}]`).trigger("click");
+      await flushPromises();
+    }
+
+    function expectRevealed(element: Element) {
+      expect(document.activeElement).toBe(element);
+      expect(scrollIntoView).toHaveBeenCalled();
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(element);
+    }
+
+    function revealed(testId: string) {
+      expectRevealed(mounted!.wrapper.get(`[data-testid=${testId}]`).element);
+    }
+
+    it("moves to the field the API names and focuses it", async () => {
+      await edited("/products/p-1", "");
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "name", title: "Podaj nazwę produktu." }] }));
+
+      await click("save");
+
+      revealed("name");
+    });
+
+    it("moves to the first of several errors in the order of the document", async () => {
+      await edited("/products/p-1");
+      mocks.put.mockResolvedValue(
+        problem(422, {
+          violations: [
+            { propertyPath: "taxClass", title: "Wybierz klasę." },
+            { propertyPath: "slug", title: "Zły slug." },
+          ],
+        }),
+      );
+
+      await click("save");
+
+      revealed("slug");
+    });
+
+    it("moves to the message of a field that cannot be focused", async () => {
+      serve(view({ slugLocked: true, status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
+      await edited("/products/p-1");
+      mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}slug-locked`, detail: "Slug jest zablokowany." }));
+
+      await click("save");
+
+      revealed("error-slug");
+    });
+
+    it("moves to the message of the form when there is no field to show", async () => {
+      await edited("/products/p-1");
+      mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}product-modified`, detail: "x" }));
+
+      await click("save");
+
+      revealed("form-error");
+    });
+
+    it("moves to the message of the form after a failure without a connection", async () => {
+      await edited("/products/p-1");
+      mocks.put.mockRejectedValue(new Error("offline"));
+
+      await click("save");
+
+      revealed("form-error");
+    });
+
+    it("moves to the error of the whole list of images", async () => {
+      await edited("/products/p-1");
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "images", title: "Produkt może mieć najwyżej 10 zdjęć." }] }));
+
+      await click("save");
+
+      revealed("images-error");
+    });
+
+    it("moves to the conflict about variants", async () => {
+      await edited("/products/p-1");
+      mocks.put.mockResolvedValue(problem(409, { type: `${PREFIX}variant-in-use`, detail: "Wariant ma stan magazynowy." }));
+
+      await click("save");
+
+      revealed("variants-error");
+    });
+
+    it("moves to the field of a value of a variant", async () => {
+      await edited("/products/p-1");
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "variants[1].values[0]", title: "Taka kombinacja już jest." }] }));
+
+      await click("save");
+
+      expectRevealed(mounted!.wrapper.findAll("[data-testid=variant-row]")[1]!.get("input").element);
+    });
+
+    it("moves to the message of a failed publication", async () => {
+      await edited("/products/p-1", "Buty biegowe");
+      mocks.post.mockResolvedValue(problem(409, { type: `${PREFIX}product-not-publishable`, detail: "x" }));
+
+      await click("publish");
+
+      revealed("form-error");
+    });
+
+    it("moves to the message of a failed withdrawal", async () => {
+      serve(view({ status: "published", firstPublishedAt: "2026-11-02T10:00:00+00:00" }));
+      await edited("/products/p-1", "Buty biegowe");
+      mocks.post.mockResolvedValue(problem(503));
+
+      await click("unpublish");
+
+      revealed("form-error");
+    });
+
+    it("moves to the confirmation after a save", async () => {
+      await edited("/products/p-1");
+      mocks.put.mockResolvedValue({ data: view({ version: 4, name: "Inne" }), response: { status: 200 } });
+
+      await click("save");
+
+      revealed("success-message");
+    });
+
+    it("moves to the confirmation after a publication", async () => {
+      await edited("/products/p-1", "Buty biegowe");
+      mocks.post.mockResolvedValue({ data: view({ version: 4, status: "published" }), response: { status: 200 } });
+
+      await click("publish");
+
+      revealed("success-message");
+    });
+
+    it("moves to the confirmation of a product that was just created, after the route moved to its page", async () => {
+      await edited("/products/new", "Buty biegowe");
+      mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [] }] }), response: { status: 201 } });
+
+      await click("save");
+
+      expect(mounted!.router.currentRoute.value.name).toBe("product");
+      revealed("success-message");
     });
   });
 

@@ -57,6 +57,9 @@ export const LAST_IMAGE_MESSAGE = "Opublikowany produkt musi mieć co najmniej j
 
 type Action = "save" | "publish" | "unpublish";
 
+/** How an action ended; null when it did not start or its answer came after the form was left. */
+export type ActionResult = "success" | "failure" | null;
+
 interface Outcome {
   data?: ProductEditView;
   error?: unknown;
@@ -365,16 +368,16 @@ export function useProductForm(options: ProductFormOptions) {
     }
   }
 
-  async function perform(action: Action, allowed: boolean, request: () => Promise<Outcome>, success: string): Promise<void> {
+  async function perform(action: Action, allowed: boolean, request: () => Promise<Outcome>, success: string): Promise<ActionResult> {
     if (!allowed) {
-      return;
+      return null;
     }
     clearFeedback();
     busy.value = true;
     try {
       const result = await request();
       if (disposed) {
-        return;
+        return null;
       }
       if (result.data) {
         const created = view.value === null;
@@ -383,19 +386,22 @@ export function useProductForm(options: ProductFormOptions) {
         if (created) {
           options.onCreated(result.data.id);
         }
-      } else {
-        failure(action, result.response.status, result.error);
+        return "success";
       }
+      failure(action, result.response.status, result.error);
+      return "failure";
     } catch {
-      if (!disposed) {
-        error.value = "Nie udało się wykonać operacji. Sprawdź połączenie z API.";
+      if (disposed) {
+        return null;
       }
+      error.value = "Nie udało się wykonać operacji. Sprawdź połączenie z API.";
+      return "failure";
     } finally {
       busy.value = false;
     }
   }
 
-  function save(): Promise<void> {
+  function save(): Promise<ActionResult> {
     const current = view.value;
     const body = toBody(form.value);
     return perform(
@@ -409,7 +415,7 @@ export function useProductForm(options: ProductFormOptions) {
     );
   }
 
-  function publish(): Promise<void> {
+  function publish(): Promise<ActionResult> {
     const current = view.value;
     return perform(
       "publish",
@@ -419,7 +425,7 @@ export function useProductForm(options: ProductFormOptions) {
     );
   }
 
-  function unpublish(): Promise<void> {
+  function unpublish(): Promise<ActionResult> {
     const current = view.value;
     return perform(
       "unpublish",
