@@ -254,7 +254,8 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
 - Warianty: osie (0–2, dodanie, zmiana nazwy, usunięcie) i tabela wierszy: wartość dla każdej osi, dodanie
   i usunięcie wiersza. Produkt bez osi pokazuje jeden wiersz „Wariant domyślny” bez pól. Usunięcie wiersza
   istniejącego wariantu pyta o potwierdzenie („Cena i stan wariantu przestaną być widoczne w panelu.”). Reguły
-  (unikalność kombinacji, liczba wartości) sprawdza API; 422 wskazuje pole wiersza.
+  (unikalność kombinacji, liczba wartości) sprawdza API; 422 wskazuje pole wiersza. Przed pierwszą publikacją osie
+  można też przestawić (wartości w wierszach przestawiają się razem z osią).
 - Po pierwszej publikacji (`firstPublishedAt` z API) dodanie, usunięcie i przestawienie osi są niedostępne, a pod
   tabelą jest wyjaśnienie: „Wartości istniejących wariantów można poprawić tylko w wielkości liter. Inną zmianę
   zrób przez dodanie nowego wariantu i usunięcie starego.” Pola wartości zostają edytowalne; regułę klucza

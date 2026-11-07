@@ -41,7 +41,9 @@ const {
   conflict,
   imagesErrors,
   variantsErrors,
+  axesLocked,
   errorsAt,
+  errorsExactly,
   upload,
   save,
   publish,
@@ -49,6 +51,13 @@ const {
   refresh,
   moveImage,
   removeImage,
+  addAxis,
+  setAxis,
+  removeAxis,
+  moveAxis,
+  addVariant,
+  removeVariant,
+  setValue,
 } = useProductForm({
   productId: () => (typeof route.params.id === "string" ? route.params.id : null),
   // Only hides the actions: the API checks the permission. The roles come from /api/v1/admin/me.
@@ -370,6 +379,17 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
         :axes="data.variantAxes"
         :rows="data.variants"
         :errors="variantsErrors"
+        :read-only="readOnly"
+        :axes-locked="axesLocked"
+        :errors-at="errorsAt"
+        :errors-exactly="errorsExactly"
+        @add-axis="addAxis"
+        @set-axis="setAxis"
+        @remove-axis="removeAxis"
+        @move-axis="moveAxis"
+        @add-variant="addVariant"
+        @remove-variant="removeVariant"
+        @set-value="setValue"
       />
 
       <div
