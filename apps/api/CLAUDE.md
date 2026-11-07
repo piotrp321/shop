@@ -174,6 +174,36 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     z adresem (`SendOrderShipped` po `OrderShipped`, rodzaj `shipped`, `OrderShippedText`) i „Zamówienie … wróciło do
     nas” (`SendReturnReceived` po `OrderReturned`, rodzaj `return_received`, `ReturnReceivedText`). Dostarczenie
     i wykonanie zwrotu pieniędzy są bez e-maila; notatka pracownika ani termin zwrotu nie trafiają do e-maila.
+  - Panel (`openapi-admin.json`, tag `Ordering`): `GET /api/v1/admin/orders` (lista), `GET /api/v1/admin/orders/{orderId}`
+    (szczegóły), `POST …/{orderId}/status-changes` (`{transition, version, note}`) i `POST …/{orderId}/refund-completion`
+    (`{version, note}`); każda odpowiedź `private, no-store` (`OrderResponseCacheSubscriber` obejmuje `admin/orders`).
+    Reguła ról (P6) jest tylko w `OrderVoter` (`Ordering_Infrastructure`, role z `AuthenticatedStaffMember`):
+    `VIEW_ORDERS` (`admin`, `support`, `warehouse`), `CHANGE_ORDER_STATUS` z przejściem `StaffTransition` jako
+    subject (`ship`, `deliver`: `admin`, `warehouse`; `cancel`, `return`: `admin`, `support`; bez przejścia voter
+    wstrzymuje się, czyli odmowa) i `COMPLETE_REFUND` (`admin`, `support`); `marketing` nie ma dostępu. Kontrolery
+    znają tylko nazwy atrybutów (`BackofficeOrderAttributes`) i pytają `isGranted`; Deptrac pozwala `Ordering_UI`
+    i `Ordering_Infrastructure` tylko na `Backoffice_Application`.
+  - Kolejność sprawdzeń zmiany statusu: 401, 403 `VIEW_ORDERS` (atrybut, przed treścią), 400/415/422 treści (typy
+    ścisłe jak korekta stanu, wszystkie klucze wymagane; reguły notatki `StaffNote` z ich komunikatami przy polu
+    `note`, także notatka wymagana przy `cancel` i `return`), 403 `CHANGE_ORDER_STATUS` dla przejścia z treści,
+    404, 409. Wykonanie zwrotu: 403 `COMPLETE_REFUND` (atrybut) przed treścią, potem 404 i 409. 409 panelu mają
+    schemat `BackofficeOrderConflictProblem` (`order-transition-not-allowed`, `refund-not-pending`, `about:blank` dla
+    wersji). Szczegóły, zmiana statusu i wykonanie zwrotu odpowiadają `BackofficeOrder` (`BackofficeOrderResponder`):
+    `allowedTransitions` to przejścia statusu (`statusTransitions` widoku) przepuszczone przez voter, a
+    `canCompleteRefund` = zwrot do wykonania i `COMPLETE_REFUND`.
+  - Zapytania panelu (`query.bus`, bez blokad): `GetBackofficeOrder(orderId)` czyta zamówienie przez
+    `OrderRepository::get` i zwraca ten sam `BackofficeOrderView` co komendy pracownika (`overdue` z zegara; nieznane
+    i id spoza UUID: `OrderNotFound`). `ListBackofficeOrders(status, pendingRefunds, q, after, perPage)` czyta przez
+    port `BackofficeOrderReader` (adapter DBAL `DbalBackofficeOrderReader`, liczba sztuk z sumy linii): `q` po
+    przycięciu to dokładny numer, gdy pasuje do `^[Rr]-[0-9]+$`, inaczej dokładny e-mail (`lower(email) =
+    lower(:email)`), gdy ma `@`, inaczej pusta lista bez odczytu; sort `placed_at DESC, id DESC`, a przy
+    `refund=pending` tylko zwroty do wykonania po `refund_due_at ASC, id ASC` (łączy się ze `status` i `q`).
+    Kursor keyset `BackofficeOrderCursor` (base64url JSON sortu, chwili w UTC z mikrosekundami i id); zły kursor
+    i kursor drugiego sortu to 400 przy `after`. Parametry: `q` 1–254 znaki po przycięciu bez NUL, `perPage` 1–100
+    (domyślnie 25), inaczej 400. Indeksy listy (migracja): `(placed_at DESC, id DESC)`,
+    `(status, placed_at DESC, id DESC)`, `(lower(email))` (wyrażenie, mapowanie go nie zna, więc narzędzia schematu
+    go pomijają) i częściowy `(refund_due_at, id) WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL`
+    (warunek w mapowaniu tak, jak zwraca go PostgreSQL); `OrderingSchemaTest` pilnuje zgodności mapowania z migracją.
 - Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
   dostawcy (`pending` → `succeeded` | `failed` | `cancelled`; `succeed` także z `failed` i `cancelled`, bo pieniądze ważą
   więcej niż wcześniejsza odmowa; `requireRefund` tylko dla `succeeded`, pierwszy powód zostaje), bez pola wersji:
@@ -369,7 +399,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wartość w stałej `TYPE`; subscriber wpisuje ją do odpowiedzi, a Shared nie zna contextów. Format wartości:
   `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je pięć 409 Ordering
   sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`), dwa 409 komend pracownika Ordering
-  (`order-transition-not-allowed`, `refund-not-pending`) i cztery 409 Payment: `order-already-paid`,
+  (`order-transition-not-allowed`, `refund-not-pending`; schemat `BackofficeOrderConflictProblem` w obszarze `admin`) i cztery 409 Payment: `order-already-paid`,
   `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
   Nowy typ dopisz do `enum` schematu swojego contextu.
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
