@@ -14,6 +14,7 @@ async function mountMenu(path: string, roles: Role[] | null) {
     history: createMemoryHistory(),
     routes: [
       { path: "/", name: "dashboard", component: empty },
+      { path: "/products", name: "products", component: empty },
       { path: "/prices", name: "prices", component: empty },
       { path: "/inventory", name: "inventory", component: empty },
       // The shape of the router of the app: the list and the detail are children of one `orders` path.
@@ -40,11 +41,12 @@ function links(wrapper: Awaited<ReturnType<typeof mountMenu>>) {
 }
 
 describe("AppMenu", () => {
-  it("links the dashboard, the price list and the stock list", async () => {
+  it("links the dashboard, the products, the price list and the stock list", async () => {
     const wrapper = await mountMenu("/prices", ["marketing"]);
 
     expect(links(wrapper)).toEqual([
       ["Dashboard", "/"],
+      ["Produkty", "/products"],
       ["Ceny", "/prices"],
       ["Stany magazynowe", "/inventory"],
     ]);
@@ -57,6 +59,7 @@ describe("AppMenu", () => {
 
     expect(links(wrapper)).toEqual([
       ["Dashboard", "/"],
+      ["Produkty", "/products"],
       ["Ceny", "/prices"],
       ["Stany magazynowe", "/inventory"],
       ["Zamówienia", "/orders"],

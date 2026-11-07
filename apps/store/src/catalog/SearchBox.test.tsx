@@ -60,6 +60,14 @@ describe("SearchBox", () => {
     expect(html).toContain('name="q"');
   });
 
+  it("has the phrase it is given in the HTML, so the field is filled without JavaScript", () => {
+    nav.pathname = "/szukaj";
+    nav.params = new URLSearchParams("q=kurtki");
+    expect(renderToStaticMarkup(<SearchBox phrase="kurtki" />)).toMatch(/<input[^>]*id="header-search"[^>]*value="kurtki"/);
+    render(<SearchBox phrase="kurtki" />);
+    expect(field().value).toBe("kurtki");
+  });
+
   it("hydrates the field of the page HTML in place, so what was typed before the hydration stays", async () => {
     // The server does not have the address (a product page is ISR), so the header is the fallback in the HTML.
     nav.pending = new Promise<void>(() => {});

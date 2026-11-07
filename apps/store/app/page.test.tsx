@@ -76,6 +76,12 @@ describe("Home page", () => {
       expect(loadCatalog).toHaveBeenCalledExactlyOnceWith({ priceMin: "12,5" });
     });
 
+    it("links from the invalid filter message to the list without the malformed price", async () => {
+      vi.mocked(loadCatalog).mockResolvedValue({ kind: "invalid-filter" });
+      const markup = renderToStaticMarkup(await Home(props({ "cena-od": "12,5", o: "Kolor:czarne" })));
+      expect(markup).toContain('href="/?o=Kolor%3Aczarne">Pokaż wyniki bez błędnej ceny</a>');
+    });
+
     it("shows the invalid filter message without asking for products for an unknown sort or a dostepne other than 1", async () => {
       const queries: Query[] = [{ sort: "popularne" }, { dostepne: "0" }];
       for (const query of queries) {

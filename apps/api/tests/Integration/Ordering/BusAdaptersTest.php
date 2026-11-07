@@ -240,7 +240,7 @@ final class BusAdaptersTest extends KernelTestCase
             ? ['variantAxes' => [], 'variants' => [['id' => $variantIds[0], 'values' => []]]]
             : ['variantAxes' => ['Kolor'], 'variants' => array_map(static fn (string $id, int $n): array => ['id' => $id, 'values' => ['kolor '.$n]], $variantIds, array_keys($variantIds))];
         $product = ProductFactory::createOne(['mainCategory' => $category, 'name' => $name, ...$variants]);
-        new DoctrineProductRepository($this->entityManager)->save($product);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return [$product->id()->toString(), $variantIds];
     }

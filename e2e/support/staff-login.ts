@@ -36,3 +36,32 @@ export async function loginStaff(page: Page, account: StaffAccount): Promise<voi
   }
   await expect(page.getByRole("heading", { name: "Dashboard" }), "the panel opens after the OTP step").toBeVisible();
 }
+
+/**
+ * Starts waiting for the bearer token the panel sends to the admin API (the panel keeps its tokens in memory only) and
+ * returns the pending token. Call it before the login, so the first request of the panel after the login is not missed,
+ * and await the result after it. It rejects when no such request is made within the timeout or the page closes first.
+ */
+export function waitForBearerToken(page: Page, timeout = 60_000): Promise<string> {
+  let token = "";
+  const found = page
+    .waitForRequest(
+      async (request) => {
+        if (!request.url().includes("/api/v1/admin/")) return false;
+        const header = await request.headerValue("authorization").catch(() => null);
+        if (!header?.startsWith("Bearer ")) return false;
+        token = header.slice("Bearer ".length);
+        return true;
+      },
+      { timeout },
+    )
+    .then(
+      () => token,
+      (error: unknown) => {
+        throw new Error(`the panel sent no request with a bearer token to the admin API within ${timeout / 1000} s`, { cause: error });
+      },
+    );
+  // A login that fails first leaves this promise unawaited: keep its later rejection from being reported as unhandled.
+  found.catch(() => undefined);
+  return found;
+}

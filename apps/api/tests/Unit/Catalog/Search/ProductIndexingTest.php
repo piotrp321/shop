@@ -16,6 +16,7 @@ use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Application\Search\VariantFacts;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryProductOfferFacts;
 use App\Tests\Support\InMemory\RecordingProductIndexer;
@@ -54,6 +55,24 @@ final class ProductIndexingTest extends TestCase
         self::assertSame(['Buty'], $document->categoryNames);
         self::assertEquals([new VariantDocument(4_900, true, [])], $document->variants);
         self::assertSame(4_900, $document->fromGross);
+    }
+
+    public function testADraftIsWrittenAsADraftDocumentLikeAnyProduct(): void
+    {
+        $this->source = new InMemoryProductSearchSource([self::snapshot(ProductStatus::Draft)]);
+
+        self::assertSame(ReindexOutcome::Indexed, $this->indexing()->reindex(self::PRODUCT_ID));
+
+        self::assertCount(1, $this->indexer->indexed);
+        self::assertSame(ProductStatus::Draft, $this->indexer->indexed[0]->status);
+        self::assertSame(1_793_966_400_123_456, $this->indexer->indexed[0]->version);
+    }
+
+    public function testAPublishedProductIsWrittenAsAPublishedDocument(): void
+    {
+        $this->indexing()->reindex(self::PRODUCT_ID);
+
+        self::assertSame(ProductStatus::Published, $this->indexer->indexed[0]->status);
     }
 
     public function testTheVersionIsTheMicrosecondTimeTakenBeforeTheReads(): void
@@ -148,7 +167,7 @@ final class ProductIndexingTest extends TestCase
         return new ProductIndexing($this->source, $this->offers, $this->indexer, new ProductDocumentBuilder(), $this->clock);
     }
 
-    private static function snapshot(): ProductSearchSnapshot
+    private static function snapshot(ProductStatus $status = ProductStatus::Published): ProductSearchSnapshot
     {
         return new ProductSearchSnapshot(
             self::PRODUCT_ID,
@@ -162,6 +181,7 @@ final class ProductIndexingTest extends TestCase
             ['Buty'],
             [],
             [['id' => self::VARIANT_ID, 'values' => []]],
+            status: $status,
         );
     }
 }

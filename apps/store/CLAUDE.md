@@ -110,7 +110,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `10000`), każda inna wartość idzie bez zmian, więc API odpowiada 400. Liczby, zakresy cen, liczby przy wartościach
   i dostępność pochodzą z `facets` API; podpowiedź zakresu ceny to kwoty z API sformatowane `formatPrice`.
   Nieznany `sort`, `dostepne` inne niż `1` i 400 API to „Nieprawidłowy filtr” (z `noindex`); dla nieznanego `sort`
-  i `dostepne` sklep nie woła API.
+  i `dostepne` sklep nie woła API. `InvalidFilter` ma obok „Zobacz cały katalog” link powrotu z `invalidFilterExit`:
+  „Pokaż wyniki bez błędnej ceny” (bez ceny, która nie jest samymi cyframi, gdy reszta przechodzi `toApiQuery`) albo
+  „Pokaż wyniki bez filtrów” (listing bez filtrów i sortowania, na `/szukaj` z frazą; na `/` go nie ma).
 - `/szukaj`: `q` bez frazy albo krótsze niż 2 znaki (po przycięciu) → „Wpisz co najmniej 2 znaki.” bez wywołania listy
   produktów i drzewa kategorii. `kategoria` czyta drzewo (to samo `React.cache`), zamienia ścieżkę na `category` API;
   nieznana ścieżka (też kategoria, której API już nie zna) → „Nieprawidłowy filtr”. `h1` `Wyniki dla „<fraza>”`,
@@ -137,10 +139,16 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Nagłówek i mega menu
 
 - `SiteHeader` ma pole wyszukiwania (`SearchBox`, Client Component): formularz `GET /szukaj` (`next/form`) z polem `q`
-  (etykieta „Szukaj produktów”). HTML nagłówka jest taki sam dla wszystkich (strona produktu jest ISR), więc pole jest
-  w nim puste; fraza na `/szukaj` trafia do pola z `useSearchParams` (mały komponent w `Suspense` bez wyniku: formularz i pole są poza
-  nim, więc element pola się nie wymienia przy hydratacji i wpisany wcześniej tekst zostaje). Pole jest nadpisywane tylko
-  przy zmianie frazy (nowe wyszukiwanie, wyjście z `/szukaj`), nie przy zmianie innych parametrów.
+  (etykieta „Szukaj produktów”). Pole przychodzi do layoutu jako slot `@search` (layout nie dostaje `searchParams`,
+  strona slotu tak): `app/@search/szukaj/page.tsx` daje pole z frazą w HTML z serwera (`/szukaj` i tak jest renderowane
+  przy każdym żądaniu, więc działa bez JavaScriptu), `app/@search/default.tsx` puste pole na każdej innej stronie (HTML
+  taki sam dla wszystkich, strona produktu jest ISR). Strona 404 nieznanego adresu nie dostaje slotu, więc layout
+  wstawia wtedy puste pole sam. Przy nawigacji klienckiej z `/szukaj` na inną stronę Next zostawia aktywny slot
+  `@search/szukaj` (z frazą w `defaultValue`), a w drugą stronę montuje nowe pole z frazą. Pole w przeglądarce
+  prowadzi `useSearchParams` (mały komponent w `Suspense` bez wyniku: formularz i pole są poza nim, więc element pola
+  się nie wymienia przy hydratacji i wpisany wcześniej tekst zostaje): przy pierwszym uruchomieniu pisze tylko do
+  pustego pola, potem nadpisuje je przy zmianie frazy (nowe wyszukiwanie, wyjście z `/szukaj`, które czyści pole
+  pozostawionego slotu), nie przy zmianie innych parametrów.
 - Układ: od `sm` logo, pole, koszyk i konto w jednym wierszu; poniżej `sm` pole wyszukiwania ma własny wiersz na pełną
   szerokość pod logo, koszykiem i kontem (nagłówek ma `flex-wrap`), żeby strona nie przewijała się w poziomie przy 375 px
   (`e2e/tests/site-header.spec.ts`).
@@ -168,9 +176,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (`STORE_MODE=production`); `next dev` renderuje przy każdym żądaniu.
 - Dane (`loadProduct` w `src/catalog/load-product.ts`, wspólne dla `generateMetadata` i strony przez `React.cache`
   jako `loadProductForRequest`): `GET /api/v1/products/{slug}`, potem `GET /api/v1/product-offers?productId=<id>`, oba
-  przez `API_CATALOG_URL`. Tagi cache Next to te same nazwy, które API wystawia w `xkey`: szczegóły `catalog`, oferta
-  `catalog` i `product-<id>` (UUID małymi literami). Strona dziedziczy sumę tagów odczytów, więc `revalidateTag`
-  tych nazw unieważnia jej HTML.
+  przez `API_CATALOG_URL`. Tagi cache Next to te same nazwy, które API wystawia w `xkey`: szczegóły `catalog`
+  i `product-slug-<slug>` (tylko dla sluga w formacie sluga produktu, `isProductSlug` w `load-product.ts`, ten sam
+  wzorzec co w `/api/revalidate`; inny napis tylko `catalog`), oferta `catalog` i `product-<id>` (UUID małymi
+  literami). Strona dziedziczy sumę tagów odczytów, więc `revalidateTag` tych nazw unieważnia jej HTML, także strony
+  404 sluga, który właśnie został opublikowany.
 - 404 szczegółów → `notFound()` (strona 404 z `noindex`; `generateMetadata` zwraca wtedy `{}`). Każdy inny błąd
   szczegółów albo oferty (status, sieć, nieoczekiwana treść, brak oferty produktu) to wyjątek, czyli `app/error.tsx`,
   którego ISR nie cache'uje; strona bez ceny nigdy nie powstaje.
@@ -205,10 +215,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Rewalidacja (`POST /api/revalidate`)
 
 - Woła ją tylko worker API (`StorefrontCache`) po purge Varnisha: po zmianie ceny albo poziomu dostępności z tagiem
-  `product-<id>`, w `storefront:cache:purge-all` (koniec `make seed`) z tagiem `catalog`. Przeglądarka jej nie woła.
+  `product-<id>`, po edycji, publikacji albo wycofaniu produktu z tagami `product-<id>` i `product-slug-<slug>`,
+  w `storefront:cache:purge-all` (koniec `make seed`) z tagiem `catalog`. Przeglądarka jej nie woła.
 - `Authorization: Bearer <STORE_REVALIDATE_SECRET>` (z `.env.local`), porównany w stałym czasie (skróty SHA-256
-  i `timingSafeEqual`, więc nie zdradza też długości); treść JSON `{ tags }`, 1–100 tagów, każdy `catalog` albo
-  `product-<uuid małymi literami>` (słownik tagów API).
+  i `timingSafeEqual`, więc nie zdradza też długości); treść JSON `{ tags }`, 1–100 tagów, każdy `catalog`,
+  `product-<uuid małymi literami>` albo `product-slug-<slug>` (slug w formacie sluga produktu: małe litery i cyfry
+  w grupach łączonych pojedynczym `-`, do 200 znaków; słownik tagów API).
 - Każdy tag: `revalidateTag(tag, { expire: 0 })`: następne wejście czeka na świeży render zamiast dostać starą stronę
   (P5). Odpowiedź 200 `{ revalidated: <liczba tagów> }`.
 - Kolejność sprawdzeń: brak sekretu w środowisku 503, brak lub zły sekret 401, `Content-Type` inny niż

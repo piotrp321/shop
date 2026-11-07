@@ -107,8 +107,8 @@ final class ProductVariantsMigrationTest extends KernelTestCase
         $hasAxes = $this->hasColumn('catalog_product', 'variant_axes');
         $this->connection->executeStatement(
             \sprintf(
-                "INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, tax_class, images, version%s)
-                 VALUES (?, ?, ?, 'Short', ?, 'standard', '[{\"key\": \"originals/a.jpg\", \"alt\": \"A\"}]'::jsonb, 3%s)",
+                "INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, tax_class, images, version, status, updated_at%s)
+                 VALUES (?, ?, ?, 'Short', ?, 'standard', '[{\"key\": \"originals/a.jpg\", \"alt\": \"A\"}]'::jsonb, 3, 'published', now()%s)",
                 $hasAxes ? ', variant_axes' : '',
                 $hasAxes ? ", '[]'::jsonb" : '',
             ),

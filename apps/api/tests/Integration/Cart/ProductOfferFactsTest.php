@@ -38,7 +38,7 @@ final class ProductOfferFactsTest extends KernelTestCase
         $ids = [];
         for ($p = 0; $p < GetProductOffers::MAX_PRODUCTS; ++$p) {
             $product = ProductFactory::createOne(['mainCategory' => $category]);
-            $products->save($product);
+            $products->save($product, null, null, new \DateTimeImmutable());
             $ids[] = $product->id()->toString();
         }
         $black = (string) Uuid::v4();
@@ -49,7 +49,7 @@ final class ProductOfferFactsTest extends KernelTestCase
             ['id' => $white, 'values' => ['białe']],
             ['id' => $green, 'values' => ['zielone']],
         ]]);
-        $products->save($priced);
+        $products->save($priced, null, null, new \DateTimeImmutable());
         // Black: priced and in stock (purchasable); white: cheaper but out of stock; green: no price and no stock.
         VariantPriceRecordFactory::store($entityManager, ['variantId' => $black, 'gross' => 4_900]);
         StockFixture::stock($entityManager->getConnection(), 5, variantId: $black);

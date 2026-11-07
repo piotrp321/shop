@@ -11,11 +11,12 @@ enum ImageSize: string
 {
     case Listing = 'listing';
     case Product = 'product';
+    case Thumbnail = 'thumbnail';
 
     public function aspectRatio(): string
     {
         return match ($this) {
-            self::Listing, self::Product => '1:1',
+            self::Listing, self::Product, self::Thumbnail => '1:1',
         };
     }
 
@@ -25,6 +26,7 @@ enum ImageSize: string
         return match ($this) {
             self::Listing => [256, 384, 512, 768],
             self::Product => [640, 960, 1280, 1600],
+            self::Thumbnail => [96, 192],
         };
     }
 
@@ -32,21 +34,21 @@ enum ImageSize: string
     public function formats(): array
     {
         return match ($this) {
-            self::Listing, self::Product => [ImageFormat::Webp],
+            self::Listing, self::Product, self::Thumbnail => [ImageFormat::Webp],
         };
     }
 
     public function resize(): string
     {
         return match ($this) {
-            self::Listing, self::Product => 'fill',
+            self::Listing, self::Product, self::Thumbnail => 'fill',
         };
     }
 
     public function gravity(): string
     {
         return match ($this) {
-            self::Listing, self::Product => 'sm',
+            self::Listing, self::Product, self::Thumbnail => 'sm',
         };
     }
 }

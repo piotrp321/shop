@@ -12,6 +12,7 @@ use App\Catalog\Application\Search\ProductSearchSnapshot;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Application\Search\VariantFacts;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Inventory\Domain\Stock\AvailabilityLevel;
 use App\Inventory\Domain\Stock\StockChangeSource;
 use App\Inventory\Domain\Stock\StockLevelChanged;
@@ -140,7 +141,7 @@ final class ReindexProductOnStockLevelChangeTest extends TestCase
     private function consumer(): ReindexProductOnStockLevelChange
     {
         $source = new InMemoryProductSearchSource([
-            new ProductSearchSnapshot(self::PRODUCT, 'Kurtka', 'kurtka', '', self::CATEGORY, [], [[self::CATEGORY]], null, ['Odzież'], [], [['id' => self::VARIANT, 'values' => []]]),
+            new ProductSearchSnapshot(self::PRODUCT, 'Kurtka', 'kurtka', '', self::CATEGORY, [], [[self::CATEGORY]], null, ['Odzież'], [], [['id' => self::VARIANT, 'values' => []]], ProductStatus::Published),
         ]);
 
         return new ReindexProductOnStockLevelChange(

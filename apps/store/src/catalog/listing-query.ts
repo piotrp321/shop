@@ -65,6 +65,20 @@ function all(value: string | string[] | undefined): string[] {
   return (Array.isArray(value) ? value : [value]).filter((item): item is string => item !== undefined && item !== "");
 }
 
+// The API trims the phrase with PHP `trim`, which also strips NUL; `String.trim` does not, so a phrase the front counts
+// as 2 characters would be 1 for the API (400, an invalid filter instead of the message about 2 characters). One walk
+// from each end, so linear: a regex trim backtracks quadratically over a long run of spaces inside the phrase.
+const isTrimmed = (char: string) => char === "\0" || /\s/.test(char);
+
+function trimPhrase(phrase: string | undefined): string | undefined {
+  if (phrase === undefined) return undefined;
+  let start = 0;
+  let end = phrase.length;
+  while (start < end && isTrimmed(phrase[start])) start++;
+  while (end > start && isTrimmed(phrase[end - 1])) end--;
+  return phrase.slice(start, end);
+}
+
 export function readListingState(query: SearchParams, mode: ListingMode): ListingState {
   const state: ListingState = { options: all(query.o) };
   const sort = first(query.sort);
@@ -78,7 +92,7 @@ export function readListingState(query: SearchParams, mode: ListingMode): Listin
   if (available !== undefined) state.available = available;
   if (page !== undefined) state.page = page;
   if (mode === "search") {
-    const phrase = first(query.q)?.trim();
+    const phrase = trimPhrase(first(query.q));
     if (phrase) state.q = [...phrase].slice(0, MAX_PHRASE).join("");
     const category = first(query.kategoria);
     if (category !== undefined) state.category = category;
@@ -91,9 +105,11 @@ export function isShortPhrase(phrase: string | undefined): boolean {
   return phrase === undefined || [...phrase].length < MIN_PHRASE;
 }
 
+const isWholeZloty = (zloty: string) => /^\d+$/.test(zloty);
+
 /** The only thing the front does with a number: whole zloty to grosze. Anything but digits goes on unchanged. */
 function toGrosze(zloty: string | undefined): string | undefined {
-  return zloty !== undefined && /^\d+$/.test(zloty) ? `${zloty}00` : zloty;
+  return zloty !== undefined && isWholeZloty(zloty) ? `${zloty}00` : zloty;
 }
 
 /**
@@ -115,6 +131,26 @@ export function toApiQuery(state: ListingState, categoryId?: string): ApiListQue
   if (sort !== undefined) query.sort = sort;
   if (state.page !== undefined) query.page = state.page;
   return query;
+}
+
+/**
+ * The way back from „Nieprawidłowy filtr” of the listing at `basePath`. A price that is not whole zloty is the one cause
+ * the store can see itself, so the link drops only that price when the rest passes the store's own checks
+ * (`toApiQuery`). Otherwise it is the listing without filters and sort (with the phrase on `/szukaj`); on the home page
+ * that is the catalog link the page already has, so there is none.
+ */
+export function invalidFilterExit(basePath: string, state: ListingState): { href: string; label: string } | undefined {
+  const withoutBadPrice: ListingState = {
+    ...state,
+    priceFrom: state.priceFrom !== undefined && isWholeZloty(state.priceFrom) ? state.priceFrom : undefined,
+    priceTo: state.priceTo !== undefined && isWholeZloty(state.priceTo) ? state.priceTo : undefined,
+  };
+  const badPrice = withoutBadPrice.priceFrom !== state.priceFrom || withoutBadPrice.priceTo !== state.priceTo;
+  if (badPrice && toApiQuery(withoutBadPrice) !== null) {
+    return { href: listingHref(basePath, withoutBadPrice), label: "Pokaż wyniki bez błędnej ceny" };
+  }
+  const plain = listingHref(basePath, { q: state.q, options: [] });
+  return plain === "/" ? undefined : { href: plain, label: "Pokaż wyniki bez filtrów" };
 }
 
 /** The address of a listing: `basePath` and the state, changed by `patch`. Every change leaves `page` out. */

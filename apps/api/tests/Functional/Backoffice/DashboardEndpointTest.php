@@ -189,7 +189,7 @@ final class DashboardEndpointTest extends WebTestCase
     {
         $client = static::createClient();
         self::getContainer()->set(DoctrineProductRepository::class, new class implements ProductRepository {
-            public function save(Product $product): void
+            public function save(Product $product, ?int $expectedVersion, ?string $actorId, \DateTimeImmutable $at): void
             {
                 throw new \LogicException('Not used.');
             }
@@ -308,9 +308,9 @@ final class DashboardEndpointTest extends WebTestCase
         $shoes = CategoryFactory::createOne(['name' => 'Buty', 'parent' => $sport]);
         $categories->save($shoes);
 
-        $products->save(ProductFactory::createOne(['mainCategory' => $shoes, 'imageAlts' => ['Front']]));
-        $products->save(ProductFactory::createOne(['mainCategory' => $shoes]));
-        $products->save(ProductFactory::createOne(['mainCategory' => $sport]));
+        $products->save(ProductFactory::createOne(['mainCategory' => $shoes, 'imageAlts' => ['Front']]), null, null, new \DateTimeImmutable());
+        $products->save(ProductFactory::createOne(['mainCategory' => $shoes]), null, null, new \DateTimeImmutable());
+        $products->save(ProductFactory::createOne(['mainCategory' => $sport]), null, null, new \DateTimeImmutable());
     }
 
     private function get(KernelBrowser $client, string $token): void

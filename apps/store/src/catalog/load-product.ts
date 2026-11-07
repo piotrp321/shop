@@ -8,8 +8,20 @@ type ProductOffer = components["schemas"]["ProductOfferResponse"];
 export type ProductResult = { kind: "ok"; details: ProductDetails; offer: ProductOffer } | { kind: "not-found" };
 
 /**
+ * The format of a product slug (`Slug` in the API): lower-case letters and digits in groups joined by single dashes,
+ * at most 200 characters. `/api/revalidate` accepts `product-slug-<slug>` in this format only.
+ */
+const PRODUCT_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const PRODUCT_SLUG_MAX_LENGTH = 200;
+
+export function isProductSlug(value: string): boolean {
+  return value.length <= PRODUCT_SLUG_MAX_LENGTH && PRODUCT_SLUG.test(value);
+}
+
+/**
  * The reads of the product page go through Varnish (`API_CATALOG_URL`) like the other catalog reads. The tags are the
- * ones the API puts in `xkey` (`catalog`, `product-<id>`): the page is revalidated by the same names that purge Varnish.
+ * ones the API puts in `xkey` (`catalog`, `product-slug-<slug>`, `product-<id>`): the page is revalidated by the same
+ * names that purge Varnish.
  */
 function catalogClient(tags: string[]) {
   const baseUrl = process.env.API_CATALOG_URL;
@@ -38,11 +50,14 @@ function isDetails(value: ProductDetails | undefined): value is ProductDetails {
 
 /**
  * The details of the product by its slug, then its offer (price, level, variants). A 404 for the slug is `not-found`.
+ * The read of the details carries the tag of the slug (only for a slug in the format of a product slug, which is the
+ * only one a product can have), so the publication of a product revalidates the 404 page of its slug.
  * Any other failure (status, network, an unexpected body) of the details or of the offer is thrown, so the page is an
  * error page that the ISR cache does not keep, not a page without a price.
  */
 export async function loadProduct(slug: string): Promise<ProductResult> {
-  const detailsResponse = await catalogClient(["catalog"]).GET("/api/v1/products/{slug}", { params: { path: { slug } } });
+  const detailsTags = isProductSlug(slug) ? ["catalog", `product-slug-${slug}`] : ["catalog"];
+  const detailsResponse = await catalogClient(detailsTags).GET("/api/v1/products/{slug}", { params: { path: { slug } } });
   if (detailsResponse.response.status === 404) {
     return { kind: "not-found" };
   }

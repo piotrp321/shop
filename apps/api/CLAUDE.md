@@ -30,9 +30,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
   seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
-  w `prod` wymagają `--force-reset`. Potem `make seed` woła `catalog:reindex`, który przebudowuje indeks wyszukiwania
-  z cenami i dostępnością, a na końcu `storefront:cache:purge-all` (zdarzenia cen i stanów ze źródła `seed` niczego
-  nie reindeksują ani nie unieważniają). Błąd kroku przerywa `make seed`
+  w `prod` wymagają `--force-reset`. Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika).
+  Potem `make seed` woła `catalog:reindex`, który przebudowuje indeks wyszukiwania z cenami i dostępnością, a na
+  końcu `storefront:cache:purge-all` (zdarzenia cen i stanów ze źródła `seed` niczego nie reindeksują ani nie
+  unieważniają). Błąd kroku przerywa `make seed`
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
   rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
   `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
@@ -43,7 +44,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (`ListVariantIdentities`) i wypisuje w jednej linii każdą cenę ze stawką inną niż bieżąca stawka jej klasy albo
   z klasą inną niż klasa produktu wariantu w Catalog (cena wariantu, którego nie ma w Catalog, zachowuje swoją
   klasę).
-  Z `--apply` przelicza je (`reprice`: to samo brutto, źródło `tax_reconciliation`), każdą w osobnej transakcji;
+  Z `--apply` przelicza je (`reprice`: to samo brutto, źródło `tax_reconciliation`), każdą w osobnej transakcji
+  (pętla `PriceReconciler`, wspólna z przeliczeniem po zmianie klasy produktu);
   zapis odrzucony przez równoległą zmianę ceny ponawia raz na cenie odczytanej od nowa (świeży EntityManager), drugi
   konflikt zostaje w raporcie. Kod wyjścia: 0 – wszystko spójne albo naprawione, 1 – zostały rozbieżności (bez
   `--apply` znalezione; z `--apply` nienaprawione: dwa konflikty albo klasa bez stawki), 2 – przerwane błędem
@@ -375,12 +377,35 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## Reguły modelu
 
 - Pieniądze zawsze jako liczba całkowita w groszach plus waluta, nigdy float. Zaokrąglanie VAT jawnie, w jednym miejscu.
-- Agregaty edytowane równolegle (zamówienie, stan magazynowy, cena) mają optimistic locking (pole wersji): edycja
-  z widoku sprawdza wersję, na której się opiera. Wyjątek: atomowe operacje na stanie magazynowym (przyjęcie,
+- Agregaty edytowane równolegle (zamówienie, stan magazynowy, cena, produkt) mają optimistic locking (pole wersji):
+  edycja z widoku sprawdza wersję, na której się opiera. Wyjątek: atomowe operacje na stanie magazynowym (przyjęcie,
   rezerwacja, zwolnienie, zatwierdzenie) nie sprawdzają wersji z widoku, tylko blokują wiersze (`SELECT … FOR UPDATE`
   w `StockItemRepository::lockMany`, w kolejności rosnącego `variant_id`; przyjęcie i korekta wariantu bez stanu
   zakładają wiersz przez `lockOrCreate`, `INSERT … ON CONFLICT DO NOTHING` przed blokadą) i czytają stan od nowa po
   uzyskaniu blokady; zapis i tak podnosi wersję. Korekta z panelu blokuje wiersz i dodatkowo sprawdza wersję z widoku.
+- Produkt (Catalog) ma status `draft` albo `published` (`ProductStatus`) i `firstPublishedAt` (pierwsza publikacja,
+  nigdy nie zerowana). Zapisuje się wyłącznie komendami `command.bus`: `CreateProduct` (status z komendy: panel
+  tworzy szkic, seed opublikowany produkt bez pracownika; pusty slug wylicza `Slug::slugify(name)`), `EditProduct`,
+  `PublishProduct`, `UnpublishProduct`. Te trzy porównują wersję z widoku (`expectedVersion`) z wersją wczytanego
+  produktu przed budową wariantów, odczytem stanów i każdą regułą domeny (`ProductModifiedConcurrently`, 409
+  `product-modified`), a `ProductRepository::save(product, expectedVersion, actorId, at)` porównuje ją jeszcze raz
+  z rekordem pod `#[ORM\Version]`. Zapis z widoku zawsze podnosi wersję (także bez zmiany danych), zapis bez widoku
+  (seed) tylko przy zmianie; `updated_at` i `updated_by` (`sub` pracownika) zmieniają się tylko przy zapisie, który
+  podnosi wersję. Publikacja opublikowanego i wycofanie szkicu nic nie zapisują. Reguły pilnuje agregat: publikacja
+  szkicu wymaga zdjęcia, zapis opublikowanego produktu ze zdjęciami nie usuwa ostatniego (`ProductNotPublishable`),
+  slug jest stały od pierwszej publikacji (`SlugLocked`), po pierwszej publikacji warianty zachowują tożsamość
+  (`VariantIdentityLocked`), a wariantu ze stanem nie da się usunąć (`VariantInUse`). Fakty stanu daje port
+  `VariantStockFacts` (`Catalog_Application`) z adapterem `QueryBusVariantStockFacts` w `Inventory_Infrastructure`
+  (Inventory `GetStockLevels` na `query.bus`, odczyt bez blokady; stan fizyczny > 0 albo zarezerwowany > 0), więc
+  Catalog nie zależy od Inventory w żadnej warstwie. Reguły i ich błędy opisuje `docs/features/catalog-admin/spec.md`.
+- Szkic jest ukryty w odczytach sklepu w Catalog: `GET /api/v1/products/{slug}` szkicu to 404 jak nieznany slug,
+  `GetVariantSummaries` (koszyk, zamówienie) i `ListProductVariants` bez `includeDrafts` (oferta sklepu) pomijają
+  warianty szkiców jak nieznane, a zapytania indeksu dopasowują tylko `status: published`. Cart i Ordering nie znają
+  statusu: linia z wariantem szkicu ma stan `unavailable_product`, a złożenie zamówienia z nią to 409
+  `CartNotOrderable`. Szkice widzą `GetVariant`, `ListVariantIdentities`, `SearchBackofficeProducts`
+  i `ListProductVariants(productIds, includeDrafts: true)` (listy cen i stanów panelu, adaptery
+  `QueryBusProductDirectory` w `Pricing_Infrastructure` i `Inventory_Infrastructure`). `ProductVariantList` ma klasę
+  podatkową produktu (`taxClass`).
 - Koszyk nie ma optimistic locking ani wersji z widoku: zmiany szereguje blokada wiersza koszyka, dodanie zwiększa
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
@@ -391,6 +416,27 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
   w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
   pominie, a odrzucony albo wycofany zapis nie zostawia zdarzenia.
+  Catalog publikuje też `ProductChanged` z handlera komendy, jak `ProductCreated`; Pricing ma ścieżkę zapisu także
+  przy przeliczeniu po zmianie klasy podatkowej produktu.
+- Zdarzenie, które ma subskrybować inny context, jest zdarzeniem integracyjnym: publicznym kontraktem modułu w jego
+  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Jedyne dziś:
+  `Catalog\Application\Event\ProductChanged` `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product`
+  zapisuje wewnętrzne `Catalog\Domain\Product\ProductChanged` przy każdej edycji, publikacji i wycofaniu, a handler
+  komendy tłumaczy je na kontrakt (`ProductChanged::translate`) przed publikacją przez outbox. Seed tworzy produkty
+  bez `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana
+  pól kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (reindeksacja),
+  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, unieważnienie sklepu) i `RepriceOnTaxClassChange`
+  (`Pricing_Infrastructure`, przeliczenie cen po zmianie klasy podatkowej).
+- Przeliczenie cen po zmianie klasy (`RepriceOnTaxClassChange` → `RepriceProductPrices`, `Pricing_Application`): klasa
+  i warianty produktu z Catalog `ListProductVariants([productId], includeDrafts: true)` (port `ProductDirectory::taxClassOf`,
+  adapter `QueryBusProductDirectory`), nigdy ze zdarzenia, więc zmiany A → B → A w dowolnej kolejności i powtórzone
+  zdarzenia kończą się cenami w klasie bieżącej. Każda cena z klasą inną niż klasa produktu idzie przez `PriceReconciler`
+  (ta sama pętla co `pricing:reconcile-tax --apply`: `reprice` z tym samym brutto, źródło `tax_reconciliation`, osobna
+  transakcja na cenę, jedno ponowienie po konflikcie wersji); cena w klasie produktu nie jest zapisywana (także
+  z nieaktualną stawką). Po zapisach klasa jest czytana ponownie: inna to `TaxClassChangedWhileRepricing` (ponowienie
+  wiadomości). Klasa bez stawki: `UnrecoverableMessageHandlingException` z komunikatem (`failed`), ceny bez zmian; drugi
+  konflikt wersji: `PriceModifiedConcurrently` po zapisie pozostałych cen (ponowienie); produkt nieznany Catalogowi:
+  wiadomość obsłużona bez zmian.
 - Odbiorcy zdarzeń muszą być idempotentni: to samo zdarzenie może przyjść więcej niż raz.
 - Zamówienie przechowuje kopię cen, rabatów i adresu z chwili złożenia, nie referencje.
 - Elasticsearch to tylko model odczytu. Nigdy nie podejmuj na jego podstawie decyzji biznesowych.
@@ -425,6 +471,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
   (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
+- Sześć 409 produktu (`slug-taken`, `slug-locked`, `product-modified`, `product-not-publishable`, `variant-locked`,
+  `variant-in-use`) ma typy w tym formacie i schemat `ProductConflictProblem` w `openapi-admin.json`.
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności, przyjęcie magazynowe) wymagają nagłówka
   `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Przyjęcie z tym samym kluczem i tą samą
   treścią (wariant, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
@@ -447,28 +495,34 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (`API_CATALOG_URL`); inne ścieżki, żądania z `Authorization` albo `Cookie` i metody inne niż `GET`/`HEAD` Varnish
   przepuszcza do API bez cache. TTL bierze tylko z `Cache-Control` odpowiedzi; bez nagłówka, z `private` albo
   `no-store` nic nie trzyma. Endpointy z autoryzacją, koszyk i checkout zawsze `private, no-store`.
-- Tagi cache (xkey) bez FOSHttpCacheBundle. Słownik: `catalog` (każdy odczyt katalogu) i `product-<id>` (UUID małymi
-  literami) dla każdego produktu, którego dane zawiera odpowiedź. Nazwy buduje wyłącznie `CacheTags`
-  (`Shared\Infrastructure\Http\Cache`: stała `CATALOG`, `product(id)`, inny napis niż UUID to wyjątek), a nagłówek
+- Tagi cache (xkey) bez FOSHttpCacheBundle. Słownik: `catalog` (każdy odczyt katalogu), `product-<id>` (UUID małymi
+  literami) dla każdego produktu, którego dane zawiera odpowiedź, i `product-slug-<slug>` (404 szczegółów produktu).
+  Nazwy buduje wyłącznie `CacheTags` (`Shared\Infrastructure\Http\Cache`: stała `CATALOG`, `product(id)`, inny napis
+  niż UUID to wyjątek, `productSlug(slug)`, slug spoza formatu `Slug` produktu to wyjątek), a nagłówek
   `xkey: <tag> <tag>` (spacje) ustawia w kontrolerze `CacheTagger::tag()`. Varnish usuwa `xkey` przed wysłaniem
   odpowiedzi. Dziś: lista produktów (`catalog` i `product-<id>` każdego produktu strony) i drzewo kategorii
   (`catalog`) z `Cache-Control: public, max-age=60`; oferty (`catalog` i `product-<id>` każdego żądanego id) z `public,
   max-age=60, s-maxage=3600`; szczegóły produktu `GET /api/v1/products/{slug}` (`ProductDetailsController`): 200 z `public,
-  max-age=60, s-maxage=3600` i tagami `catalog` `product-<id>`, 404 „Produkt nie istnieje.” (też dla sluga
-  niezgodnego z formatem `Slug`) z `public, max-age=60` i tagiem `catalog`. Zdjęcia szczegółów są w rozmiarze
+  max-age=60, s-maxage=3600` i tagami `catalog` `product-<id>`, 404 „Produkt nie istnieje.” (szkic, nieznany slug,
+  slug niezgodny z formatem `Slug`) z `public, max-age=60` i tagami `catalog` `product-slug-<slug>` (slug niezgodny
+  z formatem: tylko `catalog`), więc publikacja produktu usuwa zapamiętane 404 jego sluga. Zdjęcia szczegółów są w rozmiarze
   `product` (`ImageSize`), a `GetProductBySlug` czyta wprost z tabel Catalog przez port `ProductDetailsSource`.
 - Trasa publicznego odczytu ma domyślną wartość `PublicReadErrorCacheSubscriber::ROUTE_DEFAULT`
   (`defaults: [... => true]` w `#[Route]`): jej 400, 401 (także z firewalla) i 503 dostają `private, no-store` bez tagów.
 - Unieważnianie: `StorefrontCache` (`Shared\Infrastructure\Http\Cache`, implementacja `HttpStorefrontCache` na
-  kliencie HTTP Symfony) robi twardy `PURGE` do `VARNISH_URL` z `xkey-purge` i `X-Purge-Token`
-  (`VARNISH_PURGE_SECRET`), a dopiero po nim `POST <STORE_INTERNAL_URL>/api/revalidate` z `{tags}` i
+  kliencie HTTP Symfony; `invalidateTags(tags)` dla tagów z `CacheTags`, pusta lista albo tag spoza ich alfabetu to
+  wyjątek bez żadnego żądania, i `invalidateProduct(id)` dla `product-<id>`) robi twardy `PURGE` do `VARNISH_URL`
+  z `xkey-purge` (wszystkie tagi) i `X-Purge-Token` (`VARNISH_PURGE_SECRET`), a dopiero po nim
+  `POST <STORE_INTERNAL_URL>/api/revalidate` z `{tags}` i
   `Authorization: Bearer <STORE_REVALIDATE_SECRET>`; własne limity czasu (Varnish 5 s, sklep 30 s, zamiast domyślnych
   2 s i 5 s klienta). Każdy błąd (status inny niż 200, sieć, timeout) to `StorefrontCacheFailure`, a błąd purge
   zatrzymuje rewalidację. Wołają go konsumenci zdarzeń na transporcie `events`: `InvalidateStorefrontOnPriceChange`
   (`Pricing_Infrastructure`, `VariantPriceChanged`) i `InvalidateStorefrontOnStockLevelChange`
   (`Inventory_Infrastructure`, `StockLevelChanged`): produkt z Catalog `GetVariant` (`query.bus`), `invalidateProduct`.
-  Wariant nieznany Catalogowi i źródło `seed` to wiadomość obsłużona bez unieważnienia; błąd `StorefrontCache` idzie
-  dalej (ponowienia transportu `events`, potem `failed`). Bez zdarzenia (np. koniec okresu stawki VAT) odpowiedź
+  Wariant nieznany Catalogowi i źródło `seed` to wiadomość obsłużona bez unieważnienia. `InvalidateStorefrontOnProductChange`
+  (`Catalog_Infrastructure`, integracyjne `ProductChanged`): `invalidateTags([product-<id>, product-slug-<slug>])` bez
+  odczytu bazy (id albo slug w złym formacie to `failed`). Błąd `StorefrontCache` idzie dalej (ponowienia transportu
+  `events`, potem `failed`). Bez zdarzenia (np. koniec okresu stawki VAT) odpowiedź
   żyje do `s-maxage`.
 - Nowy publiczny endpoint katalogu = ścieżka na liście w VCL, jawny `Cache-Control`, tagi w odpowiedzi, znacznik
   trasy i unieważnianie po zmianie danych (zdarzenie i konsument wołający `StorefrontCache`). Bez tego zmiana danych
@@ -479,15 +533,19 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   i `short_description` z analizatorem `polish_text` (`lowercase`, `polish_stem`, `asciifolding`) i podpolem `folded`
   (bez stemmera), `variants` (`nested`: `gross` brutto w groszach, brak bez ceny; `purchasable`; `options` jako
   `<oś>` U+001F `<wartość>` jak w Catalog, po nich dopasowuje się warunek wariantu; `pairs`: `nested` w wariancie,
-  obiekt `{axis, value}` na parę, po nich liczą się fasety osi) i `from_gross` (cena „od”, brak bez wariantu możliwego do kupienia).
+  obiekt `{axis, value}` na parę, po nich liczą się fasety osi), `from_gross` (cena „od”, brak bez wariantu możliwego do kupienia)
+  i `status` (`keyword`, `published` albo `draft`: szkic zostaje w indeksie jako trwały tombstone z wersją, a każde
+  zapytanie sklepu ma `term status: published` w `query`, więc wyniki, `total` i agregacje widzą tylko opublikowane).
   Ceny i dostępność daje port `ProductOfferFacts` (`Catalog_Application`) z adapterem `QueryBusProductOfferFacts`
   w `Cart_Infrastructure` (Cart `GetProductOffers` na `query.bus`, paczki po 48): reguła „możliwy do kupienia” i cena
   „od” są tylko w Cart. Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
   Inventory.
 - Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, poza `command.bus`): znacznik
   czasu w mikrosekundach pobrany przed odczytem (DBAL Catalog i `ProductOfferFacts`) jest wersją dokumentu
-  z `version_type=external_gte`, więc zapis starszego odczytu po nowszym to wynik „przestarzały”. Wyzwalacze na
-  transporcie `events`: `IndexProduct` (`ProductCreated`; brak produktu to `failed`), `ReindexProductOnPriceChange`
+  z `version_type=external_gte`, więc zapis starszego odczytu po nowszym to wynik „przestarzały” (także spóźniony zapis
+  opublikowanego stanu po nowszym zapisie szkicu). Zapisuje każdy produkt, szkic jako dokument `draft`; przebudowa
+  indeksuje wszystkie. Wyzwalacze na transporcie `events`: `IndexProduct` (`ProductCreated` i integracyjne
+  `ProductChanged`; brak produktu to `failed`), `ReindexProductOnPriceChange`
   (`Pricing_Infrastructure`, `VariantPriceChanged`) i `ReindexProductOnStockLevelChange` (`Inventory_Infrastructure`,
   `StockLevelChanged`): produkt z Catalog `GetVariant`, wariant nieznany, brak produktu i źródło `seed` to wiadomość
   obsłużona bez zapisu; `SearchUnavailable` i `OfferFactsUnavailable` są ponawiane, `SearchIndexError` idzie do
@@ -517,7 +575,32 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Kolejność osi: liczba produktów w wynikach malejąco, potem nazwa; oś wybrana zawsze jest w liście.
 
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
-- Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.
+- Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów. `POST /api/v1/admin/product-images`
+  (`multipart/form-data`, pole `file`, jeden plik na żądanie) przyjmuje JPEG, PNG, WebP, AVIF i HEIC do 64 MB i 50 MP,
+  zapisuje oryginał pod kluczem z treści (`originals/<sha256>.<rozszerzenie>`, ten sam plik to ten sam klucz) i odpowiada
+  kluczem oraz podglądem `thumbnail`; oryginałów nie usuwa nic (także po usunięciu zdjęcia z produktu albo uploadzie bez
+  zapisu). Limity PHP w `docker/php/conf.d/app.ini`: `upload_max_filesize = 64M`, `post_max_size = 70M` (Caddy nie ma
+  własnego limitu ciała) oraz `display_errors = Off`, `log_errors = On` (obraz nie ma `php.ini`, a ostrzeżenie PHP o
+  żądaniu ponad `post_max_size` pojawia się przy starcie żądania: wypisane do odpowiedzi wysłałoby status 200
+  i nagłówki przed 422). Plik ponad `upload_max_filesize` (błąd uploadu PHP) i żądanie z `Content-Length` ponad
+  `post_max_size` (PHP odrzuca wtedy całe ciało, więc kontroler sprawdza nagłówek przed szukaniem pliku) to 422
+  „Plik jest za duży.”; komunikaty `detail` odrzuceń (typ, rozdzielczość, wymiary, brak pliku) są po polsku. Garage
+  niedostępny przy uploadzie i przy zapisie produktu (`ProductImageStorage::exists` sprawdza każdy klucz zdjęcia)
+  to 503 bez `detail`. Limity PHP nie działają w kernelu testów funkcjonalnych, więc testy symulują ich skutek (błąd
+  uploadu, nagłówek), a prawdziwe limity sprawdza E2E na działającym stosie.
+- Rozmiary obrazów (`ImageSize`): `listing`, `product` i `thumbnail` (1:1, szerokości 96 i 192, WebP, `fill`; miniatury
+  list i podglądy formularza produktu w panelu). Nowy rozmiar dopisuje się tylko tam.
+- Produkty w panelu (`/api/v1/admin`, voter `ProductVoter`: `VIEW_PRODUCTS` każdy pracownik, `MANAGE_PRODUCTS` `admin`
+  i `marketing`, Catalog UI): `GET /products` (`q`, `category`, `status`, `after`, `perPage`; zapytanie
+  `ListBackofficeProducts` składa stronę z `SearchBackofficeProducts` i podsumowań z `BackofficeProductSource::summaries`),
+  `GET /products/{id}` (`ProductEditView` z `version`, czytany z DBAL, także szkic), `POST /products` (szkic),
+  `PUT /products/{id}`, `POST /products/{id}/publish` i `/unpublish` (wszystkie z `version`), `GET /tax-classes`
+  (nazwy po polsku w `ListTaxClassesHandler`). Ciało zapisu waliduje jedno ograniczenie klasy `ValidProductWrite`
+  (`Catalog_UI`): każda reguła z `docs/features/catalog-admin/spec.md` ma ścieżkę pola (`variants[3].values[1]`) i polski
+  komunikat; reguły domeny stosuje, nie kopiuje (`Slug`, `ImageKey`, `VariantValues::comparisonKey()`). Reguły domeny, które
+  wskazują miejsce w ciele (`ImageNotFound`, `UnknownVariant`, `UnknownCategory`, `SlugRequired`), `ProductWriteFailures`
+  zamienia na 422 z naruszeniem pola; błędy z typem (409) opisuje schemat `ProductConflictProblem`. Odpowiedzi zapisu to
+  widok edycji odczytany po zapisie, `private, no-store`.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.

@@ -55,7 +55,7 @@ Poza zakresem:
 ```
 sklep (SSR /, /c/<ścieżka>, /szukaj) → Varnish (API_CATALOG_URL) → GET /api/v1/categories, GET /api/v1/products
                                                                     (q, filtry, sort, fasety) → Elasticsearch
-ProductCreated ─────────────────────────────→ Catalog IndexProduct ──┐
+ProductCreated, ProductChanged ─────────────→ Catalog IndexProduct ──┐
 VariantPriceChanged → Pricing_Infrastructure ┬→ Catalog ProductIndexing::reindex ─→ dokument: Catalog (DBAL)
 StockLevelChanged  → Inventory_Infrastructure┘                        + ProductOfferFacts (adapter Cart → GetProductOffers)
 make seed: catalog → pricing → ordering → inventory → catalog:reindex → storefront:cache:purge-all
@@ -95,6 +95,7 @@ Pola dokumentu istotne dla wyszukiwania i filtrów (`ProductIndexDefinition`, `d
 | `short_description` | `text` z `polish_text`, podpole `folded` | krótki opis |
 | `variants` | `nested` | jeden obiekt na wariant: `gross` (`long`, brak przy braku ceny), `purchasable` (`boolean`), `options` (`keyword`, pary `<oś>␟<wartość>`, separator U+001F; na nich dopasowuje się warunek wariantu), `pairs` (`nested` w wariancie: obiekt `{axis, value}` (`keyword`) na każdą parę; po nich liczą się fasety osi) |
 | `from_gross` | `long` | cena „od” (najniższa cena wariantów możliwych do kupienia); brak, gdy produkt nie ma takiego wariantu |
+| `status` | `keyword` | `published` albo `draft`; każde zapytanie sklepu dopasowuje tylko `published` |
 
 Pozostałe pola (`id`, `version`, `slug`, `main_category_id`, `category_ids`, `category_ancestor_ids` z filtrem
 kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
@@ -108,6 +109,10 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
 - `gross`, `purchasable` i `from_gross` pochodzą z portu `ProductOfferFacts` (A1). Reguła „możliwy do kupienia”
   (`VariantOffer::isPurchasable`: cena istnieje i `available > 0`) i cena „od” (`ProductOfferSummary`) są tylko w Cart,
   więc indeks liczy je tak samo jak kafelek.
+- Szkic (CATALOG-ADMIN) ma w indeksie dokument jak każdy produkt, ze statusem `draft` i wersją: trwały tombstone.
+  Dokumentów się nie usuwa, więc wersja szkicu chroni przed spóźnionym zapisem starszego stanu bez limitu czasu (bez
+  zależności od `index.gc_deletes`), a liczba dokumentów zostaje równa liczbie produktów (statystyki panelu). Fakty
+  oferty szkicu są puste (Catalog ukrywa jego warianty przed ofertą sklepu), więc jego dokument nie ma cen.
 - Zmiana definicji zmienia `definition_hash`, więc `catalog:search-index:setup` na istniejącym indeksie kończy się
   błędem z instrukcją `catalog:reindex` (patrz „Ryzyka”).
 
@@ -125,18 +130,24 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
 ### Zapis i kolejność
 
 - Usługa `ProductIndexing` (`Catalog_Application`): `reindex(productId)` czyta aktualny stan (DBAL Catalog +
-  `ProductOfferFacts`) i zapisuje dokument; produkt, którego nie ma w bazie, daje wynik „brak produktu”. Nie idzie
+  `ProductOfferFacts`) i zapisuje dokument każdego produktu, szkic ze statusem `draft`; produkt, którego nie ma
+  w bazie, daje wynik „brak produktu”. Nie idzie
   przez `command.bus` (tylko czyta bazę, więc bez transakcji `doctrine_transaction`).
 - Wersja dokumentu: znacznik czasu w mikrosekundach pobrany przed odczytem stanu, `version_type=external_gte`.
   Odczyt rozpoczęty później widzi co najmniej te same zatwierdzone dane, więc przy dwóch równoległych obsługach
-  wygrywa nowszy odczyt; starszy zapis to wynik „przestarzały”.
-- `ProductSearchSource` czyta migawkę produktu, w tym warianty (`variantId`, wartości osi) i nazwy kategorii.
-- Przebudowa (`catalog:reindex`) pobiera fakty ofert dla każdej paczki produktów; błąd faktów przerywa przebudowę.
+  wygrywa nowszy odczyt; starszy zapis to wynik „przestarzały”. Dotyczy to też statusu: spóźniony zapis odczytu
+  opublikowanego produktu po nowszym zapisie szkicu (i odwrotnie) jest przestarzały, a dokument zostaje w nowszym
+  stanie; powtórzony zapis tej samej wersji jest przyjęty.
+- `ProductSearchSource` czyta migawkę produktu, w tym status, warianty (`variantId`, wartości osi) i nazwy kategorii.
+- Przebudowa (`catalog:reindex`) indeksuje wszystkie produkty, także szkice, i pobiera fakty ofert dla każdej paczki
+  produktów; błąd faktów przerywa przebudowę.
 
 ### Wyzwalacze
 
-- `ProductCreated` → `IndexProduct` (handler deleguje do `ProductIndexing`; „brak produktu” kończy się `failed`:
-  katalog nie ma usuwania, więc to niespójność, a nie powód do ponowienia).
+- `ProductCreated` i integracyjne `ProductChanged` (edycja, publikacja, wycofanie, CATALOG-ADMIN) → `IndexProduct`
+  (handler deleguje do `ProductIndexing`; „brak produktu” kończy się `failed`: katalog nie ma usuwania, więc to
+  niespójność, a nie powód do ponowienia). Produkt utworzony jako szkic ma od `ProductCreated` dokument `draft`, po
+  publikacji dokument `published`.
 - `Pricing_Infrastructure`: `ReindexProductOnPriceChange` na `VariantPriceChanged` (transport `events`, niezależny od
   konsumenta unieważniania z PRODUCT-PAGE) → `productId` z Catalog `GetVariant` → `ProductIndexing::reindex`. Wariant nieznany
   Catalogowi albo „brak produktu”: wiadomość obsłużona. Błąd przejściowy (ES, oferta) → ponowienie, trwały → `failed`.
@@ -166,7 +177,9 @@ jak `productId` w `/api/v1/product-offers`) wysyła bez zmian:
 
 ### Zapytanie
 
-- `query`: `category` (filtr `term` na `category_ancestor_ids`) i fraza. Bez frazy `match_all`. Fraza: `bool.should` z
+- `query`: status (filtr `term` `status: published`, zawsze), `category` (filtr `term` na `category_ancestor_ids`)
+  i fraza. Status jest w `query`, więc wyniki, `total` i każda agregacja (fasety, `availableCount`, `price`) widzą
+  tylko produkty opublikowane. Bez frazy same filtry. Fraza: `bool.should` z
   `minimum_should_match: 1`, w obu gałęziach wszystkie słowa muszą pasować, także gdy są w różnych polach:
   - dokładne: `multi_match` typu `cross_fields`, `operator: and` na `name^3`, `name.folded^3`, `category_names^2`,
     `category_names.folded^2`, `short_description`, `short_description.folded`;
@@ -191,7 +204,7 @@ jak `productId` w `/api/v1/product-offers`) wysyła bez zmian:
 ### Fasety
 
 Odpowiedź `ProductPage` ma pole `facets`, liczone agregacjami w tej samej odpowiedzi ES. Agregacje widzą wyniki
-`query` (fraza, kategoria); każda faseta dodaje warunek wariantu bez swojego warunku (gałąź `filter` na każdą
+`query` (status, fraza, kategoria); każda faseta dodaje warunek wariantu bez swojego warunku (gałąź `filter` na każdą
 wybraną oś, cenę i `available`):
 
 - `categories`: dzieci kategorii z filtra (bez filtra: kategorie główne), które mają pasujące produkty: `{id, name,
@@ -253,6 +266,11 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   bez zmian, więc API odpowiada 400), `dostepne=1`, `o=<oś>:<wartość>` (powtarzany, jak w API), `kategoria` (tylko
   `/szukaj`), `page`. Kategoria na `/` i `/c/` wyłącznie w ścieżce. Nieznana wartość `sort` albo `dostepne` →
   „Nieprawidłowy filtr”; 400 API → „Nieprawidłowy filtr”. Każda zmiana filtra lub sortowania usuwa `page`.
+- „Nieprawidłowy filtr” ma link „Zobacz cały katalog” (`/`) i link powrotu do tego samego listingu. Cena, która nie
+  jest napisem z samych cyfr, to jedyna przyczyna widoczna dla sklepu: gdy reszta parametrów przechodzi sprawdzenie
+  sklepu (znany `sort`, `dostepne=1`), link „Pokaż wyniki bez błędnej ceny” usuwa tylko tę cenę (pozostałe filtry,
+  sortowanie i fraza zostają). W każdym innym przypadku „Pokaż wyniki bez filtrów” prowadzi do listingu bez filtrów
+  i sortowania (na `/szukaj` z frazą); na `/` tego linku nie ma, bo jest nim „Zobacz cały katalog”.
 
 ### Widok listingu (tymczasowy motyw, komponenty shadcn/ui)
 
@@ -278,7 +296,7 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 ### Nagłówek: wyszukiwarka i mega menu (S7, S10)
 
 - Pole wyszukiwania w nagłówku każdej strony: formularz `GET /szukaj` z polem `q` (etykieta „Szukaj produktów”,
-  `type="search"`, przycisk „Szukaj”), na `/szukaj` wypełnione bieżącą frazą. Od szerokości `sm` logo, pole, koszyk i konto
+  `type="search"`, przycisk „Szukaj”), na `/szukaj` wypełnione bieżącą frazą (w HTML z serwera, także bez JavaScriptu). Od szerokości `sm` logo, pole, koszyk i konto
   są w jednym wierszu; poniżej pole ma własny wiersz na pełną szerokość pod logo, koszykiem i kontem (nagłówek ma
   `flex-wrap`), żeby strona nie przewijała się w poziomie (`e2e/tests/site-header.spec.ts`).
 - Mega menu (`nav` „Działy”) z drzewa kategorii (`GET /api/v1/categories` przez `API_CATALOG_URL`; na stronie
@@ -395,6 +413,8 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 - Reindeksacja po każdej zmianie ceny i poziomu dostępności to jedno zapytanie oferty i jeden zapis ES na produkt;
   przy dużym ruchu rezerwacji (CHECKOUT) to obciążenie workera. Bez kolejkowania i łączenia zmian.
 - Przynależność do filtrów ceny i dostępności jest ewentualnie spójna (reindeksacja + do 60 s TTL Varnisha).
+- Dokumenty szkiców zostają w indeksie (tombstone): indeks rośnie o szkice, a każde nowe zapytanie sklepu musi mieć
+  filtr `published` (bez niego pokazałoby szkice; pilnują tego testy listy i faset).
 - Wersja dokumentu z zegara: przy kilku workerach na różnych hostach przesunięcie zegarów może przepuścić starszy
   odczyt; skutek naprawia następna zmiana albo przebudowa.
 - Fasety na 10 mln produktów (agregacje `nested` z `reverse_nested`) nie są potwierdzone testami obciążeniowymi.

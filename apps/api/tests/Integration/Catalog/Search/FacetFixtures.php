@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Catalog\Search;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\VariantDocument;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
 
 /**
@@ -52,6 +53,7 @@ final class FacetFixtures
             [],
             $variants,
             [] === $buyable ? null : min($buyable),
+            ProductStatus::Published,
         );
     }
 

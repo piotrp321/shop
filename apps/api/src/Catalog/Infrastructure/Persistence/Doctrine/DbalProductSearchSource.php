@@ -7,6 +7,7 @@ namespace App\Catalog\Infrastructure\Persistence\Doctrine;
 use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
 use App\Catalog\Domain\Product\ProductId;
+use App\Catalog\Domain\Product\ProductStatus;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 
@@ -20,7 +21,7 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
     // "IS NULL OR" form would not, and paging a large catalog would scan from the start on every page.
     private const string PAGE_SQL = <<<'SQL'
         WITH page AS (
-            SELECT id, name, slug, short_description, primary_category_id, images, variant_axes
+            SELECT id, name, slug, short_description, primary_category_id, images, variant_axes, status
             FROM catalog_product
             {cursor}
             ORDER BY id
@@ -28,7 +29,7 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
         )
         SELECT p.id, p.name, p.slug, p.short_description, p.primary_category_id, p.images->0 AS main_image,
                main.path AS main_path, COALESCE(extra.ids, '[]') AS additional_ids, COALESCE(extra.paths, '[]') AS additional_paths,
-               p.variant_axes, COALESCE(variants.list, '[]') AS variants, COALESCE(names.list, '[]') AS category_names
+               p.variant_axes, COALESCE(variants.list, '[]') AS variants, COALESCE(names.list, '[]') AS category_names, p.status
         FROM page p
         JOIN catalog_category main ON main.id = p.primary_category_id
         LEFT JOIN LATERAL (
@@ -122,6 +123,7 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
         \assert(\is_string($row['primary_category_id']) && \is_string($row['main_path']));
         \assert(\is_string($row['additional_ids']) && \is_string($row['additional_paths']));
         \assert(\is_string($row['variant_axes']) && \is_string($row['variants']) && \is_string($row['category_names']));
+        \assert(\is_string($row['status']));
 
         /** @var list<string> $additionalIds */
         $additionalIds = json_decode($row['additional_ids'], true, flags: \JSON_THROW_ON_ERROR);
@@ -151,6 +153,7 @@ final readonly class DbalProductSearchSource implements ProductSearchSource
             $categoryNames,
             $variantAxes,
             $variants,
+            ProductStatus::from($row['status']),
         );
     }
 

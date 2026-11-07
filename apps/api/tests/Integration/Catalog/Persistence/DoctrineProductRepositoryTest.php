@@ -57,7 +57,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
             'taxClass' => TaxClassCode::FreezeDriedMeal,
             'imageAlts' => ['front', 'side', 'back'],
         ]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         $loaded = $this->products->get($product->id());
@@ -83,7 +83,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         $first = CategoryFactory::createOne(['id' => '11111111-1111-4111-8111-111111111111']);
         $this->categories->save($last);
         $this->categories->save($first);
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$last, $first]]));
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$last, $first]]), null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         $products = [...$this->products->all()];
@@ -103,7 +103,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         $this->categories->save($last);
         $this->categories->save($first);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$last, $first]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         self::assertSame(
             [$first->id()->toString(), $last->id()->toString()],
@@ -116,8 +116,8 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         [$main, $additional, $otherMain] = $this->savedCategories(3);
         $withAdditional = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$additional]]);
         $withoutAdditional = ProductFactory::createOne(['mainCategory' => $otherMain]);
-        $this->products->save($withAdditional);
-        $this->products->save($withoutAdditional);
+        $this->products->save($withAdditional, null, null, new \DateTimeImmutable());
+        $this->products->save($withoutAdditional, null, null, new \DateTimeImmutable());
 
         self::assertSame([$additional->id()->toString()], $this->assignedCategoryIds($withAdditional));
         self::assertSame([], $this->assignedCategoryIds($withoutAdditional));
@@ -127,7 +127,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     {
         [$main, $kept, $removed, $added] = $this->savedCategories(4);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$kept, $removed]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         $this->products->save(ProductFactory::createOne([
@@ -135,7 +135,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
             'slug' => $product->slug()->value(),
             'mainCategory' => $main,
             'additionalCategories' => [$kept, $added],
-        ]));
+        ]), null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         $expected = [$kept->id()->toString(), $added->id()->toString()];
@@ -158,9 +158,9 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     public function testCountsAllProductsAndProductsWithoutImages(): void
     {
         [$main] = $this->savedCategories(1);
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'imageAlts' => ['front']]));
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main]));
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main]));
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'imageAlts' => ['front']]), null, null, new \DateTimeImmutable());
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $main]), null, null, new \DateTimeImmutable());
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $main]), null, null, new \DateTimeImmutable());
 
         self::assertSame(3, $this->products->count());
         self::assertSame(2, $this->products->countWithoutImages());
@@ -170,11 +170,11 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     public function testDuplicateSlugThrowsSlugAlreadyTakenAndLeavesNoRows(): void
     {
         [$main, $additional] = $this->savedCategories(2);
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'slug' => 'same-slug']));
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'slug' => 'same-slug']), null, null, new \DateTimeImmutable());
         $duplicate = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$additional], 'slug' => 'same-slug']);
 
         try {
-            $this->products->save($duplicate);
+            $this->products->save($duplicate, null, null, new \DateTimeImmutable());
             self::fail('Expected SlugAlreadyTaken.');
         } catch (SlugAlreadyTaken) {
         }
@@ -204,10 +204,12 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
             'images' => '[]',
             'variant_axes' => '[]',
             'version' => '1',
+            'status' => 'published',
+            'updated_at' => '2026-11-07 08:00:00+00',
         ]);
 
         try {
-            $this->products->save($product);
+            $this->products->save($product, null, null, new \DateTimeImmutable());
             self::fail('Expected ProductAlreadyExists.');
         } catch (ProductAlreadyExists) {
         }
@@ -218,9 +220,9 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     public function testRepositoryWorksAgainAfterSlugAlreadyTakenOnceServicesAreReset(): void
     {
         [$main] = $this->savedCategories(1);
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'slug' => 'same-slug']));
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'slug' => 'same-slug']), null, null, new \DateTimeImmutable());
         try {
-            $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'slug' => 'same-slug']));
+            $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'slug' => 'same-slug']), null, null, new \DateTimeImmutable());
             self::fail('Expected SlugAlreadyTaken.');
         } catch (SlugAlreadyTaken) {
         }
@@ -232,7 +234,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         $resetter->reset();
 
         $next = ProductFactory::createOne(['mainCategory' => $main]);
-        $this->products->save($next);
+        $this->products->save($next, null, null, new \DateTimeImmutable());
         self::assertSame($next->slug()->value(), $this->products->get($next->id())->slug()->value());
     }
 
@@ -240,7 +242,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     {
         $this->expectException(ForeignKeyConstraintViolationException::class);
 
-        $this->products->save(ProductFactory::createOne(['mainCategory' => CategoryFactory::createOne()]));
+        $this->products->save(ProductFactory::createOne(['mainCategory' => CategoryFactory::createOne()]), null, null, new \DateTimeImmutable());
     }
 
     public function testMissingAdditionalCategoryViolatesForeignKey(): void
@@ -249,14 +251,14 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
 
         $this->expectException(ForeignKeyConstraintViolationException::class);
 
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [CategoryFactory::createOne()]]));
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [CategoryFactory::createOne()]]), null, null, new \DateTimeImmutable());
     }
 
     public function testDeletingProductRemovesItsAssignments(): void
     {
         [$main, $additional] = $this->savedCategories(2);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$additional]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         $this->connection->executeStatement('DELETE FROM catalog_product WHERE id = ?', [$product->id()->toString()]);
 
@@ -266,7 +268,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     public function testAssignedAdditionalCategoryCannotBeDeleted(): void
     {
         [$main, $additional] = $this->savedCategories(2);
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$additional]]));
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$additional]]), null, null, new \DateTimeImmutable());
 
         $this->expectException(ForeignKeyConstraintViolationException::class);
 
@@ -299,7 +301,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
                 ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => ['Żółty', '42']],
             ],
         ]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         $loaded = $this->products->get($product->id());
@@ -328,8 +330,8 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Rozmiar'], 'variants' => [
             ['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['S']],
             ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => ['M']],
-        ]]));
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main]));
+        ]]), null, null, new \DateTimeImmutable());
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $main]), null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         $counts = array_map(static fn (Product $p): int => $p->variants()->count(), [...$this->products->all()]);
@@ -342,7 +344,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     {
         [$main] = $this->savedCategories(1);
         $product = ProductFactory::createOne(['mainCategory' => $main]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         self::assertSame('[]', $this->connection->fetchOne('SELECT variant_axes::text FROM catalog_product WHERE id = ?', [$product->id()->toString()]));
         $row = $this->connection->fetchAssociative('SELECT option_values::text AS option_values, values_key, position FROM catalog_product_variant WHERE product_id = ?', [$product->id()->toString()]);
@@ -357,7 +359,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
             ['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['S']],
             ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => ['M']],
         ]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         self::assertSame(2, $this->connection->fetchOne('SELECT COUNT(*) FROM catalog_product_variant'));
 
         $this->connection->executeStatement('DELETE FROM catalog_product WHERE id = ?', [$product->id()->toString()]);
@@ -372,9 +374,9 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
             ['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['S']],
             ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => ['M']],
         ]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         self::assertSame(['S', 'M'], array_map(static fn (ProductVariant $v): string => $v->label(), $this->products->get($product->id())->variants()->toList()));
@@ -388,7 +390,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
                 ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => ['zielony']],
                 ['id' => 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'values' => ['czarny']],
             ],
-        ]));
+        ]), null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         $loaded = $this->products->get($product->id());
@@ -403,11 +405,11 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     public function testVariantIdOfAnotherProductThrowsVariantAlreadyExistsAndLeavesNoRows(): void
     {
         [$main] = $this->savedCategories(1);
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => []]]]));
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => []]]]), null, null, new \DateTimeImmutable());
         $other = ProductFactory::createOne(['mainCategory' => $main, 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => []]]]);
 
         try {
-            $this->products->save($other);
+            $this->products->save($other, null, null, new \DateTimeImmutable());
             self::fail('Expected VariantAlreadyExists.');
         } catch (VariantAlreadyExists) {
         }
@@ -436,6 +438,8 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
             'images' => '[]',
             'variant_axes' => '[]',
             'version' => '1',
+            'status' => 'published',
+            'updated_at' => '2026-11-07 08:00:00+00',
         ]);
         $this->commitRow($this->entityManager, 'catalog_product_variant', [
             'id' => 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
@@ -445,7 +449,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         ]);
 
         try {
-            $this->products->save(ProductFactory::createOne(['mainCategory' => $category, 'variants' => [['id' => 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'values' => []]]]));
+            $this->products->save(ProductFactory::createOne(['mainCategory' => $category, 'variants' => [['id' => 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'values' => []]]]), null, null, new \DateTimeImmutable());
             self::fail('Expected VariantAlreadyExists.');
         } catch (VariantAlreadyExists) {
         }
@@ -455,7 +459,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     {
         [$main] = $this->savedCategories(1);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Kolor'], 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['Czarny']]]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         $this->expectException(UniqueConstraintViolationException::class);
 
@@ -466,7 +470,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     {
         [$main] = $this->savedCategories(1);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Kolor', 'Rozmiar'], 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['Żółty', 'ŚWIT']]]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         try {
             $this->insertVariantRow($product, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 1, '["żółty", "świt"]');
@@ -492,8 +496,8 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         [$main] = $this->savedCategories(1);
         $first = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Kolor'], 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['czarny']]]]);
         $second = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Kolor'], 'variants' => [['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => ['czarny']]]]);
-        $this->products->save($first);
-        $this->products->save($second);
+        $this->products->save($first, null, null, new \DateTimeImmutable());
+        $this->products->save($second, null, null, new \DateTimeImmutable());
 
         $this->expectException(UniqueConstraintViolationException::class);
 
@@ -504,7 +508,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
     {
         [$main] = $this->savedCategories(1);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Kolor', 'Rozmiar'], 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['Żółty', 'XL']]]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         self::assertSame('["żółty", "xl"]', $this->connection->fetchOne('SELECT values_key FROM catalog_product_variant WHERE product_id = ?', [$product->id()->toString()]));
     }

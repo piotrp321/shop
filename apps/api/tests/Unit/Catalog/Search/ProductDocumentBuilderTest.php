@@ -9,6 +9,7 @@ use App\Catalog\Application\Search\ProductFacts;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
 use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Application\Search\VariantFacts;
+use App\Catalog\Domain\Product\ProductStatus;
 use PHPUnit\Framework\TestCase;
 
 final class ProductDocumentBuilderTest extends TestCase
@@ -198,6 +199,7 @@ final class ProductDocumentBuilderTest extends TestCase
             $categoryNames,
             $variantAxes,
             $variants,
+            ProductStatus::Published,
         );
     }
 }

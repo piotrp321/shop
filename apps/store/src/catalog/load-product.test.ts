@@ -52,11 +52,40 @@ describe("loadProduct", () => {
     ]);
   });
 
-  it("tags the details with catalog and the offer with catalog and the product", async () => {
+  it("tags the details with catalog and the slug, and the offer with catalog and the product", async () => {
     const calls = stubApi(okApi);
     await loadProduct("produkt-1");
-    expect(calls[0].init?.next?.tags).toEqual(["catalog"]);
+    expect(calls[0].init?.next?.tags).toEqual(["catalog", "product-slug-produkt-1"]);
     expect(calls[1].init?.next?.tags).toEqual(["catalog", `product-${DETAILS.id}`]);
+  });
+
+  it("tags the read of a slug that is not found with its slug, so the publication of the product revalidates it", async () => {
+    const calls = stubApi(() => problem(404));
+    await loadProduct("kurtka-puchowa-2");
+    expect(calls[0].init?.next?.tags).toEqual(["catalog", "product-slug-kurtka-puchowa-2"]);
+  });
+
+  it("tags a slug of 200 characters", async () => {
+    const calls = stubApi(() => problem(404));
+    await loadProduct("a".repeat(200));
+    expect(calls[0].init?.next?.tags).toEqual(["catalog", `product-slug-${"a".repeat(200)}`]);
+  });
+
+  it.each([
+    ["upper case", "Produkt-1"],
+    ["a Polish letter", "kurtka-różowa"],
+    ["a dash at the end", "kurtka-"],
+    ["a dash at the start", "-kurtka"],
+    ["two dashes", "kurtka--puchowa"],
+    ["a space", "kurtka puchowa"],
+    ["a slash and a query", "a/b?c"],
+    ["a line break", "kurtka\npuchowa"],
+    ["more than 200 characters", "a".repeat(201)],
+    ["nothing", ""],
+  ])("tags the details of a slug with %s with catalog only", async (_case, slug) => {
+    const calls = stubApi(() => problem(404));
+    await loadProduct(slug);
+    expect(calls[0].init?.next?.tags).toEqual(["catalog"]);
   });
 
   it("writes the product tag with the id in lower case", async () => {

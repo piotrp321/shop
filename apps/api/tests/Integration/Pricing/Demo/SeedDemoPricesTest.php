@@ -141,7 +141,7 @@ final class SeedDemoPricesTest extends KernelTestCase
             $attributes['variants'] = array_map(static fn (array $variantValues): array => ['id' => (string) Uuid::v4(), 'values' => $variantValues], $values);
         }
         $product = ProductFactory::createOne($attributes);
-        new DoctrineProductRepository($entityManager)->save($product);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return array_map(static fn (ProductVariant $variant): string => $variant->id()->toString(), $product->variants()->toList());
     }

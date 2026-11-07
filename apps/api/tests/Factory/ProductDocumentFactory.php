@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Factory;
 
 use App\Catalog\Application\Search\ProductDocument;
+use App\Catalog\Domain\Product\ProductStatus;
 use Zenstruck\Foundry\ObjectFactory;
 
 /**
- * Builds search index documents (the read model). The category fields are given by the test.
+ * Builds search index documents (the read model), published unless the status says otherwise. The category fields
+ * are given by the test.
  *
  * @extends ObjectFactory<ProductDocument>
  */
@@ -39,6 +41,7 @@ final class ProductDocumentFactory extends ObjectFactory
             'categoryNames' => [],
             'variants' => [],
             'fromGross' => null,
+            'status' => ProductStatus::Published,
         ];
     }
 }
