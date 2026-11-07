@@ -7,17 +7,22 @@ import Skeleton from "primevue/skeleton";
 import Tag from "primevue/tag";
 import Textarea from "primevue/textarea";
 import TreeSelect from "primevue/treeselect";
-import { computed, onBeforeUnmount, onMounted } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { useCategoryTree } from "@/composables/useCategoryTree";
 import { canManageProducts } from "@/products/permissions";
 import ProductImages from "@/products/ProductImages.vue";
 import ProductVariants from "@/products/ProductVariants.vue";
-import { useProductForm } from "@/products/useProductForm";
+import { type ActionResult, useProductForm } from "@/products/useProductForm";
 import { useAuthStore } from "@/stores/auth";
 
 const SHORT_DESCRIPTION_LIMIT = 500;
 const LEAVE_MESSAGE = "Masz niezapisane zmiany. Czy na pewno chcesz opuścić ten formularz?";
+
+// The first message of an error or field marked invalid, in the order of the document; a disabled field cannot take focus.
+const FIRST_ERROR = '.p-message-error, [aria-invalid="true"]:not(:disabled)';
+const SUCCESS = ".p-message-success";
+const FOCUSABLE = "input, textarea, select, button, a[href], [tabindex]";
 
 const route = useRoute();
 const router = useRouter();
@@ -66,6 +71,29 @@ const {
     void router.replace({ name: "product", params: { id } });
   },
 });
+const root = ref<HTMLElement | null>(null);
+
+// The form is long and the result of an action appears far from the button: bring the first error (or the
+// confirmation) into view and move the focus there. This runs after the DOM is updated, also after the route moved
+// from the "new" page to the page of the created product, because the same instance stays.
+async function run(action: () => Promise<ActionResult>): Promise<void> {
+  const result = await action();
+  if (result === null) {
+    return;
+  }
+  await nextTick();
+  const target = root.value?.querySelector<HTMLElement>(result === "success" ? SUCCESS : FIRST_ERROR);
+  if (!target) {
+    return;
+  }
+  if (!target.matches(FOCUSABLE)) {
+    // A message is not focusable by itself; -1 makes it a target for the script, not a stop for the keyboard.
+    target.tabIndex = -1;
+  }
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ block: "center" });
+}
+
 const { nodes: categories, error: categoriesError } = useCategoryTree();
 
 // TreeSelect holds the chosen nodes as { [key]: true }: one for the main category, any number for the additional ones.
@@ -115,7 +143,10 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
 </script>
 
 <template>
-  <div class="product">
+  <div
+    ref="root"
+    class="product"
+  >
     <div class="header">
       <h1>{{ view ? data.name || "Produkt" : "Nowy produkt" }}</h1>
       <Tag
@@ -402,7 +433,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
           icon="pi pi-check"
           :loading="busy"
           :disabled="!canSave"
-          @click="save()"
+          @click="run(save)"
         />
         <Button
           v-if="view?.status === 'draft'"
@@ -411,7 +442,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
           icon="pi pi-eye"
           severity="secondary"
           :disabled="!canPublish"
-          @click="publish()"
+          @click="run(publish)"
         />
         <Button
           v-if="view?.status === 'published'"
@@ -420,7 +451,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
           icon="pi pi-eye-slash"
           severity="secondary"
           :disabled="!canUnpublish"
-          @click="unpublish()"
+          @click="run(unpublish)"
         />
         <small
           v-if="dirty && view"

@@ -244,6 +244,8 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
   przy `slugLocked` z wyjaśnieniem, krótki opis z licznikiem znaków, kategoria główna i dodatkowe z drzewa, klasa
   podatkowa z `GET /tax-classes`), „Zdjęcia”, „Warianty”. Pracownik bez `MANAGE_PRODUCTS` widzi formularz tylko
   do odczytu, bez akcji.
+- Wynik akcji (zapis, publikacja, wycofanie): formularz jest długi, więc po akcji panel przewija i ustawia fokus na
+  pierwszym błędzie w kolejności dokumentu (pole z błędem albo komunikat) albo, po sukcesie, na komunikacie sukcesu.
 - Zdjęcia: wybór wielu plików; każdy wysyłany osobno, po kolei, ze statusem przy pliku (oczekuje, wysyłanie,
   gotowe, błąd z `detail` 422 albo ogólnym komunikatem i możliwością ponowienia); plik, którego klucz już jest
   w formularzu, nie jest dodawany drugi raz („To zdjęcie już jest w produkcie.”);
