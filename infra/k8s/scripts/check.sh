@@ -29,8 +29,8 @@ step() { printf '\n== %s\n' "$1"; }
 do_lint() {
   step "helm lint (prod, ci)"
   # shellcheck disable=SC2086 # $digests is a list of arguments
-  helm lint charts/shop --strict -f environments/prod/values.yaml --set image.tag=$rev $digests
-  helm lint charts/shop --strict -f environments/ci/values.yaml --set image.tag=$rev
+  helm lint charts/shop --strict --kube-version "$KUBERNETES_VERSION" -f environments/prod/values.yaml --set image.tag=$rev $digests
+  helm lint charts/shop --strict --kube-version "$KUBERNETES_VERSION" -f environments/ci/values.yaml --set image.tag=$rev
 }
 
 do_render() {
@@ -38,11 +38,12 @@ do_render() {
   sh "$here/render.sh" "$work"
 }
 
-# A render that must fail names the value that is wrong or missing in the message of helm.
+# A render that must fail names the value that is wrong or missing in the message of helm. The Kubernetes version is
+# that of the cluster of the smoke test unless the arguments give another one (the last --kube-version wins).
 expect_failure() {
   description="$1" expected="$2"
   shift 2
-  if output="$(helm template shop charts/shop --namespace shop "$@" 2>&1)"; then
+  if output="$(helm template shop charts/shop --namespace shop --kube-version "$KUBERNETES_VERSION" "$@" 2>&1)"; then
     echo "schema: $description: the render succeeded, it must fail" >&2
     return 1
   fi
@@ -53,7 +54,7 @@ expect_failure() {
 }
 
 do_schema() {
-  step "values.schema.json: missing values fail the render and name the value"
+  step "values.schema.json and Chart.yaml: wrong values and clusters fail the render and say why"
   prod="-f environments/prod/values.yaml"
   # shellcheck disable=SC2086 # $prod and $digests are lists of arguments
   {
@@ -71,6 +72,8 @@ do_schema() {
     expect_failure "no domain" "/global/domain" $prod --set image.tag=$rev $digests --set global.domain=
     expect_failure "bad scheme" "/global/scheme" $prod --set image.tag=$rev $digests --set global.scheme=ftp
     expect_failure "ipAllowList without ranges" "/ipAllowList" $prod --set image.tag=$rev $digests --set 'ipAllowList.sourceRange=null'
+    # garage-init mounts the binary of Garage from its image (a volume of type image): stable since Kubernetes 1.36.
+    expect_failure "Kubernetes 1.35" "kubeVersion" $prod --set image.tag=$rev $digests --kube-version 1.35.9
     expect_failure "secret created without values" "/secrets" -f environments/ci/values.yaml --set image.tag=$rev \
       --set secrets.values=null
     expect_failure "secret created without one key" "/secrets/values/STORE_SESSION_SECRET" -f environments/ci/values.yaml \

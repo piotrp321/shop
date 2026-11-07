@@ -23,7 +23,8 @@ digests="$digests --set image.digests.admin=$(digest c) --set image.digests.elas
 render() {
   case_name="$1" env="$2"
   shift 2
-  if ! helm template shop charts/shop --namespace shop -f "environments/$env/values.yaml" "$@" > "$out/$case_name.yaml"; then
+  if ! helm template shop charts/shop --namespace shop --kube-version "$KUBERNETES_VERSION" -f "environments/$env/values.yaml" "$@" \
+    > "$out/$case_name.yaml"; then
     echo "render: helm template failed for $case_name" >&2
     exit 1
   fi

@@ -59,6 +59,7 @@ invalid_manifest() { replace infra/k8s/charts/shop/templates/_helpers.tpl "revis
 auth_exposes_master() { replace infra/k8s/charts/shop/templates/ingress.yaml '"/realms/backoffice/" "/resources/"' '"/realms/backoffice/" "/realms/master/" "/resources/"'; }
 job_before_dependency() { replace infra/k8s/charts/shop/templates/jobs.yaml '(dict "root" . "name" "migrate" "wave" "0"' '(dict "root" . "name" "migrate" "wave" "-2"'; }
 image_without_digest() { replace infra/k8s/charts/shop/values.yaml "  redis: redis:8.10.3@" "  redis: redis:8.10.3 # @"; }
+kube_version_lowered() { replace infra/k8s/charts/shop/Chart.yaml 'kubeVersion: ">=1.36.0-0"' 'kubeVersion: ">=1.31.0-0"'; }
 nothing_broken() { :; }
 
 echo "selftest: the unbroken copy passes"
@@ -72,6 +73,7 @@ run_case "invalid manifest" "is invalid" invalid_manifest
 run_case "auth ingress exposing the master realm" "test_auth_exposes_only_the_realms_of_the_shop_and_the_resources" auth_exposes_master
 run_case "job in a wave before its dependency" "waits for postgres" job_before_dependency
 run_case "third-party image without a digest" "/images/redis" image_without_digest
+run_case "chart allowed on Kubernetes without stable image volumes" "Kubernetes 1.35: the render succeeded, it must fail" kube_version_lowered
 
 if [ "$failures" -ne 0 ]; then
   echo "selftest: $failures case(s) failed" >&2

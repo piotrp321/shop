@@ -159,8 +159,13 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 - Kontenery przy starcie niczego nie pobierają (wtyczek ani innych artefaktów); klaster pobiera tylko obrazy
   o przypiętych digestach.
 - Etap używany przez compose pozostaje ostatni; lokalny `make up` działa jak dziś.
-- Usługi bez własnego kodu używają obrazów i wersji z `infra/docker-compose.yml`. `garage-init` w klastrze: initContainer
-  z obrazu Garage kopiuje binarkę do `emptyDir`, kontener Alpine uruchamia `infra/garage/init.sh`. Konfiguracja z repo
+- Usługi bez własnego kodu używają obrazów i wersji z `infra/docker-compose.yml`. `garage-init` w klastrze: kontener
+  Alpine uruchamia `infra/garage/init.sh` z binarką Garage zamontowaną z jej obrazu wolumenem typu `image` (bez kopii
+  w `emptyDir`). Wolumen `image` (ImageVolume) jest alfa w Kubernetes 1.31–1.32, betą domyślnie wyłączoną w 1.33–1.34,
+  betą domyślnie włączoną w 1.35 i stabilny od 1.36; wymaga też runtime'u z obsługą wolumenów obrazów (containerd 2.1
+  lub nowszy). Wymaganie: k3s/Kubernetes ≥ 1.36. Pilnuje go `kubeVersion: ">=1.36.0-0"` w `Chart.yaml` (Helm, a przez
+  niego Argo CD, odmawia renderu dla starszego klastra), a smoke test działa na k3s `v1.36.6-k3s1`; bootstrap
+  (DEPLOY-6) przypina k3s ≥ v1.36. Konfiguracja z repo
   (VCL, `garage.toml`, init Postgresa, `init.sh`, realmy) trafia do ConfigMap przez symlinki
   w `infra/k8s/charts/shop/files/`. Pierwsze zadanie sprawdza, że Helm i Argo CD czytają symlinki wewnątrz repo; jeśli
   nie, chart trzyma kopie, a `check` sprawdza ich zgodność z oryginałami.
@@ -279,7 +284,7 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 
 - Cele `infra/k8s/Makefile` działają z komputera użytkownika (narzędzia w kontenerach) i łączą się z serwerem po SSH
   (`HOST=user@adres`):
-  - `bootstrap`: na czystym Ubuntu 24.04 LTS przypięta wersja k3s, `vm.max_map_count=262144`, ufw (SSH i API k3s;
+  - `bootstrap`: na czystym Ubuntu 24.04 LTS przypięta wersja k3s (≥ v1.36, wymaganie chartu), `vm.max_map_count=262144`, ufw (SSH i API k3s;
     D6), automatyczne poprawki bezpieczeństwa, Sealed Secrets (z kluczem z kopii, jeśli jest; inaczej zapis
     certyfikatu do repo), Argo CD z aplikacją `root` (app-of-apps w `infra/k8s/argocd/`). Idempotentny; brak uprawnień
     root albo inny system kończą go błędem przed zmianami.
@@ -300,8 +305,8 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   przełączniki D10, CronJoby, ścieżki ingressu `auth`, middleware, fale (każdy Job i Deployment ma zależności we
   wcześniejszych falach), nazwy Jobów D11, obrazy (własne z rejestru, z digestem w `prod`; pozostałe z tagiem jak
   w compose i digestem; Elasticsearch z `infra/elasticsearch/Dockerfile`, bez `elasticsearch-plugin` w kontenerach).
-  Render, który musi się nie udać: `prod` bez digestów, `image.tag=latest`, digest w złym formacie, obraz usługi bez
-  digestu. Główny `make check` go wywołuje, więc działa w wymaganym jobie `checks`
+  Render (z wersją Kubernetes klastra smoke testu, `--kube-version`), który musi się nie udać: `prod` bez digestów,
+  `image.tag=latest`, digest w złym formacie, obraz usługi bez digestu, klaster Kubernetes 1.35 (`kubeVersion`). Główny `make check` go wywołuje, więc działa w wymaganym jobie `checks`
   i w bramkach AO.
 - `make -C infra/k8s smoke`: buduje cztery obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa
   klastra i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze,
