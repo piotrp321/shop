@@ -186,10 +186,15 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   | −1 | StatefulSety, Keycloak, Mailpit | Keycloak: Postgres |
   | 0 | Joby `garage-init`, `migrate` (`doctrine:migrations:migrate --no-interaction`, `catalog:search-index:setup`), `keycloak-config` | Garage; Postgres i Elasticsearch; gotowy Keycloak |
   | 1 | Deploymenty api, worker, store, admin, imgproxy, varnish | api i worker: `doctrine:migrations:up-to-date`; imgproxy: Garage z bucketami |
-  | 2 | Job `initialize` (dane startowe) | gotowe api, worker, varnish, store |
-  | 3 | Job `purge-caches` (`storefront:cache:purge-all`) | gotowe api, varnish, store |
+  | 2 | Job `initialize` (dane startowe) | zakończony rollout Deploymentów api, varnish, store, worker |
+  | 3 | Job `purge-caches` (`storefront:cache:purge-all`) | zakończony rollout Deploymentów api, varnish, store |
 
   Nieudana migracja: nowe `api` i `worker` nigdy nie są gotowe, stare działają (`maxUnavailable: 0`).
+- `initialize` i `purge-caches` czekają na rollout (`kubectl rollout status`) w initContainerach z obrazem `kubectl`,
+  a nie na odpowiedź Service, którą mógłby jeszcze dać stary pod. Te Joby działają na ServiceAccount `shop-wait`
+  (Role: tylko `get`, `list`, `watch` na `deployments`), a token API Kubernetes (wolumen `projected`) montują tylko te
+  initContainery. Pozostałe pody i kontenery nie montują tokenu (`automountServiceAccountToken: false`). Deploymenty
+  mają `progressDeadlineSeconds` nie krótszy niż czas oczekiwania Jobów (1500 s).
 - Middleware Traefika: `ipAllowList` (D6) na wszystkich ingressach; `X-Robots-Tag: noindex` na wszystkich hostach,
   gdy `noindex: true`.
 - CronJob `cart:purge-expired` (co godzinę, `concurrencyPolicy: Forbid`, strefa `Europe/Warsaw`).
@@ -226,10 +231,13 @@ w chartcie w tym samym PR.
 - Wspólny skrypt `apps/api/bin/seed-demo` uruchamia komendy `<moduł>:seed-demo` w kolejności z `make seed`
   (z modułami PAYMENT) i `storefront:cache:purge-all`; w `prod` przekazuje `--force-reset`. `make seed` woła ten sam
   skrypt.
-- Job `initialize` (fala 2) wczytuje dane tylko wtedy, gdy baza `shop` nie ma żadnego produktu, ceny, stanu ani
-  zamówienia (zapytania tylko do odczytu w skrypcie). Gdy wszystkie te tabele mają dane – sukces bez zmian. Gdy
-  katalog jest pusty, a inne dane istnieją – błąd z opisem stanu, bez zmian (seed z `--force-reset` skasowałby
-  zamówienia). Wyłączany wartością `initialize.enabled: false` (na potrzeby odtwarzania kopii w DEPLOY-OPS).
+- Job `initialize` (fala 2, skrypt `files/scripts/initialize.sh`) liczy produkty, ceny, stany i zamówienia w bazie
+  `shop` (zapytania tylko do odczytu) i rozróżnia trzy stany:
+  - wszystkie cztery liczby są zerowe – wczytuje dane demo (`bin/seed-demo`, w `prod` z `--force-reset`);
+  - są produkty, ceny i stany – sukces bez zmian, niezależnie od zamówień;
+  - każdy inny stan jest mieszany – błąd z liczbami i bez zmian, np. pusty katalog z zamówieniami albo cenami (reset
+    seeda by je skasował) albo produkty bez cen lub stanów (przerwana inicjalizacja, wymaga decyzji człowieka).
+- Wyłączany wartością `initialize.enabled: false` (na potrzeby odtwarzania kopii w DEPLOY-OPS).
 - Inicjalizacja przerwana w połowie: kolejne uruchomienie kończy się błędem stanu mieszanego; runbook opisuje ponowne
   wymuszone wczytanie (`make -C infra/k8s reinitialize`), które kasuje dane i wymaga zgody użytkownika.
 
