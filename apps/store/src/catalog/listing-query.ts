@@ -66,9 +66,17 @@ function all(value: string | string[] | undefined): string[] {
 }
 
 // The API trims the phrase with PHP `trim`, which also strips NUL; `String.trim` does not, so a phrase the front counts
-// as 2 characters would be 1 for the API (400, an invalid filter instead of the message about 2 characters).
+// as 2 characters would be 1 for the API (400, an invalid filter instead of the message about 2 characters). One walk
+// from each end, so linear: a regex trim backtracks quadratically over a long run of spaces inside the phrase.
+const isTrimmed = (char: string) => char === "\0" || /\s/.test(char);
+
 function trimPhrase(phrase: string | undefined): string | undefined {
-  return phrase?.replace(/^[\s\0]+|[\s\0]+$/g, "");
+  if (phrase === undefined) return undefined;
+  let start = 0;
+  let end = phrase.length;
+  while (start < end && isTrimmed(phrase[start])) start++;
+  while (end > start && isTrimmed(phrase[end - 1])) end--;
+  return phrase.slice(start, end);
 }
 
 export function readListingState(query: SearchParams, mode: ListingMode): ListingState {

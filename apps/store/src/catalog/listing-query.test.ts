@@ -51,6 +51,15 @@ describe("readListingState", () => {
     expect(isShortPhrase(phrase)).toBe(true);
   });
 
+  it("trims in linear time, so a long run of spaces or NUL inside the phrase cannot block the server", () => {
+    // A backtracking trim takes seconds here (quadratic in the run); a linear one well under a millisecond.
+    for (const run of [" ".repeat(50_000), "\0".repeat(50_000), " \0".repeat(25_000)]) {
+      const started = performance.now();
+      expect(readListingState({ q: `${run}a${run}b${run}` }, "search").q).toBe(`a${run}b`.slice(0, 100));
+      expect(performance.now() - started).toBeLessThan(100);
+    }
+  });
+
   it("ignores the phrase and the category on a listing page, so they reach neither the API nor the addresses", () => {
     const state = readListingState({ q: "kurtka", kategoria: "bieganie", sort: "nazwa" }, "list");
     expect(state).toEqual({ sort: "nazwa", options: [] });
