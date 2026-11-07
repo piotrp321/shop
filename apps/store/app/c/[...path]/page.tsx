@@ -6,7 +6,7 @@ import { resolveCategoryPath } from "@/catalog/category-path";
 import { loadCategoryTreeForRequest } from "@/catalog/category-tree";
 import { CatalogListing } from "@/catalog/CatalogListing";
 import { InvalidFilter } from "@/catalog/InvalidFilter";
-import { isRefined, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
+import { invalidFilterExit, isRefined, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
 import { loadCatalogForRequest } from "@/catalog/load-catalog";
 import { buildCategoryMetadata } from "@/catalog/page-metadata";
 import { serializeJsonLd } from "@/catalog/product-json-ld";
@@ -56,7 +56,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
   }
   const { chain, category, state, listing } = found;
   if (listing.kind === "invalid-filter") {
-    return <InvalidFilter listingHref={categoryHref(category.path)} />;
+    return <InvalidFilter exit={invalidFilterExit(categoryHref(category.path), state)} />;
   }
   // The last step is the page itself: text, not a link.
   const crumbs = crumbsOf(chain).map((crumb, index, all) => (index === all.length - 1 ? { name: crumb.name } : crumb));

@@ -105,9 +105,11 @@ export function isShortPhrase(phrase: string | undefined): boolean {
   return phrase === undefined || [...phrase].length < MIN_PHRASE;
 }
 
+const isWholeZloty = (zloty: string) => /^\d+$/.test(zloty);
+
 /** The only thing the front does with a number: whole zloty to grosze. Anything but digits goes on unchanged. */
 function toGrosze(zloty: string | undefined): string | undefined {
-  return zloty !== undefined && /^\d+$/.test(zloty) ? `${zloty}00` : zloty;
+  return zloty !== undefined && isWholeZloty(zloty) ? `${zloty}00` : zloty;
 }
 
 /**
@@ -129,6 +131,26 @@ export function toApiQuery(state: ListingState, categoryId?: string): ApiListQue
   if (sort !== undefined) query.sort = sort;
   if (state.page !== undefined) query.page = state.page;
   return query;
+}
+
+/**
+ * The way back from „Nieprawidłowy filtr” of the listing at `basePath`. A price that is not whole zloty is the one cause
+ * the store can see itself, so the link drops only that price when the rest passes the store's own checks
+ * (`toApiQuery`). Otherwise it is the listing without filters and sort (with the phrase on `/szukaj`); on the home page
+ * that is the catalog link the page already has, so there is none.
+ */
+export function invalidFilterExit(basePath: string, state: ListingState): { href: string; label: string } | undefined {
+  const withoutBadPrice: ListingState = {
+    ...state,
+    priceFrom: state.priceFrom !== undefined && isWholeZloty(state.priceFrom) ? state.priceFrom : undefined,
+    priceTo: state.priceTo !== undefined && isWholeZloty(state.priceTo) ? state.priceTo : undefined,
+  };
+  const badPrice = withoutBadPrice.priceFrom !== state.priceFrom || withoutBadPrice.priceTo !== state.priceTo;
+  if (badPrice && toApiQuery(withoutBadPrice) !== null) {
+    return { href: listingHref(basePath, withoutBadPrice), label: "Pokaż wyniki bez błędnej ceny" };
+  }
+  const plain = listingHref(basePath, { q: state.q, options: [] });
+  return plain === "/" ? undefined : { href: plain, label: "Pokaż wyniki bez filtrów" };
 }
 
 /** The address of a listing: `basePath` and the state, changed by `patch`. Every change leaves `page` out. */

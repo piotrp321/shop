@@ -107,8 +107,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `10000`), każda inna wartość idzie bez zmian, więc API odpowiada 400. Liczby, zakresy cen, liczby przy wartościach
   i dostępność pochodzą z `facets` API; podpowiedź zakresu ceny to kwoty z API sformatowane `formatPrice`.
   Nieznany `sort`, `dostepne` inne niż `1` i 400 API to „Nieprawidłowy filtr” (z `noindex`); dla nieznanego `sort`
-  i `dostepne` sklep nie woła API. `InvalidFilter` na `/c/` i `/szukaj` ma link „Pokaż wyniki bez filtrów” (listing
-  bez filtrów i sortowania, na `/szukaj` z frazą) obok „Zobacz cały katalog”.
+  i `dostepne` sklep nie woła API. `InvalidFilter` ma obok „Zobacz cały katalog” link powrotu z `invalidFilterExit`:
+  „Pokaż wyniki bez błędnej ceny” (bez ceny, która nie jest samymi cyframi, gdy reszta przechodzi `toApiQuery`) albo
+  „Pokaż wyniki bez filtrów” (listing bez filtrów i sortowania, na `/szukaj` z frazą; na `/` go nie ma).
 - `/szukaj`: `q` bez frazy albo krótsze niż 2 znaki (po przycięciu) → „Wpisz co najmniej 2 znaki.” bez wywołania listy
   produktów i drzewa kategorii. `kategoria` czyta drzewo (to samo `React.cache`), zamienia ścieżkę na `category` API;
   nieznana ścieżka (też kategoria, której API już nie zna) → „Nieprawidłowy filtr”. `h1` `Wyniki dla „<fraza>”`,

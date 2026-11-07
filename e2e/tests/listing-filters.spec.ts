@@ -114,14 +114,20 @@ test("the price applies on Enter and when the field loses focus, in whole zloty,
 });
 
 test("a price that is not whole zloty is an invalid filter that search engines do not index", async ({ page, request }) => {
-  await page.goto(SHOES);
+  await page.goto(`${SHOES}?sort=cena-rosnaco&o=Kolor%3Aczarne`);
   await priceFrom(page).fill("12,5");
   await priceFrom(page).press("Enter");
   await expect(page.getByRole("heading", { level: 1, name: "Nieprawidłowy filtr" })).toBeVisible();
-  // The way back is the same listing without the filters, not only the home page.
+  // The way back drops only the malformed price: the colour and the sort stay.
+  await page.getByRole("link", { name: "Pokaż wyniki bez błędnej ceny" }).click();
+  await expect(page).toHaveURL(new RegExp(`${SHOES}\\?sort=cena-rosnaco&o=Kolor%3Aczarne$`));
+  await expect(priceFrom(page)).toHaveValue("");
+  await expect(filterBox(page, "czarne")).toBeChecked();
+
+  // Any other cause the store cannot tell gives the listing without filters and sort.
+  await page.goto(`${SHOES}?page=0&o=Kolor%3Aczarne`);
   await page.getByRole("link", { name: "Pokaż wyniki bez filtrów" }).click();
   await expect(page).toHaveURL(new RegExp(`${SHOES}$`));
-  await expect(priceFrom(page)).toHaveValue("");
 
   for (const query of ["cena-od=abc", "cena-do=-5", "sort=popularne", "dostepne=0", "page=0"]) {
     const html = await (await request.get(`${SHOES}?${query}`)).text();

@@ -3,6 +3,7 @@ import {
   clearedFilters,
   defaultSort,
   hasFilters,
+  invalidFilterExit,
   isRefined,
   isShortPhrase,
   listingHref,
@@ -195,5 +196,35 @@ describe("toggleOption, clearedFilters and the filter predicates", () => {
   it("sorts by relevance by default with a phrase and by name otherwise", () => {
     expect(defaultSort({ q: "kurtka", options: [] })).toBe("trafnosc");
     expect(defaultSort({ options: [] })).toBe("nazwa");
+  });
+});
+
+describe("invalidFilterExit", () => {
+  const BAD_PRICE = "Pokaż wyniki bez błędnej ceny";
+  const NO_FILTERS = "Pokaż wyniki bez filtrów";
+
+  it("drops only a price that is not whole zloty and keeps the other filters, the sort and the phrase", () => {
+    expect(invalidFilterExit("/c/buty", { priceFrom: "99,50", priceTo: "200", sort: "nazwa", options: ["Kolor:czarne"], page: "2" })).toEqual({
+      href: "/c/buty?sort=nazwa&cena-do=200&o=Kolor%3Aczarne",
+      label: BAD_PRICE,
+    });
+    expect(invalidFilterExit("/szukaj", { q: "kurtka", priceFrom: "1", priceTo: "abc", options: [], category: "bieganie" })).toEqual({
+      href: "/szukaj?q=kurtka&cena-od=1&kategoria=bieganie",
+      label: BAD_PRICE,
+    });
+    expect(invalidFilterExit("/", { priceFrom: "12.5", priceTo: "-3", options: ["Kolor:czarne"] })).toEqual({ href: "/?o=Kolor%3Aczarne", label: BAD_PRICE });
+  });
+
+  it("drops all filters and the sort when the cause is not a malformed price, or not only one the store can tell", () => {
+    expect(invalidFilterExit("/c/buty", { priceFrom: "300", priceTo: "100", options: ["Kolor:czarne"] })).toEqual({ href: "/c/buty", label: NO_FILTERS });
+    expect(invalidFilterExit("/c/buty", { priceFrom: "99,50", sort: "popularne", options: [] })).toEqual({ href: "/c/buty", label: NO_FILTERS });
+    expect(invalidFilterExit("/szukaj", { q: "kurtka zimowa", available: "tak", category: "nie-ma", options: [] })).toEqual({
+      href: "/szukaj?q=kurtka+zimowa",
+      label: NO_FILTERS,
+    });
+  });
+
+  it("has no link on the home page without a malformed price: „Zobacz cały katalog” is the way back", () => {
+    expect(invalidFilterExit("/", { sort: "popularne", options: [] })).toBeUndefined();
   });
 });

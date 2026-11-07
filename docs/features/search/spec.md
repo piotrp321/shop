@@ -253,8 +253,11 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   bez zmian, więc API odpowiada 400), `dostepne=1`, `o=<oś>:<wartość>` (powtarzany, jak w API), `kategoria` (tylko
   `/szukaj`), `page`. Kategoria na `/` i `/c/` wyłącznie w ścieżce. Nieznana wartość `sort` albo `dostepne` →
   „Nieprawidłowy filtr”; 400 API → „Nieprawidłowy filtr”. Każda zmiana filtra lub sortowania usuwa `page`.
-- „Nieprawidłowy filtr” ma link „Zobacz cały katalog” (`/`), a na `/c/` i `/szukaj` także „Pokaż wyniki bez filtrów”:
-  ten sam listing bez filtrów i sortowania (na `/szukaj` z frazą), bo sklep nie wie, który parametr jest błędny.
+- „Nieprawidłowy filtr” ma link „Zobacz cały katalog” (`/`) i link powrotu do tego samego listingu. Cena, która nie
+  jest napisem z samych cyfr, to jedyna przyczyna widoczna dla sklepu: gdy reszta parametrów przechodzi sprawdzenie
+  sklepu (znany `sort`, `dostepne=1`), link „Pokaż wyniki bez błędnej ceny” usuwa tylko tę cenę (pozostałe filtry,
+  sortowanie i fraza zostają). W każdym innym przypadku „Pokaż wyniki bez filtrów” prowadzi do listingu bez filtrów
+  i sortowania (na `/szukaj` z frazą); na `/` tego linku nie ma, bo jest nim „Zobacz cały katalog”.
 
 ### Widok listingu (tymczasowy motyw, komponenty shadcn/ui)
 

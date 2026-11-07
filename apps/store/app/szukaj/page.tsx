@@ -6,7 +6,7 @@ import { resolveCategoryPath } from "@/catalog/category-path";
 import { loadCategoryTreeForRequest } from "@/catalog/category-tree";
 import { CatalogListing } from "@/catalog/CatalogListing";
 import { InvalidFilter } from "@/catalog/InvalidFilter";
-import { isShortPhrase, listingHref, type ListingState, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
+import { invalidFilterExit, isShortPhrase, listingHref, type ListingState, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
 import { type CatalogResult, loadCatalogForRequest } from "@/catalog/load-catalog";
 import { buildSearchMetadata } from "@/catalog/page-metadata";
 
@@ -60,7 +60,7 @@ function crumbsOf(state: ListingState, chain: CategoryNode[]): BreadcrumbItem[] 
 export default async function SearchPage({ searchParams }: PageProps<"/szukaj">) {
   const search = await read(await searchParams);
   if (search.kind === "invalid-filter") {
-    return <InvalidFilter listingHref={listingHref("/szukaj", { q: search.state.q, options: [] })} />;
+    return <InvalidFilter exit={invalidFilterExit("/szukaj", search.state)} />;
   }
   if (search.kind === "short-phrase") {
     return (
