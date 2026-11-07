@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke rerun
+.PHONY: check selftest smoke rerun create-admin
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, tests of the render). Needs only Docker.
 check:
@@ -6,7 +6,8 @@ check:
 
 # The checks fail on injected errors (a broken template, a secret key missing from the chart, an invalid manifest, an
 # auth ingress exposing the master realm, a job in a wave before its dependency, an image without a digest, a chart
-# allowed on Kubernetes older than 1.36).
+# allowed on Kubernetes older than 1.36, Brevo allowed without its secret, keycloak-config printing a secret,
+# create-admin going on without tak).
 selftest:
 	sh scripts/selftest.sh
 
@@ -20,3 +21,10 @@ smoke:
 rerun:
 	@test -n "$(JOB)" || { echo "rerun: set JOB=<job name>, e.g. make -C infra/k8s rerun JOB=initialize-3fa9c1d2e4" >&2; exit 2; }
 	sh scripts/rerun.sh "$(JOB)"
+
+# The first administrator of the panel: make -C infra/k8s create-admin LOGIN=<login> EMAIL=<email>. Says what it will do
+# and asks for the word tak; then creates the user in the realm backoffice with the role admin and no password and
+# sends the e-mail to set the password and TOTP (valid 12 h). An existing login or e-mail fails without changes.
+# KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
+create-admin:
+	sh scripts/create-admin.sh "$(LOGIN)" "$(EMAIL)"

@@ -39,6 +39,12 @@ render() {
   render prod-domain prod --set image.tag=$rev1 $digests --set global.domain=other.example.net
   render prod-indexable prod --set image.tag=$rev1 $digests --set noindex=false
   render prod-noinit prod --set image.tag=$rev1 $digests --set initialize.enabled=false
+  # The switches of D10, one at a time against the profile (tests/test_switches.py).
+  render prod-accounts prod --set image.tag=$rev1 $digests --set customerAccounts=true
+  render prod-nodemo prod --set image.tag=$rev1 $digests --set demoNotice=false
+  render prod-order-brevo prod --set image.tag=$rev1 $digests --set orderMail=brevo
 }
 render ci ci --set image.tag=$rev1
 render ci-rev2 ci --set image.tag=$rev2
+render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true
+render ci-keycloak-brevo ci --set image.tag=$rev1 --set keycloak.mail=brevo --set brevo.secretName=smoke-brevo

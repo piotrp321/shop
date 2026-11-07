@@ -16,6 +16,15 @@ ingress:
 # The demo is not for search engines.
 noindex: true
 
+# The start of the demo (D10): the bar of a demo store, no customer accounts, the order mail stays in the cluster.
+demoNotice: true
+customerAccounts: false
+orderMail: mailpit
+
+# The Secret with the Brevo SMTP login and key (BREVO_SMTP_LOGIN, BREVO_SMTP_PASSWORD), created outside the chart.
+brevo:
+  secretName: shop-brevo-smtp
+
 # The origin takes HTTP(S) only from Cloudflare (https://www.cloudflare.com/ips/, to be refreshed when they change).
 ipAllowList:
   enabled: true
@@ -48,6 +57,8 @@ elasticsearch:
 
 keycloak:
   javaHeap: -Xms512m -Xmx1g
+  # E-mail verification, password reset and create-admin go out through Brevo.
+  mail: brevo
 
 resources:
   postgres: { requests: { cpu: 500m, memory: 1Gi }, limits: { memory: 2Gi } }

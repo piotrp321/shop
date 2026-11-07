@@ -19,6 +19,9 @@ fresh_copy() {
   mkdir -p "$base/tree"
   # cp -R keeps the symlinks of charts/shop/files as they are; they stay relative and so point into the copy.
   cp -R "$TOOLS_REPO/infra" "$base/tree/infra"
+  # The tests compare the browser image of the smoke test with the image of the E2E tests.
+  mkdir -p "$base/tree/e2e"
+  cp "$TOOLS_REPO/e2e/Dockerfile" "$base/tree/e2e/Dockerfile"
   tree="$base/tree"
 }
 
@@ -60,6 +63,11 @@ auth_exposes_master() { replace infra/k8s/charts/shop/templates/ingress.yaml '"/
 job_before_dependency() { replace infra/k8s/charts/shop/templates/jobs.yaml '(dict "root" . "name" "migrate" "wave" "0"' '(dict "root" . "name" "migrate" "wave" "-2"'; }
 image_without_digest() { replace infra/k8s/charts/shop/values.yaml "  redis: redis:8.10.3@" "  redis: redis:8.10.3 # @"; }
 kube_version_lowered() { replace infra/k8s/charts/shop/Chart.yaml 'kubeVersion: ">=1.36.0-0"' 'kubeVersion: ">=1.31.0-0"'; }
+brevo_without_secret_allowed() { replace infra/k8s/charts/shop/values.schema.json '"const": "brevo"' '"const": "never"'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+keycloak_config_prints_a_secret() { replace infra/k8s/charts/shop/files/scripts/keycloak-config.sh 'echo "keycloak-config: done"' 'echo "keycloak-config: done $STORE_CLIENT_SECRET"'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+create_admin_without_confirmation() { replace infra/k8s/scripts/create-admin.sh 'if [ "$answer" != tak ]; then' 'if [ "$answer" = never ]; then'; }
 nothing_broken() { :; }
 
 echo "selftest: the unbroken copy passes"
@@ -74,6 +82,9 @@ run_case "auth ingress exposing the master realm" "test_auth_exposes_only_the_re
 run_case "job in a wave before its dependency" "waits for postgres" job_before_dependency
 run_case "third-party image without a digest" "/images/redis" image_without_digest
 run_case "chart allowed on Kubernetes without stable image volumes" "Kubernetes 1.35: the render succeeded, it must fail" kube_version_lowered
+run_case "orderMail brevo allowed without the Brevo secret" "orderMail brevo without the Brevo secret: the render succeeded" brevo_without_secret_allowed
+run_case "keycloak-config printing a secret" "test_no_secret_is_in_the_arguments_or_in_the_output" keycloak_config_prints_a_secret
+run_case "create-admin going on without tak" "test_without_the_word_tak_nothing_runs" create_admin_without_confirmation
 
 if [ "$failures" -ne 0 ]; then
   echo "selftest: $failures case(s) failed" >&2

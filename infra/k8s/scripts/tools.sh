@@ -4,6 +4,7 @@
 #
 #   helm, kubeconform, shellcheck, yq, py: tools working on files of the repository (cwd = /repo/infra/k8s)
 #   k3d, kubectl: tools talking to Docker (k3d) and to a k3d cluster over its Docker network (kubectl)
+#   browser_dom: the DOM of a page after its scripts ran, in headless Chromium on the Docker network of a cluster
 
 TOOLS_REPO="${REPO_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 
@@ -20,6 +21,8 @@ KUBERNETES_VERSION="${KUBERNETES_VERSION:-${K3S_VERSION%%-*}}"
 KUBERNETES_VERSION="${KUBERNETES_VERSION#v}"
 KUBECTL_IMAGE="${KUBECTL_IMAGE:-registry.k8s.io/kubectl:v$KUBERNETES_VERSION}"
 CURL_IMAGE="${CURL_IMAGE:-curlimages/curl:8.18.0}"
+# The browser of the smoke test: the Chromium of the image the E2E tests are built on (e2e/Dockerfile, the same tag).
+PLAYWRIGHT_IMAGE="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.64.1-noble}"
 
 # Downloaded schemas of kubeconform; survives between runs.
 TOOLS_CACHE="${TOOLS_CACHE:-${TMPDIR:-/tmp}/shop-k8s-cache}"
@@ -63,4 +66,13 @@ k3d() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$K3D_IMAGE
 kubectl() {
   docker run --rm -i -u "$(id -u):$(id -g)" -e HOME=/tmp --network "$KUBE_NETWORK" -v "$KUBE_DIR:/kube:ro" \
     -e KUBECONFIG=/kube/config "$KUBECTL_IMAGE" "$@"
+}
+# browser_dom <proxy> <url>: prints the DOM of the page once its scripts and requests are done (--virtual-time-budget).
+# Every request, also to *.localhost, goes through the HTTP proxy <proxy> (Traefik of the cluster), which routes by host.
+browser_dom() {
+  # shellcheck disable=SC2016 # expanded by the shell of the container
+  docker run --rm --network "$KUBE_NETWORK" "$PLAYWRIGHT_IMAGE" sh -c '
+    chrome="$(ls /ms-playwright/chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell | head -n 1)"
+    exec "$chrome" --no-sandbox --disable-gpu --proxy-server="$1" --proxy-bypass-list="<-loopback>" \
+      --virtual-time-budget=30000 --dump-dom "$2" 2>/dev/null' browser "$@"
 }

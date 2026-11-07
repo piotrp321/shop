@@ -16,6 +16,11 @@ ingress:
 
 noindex: true
 
+# The switches as in prod (the smoke test checks the bar and the hidden login link); all mail goes to Mailpit.
+demoNotice: true
+customerAccounts: false
+orderMail: mailpit
+
 ipAllowList:
   enabled: false
 
@@ -50,6 +55,7 @@ elasticsearch:
 
 keycloak:
   javaHeap: -Xms128m -Xmx512m
+  mail: mailpit
 
 # Requests only (nothing is overcommitted on one node and a limit would only turn a spike into an OOM kill).
 resources:

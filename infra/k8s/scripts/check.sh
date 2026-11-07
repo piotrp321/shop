@@ -78,6 +78,18 @@ do_schema() {
       --set secrets.values=null
     expect_failure "secret created without one key" "/secrets/values/STORE_SESSION_SECRET" -f environments/ci/values.yaml \
       --set image.tag=$rev --set secrets.values.STORE_SESSION_SECRET=
+    # A value that selects Brevo needs the Secret with the Brevo SMTP login and key.
+    expect_failure "orderMail brevo without the Brevo secret" "/brevo/secretName" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set orderMail=brevo
+    expect_failure "Keycloak mail through Brevo without the Brevo secret" "/brevo/secretName" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set keycloak.mail=brevo
+    expect_failure "prod (Keycloak mail through Brevo) without the Brevo secret" "/brevo/secretName" $prod --set image.tag=$rev \
+      $digests --set brevo.secretName=
+    expect_failure "unknown orderMail" "/orderMail" $prod --set image.tag=$rev $digests --set orderMail=sendgrid
+    expect_failure "unknown mail of Keycloak" "/keycloak/mail" $prod --set image.tag=$rev $digests --set keycloak.mail=sendgrid
+    expect_failure "customerAccounts that is not a boolean" "/customerAccounts" $prod --set image.tag=$rev $digests \
+      --set-string customerAccounts=false
+    expect_failure "demoNotice that is not a boolean" "/demoNotice" $prod --set image.tag=$rev $digests --set-string demoNotice=true
   }
 }
 
