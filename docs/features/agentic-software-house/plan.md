@@ -9,8 +9,8 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 7), nie 
 
 ## Status
 
-W toku: VARIANTS (#89) przez `/ao-run`. Następny krok: pierwsza noc z listą kilku epików (`/ao-run --noc`) po merge'u
-VARIANTS. Blokery: brak. Krok 7: CART-FIXES (#88) przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy
+W toku: DEPLOY (#175) przez `/ao-run`. Następne epiki „Zakresu MVP”: PROMOTIONS (#96), DISCOUNT-CODES (#225)
+i VISUAL-DESIGN (#97), kolejność na tablicy „Backlog sklepu”. Blokery: brak. Krok 7: CART-FIXES (#88) przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy
 PR #112): 30 minut użytkownika, 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD
 według Claude CLI.
 
