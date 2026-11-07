@@ -11,6 +11,7 @@ use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\EmailAddress;
 use App\Ordering\Domain\IdempotencyKey;
 use App\Ordering\Domain\IdempotencyKeyReused;
+use App\Ordering\Domain\Money;
 use App\Ordering\Domain\Order;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderLine;
@@ -20,15 +21,22 @@ use App\Ordering\Domain\OrderNumber;
 use App\Ordering\Domain\OrderOwner;
 use App\Ordering\Domain\OrderRepository;
 use App\Ordering\Domain\OrderStatus;
+use App\Ordering\Domain\OrderStatusChange;
 use App\Ordering\Domain\PaymentId;
 use App\Ordering\Domain\PriceCopy;
 use App\Ordering\Domain\ProductId;
+use App\Ordering\Domain\Refund;
 use App\Ordering\Domain\RequestFingerprint;
 use App\Ordering\Domain\ShippingAddress;
+use App\Ordering\Domain\StaffActor;
+use App\Ordering\Domain\StatusActor;
+use App\Ordering\Domain\StatusActorType;
 use App\Ordering\Domain\VariantId;
 use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderLineRecord;
 use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderRecord;
+use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderStatusChangeRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
 use Doctrine\ORM\Query;
@@ -42,6 +50,10 @@ use Symfony\Component\Uid\Uuid;
  * A second order with the Idempotency-Key of another (a placement from another cart that ran at the same time) is
  * refused by the unique index; the violation becomes IdempotencyKeyReused. It closes the EntityManager, like every
  * failed flush, so the transaction ends with it.
+ *
+ * The history of the statuses is written with the order: the entries the aggregate has beyond the stored rows are
+ * added in their positions (rows are never changed). Lines and history entries are immutable, so a record of them
+ * already in the identity map is never stale.
  */
 final readonly class DoctrineOrderRepository implements OrderRepository
 {
@@ -87,9 +99,10 @@ final readonly class DoctrineOrderRepository implements OrderRepository
     }
 
     /**
-     * Writes what changes after placement: the status with the payment or the cancellation, and the markers of the
-     * emails. The version the order was read at must still be stored: the UPDATE checks it (and raises it), so of
-     * two concurrent saves (e.g. paying and cancelling) only one succeeds.
+     * Writes what changes after placement: the status with its moments, the payment, the cancellation, the refund and
+     * the new entries of the history (the emails are recorded outside the order, in OrderNotifications). The version
+     * the order was read at must still be stored: the UPDATE checks it (and raises it), so of two concurrent saves
+     * (e.g. paying and cancelling) only one succeeds.
      */
     public function save(Order $order): void
     {
@@ -103,6 +116,12 @@ final readonly class DoctrineOrderRepository implements OrderRepository
             $this->entityManager->flush();
         } catch (OptimisticLockException) {
             throw new OrderModifiedConcurrently();
+        }
+        // The new entries only after the versioned UPDATE: a flush inserts before it updates, so a save that lost the
+        // race would otherwise fail on the primary key of the history (the position the winner took) instead of the
+        // version.
+        if (self::appendHistory($order, $record)) {
+            $this->entityManager->flush();
         }
     }
 
@@ -124,6 +143,30 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         \assert(null === $record || $record instanceof OrderRecord);
 
         return null === $record ? throw new OrderNotFound() : self::toDomain($record);
+    }
+
+    /**
+     * Locks the row of the order (SELECT … FOR UPDATE) and reads it under the lock. A record already in the identity
+     * map is refreshed under the lock (a find() with a lock would return it as it was read before); whether the row
+     * still exists is asked first, since a refresh of a missing row keeps the stale record. The refresh leaves the
+     * lines and the history to load anew; their records are immutable.
+     */
+    public function lock(OrderId $id): Order
+    {
+        $managed = $this->entityManager->getUnitOfWork()->tryGetById($id->toString(), OrderRecord::class);
+        if (!$managed instanceof OrderRecord) {
+            $record = $this->entityManager->find(OrderRecord::class, $id->toString(), LockMode::PESSIMISTIC_WRITE);
+
+            return null === $record ? throw new OrderNotFound() : self::toDomain($record);
+        }
+
+        $exists = $this->entityManager->getConnection()->fetchOne('SELECT 1 FROM ordering_order WHERE id = CAST(:id AS uuid) FOR UPDATE', ['id' => $id->toString()]);
+        if (false === $exists) {
+            throw new OrderNotFound();
+        }
+        $this->entityManager->refresh($managed, LockMode::PESSIMISTIC_WRITE);
+
+        return self::toDomain($managed);
     }
 
     public function findByIdempotencyKey(IdempotencyKey $key): ?Order
@@ -158,6 +201,7 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         $record->placedAt = $order->placedAt();
         $record->paymentDeadline = $order->paymentDeadline();
         self::writeChanges($order, $record);
+        self::appendHistory($order, $record);
         $record->version = $order->version();
     }
 
@@ -168,9 +212,44 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         $record->paymentId = $order->paymentId()?->toString();
         $record->cancelledAt = $order->cancelledAt();
         $record->cancellationReason = $order->cancellationReason()?->value;
-        $record->confirmationSentAt = $order->confirmationSentAt();
-        $record->paymentNotificationSentAt = $order->paymentNotificationSentAt();
-        $record->cancellationNotificationSentAt = $order->cancellationNotificationSentAt();
+        $record->shippedAt = $order->shippedAt();
+        $record->deliveredAt = $order->deliveredAt();
+        $record->returnedAt = $order->returnedAt();
+        $refund = $order->refund();
+        $record->refundAmount = $refund?->amount()->amount();
+        $record->refundDueAt = $refund?->dueAt();
+        $record->refundCompletedAt = $refund?->completedAt();
+        $record->refundCompletedByStaffId = $refund?->completedBy()?->staffId();
+        $record->refundCompletedByUsername = $refund?->completedBy()?->username();
+        $record->refundNote = $refund?->note();
+    }
+
+    /**
+     * Adds the entries of the history beyond the stored ones, in their positions.
+     *
+     * @return bool whether any was added
+     */
+    private static function appendHistory(Order $order, OrderRecord $record): bool
+    {
+        $history = $order->history();
+        $stored = $record->statusChanges->count();
+        for ($position = $stored; $position < \count($history); ++$position) {
+            $change = $history[$position];
+            $staff = $change->actor()->staffMember();
+            $record->statusChanges->add(new OrderStatusChangeRecord(
+                $record,
+                $position,
+                $change->from()?->value,
+                $change->to()->value,
+                $change->occurredAt(),
+                $change->actor()->type()->value,
+                $staff?->staffId(),
+                $staff?->username(),
+                $change->note(),
+            ));
+        }
+
+        return \count($history) > $stored;
     }
 
     private static function toDomain(OrderRecord $record): Order
@@ -205,10 +284,39 @@ final readonly class DoctrineOrderRepository implements OrderRepository
             paymentId: null === $record->paymentId ? null : PaymentId::fromString($record->paymentId),
             cancelledAt: $record->cancelledAt,
             cancellationReason: null === $record->cancellationReason ? null : CancellationReason::from($record->cancellationReason),
-            confirmationSentAt: $record->confirmationSentAt,
-            paymentNotificationSentAt: $record->paymentNotificationSentAt,
-            cancellationNotificationSentAt: $record->cancellationNotificationSentAt,
+            shippedAt: $record->shippedAt,
+            deliveredAt: $record->deliveredAt,
+            returnedAt: $record->returnedAt,
+            refund: self::refund($record, $currency),
+            history: array_values(array_map(self::statusChange(...), $record->statusChanges->toArray())),
             version: $record->version,
+        );
+    }
+
+    private static function refund(OrderRecord $record, Currency $currency): ?Refund
+    {
+        if (null === $record->refundAmount || null === $record->refundDueAt) {
+            return null;
+        }
+        $completedBy = null === $record->refundCompletedByStaffId ? null : StaffActor::of($record->refundCompletedByStaffId, $record->refundCompletedByUsername ?? '');
+
+        return Refund::reconstitute(Money::of($record->refundAmount, $currency), $record->refundDueAt, $record->refundCompletedAt, $completedBy, $record->refundNote);
+    }
+
+    private static function statusChange(OrderStatusChangeRecord $record): OrderStatusChange
+    {
+        $actor = match (StatusActorType::from($record->actorType)) {
+            StatusActorType::System => StatusActor::system(),
+            StatusActorType::Customer => StatusActor::customer(),
+            StatusActorType::Staff => StatusActor::staff(StaffActor::of($record->staffId ?? '', $record->staffUsername ?? '')),
+        };
+
+        return new OrderStatusChange(
+            null === $record->fromStatus ? null : OrderStatus::from($record->fromStatus),
+            OrderStatus::from($record->toStatus),
+            $record->occurredAt,
+            $actor,
+            $record->note,
         );
     }
 }

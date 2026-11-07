@@ -172,7 +172,7 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 | Catalog | Produkty, warianty, kategorie, atrybuty, zdjęcia |
 | Pricing | Ceny katalogowe (netto, VAT, brutto), promocje, kody rabatowe, historia cen (Omnibus) |
 | Cart | Pozycje koszyka, podgląd sum, koszyki gości i zalogowanych w PostgreSQL |
-| Ordering | Checkout, cykl życia zamówienia (Symfony Workflow), historia zamówień |
+| Ordering | Checkout, cykl życia zamówienia (przejścia jako metody agregatu `Order`), historia zamówień |
 | Payment | Dostawcy płatności za jednym portem, status płatności, webhooki dostawców |
 | Inventory | Stany magazynowe, rezerwacja przy zamówieniu, zwolnienie przy anulowaniu |
 | Customer | Profil klienta, adresy; sama tożsamość jest w Keycloak |

@@ -19,12 +19,15 @@ use App\Ordering\Domain\OrderNotFound;
 use App\Ordering\Domain\OrderNumber;
 use App\Ordering\Domain\OrderOwner;
 use App\Ordering\Domain\OrderStatus;
+use App\Ordering\Domain\OrderStatusChange;
 use App\Ordering\Domain\PaymentId;
 use App\Ordering\Domain\PaymentResult;
 use App\Ordering\Domain\PriceCopy;
 use App\Ordering\Domain\ProductId;
 use App\Ordering\Domain\RequestFingerprint;
 use App\Ordering\Domain\ShippingAddress;
+use App\Ordering\Domain\StaffActor;
+use App\Ordering\Domain\StatusActor;
 use App\Ordering\Domain\VariantId;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DbalOrderNumbers;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DoctrineOrderRepository;
@@ -77,7 +80,6 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertSame('key-1', $stored->idempotencyKey()->toString());
         self::assertTrue($stored->isReplayOf($order->requestFingerprint()));
         self::assertEquals($order->placedAt(), $stored->placedAt());
-        self::assertNull($stored->confirmationSentAt());
         self::assertSame(1, $stored->version());
         self::assertSame([], $stored->releaseEvents());
 
@@ -116,15 +118,13 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertNull($storedGuest->paymentId());
         self::assertNull($storedGuest->cancelledAt());
         self::assertNull($storedGuest->cancellationReason());
-        self::assertNull($storedGuest->paymentNotificationSentAt());
-        self::assertNull($storedGuest->cancellationNotificationSentAt());
         self::assertSame(
             ['access_token' => self::TOKEN, 'deadline' => 1800],
             $this->connection->fetchAssociative('SELECT access_token, EXTRACT(EPOCH FROM payment_deadline - placed_at)::int AS deadline FROM ordering_order WHERE id = ?', [$guest->id()->toString()]),
         );
     }
 
-    public function testSaveWritesThePaymentAndItsNotificationMarker(): void
+    public function testSaveWritesThePaymentAndRaisesTheVersion(): void
     {
         $order = $this->order('key-1');
         $this->orders->add($order);
@@ -136,21 +136,16 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertSame(PaymentResult::Paid, $stored->markPaid(PaymentId::fromString($paymentId), 77_800, 'PLN', $stored->placedAt(), $paidAt));
         $this->orders->save($stored);
         $this->entityManager->clear();
-        $paid = $this->orders->get($order->id());
-        $paid->markPaymentNotificationSent($paidAt->modify('+5 seconds'));
-        $this->orders->save($paid);
-        $this->entityManager->clear();
 
         $again = $this->orders->get($order->id());
         self::assertSame(OrderStatus::Paid, $again->status());
         self::assertEquals($paidAt, $again->paidAt());
         self::assertSame($paymentId, $again->paymentId()?->toString());
-        self::assertEquals($paidAt->modify('+5 seconds'), $again->paymentNotificationSentAt());
-        self::assertSame(3, $again->version());
+        self::assertSame(2, $again->version());
         self::assertSame('paid', $this->connection->fetchOne('SELECT status FROM ordering_order WHERE id = ?', [$order->id()->toString()]));
     }
 
-    public function testSaveWritesTheCancellationAndItsNotificationMarker(): void
+    public function testSaveWritesTheCancellation(): void
     {
         $order = $this->order('key-1');
         $this->orders->add($order);
@@ -159,7 +154,6 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $cancelledAt = $stored->expiryDueAt();
 
         $stored->expireUnpaid($cancelledAt);
-        $stored->markCancellationNotificationSent($cancelledAt->modify('+5 seconds'));
         $this->orders->save($stored);
         $this->entityManager->clear();
 
@@ -167,8 +161,102 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertSame(OrderStatus::Cancelled, $again->status());
         self::assertEquals($cancelledAt, $again->cancelledAt());
         self::assertSame(CancellationReason::PaymentTimeout, $again->cancellationReason());
-        self::assertEquals($cancelledAt->modify('+5 seconds'), $again->cancellationNotificationSentAt());
         self::assertSame(['cancelled', 'payment_timeout'], $this->connection->fetchNumeric('SELECT status, cancellation_reason FROM ordering_order WHERE id = ?', [$order->id()->toString()]));
+    }
+
+    public function testSaveAppendsTheHistoryAndWritesTheLifecycleAndTheRefund(): void
+    {
+        $order = $this->order('key-1');
+        $this->orders->add($order);
+        $id = $order->id();
+        $placedAt = $order->placedAt();
+        $paymentId = Uuid::v7()->toRfc4122();
+        $anna = StaffActor::of('kc-staff-1', 'anna');
+        $bartek = StaffActor::of('kc-staff-2', 'bartek');
+        $at = static fn (int $minutes): \DateTimeImmutable => $placedAt->modify(\sprintf('+%d minutes', $minutes));
+
+        $this->change($id, static fn (Order $o) => $o->markPaid(PaymentId::fromString($paymentId), 77_800, 'PLN', $placedAt, $at(1)));
+        $this->change($id, static fn (Order $o) => $o->ship($anna, null, $at(60)));
+        $this->change($id, static fn (Order $o) => $o->deliver($anna, 'Odebrane', $at(120)));
+        $this->change($id, static fn (Order $o) => $o->registerReturn($bartek, 'Paczka wróciła', $at(180)));
+        $this->change($id, static fn (Order $o) => $o->completeRefund($bartek, 'Przelew', $at(240)));
+        $this->entityManager->clear();
+
+        $stored = $this->orders->get($id);
+        self::assertSame(OrderStatus::Returned, $stored->status());
+        self::assertEquals([$at(60), $at(120), $at(180)], [$stored->shippedAt(), $stored->deliveredAt(), $stored->returnedAt()]);
+        self::assertSame(6, $stored->version());
+        $refund = $stored->refund();
+        self::assertNotNull($refund);
+        self::assertSame([77_800, 'PLN', 'Przelew'], [$refund->amount()->amount(), $refund->amount()->currency()->value, $refund->note()]);
+        self::assertEquals([$at(180)->modify('+14 days'), $at(240), $bartek], [$refund->dueAt(), $refund->completedAt(), $refund->completedBy()]);
+        self::assertEquals([
+            new OrderStatusChange(null, OrderStatus::New, $placedAt, StatusActor::customer(), null),
+            new OrderStatusChange(OrderStatus::New, OrderStatus::Paid, $at(1), StatusActor::system(), null),
+            new OrderStatusChange(OrderStatus::Paid, OrderStatus::Shipped, $at(60), StatusActor::staff($anna), null),
+            new OrderStatusChange(OrderStatus::Shipped, OrderStatus::Delivered, $at(120), StatusActor::staff($anna), 'Odebrane'),
+            new OrderStatusChange(OrderStatus::Delivered, OrderStatus::Returned, $at(180), StatusActor::staff($bartek), 'Paczka wróciła'),
+        ], $stored->history());
+        self::assertSame(
+            [[0, null, 'new', 'customer', null, null], [1, 'new', 'paid', 'system', null, null], [2, 'paid', 'shipped', 'staff', 'kc-staff-1', 'anna'], [3, 'shipped', 'delivered', 'staff', 'kc-staff-1', 'anna'], [4, 'delivered', 'returned', 'staff', 'kc-staff-2', 'bartek']],
+            $this->connection->fetchAllNumeric('SELECT position, from_status, to_status, actor_type, staff_id, staff_username FROM ordering_order_status_change WHERE order_id = ? ORDER BY position', [$id->toString()]),
+        );
+    }
+
+    public function testACancellationByStaffKeepsThePaymentAndCreatesTheRefund(): void
+    {
+        $order = $this->order('key-1');
+        $this->orders->add($order);
+        $this->change($order->id(), static fn (Order $o) => $o->markPaid(PaymentId::fromString(Uuid::v7()->toRfc4122()), 77_800, 'PLN', $o->placedAt(), $o->placedAt()));
+        $cancelledAt = $order->placedAt()->modify('+1 hour');
+
+        $this->change($order->id(), static fn (Order $o) => $o->cancel(StaffActor::of('kc-staff-1', 'anna'), 'Brak towaru', $cancelledAt));
+        $this->entityManager->clear();
+
+        $stored = $this->orders->get($order->id());
+        self::assertSame([OrderStatus::Cancelled, CancellationReason::Staff], [$stored->status(), $stored->cancellationReason()]);
+        self::assertNotNull($stored->paidAt());
+        self::assertTrue($stored->refund()?->isPending());
+        self::assertSame(
+            ['cancelled', 'staff', 77_800, null, null, null, null],
+            $this->connection->fetchNumeric('SELECT status, cancellation_reason, refund_amount, refund_completed_at, refund_completed_by_staff_id, refund_completed_by_username, refund_note FROM ordering_order WHERE id = ?', [$order->id()->toString()]),
+        );
+    }
+
+    public function testLockReadsTheOrderAsCommittedAlsoWhenItsRecordIsInTheIdentityMap(): void
+    {
+        $order = $this->order('key-1');
+        $this->orders->add($order);
+        $id = $order->id()->toString();
+        $read = $this->orders->get($order->id());
+        // Another transaction pays the order meanwhile (direct SQL, the record stays in the identity map).
+        $this->connection->executeStatement("UPDATE ordering_order SET status = 'paid', paid_at = now(), payment_id = gen_random_uuid(), version = version + 1 WHERE id = ?", [$id]);
+        $this->connection->executeStatement("INSERT INTO ordering_order_status_change (order_id, position, from_status, to_status, occurred_at, actor_type) VALUES (?, 1, 'new', 'paid', now(), 'system')", [$id]);
+
+        $locked = $this->entityManager->wrapInTransaction(fn (): Order => $this->orders->lock($order->id()));
+
+        self::assertSame([OrderStatus::New, 1], [$read->status(), $read->version()]);
+        self::assertSame([OrderStatus::Paid, 2], [$locked->status(), $locked->version()]);
+        self::assertCount(2, $locked->history());
+    }
+
+    public function testLockOfAnOrderNotInTheIdentityMapReadsIt(): void
+    {
+        $order = $this->order('key-1');
+        $this->orders->add($order);
+        $this->entityManager->clear();
+
+        $locked = $this->entityManager->wrapInTransaction(fn (): Order => $this->orders->lock($order->id()));
+
+        self::assertSame([OrderStatus::New, 1], [$locked->status(), $locked->version()]);
+        self::assertCount(1, $locked->history());
+    }
+
+    public function testLockOfAnUnknownOrderIsNotFound(): void
+    {
+        $this->expectException(OrderNotFound::class);
+
+        $this->entityManager->wrapInTransaction(fn (): Order => $this->orders->lock(OrderId::fromString(Uuid::v7()->toRfc4122())));
     }
 
     public function testFindByIdempotencyKeyGivesTheOrderOfTheKeyOnly(): void
@@ -197,23 +285,6 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $this->orders->add($this->order('key-1'));
     }
 
-    public function testSaveWritesTheConfirmationMarkerAndRaisesTheVersion(): void
-    {
-        $order = $this->order('key-1');
-        $this->orders->add($order);
-        $this->entityManager->clear();
-        $stored = $this->orders->get($order->id());
-        $sentAt = new \DateTimeImmutable('@'.(time() + 60));
-
-        $stored->markConfirmationSent($sentAt);
-        $this->orders->save($stored);
-        $this->entityManager->clear();
-
-        $again = $this->orders->get($order->id());
-        self::assertEquals($sentAt, $again->confirmationSentAt());
-        self::assertSame(2, $again->version());
-    }
-
     public function testSaveOfAnOrderReadAtAnOlderVersionIsRefused(): void
     {
         $order = $this->order('key-1');
@@ -223,7 +294,7 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         $this->connection->executeStatement('UPDATE ordering_order SET version = version + 1 WHERE id = ?', [$order->id()->toString()]);
         $this->entityManager->clear();
 
-        $stale->markConfirmationSent(new \DateTimeImmutable());
+        $stale->expireUnpaid($stale->expiryDueAt());
 
         $this->expectException(OrderModifiedConcurrently::class);
         $this->orders->save($stale);
@@ -255,6 +326,24 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         yield 'paid without paid_at' => ["UPDATE ordering_order SET status = 'paid', payment_id = gen_random_uuid() WHERE id = :id", '23514'];
         yield 'paid without payment_id' => ["UPDATE ordering_order SET status = 'paid', paid_at = now() WHERE id = :id", '23514'];
         yield 'new with paid_at and payment_id' => ['UPDATE ordering_order SET paid_at = now(), payment_id = gen_random_uuid() WHERE id = :id', '23514'];
+        yield 'paid_at without payment_id' => ["UPDATE ordering_order SET status = 'paid', paid_at = now() WHERE id = :id", '23514'];
+        yield 'shipped without paid_at' => ["UPDATE ordering_order SET status = 'shipped', shipped_at = now() WHERE id = :id", '23514'];
+        yield 'shipped without shipped_at' => ["UPDATE ordering_order SET status = 'shipped', paid_at = now(), payment_id = gen_random_uuid() WHERE id = :id", '23514'];
+        yield 'paid with shipped_at' => ["UPDATE ordering_order SET status = 'paid', paid_at = now(), payment_id = gen_random_uuid(), shipped_at = now() WHERE id = :id", '23514'];
+        yield 'shipped with delivered_at' => ["UPDATE ordering_order SET status = 'shipped', paid_at = now(), payment_id = gen_random_uuid(), shipped_at = now(), delivered_at = now() WHERE id = :id", '23514'];
+        yield 'returned without returned_at' => ["UPDATE ordering_order SET status = 'returned', paid_at = now(), payment_id = gen_random_uuid(), shipped_at = now(), refund_amount = 1230, refund_due_at = now() WHERE id = :id", '23514'];
+        yield 'returned without a refund' => ["UPDATE ordering_order SET status = 'returned', paid_at = now(), payment_id = gen_random_uuid(), shipped_at = now(), returned_at = now() WHERE id = :id", '23514'];
+        yield 'a refund without its reason' => ['UPDATE ordering_order SET refund_amount = 1230, refund_due_at = now() WHERE id = :id', '23514'];
+        yield 'a refund without its due date' => ["UPDATE ordering_order SET status = 'cancelled', cancelled_at = now(), cancellation_reason = 'staff', paid_at = now(), payment_id = gen_random_uuid(), refund_amount = 1230 WHERE id = :id", '23514'];
+        yield 'a cancellation by staff without paid_at' => ["UPDATE ordering_order SET status = 'cancelled', cancelled_at = now(), cancellation_reason = 'staff', refund_amount = 1230, refund_due_at = now() WHERE id = :id", '23514'];
+        yield 'an expired order with paid_at' => ["UPDATE ordering_order SET status = 'cancelled', cancelled_at = now(), cancellation_reason = 'payment_timeout', paid_at = now(), payment_id = gen_random_uuid() WHERE id = :id", '23514'];
+        yield 'a refund completed without the staff member' => ["UPDATE ordering_order SET status = 'cancelled', cancelled_at = now(), cancellation_reason = 'staff', paid_at = now(), payment_id = gen_random_uuid(), refund_amount = 1230, refund_due_at = now(), refund_completed_at = now() WHERE id = :id", '23514'];
+        yield 'a refund note while pending' => ["UPDATE ordering_order SET status = 'cancelled', cancelled_at = now(), cancellation_reason = 'staff', paid_at = now(), payment_id = gen_random_uuid(), refund_amount = 1230, refund_due_at = now(), refund_note = 'x' WHERE id = :id", '23514'];
+        yield 'a history entry of staff without the staff member' => ["INSERT INTO ordering_order_status_change (order_id, position, from_status, to_status, occurred_at, actor_type) VALUES (:id, 5, 'paid', 'shipped', now(), 'staff')", '23514'];
+        yield 'a history entry of the system with a staff member' => ["INSERT INTO ordering_order_status_change (order_id, position, from_status, to_status, occurred_at, actor_type, staff_id, staff_username) VALUES (:id, 5, 'new', 'paid', now(), 'system', 'kc', 'anna')", '23514'];
+        yield 'a history entry of an unknown actor' => ["INSERT INTO ordering_order_status_change (order_id, position, from_status, to_status, occurred_at, actor_type) VALUES (:id, 5, 'new', 'paid', now(), 'robot')", '23514'];
+        yield 'a history position twice' => ["INSERT INTO ordering_order_status_change (order_id, position, from_status, to_status, occurred_at, actor_type) VALUES (:id, 0, 'new', 'paid', now(), 'system')", '23505'];
+        yield 'a history entry of no order' => ["INSERT INTO ordering_order_status_change (order_id, position, from_status, to_status, occurred_at, actor_type) VALUES (gen_random_uuid(), 0, NULL, 'new', now(), 'customer')", '23503'];
         yield 'cancelled without cancelled_at' => ["UPDATE ordering_order SET status = 'cancelled', cancellation_reason = 'payment_timeout' WHERE id = :id", '23514'];
         yield 'cancelled without a reason' => ["UPDATE ordering_order SET status = 'cancelled', cancelled_at = now() WHERE id = :id", '23514'];
         yield 'new with cancelled_at and a reason' => ["UPDATE ordering_order SET cancelled_at = now(), cancellation_reason = 'payment_timeout' WHERE id = :id", '23514'];
@@ -267,6 +356,25 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         yield 'a variant twice' => ['UPDATE ordering_order_line SET variant_id = (SELECT variant_id FROM ordering_order_line WHERE order_id = :id AND position = 0) WHERE order_id = :id', '23505'];
         yield 'a line of no order' => ['UPDATE ordering_order_line SET order_id = gen_random_uuid() WHERE order_id = :id', '23503'];
         yield 'an order deleted with its lines' => ['DELETE FROM ordering_order WHERE id = :id', '23503'];
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function rowsOfTheLifecycle(): iterable
+    {
+        yield 'cancelled by staff after the payment, with its refund' => ["UPDATE ordering_order SET status = 'cancelled', cancelled_at = now(), cancellation_reason = 'staff', paid_at = now(), payment_id = gen_random_uuid(), refund_amount = 1230, refund_due_at = now() + interval '14 days' WHERE id = :id"];
+        yield 'returned from shipped with a completed refund' => ["UPDATE ordering_order SET status = 'returned', paid_at = now(), payment_id = gen_random_uuid(), shipped_at = now(), returned_at = now(), refund_amount = 1230, refund_due_at = now(), refund_completed_at = now(), refund_completed_by_staff_id = 'kc', refund_completed_by_username = 'anna', refund_note = 'Przelew' WHERE id = :id"];
+        yield 'delivered' => ["UPDATE ordering_order SET status = 'delivered', paid_at = now(), payment_id = gen_random_uuid(), shipped_at = now(), delivered_at = now() WHERE id = :id"];
+    }
+
+    #[DataProvider('rowsOfTheLifecycle')]
+    public function testDirectSqlOfTheLifecycleIsAccepted(string $sql): void
+    {
+        $order = $this->order('key-1');
+        $this->orders->add($order);
+
+        self::assertSame(1, $this->connection->executeStatement($sql, ['id' => $order->id()->toString()]));
     }
 
     #[DataProvider('rowsBreakingTheRules')]
@@ -282,6 +390,18 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         } catch (DriverException $refused) {
             self::assertSame($sqlState, $refused->getSQLState(), $refused->getMessage());
         }
+    }
+
+    /**
+     * Reads the order as a command does, changes it and saves it.
+     *
+     * @param \Closure(Order): mixed $change
+     */
+    private function change(OrderId $id, \Closure $change): void
+    {
+        $order = $this->orders->get($id);
+        $change($order);
+        $this->orders->save($order);
     }
 
     private function order(string $key, ?OrderOwner $owner = null): Order

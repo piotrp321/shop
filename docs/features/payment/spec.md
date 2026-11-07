@@ -50,7 +50,7 @@ Decyzje użytkownika:
 | A3 | Symulator dostawców jako osobny moduł `PaymentSimulator` w `apps/api` (poza `/api/v1`, bez zależności od contextów i odwrotnie). Payment rozmawia z nim wyłącznie przez HTTP (`symfony/http-client`, już w zależnościach), jak z zewnętrznym dostawcą. Symulator zostaje w kontenerze API mimo ryzyka samoblokady wątków przy wielu równoległych rozpoczęciach płatności (opisanego w „Ryzykach”); przed testami obciążeniowymi płatności przechodzi do osobnej usługi. |
 | A4 | Anulowanie nieopłaconego zamówienia przez opóźnioną wiadomość `ExpireUnpaidOrder` (`DelayStamp`) na nowym transporcie Doctrine `scheduled`, zapisaną atomowo z zamówieniem w transakcji złożenia, na tym samym połączeniu. Handler jest idempotentny i zawsze sprawdza aktualny stan i termin zamówienia. Bez nowej zależności (Symfony Scheduler) i bez crona. Dostawy webhooków symulatora idą osobnym transportem Doctrine `payment_simulator`. |
 | A5 | Gość ma dostęp do swojego zamówienia (rozpoczęcie płatności, odczyt statusu) przez losowy token dostępu zwracany przy złożeniu (`accessToken`), jak id koszyka gościa; klient zalogowany przez `sub` z tokena. Regułę dostępu sprawdza Ordering (`GetOrderForPayment` z danymi dostępu zwraca `null` przy braku dostępu); token nie opuszcza Ordering. |
-| A6 | Przejścia statusu zamówienia (`new → paid`, `new → cancelled`) jako metody agregatu `Order`, bez Symfony Workflow (wchodzi w ORDER-MANAGEMENT, gdy przejść jest więcej). |
+| A6 | Przejścia statusu zamówienia (`new → paid`, `new → cancelled` i przejścia pracownika z ORDER-MANAGEMENT) jako metody agregatu `Order` z tabelą dozwolonych przejść w czystym PHP, bez Symfony Workflow (`docs/features/order-management/spec.md`, A1). |
 | T1 | Sekrety dostawców (klucze API i sekrety podpisu webhooków, po dwa na dostawcę) w `.env.local` z `infra/scripts/init-env.sh`, który dopisuje brakujące klucze z listy „dopisywanych” do istniejącego pliku (brak każdego innego klucza kończy się błędem i wymaga odtworzenia stosu). |
 | D9 | Rate limiting webhooków odłożony do kroku 10 planu `docs/features/agentic-software-house/plan.md`, jak rate limiting składania zamówień (CHECKOUT T2). |
 
@@ -87,10 +87,13 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 
 ### Model
 
-- `OrderStatus`: `new`, `paid`, `cancelled`.
+- `OrderStatus`: `new`, `paid`, `shipped`, `delivered`, `cancelled`, `returned`. Cykl po opłaceniu (wysyłka, dostarczenie,
+  anulowanie przez pracownika, zwrot, zwrot pieniędzy, historia statusów) opisuje `docs/features/order-management/spec.md`;
+  ta sekcja opisuje cykl płatności.
 - Pola `Order` cyklu płatności: `paymentDeadline` (`placedAt` + 30 min, P1), `accessToken` (gość: 32 losowe bajty w base64url,
   43 znaki; klient: `null`), `paidAt`, `paymentId` (id udanej płatności Payment, kopia), `cancelledAt`,
-  `cancellationReason` (`payment_timeout`), `paymentNotificationSentAt`, `cancellationNotificationSentAt`.
+  `cancellationReason` (`payment_timeout`, `staff`). Znaczników wysłanych e-maili zamówienie nie ma: są w tabeli powiadomień
+  poza agregatem (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”).
 - `Order::place(…)` przyjmuje `accessToken` (generuje handler: `random_bytes`, tylko gość) i liczy `paymentDeadline`.
 - `grantsAccess(claim)` (`AccessClaim`): `guest(token)` — zamówienie gościa i `hash_equals` tokenu;
   `customer(customerId)` — zamówienie klienta o tym `customerId`. Każdy inny przypadek `false`.
@@ -102,28 +105,34 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
     zdarzenie `OrderPaid {orderId, occurredAt}`, wynik `paid`; inna kwota → `InvalidOrder` (błąd logiczny: Payment
     bierze kwotę i walutę z zamówienia). Webhook przychodzi najpóźniej w oknie 5 minut, bo potem zamówienie jest już
     `cancelled`;
-  - `paid` tym samym `paymentId` → `alreadyPaid` bez zmian; innym `paymentId` → `paidByAnotherPayment` bez zmian
-    (P5);
-  - `cancelled` → `orderCancelled` bez zmian.
+  - `paid`, `shipped`, `delivered` i `returned` tym samym `paymentId` → `alreadyPaid` bez zmian; innym `paymentId` →
+    `paidByAnotherPayment` bez zmian (P5);
+  - `cancelled` (także przez pracownika) → `orderCancelled` bez zmian.
+  Opłacenie dopisuje do historii statusów wpis `new → paid` (aktor `system`).
   Wynik zamiast wyjątku: handler webhooka zapisuje płatność także wtedy, gdy zamówienia nie da się opłacić.
 - `expireUnpaid(now): ExpiryResult`: `new` i `now ≥ paymentDeadline + 5 min` → `cancelled`, `cancelledAt`,
   `cancellationReason = payment_timeout`, zdarzenie `OrderCancelled {orderId, reason, occurredAt}`, wynik
-  `cancelled`; `new` przed tą chwilą → `tooEarly` bez zmian; `paid`, `cancelled` → `notApplicable` bez zmian.
+  `cancelled` i wpis historii `new → cancelled` (aktor `system`); `new` przed tą chwilą → `tooEarly` bez zmian; każdy
+  inny status → `notApplicable` bez zmian.
 - `isPayable(now)`: `new` i `now < paymentDeadline`.
-- `markPaymentNotificationSent(now)`, `markCancellationNotificationSent(now)`: jak `markConfirmationSent`.
 
 ### Komendy i zapytania (Ordering Application)
 
 - `GetOrderForPayment(orderId, access)` (`query.bus`), `access` = `guest(token)` albo `customer(customerId)` →
-  `OrderForPayment {orderId, number, status, totalGross, currency, paymentDeadline, payable}` albo `null`, gdy
-  zamówienia nie ma, `orderId` nie jest UUID albo `grantsAccess` daje `false` (jeden wynik dla wszystkich przypadków).
+  `OrderForPayment {orderId, number, statusForPayment, totalGross, currency, paymentDeadline, payable}` albo `null`,
+  gdy zamówienia nie ma, `orderId` nie jest UUID albo `grantsAccess` daje `false` (jeden wynik dla wszystkich
+  przypadków). `statusForPayment` to status zamówienia z punktu widzenia płatności: `new`, `paid` albo `cancelled`;
+  `shipped`, `delivered` i `returned` są `paid` (mapowanie w Ordering), więc Payment nie zna statusów panelu
+  (`docs/features/order-management/spec.md`, A3). Payment czyta tylko to pole (`QueryBusPayableOrders`).
   Bez danych osobowych i bez tokenu. Zamówienie jest czytane z bazy także wtedy, gdy transakcja czytała je
   wcześniej (bez kopii z pamięci ORM), więc kolejny odczyt w tej samej transakcji widzi zmiany zatwierdzone
   w międzyczasie.
 - `MarkOrderPaid(orderId, paymentId, amount, currency, executedAt)` (`command.bus`) → `MarkOrderPaidResult`
   (`Ordering_Application`: `paid`, `alreadyPaid`, `paidByAnotherPayment`, `paidAfterDeadline`, `orderCancelled`). Nieznane zamówienie: `OrderToPayNotFound`;
   konflikt wersji przy zapisie: `OrderChangedConcurrently` (oba wyjątki w `Ordering_Application`).
-- `ExpireUnpaidOrder(orderId)` (`command.bus`, wiadomość asynchroniczna na transporcie `scheduled`):
+- `ExpireUnpaidOrder(orderId)` (`command.bus`, wiadomość asynchroniczna na transporcie `scheduled`) zaczyna od blokady
+  wiersza zamówienia (`OrderRepository::lock`, jak komendy pracownika z `docs/features/order-management/spec.md`), więc
+  wygaśnięcie i zmiana z panelu idą po kolei:
   - wynik `cancelled`: w tej samej transakcji port `StockReservations::release(orderId)` (Inventory
     `ReleaseReservation`, zagnieżdżony dispatch; rezerwacja już zwolniona: bez zmian) i zapis zamówienia
     z `OrderCancelled` w outboxie;
@@ -140,11 +149,13 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 
 ### E-maile
 
-- `OrderPaid` → handler `SendPaymentReceived` (`event.bus`, jak `SendOrderConfirmation`, ten sam wzorzec znacznika
-  i wersji): temat „Płatność przyjęta – zamówienie R-100001”, treść: powitanie, numer, kwota, „Zamówienie
+- `OrderPaid` → handler `SendPaymentReceived` (`event.bus`, jak `SendOrderConfirmation`: zajęcie wysyłki rodzaju
+  `payment_received` w tabeli powiadomień, wysyłka, znacznik; zamówienie i jego wersja bez zmian): temat „Płatność przyjęta – zamówienie R-100001”, treść: powitanie, numer, kwota, „Zamówienie
   przekazujemy do realizacji.”.
-- `OrderCancelled` → `SendOrderCancelled`: temat „Zamówienie R-100001 anulowane”, treść: powitanie, numer,
-  „Nie otrzymaliśmy płatności w terminie, więc anulowaliśmy zamówienie.”.
+- `OrderCancelled` → `SendOrderCancelled` (tak samo, rodzaj `cancelled`) dla `cancellationReason` `payment_timeout`:
+  temat „Zamówienie R-100001 anulowane”, treść: powitanie, numer, „Nie otrzymaliśmy płatności w terminie, więc
+  anulowaliśmy zamówienie.”. Anulowanie przez pracownika ma własną treść (`docs/features/order-management/spec.md`,
+  „E-maile”).
 - E-mail z potwierdzeniem złożenia kończy się zdaniem „Zamówienie czeka na płatność do 14:35 (dd.mm.rrrr). Bez
   płatności anulujemy je automatycznie.” (`Europe/Warsaw`).
 - Treści składają klasy w `Ordering_Application` (jak `OrderConfirmationText`), testowane jednostkowo.
@@ -157,11 +168,11 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 ### Persystencja
 
 - `ordering_order`: `payment_deadline timestamp`, `access_token varchar(43) NULL`, `paid_at NULL`,
-  `payment_id uuid NULL`, `cancelled_at NULL`, `cancellation_reason varchar(30) NULL`,
-  `payment_notification_sent_at NULL`, `cancellation_notification_sent_at NULL`;
+  `payment_id uuid NULL`, `cancelled_at NULL`, `cancellation_reason varchar(30) NULL`;
   `CHECK ((owner_type = 'guest') = (access_token IS NOT NULL))`,
-  `CHECK ((status = 'paid') = (paid_at IS NOT NULL AND payment_id IS NOT NULL))`,
-  `CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL))`.
+  `CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL))`; reguły opłacenia
+  (`paid_at` razem z `payment_id`, dokładnie dla zamówienia opłaconego, także po wysyłce, zwrocie i anulowaniu przez
+  pracownika) są w `docs/features/order-management/spec.md`, „Persystencja”.
 - Migracja wypełnia istniejące wiersze: `payment_deadline = placed_at + 30 min`; zamówienia gości dostają token
   `translate(rtrim(encode(sha256(gen_random_uuid()::text::bytea), 'base64'), '='), '+/', '-_')` (43 znaki base64url;
   `gen_random_uuid` i `sha256` są wbudowane w PostgreSQL 18, bez `pgcrypto`). Zamówienia sprzed migracji nie mają
@@ -289,7 +300,7 @@ Weryfikacja podpisu i parsowanie to walidacja wejścia na granicy (jak `MapReque
    - `orderCancelled` → `requireRefund(order_cancelled)`; `paidAfterDeadline` → `requireRefund(paid_after_deadline)`;
      `paidByAnotherPayment` → `requireRefund(duplicate)`; do tego log błędu „wymaga ręcznego zwrotu” (P1, P5).
      Płatność zostaje `succeeded`, odpowiedź 204: dostawa kończy się bez ponowień.
-   - `OrderChangedConcurrently` (np. równoległe `SendOrderConfirmation` albo `ExpireUnpaidOrder`) i każdy inny błąd
+   - `OrderChangedConcurrently` (np. równoległe `ExpireUnpaidOrder`) i każdy inny błąd
      `MarkOrderPaid`: adapter tłumaczy konflikt wersji na `OrderBusy` (marker `Unavailable`, 503), inne wyjątki
      przekazuje bez zmian (500); całość wycofana (także wiersz deduplikacji), dostawca ponawia.
 5. Zapis płatności. Odpowiedź 204.
@@ -298,7 +309,8 @@ Weryfikacja podpisu i parsowanie to walidacja wejścia na granicy (jak `MapReque
 
 Zapytanie `GetPaymentStatus(orderId, access)` → `PaymentStatusView {orderNumber, orderStatus: new|paid|cancelled,
 paymentDeadline, totalGross, currency, canStartPayment, latestPayment: {provider, status, resumeUrl} | null}`.
-Dostęp przez `PayableOrders` jak w `StartPayment` krok 1. `canStartPayment` = zamówienie płatne (`payable`);
+`orderStatus` to `statusForPayment` zamówienia (wysłane, dostarczone i zwrócone są `paid`). Dostęp przez
+`PayableOrders` jak w `StartPayment` krok 1. `canStartPayment` = zamówienie płatne (`payable`);
 przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`StartPayment` krok 4). `resumeUrl` =
 `Payment::resumeUrl(payable)`.
 
@@ -455,7 +467,7 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | `new`, płatność `pending`, przed terminem | numer, kwota, termin, „Czekamy na potwierdzenie płatności…”; odświeżanie co 2 s przez 30 s; przez cały czas link „Wróć do płatności” (`resumeUrl`), a po 30 s dodatkowo „Nie mamy jeszcze potwierdzenia płatności.”, przycisk „Sprawdź ponownie”, wybór dostawcy i „Zapłać innym sposobem” (nowa próba anuluje poprzednią u dostawcy) |
 | `new`, po terminie (okno 5 minut przed anulowaniem; każda płatność) | numer, kwota, „Minął termin płatności. Jeśli zapłaciłeś, czekamy na potwierdzenie; w przeciwnym razie zamówienie zostanie anulowane.”, bez przycisków płatności; odświeżanie co 2 s przez 30 s, potem „Sprawdź ponownie” |
 | `new`, przed terminem, płatność `failed`, `cancelled` albo bez płatności | numer, kwota, termin („Opłać do 14:35”), komunikat („Płatność nie powiodła się.” przy `failed`, brak w innych), wybór dostawcy i „Zapłać” (gdy `canStartPayment`) |
-| `cancelled` | „Zamówienie zostało anulowane, bo nie otrzymaliśmy płatności w terminie.” i link do sklepu |
+| `cancelled` | „Zamówienie zostało anulowane.” (neutralnie: `cancelled` jest także po anulowaniu przez pracownika, przyczynę podaje e-mail; `docs/features/order-management/spec.md`, P12) i link do sklepu |
 | odczyt statusu nieudany (503, sieć) | numer i kwota z ciasteczka, „Nie udało się sprawdzić statusu płatności.” i przycisk „Sprawdź ponownie” |
 | odczyt statusu: 401 | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem (`returnTo=/checkout/confirmation`) |
 | odczyt statusu: 404 | „Nie znaleźliśmy zamówienia.” i link do sklepu |
@@ -566,7 +578,7 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | W7 | webhook sukcesu poprzedniej płatności trzyma blokadę jej wiersza (płatność `succeeded` i zamówienie `paid` zapisane, transakcja otwarta), `StartPayment` z nowym kluczem czeka na blokadę, webhook zatwierdza | `OrderAlreadyPaid` (409), żadna nowa płatność, zamówienie `paid` |
 
 - E-maile `SendPaymentReceived`, `SendOrderCancelled` w Mailpit; zdarzenie dostarczone drugi raz po kolei: jeden
-  e-mail.
+  e-mail, wersja zamówienia bez zmian; dwie równoległe dostawy `OrderPaid`: jeden e-mail.
 
 ### Funkcjonalne API
 
@@ -609,8 +621,11 @@ przekierowanie, link „Opłać zamówienie” przy pustym koszyku i ciasteczku)
 - Płatność wykonana po terminie, potwierdzona po anulowaniu albo druga udana płatność zamówienia wymagają ręcznego
   zwrotu (poza zakresem): są oznaczone w `payment_payment.refund_required_reason` i w logu, bez ekranu w panelu.
   Klient takiego zamówienia widzi „anulowane” i dostaje e-mail o anulowaniu.
-- Drugi e-mail (o płatności, o anulowaniu) jest możliwy przy awarii między wysyłką a zapisem znacznika i przy
-  równoległym dostarczeniu tego samego zdarzenia do dwóch workerów, jak przy potwierdzeniu zamówienia (CHECKOUT).
+- Drugi e-mail (o płatności, o anulowaniu) jest możliwy, gdy wysyłka się udała, a znacznik nie został zapisany:
+  awaria procesu albo bazy przed zapisem (e-mail wychodzi ponownie po wygaśnięciu zajęcia wysyłki, 5 min) albo błąd
+  SMTP zgłoszony po przyjęciu wiadomości przez serwer (zwolnienie zajęcia i ponowienie transportu); także gdy wysyłka
+  trwa dłużej niż zajęcie (limit czasu SMTP jest dużo krótszy). Równoległe dostarczenie tego samego zdarzenia do dwóch
+  workerów wysyła jeden e-mail (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”).
 - Czas wykonania płatności pochodzi od dostawcy (podpisana treść webhooka); API mu ufa.
 - Wywołanie HTTP dostawcy w transakcji rozpoczęcia płatności (limit 5 s); przy symulatorze w tym samym API jedno
   rozpoczęcie zajmuje dwa wątki FrankenPHP. Przy prawdziwym dostawcy do przeniesienia poza transakcję.

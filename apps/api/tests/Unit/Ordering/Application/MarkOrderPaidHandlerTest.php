@@ -104,8 +104,8 @@ final class MarkOrderPaidHandlerTest extends TestCase
 
     public function testAVersionConflictIsOrderChangedConcurrentlyWithoutAnEvent(): void
     {
-        // The confirmation email stored its marker between the read and the save of this handler.
-        $this->orders->beforeSave = fn () => $this->orders->confirmElsewhere(OrderId::fromString(OrderExamples::ORDER), new \DateTimeImmutable('2026-11-05 12:00:30+00:00'));
+        // Another handler saved the order between the read and the save of this handler.
+        $this->orders->beforeSave = fn () => $this->orders->changeElsewhere(OrderId::fromString(OrderExamples::ORDER), static fn (): null => null);
 
         try {
             $this->handle(self::command());

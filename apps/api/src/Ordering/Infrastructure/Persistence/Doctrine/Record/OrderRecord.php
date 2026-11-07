@@ -13,13 +13,26 @@ use Doctrine\ORM\Mapping as ORM;
  * Persistence model of the Order aggregate; only DoctrineOrderRepository maps it to and from the domain. The number
  * and the Idempotency-Key are unique. The migration adds the CHECK constraints the mapping cannot express: a customer
  * id exactly for an order of a customer, an access token exactly for an order of a guest, total_net + total_vat =
- * total_gross, paid_at and payment_id exactly for a paid order, cancelled_at and cancellation_reason exactly for
- * a cancelled one. No foreign key to the tables of other modules: the order keeps copies (payment_id too).
+ * total_gross, paid_at together with payment_id exactly for an order paid for (paid, shipped, delivered, returned,
+ * cancelled by staff), cancelled_at and cancellation_reason exactly for a cancelled one, shipped_at exactly from
+ * shipped on, delivered_at only for delivered and returned, returned_at exactly for returned, the refund (amount and
+ * due date) exactly for returned and cancelled by staff, its completion (moment, staff id and name together, the note
+ * only with them) only with a refund. No foreign key to the tables of other modules: the order keeps copies
+ * (payment_id too).
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'ordering_order')]
 #[ORM\UniqueConstraint(name: self::NUMBER_CONSTRAINT, columns: ['number'])]
 #[ORM\UniqueConstraint(name: self::IDEMPOTENCY_KEY_CONSTRAINT, columns: ['idempotency_key'])]
+// The list of the panel: the migration makes the first two descending (placed_at DESC, id DESC), which the mapping
+// cannot express, and adds an index on lower(email) the mapping does not know (an expression, so the schema tools
+// ignore it). The condition of the pending refunds is written as PostgreSQL returns it, so the mapped schema equals
+// the migrated one.
+#[ORM\Index(name: 'ordering_order_placed_at_id_idx', columns: ['placed_at', 'id'])]
+#[ORM\Index(name: 'ordering_order_status_placed_at_id_idx', columns: ['status', 'placed_at', 'id'])]
+// The history of a customer: (customer_id, placed_at DESC, id DESC) of the orders of customers only, written the same way.
+#[ORM\Index(name: 'ordering_order_customer_placed_at_id_idx', columns: ['customer_id', 'placed_at', 'id'], options: ['where' => "((owner_type)::text = 'customer'::text)"])]
+#[ORM\Index(name: 'ordering_order_pending_refund_idx', columns: ['refund_due_at', 'id'], options: ['where' => '((refund_amount IS NOT NULL) AND (refund_completed_at IS NULL))'])]
 class OrderRecord
 {
     public const string NUMBER_CONSTRAINT = 'ordering_order_number_key';
@@ -98,13 +111,32 @@ class OrderRecord
     public ?string $cancellationReason = null;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
-    public ?\DateTimeImmutable $confirmationSentAt = null;
+    public ?\DateTimeImmutable $shippedAt = null;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
-    public ?\DateTimeImmutable $paymentNotificationSentAt = null;
+    public ?\DateTimeImmutable $deliveredAt = null;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
-    public ?\DateTimeImmutable $cancellationNotificationSentAt = null;
+    public ?\DateTimeImmutable $returnedAt = null;
+
+    /** In grosze, in the currency of the order. */
+    #[ORM\Column(type: Types::BIGINT, nullable: true)]
+    public ?int $refundAmount = null;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $refundDueAt = null;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $refundCompletedAt = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    public ?string $refundCompletedByStaffId = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    public ?string $refundCompletedByUsername = null;
+
+    #[ORM\Column(length: 500, nullable: true)]
+    public ?string $refundNote = null;
 
     #[ORM\Version]
     #[ORM\Column(type: Types::INTEGER)]
@@ -115,11 +147,17 @@ class OrderRecord
     #[ORM\OrderBy(['position' => 'ASC'])]
     public Collection $lines;
 
+    /** @var Collection<int, OrderStatusChangeRecord> by position */
+    #[ORM\OneToMany(targetEntity: OrderStatusChangeRecord::class, mappedBy: 'order', cascade: ['persist'])]
+    #[ORM\OrderBy(['position' => 'ASC'])]
+    public Collection $statusChanges;
+
     public function __construct(
         #[ORM\Id]
         #[ORM\Column(type: 'guid')]
         public readonly string $id,
     ) {
         $this->lines = new ArrayCollection();
+        $this->statusChanges = new ArrayCollection();
     }
 }

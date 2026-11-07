@@ -8,6 +8,8 @@ import { useAuthStore } from "@/stores/auth";
 import AuthCallbackView from "@/views/AuthCallbackView.vue";
 import DashboardView from "@/views/DashboardView.vue";
 import InventoryView from "@/views/InventoryView.vue";
+import OrderDetailView from "@/views/OrderDetailView.vue";
+import OrdersView from "@/views/OrdersView.vue";
 import PricesView from "@/views/PricesView.vue";
 import ProductFormView from "@/views/ProductFormView.vue";
 import ProductsView from "@/views/ProductsView.vue";
@@ -42,6 +44,14 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
           { path: "products/:id", name: "product", component: ProductFormView },
           { path: "prices", name: "prices", component: PricesView },
           { path: "inventory", name: "inventory", component: InventoryView },
+          {
+            // One path for the list and the detail, so the menu item of the orders stays active on a detail.
+            path: "orders",
+            children: [
+              { path: "", name: "orders", component: OrdersView },
+              { path: ":orderId", name: "order-detail", component: OrderDetailView },
+            ],
+          },
           { path: ":pathMatch(.*)*", redirect: "/" },
         ],
       },

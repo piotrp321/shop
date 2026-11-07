@@ -9,12 +9,12 @@ use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
- * Every response under the order paths is `private, no-store`: orders, problems, and the 401 and 503 of the firewall
- * alike.
+ * Every response under the order paths (of the store and of the panel) is `private, no-store`: orders, problems, and
+ * the 401, 403 and 503 of the firewall alike.
  */
 final class OrderResponseCacheSubscriber implements EventSubscriberInterface
 {
-    private const string PATHS = '#^/api/v1/(orders|me/orders)(/|$)#';
+    private const string PATHS = '#^/api/v1/(orders|me/orders|admin/orders)(/|$)#';
 
     public static function getSubscribedEvents(): array
     {

@@ -1474,6 +1474,470 @@
                 ]
             }
         },
+        "/api/v1/admin/orders/{orderId}": {
+            "get": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Order detail",
+                "description": "The order with its contact, address, lines, totals, the moments of its statuses, the payment that paid it, its history oldest first, its refund and its `version`, which the next change of the status or the completion of the refund sends. `allowedTransitions` and `canCompleteRefund` say what the staff member of the token may do with it now. Administrators, support and the warehouse only.",
+                "operationId": "getOrder",
+                "parameters": [
+                    {
+                        "name": "orderId",
+                        "in": "path",
+                        "description": "Order id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The order.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrder"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not see orders (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such order, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/orders": {
+            "get": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Order list",
+                "description": "A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the total is not counted. Administrators, support and the warehouse only.",
+                "operationId": "listOrders",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Only the orders in this status.",
+                        "required": false,
+                        "schema": {
+                            "$ref": "#/components/schemas/BackofficeOrderStatus"
+                        }
+                    },
+                    {
+                        "name": "refund",
+                        "in": "query",
+                        "description": "`pending`: only the orders with a refund to do, nearest due date first.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "pending"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "An order number or an email, exact, any letter case; 1 to 254 characters once trimmed.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 254,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `nextCursor` of the previous page.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the list. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrderList"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor, also a cursor of the other sort (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not see orders (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/orders/{orderId}/status-changes": {
+            "post": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Change the status of an order",
+                "description": "Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment, a cancellation and a return.",
+                "operationId": "changeOrderStatus",
+                "parameters": [
+                    {
+                        "name": "orderId",
+                        "in": "path",
+                        "description": "Order id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChangeOrderStatusRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The order as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrder"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not see orders, or may not make this change (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such order, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The order changed since the given version, or its status does not allow the change (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrderConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The transition is unknown, the version is not an integer of at least 1, the note breaks its rules or is missing to cancel or register a return, or a key is missing or of a wrong type (problem details with Polish `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/orders/{orderId}/refund-completion": {
+            "post": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Mark the refund of an order made",
+                "description": "Marks the refund to do of an order (cancelled by staff or returned) as made, with the staff member of the token, the moment and an optional note; the money itself is transferred by hand, outside the system. The status of the order stays and no history entry is added. Administrators and support only. Send the `version` of the order you saw: an order changed since then is a 409, so repeating a completion that succeeded is a 409 too.",
+                "operationId": "completeOrderRefund",
+                "parameters": [
+                    {
+                        "name": "orderId",
+                        "in": "path",
+                        "description": "Order id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CompleteRefundRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The order as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrder"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in support (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such order, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The order changed since the given version, or it has no refund to do (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrderConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The version is not an integer of at least 1, the note breaks its rules, or a key is missing or of a wrong type (problem details with Polish `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
         "/api/v1/admin/prices": {
             "get": {
                 "tags": [
@@ -1867,6 +2331,546 @@
                             },
                             "type": "object"
                         }
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderList": {
+                "description": "A page of the order list.",
+                "required": [
+                    "items",
+                    "nextCursor"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeOrderListItem"
+                        }
+                    },
+                    "nextCursor": {
+                        "description": "Opaque cursor of the next page (send it as `after` with the same filters), null on the last page.",
+                        "type": "string",
+                        "example": "eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderListItem": {
+                "description": "An order in the list. Amounts in grosze.",
+                "required": [
+                    "orderId",
+                    "number",
+                    "placedAt",
+                    "status",
+                    "email",
+                    "fullName",
+                    "totalGross",
+                    "currency",
+                    "itemCount",
+                    "refund"
+                ],
+                "properties": {
+                    "orderId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "number": {
+                        "type": "string",
+                        "example": "R-100001"
+                    },
+                    "placedAt": {
+                        "description": "RFC 3339, UTC.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/BackofficeOrderStatus"
+                    },
+                    "email": {
+                        "type": "string",
+                        "example": "anna.nowak@example.com"
+                    },
+                    "fullName": {
+                        "type": "string",
+                        "example": "Anna Nowak"
+                    },
+                    "totalGross": {
+                        "type": "integer",
+                        "example": 39998
+                    },
+                    "currency": {
+                        "type": "string",
+                        "enum": [
+                            "PLN"
+                        ]
+                    },
+                    "itemCount": {
+                        "description": "Units of all lines of the order.",
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "refund": {
+                        "description": "The refund of an order cancelled by staff or returned; null for any other order.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderListRefund"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderListRefund": {
+                "required": [
+                    "amount",
+                    "dueAt",
+                    "completedAt",
+                    "overdue"
+                ],
+                "properties": {
+                    "amount": {
+                        "description": "The gross total of the order, in grosze, in its currency.",
+                        "type": "integer",
+                        "example": 39998
+                    },
+                    "dueAt": {
+                        "description": "The refund is to be made by this moment, 14 days after the cancellation or the return (RFC 3339, UTC).",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-19T12:30:00+00:00"
+                    },
+                    "completedAt": {
+                        "description": "When a staff member marked it made (RFC 3339, UTC); null while it is to do.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "overdue": {
+                        "description": "Still to do past `dueAt`, computed by the API.",
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderStatus": {
+                "description": "`new` (waits for the payment), `paid`, `shipped`, `delivered`, `cancelled` (unpaid in time, or by staff), `returned`.",
+                "type": "string",
+                "enum": [
+                    "new",
+                    "paid",
+                    "shipped",
+                    "delivered",
+                    "cancelled",
+                    "returned"
+                ]
+            },
+            "BackofficeOrderTransition": {
+                "description": "A change of the status by staff: `ship` (paid \u2192 shipped), `deliver` (shipped \u2192 delivered), `cancel` (paid \u2192 cancelled, a refund to do), `return` (shipped or delivered \u2192 returned, a refund to do).",
+                "type": "string",
+                "enum": [
+                    "ship",
+                    "deliver",
+                    "cancel",
+                    "return"
+                ]
+            },
+            "BackofficeOrder": {
+                "description": "An order with everything the panel shows of it, copies of the names and prices of its placement included. Amounts in grosze; moments in RFC 3339 and UTC, null until the status they belong to.",
+                "required": [
+                    "orderId",
+                    "number",
+                    "status",
+                    "version",
+                    "email",
+                    "fullName",
+                    "phone",
+                    "shippingAddress",
+                    "lines",
+                    "totals",
+                    "placedAt",
+                    "paymentDeadline",
+                    "paidAt",
+                    "paymentId",
+                    "shippedAt",
+                    "deliveredAt",
+                    "cancelledAt",
+                    "cancellationReason",
+                    "returnedAt",
+                    "history",
+                    "refund",
+                    "allowedTransitions",
+                    "canCompleteRefund"
+                ],
+                "properties": {
+                    "orderId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "number": {
+                        "type": "string",
+                        "example": "R-100001"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/BackofficeOrderStatus"
+                    },
+                    "version": {
+                        "description": "The version to send with the next change of the status or the completion of the refund.",
+                        "type": "integer",
+                        "example": 2,
+                        "minimum": 1
+                    },
+                    "email": {
+                        "type": "string",
+                        "example": "anna.nowak@example.com"
+                    },
+                    "fullName": {
+                        "type": "string",
+                        "example": "Anna Nowak"
+                    },
+                    "phone": {
+                        "description": "+48 and 9 digits.",
+                        "type": "string",
+                        "example": "+48600100200"
+                    },
+                    "shippingAddress": {
+                        "$ref": "#/components/schemas/BackofficeOrderAddress"
+                    },
+                    "lines": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeOrderLine"
+                        }
+                    },
+                    "totals": {
+                        "$ref": "#/components/schemas/BackofficeOrderTotals"
+                    },
+                    "placedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    },
+                    "paymentDeadline": {
+                        "description": "An order still `new` past this moment is cancelled.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T13:00:00+00:00"
+                    },
+                    "paidAt": {
+                        "description": "Stays after a cancellation by staff and a return.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "paymentId": {
+                        "description": "The payment that paid the order (the one to refund); stays after a cancellation by staff and a return.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "shippedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "deliveredAt": {
+                        "description": "Null also for an order returned without being delivered.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "cancelledAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "cancellationReason": {
+                        "description": "`payment_timeout` (unpaid in time) or `staff`; null unless cancelled.",
+                        "type": "string",
+                        "nullable": true,
+                        "enum": [
+                            "payment_timeout",
+                            "staff",
+                            null
+                        ]
+                    },
+                    "returnedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "history": {
+                        "description": "Every change of the status, oldest first.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeOrderStatusChange"
+                        }
+                    },
+                    "refund": {
+                        "description": "The refund of an order cancelled by staff or returned; null for any other order.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderRefund"
+                            }
+                        ]
+                    },
+                    "allowedTransitions": {
+                        "description": "The changes of the status the staff member of the token may make now (the status allows them and so do their roles).",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeOrderTransition"
+                        }
+                    },
+                    "canCompleteRefund": {
+                        "description": "The refund is to do and the staff member of the token may mark it made.",
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderAddress": {
+                "required": [
+                    "street",
+                    "postalCode",
+                    "city",
+                    "country"
+                ],
+                "properties": {
+                    "street": {
+                        "type": "string",
+                        "example": "ul. D\u0142uga 5/3"
+                    },
+                    "postalCode": {
+                        "type": "string",
+                        "example": "00-950"
+                    },
+                    "city": {
+                        "type": "string",
+                        "example": "Warszawa"
+                    },
+                    "country": {
+                        "type": "string",
+                        "enum": [
+                            "PL"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderLine": {
+                "required": [
+                    "variantId",
+                    "productName",
+                    "variantLabel",
+                    "quantity",
+                    "unitGross",
+                    "lineGross"
+                ],
+                "properties": {
+                    "variantId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "productName": {
+                        "type": "string",
+                        "example": "Buty szosowe Tarvik Asfalt 200"
+                    },
+                    "variantLabel": {
+                        "description": "The values of the variant joined with \", \"; empty for the default variant of a product without variant axes.",
+                        "type": "string",
+                        "example": "czarne, 42"
+                    },
+                    "quantity": {
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "unitGross": {
+                        "type": "integer",
+                        "example": 19999
+                    },
+                    "lineGross": {
+                        "type": "integer",
+                        "example": 39998
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderTotals": {
+                "description": "Sums of the lines; net + vat = gross.",
+                "required": [
+                    "net",
+                    "vat",
+                    "gross",
+                    "currency"
+                ],
+                "properties": {
+                    "net": {
+                        "type": "integer",
+                        "example": 32519
+                    },
+                    "vat": {
+                        "type": "integer",
+                        "example": 7479
+                    },
+                    "gross": {
+                        "type": "integer",
+                        "example": 39998
+                    },
+                    "currency": {
+                        "type": "string",
+                        "enum": [
+                            "PLN"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderStatusChange": {
+                "description": "An entry of the history. Only a change by `staff` names the staff member, and only it may have a note.",
+                "required": [
+                    "from",
+                    "to",
+                    "occurredAt",
+                    "actorType",
+                    "staffId",
+                    "staffUsername",
+                    "note"
+                ],
+                "properties": {
+                    "from": {
+                        "description": "Null for the placement.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderStatus"
+                            }
+                        ]
+                    },
+                    "to": {
+                        "$ref": "#/components/schemas/BackofficeOrderStatus"
+                    },
+                    "occurredAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:40:00+00:00"
+                    },
+                    "actorType": {
+                        "description": "`customer` (the placement, also by a guest), `system` (the payment, the expiry), `staff`.",
+                        "type": "string",
+                        "enum": [
+                            "system",
+                            "customer",
+                            "staff"
+                        ]
+                    },
+                    "staffId": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "staffUsername": {
+                        "type": "string",
+                        "example": "anna",
+                        "nullable": true
+                    },
+                    "note": {
+                        "type": "string",
+                        "example": "Kurier DPD",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderRefund": {
+                "description": "The money the order owes the customer back; made by hand outside the system, then marked made.",
+                "required": [
+                    "amount",
+                    "currency",
+                    "dueAt",
+                    "overdue",
+                    "completedAt",
+                    "completedByStaffId",
+                    "completedByUsername",
+                    "note"
+                ],
+                "properties": {
+                    "amount": {
+                        "description": "The gross total of the order, in grosze.",
+                        "type": "integer",
+                        "example": 39998
+                    },
+                    "currency": {
+                        "type": "string",
+                        "enum": [
+                            "PLN"
+                        ]
+                    },
+                    "dueAt": {
+                        "description": "14 days after the cancellation or the return.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-19T12:30:00+00:00"
+                    },
+                    "overdue": {
+                        "description": "Still to do past `dueAt`, computed by the API.",
+                        "type": "boolean"
+                    },
+                    "completedAt": {
+                        "description": "Null while it is to do.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "completedByStaffId": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "completedByUsername": {
+                        "type": "string",
+                        "example": "bartek",
+                        "nullable": true
+                    },
+                    "note": {
+                        "type": "string",
+                        "example": "Przelew wys\u0142any",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderConflictProblem": {
+                "description": "A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed.",
+                "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed",
+                            "tag:piotrp321.github.io,2026:shop/problems/refund-not-pending",
+                            "about:blank"
+                        ]
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Conflict"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "enum": [
+                            409
+                        ]
+                    },
+                    "detail": {
+                        "description": "Polish text for the staff member.",
+                        "type": "string"
                     }
                 },
                 "type": "object"
@@ -2358,6 +3362,115 @@
                         "default": 25,
                         "maximum": 100,
                         "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderListQuery": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "new",
+                            "paid",
+                            "shipped",
+                            "delivered",
+                            "cancelled",
+                            "returned"
+                        ]
+                    },
+                    "refund": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "pending"
+                        ]
+                    },
+                    "q": {
+                        "type": "string",
+                        "pattern": "((?!\\0).)*",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 254,
+                        "minLength": 1
+                    },
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 25,
+                        "maximum": 100,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "ChangeOrderStatusRequest": {
+                "description": "A change of the status of an order, based on the version of the order the staff member saw.",
+                "required": [
+                    "transition",
+                    "version",
+                    "note"
+                ],
+                "properties": {
+                    "transition": {
+                        "description": "`ship` (paid \u2192 shipped), `deliver` (shipped \u2192 delivered), `cancel` (paid \u2192 cancelled, a refund to do), `return` (shipped or delivered \u2192 returned, a refund to do).",
+                        "type": "string",
+                        "example": "ship",
+                        "enum": [
+                            "ship",
+                            "deliver",
+                            "cancel",
+                            "return"
+                        ]
+                    },
+                    "version": {
+                        "description": "The `version` of the order the change is based on.",
+                        "type": "integer",
+                        "example": 2,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                    },
+                    "note": {
+                        "description": "One line, at most 500 characters once trimmed, without control characters; required for `cancel` and `return`, otherwise null or blank for none.",
+                        "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
+                        "example": "Kurier DPD",
+                        "nullable": true,
+                        "maxLength": 500
+                    }
+                },
+                "type": "object"
+            },
+            "CompleteRefundRequest": {
+                "description": "The refund of an order marked made, based on the version of the order the staff member saw.",
+                "required": [
+                    "version",
+                    "note"
+                ],
+                "properties": {
+                    "version": {
+                        "description": "The `version` of the order the completion is based on.",
+                        "type": "integer",
+                        "example": 3,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                    },
+                    "note": {
+                        "description": "One line, at most 500 characters once trimmed, without control characters; null or blank for none.",
+                        "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
+                        "example": "Przelew wys\u0142any",
+                        "nullable": true,
+                        "maxLength": 500
                     }
                 },
                 "type": "object"
@@ -3619,6 +4732,10 @@
         {
             "name": "Inventory",
             "description": "Inventory"
+        },
+        {
+            "name": "Ordering",
+            "description": "Ordering"
         },
         {
             "name": "Pricing",

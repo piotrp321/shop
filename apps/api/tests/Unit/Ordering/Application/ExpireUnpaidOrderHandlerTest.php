@@ -65,6 +65,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
         // has nothing of Ordering to write.
         self::assertSame(['release', 'publish'], $this->journal->calls);
         self::assertSame([OrderExamples::ORDER], $this->orders->saved);
+        self::assertSame([OrderExamples::ORDER], $this->orders->locked, 'the order is locked before the release, like a change of staff');
     }
 
     public function testAMessageThatCameTooEarlyIsScheduledAgainASecondAfterTheExpiry(): void

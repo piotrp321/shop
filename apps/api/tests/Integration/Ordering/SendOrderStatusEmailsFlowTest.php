@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Ordering;
 
 use App\Ordering\Application\CartReference;
+use App\Ordering\Application\Command\ChangeOrderStatus;
 use App\Ordering\Application\Command\ExpireUnpaidOrder;
 use App\Ordering\Application\Command\MarkOrderPaid;
 use App\Ordering\Application\Command\MarkOrderPaidResult;
@@ -13,6 +14,9 @@ use App\Ordering\Application\Command\PlaceOrder;
 use App\Ordering\Application\View\OrderView;
 use App\Ordering\Domain\OrderCancelled;
 use App\Ordering\Domain\OrderPaid;
+use App\Ordering\Domain\OrderReturned;
+use App\Ordering\Domain\OrderShipped;
+use App\Ordering\Domain\StaffTransition;
 use App\Ordering\Infrastructure\SystemClock;
 use App\Tests\Integration\Cart\CartFixture;
 use App\Tests\Integration\Ordering\Mail\MailpitInbox;
@@ -28,9 +32,10 @@ use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * The emails about the payment and the cancellation on real infrastructure (the `test_messaging` kernel): the command
- * that changes the order → outbox (Postgres) → relay → RabbitMQ (`events`, vhost `test`) → SendPaymentReceived or
- * SendOrderCancelled → SMTP of Mailpit. Each test reads Mailpit by an address of its own.
+ * The emails about the payment, the shipment, the cancellation and the return on real infrastructure (the
+ * `test_messaging` kernel): the command that changes the order → outbox (Postgres) → relay → RabbitMQ (`events`, vhost
+ * `test`) → SendPaymentReceived, SendOrderShipped, SendOrderCancelled or SendReturnReceived → SMTP of Mailpit. Each test
+ * reads Mailpit by an address of its own.
  */
 final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
 {
@@ -57,6 +62,7 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         $paid = $this->bus()->dispatch(new MarkOrderPaid($order->orderId, Uuid::v7()->toRfc4122(), 12_300, 'PLN', $this->clock->now))->last(HandledStamp::class)?->getResult();
         self::assertSame(MarkOrderPaidResult::Paid, $paid);
         self::assertSame(2, $this->rows('outbox'), 'OrderPlaced and OrderPaid');
+        $version = $this->version($order->orderId);
 
         $this->consumeOutboxAndEvents(4);
         $this->redeliver(new OrderPaid($order->orderId, $this->clock->now));
@@ -65,7 +71,8 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         self::assertCount(1, $emails);
         self::assertStringContainsString('Kwota: 123,00 zł', $emails[0]['text']);
         self::assertStringContainsString('Zamówienie przekazujemy do realizacji.', $emails[0]['text']);
-        self::assertNotNull($this->connection()->fetchOne('SELECT payment_notification_sent_at FROM ordering_order WHERE id = ?', [$order->orderId]));
+        self::assertNotNull(OrderingFixture::notificationSentAt($this->connection(), $order->orderId, 'payment_received'));
+        self::assertSame($version, $this->version($order->orderId), 'sending the emails does not change the order');
         self::assertSame(0, $this->rows('failed'));
         self::assertSame(0, $this->eventsInQueue());
     }
@@ -76,6 +83,7 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         $this->clock->now = $order->paymentDeadline->modify('+5 minutes');
         $this->bus()->dispatch(new Envelope(new ExpireUnpaidOrder($order->orderId), [new ReceivedStamp('scheduled')]));
         self::assertSame('cancelled', $this->connection()->fetchOne('SELECT status FROM ordering_order WHERE id = ?', [$order->orderId]));
+        $version = $this->version($order->orderId);
 
         $this->consumeOutboxAndEvents(4);
         $this->redeliver(new OrderCancelled($order->orderId, 'payment_timeout', $this->clock->now));
@@ -83,9 +91,71 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         $emails = $this->emails('Zamówienie '.$order->number.' anulowane');
         self::assertCount(1, $emails);
         self::assertStringContainsString('Nie otrzymaliśmy płatności w terminie, więc anulowaliśmy zamówienie.', $emails[0]['text']);
-        self::assertNotNull($this->connection()->fetchOne('SELECT cancellation_notification_sent_at FROM ordering_order WHERE id = ?', [$order->orderId]));
+        self::assertNotNull(OrderingFixture::notificationSentAt($this->connection(), $order->orderId, 'cancelled'));
+        self::assertSame($version, $this->version($order->orderId), 'sending the emails does not change the order');
         self::assertSame(0, $this->rows('failed'));
         self::assertSame(0, $this->eventsInQueue());
+    }
+
+    public function testAShippedOrderGetsOneEmailWithTheAddress(): void
+    {
+        $order = $this->placeAndPay();
+        $this->changeStatus($order->orderId, StaffTransition::Ship, 2, 'Kurier');
+
+        $this->consumeOutboxAndEvents(6);
+        $this->redeliver(new OrderShipped($order->orderId, $this->clock->now));
+
+        $emails = $this->emails('Zamówienie '.$order->number.' wysłane', 3);
+        self::assertCount(1, $emails);
+        self::assertStringContainsString("Zamówienie zostało wysłane na adres:\nJan Kowalski\nDługa 1\n00-950 Warszawa", str_replace("\r\n", "\n", $emails[0]['text']), 'SMTP sends the lines with CRLF');
+        self::assertStringNotContainsString('Kurier', $emails[0]['text'], 'the note of staff stays in the panel');
+        self::assertNotNull(OrderingFixture::notificationSentAt($this->connection(), $order->orderId, 'shipped'));
+        self::assertSame(0, $this->rows('failed'));
+    }
+
+    public function testAnOrderCancelledByStaffGetsOneEmailWithoutTheTextAboutThePayment(): void
+    {
+        $order = $this->placeAndPay();
+        $this->changeStatus($order->orderId, StaffTransition::Cancel, 2, 'Brak towaru');
+
+        $this->consumeOutboxAndEvents(6);
+        $this->redeliver(new OrderCancelled($order->orderId, 'staff', $this->clock->now));
+
+        $emails = $this->emails('Zamówienie '.$order->number.' anulowane', 3);
+        self::assertCount(1, $emails);
+        self::assertStringContainsString('Anulowaliśmy Twoje zamówienie. Zwrócimy płatność.', $emails[0]['text']);
+        self::assertStringNotContainsString('Nie otrzymaliśmy płatności', $emails[0]['text']);
+        self::assertSame(0, $this->rows('failed'));
+    }
+
+    public function testAReturnedOrderGetsOneEmail(): void
+    {
+        $order = $this->placeAndPay();
+        $this->changeStatus($order->orderId, StaffTransition::Ship, 2, null);
+        $this->changeStatus($order->orderId, StaffTransition::Return, 3, 'Paczka wróciła');
+
+        $this->consumeOutboxAndEvents(8);
+        $this->redeliver(new OrderReturned($order->orderId, $this->clock->now));
+
+        $emails = $this->emails('Zamówienie '.$order->number.' wróciło do nas', 4);
+        self::assertCount(1, $emails);
+        self::assertStringContainsString('Zamówienie '.$order->number.' wróciło do nas. Zwrócimy płatność.', $emails[0]['text']);
+        self::assertNotNull(OrderingFixture::notificationSentAt($this->connection(), $order->orderId, 'return_received'));
+        self::assertSame(0, $this->rows('failed'));
+    }
+
+    private function placeAndPay(): OrderView
+    {
+        $order = $this->place();
+        $paid = $this->bus()->dispatch(new MarkOrderPaid($order->orderId, Uuid::v7()->toRfc4122(), 12_300, 'PLN', $this->clock->now))->last(HandledStamp::class)?->getResult();
+        self::assertSame(MarkOrderPaidResult::Paid, $paid);
+
+        return $order;
+    }
+
+    private function changeStatus(string $orderId, StaffTransition $transition, int $version, ?string $note): void
+    {
+        $this->bus()->dispatch(new ChangeOrderStatus($orderId, $transition, $version, $note, 'kc-staff-1', 'anna'));
     }
 
     /**
@@ -102,12 +172,20 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
     /**
      * @return list<array{subject: string, from: string, to: list<string>, text: string}>
      */
-    private function emails(string $subject): array
+    private function emails(string $subject, int $expected = 2): array
     {
-        // The confirmation of the placement and the email under test.
-        $messages = $this->inbox->awaitMessages(2);
+        // The confirmation of the placement, the payment email when paid, and the email under test.
+        $messages = $this->inbox->awaitMessages($expected);
 
         return array_values(array_filter($messages, static fn (array $message): bool => $message['subject'] === $subject));
+    }
+
+    private function version(string $orderId): int
+    {
+        $version = $this->connection()->fetchOne('SELECT version FROM ordering_order WHERE id = ?', [$orderId]);
+        self::assertIsInt($version);
+
+        return $version;
     }
 
     private function place(): OrderView

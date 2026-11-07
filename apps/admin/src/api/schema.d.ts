@@ -272,6 +272,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/orders/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Order detail
+         * @description The order with its contact, address, lines, totals, the moments of its statuses, the payment that paid it, its history oldest first, its refund and its `version`, which the next change of the status or the completion of the refund sends. `allowedTransitions` and `canCompleteRefund` say what the staff member of the token may do with it now. Administrators, support and the warehouse only.
+         */
+        get: operations["getOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Order list
+         * @description A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the total is not counted. Administrators, support and the warehouse only.
+         */
+        get: operations["listOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{orderId}/status-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the status of an order
+         * @description Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment, a cancellation and a return.
+         */
+        post: operations["changeOrderStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{orderId}/refund-completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark the refund of an order made
+         * @description Marks the refund to do of an order (cancelled by staff or returned) as made, with the staff member of the token, the moment and an optional note; the money itself is transferred by hand, outside the system. The status of the order stays and no history entry is added. Administrators and support only. Send the `version` of the order you saw: an order changed since then is a 409, so repeating a completion that succeeded is a 409 too.
+         */
+        post: operations["completeOrderRefund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/prices": {
         parameters: {
             query?: never;
@@ -353,6 +433,242 @@ export interface components {
                 /** @example This is not a valid UUID. */
                 title: string;
             }[];
+        };
+        /** @description A page of the order list. */
+        BackofficeOrderList: {
+            items: components["schemas"]["BackofficeOrderListItem"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after` with the same filters), null on the last page.
+             * @example eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0
+             */
+            nextCursor: string | null;
+        };
+        /** @description An order in the list. Amounts in grosze. */
+        BackofficeOrderListItem: {
+            /** Format: uuid */
+            orderId: string;
+            /** @example R-100001 */
+            number: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339, UTC.
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            placedAt: string;
+            status: components["schemas"]["BackofficeOrderStatus"];
+            /** @example anna.nowak@example.com */
+            email: string;
+            /** @example Anna Nowak */
+            fullName: string;
+            /** @example 39998 */
+            totalGross: number;
+            /** @enum {string} */
+            currency: "PLN";
+            /**
+             * @description Units of all lines of the order.
+             * @example 3
+             */
+            itemCount: number;
+            /** @description The refund of an order cancelled by staff or returned; null for any other order. */
+            refund: components["schemas"]["BackofficeOrderListRefund"] | null;
+        };
+        BackofficeOrderListRefund: {
+            /**
+             * @description The gross total of the order, in grosze, in its currency.
+             * @example 39998
+             */
+            amount: number;
+            /**
+             * Format: date-time
+             * @description The refund is to be made by this moment, 14 days after the cancellation or the return (RFC 3339, UTC).
+             * @example 2026-11-19T12:30:00+00:00
+             */
+            dueAt: string;
+            /**
+             * Format: date-time
+             * @description When a staff member marked it made (RFC 3339, UTC); null while it is to do.
+             */
+            completedAt: string | null;
+            /** @description Still to do past `dueAt`, computed by the API. */
+            overdue: boolean;
+        };
+        /**
+         * @description `new` (waits for the payment), `paid`, `shipped`, `delivered`, `cancelled` (unpaid in time, or by staff), `returned`.
+         * @enum {string}
+         */
+        BackofficeOrderStatus: "new" | "paid" | "shipped" | "delivered" | "cancelled" | "returned";
+        /**
+         * @description A change of the status by staff: `ship` (paid → shipped), `deliver` (shipped → delivered), `cancel` (paid → cancelled, a refund to do), `return` (shipped or delivered → returned, a refund to do).
+         * @enum {string}
+         */
+        BackofficeOrderTransition: "ship" | "deliver" | "cancel" | "return";
+        /** @description An order with everything the panel shows of it, copies of the names and prices of its placement included. Amounts in grosze; moments in RFC 3339 and UTC, null until the status they belong to. */
+        BackofficeOrder: {
+            /** Format: uuid */
+            orderId: string;
+            /** @example R-100001 */
+            number: string;
+            status: components["schemas"]["BackofficeOrderStatus"];
+            /**
+             * @description The version to send with the next change of the status or the completion of the refund.
+             * @example 2
+             */
+            version: number;
+            /** @example anna.nowak@example.com */
+            email: string;
+            /** @example Anna Nowak */
+            fullName: string;
+            /**
+             * @description +48 and 9 digits.
+             * @example +48600100200
+             */
+            phone: string;
+            shippingAddress: components["schemas"]["BackofficeOrderAddress"];
+            lines: components["schemas"]["BackofficeOrderLine"][];
+            totals: components["schemas"]["BackofficeOrderTotals"];
+            /**
+             * Format: date-time
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            placedAt: string;
+            /**
+             * Format: date-time
+             * @description An order still `new` past this moment is cancelled.
+             * @example 2026-11-05T13:00:00+00:00
+             */
+            paymentDeadline: string;
+            /**
+             * Format: date-time
+             * @description Stays after a cancellation by staff and a return.
+             */
+            paidAt: string | null;
+            /**
+             * Format: uuid
+             * @description The payment that paid the order (the one to refund); stays after a cancellation by staff and a return.
+             */
+            paymentId: string | null;
+            /** Format: date-time */
+            shippedAt: string | null;
+            /**
+             * Format: date-time
+             * @description Null also for an order returned without being delivered.
+             */
+            deliveredAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            /**
+             * @description `payment_timeout` (unpaid in time) or `staff`; null unless cancelled.
+             * @enum {string|null}
+             */
+            cancellationReason: "payment_timeout" | "staff" | null;
+            /** Format: date-time */
+            returnedAt: string | null;
+            /** @description Every change of the status, oldest first. */
+            history: components["schemas"]["BackofficeOrderStatusChange"][];
+            /** @description The refund of an order cancelled by staff or returned; null for any other order. */
+            refund: components["schemas"]["BackofficeOrderRefund"] | null;
+            /** @description The changes of the status the staff member of the token may make now (the status allows them and so do their roles). */
+            allowedTransitions: components["schemas"]["BackofficeOrderTransition"][];
+            /** @description The refund is to do and the staff member of the token may mark it made. */
+            canCompleteRefund: boolean;
+        };
+        BackofficeOrderAddress: {
+            /** @example ul. Długa 5/3 */
+            street: string;
+            /** @example 00-950 */
+            postalCode: string;
+            /** @example Warszawa */
+            city: string;
+            /** @enum {string} */
+            country: "PL";
+        };
+        BackofficeOrderLine: {
+            /** Format: uuid */
+            variantId: string;
+            /** @example Buty szosowe Tarvik Asfalt 200 */
+            productName: string;
+            /**
+             * @description The values of the variant joined with ", "; empty for the default variant of a product without variant axes.
+             * @example czarne, 42
+             */
+            variantLabel: string;
+            /** @example 2 */
+            quantity: number;
+            /** @example 19999 */
+            unitGross: number;
+            /** @example 39998 */
+            lineGross: number;
+        };
+        /** @description Sums of the lines; net + vat = gross. */
+        BackofficeOrderTotals: {
+            /** @example 32519 */
+            net: number;
+            /** @example 7479 */
+            vat: number;
+            /** @example 39998 */
+            gross: number;
+            /** @enum {string} */
+            currency: "PLN";
+        };
+        /** @description An entry of the history. Only a change by `staff` names the staff member, and only it may have a note. */
+        BackofficeOrderStatusChange: {
+            /** @description Null for the placement. */
+            from: components["schemas"]["BackofficeOrderStatus"] | null;
+            to: components["schemas"]["BackofficeOrderStatus"];
+            /**
+             * Format: date-time
+             * @example 2026-11-05T12:40:00+00:00
+             */
+            occurredAt: string;
+            /**
+             * @description `customer` (the placement, also by a guest), `system` (the payment, the expiry), `staff`.
+             * @enum {string}
+             */
+            actorType: "system" | "customer" | "staff";
+            staffId: string | null;
+            /** @example anna */
+            staffUsername: string | null;
+            /** @example Kurier DPD */
+            note: string | null;
+        };
+        /** @description The money the order owes the customer back; made by hand outside the system, then marked made. */
+        BackofficeOrderRefund: {
+            /**
+             * @description The gross total of the order, in grosze.
+             * @example 39998
+             */
+            amount: number;
+            /** @enum {string} */
+            currency: "PLN";
+            /**
+             * Format: date-time
+             * @description 14 days after the cancellation or the return.
+             * @example 2026-11-19T12:30:00+00:00
+             */
+            dueAt: string;
+            /** @description Still to do past `dueAt`, computed by the API. */
+            overdue: boolean;
+            /**
+             * Format: date-time
+             * @description Null while it is to do.
+             */
+            completedAt: string | null;
+            completedByStaffId: string | null;
+            /** @example bartek */
+            completedByUsername: string | null;
+            /** @example Przelew wysłany */
+            note: string | null;
+        };
+        /** @description A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed. */
+        BackofficeOrderConflictProblem: {
+            /** @enum {string} */
+            type: "tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed" | "tag:piotrp321.github.io,2026:shop/problems/refund-not-pending" | "about:blank";
+            /** @example Conflict */
+            title: string;
+            /** @enum {integer} */
+            status: 409;
+            /** @description Polish text for the staff member. */
+            detail: string;
         };
         /** @description A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations. */
         ProductConflictProblem: {
@@ -575,6 +891,56 @@ export interface components {
             after: string | null;
             /** @default 25 */
             perPage: number;
+        };
+        BackofficeOrderListQuery: {
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            status: "new" | "paid" | "shipped" | "delivered" | "cancelled" | "returned" | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            refund: "pending" | null;
+            /** @default null */
+            q: string | null;
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
+        };
+        /** @description A change of the status of an order, based on the version of the order the staff member saw. */
+        ChangeOrderStatusRequest: {
+            /**
+             * @description `ship` (paid → shipped), `deliver` (shipped → delivered), `cancel` (paid → cancelled, a refund to do), `return` (shipped or delivered → returned, a refund to do).
+             * @example ship
+             * @enum {string}
+             */
+            transition: "ship" | "deliver" | "cancel" | "return";
+            /**
+             * @description The `version` of the order the change is based on.
+             * @example 2
+             */
+            version: number;
+            /**
+             * @description One line, at most 500 characters once trimmed, without control characters; required for `cancel` and `return`, otherwise null or blank for none.
+             * @example Kurier DPD
+             */
+            note: string | null;
+        };
+        /** @description The refund of an order marked made, based on the version of the order the staff member saw. */
+        CompleteRefundRequest: {
+            /**
+             * @description The `version` of the order the completion is based on.
+             * @example 3
+             */
+            version: number;
+            /**
+             * @description One line, at most 500 characters once trimmed, without control characters; null or blank for none.
+             * @example Przelew wysłany
+             */
+            note: string | null;
         };
         BackofficePricesQuery: {
             /** @default null */
@@ -2253,6 +2619,330 @@ export interface operations {
             };
             /** @description No such variant, or the id is not a UUID (problem details). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Order id (UUID). */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeOrder"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not see orders (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listOrders: {
+        parameters: {
+            query?: {
+                /** @description Only the orders in this status. */
+                status?: components["schemas"]["BackofficeOrderStatus"];
+                /** @description `pending`: only the orders with a refund to do, nearest due date first. */
+                refund?: "pending";
+                /** @description An order number or an email, exact, any letter case; 1 to 254 characters once trimmed. */
+                q?: string;
+                /** @description The `nextCursor` of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the list. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeOrderList"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor, also a cursor of the other sort (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not see orders (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    changeOrderStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Order id (UUID). */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeOrderStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description The order as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeOrder"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not see orders, or may not make this change (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The order changed since the given version, or its status does not allow the change (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["BackofficeOrderConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The transition is unknown, the version is not an integer of at least 1, the note breaks its rules or is missing to cancel or register a return, or a key is missing or of a wrong type (problem details with Polish `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    completeOrderRefund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Order id (UUID). */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteRefundRequest"];
+            };
+        };
+        responses: {
+            /** @description The order as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeOrder"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in support (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The order changed since the given version, or it has no refund to do (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["BackofficeOrderConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The version is not an integer of at least 1, the note breaks its rules, or a key is missing or of a wrong type (problem details with Polish `violations`). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

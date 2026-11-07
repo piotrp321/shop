@@ -81,4 +81,19 @@ final class InvalidOrderInput extends \DomainException implements InvalidInput
     {
         return new self('Nieprawidłowy klucz żądania.');
     }
+
+    public static function noteMissing(): self
+    {
+        return new self('Notatka jest wymagana.');
+    }
+
+    public static function noteTooLong(): self
+    {
+        return new self(\sprintf('Notatka może mieć najwyżej %d znaków.', StaffNote::MAX_LENGTH));
+    }
+
+    public static function noteCharacters(): self
+    {
+        return new self('Notatka zawiera niedozwolone znaki.');
+    }
 }

@@ -27,10 +27,13 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Struktura
 
 - `app/` – trasy App Router, w tym route handlery logowania w `app/auth/`, koszyka w `app/api/cart/`, kasy
-  w `app/api/checkout/` (płatność zamówienia w `app/api/checkout/payment/`) i rewalidacji ISR w `app/api/revalidate/`.
+  w `app/api/checkout/` (płatność zamówienia w `app/api/checkout/payment/`), historii zamówień w `app/api/account/orders/`
+  i rewalidacji ISR w `app/api/revalidate/`; strony konta w `app/konto/zamowienia/`.
 - `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session`, `/api/cart/*`,
-  `/api/checkout` i `/api/checkout/payment` z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
-- `src/account/` – komponent konta w nagłówku (Client Component).
+  `/api/checkout`, `/api/checkout/payment` i `/api/account/orders*` z przeglądarki) i wygenerowany `schema.d.ts` (nie
+  edytuj ręcznie).
+- `src/account/` – komponent konta w nagłówku (`AccountMenu`, Client Component), historia zamówień (`OrdersPage`,
+  `OrderDetailPage`, `OrderPaymentNote`, `order-format.ts`) i jej BFF (`orders-bff.ts`).
 - `src/cart/` – BFF koszyka (wybór koszyka, ciasteczka `store_cart` i `store_cart_notice`, scalanie koszyka gościa
   w `merge.ts`, wywołania API, mapowanie błędów) oraz komponenty koszyka: `AddToCartButton`, `CartBadge` i `CartPage`.
 - `src/checkout/` – BFF kasy (złożenie zamówienia i rozpoczęcie płatności, ciasteczko `store_order_confirmation`),
@@ -389,6 +392,38 @@ Klienta API generuje `make api-client` z katalogu głównego.
   nie ma imienia) albo `null`. Korzystają z niego konto w nagłówku i kasa (e-mail klienta, imię i nazwisko).
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.
 - Odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`.
+
+## Konto: historia zamówień
+
+- `AccountMenu` pokazuje zalogowanemu klientowi link „Moje zamówienia” (`/konto/zamowienia`).
+- `/konto/zamowienia` (`OrdersPage`) i `/konto/zamowienia/[orderId]` (`OrderDetailPage`) to Server Components tylko z
+  metadanymi (`noindex`, tytuł) i Client Componentem, który ładuje dane w przeglądarce przez `loadCustomerOrders`
+  i `loadCustomerOrder` z `src/api/client.ts`: HTML strony nie zależy od sesji i nie zawiera danych zamówień.
+- BFF: `GET /api/account/orders?after=` i `GET /api/account/orders/[orderId]` (`withAuthDeps`, logika w
+  `src/account/orders-bff.ts`): sesja z ciasteczka, `freshAccessToken`, wywołanie `GET /api/v1/me/orders` albo
+  `/api/v1/me/orders/{orderId}` przez `API_INTERNAL_URL` (nigdy Varnish), odpowiedź `private, no-store`. Dalej idzie tylko
+  kursor `after` (rozmiar strony to domyślne 10 API; klienta wskazuje token, nie parametr). Wyniki: 200 z treścią API;
+  401 bez ciasteczka albo z podrobionym (to czyści), gdy `freshAccessToken` zwróci `null` albo API odpowie 401 (sesja
+  kończy się: usunięcie z Redisa i czyszczenie ciasteczka); 400 dla kursora, który API odrzuci; 404 z tekstem „Nie
+  znaleźliśmy zamówienia.” dla id spoza UUID (bez wywołania API) i każdego zamówienia, którego API nie daje klientowi;
+  503 `{}` dla reszty (status API, treść, której nie rozpoznaje, sieć, niedostępne odświeżenie tokenu), z zachowaniem
+  sesji. Kolejność: sesja przed id.
+- Przeglądarka: 401 z BFF (także przy „Pokaż więcej” po wygaśnięciu sesji) to `navigateTo` na
+  `/auth/login?returnTo=<bieżąca ścieżka>` (ścieżka strony w `encodeURIComponent`; `sanitizeReturnTo` sprawdza ją
+  w `/auth/login`) z odnośnikiem „Zaloguj się” jako zapasowym, a załadowane pozycje zostają. Brak sesji przy wejściu
+  przechodzi tą samą drogą.
+- Lista: po 10 (rozmiar z API), numer (link do szczegółów), data i godzina w `Europe/Warsaw` (`formatOrderMoment`),
+  etykieta statusu z `ORDER_STATUS_LABELS` (Czeka na płatność, Opłacone, Wysłane, Dostarczone, Anulowane, Zwrócone),
+  kwota brutto z API (`formatPrice`), „N szt.”, „Pokaż więcej” tylko przy `nextCursor`. Nieudana kolejna strona
+  zostawia wczytane pozycje, pokazuje „Nie udało się wczytać zamówień. Spróbuj ponownie.” z przyciskiem, który ponawia
+  tę samą stronę; kliknięcie w trakcie ładowania nie wysyła drugiego żądania. Pusta lista: „Nie masz jeszcze
+  zamówień.”; nieudana pierwsza strona: ten sam komunikat błędu z przyciskiem „Spróbuj ponownie”.
+- Szczegóły: pozycje (nazwa, etykieta wariantu, ilość × cena, wartość linii), netto, VAT i razem brutto z API, adres
+  dostawy i daty kolejnych statusów (złożone, opłacone, wysłane, dostarczone, anulowane, zwrócone; tylko osiągnięte). Zamówienie `new`:
+  „Czeka na płatność do 14:35” (`OrderPaymentNote`), po terminie wg `paymentDeadlinePassed` z API „Termin płatności
+  minął”; płatności z historii nie ma. 404: „Nie znaleźliśmy zamówienia.” z linkiem „Wróć do zamówień”; inny błąd:
+  komunikat błędu z przyciskiem. Front niczego nie liczy i nie porównuje z zegarem przeglądarki.
+- `PaymentConfirmation` dla `cancelled` mówi neutralnie „Zamówienie zostało anulowane.” (przyczynę podaje e-mail).
 
 ## Wygląd
 

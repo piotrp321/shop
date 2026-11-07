@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Ordering\Infrastructure\Inventory;
 
+use App\Inventory\Application\Command\CommitReservation;
 use App\Inventory\Application\Command\InsufficientStock;
 use App\Inventory\Application\Command\ReleaseReservation;
 use App\Inventory\Application\Command\ReserveStock;
@@ -21,8 +22,9 @@ use Symfony\Component\Messenger\MessageBusInterface;
  * The reservation of an order through Inventory's ReserveStock on command.bus, with the order id as the key,
  * dispatched inside the transaction of PlaceOrder (nested). Inventory reserves all lines or none; its shortage
  * becomes InsufficientStockForOrder, thrown on so the whole placement rolls back. The number of units is not passed
- * on. The release (ReleaseReservation, nested in the transaction of ExpireUnpaidOrder) passes every failure on as
- * it is (ReservationNotFound, ReservationStateConflict, a lost connection).
+ * on. The release (ReleaseReservation, nested in the transaction of ExpireUnpaidOrder and of a cancellation by staff)
+ * and the commit (CommitReservation, nested in the transaction of a shipment) pass every failure on as it is
+ * (ReservationNotFound, ReservationStateConflict, a lost connection).
  */
 final readonly class CommandBusStockReservations implements StockReservations
 {
@@ -52,6 +54,15 @@ final readonly class CommandBusStockReservations implements StockReservations
     {
         try {
             $this->commandBus->dispatch(new ReleaseReservation($orderId->toString()));
+        } catch (HandlerFailedException $failure) {
+            throw BusFailure::cause($failure);
+        }
+    }
+
+    public function commit(OrderId $orderId): void
+    {
+        try {
+            $this->commandBus->dispatch(new CommitReservation($orderId->toString()));
         } catch (HandlerFailedException $failure) {
             throw BusFailure::cause($failure);
         }

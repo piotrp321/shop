@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Ordering\Application;
 
+use App\Ordering\Application\OrderCancelledByStaffText;
 use App\Ordering\Application\OrderCancelledText;
+use App\Ordering\Application\OrderShippedText;
 use App\Ordering\Application\PaymentReceivedText;
+use App\Ordering\Application\ReturnReceivedText;
 use App\Ordering\Application\View\OrderLineView;
 use App\Ordering\Application\View\OrderTotalsView;
 use App\Ordering\Application\View\OrderView;
@@ -13,7 +16,8 @@ use App\Ordering\Application\View\ShippingAddressView;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The emails about the payment and the cancellation of an order, in Polish, amounts like in the confirmation.
+ * The emails about the payment, the shipment, the cancellation and the return of an order, in Polish, amounts like in
+ * the confirmation. The note of a staff member is never part of them.
  */
 final class OrderStatusTextsTest extends TestCase
 {
@@ -52,11 +56,61 @@ final class OrderStatusTextsTest extends TestCase
         self::assertSame($expected, $text->body(self::view()));
     }
 
-    public function testNeitherEmailShowsTheAccessToken(): void
+    public function testTheOrderShippedEmailHasTheAddress(): void
+    {
+        $text = new OrderShippedText();
+
+        self::assertSame('Zamówienie R-100001 wysłane', $text->subject(self::view()));
+        $expected = <<<'TEXT'
+            Dzień dobry Jan Kowalski,
+
+            Numer zamówienia: R-100001
+
+            Zamówienie zostało wysłane na adres:
+            Jan Kowalski
+            Długa 1
+            00-950 Warszawa
+
+            TEXT;
+        self::assertSame($expected, $text->body(self::view()));
+    }
+
+    public function testTheEmailOfACancellationByStaffPromisesTheRefundWithoutTheTextAboutThePayment(): void
+    {
+        $text = new OrderCancelledByStaffText();
+
+        self::assertSame('Zamówienie R-100001 anulowane', $text->subject(self::view()));
+        $expected = <<<'TEXT'
+            Dzień dobry Jan Kowalski,
+
+            Numer zamówienia: R-100001
+
+            Anulowaliśmy Twoje zamówienie. Zwrócimy płatność.
+
+            TEXT;
+        self::assertSame($expected, $text->body(self::view()));
+        self::assertStringNotContainsString('Nie otrzymaliśmy płatności', $text->body(self::view()));
+    }
+
+    public function testTheReturnReceivedEmailDoesNotSayTheCustomerSentTheGoodsBack(): void
+    {
+        $text = new ReturnReceivedText();
+
+        self::assertSame('Zamówienie R-100001 wróciło do nas', $text->subject(self::view()));
+        $expected = <<<'TEXT'
+            Dzień dobry Jan Kowalski,
+
+            Zamówienie R-100001 wróciło do nas. Zwrócimy płatność.
+
+            TEXT;
+        self::assertSame($expected, $text->body(self::view()));
+    }
+
+    public function testNoEmailShowsTheAccessToken(): void
     {
         $view = self::view();
 
-        foreach ([new PaymentReceivedText()->body($view), new OrderCancelledText()->body($view)] as $body) {
+        foreach ([new PaymentReceivedText()->body($view), new OrderCancelledText()->body($view), new OrderShippedText()->body($view), new OrderCancelledByStaffText()->body($view), new ReturnReceivedText()->body($view)] as $body) {
             self::assertIsString($view->accessToken);
             self::assertStringNotContainsString($view->accessToken, $body);
         }

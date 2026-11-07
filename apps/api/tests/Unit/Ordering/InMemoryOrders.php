@@ -42,6 +42,11 @@ final class InMemoryOrders implements OrderRepository
         return $this->orders[$id->toString()] ?? throw new OrderNotFound();
     }
 
+    public function lock(OrderId $id): Order
+    {
+        return $this->get($id);
+    }
+
     public function findByIdempotencyKey(IdempotencyKey $key): ?Order
     {
         $this->journal->record('find');

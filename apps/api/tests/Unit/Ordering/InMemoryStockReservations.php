@@ -10,7 +10,8 @@ use App\Ordering\Domain\OrderId;
 
 /**
  * Available units by variant; a reservation takes all its lines or none, like Inventory. A release gives the units
- * back once (a released reservation stays released) and fails like Inventory for a reservation it does not know.
+ * back once (a released reservation stays released) and fails like Inventory for a reservation it does not know; a
+ * commit is recorded, or fails as told.
  */
 final class InMemoryStockReservations implements StockReservations
 {
@@ -20,8 +21,12 @@ final class InMemoryStockReservations implements StockReservations
     public array $reservations = [];
     /** @var list<string> the keys of the reservations released, once per release call */
     public array $released = [];
+    /** @var list<string> the keys of the reservations committed, once per commit call */
+    public array $committed = [];
     /** Thrown by the next release instead of releasing (e.g. a reservation Inventory does not know). */
     public ?\Throwable $releaseFailure = null;
+    /** Thrown by the next commit instead of committing (e.g. a reservation already released). */
+    public ?\Throwable $commitFailure = null;
     /** Runs while a reservation is being released, e.g. to let a concurrent handler change the order first. */
     public ?\Closure $whileReleasing = null;
 
@@ -62,5 +67,14 @@ final class InMemoryStockReservations implements StockReservations
             ($this->whileReleasing)();
         }
         $this->released[] = $orderId->toString();
+    }
+
+    public function commit(OrderId $orderId): void
+    {
+        $this->journal->record('commit');
+        if (null !== $this->commitFailure) {
+            throw $this->commitFailure;
+        }
+        $this->committed[] = $orderId->toString();
     }
 }
