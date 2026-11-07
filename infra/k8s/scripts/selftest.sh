@@ -64,7 +64,7 @@ echo "selftest: the unbroken copy passes"
 fresh_copy
 sh "$tree/infra/k8s/scripts/check.sh" >/dev/null 2>&1 || { echo "selftest: FAIL the unbroken copy does not pass the check" >&2; failures=$((failures + 1)); }
 
-run_case "broken template" "helm" broken_template
+run_case "broken template" "unexpected EOF" broken_template
 run_case "init-env.sh key missing from the secret template" "keys of infra/scripts/init-env.sh missing from the secret template" secret_key_missing
 run_case "key dropped from the secret template" "VARNISH_PURGE_SECRET" secret_key_dropped_from_template
 run_case "invalid manifest" "is invalid" invalid_manifest

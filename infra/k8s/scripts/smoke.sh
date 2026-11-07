@@ -263,6 +263,16 @@ install() {
     -f environments/ci/values.yaml --set "image.tag=$1" >/dev/null
 }
 
+# k3s installs Traefik and its CRDs (the Middleware of the chart) in the background after the node is ready.
+wait_for_traefik() {
+  deadline=$(( $(date +%s) + 300 ))
+  until kubectl get crd middlewares.traefik.io >/dev/null 2>&1; do
+    if [ "$(date +%s)" -ge "$deadline" ]; then echo "smoke: the CRDs of Traefik were not installed in 300 s" >&2; return 1; fi
+    sleep 3
+  done
+  kubectl wait --for=condition=established crd/middlewares.traefik.io --timeout=120s >/dev/null
+}
+
 # The pod the checks run in: python with the standard library only.
 create_tools_pod() {
   kc apply -f - >/dev/null <<'YAML'
@@ -297,6 +307,7 @@ else
   import_images r1
 
   log "install r1"
+  wait_for_traefik
   install r1
   create_tools_pod
   wait_ready "install r1"

@@ -42,7 +42,7 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
     `kubeconform`, `shellcheck` i testy renderu (fale, ścieżki ingressu `auth`, middleware, klucze sekretu, nazwy Jobów,
     CronJob, zgodność obrazów z compose).
   - `infra/k8s` ma własny `Makefile` (potrzebuje tylko Dockera): `make -C infra/k8s check`; `make -C infra/k8s smoke`
-    (test dymny: chart z profilem `ci` na pustym klastrze k3d z obrazami produkcyjnymi zbudowanymi lokalnie, ok. 20 min;
+    (test dymny: chart z profilem `ci` na pustym klastrze k3d z obrazami produkcyjnymi zbudowanymi lokalnie, kilka minut;
     `SMOKE_BREAK=migration|image` psuje go celowo); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
     samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje).
 - `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.

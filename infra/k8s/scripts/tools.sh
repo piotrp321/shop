@@ -61,6 +61,6 @@ k3d() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$K3D_IMAGE
 # KUBE_NETWORK and KUBE_DIR (the directory with the file `config`) are set by smoke.sh; rerun.sh takes them from the
 # environment (KUBE_NETWORK defaults to host, KUBE_DIR to ~/.kube).
 kubectl() {
-  docker run --rm -i --network "$KUBE_NETWORK" -v "$KUBE_DIR:/kube:ro" -e KUBECONFIG=/kube/config \
-    "$KUBECTL_IMAGE" "$@"
+  docker run --rm -i -u "$(id -u):$(id -g)" -e HOME=/tmp --network "$KUBE_NETWORK" -v "$KUBE_DIR:/kube:ro" \
+    -e KUBECONFIG=/kube/config "$KUBECTL_IMAGE" "$@"
 }

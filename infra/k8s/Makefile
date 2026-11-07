@@ -9,7 +9,7 @@ check:
 selftest:
 	sh scripts/selftest.sh
 
-# The smoke test on an empty k3d cluster with the production images built here (about 20 minutes; the first run pulls
+# The smoke test on an empty k3d cluster with the production images built here (a few minutes; the first run pulls
 # the images of the services). SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
 smoke:
 	sh scripts/smoke.sh
