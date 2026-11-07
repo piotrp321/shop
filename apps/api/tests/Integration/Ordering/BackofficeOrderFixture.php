@@ -26,7 +26,7 @@ final class BackofficeOrderFixture
     }
 
     /**
-     * A guest order of one line per quantity (1 000 grosze gross a unit). `cancelled_by_staff` and `cancelled` (for
+     * An order of a guest, or of the customer $customerId, of one line per quantity (1 000 grosze gross a unit). `cancelled_by_staff` and `cancelled` (for
      * want of a payment) are the two cancellations. A refund exists exactly for `returned` and `cancelled_by_staff`;
      * it is due at $refundDueAt (placement + 14 days by default) and completed at $refundCompletedAt.
      *
@@ -45,6 +45,7 @@ final class BackofficeOrderFixture
         ?string $refundDueAt = null,
         ?string $refundCompletedAt = null,
         ?string $orderId = null,
+        ?string $customerId = null,
     ): string {
         $orderId ??= Uuid::v7()->toRfc4122();
         $placed = new \DateTimeImmutable($placedAt);
@@ -58,8 +59,9 @@ final class BackofficeOrderFixture
             'id' => $orderId,
             'number' => $number,
             'status' => 'cancelled_by_staff' === $status ? 'cancelled' : $status,
-            'owner_type' => 'guest',
-            'access_token' => rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '='),
+            'owner_type' => null === $customerId ? 'guest' : 'customer',
+            'customer_id' => $customerId,
+            'access_token' => null === $customerId ? rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=') : null,
             'email' => $email,
             'full_name' => 'Jan Kowalski',
             'phone' => '+48600100200',

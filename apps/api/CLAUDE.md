@@ -204,6 +204,22 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `(status, placed_at DESC, id DESC)`, `(lower(email))` (wyrażenie, mapowanie go nie zna, więc narzędzia schematu
     go pomijają) i częściowy `(refund_due_at, id) WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL`
     (warunek w mapowaniu tak, jak zwraca go PostgreSQL); `OrderingSchemaTest` pilnuje zgodności mapowania z migracją.
+  - Historia klienta w sklepie (`openapi.json`, tag `Ordering`; token `shop`, `CustomerOrderHistoryController`):
+    `GET /api/v1/me/orders?after=&perPage=` i `GET /api/v1/me/orders/{orderId}`; każda odpowiedź `private, no-store`
+    (`OrderResponseCacheSubscriber` obejmuje `me/orders`), brak tokenu albo token panelu to 401. Klient to `sub` z tokenu
+    (`AuthenticatedCustomer::id()`), nigdy parametr. `ListCustomerOrders(customerId, after, perPage)` czyta przez port
+    `CustomerOrderReader` (adapter DBAL `DbalCustomerOrderReader`, tylko `owner_type = 'customer'` i `customer_id`, liczba
+    sztuk z sumy linii): sort `placed_at DESC, id DESC`, kursor keyset ten sam co listy panelu (`BackofficeOrderCursor`,
+    sort po złożeniu; zły kursor i kursor zwrotów to 400 przy `after`), `perPage` 1–50 (domyślnie 10), inaczej 400.
+    Indeks (migracja): częściowy `(customer_id, placed_at DESC, id DESC) WHERE owner_type = 'customer'`, w mapowaniu tak,
+    jak zwraca go PostgreSQL (`OrderingSchemaTest`). Element listy: `orderId, number, placedAt, status, totalGross, currency,
+    itemCount, paymentDeadline, paymentDeadlinePassed`. `GetCustomerOrder(orderId, customerId)` czyta zamówienie przez
+    `OrderRepository::get` i sprawdza `Order::grantsAccess(AccessClaim::customer(...))`: nieznane, cudze, gościa i id spoza
+    UUID dają jeden wynik (null), a kontroler odpowiada tym samym 404 `OrderNotFound`. `CustomerOrderView` ma pozycje,
+    sumy, adres, `placedAt`, `paidAt`, `shippedAt`, `deliveredAt`, `cancelledAt`, `returnedAt`, `paymentDeadline`
+    i `paymentDeadlinePassed`, bez historii, notatek, danych pracowników, zwrotu, płatności i danych kontaktowych.
+    `paymentDeadlinePassed` liczy API z zegara: tylko zamówienie `new` od chwili terminu (`now >= paymentDeadline`, jak
+    `Order::isPayable`), dla innych statusów zawsze `false`.
 - Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
   dostawcy (`pending` → `succeeded` | `failed` | `cancelled`; `succeed` także z `failed` i `cancelled`, bo pieniądze ważą
   więcej niż wcześniejsza odmowa; `requireRefund` tylko dla `succeeded`, pierwszy powód zostaje), bez pola wersji:

@@ -467,7 +467,7 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | `new`, płatność `pending`, przed terminem | numer, kwota, termin, „Czekamy na potwierdzenie płatności…”; odświeżanie co 2 s przez 30 s; przez cały czas link „Wróć do płatności” (`resumeUrl`), a po 30 s dodatkowo „Nie mamy jeszcze potwierdzenia płatności.”, przycisk „Sprawdź ponownie”, wybór dostawcy i „Zapłać innym sposobem” (nowa próba anuluje poprzednią u dostawcy) |
 | `new`, po terminie (okno 5 minut przed anulowaniem; każda płatność) | numer, kwota, „Minął termin płatności. Jeśli zapłaciłeś, czekamy na potwierdzenie; w przeciwnym razie zamówienie zostanie anulowane.”, bez przycisków płatności; odświeżanie co 2 s przez 30 s, potem „Sprawdź ponownie” |
 | `new`, przed terminem, płatność `failed`, `cancelled` albo bez płatności | numer, kwota, termin („Opłać do 14:35”), komunikat („Płatność nie powiodła się.” przy `failed`, brak w innych), wybór dostawcy i „Zapłać” (gdy `canStartPayment`) |
-| `cancelled` | „Zamówienie zostało anulowane, bo nie otrzymaliśmy płatności w terminie.” i link do sklepu |
+| `cancelled` | „Zamówienie zostało anulowane.” (neutralnie: `cancelled` jest także po anulowaniu przez pracownika, przyczynę podaje e-mail; `docs/features/order-management/spec.md`, P12) i link do sklepu |
 | odczyt statusu nieudany (503, sieć) | numer i kwota z ciasteczka, „Nie udało się sprawdzić statusu płatności.” i przycisk „Sprawdź ponownie” |
 | odczyt statusu: 401 | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem (`returnTo=/checkout/confirmation`) |
 | odczyt statusu: 404 | „Nie znaleźliśmy zamówienia.” i link do sklepu |
