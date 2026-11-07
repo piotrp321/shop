@@ -27,9 +27,9 @@ use Symfony\Component\Messenger\HandleTrait;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
- * Finds products through Catalog's search query and their variants through ListProductVariants, on the query bus.
- * Catalog's tax class codes become Pricing's TaxClass, its not-found and cursor errors Pricing's own exceptions. Other
- * errors (an out-of-range term or page size, too many products) pass on.
+ * Finds products through Catalog's search query and their variants through ListProductVariants (drafts included), on
+ * the query bus. Catalog's tax class codes become Pricing's TaxClass, its not-found and cursor errors Pricing's own
+ * exceptions. Other errors (an out-of-range term or page size, too many products) pass on.
  */
 final class QueryBusProductDirectory implements ProductDirectory
 {
@@ -69,7 +69,8 @@ final class QueryBusProductDirectory implements ProductDirectory
     public function variantsOf(array $productIds): array
     {
         try {
-            $lists = $this->handle(new ListProductVariants(array_map(static fn (ProductId $id): string => $id->toString(), $productIds)));
+            // The panel lists drafts too: their prices and stock are set before the publication.
+            $lists = $this->handle(new ListProductVariants(array_map(static fn (ProductId $id): string => $id->toString(), $productIds), includeDrafts: true));
         } catch (HandlerFailedException $failure) {
             $wrapped = $failure->getWrappedExceptions();
 

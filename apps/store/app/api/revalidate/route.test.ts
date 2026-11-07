@@ -58,6 +58,17 @@ describe("POST /api/revalidate", () => {
     expect(revalidateTag).toHaveBeenCalledTimes(1);
   });
 
+  it("accepts the tag of a product slug", async () => {
+    const response = await revalidate({ tags: [PRODUCT_TAG, "product-slug-kurtka-puchowa-2", `product-slug-${"a".repeat(200)}`] });
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(revalidateTag).mock.calls).toEqual([
+      [PRODUCT_TAG, { expire: 0 }],
+      ["product-slug-kurtka-puchowa-2", { expire: 0 }],
+      [`product-slug-${"a".repeat(200)}`, { expire: 0 }],
+    ]);
+  });
+
   it("accepts 100 tags", async () => {
     const response = await revalidate({ tags: Array.from({ length: 100 }, () => "catalog") });
 
@@ -94,6 +105,15 @@ describe("POST /api/revalidate", () => {
     ["a product tag with more after the UUID", { tags: [`${PRODUCT_TAG}0`] }],
     ["a tag outside the dictionary", { tags: ["category-0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60"] }],
     ["one bad tag among good ones", { tags: ["catalog", "Catalog"] }],
+    ["a slug tag without a slug", { tags: ["product-slug-"] }],
+    ["a slug tag in upper case", { tags: ["product-slug-Kurtka"] }],
+    ["a slug tag with a Polish letter", { tags: ["product-slug-kurtka-różowa"] }],
+    ["a slug tag with a dash at the end", { tags: ["product-slug-kurtka-"] }],
+    ["a slug tag with two dashes", { tags: ["product-slug-kurtka--puchowa"] }],
+    ["a slug tag with a space", { tags: ["product-slug-kurtka puchowa"] }],
+    ["a slug tag with a line break", { tags: ["product-slug-kurtka\n"] }],
+    ["a slug tag with a slash", { tags: ["product-slug-kurtka/puchowa"] }],
+    ["a slug tag over 200 characters", { tags: [`product-slug-${"a".repeat(201)}`] }],
   ])("is 400 for %s", async (_case, body) => {
     await expectRefused(await revalidate(body), 400);
   });

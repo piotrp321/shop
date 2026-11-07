@@ -160,9 +160,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (`STORE_MODE=production`); `next dev` renderuje przy każdym żądaniu.
 - Dane (`loadProduct` w `src/catalog/load-product.ts`, wspólne dla `generateMetadata` i strony przez `React.cache`
   jako `loadProductForRequest`): `GET /api/v1/products/{slug}`, potem `GET /api/v1/product-offers?productId=<id>`, oba
-  przez `API_CATALOG_URL`. Tagi cache Next to te same nazwy, które API wystawia w `xkey`: szczegóły `catalog`, oferta
-  `catalog` i `product-<id>` (UUID małymi literami). Strona dziedziczy sumę tagów odczytów, więc `revalidateTag`
-  tych nazw unieważnia jej HTML.
+  przez `API_CATALOG_URL`. Tagi cache Next to te same nazwy, które API wystawia w `xkey`: szczegóły `catalog`
+  i `product-slug-<slug>` (tylko dla sluga w formacie sluga produktu, `isProductSlug` w `load-product.ts`, ten sam
+  wzorzec co w `/api/revalidate`; inny napis tylko `catalog`), oferta `catalog` i `product-<id>` (UUID małymi
+  literami). Strona dziedziczy sumę tagów odczytów, więc `revalidateTag` tych nazw unieważnia jej HTML, także strony
+  404 sluga, który właśnie został opublikowany.
 - 404 szczegółów → `notFound()` (strona 404 z `noindex`; `generateMetadata` zwraca wtedy `{}`). Każdy inny błąd
   szczegółów albo oferty (status, sieć, nieoczekiwana treść, brak oferty produktu) to wyjątek, czyli `app/error.tsx`,
   którego ISR nie cache'uje; strona bez ceny nigdy nie powstaje.
@@ -197,10 +199,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Rewalidacja (`POST /api/revalidate`)
 
 - Woła ją tylko worker API (`StorefrontCache`) po purge Varnisha: po zmianie ceny albo poziomu dostępności z tagiem
-  `product-<id>`, w `storefront:cache:purge-all` (koniec `make seed`) z tagiem `catalog`. Przeglądarka jej nie woła.
+  `product-<id>`, po edycji, publikacji albo wycofaniu produktu z tagami `product-<id>` i `product-slug-<slug>`,
+  w `storefront:cache:purge-all` (koniec `make seed`) z tagiem `catalog`. Przeglądarka jej nie woła.
 - `Authorization: Bearer <STORE_REVALIDATE_SECRET>` (z `.env.local`), porównany w stałym czasie (skróty SHA-256
-  i `timingSafeEqual`, więc nie zdradza też długości); treść JSON `{ tags }`, 1–100 tagów, każdy `catalog` albo
-  `product-<uuid małymi literami>` (słownik tagów API).
+  i `timingSafeEqual`, więc nie zdradza też długości); treść JSON `{ tags }`, 1–100 tagów, każdy `catalog`,
+  `product-<uuid małymi literami>` albo `product-slug-<slug>` (slug w formacie sluga produktu: małe litery i cyfry
+  w grupach łączonych pojedynczym `-`, do 200 znaków; słownik tagów API).
 - Każdy tag: `revalidateTag(tag, { expire: 0 })`: następne wejście czeka na świeży render zamiast dostać starą stronę
   (P5). Odpowiedź 200 `{ revalidated: <liczba tagów> }`.
 - Kolejność sprawdzeń: brak sekretu w środowisku 503, brak lub zły sekret 401, `Content-Type` inny niż

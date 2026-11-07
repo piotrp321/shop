@@ -20,7 +20,7 @@ final readonly class ListProductVariantsHandler
 
     /**
      * One read for all the products. The lists follow the order of the request; a repeated id answers once,
-     * a product that does not exist is left out.
+     * a product that does not exist is left out, and so is a draft unless the query includes drafts.
      *
      * @return list<ProductVariantList>
      *
@@ -47,7 +47,7 @@ final readonly class ListProductVariantsHandler
         $lists = [];
         foreach (array_keys($ids) as $key) {
             $row = $found[$key] ?? null;
-            if (null === $row) {
+            if (null === $row || (!$row['published'] && !$query->includeDrafts)) {
                 continue;
             }
             $lists[] = new ProductVariantList(
@@ -61,6 +61,7 @@ final readonly class ListProductVariantsHandler
                     },
                     $row['variants'],
                 ),
+                $row['taxClass'],
             );
         }
 

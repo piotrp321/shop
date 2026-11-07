@@ -281,7 +281,7 @@ export interface paths {
         };
         /**
          * Product details
-         * @description The product page data: the category path from the root to the main category, all the images in position order, the variant axes and the variants (label and values in the order of the axes) in position order. The price and the availability are in the product offer. A slug that names no product, also one that is not in the format of a slug, gives 404. The 200 may be kept by a shared cache for an hour and is tagged for purging; the 404 for 60 seconds.
+         * @description The product page data: the category path from the root to the main category, all the images in position order, the variant axes and the variants (label and values in the order of the axes) in position order. The price and the availability are in the product offer. A slug that names no published product (a draft, an unknown slug, one that is not in the format of a slug) gives 404. The 200 may be kept by a shared cache for an hour and is tagged for purging; the 404 for 60 seconds, tagged for purging when the product is published.
          */
         get: operations["getProduct"];
         put?: never;
@@ -1880,7 +1880,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No product has the slug (problem details). */
+            /** @description No published product has the slug (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;

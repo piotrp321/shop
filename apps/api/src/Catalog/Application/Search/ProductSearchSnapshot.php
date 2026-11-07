@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Catalog\Application\Search;
 
+use App\Catalog\Domain\Product\ProductStatus;
+
 /**
- * Read-only view of a product with everything the search index needs, so the index never hydrates aggregates.
+ * Read-only view of a product with everything the search index needs, so the index never hydrates aggregates. Drafts
+ * are read too: their documents stay in the index with their status (decision A3).
  */
 final readonly class ProductSearchSnapshot
 {
@@ -32,6 +35,7 @@ final readonly class ProductSearchSnapshot
         public array $categoryNames,
         public array $variantAxes,
         public array $variants,
+        public ProductStatus $status,
     ) {
     }
 }

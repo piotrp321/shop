@@ -8,7 +8,8 @@ use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\VariantId;
 
 /**
- * What other modules need to know about variants, read straight from the Catalog tables. Every method is one read.
+ * What other modules need to know about variants, read straight from the Catalog tables. Every method is one read and
+ * answers for drafts too; `published` tells the queries of the store which rows to leave out.
  */
 interface VariantSource
 {
@@ -18,7 +19,7 @@ interface VariantSource
      *
      * @param list<VariantId> $ids
      *
-     * @return list<array{id: string, productId: string, name: string, values: list<string>, mainImage: array{key: string, alt: string}|null}>
+     * @return list<array{id: string, productId: string, name: string, values: list<string>, mainImage: array{key: string, alt: string}|null, published: bool}>
      */
     public function summaries(array $ids): array;
 
@@ -33,7 +34,7 @@ interface VariantSource
      *
      * @param list<ProductId> $ids
      *
-     * @return list<array{productId: string, axes: list<string>, variants: list<array{id: string, values: list<string>}>}>
+     * @return list<array{productId: string, axes: list<string>, taxClass: string, published: bool, variants: list<array{id: string, values: list<string>}>}>
      */
     public function ofProducts(array $ids): array;
 

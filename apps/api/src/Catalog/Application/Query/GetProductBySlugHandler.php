@@ -24,7 +24,8 @@ final readonly class GetProductBySlugHandler
     }
 
     /**
-     * A slug that is not in the format of a Slug names no product, so it gives null without a read.
+     * A slug that is not in the format of a Slug names no product, so it gives null without a read. A draft gives
+     * null too: the store sees it as a product that does not exist (decision A3).
      */
     public function __invoke(GetProductBySlug $query): ?ProductDetails
     {
@@ -35,7 +36,7 @@ final readonly class GetProductBySlugHandler
         }
 
         $row = $this->source->bySlug($slug);
-        if (null === $row) {
+        if (null === $row || !$row['published']) {
             return null;
         }
 

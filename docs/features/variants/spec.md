@@ -161,13 +161,14 @@ To dwie osobne operacje.
 ### Zapytania (`query.bus`, DBAL, jedno zapytanie na wywołanie)
 
 - `GetVariantSummaries(variantIds)` (1–100 id; inaczej `InvalidVariantSummariesQuery`) → w kolejności żądania, dla
-  wariantów obecnych w bazie (powtórzone id raz): `{variantId, productId, name, label, image|null}`; zdjęcie główne
-  produktu w rozmiarze `listing`.
-- `GetVariant(variantId)` → `{variantId, productId, taxClass}` albo `null`.
-- `ListProductVariants(productIds)` (1–100 id; inaczej `\InvalidArgumentException`) → `{productId, variantAxes, variants: [{variantId, label}]}`, warianty
-  w kolejności pozycji, dla produktów obecnych w bazie. Używają go Pricing i Inventory (listy panelu) oraz Cart
-  (oferta produktów listy).
-- `ListVariantIdentities(after, limit)` (limit 1–1000) → `{variantId, key, taxClass}` partiami po `variantId`, dla
+  wariantów obecnych w bazie (powtórzone id raz) produktów opublikowanych: `{variantId, productId, name, label,
+  image|null}`; zdjęcie główne produktu w rozmiarze `listing`. Wariant szkicu jest pominięty jak nieznany.
+- `GetVariant(variantId)` → `{variantId, productId, taxClass}` albo `null`; widzi szkice.
+- `ListProductVariants(productIds, includeDrafts = false)` (1–100 id; inaczej `\InvalidArgumentException`) →
+  `{productId, variantAxes, variants: [{variantId, label}], taxClass}`, warianty w kolejności pozycji, dla produktów
+  obecnych w bazie; szkic tylko z `includeDrafts`. Używają go Pricing i Inventory (listy panelu, `includeDrafts: true`)
+  oraz Cart (oferta produktów listy, bez szkiców).
+- `ListVariantIdentities(after, limit)` (limit 1–1000, także warianty szkiców) → `{variantId, key, taxClass}` partiami po `variantId`, dla
   seeda i reconcile Pricing oraz seeda Inventory (porty po stronie Pricing i Inventory są osobne).
   `key` = `<slug produktu>/<slug etykiety>` (wariant domyślny: `<slug produktu>/standard`), używany przez wzorce
   danych demo. `key` buduje jedna funkcja Catalog (`VariantKey::of`), której używają expander danych demo i to

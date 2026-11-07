@@ -12,6 +12,7 @@ use App\Catalog\Application\Query\GetProductBySlug;
 use App\Catalog\Application\Query\ProductDetails;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -154,6 +155,13 @@ final class GetProductBySlugTest extends KernelTestCase
         self::assertSame([], $details->variantAxes);
         self::assertCount(1, $details->variants);
         self::assertSame([self::BLACK_42, '', []], [$details->variants[0]->variantId, $details->variants[0]->label, $details->variants[0]->values]);
+    }
+
+    public function testADraftGivesNullLikeAnUnknownSlug(): void
+    {
+        $this->saveProduct(['slug' => 'kurtka-szkic', 'mainCategory' => $this->categories['road'], 'imageAlts' => ['Kurtka'], 'status' => ProductStatus::Draft]);
+
+        self::assertNull($this->ask('kurtka-szkic'));
     }
 
     public function testUnknownAndMalformedSlugsGiveNull(): void
