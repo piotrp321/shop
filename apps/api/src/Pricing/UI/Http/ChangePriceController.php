@@ -45,7 +45,7 @@ final class ChangePriceController
             .'tax class (the class of the variant\'s product for a first price). Administrators only. Send the `version` of the '
             .'price you saw (null for a variant without a price): a price changed since then is a 409 and nothing is overwritten. '
             .'The same gross at the same rate changes nothing: the version stays and no history entry is recorded. '
-            .'The history entry names the staff member of the token.',
+            .'The history entry names the staff member of the token. The price of a variant in an active promotion does not change.',
         tags: ['Pricing'],
         parameters: [
             new OA\Parameter(name: 'variantId', in: 'path', required: true, description: 'Variant id (UUID).', schema: new OA\Schema(type: 'string', format: 'uuid')),
@@ -78,8 +78,10 @@ final class ChangePriceController
             ),
             new OA\Response(
                 response: 409,
-                description: 'The price was changed since the given version, or created since the null version (problem details). Reload it.',
-                content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem')),
+                description: 'The variant is in an active promotion (`price-locked-by-promotion`, whatever the version: end the promotion '
+                    .'first), or the price was changed since the given version, or created since the null version (`about:blank`); see '
+                    .'`PricingConflictProblem`. Nothing is changed.',
+                content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/PricingConflictProblem')),
             ),
             new OA\Response(
                 response: 415,

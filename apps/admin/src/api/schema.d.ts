@@ -382,7 +382,7 @@ export interface paths {
         get?: never;
         /**
          * Change the price of a product variant
-         * @description Sets the gross price of one variant; the API computes the net and the VAT at the current rate of the price's tax class (the class of the variant's product for a first price). Administrators only. Send the `version` of the price you saw (null for a variant without a price): a price changed since then is a 409 and nothing is overwritten. The same gross at the same rate changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.
+         * @description Sets the gross price of one variant; the API computes the net and the VAT at the current rate of the price's tax class (the class of the variant's product for a first price). Administrators only. Send the `version` of the price you saw (null for a variant without a price): a price changed since then is a 409 and nothing is overwritten. The same gross at the same rate changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token. The price of a variant in an active promotion does not change.
          */
         put: operations["changePrice"];
         post?: never;
@@ -406,6 +406,58 @@ export interface paths {
         get: operations["getPriceHistory"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/promotions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A promotion
+         * @description A promotion with its variants (product, name and label from the catalog) and their catalog and promotional prices. Every staff member may read it.
+         */
+        get: operations["getPromotion"];
+        /**
+         * Change a promotion
+         * @description Sends the whole promotion as it should be, based on the `version` seen. Administrators and marketing only. A planned promotion changes everything. An active one changes only its name and its end: any other value different from the stored one is a 409 `promotion-not-editable`, and an end at or before the time of the server ends it at once (the next whole second; "end now" sends the time of the browser). An ended promotion changes no more. A period overlapping another promotion with a common variant is a 409 `promotion-overlap`; a variant the promotion gains must exist in the catalog and have a current price.
+         */
+        put: operations["revisePromotion"];
+        post?: never;
+        /**
+         * Delete a planned promotion
+         * @description Deletes a promotion that has not started, based on the `version` seen. Administrators and marketing only. An active or ended promotion is kept for ever (409 `promotion-not-editable`); end an active one with a change of its end.
+         */
+        delete: operations["deletePromotion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/promotions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Promotion list
+         * @description A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the total is not counted.
+         */
+        get: operations["listPromotions"];
+        put?: never;
+        /**
+         * Plan a promotion
+         * @description Plans a percent off on a list of variants for a period. Administrators and marketing only. A variant is in at most one promotion at any moment: a period overlapping another promotion with a common variant is a 409 that lists the variants. Every variant must exist in the catalog and have a current price. The promotion names the staff member of the token.
+         */
+        post: operations["planPromotion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -669,6 +721,19 @@ export interface components {
             status: 409;
             /** @description Polish text for the staff member. */
             detail: string;
+        };
+        /** @description A 409 of the prices and promotions of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the price of a variant in an active promotion cannot change (end the promotion first), variants are in another promotion of an overlapping period (listed in `conflictingVariantIds`), the status of the promotion does not allow the change (after its start only the name and the end, an ended one not at all, only a planned one is deleted), or (`about:blank`) the price or the promotion changed since the `version` sent. Nothing is changed. */
+        PricingConflictProblem: {
+            /** @enum {string} */
+            type: "tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion" | "tag:piotrp321.github.io,2026:shop/problems/promotion-overlap" | "tag:piotrp321.github.io,2026:shop/problems/promotion-not-editable" | "about:blank";
+            /** @example Conflict */
+            title: string;
+            /** @enum {integer} */
+            status: 409;
+            /** @description Polish text for the staff member. */
+            detail: string;
+            /** @description Only with `promotion-overlap`. The variants of the request that are in another promotion of an overlapping period, ordered by id. */
+            conflictingVariantIds?: string[];
         };
         /** @description A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations. */
         ProductConflictProblem: {
@@ -970,6 +1035,76 @@ export interface components {
             after: string | null;
             /** @default 25 */
             perPage: number;
+        };
+        PromotionListQuery: {
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            status: "planned" | "active" | "ended" | null;
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
+        };
+        /** @description A new promotion. */
+        PromotionRequest: {
+            /**
+             * @description 1 to 100 characters once trimmed, without control characters.
+             * @example Jesień w górach
+             */
+            name: string;
+            /**
+             * @description The discount of every variant, in percent.
+             * @example 20
+             */
+            percentOff: number;
+            /**
+             * Format: date-time
+             * @description RFC 3339 with a time zone. Null, now or a moment before now: the promotion starts now (at the next whole second). A fraction of a second is cut.
+             * @example 2026-11-11T00:00:00+01:00
+             */
+            startsAt: string | null;
+            /**
+             * Format: date-time
+             * @description RFC 3339 with a time zone, after now and the start, at most 90 days after the start. The promotion is in force until before this moment. A fraction of a second is cut.
+             * @example 2026-11-21T00:00:00+01:00
+             */
+            endsAt: string;
+            /** @description 1 to 1000 variants, each once; every one must exist in the catalog and have a current price. */
+            variantIds: string[];
+        };
+        /** @description A promotion as it should be. Once started only the name and the end may differ from the stored values. */
+        RevisePromotionRequest: {
+            /**
+             * @description 1 to 100 characters once trimmed, without control characters.
+             * @example Jesień w górach
+             */
+            name: string;
+            /**
+             * @description The discount of every variant, in percent. Fixed once the promotion started.
+             * @example 20
+             */
+            percentOff: number;
+            /**
+             * Format: date-time
+             * @description RFC 3339 with a time zone; null, now or before now starts a planned promotion now. Fixed once the promotion started (send the stored one).
+             * @example 2026-11-11T00:00:00+01:00
+             */
+            startsAt: string | null;
+            /**
+             * Format: date-time
+             * @description RFC 3339 with a time zone, at most 90 days after the start. For an active promotion, now or before now ends it at once ("end now": the next whole second).
+             * @example 2026-11-21T00:00:00+01:00
+             */
+            endsAt: string;
+            /** @description 1 to 1000 variants, each once. Fixed once the promotion started; an added one must exist in the catalog and have a current price. */
+            variantIds: string[];
+            /**
+             * @description The `version` of the promotion the change is based on.
+             * @example 1
+             */
+            version: number;
         };
         /** @description Catalogue numbers, from the database. */
         DashboardCatalogResponse: {
@@ -1568,6 +1703,113 @@ export interface components {
              * @description Opaque cursor of the next page (send it as `after`), null on the last page.
              * @example eyJ0IjoiMjAyNi0xMS0wMVQxMjozMDowMC4wMDAwMDArMDA6MDAiLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
              */
+            next: string | null;
+        };
+        /** @description A variant of a promotion with its prices, all computed by the API. A variant deleted from the catalog has no product, name or label. */
+        PromotionVariantResponse: {
+            /** Format: uuid */
+            variantId: string;
+            /**
+             * Format: uuid
+             * @description Null for a variant deleted from the catalog.
+             */
+            productId: string | null;
+            /**
+             * @description Null for a variant deleted from the catalog.
+             * @example Namiot Tarvik 2
+             */
+            productName: string | null;
+            /**
+             * @description Empty for the default variant, null for a variant deleted from the catalog.
+             * @example Zielony
+             */
+            label: string | null;
+            /**
+             * @description The current catalog gross in grosze; null without a current price.
+             * @example 5999
+             */
+            regularGross: number | null;
+            /**
+             * @description The gross in the promotion in grosze; null without a catalog price and for an ended promotion (what was paid is in the orders).
+             * @example 4800
+             */
+            promotionalGross: number | null;
+        };
+        /** @description A promotion with its variants. Times in UTC (RFC 3339), whole seconds; the period is [startsAt, endsAt). */
+        PromotionResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @example Jesień w górach */
+            name: string;
+            /** @example 20 */
+            percentOff: number;
+            /**
+             * Format: date-time
+             * @example 2026-11-10T23:00:00+00:00
+             */
+            startsAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-11-20T23:00:00+00:00
+             */
+            endsAt: string;
+            /**
+             * @description From the time of the server: planned before the start, active until before the end, ended after.
+             * @enum {string}
+             */
+            status: "planned" | "active" | "ended";
+            /** @example 2 */
+            variantCount: number;
+            /**
+             * @description Version of the promotion, for the optimistic locking of changes.
+             * @example 1
+             */
+            version: number;
+            /**
+             * Format: date-time
+             * @description When the promotion was planned or last changed.
+             * @example 2026-11-07T12:30:00+00:00
+             */
+            updatedAt: string;
+            /**
+             * @description The staff member of the last change; null for the demo data.
+             * @example ola.marketing
+             */
+            updatedByName: string | null;
+            variants: components["schemas"]["PromotionVariantResponse"][];
+        };
+        /** @description A promotion of the list. Times in UTC (RFC 3339); the period is [startsAt, endsAt). */
+        PromotionListItemResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @example Jesień w górach */
+            name: string;
+            /** @example 20 */
+            percentOff: number;
+            /**
+             * Format: date-time
+             * @example 2026-11-10T23:00:00+00:00
+             */
+            startsAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-11-20T23:00:00+00:00
+             */
+            endsAt: string;
+            /**
+             * @description From the time of the server.
+             * @enum {string}
+             */
+            status: "planned" | "active" | "ended";
+            /** @example 2 */
+            variantCount: number;
+            /** @example 1 */
+            version: number;
+        };
+        /** @description A page of the promotions, newest start first. */
+        PromotionListResponse: {
+            items: components["schemas"]["PromotionListItemResponse"][];
+            /** @description Opaque cursor of the next page (send it as `after`), null on the last page. */
             next: string | null;
         };
     };
@@ -3087,13 +3329,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The price was changed since the given version, or created since the null version (problem details). Reload it. */
+            /** @description The variant is in an active promotion (`price-locked-by-promotion`, whatever the version: end the promotion first), or the price was changed since the given version, or created since the null version (`about:blank`); see `PricingConflictProblem`. Nothing is changed. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["PricingConflictProblem"];
                 };
             };
             /** @description The body is not JSON (problem details). */
@@ -3171,6 +3413,374 @@ export interface operations {
             };
             /** @description No such variant, or the id is not a UUID (problem details). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getPromotion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Promotion id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The promotion. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotionResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such promotion, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revisePromotion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Promotion id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisePromotionRequest"];
+            };
+        };
+        responses: {
+            /** @description The promotion as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotionResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change promotions (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such promotion, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The promotion changed since the given version (`about:blank`), its status does not allow the change (`promotion-not-editable`), or variants are in another promotion of an overlapping period (`promotion-overlap`); see `PricingConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PricingConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type, or an added variant does not exist or has no current price (problem details with `violations`, a variant at `variantIds[<index>]`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deletePromotion: {
+        parameters: {
+            query: {
+                /** @description The `version` of the promotion the deletion is based on. */
+                version: number;
+            };
+            header?: never;
+            path: {
+                /** @description Promotion id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The version is missing or not a positive integer (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change promotions (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such promotion, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The promotion changed since the given version (`about:blank`) or is not planned (`promotion-not-editable`); see `PricingConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PricingConflictProblem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listPromotions: {
+        parameters: {
+            query?: {
+                /** @description Only the promotions in this status now. */
+                status?: "planned" | "active" | "ended";
+                /** @description The `next` cursor of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the list. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotionListResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    planPromotion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromotionRequest"];
+            };
+        };
+        responses: {
+            /** @description The planned promotion (`Location` names it). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromotionResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change promotions (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Variants are in another promotion of an overlapping period (`promotion-overlap` with `conflictingVariantIds`, see `PricingConflictProblem`). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PricingConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type, or a variant does not exist or has no current price (problem details with `violations`, each at the path of its field, a variant at `variantIds[<index>]`). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
