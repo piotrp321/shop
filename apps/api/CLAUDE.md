@@ -117,7 +117,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     odebrania webhooka; zwraca enum domenowy (także `paidAfterDeadline`, `alreadyPaid`, `paidByAnotherPayment`,
     `orderCancelled` bez zmian), zła kwota albo waluta to `InvalidOrder`.
   - Dla Payment (jedyny context zależny od Ordering) wszystko jest w `Ordering_Application`: zapytanie
-    `GetOrderForPayment(orderId, OrderAccess)` (`query.bus`) zwraca `OrderForPayment` albo `null` przy każdym braku
+    `GetOrderForPayment(orderId, OrderAccess)` (`query.bus`) zwraca `OrderForPayment` (status jako `statusForPayment`:
+    `new`, `paid` albo `cancelled`; wysłane, dostarczone i zwrócone są `paid`, więc Payment nie zna statusów panelu)
+    albo `null` przy każdym braku
     dostępu (nieznane zamówienie, id spoza UUID, zły token porównywany `hash_equals`, cudze zamówienie, inny rodzaj
     właściciela); komenda `MarkOrderPaid` (`command.bus`, zagnieżdżona w transakcji webhooka) zwraca
     `MarkOrderPaidResult`, a nieznane zamówienie i konflikt wersji to `OrderToPayNotFound` i `OrderChangedConcurrently`.

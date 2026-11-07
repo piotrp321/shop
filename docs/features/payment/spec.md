@@ -119,8 +119,11 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 ### Komendy i zapytania (Ordering Application)
 
 - `GetOrderForPayment(orderId, access)` (`query.bus`), `access` = `guest(token)` albo `customer(customerId)` →
-  `OrderForPayment {orderId, number, status, totalGross, currency, paymentDeadline, payable}` albo `null`, gdy
-  zamówienia nie ma, `orderId` nie jest UUID albo `grantsAccess` daje `false` (jeden wynik dla wszystkich przypadków).
+  `OrderForPayment {orderId, number, statusForPayment, totalGross, currency, paymentDeadline, payable}` albo `null`,
+  gdy zamówienia nie ma, `orderId` nie jest UUID albo `grantsAccess` daje `false` (jeden wynik dla wszystkich
+  przypadków). `statusForPayment` to status zamówienia z punktu widzenia płatności: `new`, `paid` albo `cancelled`;
+  `shipped`, `delivered` i `returned` są `paid` (mapowanie w Ordering), więc Payment nie zna statusów panelu
+  (`docs/features/order-management/spec.md`, A3). Payment czyta tylko to pole (`QueryBusPayableOrders`).
   Bez danych osobowych i bez tokenu. Zamówienie jest czytane z bazy także wtedy, gdy transakcja czytała je
   wcześniej (bez kopii z pamięci ORM), więc kolejny odczyt w tej samej transakcji widzi zmiany zatwierdzone
   w międzyczasie.
@@ -304,7 +307,8 @@ Weryfikacja podpisu i parsowanie to walidacja wejścia na granicy (jak `MapReque
 
 Zapytanie `GetPaymentStatus(orderId, access)` → `PaymentStatusView {orderNumber, orderStatus: new|paid|cancelled,
 paymentDeadline, totalGross, currency, canStartPayment, latestPayment: {provider, status, resumeUrl} | null}`.
-Dostęp przez `PayableOrders` jak w `StartPayment` krok 1. `canStartPayment` = zamówienie płatne (`payable`);
+`orderStatus` to `statusForPayment` zamówienia (wysłane, dostarczone i zwrócone są `paid`). Dostęp przez
+`PayableOrders` jak w `StartPayment` krok 1. `canStartPayment` = zamówienie płatne (`payable`);
 przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`StartPayment` krok 4). `resumeUrl` =
 `Payment::resumeUrl(payable)`.
 
