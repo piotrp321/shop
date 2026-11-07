@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Cart;
 
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -52,8 +53,18 @@ trait CartEndpointTestTrait
     }
 
     /**
-     * A new product of Catalog with the given axes and one variant per entry: gross price (null: none), physical
-     * stock (null: no stock record) and the values of the axes. Returns the ids of the variants, in order.
+     * The one (default) variant of a new draft of Catalog, with a gross price and a physical stock: everything but
+     * the publication.
+     */
+    private function draftVariant(int $gross = 10_000, int $stock = 50): string
+    {
+        return $this->variants([[$gross, $stock, []]], [], status: ProductStatus::Draft)[0];
+    }
+
+    /**
+     * A new product of Catalog (published unless the status says otherwise) with the given axes and one variant per
+     * entry: gross price (null: none), physical stock (null: no stock record) and the values of the axes. Returns the
+     * ids of the variants, in order.
      *
      * @param list<array{?int, ?int, list<string>}> $variants
      * @param list<string>                          $axes
@@ -61,12 +72,12 @@ trait CartEndpointTestTrait
      *
      * @return list<string>
      */
-    private function variants(array $variants, array $axes, string $name = 'Buty Puls', array $imageAlts = []): array
+    private function variants(array $variants, array $axes, string $name = 'Buty Puls', array $imageAlts = [], ProductStatus $status = ProductStatus::Published): array
     {
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($this->entityManager)->save($category);
         $definitions = array_map(static fn (array $variant): array => ['id' => Uuid::v4()->toRfc4122(), 'values' => $variant[2]], $variants);
-        $variant = ProductFactory::createOne(['mainCategory' => $category, 'name' => $name, 'imageAlts' => $imageAlts, 'variantAxes' => $axes, 'variants' => $definitions]);
+        $variant = ProductFactory::createOne(['mainCategory' => $category, 'name' => $name, 'imageAlts' => $imageAlts, 'variantAxes' => $axes, 'variants' => $definitions, 'status' => $status]);
         new DoctrineProductRepository($this->entityManager)->save($variant, null, null, new \DateTimeImmutable());
         $ids = [];
         foreach ($variants as $index => [$gross, $stock]) {

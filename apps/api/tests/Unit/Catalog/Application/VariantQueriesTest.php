@@ -27,6 +27,8 @@ final class VariantQueriesTest extends TestCase
     private const string CAP = 'b0000000-0000-4000-8000-000000000002';
     private const string CAP_DEFAULT = 'a0000000-0000-4000-8000-000000000003';
     private const string ABSENT = 'a0000000-0000-4000-8000-0000000000ff';
+    private const string DRAFT = 'b0000000-0000-4000-8000-000000000003';
+    private const string DRAFT_M = 'a0000000-0000-4000-8000-000000000004';
 
     private FakeVariantSource $source;
 
@@ -180,6 +182,82 @@ final class VariantQueriesTest extends TestCase
         }
         self::assertSame([], $this->source->calls);
         self::assertCount(3, $handler(new ListVariantIdentities(null, 1000)));
+    }
+
+    public function testSummariesLeaveOutTheVariantsOfADraftLikeUnknownVariants(): void
+    {
+        $this->source = $this->withDraft();
+
+        $summaries = $this->summaries()(new GetVariantSummaries([self::DRAFT_M, self::CAP_DEFAULT]));
+
+        self::assertSame([self::CAP_DEFAULT], array_map(static fn ($s): string => $s->variantId, $summaries));
+        self::assertSame([], $this->summaries()(new GetVariantSummaries([self::DRAFT_M])));
+    }
+
+    public function testListProductVariantsLeavesOutADraftByDefault(): void
+    {
+        $this->source = $this->withDraft();
+
+        $products = new ListProductVariantsHandler($this->source)(new ListProductVariants([self::DRAFT, self::CAP]));
+
+        self::assertSame([self::CAP], array_map(static fn ($p): string => $p->productId, $products));
+    }
+
+    public function testListProductVariantsWithDraftsListsTheDraftWithItsVariants(): void
+    {
+        $this->source = $this->withDraft();
+
+        $products = new ListProductVariantsHandler($this->source)(new ListProductVariants([self::DRAFT, self::CAP], includeDrafts: true));
+
+        self::assertSame([self::DRAFT, self::CAP], array_map(static fn ($p): string => $p->productId, $products));
+        self::assertSame(['Rozmiar'], $products[0]->variantAxes);
+        self::assertSame([['M', self::DRAFT_M]], array_map(static fn ($v): array => [$v->label, $v->variantId], $products[0]->variants));
+    }
+
+    public function testListProductVariantsCarriesTheTaxClassOfTheProduct(): void
+    {
+        $this->source = $this->withDraft();
+
+        $products = new ListProductVariantsHandler($this->source)(new ListProductVariants([self::DRAFT, self::BOOTS], includeDrafts: true));
+
+        self::assertSame(['reduced', 'standard'], array_map(static fn ($p): string => $p->taxClass, $products));
+    }
+
+    public function testGetVariantAndIdentitiesSeeTheVariantsOfADraft(): void
+    {
+        $this->source = $this->withDraft();
+
+        $variant = new GetVariantHandler($this->source)(new GetVariant(self::DRAFT_M));
+        self::assertNotNull($variant);
+        self::assertSame([self::DRAFT, 'reduced'], [$variant->productId, $variant->taxClass]);
+        self::assertContains(
+            'kurtka-szkic/m',
+            array_map(static fn ($i): string => $i->key, new ListVariantIdentitiesHandler($this->source)(new ListVariantIdentities(null, 10))),
+        );
+    }
+
+    /**
+     * The products of setUp() and a draft with one variant.
+     */
+    private function withDraft(): FakeVariantSource
+    {
+        return new FakeVariantSource([
+            [
+                'id' => self::BOOTS, 'slug' => 'buty-puls', 'name' => 'Buty Puls', 'taxClass' => 'standard', 'axes' => ['Kolor', 'Rozmiar'],
+                'mainImage' => null,
+                'variants' => [['id' => self::BOOTS_BLACK_42, 'values' => ['czarne', '42']]],
+            ],
+            [
+                'id' => self::CAP, 'slug' => 'czapka', 'name' => 'Czapka', 'taxClass' => 'standard', 'axes' => [],
+                'mainImage' => null,
+                'variants' => [['id' => self::CAP_DEFAULT, 'values' => []]],
+            ],
+            [
+                'id' => self::DRAFT, 'slug' => 'kurtka-szkic', 'name' => 'Kurtka', 'taxClass' => 'reduced', 'axes' => ['Rozmiar'],
+                'mainImage' => null, 'status' => 'draft',
+                'variants' => [['id' => self::DRAFT_M, 'values' => ['M']]],
+            ],
+        ]);
     }
 
     private function summaries(): GetVariantSummariesHandler

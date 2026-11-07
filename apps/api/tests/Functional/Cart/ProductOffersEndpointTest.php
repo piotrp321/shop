@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Cart;
 
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -143,6 +144,19 @@ final class ProductOffersEndpointTest extends WebTestCase
         );
     }
 
+    public function testTheOfferOfADraftIsThatOfAnUnknownProduct(): void
+    {
+        [$draft] = $this->product([], [[[], 1000, 2300, 5]], ProductStatus::Draft);
+
+        $body = $this->get([$draft]);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(
+            [['productId' => $draft, 'variantAxes' => [], 'fromGross' => null, 'hasPriceRange' => false, 'currency' => 'PLN', 'level' => 'out_of_stock', 'variants' => []]],
+            $body['items'],
+        );
+    }
+
     public function testAVariantIdIsNoProduct(): void
     {
         [, [$variant]] = $this->product([], [[[], 1000, 2300, 5]]);
@@ -222,12 +236,12 @@ final class ProductOffersEndpointTest extends WebTestCase
      *
      * @return array{string, list<string>} the id of the product and the ids of its variants
      */
-    private function product(array $axes, array $variants): array
+    private function product(array $axes, array $variants, ProductStatus $status = ProductStatus::Published): array
     {
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($this->entityManager)->save($category);
         $definitions = array_map(static fn (array $variant): array => ['id' => (string) Uuid::v4(), 'values' => $variant[0]], $variants);
-        $product = ProductFactory::createOne(['mainCategory' => $category, 'variantAxes' => $axes, 'variants' => $definitions]);
+        $product = ProductFactory::createOne(['mainCategory' => $category, 'variantAxes' => $axes, 'variants' => $definitions, 'status' => $status]);
         new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
         foreach ($variants as $index => [, $gross, $basisPoints, $stock]) {
             VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $definitions[$index]['id'], 'gross' => $gross, 'taxClass' => 'standard', 'vatRateBp' => $basisPoints]);

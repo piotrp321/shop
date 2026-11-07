@@ -6,6 +6,7 @@ namespace App\Catalog\Infrastructure\Persistence\Doctrine;
 
 use App\Catalog\Application\Port\VariantSource;
 use App\Catalog\Domain\Product\ProductId;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\VariantId;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
@@ -26,15 +27,18 @@ final readonly class DbalVariantSource implements VariantSource
         }
 
         $rows = $this->connection->fetchAllAssociative(
-            'SELECT v.id, v.product_id, p.name, v.option_values, p.images->0 AS main_image
+            'SELECT v.id, v.product_id, p.name, v.option_values, p.images->0 AS main_image, p.status = :published AS published
              FROM catalog_product_variant v
              JOIN catalog_product p ON p.id = v.product_id
              WHERE v.id = ANY(CAST(:ids AS uuid[]))',
-            ['ids' => self::uuidArray(array_map(static fn (VariantId $id): string => $id->toString(), $ids))],
+            [
+                'ids' => self::uuidArray(array_map(static fn (VariantId $id): string => $id->toString(), $ids)),
+                'published' => ProductStatus::Published->value,
+            ],
         );
 
         return array_map(static function (array $row): array {
-            \assert(\is_string($row['id']) && \is_string($row['product_id']) && \is_string($row['name']));
+            \assert(\is_string($row['id']) && \is_string($row['product_id']) && \is_string($row['name']) && \is_bool($row['published']));
             $mainImage = null;
             if (\is_string($row['main_image'])) {
                 $image = json_decode($row['main_image'], true, flags: \JSON_THROW_ON_ERROR);
@@ -48,6 +52,7 @@ final readonly class DbalVariantSource implements VariantSource
                 'name' => $row['name'],
                 'values' => self::values($row['option_values']),
                 'mainImage' => $mainImage,
+                'published' => $row['published'],
             ];
         }, $rows);
     }
@@ -76,20 +81,26 @@ final readonly class DbalVariantSource implements VariantSource
         }
 
         $rows = $this->connection->fetchAllAssociative(
-            'SELECT p.id AS product_id, p.variant_axes, v.id AS variant_id, v.option_values
+            'SELECT p.id AS product_id, p.variant_axes, p.tax_class, p.status = :published AS published, v.id AS variant_id, v.option_values
              FROM catalog_product p
              JOIN catalog_product_variant v ON v.product_id = p.id
              WHERE p.id = ANY(CAST(:ids AS uuid[]))
              ORDER BY p.id, v.position',
-            ['ids' => self::uuidArray(array_map(static fn (ProductId $id): string => $id->toString(), $ids))],
+            [
+                'ids' => self::uuidArray(array_map(static fn (ProductId $id): string => $id->toString(), $ids)),
+                'published' => ProductStatus::Published->value,
+            ],
         );
 
         $products = [];
         foreach ($rows as $row) {
             \assert(\is_string($row['product_id']) && \is_string($row['variant_id']));
+            \assert(\is_string($row['tax_class']) && \is_bool($row['published']));
             $products[$row['product_id']] ??= [
                 'productId' => $row['product_id'],
                 'axes' => self::values($row['variant_axes']),
+                'taxClass' => $row['tax_class'],
+                'published' => $row['published'],
                 'variants' => [],
             ];
             $products[$row['product_id']]['variants'][] = ['id' => $row['variant_id'], 'values' => self::values($row['option_values'])];
