@@ -30,14 +30,24 @@ tools_run() {
     -w /repo/infra/k8s "$@"
 }
 
-# helm notes every symlink it follows (the files of the repository in charts/shop/files) on stderr: not an error.
+# Runs a command and drops the notes of helm about the symlinks it follows (the files of the repository in
+# charts/shop/files) from its stderr: they are not errors.
+without_symlink_notes() {
+  notes_file="$(mktemp)"
+  notes_status=0
+  "$@" 2> "$notes_file" || notes_status=$?
+  grep -v 'found symbolic link' "$notes_file" >&2 || true
+  rm -f "$notes_file"
+  return "$notes_status"
+}
+
 helm() {
-  helm_err="$(mktemp)"
-  helm_status=0
-  tools_run -e HELM_CACHE_HOME=/tmp -e HELM_CONFIG_HOME=/tmp -e HELM_DATA_HOME=/tmp "$HELM_IMAGE" "$@" 2> "$helm_err" || helm_status=$?
-  grep -v 'found symbolic link' "$helm_err" >&2 || true
-  rm -f "$helm_err"
-  return "$helm_status"
+  without_symlink_notes tools_run -e HELM_CACHE_HOME=/tmp -e HELM_CONFIG_HOME=/tmp -e HELM_DATA_HOME=/tmp "$HELM_IMAGE" "$@"
+}
+# helm against a cluster: on its Docker network, with its kubeconfig (KUBE_NETWORK and KUBE_DIR, see kubectl below).
+helm_cluster() {
+  without_symlink_notes tools_run --network "$KUBE_NETWORK" -v "$KUBE_DIR:/kube:ro" -e KUBECONFIG=/kube/config \
+    -e HELM_CACHE_HOME=/tmp -e HELM_CONFIG_HOME=/tmp -e HELM_DATA_HOME=/tmp "$HELM_IMAGE" "$@"
 }
 kubeconform() { tools_run "$KUBECONFORM_IMAGE" -cache /cache "$@"; }
 shellcheck() { tools_run "$SHELLCHECK_IMAGE" "$@"; }
@@ -48,7 +58,8 @@ py() { tools_run "$PYTHON_IMAGE" python -I "$@"; }
 # k3d talks to the Docker daemon through its socket.
 k3d() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$K3D_IMAGE" "$@"; }
 # kubectl reaches the cluster by the name of its server container, on the Docker network of the cluster.
-# KUBE_NETWORK and KUBE_DIR (the directory with the kubeconfig) are set by smoke.sh.
+# KUBE_NETWORK and KUBE_DIR (the directory with the file `config`) are set by smoke.sh; rerun.sh takes them from the
+# environment (KUBE_NETWORK defaults to host, KUBE_DIR to ~/.kube).
 kubectl() {
   docker run --rm -i --network "$KUBE_NETWORK" -v "$KUBE_DIR:/kube:ro" -e KUBECONFIG=/kube/config \
     "$KUBECTL_IMAGE" "$@"

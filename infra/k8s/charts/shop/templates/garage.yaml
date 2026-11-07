@@ -30,7 +30,11 @@ readinessProbe:
   configMap:
     name: garage-config
 {{- end }}
-{{ include "shop.service" (dict "root" . "name" "garage" "ports" (list (dict "name" "s3" "port" 3900) (dict "name" "rpc" "port" 3901) (dict "name" "admin" "port" 3903))) }}
+{{- /*
+`garage status`, the probe of the pod, connects to the node at its public address garage:3901 (the Service), so the
+Service must route to the pod before the pod is ready.
+*/}}
+{{ include "shop.service" (dict "root" . "name" "garage" "publishNotReady" true "ports" (list (dict "name" "s3" "port" 3900) (dict "name" "rpc" "port" 3901) (dict "name" "admin" "port" 3903))) }}
 ---
 {{ include "shop.statefulset" (dict "root" . "name" "garage" "wave" "-1" "image" .Values.images.garage
   "claims" (list (dict "name" "meta" "size" .Values.storage.garageMeta) (dict "name" "data" "size" .Values.storage.garageData))

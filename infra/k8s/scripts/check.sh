@@ -86,6 +86,7 @@ do_shellcheck() {
 }
 
 do_tests() {
+  [ -f "$work/prod.ndjson" ] || do_render
   step "tests of the rendered chart and of the scripts"
   tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests
 }

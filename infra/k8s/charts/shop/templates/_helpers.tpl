@@ -83,7 +83,10 @@ ready); optional: secret (true: the container reads the secret).
     {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 4 }}
 {{- end }}
 
-{{/* A ClusterIP service. Parameters: root, name, ports (a list of dicts with name, port and optional targetPort). */}}
+{{/*
+A ClusterIP service. Parameters: root, name, ports (a list of dicts with name, port and optional targetPort); optional:
+publishNotReady (true: the service routes to the pod before it is ready, for a service whose own probe connects to it).
+*/}}
 {{- define "shop.service" -}}
 apiVersion: v1
 kind: Service
@@ -94,6 +97,9 @@ metadata:
   annotations:
     {{- include "shop.wave" "-2" | nindent 4 }}
 spec:
+  {{- if .publishNotReady }}
+  publishNotReadyAddresses: true
+  {{- end }}
   selector:
     {{- include "shop.selector" . | nindent 4 }}
   ports:

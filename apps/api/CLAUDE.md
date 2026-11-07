@@ -450,6 +450,21 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Zmiana w `.dockerignore` albo nowy katalog z kodem potrzebnym w `prod` wymaga sprawdzenia, że obraz `prod` nadal
   się buduje i odpowiada na `/health`.
 
+## Zgodność wersji
+
+Wdrożenie wymienia pody po kolei (`maxUnavailable: 0`), a migracje uruchamia Job przed startem nowej wersji, więc przez
+chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia wersja workera wymieniają wiadomości.
+
+- Migracja jest zgodna wstecz z poprzednią wersją kodu: poprzednia wersja musi działać na schemacie po migracji. Zmianę
+  niezgodną (usunięcie lub zmiana nazwy kolumny albo tabeli, nowe ograniczenie `NOT NULL` bez wartości domyślnej,
+  zmiana typu) rozbij na dwie wersje: najpierw dodaj nowe i zacznij je zapisywać, w kolejnej wersji usuń stare.
+  Schemat jest zgodny wstecz tylko z poprzednią wersją: cofnięcie o więcej wersji wymaga kopii zapasowej.
+- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled` i `payment_simulator`) są zgodne w obie
+  strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka może je jeszcze
+  mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Pola dodawaj jako opcjonalne
+  z wartością domyślną, nie usuwaj i nie zmieniaj znaczenia pól w jednej wersji, nie zmieniaj nazw klas wiadomości
+  i nazw transportów.
+
 ## Testy
 
 - Logika domeny i aplikacji: testy jednostkowe z adapterami in-memory. Mają być szybkie (sekundy),
