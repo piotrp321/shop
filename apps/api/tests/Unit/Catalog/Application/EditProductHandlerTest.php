@@ -7,10 +7,12 @@ namespace App\Tests\Unit\Catalog\Application;
 use App\Catalog\Application\Command\EditProduct;
 use App\Catalog\Application\Command\EditProductHandler;
 use App\Catalog\Application\Event\ProductChanged;
+use App\Catalog\Application\Port\ProductImageStorageUnavailable;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategorySlug;
+use App\Catalog\Domain\Product\ImageNotFound;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductId;
@@ -24,10 +26,12 @@ use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugLocked;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\UnknownCategory;
 use App\Catalog\Domain\Product\UnknownVariant;
 use App\Catalog\Domain\Product\VariantInUse;
 use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
+use App\Tests\Support\InMemory\InMemoryProductImageStorage;
 use App\Tests\Support\InMemory\InMemoryProductRepository;
 use App\Tests\Support\InMemory\InMemoryVariantStockFacts;
 use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
@@ -46,6 +50,7 @@ final class EditProductHandlerTest extends TestCase
     private const string ACTOR = 'staff-sub-1';
 
     private InMemoryProductRepository $products;
+    private InMemoryProductImageStorage $images;
     private InMemoryVariantStockFacts $stock;
     private RecordingDomainEventPublisher $events;
     private FixedCatalogClock $clock;
@@ -58,10 +63,12 @@ final class EditProductHandlerTest extends TestCase
         $this->category = Category::createRoot(CategoryId::fromString(self::CATEGORY_ID), new CategoryName('Sport'), new CategorySlug('sport'));
         $categories->save($this->category);
         $this->products = new InMemoryProductRepository();
+        $this->images = new InMemoryProductImageStorage();
+        $this->images->existing = ['originals/'.hash('sha256', 'front').'.jpg'];
         $this->stock = new InMemoryVariantStockFacts();
         $this->events = new RecordingDomainEventPublisher();
         $this->clock = new FixedCatalogClock();
-        $this->handler = new EditProductHandler($this->products, $categories, $this->stock, $this->events, $this->clock);
+        $this->handler = new EditProductHandler($this->products, $categories, $this->stock, $this->images, $this->events, $this->clock);
     }
 
     public function testAnEditIsSavedWithANewVersionTheActorAndTheTimeAndPublishesTheIntegrationProductChanged(): void
@@ -86,6 +93,73 @@ final class EditProductHandlerTest extends TestCase
 
         self::assertSame(2, $this->products->version(ProductId::fromString(self::PRODUCT_ID)));
         self::assertCount(1, $this->events->published);
+    }
+
+    public function testAnImageWithoutAnOriginalIsImageNotFoundAtItsPositionAndNothingIsSaved(): void
+    {
+        $this->store(ProductStatus::Published);
+        $command = $this->command(images: [
+            ['key' => 'originals/'.hash('sha256', 'front').'.jpg', 'alt' => 'front'],
+            ['key' => 'originals/'.hash('sha256', 'gone').'.jpg', 'alt' => 'gone'],
+        ]);
+
+        try {
+            ($this->handler)($command);
+            self::fail('Expected ImageNotFound.');
+        } catch (ImageNotFound $e) {
+            self::assertSame(1, $e->index);
+        }
+
+        self::assertSame(1, $this->products->version(ProductId::fromString(self::PRODUCT_ID)));
+        self::assertSame([], $this->events->published);
+    }
+
+    public function testAnUnavailableImageStorageIsNotAMissingImageAndNothingIsSaved(): void
+    {
+        $this->store(ProductStatus::Published);
+        $this->images->unavailable = true;
+
+        try {
+            ($this->handler)($this->command(name: 'Inna nazwa'));
+            self::fail('Expected ProductImageStorageUnavailable.');
+        } catch (ProductImageStorageUnavailable) {
+        }
+
+        self::assertSame(1, $this->products->version(ProductId::fromString(self::PRODUCT_ID)));
+        self::assertSame([], $this->events->published);
+    }
+
+    public function testUnknownCategoriesAreUnknownCategoryAtTheirPosition(): void
+    {
+        $this->store(ProductStatus::Published);
+        $unknown = '00000000-0000-4000-8000-0000000000ff';
+        $main = null;
+        $additional = null;
+
+        try {
+            ($this->handler)($this->command(mainCategoryId: $unknown));
+        } catch (UnknownCategory $e) {
+            $main = $e->index;
+        }
+        try {
+            ($this->handler)($this->command(additionalCategoryIds: [$unknown]));
+        } catch (UnknownCategory $e) {
+            $additional = $e->index;
+        }
+
+        self::assertNull($main);
+        self::assertSame(0, $additional);
+        self::assertSame(1, $this->products->version(ProductId::fromString(self::PRODUCT_ID)));
+    }
+
+    public function testAStaleVersionIsRefusedBeforeTheStorageIsAsked(): void
+    {
+        $this->store(ProductStatus::Published);
+        $this->images->unavailable = true;
+
+        $this->expectException(ProductModifiedConcurrently::class);
+
+        ($this->handler)($this->command(expectedVersion: 7));
     }
 
     public function testAStaleVersionIsProductModifiedBeforeAnyOtherRule(): void
@@ -249,8 +323,9 @@ final class EditProductHandlerTest extends TestCase
     }
 
     /**
-     * @param list<array{key: string, alt: string}>|null                     $images   null: the stored image
-     * @param list<array{variantId: string|null, values: list<string>}>|null $variants null: both stored variants
+     * @param list<array{key: string, alt: string}>|null                     $images                null: the stored image
+     * @param list<array{variantId: string|null, values: list<string>}>|null $variants              null: both stored variants
+     * @param list<string>                                                   $additionalCategoryIds
      */
     private function command(
         int $expectedVersion = 1,
@@ -259,6 +334,8 @@ final class EditProductHandlerTest extends TestCase
         string $taxClass = 'standard',
         ?array $images = null,
         ?array $variants = null,
+        string $mainCategoryId = self::CATEGORY_ID,
+        array $additionalCategoryIds = [],
     ): EditProduct {
         return new EditProduct(
             self::PRODUCT_ID,
@@ -267,8 +344,8 @@ final class EditProductHandlerTest extends TestCase
             $name,
             $slug,
             '',
-            self::CATEGORY_ID,
-            [],
+            $mainCategoryId,
+            $additionalCategoryIds,
             $taxClass,
             $images ?? [['key' => 'originals/'.hash('sha256', 'front').'.jpg', 'alt' => 'front']],
             ['Kolor'],

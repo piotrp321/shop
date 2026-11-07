@@ -6,10 +6,12 @@ namespace App\Catalog\Application\Command;
 
 use App\Catalog\Application\Event\ProductChanged;
 use App\Catalog\Application\Port\Clock;
+use App\Catalog\Application\Port\ProductImageStorage;
+use App\Catalog\Application\Port\ProductImageStorageUnavailable;
 use App\Catalog\Application\Port\VariantStockFacts;
-use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategoryRepository;
 use App\Catalog\Domain\Product\DuplicateVariantValues;
+use App\Catalog\Domain\Product\ImageNotFound;
 use App\Catalog\Domain\Product\InvalidProductVariants;
 use App\Catalog\Domain\Product\InvalidVariantAxes;
 use App\Catalog\Domain\Product\InvalidVariantValues;
@@ -27,6 +29,7 @@ use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\SlugLocked;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\UnknownCategory;
 use App\Catalog\Domain\Product\UnknownVariant;
 use App\Catalog\Domain\Product\VariantAxes;
 use App\Catalog\Domain\Product\VariantId;
@@ -46,10 +49,11 @@ final readonly class EditProductHandler
         private ProductRepository $products,
         CategoryRepository $categories,
         private VariantStockFacts $stock,
+        ProductImageStorage $imageStorage,
         private DomainEventPublisher $events,
         private Clock $clock,
     ) {
-        $this->input = new ProductInput($categories);
+        $this->input = new ProductInput($categories, $imageStorage);
     }
 
     /**
@@ -58,7 +62,7 @@ final readonly class EditProductHandler
      *
      * @throws ProductNotFound
      * @throws ProductModifiedConcurrently                                                           when the expected version is not the stored one (checked again on write)
-     * @throws CategoryNotFound                                                                      when the main or an additional category does not exist
+     * @throws UnknownCategory                                                                       when the main or an additional category does not exist
      * @throws SlugRequired
      * @throws SlugLocked
      * @throws SlugAlreadyTaken
@@ -67,6 +71,8 @@ final readonly class EditProductHandler
      * @throws ProductNotPublishable                                                                 when the last image of a published product is removed
      * @throws VariantIdentityLocked
      * @throws VariantInUse
+     * @throws ImageNotFound                                                                         when the original of an image is not stored
+     * @throws ProductImageStorageUnavailable
      */
     public function __invoke(EditProduct $command): void
     {
@@ -78,6 +84,7 @@ final readonly class EditProductHandler
         $slug = '' === $command->slug && $product->isSlugLocked() ? $product->slug() : ProductInput::slug($command->slug, $command->name);
         $categories = $this->input->categories($command->mainCategoryId, $command->additionalCategoryIds);
         $variants = $this->variants($product, $command);
+        $images = $this->input->images($command->images);
 
         $now = $this->clock->now();
         $product->edit(
@@ -86,7 +93,7 @@ final readonly class EditProductHandler
             new ShortDescription($command->shortDescription),
             $categories,
             TaxClassCode::from($command->taxClass),
-            $this->input->images($command->images),
+            $images,
             $variants,
             $this->variantsInUse($this->removedVariants($product, $variants)),
             $now,

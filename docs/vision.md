@@ -86,6 +86,8 @@ Klient sklepu (`Customer`) i pracownik obsługujący panel (`Staff`) to dwa osob
 - API ma dwa firewalle. `/api/v1/...` przyjmuje tylko tokeny z realmu `shop`, `/api/v1/admin/...` tylko z realmu
   `backoffice` (sprawdzany wystawca tokena). Token klienta nie przejdzie przez firewall panelu, niezależnie od ról.
 - Uprawnienia pracowników sprawdzane w voterach na podstawie ról z tokena.
+- Katalog (tworzenie i edycja produktów, upload zdjęć, publikacja i wycofanie) edytują `admin` i `marketing`; listę
+  i podgląd produktów widzi każdy pracownik. Ceny zmienia `admin`, stany magazynowe `admin` i `warehouse`.
 - Zmiany wykonane w panelu zapisują identyfikator pracownika (z tokena), żeby było wiadomo, kto zmienił
   cenę, stan czy status zamówienia.
 - Ta sama osoba jako klient i jako pracownik ma dwa osobne konta. To świadoma decyzja.

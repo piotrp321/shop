@@ -6,9 +6,11 @@ namespace App\Catalog\Application\Command;
 
 use App\Catalog\Application\Event\ProductChanged;
 use App\Catalog\Application\Port\Clock;
-use App\Catalog\Domain\Category\CategoryNotFound;
+use App\Catalog\Application\Port\ProductImageStorage;
+use App\Catalog\Application\Port\ProductImageStorageUnavailable;
 use App\Catalog\Domain\Category\CategoryRepository;
 use App\Catalog\Domain\Product\DuplicateVariantValues;
+use App\Catalog\Domain\Product\ImageNotFound;
 use App\Catalog\Domain\Product\InvalidProductVariants;
 use App\Catalog\Domain\Product\InvalidVariantAxes;
 use App\Catalog\Domain\Product\InvalidVariantValues;
@@ -24,6 +26,7 @@ use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\UnknownCategory;
 use App\Catalog\Domain\Product\VariantAlreadyExists;
 use App\Catalog\Domain\Product\VariantAxes;
 use App\Catalog\Domain\Product\VariantId;
@@ -39,24 +42,27 @@ final readonly class CreateProductHandler
     public function __construct(
         private ProductRepository $products,
         CategoryRepository $categories,
+        ProductImageStorage $imageStorage,
         private DomainEventPublisher $events,
         private Clock $clock,
     ) {
-        $this->input = new ProductInput($categories);
+        $this->input = new ProductInput($categories, $imageStorage);
     }
 
     /**
      * Creates the product in the given status; publishes ProductCreated (never ProductChanged).
      *
      * @throws ProductAlreadyExists
-     * @throws CategoryNotFound       when the main or an additional category does not exist
-     * @throws SlugRequired           when the slug is empty and the name gives none
+     * @throws UnknownCategory                when the main or an additional category does not exist
+     * @throws SlugRequired                   when the slug is empty and the name gives none
      * @throws SlugAlreadyTaken
      * @throws InvalidVariantAxes
      * @throws InvalidVariantValues
      * @throws InvalidProductVariants
      * @throws DuplicateVariantValues
      * @throws VariantAlreadyExists
+     * @throws ImageNotFound                  when the original of an image is not stored
+     * @throws ProductImageStorageUnavailable
      */
     public function __invoke(CreateProduct $command): void
     {
@@ -79,6 +85,8 @@ final readonly class CreateProductHandler
             ),
         );
 
+        $images = $this->input->images($command->images);
+
         $now = $this->clock->now();
         $product = Product::create(
             $id,
@@ -87,7 +95,7 @@ final readonly class CreateProductHandler
             new ShortDescription($command->shortDescription),
             $categories,
             TaxClassCode::from($command->taxClass),
-            $this->input->images($command->images),
+            $images,
             $variants,
             $command->status,
             $now,

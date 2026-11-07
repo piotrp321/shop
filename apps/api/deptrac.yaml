@@ -173,6 +173,9 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
+      # The controllers of product writes take the actor from AuthenticatedStaffMember, the security contract of
+      # Backoffice. Catalog_Domain and Catalog_Application stay free of Backoffice.
+      - Backoffice_Application
     Customer_Domain:
       - Native
       - Shared_Domain

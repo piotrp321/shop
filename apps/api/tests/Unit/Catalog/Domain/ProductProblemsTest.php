@@ -10,6 +10,7 @@ use App\Catalog\Domain\Product\ProductNotPublishable;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\SlugLocked;
 use App\Catalog\Domain\Product\SlugRequired;
+use App\Catalog\Domain\Product\UnknownCategory;
 use App\Catalog\Domain\Product\UnknownVariant;
 use App\Catalog\Domain\Product\VariantIdentityLocked;
 use App\Catalog\Domain\Product\VariantInUse;
@@ -73,6 +74,7 @@ final class ProductProblemsTest extends TestCase
     {
         yield 'unknown variant' => [static fn (): \Throwable => new UnknownVariant(3), 'Wariant nie należy do tego produktu.'];
         yield 'image not found' => [static fn (): \Throwable => new ImageNotFound(1), 'Nie ma takiego zdjęcia. Wyślij plik ponownie.'];
+        yield 'unknown category' => [static fn (): \Throwable => new UnknownCategory(null), 'Kategoria nie istnieje.'];
         yield 'slug required' => [static fn (): \Throwable => new SlugRequired(), 'Podaj slug.'];
     }
 
@@ -93,5 +95,7 @@ final class ProductProblemsTest extends TestCase
     {
         self::assertSame(3, new UnknownVariant(3)->index);
         self::assertSame(1, new ImageNotFound(1)->index);
+        self::assertSame(2, new UnknownCategory(2)->index);
+        self::assertNull(new UnknownCategory(null)->index);
     }
 }

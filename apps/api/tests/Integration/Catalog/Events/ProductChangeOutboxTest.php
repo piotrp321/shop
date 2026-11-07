@@ -15,6 +15,7 @@ use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\VariantInUse;
 use App\Tests\Integration\Inventory\StockFixture;
 use App\Tests\Integration\Shared\Messaging\MessagingKernelTestCase;
+use App\Tests\Support\OriginalImages;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\MessageBusInterface;
 
@@ -35,6 +36,7 @@ final class ProductChangeOutboxTest extends MessagingKernelTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        OriginalImages::exist(self::getContainer(), self::IMAGE);
         $this->commandBus()->dispatch(new CreateCategory(self::CATEGORY_ID, 'Obuwie', 'obuwie', null));
         $this->commandBus()->dispatch(new CreateProduct(
             self::PRODUCT_ID,

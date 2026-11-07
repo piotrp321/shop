@@ -18,6 +18,7 @@ use App\Shared\Infrastructure\Http\Cache\HttpStorefrontCache;
 use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Shared\Messaging\MessagingKernelTestCase;
 use App\Tests\Support\InMemory\SpyStorefrontCache;
+use App\Tests\Support\OriginalImages;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -42,6 +43,7 @@ final class RepriceOnTaxClassChangeTest extends MessagingKernelTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        OriginalImages::exist(self::getContainer(), self::IMAGE);
         // The product change is invalidated in the store too; nothing to send in this test.
         self::getContainer()->set(HttpStorefrontCache::class, new SpyStorefrontCache());
         $this->commandBus()->dispatch(new CreateCategory(self::CATEGORY_ID, 'Książki', 'ksiazki', null));

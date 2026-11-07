@@ -6,12 +6,13 @@ namespace App\Tests\Unit\Catalog\Application;
 
 use App\Catalog\Application\Command\CreateProduct;
 use App\Catalog\Application\Command\CreateProductHandler;
+use App\Catalog\Application\Port\ProductImageStorageUnavailable;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
-use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategorySlug;
 use App\Catalog\Domain\Product\DuplicateVariantValues;
+use App\Catalog\Domain\Product\ImageNotFound;
 use App\Catalog\Domain\Product\InvalidProductVariants;
 use App\Catalog\Domain\Product\InvalidVariantAxes;
 use App\Catalog\Domain\Product\ProductAlreadyExists;
@@ -22,9 +23,11 @@ use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\UnknownCategory;
 use App\Catalog\Domain\Product\VariantAlreadyExists;
 use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
+use App\Tests\Support\InMemory\InMemoryProductImageStorage;
 use App\Tests\Support\InMemory\InMemoryProductRepository;
 use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use PHPUnit\Framework\TestCase;
@@ -40,6 +43,7 @@ final class CreateProductHandlerTest extends TestCase
 
     private InMemoryCategoryRepository $categories;
     private InMemoryProductRepository $products;
+    private InMemoryProductImageStorage $images;
     private RecordingDomainEventPublisher $events;
     private FixedCatalogClock $clock;
     private CreateProductHandler $handler;
@@ -50,9 +54,11 @@ final class CreateProductHandlerTest extends TestCase
         $this->categories->save(Category::createRoot(CategoryId::fromString(self::MAIN_ID), new CategoryName('Sport'), new CategorySlug('sport')));
         $this->categories->save(Category::createRoot(CategoryId::fromString(self::EXTRA_ID), new CategoryName('Obuwie'), new CategorySlug('obuwie')));
         $this->products = new InMemoryProductRepository();
+        $this->images = new InMemoryProductImageStorage();
+        $this->images->existing = ['originals/'.str_repeat('a', 64).'.jpg'];
         $this->events = new RecordingDomainEventPublisher();
         $this->clock = new FixedCatalogClock();
-        $this->handler = new CreateProductHandler($this->products, $this->categories, $this->events, $this->clock);
+        $this->handler = new CreateProductHandler($this->products, $this->categories, $this->images, $this->events, $this->clock);
     }
 
     public function testProductWithMainAndAdditionalCategoryIsSavedAndProductCreatedPublishedOnce(): void
@@ -83,24 +89,67 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame(self::PRODUCT_ID, $event->productId);
     }
 
-    public function testUnknownMainCategoryThrowsCategoryNotFoundAndSavesNothing(): void
+    public function testAnImageWithoutAnOriginalIsImageNotFoundAtItsPositionAndNothingIsSaved(): void
     {
+        $command = $this->command(images: [
+            ['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front'],
+            ['key' => 'originals/'.str_repeat('b', 64).'.jpg', 'alt' => 'back'],
+        ]);
+
         try {
-            ($this->handler)($this->command(mainCategoryId: self::UNKNOWN_ID));
-            self::fail('Expected CategoryNotFound.');
-        } catch (CategoryNotFound) {
+            ($this->handler)($command);
+            self::fail('Expected ImageNotFound.');
+        } catch (ImageNotFound $e) {
+            self::assertSame(1, $e->index);
         }
 
         self::assertSame(0, $this->products->count());
         self::assertSame([], $this->events->published);
     }
 
-    public function testUnknownAdditionalCategoryThrowsCategoryNotFoundAndSavesNothing(): void
+    public function testAnUnavailableImageStorageIsNotAMissingImageAndNothingIsSaved(): void
+    {
+        $this->images->unavailable = true;
+
+        try {
+            ($this->handler)($this->command());
+            self::fail('Expected ProductImageStorageUnavailable.');
+        } catch (ProductImageStorageUnavailable) {
+        }
+
+        self::assertSame(0, $this->products->count());
+        self::assertSame([], $this->events->published);
+    }
+
+    public function testAProductWithoutImagesNeedsNoStorage(): void
+    {
+        $this->images->unavailable = true;
+
+        ($this->handler)($this->command(images: []));
+
+        self::assertSame(1, $this->products->count());
+    }
+
+    public function testUnknownMainCategoryThrowsUnknownCategoryWithoutAnIndexAndSavesNothing(): void
+    {
+        try {
+            ($this->handler)($this->command(mainCategoryId: self::UNKNOWN_ID));
+            self::fail('Expected UnknownCategory.');
+        } catch (UnknownCategory $e) {
+            self::assertNull($e->index);
+        }
+
+        self::assertSame(0, $this->products->count());
+        self::assertSame([], $this->events->published);
+    }
+
+    public function testUnknownAdditionalCategoryThrowsUnknownCategoryAtItsIndexAndSavesNothing(): void
     {
         try {
             ($this->handler)($this->command(additionalCategoryIds: [self::EXTRA_ID, self::UNKNOWN_ID]));
-            self::fail('Expected CategoryNotFound.');
-        } catch (CategoryNotFound) {
+            self::fail('Expected UnknownCategory.');
+        } catch (UnknownCategory $e) {
+            self::assertSame(1, $e->index);
         }
 
         self::assertSame(0, $this->products->count());
@@ -261,6 +310,7 @@ final class CreateProductHandlerTest extends TestCase
      * @param list<string>                                       $additionalCategoryIds
      * @param list<string>                                       $variantAxes
      * @param list<array{id: string, values: list<string>}>|null $variants              null: the default variant
+     * @param list<array{key: string, alt: string}>|null         $images                null: one image with an original
      */
     private function command(
         string $id = self::PRODUCT_ID,
@@ -272,6 +322,7 @@ final class CreateProductHandlerTest extends TestCase
         ?array $variants = null,
         ProductStatus $status = ProductStatus::Draft,
         ?string $actorId = 'staff-sub-1',
+        ?array $images = null,
     ): CreateProduct {
         return new CreateProduct(
             $id,
@@ -281,7 +332,7 @@ final class CreateProductHandlerTest extends TestCase
             $mainCategoryId,
             $additionalCategoryIds,
             'standard',
-            [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front']],
+            $images ?? [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front']],
             $variantAxes,
             $variants ?? [['id' => self::VARIANT_ID, 'values' => []]],
             $status,
