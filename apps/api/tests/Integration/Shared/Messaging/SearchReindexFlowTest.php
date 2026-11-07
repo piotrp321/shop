@@ -4,9 +4,16 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Shared\Messaging;
 
+use App\Catalog\Application\Command\CreateCategory;
+use App\Catalog\Application\Command\CreateProduct;
+use App\Catalog\Application\Command\PublishProduct;
+use App\Catalog\Application\Search\ProductSearchCriteria;
+use App\Catalog\Application\Search\SearchResult;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
+use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
 use App\Inventory\Domain\Stock\AvailabilityLevel;
 use App\Inventory\Domain\Stock\StockChangeSource;
 use App\Inventory\Domain\Stock\StockLevelChanged;
@@ -23,6 +30,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Elastic\Elasticsearch\Response\Elasticsearch;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
@@ -67,6 +75,44 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
         $source = $this->stored($productId);
         self::assertArrayNotHasKey('from_gross', $source);
         self::assertSame([['gross' => 7_900, 'purchasable' => false, 'options' => [], 'pairs' => []]], $source['variants']);
+        self::assertSame(0, $this->rows('failed'));
+    }
+
+    /**
+     * A product created in the panel is a draft: ProductCreated writes its draft document, which the store does not
+     * find; its publication (ProductChanged) writes the published document, which the store finds.
+     */
+    public function testADraftIsIndexedAsADraftAndItsPublicationMakesItFound(): void
+    {
+        $categoryId = (string) Uuid::v7();
+        $productId = (string) Uuid::v7();
+        $this->commandBus()->dispatch(new CreateCategory($categoryId, 'Kurtki', 'kurtki-'.substr($categoryId, -12), null));
+        $this->commandBus()->dispatch(new CreateProduct(
+            $productId,
+            'Kurtka puchowa',
+            'kurtka-puchowa-'.substr($productId, -12),
+            '',
+            $categoryId,
+            [],
+            'standard',
+            [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front']],
+            [],
+            [['id' => (string) Uuid::v7(), 'values' => []]],
+            ProductStatus::Draft,
+            'staff-sub-1',
+        ));
+        $this->consumeOutboxAndEvents(2);
+
+        self::assertSame('draft', $this->stored($productId)['status']);
+        self::assertSame(0, $this->found()->total);
+
+        $this->commandBus()->dispatch(new PublishProduct($productId, 1, 'staff-sub-1'));
+        $this->consumeOutboxAndEvents(2);
+
+        self::assertSame('published', $this->stored($productId)['status']);
+        $found = $this->found();
+        self::assertSame(1, $found->total);
+        self::assertSame($productId, $found->items[0]->id);
         self::assertSame(0, $this->rows('failed'));
     }
 
@@ -117,6 +163,21 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
         self::assertIsArray($source);
 
         return $source;
+    }
+
+    private function found(): SearchResult
+    {
+        self::esClient()->indices()->refresh(['index' => $this->alias()]);
+
+        return new ElasticsearchProductSearch(self::clientFactory()->create(2.0), $this->alias())->search(new ProductSearchCriteria(1, 24));
+    }
+
+    private function commandBus(): MessageBusInterface
+    {
+        $bus = self::getContainer()->get('command.bus');
+        self::assertInstanceOf(MessageBusInterface::class, $bus);
+
+        return $bus;
     }
 
     private function entityManager(): EntityManagerInterface
