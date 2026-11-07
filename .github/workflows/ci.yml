@@ -245,7 +245,6 @@ jobs:
           sh .github/scripts/background.sh start varnish-tests make varnish-test
           status=0
           make -C apps/api test RUN="$CI_RUN" || status=$?
-          make init-env-test || status=$?
           for suite in store-tests admin-tests varnish-tests; do
             echo "::group::$suite"
             sh .github/scripts/background.sh wait "$suite" || status=$?
@@ -455,6 +454,12 @@ jobs:
       - name: make e2e
         if: env.FULL_CI == 'true'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=
+
+      # Shell tests of infra/scripts/init-env.sh in a temporary copy of the layout (infra/scripts/test-init-env.sh);
+      # no services needed.
+      - name: init-env.sh tests
+        if: env.FULL_CI == 'true'
+        run: make init-env-test
 
       - name: Service logs
         if: failure()
