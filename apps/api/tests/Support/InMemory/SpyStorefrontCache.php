@@ -12,7 +12,7 @@ use App\Shared\Infrastructure\Http\Cache\StorefrontCacheFailure;
  */
 final class SpyStorefrontCache implements StorefrontCache
 {
-    /** @var list<string> "product:<id>", "purgeAll" or "revalidateAll", in order */
+    /** @var list<string> "product:<id>", "tags:<tag> <tag>", "purgeAll" or "revalidateAll", in order */
     public array $calls = [];
 
     public ?StorefrontCacheFailure $failure = null;
@@ -20,6 +20,11 @@ final class SpyStorefrontCache implements StorefrontCache
     public function invalidateProduct(string $productId): void
     {
         $this->record('product:'.$productId);
+    }
+
+    public function invalidateTags(array $tags): void
+    {
+        $this->record('tags:'.implode(' ', $tags));
     }
 
     public function purgeAll(): void
