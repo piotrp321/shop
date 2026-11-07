@@ -125,8 +125,8 @@ Pricing:
     bez cache HTTP. Ordering kopiuje te wartości do pozycji zamówienia, a `version` pozwala wykryć zmianę ceny.
 - `ListBackofficePrices(q, categoryId, after, perPage)`: strona produktów z portu `ProductDirectory`
   (Catalog `SearchBackofficeProducts`, kursor po produktach), warianty strony z etykietami jednym wywołaniem
-  (Catalog `ListProductVariants`) i ich ceny jednym zapytaniem. Wynik: produkty strony, a w każdym jego warianty
-  w kolejności pozycji z ceną albo `null`. `applicableVatRate` z `PolishVatRates` dla klasy produktu,
+  (Catalog `ListProductVariants` z `includeDrafts: true`) i ich ceny jednym zapytaniem. Wynik: produkty strony, także
+  szkice (cenę szkicu ustawia się przed publikacją), a w każdym jego warianty w kolejności pozycji z ceną albo `null`. `applicableVatRate` z `PolishVatRates` dla klasy produktu,
   `vatRateOutdated` = nie `isCurrent`.
 - `GetPriceHistory(variantId, after, perPage)`: od najnowszych, stronicowanie keyset. Nieznany wariant: 404; wariant
   bez ceny: pusta lista.
@@ -141,7 +141,8 @@ Pricing:
 
 Catalog (zapytania o warianty opisuje `docs/features/variants/spec.md`):
 - `GetVariant(variantId)` → `{variantId, productId, taxClass}` albo `null`.
-- `ListProductVariants(productIds)` (1–100 id) → warianty produktów z etykietami w kolejności pozycji.
+- `ListProductVariants(productIds, includeDrafts)` (1–100 id) → warianty produktów z etykietami w kolejności pozycji
+  i klasa podatkowa produktu; lista cen podaje `includeDrafts: true`.
 - `ListVariantIdentities(after, limit)` → `{variantId, key, taxClass}` partiami po `variantId`, dla seeda i reconcile.
 - `SearchBackofficeProducts(q?, categoryId?, after?, perPage)`: zapytanie do PostgreSQL (DBAL), wynik
   `{id, name, taxClass}`. Nazwa przez `ILIKE` z indeksem trigramowym (`pg_trgm`, GIN na `catalog_product.name`),
