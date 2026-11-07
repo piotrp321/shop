@@ -5,13 +5,11 @@ i edytuje produkty (dane, kategorie, klasa podatkowa, zdjęcia, osie i warianty)
 Każda zmiana trafia do indeksu wyszukiwania i unieważnia cache sklepu (Varnish, ISR).
 
 Issues: #95
-Zakres: `apps/api/src/Catalog`, `apps/api/src/Pricing`, `apps/api/src/Inventory/Infrastructure`, `apps/api/src/Shared`, `apps/api/tests`, `apps/api/config`, `apps/api/docker`, `apps/api/openapi-admin.json`, `apps/admin/src/api/schema.d.ts`, `apps/admin/src/products`, `apps/admin/src/router/index.ts`, `apps/admin/src/layout/AppMenu.vue`, `apps/admin/tests/AppMenu.test.ts`, `apps/store/app/api/revalidate/route.ts`, `apps/store/app/api/revalidate/route.test.ts`, `apps/store/src/catalog/load-product.ts`, `apps/store/src/catalog/load-product.test.ts`, `e2e/support`, `docs/vision.md`, `apps/api/CLAUDE.md`, `apps/admin/CLAUDE.md`, `apps/store/CLAUDE.md`, `docs/features/product-page/spec.md`, `docs/features/variants/spec.md`, `docs/features/search/spec.md`, `docs/features/pricing/spec.md`, `docs/features/cart/spec.md`, `docs/features/inventory/spec.md`
 
-**Zależność od SEARCH (#94).** Specyfikacja opisuje kod po SEARCH (`docs/features/search/spec.md`, zmergowane do
-`main` przed startem tego epiku): usługa `ProductIndexing::reindex(productId)` z wersją dokumentu
-`external_gte`, port `ProductOfferFacts`, `catalog:reindex` w `make seed`, slug kategorii i reguła „nazwa osi bez
-`:`”. Opiera się też na VARIANTS (warianty w agregacie `Product`) i PRODUCT-PAGE (Varnish, tagi xkey,
-`StorefrontCache`, ISR strony `/p/<slug>`).
+**Zależności.** Funkcja opiera się na SEARCH (`docs/features/search/spec.md`): usługa
+`ProductIndexing::reindex(productId)` z wersją dokumentu `external_gte`, port `ProductOfferFacts`, `catalog:reindex`
+w `make seed`, slug kategorii i reguła „nazwa osi bez `:`”. Opiera się też na VARIANTS (warianty w agregacie
+`Product`) i PRODUCT-PAGE (Varnish, tagi xkey, `StorefrontCache`, ISR strony `/p/<slug>`).
 
 ## Cel i zakres
 
@@ -21,7 +19,7 @@ Zakres: `apps/api/src/Catalog`, `apps/api/src/Pricing`, `apps/api/src/Inventory/
 - Produkt ma status: szkic albo opublikowany. Sklep widzi wyłącznie produkty opublikowane. Nowy produkt z panelu
   jest szkicem; publikacja i wycofanie to osobne akcje.
 - Upload oryginału zdjęcia do Garage przez API (walidacja typu po treści, rozmiaru i rozdzielczości), podgląd
-  w panelu z podpisanego adresu imgproxy zbudowanego w API (nowy rozmiar `thumbnail` na liście rozmiarów).
+  w panelu z podpisanego adresu imgproxy zbudowanego w API (rozmiar `thumbnail` na liście rozmiarów).
 - Zapis, publikacja i wycofanie publikują zdarzenie domenowe; konsumenci aktualizują indeks Elasticsearch
   (szkic zostaje w nim jako dokument `draft`, którego zapytania sklepu nie widzą) i unieważniają Varnish oraz ISR strony produktu (także stronę 404 sluga, który właśnie
   został opublikowany).
@@ -52,10 +50,10 @@ Poza zakresem:
 | K5 | Warianty: osie, wartości i lista wariantów zmieniają się dowolnie, dopóki produkt nie był nigdy opublikowany. Po pierwszej publikacji: wariant zachowuje tożsamość, więc jego wartości mogą zmienić się tylko bez zmiany klucza porównania (`VariantValues::comparisonKey()`: wielkość liter i spacje na brzegach, np. „czarne” → „Czarne”); osi nie da się dodać, usunąć ani przestawić (zmiana nazwy osi tylko bez zmiany klucza porównania); nowy wariant można dodać; inna zmiana znaczenia to usunięcie starego wariantu i dodanie nowego (nowy identyfikator). Usunięcie wariantu jest zablokowane, gdy ma stan fizyczny > 0 albo zarezerwowany > 0. Cena, stan i historie usuniętego wariantu zostają w Pricing i Inventory, niewidoczne w panelu; linie koszyka z nim mają stan `unavailable_product`. |
 | K6 | Zmiana klasy podatkowej przelicza ceny wariantów produktu: to samo brutto, nowa stawka i netto, nowy wpis historii cen (Omnibus) ze źródłem systemowym `tax_reconciliation`, bez pracownika (pracownika zmiany klasy wskazuje `updated_by` produktu). |
 | K7 | Oryginały zdjęć w Garage nie są usuwane (także po usunięciu zdjęcia z produktu albo uploadzie bez zapisu produktu). Klucz wynika z treści, więc ten sam plik nie zajmuje miejsca dwa razy. |
-| K8 | Limity uploadu bez zmian: 64 MB i 50 MP na plik, typy JPEG, PNG, WebP, AVIF, HEIC. Jeden plik na żądanie, panel wysyła kilka po kolei. |
+| K8 | Limity uploadu: 64 MB i 50 MP na plik, typy JPEG, PNG, WebP, AVIF, HEIC. Jeden plik na żądanie, panel wysyła kilka po kolei. |
 | A1 | Status jest częścią agregatu `Product` (Catalog): metody `edit(...)`, `publish()`, `unpublish()` pilnują K2 i K4. |
-| A2 | Jedno zdarzenie `ProductChanged` (zapis, publikacja, wycofanie) publikowane przez handler komendy (jedyna droga zapisu to komendy `command.bus`). Konsumenci: reindeksacja (Catalog Application), unieważnienie sklepu (Catalog Infrastructure), przeliczenie cen przy zmianie klasy (Pricing Infrastructure). Pricing nie może zależeć od `Catalog_Domain` (Deptrac), więc `ProductChanged` jest zdarzeniem integracyjnym w `Catalog_Application` (publiczny kontrakt modułu, jak zapytania; implementuje `DomainEvent`, idzie przez outbox); agregat zapisuje je jako wewnętrzne zdarzenie, a handler komendy tłumaczy je na kontrakt przed publikacją. Pierwszy przypadek, w którym context subskrybuje zdarzenie innego contextu. |
-| A3 | Szkic jest ukryty w odczytach sklepu w Catalog: indeks wyszukiwania (dokument szkicu zostaje jako trwały tombstone ze statusem `draft` i wersją, a każde zapytanie sklepu filtruje `status: published`), `GET /api/v1/products/{slug}` (404), `GetVariantSummaries` (koszyk, zamówienie) i `ListProductVariants` w trybie domyślnym (oferta sklepu). Listy cen i stanów panelu pytają `ListProductVariants` z `includeDrafts: true`. Cart i Ordering nie zmieniają kodu: wariant szkicu jest dla nich wariantem nieznanym. |
+| A2 | Jedno zdarzenie `ProductChanged` (zapis, publikacja, wycofanie) publikowane przez handler komendy (jedyna droga zapisu to komendy `command.bus`). Konsumenci: reindeksacja (Catalog Application), unieważnienie sklepu (Catalog Infrastructure), przeliczenie cen przy zmianie klasy (Pricing Infrastructure). Pricing nie może zależeć od `Catalog_Domain` (Deptrac), więc `ProductChanged` jest zdarzeniem integracyjnym w `Catalog_Application` (publiczny kontrakt modułu, jak zapytania; implementuje `DomainEvent`, idzie przez outbox); agregat zapisuje je jako wewnętrzne zdarzenie, a handler komendy tłumaczy je na kontrakt przed publikacją. Jedyny przypadek, w którym context subskrybuje zdarzenie innego contextu. |
+| A3 | Szkic jest ukryty w odczytach sklepu w Catalog: indeks wyszukiwania (dokument szkicu zostaje jako trwały tombstone ze statusem `draft` i wersją, a każde zapytanie sklepu filtruje `status: published`), `GET /api/v1/products/{slug}` (404), `GetVariantSummaries` (koszyk, zamówienie) i `ListProductVariants` w trybie domyślnym (oferta sklepu). Listy cen i stanów panelu pytają `ListProductVariants` z `includeDrafts: true`. Cart i Ordering nie mają osobnej obsługi szkiców: wariant szkicu jest dla nich wariantem nieznanym. |
 | A4 | Nowy tag cache `product-slug-<slug>` na odpowiedzi 404 szczegółów produktu i na odczycie szczegółów w ISR, żeby publikacja produktu unieważniła zapamiętaną stronę 404 jego sluga bez pełnego unieważnienia katalogu. |
 | A6 | Blokadę usunięcia wariantu ze stanem (K5) rozstrzyga domena na podstawie faktów z Inventory: port `VariantStockFacts` w `Catalog_Application`, adapter w `Inventory_Infrastructure` (istniejące zapytanie `GetStockLevels`), jak `ProductOfferFacts` z SEARCH. Catalog nie zależy od Inventory w żadnej warstwie. |
 | A5 | Upload osobnym endpointem `multipart/form-data`, który zwraca klucz i podgląd; zapis produktu (JSON) wskazuje klucze. API sprawdza przy zapisie, że oryginał o kluczu istnieje w Garage. |
@@ -79,8 +77,8 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 - `Product` dostaje `status` (`ProductStatus`: `Draft`, `Published`) i `firstPublishedAt` (`?DateTimeImmutable`,
   ustawiane przy pierwszej publikacji, nigdy nie zerowane).
 - `Product::create(..., status)`: panel tworzy `Draft`, loader danych demo `Published` (z `firstPublishedAt`).
-  `create` nie sprawdza reguły K2 (dane demo mają produkty bez zdjęć). Zdarzenie `ProductCreated` bez zmian:
-  `IndexProduct` dalej je obsługuje, więc nowy szkic trafia do indeksu od utworzenia (dokument `draft`).
+  `create` nie sprawdza reguły K2 (dane demo mają produkty bez zdjęć). Zapisuje `ProductCreated` (nie
+  `ProductChanged`); `IndexProduct` obsługuje je, więc nowy szkic trafia do indeksu od utworzenia (dokument `draft`).
 - `edit(name, slug, shortDescription, categories, taxClass, images, variants)`: zastępuje dane produktu. Zmiana
   sluga produktu z `firstPublishedAt ≠ null` → `SlugLocked` (`Conflict`). Opublikowany produkt, który miał zdjęcia,
   a nowa lista jest pusta → `ProductNotPublishable` (`Conflict`); opublikowany produkt bez zdjęć zapisuje się bez
@@ -91,7 +89,7 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 - Zdarzenie agregatu (`Catalog_Domain`) `ProductChanged {productId, slug, occurredAt}`; handler komendy publikuje
   jego odpowiednik integracyjny `Catalog\Application\Event\ProductChanged` z tymi samymi polami (A2). `slug` po
   zmianie (konsument unieważnia tag tego sluga).
-- Warianty (K5): `edit` przyjmuje gotowe `ProductVariants` (reguły VARIANTS bez zmian: 1–100 wariantów, 0–2 osie,
+- Warianty (K5): `edit` przyjmuje gotowe `ProductVariants` (reguły VARIANTS: 1–100 wariantów, 0–2 osie,
   unikalne kombinacje, produkt bez osi ma jeden wariant domyślny). Handler buduje je z listy wierszy: wiersz
   z `variantId` tego produktu zachowuje identyfikator, wiersz bez `variantId` dostaje nowy UUIDv7, `variantId`
   spoza produktu → `UnknownVariant` (`InvalidInput`, 422). Produkt bez osi, któremu dochodzą osie (tylko przed
@@ -99,7 +97,7 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 - Tożsamość wariantu po publikacji (K5), w `edit` dla `firstPublishedAt ≠ null`:
   - osie: ta sama liczba i kolejność, każda nazwa z tym samym kluczem porównania co w `VariantAxes`
     (`mb_strtolower` po przycięciu);
-  - wariant zachowany (ten sam `variantId`): `VariantValues::comparisonKey()` taki sam jak dotąd;
+  - wariant zachowany (ten sam `variantId`): `VariantValues::comparisonKey()` taki sam jak zapisanego wariantu;
   - naruszenie → `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z `detail` wskazującym etykietę
     wariantu albo nazwę osi; nowe warianty bez ograniczeń.
 - Usunięcie wariantu (każdy wariant produktu, którego nie ma w nowej liście; także przed publikacją): handler
@@ -126,8 +124,8 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   Repozytorium dostaje tę samą wersję w `save` i porównuje ją z rekordem pod istniejącym `#[ORM\Version]`
   (ochrona przed wyścigiem między odczytem a zapisem; jeden mechanizm, bez `LockMode` przy odczycie).
 - Każdy udany `EditProduct` podnosi wersję i ustawia `updated_at` i `updated_by`, także gdy dane się nie zmieniły
-  (jak dziś `incrementVersion` przy zmianie samych wariantów albo kategorii). Publikacja szkicu i wycofanie
-  opublikowanego robią to samo; publikacja opublikowanego i wycofanie szkicu (przy zgodnej wersji) to 200 bez zmian,
+  (przez `incrementVersion` w repozytorium, jak przy zmianie samych wariantów albo kategorii). Publikacja szkicu
+  i wycofanie opublikowanego robią to samo; publikacja opublikowanego i wycofanie szkicu (przy zgodnej wersji) to 200 bez zmian,
   bez nowej wersji i bez zdarzenia. Odpowiedzi panelu zwracają `version`.
 - Błędy typowane (`TypedProblem`, panel rozróżnia 409 po `type`): `slug-taken` (`SlugAlreadyTaken`), `slug-locked`,
   `product-modified` (`ProductModifiedConcurrently`), `product-not-publishable`, `variant-locked`, `variant-in-use`.
@@ -144,7 +142,7 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
 
 - `GET /api/v1/products/{slug}`: szkic → 404 „Produkt nie istnieje.” (ten sam kształt co nieznany slug).
 - `GetVariantSummaries` i `ListProductVariants` (domyślnie): warianty szkiców pominięte (jak warianty nieznane).
-  Skutki bez zmian w kodzie Cart i Ordering: linia koszyka z wariantem szkicu ma stan `unavailable_product`, dodanie
+  Skutki w Cart i Ordering: linia koszyka z wariantem szkicu ma stan `unavailable_product`, dodanie
   do koszyka takiego wariantu → 404, złożenie zamówienia z taką linią → `CartNotOrderable` (409), oferta produktu
   szkicu jak produktu nieznanego.
 - `ListProductVariants(productIds, includeDrafts = false)`: adaptery list panelu (`QueryBusProductDirectory` w
@@ -156,23 +154,23 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   `ProductSearchSource` zwraca status, a `ProductIndexing::reindex` zapisuje dokument każdego produktu, także szkicu
   (ze statusem `draft`), z wersją `external_gte` jak w SEARCH. Dokumentów się nie usuwa, więc wersja szkicu chroni
   przed spóźnionym zapisem starszego stanu bez limitu czasu (bez zależności od `index.gc_deletes`). `catalog:reindex`
-  indeksuje wszystkie produkty. `IndexProduct` obsługuje oba zdarzenia: `ProductCreated` (jak dziś) i integracyjne
+  indeksuje wszystkie produkty. `IndexProduct` obsługuje oba zdarzenia: `ProductCreated` i integracyjne
   `ProductChanged`; oba prowadzą do `ProductIndexing::reindex`. Każde zapytanie sklepu (`ProductSearch`: wyniki, `total`, fasety, `availableCount`,
   `price`) ma filtr `term status: published` w `query`, więc działa też w agregacjach.
-- Statystyki katalogu (dashboard) bez zmian: indeks ma dokument każdego produktu, także szkicu, więc zgodność
+- Statystyki katalogu (dashboard): indeks ma dokument każdego produktu, także szkicu, więc zgodność
   indeksu (`inSync`: liczba dokumentów = liczba produktów) zostaje poprawna, a liczba produktów obejmuje szkice.
 
 ## Catalog: unieważnienie sklepu (A2, A4)
 
 - `CacheTags::productSlug(slug)` buduje `product-slug-<slug>` (slug w formacie `Slug`, inny napis → wyjątek).
-- `GET /api/v1/products/{slug}`: 200 bez zmian (`catalog`, `product-<id>`; slug zmienia się tylko w szkicu, który
+- `GET /api/v1/products/{slug}`: 200 z tagami `catalog`, `product-<id>` (slug zmienia się tylko w szkicu, który
   nie ma zapamiętanej odpowiedzi 200); 404 z tagami `catalog`, `product-slug-<slug>` (dla sluga poprawnego formatu;
   slug niezgodny z formatem: tylko `catalog`).
 - Sklep: `loadProduct` dodaje tag `product-slug-<slug>` do odczytu szczegółów (obok `catalog`) tylko dla sluga
   w formacie `Slug` (ten sam wzorzec co w `/api/revalidate`; inny napis tylko z `catalog`); `POST /api/revalidate`
   przyjmuje tag `product-slug-<slug>` (format sluga produktu).
 - `StorefrontCache::invalidateTags(tags)` (purge xkey wszystkich tagów, potem rewalidacja wszystkich) obok
-  istniejącego `invalidateProduct(id)`.
+  `invalidateProduct(id)`.
 - Konsument `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, transport `events`, `ProductChanged`):
   `invalidateTags([product-<id>, product-slug-<slug>])`. Bez odczytu bazy; ponowienia transportu jak u konsumentów
   PRODUCT-PAGE; obsługa idempotentna.
@@ -185,9 +183,10 @@ ProductCreated, ProductChanged → RabbitMQ (events) ─┬→ Catalog IndexProd
   z `Catalog_Application`): warianty produktu i jego klasa z Catalog `ListProductVariants([productId],
   includeDrafts: true)` przez port Pricing (także szkic, bo jego ceny też mogą istnieć). Każda cena z klasą inną niż
   klasa produktu jest przeliczana tą samą logiką co `pricing:reconcile-tax --apply`: pętla „reprice, zapis, jedno
-  ponowienie przy konflikcie wersji” jest wydzielona z `ReconcileTax` i używana w obu miejscach (`reprice`: to samo
-  brutto, źródło `tax_reconciliation`, zdarzenie `VariantPriceChanged`). Klasa bez stawki → wiadomość do `failed`
-  z komunikatem. Drugi konflikt wersji → wyjątek i ponowienie wiadomości. Powtórzone zdarzenie nic nie zmienia.
+  ponowienie przy konflikcie wersji” jest w `PriceReconciler`, używanym przez `ReconcileTax` i `RepriceProductPrices`
+  (`reprice`: to samo brutto, źródło `tax_reconciliation`, zdarzenie `VariantPriceChanged`). Klasa bez stawki →
+  wiadomość do `failed` z komunikatem. Drugi konflikt wersji albo zmiana klasy produktu w trakcie przeliczania
+  (`TaxClassChangedWhileRepricing`) → wyjątek i ponowienie wiadomości. Powtórzone zdarzenie nic nie zmienia.
   Produkt nieznany Catalogowi → wiadomość obsłużona.
 - Idempotencja i kolejność: konsument nie bierze klasy ze zdarzenia, tylko czyta bieżącą klasę produktu z Catalog
   i porównuje ją z klasą każdej ceny. Kilka szybkich zmian klasy (A → B → A) i dostarczenie zdarzeń w dowolnej
@@ -201,10 +200,10 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
 
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
-| `GET /products?q&category&status&after&perPage` | widok | 200 `{items: [{id, name, slug, status, mainCategory {id, name}, variantCount, image: ImageView(thumbnail) \| null, updatedAt}], next}`; `q` 2–100 znaków (`SearchBackofficeProducts`, `pg_trgm`), `status` `draft`/`published` (indeks częściowy `(name, id) WHERE status = 'draft'`, bo szkiców jest mało), kursor keyset jak dziś; 400 złe parametry; 404 nieznana kategoria |
+| `GET /products?q&category&status&after&perPage` | widok | 200 `{items: [{id, name, slug, status, mainCategory {id, name}, variantCount, image: ImageView(thumbnail) \| null, updatedAt}], next}`; `q` 2–100 znaków (`SearchBackofficeProducts`, `pg_trgm`), `status` `draft`/`published` (indeks częściowy `(name, id) WHERE status = 'draft'`, bo szkiców jest mało), kursor keyset; 400 złe parametry; 404 nieznana kategoria |
 | `GET /products/{id}` | widok | 200 `ProductEditView {id, version, status, firstPublishedAt, name, slug, slugLocked, shortDescription, mainCategoryId, additionalCategoryIds, taxClass, images: [{key, alt, preview: ImageView(thumbnail)}], variantAxes, variants: [{variantId, values}], updatedAt}`; 404 |
 | `POST /products` | zarządzanie | 201 `ProductEditView`; 409 `slug-taken`; 422 walidacja (pola, `UnknownVariant`, `ImageNotFound`, nieznana kategoria); 503 Garage niedostępny |
-| `PUT /products/{id}` (body z `version`) | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `slug-taken`, `slug-locked`, `product-not-publishable`, `variant-locked`, `variant-in-use`; 422; 503 (Garage albo fakty stanów niedostępne) |
+| `PUT /products/{id}` (body z `version`) | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `slug-taken`, `slug-locked`, `product-not-publishable`, `variant-locked`, `variant-in-use`; 422; 503 Garage niedostępny |
 | `POST /products/{id}/publish` `{version}` | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified`, `product-not-publishable` |
 | `POST /products/{id}/unpublish` `{version}` | zarządzanie | 200 `ProductEditView`; 404; 409 `product-modified` |
 | `POST /product-images` (`multipart/form-data`, pole `file`) | zarządzanie | 201 `{key, preview: ImagePreview}` (`ImagePreview`: `size`, `aspectRatio`, `variants` rozmiaru `thumbnail`, bez `alt`); 422 brak pliku, za duży, nieobsługiwany typ, nieczytelne wymiary, za duża rozdzielczość (`detail` po polsku); 503 Garage niedostępny |
@@ -227,9 +226,9 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
   `upload_max_filesize` (błąd uploadu PHP) albo żądanie z `Content-Length` ponad `post_max_size` (PHP odrzuca wtedy
   całe ciało, więc kontroler sprawdza nagłówek przed szukaniem pliku) → 422 „Plik jest za duży.”. Caddy bez własnego
   limitu ciała poniżej 70 MB. Limity PHP nie działają w kernelu testów funkcjonalnych, więc te dwie ścieżki sprawdza
-  test HTTP na działającym stosie (E2E `catalog-admin.spec.ts` albo test integracyjny przez FrankenPHP).
+  test HTTP na działającym stosie (E2E `catalog-admin.spec.ts`).
 - `ImageSize::Thumbnail` (1:1, szerokości 96 i 192, WebP) na liście rozmiarów; jedyny rozmiar odpowiedzi panelu.
-- OpenAPI w `openapi-admin.json`, klient panelu wygenerowany; `openapi.json` sklepu bez zmian kontraktu.
+- OpenAPI w `openapi-admin.json`, klient panelu wygenerowany; `openapi.json` sklepu nie zawiera endpointów panelu.
 
 ## Panel (`apps/admin`)
 
@@ -255,7 +254,8 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
   oryginału (K7).
 - Warianty: osie (0–2, dodanie, zmiana nazwy, usunięcie) i tabela wierszy: wartość dla każdej osi, dodanie
   i usunięcie wiersza. Produkt bez osi pokazuje jeden wiersz „Wariant domyślny” bez pól. Usunięcie wiersza
-  istniejącego wariantu pyta o potwierdzenie („Cena i stan wariantu przestaną być widoczne w panelu.”). Reguły
+  istniejącego wariantu (także usunięcie ostatniej osi, które usuwa pozostałe istniejące warianty) pyta o
+  potwierdzenie („Cena i stan wariantu przestaną być widoczne w panelu.”). Reguły
   (unikalność kombinacji, liczba wartości) sprawdza API; 422 wskazuje pole wiersza. Przed pierwszą publikacją osie
   można też przestawić (wartości w wierszach przestawiają się razem z osią).
 - Po pierwszej publikacji (`firstPublishedAt` z API) dodanie, usunięcie i przestawienie osi są niedostępne, a pod
@@ -279,7 +279,7 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
 ## Dane demo
 
 - Loader demo tworzy produkty jako `Published` (`firstPublishedAt` = czas seeda) komendą `CreateProduct`; zdarzenia
-  `ProductChanged` nie powstają. `make seed` bez zmian kolejności (indeks przebudowuje `catalog:reindex`).
+  `ProductChanged` nie powstają. `make seed` kończy się `catalog:reindex`, który przebudowuje indeks.
 - Migracja: kolumny `status` (`published` dla istniejących), `first_published_at` (czas migracji dla istniejących),
   `updated_by` (null), `updated_at` (czas migracji).
 
@@ -351,28 +351,11 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
 - Sklep (Vitest): `revalidate` przyjmuje `product-slug-<slug>`, `loadProduct` taguje szczegóły.
 - E2E `catalog-admin.spec.ts`: `marketing` tworzy produkt ze zdjęciem i wariantem, publikuje, `admin` ustawia cenę
   i przyjęcie; strona produktu pokazuje nazwę, zdjęcie i cenę; zmiana nazwy widoczna na stronie; wycofanie → 404.
-  Na buildzie produkcyjnym: wejście na slug przed publikacją (404), po publikacji strona produktu. Produktów nie da
+  Na buildzie produkcyjnym: wejście na slug przed publikacją (404), po publikacji strona produktu, po wycofaniu 404.
+  Upload przez API: obraz przyjęty, plik ponad `upload_max_filesize` i żądanie ponad `post_max_size` → 422 „Plik jest
+  za duży.”. `support` widzi listę i formularz tylko do odczytu, bez `/products/new`. Produktów nie da
   się usunąć, więc każde uruchomienie tworzy produkt o unikalnej nazwie i slugu (sufiks uruchomienia, nazwa
   sortowana za danymi demo); żaden test nie zakłada stałej liczby produktów w katalogu.
-
-## Zmiany dokumentacji (razem z implementacją)
-
-- `docs/vision.md`: „Przyjazne adresy”: slug produktu stały od pierwszej publikacji (301 tylko przy zmianie sluga,
-  której w MVP nie ma); „Klienci i pracownicy”/uprawnienia: katalog edytują `admin` i `marketing`.
-- `apps/api/CLAUDE.md`: status produktu i ukrywanie szkiców, `ProductChanged` i jego konsumenci, tag
-  `product-slug-<slug>`, limity uploadu PHP, `ImageSize::Thumbnail`.
-- `apps/admin/CLAUDE.md`: `src/products/` (lista, formularz, upload, warianty, obsługa błędów).
-- `apps/store/CLAUDE.md`: tag `product-slug-<slug>` w `loadProduct` i `/api/revalidate`.
-- `docs/features/product-page/spec.md`: tag sluga i unieważnienie po zmianie produktu (usunięcie zdań „edycji
-  produktu nie ma”, „produkty tworzone poza seedem będą wymagać…”).
-- `docs/features/variants/spec.md`: edycja i usuwanie wariantów w panelu (usunięcie punktów „poza zakresem”
-  i ryzyka o braku usuwania).
-- `docs/features/search/spec.md`: pole `status` w dokumencie, filtr `published` w zapytaniach sklepu, szkice jako
-  tombstone, `ProductChanged` jako wyzwalacz reindeksacji.
-- `docs/features/pricing/spec.md`: przeliczenie cen po zmianie klasy podatkowej produktu.
-- `docs/features/cart/spec.md`: `unavailable_product` także dla wariantu szkicu i wariantu usuniętego w panelu.
-- `docs/features/inventory/spec.md`: lista stanów pokazuje warianty szkiców; przyjęcie i korekta wariantu
-  usuniętego w panelu → 404; stan blokuje usunięcie wariantu w Catalog.
 
 ## Ryzyka i ograniczenia
 
@@ -397,5 +380,5 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
   się błędem z instrukcją `catalog:reindex` (jak w SEARCH); `make seed` przebudowuje indeks.
 - Po publikacji literówki w wartości wariantu nie da się poprawić w miejscu (K5): trzeba dodać nowy wariant,
   skorygować stan starego do zera i go usunąć.
-- Pierwszy przypadek subskrypcji zdarzenia innego contextu (A2): zdarzenie integracyjne w `Catalog_Application`
+- Jedyna subskrypcja zdarzenia innego contextu (A2): zdarzenie integracyjne w `Catalog_Application`
   staje się publicznym kontraktem, zmiana jego pól dotyka Pricing.
