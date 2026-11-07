@@ -107,7 +107,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `10000`), każda inna wartość idzie bez zmian, więc API odpowiada 400. Liczby, zakresy cen, liczby przy wartościach
   i dostępność pochodzą z `facets` API; podpowiedź zakresu ceny to kwoty z API sformatowane `formatPrice`.
   Nieznany `sort`, `dostepne` inne niż `1` i 400 API to „Nieprawidłowy filtr” (z `noindex`); dla nieznanego `sort`
-  i `dostepne` sklep nie woła API.
+  i `dostepne` sklep nie woła API. `InvalidFilter` ma obok „Zobacz cały katalog” link powrotu z `invalidFilterExit`:
+  „Pokaż wyniki bez błędnej ceny” (bez ceny, która nie jest samymi cyframi, gdy reszta przechodzi `toApiQuery`) albo
+  „Pokaż wyniki bez filtrów” (listing bez filtrów i sortowania, na `/szukaj` z frazą; na `/` go nie ma).
 - `/szukaj`: `q` bez frazy albo krótsze niż 2 znaki (po przycięciu) → „Wpisz co najmniej 2 znaki.” bez wywołania listy
   produktów i drzewa kategorii. `kategoria` czyta drzewo (to samo `React.cache`), zamienia ścieżkę na `category` API;
   nieznana ścieżka (też kategoria, której API już nie zna) → „Nieprawidłowy filtr”. `h1` `Wyniki dla „<fraza>”`,
@@ -134,10 +136,16 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Nagłówek i mega menu
 
 - `SiteHeader` ma pole wyszukiwania (`SearchBox`, Client Component): formularz `GET /szukaj` (`next/form`) z polem `q`
-  (etykieta „Szukaj produktów”). HTML nagłówka jest taki sam dla wszystkich (strona produktu jest ISR), więc pole jest
-  w nim puste; fraza na `/szukaj` trafia do pola z `useSearchParams` (mały komponent w `Suspense` bez wyniku: formularz i pole są poza
-  nim, więc element pola się nie wymienia przy hydratacji i wpisany wcześniej tekst zostaje). Pole jest nadpisywane tylko
-  przy zmianie frazy (nowe wyszukiwanie, wyjście z `/szukaj`), nie przy zmianie innych parametrów.
+  (etykieta „Szukaj produktów”). Pole przychodzi do layoutu jako slot `@search` (layout nie dostaje `searchParams`,
+  strona slotu tak): `app/@search/szukaj/page.tsx` daje pole z frazą w HTML z serwera (`/szukaj` i tak jest renderowane
+  przy każdym żądaniu, więc działa bez JavaScriptu), `app/@search/default.tsx` puste pole na każdej innej stronie (HTML
+  taki sam dla wszystkich, strona produktu jest ISR). Strona 404 nieznanego adresu nie dostaje slotu, więc layout
+  wstawia wtedy puste pole sam. Przy nawigacji klienckiej z `/szukaj` na inną stronę Next zostawia aktywny slot
+  `@search/szukaj` (z frazą w `defaultValue`), a w drugą stronę montuje nowe pole z frazą. Pole w przeglądarce
+  prowadzi `useSearchParams` (mały komponent w `Suspense` bez wyniku: formularz i pole są poza nim, więc element pola
+  się nie wymienia przy hydratacji i wpisany wcześniej tekst zostaje): przy pierwszym uruchomieniu pisze tylko do
+  pustego pola, potem nadpisuje je przy zmianie frazy (nowe wyszukiwanie, wyjście z `/szukaj`, które czyści pole
+  pozostawionego slotu), nie przy zmianie innych parametrów.
 - Układ: od `sm` logo, pole, koszyk i konto w jednym wierszu; poniżej `sm` pole wyszukiwania ma własny wiersz na pełną
   szerokość pod logo, koszykiem i kontem (nagłówek ma `flex-wrap`), żeby strona nie przewijała się w poziomie przy 375 px
   (`e2e/tests/site-header.spec.ts`).
