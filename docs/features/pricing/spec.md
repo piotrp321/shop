@@ -10,8 +10,8 @@ bez osi wariantów ma jeden wariant domyślny. Zarządzanie cenami w panelu, cen
 autorytatywny odczyt cen wielu wariantów dla koszyka i przyszłego checkoutu.
 
 Obsługujemy wyłącznie Polskę i PLN. Poza zakresem: promocje, kody rabatowe, cena Omnibus w sklepie, koszyk,
-checkout, wiele krajów i walut, harmonogramy zmian stawek, edycja klasy podatkowej produktu (kontrakt w sekcji
-„Przyszła zmiana klasy podatkowej”).
+checkout, wiele krajów i walut, harmonogramy zmian stawek. Klasę podatkową produktu zmienia edycja produktu w Catalog,
+a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie klasy podatkowej”).
 
 ## Bounded contexty i zależności
 
@@ -21,22 +21,25 @@ checkout, wiele krajów i walut, harmonogramy zmian stawek, edycja klasy podatko
 | Pricing | stawka VAT dla klasy, obliczenia, cena wariantu, historia cen, autorytatywny odczyt cen |
 | Sklep, panel | wyświetlanie i formatowanie kwot z API; żadnych obliczeń netto, VAT ani stawek |
 
-- Zależność jest jednokierunkowa: `Pricing_Infrastructure → Catalog_Application` (adaptery portów Pricing wołają
-  zapytania Catalog przez `query.bus`, jak `Backoffice\Infrastructure\QueryBusCatalogStatistics`).
+- Zależność jest jednokierunkowa: `Pricing_Infrastructure → Catalog_Application`. Adaptery portów Pricing wołają
+  zapytania Catalog przez `query.bus` (jak `Backoffice\Infrastructure\QueryBusCatalogStatistics`), a Pricing
+  subskrybuje integracyjne zdarzenie Catalog `ProductChanged` (konsument `RepriceOnTaxClassChange`, niżej).
 - Catalog nie zależy od Pricing w żadnej warstwie. Deptrac nie ma żadnej reguły `Catalog_* → Pricing_*`.
 - Pricing zależy od Backoffice wyłącznie przez kontrakt bezpieczeństwa `AuthenticatedStaffMember` z `Backoffice_Application`:
   `Pricing_Infrastructure` (`PriceVoter`, role pracownika) i `Pricing_UI` (aktor zmiany ceny w `ChangePriceController`).
   `Pricing_Domain` i `Pricing_Application` nie zależą od Backoffice, a żadna warstwa Pricing nie zależy od
   `Backoffice_Infrastructure`, `Backoffice_Domain` ani `Backoffice_UI`.
-- Domena Pricing ma własne value objecty (`VariantId`, `TaxClass` jako kod tekstowy; `ProductId` tylko w liście cen
-  panelu) i nie importuje kodu Catalog. Adapter mapuje kod klasy z Catalog na `TaxClass`
+- Domena Pricing ma własne value objecty (`VariantId`, `TaxClass` jako kod tekstowy; `ProductId` w liście cen
+  panelu, w porcie `ProductDirectory::taxClassOf` (`ProductTaxClass`) i w `RepriceProductPrices`) i nie importuje kodu Catalog. Adapter mapuje kod klasy z Catalog na `TaxClass`
   Pricing. Klasa podatkowa wariantu to klasa jego produktu.
 - Odczyt cen (`GetCurrentPrices`) czyta wyłącznie tabele Pricing, bez odczytu z Catalog.
-- Każdy zapis zmiany ceny (panel, seed, `pricing:reconcile-tax`) publikuje `VariantPriceChanged {variantId, source,
+- Każdy zapis zmiany ceny (panel, seed, `pricing:reconcile-tax`, przeliczenie po zmianie klasy) publikuje `VariantPriceChanged {variantId, source,
   occurredAt}`: `DoctrineVariantPriceRepository::save` wpisuje je do outboxu w transakcji zapisu ceny i historii, więc
   zapis odrzucony albo wycofany nie zostawia zdarzenia. Jedyny konsument (`Pricing_Infrastructure`) unieważnia cache
   sklepu produktu wariantu (`docs/features/product-page/spec.md`, „Unieważnianie”); zdarzenie ze źródła `seed`
-  potwierdza bez unieważnienia. Poza tym integracje w modularnym monolicie są synchroniczne.
+  potwierdza bez unieważnienia.
+- Konsument `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, transport `events`) przelicza ceny po zmianie klasy
+  podatkowej produktu. Poza tym integracje w modularnym monolicie są synchroniczne.
 
 ## Klasa podatkowa produktu (Catalog)
 
@@ -77,7 +80,7 @@ checkout, wiele krajów i walut, harmonogramy zmian stawek, edycja klasy podatko
 - Agregat `VariantPrice` (identyfikator = `VariantId`): `breakdown`, `taxClass`, `version`, niezapisane wpisy historii.
   - `create(id, gross, taxClass, rates, origin)` – pierwsza cena, jeden wpis historii.
   - `changeGross(gross, rates, origin): bool` – nowa kwota, z bieżącą stawką dla klasy ceny.
-  - `reprice(taxClass, rates, origin): bool` – to samo brutto, klasa i stawka od nowa (reconcile, przyszła zmiana klasy).
+  - `reprice(taxClass, rates, origin): bool` – to samo brutto, klasa i stawka od nowa (reconcile, przeliczenie po zmianie klasy).
   - `false`, gdy komplet brutto, netto, VAT, stawka i klasa jest identyczny: bez wpisu historii i bez zmiany wersji.
   - `isCurrent(rates): bool` – zapisana stawka równa stawce z `PolishVatRates` dla zapisanej klasy.
 - `PriceHistoryEntry`: snapshot netto, VAT, brutto, stawki, klasy, waluty, `changedAt`, źródło i aktor. Tylko
@@ -142,7 +145,8 @@ Pricing:
 Catalog (zapytania o warianty opisuje `docs/features/variants/spec.md`):
 - `GetVariant(variantId)` → `{variantId, productId, taxClass}` albo `null`.
 - `ListProductVariants(productIds, includeDrafts)` (1–100 id) → warianty produktów z etykietami w kolejności pozycji
-  i klasa podatkowa produktu; lista cen podaje `includeDrafts: true`.
+  i klasa podatkowa produktu; lista cen i przeliczenie po zmianie klasy (jeden produkt, port `ProductDirectory::taxClassOf`)
+  podają `includeDrafts: true`.
 - `ListVariantIdentities(after, limit)` → `{variantId, key, taxClass}` partiami po `variantId`, dla seeda i reconcile.
 - `SearchBackofficeProducts(q?, categoryId?, after?, perPage)`: zapytanie do PostgreSQL (DBAL), wynik
   `{id, name, taxClass}`. Nazwa przez `ILIKE` z indeksem trigramowym (`pg_trgm`, GIN na `catalog_product.name`),
@@ -158,7 +162,8 @@ Catalog (zapytania o warianty opisuje `docs/features/variants/spec.md`):
   dla klasy ceny oraz klasę ceny różną od bieżącej klasy produktu wariantu w Catalog (zbiorczo przez
   `ListVariantIdentities`, partiami po `variantId` obok cen).
 - Bez `--apply` tylko raportuje. Z `--apply` przelicza `reprice` (brutto bez zmian) ze źródłem `tax_reconciliation`,
-  każdą cenę w osobnej transakcji.
+  każdą cenę w osobnej transakcji. Pętlę „reprice, zapis, jedno ponowienie przy konflikcie wersji” robi `PriceReconciler`
+  (`Pricing_Application`), wspólny z przeliczeniem po zmianie klasy.
 - Idempotentne: kolejne uruchomienie po naprawie nic nie znajduje.
 - Konflikt wersji z równoległą edycją: ponowny odczyt tej ceny i jedna kolejna próba, potem pozycja w raporcie.
 - Cena, dla której klasa z Catalog nie ma stawki, zostaje bez zmian i trafia do raportu. Cena wariantu, którego nie
@@ -170,17 +175,33 @@ Procedura zmiany stawki: zmiana w `PolishVatRates` i wdrożenie, potem `pricing:
 czasu ceny z nieaktualną stawką są niedostępne w sklepie (bezpieczne zachowanie), a panel oznacza je
 `vatRateOutdated`.
 
-## Przyszła zmiana klasy podatkowej (kontrakt)
+## Przeliczenie po zmianie klasy podatkowej
 
-Dziś nic nie zmienia klasy podatkowej produktu i ten mechanizm nie jest implementowany. Gdy powstanie:
+Klasę zmienia edycja produktu w Catalog (`EditProduct`), która publikuje integracyjne `ProductChanged {productId, slug,
+occurredAt}` przez outbox. Ceny przelicza konsument `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, transport
+`events`) przez `RepriceProductPrices` (`Pricing_Application`):
 
-- Przypadek użycia `ChangeProductTaxClass(productId, taxClass, expectedProductVersion, actor)` należy do
-  Pricing_Application, bo konsekwencją zmiany klasy jest cena; kierunek zależności Pricing → Catalog zostaje.
-- W jednej transakcji szyny komend: komenda Catalog `AssignTaxClass` przez port (z wersją produktu), potem
-  `VariantPrice::reprice` wszystkich cen wariantów produktu z nowej klasy (źródło `staff`).
-- Błąd lub konflikt wersji produktu albo ceny wycofuje oba kroki. Bez zdarzeń i bez okna niespójności.
-- Catalog nie udostępnia innej drogi zmiany klasy niż ten przypadek użycia.
-- `pricing:reconcile-tax` wykrywa rozjazd klasy, gdyby jednak do niego doszło.
+- Klasa i warianty produktu z Catalog `ListProductVariants([productId], includeDrafts: true)` przez port
+  `ProductDirectory::taxClassOf` (także szkic, bo jego ceny też mogą istnieć). Ceny wariantów jednym odczytem
+  (`findMany`); wariant bez ceny jest pomijany.
+- Każda cena z klasą inną niż klasa produktu przechodzi przez `PriceReconciler`, jak w `pricing:reconcile-tax --apply`:
+  `reprice` (to samo brutto, klasa produktu i jej bieżąca stawka, źródło `tax_reconciliation`, bez pracownika;
+  pracownika zmiany klasy wskazuje `updated_by` produktu), wpis historii i `VariantPriceChanged`, każda cena w osobnej
+  transakcji, konflikt wersji: ponowny odczyt i jedna kolejna próba.
+- Cena w klasie produktu nie jest zapisywana (bez wpisu historii), także z nieaktualną stawką: tę naprawia
+  `pricing:reconcile-tax`.
+- Idempotencja i kolejność: klasa nie pochodzi ze zdarzenia, tylko z bieżącego stanu Catalog, więc kilka zmian
+  (A → B → A) obsłużonych w dowolnej kolejności, także wielokrotnie, kończy się cenami w klasie bieżącej. Gdy cokolwiek
+  zapisano, konsument czyta klasę ponownie: inna klasa (zmiana zapisana w trakcie, której zdarzenie mogło już zostać
+  obsłużone przed tymi zapisami) to `TaxClassChangedWhileRepricing` i ponowienie wiadomości.
+- Błędy: klasa bez stawki → `UnrecoverableMessageHandlingException` z komunikatem (klasa i produkt), wiadomość trafia do
+  `failed`, ceny bez zmian; drugi konflikt wersji → `PriceModifiedConcurrently` po zapisie pozostałych cen i ponowienie
+  wiadomości (ponowienia transportu `events`, potem `failed`); produkt nieznany Catalogowi → wiadomość obsłużona bez
+  zmian; identyfikator produktu w złym formacie → `failed`.
+- `pricing:reconcile-tax` wykrywa rozjazd klasy, gdyby jednak do niego doszło (np. wiadomość w `failed`).
+- Znany przypadek: pierwsza cena wariantu (`SetVariantPriceHandler` bierze klasę z Catalog przed zapisem) zapisana
+  równolegle ze zmianą klasy produktu może powstać w starej klasie, gdy konsument przeliczenia odczyta ceny wcześniej.
+  Brutto jest poprawne, rozbicie VAT nie; rozjazd wykrywa i naprawia `pricing:reconcile-tax`.
 
 ## API
 
@@ -250,6 +271,8 @@ z tokenem realmu `shop`: 401):
 | Kwota 0, ujemna, ponad 999 999,99 zł, nie liczba całkowita groszy | 422 |
 | Stawka zmieniona w kodzie przed `reconcile --apply` | sklep: „Cena niedostępna”; `GetCurrentPrices` pomija; panel: `vatRateOutdated` |
 | Błąd zapisu historii | cała transakcja wycofana, cena bez zmian |
+| Zmiana klasy produktu na klasę bez stawki | wiadomość `ProductChanged` w `failed` z komunikatem, ceny w starej klasie |
+| Równoległa zmiana ceny przy przeliczeniu po zmianie klasy (dwa razy) | ponowienie wiadomości, pozostałe ceny przeliczone |
 | Błąd endpointu cen w sklepie | lista bez cen („Cena niedostępna”) |
 
 ## Kryteria akceptacji
@@ -279,12 +302,15 @@ z tokenem realmu `shop`: 401):
   limity `GrossPrice`.
 - Agregat i handlery (adaptery in-memory): brak wpisu i wersji przy identycznym komplecie, jeden wpis przy zmianie
   kwoty lub stawki, 409 przy złej wersji i przy `null` dla istniejącej ceny, pomijanie nieaktualnych cen
-  w `GetCurrentPrices`, reconcile (raport, `--apply`, idempotencja, kody wyjścia).
+  w `GetCurrentPrices`, reconcile (raport, `--apply`, idempotencja, kody wyjścia), przeliczenie po zmianie klasy
+  (A → B → A w dowolnej kolejności, powtórzone zdarzenie, brak zapisu przy bieżącej klasie, klasa bez stawki, konflikty,
+  zmiana klasy w trakcie, nieznany produkt).
 - Integracyjne (PostgreSQL): wymuszony błąd zapisu historii wycofuje zmianę ceny; dwie zmiany z tą samą wersją
   dają jeden sukces i 409, liczba wpisów równa liczbie sukcesów; dwa równoległe pierwsze zapisy; `GetCurrentPrices`
   dla 4800 id jednym zapytaniem; `SearchBackofficeProducts` (nazwa, podkategorie, kategoria dodatkowa, keyset);
   migracja klas; migracja na klucz wariantu na danych sprzed zmiany; lista panelu z wariantami na wielu stronach;
-  reconcile na poprawnej ścieżce i przy niedostępnej bazie; seed z wariantem bez wzorca. Testy używają wariantów
+  reconcile na poprawnej ścieżce i przy niedostępnej bazie; przeliczenie po zmianie klasy na pełnej trasie (outbox,
+  RabbitMQ, konsument) i powtórzone zdarzenie; seed z wariantem bez wzorca. Testy używają wariantów
   o `id` różnym od `id` produktu (wyjątek: test migracji).
 - Funkcjonalne API: każdy endpoint z przypadkami 200, 400 lub 422, 401 (bez tokena i z tokenem `shop`), 403
   (`marketing`, `support`, `warehouse` przy `PUT`), 404 (także identyfikator produktu zamiast wariantu) i 409.

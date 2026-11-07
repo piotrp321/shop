@@ -39,7 +39,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   (`ListVariantIdentities`) i wypisuje w jednej linii każdą cenę ze stawką inną niż bieżąca stawka jej klasy albo
   z klasą inną niż klasa produktu wariantu w Catalog (cena wariantu, którego nie ma w Catalog, zachowuje swoją
   klasę).
-  Z `--apply` przelicza je (`reprice`: to samo brutto, źródło `tax_reconciliation`), każdą w osobnej transakcji;
+  Z `--apply` przelicza je (`reprice`: to samo brutto, źródło `tax_reconciliation`), każdą w osobnej transakcji
+  (pętla `PriceReconciler`, wspólna z przeliczeniem po zmianie klasy produktu);
   zapis odrzucony przez równoległą zmianę ceny ponawia raz na cenie odczytanej od nowa (świeży EntityManager), drugi
   konflikt zostaje w raporcie. Kod wyjścia: 0 – wszystko spójne albo naprawione, 1 – zostały rozbieżności (bez
   `--apply` znalezione; z `--apply` nienaprawione: dwa konflikty albo klasa bez stawki), 2 – przerwane błędem
@@ -162,8 +163,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
   Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`; Catalog
   `ProductCreated` i `ProductChanged`, Ordering `OrderPlaced`), gdy jedyną drogą zapisu jest ta komenda. Gdy agregat
-  ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
-  rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
+  ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`, przeliczenie po
+  zmianie klasy; Inventory: panel, seed, port rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
   w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
   pominie, a odrzucony albo wycofany zapis nie zostawia zdarzenia.
 - Zdarzenie, które ma subskrybować inny context, jest zdarzeniem integracyjnym: publicznym kontraktem modułu w jego
@@ -172,8 +173,19 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   zapisuje wewnętrzne `Catalog\Domain\Product\ProductChanged` przy każdej edycji, publikacji i wycofaniu, a handler
   komendy tłumaczy je na kontrakt (`ProductChanged::translate`) przed publikacją przez outbox. Seed tworzy produkty
   bez `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana
-  pól kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (reindeksacja)
-  i `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, unieważnienie sklepu).
+  pól kontraktu dotyka wszystkich subskrybentów. Subskrybenci (transport `events`): `IndexProduct` (reindeksacja),
+  `InvalidateStorefrontOnProductChange` (`Catalog_Infrastructure`, unieważnienie sklepu) i `RepriceOnTaxClassChange`
+  (`Pricing_Infrastructure`, przeliczenie cen po zmianie klasy podatkowej).
+- Przeliczenie cen po zmianie klasy (`RepriceOnTaxClassChange` → `RepriceProductPrices`, `Pricing_Application`): klasa
+  i warianty produktu z Catalog `ListProductVariants([productId], includeDrafts: true)` (port `ProductDirectory::taxClassOf`,
+  adapter `QueryBusProductDirectory`), nigdy ze zdarzenia, więc zmiany A → B → A w dowolnej kolejności i powtórzone
+  zdarzenia kończą się cenami w klasie bieżącej. Każda cena z klasą inną niż klasa produktu idzie przez `PriceReconciler`
+  (ta sama pętla co `pricing:reconcile-tax --apply`: `reprice` z tym samym brutto, źródło `tax_reconciliation`, osobna
+  transakcja na cenę, jedno ponowienie po konflikcie wersji); cena w klasie produktu nie jest zapisywana (także
+  z nieaktualną stawką). Po zapisach klasa jest czytana ponownie: inna to `TaxClassChangedWhileRepricing` (ponowienie
+  wiadomości). Klasa bez stawki: `UnrecoverableMessageHandlingException` z komunikatem (`failed`), ceny bez zmian; drugi
+  konflikt wersji: `PriceModifiedConcurrently` po zapisie pozostałych cen (ponowienie); produkt nieznany Catalogowi:
+  wiadomość obsłużona bez zmian.
 - Odbiorcy zdarzeń muszą być idempotentni: to samo zdarzenie może przyjść więcej niż raz.
 - Zamówienie przechowuje kopię cen, rabatów i adresu z chwili złożenia, nie referencje.
 - Elasticsearch to tylko model odczytu. Nigdy nie podejmuj na jego podstawie decyzji biznesowych.
