@@ -320,7 +320,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   zapisuje oryginał pod kluczem z treści (`originals/<sha256>.<rozszerzenie>`, ten sam plik to ten sam klucz) i odpowiada
   kluczem oraz podglądem `thumbnail`; oryginałów nie usuwa nic (także po usunięciu zdjęcia z produktu albo uploadzie bez
   zapisu). Limity PHP w `docker/php/conf.d/app.ini`: `upload_max_filesize = 64M`, `post_max_size = 70M` (Caddy nie ma
-  własnego limitu ciała). Plik ponad `upload_max_filesize` (błąd uploadu PHP) i żądanie z `Content-Length` ponad
+  własnego limitu ciała) oraz `display_errors = Off`, `log_errors = On` (obraz nie ma `php.ini`, a ostrzeżenie PHP o
+  żądaniu ponad `post_max_size` pojawia się przy starcie żądania: wypisane do odpowiedzi wysłałoby status 200
+  i nagłówki przed 422). Plik ponad `upload_max_filesize` (błąd uploadu PHP) i żądanie z `Content-Length` ponad
   `post_max_size` (PHP odrzuca wtedy całe ciało, więc kontroler sprawdza nagłówek przed szukaniem pliku) to 422
   „Plik jest za duży.”; komunikaty `detail` odrzuceń (typ, rozdzielczość, wymiary, brak pliku) są po polsku. Garage
   niedostępny przy uploadzie i przy zapisie produktu (`ProductImageStorage::exists` sprawdza każdy klucz zdjęcia)
