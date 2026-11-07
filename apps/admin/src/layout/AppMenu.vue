@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { RouterLink } from "vue-router";
-import { useAuthStore } from "@/stores/auth";
+import { type StaffMe, useAuthStore } from "@/stores/auth";
 
-type Role = "admin" | "support" | "warehouse" | "marketing";
+type Role = StaffMe["roles"][number];
 
 interface MenuItem {
   label: string;

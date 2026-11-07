@@ -3,9 +3,9 @@ import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import AppMenu from "@/layout/AppMenu.vue";
-import { useAuthStore } from "@/stores/auth";
+import { type StaffMe, useAuthStore } from "@/stores/auth";
 
-type Role = "admin" | "support" | "warehouse" | "marketing";
+type Role = StaffMe["roles"][number];
 
 const empty = { template: "<div />" };
 
