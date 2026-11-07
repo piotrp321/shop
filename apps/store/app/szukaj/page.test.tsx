@@ -109,6 +109,12 @@ describe("the search page", () => {
     expect(metadata).not.toHaveProperty("alternates");
   });
 
+  it("links from the invalid filter message back to the search for the phrase, without filters and sort", async () => {
+    vi.mocked(loadCatalog).mockResolvedValue({ kind: "invalid-filter" });
+    const markup = await html({ q: "kurtka zimowa", "cena-od": "99,50", sort: "popularne", kategoria: "nie-ma" });
+    expect(markup).toContain('href="/szukaj?q=kurtka+zimowa">Pokaż wyniki bez filtrów</a>');
+  });
+
   it("treats a category the API no longer knows as an invalid filter", async () => {
     vi.mocked(loadCatalog).mockResolvedValue({ kind: "unknown-category" });
     expect(await html({ q: "kurtka", kategoria: "bieganie" })).toContain("Nieprawidłowy filtr");
