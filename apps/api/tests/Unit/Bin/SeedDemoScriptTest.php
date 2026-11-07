@@ -27,7 +27,7 @@ final class SeedDemoScriptTest extends TestCase
     {
         $this->dir = sys_get_temp_dir().'/seed-demo-test-'.bin2hex(random_bytes(6));
         mkdir($this->dir.'/bin', 0o700, true);
-        copy(dirname(__DIR__, 3).'/bin/seed-demo', $this->dir.'/bin/seed-demo');
+        copy(\dirname(__DIR__, 3).'/bin/seed-demo', $this->dir.'/bin/seed-demo');
         chmod($this->dir.'/bin/seed-demo', 0o700);
 
         // Logs the arguments of every call; fails the call named in FAKE_FAIL_ON (the command name is the first argument).
