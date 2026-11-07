@@ -16,7 +16,7 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  * Exit codes: 0 the alias points to the new index, 1 the alias stays on the previous index, 2 the alias state
  * is unknown (both indexes are kept).
  */
-#[AsCommand(name: 'catalog:reindex', description: 'Rebuilds the product search index from the database and switches the alias to it.')]
+#[AsCommand(name: 'catalog:reindex', description: 'Rebuilds the product search index from the database and the product offers and switches the alias to it.')]
 final readonly class ReindexCommand
 {
     public const int UNKNOWN = 2;

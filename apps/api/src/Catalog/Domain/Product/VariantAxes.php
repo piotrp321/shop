@@ -6,7 +6,8 @@ namespace App\Catalog\Domain\Product;
 
 /**
  * The names of the axes a product varies along, in presentation order (e.g. Kolor, Rozmiar). Up to two, each
- * 1 to 30 characters after trimming, different without regard to case.
+ * 1 to 30 characters after trimming, without a colon (it separates the axis from the value in an axis filter),
+ * different without regard to case.
  */
 final readonly class VariantAxes
 {
@@ -38,6 +39,9 @@ final readonly class VariantAxes
             $length = mb_strlen($name);
             if ($length < 1 || $length > self::MAX_NAME_LENGTH) {
                 throw InvalidVariantAxes::nameLengthOutOfRange();
+            }
+            if (str_contains($name, ':')) {
+                throw InvalidVariantAxes::nameWithColon();
             }
             $key = mb_strtolower($name);
             if (isset($seen[$key])) {

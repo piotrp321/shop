@@ -28,7 +28,8 @@ Poza zakresem:
 - zamówienia (CHECKOUT #90): kontrakt rezerwacji ma klucz wariantu, zamówień jeszcze nie ma;
 - dodawanie i edycja produktów i wariantów w panelu (CATALOG-ADMIN #95); warianty powstają tylko w danych demo
   i w migracji;
-- wyszukiwanie i filtry po wartościach wariantów (SEARCH #94); indeks Elasticsearch nie zawiera wariantów;
+- wyszukiwanie i filtry po wartościach wariantów (SEARCH #94); indeks Elasticsearch zawiera warianty z wartościami
+  osi, cenami i dostępnością (`docs/features/search/spec.md`);
 - zdjęcia per wariant i galeria, kody SKU i EAN, cena „od” w Varnishu i ISR;
 - usuwanie wariantu i zmiana osi istniejącego produktu.
 
@@ -74,7 +75,8 @@ Poza zakresem:
 
 - `VariantId`: UUID.
 - `VariantAxes`: lista 0–2 nazw osi w kolejności (np. `["Kolor", "Rozmiar"]`); nazwa 1–30 znaków po przycięciu,
-  unikalna bez względu na wielkość liter (`InvalidVariantAxes`, `InvalidInput`).
+  bez dwukropka (`:` oddziela oś od wartości w filtrze osi), unikalna bez względu na wielkość liter
+  (`InvalidVariantAxes`, `InvalidInput`).
 - `VariantValues`: lista wartości, po jednej na oś, w kolejności osi; wartość 1–40 znaków po przycięciu
   (`InvalidVariantValues`, `InvalidInput`).
 - Encja `ProductVariant {id: VariantId, values: VariantValues}` w agregacie `Product`.

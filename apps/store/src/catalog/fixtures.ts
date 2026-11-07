@@ -3,6 +3,9 @@ import type { components } from "@/api/schema";
 type ProductImage = components["schemas"]["ProductImage"];
 type ProductListItem = components["schemas"]["ProductListItem"];
 type CategoryNode = components["schemas"]["CategoryNode"];
+type ProductFacets = components["schemas"]["ProductFacets"];
+
+export const EMPTY_FACETS: ProductFacets = { categories: [], options: [], price: null, availableCount: 0 };
 
 export const WIDTHS = [256, 384, 512, 768] as const;
 
@@ -29,8 +32,14 @@ export function makeProduct(n: number, overrides: Partial<ProductListItem> = {})
   };
 }
 
+/** A category whose slug is its id; the paths of the children are rebuilt under it, as the API computes them. */
 export function node(id: string, name: string, children: CategoryNode[] = []): CategoryNode {
-  return { id, name, children };
+  return { id, name, slug: id, path: id, children: children.map((child) => underParent(child, id)) };
+}
+
+function underParent(category: CategoryNode, parentPath: string): CategoryNode {
+  const path = `${parentPath}/${category.slug}`;
+  return { ...category, path, children: category.children.map((child) => underParent(child, path)) };
 }
 
 // Two branches: Bieganie > Buty > Trailowe, and Rower > Kaski.
@@ -90,8 +99,8 @@ export function makeDetails(n: number, overrides: Partial<ProductDetails> = {}):
     name: `Produkt ${n}`,
     shortDescription: `Opis ${n}`,
     breadcrumb: [
-      { id: "bieganie", name: "Bieganie" },
-      { id: "buty", name: "Buty" },
+      { id: "bieganie", name: "Bieganie", path: "bieganie" },
+      { id: "buty", name: "Buty", path: "bieganie/buty" },
     ],
     images: [
       makeProductPhoto({ alt: `Zdjęcie ${n}, pierwsze`, variants: { webp: PRODUCT_WIDTHS.map((width) => ({ width, url: `http://imgproxy.test/a${n}-${width}/plain.webp` })) } }),

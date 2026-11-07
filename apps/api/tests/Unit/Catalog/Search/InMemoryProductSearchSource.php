@@ -12,6 +12,9 @@ final class InMemoryProductSearchSource implements ProductSearchSource
     /** @var list<array{string|null, int}> every page() call: [afterId, limit] */
     public array $calls = [];
 
+    /** @var (\Closure(): void)|null runs on every page() call, before the answer (e.g. to move a clock) */
+    public ?\Closure $onRead = null;
+
     /** @var list<ProductSearchSnapshot> sorted by id */
     private array $snapshots;
 
@@ -38,6 +41,9 @@ final class InMemoryProductSearchSource implements ProductSearchSource
     public function page(?string $afterId, int $limit): array
     {
         $this->calls[] = [$afterId, $limit];
+        if (null !== $this->onRead) {
+            ($this->onRead)();
+        }
 
         return \array_slice(
             array_values(array_filter($this->snapshots, static fn (ProductSearchSnapshot $s): bool => null === $afterId || $s->id > $afterId)),

@@ -138,8 +138,8 @@ jobs:
       # the store integration tests (sessions, refresh lock) need Redis too. Mailpit also receives the order
       # confirmation emails of the api mailer tests (MAILER_DSN and MAILER_FROM come from the api service of
       # docker-compose.yml, which `docker compose run` applies).
-      # They start in the background (pulling their images first) while the app images are built; the tests wait
-      # for them.
+      # They start in the background (pulling their images first, and building the Elasticsearch image with the Polish
+      # analysis plugin from infra/elasticsearch/Dockerfile) while the app images are built; the tests wait for them.
       - name: Start PostgreSQL, Redis, Garage, imgproxy, RabbitMQ, Elasticsearch, Keycloak and Mailpit in the background
         if: env.FULL_CI == 'true'
         run: >-
@@ -317,12 +317,15 @@ jobs:
           sh .github/scripts/background.sh start image-e2e sh .github/scripts/ghcr-image.sh pull "$e2e" shop-e2e
 
       # The service images are pulled in the background while the application images are built; the stack starts once
-      # the pull is done (compose needs .env.local to read its configuration).
+      # the pull is done (compose needs .env.local to read its configuration). The Elasticsearch image is built here
+      # too (the official image plus the Polish analysis plugin, infra/elasticsearch/Dockerfile), so `make up` finds it
+      # and does not build it one after another with the rest of the stack.
       - name: Pull the service images in the background
         if: env.FULL_CI == 'true'
         run: |
           sh infra/scripts/init-env.sh
-          sh .github/scripts/background.sh start pull docker compose pull --quiet --ignore-buildable
+          sh .github/scripts/background.sh start pull sh -c \
+          'docker compose pull --quiet --ignore-buildable && docker compose build --quiet elasticsearch'
 
       # An app image the registry does not have is built from the GitHub Actions cache that the `checks` job writes
       # (same contexts, targets and scopes), so this job only reads it. `make up` then finds the images and builds only

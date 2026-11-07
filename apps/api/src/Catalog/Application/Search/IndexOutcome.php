@@ -7,6 +7,6 @@ namespace App\Catalog\Application\Search;
 enum IndexOutcome
 {
     case Indexed;
-    /** The index already holds this version of the product or a newer one; nothing was written. */
+    /** The index already holds a newer version of the product; nothing was written. */
     case Stale;
 }

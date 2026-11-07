@@ -15,7 +15,7 @@ use App\Catalog\Application\Search\SearchUnavailable;
 interface ProductIndexer
 {
     /**
-     * Writes the document unless the index already holds its version or a newer one (then the outcome is Stale).
+     * Writes the document unless the index already holds a newer version (then the outcome is Stale).
      *
      * @throws SearchUnavailable
      * @throws SearchIndexError

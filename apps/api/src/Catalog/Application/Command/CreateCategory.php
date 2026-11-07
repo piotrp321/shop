@@ -9,6 +9,7 @@ final readonly class CreateCategory
     public function __construct(
         public string $id,
         public string $name,
+        public string $slug,
         public ?string $parentId,
     ) {
     }

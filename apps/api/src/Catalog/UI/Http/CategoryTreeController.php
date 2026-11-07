@@ -34,7 +34,7 @@ final class CategoryTreeController
         responses: [
             new OA\Response(
                 response: 200,
-                description: 'Root categories with their descendants. An empty catalogue gives an empty array.',
+                description: 'Root categories with their descendants. Every node has its `slug` (unique among its siblings) and `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`). An empty catalogue gives an empty array.',
                 content: new OA\JsonContent(type: 'array', items: new OA\Items(ref: new Model(type: CategoryNode::class))),
             ),
             new OA\Response(

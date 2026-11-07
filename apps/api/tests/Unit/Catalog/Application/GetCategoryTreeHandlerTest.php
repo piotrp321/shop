@@ -10,6 +10,7 @@ use App\Catalog\Application\Query\GetCategoryTreeHandler;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
+use App\Catalog\Domain\Category\CategorySlug;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use PHPUnit\Framework\TestCase;
 
@@ -31,26 +32,43 @@ final class GetCategoryTreeHandlerTest extends TestCase
 
     public function testBuildsNestedTreeThreeLevelsDeep(): void
     {
-        $sport = $this->root('00000000-0000-4000-8000-000000000001', 'Sport');
-        $running = $this->child('00000000-0000-4000-8000-000000000002', 'Bieganie', $sport);
-        $shoes = $this->child('00000000-0000-4000-8000-000000000003', 'Buty', $running);
+        $sport = $this->root('00000000-0000-4000-8000-000000000001', 'Sport', 'sport');
+        $running = $this->child('00000000-0000-4000-8000-000000000002', 'Bieganie', $sport, 'bieganie');
+        $shoes = $this->child('00000000-0000-4000-8000-000000000003', 'Buty', $running, 'buty');
 
         $tree = ($this->handler)(new GetCategoryTree());
 
         self::assertEquals([
-            new CategoryNode($sport->id()->toString(), 'Sport', [
-                new CategoryNode($running->id()->toString(), 'Bieganie', [
-                    new CategoryNode($shoes->id()->toString(), 'Buty', []),
+            new CategoryNode($sport->id()->toString(), 'Sport', 'sport', 'sport', [
+                new CategoryNode($running->id()->toString(), 'Bieganie', 'bieganie', 'sport/bieganie', [
+                    new CategoryNode($shoes->id()->toString(), 'Buty', 'buty', 'sport/bieganie/buty', []),
                 ]),
             ]),
         ], $tree);
     }
 
+    public function testPathJoinsTheSlugsFromTheRootInEveryBranch(): void
+    {
+        $running = $this->root('00000000-0000-4000-8000-000000000001', 'Bieganie', 'bieganie');
+        $hiking = $this->root('00000000-0000-4000-8000-000000000002', 'Turystyka', 'turystyka');
+        $this->child('00000000-0000-4000-8000-000000000003', 'Buty', $running, 'buty');
+        $hikingShoes = $this->child('00000000-0000-4000-8000-000000000004', 'Buty', $hiking, 'buty');
+        $this->child('00000000-0000-4000-8000-000000000005', 'Buty', $hikingShoes, 'buty');
+
+        $tree = ($this->handler)(new GetCategoryTree());
+
+        self::assertSame(['bieganie', 'turystyka'], array_map(static fn (CategoryNode $node): string => $node->path, $tree));
+        self::assertSame('bieganie/buty', $tree[0]->children[0]->path);
+        self::assertSame('turystyka/buty', $tree[1]->children[0]->path);
+        self::assertSame('buty', $tree[1]->children[0]->children[0]->slug);
+        self::assertSame('turystyka/buty/buty', $tree[1]->children[0]->children[0]->path);
+    }
+
     public function testBuildsTreeRegardlessOfRepositoryOrder(): void
     {
-        $sport = Category::createRoot(CategoryId::fromString('00000000-0000-4000-8000-000000000001'), new CategoryName('Sport'));
-        $running = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000002'), new CategoryName('Bieganie'), $sport);
-        $shoes = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000003'), new CategoryName('Buty'), $running);
+        $sport = Category::createRoot(CategoryId::fromString('00000000-0000-4000-8000-000000000001'), new CategoryName('Sport'), new CategorySlug('sport'));
+        $running = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000002'), new CategoryName('Bieganie'), new CategorySlug('bieganie'), $sport);
+        $shoes = Category::createChild(CategoryId::fromString('00000000-0000-4000-8000-000000000003'), new CategoryName('Buty'), new CategorySlug('buty'), $running);
         foreach ([$shoes, $running, $sport] as $category) {
             $this->categories->save($category);
         }
@@ -112,17 +130,17 @@ final class GetCategoryTreeHandlerTest extends TestCase
         );
     }
 
-    private function root(string $id, string $name): Category
+    private function root(string $id, string $name, ?string $slug = null): Category
     {
-        $category = Category::createRoot(CategoryId::fromString($id), new CategoryName($name));
+        $category = Category::createRoot(CategoryId::fromString($id), new CategoryName($name), new CategorySlug($slug ?? $id));
         $this->categories->save($category);
 
         return $category;
     }
 
-    private function child(string $id, string $name, Category $parent): Category
+    private function child(string $id, string $name, Category $parent, ?string $slug = null): Category
     {
-        $category = Category::createChild(CategoryId::fromString($id), new CategoryName($name), $parent);
+        $category = Category::createChild(CategoryId::fromString($id), new CategoryName($name), new CategorySlug($slug ?? $id), $parent);
         $this->categories->save($category);
 
         return $category;

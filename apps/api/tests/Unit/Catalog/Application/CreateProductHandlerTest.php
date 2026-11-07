@@ -10,6 +10,7 @@ use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategoryNotFound;
+use App\Catalog\Domain\Category\CategorySlug;
 use App\Catalog\Domain\Product\DuplicateVariantValues;
 use App\Catalog\Domain\Product\InvalidProductVariants;
 use App\Catalog\Domain\Product\InvalidVariantAxes;
@@ -42,8 +43,8 @@ final class CreateProductHandlerTest extends TestCase
     protected function setUp(): void
     {
         $this->categories = new InMemoryCategoryRepository();
-        $this->categories->save(Category::createRoot(CategoryId::fromString(self::MAIN_ID), new CategoryName('Sport')));
-        $this->categories->save(Category::createRoot(CategoryId::fromString(self::EXTRA_ID), new CategoryName('Obuwie')));
+        $this->categories->save(Category::createRoot(CategoryId::fromString(self::MAIN_ID), new CategoryName('Sport'), new CategorySlug('sport')));
+        $this->categories->save(Category::createRoot(CategoryId::fromString(self::EXTRA_ID), new CategoryName('Obuwie'), new CategorySlug('obuwie')));
         $this->products = new InMemoryProductRepository();
         $this->events = new RecordingDomainEventPublisher();
         $this->handler = new CreateProductHandler($this->products, $this->categories, $this->events);

@@ -17,7 +17,7 @@ interface ProductDetailsSource
      *     slug: string,
      *     name: string,
      *     shortDescription: string,
-     *     breadcrumb: list<array{id: string, name: string}>,
+     *     breadcrumb: list<array{id: string, name: string, slug: string}>,
      *     images: list<array{key: string, alt: string}>,
      *     axes: list<string>,
      *     variants: list<array{id: string, values: list<string>}>

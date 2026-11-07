@@ -189,6 +189,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         $this->commitRow($this->entityManager, 'catalog_category', [
             'id' => $category->id()->toString(),
             'name' => 'Committed',
+            'slug' => $category->slug()->value(),
             'path' => $category->path()->toString(),
         ]);
         $product = ProductFactory::createOne(['mainCategory' => $category, 'slug' => 'new-slug']);
@@ -421,6 +422,7 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         $this->commitRow($this->entityManager, 'catalog_category', [
             'id' => $category->id()->toString(),
             'name' => 'Committed',
+            'slug' => $category->slug()->value(),
             'path' => $category->path()->toString(),
         ]);
         $competing = ProductFactory::createOne(['mainCategory' => $category, 'slug' => 'competing-slug']);

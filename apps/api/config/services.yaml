@@ -230,6 +230,8 @@ when@test: &test
                 $alias: '%app.search.alias%'
         App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource:
             public: true
+        App\Cart\Infrastructure\Catalog\QueryBusProductOfferFacts:
+            public: true
         # Public (and so never inlined), so a test can point it at an HTTP double or replace it with a spy.
         App\Shared\Infrastructure\Http\Cache\HttpStorefrontCache:
             public: true

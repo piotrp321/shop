@@ -411,6 +411,8 @@ export interface components {
         CategoryNode: {
             id: string;
             name: string;
+            slug: string;
+            path: string;
             children: components["schemas"]["CategoryNode"][];
         };
         /** @description The stored stock of a product variant, in whole units; all computed by the API. */
@@ -821,7 +823,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Root categories with their descendants. An empty catalogue gives an empty array. */
+            /** @description Root categories with their descendants. Every node has its `slug` (unique among its siblings) and `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`). An empty catalogue gives an empty array. */
             200: {
                 headers: {
                     [name: string]: unknown;

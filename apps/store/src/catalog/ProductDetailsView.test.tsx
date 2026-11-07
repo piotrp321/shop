@@ -41,14 +41,14 @@ describe("ProductDetailsView", () => {
   });
 
   describe("breadcrumb", () => {
-    it("starts with All products and links the categories of the path to the filtered list", () => {
+    it("starts with All products and links the categories of the path to their category pages", () => {
       render(<ProductDetailsView details={makeDetails(1)} offer={makeOffer(1)} />);
       const nav = screen.getByRole("navigation", { name: "Ścieżka" });
       const links = within(nav).getAllByRole("link");
       expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
         ["Wszystkie produkty", "/"],
-        ["Bieganie", "/?category=bieganie"],
-        ["Buty", "/?category=buty"],
+        ["Bieganie", "/c/bieganie"],
+        ["Buty", "/c/bieganie/buty"],
       ]);
     });
   });
