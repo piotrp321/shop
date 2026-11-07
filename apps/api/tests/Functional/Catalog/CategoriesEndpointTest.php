@@ -29,33 +29,37 @@ final class CategoriesEndpointTest extends WebTestCase
     public function testReturnsNestedTreeSortedByPolishCollation(): void
     {
         $client = static::createClient();
-        $sport = $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000001', 'name' => 'Sport']));
-        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'parent' => $sport]));
-        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'parent' => $sport]));
-        $aaa = $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000004', 'name' => 'Aaa', 'parent' => $sport]));
-        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000005', 'name' => 'Deep', 'parent' => $aaa]));
-        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000006', 'name' => 'Łaźnia']));
-        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000007', 'name' => 'Lampy']));
+        $sport = $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000001', 'name' => 'Sport', 'slug' => 'sport']));
+        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'slug' => 'lyzwy', 'parent' => $sport]));
+        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'slug' => 'lody', 'parent' => $sport]));
+        $aaa = $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000004', 'name' => 'Aaa', 'slug' => 'aaa', 'parent' => $sport]));
+        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000005', 'name' => 'Deep', 'slug' => 'deep', 'parent' => $aaa]));
+        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000006', 'name' => 'Łaźnia', 'slug' => 'laznia']));
+        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000007', 'name' => 'Lampy', 'slug' => 'lampy']));
 
         $client->request('GET', '/api/v1/categories');
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame([
-            ['id' => '00000000-0000-4000-8000-000000000007', 'name' => 'Lampy', 'children' => []],
-            ['id' => '00000000-0000-4000-8000-000000000006', 'name' => 'Łaźnia', 'children' => []],
+            ['id' => '00000000-0000-4000-8000-000000000007', 'name' => 'Lampy', 'slug' => 'lampy', 'path' => 'lampy', 'children' => []],
+            ['id' => '00000000-0000-4000-8000-000000000006', 'name' => 'Łaźnia', 'slug' => 'laznia', 'path' => 'laznia', 'children' => []],
             [
                 'id' => '00000000-0000-4000-8000-000000000001',
                 'name' => 'Sport',
+                'slug' => 'sport',
+                'path' => 'sport',
                 'children' => [
                     [
                         'id' => '00000000-0000-4000-8000-000000000004',
                         'name' => 'Aaa',
+                        'slug' => 'aaa',
+                        'path' => 'sport/aaa',
                         'children' => [
-                            ['id' => '00000000-0000-4000-8000-000000000005', 'name' => 'Deep', 'children' => []],
+                            ['id' => '00000000-0000-4000-8000-000000000005', 'name' => 'Deep', 'slug' => 'deep', 'path' => 'sport/aaa/deep', 'children' => []],
                         ],
                     ],
-                    ['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'children' => []],
-                    ['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'children' => []],
+                    ['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'slug' => 'lody', 'path' => 'sport/lody', 'children' => []],
+                    ['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'slug' => 'lyzwy', 'path' => 'sport/lyzwy', 'children' => []],
                 ],
             ],
         ], $this->decode($client->getResponse()->getContent()));
@@ -145,6 +149,10 @@ final class CategoriesEndpointTest extends WebTestCase
         self::assertIsString($node['id']);
         self::assertSame('string', self::at($properties, 'name', 'type'));
         self::assertIsString($node['name']);
+        self::assertSame('string', self::at($properties, 'slug', 'type'));
+        self::assertIsString($node['slug']);
+        self::assertSame('string', self::at($properties, 'path', 'type'));
+        self::assertIsString($node['path']);
         self::assertSame('array', self::at($properties, 'children', 'type'));
         self::assertSame('#/components/schemas/CategoryNode', self::at($properties, 'children', 'items', '$ref'));
         self::assertIsArray($node['children']);

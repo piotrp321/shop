@@ -36,6 +36,9 @@ final class ProductDocumentFactory extends ObjectFactory
             'categoryIds' => [$main],
             'categoryAncestorIds' => [$main],
             'mainImage' => null,
+            'categoryNames' => [],
+            'variants' => [],
+            'fromGross' => null,
         ];
     }
 }

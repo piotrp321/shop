@@ -49,11 +49,12 @@ final class EventFlowTest extends MessagingKernelTestCase
         self::assertSame(0, $this->eventsInQueue());
         $document = self::esClient()->get(['index' => $this->alias(), 'id' => self::PRODUCT_ID]);
         \assert($document instanceof Elasticsearch);
-        self::assertSame(1, $document['_version']);
         $source = $document['_source'];
         \assert(\is_array($source));
         self::assertSame(self::PRODUCT_ID, $source['id']);
-        self::assertSame(1, $source['version']);
+        // The version is the time the read started, in microseconds.
+        self::assertSame($document['_version'], $source['version']);
+        self::assertGreaterThan(1_700_000_000_000_000, $source['version']);
         self::assertSame('Buty biegowe', $source['name']);
         self::assertSame('buty-biegowe', $source['slug']);
         self::assertSame(self::CATEGORY_ID, $source['main_category_id']);
@@ -64,6 +65,8 @@ final class EventFlowTest extends MessagingKernelTestCase
     {
         $this->createProduct();
         $this->consumeOutboxAndEvents();
+        $first = self::esClient()->get(['index' => $this->alias(), 'id' => self::PRODUCT_ID]);
+        \assert($first instanceof Elasticsearch);
         // At-least-once delivery: the broker hands the same event over again.
         $this->transport('events')->send(new Envelope(
             new ProductCreated(self::PRODUCT_ID, new \DateTimeImmutable()),
@@ -76,16 +79,21 @@ final class EventFlowTest extends MessagingKernelTestCase
         usleep(1_500_000);
         self::assertSame(0, $this->eventsInQueue());
         self::assertSame(0, $this->rows('failed'));
+        // The second handling read the product again, later, and wrote it again.
         $document = self::esClient()->get(['index' => $this->alias(), 'id' => self::PRODUCT_ID]);
         \assert($document instanceof Elasticsearch);
-        self::assertSame(1, $document['_version']);
+        self::assertGreaterThan($first['_version'], $document['_version']);
+        self::esClient()->indices()->refresh(['index' => $this->alias()]);
+        $count = self::esClient()->count(['index' => $this->alias()]);
+        \assert($count instanceof Elasticsearch);
+        self::assertSame(1, $count['count']);
     }
 
     private function createProduct(): void
     {
         $bus = self::getContainer()->get('command.bus');
         self::assertInstanceOf(MessageBusInterface::class, $bus);
-        $bus->dispatch(new CreateCategory(self::CATEGORY_ID, 'Obuwie', null));
+        $bus->dispatch(new CreateCategory(self::CATEGORY_ID, 'Obuwie', 'obuwie', null));
         $bus->dispatch(new CreateProduct(
             self::PRODUCT_ID,
             'Buty biegowe',

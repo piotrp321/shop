@@ -44,6 +44,9 @@ final class YamlDemoCatalogSourceTest extends TestCase
         yield 'unknown tax class' => [['templates', 1, 'taxClass'], 'reduced', 'reduced'];
         yield 'over-long product name' => [['templates', 0, 'productType'], str_repeat('Buty ', 50), 'ProductName'];
         yield 'over-long category name' => [['categories', 0, 'name'], str_repeat('K', 101), 'CategoryName'];
+        // A category no template refers to, so the slug is checked by the domain and not by the path lookup.
+        yield 'category slug not in the slug format' => [['categories', 1, 'children', 1], ['name' => 'Namioty', 'slug' => 'Namioty'], 'category "turystyka/Namioty" is invalid: CategorySlug'];
+        yield 'over-long category slug' => [['categories', 1, 'children', 1], ['name' => 'Namioty', 'slug' => str_repeat('n', 61)], 'CategorySlug'];
         yield 'over-long short description' => [['templates', 0, 'models', 0, 'description'], str_repeat('x', 501), 'ShortDescription'];
         yield 'empty photo alt' => [['templates', 0, 'images', 0, 'alt'], ' ', 'alt'];
         yield 'main category repeated as additional' => [['templates', 0, 'additionalCategories'], ['bieganie/buty/szosowe'], 'once'];

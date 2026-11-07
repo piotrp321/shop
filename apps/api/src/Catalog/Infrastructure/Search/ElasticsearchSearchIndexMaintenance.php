@@ -92,7 +92,7 @@ final readonly class ElasticsearchSearchIndexMaintenance implements SearchIndexM
 
         $body = [];
         foreach ($documents as $document) {
-            $body[] = ['index' => ['_index' => $index, '_id' => $document->id, 'version' => $document->version, 'version_type' => 'external']];
+            $body[] = ['index' => ['_index' => $index, '_id' => $document->id, 'version' => $document->version, 'version_type' => 'external_gte']];
             $body[] = ProductIndexDefinition::source($document);
         }
         $items = $this->request('bulk write', fn () => $this->longRequestClient->bulk(['body' => $body]))->asArray()['items'] ?? null;

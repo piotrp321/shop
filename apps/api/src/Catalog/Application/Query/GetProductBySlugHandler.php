@@ -44,7 +44,7 @@ final readonly class GetProductBySlugHandler
             $row['slug'],
             $row['name'],
             $row['shortDescription'],
-            array_map(static fn (array $category): BreadcrumbItem => new BreadcrumbItem($category['id'], $category['name']), $row['breadcrumb']),
+            self::breadcrumb($row['breadcrumb']),
             array_map(fn (array $image): ImageView => SizedImage::view($this->imageUrls, ImageSize::Product, $image['key'], $image['alt']), $row['images']),
             $row['axes'],
             array_map(static function (array $variant): ProductDetailsVariant {
@@ -54,5 +54,22 @@ final readonly class GetProductBySlugHandler
                 return new ProductDetailsVariant($id->toString(), new ProductVariant($id, $values)->label(), $variant['values']);
             }, $row['variants']),
         );
+    }
+
+    /**
+     * @param list<array{id: string, name: string, slug: string}> $categories from the root
+     *
+     * @return list<BreadcrumbItem> each with the slugs from the root to its category joined with `/`
+     */
+    private static function breadcrumb(array $categories): array
+    {
+        $items = [];
+        $path = '';
+        foreach ($categories as $category) {
+            $path = '' === $path ? $category['slug'] : $path.'/'.$category['slug'];
+            $items[] = new BreadcrumbItem($category['id'], $category['name'], $path);
+        }
+
+        return $items;
     }
 }

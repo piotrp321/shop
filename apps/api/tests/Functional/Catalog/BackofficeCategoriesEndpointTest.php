@@ -30,23 +30,25 @@ final class BackofficeCategoriesEndpointTest extends WebTestCase
 
     public function testReturnsTheTreeSortedByPolishCollation(): void
     {
-        $sport = $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000001', 'name' => 'Sport']));
-        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'parent' => $sport]));
-        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'parent' => $sport]));
-        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000004', 'name' => 'Łaźnia']));
+        $sport = $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000001', 'name' => 'Sport', 'slug' => 'sport']));
+        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'slug' => 'lyzwy', 'parent' => $sport]));
+        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'slug' => 'lody', 'parent' => $sport]));
+        $this->save(CategoryFactory::createOne(['id' => '00000000-0000-4000-8000-000000000004', 'name' => 'Łaźnia', 'slug' => 'laznia']));
 
         $this->request(TestTokenFactory::staff(['admin']));
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringContainsString('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
         self::assertSame([
-            ['id' => '00000000-0000-4000-8000-000000000004', 'name' => 'Łaźnia', 'children' => []],
+            ['id' => '00000000-0000-4000-8000-000000000004', 'name' => 'Łaźnia', 'slug' => 'laznia', 'path' => 'laznia', 'children' => []],
             [
                 'id' => '00000000-0000-4000-8000-000000000001',
                 'name' => 'Sport',
+                'slug' => 'sport',
+                'path' => 'sport',
                 'children' => [
-                    ['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'children' => []],
-                    ['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'children' => []],
+                    ['id' => '00000000-0000-4000-8000-000000000003', 'name' => 'Lody', 'slug' => 'lody', 'path' => 'sport/lody', 'children' => []],
+                    ['id' => '00000000-0000-4000-8000-000000000002', 'name' => 'Łyżwy', 'slug' => 'lyzwy', 'path' => 'sport/lyzwy', 'children' => []],
                 ],
             ],
         ], json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR));

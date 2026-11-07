@@ -1,19 +1,22 @@
 import { cache } from "react";
 import { createApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import type { ApiListQuery } from "./listing-query";
 
-type CategoryNode = components["schemas"]["CategoryNode"];
 type ProductPage = components["schemas"]["ProductPage"];
 type ProductOffer = components["schemas"]["ProductOfferResponse"];
 
 export type CatalogResult =
-  | { kind: "ok"; categories: CategoryNode[]; products: ProductPage; offers: Record<string, ProductOffer> }
+  | { kind: "ok"; products: ProductPage; offers: Record<string, ProductOffer> }
   | { kind: "invalid-filter" }
   | { kind: "unknown-category" };
 
 /**
  * The catalog reads go through Varnish (`API_CATALOG_URL`), never straight to the API: they are public and cached.
  * The cart, the merge and the login use `API_INTERNAL_URL` (see `src/auth/deps.ts`).
+ *
+ * The listing pages render on every request and Varnish is their only cache, so each list read says
+ * `cache: "no-store"` (no Next.js data cache, no `next.revalidate`, no tags).
  */
 function catalogClient() {
   const baseUrl = process.env.API_CATALOG_URL;
@@ -35,6 +38,7 @@ async function loadOffers(client: ReturnType<typeof catalogClient>, products: Pr
   try {
     const { data, response } = await client.GET("/api/v1/product-offers", {
       params: { query: { productId: products.map((product) => product.id) } },
+      cache: "no-store",
     });
     if (data === undefined || !Array.isArray(data.items)) {
       console.error(`GET /api/v1/product-offers failed with status ${response.status}, the products are shown without offers.`);
@@ -49,23 +53,32 @@ async function loadOffers(client: ReturnType<typeof catalogClient>, products: Pr
 }
 
 /**
- * Loads the category tree and one page of products in parallel, then the offers of that page. A 400 for the filter becomes `invalid-filter`
- * and a 404 for the product list (the category does not exist) becomes `unknown-category`; any other failure
- * (5xx, network) is thrown and handled by `app/error.tsx`.
+ * Loads one page of products, then the offers of that page. `category` is the id of the category (the page resolved it
+ * in the category tree) or, on `/`, the raw `category` parameter; the other parameters are the phrase, the filters and
+ * the sort, already in the words of the API (`toApiQuery`). A 400 for the filter becomes `invalid-filter` and a
+ * 404 for the product list (the category does not exist) becomes `unknown-category`; any other failure (5xx,
+ * network) is thrown and handled by `app/error.tsx`.
  */
-export async function loadCatalog(params: { category?: string; page?: string }): Promise<CatalogResult> {
+export async function loadCatalog(params: ApiListQuery): Promise<CatalogResult> {
   const client = catalogClient();
-  const [categories, products] = await Promise.all([
-    client.GET("/api/v1/categories"),
-    // The API validates the filter. A malformed value is sent as it came and comes back as 400.
-    client.GET("/api/v1/products", {
-      params: { query: { category: params.category, page: params.page as unknown as number } },
-    }),
-  ]);
+  // The API validates the filter. A malformed value is sent as it came and comes back as 400, so the numbers (typed
+  // as numbers in the schema) go on as the strings they are.
+  const products = await client.GET("/api/v1/products", {
+    params: {
+      query: {
+        category: params.category,
+        q: params.q,
+        option: params.option,
+        priceMin: params.priceMin as unknown as number,
+        priceMax: params.priceMax as unknown as number,
+        available: params.available,
+        sort: params.sort,
+        page: params.page as unknown as number,
+      },
+    },
+    cache: "no-store",
+  });
 
-  if (categories.data === undefined) {
-    throw new Error(`GET /api/v1/categories failed with status ${categories.response.status}.`);
-  }
   if (products.data === undefined) {
     if (products.response.status === 400) {
       return { kind: "invalid-filter" };
@@ -76,11 +89,14 @@ export async function loadCatalog(params: { category?: string; page?: string }):
     throw new Error(`GET /api/v1/products failed with status ${products.response.status}.`);
   }
   const offers = await loadOffers(client, products.data.items);
-  return { kind: "ok", categories: categories.data, products: products.data, offers };
+  return { kind: "ok", products: products.data, offers };
 }
+
+const loadCatalogByKey = cache((key: string) => loadCatalog(JSON.parse(key) as ApiListQuery));
 
 /**
  * `loadCatalog` shared by `generateMetadata` and the page within one request, so entering the page calls the API
- * once per endpoint. The arguments are strings (not an object) because `cache` compares them by identity.
+ * once per endpoint. `cache` compares arguments by identity, so the query goes in as its JSON (`toApiQuery` always
+ * builds the keys in the same order).
  */
-export const loadCatalogForRequest = cache((category?: string, page?: string) => loadCatalog({ category, page }));
+export const loadCatalogForRequest = (query: ApiListQuery) => loadCatalogByKey(JSON.stringify(query));

@@ -11,7 +11,7 @@ final readonly class BulkResult
 {
     /**
      * @param list<string>          $indexed
-     * @param list<string>          $stale             rejected because the index holds the same or a newer version
+     * @param list<string>          $stale             rejected because the index holds a newer version
      * @param array<string, string> $transientFailures id => reason; retrying later may succeed
      * @param array<string, string> $permanentFailures id => reason; retrying will not help
      */

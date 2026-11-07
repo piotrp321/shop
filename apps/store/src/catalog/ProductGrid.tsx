@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { components } from "@/api/schema";
 import { ProductTile } from "./ProductTile";
 
@@ -17,16 +16,6 @@ export function ProductGrid({
   products: ProductListItem[];
   offers: Record<string, ProductOffer>;
 }) {
-  if (products.length === 0) {
-    return (
-      <div className="flex flex-col items-start gap-2 py-8">
-        <p>Brak produktów do wyświetlenia.</p>
-        <Link href="/" className="text-sm underline underline-offset-4">
-          Zobacz cały katalog
-        </Link>
-      </div>
-    );
-  }
   return (
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
       {products.map((product, index) => (

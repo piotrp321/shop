@@ -28,7 +28,7 @@ final class TaxClassMigrationTest extends KernelTestCase
         self::assertInstanceOf(Connection::class, $connection);
         $this->connection = $connection;
         $this->connection->executeStatement(
-            \sprintf("INSERT INTO catalog_category (id, name, path) VALUES ('%s', 'Root', '/%1\$s/')", self::CATEGORY_ID),
+            \sprintf("INSERT INTO catalog_category (id, name, slug, path) VALUES ('%s', 'Root', 'root', '/%1\$s/')", self::CATEGORY_ID),
         );
     }
 

@@ -37,9 +37,9 @@ final class ProductDetailsEndpointTest extends WebTestCase
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
 
         $categories = new DoctrineCategoryRepository($entityManager);
-        $sport = CategoryFactory::createOne(['name' => 'Sport']);
+        $sport = CategoryFactory::createOne(['name' => 'Sport', 'slug' => 'sport']);
         $categories->save($sport);
-        $shoes = CategoryFactory::createOne(['name' => 'Obuwie', 'parent' => $sport]);
+        $shoes = CategoryFactory::createOne(['name' => 'Obuwie', 'slug' => 'obuwie', 'parent' => $sport]);
         $categories->save($shoes);
         $product = ProductFactory::createOne([
             'id' => self::PRODUCT_ID,
@@ -69,7 +69,10 @@ final class ProductDetailsEndpointTest extends WebTestCase
         self::assertSame('buty-szosowe-asfalt', $body['slug']);
         self::assertSame('Buty szosowe Asfalt', $body['name']);
         self::assertSame('Lekkie buty na asfalt.', $body['shortDescription']);
-        self::assertSame([['id' => $this->categoryIds[0], 'name' => 'Sport'], ['id' => $this->categoryIds[1], 'name' => 'Obuwie']], $body['breadcrumb']);
+        self::assertSame([
+            ['id' => $this->categoryIds[0], 'name' => 'Sport', 'path' => 'sport'],
+            ['id' => $this->categoryIds[1], 'name' => 'Obuwie', 'path' => 'sport/obuwie'],
+        ], $body['breadcrumb']);
         self::assertSame(['Kolor', 'Rozmiar'], $body['variantAxes']);
         self::assertSame(
             [

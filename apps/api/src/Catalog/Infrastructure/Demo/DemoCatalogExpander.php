@@ -106,7 +106,7 @@ final readonly class DemoCatalogExpander
 
         $id = Uuid::v5($namespace, 'category:'.$path)->toRfc4122();
         $idsByPath[$path] = $id;
-        $categories[] = new DemoCategory($id, $node->name, $parentId, $path);
+        $categories[] = new DemoCategory($id, $node->name, $node->slug, $parentId, $path);
         foreach ($node->children as $child) {
             $this->addCategory($namespace, $child, $id, $path, $categories, $idsByPath);
         }

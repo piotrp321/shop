@@ -13,6 +13,7 @@ final readonly class SearchResult
     public function __construct(
         public array $items,
         public int $total,
+        public SearchFacets $facets,
     ) {
     }
 }

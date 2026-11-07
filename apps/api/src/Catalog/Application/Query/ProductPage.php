@@ -15,6 +15,7 @@ final readonly class ProductPage
         public int $page,
         public int $perPage,
         public int $total,
+        public ProductFacets $facets,
     ) {
     }
 }

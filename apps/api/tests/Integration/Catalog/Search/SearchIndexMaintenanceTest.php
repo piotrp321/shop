@@ -183,6 +183,6 @@ final class SearchIndexMaintenanceTest extends TestCase
 
     private static function document(string $id): ProductDocument
     {
-        return new ProductDocument($id, 1, 'Name', 'slug-'.$id, '', 'c', ['c'], ['c'], null);
+        return new ProductDocument($id, 1, 'Name', 'slug-'.$id, '', 'c', ['c'], ['c'], null, [], [], null);
     }
 }

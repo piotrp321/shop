@@ -57,6 +57,16 @@ final class VariantAxesTest extends TestCase
         yield 'same name with another case' => [['Kolor', 'KOLOR']];
         yield 'same name after trimming' => [['Kolor', ' Kolor ']];
         yield 'same Polish name with another case' => [['Żółw', 'żółw']];
+        yield 'name with a colon' => [['Kolor:']];
+        yield 'colon inside the second name' => [['Kolor', 'Roz:miar']];
+    }
+
+    public function testColonInANameIsRejectedWithItsOwnMessage(): void
+    {
+        $this->expectException(InvalidVariantAxes::class);
+        $this->expectExceptionMessage('The name of a variant axis must not contain a colon.');
+
+        VariantAxes::fromList([':']);
     }
 
     /**

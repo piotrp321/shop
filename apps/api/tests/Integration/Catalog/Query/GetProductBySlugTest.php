@@ -48,13 +48,13 @@ final class GetProductBySlugTest extends KernelTestCase
         $this->entityManager = $entityManager;
 
         $repository = new DoctrineCategoryRepository($this->entityManager);
-        $sport = CategoryFactory::createOne(['name' => 'Sport']);
+        $sport = CategoryFactory::createOne(['name' => 'Sport', 'slug' => 'sport']);
         $repository->save($sport);
-        $shoes = CategoryFactory::createOne(['name' => 'Obuwie', 'parent' => $sport]);
+        $shoes = CategoryFactory::createOne(['name' => 'Obuwie', 'slug' => 'obuwie', 'parent' => $sport]);
         $repository->save($shoes);
-        $road = CategoryFactory::createOne(['name' => 'Szosowe', 'parent' => $shoes]);
+        $road = CategoryFactory::createOne(['name' => 'Szosowe', 'slug' => 'szosowe', 'parent' => $shoes]);
         $repository->save($road);
-        $other = CategoryFactory::createOne(['name' => 'Akcesoria']);
+        $other = CategoryFactory::createOne(['name' => 'Akcesoria', 'slug' => 'akcesoria']);
         $repository->save($other);
         $this->categories = ['shoes' => $shoes, 'road' => $road, 'other' => $other];
     }
@@ -70,6 +70,8 @@ final class GetProductBySlugTest extends KernelTestCase
             [$this->categories['road']->id()->toString()],
             \array_slice(array_column($this->breadcrumb($details), 'id'), -1),
         );
+        // Every element has the slug path of its category, from the root.
+        self::assertSame(['sport', 'sport/obuwie', 'sport/obuwie/szosowe'], array_column($this->breadcrumb($details), 'path'));
     }
 
     public function testBreadcrumbOfARootCategoryIsThatCategory(): void
@@ -77,6 +79,7 @@ final class GetProductBySlugTest extends KernelTestCase
         $this->saveProduct(['slug' => 'pasek', 'mainCategory' => $this->categories['other']]);
 
         self::assertSame(['Akcesoria'], array_column($this->breadcrumb($this->details('pasek')), 'name'));
+        self::assertSame(['akcesoria'], array_column($this->breadcrumb($this->details('pasek')), 'path'));
     }
 
     public function testProductFieldsAndImagesInThePositionOrderInTheProductSize(): void

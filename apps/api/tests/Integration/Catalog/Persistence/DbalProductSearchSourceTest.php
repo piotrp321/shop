@@ -116,7 +116,6 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         self::assertCount(1, $page);
         $snapshot = $page[0];
         self::assertSame($product->id()->toString(), $snapshot->id);
-        self::assertSame(1, $snapshot->version);
         self::assertSame($product->name()->value(), $snapshot->name);
         self::assertSame($product->slug()->value(), $snapshot->slug);
         self::assertSame('Short text', $snapshot->shortDescription);
@@ -141,6 +140,56 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         self::assertSame(['key' => $firstImage->key()->toString(), 'alt' => 'front'], $snapshot->mainImage);
     }
 
+    public function testSnapshotCarriesTheVariantsWithTheirValuesAndTheCategoryNames(): void
+    {
+        $sport = $this->savedCategory(name: 'Sport');
+        $shoes = $this->savedCategory($sport, 'Buty');
+        $running = $this->savedCategory($shoes, 'Biegowe');
+        $clothes = $this->savedCategory($sport, 'Odzież');
+        $sale = $this->savedCategory(name: 'Wyprzedaż');
+        $this->savedCategory($sport, 'Rowery');
+        $product = ProductFactory::createOne([
+            'mainCategory' => $running,
+            'additionalCategories' => [$clothes, $sale],
+            'variantAxes' => ['Kolor', 'Rozmiar'],
+            'variants' => [
+                ['id' => '10000000-0000-4000-8000-000000000002', 'values' => ['czarne', '42']],
+                ['id' => '10000000-0000-4000-8000-000000000001', 'values' => ['Białe', '43']],
+            ],
+        ]);
+        $this->products->save($product);
+
+        $snapshot = $this->source->page(null, 10)[0];
+
+        self::assertSame(['Kolor', 'Rozmiar'], $snapshot->variantAxes);
+        // In the order of the variants of the product, not of their ids.
+        self::assertSame([
+            ['id' => '10000000-0000-4000-8000-000000000002', 'values' => ['czarne', '42']],
+            ['id' => '10000000-0000-4000-8000-000000000001', 'values' => ['Białe', '43']],
+        ], $snapshot->variants);
+        // Every category of the product and every ancestor once; a sibling that is neither is not there.
+        $names = $snapshot->categoryNames;
+        sort($names);
+        self::assertSame(['Biegowe', 'Buty', 'Odzież', 'Sport', 'Wyprzedaż'], $names);
+        self::assertEquals($snapshot, $this->source->find($product->id()->toString()));
+    }
+
+    public function testTheDefaultVariantHasNoAxesAndNoValues(): void
+    {
+        $product = ProductFactory::createOne([
+            'mainCategory' => $this->savedCategory(name: 'Kosmetyki'),
+            'variants' => [['id' => '10000000-0000-4000-8000-000000000001', 'values' => []]],
+        ]);
+        $this->products->save($product);
+
+        $snapshot = $this->source->find($product->id()->toString());
+
+        self::assertNotNull($snapshot);
+        self::assertSame([], $snapshot->variantAxes);
+        self::assertSame([['id' => '10000000-0000-4000-8000-000000000001', 'values' => []]], $snapshot->variants);
+        self::assertSame(['Kosmetyki'], $snapshot->categoryNames);
+    }
+
     public function testProductWithoutImagesHasNoMainImage(): void
     {
         $this->products->save(ProductFactory::createOne(['mainCategory' => $this->savedCategory()]));
@@ -150,15 +199,6 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         self::assertNull($page[0]->mainImage);
         self::assertSame([], $page[0]->additionalCategoryIds);
         self::assertCount(1, $page[0]->categoryPaths);
-    }
-
-    public function testVersionIsReadFromTheStoredRow(): void
-    {
-        $product = ProductFactory::createOne(['mainCategory' => $this->savedCategory()]);
-        $this->products->save($product);
-        $this->connection->executeStatement('UPDATE catalog_product SET version = 7 WHERE id = ?', [$product->id()->toString()]);
-
-        self::assertSame(7, $this->source->page(null, 1)[0]->version);
     }
 
     public function testRejectsALimitBelowOne(): void
@@ -278,15 +318,6 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         self::assertEquals($expected[0], $this->source->find($id));
     }
 
-    public function testFindReadsTheStoredVersion(): void
-    {
-        $product = ProductFactory::createOne(['mainCategory' => $this->savedCategory()]);
-        $this->products->save($product);
-        $this->connection->executeStatement('UPDATE catalog_product SET version = 7 WHERE id = ?', [$product->id()->toString()]);
-
-        self::assertSame(7, $this->source->find($product->id()->toString())?->version);
-    }
-
     public function testFindReturnsNullForAnUnknownProduct(): void
     {
         $this->createProducts(2);
@@ -347,7 +378,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
     public function testMemoryDependsOnThePageSizeNotOnTheCatalogSize(): void
     {
         $this->connection->executeStatement(
-            "INSERT INTO catalog_category (id, name, path) VALUES ('00000000-0000-4000-8000-000000000001', 'Root', '/00000000-0000-4000-8000-000000000001/')",
+            "INSERT INTO catalog_category (id, name, slug, path) VALUES ('00000000-0000-4000-8000-000000000001', 'Root', 'root', '/00000000-0000-4000-8000-000000000001/')",
         );
         $this->connection->executeStatement(
             <<<'SQL'
@@ -426,9 +457,9 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         return $id;
     }
 
-    private function savedCategory(?Category $parent = null): Category
+    private function savedCategory(?Category $parent = null, ?string $name = null): Category
     {
-        $category = CategoryFactory::createOne(['parent' => $parent]);
+        $category = CategoryFactory::createOne(['parent' => $parent, ...(null === $name ? [] : ['name' => $name])]);
         $this->categories->save($category);
 
         return $category;
