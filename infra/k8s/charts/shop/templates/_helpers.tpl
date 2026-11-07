@@ -13,9 +13,13 @@ in the comment of each helper.
 {{ .root.Values.global.scheme }}://{{ include "shop.host" . }}
 {{- end }}
 
-{{/* Image built by us. Parameters: root, app (api, store, admin, elasticsearch). */}}
+{{/*
+Image built by us: <registry>/<app>:<tag>, and @<digest> when image.digests has one (the image is then pulled by the
+digest). Parameters: root, app (api, store, admin, elasticsearch).
+*/}}
 {{- define "shop.appImage" -}}
-{{ .root.Values.image.registry }}/{{ .app }}:{{ required "image.tag (the revision) is required" .root.Values.image.tag }}
+{{- $digest := index .root.Values.image.digests .app -}}
+{{ .root.Values.image.registry }}/{{ .app }}:{{ required "image.tag (the revision) is required" .root.Values.image.tag }}{{ if $digest }}@{{ $digest }}{{ end }}
 {{- end }}
 
 {{/* Labels of a resource. Parameters: root, name (the logical name of the service or job). */}}

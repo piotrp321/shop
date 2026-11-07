@@ -5,7 +5,7 @@ check:
 	sh scripts/check.sh
 
 # The checks fail on injected errors (a broken template, a secret key missing from the chart, an invalid manifest, an
-# auth ingress exposing the master realm, a job in a wave before its dependency).
+# auth ingress exposing the master realm, a job in a wave before its dependency, an image without a digest).
 selftest:
 	sh scripts/selftest.sh
 

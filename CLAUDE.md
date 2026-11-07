@@ -40,7 +40,7 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc). Główny
     `make check` woła też `make -C infra/k8s check`: `helm lint`, render chartu dla `prod` i `ci`, schemat wartości,
     `kubeconform`, `shellcheck` i testy renderu (fale, ścieżki ingressu `auth`, middleware, klucze sekretu, nazwy Jobów,
-    CronJob, zgodność obrazów z compose).
+    CronJob, obrazy: własne z rejestru po digeście, pozostałe `tag@digest` z tagiem jak w compose, bez `latest`).
   - `infra/k8s` ma własny `Makefile` (potrzebuje tylko Dockera): `make -C infra/k8s check`; `make -C infra/k8s smoke`
     (test dymny: chart z profilem `ci` na pustym klastrze k3d z obrazami produkcyjnymi zbudowanymi lokalnie, kilka minut;
     `SMOKE_BREAK=migration|image` psuje go celowo); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
@@ -138,8 +138,9 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
 - Chart `infra/k8s/charts/shop` odzwierciedla compose. Zmiana usług, obrazów i ich wersji, zmiennych środowiska,
   transportów workera, sekretów w compose (`infra/scripts/init-env.sh`) i zmiana realmów Keycloaka
   (`infra/keycloak/realms`: nowy klient, rola, adres) wymaga tej samej zmiany w chartcie w tym samym PR. Pilnuje tego
-  `make -C infra/k8s check` (każdy klucz z `init-env.sh` jest w szablonie sekretu, obrazy i wersje zgadzają się
-  z compose) i test dymny; nowej zmiennej z wartością domyślną ani zmiany istniejącego klienta realmu żaden z nich
+  `make -C infra/k8s check` (każdy klucz z `init-env.sh` jest w szablonie sekretu, obrazy usług bez naszego kodu mają
+  tag jak w compose i digest, Elasticsearch to obraz z `infra/elasticsearch/Dockerfile` jak w compose) i test dymny;
+  zmiana wersji obrazu w compose wymaga nowego digestu w chartcie (`docker buildx imagetools inspect <obraz:tag>`); nowej zmiennej z wartością domyślną ani zmiany istniejącego klienta realmu żaden z nich
   nie wyłapie.
 - Zadanie jest skończone dopiero, gdy przechodzą `make check` i testy aplikacji, której dotyczy zmiana.
   Pokaż wynik, nie deklaruj.

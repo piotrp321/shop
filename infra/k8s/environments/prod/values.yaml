@@ -6,6 +6,10 @@ global:
   domain: shop.example.org
   scheme: https
 
+# The images built by us are deployed by digest: image.digests.<app> is required for all four.
+image:
+  requireDigests: true
+
 ingress:
   tls: true
 

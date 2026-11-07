@@ -78,7 +78,9 @@ Zakres: `infra/k8s`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.docker
   platformy: Argo CD i Sealed Secrets.
 - **D3. Nazwy usług w klastrze takie jak w compose**; wewnętrzne adresy i VCL (`api:80`) bez zmian.
 - **D4. Wdrażana gałąź `deploy`, przesuwana fast-forwardem.** Argo CD śledzi `deploy` i ustawia tag obrazów na
-  `$ARGOCD_APP_REVISION` (parametr Helma aplikacji Argo), czyli SHA commita. Workflow wdrożenia po zbudowaniu obrazów
+  `$ARGOCD_APP_REVISION` (parametr Helma aplikacji Argo), czyli SHA commita. Obrazy są wdrażane po digeście
+  (`image.digests`); sposób, w jaki digesty trafiają do aplikacji Argo CD przy zachowaniu fast-forwardu `deploy`,
+  ustalają DEPLOY-5 i DEPLOY-6. Workflow wdrożenia po zbudowaniu obrazów
   z tagiem SHA i zielonym smoke teście przesuwa `deploy` fast-forwardem na ten commit z `main` (historia `main` jest
   liniowa, więc `deploy` jest zawsze jej przodkiem). Bez commitów z tagami i bez force pusha. Wypycha deploy key
   z prawem zapisu (sekret repo). Ruleset `deploy` (`tools/rulesets/deploy.json`) zabrania usunięcia i force pusha
@@ -146,7 +148,16 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   `public/config.js` jest pusty (bez 404 w `vite dev`). Brak wymaganego klucza w obu źródłach: błąd z nazwą klucza.
 - **elasticsearch:** `infra/elasticsearch/Dockerfile`, ten sam, który buduje compose: oficjalny obraz Elasticsearch
   przypięty digestem i wtyczka `analysis-stempel` instalowana w czasie buildu (jej wersja jest wersją Elasticsearch).
-  Wersje w compose i w klastrze są zgodne z definicji; przy starcie poda nic nie jest pobierane.
+  Wersje w compose i w klastrze są zgodne z definicji.
+- Wdrożenie po digeście, nigdy `latest`: obraz własny to `<rejestr>/<app>:<sha>@<digest>`, gdy wartość
+  `image.digests.<app>` jest podana, inaczej `<rejestr>/<app>:<sha>`. `image.requireDigests: true` (profil `prod`)
+  wymaga wszystkich czterech digestów (`sha256:` i 64 znaki hex); podany digest zawsze musi mieć ten format,
+  a `image.tag` nie może być `latest` (schemat wartości, błąd renderu z nazwą wartości). Profil `ci` digestów nie
+  wymaga (smoke test importuje obrazy lokalne po tagu).
+- Obrazy usług bez własnego kodu (`images.*` w wartościach chartu) mają postać `nazwa:tag@sha256:<digest indeksu
+  wieloarchitekturowego>`, z tagiem takim jak w `infra/docker-compose.yml`; compose zostaje przy samych tagach.
+- Kontenery przy starcie niczego nie pobierają (wtyczek ani innych artefaktów); klaster pobiera tylko obrazy
+  o przypiętych digestach.
 - Etap używany przez compose pozostaje ostatni; lokalny `make up` działa jak dziś.
 - Usługi bez własnego kodu używają obrazów i wersji z `infra/docker-compose.yml`. `garage-init` w klastrze: initContainer
   z obrazu Garage kopiuje binarkę do `emptyDir`, kontener Alpine uruchamia `infra/garage/init.sh`. Konfiguracja z repo
@@ -190,7 +201,8 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 
 1. Merge PR do `main` uruchamia `.github/workflows/deploy.yml`. Grupa `concurrency` bez anulowania trwającego runu:
    działa jeden, czeka najwyżej jeden, pośrednie są pomijane, więc wdraża się najnowszy commit.
-2. Workflow buduje i wypycha obrazy `api`, `store`, `admin`, `elasticsearch` z tagiem SHA.
+2. Workflow buduje i wypycha obrazy `api`, `store`, `admin`, `elasticsearch` z tagiem SHA; wdrażane są po digeście
+   (D4).
 3. Smoke test na k3d (niżej) na tych obrazach.
 4. Po zielonym smoke teście workflow przesuwa `deploy` fast-forwardem na ten commit (D4). Bez sekretu z deploy keyem
    (przed krokiem runbooka) workflow kończy się po smoke teście z ostrzeżeniem, bez błędu.
@@ -286,7 +298,10 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 - `make -C infra/k8s check`: `helm lint`, render dla `prod` i `ci` (`prod` z testowym SHA), `kubeconform`,
   `shellcheck`, test sekretów, (przy kopiach) zgodność kopii z oryginałami, `actionlint` workflowu, testy renderu:
   przełączniki D10, CronJoby, ścieżki ingressu `auth`, middleware, fale (każdy Job i Deployment ma zależności we
-  wcześniejszych falach), nazwy Jobów D11. Główny `make check` go wywołuje, więc działa w wymaganym jobie `checks`
+  wcześniejszych falach), nazwy Jobów D11, obrazy (własne z rejestru, z digestem w `prod`; pozostałe z tagiem jak
+  w compose i digestem; Elasticsearch z `infra/elasticsearch/Dockerfile`, bez `elasticsearch-plugin` w kontenerach).
+  Render, który musi się nie udać: `prod` bez digestów, `image.tag=latest`, digest w złym formacie, obraz usługi bez
+  digestu. Główny `make check` go wywołuje, więc działa w wymaganym jobie `checks`
   i w bramkach AO.
 - `make -C infra/k8s smoke`: buduje cztery obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa
   klastra i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze,

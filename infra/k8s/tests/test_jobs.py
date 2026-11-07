@@ -1,7 +1,7 @@
 import re
 import unittest
 
-from support import JOBS, by_logical, containers, env_of, logical, of_kind, pod_spec, wave
+from support import DIGEST, DIGESTS, JOBS, REVISION, by_logical, containers, env_of, logical, of_kind, pod_spec, wave
 
 
 def job_names(case):
@@ -76,7 +76,8 @@ class JobCommandsTest(unittest.TestCase):
         self.assertIn("init.sh", command_line(job))
         self.assertTrue(containers(job)[0]["image"].startswith("alpine:"))
         images = [v["image"]["reference"] for v in spec["volumes"] if "image" in v]
-        self.assertEqual(["dxflrs/garage:v2.4.0"], images)
+        self.assertEqual(1, len(images))
+        self.assertRegex(images[0], r"^dxflrs/garage:v2\.4\.0" + DIGEST + "$")
 
     def test_jobs_are_not_retried_forever(self):
         for job in of_kind("prod", "Job"):
@@ -95,7 +96,8 @@ class CronJobTest(unittest.TestCase):
             self.assertEqual("Europe/Warsaw", cron["spec"]["timeZone"])
             self.assertIn("cart:purge-expired", command_line(cron))
             self.assertEqual(1, wave(cron))
-            self.assertTrue(containers(cron)[0]["image"].endswith(":0123456789abcdef0123456789abcdef01234567"))
+            self.assertIn(f":{REVISION}", containers(cron)[0]["image"])
+        self.assertTrue(containers(of_kind("prod", "CronJob")[0])[0]["image"].endswith(f":{REVISION}@{DIGESTS['api']}"))
 
 
 if __name__ == "__main__":

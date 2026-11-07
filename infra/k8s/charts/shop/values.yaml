@@ -8,28 +8,38 @@ global:
   scheme: https
 
 image:
-  # ghcr.io/piotrp321/shop/<api|store|admin|elasticsearch>:<tag>; elasticsearch is built from
+  # <registry>/<api|store|admin|elasticsearch>:<tag>[@<digest>]; elasticsearch is built from
   # infra/elasticsearch/Dockerfile, the same Dockerfile compose builds (the official image with the Polish analysis
   # plugin installed at build time).
   registry: ghcr.io/piotrp321/shop
-  # The revision (commit SHA); required. Argo CD sets it from the revision it syncs.
+  # The revision (commit SHA); required, never `latest`. Argo CD sets it from the revision it syncs.
   tag: ""
+  # The digests (sha256:<64 hex>) of the images pushed for the revision: with a digest the image is pulled by it, the
+  # tag only names it. requireDigests (true in prod) makes all four required.
+  digests:
+    api: ""
+    store: ""
+    admin: ""
+    elasticsearch: ""
+  requireDigests: false
   pullPolicy: IfNotPresent
 
-# The images of the services we do not build: the same as in infra/docker-compose.yml (checked by `make check`).
+# The images of the services we do not build: name:tag as in infra/docker-compose.yml, pinned by the digest of the
+# multi-arch index of that tag (`docker buildx imagetools inspect <name:tag>`); `make check` compares the tags with
+# compose and requires the digests.
 # `kubectl` is the image of the initContainers of the jobs initialize and purge-caches that wait for the rollout of the
 # deployments they need (api, varnish, store, worker).
 images:
-  postgres: postgres:18.6
-  redis: redis:8.10.3
-  rabbitmq: rabbitmq:4.4.0-management
-  keycloak: quay.io/keycloak/keycloak:26.6.0
-  garage: dxflrs/garage:v2.4.0
-  imgproxy: darthsim/imgproxy:v3.31.1
-  mailpit: axllent/mailpit:v1.27.11
-  varnish: varnish:9.1.0
-  alpine: alpine:3.22
-  kubectl: registry.k8s.io/kubectl:v1.36.6
+  postgres: postgres:18.6@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+  redis: redis:8.10.3@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
+  rabbitmq: rabbitmq:4.4.0-management@sha256:af6f50d38098d8bd52fef7f3fa85015dd8b2bf6def58e995bf584ae9ba0f6407
+  keycloak: quay.io/keycloak/keycloak:26.6.0@sha256:b0e5dbced1775de4d629f103c0a9cfc057decc62ce8d3cb1c54f8849a6c6eb62
+  garage: dxflrs/garage:v2.4.0@sha256:715d176efc35384bf72cf6052fd61b74b3e27a1e31a9dfedabe646bd1e92f137
+  imgproxy: darthsim/imgproxy:v3.31.1@sha256:2b7a56dbf9c8a8e12e7109a5bdd27d31a8c1aa49f2116c927c6aedc37e18db98
+  mailpit: axllent/mailpit:v1.27.11@sha256:e22dce5b36f93c77082e204a3942fb6b283b7896e057458400a4c88344c3df68
+  varnish: varnish:9.1.0@sha256:f97e894d90bccc585e5847e766696b7785c98046c29f76007f06d2e2c3228a4e
+  alpine: alpine:3.22@sha256:bfe7ceb9f09ec0566c48fb93356e45a47a00be5a1dd14fa5b909e7709c66b034
+  kubectl: registry.k8s.io/kubectl:v1.36.6@sha256:0650805141538d13ccbb6bb9e0dd647bc415bc002898357970211c4d47224396
 
 ingress:
   className: traefik

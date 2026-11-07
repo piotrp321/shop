@@ -58,6 +58,7 @@ secret_key_dropped_from_template() { grep -v 'VARNISH_PURGE_SECRET' "$tree/infra
 invalid_manifest() { replace infra/k8s/charts/shop/templates/_helpers.tpl "revisionHistoryLimit: 2" 'revisionHistoryLimit: "two"'; }
 auth_exposes_master() { replace infra/k8s/charts/shop/templates/ingress.yaml '"/realms/backoffice/" "/resources/"' '"/realms/backoffice/" "/realms/master/" "/resources/"'; }
 job_before_dependency() { replace infra/k8s/charts/shop/templates/jobs.yaml '(dict "root" . "name" "migrate" "wave" "0"' '(dict "root" . "name" "migrate" "wave" "-2"'; }
+image_without_digest() { replace infra/k8s/charts/shop/values.yaml "  redis: redis:8.10.3@" "  redis: redis:8.10.3 # @"; }
 nothing_broken() { :; }
 
 echo "selftest: the unbroken copy passes"
@@ -70,6 +71,7 @@ run_case "key dropped from the secret template" "VARNISH_PURGE_SECRET" secret_ke
 run_case "invalid manifest" "is invalid" invalid_manifest
 run_case "auth ingress exposing the master realm" "test_auth_exposes_only_the_realms_of_the_shop_and_the_resources" auth_exposes_master
 run_case "job in a wave before its dependency" "waits for postgres" job_before_dependency
+run_case "third-party image without a digest" "/images/redis" image_without_digest
 
 if [ "$failures" -ne 0 ]; then
   echo "selftest: $failures case(s) failed" >&2

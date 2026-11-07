@@ -13,6 +13,11 @@ mkdir -p "$out"
 
 rev1=0123456789abcdef0123456789abcdef01234567
 rev2=89abcdef0123456789abcdef0123456789abcdef
+# The profile prod requires the digests of the images built by us (tests/support.py has the same values); ci has none.
+# digest <letter>: sha256: and the letter 64 times.
+digest() { printf 'sha256:%064d' 0 | tr 0 "$1"; }
+digests="--set image.digests.api=$(digest a) --set image.digests.store=$(digest b)"
+digests="$digests --set image.digests.admin=$(digest c) --set image.digests.elasticsearch=$(digest d)"
 
 # render <case> <environment> [helm arguments]
 render() {
@@ -25,11 +30,14 @@ render() {
   yq -o=json -I=0 '.' < "$out/$case_name.yaml" > "$out/$case_name.ndjson"
 }
 
-render prod prod --set image.tag=$rev1
-render prod-again prod --set image.tag=$rev1
-render prod-rev2 prod --set image.tag=$rev2
-render prod-domain prod --set image.tag=$rev1 --set global.domain=other.example.net
-render prod-indexable prod --set image.tag=$rev1 --set noindex=false
-render prod-noinit prod --set image.tag=$rev1 --set initialize.enabled=false
+# shellcheck disable=SC2086 # $digests is a list of arguments
+{
+  render prod prod --set image.tag=$rev1 $digests
+  render prod-again prod --set image.tag=$rev1 $digests
+  render prod-rev2 prod --set image.tag=$rev2 $digests
+  render prod-domain prod --set image.tag=$rev1 $digests --set global.domain=other.example.net
+  render prod-indexable prod --set image.tag=$rev1 $digests --set noindex=false
+  render prod-noinit prod --set image.tag=$rev1 $digests --set initialize.enabled=false
+}
 render ci ci --set image.tag=$rev1
 render ci-rev2 ci --set image.tag=$rev2

@@ -10,6 +10,10 @@ REPO = pathlib.Path(os.environ.get("REPO_DIR", "/repo"))
 WAVE = "argocd.argoproj.io/sync-wave"
 WORKLOADS = ("Deployment", "StatefulSet", "Job", "CronJob")
 JOBS = ("garage-init", "migrate", "keycloak-config", "initialize", "purge-caches")
+# The revision and the digests of the images built by us that scripts/render.sh passes to the prod cases (ci: no digests).
+REVISION = "0123456789abcdef0123456789abcdef01234567"
+DIGESTS = {app: "sha256:" + letter * 64 for app, letter in (("api", "a"), ("store", "b"), ("admin", "c"), ("elasticsearch", "d"))}
+DIGEST = r"@sha256:[0-9a-f]{64}"
 
 _cache = {}
 
@@ -56,6 +60,13 @@ def containers(doc):
 def waits_for(doc):
     """The logical names the pod waits for: its initContainers named wait-for-<name>."""
     return [c["name"][len("wait-for-"):] for c in pod_spec(doc).get("initContainers", []) if c["name"].startswith("wait-for-")]
+
+
+def images(doc):
+    """Every image a workload runs: its containers, initContainers and volumes of type image."""
+    spec = pod_spec(doc)
+    found = [c["image"] for c in spec["containers"] + spec.get("initContainers", [])]
+    return found + [v["image"]["reference"] for v in spec.get("volumes", []) if "image" in v]
 
 
 def env_of(container):

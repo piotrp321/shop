@@ -46,6 +46,8 @@
       "required": [
         "registry",
         "tag",
+        "digests",
+        "requireDigests",
         "pullPolicy"
       ],
       "properties": {
@@ -56,7 +58,42 @@
         "tag": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$",
-          "description": "The revision (commit SHA); required."
+          "not": {
+            "const": "latest"
+          },
+          "description": "The revision (commit SHA); required, never latest."
+        },
+        "digests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "api",
+            "store",
+            "admin",
+            "elasticsearch"
+          ],
+          "properties": {
+            "api": {
+              "type": "string",
+              "pattern": "^(sha256:[0-9a-f]{64})?$"
+            },
+            "store": {
+              "type": "string",
+              "pattern": "^(sha256:[0-9a-f]{64})?$"
+            },
+            "admin": {
+              "type": "string",
+              "pattern": "^(sha256:[0-9a-f]{64})?$"
+            },
+            "elasticsearch": {
+              "type": "string",
+              "pattern": "^(sha256:[0-9a-f]{64})?$"
+            }
+          },
+          "description": "Digests of the images built by us: empty or sha256:<64 hex>."
+        },
+        "requireDigests": {
+          "type": "boolean"
         },
         "pullPolicy": {
           "type": "string",
@@ -66,13 +103,41 @@
             "Never"
           ]
         }
+      },
+      "if": {
+        "properties": {
+          "requireDigests": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "digests": {
+            "properties": {
+              "api": {
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "store": {
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "admin": {
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "elasticsearch": {
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
       }
     },
     "images": {
       "type": "object",
       "additionalProperties": {
         "type": "string",
-        "minLength": 1
+        "pattern": "^[^@\\s]+:[^@\\s:/]+@sha256:[0-9a-f]{64}$",
+        "description": "name:tag@sha256:<digest of the multi-arch index>"
       },
       "required": [
         "postgres",

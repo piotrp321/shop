@@ -1,12 +1,13 @@
 import re
 import unittest
 
-from support import REPO, by_logical, containers, env_of, of_kind, pod_spec, quantity_bytes, quantity_cpu
+from support import (
+    DIGEST, DIGESTS, REPO, REVISION, by_logical, containers, env_of, images, of_kind, pod_spec, quantity_bytes, quantity_cpu
+)
 
 STATEFUL = {"postgres", "elasticsearch", "rabbitmq", "redis", "garage"}
 STATELESS = {"api", "worker", "store", "admin", "imgproxy", "varnish", "keycloak", "mailpit"}
 VERSION_JOBS = {"garage-init", "migrate", "keycloak-config", "initialize", "purge-caches"}
-REVISION = "0123456789abcdef0123456789abcdef01234567"
 
 
 def compose_services():
@@ -21,8 +22,9 @@ def compose_service(service):
 
 
 def compose_images():
+    """The images of the compose file: `image:` of the services and FROM of the inline Dockerfiles (garage-init)."""
     text = (REPO / "infra/docker-compose.yml").read_text()
-    return set(re.findall(r"^    image: (\S+)$", text, re.M))
+    return set(re.findall(r"^    image: (\S+)$", text, re.M)) | set(re.findall(r"^        FROM (\S+)", text, re.M))
 
 
 class WorkloadsTest(unittest.TestCase):
@@ -60,21 +62,36 @@ class WorkloadsTest(unittest.TestCase):
                 self.assertIn("readinessProbe", containers(workload)[0], f"{case} {name}")
 
     def test_images_are_those_of_compose(self):
-        used = set()
-        for workload in of_kind("prod", "Deployment", "StatefulSet", "Job", "CronJob"):
-            spec = pod_spec(workload)
-            used |= {c["image"] for c in spec["containers"] + spec.get("initContainers", [])}
+        """The images we do not build: name:tag as in compose, pinned by the digest of the image (never by the tag alone)."""
+        used = {image for workload in of_kind("prod", "Deployment", "StatefulSet", "Job", "CronJob") for image in images(workload)}
+        own = {image for image in used if image.startswith("ghcr.io/piotrp321/shop/")}
+        third_party = used - own
+        for image in third_party:
+            self.assertRegex(image, r"^[^@\s]+:[^@\s:/]+" + DIGEST + "$")
+        tags = {image.split("@")[0] for image in third_party}
         for image in compose_images() - {"curlimages/curl:8.18.0"}:
-            self.assertIn(image, used)
-        self.assertIn("alpine:3.22", used)
+            self.assertIn(image, tags)
+        self.assertIn("alpine:3.22", tags)
         # Elasticsearch is the image of its Dockerfile, which compose builds too: the official image is not in the chart.
         self.assertRegex(compose_service("elasticsearch"), r"\n    build:\n      context: \./infra/elasticsearch\n")
         self.assertEqual([], [image for image in used if "docker.elastic.co" in image])
+        self.assertEqual({"api", "store", "admin", "elasticsearch"}, {image.split("/")[-1].split(":")[0] for image in own})
+
+    def test_every_image_of_ci_is_pinned_but_ours_which_smoke_imports_by_tag(self):
+        for workload in of_kind("ci", "Deployment", "StatefulSet", "Job", "CronJob"):
+            for image in images(workload):
+                if image.startswith("shop-smoke/"):
+                    self.assertRegex(image, rf"^shop-smoke/[a-z]+:{REVISION}$")
+                else:
+                    self.assertRegex(image, DIGEST + "$")
 
     def test_elasticsearch_runs_the_image_built_from_its_dockerfile(self):
-        for case, registry, policy in (("prod", "ghcr.io/piotrp321/shop", "IfNotPresent"), ("ci", "shop-smoke", "Never")):
+        for case, image, policy in (
+            ("prod", f"ghcr.io/piotrp321/shop/elasticsearch:{REVISION}@{DIGESTS['elasticsearch']}", "IfNotPresent"),
+            ("ci", f"shop-smoke/elasticsearch:{REVISION}", "Never"),
+        ):
             container = containers(by_logical(case, "StatefulSet")["elasticsearch"])[0]
-            self.assertEqual(f"{registry}/elasticsearch:{REVISION}", container["image"], case)
+            self.assertEqual(image, container["image"], case)
             self.assertEqual(policy, container["imagePullPolicy"], case)
 
     def test_the_dockerfile_of_elasticsearch_pins_the_official_image_and_installs_the_plugin(self):
@@ -92,11 +109,13 @@ class WorkloadsTest(unittest.TestCase):
         volumes = [v["name"] for v in pod_spec(by_logical("prod", "StatefulSet")["elasticsearch"]).get("volumes", [])]
         self.assertNotIn("plugins", volumes)
 
-    def test_application_images_use_the_revision(self):
+    def test_application_images_use_the_revision_and_the_digest(self):
         for name in ("api", "worker", "store", "admin"):
-            image = containers(by_logical("prod", "Deployment")[name])[0]["image"]
             app = "api" if name == "worker" else name
-            self.assertEqual(f"ghcr.io/piotrp321/shop/{app}:0123456789abcdef0123456789abcdef01234567", image)
+            image = containers(by_logical("prod", "Deployment")[name])[0]["image"]
+            self.assertEqual(f"ghcr.io/piotrp321/shop/{app}:{REVISION}@{DIGESTS[app]}", image)
+            image = containers(by_logical("ci", "Deployment")[name])[0]["image"]
+            self.assertEqual(f"shop-smoke/{app}:{REVISION}", image)
 
     def test_keycloak_runs_in_start_mode_behind_the_proxy(self):
         main = containers(by_logical("prod", "Deployment")["keycloak"])[0]
