@@ -83,9 +83,12 @@ Zakres: `infra/k8s`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.docker
   ustalają DEPLOY-5 i DEPLOY-6. Workflow wdrożenia po zbudowaniu obrazów
   z tagiem SHA i zielonym smoke teście przesuwa `deploy` fast-forwardem na ten commit z `main` (historia `main` jest
   liniowa, więc `deploy` jest zawsze jej przodkiem). Bez commitów z tagami i bez force pusha. Wypycha deploy key
-  z prawem zapisu (sekret repo). Ruleset `deploy` (`tools/rulesets/deploy.json`) zabrania usunięcia i force pusha
-  wszystkim, a zwykły push dopuszcza tylko dla tego deploy keya (jedyny aktor bypass, typ `DeployKey`). Założenie
-  rulesetu i deploy keya oraz próby (push innym poświadczeniem i usunięcie odrzucone, push deploy keyem przyjęty) to
+  z prawem zapisu (sekret repo `DEPLOY_KEY`, skrypt `.github/scripts/deploy-ref.sh` pushuje bez `--force`). Bypass
+  rulesetu dotyczy wszystkich jego reguł, więc gałąź chronią dwa rulesety na `refs/heads/deploy`: `deploy`
+  (`tools/rulesets/deploy.json`: `deletion` i `non_fast_forward`, bez żadnego aktora bypass) zabrania usunięcia
+  i force pusha wszystkim, a `deploy-push` (`tools/rulesets/deploy-push.json`: reguła `update`) dopuszcza zwykły push
+  tylko dla deploy keya (jedyny aktor bypass, typ `DeployKey`, tryb `always`). Założenie
+  rulesetów i deploy keya oraz próby (push innym poświadczeniem i usunięcie odrzucone, push deploy keyem przyjęty) to
   krok runbooka po merge'u, z zapisem wyników.
 - **D5. Sealed Secrets.** Publiczny certyfikat kontrolera trafia do repo przy bootstrapie, więc kolejne sekrety
   zaszyfruje każdy (także agent AO) bez dostępu do klastra. Kopia klucza prywatnego kontrolera jest u użytkownika.
@@ -212,7 +215,9 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 1. Merge PR do `main` uruchamia `.github/workflows/deploy.yml`. Grupa `concurrency` bez anulowania trwającego runu:
    działa jeden, czeka najwyżej jeden, pośrednie są pomijane, więc wdraża się najnowszy commit.
 2. Workflow buduje i wypycha obrazy `api`, `store`, `admin`, `elasticsearch` z tagiem SHA; wdrażane są po digeście
-   (D4).
+   (D4). Digesty czterech obrazów
+   są w podsumowaniu runu i w outputach joba `images`. Obraz, który już ma ten tag (ponowny run tego samego commitu),
+   zostaje bez przebudowy, więc jeden tag nie dostaje drugiego digestu.
 3. Smoke test na k3d (niżej) na tych obrazach.
 4. Po zielonym smoke teście workflow przesuwa `deploy` fast-forwardem na ten commit (D4). Bez sekretu z deploy keyem
    (przed krokiem runbooka) workflow kończy się po smoke teście z ostrzeżeniem, bez błędu.
@@ -326,7 +331,7 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   klaster (także po błędzie).
 - CI (`deploy.yml`): `smoke` na `ubuntu-latest` dla PR zmieniających `infra/**`, `apps/*/Dockerfile`,
   `apps/api/config/**`, `apps/api/bin/**`, `apps/api/composer.lock`, `apps/store/package-lock.json`,
-  `apps/admin/package-lock.json`, `apps/store/next.config.ts` (obrazy z cache GHA)
+  `apps/admin/package-lock.json`, `apps/store/next.config.ts` oraz sam workflow i `deploy-ref.sh` (obrazy z cache GHA)
   i na `workflow_dispatch` (próba na gałęzi epiku, bez przesuwania `deploy`), oraz zawsze na `main` przed wdrożeniem.
   `smoke` nie jest wymaganym checkiem `main`.
 
