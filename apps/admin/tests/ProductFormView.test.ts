@@ -484,14 +484,89 @@ describe("ProductFormView", () => {
   });
 
   describe("variants", () => {
-    it("shows the variants of the product without a way to edit them", async () => {
+    const values = (wrapper: Awaited<ReturnType<typeof mountForm>>["wrapper"]) =>
+      wrapper.findAll("[data-testid=variant-value]").map((input) => (input.element as HTMLInputElement).value);
+
+    it("shows the axes and the values of the product as fields", async () => {
       mounted = await mountForm("/products/p-1");
       const { wrapper } = mounted;
 
-      const section = wrapper.get("[data-testid=variants]");
-      expect(section.text()).toContain("Kolor");
-      expect(wrapper.findAll("[data-testid=variant-row]").map((row) => row.text())).toEqual(["czarne", "białe"]);
-      expect(section.findAll("input")).toHaveLength(0);
+      expect(wrapper.findAll("[data-testid=axis-name]").map((input) => (input.element as HTMLInputElement).value)).toEqual(["Kolor"]);
+      expect(values(wrapper)).toEqual(["czarne", "białe"]);
+      expect(wrapper.find("[data-testid=variants-locked]").exists()).toBe(false);
+    });
+
+    it("sends the edited axes and rows, with the kept ids and null for the new row", async () => {
+      mounted = await mountForm("/products/p-1");
+      const { wrapper } = mounted;
+      mocks.put.mockResolvedValue({ data: view({ version: 4 }), response: { status: 200 } });
+
+      await wrapper.get("[data-testid=axis-name]").setValue("Barwa");
+      await wrapper.findAll("[data-testid=variant-value]")[0]!.setValue("Czarne");
+      await wrapper.get("[data-testid=add-variant]").trigger("click");
+      await wrapper.findAll("[data-testid=variant-value]")[2]!.setValue("zielone");
+      expect(wrapper.get("[data-testid=save]").attributes("disabled")).toBeUndefined();
+      await wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      expect(mocks.put.mock.calls[0]![1].body).toMatchObject({
+        variantAxes: ["Barwa"],
+        variants: [
+          { variantId: "v-1", values: ["Czarne"] },
+          { variantId: "v-2", values: ["białe"] },
+          { variantId: null, values: ["zielone"] },
+        ],
+      });
+    });
+
+    it("removes an existing variant only after the confirmation", async () => {
+      mounted = await mountForm("/products/p-1");
+      const { wrapper } = mounted;
+
+      await wrapper.findAll("[data-testid=variant-remove]")[0]!.trigger("click");
+      // The dialog is teleported to <body>.
+      expect(document.body.textContent).toContain("Cena i stan wariantu przestaną być widoczne w panelu.");
+      expect(values(wrapper)).toEqual(["czarne", "białe"]);
+      document.querySelector<HTMLElement>("[data-testid=remove-confirm-accept]")!.click();
+      await flushPromises();
+
+      expect(values(wrapper)).toEqual(["białe"]);
+    });
+
+    it("locks the axes with an explanation after the first publication", async () => {
+      serve(view({ status: "published", firstPublishedAt: "2026-10-01T10:00:00+00:00" }));
+      mounted = await mountForm("/products/p-1");
+      const { wrapper } = mounted;
+
+      expect(wrapper.get("[data-testid=add-axis]").attributes("disabled")).toBeDefined();
+      expect(wrapper.get("[data-testid=axis-remove]").attributes("disabled")).toBeDefined();
+      expect(wrapper.get("[data-testid=variants-locked]").text()).toContain("Wartości istniejących wariantów można poprawić tylko w wielkości liter.");
+      expect(wrapper.get("[data-testid=axis-name]").attributes("disabled")).toBeUndefined();
+    });
+
+    it("shows a 422 at the value of the row it points at", async () => {
+      mounted = await mountForm("/products/p-1");
+      const { wrapper } = mounted;
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "variants[1].values[0]", title: "Wartość może mieć najwyżej 40 znaków." }] }));
+
+      await wrapper.findAll("[data-testid=variant-value]")[1]!.setValue("czarne");
+      await wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      const rows = wrapper.findAll("[data-testid=variant-row]");
+      expect(rows[0]!.find("[data-testid=value-error]").exists()).toBe(false);
+      expect(rows[1]!.get("[data-testid=value-error]").text()).toBe("Wartość może mieć najwyżej 40 znaków.");
+      expect(wrapper.find("[data-testid=variants-error]").exists()).toBe(false);
+    });
+
+    it("shows no way to edit the variants to staff without the permission", async () => {
+      mounted = await mountForm("/products/p-1", ["support"]);
+      const { wrapper } = mounted;
+
+      expect(wrapper.find("[data-testid=add-axis]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=add-variant]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=variant-remove]").exists()).toBe(false);
+      expect(wrapper.get("[data-testid=variant-value]").attributes("disabled")).toBeDefined();
     });
 
     it("shows the default variant of a product without axes", async () => {
@@ -500,6 +575,7 @@ describe("ProductFormView", () => {
       const rows = mounted.wrapper.findAll("[data-testid=variant-row]");
       expect(rows).toHaveLength(1);
       expect(rows[0]!.text()).toBe("Wariant domyślny");
+      expect(rows[0]!.find("input").exists()).toBe(false);
     });
 
     it("shows the conflict about variants at the section", async () => {
