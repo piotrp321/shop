@@ -52,7 +52,7 @@ test:
 	$(MAKE) varnish-test
 
 # Tests of infra/scripts/init-env.sh in a temporary copy (a real .env.local is never touched); runs on the host, like
-# the script itself, and needs only sh and openssl. Not part of `test`; CI runs it as a step of its own.
+# the script itself, and needs only sh and openssl. Not part of `test`; CI runs it in its Tests step, next to the api suite.
 init-env-test:
 	sh infra/scripts/test-init-env.sh
 

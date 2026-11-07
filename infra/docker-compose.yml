@@ -4,6 +4,9 @@
 # Secrets are never interpolated with ${...}: services read them from .env.local (env_file, required).
 # Where an image expects a different variable name, a container-side wrapper maps it ($$VAR is
 # evaluated by the container shell, not by Compose).
+#
+# Every healthcheck probes each second during its start period (start_interval), so `up --wait` and depends_on see
+# a service healthy as soon as it is, not at the next regular interval.
 
 services:
   postgres:
@@ -17,6 +20,8 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h localhost -U postgres"]
       interval: 5s
+      start_interval: 1s
+      start_period: 30s
       timeout: 3s
       retries: 20
 
@@ -27,6 +32,8 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
+      start_interval: 1s
+      start_period: 30s
       timeout: 3s
       retries: 20
 
@@ -41,6 +48,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=2s' >/dev/null"]
       interval: 10s
+      start_interval: 1s
       timeout: 5s
       retries: 30
       start_period: 30s
@@ -61,6 +69,7 @@ services:
       # .erlang.cookie that the server (uid 999) then cannot read.
       test: ["CMD", "gosu", "rabbitmq", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
+      start_interval: 1s
       timeout: 10s
       retries: 20
       start_period: 20s
@@ -131,6 +140,7 @@ services:
           printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3
           head -n 1 <&3 | grep -q ' 200 '
       interval: 10s
+      start_interval: 1s
       timeout: 5s
       retries: 30
       start_period: 40s
@@ -149,6 +159,8 @@ services:
       # /health endpoint reports 503 until the layout is applied by garage-init.
       test: ["CMD", "/garage", "status"]
       interval: 5s
+      start_interval: 1s
+      start_period: 30s
       timeout: 5s
       retries: 20
 
@@ -199,6 +211,8 @@ services:
     healthcheck:
       test: ["CMD", "imgproxy", "health"]
       interval: 10s
+      start_interval: 1s
+      start_period: 30s
       timeout: 5s
       retries: 10
 
@@ -209,6 +223,8 @@ services:
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
+      start_interval: 1s
+      start_period: 30s
       timeout: 5s
       retries: 10
 
@@ -271,6 +287,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost/health | grep -q '\"status\":\"ok\"'"]
       interval: 10s
+      start_interval: 1s
       timeout: 5s
       retries: 10
       # The entrypoint runs `composer install` on first start.
@@ -299,6 +316,8 @@ services:
       # The child process runs and has loaded the VCL.
       test: ["CMD-SHELL", "varnishadm status | grep -q running"]
       interval: 10s
+      start_interval: 1s
+      start_period: 30s
       timeout: 5s
       retries: 10
 
@@ -333,6 +352,7 @@ services:
       # Healthy once PID 1 is the consumer itself, not the entrypoint that may still be installing dependencies.
       test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled payment_simulator'"]
       interval: 10s
+      start_interval: 1s
       timeout: 3s
       retries: 3
       start_period: 10s
@@ -393,6 +413,7 @@ services:
       # A static route: `/` renders the catalog from the API, which has no tables or index yet when `make up` waits.
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/favicon.ico"]
       interval: 10s
+      start_interval: 1s
       timeout: 5s
       retries: 10
       # `npm ci` runs on first start and, in production, `next build` after it, both before the server is up.
@@ -419,6 +440,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5173/"]
       interval: 10s
+      start_interval: 1s
       timeout: 5s
       retries: 10
       # `npm ci` runs on first start before the dev server is up.

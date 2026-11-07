@@ -1,9 +1,10 @@
 # Light CI: static analysis and tests of the three apps.
 # Runs without the full stack: app containers start with --no-deps; only the services the tests need are started.
 # The `e2e` job is the exception: it starts the full stack and runs the Playwright tests.
-# Both jobs run for every change, so they can be required status checks. For a pull request that changes
-# documentation only (docs/** and *.md outside .github/, see .github/scripts/docs-only.sh) the `scope` job
-# says so, and both jobs skip their steps and pass within seconds.
+# Both jobs run for every change, so they can be required status checks. For a pull request the `scope` job says
+# what it changes (.github/scripts/scope.sh): documentation only (docs/** and *.md outside .github/) skips every
+# step; repository tooling only (.claude/**, .ao/**, tools/**, possibly with documentation) runs just the script
+# tests in `checks`. Skipped steps let both jobs pass within seconds. Anything else, and every push, runs it all.
 name: CI
 
 on:
@@ -21,38 +22,45 @@ concurrency:
 
 permissions:
   contents: read
+  # Prebuilt CI images in GitHub Container Registry (.github/scripts/ghcr-image.sh): pulled, and pushed when missing.
+  packages: write
 
 env:
-  # Compose names the images <project>-<service>; the build steps below tag them to match.
+  # Compose names the images <project>-<service>; the pull and build steps below tag them to match.
   COMPOSE_PROJECT_NAME: shop
   CI_RUN: docker compose run --rm --no-deps -T
+  # The files each CI image is built from (its Dockerfile and what it copies); their content is the image tag.
+  API_IMAGE_FILES: apps/api/Dockerfile apps/api/docker
+  STORE_IMAGE_FILES: apps/store/Dockerfile apps/store/package.json apps/store/package-lock.json
+  ADMIN_IMAGE_FILES: apps/admin/Dockerfile apps/admin/package.json apps/admin/package-lock.json
+  E2E_IMAGE_FILES: e2e/Dockerfile e2e/package.json e2e/package-lock.json e2e/entrypoint.sh
 
 jobs:
   scope:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      docs_only: ${{ steps.scope.outputs.docs_only }}
+      scope: ${{ steps.scope.outputs.scope }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Scope script tests
-        run: sh .github/scripts/test_docs_only.sh
+        run: sh .github/scripts/test_scope.sh
 
       # Pushes (main, epic/**) always run the full CI.
-      - name: Detect a documentation-only change
+      - name: Detect the scope of the change
         id: scope
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          docs_only=false
+          scope=full
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            docs_only="$(sh .github/scripts/docs-only.sh "$BASE_SHA" "$HEAD_SHA")"
+            scope="$(sh .github/scripts/scope.sh "$BASE_SHA" "$HEAD_SHA")"
           fi
-          echo "docs_only=$docs_only" | tee -a "$GITHUB_OUTPUT"
+          echo "scope=$scope" | tee -a "$GITHUB_OUTPUT"
 
   checks:
     needs: scope
@@ -61,78 +69,66 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      FULL_CI: ${{ needs.scope.outputs.docs_only != 'true' }}
+      SCOPE: ${{ needs.scope.outputs.scope }}
+      FULL_CI: ${{ needs.scope.outputs.scope == 'full' }}
     steps:
       - name: Require the scope job
         if: needs.scope.result != 'success'
         run: echo "::error::The scope job did not succeed" && exit 1
 
       - name: Documentation-only change, skipping the checks
-        if: env.FULL_CI != 'true'
+        if: env.SCOPE == 'docs'
         run: echo "Only docs/** and *.md changed"
 
+      - name: Tooling-only change, running the script tests only
+        if: env.SCOPE == 'tooling'
+        run: echo "Only .claude/**, .ao/**, tools/** and documentation changed"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling'
 
       # Standard-library scripts of the Claude Code skills (/delivery state, /planner manifest, /ao-run events) and the AO hooks.
-      - name: Skill script tests
-        if: env.FULL_CI == 'true'
-        run: |
-          python3 -m unittest discover -s .ao -p 'test_*.py'
-          python3 -m unittest discover -s .claude/skills/delivery -p 'test_*.py'
-          python3 -m unittest discover -s .claude/skills/planner -p 'test_*.py'
-          python3 -m unittest discover -s .claude/skills/integration -p 'test_*.py'
-          python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'
+      # They run in the background next to the steps below; `Wait for the script tests` at the end reports them.
+      # A tooling-only change runs only these.
+      - name: Skill and CI script tests in the background
+        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling'
+        run: >-
+          sh .github/scripts/background.sh start script-tests sh -c
+          'set -e;
+          sh .github/scripts/test_background.sh;
+          sh .github/scripts/test_ghcr_image.sh;
+          python3 -m unittest discover -s .ao -p "test_*.py";
+          python3 -m unittest discover -s .claude/skills/delivery -p "test_*.py";
+          python3 -m unittest discover -s .claude/skills/planner -p "test_*.py";
+          python3 -m unittest discover -s .claude/skills/integration -p "test_*.py";
+          python3 -m unittest discover -s .claude/skills/ao-run -p "test_*.py"'
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The CI images come prebuilt from GitHub Container Registry, tagged by the content of the files they are built
+      # from, and are pulled in the background next to the steps below. An image the registry does not have yet (its
+      # files changed) is built from the GitHub Actions cache and pushed, so the next run pulls it.
+      - name: Pull the prebuilt images in the background
+        id: images
         if: env.FULL_CI == 'true'
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          prefix="ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/shop"
+          # shellcheck disable=SC2086 # the file lists split on spaces
+          {
+            echo "api=$prefix-api:$(sh .github/scripts/ghcr-image.sh key $API_IMAGE_FILES)"
+            echo "store=$prefix-store:$(sh .github/scripts/ghcr-image.sh key $STORE_IMAGE_FILES)"
+            echo "admin=$prefix-admin:$(sh .github/scripts/ghcr-image.sh key $ADMIN_IMAGE_FILES)"
+            echo "e2e=$prefix-e2e:$(sh .github/scripts/ghcr-image.sh key $E2E_IMAGE_FILES)"
+          } | tee refs >> "$GITHUB_OUTPUT"
+          . ./refs && rm refs
+          sh .github/scripts/background.sh start image-api sh .github/scripts/ghcr-image.sh pull "$api" shop-api shop-worker
+          sh .github/scripts/background.sh start image-store sh .github/scripts/ghcr-image.sh pull "$store" shop-store
+          sh .github/scripts/background.sh start image-admin sh .github/scripts/ghcr-image.sh pull "$admin" shop-admin
 
       - name: Generate .env.local
         if: env.FULL_CI == 'true'
         run: sh infra/scripts/init-env.sh
-
-      - name: Build api image
-        if: env.FULL_CI == 'true'
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: apps/api
-          target: dev
-          tags: shop-api
-          load: true
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,mode=max,scope=api
-
-      - name: Build store image
-        if: env.FULL_CI == 'true'
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: apps/store
-          tags: shop-store
-          load: true
-          cache-from: type=gha,scope=store
-          cache-to: type=gha,mode=max,scope=store
-
-      - name: Build admin image
-        if: env.FULL_CI == 'true'
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: apps/admin
-          tags: shop-admin
-          load: true
-          cache-from: type=gha,scope=admin
-          cache-to: type=gha,mode=max,scope=admin
-
-      # Dependencies go into the named volumes, as in local development.
-      - name: Install dependencies
-        if: env.FULL_CI == 'true'
-        run: |
-          $CI_RUN api true
-          $CI_RUN store npm ci --no-audit --no-fund
-          $CI_RUN admin npm ci --no-audit --no-fund
-
-      - name: make check
-        if: env.FULL_CI == 'true'
-        run: make check RUN="$CI_RUN"
 
       # The api integration tests need PostgreSQL (database shop_test, created by its init script),
       # the image services: Garage (buckets created by garage-init) and imgproxy, RabbitMQ with the
@@ -142,22 +138,124 @@ jobs:
       # the store integration tests (sessions, refresh lock) need Redis too. Mailpit also receives the order
       # confirmation emails of the api mailer tests (MAILER_DSN and MAILER_FROM come from the api service of
       # docker-compose.yml, which `docker compose run` applies).
-      - name: Start PostgreSQL, Redis, Garage, imgproxy, RabbitMQ, Elasticsearch, Keycloak and Mailpit
+      # They start in the background (pulling their images first) while the app images are built; the tests wait
+      # for them.
+      - name: Start PostgreSQL, Redis, Garage, imgproxy, RabbitMQ, Elasticsearch, Keycloak and Mailpit in the background
+        if: env.FULL_CI == 'true'
+        run: >-
+          sh .github/scripts/background.sh start services sh -c
+          'docker compose up -d --wait postgres redis garage imgproxy rabbitmq elasticsearch keycloak mailpit
+          && docker compose run --rm rabbitmq-init'
+
+      # `missing` lists the images the registry does not have: the steps below build and push them.
+      - name: Wait for the prebuilt images
+        id: missing
         if: env.FULL_CI == 'true'
         run: |
-          docker compose up -d --wait postgres redis garage imgproxy rabbitmq elasticsearch keycloak mailpit
-          docker compose run --rm rabbitmq-init
+          missing=
+          for image in api store admin; do
+            sh .github/scripts/background.sh wait "image-$image" || missing="$missing $image"
+          done
+          echo "apps=$missing" | tee -a "$GITHUB_OUTPUT"
 
-      # All suites of every app; api `test` migrates shop_test first. The VCL tests (varnishtest) run in the image
-      # of the varnish service, without the stack.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: env.FULL_CI == 'true' && steps.missing.outputs.apps != ''
+
+      - name: Build api image
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'api')
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/api
+          target: dev
+          tags: |
+            shop-api
+            ${{ steps.images.outputs.api }}
+          load: true
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build store image
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'store')
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/store
+          tags: |
+            shop-store
+            ${{ steps.images.outputs.store }}
+          load: true
+          cache-from: type=gha,scope=store
+          cache-to: type=gha,mode=max,scope=store
+
+      - name: Build admin image
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'admin')
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/admin
+          tags: |
+            shop-admin
+            ${{ steps.images.outputs.admin }}
+          load: true
+          cache-from: type=gha,scope=admin
+          cache-to: type=gha,mode=max,scope=admin
+
+      - name: Push the app images built here
+        if: env.FULL_CI == 'true' && steps.missing.outputs.apps != ''
+        env:
+          MISSING: ${{ steps.missing.outputs.apps }}
+          API_REF: ${{ steps.images.outputs.api }}
+          STORE_REF: ${{ steps.images.outputs.store }}
+          ADMIN_REF: ${{ steps.images.outputs.admin }}
+        run: |
+          for image in $MISSING; do
+            case "$image" in
+              api) sh .github/scripts/ghcr-image.sh push "$API_REF" ;;
+              store) sh .github/scripts/ghcr-image.sh push "$STORE_REF" ;;
+              admin) sh .github/scripts/ghcr-image.sh push "$ADMIN_REF" ;;
+            esac
+          done
+
+      # Dependencies go into the named volumes, as in local development: the api entrypoint runs `composer install`;
+      # the store and admin images carry node_modules, which Docker copies into a volume when it creates it. The
+      # volumes are created here, one at a time, because the steps below use them in parallel: a container that mounts
+      # a volume while another one is still creating it sees it empty.
+      - name: Install dependencies
+        if: env.FULL_CI == 'true'
+        run: |
+          $CI_RUN api true
+          $CI_RUN store true
+          $CI_RUN admin true
+
+      # Static analysis needs no services: it runs in the background next to the tests.
+      - name: make check in the background
+        if: env.FULL_CI == 'true'
+        run: sh .github/scripts/background.sh start check make check RUN="$CI_RUN"
+
+      - name: Wait for the services
+        if: env.FULL_CI == 'true'
+        run: sh .github/scripts/background.sh wait services
+
+      # All suites of every app; api `test` migrates shop_test first. The store and admin suites and the VCL tests
+      # (varnishtest in the image of the varnish service, without the stack) run in the background next to the api
+      # suite; every suite runs to the end and any failure fails the step.
       - name: Tests
         if: env.FULL_CI == 'true'
         run: |
-          make -C apps/api test RUN="$CI_RUN"
-          make -C apps/store test RUN="$CI_RUN"
-          make -C apps/admin test RUN="$CI_RUN"
-          make varnish-test
-          make init-env-test
+          sh .github/scripts/background.sh start store-tests make -C apps/store test RUN="$CI_RUN"
+          sh .github/scripts/background.sh start admin-tests make -C apps/admin test RUN="$CI_RUN"
+          sh .github/scripts/background.sh start varnish-tests make varnish-test
+          status=0
+          make -C apps/api test RUN="$CI_RUN" || status=$?
+          make init-env-test || status=$?
+          for suite in store-tests admin-tests varnish-tests; do
+            echo "::group::$suite"
+            sh .github/scripts/background.sh wait "$suite" || status=$?
+            echo "::endgroup::"
+          done
+          exit "$status"
+
+      - name: Wait for make check
+        if: env.FULL_CI == 'true'
+        run: sh .github/scripts/background.sh wait check
 
       # The committed OpenAPI files and generated clients must equal a fresh export and generation
       # (no services needed, so --no-deps works).
@@ -168,6 +266,10 @@ jobs:
           make api-client RUN="$CI_RUN"
           git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json apps/store/src/api/schema.d.ts apps/admin/src/api/schema.d.ts
 
+      - name: Wait for the script tests
+        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling'
+        run: sh .github/scripts/background.sh wait script-tests
+
   # End-to-end tests on the full stack: Playwright drives the store and the panel in a browser.
   e2e:
     needs: scope
@@ -175,7 +277,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      FULL_CI: ${{ needs.scope.outputs.docs_only != 'true' }}
+      SCOPE: ${{ needs.scope.outputs.scope }}
+      FULL_CI: ${{ needs.scope.outputs.scope == 'full' }}
       # The store runs the production build (`next build` + `next start`); compose passes the mode on to the e2e container.
       STORE_MODE: production
     steps:
@@ -183,21 +286,64 @@ jobs:
         if: needs.scope.result != 'success'
         run: echo "::error::The scope job did not succeed" && exit 1
 
-      - name: Documentation-only change, skipping the end-to-end tests
+      - name: Documentation or tooling only change, skipping the end-to-end tests
         if: env.FULL_CI != 'true'
-        run: echo "Only docs/** and *.md changed"
+        run: echo "The change is $SCOPE only"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.FULL_CI == 'true'
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The CI images come prebuilt from GitHub Container Registry, tagged by the content of the files they are built
+      # from, and are pulled in the background next to the steps below. An image the registry does not have yet (its
+      # files changed) is built from the GitHub Actions cache and pushed, so the next run pulls it.
+      - name: Pull the prebuilt images in the background
+        id: images
         if: env.FULL_CI == 'true'
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          prefix="ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/shop"
+          # shellcheck disable=SC2086 # the file lists split on spaces
+          {
+            echo "api=$prefix-api:$(sh .github/scripts/ghcr-image.sh key $API_IMAGE_FILES)"
+            echo "store=$prefix-store:$(sh .github/scripts/ghcr-image.sh key $STORE_IMAGE_FILES)"
+            echo "admin=$prefix-admin:$(sh .github/scripts/ghcr-image.sh key $ADMIN_IMAGE_FILES)"
+            echo "e2e=$prefix-e2e:$(sh .github/scripts/ghcr-image.sh key $E2E_IMAGE_FILES)"
+          } | tee refs >> "$GITHUB_OUTPUT"
+          . ./refs && rm refs
+          sh .github/scripts/background.sh start image-api sh .github/scripts/ghcr-image.sh pull "$api" shop-api shop-worker
+          sh .github/scripts/background.sh start image-store sh .github/scripts/ghcr-image.sh pull "$store" shop-store
+          sh .github/scripts/background.sh start image-admin sh .github/scripts/ghcr-image.sh pull "$admin" shop-admin
+          sh .github/scripts/background.sh start image-e2e sh .github/scripts/ghcr-image.sh pull "$e2e" shop-e2e
 
-      # The application images come from the GitHub Actions cache that the `checks` job writes (same contexts,
-      # targets and scopes), so this job only reads it. `make up` then finds the images and builds only garage-init.
-      # The worker runs the api image (same context and target), hence the second tag.
-      - name: Build api and worker image
+      # The service images are pulled in the background while the application images are built; the stack starts once
+      # the pull is done (compose needs .env.local to read its configuration).
+      - name: Pull the service images in the background
         if: env.FULL_CI == 'true'
+        run: |
+          sh infra/scripts/init-env.sh
+          sh .github/scripts/background.sh start pull docker compose pull --quiet --ignore-buildable
+
+      # An app image the registry does not have is built from the GitHub Actions cache that the `checks` job writes
+      # (same contexts, targets and scopes), so this job only reads it. `make up` then finds the images and builds only
+      # garage-init. The worker runs the api image (same context and target), hence the second tag.
+      # `missing` lists the images the registry does not have: the steps below build and push them.
+      - name: Wait for the prebuilt images
+        id: missing
+        if: env.FULL_CI == 'true'
+        run: |
+          missing=
+          for image in api store admin; do
+            sh .github/scripts/background.sh wait "image-$image" || missing="$missing $image"
+          done
+          echo "apps=$missing" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: env.FULL_CI == 'true' && steps.missing.outputs.apps != ''
+
+      - name: Build api and worker image
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'api')
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/api
@@ -205,47 +351,102 @@ jobs:
           tags: |
             shop-api
             shop-worker
+            ${{ steps.images.outputs.api }}
           load: true
           cache-from: type=gha,scope=api
 
       - name: Build store image
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'store')
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/store
-          tags: shop-store
+          tags: |
+            shop-store
+            ${{ steps.images.outputs.store }}
           load: true
           cache-from: type=gha,scope=store
 
       - name: Build admin image
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && contains(steps.missing.outputs.apps, 'admin')
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/admin
-          tags: shop-admin
+          tags: |
+            shop-admin
+            ${{ steps.images.outputs.admin }}
           load: true
           cache-from: type=gha,scope=admin
 
+      - name: Push the app images built here
+        if: env.FULL_CI == 'true' && steps.missing.outputs.apps != ''
+        env:
+          MISSING: ${{ steps.missing.outputs.apps }}
+          API_REF: ${{ steps.images.outputs.api }}
+          STORE_REF: ${{ steps.images.outputs.store }}
+          ADMIN_REF: ${{ steps.images.outputs.admin }}
+        run: |
+          for image in $MISSING; do
+            case "$image" in
+              api) sh .github/scripts/ghcr-image.sh push "$API_REF" ;;
+              store) sh .github/scripts/ghcr-image.sh push "$STORE_REF" ;;
+              admin) sh .github/scripts/ghcr-image.sh push "$ADMIN_REF" ;;
+            esac
+          done
+
+      # The store and admin images carry node_modules installed from these lock files (the cached image layer is keyed
+      # on their content), and Docker copies them into the empty volumes. Their containers run `npm ci` only when
+      # package-lock.json is newer than that install, and the checkout is always newer than a cached layer: an old
+      # date keeps the install from the image.
+      - name: Date the front lock files before the image install
+        if: env.FULL_CI == 'true'
+        run: touch -d '2000-01-01T00:00:00Z' apps/store/package-lock.json apps/admin/package-lock.json
+
+      # Starts every service, runs the migrations and starts the worker (`exec` needs -T), in the background while
+      # the e2e image is built and the tests are type-checked.
+      - name: Start the stack in the background
+        if: env.FULL_CI == 'true'
+        run: >-
+          sh .github/scripts/background.sh start stack sh -c
+          'sh .github/scripts/background.sh wait pull && make up RUN="docker compose exec -T"'
+
+      - name: Wait for the prebuilt e2e image
+        id: missing-e2e
+        if: env.FULL_CI == 'true'
+        run: |
+          status=pulled
+          sh .github/scripts/background.sh wait image-e2e || status=missing
+          echo "e2e=$status" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: env.FULL_CI == 'true' && steps.missing-e2e.outputs.e2e == 'missing' && steps.missing.outputs.apps == ''
+
       # Only this job builds the Playwright image, so it also writes its cache.
       - name: Build e2e image
-        if: env.FULL_CI == 'true'
+        if: env.FULL_CI == 'true' && steps.missing-e2e.outputs.e2e == 'missing'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: e2e
-          tags: shop-e2e
+          tags: |
+            shop-e2e
+            ${{ steps.images.outputs.e2e }}
           load: true
           cache-from: type=gha,scope=e2e
           cache-to: type=gha,mode=max,scope=e2e
 
-      # Type-checks the tests; no services needed, so it fails fast. E2E_BUILD= uses the image built above.
+      - name: Push the e2e image built here
+        if: env.FULL_CI == 'true' && steps.missing-e2e.outputs.e2e == 'missing'
+        env:
+          E2E_REF: ${{ steps.images.outputs.e2e }}
+        run: sh .github/scripts/ghcr-image.sh push "$E2E_REF"
+
+      # Type-checks the tests; no services needed, so it fails fast. E2E_BUILD= uses the image pulled or built above.
       - name: Type-check the e2e tests
         if: env.FULL_CI == 'true'
         run: make e2e-check E2E_FLAGS=-T E2E_BUILD=
 
-      # Starts every service, runs the migrations and starts the worker (`exec` needs -T).
-      - name: Start the stack
+      - name: Wait for the stack
         if: env.FULL_CI == 'true'
-        run: make up RUN="docker compose exec -T"
+        run: sh .github/scripts/background.sh wait stack
 
       - name: Seed demo data
         if: env.FULL_CI == 'true'
