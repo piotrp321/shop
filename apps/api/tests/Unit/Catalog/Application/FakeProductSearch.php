@@ -6,6 +6,8 @@ namespace App\Tests\Unit\Catalog\Application;
 
 use App\Catalog\Application\Port\ProductSearch;
 use App\Catalog\Application\Search\ProductDocument;
+use App\Catalog\Application\Search\ProductSearchCriteria;
+use App\Catalog\Application\Search\SearchFacets;
 use App\Catalog\Application\Search\SearchResult;
 
 /**
@@ -13,20 +15,22 @@ use App\Catalog\Application\Search\SearchResult;
  */
 final class FakeProductSearch implements ProductSearch
 {
-    /** @var array{categoryId: ?string, page: int, perPage: int}|null */
-    public ?array $lastCall = null;
+    public ?ProductSearchCriteria $lastCriteria = null;
 
     /**
      * @param list<ProductDocument> $items
      */
-    public function __construct(private readonly array $items = [], private readonly int $total = 0)
-    {
+    public function __construct(
+        private readonly array $items = [],
+        private readonly int $total = 0,
+        private readonly SearchFacets $facets = new SearchFacets([], [], null, 0),
+    ) {
     }
 
-    public function search(?string $categoryId, int $page, int $perPage): SearchResult
+    public function search(ProductSearchCriteria $criteria): SearchResult
     {
-        $this->lastCall = ['categoryId' => $categoryId, 'page' => $page, 'perPage' => $perPage];
+        $this->lastCriteria = $criteria;
 
-        return new SearchResult($this->items, $this->total);
+        return new SearchResult($this->items, $this->total, $this->facets);
     }
 }

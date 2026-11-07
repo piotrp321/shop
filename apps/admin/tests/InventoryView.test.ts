@@ -33,7 +33,9 @@ function item(name: string, overrides: { stock?: ListedStock | null; variants?: 
   };
 }
 
-const tree: CategoryNode[] = [{ id: "c-sport", name: "Sport", children: [{ id: "c-run", name: "Bieganie", children: [] }] }];
+const tree: CategoryNode[] = [
+  { id: "c-sport", name: "Sport", slug: "sport", path: "sport", children: [{ id: "c-run", name: "Bieganie", slug: "bieganie", path: "sport/bieganie", children: [] }] },
+];
 
 function serve(pages: Record<string, StockList>, status?: number) {
   mocks.get.mockImplementation(async (path: string, options?: { params?: { query?: { after?: string } } }) => {

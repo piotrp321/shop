@@ -15,6 +15,7 @@ use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
+use App\Catalog\Domain\Category\CategorySlug;
 use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductCategories;
@@ -108,7 +109,7 @@ final class GetCatalogStatisticsHandlerTest extends TestCase
 
     private function category(string $id): Category
     {
-        $category = Category::createRoot(CategoryId::fromString($id), new CategoryName('Category '.$id));
+        $category = Category::createRoot(CategoryId::fromString($id), new CategoryName('Category '.$id), new CategorySlug($id));
         $this->categories->save($category);
 
         return $category;

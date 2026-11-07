@@ -11,6 +11,8 @@ use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategoryPath;
 use App\Catalog\Domain\Category\CategoryRepository;
+use App\Catalog\Domain\Category\CategorySlug;
+use App\Catalog\Domain\Category\CategorySlugTaken;
 use App\Catalog\Infrastructure\Persistence\Doctrine\Record\CategoryRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -23,6 +25,7 @@ final readonly class DoctrineCategoryRepository implements CategoryRepository
 
     /**
      * @throws CategoryAlreadyExists when a concurrent request inserted a category with this id after the read below
+     * @throws CategorySlugTaken     when a concurrent request inserted a sibling with this slug after the handler's check
      */
     public function save(Category $category): void
     {
@@ -33,6 +36,7 @@ final readonly class DoctrineCategoryRepository implements CategoryRepository
             ? null
             : $this->entityManager->getReference(CategoryRecord::class, $parentId->toString());
         $record->name = $category->name()->value();
+        $record->slug = $category->slug()->value();
         $record->path = $category->path()->toString();
 
         try {
@@ -41,6 +45,9 @@ final readonly class DoctrineCategoryRepository implements CategoryRepository
         } catch (UniqueConstraintViolationException $e) {
             if (str_contains($e->getMessage(), CategoryRecord::PRIMARY_KEY_CONSTRAINT)) {
                 throw new CategoryAlreadyExists();
+            }
+            if (str_contains($e->getMessage(), CategoryRecord::SIBLING_SLUG_INDEX) || str_contains($e->getMessage(), CategoryRecord::ROOT_SLUG_INDEX)) {
+                throw new CategorySlugTaken();
             }
 
             throw $e;
@@ -70,11 +77,20 @@ final readonly class DoctrineCategoryRepository implements CategoryRepository
         return $this->entityManager->getRepository(CategoryRecord::class)->count();
     }
 
+    public function slugTakenAmongSiblings(?CategoryId $parentId, CategorySlug $slug): bool
+    {
+        return null !== $this->entityManager->getRepository(CategoryRecord::class)->findOneBy([
+            'parent' => $parentId?->toString(),
+            'slug' => $slug->value(),
+        ]);
+    }
+
     private function toDomain(CategoryRecord $record): Category
     {
         return Category::reconstitute(
             CategoryId::fromString($record->id),
             new CategoryName($record->name),
+            new CategorySlug($record->slug),
             null === $record->parent ? null : CategoryId::fromString($record->parent->id),
             CategoryPath::fromString($record->path),
         );

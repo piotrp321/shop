@@ -28,6 +28,11 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
 
 - **PostgreSQL** – źródło prawdy dla wszystkich contextów.
 - **Elasticsearch** – wyszukiwanie i filtrowanie produktów w sklepie. Tylko model odczytu, odbudowywany z Postgresa.
+  Analizę tekstu polskiego (stemming) robi oficjalna wtyczka `analysis-stempel`, dlatego usługa działa na własnym
+  obrazie (`infra/elasticsearch/Dockerfile`: obraz Elasticsearch z zainstalowaną wtyczką). Indeks należy do Catalog
+  i zawiera warianty produktów z cenami i dostępnością. Catalog bierze je przez port do oferty Cart
+  (`ProductOfferFacts`), więc „możliwy do kupienia” i cena „od” liczą się tak samo jak na kafelku, a Catalog nie
+  zależy od Pricing, Inventory ani Cart. Zmiany cen i stanów aktualizują indeks przez zdarzenia.
 - **Redis** – cache (odczyty katalogu), limity dla rate limitera.
 - **RabbitMQ** – komunikaty asynchroniczne przez Symfony Messenger: zdarzenia domenowe między contextami,
   indeksowanie w ES, e-maile, rewalidacja stron sklepu.
@@ -91,7 +96,7 @@ Trzy warstwy cache, każda z jasną rolą:
 
 | Warstwa | Co trzyma | Unieważnianie |
 |---|---|---|
-| Next.js (ISR) | HTML stron produktów i kategorii | rewalidacja na żądanie po zdarzeniu domenowym |
+| Next.js (ISR) | HTML stron produktów | rewalidacja na żądanie po zdarzeniu domenowym |
 | Varnish | odpowiedzi publicznych endpointów `GET` katalogu i wyszukiwarki | purge po tagach (xkey) po zdarzeniu domenowym |
 | Cloudflare | obrazy z imgproxy, statyczne zasoby | adresy obrazów są niezmienne, więc bez unieważniania |
 
@@ -122,10 +127,13 @@ Trzy warstwy cache, każda z jasną rolą:
 
 Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie Server Components.
 
-- **Strony produktów i kategorii**: renderowane na serwerze (ISR). Gotowy HTML jest cache'owany,
+- **Strony produktów**: renderowane na serwerze (ISR). Gotowy HTML jest cache'owany,
   a po zmianie ceny lub stanu API wysyła rewalidację na żądanie (zdarzenie domenowe → purge Varnisha → webhook do
   Next.js).
   Wyszukiwarka zawsze dostaje pełną treść, a ruch nie obciąża API przy każdym wejściu.
+- **Strony kategorii** (`/c/<ścieżka slugów>`) i lista `/`: renderowane na serwerze przy każdym żądaniu (SSR), bez ISR.
+  Odczyty idą przez Varnisha, który jest jedynym cache list (bez data cache Next.js), więc strona nie zależy od
+  rewalidacji. Mega menu działów w nagłówku jest zbudowane z drzewa kategorii, a wszystkie jego linki są w HTML.
 - **Wyszukiwarka i filtry**: SSR, parametry w URL, kanoniczne adresy dla kombinacji filtrów,
   `noindex` dla kombinacji bez wartości SEO.
 - **Koszyk, checkout, konto klienta**: renderowane po stronie klienta, `noindex`.
@@ -133,7 +141,8 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
   (Metadata API w Next.js).
 - **Dane strukturalne**: JSON-LD `Product` (cena, dostępność, zdjęcia), `BreadcrumbList`, `Organization`.
 - **Mapa strony i robots**: `sitemap.xml` generowana z katalogu, `robots.txt`.
-- **Przyjazne adresy**: `/p/<slug>`, `/c/<slug-kategorii>`, przekierowania 301 przy zmianie sluga.
+- **Przyjazne adresy**: `/p/<slug>`, `/c/<ścieżka slugów kategorii>` (np. `/c/turystyka/biwak/namioty`),
+  przekierowania 301 przy zmianie sluga. Stary adres `/?category=<id>` przekierowuje trwale na `/c/<ścieżka>`.
 - **Wydajność**: Core Web Vitals jako wymaganie (obrazy z imgproxy w WebP z `srcset`,
   `priority` dla głównego zdjęcia produktu, minimum JavaScriptu po stronie klienta). Pomiar przez Lighthouse w CI.
 
@@ -305,8 +314,10 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
   a jego rekordy służą tylko za definicję schematu (uzasadnienie w `apps/api/CLAUDE.md`).
 - Osobne value objecty w każdym contexcie zamiast wspólnej klasy bazowej.
 - Transactional outbox dla zdarzeń domenowych.
-- Elasticsearch wyłącznie jako model odczytu.
-- ISR z rewalidacją na żądanie zamiast SSR przy każdym żądaniu dla stron katalogu.
+- Elasticsearch wyłącznie jako model odczytu, z polską analizą tekstu przez wtyczkę `analysis-stempel` (własny obraz
+  zamiast gotowego z rejestru).
+- ISR z rewalidacją na żądanie dla stron produktów zamiast SSR przy każdym żądaniu; strony kategorii i lista to SSR
+  z odczytami przez Varnisha (adres kategorii i filtry w URL).
 - Varnish z tagami (xkey) tylko przed publicznymi odczytami API; trzy warstwy cache i ich unieważnianie.
 - Model mieszany: optimistic locking i klucze idempotencji dla edycji z widoku i operacji powtarzanych przez klienta,
   krótka blokada wiersza (`SELECT … FOR UPDATE`) z decyzją w agregacie dla atomowych operacji na stanie magazynowym,
@@ -314,7 +325,8 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
 - Garage jako magazyn S3 i imgproxy (przetwarzanie obrazów na żądanie, format w podpisanym adresie) zamiast
   generowania miniatur przy uploadzie.
 - Drzewo kategorii jako lista sąsiedztwa (`parent_id`, źródło prawdy) ze zmaterializowaną ścieżką do zapytań
-  o poddrzewo, bez nested set i Gedmo Tree.
+  o poddrzewo, bez nested set i Gedmo Tree. Kategoria ma slug unikalny wśród rodzeństwa (nie globalnie); adres
+  kategorii to ścieżka slugów od korzenia, liczona przy odczycie drzewa, bez kolumny w bazie.
 - Klasa podatkowa produktu (`taxClass`) w Catalog zamiast stawki VAT; stawkę dla PL wyznacza Pricing, tabela w kodzie.
 - SPX zamiast Blackfire do profilowania (darmowe, wystarczające przy tej skali).
 - k3s + Argo CD na jednym serwerze; Grafana Cloud i Sentry SaaS zamiast hostowania obserwowalności u siebie.

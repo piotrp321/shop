@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Catalog\Search;
 
 use App\Catalog\Application\Search\ProductDocument;
+use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\SearchResult;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
@@ -34,32 +35,32 @@ final class ProductSearchTest extends TestCase
 
     public function testCategoryFilterIncludesDescendantsAndAdditionalCategories(): void
     {
-        self::assertSame(['buty', 'Żel'], self::names($this->search()->search(self::R, 1, 10)));
-        self::assertSame(['Żel'], self::names($this->search()->search(self::L, 1, 10)));
-        self::assertSame(['Ajax', 'Żel'], self::names($this->search()->search(self::X, 1, 10)));
-        self::assertSame(2, $this->search()->search(self::X, 1, 10)->total);
-        self::assertSame(3, $this->search()->search(null, 1, 10)->total);
+        self::assertSame(['buty', 'Żel'], self::names($this->search()->search(new ProductSearchCriteria(1, 10, categoryId: self::R))));
+        self::assertSame(['Żel'], self::names($this->search()->search(new ProductSearchCriteria(1, 10, categoryId: self::L))));
+        self::assertSame(['Ajax', 'Żel'], self::names($this->search()->search(new ProductSearchCriteria(1, 10, categoryId: self::X))));
+        self::assertSame(2, $this->search()->search(new ProductSearchCriteria(1, 10, categoryId: self::X))->total);
+        self::assertSame(3, $this->search()->search(new ProductSearchCriteria(1, 10))->total);
     }
 
     public function testSortsByNameIgnoringCaseAndDiacritics(): void
     {
-        self::assertSame(['Ajax', 'buty', 'Żel'], self::names($this->search()->search(null, 1, 10)));
+        self::assertSame(['Ajax', 'buty', 'Żel'], self::names($this->search()->search(new ProductSearchCriteria(1, 10))));
     }
 
     public function testReturnsWholeDocuments(): void
     {
-        $items = $this->search()->search(self::L, 1, 10)->items;
+        $items = $this->search()->search(new ProductSearchCriteria(1, 10, categoryId: self::L))->items;
 
         self::assertEquals([self::document('0198a1f0-0000-7000-8000-000000000001', 'Żel', self::L, [self::X], [self::R, self::C, self::L, self::X])], $items);
     }
 
     public function testPaginates(): void
     {
-        $second = $this->search()->search(null, 2, 2);
+        $second = $this->search()->search(new ProductSearchCriteria(2, 2));
         self::assertSame(['Żel'], self::names($second));
         self::assertSame(3, $second->total);
 
-        $beyond = $this->search()->search(null, 99, 2);
+        $beyond = $this->search()->search(new ProductSearchCriteria(99, 2));
         self::assertSame([], $beyond->items);
         self::assertSame(3, $beyond->total);
     }
@@ -68,28 +69,21 @@ final class ProductSearchTest extends TestCase
     {
         $search = $this->searchWithResultWindow(2);
 
-        $atEnd = $search->search(null, 2, 2);
+        $atEnd = $search->search(new ProductSearchCriteria(2, 2));
         self::assertSame([], $atEnd->items);
         self::assertSame(3, $atEnd->total);
 
-        $pastEnd = $search->search(null, 3, 2);
+        $pastEnd = $search->search(new ProductSearchCriteria(3, 2));
         self::assertSame([], $pastEnd->items);
         self::assertSame(3, $pastEnd->total);
     }
 
     public function testPageCrossingTheResultWindowIsCutAtItsEnd(): void
     {
-        $result = $this->searchWithResultWindow(2)->search(null, 1, 3);
+        $result = $this->searchWithResultWindow(2)->search(new ProductSearchCriteria(1, 3));
 
         self::assertSame(['Ajax', 'buty'], self::names($result));
         self::assertSame(3, $result->total);
-    }
-
-    public function testPageAndPerPageMustBePositive(): void
-    {
-        $this->expectException(\InvalidArgumentException::class);
-
-        $this->search()->search(null, 0, 10);
     }
 
     private function search(): ElasticsearchProductSearch
@@ -118,6 +112,6 @@ final class ProductSearchTest extends TestCase
      */
     private static function document(string $id, string $name, string $main, array $additional, array $ancestors): ProductDocument
     {
-        return new ProductDocument($id, 1, $name, 'slug-'.$id, 'Short', $main, [$main, ...$additional], $ancestors, null);
+        return new ProductDocument($id, 1, $name, 'slug-'.$id, 'Short', $main, [$main, ...$additional], $ancestors, null, [], [], null);
     }
 }

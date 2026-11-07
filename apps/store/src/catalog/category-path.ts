@@ -12,3 +12,19 @@ export function findCategoryPath(categories: CategoryNode[], id: string | undefi
   }
   return [];
 }
+
+/**
+ * The categories from the root down to the one that the slugs lead to (`/c/<slug>/<slug>`), or an empty array when
+ * the path is empty or any slug does not exist at its level.
+ */
+export function resolveCategoryPath(categories: CategoryNode[], slugs: string[]): CategoryNode[] {
+  const chain: CategoryNode[] = [];
+  let level = categories;
+  for (const slug of slugs) {
+    const found = level.find((category) => category.slug === slug);
+    if (found === undefined) return [];
+    chain.push(found);
+    level = found.children;
+  }
+  return chain;
+}

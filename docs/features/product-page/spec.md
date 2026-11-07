@@ -24,7 +24,6 @@ Funkcja opiera się na wariantach produktu w Catalog i na ofercie produktów `GE
 Poza zakresem:
 - docelowy wygląd strony, galeria z powiększeniem, karuzela (VISUAL-DESIGN #97);
 - wyszukiwarka i filtry (SEARCH #94);
-- strony kategorii `/c/<slug>` z ISR; lista `/` zostaje renderowana przy każdym żądaniu (SSR) i korzysta z Varnisha;
 - przekierowania 301 po zmianie sluga: slug się nie zmienia, edycji produktu nie ma (CATALOG-ADMIN #95);
 - tagi i unieważnianie po zmianie kategorii albo produktu: kategorie i produkty powstają tylko w danych demo
   (`make seed` z pełnym unieważnieniem); edycja to CATALOG-ADMIN;
@@ -88,9 +87,10 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 
 - Zapytanie `GetProductBySlug(slug)` (`query.bus`, DBAL, odczyt z PostgreSQL, nie z Elasticsearch) → `ProductDetails`
   albo `null`:
-  `{id, slug, name, shortDescription, breadcrumb: [{id, name}], images: [ImageView], variantAxes: [string],
+  `{id, slug, name, shortDescription, breadcrumb: [{id, name, path}], images: [ImageView], variantAxes: [string],
   variants: [{variantId, label, values: [string]}]}`.
-  - `breadcrumb`: ścieżka od korzenia do kategorii głównej produktu (`ProductCategories::main`), z `CategoryPath`.
+  - `breadcrumb`: ścieżka od korzenia do kategorii głównej produktu (`ProductCategories::main`), z `CategoryPath`;
+    `path` elementu to slugi kategorii od korzenia do niego połączone `/` (jak `path` w drzewie kategorii).
   - `images`: wszystkie zdjęcia produktu w kolejności pozycji (0–10), w rozmiarze `product`.
   - `variants` w kolejności pozycji; `label` z `ProductVariant::label()`, `values` w kolejności osi.
 - Rozmiar `product` (karta produktu) w `ImageSize`: 1:1, szerokości 640, 960, 1280, 1600, WebP, `fill`, `sm`.
@@ -199,13 +199,15 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
   klienta (`createApiClient` w `src/api/client.ts`, do `fetch` jako `next: { tags }`): odczyt szczegółów ma tag `catalog` (id nie jest jeszcze znane),
   odczyt oferty `catalog` i `product-<id>`. Strona dziedziczy sumę tagów odczytów, więc rewalidacja `product-<id>`
   albo `catalog` unieważnia HTML, a następne wejście pobiera od nowa oba odczyty (przez Varnish, już po purge).
-  Odczyty nie trafiają do data cache Next na dłużej niż HTML strony.
+  Odczyty nie trafiają do data cache Next na dłużej niż HTML strony. Layout czyta też drzewo kategorii dla menu
+  działów w nagłówku (`GET /api/v1/categories` z tagiem `catalog`); gdy odczyt zawiedzie, nagłówek jest bez menu,
+  a strona renderuje się dalej.
 - 404 API → `notFound()` (strona 404 z `noindex`). Inny błąd szczegółów lub oferty (status, sieć, nieoczekiwana
   treść) → wyjątek, `app/error.tsx` (P7), a wynik nie trafia do cache ISR. Po rewalidacji na żądanie (`expire: 0`,
   P5) wpis jest wygaszony, więc błąd daje stronę błędu, a następne wejście renderuje stronę od nowa. Przy
   wygaśnięciu czasowym (`revalidate = 3600`, odświeżenie w tle) błąd zostawia poprzednią wersję.
 - Treść (tymczasowy, neutralny motyw na tokenach, komponenty shadcn/ui):
-  - ścieżka: „Wszystkie produkty” › kategorie z `breadcrumb`, linki `/?category=<id>`;
+  - ścieżka: „Wszystkie produkty” › kategorie z `breadcrumb`, linki `/c/<ścieżka>` (`path` elementu);
   - `h1` z nazwą, zdjęcia przez `ProductPhoto` (P4; produkt bez zdjęć: `PhotoPlaceholder` jak na kafelku), krótki
     opis;
   - cena i dostępność: bez wyboru „od X zł” (gdy `hasPriceRange`) albo „X zł” i etykieta `level` produktu; po
@@ -237,7 +239,7 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
     `Offer` dla każdego wariantu z ceną (`gross` ≠ `null`): `name` = etykieta, `price` (złote z groszy, kropka
     dziesiętna), `priceCurrency: PLN`, `availability` (`in_stock` → `InStock`, `low_stock` → `LimitedAvailability`,
     `out_of_stock` → `OutOfStock`), `url`;
-  - `BreadcrumbList`: „Wszystkie produkty” i kategorie ścieżki z bezwzględnymi adresami.
+  - `BreadcrumbList`: „Wszystkie produkty” i kategorie ścieżki z bezwzględnymi adresami `/c/<ścieżka>`.
 - Kafelek listy: nazwa i zdjęcie to link do `/p/<slug>`; reszta kafelka bez zmian.
 
 ### Rewalidacja (`POST /api/revalidate`)
@@ -260,7 +262,7 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
   workera nie trafiają w startujący sklep.
 - Varnish dostaje healthcheck; `api` i `worker` nie zależą od jego startu (worker przy niedostępnym Varnishu
   ponawia wiadomość).
-- `make seed`: po seedach katalogu, cen, zamówień i stanów `storefront:cache:purge-all`.
+- `make seed`: po seedach katalogu, cen, zamówień i stanów i po `catalog:reindex` `storefront:cache:purge-all`.
 
 ## Scenariusze błędów
 

@@ -57,13 +57,13 @@ final readonly class DbalProductDetailsSource implements ProductDetailsSource
     }
 
     /**
-     * @return list<array{id: string, name: string}> from the root to the category of the path
+     * @return list<array{id: string, name: string, slug: string}> from the root to the category of the path
      */
     private function breadcrumb(CategoryPath $path): array
     {
         $ids = array_map(static fn (CategoryId $id): string => $id->toString(), $path->ancestorIds());
         $rows = $this->connection->fetchAllAssociative(
-            'SELECT c.id, c.name
+            'SELECT c.id, c.name, c.slug
              FROM unnest(CAST(:ids AS uuid[])) WITH ORDINALITY AS t(id, position)
              JOIN catalog_category c ON c.id = t.id
              ORDER BY t.position',
@@ -71,9 +71,9 @@ final readonly class DbalProductDetailsSource implements ProductDetailsSource
         );
 
         return array_map(static function (array $row): array {
-            \assert(\is_string($row['id']) && \is_string($row['name']));
+            \assert(\is_string($row['id']) && \is_string($row['name']) && \is_string($row['slug']));
 
-            return ['id' => $row['id'], 'name' => $row['name']];
+            return ['id' => $row['id'], 'name' => $row['name'], 'slug' => $row['slug']];
         }, $rows);
     }
 

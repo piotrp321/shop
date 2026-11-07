@@ -6,6 +6,8 @@ export const urls = {
   store: `http://localhost:${port("STORE_PORT", "3000")}`,
   admin: `http://localhost:${port("ADMIN_PORT", "5173")}`,
   keycloak: `http://localhost:${port("KEYCLOAK_PORT", "8080")}`,
+  // The API is reached over the Compose network too (a public read, e.g. the category tree).
+  api: "http://api",
   // Mailpit is reached over the Compose network, not through the browser-facing port.
   mailpit: "http://mailpit:8025",
 };

@@ -13,10 +13,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'catalog_category')]
 #[ORM\Index(name: 'catalog_category_parent_id_idx', columns: ['parent_id'])]
 #[ORM\Index(name: 'catalog_category_path_idx', columns: ['path'])]
+#[ORM\UniqueConstraint(name: self::SIBLING_SLUG_INDEX, columns: ['parent_id', 'slug'])]
+#[ORM\UniqueConstraint(name: self::ROOT_SLUG_INDEX, columns: ['slug'], options: ['where' => '(parent_id IS NULL)'])]
 class CategoryRecord
 {
     /** PostgreSQL's default name of the primary key constraint of the table. */
     public const string PRIMARY_KEY_CONSTRAINT = 'catalog_category_pkey';
+    public const string SIBLING_SLUG_INDEX = 'catalog_category_parent_slug_key';
+    public const string ROOT_SLUG_INDEX = 'catalog_category_root_slug_key';
 
     #[ORM\ManyToOne(targetEntity: self::class)]
     #[ORM\JoinColumn(name: 'parent_id', referencedColumnName: 'id')]
@@ -24,6 +28,9 @@ class CategoryRecord
 
     #[ORM\Column(length: 100)]
     public string $name;
+
+    #[ORM\Column(length: 60)]
+    public string $slug;
 
     // The migration adds text_pattern_ops to the index; the mapping cannot express operator classes.
     #[ORM\Column(type: 'text')]

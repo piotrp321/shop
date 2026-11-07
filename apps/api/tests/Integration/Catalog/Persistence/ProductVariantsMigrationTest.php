@@ -32,7 +32,7 @@ final class ProductVariantsMigrationTest extends KernelTestCase
         self::assertInstanceOf(Connection::class, $connection);
         $this->connection = $connection;
         foreach ([self::CATEGORY_ID, self::OTHER_CATEGORY_ID] as $id) {
-            $this->connection->executeStatement('INSERT INTO catalog_category (id, name, path) VALUES (?, ?, ?)', [$id, 'Category '.$id, '/'.$id.'/']);
+            $this->connection->executeStatement('INSERT INTO catalog_category (id, name, slug, path) VALUES (?, ?, ?, ?)', [$id, 'Category '.$id, $id, '/'.$id.'/']);
         }
     }
 

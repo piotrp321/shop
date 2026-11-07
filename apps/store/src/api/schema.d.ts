@@ -261,7 +261,7 @@ export interface paths {
         };
         /**
          * Product list
-         * @description A page of products sorted by name, then by id. The category filter includes the products of all its subcategories; an unknown category gives 404, an existing category without products an empty list. A page past the end gives an empty list with the real total.
+         * @description A page of products, optionally searched by a phrase and narrowed by filters, with the counts that go with it (`facets`). The category filter includes the products of all its subcategories; an unknown category gives 404, an existing category without products an empty list. A page past the end gives an empty list with the real total. Without `sort` the list is by relevance with `q` and by name otherwise. The conditions on variants (`option`, `priceMin`, `priceMax`, `available`) all hold for one and the same variant of a product: `option=Kolor:czarne&option=Rozmiar:42` finds products with a black variant in size 42, not a black one and a different one in size 42. Prices and availability count only variants that can be bought now. Several values of one axis mean "any of them", different axes mean "all". Send `option` as a repeated key (`?option=Kolor:czarne&option=Kolor:biały`); the `option[]` form is not accepted. The response is public, kept for 60 s and tagged for purging, so a new price or stock level can show in the filters after up to a minute.
          */
         get: operations["listProducts"];
         put?: never;
@@ -493,6 +493,61 @@ export interface components {
              * @example 412
              */
             total: number;
+            facets: components["schemas"]["ProductFacets"];
+        };
+        /** @description Counts for the filters of the list. Each one is computed with every condition of the search except its own. The count of an axis value is the number of products that have a variant with that value meeting the other variant conditions (other axes, price, availability). For an axis without a selection it is the `total` the search would return after adding that value; for an axis with a selection it is the result of selecting only that value of the axis. */
+        ProductFacets: {
+            /** @description The subcategories of the `category` filter (the top-level categories without it) that have products, in the order of the category tree. */
+            categories: components["schemas"]["CategoryFacet"][];
+            /** @description The variant axes of the products found, most products first (at most 10; the selected axes are always listed, beyond that limit). A selected value stays in its list with a count of 0 when nothing matches. */
+            options: components["schemas"]["OptionFacet"][];
+            /** @description The lowest and the highest gross price of the variants that can be bought now and have the selected `option` values, ignoring `priceMin` and `priceMax`; null without such a variant. */
+            price: components["schemas"]["PriceRange"] | null;
+            /**
+             * @description The `total` the search would return with `available=true` added.
+             * @example 18
+             */
+            availableCount: number;
+        };
+        CategoryFacet: {
+            /** Format: uuid */
+            id: string;
+            /** @example Buty */
+            name: string;
+            /** @example buty */
+            slug: string;
+            /**
+             * @description The slugs from the top-level category joined with `/`.
+             * @example bieganie/buty
+             */
+            path: string;
+            /**
+             * @description The products of the category (and its subcategories) found, with the variant conditions of the search.
+             * @example 7
+             */
+            count: number;
+        };
+        OptionFacet: {
+            /** @example Kolor */
+            axis: string;
+            /** @description Most products first, then by value (at most 30; the selected values are always listed, beyond that limit). */
+            values: components["schemas"]["OptionValue"][];
+        };
+        OptionValue: {
+            /** @example czarne */
+            value: string;
+            /**
+             * @description The number of products that have a variant with this value meeting the other variant conditions (other axes, price, availability). For an axis without a selection it is the `total` after adding the value; for an axis with a selection, the result of selecting only this value of the axis.
+             * @example 4
+             */
+            count: number;
+        };
+        /** @description Gross prices in grosze. */
+        PriceRange: {
+            /** @example 24900 */
+            min: number;
+            /** @example 49900 */
+            max: number;
         };
         ProductListItem: {
             /** Format: uuid */
@@ -558,8 +613,13 @@ export interface components {
         BreadcrumbItem: {
             /** Format: uuid */
             id: string;
-            /** @example Obuwie */
+            /** @example Buty */
             name: string;
+            /**
+             * @description The slugs from the root to this category joined with `/`, as `path` of `CategoryNode`.
+             * @example bieganie/buty
+             */
+            path: string;
         };
         ProductDetailsVariant: {
             /** Format: uuid */
@@ -886,6 +946,22 @@ export interface components {
         ListProductsQuery: {
             /** @default null */
             category: string | null;
+            /** @default null */
+            q: string | null;
+            /** @default null */
+            priceMin: string | null;
+            /** @default null */
+            priceMax: string | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            available: "true" | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            sort: "relevance" | "name" | "price_asc" | "price_desc" | null;
             /** @default 1 */
             page: number;
             /** @default 24 */
@@ -1046,6 +1122,8 @@ export interface components {
         CategoryNode: {
             id: string;
             name: string;
+            slug: string;
+            path: string;
             children: components["schemas"]["CategoryNode"][];
         };
         /** @description The customer identified by the access token. */
@@ -1877,7 +1955,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Root categories with their descendants. An empty catalogue gives an empty array. */
+            /** @description Root categories with their descendants. Every node has its `slug` (unique among its siblings) and `path` (the slugs from the root to the node joined with `/`, e.g. `turystyka/biwak/namioty`). An empty catalogue gives an empty array. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1911,6 +1989,18 @@ export interface operations {
             query?: {
                 /** @description Category id (UUID). */
                 category?: string;
+                /** @description Search phrase, 2 to 100 characters after trimming. Every word must match (name, category names or short description), Polish inflection, missing Polish characters and small typos are tolerated. */
+                q?: string;
+                /** @description Wanted variant option as `<axis>:<value>`, split on the first colon (axis 1 to 30 characters, value 1 to 40), repeated for more; at most 50 entries of at most 5 different axes. */
+                option?: string[];
+                /** @description Lowest gross price of a buyable variant, in grosze. */
+                priceMin?: number;
+                /** @description Highest gross price of a buyable variant, in grosze; not lower than `priceMin`. */
+                priceMax?: number;
+                /** @description Only products with a variant that can be bought now. The only accepted value is `true`. */
+                available?: true;
+                /** @description Order: `relevance` (only with `q`; the default with `q`), `name` (the default without `q`), `price_asc`, `price_desc` (by the lowest price of a buyable variant, products without one last). Ties break by name, then by id. */
+                sort?: "relevance" | "name" | "price_asc" | "price_desc";
                 /** @description Page number, from 1. */
                 page?: number;
                 /** @description Page size. */
