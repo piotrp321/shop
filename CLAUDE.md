@@ -40,11 +40,20 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc). Główny
     `make check` woła też `make -C infra/k8s check`: `helm lint`, render chartu dla `prod` i `ci`, schemat wartości,
     `kubeconform`, `shellcheck` i testy renderu (fale, ścieżki ingressu `auth`, middleware, klucze sekretu, nazwy Jobów,
-    CronJob, obrazy: własne z rejestru po digeście, pozostałe `tag@digest` z tagiem jak w compose, bez `latest`).
+    CronJob, obrazy: własne z rejestru po digeście, pozostałe `tag@digest` z tagiem jak w compose, bez `latest`;
+    przełączniki `demoNotice`, `customerAccounts`, `orderMail` i poczta Keycloaka w środowisku sklepu, api, workera i Jobów
+    oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem) oraz testy
+    skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker`.
   - `infra/k8s` ma własny `Makefile` (potrzebuje tylko Dockera): `make -C infra/k8s check`; `make -C infra/k8s smoke`
     (test dymny: chart z profilem `ci` na pustym klastrze k3d z obrazami produkcyjnymi zbudowanymi lokalnie, kilka minut;
     `SMOKE_BREAK=migration|image` psuje go celowo); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
-    samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje).
+    samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje);
+    `make -C infra/k8s create-admin LOGIN=<login> EMAIL=<e-mail>` (pierwszy administrator panelu: wypisuje, co zrobi,
+    i działa dopiero po słowie `tak`; zakłada użytkownika w realmie `backoffice` z rolą `admin` bez hasła i wysyła mu
+    e-mail z akcjami `UPDATE_PASSWORD` i `CONFIGURE_TOTP`, link ważny 12 h; istniejący login albo e-mail: błąd, kod 3,
+    bez zmian; niczego tajnego nie wypisuje). `rerun` i `create-admin` łączą się z klastrem przez kubeconfig z `KUBE_DIR`
+    (wymagany), w kontenerze w sieci Dockera `KUBE_NETWORK` (domyślnie `host`), w przestrzeni `KUBE_NAMESPACE`
+    (domyślnie `shop`). Agent uruchamia `create-admin` tylko po zgodzie użytkownika w rozmowie.
 - `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.
 - Tryb sklepu wybiera zmienna `STORE_MODE` dla `make up`: `dev` (domyślnie) uruchamia `next dev`, `production` robi
   `next build` i uruchamia `next start`. Inna wartość zatrzymuje kontener sklepu, a nieudany build też, więc `make up`
@@ -142,6 +151,14 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   tag jak w compose i digest, Elasticsearch to obraz z `infra/elasticsearch/Dockerfile` jak w compose) i test dymny;
   nowej zmiennej z wartością domyślną ani zmiany istniejącego klienta realmu żaden z nich nie wyłapie. Zmiana wersji
   obrazu w compose wymaga nowego digestu w chartcie (`docker buildx imagetools inspect <obraz:tag>`).
+- Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (pliki realmów z repo bez `users`, z adresami domeny;
+  nazwa Joba zależy od tych plików, `customerAccounts` i poczty Keycloaka). Brakujący realm zakłada; w istniejącym
+  `partialImport` z `ifResourceExists=SKIP` dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem
+  przy każdym uruchomieniu ustawia wartości z konfiguracji: sekret klienta `store`, `redirectUris`, `webOrigins`
+  i adresy po wylogowaniu klientów z domeny, rejestrację w realmie `shop` (`customerAccounts`), `verifyEmail` w `shop`
+  i SMTP obu realmów (`keycloak.mail`: Mailpit albo Brevo). Nigdy nie usuwa użytkowników, haseł ani zasobów. Inna
+  zmiana istniejącego klienta, roli albo ustawienia realmu w pliku do klastra nie trafi: wymaga ręcznej zmiany przez
+  `kcadm` albo nowego kroku w Jobie.
 - Zadanie jest skończone dopiero, gdy przechodzą `make check` i testy aplikacji, której dotyczy zmiana.
   Pokaż wynik, nie deklaruj.
 - Zmiana dotykająca kilku aplikacji (np. nowy endpoint i ekran w panelu) jest skończona, gdy przechodzą

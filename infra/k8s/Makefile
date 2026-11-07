@@ -6,7 +6,8 @@ check:
 
 # The checks fail on injected errors (a broken template, a secret key missing from the chart, an invalid manifest, an
 # auth ingress exposing the master realm, a job in a wave before its dependency, an image without a digest, a chart
-# allowed on Kubernetes older than 1.36).
+# allowed on Kubernetes older than 1.36, Brevo allowed without its secret, keycloak-config printing a secret,
+# create-admin going on without tak).
 selftest:
 	sh scripts/selftest.sh
 
