@@ -6,6 +6,8 @@ import AppLayout from "@/layout/AppLayout.vue";
 import AuthCallbackView from "@/views/AuthCallbackView.vue";
 import DashboardView from "@/views/DashboardView.vue";
 import InventoryView from "@/views/InventoryView.vue";
+import OrderDetailView from "@/views/OrderDetailView.vue";
+import OrdersView from "@/views/OrdersView.vue";
 import PricesView from "@/views/PricesView.vue";
 
 type SessionManager = Pick<UserManager, "getUser" | "signinRedirect">;
@@ -23,6 +25,14 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
           { path: "", name: "dashboard", component: DashboardView },
           { path: "prices", name: "prices", component: PricesView },
           { path: "inventory", name: "inventory", component: InventoryView },
+          {
+            // One path for the list and the detail, so the menu item of the orders stays active on a detail.
+            path: "orders",
+            children: [
+              { path: "", name: "orders", component: OrdersView },
+              { path: ":orderId", name: "order-detail", component: OrderDetailView },
+            ],
+          },
           { path: ":pathMatch(.*)*", redirect: "/" },
         ],
       },
