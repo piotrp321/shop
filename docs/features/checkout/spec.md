@@ -286,7 +286,8 @@ Ceny i kwoty liczy wyłącznie serwer:
 - Adapter `SymfonyOrderConfirmationMailer` (`Ordering_Infrastructure`, Symfony Mailer): wysyłka synchroniczna przez
   transport Mailera, bez Messengera (`framework.mailer.message_bus: false`; inaczej `MailerInterface::send()` wysłałby
   `SendEmailMessage` na domyślną szynę `command.bus`), więc błąd SMTP wraca do handlera. `MAILER_DSN`
-  (`smtp://mailpit:1025` w `infra/docker-compose.yml` dla `api` i `worker`, w konfiguracji testów i CI), nadawca
+  (`smtp://mailpit:1025?timeout=10` w `infra/docker-compose.yml` dla `api` i `worker`, w konfiguracji testów i CI;
+  `timeout` to limit każdej operacji gniazda SMTP w sekundach, krótszy niż zajęcie wysyłki), nadawca
   z `MAILER_FROM` (`Rytm <zamowienia@rytm.localhost>`), treść tekstowa po polsku (P8), temat „Potwierdzenie zamówienia
   R-100001”. Treść składa jedna klasa w `Ordering_Application` (`OrderConfirmationText`), testowana jednostkowo.
 - Treść: powitanie z imieniem i nazwiskiem, numer, data i godzina złożenia w strefie `Europe/Warsaw`, pozycje

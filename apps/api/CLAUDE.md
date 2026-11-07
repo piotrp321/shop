@@ -248,9 +248,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   po `OrderPlaced` z outboxa). Wysyłka idzie przez Symfony Mailer (`symfony/mailer`) synchronicznie, bez Messengera:
   `framework.mailer.message_bus: false` (inaczej `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną
   szynę `command.bus`, a błąd SMTP nie wróciłby do handlera i nie uruchomił ponowień transportu `events`). Konfiguracja
-  w zmiennych środowiska: `MAILER_DSN` (`smtp://mailpit:1025`) i `MAILER_FROM` (`Rytm <zamowienia@rytm.localhost>`),
-  ustawianych w `infra/docker-compose.yml` dla `api` i `worker` (testy i CI biorą je z serwisu `api`; `phpunit.dist.xml`
-  ma te same wartości domyślne). Treść składa `OrderConfirmationText` (Ordering Application), a port
+  w zmiennych środowiska: `MAILER_DSN` (`smtp://mailpit:1025?timeout=10`) i `MAILER_FROM`
+  (`Rytm <zamowienia@rytm.localhost>`), ustawianych w `infra/docker-compose.yml` dla `api` i `worker` (testy i CI biorą
+  je z serwisu `api`; `phpunit.dist.xml` ma te same wartości domyślne). Opcję `timeout` DSN SMTP (sekundy, > 0) dodaje
+  `SmtpTimeoutTransportFactory` (`Shared\Infrastructure\Mail`, dekorator `mailer.transport_factory.smtp`): limit
+  każdego połączenia, odczytu i zapisu gniazda zamiast `default_socket_timeout` (60 s), więc wysyłka (około 7 wymian)
+  kończy się dużo przed końcem 5-minutowego zajęcia wysyłki; pilnuje tego `SmtpTimeoutWithinTheLeaseTest`. Treść składa `OrderConfirmationText` (Ordering Application), a port
   `OrderConfirmationMailer` ma adapter `SymfonyOrderConfirmationMailer` w Ordering Infrastructure.
 - Znaczniki wysłanych e-maili Ordering są poza agregatem `Order`, więc wysłanie e-maila nie zmienia zamówienia ani
   jego wersji (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”). Tabela
