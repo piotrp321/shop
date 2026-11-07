@@ -18,7 +18,8 @@ use App\Pricing\Domain\Tax\VatRates;
  * `tax_reconciliation`) and, when asked, saves it in its own transaction (one save). A save refused by a concurrent
  * change is retried once on the price read again in a fresh session; a second refusal leaves the price as it is.
  *
- * The loop of pricing:reconcile-tax ({@see ReconcileTax}).
+ * The loop shared by pricing:reconcile-tax ({@see ReconcileTax}) and the repricing after a change of the tax class
+ * of a product ({@see RepriceProductPrices}).
  */
 final readonly class PriceReconciler
 {
