@@ -6,7 +6,9 @@ namespace App\Tests\Integration\Catalog\Search;
 
 use App\Catalog\Application\Search\IndexOutcome;
 use App\Catalog\Application\Search\ProductDocument;
+use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\VariantDocument;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
 use Elastic\Elasticsearch\Response\Elasticsearch;
@@ -60,6 +62,38 @@ final class ProductIndexDefinitionTest extends TestCase
             ['purchasable' => false, 'options' => ["Kolor\u{1F}zielone", "Rozmiar\u{1F}44"], 'pairs' => [['axis' => 'Kolor', 'value' => 'zielone'], ['axis' => 'Rozmiar', 'value' => '44']]],
         ], $source['variants']);
         self::assertEquals($document, ProductIndexDefinition::document($source));
+    }
+
+    public function testADraftIsStoredWithItsStatusAndReadBack(): void
+    {
+        $this->maintenance()->setup();
+        $document = self::document(status: ProductStatus::Draft);
+
+        self::assertSame(IndexOutcome::Indexed, $this->indexer()->index($document));
+
+        $stored = self::esClient()->get(['index' => $this->alias(), 'id' => self::ID]);
+        \assert($stored instanceof Elasticsearch);
+        $source = $stored['_source'];
+        self::assertIsArray($source);
+        self::assertSame('draft', $source['status']);
+        self::assertEquals($document, ProductIndexDefinition::document($source));
+        self::assertSame('published', ProductIndexDefinition::source(self::document())['status']);
+    }
+
+    public function testASourceWithoutAKnownStatusDoesNotMatchTheDefinition(): void
+    {
+        $source = ProductIndexDefinition::source(self::document());
+
+        foreach ([null, 'archived', 1] as $status) {
+            try {
+                ProductIndexDefinition::document([...$source, 'status' => $status]);
+                self::fail('Expected SearchIndexError.');
+            } catch (SearchIndexError) {
+            }
+        }
+        unset($source['status']);
+        $this->expectException(SearchIndexError::class);
+        ProductIndexDefinition::document($source);
     }
 
     public function testADocumentWithoutAFromPriceHasNoSuchField(): void
@@ -153,7 +187,7 @@ final class ProductIndexDefinitionTest extends TestCase
     /**
      * @param list<VariantDocument>|null $variants
      */
-    private static function document(?int $fromGross = 19_900, ?array $variants = null): ProductDocument
+    private static function document(?int $fromGross = 19_900, ?array $variants = null, ProductStatus $status = ProductStatus::Published): ProductDocument
     {
         return new ProductDocument(
             self::ID,
@@ -172,6 +206,7 @@ final class ProductIndexDefinitionTest extends TestCase
                 new VariantDocument(null, false, ["Kolor\u{1F}zielone", "Rozmiar\u{1F}44"]),
             ],
             $fromGross,
+            status: $status,
         );
     }
 }

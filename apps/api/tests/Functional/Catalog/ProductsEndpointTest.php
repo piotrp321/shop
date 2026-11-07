@@ -12,6 +12,7 @@ use App\Catalog\Application\Search\SearchResult;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Domain\Category\Category;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
@@ -273,6 +274,26 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertSame(2, $facets['availableCount']);
     }
 
+    public function testADraftIsNotInTheResultsTheTotalOrTheFacets(): void
+    {
+        $this->index(...$this->shoes());
+        $urls = [
+            '/api/v1/products',
+            '/api/v1/products?category='.self::ROOT,
+            $this->url(['option' => ['Kolor:czarne']]),
+            $this->url(['q' => 'buty', 'available' => 'true']),
+            $this->url(['priceMax' => '5000']),
+        ];
+        $before = array_map(fn (string $url): array => $this->get($url), $urls);
+
+        $this->index($this->shoe('Buty Szkic', [$this->variant(['Kolor' => 'czarne', 'Rozmiar' => '44'], 1000, true), $this->variant(['Kolor' => 'zielone'], 900, true)], categories: [self::ROOT, self::CHILD, self::LEAF], status: ProductStatus::Draft));
+
+        foreach ($urls as $i => $url) {
+            self::assertSame($before[$i], $this->get($url), $url);
+        }
+        self::assertSame(0, $this->get($this->url(['q' => 'szkic']))['total']);
+    }
+
     public function testSelectedValueWithoutProductsStaysInTheFacetWithZero(): void
     {
         $this->index(...$this->shoes());
@@ -436,7 +457,7 @@ final class ProductsEndpointTest extends WebTestCase
      * @param list<VariantDocument> $variants
      * @param list<string>          $categories the ancestors of the product's category, the category last
      */
-    private function shoe(string $name, array $variants, string $description = 'Opis', array $categories = [self::ROOT, self::CHILD]): ProductDocument
+    private function shoe(string $name, array $variants, string $description = 'Opis', array $categories = [self::ROOT, self::CHILD], ProductStatus $status = ProductStatus::Published): ProductDocument
     {
         $fromGross = null;
         foreach ($variants as $variant) {
@@ -454,6 +475,7 @@ final class ProductsEndpointTest extends WebTestCase
             'categoryAncestorIds' => $categories,
             'variants' => $variants,
             'fromGross' => $fromGross,
+            'status' => $status,
         ]);
     }
 

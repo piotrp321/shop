@@ -16,6 +16,7 @@ use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Application\Search\VariantFacts;
 use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryProductOfferFacts;
 use App\Tests\Support\InMemory\RecordingProductIndexer;
@@ -143,6 +144,6 @@ final class IndexProductTest extends TestCase
 
     private static function snapshot(string $id): ProductSearchSnapshot
     {
-        return new ProductSearchSnapshot($id, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::MAIN_ID, [], [[self::MAIN_ID]], null, ['Buty'], [], [['id' => self::VARIANT_ID, 'values' => []]]);
+        return new ProductSearchSnapshot($id, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::MAIN_ID, [], [[self::MAIN_ID]], null, ['Buty'], [], [['id' => self::VARIANT_ID, 'values' => []]], ProductStatus::Published);
     }
 }

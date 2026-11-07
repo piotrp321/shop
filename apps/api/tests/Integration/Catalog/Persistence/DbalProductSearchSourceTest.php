@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Catalog\Persistence;
 use App\Catalog\Application\Port\ProductSearchSource;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
 use App\Catalog\Domain\Category\Category;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
@@ -172,6 +173,21 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         sort($names);
         self::assertSame(['Biegowe', 'Buty', 'Odzież', 'Sport', 'Wyprzedaż'], $names);
         self::assertEquals($snapshot, $this->source->find($product->id()->toString()));
+    }
+
+    public function testSnapshotCarriesTheStatusOfEveryProductIncludingDrafts(): void
+    {
+        $category = $this->savedCategory();
+        $published = ProductFactory::createOne(['mainCategory' => $category, 'id' => '0198a1f0-0000-7000-8000-000000000001']);
+        $draft = ProductFactory::createOne(['mainCategory' => $category, 'id' => '0198a1f0-0000-7000-8000-000000000002', 'status' => ProductStatus::Draft]);
+        $this->products->save($published, null, null, new \DateTimeImmutable());
+        $this->products->save($draft, null, null, new \DateTimeImmutable());
+
+        self::assertSame(
+            [ProductStatus::Published, ProductStatus::Draft],
+            array_map(static fn (ProductSearchSnapshot $s): ProductStatus => $s->status, $this->source->page(null, 10)),
+        );
+        self::assertSame(ProductStatus::Draft, $this->source->find($draft->id()->toString())?->status);
     }
 
     public function testTheDefaultVariantHasNoAxesAndNoValues(): void
