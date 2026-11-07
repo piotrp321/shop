@@ -126,6 +126,12 @@ describe("the category page", () => {
     expect(markup).toContain("Nieprawidłowy filtr");
     expect(markup).toContain('href="/">Zobacz cały katalog</a>');
   });
+
+  it("links from the invalid filter message back to the category without its filters and sort", async () => {
+    vi.mocked(loadCatalog).mockResolvedValue({ kind: "invalid-filter" });
+    const markup = await html(["bieganie", "buty"], { "cena-od": "99,50", sort: "nazwa", o: ["Kolor:czarne"] });
+    expect(markup).toContain('href="/c/bieganie/buty">Pokaż wyniki bez filtrów</a>');
+  });
 });
 
 describe("filters and sorting on the category page", () => {

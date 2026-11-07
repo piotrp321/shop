@@ -56,7 +56,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
   }
   const { chain, category, state, listing } = found;
   if (listing.kind === "invalid-filter") {
-    return <InvalidFilter />;
+    return <InvalidFilter listingHref={categoryHref(category.path)} />;
   }
   // The last step is the page itself: text, not a link.
   const crumbs = crumbsOf(chain).map((crumb, index, all) => (index === all.length - 1 ? { name: crumb.name } : crumb));

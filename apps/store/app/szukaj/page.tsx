@@ -60,7 +60,7 @@ function crumbsOf(state: ListingState, chain: CategoryNode[]): BreadcrumbItem[] 
 export default async function SearchPage({ searchParams }: PageProps<"/szukaj">) {
   const search = await read(await searchParams);
   if (search.kind === "invalid-filter") {
-    return <InvalidFilter />;
+    return <InvalidFilter listingHref={listingHref("/szukaj", { q: search.state.q, options: [] })} />;
   }
   if (search.kind === "short-phrase") {
     return (
