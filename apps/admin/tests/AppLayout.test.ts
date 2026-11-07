@@ -25,6 +25,7 @@ async function mountLayout() {
           { path: "", name: "dashboard", component: { template: "<div />" } },
           { path: "prices", name: "prices", component: { template: "<div />" } },
           { path: "inventory", name: "inventory", component: { template: "<div />" } },
+          { path: "orders", name: "orders", component: { template: "<div />" } },
         ],
       },
     ],
