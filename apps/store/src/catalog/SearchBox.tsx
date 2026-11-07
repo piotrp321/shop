@@ -29,17 +29,18 @@ function CurrentPhrase() {
 }
 
 /**
- * The search box of the header: a GET form to `/szukaj`. The page HTML is the same for everybody (product pages are
- * ISR), so the field is empty in it and the phrase of `/szukaj` is put in by the browser. The form and the field are
- * outside `Suspense`, which only holds the part that reads the address.
+ * The search box of the header: a GET form to `/szukaj`. `phrase` is the phrase of `/szukaj` in the server HTML (the
+ * `@search` slot of the root layout); elsewhere the HTML is the same for everybody (product pages are ISR) and the field
+ * is empty. After that the browser keeps the field in step with the address. The form and the field are outside
+ * `Suspense`, which only holds the part that reads the address.
  */
-export function SearchBox() {
+export function SearchBox({ phrase }: { phrase?: string }) {
   return (
     <Form action="/szukaj" role="search" className="flex items-center gap-2">
       <label htmlFor={FIELD_ID} className="sr-only">
         Szukaj produktów
       </label>
-      <Input id={FIELD_ID} type="search" name="q" placeholder="Szukaj produktów" className="flex-1 sm:w-64 sm:flex-none" />
+      <Input id={FIELD_ID} type="search" name="q" defaultValue={phrase ?? ""} placeholder="Szukaj produktów" className="flex-1 sm:w-64 sm:flex-none" />
       <Button type="submit" variant="outline" size="sm">
         Szukaj
       </Button>

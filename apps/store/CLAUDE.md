@@ -135,10 +135,14 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Nagłówek i mega menu
 
 - `SiteHeader` ma pole wyszukiwania (`SearchBox`, Client Component): formularz `GET /szukaj` (`next/form`) z polem `q`
-  (etykieta „Szukaj produktów”). HTML nagłówka jest taki sam dla wszystkich (strona produktu jest ISR), więc pole jest
-  w nim puste; fraza na `/szukaj` trafia do pola z `useSearchParams` (mały komponent w `Suspense` bez wyniku: formularz i pole są poza
-  nim, więc element pola się nie wymienia przy hydratacji i wpisany wcześniej tekst zostaje). Pole jest nadpisywane tylko
-  przy zmianie frazy (nowe wyszukiwanie, wyjście z `/szukaj`), nie przy zmianie innych parametrów.
+  (etykieta „Szukaj produktów”). Pole przychodzi do layoutu jako slot `@search` (layout nie dostaje `searchParams`,
+  strona slotu tak): `app/@search/szukaj/page.tsx` daje pole z frazą w HTML z serwera (`/szukaj` i tak jest renderowane
+  przy każdym żądaniu, więc działa bez JavaScriptu), `app/@search/default.tsx` puste pole na każdej innej stronie (HTML
+  taki sam dla wszystkich, strona produktu jest ISR). Strona 404 nieznanego adresu nie dostaje slotu, więc layout
+  wstawia wtedy puste pole sam. Po hydratacji frazę z adresu wpisuje do pola `useSearchParams`
+  (mały komponent w `Suspense` bez wyniku: formularz i pole są poza nim, więc element pola się nie wymienia przy
+  hydratacji i wpisany wcześniej tekst zostaje). Pole jest nadpisywane tylko przy zmianie frazy (nowe wyszukiwanie,
+  wyjście z `/szukaj`), nie przy zmianie innych parametrów.
 - Układ: od `sm` logo, pole, koszyk i konto w jednym wierszu; poniżej `sm` pole wyszukiwania ma własny wiersz na pełną
   szerokość pod logo, koszykiem i kontem (nagłówek ma `flex-wrap`), żeby strona nie przewijała się w poziomie przy 375 px
   (`e2e/tests/site-header.spec.ts`).

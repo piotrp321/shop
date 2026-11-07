@@ -280,7 +280,7 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 ### Nagłówek: wyszukiwarka i mega menu (S7, S10)
 
 - Pole wyszukiwania w nagłówku każdej strony: formularz `GET /szukaj` z polem `q` (etykieta „Szukaj produktów”,
-  `type="search"`, przycisk „Szukaj”), na `/szukaj` wypełnione bieżącą frazą. Od szerokości `sm` logo, pole, koszyk i konto
+  `type="search"`, przycisk „Szukaj”), na `/szukaj` wypełnione bieżącą frazą (w HTML z serwera, także bez JavaScriptu). Od szerokości `sm` logo, pole, koszyk i konto
   są w jednym wierszu; poniżej pole ma własny wiersz na pełną szerokość pod logo, koszykiem i kontem (nagłówek ma
   `flex-wrap`), żeby strona nie przewijała się w poziomie (`e2e/tests/site-header.spec.ts`).
 - Mega menu (`nav` „Działy”) z drzewa kategorii (`GET /api/v1/categories` przez `API_CATALOG_URL`; na stronie

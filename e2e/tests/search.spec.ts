@@ -102,3 +102,19 @@ test("a category narrows a search and an unknown one is an invalid filter", asyn
   expect(html).toContain("Nieprawidłowy filtr");
   expect(html).toMatch(/<meta name="robots" content="noindex"\/?>/);
 });
+
+test.describe("without JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("the header field has the phrase of /szukaj in the server HTML and is empty elsewhere", async ({ page }) => {
+    await page.goto("/szukaj?q=kurtki");
+    await expect(page.locator("#header-search")).toHaveValue("kurtki");
+    await headerSearch(page).fill("asfalt");
+    await headerSearch(page).press("Enter");
+    await expect(page).toHaveURL(/\/szukaj\?q=asfalt$/);
+    await expect(headerSearch(page)).toHaveValue("asfalt");
+
+    await page.goto(PRODUCT_PATH);
+    await expect(headerSearch(page)).toHaveValue("");
+  });
+});

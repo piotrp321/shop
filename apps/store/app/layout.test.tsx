@@ -42,6 +42,20 @@ describe("the root layout", () => {
     expect(String(log.mock.calls[0][0])).toContain("categories");
   });
 
+  it("renders the search slot in the header", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(TREE)));
+    const html = renderToStaticMarkup(
+      await RootLayout({ children: <p>page</p>, search: <p id="search-slot">slot</p> } as unknown as Parameters<typeof RootLayout>[0]),
+    );
+    expect(html).toMatch(/<header[^>]*>[\s\S]*<p id="search-slot">slot<\/p>[\s\S]*<\/header>/);
+  });
+
+  it("renders the empty search box when there is no slot (the 404 page of an unknown address)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(TREE)));
+    const html = renderToStaticMarkup(await RootLayout({ children: <p>page</p> } as unknown as Parameters<typeof RootLayout>[0]));
+    expect(html).toMatch(/<input[^>]*id="header-search"[^>]*value=""/);
+  });
+
   it("renders no menu for an empty tree", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => json([])));
     const html = renderToStaticMarkup(await RootLayout({ children: null } as unknown as Parameters<typeof RootLayout>[0]));
