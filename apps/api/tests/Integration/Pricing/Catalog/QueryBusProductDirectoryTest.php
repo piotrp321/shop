@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Pricing\Catalog;
 
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
@@ -14,6 +15,7 @@ use App\Pricing\Application\Port\DirectoryProduct;
 use App\Pricing\Application\Port\DirectoryVariant;
 use App\Pricing\Application\Port\InvalidPriceListCursor;
 use App\Pricing\Domain\Price\ProductId;
+use App\Pricing\Domain\Price\VariantId;
 use App\Pricing\Infrastructure\Catalog\QueryBusProductDirectory;
 use App\Shared\Domain\Exception\InvalidInput;
 use App\Tests\Factory\CategoryFactory;
@@ -92,6 +94,40 @@ final class QueryBusProductDirectoryTest extends KernelTestCase
             ],
             $summary,
         );
+    }
+
+    /**
+     * The repricing after a change of class reads the class and the variants of one product, a draft too.
+     */
+    public function testTaxClassOfAProductWithItsVariantsDraftsIncluded(): void
+    {
+        $category = $this->saveCategory();
+        $draft = ProductFactory::createOne([
+            'mainCategory' => $category,
+            'taxClass' => TaxClassCode::PrintedBook,
+            'status' => ProductStatus::Draft,
+            'variantAxes' => ['Okładka'],
+            'variants' => [
+                ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5c02', 'values' => ['twarda']],
+                ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5c01', 'values' => ['miękka']],
+            ],
+        ]);
+        new DoctrineProductRepository($this->entityManager)->save($draft, null, null, new \DateTimeImmutable());
+
+        $product = $this->directory->taxClassOf(ProductId::fromString($draft->id()->toString()));
+
+        self::assertNotNull($product);
+        self::assertSame($draft->id()->toString(), $product->productId->toString());
+        self::assertSame('printed_book', $product->taxClass->toString());
+        self::assertSame(
+            ['0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5c02', '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5c01'],
+            array_map(static fn (VariantId $id): string => $id->toString(), $product->variantIds),
+        );
+    }
+
+    public function testTaxClassOfAProductUnknownToCatalogIsNull(): void
+    {
+        self::assertNull($this->directory->taxClassOf(ProductId::fromString('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5aff')));
     }
 
     public function testAnUnknownCategoryIsACategoryNotFoundOfPricing(): void

@@ -7,7 +7,8 @@ namespace App\Pricing\Application\Port;
 use App\Pricing\Domain\Price\ProductId;
 
 /**
- * The products of Catalog to price, found by name and category, one page at a time, and the variants of products.
+ * The products of Catalog to price, found by name and category, one page at a time, the variants of products and the
+ * tax class of a product. Drafts included.
  */
 interface ProductDirectory
 {
@@ -34,4 +35,11 @@ interface ProductDirectory
      *                                               does not exist in Catalog is absent
      */
     public function variantsOf(array $productIds): array;
+
+    /**
+     * The current tax class of the product and its variants, read with one query.
+     *
+     * @return ProductTaxClass|null null when the product does not exist in Catalog
+     */
+    public function taxClassOf(ProductId $productId): ?ProductTaxClass;
 }

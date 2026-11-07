@@ -17,6 +17,7 @@ use App\Pricing\Application\Port\DirectoryProduct;
 use App\Pricing\Application\Port\DirectoryVariant;
 use App\Pricing\Application\Port\InvalidPriceListCursor;
 use App\Pricing\Application\Port\ProductDirectory;
+use App\Pricing\Application\Port\ProductTaxClass;
 use App\Pricing\Domain\Price\ProductId;
 use App\Pricing\Domain\Price\VariantId;
 use App\Pricing\Domain\Tax\TaxClass;
@@ -27,8 +28,8 @@ use Symfony\Component\Messenger\HandleTrait;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
- * Finds products through Catalog's search query and their variants through ListProductVariants (drafts included), on
- * the query bus. Catalog's tax class codes become Pricing's TaxClass, its not-found and cursor errors Pricing's own
+ * Finds products through Catalog's search query and their variants and tax class through ListProductVariants (drafts
+ * included), on the query bus. Catalog's tax class codes become Pricing's TaxClass, its not-found and cursor errors Pricing's own
  * exceptions. Other errors (an out-of-range term or page size, too many products) pass on.
  */
 final class QueryBusProductDirectory implements ProductDirectory
@@ -68,8 +69,37 @@ final class QueryBusProductDirectory implements ProductDirectory
 
     public function variantsOf(array $productIds): array
     {
+        $variants = [];
+        foreach ($this->variantLists($productIds) as $list) {
+            $variants[$list->productId] = array_map(
+                static fn (VariantOption $variant): DirectoryVariant => new DirectoryVariant(VariantId::fromString($variant->variantId), $variant->label),
+                $list->variants,
+            );
+        }
+
+        return $variants;
+    }
+
+    public function taxClassOf(ProductId $productId): ?ProductTaxClass
+    {
+        $list = $this->variantLists([$productId])[0] ?? null;
+
+        return null === $list ? null : new ProductTaxClass(
+            $productId,
+            TaxClass::fromString($list->taxClass),
+            array_map(static fn (VariantOption $variant): VariantId => VariantId::fromString($variant->variantId), $list->variants),
+        );
+    }
+
+    /**
+     * @param list<ProductId> $productIds
+     *
+     * @return list<ProductVariantList>
+     */
+    private function variantLists(array $productIds): array
+    {
         try {
-            // The panel lists drafts too: their prices and stock are set before the publication.
+            // The panel lists drafts too: their prices and stock are set before the publication, and so are repriced.
             $lists = $this->handle(new ListProductVariants(array_map(static fn (ProductId $id): string => $id->toString(), $productIds), includeDrafts: true));
         } catch (HandlerFailedException $failure) {
             $wrapped = $failure->getWrappedExceptions();
@@ -78,15 +108,10 @@ final class QueryBusProductDirectory implements ProductDirectory
         }
         \assert(\is_array($lists));
 
-        $variants = [];
-        foreach ($lists as $list) {
+        return array_map(static function (mixed $list): ProductVariantList {
             \assert($list instanceof ProductVariantList);
-            $variants[$list->productId] = array_map(
-                static fn (VariantOption $variant): DirectoryVariant => new DirectoryVariant(VariantId::fromString($variant->variantId), $variant->label),
-                $list->variants,
-            );
-        }
 
-        return $variants;
+            return $list;
+        }, array_values($lists));
     }
 }
