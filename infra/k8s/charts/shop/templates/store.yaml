@@ -20,6 +20,11 @@ env:
     value: {{ include "shop.url" (dict "root" . "sub" "auth") | quote }}
   - name: KEYCLOAK_INTERNAL_URL
     value: http://keycloak:8080
+  # The switches of this deployment, read by /api/site of the store in the browser (D10).
+  - name: STORE_DEMO_NOTICE
+    value: {{ .Values.demoNotice | quote }}
+  - name: STORE_CUSTOMER_ACCOUNTS
+    value: {{ .Values.customerAccounts | quote }}
 {{ include "shop.envFromSecret" . }}
 ports:
   - name: http

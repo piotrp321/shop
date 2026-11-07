@@ -101,6 +101,19 @@ spec:
           value: admin
         - name: HOME
           value: /tmp
+        {{- if eq .root.Values.keycloak.mail "brevo" }}
+        # The Brevo SMTP login and key for the SMTP of the realms (never in the rendered files).
+        - name: SMTP_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .root.Values.brevo.secretName }}
+              key: BREVO_SMTP_LOGIN
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .root.Values.brevo.secretName }}
+              key: BREVO_SMTP_PASSWORD
+        {{- end }}
       {{- include "shop.envFromSecret" .root | nindent 6 }}
       volumeMounts:
         - name: scripts
@@ -120,16 +133,12 @@ spec:
         name: keycloak-realms
 {{- end }}
 
-{{- /* The rendered realms and the script, so that a changed realm file gives a new job. */ -}}
+{{- /*
+The rendered files of the realms (with the switches and the mail they depend on) and the script, so that a changed
+realm file, customerAccounts or mail setting gives a new job.
+*/ -}}
 {{- define "shop.job.realmsChecksum" -}}
-{{- $realms := list -}}
-{{- range $realm := list "shop" "backoffice" -}}
-{{- $text := $.Files.Get (printf "files/realms/%s.json" $realm) -}}
-{{- $text = replace "${STORE_URL}" (include "shop.url" (dict "root" $ "sub" "")) $text -}}
-{{- $text = replace "${ADMIN_URL}" (include "shop.url" (dict "root" $ "sub" "admin")) $text -}}
-{{- $realms = append $realms $text -}}
-{{- end -}}
-{{- printf "%s%s" (join "" $realms) ($.Files.Get "files/scripts/keycloak-config.sh") | sha256sum -}}
+{{- printf "%s%s" (include "shop.keycloak.realmsData" .) (.Files.Get "files/scripts/keycloak-config.sh") | sha256sum -}}
 {{- end }}
 
 {{- define "shop.job.initialize" -}}

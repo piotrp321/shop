@@ -60,15 +60,4 @@ metadata:
   annotations:
     {{- include "shop.wave" "-2" | nindent 4 }}
 data:
-  {{- /* The realms: the files of the repository without the section `users` (the demo accounts must not exist in
-  the cluster) and with the addresses of this environment. ${STORE_CLIENT_SECRET} stays: the job keycloak-config puts
-  the secret in when it creates the realm. */}}
-  {{- range $realm := list "shop" "backoffice" }}
-  {{- $text := $.Files.Get (printf "files/realms/%s.json" $realm) }}
-  {{- $text = replace "${STORE_URL}" (include "shop.url" (dict "root" $ "sub" "")) $text }}
-  {{- $text = replace "${ADMIN_URL}" (include "shop.url" (dict "root" $ "sub" "admin")) $text }}
-  {{- $document := fromJson $text }}
-  {{- $_ := unset $document "users" }}
-  {{ $realm }}.json: |
-    {{- toPrettyJson $document | nindent 4 }}
-  {{- end }}
+  {{- include "shop.keycloak.realmsData" . | trim | nindent 2 }}

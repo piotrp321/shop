@@ -49,6 +49,16 @@ ingress:
 # Adds X-Robots-Tag: noindex, nofollow to every host.
 noindex: false
 
+# The switches of the deployment (D10). A change is a commit of environments/<env>/values.yaml: the images stay.
+# demoNotice: the bar of a demo store above the header of the store (STORE_DEMO_NOTICE of the store).
+demoNotice: false
+# customerAccounts: registration in the realm shop (set by the job keycloak-config) and the login link of the store
+# (STORE_CUSTOMER_ACCOUNTS of the store).
+customerAccounts: true
+# orderMail: where the API sends its mail (the order confirmations; MAILER_DSN of the api, the worker and the jobs):
+# mailpit (the Mailpit of the cluster, nothing leaves it) or brevo (Brevo SMTP, real mail; needs brevo.secretName).
+orderMail: mailpit
+
 # Only the listed ranges may reach any host (Traefik middleware ipAllowList on every ingress).
 ipAllowList:
   enabled: true
@@ -63,10 +73,16 @@ secrets:
   values: {}
 
 mailer:
-  # MAILER_DSN of the API (Mailpit in the cluster).
-  dsn: smtp://mailpit:1025
-  # MAILER_FROM; empty: "Rytm <zamowienia@<domain>>".
+  # MAILER_FROM of the API; empty: "Rytm <zamowienia@<domain>>".
   from: ""
+
+# Brevo SMTP, for orderMail: brevo and keycloak.mail: brevo. The login and the SMTP key are the keys BREVO_SMTP_LOGIN and
+# BREVO_SMTP_PASSWORD of the Secret `secretName`, created outside the chart like secrets.name (a SealedSecret in prod);
+# required as soon as a value selects brevo. The API gets them in its MAILER_DSN, so the key must not contain / ? #.
+brevo:
+  host: smtp-relay.brevo.com
+  port: 587
+  secretName: ""
 
 # The job `initialize` loads the demo data into an empty database (see files/scripts/initialize.sh).
 initialize:
@@ -94,6 +110,12 @@ elasticsearch:
 
 keycloak:
   javaHeap: -Xms256m -Xmx768m
+  # The mail of the realms shop and backoffice (e-mail verification, password reset, make -C infra/k8s create-admin),
+  # set by the job keycloak-config: mailpit (the Mailpit of the cluster) or brevo (Brevo SMTP; needs brevo.secretName).
+  mail: mailpit
+  # The sender of that mail; empty: konto@<domain>.
+  mailFrom: ""
+  mailFromName: Rytm
 
 # Requests and limits per service; the profiles override them as a whole.
 resources:

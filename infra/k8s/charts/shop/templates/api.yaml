@@ -49,8 +49,25 @@ The secrets come with envFrom (the .env.local of the compose file).
   value: http://imgproxy:8080
 - name: MAILPIT_INTERNAL_URL
   value: http://mailpit:8025
+# orderMail: the Mailpit of the cluster or Brevo SMTP. Kubernetes puts the login and the key of the Brevo secret into
+# MAILER_DSN ($(VAR) refers to the variables defined before it).
+{{- if eq .Values.orderMail "brevo" }}
+- name: BREVO_SMTP_LOGIN
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.brevo.secretName }}
+      key: BREVO_SMTP_LOGIN
+- name: BREVO_SMTP_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.brevo.secretName }}
+      key: BREVO_SMTP_PASSWORD
 - name: MAILER_DSN
-  value: {{ .Values.mailer.dsn | quote }}
+  value: {{ printf "smtp://$(BREVO_SMTP_LOGIN):$(BREVO_SMTP_PASSWORD)@%s:%v" .Values.brevo.host .Values.brevo.port | quote }}
+{{- else }}
+- name: MAILER_DSN
+  value: smtp://mailpit:1025
+{{- end }}
 - name: MAILER_FROM
   value: {{ include "shop.mailerFrom" . | quote }}
 # The caches of the store invalidated after a price or stock change.

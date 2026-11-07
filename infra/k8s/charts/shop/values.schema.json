@@ -8,9 +8,13 @@
     "images",
     "ingress",
     "noindex",
+    "demoNotice",
+    "customerAccounts",
+    "orderMail",
     "ipAllowList",
     "secrets",
     "mailer",
+    "brevo",
     "initialize",
     "jobs",
     "cartPurge",
@@ -171,6 +175,22 @@
     "noindex": {
       "type": "boolean"
     },
+    "demoNotice": {
+      "type": "boolean",
+      "description": "The bar of a demo store (STORE_DEMO_NOTICE of the store)."
+    },
+    "customerAccounts": {
+      "type": "boolean",
+      "description": "Registration in the realm shop and the login link of the store."
+    },
+    "orderMail": {
+      "type": "string",
+      "enum": [
+        "mailpit",
+        "brevo"
+      ],
+      "description": "Where the API sends its mail: the Mailpit of the cluster or Brevo SMTP (needs brevo.secretName)."
+    },
     "ipAllowList": {
       "type": "object",
       "required": [
@@ -277,15 +297,34 @@
     "mailer": {
       "type": "object",
       "required": [
-        "dsn"
+        "from"
       ],
       "properties": {
-        "dsn": {
+        "from": {
+          "type": "string"
+        }
+      }
+    },
+    "brevo": {
+      "type": "object",
+      "required": [
+        "host",
+        "port",
+        "secretName"
+      ],
+      "properties": {
+        "host": {
           "type": "string",
           "minLength": 1
         },
-        "from": {
-          "type": "string"
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "secretName": {
+          "type": "string",
+          "description": "The Secret with BREVO_SMTP_LOGIN and BREVO_SMTP_PASSWORD; required when orderMail or keycloak.mail is brevo."
         }
       }
     },
@@ -361,10 +400,28 @@
     "keycloak": {
       "type": "object",
       "required": [
-        "javaHeap"
+        "javaHeap",
+        "mail",
+        "mailFrom",
+        "mailFromName"
       ],
       "properties": {
         "javaHeap": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mail": {
+          "type": "string",
+          "enum": [
+            "mailpit",
+            "brevo"
+          ],
+          "description": "The mail of the realms: the Mailpit of the cluster or Brevo SMTP (needs brevo.secretName)."
+        },
+        "mailFrom": {
+          "type": "string"
+        },
+        "mailFromName": {
           "type": "string",
           "minLength": 1
         }
@@ -643,5 +700,60 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "orderMail"
+        ],
+        "properties": {
+          "orderMail": {
+            "const": "brevo"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "brevo": {
+            "properties": {
+              "secretName": {
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "keycloak"
+        ],
+        "properties": {
+          "keycloak": {
+            "required": [
+              "mail"
+            ],
+            "properties": {
+              "mail": {
+                "const": "brevo"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "brevo": {
+            "properties": {
+              "secretName": {
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }
