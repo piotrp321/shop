@@ -10,7 +10,7 @@ use App\Ordering\Application\PaymentReceivedText;
 use App\Ordering\Domain\OrderPaid;
 use App\Ordering\Infrastructure\Mail\SymfonyOrderStatusMailer;
 use App\Tests\Integration\Ordering\Mail\MailpitInbox;
-use App\Tests\Integration\Ordering\Mail\SlowOrderStatusMailer;
+use App\Tests\Integration\Ordering\Mail\WaitingOrderStatusMailer;
 use App\Tests\Integration\Ordering\OrderingFixture;
 use Doctrine\DBAL\Configuration as DbalConfiguration;
 use Doctrine\DBAL\Connection;
@@ -26,13 +26,15 @@ use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 
 /**
  * Two deliveries of the same OrderPaid handled at once by SendPaymentReceived, each in a process with a kernel and
- * a connection of its own (two workers), against the SMTP of Mailpit. The mailer of each holds on for half a second
- * after sending, so the other delivery always comes while the sending is claimed. The orders commit, so they are
- * deleted after the test.
+ * a connection of its own (two workers), against the SMTP of Mailpit. The deliveries overlap deterministically: each
+ * participant leaves a flag file once its delivery is over, and the mailer of each, after sending, waits (at most
+ * 10 s) for the flag of the other one before the handler marks the email sent. So the other delivery always tries to
+ * claim while the sending is claimed. The orders commit, so they are deleted after the test.
  */
 final class SendOrderEmailsConcurrencyTest extends KernelTestCase
 {
     private const int ROUNDS = 3;
+    private const float OVERLAP_TIMEOUT_SECONDS = 10.0;
 
     private Connection $control;
     /** @var list<string> */
@@ -67,8 +69,15 @@ final class SendOrderEmailsConcurrencyTest extends KernelTestCase
             $orderId = OrderingFixture::order($this->control, $inbox->recipient, paid: true);
             $this->orders[] = $orderId;
             $event = new OrderPaid($orderId, new \DateTimeImmutable());
+            $flags = sys_get_temp_dir().'/order-emails-'.bin2hex(random_bytes(8));
+            self::assertTrue(mkdir($flags, 0o700));
 
-            $outcomes = ParallelProcesses::run($this->control, [self::delivery($event), self::delivery($event)]);
+            try {
+                $outcomes = ParallelProcesses::run($this->control, [self::delivery($event, $flags, 0), self::delivery($event, $flags, 1)]);
+            } finally {
+                array_map(unlink(...), glob($flags.'/*') ?: []);
+                rmdir($flags);
+            }
 
             sort($outcomes);
             self::assertSame(['handled', 'retried: '.RecoverableMessageHandlingException::class], $outcomes, 'round '.$round);
@@ -82,9 +91,9 @@ final class SendOrderEmailsConcurrencyTest extends KernelTestCase
     /**
      * @return \Closure(): (\Closure(): string)
      */
-    private static function delivery(OrderPaid $event): \Closure
+    private static function delivery(OrderPaid $event, string $flags, int $index): \Closure
     {
-        return static function () use ($event): \Closure {
+        return static function () use ($event, $flags, $index): \Closure {
             $kernel = new Kernel('test', false);
             $kernel->boot();
             $container = $kernel->getContainer()->get('test.service_container');
@@ -93,11 +102,16 @@ final class SendOrderEmailsConcurrencyTest extends KernelTestCase
             \assert($mailer instanceof MailerInterface);
             $from = $_SERVER['MAILER_FROM'] ?? $_ENV['MAILER_FROM'] ?? getenv('MAILER_FROM');
             \assert(\is_string($from));
-            $container->set(SymfonyOrderStatusMailer::class, new SlowOrderStatusMailer(new SymfonyOrderStatusMailer($mailer, new PaymentReceivedText(), new OrderCancelledText(), $from)));
+            $other = $flags.'/'.(1 - $index);
+            $container->set(SymfonyOrderStatusMailer::class, new WaitingOrderStatusMailer(
+                new SymfonyOrderStatusMailer($mailer, new PaymentReceivedText(), new OrderCancelledText(), $from),
+                static fn (): bool => is_file($other),
+                self::OVERLAP_TIMEOUT_SECONDS,
+            ));
             $bus = $container->get('event.bus');
             \assert($bus instanceof MessageBusInterface);
 
-            return static function () use ($bus, $event): string {
+            return static function () use ($bus, $event, $flags, $index): string {
                 try {
                     // As the worker hands over a message received from `events`.
                     $bus->dispatch(new Envelope($event, [new ReceivedStamp('events')]));
@@ -107,6 +121,9 @@ final class SendOrderEmailsConcurrencyTest extends KernelTestCase
                     $wrapped = array_values($failure->getWrappedExceptions());
 
                     return 'retried: '.(1 === \count($wrapped) ? $wrapped[0]::class : $failure->getMessage());
+                } finally {
+                    // This delivery is over: the mailer of the other one may let its handler go on.
+                    touch($flags.'/'.$index);
                 }
             };
         };
