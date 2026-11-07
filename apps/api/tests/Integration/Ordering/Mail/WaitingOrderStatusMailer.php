@@ -32,6 +32,24 @@ final readonly class WaitingOrderStatusMailer implements OrderStatusMailer
         $this->wait();
     }
 
+    public function sendOrderCancelledByStaff(OrderView $order): void
+    {
+        $this->inner->sendOrderCancelledByStaff($order);
+        $this->wait();
+    }
+
+    public function sendOrderShipped(OrderView $order): void
+    {
+        $this->inner->sendOrderShipped($order);
+        $this->wait();
+    }
+
+    public function sendReturnReceived(OrderView $order): void
+    {
+        $this->inner->sendReturnReceived($order);
+        $this->wait();
+    }
+
     private function wait(): void
     {
         $deadline = microtime(true) + $this->timeoutSeconds;

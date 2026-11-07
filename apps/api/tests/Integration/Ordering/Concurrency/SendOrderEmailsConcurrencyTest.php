@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Ordering\Concurrency;
 
 use App\Kernel;
+use App\Ordering\Application\OrderCancelledByStaffText;
 use App\Ordering\Application\OrderCancelledText;
+use App\Ordering\Application\OrderShippedText;
 use App\Ordering\Application\PaymentReceivedText;
+use App\Ordering\Application\ReturnReceivedText;
 use App\Ordering\Domain\OrderPaid;
 use App\Ordering\Infrastructure\Mail\SymfonyOrderStatusMailer;
 use App\Tests\Integration\Ordering\Mail\MailpitInbox;
@@ -104,7 +107,7 @@ final class SendOrderEmailsConcurrencyTest extends KernelTestCase
             \assert(\is_string($from));
             $other = $flags.'/'.(1 - $index);
             $container->set(SymfonyOrderStatusMailer::class, new WaitingOrderStatusMailer(
-                new SymfonyOrderStatusMailer($mailer, new PaymentReceivedText(), new OrderCancelledText(), $from),
+                new SymfonyOrderStatusMailer($mailer, new PaymentReceivedText(), new OrderCancelledText(), new OrderCancelledByStaffText(), new OrderShippedText(), new ReturnReceivedText(), $from),
                 static fn (): bool => is_file($other),
                 self::OVERLAP_TIMEOUT_SECONDS,
             ));

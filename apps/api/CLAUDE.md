@@ -133,8 +133,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - E-maile „Płatność przyjęta” (`SendPaymentReceived` po `OrderPaid`) i „Zamówienie … anulowane”
     (`SendOrderCancelled` po `OrderCancelled`) działają jak `SendOrderConfirmation` (poniżej), każdy z własnym rodzajem
     powiadomienia (`payment_received`, `cancelled`); port `OrderStatusMailer`, adapter
-    `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. E-mail z potwierdzeniem podaje
-    termin płatności w strefie `Europe/Warsaw`.
+    `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. `SendOrderCancelled` wybiera
+    treść według `cancellationReason` zamówienia: `payment_timeout` jak wyżej, `staff` „Anulowaliśmy Twoje zamówienie.
+    Zwrócimy płatność.” (`OrderCancelledByStaffText`). E-mail z potwierdzeniem podaje termin płatności w strefie
+    `Europe/Warsaw`.
 - Cykl zamówienia po opłaceniu (Ordering, `docs/features/order-management/spec.md`): statusy `shipped`, `delivered`,
   `returned` i anulowanie opłaconego przez pracownika (`cancellationReason` `staff`). Przejścia pracownika to metody
   agregatu `Order` (`ship`, `deliver`, `cancel`, `registerReturn`; bez Symfony Workflow), a tabela dozwolonych przejść
@@ -168,6 +170,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - Kolejność blokad: wiersz zamówienia, potem rezerwacja i stany (Inventory). Tak samo `ExpireUnpaidOrder`, więc
     równoległe zmiany z tą samą wersją idą po kolei (druga to 409, nigdy `ReservationStateConflict`), a wygaśnięcie
     i zmiana pracownika nie zakleszczają się. Webhook (`MarkOrderPaid`) nie dotyka Inventory i zostaje przy wersji.
+  - E-maile do klienta tak samo jak e-maile płatności (jeden na zdarzenie, `NotificationSender`): „Zamówienie … wysłane”
+    z adresem (`SendOrderShipped` po `OrderShipped`, rodzaj `shipped`, `OrderShippedText`) i „Zamówienie … wróciło do
+    nas” (`SendReturnReceived` po `OrderReturned`, rodzaj `return_received`, `ReturnReceivedText`). Dostarczenie
+    i wykonanie zwrotu pieniędzy są bez e-maila; notatka pracownika ani termin zwrotu nie trafiają do e-maila.
 - Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
   dostawcy (`pending` → `succeeded` | `failed` | `cancelled`; `succeed` także z `failed` i `cancelled`, bo pieniądze ważą
   więcej niż wcześniejsza odmowa; `requireRefund` tylko dla `succeeded`, pierwszy powód zostaje), bez pola wersji:

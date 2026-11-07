@@ -152,8 +152,10 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 - `OrderPaid` → handler `SendPaymentReceived` (`event.bus`, jak `SendOrderConfirmation`: zajęcie wysyłki rodzaju
   `payment_received` w tabeli powiadomień, wysyłka, znacznik; zamówienie i jego wersja bez zmian): temat „Płatność przyjęta – zamówienie R-100001”, treść: powitanie, numer, kwota, „Zamówienie
   przekazujemy do realizacji.”.
-- `OrderCancelled` → `SendOrderCancelled` (tak samo, rodzaj `cancelled`): temat „Zamówienie R-100001 anulowane”, treść: powitanie, numer,
-  „Nie otrzymaliśmy płatności w terminie, więc anulowaliśmy zamówienie.”.
+- `OrderCancelled` → `SendOrderCancelled` (tak samo, rodzaj `cancelled`) dla `cancellationReason` `payment_timeout`:
+  temat „Zamówienie R-100001 anulowane”, treść: powitanie, numer, „Nie otrzymaliśmy płatności w terminie, więc
+  anulowaliśmy zamówienie.”. Anulowanie przez pracownika ma własną treść (`docs/features/order-management/spec.md`,
+  „E-maile”).
 - E-mail z potwierdzeniem złożenia kończy się zdaniem „Zamówienie czeka na płatność do 14:35 (dd.mm.rrrr). Bez
   płatności anulujemy je automatycznie.” (`Europe/Warsaw`).
 - Treści składają klasy w `Ordering_Application` (jak `OrderConfirmationText`), testowane jednostkowo.

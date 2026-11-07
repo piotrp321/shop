@@ -7,14 +7,19 @@ namespace App\Tests\Unit\Ordering\Application;
 use App\Ordering\Application\EventHandler\NotificationSender;
 use App\Ordering\Application\EventHandler\SendOrderCancelled;
 use App\Ordering\Application\EventHandler\SendOrderConfirmation;
+use App\Ordering\Application\EventHandler\SendOrderShipped;
 use App\Ordering\Application\EventHandler\SendPaymentReceived;
+use App\Ordering\Application\EventHandler\SendReturnReceived;
 use App\Ordering\Application\Port\NotificationKind;
 use App\Ordering\Domain\Order;
 use App\Ordering\Domain\OrderCancelled;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderPaid;
 use App\Ordering\Domain\OrderPlaced;
+use App\Ordering\Domain\OrderReturned;
+use App\Ordering\Domain\OrderShipped;
 use App\Ordering\Domain\PaymentId;
+use App\Ordering\Domain\StaffActor;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
 use App\Tests\Unit\Ordering\InMemoryOrderNotifications;
 use App\Tests\Unit\Ordering\OrderExamples;
@@ -27,8 +32,9 @@ use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
 /**
- * SendOrderConfirmation (OrderPlaced), SendPaymentReceived (OrderPaid) and SendOrderCancelled (OrderCancelled): each
- * email of an order goes out once, under a claim of its sending (OrderNotifications), and never changes the order.
+ * SendOrderConfirmation (OrderPlaced), SendPaymentReceived (OrderPaid), SendOrderCancelled (OrderCancelled),
+ * SendOrderShipped (OrderShipped) and SendReturnReceived (OrderReturned): each email of an order goes out once, under
+ * a claim of its sending (OrderNotifications), and never changes the order.
  */
 final class SendOrderEmailsTest extends TestCase
 {
@@ -58,6 +64,8 @@ final class SendOrderEmailsTest extends TestCase
         yield 'confirmation' => [NotificationKind::Confirmation];
         yield 'payment received' => [NotificationKind::PaymentReceived];
         yield 'order cancelled' => [NotificationKind::Cancelled];
+        yield 'order shipped' => [NotificationKind::Shipped];
+        yield 'return received' => [NotificationKind::ReturnReceived];
     }
 
     #[DataProvider('kinds')]
@@ -213,11 +221,36 @@ final class SendOrderEmailsTest extends TestCase
         self::assertFalse($this->notifications->touched($unknown));
     }
 
+    public function testACancellationByStaffSendsItsOwnEmailOnce(): void
+    {
+        $this->changeTheOrderFor(NotificationKind::PaymentReceived);
+        $this->orders->changeElsewhere(OrderId::fromString(OrderExamples::ORDER), static fn (Order $order) => $order->cancel(StaffActor::of('kc-staff-1', 'anna'), 'Brak towaru', new \DateTimeImmutable('2026-11-05 13:00:00+00:00')));
+        $event = new OrderCancelled(OrderExamples::ORDER, 'staff', new \DateTimeImmutable('2026-11-05 13:00:00+00:00'));
+        $handler = new SendOrderCancelled($this->orders, new NotificationSender($this->notifications, $this->clock), $this->statusMailer);
+
+        $handler($event);
+        $handler($event);
+
+        self::assertSame(['order_cancelled_by_staff'], array_map(static fn (array $sent): string => $sent[0], $this->statusMailer->sent), 'one email, not the one about the payment');
+        self::assertEquals($this->clock->now, $this->notifications->sentAt(OrderExamples::ORDER, NotificationKind::Cancelled));
+    }
+
     private function changeTheOrderFor(NotificationKind $kind): void
     {
+        $paid = static fn (Order $order) => $order->markPaid(PaymentId::fromString('0192f0c4-7c1a-7c4e-9a6e-0000000000b1'), OrderExamples::TOTAL, 'PLN', new \DateTimeImmutable('2026-11-05 12:10:00+00:00'), new \DateTimeImmutable('2026-11-05 12:10:05+00:00'));
+        $staff = StaffActor::of('kc-staff-1', 'anna');
+        $shipped = static function (Order $order) use ($paid, $staff): void {
+            $paid($order);
+            $order->ship($staff, null, new \DateTimeImmutable('2026-11-05 12:20:00+00:00'));
+        };
         $change = match ($kind) {
-            NotificationKind::PaymentReceived => static fn (Order $order) => $order->markPaid(PaymentId::fromString('0192f0c4-7c1a-7c4e-9a6e-0000000000b1'), OrderExamples::TOTAL, 'PLN', new \DateTimeImmutable('2026-11-05 12:10:00+00:00'), new \DateTimeImmutable('2026-11-05 12:10:05+00:00')),
+            NotificationKind::PaymentReceived => $paid,
             NotificationKind::Cancelled => static fn (Order $order) => $order->expireUnpaid(new \DateTimeImmutable('2026-11-05 12:35:00+00:00')),
+            NotificationKind::Shipped => $shipped,
+            NotificationKind::ReturnReceived => static function (Order $order) use ($shipped, $staff): void {
+                $shipped($order);
+                $order->registerReturn($staff, 'Paczka wróciła', new \DateTimeImmutable('2026-11-05 12:30:00+00:00'));
+            },
             default => null,
         };
         if (null !== $change) {
@@ -232,7 +265,8 @@ final class SendOrderEmailsTest extends TestCase
             NotificationKind::Confirmation => new SendOrderConfirmation($this->orders, $sender, $this->confirmationMailer)(new OrderPlaced($orderId, new \DateTimeImmutable('2026-11-05 12:00:00+00:00'))),
             NotificationKind::PaymentReceived => new SendPaymentReceived($this->orders, $sender, $this->statusMailer)(new OrderPaid($orderId, new \DateTimeImmutable('2026-11-05 12:10:05+00:00'))),
             NotificationKind::Cancelled => new SendOrderCancelled($this->orders, $sender, $this->statusMailer)(new OrderCancelled($orderId, 'payment_timeout', new \DateTimeImmutable('2026-11-05 12:35:00+00:00'))),
-            default => self::fail('No handler for '.$kind->value),
+            NotificationKind::Shipped => new SendOrderShipped($this->orders, $sender, $this->statusMailer)(new OrderShipped($orderId, new \DateTimeImmutable('2026-11-05 12:20:00+00:00'))),
+            NotificationKind::ReturnReceived => new SendReturnReceived($this->orders, $sender, $this->statusMailer)(new OrderReturned($orderId, new \DateTimeImmutable('2026-11-05 12:30:00+00:00'))),
         };
     }
 
