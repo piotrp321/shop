@@ -86,8 +86,10 @@ Zakres: `infra/k8s`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.docker
   z prawem zapisu (sekret repo `DEPLOY_KEY`, skrypt `.github/scripts/deploy-ref.sh` pushuje bez `--force`). Bypass
   rulesetu dotyczy wszystkich jego reguł, więc gałąź chronią dwa rulesety na `refs/heads/deploy`: `deploy`
   (`tools/rulesets/deploy.json`: `deletion` i `non_fast_forward`, bez żadnego aktora bypass) zabrania usunięcia
-  i force pusha wszystkim, a `deploy-push` (`tools/rulesets/deploy-push.json`: reguła `update`) dopuszcza zwykły push
-  tylko dla deploy keya (jedyny aktor bypass, typ `DeployKey`, tryb `always`). Założenie
+  i force pusha wszystkim, a `deploy-push` (`tools/rulesets/deploy-push.json`: reguły `creation` i `update`) dopuszcza
+  utworzenie gałęzi i zwykły push tylko dla deploy keya (jedyny aktor bypass, typ `DeployKey`, tryb `always`). Aktor
+  `DeployKey` obejmuje każdy deploy key repo z prawem zapisu, więc repo ma mieć tylko jeden taki klucz (warunek
+  dla runbooka wdrożenia). Założenie
   rulesetów i deploy keya oraz próby (push innym poświadczeniem i usunięcie odrzucone, push deploy keyem przyjęty) to
   krok runbooka po merge'u, z zapisem wyników.
 - **D5. Sealed Secrets.** Publiczny certyfikat kontrolera trafia do repo przy bootstrapie, więc kolejne sekrety
@@ -332,7 +334,9 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 - CI (`deploy.yml`): `smoke` na `ubuntu-latest` dla PR zmieniających `infra/**`, `apps/*/Dockerfile`,
   `apps/api/config/**`, `apps/api/bin/**`, `apps/api/composer.lock`, `apps/store/package-lock.json`,
   `apps/admin/package-lock.json`, `apps/store/next.config.ts` oraz sam workflow i `deploy-ref.sh` (obrazy z cache GHA)
-  i na `workflow_dispatch` (próba na gałęzi epiku, bez przesuwania `deploy`), oraz zawsze na `main` przed wdrożeniem.
+  i na `workflow_dispatch` (bez przesuwania `deploy`), oraz zawsze na `main` przed wdrożeniem. `workflow_dispatch`
+  GitHub oferuje dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); przed merge'em epiku próba na gałęzi
+  epiku odbywa się przez zdarzenie `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).
   `smoke` nie jest wymaganym checkiem `main`.
 
 ## Scenariusze błędów
@@ -379,8 +383,9 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
    przed epikiem.
 5. Przełączniki sklepu: testy komponentów i `/api/site` (z flagami, bez nich, błąd odczytu) i smoke test na obrazie
    zbudowanym bez flag.
-6. `deploy.yml` przechodzi `actionlint`; uruchomiony `workflow_dispatch` na gałęzi epiku buduje obrazy i przechodzi
-   smoke test, a bez sekretu deploy keya kończy się bez przesuwania `deploy`.
+6. `deploy.yml` przechodzi `actionlint`; uruchomiony na gałęzi epiku (zdarzenie `pull_request`, a po merge'u do `main`
+   także `workflow_dispatch`) buduje obrazy i przechodzi smoke test, a bez sekretu deploy keya kończy się bez
+   przesuwania `deploy`.
 7. `initialize` i `keycloak-config` są idempotentne (smoke: upgrade z nową rewizją bez zmian danych i realmów; realm
    bez użytkowników demo); `initialize` przy mieszanym stanie kończy się błędem bez zmian (test w smoke).
 8. `seal-secrets.sh` na ścieżce błędu nie zapisuje plików, a ponowne uruchomienie nie zmienia istniejących sekretów.

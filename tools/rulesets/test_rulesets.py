@@ -2,9 +2,10 @@
 
 The files are request bodies of `POST /repos/{owner}/{repo}/rulesets`. GitHub applies the bypass list of a ruleset to
 all of its rules, so the deploy branch is protected by two rulesets: `deploy` (deletion and non-fast-forward, no bypass
-actor at all) and `deploy-push` (the rule `update` whose only bypass actor is the deploy key). The tests also try the
+actor at all) and `deploy-push` (the rules `creation` and `update`, whose only bypass actor is the deploy key, so
+nobody else can create the branch on any commit). The tests also try the
 ways of weakening them: a bypass actor in the ruleset with the unconditional rules, another actor type, a mode other
-than `always`, a second rule next to `update`, a wider ref pattern.
+than `always`, another rule next to `creation` and `update`, either of them missing, a wider ref pattern.
 """
 import copy
 import json
@@ -39,10 +40,10 @@ def problems(deploy, push):
         found.append("deploy: a rule has parameters (an exception)")
     if deploy.get("bypass_actors") != []:
         found.append("deploy: has a bypass actor (it would lift deletion and non_fast_forward for it)")
-    if [rule.get("type") for rule in push.get("rules", [])] != ["update"]:
-        found.append("deploy-push: the only rule must be update")
+    if sorted(rule.get("type") for rule in push.get("rules", [])) != ["creation", "update"]:
+        found.append("deploy-push: the rules must be exactly creation and update")
     if any(rule.get("parameters") for rule in push.get("rules", [])):
-        found.append("deploy-push: the rule update has parameters")
+        found.append("deploy-push: a rule has parameters")
     actors = push.get("bypass_actors")
     if not (isinstance(actors, list) and len(actors) == 1):
         found.append("deploy-push: must have exactly one bypass actor")
@@ -75,11 +76,11 @@ class DeployRulesets(unittest.TestCase):
         self.assertEqual([], self.deploy["bypass_actors"])
         self.assertEqual({"deletion", "non_fast_forward"}, {rule["type"] for rule in self.deploy["rules"]})
 
-    def test_only_the_deploy_key_may_update(self):
+    def test_only_the_deploy_key_may_create_and_update(self):
         self.assertEqual(
             [{"actor_type": "DeployKey", "actor_id": None, "bypass_mode": "always"}], self.push["bypass_actors"]
         )
-        self.assertEqual(["update"], [rule["type"] for rule in self.push["rules"]])
+        self.assertEqual(["creation", "update"], sorted(rule["type"] for rule in self.push["rules"]))
 
     def test_every_ruleset_with_a_bypass_actor_lacks_the_unconditional_rules(self):
         for name in sorted(os.listdir(HERE)):
@@ -126,6 +127,12 @@ class AttemptsToWeakenThem(unittest.TestCase):
             push = copy.deepcopy(self.push)
             push["bypass_actors"] = [actor]
             self.assert_caught(self.deploy, push, "not a DeployKey")
+
+    def test_missing_creation_or_update_in_deploy_push(self):
+        for dropped in ("creation", "update"):
+            push = copy.deepcopy(self.push)
+            push["rules"] = [rule for rule in push["rules"] if rule["type"] != dropped]
+            self.assert_caught(self.deploy, push, "creation and update")
 
     def test_second_actor(self):
         push = copy.deepcopy(self.push)

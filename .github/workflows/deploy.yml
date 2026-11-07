@@ -7,8 +7,9 @@
 #                       ends with a warning, not an error).
 #   pull request        smoke only, when the change touches the files that decide the images and the chart (paths
 #                       below); the images are built from the GitHub Actions cache and never pushed. Not a required check.
-#   workflow_dispatch   smoke only, on the branch it is started on (a rehearsal on an epic branch); nothing is pushed
-#                       and `deploy` does not move.
+#   workflow_dispatch   smoke only, on the branch it is started on; nothing is pushed and `deploy` does not move. GitHub
+#                       offers it only once this file is on the default branch (main), so before the merge of the epic
+#                       the rehearsal on the epic branch is the pull request event (this file is in the paths below).
 #
 # Runs for main are never cancelled: one runs, at most one waits, and a waiting one is replaced by the newer commit, so
 # the latest commit is deployed. A pull request run is superseded by the next push to the same PR.
@@ -37,6 +38,12 @@ concurrency:
 
 permissions:
   contents: read
+
+# Every run: step gets `bash --noprofile --norc -eo pipefail {0}`. Without `shell:` GitHub uses `bash -e {0}`, where the
+# status of `make smoke | tee log` is that of `tee`, so a red smoke test would give a green job and deploy would run.
+defaults:
+  run:
+    shell: bash
 
 env:
   # The images of the chart (image.registry); k3s pulls them without credentials once the packages are public.
@@ -78,13 +85,14 @@ jobs:
         run: |
           for app in api store admin elasticsearch; do
             ref="$IMAGE_PREFIX/$app:$GITHUB_SHA"
-            if out="$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}' 2>&1)"; then
-              echo "$app=$out" >> "$GITHUB_OUTPUT"
-              echo "$ref exists ($out), it is kept"
-            elif printf '%s' "$out" | grep -qiE 'not found|manifest unknown|name unknown|denied|unauthorized'; then
+            # stdout is the digest (it goes to the job output), stderr only tells why a lookup failed.
+            if digest="$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}' 2> "$RUNNER_TEMP/inspect-error")"; then
+              echo "$app=$digest" >> "$GITHUB_OUTPUT"
+              echo "$ref exists ($digest), it is kept"
+            elif grep -qiE 'not found|manifest unknown|name unknown|denied|unauthorized' "$RUNNER_TEMP/inspect-error"; then
               echo "$ref is not there yet"
             else
-              echo "::error::could not look up $ref: $out"
+              echo "::error::could not look up $ref: $(cat "$RUNNER_TEMP/inspect-error")"
               exit 1
             fi
           done
@@ -190,8 +198,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # A docker-container builder (the cache of GitHub Actions needs it) that is not made the current one: smoke.sh
+      # builds its broken images with a plain `docker build` FROM the images loaded below, which only the local daemon
+      # (the default builder) sees. The builds below name this builder and load their result into the daemon.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        id: buildx
         if: github.event_name != 'push'
+        with:
+          use: false
 
       - name: Pull the pushed images by digest
         if: github.event_name == 'push'
@@ -216,6 +230,7 @@ jobs:
         with:
           context: apps/api
           target: prod
+          builder: ${{ steps.buildx.outputs.name }}
           load: true
           tags: ${{ env.SMOKE_REGISTRY }}/api:r1
           cache-from: type=gha,scope=deploy-api
@@ -227,6 +242,7 @@ jobs:
         with:
           context: apps/store
           target: prod
+          builder: ${{ steps.buildx.outputs.name }}
           load: true
           tags: ${{ env.SMOKE_REGISTRY }}/store:r1
           cache-from: type=gha,scope=deploy-store
@@ -238,6 +254,7 @@ jobs:
         with:
           context: apps/admin
           target: prod
+          builder: ${{ steps.buildx.outputs.name }}
           load: true
           tags: ${{ env.SMOKE_REGISTRY }}/admin:r1
           cache-from: type=gha,scope=deploy-admin
@@ -248,6 +265,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: infra/elasticsearch
+          builder: ${{ steps.buildx.outputs.name }}
           load: true
           tags: ${{ env.SMOKE_REGISTRY }}/elasticsearch:r1
           cache-from: type=gha,scope=deploy-elasticsearch

@@ -78,6 +78,8 @@ deploy_without_the_smoke_test() { replace .github/workflows/deploy.yml 'needs: [
 deploy_images_pushed_for_every_event() { replace .github/workflows/deploy.yml "    if: github.event_name == 'push'" "    if: github.event_name != 'schedule'"; }
 # shellcheck disable=SC2016 # the texts are lines of the workflow, with their expressions
 runs_for_main_cancelled() { replace .github/workflows/deploy.yml "cancel-in-progress: \${{ github.event_name != 'push' }}" 'cancel-in-progress: true'; }
+# bash -e {0} is what GitHub runs without `shell:`: no pipefail, so `make smoke | tee log` hides a red smoke test
+deploy_without_pipefail() { replace .github/workflows/deploy.yml '    shell: bash' '    shell: bash -e {0}'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 nothing_broken() { :; }
 
@@ -101,6 +103,7 @@ run_case "unquoted variable in a run script of deploy.yml (shellcheck)" "SC2086"
 run_case "deploy without waiting for the smoke test" "test_it_needs_a_green_smoke_test_and_the_images" deploy_without_the_smoke_test
 run_case "images pushed for every event" "test_images_are_pushed_and_deploy_moves_only_for_a_push_to_main" deploy_images_pushed_for_every_event
 run_case "runs for main cancelled" "test_runs_for_main_are_never_cancelled_and_other_runs_are" runs_for_main_cancelled
+run_case "deploy.yml steps without pipefail (smoke test piped to tee)" "test_every_run_step_has_pipefail" deploy_without_pipefail
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then

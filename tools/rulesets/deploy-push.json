@@ -12,6 +12,7 @@
     {"actor_type": "DeployKey", "actor_id": null, "bypass_mode": "always"}
   ],
   "rules": [
+    {"type": "creation"},
     {"type": "update"}
   ]
 }

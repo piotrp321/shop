@@ -94,9 +94,12 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
     z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy).
   - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch`: tylko smoke test
     na obrazach z cache GHA, bez wypychania obrazów i bez ruszania `deploy`; to nie jest wymagany check.
+    `workflow_dispatch` działa dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); przed merge'em epiku próba
+    na jego gałęzi odbywa się przez zdarzenie `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).
   - Rulesety `deploy` (`tools/rulesets/deploy.json`: zakaz usunięcia i force pusha wszystkim, bez aktora bypass)
-    i `deploy-push` (`tools/rulesets/deploy-push.json`: reguła `update`, jedyny aktor bypass to deploy key, typ
-    `DeployKey`) obejmują `refs/heads/deploy`. Są dwa, bo bypass dotyczy wszystkich reguł rulesetu. Zakładanie jak
+    i `deploy-push` (`tools/rulesets/deploy-push.json`: reguły `creation` i `update`, jedyny aktor bypass to deploy key,
+    typ `DeployKey`) obejmują `refs/heads/deploy`. Aktor `DeployKey` to każdy deploy key repo z prawem zapisu, więc
+    repo ma mieć tylko jeden taki klucz (warunek dla runbooka wdrożenia). Są dwa, bo bypass dotyczy wszystkich reguł rulesetu. Zakładanie jak
     wyżej, osobno każdy plik (`--input tools/rulesets/deploy.json`, `--input tools/rulesets/deploy-push.json`).
     Rulesety, deploy key i sekret `DEPLOY_KEY` zakłada się po merge'u epiku według runbooka wdrożenia.
   - Test struktury rulesetów: `python3 -m unittest discover -s tools/rulesets -p 'test_*.py'`.

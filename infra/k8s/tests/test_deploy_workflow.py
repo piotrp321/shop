@@ -103,6 +103,22 @@ class Smoke(unittest.TestCase):
                 self.assertEqual("github.event_name != 'push'", step["if"])
                 self.assertIs(True, step["with"]["load"])
 
+    def test_the_images_are_loaded_into_the_daemon_that_smoke_sh_builds_on(self):
+        """smoke.sh builds `FROM <registry>/api:r1` with a plain `docker build` (SMOKE_BREAK): the base must be in the
+        local daemon and the builder in use must be the default one, a docker-container builder would look for the base
+        in docker.io."""
+        smoke = (REPO / "infra/k8s/scripts/smoke.sh").read_text()
+        self.assertIn("FROM %s/api:r1", smoke)
+        self.assertIn("FROM %s/store:r1", smoke)
+        buildx = next(s for s in steps("smoke") if uses(s, "docker/setup-buildx-action"))
+        self.assertIs(False, buildx["with"]["use"])
+        builds = [s for s in steps("smoke") if uses(s, "docker/build-push-action")]
+        self.assertEqual(4, len(builds))
+        for step in builds:
+            self.assertEqual("${{ steps.%s.outputs.name }}" % buildx["id"], step["with"]["builder"])
+            self.assertIs(True, step["with"]["load"])
+            self.assertNotIn("push", step["with"])
+
     def test_it_runs_the_smoke_test_on_the_images_it_prepared(self):
         script = "\n".join(run_scripts("smoke"))
         self.assertIn("SMOKE_BUILD=0 make -C infra/k8s smoke", script)
@@ -119,6 +135,13 @@ class Smoke(unittest.TestCase):
         self.assertIn("GITHUB_STEP_SUMMARY", summary["run"])
         self.assertIn("peak memory", summary["run"])
         self.assertIn("peak disk", summary["run"])
+
+
+class ExistingImages(unittest.TestCase):
+    def test_the_job_output_gets_the_digest_only_not_the_warnings_of_the_lookup(self):
+        lookup = next(s for s in steps("images") if s.get("id") == "existing")["run"]
+        self.assertNotIn("2>&1", lookup)
+        self.assertIn('echo "$app=$digest" >> "$GITHUB_OUTPUT"', lookup)
 
 
 class Deploy(unittest.TestCase):
@@ -146,6 +169,19 @@ class Deploy(unittest.TestCase):
         for job in jobs.values():
             self.assertNotIn("DEPLOY_KEY", json.dumps(job.get("env", {})))
         self.assertNotIn("set -x", "\n".join(run_scripts()))
+
+
+class Shell(unittest.TestCase):
+    """GitHub runs a step without `shell:` as `bash -e {0}` (no pipefail): the status of `make smoke | tee log` would be
+    that of `tee`, a red smoke test would give a green job and `deploy` would move the branch. `shell: bash` is
+    `bash --noprofile --norc -eo pipefail {0}`."""
+
+    def test_every_run_step_has_pipefail(self):
+        self.assertEqual("bash", workflow.get("defaults", {}).get("run", {}).get("shell"))
+        for name, job in jobs.items():
+            self.assertNotIn("shell", job.get("defaults", {}).get("run", {}), name)
+            for step in job["steps"]:
+                self.assertNotIn("shell", step, f"{name}: {step.get('name')}")
 
 
 class Permissions(unittest.TestCase):
