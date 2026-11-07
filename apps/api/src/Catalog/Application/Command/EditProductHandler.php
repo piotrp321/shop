@@ -9,7 +9,6 @@ use App\Catalog\Application\Port\Clock;
 use App\Catalog\Application\Port\ProductImageStorage;
 use App\Catalog\Application\Port\ProductImageStorageUnavailable;
 use App\Catalog\Application\Port\VariantStockFacts;
-use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategoryRepository;
 use App\Catalog\Domain\Product\DuplicateVariantValues;
 use App\Catalog\Domain\Product\ImageNotFound;
@@ -30,6 +29,7 @@ use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\SlugLocked;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\UnknownCategory;
 use App\Catalog\Domain\Product\UnknownVariant;
 use App\Catalog\Domain\Product\VariantAxes;
 use App\Catalog\Domain\Product\VariantId;
@@ -62,7 +62,7 @@ final readonly class EditProductHandler
      *
      * @throws ProductNotFound
      * @throws ProductModifiedConcurrently                                                           when the expected version is not the stored one (checked again on write)
-     * @throws CategoryNotFound                                                                      when the main or an additional category does not exist
+     * @throws UnknownCategory                                                                       when the main or an additional category does not exist
      * @throws SlugRequired
      * @throws SlugLocked
      * @throws SlugAlreadyTaken

@@ -26,6 +26,7 @@ use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugLocked;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\UnknownCategory;
 use App\Catalog\Domain\Product\UnknownVariant;
 use App\Catalog\Domain\Product\VariantInUse;
 use App\Tests\Support\InMemory\FixedCatalogClock;
@@ -126,6 +127,29 @@ final class EditProductHandlerTest extends TestCase
 
         self::assertSame(1, $this->products->version(ProductId::fromString(self::PRODUCT_ID)));
         self::assertSame([], $this->events->published);
+    }
+
+    public function testUnknownCategoriesAreUnknownCategoryAtTheirPosition(): void
+    {
+        $this->store(ProductStatus::Published);
+        $unknown = '00000000-0000-4000-8000-0000000000ff';
+        $main = null;
+        $additional = null;
+
+        try {
+            ($this->handler)($this->command(mainCategoryId: $unknown));
+        } catch (UnknownCategory $e) {
+            $main = $e->index;
+        }
+        try {
+            ($this->handler)($this->command(additionalCategoryIds: [$unknown]));
+        } catch (UnknownCategory $e) {
+            $additional = $e->index;
+        }
+
+        self::assertNull($main);
+        self::assertSame(0, $additional);
+        self::assertSame(1, $this->products->version(ProductId::fromString(self::PRODUCT_ID)));
     }
 
     public function testAStaleVersionIsRefusedBeforeTheStorageIsAsked(): void
@@ -299,8 +323,9 @@ final class EditProductHandlerTest extends TestCase
     }
 
     /**
-     * @param list<array{key: string, alt: string}>|null                     $images   null: the stored image
-     * @param list<array{variantId: string|null, values: list<string>}>|null $variants null: both stored variants
+     * @param list<array{key: string, alt: string}>|null                     $images                null: the stored image
+     * @param list<array{variantId: string|null, values: list<string>}>|null $variants              null: both stored variants
+     * @param list<string>                                                   $additionalCategoryIds
      */
     private function command(
         int $expectedVersion = 1,
@@ -309,6 +334,8 @@ final class EditProductHandlerTest extends TestCase
         string $taxClass = 'standard',
         ?array $images = null,
         ?array $variants = null,
+        string $mainCategoryId = self::CATEGORY_ID,
+        array $additionalCategoryIds = [],
     ): EditProduct {
         return new EditProduct(
             self::PRODUCT_ID,
@@ -317,8 +344,8 @@ final class EditProductHandlerTest extends TestCase
             $name,
             $slug,
             '',
-            self::CATEGORY_ID,
-            [],
+            $mainCategoryId,
+            $additionalCategoryIds,
             $taxClass,
             $images ?? [['key' => 'originals/'.hash('sha256', 'front').'.jpg', 'alt' => 'front']],
             ['Kolor'],

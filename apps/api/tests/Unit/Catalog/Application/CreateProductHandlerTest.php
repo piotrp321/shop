@@ -10,7 +10,6 @@ use App\Catalog\Application\Port\ProductImageStorageUnavailable;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
-use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategorySlug;
 use App\Catalog\Domain\Product\DuplicateVariantValues;
 use App\Catalog\Domain\Product\ImageNotFound;
@@ -24,6 +23,7 @@ use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
 use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
+use App\Catalog\Domain\Product\UnknownCategory;
 use App\Catalog\Domain\Product\VariantAlreadyExists;
 use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
@@ -130,24 +130,26 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame(1, $this->products->count());
     }
 
-    public function testUnknownMainCategoryThrowsCategoryNotFoundAndSavesNothing(): void
+    public function testUnknownMainCategoryThrowsUnknownCategoryWithoutAnIndexAndSavesNothing(): void
     {
         try {
             ($this->handler)($this->command(mainCategoryId: self::UNKNOWN_ID));
-            self::fail('Expected CategoryNotFound.');
-        } catch (CategoryNotFound) {
+            self::fail('Expected UnknownCategory.');
+        } catch (UnknownCategory $e) {
+            self::assertNull($e->index);
         }
 
         self::assertSame(0, $this->products->count());
         self::assertSame([], $this->events->published);
     }
 
-    public function testUnknownAdditionalCategoryThrowsCategoryNotFoundAndSavesNothing(): void
+    public function testUnknownAdditionalCategoryThrowsUnknownCategoryAtItsIndexAndSavesNothing(): void
     {
         try {
             ($this->handler)($this->command(additionalCategoryIds: [self::EXTRA_ID, self::UNKNOWN_ID]));
-            self::fail('Expected CategoryNotFound.');
-        } catch (CategoryNotFound) {
+            self::fail('Expected UnknownCategory.');
+        } catch (UnknownCategory $e) {
+            self::assertSame(1, $e->index);
         }
 
         self::assertSame(0, $this->products->count());
