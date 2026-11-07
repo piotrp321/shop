@@ -15,13 +15,21 @@ use App\Pricing\Domain\Price\PriceModifiedConcurrently;
 use App\Pricing\Domain\Price\VariantId;
 use App\Pricing\Domain\Price\VariantNotFound;
 use App\Pricing\Domain\Price\VariantPrice;
+use App\Pricing\Domain\Promotion\PercentOff;
+use App\Pricing\Domain\Promotion\PriceLockedByPromotion;
+use App\Pricing\Domain\Promotion\Promotion;
+use App\Pricing\Domain\Promotion\PromotionId;
 use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Domain\Tax\TaxClass;
 use App\Pricing\Domain\Tax\TaxClassWithoutRate;
 use App\Pricing\Domain\Tax\VatRate;
 use App\Shared\Domain\Exception\NotFound;
+use App\Tests\Unit\Pricing\FixedPricingClock;
+use App\Tests\Unit\Pricing\InMemoryPromotionRepository;
 use App\Tests\Unit\Pricing\InMemoryVariantPriceRepository;
 use App\Tests\Unit\Pricing\InMemoryVariantTaxClasses;
+use App\Tests\Unit\Pricing\PricingJournal;
+use App\Tests\Unit\Pricing\RecordingPromotionWriteLock;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -32,13 +40,85 @@ final class SetVariantPriceHandlerTest extends TestCase
 
     private InMemoryVariantPriceRepository $prices;
     private InMemoryVariantTaxClasses $taxClasses;
+    private InMemoryPromotionRepository $promotions;
+    private PricingJournal $journal;
+    private FixedPricingClock $clock;
     private SetVariantPriceHandler $handler;
 
     protected function setUp(): void
     {
         $this->prices = new InMemoryVariantPriceRepository();
         $this->taxClasses = new InMemoryVariantTaxClasses([self::VARIANT => 'standard']);
-        $this->handler = new SetVariantPriceHandler($this->prices, $this->taxClasses, new PolishVatRates());
+        $this->promotions = new InMemoryPromotionRepository();
+        $this->journal = new PricingJournal();
+        $this->clock = new FixedPricingClock('2026-11-10T12:00:00.400000Z', $this->journal);
+        $this->handler = new SetVariantPriceHandler($this->prices, $this->taxClasses, new PolishVatRates(), $this->promotions, new RecordingPromotionWriteLock($this->journal), $this->clock);
+    }
+
+    public function testTheChangeOfAPriceInAnActivePromotionIsRefusedBeforeTheVersionIsChecked(): void
+    {
+        $this->storePrice(gross: 10000, basisPoints: 2300, version: 2);
+        $this->promotion('2026-11-01T00:00:00Z', '2026-11-20T00:00:00Z');
+
+        foreach ([2, 1, null] as $version) {
+            try {
+                ($this->handler)(SetVariantPrice::byStaff(self::VARIANT, 12300, $version, 'sub-1', 'Anna Admin'));
+                self::fail('The price is locked by the promotion.');
+            } catch (PriceLockedByPromotion) {
+            }
+        }
+
+        self::assertSame(10000, $this->price()->breakdown()->gross()->amount());
+        self::assertSame(0, $this->prices->writes);
+    }
+
+    public function testThePriceIsLockedFromTheStartOfThePromotionUntilBeforeItsEnd(): void
+    {
+        $this->storePrice(gross: 10000, basisPoints: 2300, version: 2);
+        $this->promotion('2026-11-10T12:00:00Z', '2026-11-10T12:00:01Z');
+
+        $this->expectException(PriceLockedByPromotion::class);
+
+        ($this->handler)(SetVariantPrice::byStaff(self::VARIANT, 12300, 2, 'sub-1', 'Anna Admin'));
+    }
+
+    public function testThePriceOfAVariantInAPlannedPromotionChanges(): void
+    {
+        $this->storePrice(gross: 10000, basisPoints: 2300, version: 2);
+        $this->promotion('2026-11-10T12:00:01Z', '2026-11-20T00:00:00Z');
+
+        $saved = ($this->handler)(SetVariantPrice::byStaff(self::VARIANT, 12300, 2, 'sub-1', 'Anna Admin'));
+
+        self::assertSame(12300, $saved->gross);
+    }
+
+    public function testThePriceOfAVariantInAnEndedPromotionChanges(): void
+    {
+        $this->storePrice(gross: 10000, basisPoints: 2300, version: 2);
+        $this->promotion('2026-11-01T00:00:00Z', '2026-11-10T12:00:00Z');
+
+        $saved = ($this->handler)(SetVariantPrice::byStaff(self::VARIANT, 12300, 2, 'sub-1', 'Anna Admin'));
+
+        self::assertSame(12300, $saved->gross);
+    }
+
+    public function testTheChangeTakesTheSharedLockBeforeTheClockAndIsWrittenAtThatMoment(): void
+    {
+        $this->storePrice(gross: 10000, basisPoints: 2300, version: 2);
+
+        ($this->handler)(SetVariantPrice::byStaff(self::VARIANT, 12300, 2, 'sub-1', 'Anna Admin'));
+
+        self::assertSame(['lock shared', 'clock'], $this->journal->entries);
+        self::assertEquals($this->clock->now, $this->prices->history[0]->changedAt());
+        self::assertEquals($this->clock->now, $this->price()->updatedAt());
+    }
+
+    public function testAFirstPriceIsWrittenAtTheMomentReadAfterTheLock(): void
+    {
+        ($this->handler)(SetVariantPrice::byStaff(self::VARIANT, 12300, null, 'sub-1', 'Anna Admin'));
+
+        self::assertSame(['lock shared', 'clock'], $this->journal->entries);
+        self::assertEquals($this->clock->now, $this->prices->history[0]->changedAt());
     }
 
     public function testFirstPriceIsCreatedAtTheRateOfTheClassOfTheVariantsProduct(): void
@@ -201,7 +281,7 @@ final class SetVariantPriceHandlerTest extends TestCase
     public function testExistingPriceKeepsItsOwnClassEvenWhenCatalogNowSaysOtherwise(): void
     {
         $this->storePrice(gross: 10000, basisPoints: 2300, version: 1);
-        $handler = new SetVariantPriceHandler($this->prices, new InMemoryVariantTaxClasses([self::VARIANT => 'printed_book']), new PolishVatRates());
+        $handler = new SetVariantPriceHandler($this->prices, new InMemoryVariantTaxClasses([self::VARIANT => 'printed_book']), new PolishVatRates(), $this->promotions, new RecordingPromotionWriteLock(), $this->clock);
 
         $handler(SetVariantPrice::byStaff(self::VARIANT, 12300, 1, 'sub-1', 'Anna Admin'));
 
@@ -223,7 +303,7 @@ final class SetVariantPriceHandlerTest extends TestCase
 
     public function testClassWithoutRateIsRejected(): void
     {
-        $handler = new SetVariantPriceHandler($this->prices, new InMemoryVariantTaxClasses([self::VARIANT => 'luxury']), new PolishVatRates());
+        $handler = new SetVariantPriceHandler($this->prices, new InMemoryVariantTaxClasses([self::VARIANT => 'luxury']), new PolishVatRates(), $this->promotions, new RecordingPromotionWriteLock(), $this->clock);
 
         $this->expectException(TaxClassWithoutRate::class);
 
@@ -245,6 +325,14 @@ final class SetVariantPriceHandlerTest extends TestCase
             TaxClass::fromString('standard'),
             $version,
             new \DateTimeImmutable('2026-10-01 12:00:00+00:00'),
+        ));
+    }
+
+    private function promotion(string $startsAt, string $endsAt): void
+    {
+        $this->promotions->store(Promotion::plan(
+            PromotionId::fromString('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5e00'), 'Jesień', PercentOff::of(20), new \DateTimeImmutable($startsAt), new \DateTimeImmutable($endsAt),
+            [VariantId::fromString(self::VARIANT)], null, new \DateTimeImmutable('2026-10-01T00:00:00Z'),
         ));
     }
 
