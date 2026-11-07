@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Shared\Infrastructure\Http;
 
 use App\Shared\Domain\Exception\Conflict;
+use App\Shared\Domain\Exception\ExtendedProblem;
 use App\Shared\Domain\Exception\InvalidInput;
 use App\Shared\Domain\Exception\NotFound;
 use App\Shared\Domain\Exception\ProblemException;
@@ -32,7 +33,8 @@ use Symfony\Component\Validator\Exception\ValidationFailedException;
  * exception, repeatedly for nested buses, because a sync bus wraps whatever a handler throws.
  * - {@see ProblemException}: status by kind (see PROBLEM_STATUSES), message as `detail` (written for clients; none for
  *   a 5xx such as {@see Unavailable}), `type`
- *   from {@see TypedProblem} when the exception has one, otherwise `about:blank`.
+ *   from {@see TypedProblem} when the exception has one, otherwise `about:blank`, and the extension members of an
+ *   {@see ExtendedProblem} (never in place of a member of the problem, none for a 5xx).
  *   If a class is also an HttpExceptionInterface, the ProblemException rules win and its headers are ignored,
  * - framework HTTP exceptions: status and headers are kept, `detail` is a fixed text per status, never the message
  *   (router messages contain the requested URL),
@@ -57,6 +59,9 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
     ];
 
     private const MAX_UNWRAP_DEPTH = 10;
+
+    /** The members of a problem document that an extension never replaces. */
+    private const RESERVED_MEMBERS = ['type', 'title', 'status', 'detail', 'instance', 'violations'];
 
     private const FALLBACK_DETAIL = 'The request could not be processed.';
 
@@ -150,6 +155,9 @@ final class ProblemDetailsSubscriber implements EventSubscriberInterface
         $problem = ['type' => $type, 'title' => Response::$statusTexts[$status] ?? 'Error', 'status' => $status];
         if ($status < 500 && '' !== $exception->getMessage()) {
             $problem['detail'] = $exception->getMessage();
+        }
+        if ($status < 500 && $exception instanceof ExtendedProblem) {
+            $problem += array_diff_key($exception->problemExtensions(), array_flip(self::RESERVED_MEMBERS));
         }
 
         return self::problemResponse($problem, $status);

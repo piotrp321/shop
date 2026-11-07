@@ -9,7 +9,9 @@ każdej zmiany. Kluczem ceny i historii jest wariant (`variantId` z Catalog, `do
 bez osi wariantów ma jeden wariant domyślny. Zarządzanie cenami w panelu, cena brutto na liście produktów w sklepie oraz
 autorytatywny odczyt cen wielu wariantów dla koszyka i przyszłego checkoutu.
 
-Obsługujemy wyłącznie Polskę i PLN. Poza zakresem: promocje, kody rabatowe, cena Omnibus w sklepie, koszyk,
+Obsługujemy wyłącznie Polskę i PLN. Promocje (obniżka procentowa wariantów na okres) planuje się w panelu
+(sekcja „Promocje”); ich cena promocyjna nie jest jeszcze ceną skuteczną: odczyt cen (`GetCurrentPrices`), koszyk,
+zamówienie i sklep używają ceny katalogowej. Poza zakresem: kody rabatowe, cena Omnibus w sklepie, koszyk,
 checkout, wiele krajów i walut, harmonogramy zmian stawek. Klasę podatkową produktu zmienia edycja produktu w Catalog,
 a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie klasy podatkowej”).
 
@@ -26,7 +28,8 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
   subskrybuje integracyjne zdarzenie Catalog `ProductChanged` (konsument `RepriceOnTaxClassChange`, niżej).
 - Catalog nie zależy od Pricing w żadnej warstwie. Deptrac nie ma żadnej reguły `Catalog_* → Pricing_*`.
 - Pricing zależy od Backoffice wyłącznie przez kontrakt bezpieczeństwa `AuthenticatedStaffMember` z `Backoffice_Application`:
-  `Pricing_Infrastructure` (`PriceVoter`, role pracownika) i `Pricing_UI` (aktor zmiany ceny w `ChangePriceController`).
+  `Pricing_Infrastructure` (`PriceVoter` i `PromotionVoter`, role pracownika) i `Pricing_UI` (aktor zmiany ceny
+  w `ChangePriceController` i zapisu promocji w kontrolerach promocji).
   `Pricing_Domain` i `Pricing_Application` nie zależą od Backoffice, a żadna warstwa Pricing nie zależy od
   `Backoffice_Infrastructure`, `Backoffice_Domain` ani `Backoffice_UI`.
 - Domena Pricing ma własne value objecty (`VariantId`, `TaxClass` jako kod tekstowy; `ProductId` w liście cen
@@ -91,8 +94,61 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
 Historia wystarcza do późniejszego Omnibusa: najniższe brutto z 30 dni przed datą to zapytanie po
 `(variant_id, changed_at)`.
 
+## Promocje
+
+Model i decyzje: `docs/features/promotions/spec.md` (Q1–Q5, Q13, A1). Pricing jest jedynym miejscem reguł promocji.
+
+- `PercentOff`: liczba całkowita 1–90. `PromotionPeriod {startsAt, endsAt}`: pełne sekundy w UTC (ułamek jest
+  ucinany), `startsAt < endsAt`, najwyżej 90 dni; obowiązuje w `[startsAt, endsAt)`.
+- Agregat `Promotion` (UUID v7): nazwa (1–100 znaków po przycięciu, bez znaków sterujących), procent, okres, warianty
+  (1–1000, bez powtórzeń), `createdBy`/`updatedBy` (aktor z tokena: `sub` i nazwa; `null` bez pracownika),
+  `createdAt`, `updatedAt`, wersja. Status z czasu: `planned` (przed startem), `active`, `ended` (od końca).
+- `startOfNow` = `now` ucięte do sekundy + 1 s. `plan` przesuwa start `null` albo ≤ `now` na `startOfNow` (start „od
+  teraz”); koniec ≤ `now` to `InvalidPromotion` (422).
+- `revise` to jedyna zmiana: zaplanowana zmienia wszystko; aktywna tylko nazwę i koniec (inny procent, start albo zbiór
+  wariantów to `PromotionNotEditable`, 409), a koniec ≤ `now` kończy ją w `startOfNow` („Zakończ teraz”); zakończonej
+  nie można zmienić. Każda zmiana podnosi wersję i zapisuje aktora oraz `updatedAt`; wynik mówi, czy zmienił się okres.
+  Usunąć można tylko zaplanowaną (`assertDeletable`).
+- `PromotionalPrice::apply(brutto, procent)` = brutto − `floor(brutto × procent / 100)` w liczbach całkowitych, co
+  najmniej 1 grosz.
+- Komendy (`command.bus`, jedna transakcja): `PlanPromotion`, `RevisePromotion(id, expectedVersion, …)` i
+  `DeletePromotion(id, expectedVersion)`. Każda zaczyna od blokady zapisów promocji (niżej) i dopiero po niej czyta
+  zegar; wersja inna niż zapisana to `PromotionModifiedConcurrently` (409). Wariant dodawany do promocji (przy `plan`
+  wszystkie, przy `revise` tylko nowe) musi być znany Catalogowi (`GetVariantSummaries` przez port `VariantSummaries`,
+  paczkami po 100; warianty szkiców są nieznane) i mieć aktualną cenę (`isCurrent`); inaczej `InvalidPromotionVariants`
+  (422). Wariant usunięty z Catalog, który już jest w promocji, nie blokuje zmiany. Niezmiennik Q4: promocja, której
+  okres nakłada się na okres innej ze wspólnym wariantem, to `PromotionOverlap` (409) z listą
+  `conflictingVariantIds`. Po zapisie handler woła port `PromotionBoundaries` (promocja, poprzedni okres albo `null`,
+  `now`); dziś adapter nic nie robi.
+- Odczyty (`query.bus`): `ListPromotions(status?, after, perPage)` przez port `PromotionReader` (DBAL, keyset
+  `(starts_at DESC, id)`, kursor `PromotionCursor`, status liczony z `now`) i `GetPromotion(id)`: warianty z Catalog
+  (produkt, nazwa, etykieta; wariant nieznany Catalogowi ma je `null`), `regularGross` = aktualna cena katalogowa,
+  `promotionalGross` = `PromotionalPrice` z niej, `null` bez ceny i dla zakończonej promocji.
+
+### Blokada zapisów promocji i ceny (Q4, Q13)
+
+- Port `PromotionWriteLock` z adapterem `PostgresPromotionWriteLock`: `pg_advisory_xact_lock` na stałym kluczu Pricing,
+  trzymana do końca transakcji zapisu (poza transakcją adapter odmawia). Zapisy promocji biorą ją na wyłączność, więc
+  idą po kolei i niezmiennik Q4 jest sprawdzany na zatwierdzonych danych.
+- `SetVariantPrice` po sprawdzeniu wariantu w Catalog bierze tę samą blokadę współdzieloną, czyta zegar, a wariant
+  w promocji aktywnej w tej chwili kończy się `PriceLockedByPromotion` (409) przed sprawdzeniem wersji. Cena i wpis
+  historii mają czas odczytany po blokadzie, więc cena zapisana równolegle z promocją „od teraz” ma `changed_at` przed
+  jej startem albo jest odrzucona, nigdy zmieniona w aktywnej promocji. Przy promocji zaplanowanej i zakończonej cena
+  się zmienia.
+- `ReconcileTax` i przeliczenie po zmianie klasy (`reprice`, brutto bez zmian) nie biorą blokady. Seed cen idzie
+  przez `SetVariantPrice` (`bySeed`), więc bierze blokadę współdzieloną i ma tę samą odmowę dla wariantu w aktywnej
+  promocji.
+
 ## Persystencja i transakcje
 
+- `pricing_promotion`: `id uuid` (PK), `name`, `percent_off smallint`, `starts_at`, `ends_at`, `created_at`,
+  `created_by_id`, `created_by_name`, `updated_at`, `updated_by_id`, `updated_by_name` (aktor `null` bez pracownika),
+  `version`; CHECK `starts_at < ends_at`, `percent_off BETWEEN 1 AND 90` i aktor z obiema wartościami albo bez;
+  indeks `(starts_at DESC, id)`. `pricing_promotion_variant`: PK `(promotion_id, variant_id)`, FK do promocji
+  z `ON DELETE CASCADE`, indeks `(variant_id)`, bez FK do Catalog. Zapis przez rekordy Doctrine
+  (`DoctrinePromotionRepository`, `#[Version]`), warianty synchronizowane po identyfikatorze; nakładanie okresów
+  i blokada ceny to zapytania na połączeniu. Promocje i ich warianty są przechowywane na zawsze (usuwa się tylko
+  zaplanowane).
 - `pricing_variant_price`: `variant_id uuid` (PK), `currency`, `gross_amount`, `net_amount`, `vat_amount`,
   `vat_rate_bp`, `tax_class`, `version`, `updated_at`.
 - `pricing_price_history`: `id uuid` (PK), `variant_id`, `currency`, `gross_amount`, `net_amount`, `vat_amount`,
@@ -115,6 +171,8 @@ Pricing:
 - `SetVariantPrice(variantId, gross, expectedVersion|null, actorId, actorName)`
   - Klasa produktu wariantu z portu `VariantTaxClasses` (Catalog `GetVariant`). Nieznany wariant (także identyfikator
     produktu): `VariantNotFound` (404, „Wariant produktu nie istnieje.”).
+  - Wariant w aktywnej promocji: `PriceLockedByPromotion` (409) przed sprawdzeniem wersji (sekcja „Blokada zapisów
+    promocji i ceny”).
   - Brak ceny i `expectedVersion` różne od `null`: 409. Cena istnieje, a `expectedVersion` jest inne (także `null`): 409
     (`PriceModifiedConcurrently`, `Conflict`). Wersję sprawdza handler, a przy zapisie dodatkowo `#[Version]` i PK,
     więc równoległe zapisy tej samej wersji lub dwa równoległe pierwsze zapisy kończą się jednym sukcesem i 409.
@@ -218,12 +276,26 @@ z tokenem realmu `shop`: 401):
 | Endpoint | Uprawnienie | Odpowiedzi |
 |---|---|---|
 | `GET /api/v1/admin/prices?q&category&after&perPage` | każdy pracownik | `200 {items: [{productId, name, taxClass, applicableVatRate, variants: [{variantId, label, price: {gross, net, vat, vatRate, currency, version, updatedAt, vatRateOutdated} \| null}]}], next}`; kursor i `perPage` po produktach; 400 złe parametry; 404 nieznana kategoria |
-| `PUT /api/v1/admin/variants/{variantId}/price`, body `{gross: int, version: int \| null}` | rola `admin` | 200 cena (ta sama kwota: bez zmiany wersji i bez wpisu); 403; 404 nieznany wariant; 409 konflikt wersji; 422 kwota poza zakresem lub zły typ |
+| `PUT /api/v1/admin/variants/{variantId}/price`, body `{gross: int, version: int \| null}` | rola `admin` | 200 cena (ta sama kwota: bez zmiany wersji i bez wpisu); 403; 404 nieznany wariant; 409 konflikt wersji albo `price-locked-by-promotion`; 422 kwota poza zakresem lub zły typ |
+| `GET /api/v1/admin/promotions?status&after&perPage` | każdy pracownik | `200 {items: [{id, name, percentOff, startsAt, endsAt, status, variantCount, version}], next}`; `status` `planned`, `active`, `ended`; `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
+| `POST /api/v1/admin/promotions`, body `{name, percentOff, startsAt \| null, endsAt, variantIds}` | `admin`, `marketing` | 201 promocja (`Location`); 403; 409 `promotion-overlap`; 422 |
+| `GET /api/v1/admin/promotions/{id}` | każdy pracownik | 200 `{id, name, percentOff, startsAt, endsAt, status, variantCount, version, updatedAt, updatedByName, variants: [{variantId, productId, productName, label, regularGross, promotionalGross}]}`; 404 |
+| `PUT /api/v1/admin/promotions/{id}`, body `{name, percentOff, startsAt \| null, endsAt, variantIds, version}` | `admin`, `marketing` | 200 promocja; 403; 404; 409 wersja (`about:blank`), `promotion-not-editable`, `promotion-overlap`; 422 |
+| `DELETE /api/v1/admin/promotions/{id}?version=` | `admin`, `marketing` | 204; 400 brak albo zła wersja; 403; 404; 409 wersja, `promotion-not-editable` |
 | `GET /api/v1/admin/variants/{variantId}/price-history?after&perPage` | każdy pracownik | `200 {items: [{changedAt, currency, gross, net, vat, vatRate, taxClass, source, actorName}], next}`; 404 nieznany wariant |
 | `GET /api/v1/admin/categories` | każdy pracownik | 200 drzewo kategorii (`GetCategoryTree`) |
 
 - Uprawnienie do zmiany ceny sprawdza `PriceVoter` w `Pricing_Infrastructure` na podstawie ról
-  `AuthenticatedStaffMember`. `marketing`, `support` i `warehouse` dostają 403.
+  `AuthenticatedStaffMember`. `marketing`, `support` i `warehouse` dostają 403. Zmiany promocji: `PromotionVoter`
+  (`MANAGE_PROMOTIONS`: `admin`, `marketing`), sprawdzany przed treścią; odczyt promocji ma każdy pracownik.
+- 409 cen i promocji mają schemat `PricingConflictProblem`: `type` `…/price-locked-by-promotion`,
+  `…/promotion-overlap` (z rozszerzeniem `conflictingVariantIds`, posortowanym), `…/promotion-not-editable` albo
+  `about:blank` (wersja). Panel rozróżnia je po `type`.
+- Promocje: typy ścisłe jak `PUT` ceny, wszystkie klucze wymagane (`startsAt` może być `null`), czasy w RFC 3339 ze
+  strefą (data i godzina muszą istnieć), w odpowiedzi w UTC. Reguły promocji (nazwa, procent, okres, liczba
+  i powtórzenia wariantów) sprawdza domena, a odmowa ma naruszenie przy swoim polu; wariant nieznany albo bez ceny ma
+  naruszenie `variantIds[<indeks>]` („Wariant produktu nie istnieje.”, „Wariant bez ceny nie może być w promocji.”).
+  Identyfikator spoza UUID: 404. Odpowiedzi `private, no-store`.
 - Aktor (`sub` i nazwa) pochodzi z tokena, nigdy z treści żądania.
 - `PUT` ceny: oba klucze są wymagane, a typy ścisłe (liczba w napisie, ułamek, także `100.0`, to 422, bez
   rzutowania). Uprawnienie jest sprawdzane przed treścią i wariantem. Identyfikator, który nie jest UUID: 404;
