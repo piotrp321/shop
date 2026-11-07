@@ -8,6 +8,7 @@ use App\Ordering\Application\Port\Clock;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderNotFound;
 use App\Ordering\Domain\OrderRepository;
+use App\Ordering\Domain\OrderStatus;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 /**
@@ -39,11 +40,23 @@ final readonly class GetOrderForPaymentHandler
         return new OrderForPayment(
             $order->id()->toString(),
             $order->number()->toString(),
-            $order->status()->value,
+            self::statusForPayment($order->status()),
             $gross->amount(),
             $gross->currency()->value,
             $order->paymentDeadline(),
             $order->isPayable($this->clock->now()),
         );
+    }
+
+    /**
+     * @return 'new'|'paid'|'cancelled'
+     */
+    private static function statusForPayment(OrderStatus $status): string
+    {
+        return match ($status) {
+            OrderStatus::New => 'new',
+            OrderStatus::Paid, OrderStatus::Shipped, OrderStatus::Delivered, OrderStatus::Returned => 'paid',
+            OrderStatus::Cancelled => 'cancelled',
+        };
     }
 }

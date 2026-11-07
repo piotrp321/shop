@@ -119,6 +119,11 @@ final class OrderTest extends TestCase
             paymentId: null,
             cancelledAt: null,
             cancellationReason: null,
+            shippedAt: null,
+            deliveredAt: null,
+            returnedAt: null,
+            refund: null,
+            history: [],
             version: 7,
         );
 

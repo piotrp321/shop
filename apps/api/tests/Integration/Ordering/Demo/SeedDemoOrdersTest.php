@@ -19,7 +19,7 @@ use Symfony\Component\Messenger\Stamp\HandledStamp;
 
 /**
  * ordering:seed-demo on shop_test (rolled back after the test), after orders were placed through PlaceOrder: the orders
- * with their lines and notifications, and the queue of their ExpireUnpaidOrder messages (`scheduled`) go, the other
+ * with their lines, history and notifications, and the queue of their ExpireUnpaidOrder messages (`scheduled`) go, the other
  * queues stay.
  */
 final class SeedDemoOrdersTest extends KernelTestCase
@@ -49,6 +49,7 @@ final class SeedDemoOrdersTest extends KernelTestCase
         self::assertSame(Command::SUCCESS, $exitCode, $tester->getDisplay());
         self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order'));
         self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order_line'));
+        self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order_status_change'), 'the history of the statuses goes with the orders');
         $next = $this->connection->fetchOne("SELECT nextval('ordering_order_number_seq')");
         self::assertGreaterThan($number, $next, 'the numbers go on');
     }

@@ -24,7 +24,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `outbox`, `scheduled`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
   `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
-  linie i powiadomienia jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  linie, historię statusów i powiadomienia jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
   WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
@@ -117,13 +117,15 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     odebrania webhooka; zwraca enum domenowy (także `paidAfterDeadline`, `alreadyPaid`, `paidByAnotherPayment`,
     `orderCancelled` bez zmian), zła kwota albo waluta to `InvalidOrder`.
   - Dla Payment (jedyny context zależny od Ordering) wszystko jest w `Ordering_Application`: zapytanie
-    `GetOrderForPayment(orderId, OrderAccess)` (`query.bus`) zwraca `OrderForPayment` albo `null` przy każdym braku
+    `GetOrderForPayment(orderId, OrderAccess)` (`query.bus`) zwraca `OrderForPayment` (status jako `statusForPayment`:
+    `new`, `paid` albo `cancelled`; wysłane, dostarczone i zwrócone są `paid`, więc Payment nie zna statusów panelu)
+    albo `null` przy każdym braku
     dostępu (nieznane zamówienie, id spoza UUID, zły token porównywany `hash_equals`, cudze zamówienie, inny rodzaj
     właściciela); komenda `MarkOrderPaid` (`command.bus`, zagnieżdżona w transakcji webhooka) zwraca
     `MarkOrderPaidResult`, a nieznane zamówienie i konflikt wersji to `OrderToPayNotFound` i `OrderChangedConcurrently`.
   - Anulowanie nieopłaconego: `PlaceOrder` w swojej transakcji wysyła `ExpireUnpaidOrder(orderId)` z `DelayStamp` na
     termin + 5 min (port `UnpaidOrderExpiry`; powtórzenie złożenia nic nie wysyła). Handler w transakcji `command.bus`
-    przy anulowaniu najpierw zwalnia rezerwację (port `StockReservations::release`, Inventory `ReleaseReservation`,
+    zaczyna od blokady zamówienia (`OrderRepository::lock`, jak komendy pracownika), przy anulowaniu najpierw zwalnia rezerwację (port `StockReservations::release`, Inventory `ReleaseReservation`,
     zagnieżdżony dispatch), potem zapisuje zamówienie z `OrderCancelled` w outboxie; wiadomość za wczesna (zegar,
     zaokrąglenie `available_at`) wraca na termin + 5 min + 1 s, opłacone albo anulowane zamówienie nic nie zmienia,
     nieznane (po `make seed`) to wpis w logu. Konflikt wersji i błędy Inventory (`ReservationNotFound`,
@@ -131,8 +133,47 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - E-maile „Płatność przyjęta” (`SendPaymentReceived` po `OrderPaid`) i „Zamówienie … anulowane”
     (`SendOrderCancelled` po `OrderCancelled`) działają jak `SendOrderConfirmation` (poniżej), każdy z własnym rodzajem
     powiadomienia (`payment_received`, `cancelled`); port `OrderStatusMailer`, adapter
-    `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. E-mail z potwierdzeniem podaje
-    termin płatności w strefie `Europe/Warsaw`.
+    `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. `SendOrderCancelled` wybiera
+    treść według `cancellationReason` zamówienia: `payment_timeout` jak wyżej, `staff` „Anulowaliśmy Twoje zamówienie.
+    Zwrócimy płatność.” (`OrderCancelledByStaffText`). E-mail z potwierdzeniem podaje termin płatności w strefie
+    `Europe/Warsaw`.
+- Cykl zamówienia po opłaceniu (Ordering, `docs/features/order-management/spec.md`): statusy `shipped`, `delivered`,
+  `returned` i anulowanie opłaconego przez pracownika (`cancellationReason` `staff`). Przejścia pracownika to metody
+  agregatu `Order` (`ship`, `deliver`, `cancel`, `registerReturn`; bez Symfony Workflow), a tabela dozwolonych przejść
+  jest tylko w `OrderStatus::allowedStaffTransitions()` (enum `StaffTransition`); inne przejście to
+  `OrderTransitionNotAllowed` (409, `TypedProblem`). Notatka pracownika (`StaffNote`): przycięta, 1–500 znaków, bez
+  znaków sterujących (także nowej linii), wymagana przy anulowaniu i zwrocie, pusta przy pozostałych to brak notatki.
+  `markPaid` traktuje `shipped`, `delivered` i `returned` jak `paid` (`alreadyPaid`, `paidByAnotherPayment`).
+  - Zwrot pieniędzy (`Refund`, value object w zamówieniu): `cancel` i `registerReturn` zakładają zwrot brutto zamówienia
+    z terminem `Order::REFUND_TIME` (14 dni); `completeRefund` oznacza go jako wykonany (data, pracownik, notatka), drugi
+    raz albo bez zwrotu `RefundNotPending` (409). Sam przelew jest ręczny, poza systemem; wykonanie nie zmienia statusu.
+  - Historia statusów (`OrderStatusChange` z aktorem `StatusActor`: `system`, `customer`, `staff(staffId, username)`)
+    jest częścią agregatu, wpisy tylko dopisywane: złożenie `null → new` (klient), opłacenie i wygaśnięcie (system),
+    przejścia z panelu (pracownik z notatką). Zapis w tabeli podrzędnej `ordering_order_status_change`
+    (PK `(order_id, position)`, FK bez `ON DELETE CASCADE`). `DoctrineOrderRepository::save` najpierw zapisuje
+    zamówienie (`UPDATE` z wersją), a nowe wpisy dopisuje osobnym `flush`: Doctrine wstawia przed aktualizacją, więc
+    przegrany wyścig kończyłby się naruszeniem klucza historii zamiast konfliktem wersji.
+  - CHECK-i `ordering_order` (migracja): `paid_at` razem z `payment_id`, dokładnie dla zamówienia opłaconego (`paid`
+    i dalej oraz anulowanego przez pracownika); `shipped_at` od `shipped`, `delivered_at` tylko przy `delivered` i
+    `returned`, `returned_at` dokładnie przy `returned`; zwrot (`refund_amount`, `refund_due_at`) dokładnie przy
+    `returned` i anulowaniu przez pracownika, jego wykonanie (data, pracownik, notatka) tylko przy zwrocie.
+  - Komendy pracownika (`command.bus`, jedna transakcja, wynik `BackofficeOrderView` zapisanego zamówienia):
+    `ChangeOrderStatus(orderId, transition, expectedVersion, note, staffId, staffUsername)` i
+    `CompleteRefund(orderId, expectedVersion, note, staffId, staffUsername)`. Każda zaczyna od
+    `OrderRepository::lock` (`PESSIMISTIC_WRITE`; rekord już w identity map jest odświeżany pod blokadą, jak koszyk),
+    potem porównuje `expectedVersion` z wersją odczytaną pod blokadą (różna: `OrderModifiedConcurrently`, 409, także
+    przy powtórzeniu udanej zmiany); nieznane zamówienie i id spoza UUID to `OrderNotFound`. Wysyłka zatwierdza
+    rezerwację (port `StockReservations::commit`, adapter `CommandBusStockReservations` → Inventory
+    `CommitReservation`), anulowanie ją zwalnia (`release`), obie przed zapisem zamówienia (zagnieżdżony dispatch);
+    błędy Inventory (`ReservationNotFound`, `ReservationStateConflict`) to błędy logiczne (500, wycofanie całości).
+    Zapis zamówienia z historią i zdarzeniem (`OrderShipped`, `OrderCancelled`, `OrderReturned`) w outboxie.
+  - Kolejność blokad: wiersz zamówienia, potem rezerwacja i stany (Inventory). Tak samo `ExpireUnpaidOrder`, więc
+    równoległe zmiany z tą samą wersją idą po kolei (druga to 409, nigdy `ReservationStateConflict`), a wygaśnięcie
+    i zmiana pracownika nie zakleszczają się. Webhook (`MarkOrderPaid`) nie dotyka Inventory i zostaje przy wersji.
+  - E-maile do klienta tak samo jak e-maile płatności (jeden na zdarzenie, `NotificationSender`): „Zamówienie … wysłane”
+    z adresem (`SendOrderShipped` po `OrderShipped`, rodzaj `shipped`, `OrderShippedText`) i „Zamówienie … wróciło do
+    nas” (`SendReturnReceived` po `OrderReturned`, rodzaj `return_received`, `ReturnReceivedText`). Dostarczenie
+    i wykonanie zwrotu pieniędzy są bez e-maila; notatka pracownika ani termin zwrotu nie trafiają do e-maila.
 - Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
   dostawcy (`pending` → `succeeded` | `failed` | `cancelled`; `succeed` także z `failed` i `cancelled`, bo pieniądze ważą
   więcej niż wcześniejsza odmowa; `requireRefund` tylko dla `succeeded`, pierwszy powód zostaje), bez pola wersji:
@@ -298,7 +339,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
   Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`; Catalog
-  `ProductCreated`, Ordering `OrderPlaced`, `OrderPaid`, `OrderCancelled`), gdy jedyną drogą zapisu jest ta komenda.
+  `ProductCreated`, Ordering `OrderPlaced`, `OrderPaid`, `OrderCancelled`, `OrderShipped`, `OrderReturned`), gdy jedyną
+  drogą zapisu jest ta komenda.
   Gdy agregat ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
   rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
   w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
@@ -326,7 +368,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   klient ma rozróżniać maszynowo, implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType()`) i trzyma
   wartość w stałej `TYPE`; subscriber wpisuje ją do odpowiedzi, a Shared nie zna contextów. Format wartości:
   `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je pięć 409 Ordering
-  (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`) i cztery 409 Payment: `order-already-paid`,
+  sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`), dwa 409 komend pracownika Ordering
+  (`order-transition-not-allowed`, `refund-not-pending`) i cztery 409 Payment: `order-already-paid`,
   `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
   Nowy typ dopisz do `enum` schematu swojego contextu.
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`

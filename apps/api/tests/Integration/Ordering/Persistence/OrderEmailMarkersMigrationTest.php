@@ -22,8 +22,9 @@ use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 
 /**
  * Runs the real migration that moves the markers of the emails out of the order table, in the transaction DAMA rolls
- * back after each test: its own down() first puts the marker columns back (PostgreSQL DDL is transactional), orders
- * with markers are inserted in that shape, its up() is executed and the result is read. Nothing is committed.
+ * back after each test: the down() of the later migration of the order lifecycle and its own down() first put the
+ * marker columns back (PostgreSQL DDL is transactional), orders with markers are inserted in that shape, its up() (and
+ * the up() of the lifecycle) is executed and the result is read. Nothing is committed.
  */
 final class OrderEmailMarkersMigrationTest extends KernelTestCase
 {
@@ -101,10 +102,22 @@ final class OrderEmailMarkersMigrationTest extends KernelTestCase
     }
 
     /**
-     * Runs up() or down() of the migration on the connection; tests of older migrations call it with `down` first,
-     * to get the order table back to the shape they start from.
+     * Runs up() or down() of the migration on the connection, with the later migration of the order lifecycle around
+     * it (its down() before, its up() after), so the table ends in the shape the mapping expects after `up`; tests of
+     * older migrations call it with `down` first, to get the order table back to the shape they start from.
      */
     public static function runMigration(Connection $connection, string $direction): void
+    {
+        if ('down' === $direction) {
+            OrderLifecycleMigrationTest::runMigration($connection, 'down');
+        }
+        self::runOwnMigration($connection, $direction);
+        if ('up' === $direction) {
+            OrderLifecycleMigrationTest::runMigration($connection, 'up');
+        }
+    }
+
+    private static function runOwnMigration(Connection $connection, string $direction): void
     {
         self::assertFileExists(self::MIGRATION_FILE);
         require_once self::MIGRATION_FILE;

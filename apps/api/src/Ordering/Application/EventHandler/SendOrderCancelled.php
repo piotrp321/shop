@@ -7,6 +7,7 @@ namespace App\Ordering\Application\EventHandler;
 use App\Ordering\Application\Port\NotificationKind;
 use App\Ordering\Application\Port\OrderStatusMailer;
 use App\Ordering\Application\View\OrderView;
+use App\Ordering\Domain\CancellationReason;
 use App\Ordering\Domain\OrderCancelled;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderNotFound;
@@ -16,8 +17,9 @@ use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
 /**
- * Sends the email "Zamówienie … anulowane" of an order cancelled for want of a payment once, like
- * SendOrderConfirmation.
+ * Sends the email "Zamówienie … anulowane" of a cancelled order once, like SendOrderConfirmation. The text follows the
+ * reason of the order: for want of a payment, or by staff (the refund is promised). One kind of notification for
+ * both: an order is cancelled once.
  */
 #[AsMessageHandler(bus: 'event.bus', fromTransport: 'events')]
 final readonly class SendOrderCancelled
@@ -41,6 +43,10 @@ final readonly class SendOrderCancelled
         } catch (OrderNotFound $e) {
             throw new UnrecoverableMessageHandlingException(\sprintf('Order "%s" from OrderCancelled does not exist.', $event->orderId), previous: $e);
         }
-        $this->notifications->sendOnce($order->id(), NotificationKind::Cancelled, fn () => $this->mailer->sendOrderCancelled(OrderView::of($order)));
+        $view = OrderView::of($order);
+        $send = CancellationReason::Staff === $order->cancellationReason()
+            ? fn () => $this->mailer->sendOrderCancelledByStaff($view)
+            : fn () => $this->mailer->sendOrderCancelled($view);
+        $this->notifications->sendOnce($order->id(), NotificationKind::Cancelled, $send);
     }
 }

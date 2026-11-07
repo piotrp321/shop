@@ -12,8 +12,8 @@ use App\Ordering\Domain\OrderNotFound;
 use App\Ordering\Domain\OrderRepository;
 
 /**
- * Orders that behave like the database: get() returns a fresh copy at the stored version, and save() refuses a copy
- * whose version is no longer the stored one, then stores the copy and raises the stored version. changeElsewhere()
+ * Orders that behave like the database: get() and lock() return a fresh copy at the stored version (lock() also
+ * records the id), and save() refuses a copy whose version is no longer the stored one, then stores the copy and raises the stored version. changeElsewhere()
  * is another handler saving a change first.
  */
 final class VersionedOrders implements OrderRepository
@@ -23,6 +23,9 @@ final class VersionedOrders implements OrderRepository
 
     /** @var list<string> ids of the orders saved, in the order of the saves */
     public array $saved = [];
+
+    /** @var list<string> ids of the orders locked, in the order of the locks */
+    public array $locked = [];
 
     /** Runs once at the start of the next save, e.g. to let a concurrent handler save first. */
     public ?\Closure $beforeSave = null;
@@ -53,6 +56,13 @@ final class VersionedOrders implements OrderRepository
         $stored = $this->stored[$id->toString()] ?? throw new OrderNotFound();
 
         return OrderExamples::copy($stored['order'], $stored['version']);
+    }
+
+    public function lock(OrderId $id): Order
+    {
+        $this->locked[] = $id->toString();
+
+        return $this->get($id);
     }
 
     public function findByIdempotencyKey(IdempotencyKey $key): ?Order

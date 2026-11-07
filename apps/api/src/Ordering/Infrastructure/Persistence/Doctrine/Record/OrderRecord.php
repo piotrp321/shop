@@ -13,8 +13,12 @@ use Doctrine\ORM\Mapping as ORM;
  * Persistence model of the Order aggregate; only DoctrineOrderRepository maps it to and from the domain. The number
  * and the Idempotency-Key are unique. The migration adds the CHECK constraints the mapping cannot express: a customer
  * id exactly for an order of a customer, an access token exactly for an order of a guest, total_net + total_vat =
- * total_gross, paid_at and payment_id exactly for a paid order, cancelled_at and cancellation_reason exactly for
- * a cancelled one. No foreign key to the tables of other modules: the order keeps copies (payment_id too).
+ * total_gross, paid_at together with payment_id exactly for an order paid for (paid, shipped, delivered, returned,
+ * cancelled by staff), cancelled_at and cancellation_reason exactly for a cancelled one, shipped_at exactly from
+ * shipped on, delivered_at only for delivered and returned, returned_at exactly for returned, the refund (amount and
+ * due date) exactly for returned and cancelled by staff, its completion (moment, staff id and name together, the note
+ * only with them) only with a refund. No foreign key to the tables of other modules: the order keeps copies
+ * (payment_id too).
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'ordering_order')]
@@ -97,6 +101,34 @@ class OrderRecord
     #[ORM\Column(length: 30, nullable: true)]
     public ?string $cancellationReason = null;
 
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $shippedAt = null;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $deliveredAt = null;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $returnedAt = null;
+
+    /** In grosze, in the currency of the order. */
+    #[ORM\Column(type: Types::BIGINT, nullable: true)]
+    public ?int $refundAmount = null;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $refundDueAt = null;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $refundCompletedAt = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    public ?string $refundCompletedByStaffId = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    public ?string $refundCompletedByUsername = null;
+
+    #[ORM\Column(length: 500, nullable: true)]
+    public ?string $refundNote = null;
+
     #[ORM\Version]
     #[ORM\Column(type: Types::INTEGER)]
     public int $version = 1;
@@ -106,11 +138,17 @@ class OrderRecord
     #[ORM\OrderBy(['position' => 'ASC'])]
     public Collection $lines;
 
+    /** @var Collection<int, OrderStatusChangeRecord> by position */
+    #[ORM\OneToMany(targetEntity: OrderStatusChangeRecord::class, mappedBy: 'order', cascade: ['persist'])]
+    #[ORM\OrderBy(['position' => 'ASC'])]
+    public Collection $statusChanges;
+
     public function __construct(
         #[ORM\Id]
         #[ORM\Column(type: 'guid')]
         public readonly string $id,
     ) {
         $this->lines = new ArrayCollection();
+        $this->statusChanges = new ArrayCollection();
     }
 }
