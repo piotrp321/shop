@@ -121,7 +121,7 @@ const rowErrors = (index: number) => [...props.errorsExactly(`variants[${index}]
               text
               size="small"
               :disabled="axesLocked || position === 0"
-              :aria-label="`Przesuń oś ${position + 1} w lewo`"
+              :aria-label="`Przesuń oś ${position + 1} wcześniej`"
               @click="emit('moveAxis', position, -1)"
             />
             <Button
@@ -131,7 +131,7 @@ const rowErrors = (index: number) => [...props.errorsExactly(`variants[${index}]
               text
               size="small"
               :disabled="axesLocked || position === axes.length - 1"
-              :aria-label="`Przesuń oś ${position + 1} w prawo`"
+              :aria-label="`Przesuń oś ${position + 1} później`"
               @click="emit('moveAxis', position, 1)"
             />
             <Button
@@ -258,11 +258,11 @@ const rowErrors = (index: number) => [...props.errorsExactly(`variants[${index}]
         @click="emit('addVariant')"
       />
       <small
-        v-if="noAxes"
+        v-if="noAxes && !axesLocked"
         class="hint"
       > Dodaj oś, aby produkt mógł mieć więcej niż jeden wariant.</small>
       <small
-        v-else-if="rows.length >= MAX_VARIANTS"
+        v-else-if="!noAxes && rows.length >= MAX_VARIANTS"
         class="hint"
       > Osiągnięto limit {{ MAX_VARIANTS }} wariantów.</small>
     </div>
@@ -355,6 +355,10 @@ const rowErrors = (index: number) => [...props.errorsExactly(`variants[${index}]
   height: 1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  margin: -1px;
+  border: 0;
+  padding: 0;
 }
 
 .confirm {

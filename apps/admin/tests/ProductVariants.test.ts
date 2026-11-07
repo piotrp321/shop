@@ -57,6 +57,21 @@ describe("ProductVariants", () => {
       expect(wrapper.find("[data-testid=variant-value]").exists()).toBe(false);
       expect(wrapper.find("[data-testid=variant-remove]").exists()).toBe(false);
       expect(DISABLED(wrapper, "add-variant")).toEqual([true]);
+      expect(wrapper.text()).toContain("Dodaj oś, aby produkt mógł mieć więcej niż jeden wariant.");
+    });
+
+    it("does not suggest adding an axis when the axes are locked", () => {
+      const wrapper = render({ axes: [], rows: [{ variantId: "v-1", values: [] }], axesLocked: true });
+
+      expect(DISABLED(wrapper, "add-axis")).toEqual([true]);
+      expect(wrapper.text()).not.toContain("Dodaj oś, aby");
+    });
+
+    it("labels the buttons that move an axis earlier or later", () => {
+      const wrapper = render({ axes: ["Kolor", "Rozmiar"], rows: [{ variantId: null, values: ["a", "b"] }] });
+
+      expect(wrapper.findAll("[data-testid=axis-move-up]").map((node) => node.attributes("aria-label"))).toEqual(["Przesuń oś 1 wcześniej", "Przesuń oś 2 wcześniej"]);
+      expect(wrapper.findAll("[data-testid=axis-move-down]").map((node) => node.attributes("aria-label"))).toEqual(["Przesuń oś 1 później", "Przesuń oś 2 później"]);
     });
 
     it("emits the changes of an axis name and of a value", async () => {

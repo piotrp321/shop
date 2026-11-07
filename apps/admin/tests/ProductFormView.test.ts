@@ -547,7 +547,7 @@ describe("ProductFormView", () => {
     it("shows a 422 at the value of the row it points at", async () => {
       mounted = await mountForm("/products/p-1");
       const { wrapper } = mounted;
-      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "variants[1].values[0]", title: "Ta kombinacja już istnieje." }] }));
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "variants[1].values[0]", title: "Wartość może mieć najwyżej 40 znaków." }] }));
 
       await wrapper.findAll("[data-testid=variant-value]")[1]!.setValue("czarne");
       await wrapper.get("[data-testid=save]").trigger("click");
@@ -555,7 +555,7 @@ describe("ProductFormView", () => {
 
       const rows = wrapper.findAll("[data-testid=variant-row]");
       expect(rows[0]!.find("[data-testid=value-error]").exists()).toBe(false);
-      expect(rows[1]!.get("[data-testid=value-error]").text()).toBe("Ta kombinacja już istnieje.");
+      expect(rows[1]!.get("[data-testid=value-error]").text()).toBe("Wartość może mieć najwyżej 40 znaków.");
       expect(wrapper.find("[data-testid=variants-error]").exists()).toBe(false);
     });
 
