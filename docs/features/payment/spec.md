@@ -127,7 +127,9 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 - `MarkOrderPaid(orderId, paymentId, amount, currency, executedAt)` (`command.bus`) → `MarkOrderPaidResult`
   (`Ordering_Application`: `paid`, `alreadyPaid`, `paidByAnotherPayment`, `paidAfterDeadline`, `orderCancelled`). Nieznane zamówienie: `OrderToPayNotFound`;
   konflikt wersji przy zapisie: `OrderChangedConcurrently` (oba wyjątki w `Ordering_Application`).
-- `ExpireUnpaidOrder(orderId)` (`command.bus`, wiadomość asynchroniczna na transporcie `scheduled`):
+- `ExpireUnpaidOrder(orderId)` (`command.bus`, wiadomość asynchroniczna na transporcie `scheduled`) zaczyna od blokady
+  wiersza zamówienia (`OrderRepository::lock`, jak komendy pracownika z `docs/features/order-management/spec.md`), więc
+  wygaśnięcie i zmiana z panelu idą po kolei:
   - wynik `cancelled`: w tej samej transakcji port `StockReservations::release(orderId)` (Inventory
     `ReleaseReservation`, zagnieżdżony dispatch; rezerwacja już zwolniona: bez zmian) i zapis zamówienia
     z `OrderCancelled` w outboxie;

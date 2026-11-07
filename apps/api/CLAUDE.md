@@ -123,7 +123,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `MarkOrderPaidResult`, a nieznane zamówienie i konflikt wersji to `OrderToPayNotFound` i `OrderChangedConcurrently`.
   - Anulowanie nieopłaconego: `PlaceOrder` w swojej transakcji wysyła `ExpireUnpaidOrder(orderId)` z `DelayStamp` na
     termin + 5 min (port `UnpaidOrderExpiry`; powtórzenie złożenia nic nie wysyła). Handler w transakcji `command.bus`
-    przy anulowaniu najpierw zwalnia rezerwację (port `StockReservations::release`, Inventory `ReleaseReservation`,
+    zaczyna od blokady zamówienia (`OrderRepository::lock`, jak komendy pracownika), przy anulowaniu najpierw zwalnia rezerwację (port `StockReservations::release`, Inventory `ReleaseReservation`,
     zagnieżdżony dispatch), potem zapisuje zamówienie z `OrderCancelled` w outboxie; wiadomość za wczesna (zegar,
     zaokrąglenie `available_at`) wraca na termin + 5 min + 1 s, opłacone albo anulowane zamówienie nic nie zmienia,
     nieznane (po `make seed`) to wpis w logu. Konflikt wersji i błędy Inventory (`ReservationNotFound`,
@@ -153,6 +153,19 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     i dalej oraz anulowanego przez pracownika); `shipped_at` od `shipped`, `delivered_at` tylko przy `delivered` i
     `returned`, `returned_at` dokładnie przy `returned`; zwrot (`refund_amount`, `refund_due_at`) dokładnie przy
     `returned` i anulowaniu przez pracownika, jego wykonanie (data, pracownik, notatka) tylko przy zwrocie.
+  - Komendy pracownika (`command.bus`, jedna transakcja, wynik `BackofficeOrderView` zapisanego zamówienia):
+    `ChangeOrderStatus(orderId, transition, expectedVersion, note, staffId, staffUsername)` i
+    `CompleteRefund(orderId, expectedVersion, note, staffId, staffUsername)`. Każda zaczyna od
+    `OrderRepository::lock` (`PESSIMISTIC_WRITE`; rekord już w identity map jest odświeżany pod blokadą, jak koszyk),
+    potem porównuje `expectedVersion` z wersją odczytaną pod blokadą (różna: `OrderModifiedConcurrently`, 409, także
+    przy powtórzeniu udanej zmiany); nieznane zamówienie i id spoza UUID to `OrderNotFound`. Wysyłka zatwierdza
+    rezerwację (port `StockReservations::commit`, adapter `CommandBusStockReservations` → Inventory
+    `CommitReservation`), anulowanie ją zwalnia (`release`), obie przed zapisem zamówienia (zagnieżdżony dispatch);
+    błędy Inventory (`ReservationNotFound`, `ReservationStateConflict`) to błędy logiczne (500, wycofanie całości).
+    Zapis zamówienia z historią i zdarzeniem (`OrderShipped`, `OrderCancelled`, `OrderReturned`) w outboxie.
+  - Kolejność blokad: wiersz zamówienia, potem rezerwacja i stany (Inventory). Tak samo `ExpireUnpaidOrder`, więc
+    równoległe zmiany z tą samą wersją idą po kolei (druga to 409, nigdy `ReservationStateConflict`), a wygaśnięcie
+    i zmiana pracownika nie zakleszczają się. Webhook (`MarkOrderPaid`) nie dotyka Inventory i zostaje przy wersji.
 - Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
   dostawcy (`pending` → `succeeded` | `failed` | `cancelled`; `succeed` także z `failed` i `cancelled`, bo pieniądze ważą
   więcej niż wcześniejsza odmowa; `requireRefund` tylko dla `succeeded`, pierwszy powód zostaje), bez pola wersji:
@@ -318,7 +331,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
   Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`; Catalog
-  `ProductCreated`, Ordering `OrderPlaced`, `OrderPaid`, `OrderCancelled`), gdy jedyną drogą zapisu jest ta komenda.
+  `ProductCreated`, Ordering `OrderPlaced`, `OrderPaid`, `OrderCancelled`, `OrderShipped`, `OrderReturned`), gdy jedyną
+  drogą zapisu jest ta komenda.
   Gdy agregat ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
   rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
   w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
