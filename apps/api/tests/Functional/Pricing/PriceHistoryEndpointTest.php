@@ -259,7 +259,7 @@ final class PriceHistoryEndpointTest extends WebTestCase
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($this->entityManager)->save($category);
         $product = ProductFactory::createOne(['mainCategory' => $category, 'taxClass' => TaxClassCode::PrintedBook]);
-        new DoctrineProductRepository($this->entityManager)->save($product);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return $product->variants()->toList()[0]->id()->toString();
     }

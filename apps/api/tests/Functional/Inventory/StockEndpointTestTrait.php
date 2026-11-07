@@ -47,7 +47,7 @@ trait StockEndpointTestTrait
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($this->entityManager)->save($category);
         $product = ProductFactory::createOne(['mainCategory' => $category]);
-        new DoctrineProductRepository($this->entityManager)->save($product);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
         $variantId = $product->variants()->toList()[0]->id()->toString();
         self::assertNotSame($product->id()->toString(), $variantId);
 

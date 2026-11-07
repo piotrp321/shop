@@ -101,7 +101,7 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
         new DoctrineCategoryRepository($entityManager)->save($category);
         $variantId = (string) Uuid::v4();
         $product = ProductFactory::createOne(['mainCategory' => $category, 'variants' => [['id' => $variantId, 'values' => []]]]);
-        new DoctrineProductRepository($entityManager)->save($product);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return [$product->id()->toString(), $variantId];
     }

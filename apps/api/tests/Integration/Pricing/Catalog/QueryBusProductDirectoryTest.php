@@ -73,7 +73,7 @@ final class QueryBusProductDirectoryTest extends KernelTestCase
                 ['id' => '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5b01', 'values' => ['czarne', '40']],
             ],
         ]);
-        new DoctrineProductRepository($this->entityManager)->save($shoes);
+        new DoctrineProductRepository($this->entityManager)->save($shoes, null, null, new \DateTimeImmutable());
         $gel = $this->saveProduct($category, 'Żel', TaxClassCode::EnergyGel);
         $unknown = ProductId::fromString('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5aff');
 
@@ -129,7 +129,7 @@ final class QueryBusProductDirectoryTest extends KernelTestCase
     private function saveProduct(Category $category, string $name, TaxClassCode $taxClass): Product
     {
         $product = ProductFactory::createOne(['mainCategory' => $category, 'name' => $name, 'taxClass' => $taxClass]);
-        new DoctrineProductRepository($this->entityManager)->save($product);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return $product;
     }

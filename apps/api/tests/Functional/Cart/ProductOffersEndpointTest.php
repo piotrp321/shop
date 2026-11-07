@@ -228,7 +228,7 @@ final class ProductOffersEndpointTest extends WebTestCase
         new DoctrineCategoryRepository($this->entityManager)->save($category);
         $definitions = array_map(static fn (array $variant): array => ['id' => (string) Uuid::v4(), 'values' => $variant[0]], $variants);
         $product = ProductFactory::createOne(['mainCategory' => $category, 'variantAxes' => $axes, 'variants' => $definitions]);
-        new DoctrineProductRepository($this->entityManager)->save($product);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
         foreach ($variants as $index => [, $gross, $basisPoints, $stock]) {
             VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $definitions[$index]['id'], 'gross' => $gross, 'taxClass' => 'standard', 'vatRateBp' => $basisPoints]);
             StockFixture::stock($this->entityManager->getConnection(), $stock, variantId: $definitions[$index]['id']);

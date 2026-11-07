@@ -66,30 +66,32 @@ final class ProductProblemsTest extends TestCase
         self::assertSame($detail, $problem->getMessage());
     }
 
-    public function testAnUnknownVariantIsInvalidInputAtItsRow(): void
+    /**
+     * @return iterable<string, array{\Closure(): \Throwable, string}>
+     */
+    public static function invalidInputs(): iterable
     {
-        $problem = new UnknownVariant(3);
+        yield 'unknown variant' => [static fn (): \Throwable => new UnknownVariant(3), 'Wariant nie należy do tego produktu.'];
+        yield 'image not found' => [static fn (): \Throwable => new ImageNotFound(1), 'Nie ma takiego zdjęcia. Wyślij plik ponownie.'];
+        yield 'slug required' => [static fn (): \Throwable => new SlugRequired(), 'Podaj slug.'];
+    }
+
+    /**
+     * @param \Closure(): \Throwable $exception
+     */
+    #[DataProvider('invalidInputs')]
+    public function testEveryInvalidInputIsAnUntyped422WithAPolishDetail(\Closure $exception, string $detail): void
+    {
+        $problem = $exception();
 
         self::assertInstanceOf(InvalidInput::class, $problem);
         self::assertNotInstanceOf(TypedProblem::class, $problem);
-        self::assertSame(3, $problem->index);
-        self::assertSame('Wariant nie należy do tego produktu.', $problem->getMessage());
+        self::assertSame($detail, $problem->getMessage());
     }
 
-    public function testAMissingImageOriginalIsInvalidInputAtItsImage(): void
+    public function testTheUnknownVariantAndTheMissingImageTellTheirPosition(): void
     {
-        $problem = new ImageNotFound(1);
-
-        self::assertInstanceOf(InvalidInput::class, $problem);
-        self::assertSame(1, $problem->index);
-        self::assertSame('Nie ma takiego zdjęcia. Wyślij plik ponownie.', $problem->getMessage());
-    }
-
-    public function testASlugThatCannotBeDerivedIsInvalidInput(): void
-    {
-        $problem = new SlugRequired();
-
-        self::assertInstanceOf(InvalidInput::class, $problem);
-        self::assertSame('Podaj slug.', $problem->getMessage());
+        self::assertSame(3, new UnknownVariant(3)->index);
+        self::assertSame(1, new ImageNotFound(1)->index);
     }
 }

@@ -293,7 +293,7 @@ final class BackofficePricesEndpointTest extends WebTestCase
             $attributes += ['variantAxes' => $axes, 'variants' => $variants];
         }
         $product = ProductFactory::createOne($attributes);
-        new DoctrineProductRepository($this->entityManager)->save($product);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return $product;
     }

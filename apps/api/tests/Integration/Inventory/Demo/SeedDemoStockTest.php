@@ -143,7 +143,7 @@ final class SeedDemoStockTest extends KernelTestCase
             $attributes += ['variantAxes' => ['Kolor'], 'variants' => array_map(static fn (string $colour): array => ['id' => (string) Uuid::v4(), 'values' => [$colour]], $colours)];
         }
         $product = ProductFactory::createOne($attributes);
-        new DoctrineProductRepository($entityManager)->save($product);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
         $variantIds = array_map(static fn (ProductVariant $variant): string => $variant->id()->toString(), $product->variants()->toList());
         self::assertNotContains($product->id()->toString(), $variantIds);
 

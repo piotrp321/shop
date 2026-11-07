@@ -82,8 +82,8 @@ final class VariantQueriesTest extends KernelTestCase
             'taxClass' => \App\Catalog\Domain\Product\TaxClassCode::FreezeDriedMeal,
             'variants' => [['id' => self::HAT, 'values' => []]],
         ]);
-        $repository->save($boots);
-        $repository->save($hat);
+        $repository->save($boots, null, null, new \DateTimeImmutable());
+        $repository->save($hat, null, null, new \DateTimeImmutable());
         $this->products = ['boots' => $boots, 'hat' => $hat];
     }
 

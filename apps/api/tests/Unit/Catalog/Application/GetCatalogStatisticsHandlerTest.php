@@ -133,6 +133,6 @@ final class GetCatalogStatisticsHandlerTest extends TestCase
             ProductVariants::create(VariantAxes::fromList([]), [new ProductVariant(VariantId::fromString('2'.substr($id, 1)), VariantValues::fromList([]))]),
             ProductStatus::Published,
             new \DateTimeImmutable(),
-        ));
+        ), null, null, new \DateTimeImmutable());
     }
 }

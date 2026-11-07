@@ -120,8 +120,8 @@ final class VariantPricesMigrationTest extends KernelTestCase
             $this->connection->executeStatement('INSERT INTO catalog_category (id, name, slug, path) VALUES (?, ?, ?, ?)', [self::CATEGORY_ID, 'Category', self::CATEGORY_ID, '/'.self::CATEGORY_ID.'/']);
         }
         $this->connection->executeStatement(
-            "INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, tax_class, images, version, variant_axes)
-             VALUES (?, ?, ?, '', ?, 'standard', '[]'::jsonb, 1, '[]'::jsonb)",
+            "INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, tax_class, images, version, variant_axes, status, updated_at)
+             VALUES (?, ?, ?, '', ?, 'standard', '[]'::jsonb, 1, '[]'::jsonb, 'published', now())",
             [$id, $slug, 'Name '.$slug, self::CATEGORY_ID],
         );
         // As the Catalog migration left it: the default variant has the id of its product.

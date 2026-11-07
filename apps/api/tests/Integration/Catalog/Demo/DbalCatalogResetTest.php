@@ -120,6 +120,9 @@ final class DbalCatalogResetTest extends KernelTestCase
                 'variantAxes' => ['Rozmiar'],
                 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['S']], ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => ['M']]],
             ]),
+            null,
+            null,
+            new \DateTimeImmutable(),
         );
         $entityManager->flush();
     }

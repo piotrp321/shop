@@ -105,7 +105,7 @@ final class SearchIndexRebuildTest extends KernelTestCase
         new DoctrineCategoryRepository($entityManager)->save($category);
         $variantId = (string) Uuid::v4();
         $product = ProductFactory::createOne(['mainCategory' => $category, 'variants' => [['id' => $variantId, 'values' => []]]]);
-        new DoctrineProductRepository($entityManager)->save($product);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
         VariantPriceRecordFactory::store($entityManager, ['variantId' => $variantId, 'gross' => 12_900]);
         StockFixture::stock($entityManager->getConnection(), 2, variantId: $variantId);
 
@@ -220,7 +220,7 @@ final class SearchIndexRebuildTest extends KernelTestCase
         $ids = [];
         for ($i = 0; $i < $count; ++$i) {
             $product = ProductFactory::createOne(['mainCategory' => $category]);
-            $products->save($product);
+            $products->save($product, null, null, new \DateTimeImmutable());
             $ids[] = $product->id()->toString();
         }
         sort($ids);

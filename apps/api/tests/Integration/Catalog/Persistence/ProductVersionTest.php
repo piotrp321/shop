@@ -85,7 +85,7 @@ final class ProductVersionTest extends KernelTestCase
         [$main] = $this->savedCategories(1);
         $product = ProductFactory::createOne(['mainCategory' => $main]);
 
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         self::assertSame(1, $this->version($product));
     }
@@ -94,10 +94,10 @@ final class ProductVersionTest extends KernelTestCase
     {
         [$main] = $this->savedCategories(1);
         $product = ProductFactory::createOne(['mainCategory' => $main]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
-        $this->products->save($this->changed($product, $main, [], ['name' => 'Another name']));
+        $this->products->save($this->changed($product, $main, [], ['name' => 'Another name']), null, null, new \DateTimeImmutable());
 
         self::assertSame(2, $this->version($product));
     }
@@ -106,10 +106,10 @@ final class ProductVersionTest extends KernelTestCase
     {
         [$main, $a, $b] = $this->savedCategories(3);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$a]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
-        $this->products->save($this->changed($product, $main, [$a, $b]));
+        $this->products->save($this->changed($product, $main, [$a, $b]), null, null, new \DateTimeImmutable());
 
         self::assertSame(2, $this->version($product));
         self::assertSame($this->sortedIds([$a, $b]), $this->assignedCategoryIds($product));
@@ -119,12 +119,12 @@ final class ProductVersionTest extends KernelTestCase
     {
         [$main, $a, $b] = $this->savedCategories(3);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$a]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         // Same EntityManager and identity map for both saves: the manual bump must not leave a stale version behind.
-        $this->products->save($this->changed($product, $main, [$a, $b]));
-        $this->products->save($this->changed($product, $main, [$a, $b], ['name' => 'Another name']));
+        $this->products->save($this->changed($product, $main, [$a, $b]), null, null, new \DateTimeImmutable());
+        $this->products->save($this->changed($product, $main, [$a, $b], ['name' => 'Another name']), null, null, new \DateTimeImmutable());
 
         self::assertSame(3, $this->version($product));
         self::assertSame('Another name', $this->connection->fetchOne('SELECT name FROM catalog_product WHERE id = ?', [$product->id()->toString()]));
@@ -135,10 +135,10 @@ final class ProductVersionTest extends KernelTestCase
     {
         [$main, $a, $b] = $this->savedCategories(3);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$a]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
-        $this->products->save($this->changed($product, $main, [$b], ['name' => 'Another name']));
+        $this->products->save($this->changed($product, $main, [$b], ['name' => 'Another name']), null, null, new \DateTimeImmutable());
 
         self::assertSame(2, $this->version($product));
         self::assertSame([$b->id()->toString()], $this->assignedCategoryIds($product));
@@ -148,10 +148,10 @@ final class ProductVersionTest extends KernelTestCase
     {
         [$main] = $this->savedCategories(1);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'imageAlts' => ['10']]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
-        $this->products->save($this->changed($product, $main, [], [], ['1e1']));
+        $this->products->save($this->changed($product, $main, [], [], ['1e1']), null, null, new \DateTimeImmutable());
 
         self::assertSame(2, $this->version($product));
         self::assertSame('1e1', $this->products->get($product->id())->images()->toList()[0]->alt());
@@ -163,15 +163,15 @@ final class ProductVersionTest extends KernelTestCase
     {
         [$main, $a, $b] = $this->savedCategories(3);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$b, $a], 'imageAlts' => ['front']]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         $counter = self::getContainer()->get(StatementCounter::class);
         self::assertInstanceOf(StatementCounter::class, $counter);
         $writesBefore = $counter->writes();
 
-        $this->products->save($this->changed($product, $main, [$a, $b], [], ['front']));
-        $this->products->save($this->changed($product, $main, [$a, $b], [], ['front']));
+        $this->products->save($this->changed($product, $main, [$a, $b], [], ['front']), null, null, new \DateTimeImmutable());
+        $this->products->save($this->changed($product, $main, [$a, $b], [], ['front']), null, null, new \DateTimeImmutable());
 
         // Reads are expected; an unchanged save must not write anything, not even a version bump.
         self::assertSame(0, $counter->writes() - $writesBefore);
@@ -183,14 +183,14 @@ final class ProductVersionTest extends KernelTestCase
     {
         [$main, $a, $b] = $this->savedCategories(3);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$a]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
         $this->products->get($product->id());
         // Somebody else changes the row after our read.
         $this->connection->executeStatement('UPDATE catalog_product SET version = version + 1 WHERE id = ?', [$product->id()->toString()]);
 
         try {
-            $this->products->save($this->changed($product, $main, [$b], ['name' => 'Stale name']));
+            $this->products->save($this->changed($product, $main, [$b], ['name' => 'Stale name']), null, null, new \DateTimeImmutable());
             self::fail('Expected ProductModifiedConcurrently.');
         } catch (ProductModifiedConcurrently) {
         }
@@ -206,7 +206,7 @@ final class ProductVersionTest extends KernelTestCase
         $resetter->reset();
 
         $next = ProductFactory::createOne(['mainCategory' => $main]);
-        $this->products->save($next);
+        $this->products->save($next, null, null, new \DateTimeImmutable());
         self::assertSame($next->slug()->value(), $this->products->get($next->id())->slug()->value());
     }
 
@@ -215,12 +215,12 @@ final class ProductVersionTest extends KernelTestCase
         [$main, $a] = $this->savedCategories(2);
         $missing = CategoryFactory::createOne(); // never saved, so the foreign key rejects it
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$a]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
         try {
             // Only the additional categories change, so the manual version UPDATE runs before the flush fails.
-            $this->products->save($this->changed($product, $main, [$missing]));
+            $this->products->save($this->changed($product, $main, [$missing]), null, null, new \DateTimeImmutable());
             self::fail('Expected a foreign key violation.');
         } catch (DbalException) {
         }
@@ -238,14 +238,14 @@ final class ProductVersionTest extends KernelTestCase
         [$main, $a, $b, $c] = $this->committedCategories($first, 4);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$a]]);
         $this->committedProductIds[] = $product->id()->toString();
-        $firstProducts->save($product);
+        $firstProducts->save($product, null, null, new \DateTimeImmutable());
         $first->clear();
         $secondProducts->get($product->id());
-        $firstProducts->save($this->changed($product, $main, [$a, $b]));
+        $firstProducts->save($this->changed($product, $main, [$a, $b]), null, null, new \DateTimeImmutable());
 
         try {
             // As a handler on command.bus with doctrine_transaction: the save runs inside an outer transaction.
-            $second->wrapInTransaction(fn () => $secondProducts->save($this->changed($product, $main, [$c], ['name' => 'Stale name'])));
+            $second->wrapInTransaction(fn () => $secondProducts->save($this->changed($product, $main, [$c], ['name' => 'Stale name']), null, null, new \DateTimeImmutable()));
             self::fail('Expected ProductModifiedConcurrently.');
         } catch (ProductModifiedConcurrently) {
         }
@@ -262,7 +262,7 @@ final class ProductVersionTest extends KernelTestCase
     {
         [$main] = $this->savedCategories(1);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'imageAlts' => ['front', 'back']]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
         $reversed = array_reverse($product->images()->toList());
         $reordered = Product::reconstitute(
@@ -283,7 +283,7 @@ final class ProductVersionTest extends KernelTestCase
             $product->version(),
         );
 
-        $this->products->save($reordered);
+        $this->products->save($reordered, null, null, new \DateTimeImmutable());
 
         self::assertSame(2, $this->version($product));
         $this->entityManager->clear();
@@ -299,10 +299,10 @@ final class ProductVersionTest extends KernelTestCase
     {
         [$a, $b] = $this->savedCategories(2);
         $product = ProductFactory::createOne(['mainCategory' => $a, 'additionalCategories' => [$b]]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
-        $this->products->save($this->changed($product, $b, [$a]));
+        $this->products->save($this->changed($product, $b, [$a]), null, null, new \DateTimeImmutable());
 
         self::assertSame(2, $this->version($product));
         self::assertSame([$a->id()->toString()], $this->assignedCategoryIds($product));
@@ -320,7 +320,7 @@ final class ProductVersionTest extends KernelTestCase
         [$main, $a, $b] = $this->committedCategories($manager, 3);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$a]]);
         $this->committedProductIds[] = $product->id()->toString();
-        $repository->save($product);
+        $repository->save($product, null, null, new \DateTimeImmutable());
         $manager->clear();
         // The repository under test reads version 1 before the other process writes.
         $repository->get($product->id());
@@ -333,7 +333,7 @@ final class ProductVersionTest extends KernelTestCase
         $started = hrtime(true);
         try {
             $overrides = $waitingWriterChangesName ? ['name' => 'Repository writer name'] : [];
-            $repository->save($this->changed($product, $main, [$a, $b], $overrides));
+            $repository->save($this->changed($product, $main, [$a, $b], $overrides), null, null, new \DateTimeImmutable());
             self::fail('Expected ProductModifiedConcurrently.');
         } catch (ProductModifiedConcurrently) {
         }
@@ -376,7 +376,7 @@ final class ProductVersionTest extends KernelTestCase
         [$main, $a, $b, $c] = $categoryList;
         $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$a]]);
         $this->committedProductIds[] = $product->id()->toString();
-        $firstProducts->save($product);
+        $firstProducts->save($product, null, null, new \DateTimeImmutable());
         $first->clear();
 
         // Both writers read version 1.
@@ -385,13 +385,13 @@ final class ProductVersionTest extends KernelTestCase
         self::assertSame(1, $this->committedVersion($first, $product));
 
         // The first writer commits a change of additional categories.
-        $firstProducts->save($this->changed($product, $main, [$a, $b]));
+        $firstProducts->save($this->changed($product, $main, [$a, $b]), null, null, new \DateTimeImmutable());
         self::assertSame(2, $this->committedVersion($first, $product));
 
         // The second writer saves a different change based on version 1.
         $overrides = $secondChangesName ? ['name' => 'Second writer name'] : [];
         try {
-            $secondProducts->save($this->changed($product, $main, [$c], $overrides));
+            $secondProducts->save($this->changed($product, $main, [$c], $overrides), null, null, new \DateTimeImmutable());
             self::fail('Expected ProductModifiedConcurrently.');
         } catch (ProductModifiedConcurrently) {
         }
@@ -409,7 +409,7 @@ final class ProductVersionTest extends KernelTestCase
         self::assertFalse($second->isOpen());
         $fresh = new DoctrineProductRepository($this->independentManager());
         self::assertSame($product->slug()->value(), $fresh->get($product->id())->slug()->value());
-        $fresh->save($this->changed($product, $main, [$a, $b, $c]));
+        $fresh->save($this->changed($product, $main, [$a, $b, $c]), null, null, new \DateTimeImmutable());
         self::assertSame(3, $this->committedVersion($first, $product));
     }
 

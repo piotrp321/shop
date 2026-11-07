@@ -100,7 +100,7 @@ final readonly class CreateProductHandler
             new \DateTimeImmutable(),
         );
 
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->events->publish(...$product->releaseEvents());
     }
 }

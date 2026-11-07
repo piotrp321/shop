@@ -200,7 +200,7 @@ final class SetVariantPriceTest extends KernelTestCase
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($entityManager)->save($category);
         $product = ProductFactory::createOne(['mainCategory' => $category, 'taxClass' => $taxClass]);
-        new DoctrineProductRepository($entityManager)->save($product);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return $product->variants()->toList()[0]->id()->toString();
     }
