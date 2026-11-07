@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Shared\Messaging;
 use App\Catalog\Application\Command\CreateCategory;
 use App\Catalog\Application\Command\CreateProduct;
 use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Tests\Integration\Catalog\Search\UsesTemporarySearchAlias;
 use Elastic\Elasticsearch\Response\Elasticsearch;
@@ -105,6 +106,8 @@ final class EventFlowTest extends MessagingKernelTestCase
             [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front']],
             [],
             [['id' => '20000000-0000-4000-8000-000000000001', 'values' => []]],
+            ProductStatus::Published,
+            null,
         ));
     }
 

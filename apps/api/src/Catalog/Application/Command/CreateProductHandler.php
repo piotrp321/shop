@@ -4,29 +4,25 @@ declare(strict_types=1);
 
 namespace App\Catalog\Application\Command;
 
-use App\Catalog\Domain\Category\CategoryId;
+use App\Catalog\Application\Event\ProductChanged;
+use App\Catalog\Application\Port\Clock;
 use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategoryRepository;
 use App\Catalog\Domain\Product\DuplicateVariantValues;
-use App\Catalog\Domain\Product\ImageKey;
 use App\Catalog\Domain\Product\InvalidProductVariants;
 use App\Catalog\Domain\Product\InvalidVariantAxes;
 use App\Catalog\Domain\Product\InvalidVariantValues;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductAlreadyExists;
-use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductId;
-use App\Catalog\Domain\Product\ProductImage;
-use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotFound;
 use App\Catalog\Domain\Product\ProductRepository;
-use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
-use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
+use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Domain\Product\VariantAlreadyExists;
 use App\Catalog\Domain\Product\VariantAxes;
@@ -38,16 +34,23 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 #[AsMessageHandler(bus: 'command.bus')]
 final readonly class CreateProductHandler
 {
+    private ProductInput $input;
+
     public function __construct(
         private ProductRepository $products,
-        private CategoryRepository $categories,
+        CategoryRepository $categories,
         private DomainEventPublisher $events,
+        private Clock $clock,
     ) {
+        $this->input = new ProductInput($categories);
     }
 
     /**
+     * Creates the product in the given status; publishes ProductCreated (never ProductChanged).
+     *
      * @throws ProductAlreadyExists
      * @throws CategoryNotFound       when the main or an additional category does not exist
+     * @throws SlugRequired           when the slug is empty and the name gives none
      * @throws SlugAlreadyTaken
      * @throws InvalidVariantAxes
      * @throws InvalidVariantValues
@@ -66,19 +69,8 @@ final readonly class CreateProductHandler
         } catch (ProductNotFound) {
         }
 
-        $categories = ProductCategories::create(
-            CategoryId::fromString($command->mainCategoryId),
-            array_map(CategoryId::fromString(...), $command->additionalCategoryIds),
-        );
-        foreach ($categories->all() as $categoryId) {
-            $this->categories->get($categoryId);
-        }
-
-        $images = [];
-        foreach ($command->images as $position => $image) {
-            $images[] = new ProductImage(ImageKey::fromString($image['key']), $image['alt'], $position);
-        }
-
+        $slug = ProductInput::slug($command->slug, $command->name);
+        $categories = $this->input->categories($command->mainCategoryId, $command->additionalCategoryIds);
         $variants = ProductVariants::create(
             VariantAxes::fromList($command->variantAxes),
             array_map(
@@ -87,20 +79,21 @@ final readonly class CreateProductHandler
             ),
         );
 
+        $now = $this->clock->now();
         $product = Product::create(
             $id,
             new ProductName($command->name),
-            new Slug($command->slug),
+            $slug,
             new ShortDescription($command->shortDescription),
             $categories,
             TaxClassCode::from($command->taxClass),
-            ProductImages::fromList($images),
+            $this->input->images($command->images),
             $variants,
-            ProductStatus::Published,
-            new \DateTimeImmutable(),
+            $command->status,
+            $now,
         );
 
-        $this->products->save($product, null, null, new \DateTimeImmutable());
-        $this->events->publish(...$product->releaseEvents());
+        $this->products->save($product, null, $command->actorId, $now);
+        $this->events->publish(...ProductChanged::translate($product->releaseEvents()));
     }
 }
