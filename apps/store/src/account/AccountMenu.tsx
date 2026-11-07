@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { type AccountSessionResult, loadAccountSession } from "@/api/client";
@@ -41,6 +42,9 @@ export function AccountMenu() {
   return (
     <div className="flex items-center gap-3">
       <span className="text-sm text-muted-foreground">Zalogowany jako {result.session.name}</span>
+      <Link href="/konto/zamowienia" className="text-sm underline underline-offset-4">
+        Moje zamówienia
+      </Link>
       <form method="post" action="/auth/logout">
         <Button type="submit" variant="outline" size="sm">
           Wyloguj się
