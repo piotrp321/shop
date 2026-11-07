@@ -67,10 +67,10 @@ make seed: catalog → pricing → ordering → inventory → catalog:reindex �
   myślnika na początku i końcu), 1–60 znaków. `Category::createRoot`, `createChild` i `reconstitute` przyjmują slug.
 - Unikalność wśród rodzeństwa pilnuje handler `CreateCategory` (`CategorySlugTaken`, `Conflict`) i unikalne indeksy
   w bazie: `(parent_id, slug)` oraz częściowy `(slug) WHERE parent_id IS NULL`. Unikalność ścieżki wynika z nich.
-- Kolumna `catalog_category.slug` jest `NOT NULL`; migracja wypełniła istniejące wiersze identyfikatorem kategorii
+- Kolumna `catalog_category.slug` jest `NOT NULL`; migracja wypełnia istniejące wiersze identyfikatorem kategorii
   (UUID spełnia format i jest unikalny). Dane demo (`fixtures/catalog.yaml`) mają `slug` w każdym węźle, a loader
   demo przekazuje go do `CreateCategory`.
-- `CategoryNode` dostaje `slug` i `path` (slugi od korzenia połączone `/`, liczone w rekursji `GetCategoryTreeHandler`).
+- `CategoryNode` ma `slug` i `path` (slugi od korzenia połączone `/`, liczone w rekursji `GetCategoryTreeHandler`).
   Ten sam schemat zwracają `GET /api/v1/categories` (sklep, `openapi.json`) i `GET /api/v1/admin/categories`
   (panel, `openapi-admin.json`).
 - `GET /api/v1/products/{slug}` (PRODUCT-PAGE): każdy element `breadcrumb` ma `path` (z `CategoryPath` i slugów
@@ -116,10 +116,11 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
 - `Catalog_Application`: `ProductOfferFacts::of(list<productId>): array<productId, ProductFacts>`,
   `ProductFacts {fromGross: ?int, variants: array<variantId, VariantFacts {gross: ?int, purchasable: bool}>}`. Produkt nieobecny
   w wyniku: brak cen i nic do kupienia; wariant Catalog nieobecny w faktach: bez ceny, niemożliwy do kupienia.
-- Adapter w `Cart_Infrastructure` woła Cart `GetProductOffers` na `query.bus` paczkami po `GetProductOffers::MAX_PRODUCTS`
-  (48). Deptrac: `Cart_Infrastructure`, `Pricing_Infrastructure` i `Inventory_Infrastructure` mogą zależeć od
-  `Catalog_Application`; Catalog nie importuje Cart, Pricing ani Inventory w żadnej warstwie. W czasie działania powstaje cykl wywołań Catalog → Cart → Catalog przez
-  szyny (świadomie przyjęty kompromis).
+- Adapter w `Cart_Infrastructure` woła Cart `GetProductOffers` na `query.bus` paczkami po
+  `GetProductOffers::MAX_PRODUCTS` (48). Deptrac: `Cart_Infrastructure`, `Pricing_Infrastructure`
+  i `Inventory_Infrastructure` mogą zależeć od `Catalog_Application`; Catalog nie importuje Cart, Pricing ani Inventory
+  w żadnej warstwie. W czasie działania powstaje cykl wywołań
+  Catalog → Cart → Catalog przez szyny (świadomie przyjęty kompromis).
 
 ### Zapis i kolejność
 
@@ -149,8 +150,9 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
 
 ## Catalog: `GET /api/v1/products` (wyszukiwanie, filtry, fasety)
 
-Operacja `listProducts` (ścieżka objęta Varnishem i tagami z PRODUCT-PAGE). Wszystkie parametry opcjonalne, w formacie, który wygenerowany klient (`openapi-fetch`, domyślny
-serializer: tablica jako powtarzany parametr, jak `productId` w `/api/v1/product-offers`) wysyła bez zmian:
+Operacja `listProducts` (ścieżka objęta Varnishem i tagami z PRODUCT-PAGE). Wszystkie parametry opcjonalne,
+w formacie, który wygenerowany klient (`openapi-fetch`, domyślny serializer: tablica jako powtarzany parametr,
+jak `productId` w `/api/v1/product-offers`) wysyła bez zmian:
 
 | Parametr | Walidacja (400 z `violations`) | Znaczenie |
 |---|---|---|
@@ -188,7 +190,7 @@ serializer: tablica jako powtarzany parametr, jak `productId` w `/api/v1/product
 
 ### Fasety
 
-Odpowiedź `ProductPage` dostaje pole `facets`, liczone agregacjami w tej samej odpowiedzi ES. Agregacje widzą wyniki
+Odpowiedź `ProductPage` ma pole `facets`, liczone agregacjami w tej samej odpowiedzi ES. Agregacje widzą wyniki
 `query` (fraza, kategoria); każda faseta dodaje warunek wariantu bez swojego warunku (gałąź `filter` na każdą
 wybraną oś, cenę i `available`):
 
@@ -336,7 +338,8 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 2. `/c/bieganie/buty` pokazuje produkty kategorii i podkategorii, breadcrumby i fasety; nieznana ścieżka daje 404;
    `/?category=<id>` przekierowuje trwale na `/c/<ścieżka>`.
 3. Filtr „Kolor: czarne” + „Rozmiar: 42” zwraca tylko produkty z wariantem czarnym w rozmiarze 42; liczba przy każdej
-   wartości równa się `total` po jej dodaniu (w osi z wyborem: po wybraniu tylko tej wartości); zakres ceny i „Tylko dostępne” dotyczą tego samego wariantu.
+   wartości równa się `total` po jej dodaniu (w osi z wyborem: po wybraniu tylko tej wartości); zakres ceny
+   i „Tylko dostępne” dotyczą tego samego wariantu.
 4. Sortowanie po cenie rosnąco daje kafelki w kolejności ceny „od”, produkty bez ceny na końcu.
 5. Zmiana ceny w panelu zmienia przynależność produktu do filtra ceny w ciągu 90 s.
 6. Mega menu otwiera się myszą i klawiaturą, zamyka Escape; linki wszystkich działów i poziomów 2–3 są w HTML;
@@ -360,7 +363,8 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   przy wartości = `total` po jej dodaniu, kilka wartości jednej osi, wybrana wartość z 0, `price`, `availableCount`,
   kategorie; ponad 10 osi i 30 wartości z rzadkimi wartościami na osi z pierwszej dziesiątki, kilka wybranych osi
   z ceną i dostępnością, brak kombinacji z różnych wariantów, porównanie całej odpowiedzi faset z modelem policzonym
-  w PHP na wygenerowanym zbiorze setek produktów; pomiar `took` agregacji pod `SEARCH_PERF=1`, poza zwykłym `make test`), wersja `external_gte` (starszy odczyt przestarzały), przebudowa z faktami ofert.
+  w PHP na wygenerowanym zbiorze setek produktów; pomiar `took` agregacji pod `SEARCH_PERF=1`, poza zwykłym
+  `make test`), wersja `external_gte` (starszy odczyt przestarzały), przebudowa z faktami ofert.
 - Funkcjonalne API: `GET /api/v1/products` z każdym parametrem (adres w formacie klienta) i błędami 400 (każdy
   niepoprawny parametr, `relevance` bez `q`), `facets` w odpowiedzi, nagłówki `Cache-Control` i `xkey`; `GET /api/v1/categories`
   i `GET /api/v1/admin/categories` ze `slug` i `path`; `breadcrumb` z `path` w szczegółach produktu.
