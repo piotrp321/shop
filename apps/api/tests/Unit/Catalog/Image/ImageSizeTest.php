@@ -27,4 +27,13 @@ final class ImageSizeTest extends TestCase
         self::assertSame('fill', ImageSize::Product->resize());
         self::assertSame('sm', ImageSize::Product->gravity());
     }
+
+    public function testThumbnailDefinition(): void
+    {
+        self::assertSame('1:1', ImageSize::Thumbnail->aspectRatio());
+        self::assertSame([96, 192], ImageSize::Thumbnail->widths());
+        self::assertSame([ImageFormat::Webp], ImageSize::Thumbnail->formats());
+        self::assertSame('fill', ImageSize::Thumbnail->resize());
+        self::assertSame('sm', ImageSize::Thumbnail->gravity());
+    }
 }

@@ -7,10 +7,12 @@ namespace App\Tests\Unit\Catalog\Application;
 use App\Catalog\Application\Command\EditProduct;
 use App\Catalog\Application\Command\EditProductHandler;
 use App\Catalog\Application\Event\ProductChanged;
+use App\Catalog\Application\Port\ProductImageStorageUnavailable;
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategorySlug;
+use App\Catalog\Domain\Product\ImageNotFound;
 use App\Catalog\Domain\Product\Product;
 use App\Catalog\Domain\Product\ProductCategories;
 use App\Catalog\Domain\Product\ProductId;
@@ -28,6 +30,7 @@ use App\Catalog\Domain\Product\UnknownVariant;
 use App\Catalog\Domain\Product\VariantInUse;
 use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
+use App\Tests\Support\InMemory\InMemoryProductImageStorage;
 use App\Tests\Support\InMemory\InMemoryProductRepository;
 use App\Tests\Support\InMemory\InMemoryVariantStockFacts;
 use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
@@ -46,6 +49,7 @@ final class EditProductHandlerTest extends TestCase
     private const string ACTOR = 'staff-sub-1';
 
     private InMemoryProductRepository $products;
+    private InMemoryProductImageStorage $images;
     private InMemoryVariantStockFacts $stock;
     private RecordingDomainEventPublisher $events;
     private FixedCatalogClock $clock;
@@ -58,10 +62,12 @@ final class EditProductHandlerTest extends TestCase
         $this->category = Category::createRoot(CategoryId::fromString(self::CATEGORY_ID), new CategoryName('Sport'), new CategorySlug('sport'));
         $categories->save($this->category);
         $this->products = new InMemoryProductRepository();
+        $this->images = new InMemoryProductImageStorage();
+        $this->images->existing = ['originals/'.hash('sha256', 'front').'.jpg'];
         $this->stock = new InMemoryVariantStockFacts();
         $this->events = new RecordingDomainEventPublisher();
         $this->clock = new FixedCatalogClock();
-        $this->handler = new EditProductHandler($this->products, $categories, $this->stock, $this->events, $this->clock);
+        $this->handler = new EditProductHandler($this->products, $categories, $this->stock, $this->images, $this->events, $this->clock);
     }
 
     public function testAnEditIsSavedWithANewVersionTheActorAndTheTimeAndPublishesTheIntegrationProductChanged(): void
@@ -86,6 +92,50 @@ final class EditProductHandlerTest extends TestCase
 
         self::assertSame(2, $this->products->version(ProductId::fromString(self::PRODUCT_ID)));
         self::assertCount(1, $this->events->published);
+    }
+
+    public function testAnImageWithoutAnOriginalIsImageNotFoundAtItsPositionAndNothingIsSaved(): void
+    {
+        $this->store(ProductStatus::Published);
+        $command = $this->command(images: [
+            ['key' => 'originals/'.hash('sha256', 'front').'.jpg', 'alt' => 'front'],
+            ['key' => 'originals/'.hash('sha256', 'gone').'.jpg', 'alt' => 'gone'],
+        ]);
+
+        try {
+            ($this->handler)($command);
+            self::fail('Expected ImageNotFound.');
+        } catch (ImageNotFound $e) {
+            self::assertSame(1, $e->index);
+        }
+
+        self::assertSame(1, $this->products->version(ProductId::fromString(self::PRODUCT_ID)));
+        self::assertSame([], $this->events->published);
+    }
+
+    public function testAnUnavailableImageStorageIsNotAMissingImageAndNothingIsSaved(): void
+    {
+        $this->store(ProductStatus::Published);
+        $this->images->unavailable = true;
+
+        try {
+            ($this->handler)($this->command(name: 'Inna nazwa'));
+            self::fail('Expected ProductImageStorageUnavailable.');
+        } catch (ProductImageStorageUnavailable) {
+        }
+
+        self::assertSame(1, $this->products->version(ProductId::fromString(self::PRODUCT_ID)));
+        self::assertSame([], $this->events->published);
+    }
+
+    public function testAStaleVersionIsRefusedBeforeTheStorageIsAsked(): void
+    {
+        $this->store(ProductStatus::Published);
+        $this->images->unavailable = true;
+
+        $this->expectException(ProductModifiedConcurrently::class);
+
+        ($this->handler)($this->command(expectedVersion: 7));
     }
 
     public function testAStaleVersionIsProductModifiedBeforeAnyOtherRule(): void

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Catalog\Infrastructure\Image;
 
 use App\Catalog\Application\Port\ProductImageStorage;
+use App\Catalog\Application\Port\ProductImageStorageUnavailable;
 use App\Catalog\Domain\Product\OriginalImageType;
+use League\Flysystem\FilesystemException;
 use League\Flysystem\FilesystemOperator;
 
 final readonly class FlysystemProductImageStorage implements ProductImageStorage
@@ -47,9 +49,22 @@ final readonly class FlysystemProductImageStorage implements ProductImageStorage
         }
 
         $key = \sprintf('originals/%s.%s', hash('sha256', $contents), $type->value);
-        $this->filesystem->write($key, $contents);
+        try {
+            $this->filesystem->write($key, $contents);
+        } catch (FilesystemException $e) {
+            throw ProductImageStorageUnavailable::because($e);
+        }
 
         return $key;
+    }
+
+    public function exists(string $key): bool
+    {
+        try {
+            return $this->filesystem->fileExists($key);
+        } catch (FilesystemException $e) {
+            throw ProductImageStorageUnavailable::because($e);
+        }
     }
 
     public function purge(): void
