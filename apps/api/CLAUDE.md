@@ -207,8 +207,10 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Błędy w formacie RFC 9457 (problem details). `type` to domyślnie `about:blank`. Wyjątek projektu, którego przyczynę
   klient ma rozróżniać maszynowo, implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType()`) i trzyma
   wartość w stałej `TYPE`; subscriber wpisuje ją do odpowiedzi, a Shared nie zna contextów. Format wartości:
-  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je pięć 409 Ordering
-  (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`; nowy typ dopisz też tam).
+  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Mają je pięć 409 Ordering
+  (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`; nowy typ dopisz też tam). Sześć 409 produktu
+  (`slug-taken`, `slug-locked`, `product-modified`, `product-not-publishable`, `variant-locked`, `variant-in-use`) ma
+  schemat `ProductConflictProblem` w `openapi-admin.json`.
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
   (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Domena nie zna statusów
   HTTP, mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
@@ -313,7 +315,30 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Kolejność osi: liczba produktów w wynikach malejąco, potem nazwa; oś wybrana zawsze jest w liście.
 
 - Pliki (zdjęcia produktów) przez Flysystem na Garage, prywatny bucket. Nigdy na lokalny dysk kontenera.
-- Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów.
+- Upload: walidacja typu po zawartości (MIME), limit rozmiaru i wymiarów. `POST /api/v1/admin/product-images`
+  (`multipart/form-data`, pole `file`, jeden plik na żądanie) przyjmuje JPEG, PNG, WebP, AVIF i HEIC do 64 MB i 50 MP,
+  zapisuje oryginał pod kluczem z treści (`originals/<sha256>.<rozszerzenie>`, ten sam plik to ten sam klucz) i odpowiada
+  kluczem oraz podglądem `thumbnail`; oryginałów nie usuwa nic (także po usunięciu zdjęcia z produktu albo uploadzie bez
+  zapisu). Limity PHP w `docker/php/conf.d/app.ini`: `upload_max_filesize = 64M`, `post_max_size = 70M` (Caddy nie ma
+  własnego limitu ciała). Plik ponad `upload_max_filesize` (błąd uploadu PHP) i żądanie z `Content-Length` ponad
+  `post_max_size` (PHP odrzuca wtedy całe ciało, więc kontroler sprawdza nagłówek przed szukaniem pliku) to 422
+  „Plik jest za duży.”; komunikaty `detail` odrzuceń (typ, rozdzielczość, wymiary, brak pliku) są po polsku. Garage
+  niedostępny przy uploadzie i przy zapisie produktu (`ProductImageStorage::exists` sprawdza każdy klucz zdjęcia)
+  to 503 bez `detail`. Limity PHP nie działają w kernelu testów funkcjonalnych, więc testy symulują ich skutek (błąd
+  uploadu, nagłówek), a prawdziwe limity sprawdza E2E na działającym stosie.
+- Rozmiary obrazów (`ImageSize`): `listing`, `product` i `thumbnail` (1:1, szerokości 96 i 192, WebP, `fill`; miniatury
+  list i podglądy formularza produktu w panelu). Nowy rozmiar dopisuje się tylko tam.
+- Produkty w panelu (`/api/v1/admin`, voter `ProductVoter`: `VIEW_PRODUCTS` każdy pracownik, `MANAGE_PRODUCTS` `admin`
+  i `marketing`, Catalog UI): `GET /products` (`q`, `category`, `status`, `after`, `perPage`; zapytanie
+  `ListBackofficeProducts` składa stronę z `SearchBackofficeProducts` i podsumowań z `BackofficeProductSource::summaries`),
+  `GET /products/{id}` (`ProductEditView` z `version`, czytany z DBAL, także szkic), `POST /products` (szkic),
+  `PUT /products/{id}`, `POST /products/{id}/publish` i `/unpublish` (wszystkie z `version`), `GET /tax-classes`
+  (nazwy po polsku w `ListTaxClassesHandler`). Ciało zapisu waliduje jedno ograniczenie klasy `ValidProductWrite`
+  (`Catalog_UI`): każda reguła z `docs/features/catalog-admin/spec.md` ma ścieżkę pola (`variants[3].values[1]`) i polski
+  komunikat; reguły domeny stosuje, nie kopiuje (`Slug`, `ImageKey`, `VariantValues::comparisonKey()`). Reguły domeny, które
+  wskazują miejsce w ciele (`ImageNotFound`, `UnknownVariant`, `UnknownCategory`, `SlugRequired`), `ProductWriteFailures`
+  zamienia na 422 z naruszeniem pola; błędy z typem (409) opisuje schemat `ProductConflictProblem`. Odpowiedzi zapisu to
+  widok edycji odczytany po zapisie, `private, no-store`.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
