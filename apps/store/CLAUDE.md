@@ -139,10 +139,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
   strona slotu tak): `app/@search/szukaj/page.tsx` daje pole z frazą w HTML z serwera (`/szukaj` i tak jest renderowane
   przy każdym żądaniu, więc działa bez JavaScriptu), `app/@search/default.tsx` puste pole na każdej innej stronie (HTML
   taki sam dla wszystkich, strona produktu jest ISR). Strona 404 nieznanego adresu nie dostaje slotu, więc layout
-  wstawia wtedy puste pole sam. Po hydratacji frazę z adresu wpisuje do pola `useSearchParams`
-  (mały komponent w `Suspense` bez wyniku: formularz i pole są poza nim, więc element pola się nie wymienia przy
-  hydratacji i wpisany wcześniej tekst zostaje). Pole jest nadpisywane tylko przy zmianie frazy (nowe wyszukiwanie,
-  wyjście z `/szukaj`), nie przy zmianie innych parametrów.
+  wstawia wtedy puste pole sam. Przy nawigacji klienckiej z `/szukaj` na inną stronę Next zostawia aktywny slot
+  `@search/szukaj` (z frazą w `defaultValue`), a w drugą stronę montuje nowe pole z frazą. Pole w przeglądarce
+  prowadzi `useSearchParams` (mały komponent w `Suspense` bez wyniku: formularz i pole są poza nim, więc element pola
+  się nie wymienia przy hydratacji i wpisany wcześniej tekst zostaje): przy pierwszym uruchomieniu pisze tylko do
+  pustego pola, potem nadpisuje je przy zmianie frazy (nowe wyszukiwanie, wyjście z `/szukaj`, które czyści pole
+  pozostawionego slotu), nie przy zmianie innych parametrów.
 - Układ: od `sm` logo, pole, koszyk i konto w jednym wierszu; poniżej `sm` pole wyszukiwania ma własny wiersz na pełną
   szerokość pod logo, koszykiem i kontem (nagłówek ma `flex-wrap`), żeby strona nie przewijała się w poziomie przy 375 px
   (`e2e/tests/site-header.spec.ts`).
