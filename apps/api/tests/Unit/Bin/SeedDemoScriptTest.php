@@ -92,7 +92,7 @@ final class SeedDemoScriptTest extends TestCase
     {
         [$code, $stderr] = $this->runScript(['APP_ENV' => 'prod', 'FAKE_FAIL_ON' => 'payment:seed-demo']);
 
-        self::assertNotSame(0, $code);
+        self::assertSame(3, $code);
         self::assertStringContainsString('boom in payment:seed-demo', $stderr);
         self::assertSame(
             ['catalog:seed-demo --force-reset', 'pricing:seed-demo --force-reset', 'payment-simulator:seed-demo --force-reset', 'payment:seed-demo --force-reset'],
@@ -104,7 +104,7 @@ final class SeedDemoScriptTest extends TestCase
     {
         [$code] = $this->runScript(['APP_ENV' => 'dev', 'FAKE_FAIL_ON' => 'catalog:reindex']);
 
-        self::assertNotSame(0, $code);
+        self::assertSame(3, $code);
         self::assertSame([...self::SEEDS, 'catalog:reindex'], $this->calls());
     }
 

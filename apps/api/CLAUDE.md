@@ -30,8 +30,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
-  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
-  w `prod` wymagają `--force-reset`, więc skrypt dodaje go do komend `*:seed-demo` tylko przy `APP_ENV=prod`. Potem
+  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie komendy `*:seed-demo`
+  (jest ich sześć) w `prod` wymagają `--force-reset`, więc `bin/seed-demo` dodaje go do nich tylko przy `APP_ENV=prod`. Potem
   woła `catalog:reindex`, który przebudowuje indeks wyszukiwania z cenami i dostępnością, a na końcu
   `storefront:cache:purge-all` (zdarzenia cen i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają).
   Błąd dowolnego kroku przerywa skrypt (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
