@@ -36,3 +36,19 @@ export async function loginStaff(page: Page, account: StaffAccount): Promise<voi
   }
   await expect(page.getByRole("heading", { name: "Dashboard" }), "the panel opens after the OTP step").toBeVisible();
 }
+
+/**
+ * Records the bearer token the panel sends to the API (the panel keeps its tokens in memory only). Call it before the
+ * login; `token()` resolves once the panel has made its first request to the API after the login.
+ */
+export function trackBearerToken(page: Page): { token: () => Promise<string> } {
+  let found: (value: string) => void = () => undefined;
+  const first = new Promise<string>((resolve) => (found = resolve));
+  page.on("request", (request) => {
+    if (!request.url().includes("/api/v1/admin/")) return;
+    void request.headerValue("authorization").then((header) => {
+      if (header?.startsWith("Bearer ")) found(header.slice("Bearer ".length));
+    });
+  });
+  return { token: () => first };
+}
