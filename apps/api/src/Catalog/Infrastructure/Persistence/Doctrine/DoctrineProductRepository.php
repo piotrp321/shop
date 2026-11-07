@@ -16,6 +16,7 @@ use App\Catalog\Domain\Product\ProductModifiedConcurrently;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotFound;
 use App\Catalog\Domain\Product\ProductRepository;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
@@ -273,6 +274,10 @@ final readonly class DoctrineProductRepository implements ProductRepository
                     ),
                 )->toArray()),
             ),
+            // Every stored product is published until the table has a status.
+            ProductStatus::Published,
+            null,
+            $record->version,
         );
     }
 }

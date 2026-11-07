@@ -21,6 +21,7 @@ use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotFound;
 use App\Catalog\Domain\Product\ProductRepository;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
@@ -95,6 +96,8 @@ final readonly class CreateProductHandler
             TaxClassCode::from($command->taxClass),
             ProductImages::fromList($images),
             $variants,
+            ProductStatus::Published,
+            new \DateTimeImmutable(),
         );
 
         $this->products->save($product);

@@ -278,6 +278,9 @@ final class ProductVersionTest extends KernelTestCase
                 array_keys($reversed),
             )),
             $product->variants(),
+            $product->status(),
+            $product->firstPublishedAt(),
+            $product->version(),
         );
 
         $this->products->save($reordered);
