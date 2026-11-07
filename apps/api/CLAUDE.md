@@ -14,7 +14,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `init-test` – migracje bazy `shop_test` i indeks testowy `test_products` tworzony od nowa
   (`catalog:search-index:setup --recreate`); wywołuje go `test` przed testami
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
-- dane demo ładuje `make seed` z głównego `Makefile`: najpierw `catalog:seed-demo` (katalog), potem
+- dane demo ładuje `make seed` z głównego `Makefile`, czyli `bin/seed-demo` (skrypt `sh`, `set -eu`; konsolę woła względem
+  własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog), potem
   `pricing:seed-demo`, który czyści ceny i ich historię i ustawia cenę (źródło `seed`) każdemu wariantowi demo według
   wzorców kluczy wariantów z `fixtures/prices.yaml` (klucz z Catalog `ListVariantIdentities`:
   `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
@@ -29,10 +30,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
-  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
-  w `prod` wymagają `--force-reset`. Potem `make seed` woła `catalog:reindex`, który przebudowuje indeks wyszukiwania
-  z cenami i dostępnością, a na końcu `storefront:cache:purge-all` (zdarzenia cen i stanów ze źródła `seed` niczego
-  nie reindeksują ani nie unieważniają). Błąd kroku przerywa `make seed`
+  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie komendy `*:seed-demo`
+  (jest ich sześć) w `prod` wymagają `--force-reset`, więc `bin/seed-demo` dodaje go do nich tylko przy `APP_ENV=prod`. Potem
+  woła `catalog:reindex`, który przebudowuje indeks wyszukiwania z cenami i dostępnością, a na końcu
+  `storefront:cache:purge-all` (zdarzenia cen i stanów ze źródła `seed` niczego nie reindeksują ani nie unieważniają).
+  Błąd dowolnego kroku przerywa skrypt (i `make seed`) z niezerowym kodem, kolejne kroki się nie wykonują
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
   rewalidacja tagu `catalog` w sklepie. Każdą warstwę próbuje do 5 razy co 5 s (parametr
   `app.storefront_cache.retry_delay`; testy: 0), po nieudanym purge nie rewaliduje. Kod wyjścia: 0 – gotowe, 2 – warstwa
@@ -435,6 +437,18 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Rozszerzenie musi być dostępne w bazie, każda baza przechodzi przez migracje.
 - Profilowanie: SPX (php-spx) jest tylko w obrazie deweloperskim (target `dev` w Dockerfile), nigdy w obrazie produkcyjnym.
   Przy problemie z wydajnością najpierw zmierz w SPX, potem optymalizuj.
+- Obraz Docker (`apps/api/Dockerfile`), etapy po kolei: `runtime` (FrankenPHP, rozszerzenia PHP, `app.ini`, Caddyfile),
+  `base` z `runtime` (Composer, git, unzip, entrypoint `composer install` przy zmianie `composer.lock`), `build`
+  z `base` (`composer install --no-dev --classmap-authoritative`, kod aplikacji, rozgrzany cache `prod`), `prod`
+  z `runtime` (kod i `vendor` z `build`, `docker/php/conf.d/prod.ini` z opcache bez sprawdzania znaczników czasu,
+  `APP_ENV=prod`, `APP_DEBUG=0`, bez Composera, gita, SPX, pakietów dev i entrypointu instalującego zależności;
+  `fixtures/` jest w obrazie, `tests/` nie) i `dev` z `base` jako ostatni etap (compose i CI budują `target: dev`).
+  Produkcyjny obraz buduje się `docker build --target prod apps/api` bez stosu i bez sekretów: cache `prod` rozgrzewa
+  komenda z atrapami `SHOP_DB_*` ustawionymi tylko dla niej (Doctrine czyta parametry połączenia, ale się nie łączy,
+  a w cache zostają odwołania do zmiennych środowiska, nie ich wartości). Konfigurację obraz czyta ze zmiennych
+  środowiska przy starcie. Ten sam obraz uruchamia FrankenPHP, workera i komendy konsoli (np. `bin/seed-demo`).
+  Zmiana w `.dockerignore` albo nowy katalog z kodem potrzebnym w `prod` wymaga sprawdzenia, że obraz `prod` nadal
+  się buduje i odpowiada na `/health`.
 
 ## Testy
 

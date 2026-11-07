@@ -12,3 +12,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  /** Runtime configuration written by /config.js in the production image; absent (empty config.js) in development. */
+  __ADMIN_CONFIG__?: Partial<Record<"VITE_API_URL" | "VITE_KEYCLOAK_URL" | "VITE_ADMIN_URL", string>>;
+}
