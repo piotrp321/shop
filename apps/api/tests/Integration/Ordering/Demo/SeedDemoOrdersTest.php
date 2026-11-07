@@ -19,7 +19,8 @@ use Symfony\Component\Messenger\Stamp\HandledStamp;
 
 /**
  * ordering:seed-demo on shop_test (rolled back after the test), after orders were placed through PlaceOrder: the orders
- * and the queue of their ExpireUnpaidOrder messages (`scheduled`) go, the other queues stay.
+ * with their lines and notifications, and the queue of their ExpireUnpaidOrder messages (`scheduled`) go, the other
+ * queues stay.
  */
 final class SeedDemoOrdersTest extends KernelTestCase
 {
@@ -50,6 +51,22 @@ final class SeedDemoOrdersTest extends KernelTestCase
         self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order_line'));
         $next = $this->connection->fetchOne("SELECT nextval('ordering_order_number_seq')");
         self::assertGreaterThan($number, $next, 'the numbers go on');
+    }
+
+    public function testRemovesTheNotificationsOfTheOrders(): void
+    {
+        $orderId = OrderingFixture::order($this->connection);
+        $this->connection->executeStatement(
+            "INSERT INTO ordering_order_notification (order_id, kind, claimed_until, sent_at) VALUES (?, 'confirmation', NULL, now()), (?, 'payment_received', now() + interval '5 minutes', NULL)",
+            [$orderId, $orderId],
+        );
+
+        $tester = new CommandTester(new Application(self::$kernel ?? self::bootKernel())->find('ordering:seed-demo'));
+        $exitCode = $tester->execute([]);
+
+        self::assertSame(Command::SUCCESS, $exitCode, $tester->getDisplay());
+        self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order_notification'));
+        self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order'));
     }
 
     public function testRemovesTheScheduledQueueOnlyAndKeepsTheOutboxAndFailed(): void
