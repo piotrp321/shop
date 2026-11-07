@@ -1,0 +1,202 @@
+"""Tests of the offline parts of kc_login.py (TOTP, PKCE, Keycloak form parsing, demo accounts, CLI errors)."""
+
+import base64
+import hashlib
+import os
+import re
+import subprocess
+import sys
+import unittest
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+import kc_login  # noqa: E402
+
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+SCRIPT = os.path.join(os.path.dirname(__file__), "kc_login.py")
+
+LOGIN_PAGE = """
+<html><body>
+<form id="kc-form-login" onsubmit="login.disabled = true; return true;"
+      action="http://localhost:8080/realms/backoffice/login-actions/authenticate?session_code=abc&amp;execution=e1&amp;client_id=admin&amp;tab_id=t1"
+      method="post">
+  <input tabindex="1" id="username" name="username" value="" type="text" autofocus />
+  <input tabindex="2" id="password" name="password" type="password" />
+  <input type="hidden" id="id-hidden-input" name="credentialId" value="cred-1"/>
+  <input tabindex="4" name="login" id="kc-login" type="submit" value="Sign In"/>
+</form>
+</body></html>
+"""
+
+OTP_ERROR_PAGE = """
+<form id="kc-otp-login-form" action="http://localhost:8080/realms/backoffice/login-actions/authenticate?x=1&amp;y=2" method="post">
+  <input id="otp" name="otp" autocomplete="off" type="text" autofocus/>
+  <span id="input-error-otp" aria-live="polite">Invalid authenticator code.</span>
+  <input name="login" id="kc-login" type="submit" value="Sign In" />
+</form>
+"""
+
+
+class TotpTest(unittest.TestCase):
+    def test_rfc6238_sha1_vector_truncated_to_six_digits(self):
+        # RFC 6238 appendix B: secret "12345678901234567890", T=59 s, SHA1 -> 94287082 (8 digits).
+        self.assertEqual(kc_login.totp("12345678901234567890", 59), "287082")
+
+    def test_raw_utf8_secret_not_base32(self):
+        # The demo secret is used as raw UTF-8 bytes (like OTPAuth.Secret.fromUTF8 in e2e/support/totp.ts).
+        key = b"demo-totp-admin-0001"
+        counter = (1_700_000_000 // 30).to_bytes(8, "big")
+        import hmac
+
+        digest = hmac.new(key, counter, hashlib.sha1).digest()
+        offset = digest[-1] & 0x0F
+        expected = (int.from_bytes(digest[offset : offset + 4], "big") & 0x7FFFFFFF) % 1_000_000
+        self.assertEqual(kc_login.totp("demo-totp-admin-0001", 1_700_000_000), f"{expected:06d}")
+
+
+class PkceTest(unittest.TestCase):
+    def test_challenge_is_s256_of_verifier(self):
+        verifier, challenge = kc_login.pkce_pair()
+        self.assertGreaterEqual(len(verifier), 43)
+        expected = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        self.assertEqual(challenge, expected)
+
+
+class FormTest(unittest.TestCase):
+    def test_login_form_action_is_unescaped_and_fields_collected(self):
+        form = kc_login.find_form(LOGIN_PAGE, "username")
+        self.assertEqual(
+            form.action,
+            "http://localhost:8080/realms/backoffice/login-actions/authenticate"
+            "?session_code=abc&execution=e1&client_id=admin&tab_id=t1",
+        )
+        self.assertEqual(form.fields, {"username": "", "password": "", "credentialId": "cred-1"})
+
+    def test_missing_form_is_none(self):
+        self.assertIsNone(kc_login.find_form("<html>no form</html>", "otp"))
+
+    def test_otp_rejection_is_detected(self):
+        self.assertTrue(kc_login.otp_rejected(OTP_ERROR_PAGE))
+        self.assertFalse(kc_login.otp_rejected(LOGIN_PAGE))
+
+
+class SecureCookieOnLocalhostTest(unittest.TestCase):
+    """Keycloak sets AUTH_SESSION_ID with `Secure`; browsers send it to http://localhost, so must the client."""
+
+    def cookies_sent(self, set_url, request_url):
+        import email.message
+        import http.cookiejar
+        import urllib.request
+
+        jar = http.cookiejar.CookieJar()
+        kc_login.Browser(jar)  # installs the policy on the jar
+        headers = email.message.Message()
+        headers["Set-Cookie"] = "AUTH_SESSION_ID=abc;Version=1;Path=/realms/backoffice/;Secure;HttpOnly;SameSite=None"
+
+        class Response:
+            def info(self):
+                return headers
+
+        jar.extract_cookies(Response(), urllib.request.Request(set_url))
+        request = urllib.request.Request(request_url)
+        jar.add_cookie_header(request)
+        return request.get_header("Cookie") or ""
+
+    def test_secure_cookie_is_sent_back_to_http_localhost(self):
+        sent = self.cookies_sent("http://localhost:8080/realms/backoffice/auth", "http://localhost:8080/realms/backoffice/x")
+        self.assertIn("AUTH_SESSION_ID=abc", sent)
+
+    def test_secure_cookie_is_not_sent_to_another_plain_http_host(self):
+        sent = self.cookies_sent("http://example.test/realms/backoffice/auth", "http://example.test/realms/backoffice/x")
+        self.assertEqual(sent, "")
+
+
+class CurlCookieJarTest(unittest.TestCase):
+    """The customer jar is shared with `curl -b/-c`: both must read what the other writes."""
+
+    CURL_JAR = (
+        "# Netscape HTTP Cookie File\n"
+        "# This file was generated by libcurl! Edit at your own risk.\n\n"
+        "#HttpOnly_localhost\tFALSE\t/\tFALSE\t1796634444\tstore_cart\tguest-cart\n"
+        "localhost\tFALSE\t/\tFALSE\t0\tstore_theme\tdark\n"
+    )
+
+    def setUp(self):
+        import tempfile
+
+        handle, self.path = tempfile.mkstemp()
+        os.close(handle)
+        with open(self.path, "w") as jar_file:
+            jar_file.write(self.CURL_JAR)
+
+    def tearDown(self):
+        os.remove(self.path)
+
+    def sent_to(self, jar, url):
+        import urllib.request
+
+        kc_login.Browser(jar)
+        request = urllib.request.Request(url)
+        jar.add_cookie_header(request)
+        return request.get_header("Cookie") or ""
+
+    def test_reads_curl_httponly_and_session_cookies(self):
+        jar = kc_login.CurlCookieJar(self.path)
+        jar.load()
+        sent = self.sent_to(jar, "http://localhost:41320/api/cart")
+        self.assertIn("store_cart=guest-cart", sent)
+        self.assertIn("store_theme=dark", sent)
+
+    def test_writes_lines_curl_sends_to_localhost(self):
+        jar = kc_login.CurlCookieJar(self.path)
+        jar.load()
+        jar.save()
+        with open(self.path) as jar_file:
+            lines = [line for line in jar_file.read().splitlines() if "\t" in line]
+        self.assertIn("#HttpOnly_localhost\tFALSE\t/\tFALSE\t1796634444\tstore_cart\tguest-cart", lines)
+        # A session cookie: curl drops a line with an empty expiry, 0 means "session" to curl.
+        self.assertIn("localhost\tFALSE\t/\tFALSE\t0\tstore_theme\tdark", lines)
+
+    def test_missing_file_is_an_empty_jar(self):
+        os.remove(self.path)
+        jar = kc_login.CurlCookieJar(self.path)
+        jar.load()
+        self.assertEqual(len(jar), 0)
+        with open(self.path, "w"):
+            pass
+
+
+class AccountsTest(unittest.TestCase):
+    def test_demo_accounts_match_e2e_support(self):
+        with open(os.path.join(REPO, "e2e", "support", "accounts.ts"), encoding="utf-8") as handle:
+            source = handle.read()
+        staff_password = re.search(r'staffPassword = "([^"]+)"', source).group(1)
+        customer_password = re.search(r'customerPassword = "([^"]+)"', source).group(1)
+        for name, username, secret in re.findall(
+            r'(\w+): \{ username: "([^"]+)", password: staffPassword, totpSecret: "([^"]+)" \}', source
+        ):
+            self.assertEqual(kc_login.STAFF[name], (username, staff_password, secret))
+        for name, email in re.findall(r'(\w+): \{ email: "([^"]+)", password: customerPassword \}', source):
+            self.assertEqual(kc_login.CUSTOMERS[name], (email, customer_password))
+        self.assertEqual(len(kc_login.STAFF), 4)
+        self.assertEqual(len(kc_login.CUSTOMERS), 2)
+
+
+class CliErrorTest(unittest.TestCase):
+    def run_cli(self, *args):
+        return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True, timeout=30)
+
+    def test_unknown_account_is_rejected_without_network(self):
+        result = self.run_cli("staff", "--keycloak", "http://127.0.0.1:9", "--admin", "http://localhost:9", "--account", "root")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("root", result.stderr)
+
+    def test_unreachable_keycloak_fails_with_message(self):
+        result = self.run_cli("staff", "--keycloak", "http://127.0.0.1:9", "--admin", "http://localhost:9", "--account", "admin")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("kc_login:", result.stderr)
+        self.assertEqual(result.stdout, "")
+
+
+if __name__ == "__main__":
+    unittest.main()
