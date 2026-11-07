@@ -298,7 +298,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Dokumentacja OpenAPI z kodu (NelmioApiDocBundle). Każdy endpoint ma opisane żądanie, odpowiedzi i błędy.
 - Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Dwa firewalle:
   `/api/v1/admin/...` przyjmuje tylko tokeny z realmu `backoffice` (pracownicy, `Staff`),
-  reszta API tylko z realmu `shop` (klienci, `Customer`). Sprawdzany jest wystawca tokena.
+  reszta API tylko z realmu `shop` (klienci, `Customer`). Sprawdzany jest wystawca tokena. Token konta demo
+  na stosie lokalnym do ręcznych żądań: `.claude/skills/integration/kc_login.py` (opis w skillu `/integration`).
 - Nie twórz wspólnej klasy `User` dla klientów i pracowników. To osobne byty.
 - Uprawnienia w voterach. Pracownik: na podstawie ról z tokena (`admin`, `support`, `warehouse`, `marketing`).
   Klient: tylko własne dane (właściciel zasobu = `sub` z tokena).
