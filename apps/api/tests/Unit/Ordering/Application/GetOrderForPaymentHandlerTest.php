@@ -50,6 +50,11 @@ final class GetOrderForPaymentHandlerTest extends TestCase
             paymentId: null,
             cancelledAt: null,
             cancellationReason: null,
+            shippedAt: null,
+            deliveredAt: null,
+            returnedAt: null,
+            refund: null,
+            history: $customerOrder->history(),
             version: 1,
         ));
         $this->clock = new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:10:00+00:00'));

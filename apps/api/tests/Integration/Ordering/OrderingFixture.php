@@ -134,7 +134,7 @@ final class OrderingFixture
     }
 
     /**
-     * Deletes the orders (their notifications and lines first) and the reservations they hold, on a connection that
+     * Deletes the orders (their notifications, history and lines first) and the reservations they hold, on a connection that
      * commits.
      *
      * @param list<string> $orderIds
@@ -145,6 +145,7 @@ final class OrderingFixture
             return;
         }
         $connection->executeStatement('DELETE FROM ordering_order_notification WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
+        $connection->executeStatement('DELETE FROM ordering_order_status_change WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order_line WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order WHERE id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         StockFixture::delete($connection, [], $orderIds);

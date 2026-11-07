@@ -115,7 +115,8 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 
 Pola: `id`, `number`, `owner`, `accessToken` (gość: 32 losowe bajty w base64url, 43 znaki, generuje handler; klient:
 null), `contact`, `shippingAddress`, `lines` (1–50, w kolejności koszyka, bez powtórzonego wariantu), `totals`
-(liczone), `status` (`new`, `paid`, `cancelled`; po złożeniu `new`), `idempotencyKey`, `requestFingerprint`,
+(liczone), `status` (`new`, `paid`, `shipped`, `delivered`, `cancelled`, `returned`; po złożeniu `new`; cykl po
+opłaceniu: `docs/features/order-management/spec.md`), `idempotencyKey`, `requestFingerprint`,
 `placedAt`, `paymentDeadline` (`placedAt` + 30 min), `version`. Pola cyklu płatności (`paidAt`, `paymentId`,
 `cancelledAt`, `cancellationReason`) opisuje `docs/features/payment/spec.md`. Znaczniki wysłanych e-maili nie są
 w zamówieniu: są w tabeli powiadomień (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”).
@@ -325,7 +326,7 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 {
   orderId: uuid,
   number: string,
-  status: "new" | "paid" | "cancelled" (po złożeniu "new"),
+  status: "new" | "paid" | "shipped" | "delivered" | "cancelled" | "returned" (po złożeniu "new"),
   email: string,
   fullName: string,
   phone: string,

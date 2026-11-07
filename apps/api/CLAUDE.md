@@ -24,7 +24,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `outbox`, `scheduled`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
   `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
-  linie i powiadomienia jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  linie, historię statusów i powiadomienia jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
   WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
@@ -133,6 +133,26 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     powiadomienia (`payment_received`, `cancelled`); port `OrderStatusMailer`, adapter
     `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. E-mail z potwierdzeniem podaje
     termin płatności w strefie `Europe/Warsaw`.
+- Cykl zamówienia po opłaceniu (Ordering, `docs/features/order-management/spec.md`): statusy `shipped`, `delivered`,
+  `returned` i anulowanie opłaconego przez pracownika (`cancellationReason` `staff`). Przejścia pracownika to metody
+  agregatu `Order` (`ship`, `deliver`, `cancel`, `registerReturn`; bez Symfony Workflow), a tabela dozwolonych przejść
+  jest tylko w `OrderStatus::allowedStaffTransitions()` (enum `StaffTransition`); inne przejście to
+  `OrderTransitionNotAllowed` (409, `TypedProblem`). Notatka pracownika (`StaffNote`): przycięta, 1–500 znaków, bez
+  znaków sterujących (także nowej linii), wymagana przy anulowaniu i zwrocie, pusta przy pozostałych to brak notatki.
+  `markPaid` traktuje `shipped`, `delivered` i `returned` jak `paid` (`alreadyPaid`, `paidByAnotherPayment`).
+  - Zwrot pieniędzy (`Refund`, value object w zamówieniu): `cancel` i `registerReturn` zakładają zwrot brutto zamówienia
+    z terminem `Order::REFUND_TIME` (14 dni); `completeRefund` oznacza go jako wykonany (data, pracownik, notatka), drugi
+    raz albo bez zwrotu `RefundNotPending` (409). Sam przelew jest ręczny, poza systemem; wykonanie nie zmienia statusu.
+  - Historia statusów (`OrderStatusChange` z aktorem `StatusActor`: `system`, `customer`, `staff(staffId, username)`)
+    jest częścią agregatu, wpisy tylko dopisywane: złożenie `null → new` (klient), opłacenie i wygaśnięcie (system),
+    przejścia z panelu (pracownik z notatką). Zapis w tabeli podrzędnej `ordering_order_status_change`
+    (PK `(order_id, position)`, FK bez `ON DELETE CASCADE`). `DoctrineOrderRepository::save` najpierw zapisuje
+    zamówienie (`UPDATE` z wersją), a nowe wpisy dopisuje osobnym `flush`: Doctrine wstawia przed aktualizacją, więc
+    przegrany wyścig kończyłby się naruszeniem klucza historii zamiast konfliktem wersji.
+  - CHECK-i `ordering_order` (migracja): `paid_at` razem z `payment_id`, dokładnie dla zamówienia opłaconego (`paid`
+    i dalej oraz anulowanego przez pracownika); `shipped_at` od `shipped`, `delivered_at` tylko przy `delivered` i
+    `returned`, `returned_at` dokładnie przy `returned`; zwrot (`refund_amount`, `refund_due_at`) dokładnie przy
+    `returned` i anulowaniu przez pracownika, jego wykonanie (data, pracownik, notatka) tylko przy zwrocie.
 - Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
   dostawcy (`pending` → `succeeded` | `failed` | `cancelled`; `succeed` także z `failed` i `cancelled`, bo pieniądze ważą
   więcej niż wcześniejsza odmowa; `requireRefund` tylko dla `succeeded`, pierwszy powód zostaje), bez pola wersji:

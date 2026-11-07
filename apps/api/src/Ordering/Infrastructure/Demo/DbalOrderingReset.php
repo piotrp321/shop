@@ -8,7 +8,7 @@ use App\Ordering\Application\Port\OrderingReset;
 use Doctrine\DBAL\Connection;
 
 /**
- * Truncates the orders with their lines and notifications (in one statement: the foreign keys refuse a truncation of
+ * Truncates the orders with their lines, history and notifications (in one statement: the foreign keys refuse a truncation of
  * the orders alone) and deletes the queue of their ExpireUnpaidOrder messages (`scheduled`, which only Ordering uses);
  * the other queues of messenger_messages (`outbox`, `failed`) stay.
  */
@@ -20,7 +20,7 @@ final readonly class DbalOrderingReset implements OrderingReset
 
     public function reset(): void
     {
-        $this->connection->executeStatement('TRUNCATE ordering_order_notification, ordering_order_line, ordering_order');
+        $this->connection->executeStatement('TRUNCATE ordering_order_notification, ordering_order_status_change, ordering_order_line, ordering_order');
         $this->connection->executeStatement("DELETE FROM messenger_messages WHERE queue_name = 'scheduled'");
     }
 }
