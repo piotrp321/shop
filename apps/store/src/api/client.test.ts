@@ -7,6 +7,7 @@ import {
   loadAccountSession,
   loadCart,
   loadCartSummary,
+  loadSiteSwitches,
   placeOrder,
   removeCartItem,
   startPayment,
@@ -50,6 +51,43 @@ describe("loadAccountSession", () => {
       throw new TypeError("Failed to fetch");
     });
     expect(await loadAccountSession()).toEqual({ status: "unavailable" });
+  });
+});
+
+describe("loadSiteSwitches", () => {
+  const DEFAULTS = { demoNotice: false, customerAccounts: true };
+
+  it("asks the store's own /api/site, same origin and uncached", async () => {
+    const fetch = stubFetch(async () => Response.json({ demoNotice: true, customerAccounts: false }));
+
+    expect(await loadSiteSwitches()).toEqual({ demoNotice: true, customerAccounts: false });
+    expect(fetch).toHaveBeenCalledWith("/api/site", { credentials: "same-origin", cache: "no-store" });
+  });
+
+  it("gives the defaults for an error status", async () => {
+    stubFetch(async () => Response.json({ demoNotice: true, customerAccounts: false }, { status: 503 }));
+    expect(await loadSiteSwitches()).toEqual(DEFAULTS);
+  });
+
+  it("gives the defaults for a network error", async () => {
+    stubFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    expect(await loadSiteSwitches()).toEqual(DEFAULTS);
+  });
+
+  it("gives the defaults for a body that is not JSON", async () => {
+    stubFetch(async () => new Response("<html>", { status: 200 }));
+    expect(await loadSiteSwitches()).toEqual(DEFAULTS);
+  });
+
+  it("takes the default of every switch that is missing or not a boolean", async () => {
+    stubFetch(async () => Response.json({ demoNotice: "true" }));
+    expect(await loadSiteSwitches()).toEqual(DEFAULTS);
+    stubFetch(async () => Response.json(null));
+    expect(await loadSiteSwitches()).toEqual(DEFAULTS);
+    stubFetch(async () => Response.json({ demoNotice: true }));
+    expect(await loadSiteSwitches()).toEqual({ demoNotice: true, customerAccounts: true });
   });
 });
 
