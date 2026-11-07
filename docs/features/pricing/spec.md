@@ -21,15 +21,16 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
 | Pricing | stawka VAT dla klasy, obliczenia, cena wariantu, historia cen, autorytatywny odczyt cen |
 | Sklep, panel | wyświetlanie i formatowanie kwot z API; żadnych obliczeń netto, VAT ani stawek |
 
-- Zależność jest jednokierunkowa: `Pricing_Infrastructure → Catalog_Application` (adaptery portów Pricing wołają
-  zapytania Catalog przez `query.bus`, jak `Backoffice\Infrastructure\QueryBusCatalogStatistics`).
+- Zależność jest jednokierunkowa: `Pricing_Infrastructure → Catalog_Application`. Adaptery portów Pricing wołają
+  zapytania Catalog przez `query.bus` (jak `Backoffice\Infrastructure\QueryBusCatalogStatistics`), a Pricing
+  subskrybuje integracyjne zdarzenie Catalog `ProductChanged` (konsument `RepriceOnTaxClassChange`, niżej).
 - Catalog nie zależy od Pricing w żadnej warstwie. Deptrac nie ma żadnej reguły `Catalog_* → Pricing_*`.
 - Pricing zależy od Backoffice wyłącznie przez kontrakt bezpieczeństwa `AuthenticatedStaffMember` z `Backoffice_Application`:
   `Pricing_Infrastructure` (`PriceVoter`, role pracownika) i `Pricing_UI` (aktor zmiany ceny w `ChangePriceController`).
   `Pricing_Domain` i `Pricing_Application` nie zależą od Backoffice, a żadna warstwa Pricing nie zależy od
   `Backoffice_Infrastructure`, `Backoffice_Domain` ani `Backoffice_UI`.
-- Domena Pricing ma własne value objecty (`VariantId`, `TaxClass` jako kod tekstowy; `ProductId` tylko w liście cen
-  panelu) i nie importuje kodu Catalog. Adapter mapuje kod klasy z Catalog na `TaxClass`
+- Domena Pricing ma własne value objecty (`VariantId`, `TaxClass` jako kod tekstowy; `ProductId` w liście cen
+  panelu, w porcie `ProductDirectory::taxClassOf` (`ProductTaxClass`) i w `RepriceProductPrices`) i nie importuje kodu Catalog. Adapter mapuje kod klasy z Catalog na `TaxClass`
   Pricing. Klasa podatkowa wariantu to klasa jego produktu.
 - Odczyt cen (`GetCurrentPrices`) czyta wyłącznie tabele Pricing, bez odczytu z Catalog.
 - Każdy zapis zmiany ceny (panel, seed, `pricing:reconcile-tax`, przeliczenie po zmianie klasy) publikuje `VariantPriceChanged {variantId, source,
@@ -37,9 +38,8 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
   zapis odrzucony albo wycofany nie zostawia zdarzenia. Jedyny konsument (`Pricing_Infrastructure`) unieważnia cache
   sklepu produktu wariantu (`docs/features/product-page/spec.md`, „Unieważnianie”); zdarzenie ze źródła `seed`
   potwierdza bez unieważnienia.
-- Pricing subskrybuje integracyjne zdarzenie Catalog `ProductChanged` (`Catalog_Application`, transport `events`):
-  konsument `RepriceOnTaxClassChange` (`Pricing_Infrastructure`) przelicza ceny po zmianie klasy podatkowej produktu.
-  Poza tym integracje w modularnym monolicie są synchroniczne.
+- Konsument `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, transport `events`) przelicza ceny po zmianie klasy
+  podatkowej produktu. Poza tym integracje w modularnym monolicie są synchroniczne.
 
 ## Klasa podatkowa produktu (Catalog)
 
@@ -199,6 +199,9 @@ occurredAt}` przez outbox. Ceny przelicza konsument `RepriceOnTaxClassChange` (`
   wiadomości (ponowienia transportu `events`, potem `failed`); produkt nieznany Catalogowi → wiadomość obsłużona bez
   zmian; identyfikator produktu w złym formacie → `failed`.
 - `pricing:reconcile-tax` wykrywa rozjazd klasy, gdyby jednak do niego doszło (np. wiadomość w `failed`).
+- Znany przypadek: pierwsza cena wariantu (`SetVariantPriceHandler` bierze klasę z Catalog przed zapisem) zapisana
+  równolegle ze zmianą klasy produktu może powstać w starej klasie, gdy konsument przeliczenia odczyta ceny wcześniej.
+  Brutto jest poprawne, rozbicie VAT nie; rozjazd wykrywa i naprawia `pricing:reconcile-tax`.
 
 ## API
 
