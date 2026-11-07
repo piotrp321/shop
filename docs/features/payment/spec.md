@@ -608,9 +608,11 @@ przekierowanie, link „Opłać zamówienie” przy pustym koszyku i ciasteczku)
 - Płatność wykonana po terminie, potwierdzona po anulowaniu albo druga udana płatność zamówienia wymagają ręcznego
   zwrotu (poza zakresem): są oznaczone w `payment_payment.refund_required_reason` i w logu, bez ekranu w panelu.
   Klient takiego zamówienia widzi „anulowane” i dostaje e-mail o anulowaniu.
-- Drugi e-mail (o płatności, o anulowaniu) jest możliwy tylko przy awarii procesu między wysyłką a zapisem znacznika:
-  wychodzi po wygaśnięciu zajęcia wysyłki (5 min). Równoległe dostarczenie tego samego zdarzenia do dwóch workerów
-  wysyła jeden e-mail (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”).
+- Drugi e-mail (o płatności, o anulowaniu) jest możliwy, gdy wysyłka się udała, a znacznik nie został zapisany:
+  awaria procesu albo bazy przed zapisem (e-mail wychodzi ponownie po wygaśnięciu zajęcia wysyłki, 5 min) albo błąd
+  SMTP zgłoszony po przyjęciu wiadomości przez serwer (zwolnienie zajęcia i ponowienie transportu); także gdy wysyłka
+  trwa dłużej niż zajęcie (limit czasu SMTP jest dużo krótszy). Równoległe dostarczenie tego samego zdarzenia do dwóch
+  workerów wysyła jeden e-mail (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”).
 - Czas wykonania płatności pochodzi od dostawcy (podpisana treść webhooka); API mu ufa.
 - Wywołanie HTTP dostawcy w transakcji rozpoczęcia płatności (limit 5 s); przy symulatorze w tym samym API jedno
   rozpoczęcie zajmuje dwa wątki FrankenPHP. Przy prawdziwym dostawcy do przeniesienia poza transakcję.

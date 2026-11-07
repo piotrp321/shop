@@ -270,7 +270,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   zajęcie; `alreadySent` nic nie robi; `inProgress` to `RecoverableMessageHandlingException` z opóźnieniem do końca
   lease + 1 s (ponawiane bez limitu prób transportu); `claimed` wysyła i zapisuje `markSent`, a błąd wysyłki zwalnia
   zajęcie (`release`) i idzie dalej do ponowień transportu `events`. Dwie równoległe dostawy tego samego zdarzenia
-  wysyłają jeden e-mail; awaria procesu między wysyłką a `markSent` daje drugi e-mail po wygaśnięciu lease.
+  wysyłają jeden e-mail. Drugi e-mail jest możliwy, gdy wysyłka się udała, a znacznik nie został zapisany: awaria
+  procesu albo bazy przed `markSent` (po wygaśnięciu lease) albo błąd SMTP zgłoszony po przyjęciu wiadomości
+  (`release` i ponowienie); także gdy wysyłka trwa dłużej niż lease (limit czasu SMTP jest dużo krótszy).
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.

@@ -280,8 +280,9 @@ Ceny i kwoty liczy wyłącznie serwer:
   ponownie (ponowienie relaya po braku potwierdzenia, `redeliver_timeout`, ponowienie po błędzie handlera).
   Odbiorca jest idempotentny dzięki znacznikowi wysyłki, a równoległe dostarczenie wysyła jeden e-mail dzięki
   zajęciu wysyłki.
-- Wysyłka i zapis znacznika nie są atomowe: awaria procesu między nimi daje drugi e-mail po wygaśnięciu zajęcia
-  (świadome, w ryzykach; odwrotna kolejność groziłaby brakiem e-maila). Błąd SMTP: zwolnienie zajęcia, ponowienia
+- Wysyłka i zapis znacznika nie są atomowe: udana wysyłka bez zapisanego znacznika (awaria procesu albo bazy przed
+  zapisem, błąd SMTP zgłoszony po przyjęciu wiadomości) daje drugi e-mail (świadome, w ryzykach; odwrotna kolejność
+  groziłaby brakiem e-maila). Błąd SMTP: zwolnienie zajęcia, ponowienia
   według strategii transportu `events`, potem `failed`.
 - Adapter `SymfonyOrderConfirmationMailer` (`Ordering_Infrastructure`, Symfony Mailer): wysyłka synchroniczna przez
   transport Mailera, bez Messengera (`framework.mailer.message_bus: false`; inaczej `MailerInterface::send()` wysłałby
@@ -600,8 +601,9 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
   a transakcja jest dłuższa niż sama rezerwacja. Wydajność przy docelowej skali nie jest potwierdzona testami
   obciążeniowymi.
 - Numeracja ma luki (wycofane złożenia) i ujawnia przybliżoną liczbę zamówień.
-- Drugi e-mail jest możliwy przy awarii procesu między wysyłką a zapisem znacznika (po wygaśnięciu zajęcia wysyłki,
-  5 min; outbox daje „co najmniej raz”).
+- Drugi e-mail jest możliwy, gdy wysyłka się udała, a znacznik nie został zapisany: awaria procesu albo bazy przed
+  zapisem (po wygaśnięciu zajęcia wysyłki, 5 min) albo błąd SMTP zgłoszony po przyjęciu wiadomości (zwolnienie
+  zajęcia i ponowienie); także gdy wysyłka trwa dłużej niż zajęcie. Outbox daje „co najmniej raz”.
 - Dane osobowe gościa (e-mail, telefon, adres) są w zamówieniu bez anonimizacji (RODO później).
 - Gość nie czyta zamówienia, tylko status jego płatności, i tylko dopóki ma ciasteczko potwierdzenia (1 godzina,
   P7); szczegóły ma w e-mailu. `accessToken` z odpowiedzi złożenia jest w ciasteczku `HttpOnly` i nie trafia do skryptów
