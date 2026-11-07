@@ -50,3 +50,8 @@ export async function fillAddress(page: Page): Promise<void> {
   await page.getByLabel("Kod pocztowy").fill("00-950");
   await page.getByLabel("Miejscowość").fill("Warszawa");
 }
+
+/** Chooses a payment provider by the name the customer sees, on the checkout page or on the confirmation page. */
+export async function chooseProvider(page: Page, name: string): Promise<void> {
+  await page.getByRole("radio", { name }).check();
+}

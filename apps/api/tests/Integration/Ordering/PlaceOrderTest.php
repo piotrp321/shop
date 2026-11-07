@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Ordering;
 
 use App\Ordering\Application\CartReference;
+use App\Ordering\Application\Command\ExpireUnpaidOrder;
 use App\Ordering\Application\Command\PlacedOrder;
 use App\Ordering\Application\Command\PlaceOrder;
 use App\Ordering\Domain\InsufficientStockForOrder;
@@ -20,8 +21,9 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 /**
  * PlaceOrder on command.bus on shop_test with the Doctrine outbox (the `test_messaging` kernel; rolled back after each
- * test): the order, its lines, the reservation, the emptied cart and the outbox row are written together, and any
- * failure (a shortage of one line, a failed write of the order or of the outbox row) leaves the database as it was.
+ * test): the order, its lines, the reservation, the emptied cart, the outbox row and the delayed ExpireUnpaidOrder on
+ * the `scheduled` queue are written together, and any failure (a shortage of one line, a failed write of the order or
+ * of the outbox row) leaves the database as it was.
  */
 final class PlaceOrderTest extends MessagingKernelTestCase
 {
@@ -59,6 +61,30 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         self::assertStringContainsString($orderId, $body);
     }
 
+    public function testThePlacementStoresTheExpiryOnTheScheduledQueueForFiveMinutesAfterTheDeadline(): void
+    {
+        [$shoes] = OrderingFixture::variant($this->db, 10_000, 5);
+        $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$shoes, 1]]);
+
+        $placed = $this->place($cart, 12_300);
+
+        self::assertSame(1, $this->rows('scheduled'));
+        $row = $this->db->fetchAssociative("SELECT body, EXTRACT(EPOCH FROM available_at - created_at)::float8 AS delay, EXTRACT(EPOCH FROM available_at)::bigint AS available_at, delivered_at FROM messenger_messages WHERE queue_name = 'scheduled'");
+        self::assertIsArray($row);
+        self::assertIsString($row['body']);
+        self::assertStringContainsString(addslashes(ExpireUnpaidOrder::class), $row['body']);
+        self::assertStringContainsString($placed->order->orderId, $row['body']);
+        self::assertNull($row['delivered_at']);
+        $due = $placed->order->paymentDeadline->modify('+5 minutes')->getTimestamp();
+        // The transport stores the moment to the second, rounded up.
+        self::assertIsInt($row['available_at']);
+        self::assertIsFloat($row['delay']);
+        self::assertContains($row['available_at'], [$due, $due + 1], 'due five minutes after the deadline');
+        self::assertEqualsWithDelta(35 * 60, $row['delay'], 2.0);
+        $deadline = $this->db->fetchOne('SELECT EXTRACT(EPOCH FROM payment_deadline - placed_at)::int FROM ordering_order WHERE id = ?', [$placed->order->orderId]);
+        self::assertSame(30 * 60, $deadline);
+    }
+
     public function testAReplayGivesTheSameOrderWithoutASecondReservationOrEvent(): void
     {
         [$shoes] = OrderingFixture::variant($this->db, 10_000, 5);
@@ -74,6 +100,7 @@ final class PlaceOrderTest extends MessagingKernelTestCase
         self::assertSame([5, 1], OrderingFixture::stock($this->db, $shoes));
         self::assertSame([[$shoes, 3]], CartFixture::lines($this->db, $cart), 'the line added after the order stays');
         self::assertSame(1, $this->rows('outbox'));
+        self::assertSame(1, $this->rows('scheduled'), 'one expiry for the order');
     }
 
     public function testAShortageOfTheLastOfThreeLinesLeavesEverythingAsItWas(): void
@@ -119,6 +146,20 @@ final class PlaceOrderTest extends MessagingKernelTestCase
 
         self::assertStringContainsString('forced failure', $failure->getMessage().' '.$failure->getPrevious()?->getMessage());
         self::assertSame($before, $this->snapshot($cart, [$a, $b, $c]));
+    }
+
+    public function testAFailedWriteOfTheExpiryLeavesEverythingAsItWas(): void
+    {
+        [$a] = OrderingFixture::variant($this->db, 10_000, 5);
+        $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$a, 2]]);
+        $before = $this->snapshot($cart, [$a, $a, $a]);
+        $this->db->executeStatement("CREATE FUNCTION test_refuse_insert() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN RAISE EXCEPTION 'forced failure'; END \$\$");
+        $this->db->executeStatement("CREATE TRIGGER test_refuse_insert BEFORE INSERT ON messenger_messages FOR EACH ROW WHEN (NEW.queue_name = 'scheduled') EXECUTE FUNCTION test_refuse_insert()");
+
+        $failure = $this->failure($cart, 2 * 12_300);
+
+        self::assertStringContainsString('forced failure', $failure->getMessage().' '.$failure->getPrevious()?->getMessage());
+        self::assertSame($before, $this->snapshot($cart, [$a, $a, $a]), 'no order, reservation or outbox row without its expiry');
     }
 
     public function testOrderPlacedSurvivesTheSerializerOfTheEventsTransport(): void
@@ -181,6 +222,7 @@ final class PlaceOrderTest extends MessagingKernelTestCase
             'orders' => OrderingFixture::count($this->db, 'SELECT COUNT(*) FROM ordering_order'),
             'order lines' => OrderingFixture::count($this->db, 'SELECT COUNT(*) FROM ordering_order_line'),
             'outbox rows' => $this->rows('outbox'),
+            'scheduled rows' => $this->rows('scheduled'),
         ];
     }
 

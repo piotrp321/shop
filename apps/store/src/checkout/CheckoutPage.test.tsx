@@ -5,8 +5,11 @@ import { type CartView, loadAccountSession, loadCart, type PlaceOrderResult, pla
 import { subscribeToCartChanges } from "@/cart/events";
 import { formatPrice } from "@/catalog/format-price";
 import { CheckoutPage } from "./CheckoutPage";
+import { navigateTo } from "./navigate";
+import type { PaymentProvider } from "./payment-api";
 
 vi.mock("@/api/client", () => ({ loadCart: vi.fn(), loadAccountSession: vi.fn(), placeOrder: vi.fn() }));
+vi.mock("./navigate", () => ({ navigateTo: vi.fn() }));
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -35,6 +38,12 @@ const cart = (gross = 39998, lines: Line[] = [line(A, "Buty trailowe", "czarne, 
   hasExcludedLines,
 });
 
+const PROVIDERS: PaymentProvider[] = [
+  { code: "demo-transfer", name: "Szybki przelew (demo)" },
+  { code: "demo-card", name: "Karta płatnicza (demo)" },
+];
+const REDIRECT_URL = "http://localhost:8000/payment-simulator/demo-transfer/pay/7d3f0a8e-4a1b-4c55-9f1e-2b3c4d5e6f70";
+
 const JAN = { name: "Jan Kowalski", email: "jan.kowalski@example.com" };
 
 const announced: number[] = [];
@@ -45,6 +54,7 @@ beforeEach(() => {
   vi.mocked(loadCart).mockReset();
   vi.mocked(loadAccountSession).mockReset();
   vi.mocked(placeOrder).mockReset();
+  vi.mocked(navigateTo).mockReset();
   push.mockReset();
   keys = 0;
   vi.spyOn(crypto, "randomUUID").mockImplementation(() => `00000000-0000-4000-8000-${String(++keys).padStart(12, "0")}` as `${string}-${string}-${string}-${string}-${string}`);
@@ -60,10 +70,16 @@ afterEach(() => {
 
 const key = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
-async function renderCheckout(view: CartView = cart(), session: { name: string; email: string } | null = null) {
+type PageProps = Parameters<typeof CheckoutPage>[0];
+
+async function renderCheckout(
+  view: CartView = cart(),
+  session: { name: string; email: string } | null = null,
+  props: PageProps = { providers: PROVIDERS, pendingOrderNumber: null },
+) {
   vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: view });
   vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session });
-  render(<CheckoutPage />);
+  render(<CheckoutPage {...props} />);
   await screen.findByRole("heading", { level: 1, name: "Kasa" });
   await act(async () => {});
 }
@@ -71,6 +87,8 @@ async function renderCheckout(view: CartView = cart(), session: { name: string; 
 const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
 const type = (label: string, value: string) => fireEvent.change(field(label), { target: { value } });
 const submitButton = () => screen.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }) as HTMLButtonElement;
+
+const choose = (name: string) => fireEvent.click(screen.getByRole("radio", { name }));
 
 function fillGuestForm() {
   type("E-mail", "anna.nowak@example.com");
@@ -83,6 +101,7 @@ function fillContact(fullName?: string) {
   type("Ulica i numer", "ul. Długa 5/3");
   type("Kod pocztowy", "00-950");
   type("Miejscowość", "Warszawa");
+  choose("Szybki przelew (demo)");
 }
 
 const GUEST_INPUT = {
@@ -93,6 +112,7 @@ const GUEST_INPUT = {
   postalCode: "00-950",
   city: "Warszawa",
   expectedTotalGross: 39998,
+  provider: "demo-transfer",
 };
 
 async function submit(result: PlaceOrderResult) {
@@ -108,7 +128,7 @@ describe("CheckoutPage loading", () => {
   it("says it is loading until the cart and the session arrive", async () => {
     vi.mocked(loadCart).mockReturnValue(new Promise(() => {}));
     vi.mocked(loadAccountSession).mockReturnValue(new Promise(() => {}));
-    render(<CheckoutPage />);
+    render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
 
     expect(await screen.findByText("Wczytywanie…")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
@@ -121,7 +141,7 @@ describe("CheckoutPage loading", () => {
     vi.mocked(loadCart).mockResolvedValue({ status: "ok", data: cart() });
     vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
     fail();
-    render(<CheckoutPage />);
+    render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
 
     expect(await screen.findByText("Nie udało się wczytać kasy")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Spróbuj ponownie" }));
@@ -132,7 +152,7 @@ describe("CheckoutPage loading", () => {
   it("says the session expired when the cart answers 401", async () => {
     vi.mocked(loadCart).mockResolvedValue({ status: "unauthorized" });
     vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: JAN });
-    render(<CheckoutPage />);
+    render(<CheckoutPage providers={PROVIDERS} pendingOrderNumber={null} />);
 
     expect(await screen.findByText(/Twoja sesja wygasła\. Zaloguj się ponownie\./)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Zaloguj się" }).getAttribute("href")).toBe("/auth/login?returnTo=%2Fcheckout");
@@ -210,7 +230,7 @@ describe("CheckoutPage placing the order", () => {
     await renderCheckout();
     fillGuestForm();
     const current = key(keys);
-    await submit({ status: "ok", number: "R-100001" });
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
 
     expect(placeOrder).toHaveBeenCalledWith(GUEST_INPUT, current);
     expect(announced).toEqual([0]);
@@ -220,7 +240,7 @@ describe("CheckoutPage placing the order", () => {
   it("sends a customer's form without an e-mail", async () => {
     await renderCheckout(cart(), JAN);
     fillContact();
-    await submit({ status: "ok", number: "R-100002" });
+    await submit({ status: "ok", number: "R-100002", redirectUrl: null });
 
     expect(placeOrder).toHaveBeenCalledWith(
       {
@@ -230,6 +250,7 @@ describe("CheckoutPage placing the order", () => {
         postalCode: "00-950",
         city: "Warszawa",
         expectedTotalGross: 39998,
+        provider: "demo-transfer",
       },
       expect.any(String),
     );
@@ -262,7 +283,7 @@ describe("CheckoutPage placing the order", () => {
 
     await submit({ status: "failed" });
     expect(screen.getByRole("alert").textContent).toContain(SUBMIT_FAILED);
-    await submit({ status: "ok", number: "R-100001" });
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
 
     const used = vi.mocked(placeOrder).mock.calls.map((call) => call[1]);
     expect(used).toEqual([formKey, formKey]);
@@ -352,7 +373,7 @@ describe("CheckoutPage placing the order", () => {
     expect(submitButton().disabled).toBe(false);
     expect(placeOrder).toHaveBeenCalledTimes(1);
 
-    await submit({ status: "ok", number: "R-100001" });
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
     const [first, second] = vi.mocked(placeOrder).mock.calls;
     expect(second[0].expectedTotalGross).toBe(41000);
     expect(second[1]).not.toBe(first[1]);
@@ -436,7 +457,7 @@ describe("CheckoutPage placing the order", () => {
     expect(field("E-mail").value).toBe("anna.nowak@example.com");
     expect(placeOrder).toHaveBeenCalledTimes(1);
 
-    await submit({ status: "ok", number: "R-100001" });
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
     const [first, second] = vi.mocked(placeOrder).mock.calls;
     expect(second[1]).not.toBe(first[1]);
     expect(second[0]).toEqual(first[0]);
@@ -491,5 +512,123 @@ describe("CheckoutPage placing the order", () => {
     expect(screen.getByRole("alert").textContent).toBe(SUBMIT_FAILED);
     expect(push).not.toHaveBeenCalled();
     expect(announced).toEqual([]);
+  });
+});
+
+describe("CheckoutPage payment provider", () => {
+  const group = () => screen.getByRole("radiogroup", { name: "Sposób płatności" });
+  const CHOOSE = "Wybierz sposób płatności.";
+
+  it("offers the providers of the API in a required group with no default", async () => {
+    await renderCheckout();
+
+    const radios = within(group()).getAllByRole("radio") as HTMLInputElement[];
+    expect(radios.map((radio) => radio.labels?.[0]?.textContent)).toEqual(["Szybki przelew (demo)", "Karta płatnicza (demo)"]);
+    expect(radios.map((radio) => radio.checked)).toEqual([false, false]);
+    expect(group().getAttribute("aria-required")).toBe("true");
+  });
+
+  it("does not place the order and says what is missing when no provider is chosen", async () => {
+    await renderCheckout();
+    type("E-mail", "anna.nowak@example.com");
+    type("Imię i nazwisko", "Anna Nowak");
+    type("Telefon", "600 100 200");
+    type("Ulica i numer", "ul. Długa 5/3");
+    type("Kod pocztowy", "00-950");
+    type("Miejscowość", "Warszawa");
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(placeOrder).not.toHaveBeenCalled();
+    expect(screen.getByText(CHOOSE)).toBeTruthy();
+    expect(group().getAttribute("aria-invalid")).toBe("true");
+    expect(group().getAttribute("aria-describedby")).toBe(screen.getByText(CHOOSE).id);
+    expect(document.activeElement).toBe(screen.getAllByRole("radio")[0]);
+    expect(submitButton().disabled).toBe(false);
+  });
+
+  it("clears the message when a provider is chosen and sends the choice", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    choose("Karta płatnicza (demo)");
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+
+    expect(vi.mocked(placeOrder).mock.calls[0][0].provider).toBe("demo-card");
+    expect(screen.queryByText(CHOOSE)).toBeNull();
+  });
+
+  it("goes to the page of the provider when the order has an address, and keeps the button locked", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "ok", number: "R-100001", redirectUrl: REDIRECT_URL });
+
+    expect(navigateTo).toHaveBeenCalledWith(REDIRECT_URL);
+    expect(push).not.toHaveBeenCalled();
+    expect(announced).toEqual([0]);
+    expect(submitButton().disabled).toBe(true);
+  });
+
+  it("goes to the confirmation page when the payment could not be started", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+
+    expect(push).toHaveBeenCalledWith("/checkout/confirmation");
+    expect(navigateTo).not.toHaveBeenCalled();
+  });
+
+  it("keeps the key of the order when the provider changes between two clicks", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    const formKey = key(keys);
+    await submit({ status: "failed" });
+    choose("Karta płatnicza (demo)");
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+
+    expect(vi.mocked(placeOrder).mock.calls.map((call) => call[1])).toEqual([formKey, formKey]);
+    expect(vi.mocked(placeOrder).mock.calls.map((call) => call[0].provider)).toEqual(["demo-transfer", "demo-card"]);
+  });
+
+  it("shows a 422 for the provider at the group", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    await submit({ status: "invalid", violations: [{ propertyPath: "provider", title: CHOOSE }] });
+
+    expect(screen.getByText(CHOOSE).id).toBe(group().getAttribute("aria-describedby"));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.activeElement).toBe(screen.getAllByRole("radio")[0]);
+  });
+
+  it.each([
+    ["could not be read", null],
+    ["is empty", []],
+  ])("says payments are unavailable instead of the button when the list of providers %s", async (_name, providers) => {
+    await renderCheckout(cart(), null, { providers, pendingOrderNumber: null });
+
+    expect(screen.getByText("Płatności są chwilowo niedostępne. Spróbuj za chwilę.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" })).toBeNull();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+  });
+});
+
+describe("CheckoutPage with an order waiting for its payment", () => {
+  it("offers to pay the order next to the message about the empty cart", async () => {
+    await renderCheckout(cart(0, []), null, { providers: PROVIDERS, pendingOrderNumber: "R-100001" });
+
+    expect(screen.getByText("Twój koszyk jest pusty.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Opłać zamówienie R-100001" }).getAttribute("href")).toBe("/checkout/confirmation");
+  });
+
+  it("does not offer it without such an order", async () => {
+    await renderCheckout(cart(0, []));
+
+    expect(screen.queryByRole("link", { name: /^Opłać zamówienie/ })).toBeNull();
+  });
+
+  it("does not offer it above a cart that can be ordered", async () => {
+    await renderCheckout(cart(), null, { providers: PROVIDERS, pendingOrderNumber: "R-100001" });
+
+    expect(screen.queryByRole("link", { name: /^Opłać zamówienie/ })).toBeNull();
   });
 });

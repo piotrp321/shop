@@ -8,15 +8,15 @@ Issues: #91
 Zakres: `apps/api/src/Payment`, `apps/api/src/PaymentSimulator`, `apps/api/src/Ordering`, `apps/api/src/Shared`, `apps/api/tests/Unit/Payment`, `apps/api/tests/Unit/PaymentSimulator`, `apps/api/tests/Unit/Ordering`, `apps/api/tests/Unit/Shared`, `apps/api/tests/Integration/Payment`, `apps/api/tests/Integration/PaymentSimulator`, `apps/api/tests/Integration/Ordering`, `apps/api/tests/Functional/Payment`, `apps/api/tests/Functional/PaymentSimulator`, `apps/api/tests/Functional/Ordering`, `apps/api/tests/Functional/Shared`, `apps/api/tests/Support`, `apps/api/config/packages/messenger.yaml`, `apps/api/config/packages/test/messenger.yaml`, `apps/api/config/packages/test_messaging/messenger.yaml`, `apps/api/config/packages/nelmio_api_doc.yaml`, `apps/api/config/packages/security.yaml`, `apps/api/config/services.yaml`, `apps/api/deptrac.yaml`, `apps/api/phpunit.dist.xml`, `apps/api/fixtures/stock.yaml`, `apps/api/openapi.json`, `apps/api/CLAUDE.md`, `apps/store/src/api/schema.d.ts`, `apps/store/src/api/client.ts`, `apps/store/src/api/client.test.ts`, `apps/store/src/checkout`, `apps/store/app/checkout`, `apps/store/app/api/checkout`, `apps/store/CLAUDE.md`, `infra/docker-compose.yml`, `infra/scripts/init-env.sh`, `Makefile`, `e2e/tests/checkout-guest.spec.ts`, `e2e/tests/checkout-customer.spec.ts`, `e2e/support`, `docs/features/checkout/spec.md`
 
 **Zależność od CHECKOUT (#90).** Zamówienie (`Order`, Ordering) powstaje w statusie `new` z rezerwacją stanów
-o kluczu `orderId` (Inventory `ReserveStock`); rezerwacja nie wygasa sama (`docs/features/checkout/spec.md`,
-„Ryzyka”). Inventory ma już `ReleaseReservation(reservationKey)` (`ReservationTransitionHandler`: aktywna →
-zwolniona; już zwolniona → bez zmian; zatwierdzona → `ReservationStateConflict`; nieznana → `ReservationNotFound`).
+o kluczu `orderId` (Inventory `ReserveStock`). Inventory zwalnia ją przez `ReleaseReservation(reservationKey)`
+(`ReservationTransitionHandler`: aktywna → zwolniona; już zwolniona → bez zmian; zatwierdzona →
+`ReservationStateConflict`; nieznana → `ReservationNotFound`).
 
 ## Cel i zakres
 
 - Klient (gość i zalogowany) wybiera w kasie jednego z dwóch udawanych dostawców płatności, po złożeniu zamówienia
   przechodzi na stronę płatności dostawcy (symulator), płaci albo odrzuca płatność i wraca do sklepu.
-- Dwóch dostawców za jednym portem `PaymentProvider` w nowym contexcie Payment. Dostawcy różnią się API
+- Dwóch dostawców za jednym portem `PaymentProvider` w contexcie Payment. Dostawcy różnią się API
   (format kwoty, uwierzytelnienie, schemat podpisu i treść webhooka), adaptery tłumaczą je na model Payment.
 - Webhooki dostawców: weryfikacja podpisu, deduplikacja po identyfikatorze zdarzenia, sprawdzenie kwoty.
 - Udana płatność zmienia status zamówienia na `paid` i wysyła e-mail „płatność przyjęta”.
@@ -51,21 +51,21 @@ Decyzje użytkownika:
 | A4 | Anulowanie nieopłaconego zamówienia przez opóźnioną wiadomość `ExpireUnpaidOrder` (`DelayStamp`) na nowym transporcie Doctrine `scheduled`, zapisaną atomowo z zamówieniem w transakcji złożenia, na tym samym połączeniu. Handler jest idempotentny i zawsze sprawdza aktualny stan i termin zamówienia. Bez nowej zależności (Symfony Scheduler) i bez crona. Dostawy webhooków symulatora idą osobnym transportem Doctrine `payment_simulator`. |
 | A5 | Gość ma dostęp do swojego zamówienia (rozpoczęcie płatności, odczyt statusu) przez losowy token dostępu zwracany przy złożeniu (`accessToken`), jak id koszyka gościa; klient zalogowany przez `sub` z tokena. Regułę dostępu sprawdza Ordering (`GetOrderForPayment` z danymi dostępu zwraca `null` przy braku dostępu); token nie opuszcza Ordering. |
 | A6 | Przejścia statusu zamówienia (`new → paid`, `new → cancelled`) jako metody agregatu `Order`, bez Symfony Workflow (wchodzi w ORDER-MANAGEMENT, gdy przejść jest więcej). |
-| T1 | Sekrety dostawców (klucze API i sekrety podpisu webhooków, po dwa na dostawcę) w `.env.local` z `infra/scripts/init-env.sh`, który dopisuje brakujące klucze z listy „dopisywanych” do istniejącego pliku (dziś każdy brak kończy się błędem i odtworzeniem stosu). |
+| T1 | Sekrety dostawców (klucze API i sekrety podpisu webhooków, po dwa na dostawcę) w `.env.local` z `infra/scripts/init-env.sh`, który dopisuje brakujące klucze z listy „dopisywanych” do istniejącego pliku (brak każdego innego klucza kończy się błędem i wymaga odtworzenia stosu). |
 | D9 | Rate limiting webhooków odłożony do kroku 10 planu `docs/features/agentic-software-house/plan.md`, jak rate limiting składania zamówień (CHECKOUT T2). |
 
 ## Bounded contexty i zależności
 
 | Context / moduł | Odpowiada za |
 |---|---|
-| Payment (nowy) | agregat `Payment`, rozpoczęcie płatności, webhooki (podpis, deduplikacja, kwota), port `PaymentProvider` i dwa adaptery, status płatności dla sklepu |
+| Payment | agregat `Payment`, rozpoczęcie płatności, webhooki (podpis, deduplikacja, kwota), port `PaymentProvider` i dwa adaptery, status płatności dla sklepu |
 | Ordering | statusy `paid` i `cancelled`, termin płatności, token dostępu gościa i reguła dostępu, `GetOrderForPayment`, `MarkOrderPaid`, `ExpireUnpaidOrder`, e-maile o płatności i anulowaniu |
-| Inventory | `ReleaseReservation(orderId)` przy anulowaniu (bez zmian w Inventory) |
-| PaymentSimulator (nowy, poza contextami) | dwa udawane API dostawców, strona płatności, wysyłka podpisanych webhooków z ponowieniami |
+| Inventory | `ReleaseReservation(orderId)` przy anulowaniu |
+| PaymentSimulator (poza contextami) | dwa udawane API dostawców, strona płatności, wysyłka podpisanych webhooków z ponowieniami |
 | Shared | marker `Unavailable` (503, ogólna odpowiedź bez `detail`) w `Shared\Domain\Exception` i jego mapowanie w `ProblemDetailsSubscriber` |
 | Sklep | wybór dostawcy, przekierowanie, strona potwierdzenia ze statusem płatności, ponowienie; żadnych obliczeń |
 
-Reguły Deptrac (nowe warstwy `Payment_*` i `PaymentSimulator`; żaden context nie zależy od Payment ani od
+Reguły Deptrac (warstwy `Payment_*` i `PaymentSimulator`; żaden context nie zależy od Payment ani od
 PaymentSimulator, a PaymentSimulator od żadnego contextu):
 
 | Warstwa | Może zależeć od |
@@ -83,19 +83,19 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 - `Payment_UI → Customer_Application` wyłącznie przez `AuthenticatedCustomer` (jak `Cart_UI`, `Ordering_UI`).
 - Payment ma własne value objecty (`OrderId`, `Amount`, `Currency` itd.), nie importuje kodu domenowego Ordering.
 
-## Ordering: zmiany
+## Ordering
 
 ### Model
 
 - `OrderStatus`: `new`, `paid`, `cancelled`.
-- Nowe pola `Order`: `paymentDeadline` (`placedAt` + 30 min, P1), `accessToken` (gość: 32 losowe bajty w base64url,
+- Pola `Order` cyklu płatności: `paymentDeadline` (`placedAt` + 30 min, P1), `accessToken` (gość: 32 losowe bajty w base64url,
   43 znaki; klient: `null`), `paidAt`, `paymentId` (id udanej płatności Payment, kopia), `cancelledAt`,
   `cancellationReason` (`payment_timeout`), `paymentNotificationSentAt`, `cancellationNotificationSentAt`.
-- `Order::place(…)` dostaje `accessToken` (generuje handler: `random_bytes`, tylko gość) i liczy `paymentDeadline`.
-- `grantsAccess(access, now)`: `guest(token)` — zamówienie gościa i `hash_equals` tokenu; `customer(customerId)` —
-  zamówienie klienta o tym `customerId`. Każdy inny przypadek `false`.
-- `markPaid(paymentId, amount, executedAt, now): PaymentResult` (enum domenowy; `executedAt` to czas wykonania
-  płatności u dostawcy):
+- `Order::place(…)` przyjmuje `accessToken` (generuje handler: `random_bytes`, tylko gość) i liczy `paymentDeadline`.
+- `grantsAccess(claim)` (`AccessClaim`): `guest(token)` — zamówienie gościa i `hash_equals` tokenu;
+  `customer(customerId)` — zamówienie klienta o tym `customerId`. Każdy inny przypadek `false`.
+- `markPaid(paymentId, amount, currency, executedAt, now): PaymentResult` (enum domenowy; `executedAt` to czas
+  wykonania płatności u dostawcy):
   - `new` i `executedAt > paymentDeadline` → `paidAfterDeadline` bez zmian (P1; zamówienie zostanie anulowane
     po oknie dostarczenia);
   - `new`, `executedAt ≤ paymentDeadline`: `amount` (kwota i waluta) równe `totals.gross` → `paid`, `paidAt = now`, `paymentId`,
@@ -117,7 +117,9 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
 - `GetOrderForPayment(orderId, access)` (`query.bus`), `access` = `guest(token)` albo `customer(customerId)` →
   `OrderForPayment {orderId, number, status, totalGross, currency, paymentDeadline, payable}` albo `null`, gdy
   zamówienia nie ma, `orderId` nie jest UUID albo `grantsAccess` daje `false` (jeden wynik dla wszystkich przypadków).
-  Bez danych osobowych i bez tokenu.
+  Bez danych osobowych i bez tokenu. Zamówienie jest czytane z bazy także wtedy, gdy transakcja czytała je
+  wcześniej (bez kopii z pamięci ORM), więc kolejny odczyt w tej samej transakcji widzi zmiany zatwierdzone
+  w międzyczasie.
 - `MarkOrderPaid(orderId, paymentId, amount, currency, executedAt)` (`command.bus`) → `MarkOrderPaidResult`
   (`Ordering_Application`: `paid`, `alreadyPaid`, `paidByAnotherPayment`, `paidAfterDeadline`, `orderCancelled`). Nieznane zamówienie: `OrderToPayNotFound`;
   konflikt wersji przy zapisie: `OrderChangedConcurrently` (oba wyjątki w `Ordering_Application`).
@@ -143,15 +145,14 @@ PaymentSimulator, a PaymentSimulator od żadnego contextu):
   przekazujemy do realizacji.”.
 - `OrderCancelled` → `SendOrderCancelled`: temat „Zamówienie R-100001 anulowane”, treść: powitanie, numer,
   „Nie otrzymaliśmy płatności w terminie, więc anulowaliśmy zamówienie.”.
-- E-mail z potwierdzeniem złożenia: zdanie „O płatności poinformujemy w osobnej wiadomości.” zastępuje „Zamówienie
-  czeka na płatność do 14:35 (dd.mm.rrrr). Bez płatności anulujemy je automatycznie.” (`Europe/Warsaw`).
+- E-mail z potwierdzeniem złożenia kończy się zdaniem „Zamówienie czeka na płatność do 14:35 (dd.mm.rrrr). Bez
+  płatności anulujemy je automatycznie.” (`Europe/Warsaw`).
 - Treści składają klasy w `Ordering_Application` (jak `OrderConfirmationText`), testowane jednostkowo.
 
 ### API Ordering
 
-- `OrderView` dostaje `paymentDeadline` (RFC 3339, UTC) i `accessToken` (string dla gościa, `null` dla klienta).
+- `OrderView` ma `paymentDeadline` (RFC 3339, UTC) i `accessToken` (string dla gościa, `null` dla klienta).
   `status` przyjmuje `new`, `paid`, `cancelled`. Powtórzenie złożenia (200) zwraca ten sam `accessToken`.
-- Treści żądań złożenia bez zmian.
 
 ### Persystencja
 
@@ -201,7 +202,7 @@ interface PaymentProvider {
   code(): ProviderCode
   createSession(PaymentId, Amount, orderNumber, returnUrl, expiresAt): ProviderSession {providerPaymentId, redirectUrl}
   cancelSession(providerPaymentId): SessionCancellation (cancelled | alreadyPaid | alreadyRejected)
-  parseWebhook(headers, rawBody, now): ProviderEvent {eventId, providerPaymentId, outcome: succeeded|failed, amount, executedAt?} | Ignored
+  parseWebhook(headers, rawBody, now): ProviderEvent {eventId, providerPaymentId, outcome: succeeded|failed, amount, executedAt?} | null  // null: zdarzenie innego typu
 }
 ```
 
@@ -252,7 +253,11 @@ Komenda `StartPayment(orderId, access, provider, idempotencyKey)` (`access` jak 
    - `alreadyPaid` → `PaymentInProgress` (409, „Płatność została już wykonana. Czekamy na jej potwierdzenie.”),
      bez zmian; potwierdzenie przyniesie webhook;
    - błąd dostawcy → `PaymentProviderUnavailable` (503), bez zmian.
-5. `Payment::start(…)`, zapis (`add`), potem `PaymentProvider::createSession(…, expiresAt = paymentDeadline)`
+5. Stan zamówienia z kroku 3 jest sprawdzany ponownie na świeżym odczycie `PayableOrders::find` (po blokadzie
+   z kroku 4): webhook poprzedniej płatności, który trzymał blokadę jej wiersza, mógł w tym czasie zatwierdzić
+   płatność `succeeded` i zamówienie `paid`, a wtedy krok 4 nie znajduje oczekującej płatności. Zamówienie `paid`:
+   `OrderAlreadyPaid` (409), `cancelled` albo po terminie: `PaymentDeadlinePassed` (409), bez zmian.
+6. `Payment::start(…)`, zapis (`add`), potem `PaymentProvider::createSession(…, expiresAt = paymentDeadline)`
    i `attachProviderSession`, zapis. Wywołania HTTP są w transakcji (5 s limit każde): błąd dostawcy wycofuje całość
    (także lokalne anulowanie poprzedniej płatności). Sesja anulowana u dostawcy zostaje anulowana, a anulowanie
    u dostawcy jest idempotentne (anulowana sesja: znów `200`), więc ponowienie przechodzi krok 4 tak samo.
@@ -270,7 +275,7 @@ Weryfikacja podpisu i parsowanie to walidacja wejścia na granicy (jak `MapReque
   → 400 (stały ogólny `detail`, bez rozróżnienia przyczyny w odpowiedzi; przyczyna w logu). Zdarzenie innego typu
   → 204 bez komendy. Port zgłasza błąd wyjątkiem `Payment_Application` (`InvalidWebhook`), który kontroler tłumaczy
   na 400; adaptery nie znają HTTP.
-- Komenda `HandleProviderWebhook(provider, eventId, providerPaymentId, outcome, amount, executedAt)`, transakcja
+- Komenda `HandleProviderWebhook(provider, ProviderEvent {eventId, providerPaymentId, outcome, amount, executedAt})`, transakcja
   `command.bus`:
 
 1. Blokada płatności po `(provider, providerPaymentId)` (`PESSIMISTIC_WRITE`, jak koszyk; równoległe dostawy tego
@@ -293,7 +298,7 @@ Weryfikacja podpisu i parsowanie to walidacja wejścia na granicy (jak `MapReque
 
 Zapytanie `GetPaymentStatus(orderId, access)` → `PaymentStatusView {orderNumber, orderStatus: new|paid|cancelled,
 paymentDeadline, totalGross, currency, canStartPayment, latestPayment: {provider, status, resumeUrl} | null}`.
-Dostęp przez `PayableOrders` jak w `StartPayment` krok 2. `canStartPayment` = zamówienie płatne (`payable`);
+Dostęp przez `PayableOrders` jak w `StartPayment` krok 1. `canStartPayment` = zamówienie płatne (`payable`);
 przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`StartPayment` krok 4). `resumeUrl` =
 `Payment::resumeUrl(payable)`.
 
@@ -384,19 +389,19 @@ i `failed` zostają:
 
 Błędy RFC 9457. Odpowiedzi `Cache-Control: private, no-store`. `security.yaml`:
 `^/api/v1/orders/[^/]+/payments?$` i `^/api/v1/payments/webhooks/` → `PUBLIC_ACCESS`,
-`^/api/v1/payment-providers$` (`GET`) → `PUBLIC_ACCESS`; `/api/v1/me/...` objęte regułą `ROLE_CUSTOMER`.
+`^/api/v1/payment-providers$` (`GET`, `HEAD`) → `PUBLIC_ACCESS`; `/api/v1/me/...` objęte regułą `ROLE_CUSTOMER`.
 `/payment-simulator/...` jest poza firewallami `/api/v1`.
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
 | `GET /api/v1/payment-providers` | 200 `[{code, name}]` | — |
-| `POST /api/v1/orders/{orderId}/payments` (gość), nagłówki `Idempotency-Key`, `Order-Access-Token`, body `{provider}` | 201 `PaymentView {paymentId, provider, status, redirectUrl}`; 200 powtórzenie | 400 klucz; 404 zamówienie (także brak lub zły token, zamówienie klienta, id spoza UUID); 409 `OrderAlreadyPaid`, `PaymentDeadlinePassed`, `PaymentInProgress`, `PaymentIdempotencyKeyReused` (schemat `PaymentConflictProblem` z `enum` typów); 415; 422 (`provider` brak, nieznany); 503 dostawca |
+| `POST /api/v1/orders/{orderId}/payments` (gość), nagłówki `Idempotency-Key`, `Order-Access-Token`, body `{provider}` | 201 `PaymentView {paymentId, provider, status, redirectUrl}`; 200 powtórzenie | 400 klucz, zły JSON; 401 wysłany niepoprawny token sesji; 404 zamówienie (także brak lub zły token, zamówienie klienta, id spoza UUID); 409 `OrderAlreadyPaid`, `PaymentDeadlinePassed`, `PaymentInProgress`, `PaymentIdempotencyKeyReused` (schemat `PaymentConflictProblem` z `enum` typów); 415; 422 (`provider` brak, nieznany); 503 dostawca albo (token sesji wysłany) klucze wystawcy niedostępne |
 | `POST /api/v1/me/orders/{orderId}/payments` (klient) | jak wyżej | 401, 503 klucze wystawcy; pozostałe jak wyżej |
-| `GET /api/v1/orders/{orderId}/payment` (gość, `Order-Access-Token`) | 200 `PaymentStatusView` | 404 |
-| `GET /api/v1/me/orders/{orderId}/payment` (klient) | 200 `PaymentStatusView` | 401, 404 |
-| `POST /api/v1/payments/webhooks/{provider}` | 204 | 400 (podpis, treść), 404 (dostawca, płatność), 422 kwota, 503 `OrderBusy` |
+| `GET /api/v1/orders/{orderId}/payment` (gość, `Order-Access-Token`) | 200 `PaymentStatusView` | 401 wysłany niepoprawny token sesji; 404; 503 (token sesji wysłany) klucze wystawcy niedostępne |
+| `GET /api/v1/me/orders/{orderId}/payment` (klient) | 200 `PaymentStatusView` | 401, 404, 503 klucze wystawcy |
+| `POST /api/v1/payments/webhooks/{provider}` | 204 | 400 (podpis, treść), 401 wysłany niepoprawny token sesji, 404 (dostawca, płatność), 422 kwota, 503 `OrderBusy` |
 
-Nowe `type` (prefiks `tag:piotrp321.github.io,2026:shop/problems/`): `order-already-paid`,
+`type` problemów płatności (prefiks `tag:piotrp321.github.io,2026:shop/problems/`): `order-already-paid`,
 `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused`.
 
 Komunikaty `detail`: „Zamówienie jest już opłacone.”, „Minął termin płatności za to zamówienie.”, „Płatność za to
@@ -409,7 +414,7 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 
 ### BFF
 
-- `POST /api/checkout` (bez zmian w regułach `Origin`, `Content-Type`, `Idempotency-Key`): body dostaje `provider`.
+- `POST /api/checkout` (reguły `Origin`, `Content-Type`, `Idempotency-Key` jak w CHECKOUT): body niesie `provider`.
   Brak albo kod spoza listy z `GET /api/v1/payment-providers` → 422 z naruszeniem pola `provider` („Wybierz sposób
   płatności.”) bez składania zamówienia; lista niedostępna → 503 bez składania. Po sukcesie złożenia (201, 200)
   ustawia `store_order_confirmation` z `{orderId, number, email, totalGross, currency, accessToken|null}`, potem
@@ -423,17 +428,17 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 - `POST /api/checkout/payment` (te same reguły `Origin`, `Content-Type`, `Idempotency-Key`), body `{provider}`:
   zamówienie z `store_order_confirmation` (brak lub zły podpis: 404 „Nie znaleźliśmy zamówienia.” bez API);
   odpowiedź `{redirectUrl}`; 404, 409 (z `type`), 422 przekazywane z `detail` i `violations`; 401 sesji kończy
-  sesję; 503 przy niedostępnym API (także 400, 415 API).
+  sesję; 503 przy niedostępnym API (także 400, 415 API i 401 endpointu gościa).
 - `GET /api/checkout/payment`: `PaymentStatusView` z API dla zamówienia z ciasteczka; 404 bez ciasteczka i przy 404
   API; 401 (brak sesji przy zamówieniu klienta, 401 API kończy sesję); 503 przy innym błędzie API.
-- `src/api/client.ts`: `placeOrder` (wynik z `redirectUrl`), `startPayment`, `getPaymentStatus`,
-  `listPaymentProviders` (serwer).
+- `src/api/client.ts`: `placeOrder` (wynik z `redirectUrl`), `startPayment`, `getPaymentStatus`;
+  `src/checkout/payment-api.ts`: `listPaymentProviders` (serwer).
 
 ### UI
 
 - `/checkout`: grupa radiowa „Sposób płatności” z dostawcami z `GET /api/v1/payment-providers` (wymagana, bez
   domyślnego; brak wyboru: „Wybierz sposób płatności.” przy grupie, bez żądania). Lista niedostępna: „Płatności są
-  chwilowo niedostępne. Spróbuj za chwilę.” zamiast przycisku. Przycisk bez zmian (CHECKOUT P9). Sukces
+  chwilowo niedostępne. Spróbuj za chwilę.” zamiast przycisku. Przycisk jak w CHECKOUT (P9). Sukces
   z `redirectUrl` → `window.location.assign(redirectUrl)`; bez `redirectUrl` → `/checkout/confirmation`.
   Zmiana dostawcy nie zmienia `Idempotency-Key` złożenia (dostawca nie należy do odcisku zamówienia).
 - `/checkout` z pustym koszykiem i poprawnym `store_order_confirmation` (np. klient cofnął się ze strony dostawcy
@@ -454,7 +459,7 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | odczyt statusu nieudany (503, sieć) | numer i kwota z ciasteczka, „Nie udało się sprawdzić statusu płatności.” i przycisk „Sprawdź ponownie” |
 | odczyt statusu: 401 | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem (`returnTo=/checkout/confirmation`) |
 | odczyt statusu: 404 | „Nie znaleźliśmy zamówienia.” i link do sklepu |
-| brak ciasteczka | bez zmian względem CHECKOUT |
+| brak ciasteczka | jak w CHECKOUT |
 
 - „Zapłać”: `Idempotency-Key` nowy przy każdej próbie i po zmianie dostawcy, ten sam przy ponowieniu niepewnego
   wyniku (błąd sieci, 5xx, 503) z tym samym dostawcą. Wyniki:
@@ -558,6 +563,7 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | W4 | 10 równoległych `StartPayment` z tym samym kluczem | jedna płatność, pozostałe powtórzenia albo 409 |
 | W5 | 2 równoległe `StartPayment` z różnymi kluczami | jedna płatność `pending`, drugie 409 `PaymentInProgress` |
 | W6 | nowa próba (anulowanie sesji) równolegle z decyzją „Zapłać” w symulatorze | albo sesja anulowana i nowa płatność, albo 409 i zamówienie opłacone przez webhook; nigdy obie płatności udane |
+| W7 | webhook sukcesu poprzedniej płatności trzyma blokadę jej wiersza (płatność `succeeded` i zamówienie `paid` zapisane, transakcja otwarta), `StartPayment` z nowym kluczem czeka na blokadę, webhook zatwierdza | `OrderAlreadyPaid` (409), żadna nowa płatność, zamówienie `paid` |
 
 - E-maile `SendPaymentReceived`, `SendOrderCancelled` w Mailpit; zdarzenie dostarczone drugi raz po kolei: jeden
   e-mail.
@@ -569,7 +575,7 @@ przez innego klienta (404), 400, 401, 404 (każdy przypadek dostępu), 409 (każ
 415, 422, 503 (dostawca niedostępny), `no-store`; webhook: każdy przypadek podpisu, deduplikacja, kwota, nieznany
 dostawca i płatność, 503 przy konflikcie wersji. Symulator: 401 klucza API, strona płatności (otwarta, opłacona,
 odrzucona, anulowana, po terminie), CSRF, anulowanie (otwarta, anulowana drugi raz, opłacona, odrzucona). Marker
-`Unavailable`: 503 z `detail`.
+`Unavailable`: 503 bez `detail`.
 
 ### Architektura
 
@@ -595,19 +601,8 @@ przekierowanie, link „Opłać zamówienie” przy pustym koszyku i ciasteczku)
 - `payment-resume.spec.ts`: gość składa zamówienie, na stronie symulatora cofa się przyciskiem „Wstecz” na `/checkout`,
   wybiera link „Opłać zamówienie R-…”, na stronie potwierdzenia „Wróć do płatności” otwiera tę samą sesję, „Zapłać”
   daje „Płatność przyjęta”.
-- Komentarze o rezerwacjach w testach i `fixtures/stock.yaml` opisują stan po PAYMENT (opłacone rezerwacje zostają
-  do wysyłki, ORDER-MANAGEMENT).
-
-## Zmiany dokumentacji (razem z implementacją)
-
-- `apps/api/CLAUDE.md`: context Payment (port dostawców, webhooki, transakcja z `MarkOrderPaid`), PaymentSimulator,
-  transporty `scheduled` i `payment_simulator`, `payment-simulator:seed-demo` i `payment:seed-demo` oraz kolejka `scheduled` w `ordering:seed-demo` w opisie
-  `make seed`, nowe `type` problemów,
-  marker `Unavailable`.
-- `apps/store/CLAUDE.md`: kasa z płatnością, BFF `/api/checkout/payment`.
-- `docs/features/checkout/spec.md`: statusy po złożeniu, `OrderView` (`paymentDeadline`, `accessToken`), treść
-  e-maila, strona potwierdzenia, decyzja P7 (gość odczytuje status płatności tokenem), usunięcie ryzyka „rezerwacja
-  nie wygasa”.
+- Komentarze o rezerwacjach w testach E2E i `fixtures/stock.yaml`: rezerwacja opłaconego zamówienia zostaje do
+  wysyłki (ORDER-MANAGEMENT).
 
 ## Ryzyka i ograniczenia
 
@@ -630,5 +625,5 @@ przekierowanie, link „Opłać zamówienie” przy pustym koszyku i ciasteczku)
   webhooki symulatora, a sklep po 30 s pokazuje „Nie mamy jeszcze potwierdzenia płatności.”.
 - Gość traci możliwość zapłaty po utracie ciasteczka potwierdzenia (inne urządzenie, wylogowanie); zamówienie
   wygasa.
-- Klient może zarezerwować stan na 35 minut bez płatności (wcześniej bez limitu).
+- Klient może zarezerwować stan na 35 minut bez płatności.
 - Wydajność transportów Doctrine z opóźnieniem przy docelowej skali niepotwierdzona testami obciążeniowymi.

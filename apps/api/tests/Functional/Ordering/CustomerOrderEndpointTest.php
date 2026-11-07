@@ -43,6 +43,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
             ['variantId' => $map, 'productName' => 'Mapa', 'variantLabel' => '', 'quantity' => 3, 'unitGross' => 1_230, 'lineGross' => 3_690],
         ], $order['lines']);
         self::assertSame(['net' => 13_000, 'vat' => 2_990, 'gross' => 15_990, 'currency' => 'PLN'], $order['totals']);
+        self::assertNull($order['accessToken'], 'a customer reaches the order by the token of the session');
 
         self::assertSame(1, OrderingFixture::count($this->connection, "SELECT COUNT(*) FROM ordering_order WHERE id = ? AND owner_type = 'customer' AND customer_id = ? AND email = ?", [$order['orderId'], TestTokenFactory::CUSTOMER_ID, self::TOKEN_EMAIL]));
         self::assertIsString($order['orderId']);
@@ -65,6 +66,8 @@ final class CustomerOrderEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
         self::assertSame($first, $repeated);
+        self::assertArrayHasKey('accessToken', $repeated);
+        self::assertNull($repeated['accessToken']);
         self::assertSame(1, $this->orders());
         self::assertSame(1, $this->reservations());
         self::assertSame([10, 1], OrderingFixture::stock($this->connection, $shoes));

@@ -458,6 +458,12 @@ jobs:
         if: env.FULL_CI == 'true'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=
 
+      # Shell tests of infra/scripts/init-env.sh in a temporary copy of the layout (infra/scripts/test-init-env.sh);
+      # no services needed.
+      - name: init-env.sh tests
+        if: env.FULL_CI == 'true'
+        run: make init-env-test
+
       - name: Service logs
         if: failure()
         run: docker compose logs --tail=200

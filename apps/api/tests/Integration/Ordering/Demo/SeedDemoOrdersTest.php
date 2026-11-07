@@ -18,7 +18,8 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 
 /**
- * ordering:seed-demo on shop_test (rolled back after the test), after orders were placed through PlaceOrder.
+ * ordering:seed-demo on shop_test (rolled back after the test), after orders were placed through PlaceOrder: the orders
+ * and the queue of their ExpireUnpaidOrder messages (`scheduled`) go, the other queues stay.
  */
 final class SeedDemoOrdersTest extends KernelTestCase
 {
@@ -49,6 +50,26 @@ final class SeedDemoOrdersTest extends KernelTestCase
         self::assertSame(0, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM ordering_order_line'));
         $next = $this->connection->fetchOne("SELECT nextval('ordering_order_number_seq')");
         self::assertGreaterThan($number, $next, 'the numbers go on');
+    }
+
+    public function testRemovesTheScheduledQueueOnlyAndKeepsTheOutboxAndFailed(): void
+    {
+        foreach (['scheduled', 'scheduled', 'outbox', 'failed', 'events'] as $queue) {
+            $this->connection->executeStatement(
+                "INSERT INTO messenger_messages (body, headers, queue_name, created_at, available_at) VALUES ('{}', '{}', ?, now(), now() + interval '35 minutes')",
+                [$queue],
+            );
+        }
+
+        $tester = new CommandTester(new Application(self::$kernel ?? self::bootKernel())->find('ordering:seed-demo'));
+        $exitCode = $tester->execute([]);
+
+        self::assertSame(Command::SUCCESS, $exitCode, $tester->getDisplay());
+        self::assertSame(
+            ['events' => 1, 'failed' => 1, 'outbox' => 1],
+            $this->connection->fetchAllKeyValue('SELECT queue_name, COUNT(*) FROM messenger_messages GROUP BY queue_name ORDER BY queue_name'),
+            'the ExpireUnpaidOrder messages of the removed orders are gone, everything else stays',
+        );
     }
 
     private function place(string $cart): PlacedOrder

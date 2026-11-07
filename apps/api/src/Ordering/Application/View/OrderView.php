@@ -8,7 +8,8 @@ use App\Ordering\Domain\Order;
 use App\Ordering\Domain\OrderLine;
 
 /**
- * An order as the customer gets it after placing it and in the confirmation email. Amounts are in grosze.
+ * An order as the customer gets it after placing it and in the emails about it. Amounts are in grosze. The access
+ * token goes only to the guest who placed the order (null for a customer); the emails never show it.
  */
 final readonly class OrderView
 {
@@ -26,6 +27,8 @@ final readonly class OrderView
         public array $lines,
         public OrderTotalsView $totals,
         public \DateTimeImmutable $placedAt,
+        public \DateTimeImmutable $paymentDeadline,
+        public ?string $accessToken,
     ) {
     }
 
@@ -56,6 +59,8 @@ final readonly class OrderView
             ),
             new OrderTotalsView($totals->net()->amount(), $totals->vat()->amount(), $totals->gross()->amount(), $totals->currency()->value),
             $order->placedAt(),
+            $order->paymentDeadline(),
+            $order->accessToken()?->toString(),
         );
     }
 }

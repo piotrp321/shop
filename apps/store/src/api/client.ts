@@ -1,5 +1,5 @@
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import { conflictReason, type OrderConflictReason } from "@/checkout/problems";
+import { conflictReason, type OrderConflictReason, type PaymentConflictReason, paymentConflictReason } from "@/checkout/problems";
 import type { components, paths } from "./schema";
 
 export type ApiClient = Client<paths>;
@@ -141,6 +141,8 @@ export type PlaceOrderInput = {
   city: string;
   /** `totals.gross` of the cart the customer saw; the API only compares it with the total it computes. */
   expectedTotalGross: number;
+  /** Code of the payment provider chosen from `GET /api/v1/payment-providers`; the BFF checks it. */
+  provider: string;
 };
 
 export type OrderViolation = NonNullable<components["schemas"]["Problem"]["violations"]>[number];
@@ -150,7 +152,7 @@ export type OrderViolation = NonNullable<components["schemas"]["Problem"]["viola
  * of a conflict is told by the `type` of the problem (`reason`), never by its text.
  */
 export type PlaceOrderResult =
-  | { status: "ok"; number: string }
+  | { status: "ok"; number: string; redirectUrl: string | null }
   | { status: "invalid"; detail?: string; violations: OrderViolation[] }
   | { status: "conflict"; reason: OrderConflictReason; detail?: string }
   | { status: "not_found"; detail?: string }
@@ -158,8 +160,9 @@ export type PlaceOrderResult =
   | { status: "failed" };
 
 /**
- * For the browser: places the order of the cart through the store's `/api/checkout`. `idempotencyKey` is chosen by
- * the checkout page and sent again on a retry, so a repeated request never places a second order. Never rejects.
+ * For the browser: places the order of the cart through the store's `/api/checkout`; `ok` carries the page of the
+ * provider where the customer pays, or null when the order stands but its payment could not be started.
+ * `idempotencyKey` is chosen by the checkout page and sent again on a retry, so a repeated request never places a second order. Never rejects.
  */
 export async function placeOrder(input: PlaceOrderInput, idempotencyKey: string): Promise<PlaceOrderResult> {
   try {
@@ -170,10 +173,18 @@ export async function placeOrder(input: PlaceOrderInput, idempotencyKey: string)
       headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(input),
     });
-    const body = (await response.json().catch(() => null)) as { number?: unknown; type?: unknown; detail?: unknown; violations?: unknown } | null;
+    const body = (await response.json().catch(() => null)) as {
+      number?: unknown;
+      redirectUrl?: unknown;
+      type?: unknown;
+      detail?: unknown;
+      violations?: unknown;
+    } | null;
     const detail = typeof body?.detail === "string" ? body.detail : undefined;
     if (response.ok) {
-      return typeof body?.number === "string" ? { status: "ok", number: body.number } : { status: "failed" };
+      return typeof body?.number === "string"
+        ? { status: "ok", number: body.number, redirectUrl: typeof body.redirectUrl === "string" ? body.redirectUrl : null }
+        : { status: "failed" };
     }
     switch (response.status) {
       case 401:
@@ -184,6 +195,83 @@ export async function placeOrder(input: PlaceOrderInput, idempotencyKey: string)
         return { status: "conflict", reason: conflictReason(body?.type), detail };
       case 422:
         return { status: "invalid", detail, violations: Array.isArray(body?.violations) ? (body.violations as OrderViolation[]) : [] };
+      default:
+        return { status: "failed" };
+    }
+  } catch {
+    return { status: "failed" };
+  }
+}
+
+/**
+ * How a call to the store's `/api/checkout/payment` ended. `redirectUrl` is the page of the provider; it is null when
+ * the API has none to give (the payment is not pending any more), and then the status is to be read again.
+ */
+export type StartPaymentResult =
+  | { status: "ok"; redirectUrl: string | null }
+  | { status: "conflict"; reason: PaymentConflictReason; detail?: string }
+  | { status: "invalid"; detail?: string; violations: OrderViolation[] }
+  | { status: "not_found"; detail?: string }
+  | { status: "unauthorized" }
+  | { status: "failed" };
+
+/**
+ * For the browser: starts a payment of the order just placed at `provider` through the store's `/api/checkout/payment`.
+ * `idempotencyKey` is new for every attempt and every change of provider and sent again on a retry of an uncertain
+ * result, so a repeated request never starts a second payment. Never rejects.
+ */
+export async function startPayment(provider: string, idempotencyKey: string): Promise<StartPaymentResult> {
+  try {
+    const response = await fetch("/api/checkout/payment", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ provider }),
+    });
+    const body = (await response.json().catch(() => null)) as { redirectUrl?: unknown; type?: unknown; detail?: unknown; violations?: unknown } | null;
+    const detail = typeof body?.detail === "string" ? body.detail : undefined;
+    if (response.ok) {
+      return { status: "ok", redirectUrl: typeof body?.redirectUrl === "string" ? body.redirectUrl : null };
+    }
+    switch (response.status) {
+      case 401:
+        return { status: "unauthorized" };
+      case 404:
+        return { status: "not_found", detail };
+      case 409:
+        return { status: "conflict", reason: paymentConflictReason(body?.type), detail };
+      case 422:
+        return { status: "invalid", detail, violations: Array.isArray(body?.violations) ? (body.violations as OrderViolation[]) : [] };
+      default:
+        return { status: "failed" };
+    }
+  } catch {
+    return { status: "failed" };
+  }
+}
+
+export type PaymentStatusView = components["schemas"]["PaymentStatusView"];
+
+export type PaymentStatusReadResult =
+  | { status: "ok"; data: PaymentStatusView }
+  | { status: "not_found" }
+  | { status: "unauthorized" }
+  | { status: "failed" };
+
+/** For the browser: the payment status of the order just placed, from the store's `/api/checkout/payment`. Never rejects. */
+export async function getPaymentStatus(): Promise<PaymentStatusReadResult> {
+  try {
+    const response = await fetch("/api/checkout/payment", { method: "GET", credentials: "same-origin", cache: "no-store" });
+    switch (response.status) {
+      case 200: {
+        const data = (await response.json().catch(() => null)) as PaymentStatusView | null;
+        return typeof data?.orderNumber === "string" ? { status: "ok", data } : { status: "failed" };
+      }
+      case 401:
+        return { status: "unauthorized" };
+      case 404:
+        return { status: "not_found" };
       default:
         return { status: "failed" };
     }
