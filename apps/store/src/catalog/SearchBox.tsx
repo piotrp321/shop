@@ -39,7 +39,7 @@ export function SearchBox() {
       <label htmlFor={FIELD_ID} className="sr-only">
         Szukaj produktów
       </label>
-      <Input id={FIELD_ID} type="search" name="q" placeholder="Szukaj produktów" className="w-40 sm:w-64" />
+      <Input id={FIELD_ID} type="search" name="q" placeholder="Szukaj produktów" className="flex-1 sm:w-64 sm:flex-none" />
       <Button type="submit" variant="outline" size="sm">
         Szukaj
       </Button>
