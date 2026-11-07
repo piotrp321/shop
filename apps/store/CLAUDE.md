@@ -9,6 +9,10 @@ Ta wersja Next.js ma zmiany łamiące: API, konwencje i struktura plików mogą 
 Przed pisaniem kodu przeczytaj odpowiedni przewodnik w `node_modules/next/dist/docs/` (w kontenerze `store`,
 `make -C apps/store shell`) i zwracaj uwagę na ostrzeżenia o wycofywanych funkcjach.
 `next dev` nie generuje `AGENTS.md`, bo `next.config.ts` ma `agentRules: false`. Nie usuwaj tej opcji.
+`next dev` nie zapisuje cache Turbopacka na dysku (`experimental.turbopackFileSystemCacheForDev: false`). `.next` leży
+w zamontowanym katalogu źródeł, więc przeżywa kontener, a serwer uruchomiony na cache zapisanym dla innych źródeł
+(nowy stos po zmianie gałęzi, jak między rundami `/integration`) wysyła w pętli komunikat HMR `restart`. Nie usuwaj
+tej opcji.
 
 ## Komendy
 
