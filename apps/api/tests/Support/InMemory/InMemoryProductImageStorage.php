@@ -18,6 +18,10 @@ final class InMemoryProductImageStorage implements ProductImageStorage
 
     public function store(string $contents): string
     {
+        if ($this->unavailable) {
+            throw ProductImageStorageUnavailable::because(new \RuntimeException('down'));
+        }
+
         return $this->stored[] = 'originals/'.hash('sha256', $contents).'.jpg';
     }
 

@@ -26,6 +26,7 @@ use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Catalog\Search\UsesTemporarySearchAlias;
 use App\Tests\Integration\Inventory\StockFixture;
 use App\Tests\Support\InMemory\SpyStorefrontCache;
+use App\Tests\Support\OriginalImages;
 use Doctrine\ORM\EntityManagerInterface;
 use Elastic\Elasticsearch\Response\Elasticsearch;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
@@ -47,6 +48,7 @@ final class SearchReindexFlowTest extends MessagingKernelTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        OriginalImages::exist(self::getContainer(), 'originals/'.str_repeat('a', 64).'.jpg');
         $this->maintenance()->setup();
         self::getContainer()->set(
             ElasticsearchProductIndexer::class,

@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Catalog\Infrastructure\Image;
 
+use App\Catalog\Application\Image\InvalidImageUpload;
 use App\Shared\Domain\Exception\InvalidInput;
 
 final class InvalidImage extends \DomainException implements InvalidInput
 {
     public static function tooLarge(): self
     {
-        return new self('Plik jest za duży.');
+        return new self(InvalidImageUpload::TOO_LARGE);
     }
 
     public static function unsupportedType(): self

@@ -42,4 +42,12 @@ final readonly class CreateProductRequest
         public mixed $variants = null,
     ) {
     }
+
+    /**
+     * Only after the body was validated.
+     */
+    public function data(): ProductWriteData
+    {
+        return ProductWriteData::of($this->name, $this->slug, $this->shortDescription, $this->mainCategoryId, $this->additionalCategoryIds, $this->taxClass, $this->images, $this->variantAxes, $this->variants);
+    }
 }

@@ -35,6 +35,7 @@ final class BackofficeProductViewsTest extends KernelTestCase
     private MessageBusInterface $queryBus;
     private DoctrineCategoryRepository $categories;
     private DoctrineProductRepository $products;
+    private EntityManagerInterface $entityManager;
     private Category $category;
 
     protected function setUp(): void
@@ -44,6 +45,7 @@ final class BackofficeProductViewsTest extends KernelTestCase
         $this->queryBus = $bus;
         $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
         self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $this->entityManager = $entityManager;
         $this->categories = new DoctrineCategoryRepository($entityManager);
         $this->products = new DoctrineProductRepository($entityManager);
         $this->category = CategoryFactory::createOne(['name' => 'Obuwie']);
@@ -118,6 +120,16 @@ final class BackofficeProductViewsTest extends KernelTestCase
         $list = $this->list(term: 'namiot', categoryId: $this->category->id()->toString(), status: 'draft');
 
         self::assertSame(['Namiot szkic'], $this->names($list));
+    }
+
+    public function testTheDraftListUsesThePartialIndexOfDrafts(): void
+    {
+        $connection = $this->entityManager->getConnection();
+        $connection->executeStatement('SET LOCAL enable_seqscan = off');
+
+        $lines = $connection->fetchFirstColumn("EXPLAIN SELECT p.id FROM catalog_product p WHERE p.status = 'draft' AND (p.name, p.id) > ('Alfa', CAST('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60' AS uuid)) ORDER BY p.name, p.id LIMIT 26");
+
+        self::assertStringContainsString('catalog_product_draft_name_id_idx', implode("\n", array_map(static fn (mixed $line): string => \is_string($line) ? $line : '', $lines)));
     }
 
     public function testAnUnknownStatusIsInvalid(): void

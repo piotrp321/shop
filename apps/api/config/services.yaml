@@ -203,6 +203,13 @@ when@test: &test
         test.product_images.storage:
             alias: product_images.storage
             public: true
+        # Public (and so never inlined), so a functional test can replace the image storage with a stub that is down.
+        App\Catalog\Infrastructure\Image\FlysystemProductImageStorage:
+            public: true
+            arguments:
+                $filesystem: '@product_images.storage'
+                $maxBytes: 67108864 # 64 MB
+                $maxPixels: 50000000 # 50 MP
         # Tests switch the search backend (a temporary index, a failing stub) through this service.
         App\Tests\Support\SwitchableProductSearch:
             public: true

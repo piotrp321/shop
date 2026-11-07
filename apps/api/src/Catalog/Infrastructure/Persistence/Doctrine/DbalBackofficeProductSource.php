@@ -21,7 +21,6 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
     // main category or one of its additional categories is in the subtree: the path of every category starts with
     // the path of its ancestors (materialized path), so the subtree is a prefix match on the path.
     private const string TERM = 'p.name ILIKE :pattern';
-    private const string STATUS = 'p.status = :status';
     private const string CURSOR = '(p.name, p.id) > (:after_name, CAST(:after_id AS uuid))';
     private const string CATEGORY = <<<'SQL'
         (
@@ -55,9 +54,10 @@ final readonly class DbalBackofficeProductSource implements BackofficeProductSou
             $parameters['prefix'] = self::escapeLike($category->toString()).'%';
         }
         if (null !== $status) {
-            // The status is a constant of the domain; for drafts the planner can use the partial index (name, id).
-            $conditions[] = self::STATUS;
-            $parameters['status'] = $status->value;
+            // The status is a value of the domain enum, never input, and goes into the statement as a literal: only
+            // then can the planner prove the predicate of the partial index (name, id) WHERE status = 'draft' that
+            // keeps the list of the few drafts cheap (a bound parameter could not use it in a generic plan).
+            $conditions[] = "p.status = '".$status->value."'";
         }
         if (null !== $after) {
             $conditions[] = self::CURSOR;
