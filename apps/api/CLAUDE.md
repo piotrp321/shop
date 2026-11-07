@@ -91,6 +91,17 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wiersza wskazanego jako koszyk gościa (może to być koszyk innego klienta). Odczyty (`GetCart`, `GetCartSummary`) idą przez DBAL,
   bez blokady i bez transakcji. Linie są zapisywane w miejscu po wariancie, więc usunięcie i ponowne dodanie wariantu
   w jednej zmianie nie trafia na unikalny indeks `(cart_id, variant_id)`.
+- Wyjątek: blokada zapisów promocji (Pricing, `docs/features/pricing/spec.md`, „Promocje”). Promocje zapisują się
+  przez rekordy Doctrine według ogólnej zasady, a DBAL służy tylko do blokady doradczej transakcji
+  (`PostgresPromotionWriteLock`: `pg_advisory_xact_lock` na stałym kluczu Pricing, poza transakcją adapter odmawia) i do
+  dwóch zapytań między promocjami (nakładanie okresów, wariant w aktywnej promocji). `PlanPromotion`,
+  `RevisePromotion` i `DeletePromotion` biorą blokadę na wyłączność, więc niezmiennik „wariant najwyżej w jednej
+  promocji naraz” jest sprawdzany na zatwierdzonych danych; `SetVariantPrice` bierze ją w trybie współdzielonym, więc
+  zmiany cen nie czekają na siebie, a zmiana ceny i równoległy zapis promocji idą po kolei. Każdy z tych handlerów
+  czyta zegar (port `Clock`) dopiero po blokadzie, a cena dostaje ten czas (`changed_at`), więc cena zapisana przed
+  promocją „od teraz” jest przed jej startem (`startOfNow`: `now` ucięte do sekundy + 1 s), a cena wariantu w promocji
+  aktywnej w chwili zapisu to 409 `PriceLockedByPromotion` przed sprawdzeniem wersji. `ReconcileTax` i przeliczenie
+  po zmianie klasy (`reprice`, brutto bez zmian) blokady nie biorą.
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony
   dispatch na tym samym połączeniu (savepoint), a ceny (Pricing `GetCurrentPrices`) i nazwy (Catalog
@@ -463,7 +474,13 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`), dwa 409 komend pracownika Ordering
   (`order-transition-not-allowed`, `refund-not-pending`; schemat `BackofficeOrderConflictProblem` w obszarze `admin`) i cztery 409 Payment: `order-already-paid`,
   `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
+  Trzy 409 Pricing w panelu: `price-locked-by-promotion`, `promotion-overlap`, `promotion-not-editable` (schemat
+  `PricingConflictProblem` w obszarze `admin`, razem z `about:blank` konfliktu wersji ceny i promocji).
   Nowy typ dopisz do `enum` schematu swojego contextu.
+- Wyjątek, który niesie dane dla klienta (np. listę kolidujących wariantów), implementuje
+  `App\Shared\Domain\Exception\ExtendedProblem` (`problemExtensions()`): subscriber dopisuje te pola do dokumentu
+  problemu, nigdy w miejsce `type`, `title`, `status`, `detail`, `instance` ani `violations`, i nie przy 5xx. Dziś:
+  `PromotionOverlap` (`conflictingVariantIds`).
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
   (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Wyjątek: znacznik
   `Unavailable` (zależność nieosiągalna albo przegrany wyścig, który ponowienie rozwiązuje) to 503 bez `detail`, jak
@@ -601,6 +618,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wskazują miejsce w ciele (`ImageNotFound`, `UnknownVariant`, `UnknownCategory`, `SlugRequired`), `ProductWriteFailures`
   zamienia na 422 z naruszeniem pola; błędy z typem (409) opisuje schemat `ProductConflictProblem`. Odpowiedzi zapisu to
   widok edycji odczytany po zapisie, `private, no-store`.
+- Promocje w panelu (`/api/v1/admin/promotions`, Pricing UI, `docs/features/pricing/spec.md`): `GET` lista (`status`,
+  `after`, `perPage`) i szczegóły dla każdego pracownika, `POST`, `PUT /{id}` i `DELETE /{id}?version=` dla `admin`
+  i `marketing` (`PromotionVoter`, `MANAGE_PROMOTIONS`, przed treścią). Treść waliduje DTO (typy ścisłe, czasy RFC 3339
+  ze strefą, lista UUID), reguły promocji domena; `PromotionWriteFailures` zamienia `InvalidPromotion` na naruszenie
+  przy jego polu, a `InvalidPromotionVariants` na naruszenia `variantIds[<indeks>]`. Odpowiedzi zapisu to `GetPromotion`
+  odczytane po zapisie, `private, no-store`.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
