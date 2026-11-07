@@ -230,7 +230,9 @@ w Cart; indeks Elasticsearch ich nie zawiera). Listy panelu stronicują po produ
   zapytaniem. Wynik: produkty strony, a w każdym jego warianty w kolejności pozycji.
 - `GetPriceHistory(variantId, …)`: nieznany wariant 404; wariant bez ceny: pusta lista.
 - `ReconcileTax`: przechodzi ceny wariantów; klasa z Catalog `ListVariantIdentities`.
-- Kontrakt „Przyszła zmiana klasy podatkowej”: `reprice` wszystkich cen wariantów produktu w tej samej transakcji.
+- Przeliczenie po zmianie klasy podatkowej (`RepriceOnTaxClassChange` na integracyjnym `ProductChanged`): warianty
+  i klasa produktu z Catalog `ListProductVariants([productId], includeDrafts: true)`, `reprice` każdej ceny z klasą
+  inną niż klasa produktu, każdej w osobnej transakcji (`docs/features/pricing/spec.md`).
 - Seed: `ListVariantIdentities`, wzorce po `key`; wariant bez wzorca kończy seed błędem bez zmian w danych.
 
 ## Inventory
