@@ -24,6 +24,13 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'ordering_order')]
 #[ORM\UniqueConstraint(name: self::NUMBER_CONSTRAINT, columns: ['number'])]
 #[ORM\UniqueConstraint(name: self::IDEMPOTENCY_KEY_CONSTRAINT, columns: ['idempotency_key'])]
+// The list of the panel: the migration makes the first two descending (placed_at DESC, id DESC), which the mapping
+// cannot express, and adds an index on lower(email) the mapping does not know (an expression, so the schema tools
+// ignore it). The condition of the pending refunds is written as PostgreSQL returns it, so the mapped schema equals
+// the migrated one.
+#[ORM\Index(name: 'ordering_order_placed_at_id_idx', columns: ['placed_at', 'id'])]
+#[ORM\Index(name: 'ordering_order_status_placed_at_id_idx', columns: ['status', 'placed_at', 'id'])]
+#[ORM\Index(name: 'ordering_order_pending_refund_idx', columns: ['refund_due_at', 'id'], options: ['where' => '((refund_amount IS NOT NULL) AND (refund_completed_at IS NULL))'])]
 class OrderRecord
 {
     public const string NUMBER_CONSTRAINT = 'ordering_order_number_key';
