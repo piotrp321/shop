@@ -24,6 +24,21 @@ Uruchamiaj z katalogu głównego przez `make -C apps/store <cel>`:
 
 Klienta API generuje `make api-client` z katalogu głównego.
 
+## Obraz produkcyjny
+
+- `apps/store/Dockerfile` ma etapy `node` (wspólna baza), `build`, `prod` i `dev`; `dev` jest ostatni, bo compose buduje
+  sklep bez `target`. `docker build --target prod apps/store` działa bez stosu i bez sekretów.
+- `build` uruchamia `next build` z `STORE_STANDALONE=1`. Tylko ta zmienna włącza w `next.config.ts` `output:
+  "standalone"`; lokalny `STORE_MODE=production` (`next build` i `next start` w compose) buduje jak dotąd, bez standalone.
+  Nie ustawiaj `STORE_STANDALONE` nigdzie poza Dockerfile.
+- `prod` zawiera tylko serwer standalone (prześledzone zależności, `.next/static`, `public`), działa jako użytkownik
+  `node` (`.next` jest jego, bo cache ISR zapisuje się w czasie działania) i startuje `node server.js`
+  (`HOSTNAME=0.0.0.0`, `PORT=3000`). Konfigurację (`API_CATALOG_URL`, `API_INTERNAL_URL`, `STORE_URL`, `REDIS_URL`,
+  `KEYCLOAK_*`, sekrety) czyta ze zmiennych środowiska przy starcie, nic nie jest wbudowane w obraz.
+- Build nie woła API: strony prerenderowane w buildzie (`/cart`, 404) powstają bez menu (komunikat o drzewie kategorii
+  w logu buildu to stan oczekiwany), a menu dostają przy pierwszej rewalidacji tagu `catalog`
+  (`storefront:cache:purge-all`).
+
 ## Struktura
 
 - `app/` – trasy App Router, w tym route handlery logowania w `app/auth/`, koszyka w `app/api/cart/`, kasy
