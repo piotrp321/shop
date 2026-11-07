@@ -39,8 +39,9 @@ const ORDER_EMAIL_SUBJECTS = {
 
 /**
  * Waits (up to 30 s) for an e-mail of the order `number` to `to` and returns its subject and text: the confirmation of
- * the placement (default), the payment received, the shipment or the cancellation. Searching by address and subject matters: the same address (a demo
- * account) gets e-mails for every order of every run, and one order sends several e-mails.
+ * the placement (default), the payment received, the shipment or the cancellation. Searching by address and subject
+ * matters: the same address (a demo account) gets e-mails for every order of every run, and one order sends several
+ * e-mails.
  */
 export async function waitForOrderEmail(
   to: string,

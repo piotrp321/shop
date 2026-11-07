@@ -3,20 +3,22 @@ import { customers, staff } from "../support/accounts";
 import { waitForOrderEmail } from "../support/mailpit";
 import { historyEntry, openOrderHistory, placeAndPayOrder } from "../support/orders";
 import { confirmWithNote, openOrderDetail, openOrderList, openPanelAs, searchOrder } from "../support/panel-orders";
+import { WEBHOOK_TIMEOUT_MS } from "../support/payment";
 import { logInAs } from "../support/shop";
 
 // Two products of the checkout tests, for the units each run takes (fixtures/stock.yaml): the shipped order takes its unit
 // for good, the cancelled one gives it back.
 const SHIPPED_PRODUCT = "Buty szosowe Norvane Tempo 600";
 const CANCELLED_PRODUCT = "Buty trailowe Norvane Hala 500";
-// The test makes its own orders and finds them by their numbers: the list holds the orders of earlier runs.
-const SHIPPING_TIMEOUT_MS = 240_000;
+// The limit of a test: the payment webhook, the panel login (two attempts and the wait for the next TOTP window of the
+// staff login), the wait for an e-mail in Mailpit and 90 s for the rest of the steps.
+const ORDER_FLOW_TIMEOUT_MS = WEBHOOK_TIMEOUT_MS + 2 * 15_000 + 30_000 + 30_000 + 90_000;
 
 test("Jan pays an order and finds it in his history, warehouse ships it in the panel, and the history and the e-mail say it was shipped", async ({
   page,
   browser,
 }) => {
-  test.setTimeout(SHIPPING_TIMEOUT_MS);
+  test.setTimeout(ORDER_FLOW_TIMEOUT_MS);
 
   await page.goto("/");
   await logInAs(page, customers.jan);
@@ -74,7 +76,7 @@ test("support cancels Anna's paid order with a note, the panel shows the refund 
   page,
   browser,
 }) => {
-  test.setTimeout(SHIPPING_TIMEOUT_MS);
+  test.setTimeout(ORDER_FLOW_TIMEOUT_MS);
 
   await page.goto("/");
   await logInAs(page, customers.anna);
