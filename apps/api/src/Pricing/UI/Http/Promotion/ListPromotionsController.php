@@ -69,6 +69,6 @@ final class ListPromotionsController
             throw $failure;
         }
 
-        return PromotionReader::private(new JsonResponse(PromotionListResponse::of($list)));
+        return PromotionResponder::private(new JsonResponse(PromotionListResponse::of($list)));
     }
 }

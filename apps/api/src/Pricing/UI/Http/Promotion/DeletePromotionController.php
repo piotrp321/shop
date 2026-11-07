@@ -59,6 +59,6 @@ final readonly class DeletePromotionController
 
         $this->commandBus->dispatch(new DeletePromotion($id, (int) $version));
 
-        return PromotionReader::private(new JsonResponse(null, Response::HTTP_NO_CONTENT));
+        return PromotionResponder::private(new JsonResponse(null, Response::HTTP_NO_CONTENT));
     }
 }

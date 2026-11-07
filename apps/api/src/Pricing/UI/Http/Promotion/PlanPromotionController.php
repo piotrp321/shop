@@ -25,7 +25,7 @@ final readonly class PlanPromotionController
 {
     public function __construct(
         #[Autowire(service: 'command.bus')] private MessageBusInterface $commandBus,
-        private PromotionReader $reader,
+        private PromotionResponder $responder,
     ) {
     }
 
@@ -83,7 +83,7 @@ final readonly class PlanPromotionController
             throw PromotionWriteFailures::translate($failure, $promotion, $variantIds);
         }
 
-        $response = $this->reader->respond($id, Response::HTTP_CREATED);
+        $response = $this->responder->respond($id, Response::HTTP_CREATED);
         $response->headers->set('Location', '/api/v1/admin/promotions/'.$id);
 
         return $response;

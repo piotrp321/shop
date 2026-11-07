@@ -24,7 +24,7 @@ final readonly class RevisePromotionController
 {
     public function __construct(
         #[Autowire(service: 'command.bus')] private MessageBusInterface $commandBus,
-        private PromotionReader $reader,
+        private PromotionResponder $responder,
     ) {
     }
 
@@ -89,6 +89,6 @@ final readonly class RevisePromotionController
             throw PromotionWriteFailures::translate($failure, $promotion, $variantIds);
         }
 
-        return $this->reader->respond($id);
+        return $this->responder->respond($id);
     }
 }

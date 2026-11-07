@@ -12,7 +12,7 @@ use Symfony\Component\Routing\Attribute\Route;
 
 final readonly class PromotionController
 {
-    public function __construct(private PromotionReader $reader)
+    public function __construct(private PromotionResponder $responder)
     {
     }
 
@@ -36,6 +36,6 @@ final readonly class PromotionController
     )]
     public function __invoke(string $id): JsonResponse
     {
-        return $this->reader->respond($id);
+        return $this->responder->respond($id);
     }
 }

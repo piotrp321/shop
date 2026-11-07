@@ -14,7 +14,7 @@ use Symfony\Component\Messenger\MessageBusInterface;
 /**
  * The response of a promotion: GetPromotion read after the write (or for the read itself), `private, no-store`.
  */
-final class PromotionReader
+final class PromotionResponder
 {
     use HandleTrait;
 
