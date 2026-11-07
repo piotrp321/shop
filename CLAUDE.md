@@ -39,7 +39,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
     `make -C apps/api check`.
   - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc). Główny
     `make check` woła też `make -C infra/k8s check`: `helm lint`, render chartu dla `prod` i `ci`, schemat wartości,
-    `kubeconform`, `shellcheck` i testy renderu (fale, ścieżki ingressu `auth`, middleware, klucze sekretu, nazwy Jobów,
+    `kubeconform`, `shellcheck`, `actionlint` (workflowy z `.github/workflows` razem ze skryptami ich kroków) i testy
+    renderu (fale, ścieżki ingressu `auth`, middleware, klucze sekretu, nazwy Jobów,
     CronJob, obrazy: własne z rejestru po digeście, pozostałe `tag@digest` z tagiem jak w compose, bez `latest`;
     przełączniki `demoNotice`, `customerAccounts`, `orderMail` i poczta Keycloaka w środowisku sklepu, api, workera i Jobów
     oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem) oraz testy
@@ -84,6 +85,24 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   Zakładanie lub aktualizacja (wymaga uprawnień admina repo):
   `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/epic.json`
   (aktualizacja istniejącego: `-X PUT repos/piotrp321/shop/rulesets/<id>`).
+- Gałąź `deploy` to wdrażana wersja (śledzi ją Argo CD). Przesuwa ją wyłącznie workflow `.github/workflows/deploy.yml`
+  fast-forwardem na commit z `main` (`.github/scripts/deploy-ref.sh`: push bez `--force`, deploy keyem z sekretu repo
+  `DEPLOY_KEY`), nikt jej nie edytuje ręcznie. Workflow:
+  - push do `main`: buduje i wypycha cztery obrazy produkcyjne `ghcr.io/piotrp321/shop/<app>:<sha>` (api, store, admin,
+    elasticsearch; ich digesty są w podsumowaniu runu), uruchamia smoke test na tych obrazach (`make -C infra/k8s smoke`
+    na `ubuntu-latest`) i dopiero po zielonym przesuwa `deploy`. Bez sekretu `DEPLOY_KEY` kończy się po smoke teście
+    z ostrzeżeniem, bez błędu. Runy dla `main` nie są anulowane: działa jeden, czeka najwyżej jeden (najnowszy).
+  - pull request zmieniający pliki obrazów lub chartu (ścieżki w `deploy.yml`) i `workflow_dispatch`: tylko smoke test
+    na obrazach z cache GHA, bez wypychania obrazów i bez ruszania `deploy`; to nie jest wymagany check.
+    `workflow_dispatch` działa dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); przed merge'em epiku próba
+    na jego gałęzi odbywa się przez zdarzenie `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).
+  - Rulesety `deploy` (`tools/rulesets/deploy.json`: zakaz usunięcia i force pusha wszystkim, bez aktora bypass)
+    i `deploy-push` (`tools/rulesets/deploy-push.json`: reguły `creation` i `update`, jedyny aktor bypass to deploy key,
+    typ `DeployKey`) obejmują `refs/heads/deploy`. Aktor `DeployKey` to każdy deploy key repo z prawem zapisu, więc
+    repo ma mieć tylko jeden taki klucz (warunek dla runbooka wdrożenia). Są dwa, bo bypass dotyczy wszystkich reguł rulesetu. Zakładanie jak
+    wyżej, osobno każdy plik (`--input tools/rulesets/deploy.json`, `--input tools/rulesets/deploy-push.json`).
+    Rulesety, deploy key i sekret `DEPLOY_KEY` zakłada się po merge'u epiku według runbooka wdrożenia.
+  - Test struktury rulesetów: `python3 -m unittest discover -s tools/rulesets -p 'test_*.py'`.
 - CI uruchamia się też na `push` do `epic/**`, więc `checks` i `e2e` raportują na HEAD gałęzi epika po każdym merge'u.
   Run dla pusha jest grupowany po SHA i nie jest anulowany przez kolejne merge'e; anulowanie dotyczy tylko kolejnych
   pushy do tego samego PR.

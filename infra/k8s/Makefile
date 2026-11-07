@@ -1,13 +1,15 @@
 .PHONY: check selftest smoke rerun create-admin
 
-# Static checks of the chart (lint, render, schema, kubeconform, shellcheck, tests of the render). Needs only Docker.
+# Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
+# render). Needs only Docker.
 check:
 	sh scripts/check.sh
 
 # The checks fail on injected errors (a broken template, a secret key missing from the chart, an invalid manifest, an
 # auth ingress exposing the master realm, a job in a wave before its dependency, an image without a digest, a chart
 # allowed on Kubernetes older than 1.36, Brevo allowed without its secret, keycloak-config printing a secret,
-# create-admin going on without tak).
+# create-admin going on without tak, deploy.yml needing a job that does not exist, an unquoted variable in its scripts, no
+# smoke test before deploy, images pushed for every event, runs for main cancelled, steps of deploy.yml without pipefail, or missing).
 selftest:
 	sh scripts/selftest.sh
 
