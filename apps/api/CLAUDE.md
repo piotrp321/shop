@@ -368,7 +368,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   klient ma rozróżniać maszynowo, implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType()`) i trzyma
   wartość w stałej `TYPE`; subscriber wpisuje ją do odpowiedzi, a Shared nie zna contextów. Format wartości:
   `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je pięć 409 Ordering
-  (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`) i cztery 409 Payment: `order-already-paid`,
+  sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`), dwa 409 komend pracownika Ordering
+  (`order-transition-not-allowed`, `refund-not-pending`) i cztery 409 Payment: `order-already-paid`,
   `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
   Nowy typ dopisz do `enum` schematu swojego contextu.
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
