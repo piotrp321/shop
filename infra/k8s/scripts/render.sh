@@ -49,4 +49,5 @@ render ci-rev2 ci --set image.tag=$rev2
 render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true
 render ci-keycloak-brevo ci --set image.tag=$rev1 --set keycloak.mail=brevo --set brevo.secretName=smoke-brevo
 # The deployment workflow as JSON, for tests/test_deploy_workflow.py.
+[ -f "$TOOLS_REPO/.github/workflows/deploy.yml" ] || { echo "render: .github/workflows/deploy.yml is missing" >&2; exit 1; }
 yq -o=json '.' < "$TOOLS_REPO/.github/workflows/deploy.yml" > "$out/deploy-workflow.json"
