@@ -4,7 +4,7 @@ import { loadCategoryTreeForRequest } from "@/catalog/category-tree";
 import { findCategoryPath } from "@/catalog/category-path";
 import { CatalogListing } from "@/catalog/CatalogListing";
 import { InvalidFilter } from "@/catalog/InvalidFilter";
-import { isRefined, type ListingState, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
+import { invalidFilterExit, isRefined, type ListingState, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
 import { type CatalogResult, loadCatalogForRequest } from "@/catalog/load-catalog";
 import { buildCatalogMetadata } from "@/catalog/page-metadata";
 
@@ -76,7 +76,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     permanentRedirect(categoryRedirectUrl(home.path, query));
   }
   if (home.kind === "invalid-filter") {
-    return <InvalidFilter />;
+    return <InvalidFilter exit={invalidFilterExit("/", home.state)} />;
   }
   return <CatalogListing title="Wszystkie produkty" basePath="/" state={home.state} mode="list" listing={home.listing} />;
 }

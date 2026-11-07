@@ -17,6 +17,7 @@ FAKES = {
 echo "docker $*" >> "$FAKE_LOG"
 [ "$1" = info ] && [ -n "$FAKE_DOCKER_INFO_FAIL" ] && exit 1
 case " $* " in *" down "*) [ -n "$FAKE_DOCKER_DOWN_FAIL" ] && exit 1;; esac
+case " $* " in *" cache:pool:clear "*) [ -n "$FAKE_DOCKER_POOL_CLEAR_FAIL" ] && exit 1;; esac
 exit 0
 ''',
     'make': '''#!/bin/sh
@@ -179,6 +180,27 @@ class AoScriptsTest(unittest.TestCase):
         r = self.setup(FAKE_MAKE_FAIL='seed')
         self.assertNotEqual(0, r.returncode)
         self.assertIn('make seed', r.stderr)
+
+    def test_setup_clears_the_oidc_cache_after_make_up_and_before_seed(self):
+        # var/cache is on the bind mount and survives teardown; a new Keycloak has new keys (issue #215).
+        r = self.setup()
+        self.assertEqual(0, r.returncode, r.stderr)
+        calls = self.calls()
+        clear = 'docker compose -p ao-t1-a1 exec -T api bin/console cache:pool:clear cache.oidc'
+        self.assertIn(clear, calls)
+        self.assertLess(calls.index('make up project=ao-t1-a1'), calls.index(clear))
+        self.assertLess(calls.index(clear), calls.index('make seed project=ao-t1-a1'))
+
+    def test_setup_fails_when_the_oidc_cache_cannot_be_cleared(self):
+        r = self.setup(FAKE_DOCKER_POOL_CLEAR_FAIL='1')
+        self.assertNotEqual(0, r.returncode)
+        self.assertIn('cache.oidc', r.stderr)
+        self.assertNotIn('make seed project=ao-t1-a1', self.calls())
+
+    def test_setup_does_not_clear_the_cache_when_make_up_fails(self):
+        r = self.setup(FAKE_MAKE_FAIL='up')
+        self.assertNotEqual(0, r.returncode)
+        self.assertFalse(any('cache:pool:clear' in c for c in self.calls()))
 
     def test_setup_rejects_a_non_numeric_ready_timeout(self):
         r = self.setup(AO_SETUP_READY_TIMEOUT='soon')

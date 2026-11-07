@@ -12,8 +12,9 @@ use Doctrine\ORM\Mapping as ORM;
 /**
  * Persistence model of the Order aggregate; only DoctrineOrderRepository maps it to and from the domain. The number
  * and the Idempotency-Key are unique. The migration adds the CHECK constraints the mapping cannot express: a customer
- * id exactly for an order of a customer, and total_net + total_vat = total_gross. No foreign key to the tables of
- * other modules: the order keeps copies.
+ * id exactly for an order of a customer, an access token exactly for an order of a guest, total_net + total_vat =
+ * total_gross, paid_at and payment_id exactly for a paid order, cancelled_at and cancellation_reason exactly for
+ * a cancelled one. No foreign key to the tables of other modules: the order keeps copies (payment_id too).
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'ordering_order')]
@@ -35,6 +36,9 @@ class OrderRecord
 
     #[ORM\Column(length: 255, nullable: true)]
     public ?string $customerId = null;
+
+    #[ORM\Column(length: 43, nullable: true)]
+    public ?string $accessToken = null;
 
     #[ORM\Column(length: 254)]
     public string $email;
@@ -78,8 +82,29 @@ class OrderRecord
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
     public \DateTimeImmutable $placedAt;
 
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
+    public \DateTimeImmutable $paymentDeadline;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $paidAt = null;
+
+    #[ORM\Column(type: 'guid', nullable: true)]
+    public ?string $paymentId = null;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $cancelledAt = null;
+
+    #[ORM\Column(length: 30, nullable: true)]
+    public ?string $cancellationReason = null;
+
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
     public ?\DateTimeImmutable $confirmationSentAt = null;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $paymentNotificationSentAt = null;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $cancellationNotificationSentAt = null;
 
     #[ORM\Version]
     #[ORM\Column(type: Types::INTEGER)]

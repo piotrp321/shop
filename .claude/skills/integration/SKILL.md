@@ -66,20 +66,25 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
        `http://localhost:<ADMIN_PORT>`, sklep `http://localhost:<STORE_PORT>`. Przed zleceniem sprawdź
        `curl -fs --max-time 5 http://127.0.0.1:<API_PORT>/health`; gdy nie odpowiada, napisz QA, że stos jest
        niedostępny.
-     - Dostęp do `/api/v1/admin`: token realmu `backoffice` z klienta publicznego `admin` (authorization code
-       z PKCE S256, `redirect_uri` `http://localhost:<ADMIN_PORT>/`, formularz logowania Keycloak z kodem TOTP;
-       direct grant jest wyłączony). Konta, hasła i sekrety TOTP to dane demo z `e2e/support/accounts.ts`
-       (realm `infra/keycloak/realms/backoffice.json`). Wzorzec logowania: `e2e/support/staff-login.ts` (pola
-       `#username`, `#password`, potem `#otp`) i `e2e/support/totp.ts` (sekret to surowy tekst UTF-8, nie base32;
-       SHA1, 6 cyfr, okno 30 s). Kod TOTP jest jednorazowy, a token krótko ważny: jedno logowanie na konto, ten sam
-       token we wszystkich żądaniach, także równoległych, nowy po wygaśnięciu. Oba realmy mają ochronę przed
-       brute force, a `make seed` nie resetuje Keycloaka, więc bez celowo błędnych logowań na kontach demo
-       (zablokowane konto psuje `make e2e`). Gdy logowanie się nie uda, QA nie ponawia prób: scenariusze
-       `/api/v1/admin` zapisuje jako propozycje testu z powodem.
-     - Dostęp do `/api/v1` klienta: token realmu `shop` wymaga sekretu klienta `store` z `.env.local`, którego
-       QA nie czyta. Scenariusze klienta wykonuje przez sklep (logowanie kontem demo z `e2e/support/accounts.ts`)
-       albo zapisuje jako propozycję testu. Publiczne `GET` (`apps/api/config/packages/security.yaml`) nie
-       wymagają tokenu.
+     - Logowanie kontami demo (`e2e/support/accounts.ts`) robi skrypt `.claude/skills/integration/kc_login.py`
+       (`python3`, biblioteka standardowa) tak jak przeglądarka; nie pisz własnego klienta formularza Keycloak.
+       Keycloak, panel i sklep zawsze pod `localhost`, nie `127.0.0.1`. Token pracownika do `/api/v1/admin`
+       (realm `backoffice`, klient `admin`, PKCE S256 i kod TOTP; konta `admin`, `support`, `warehouse`,
+       `marketing`):
+       `TOKEN=$(python3 .claude/skills/integration/kc_login.py staff --keycloak http://localhost:<KEYCLOAK_PORT> --admin http://localhost:<ADMIN_PORT> --account admin)`,
+       potem `curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:<API_PORT>/api/v1/admin/...`. Token jest
+       ważny kilka minut: jeden na konto, ten sam we wszystkich żądaniach, także równoległych, nowy po wygaśnięciu
+       (401). Kod TOTP jest jednorazowy: dwa logowania jednego konta w tym samym oknie 30 s skrypt rozdziela sam.
+       Oba realmy mają ochronę przed brute force, a `make seed` nie resetuje Keycloaka, więc bez celowo błędnych
+       logowań na kontach demo (zablokowane konto psuje `make e2e`); skrypt nie ponawia odrzuconego hasła. Gdy
+       logowanie się nie uda, QA nie ponawia prób: scenariusze zapisuje jako propozycje testu z komunikatem skryptu.
+     - Klient (`/api/v1` klienta, realm `shop`): token wymaga sekretu klienta `store` z `.env.local`, którego QA
+       nie czyta, więc scenariusze klienta idą przez BFF sklepu (`http://localhost:<STORE_PORT>/api/cart`,
+       `/api/cart/items`, `/api/checkout`; zapis wymaga nagłówków `Origin: http://localhost:<STORE_PORT>`
+       i `Content-Type: application/json`). Sesja to plik cookies wspólny z `curl -b <plik> -c <plik>`:
+       `python3 .claude/skills/integration/kc_login.py customer --store http://localhost:<STORE_PORT> --cookie-jar <plik> --account jan`
+       (konta `jan`, `anna`) loguje przez `/auth/login` sklepu, a powrót do `/auth/callback` scala koszyk gościa
+       z `store_cart` tego pliku. Publiczne `GET` (`apps/api/config/packages/security.yaml`) nie wymagają tokenu.
      QA może uruchamiać przeciw tym adresom czarnoskrzynkowe skrypty HTTP (`curl`, `python3` z biblioteką
      standardową), także scenariusze współbieżne (np. 16 równoległych `PUT`). Zapisuje tylko dane, które odtwarza
      `make seed` (katalog, ceny, stany i rezerwacje); nie zakłada kont, nie zmienia Keycloaka ani konfiguracji

@@ -12,8 +12,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
- * Removes all orders and their lines, so the demo data starts without orders (run before inventory:seed-demo, which
- * removes their reservations). The number sequence stays: gaps are allowed.
+ * Removes all orders, their lines and the queue of their ExpireUnpaidOrder messages (`scheduled`), so the demo data
+ * starts without orders (run before inventory:seed-demo, which removes their reservations). The number sequence
+ * stays: gaps are allowed. The queues `outbox` and `failed` stay.
  * Exit codes: 0 the orders were removed, 1 the guard refused (nothing was changed).
  */
 #[AsCommand(name: 'ordering:seed-demo', description: 'Removes all orders of the demo data.')]

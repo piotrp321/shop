@@ -1,4 +1,4 @@
-.PHONY: up down logs ps seed check test varnish-test e2e e2e-check e2e-agent api-client keycloak-reset
+.PHONY: up down logs ps seed check test init-env-test varnish-test e2e e2e-check e2e-agent api-client keycloak-reset
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -28,6 +28,7 @@ ps:
 
 # Resets the catalog and loads the demo data; waits (60 s) until the worker has indexed every product.
 # Then resets the prices and sets the demo price of every product (fails when a product has no price pattern).
+# Then removes the transactions of the payment simulator and its queued webhook deliveries.
 # Then removes all orders, before the stocks: the reservations the orders hold go with the stocks.
 # Then resets the stocks and sets the demo stock of every product (fails when a product has no stock pattern).
 # Then rebuilds the search index with the prices and the availability: the price and stock events of the seeds are
@@ -36,6 +37,8 @@ ps:
 seed:
 	$(RUN) api bin/console catalog:seed-demo
 	$(RUN) api bin/console pricing:seed-demo
+	$(RUN) api bin/console payment-simulator:seed-demo
+	$(RUN) api bin/console payment:seed-demo
 	$(RUN) api bin/console ordering:seed-demo
 	$(RUN) api bin/console inventory:seed-demo
 	$(RUN) api bin/console catalog:reindex
@@ -51,6 +54,11 @@ test:
 	$(MAKE) -C apps/store test
 	$(MAKE) -C apps/admin test
 	$(MAKE) varnish-test
+
+# Tests of infra/scripts/init-env.sh in a temporary copy (a real .env.local is never touched); runs on the host, like
+# the script itself, and needs only sh and openssl. Not part of `test`; CI runs it in its Tests step, next to the api suite.
+init-env-test:
+	sh infra/scripts/test-init-env.sh
 
 # VCL tests (infra/varnish/tests/*.vtc) with varnishtest from the image of the varnish service; no running stack and
 # no network. The backend of default.vcl is api:80: in the test container api is 127.0.0.1, where the .vtc servers listen.

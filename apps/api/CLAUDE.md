@@ -19,9 +19,14 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wzorców kluczy wariantów z `fixtures/prices.yaml` (klucz z Catalog `ListVariantIdentities`:
   `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
   pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych); potem
-  `ordering:seed-demo`, który usuwa wszystkie zamówienia i ich linie jednym `TRUNCATE` (sekwencja numerów zostaje,
-  luki są dopuszczalne); na końcu `inventory:seed-demo`, który czyści stany, rezerwacje i historię stanów
-  i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
+  `payment-simulator:seed-demo`, który w jednej transakcji opróżnia (`TRUNCATE`) tabelę transakcji symulatora płatności
+  i usuwa jego kolejkę `payment_simulator` (`DELETE FROM messenger_messages WHERE queue_name = 'payment_simulator'`;
+  `outbox`, `scheduled`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
+  `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
+  `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia i ich
+  linie jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
+  rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
   seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
@@ -94,7 +99,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     (koszyk, rezerwację, zamówienie, outbox). Adapter tłumaczy tylko niedobór Inventory (`InsufficientStock`) na
     `InsufficientStockForOrder` i rzuca go dalej, inne wyjątki przekazuje bez zmian;
   - zamówienie zapisuje się na końcu (po rezerwacji), więc `flush` komend zagnieżdżonych nie zapisuje niczego
-    z Ordering; Ordering zapisuje przez rekordy Doctrine według ogólnej zasady;
+    z Ordering; Ordering zapisuje przez rekordy Doctrine według ogólnej zasady, a `OrderRepository::get` czyta
+    zamówienie z bazy z odświeżeniem rekordu z identity map, więc kolejny odczyt w tej samej transakcji widzi zmiany
+    zatwierdzone w międzyczasie;
   - kolejność blokad: wiersz koszyka (`LockCartForOrder`), potem wiersze stanów (`lockMany` Inventory, rosnąco po
     `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, więc nie ma cyklu;
   - idempotencja: zamówienie z tym samym `Idempotency-Key` i tym samym odciskiem żądania (koszyk i treść) jest
@@ -103,6 +110,142 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - numer zamówienia (`R-` i wartość od 100001) bierze `nextval('ordering_order_number_seq')` przez DBAL. Sekwencja
     nie jest częścią transakcji: wycofane złożenie zostawia lukę. Schemat Doctrine dostaje sekwencję od listenera
     `OrderNumberSequenceSchema` (mapowanie nie wyraża sekwencji poza id), więc diff migracji jej nie usuwa.
+- Cykl płatności zamówienia (Ordering, `docs/features/payment/spec.md`): zamówienie ma termin płatności (`placedAt`
+  + 30 min), a zamówienie gościa losowy `accessToken` (32 bajty w base64url, 43 znaki, generuje `PlaceOrder`; zwracany
+  w `OrderView`, klient ma `null`). Przejścia `new → paid` i `new → cancelled` to metody agregatu `Order` (bez Symfony
+  Workflow) i szereguje je wersja zamówienia: przegrany zapis kończy się konfliktem wersji i ponowieniem, więc nie ma
+  przejścia `cancelled → paid` ani zwolnienia rezerwacji opłaconego zamówienia.
+  - `markPaid` decyduje po czasie wykonania płatności u dostawcy (`executedAt ≤ paymentDeadline` opłaca), nie po czasie
+    odebrania webhooka; zwraca enum domenowy (także `paidAfterDeadline`, `alreadyPaid`, `paidByAnotherPayment`,
+    `orderCancelled` bez zmian), zła kwota albo waluta to `InvalidOrder`.
+  - Dla Payment (jedyny context zależny od Ordering) wszystko jest w `Ordering_Application`: zapytanie
+    `GetOrderForPayment(orderId, OrderAccess)` (`query.bus`) zwraca `OrderForPayment` albo `null` przy każdym braku
+    dostępu (nieznane zamówienie, id spoza UUID, zły token porównywany `hash_equals`, cudze zamówienie, inny rodzaj
+    właściciela); komenda `MarkOrderPaid` (`command.bus`, zagnieżdżona w transakcji webhooka) zwraca
+    `MarkOrderPaidResult`, a nieznane zamówienie i konflikt wersji to `OrderToPayNotFound` i `OrderChangedConcurrently`.
+  - Anulowanie nieopłaconego: `PlaceOrder` w swojej transakcji wysyła `ExpireUnpaidOrder(orderId)` z `DelayStamp` na
+    termin + 5 min (port `UnpaidOrderExpiry`; powtórzenie złożenia nic nie wysyła). Handler w transakcji `command.bus`
+    przy anulowaniu najpierw zwalnia rezerwację (port `StockReservations::release`, Inventory `ReleaseReservation`,
+    zagnieżdżony dispatch), potem zapisuje zamówienie z `OrderCancelled` w outboxie; wiadomość za wczesna (zegar,
+    zaokrąglenie `available_at`) wraca na termin + 5 min + 1 s, opłacone albo anulowane zamówienie nic nie zmienia,
+    nieznane (po `make seed`) to wpis w logu. Konflikt wersji i błędy Inventory (`ReservationNotFound`,
+    `ReservationStateConflict`) idą dalej: ponowienia transportu, potem `failed` (zamówienie zostaje `new`).
+  - E-maile „Płatność przyjęta” (`SendPaymentReceived` po `OrderPaid`) i „Zamówienie … anulowane”
+    (`SendOrderCancelled` po `OrderCancelled`) działają jak `SendOrderConfirmation` (poniżej), każdy z własnym znacznikiem
+    (`paymentNotificationSentAt`, `cancellationNotificationSentAt`); port `OrderStatusMailer`, adapter
+    `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. E-mail z potwierdzeniem podaje
+    termin płatności w strefie `Europe/Warsaw`.
+- Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
+  dostawcy (`pending` → `succeeded` | `failed` | `cancelled`; `succeed` także z `failed` i `cancelled`, bo pieniądze ważą
+  więcej niż wcześniejsza odmowa; `requireRefund` tylko dla `succeeded`, pierwszy powód zostaje), bez pola wersji:
+  istniejącą płatność zmieniają tylko operacje pod blokadą jej wiersza. Zapis płatności przez rekordy Doctrine według
+  ogólnej zasady (`payment_payment`), bez kluczy obcych do Ordering. Wyjątek: obsłużone zdarzenie webhooka
+  (`payment_webhook_event`, PK `(provider, event_id)`, na zawsze) zapisuje `DoctrinePaymentRepository::recordWebhookEvent`
+  przez DBAL `INSERT … ON CONFLICT DO NOTHING` (rekord tylko definiuje schemat): powtórzenie nie jest naruszeniem
+  unikalności, które zamknęłoby `EntityManager`, a wiersz wycofanej transakcji nie zostaje w identity map jako
+  „już obsłużony”.
+  - Payment sięga do Ordering tylko przez dwa swoje porty: `PayableOrders` (adapter `QueryBusPayableOrders`: Ordering
+    `GetOrderForPayment` na `query.bus`, wynik przetłumaczony na `OrderToPay` z domeny Payment) i `OrderPayments` (adapter
+    `CommandBusOrderPayments`: Ordering `MarkOrderPaid` zagnieżdżony na `command.bus` w transakcji webhooka, wynik
+    przetłumaczony na `OrderPaymentResult`, `OrderChangedConcurrently` na `OrderBusy`), i ma własne value objecty
+    (`OrderId`, `Amount`, `Currency`). Deptrac: tylko `Payment_Infrastructure → Ordering_Application`; Ordering ani żaden
+    inny context nie zależy od Payment.
+  - Port `PaymentProvider` (`code`, `createSession`, `cancelSession`, `parseWebhook`) z rejestrem `PaymentProviders` (tag
+    `app.payment_provider`) i dwoma adapterami HTTP do symulatora (`DemoTransferProvider`: Bearer, grosze, RFC 3339;
+    `DemoCardProvider`: Basic `merchant`, kwota `"123.45"` przez `CardAmount`, czas uniksowy) na `app.payment_http_client`
+    pod `PAYMENT_PROVIDER_BASE_URL`. Każde wywołanie ma 5 s (`timeout` i `max_duration`); błąd sieci, przekroczenie
+    czasu, inny status albo nieczytelna odpowiedź to `PaymentProviderUnavailable` (marker `Unavailable`, 503).
+    `parseWebhook(headers, rawBody, now)` najpierw sprawdza podpis (`hash_equals`, sekrety
+    `PAYMENT_DEMO_*_WEBHOOK_SECRET`): `demo-transfer` `X-Signature` = hex HMAC-SHA256 surowej treści, `demo-card`
+    `Card-Signature: t=<unix>,v1=<hex HMAC-SHA256("<t>.<treść>")>` (jeden z kilku `v1`) z tolerancją 300 s w obie strony;
+    potem czyta treść ściśle (`WebhookFields`, bez rzutowania typów; kwota `demo-card` przez `CardAmount`, bez floatów;
+    `paidAt` RFC 3339 ze strefą, `completedAt` sekundy uniksowe) do `ProviderEvent {eventId, providerPaymentId, outcome
+    succeeded|failed, amount, executedAt}` (`executedAt` wymagany przy sukcesie) albo `null` dla innego typu zdarzenia
+    `demo-card`. Każdy błąd to `InvalidWebhook` (`Payment_Application`) z przyczyną do logu, bez sekretu i treści.
+  - `StartPayment` (`command.bus`, jedna transakcja): dostęp do zamówienia przed powtórzeniem (sam klucz nie daje
+    płatności; brak dostępu to `OrderNotFound` 404 „Nie znaleźliśmy zamówienia.”), powtórzenie po `Idempotency-Key` i
+    odcisku (zamówienie i dostawca; inny odcisk to 409), stan zamówienia (opłacone, anulowane, po terminie: 409),
+    oczekująca płatność zamówienia blokowana `SELECT … FOR UPDATE` z odświeżeniem rekordu z identity map i anulowana
+    u swojego dostawcy (anulowana → `cancel`, odrzucona → `fail`, wykonana → 409 `PaymentInProgress` bez zmian, błąd →
+    503 bez zmian), potem stan zamówienia jest sprawdzany ponownie na świeżym odczycie (webhook, który trzymał
+    blokadę, mógł zatwierdzić zamówienie jako opłacone: 409), potem nowa płatność zapisana przed wywołaniem dostawcy i sesja do terminu płatności zamówienia
+    (adres powrotu `STORE_URL` + `/checkout/confirmation` buduje API). Wywołania HTTP są w transakcji: każdy błąd
+    wycofuje całość. Równoległe rozpoczęcia odrzuca unikalny indeks `idempotency_key` albo częściowy unikalny indeks
+    `(order_id) WHERE status = 'pending'` (w mapowaniu warunek zapisany tak, jak zwraca go PostgreSQL, żeby schemat
+    mapowania był równy zmigrowanemu): naruszenie to `PaymentInProgress` „Płatność za to zamówienie jest w toku.”.
+  - `GetPaymentStatus` (`query.bus`): ta sama reguła dostępu, `canStartPayment` = zamówienie płatne, najnowsza płatność
+    z `resumeUrl` tylko dla `pending` i płatnego zamówienia.
+  - Webhook `POST /api/v1/payments/webhooks/{provider}` (publiczny, `security.yaml` `PUBLIC_ACCESS`; `WebhookController`):
+    podpis i treść sprawdza adapter dostawcy, jak mapowanie treści żądania; nieznany dostawca 404, `InvalidWebhook` 400 ze
+    stałym ogólnym `detail` (przyczyna w logu `warning`), zdarzenie innego typu 204 bez komendy, inaczej
+    `HandleProviderWebhook(provider, event)` i 204. Komenda (`command.bus`, jedna transakcja): blokada płatności po
+    `(provider, providerPaymentId)` (`lockByProviderPayment`, `PESSIMISTIC_WRITE` z odświeżeniem rekordu, więc równoległe
+    dostawy idą po kolei; nieznana to `PaymentNotFound` 404 „Nie znaleźliśmy płatności.”), deduplikacja (zdarzenie już
+    obsłużone: 204 bez zmian), `fail` albo `succeed` (inna kwota: `PaymentAmountMismatch` 422 i log `error`). Płatność,
+    która właśnie przeszła w `succeeded`, opłaca zamówienie przez port `OrderPayments` (adapter `CommandBusOrderPayments`:
+    Ordering `MarkOrderPaid` zagnieżdżony na `command.bus`, w tej samej transakcji, więc płatność i status zamówienia
+    zmieniają się razem). Wynik `paid` i `alreadyPaid` nic nie dodaje; przy `orderCancelled`, `paidAfterDeadline` i
+    `paidByAnotherPayment` płatność zostaje `succeeded` z oznaczeniem zwrotu (`requireRefund`: `order_cancelled`,
+    `paid_after_deadline`, `duplicate`; `OrderPaymentResult::refundReason()`), handler loguje `error` „requires a manual
+    refund”, a odpowiedź to 204 (dostawa kończy się bez ponowień). Zwrot jest ręczny, poza systemem: płatności do zwrotu
+    to `payment_payment.refund_required_reason IS NOT NULL`. Konflikt wersji zamówienia (`OrderChangedConcurrently`, np.
+    równoległe `ExpireUnpaidOrder` albo `SendOrderConfirmation`) adapter tłumaczy na `OrderBusy` (marker `Unavailable`,
+    503), inne błędy Ordering przekazuje bez zmian (500); w obu przypadkach wycofana jest cała transakcja, także wiersz
+    deduplikacji, a symulator ponawia dostawę.
+  - Endpointy: `GET /api/v1/payment-providers` (publiczny), gość `POST /api/v1/orders/{id}/payments` i
+    `GET /api/v1/orders/{id}/payment` z nagłówkiem `Order-Access-Token` (brak to 404, sesja niczego nie zmienia),
+    klient to samo pod `/api/v1/me/orders/{id}/...`, oraz webhook dostawców (wyżej). Każda odpowiedź `private, no-store`
+    (`PaymentResponseCacheSubscriber`).
+- PaymentSimulator (`src/PaymentSimulator`, `docs/features/payment/spec.md`) udaje dwóch zewnętrznych dostawców płatności
+  (`demo-transfer`, `demo-card`) w tym samym API, ale poza `/api/v1` (`/payment-simulator/...`, bez firewalla, poza
+  dokumentami OpenAPI) i poza contextami: płaski moduł (kontrolery, encja Doctrine, komendy z handlerami, podpisy), jedna
+  warstwa Deptrac `PaymentSimulator` z dostępem tylko do `Native`, `Vendor` i `Shared_Infrastructure`; żaden context nie
+  zależy od niego, on od żadnego. Z sklepem rozmawia wyłącznie przez HTTP (api ↔ worker ↔ przeglądarka), jak z prawdziwym
+  dostawcą.
+  - Tabela `payment_simulator_transaction` (`Transaction`, UUID v4, `provider`, `reference`, kwota w groszach, adresy
+    powrotu, `expires_at`, `status` `open` | `paid` | `rejected` | `cancelled`, `decided_at` = czas wykonania płatności,
+    który webhook podaje jako `paidAt` / `completedAt`); CHECK-i w migracji pilnują statusów, kształtu adresów dostawcy
+    i `decided_at` dokładnie dla `paid` i `rejected`.
+  - API dostawców (z `PAYMENT_DEMO_*_API_KEY`, `hash_equals`, zły klucz to 401): `demo-transfer` Bearer, kwota w groszach,
+    czasy RFC 3339 (także z ułamkiem sekundy), `POST …/demo-transfer/api/transactions` → 201 `{transactionId, paymentUrl}` i `…/{id}/cancel` →
+    200 `{status: "CANCELLED"}` albo 409 `{status: "PAID" | "REJECTED"}`; `demo-card` HTTP Basic (`merchant`, klucz), kwota
+    `"123.45"`, czas uniksowy (do 9999-12-31T23:59:59Z, większy to 400), `POST …/demo-card/v1/checkout-sessions` → 200 `{id, url}` i `…/{id}/expire` → 200
+    `{status: "expired"}` albo 409 `{status: "complete" | "failed"}`. Zła treść to 400 `{error, field}`, nieznane id 404.
+    Adres strony płatności buduje `PAYMENT_SIMULATOR_PUBLIC_URL`.
+  - Decyzja klienta (`DecideTransaction`) i anulowanie (`CancelTransaction`) to komendy na `command.bus`, każda blokuje
+    wiersz transakcji (`SELECT … FOR UPDATE` przez ORM; encja już w identity map jest odczytywana pod blokadą przez
+    `refresh()`), więc idą po kolei i transakcja kończy w jednym stanie: anulowana nigdy nie zostanie opłacona,
+    opłaconej nie da się anulować, druga decyzja nic nie zmienia. Zastosowana decyzja zapisuje status, `decided_at` i
+    wiadomość `DeliverSimulatedWebhook` (transport `payment_simulator`) w jednej transakcji.
+  - Strona płatności `GET|POST /payment-simulator/{provider}/pay/{id}`: HTML bez JS i bez nowych zależności (wszystkie
+    wartości escapowane), napis „To symulacja…”, przyciski „Zapłać” i „Odrzuć płatność”, link „Wróć do sklepu”;
+    zamknięta (rozstrzygnięta, anulowana, po `expires_at`) pokazuje „Ta płatność jest już zamknięta.” bez przycisków;
+    nieznane id to HTML 404. Formularz niesie token CSRF (HMAC-SHA256 id transakcji sekretem webhooków dostawcy);
+    zły albo brak tokenu to 403 bez zmian, poprawny `POST` daje 303 na adres powrotu (`demo-card`: `successUrl` po
+    płatności, `cancelUrl` w pozostałych przypadkach).
+  - `DeliverSimulatedWebhook` (handler w workerze): podpisany `POST` na `PAYMENT_WEBHOOK_BASE_URL` +
+    `/api/v1/payments/webhooks/<dostawca>`. `demo-transfer`: `X-Signature` = hex HMAC-SHA256 surowej treści;
+    `demo-card`: `Card-Signature: t=<unix>,v1=<hex HMAC-SHA256("<t>.<treść>")>` z `t` z chwili każdej próby. Identyfikator
+    zdarzenia (`evt_<id transakcji bez myślników>`) jest stały, więc ponowienie trafia na deduplikację sklepu. 2xx i 4xx
+    kończą dostawę (4xx z logiem). Żądanie czeka na sklep najwyżej 5 s (`timeout`), żeby milczący sklep nie blokował
+    workera, który obsługuje kolejki po kolei. 5xx i inny status rzucają `WebhookDeliveryFailed`, a błąd sieci (także
+    przekroczenie czasu) wyjątek `TransportExceptionInterface` klienta HTTP, który handler przepuszcza; w obu
+    przypadkach transport ponawia. Transakcja, której już nie ma (po `make seed`), kończy dostawę bez żądania.
+  - Klucze API i sekrety webhooków (`PAYMENT_DEMO_TRANSFER_API_KEY`, `…_WEBHOOK_SECRET`, `PAYMENT_DEMO_CARD_API_KEY`,
+    `…_WEBHOOK_SECRET`) generuje `infra/scripts/init-env.sh` do `.env.local`; brakujące dopisuje do istniejącego pliku
+    (jedyne klucze, które skrypt dopisuje; brak jakiegokolwiek innego kończy się błędem i odtworzeniem stosu). Adresy
+    `PAYMENT_PROVIDER_BASE_URL`, `PAYMENT_SIMULATOR_PUBLIC_URL` i `PAYMENT_WEBHOOK_BASE_URL` (nie sekrety) są w
+    `infra/docker-compose.yml` dla `api` i `worker` oraz w `phpunit.dist.xml`. Skrypt testuje
+    `infra/scripts/test-init-env.sh` (`make init-env-test`, w CI).
+  - Wszystkie wywołania HTTP między sklepem a symulatorem idą przez serwis `app.payment_http_client` (w produkcji
+    `http_client`). W środowisku `test` to `KernelForwardingHttpClient` (`tests/Support`): `MockHttpClient`, który
+    przekazuje żądanie do osobnej instancji kernela (własny kontener i `EntityManager`; to samo połączenie DAMA i baza
+    `shop_test`), więc `flush` i błąd symulatora nie dotykają `UnitOfWork` wywołującego; testy błędów dostawcy podmieniają
+    serwis na klienta ze stałymi odpowiedziami. Wektor podpisów do wspólnych testów symulatora i adapterów Payment to
+    `WebhookSignatureVector` (`tests/Support`).
+  - Symulator działa w kontenerze API, więc wywołanie go przez HTTP z tego samego kontenera zajmuje drugi wątek
+    FrankenPHP: przy tylu równoległych wywołaniach, ile wątków, grozi samoblokada (opis w spec, „Ryzyka”); przed testami
+    obciążeniowymi płatności symulator przechodzi do osobnej usługi.
 - E-mail z potwierdzeniem zamówienia wysyła handler zdarzenia `SendOrderConfirmation` (`event.bus`, transport `events`,
   po `OrderPlaced` z outboxa). Wysyłka idzie przez Symfony Mailer (`symfony/mailer`) synchronicznie, bez Messengera:
   `framework.mailer.message_bus: false` (inaczej `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną
@@ -162,11 +305,13 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
   Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`; Catalog
-  `ProductCreated` i `ProductChanged`, Ordering `OrderPlaced`), gdy jedyną drogą zapisu jest ta komenda. Gdy agregat
-  ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`, przeliczenie po
-  zmianie klasy; Inventory: panel, seed, port rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
+  `ProductCreated`, Ordering `OrderPlaced`, `OrderPaid`, `OrderCancelled`), gdy jedyną drogą zapisu jest ta komenda.
+  Gdy agregat ma wiele ścieżek zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
+  rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
   w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
   pominie, a odrzucony albo wycofany zapis nie zostawia zdarzenia.
+  Catalog publikuje też `ProductChanged` z handlera komendy, jak `ProductCreated`; Pricing ma ścieżkę zapisu także
+  przy przeliczeniu po zmianie klasy podatkowej produktu.
 - Zdarzenie, które ma subskrybować inny context, jest zdarzeniem integracyjnym: publicznym kontraktem modułu w jego
   warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Jedyne dziś:
   `Catalog\Application\Event\ProductChanged` `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product`
@@ -199,7 +344,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Dokumentacja OpenAPI z kodu (NelmioApiDocBundle). Każdy endpoint ma opisane żądanie, odpowiedzi i błędy.
 - Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Dwa firewalle:
   `/api/v1/admin/...` przyjmuje tylko tokeny z realmu `backoffice` (pracownicy, `Staff`),
-  reszta API tylko z realmu `shop` (klienci, `Customer`). Sprawdzany jest wystawca tokena.
+  reszta API tylko z realmu `shop` (klienci, `Customer`). Sprawdzany jest wystawca tokena. Token konta demo
+  na stosie lokalnym do ręcznych żądań: `.claude/skills/integration/kc_login.py` (opis w skillu `/integration`).
 - Nie twórz wspólnej klasy `User` dla klientów i pracowników. To osobne byty.
 - Uprawnienia w voterach. Pracownik: na podstawie ról z tokena (`admin`, `support`, `warehouse`, `marketing`).
   Klient: tylko własne dane (właściciel zasobu = `sub` z tokena).
@@ -207,15 +353,19 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Błędy w formacie RFC 9457 (problem details). `type` to domyślnie `about:blank`. Wyjątek projektu, którego przyczynę
   klient ma rozróżniać maszynowo, implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType()`) i trzyma
   wartość w stałej `TYPE`; subscriber wpisuje ją do odpowiedzi, a Shared nie zna contextów. Format wartości:
-  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Mają je pięć 409 Ordering
-  (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`; nowy typ dopisz też tam). Sześć 409 produktu
-  (`slug-taken`, `slug-locked`, `product-modified`, `product-not-publishable`, `variant-locked`, `variant-in-use`) ma
-  schemat `ProductConflictProblem` w `openapi-admin.json`.
+  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je pięć 409 Ordering
+  (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`) i cztery 409 Payment: `order-already-paid`,
+  `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
+  Nowy typ dopisz do `enum` schematu swojego contextu.
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
-  (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Domena nie zna statusów
-  HTTP, mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
+  (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Wyjątek: znacznik
+  `Unavailable` (zależność nieosiągalna albo przegrany wyścig, który ponowienie rozwiązuje) to 503 bez `detail`, jak
+  każdy 5xx: klient może tylko spróbować później, a komunikat wyjątku zostaje w logu. Domena nie zna statusów HTTP,
+  mapowanie jest w `Shared\Infrastructure\Http`. Komunikat bez danych wewnętrznych i wejścia użytkownika
   (dotyczy też komunikatów naruszeń własnych constraintów). Wyjątki frameworka dostają stały ogólny opis.
   Subscriber rozpakowuje tylko `HandlerFailedException` z jednym wyjątkiem, `previous` poza tym ignoruje.
+- Sześć 409 produktu (`slug-taken`, `slug-locked`, `product-modified`, `product-not-publishable`, `variant-locked`,
+  `variant-in-use`) ma typy w tym formacie i schemat `ProductConflictProblem` w `openapi-admin.json`.
 - Operacje nieidempotentne (złożenie zamówienia, rozpoczęcie płatności, przyjęcie magazynowe) wymagają nagłówka
   `Idempotency-Key`. Brak albo zły format klucza to 400 z naruszeniem nagłówka. Przyjęcie z tym samym kluczem i tą samą
   treścią (wariant, ilość, notatka) nic nie zmienia i zwraca 200 z bieżącym stanem zamiast 201; ten sam klucz z inną
@@ -225,6 +375,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   z tym samym zamówieniem zamiast 201, także gdy koszyk gościa w międzyczasie wygasł albo został scalony; ten sam klucz
   z innego koszyka, od innego klienta albo z inną treścią to 409 `IdempotencyKeyReused` bez żadnych danych zamówienia,
   które go użyło. Klucze zamówień są w `ordering_order` na zawsze (unikalny indeks).
+  Rozpoczęcie płatności z tym samym kluczem dla tego samego zamówienia i dostawcy zwraca 200 z tą płatnością w bieżącym
+  stanie zamiast 201; ten sam klucz dla innego zamówienia albo dostawcy to 409 `PaymentIdempotencyKeyReused`, a bez
+  dostępu do zamówienia (inny token, inny klient) 404. Klucze płatności są w `payment_payment` na zawsze.
 - Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
 
@@ -344,6 +497,19 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
+- Transport Messengera `scheduled` (Doctrine,
+  `doctrine://default?queue_name=scheduled&auto_setup=false&redeliver_timeout=300`, `use_notify: false`, ta sama tabela `messenger_messages` i to samo połączenie co `outbox`) trzyma komendy opóźnione
+  `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
+  Wiadomość powstaje w transakcji wywołującego, a restart albo przestój workera tylko opóźnia jej obsługę; wiadomość
+  pobrana przez worker, który padł przed potwierdzeniem, wraca po 5 minutach. Ponowienia: 5 prób, 1 s, ×3, potem
+  `failed`. Worker (`infra/docker-compose.yml`, komenda i healthcheck) konsumuje `outbox events scheduled
+  payment_simulator` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
+  prawdziwy (Doctrine na `shop_test`).
+- Transport `payment_simulator` (Doctrine, `queue_name=payment_simulator`, ten sam DSN i opcje co `scheduled`:
+  `redeliver_timeout=300`, `use_notify: false`, ta sama tabela i połączenie) trzyma wiadomości `DeliverSimulatedWebhook`
+  symulatora płatności, zapisywane w transakcji decyzji klienta. Ponowienia: 5 prób po 1, 3, 9, 27 i 81 s (około
+  2 minut), potem `failed` (`messenger:failed:retry`). Kolejka czeka w bazie, więc przestój workera tylko opóźnia
+  webhooki. Długa kolejka `events` opóźnia je też, bo worker obsługuje transporty po kolei.
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
 - Wyszukiwanie produktów po nazwie w panelu (`SearchBackofficeProducts`) używa rozszerzenia PostgreSQL `pg_trgm`
   (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)`.

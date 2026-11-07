@@ -9,7 +9,8 @@ use App\Ordering\Domain\InsufficientStockForOrder;
 use App\Ordering\Domain\OrderId;
 
 /**
- * Available units by variant; a reservation takes all its lines or none, like Inventory.
+ * Available units by variant; a reservation takes all its lines or none, like Inventory. A release gives the units
+ * back once (a released reservation stays released) and fails like Inventory for a reservation it does not know.
  */
 final class InMemoryStockReservations implements StockReservations
 {
@@ -17,6 +18,12 @@ final class InMemoryStockReservations implements StockReservations
     private array $available = [];
     /** @var array<string, array<string, int>> lines (quantity by variant) by reservation key */
     public array $reservations = [];
+    /** @var list<string> the keys of the reservations released, once per release call */
+    public array $released = [];
+    /** Thrown by the next release instead of releasing (e.g. a reservation Inventory does not know). */
+    public ?\Throwable $releaseFailure = null;
+    /** Runs while a reservation is being released, e.g. to let a concurrent handler change the order first. */
+    public ?\Closure $whileReleasing = null;
 
     public function __construct(private readonly Journal $journal)
     {
@@ -43,5 +50,17 @@ final class InMemoryStockReservations implements StockReservations
             $reserved[$line->variantId->toString()] = $line->quantity;
         }
         $this->reservations[$orderId->toString()] = $reserved;
+    }
+
+    public function release(OrderId $orderId): void
+    {
+        $this->journal->record('release');
+        if (null !== $this->releaseFailure) {
+            throw $this->releaseFailure;
+        }
+        if (null !== $this->whileReleasing) {
+            ($this->whileReleasing)();
+        }
+        $this->released[] = $orderId->toString();
     }
 }

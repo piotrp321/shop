@@ -84,6 +84,10 @@ trait OrderEndpointTestTrait
         self::assertIsString($order['placedAt']);
         self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/D', $order['placedAt'], 'RFC 3339 in UTC');
         self::assertEqualsWithDelta(time(), new \DateTimeImmutable($order['placedAt'])->getTimestamp(), 60);
+        self::assertIsString($order['paymentDeadline']);
+        self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/D', $order['paymentDeadline'], 'RFC 3339 in UTC');
+        self::assertSame(30 * 60, new \DateTimeImmutable($order['paymentDeadline'])->getTimestamp() - new \DateTimeImmutable($order['placedAt'])->getTimestamp(), 'the deadline is 30 minutes after the placement');
+        self::assertArrayHasKey('accessToken', $order);
         self::assertNull($this->response()->headers->get('Location'), 'an order cannot be read after it is placed');
     }
 

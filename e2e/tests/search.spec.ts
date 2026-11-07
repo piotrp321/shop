@@ -26,6 +26,8 @@ test("a phrase from the header leads to the results, the product page and the ca
   await page.getByRole("main").getByRole("heading", { level: 2, name: PRODUCT_NAME, exact: true }).getByRole("link").click();
   await expect(page).toHaveURL(new RegExp(`${PRODUCT_PATH}$`));
   await expect(page.getByRole("heading", { level: 1, name: PRODUCT_NAME })).toBeVisible();
+  // A client navigation keeps the slot of /szukaj; the field is emptied when the phrase leaves the address.
+  await expect(headerSearch(page)).toHaveValue("");
 
   const choose = (name: string) => page.getByRole("main").getByRole("button", { name, exact: true });
   await choose("czarne").click();
@@ -101,4 +103,20 @@ test("a category narrows a search and an unknown one is an invalid filter", asyn
   const html = await response.text();
   expect(html).toContain("Nieprawidłowy filtr");
   expect(html).toMatch(/<meta name="robots" content="noindex"\/?>/);
+});
+
+test.describe("without JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("the header field has the phrase of /szukaj in the server HTML and is empty elsewhere", async ({ page }) => {
+    await page.goto("/szukaj?q=kurtki");
+    await expect(page.locator("#header-search")).toHaveValue("kurtki");
+    await headerSearch(page).fill("asfalt");
+    await headerSearch(page).press("Enter");
+    await expect(page).toHaveURL(/\/szukaj\?q=asfalt$/);
+    await expect(headerSearch(page)).toHaveValue("asfalt");
+
+    await page.goto(PRODUCT_PATH);
+    await expect(headerSearch(page)).toHaveValue("");
+  });
 });

@@ -352,6 +352,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/orders/{orderId}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a payment of an order of the customer
+         * @description As `startGuestPayment`, for an order of the customer of the token.
+         */
+        post: operations["startCustomerPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/orders/{orderId}/payment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status of the payment of an order of the customer
+         * @description As `getGuestPaymentStatus`, for an order of the customer of the token.
+         */
+        get: operations["getCustomerPaymentStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{orderId}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a payment of an order of a guest
+         * @description Opens a session at the chosen provider for the gross total of the order, valid until its payment deadline, and answers where to send the customer (`redirectUrl`). A pending payment of the order is cancelled at its provider first; when that provider executed it already, nothing changes (409 `payment-in-progress`). The `Idempotency-Key` identifies the request: the same key for the same order and provider answers 200 with that payment as it is now; with another order or provider it is a 409. The access is checked before the key, so the key alone never gives a payment.
+         */
+        post: operations["startGuestPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{orderId}/payment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status of the payment of an order of a guest
+         * @description The status of the order, its deadline and total, whether a payment can be started now, and its newest payment with the address to go back to it while it is pending and the order payable.
+         */
+        get: operations["getGuestPaymentStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payment-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payment providers
+         * @description Every provider a customer can choose in the checkout, with the name to show, in the order to show them.
+         */
+        get: operations["listPaymentProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/webhooks/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Webhook of a payment provider
+         * @description Called by the provider (not by the store) when a payment session is paid or refused. The signature of the raw body is verified first: `demo-transfer` sends `X-Signature` (hex HMAC-SHA256 of the body), `demo-card` sends `Card-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">` valid for 300 s. Each event is handled once (by its id); a repeated delivery answers 204 and changes nothing. A succeeded payment pays its order when it was executed before the payment deadline; otherwise (or for a cancelled order, or an order paid by another payment) it is kept for a refund by hand.
+         */
+        post: operations["receivePaymentWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -617,8 +737,11 @@ export interface components {
              * @example R-100001
              */
             number: string;
-            /** @enum {string} */
-            status: "new";
+            /**
+             * @description `new` right after the placement; `paid` once paid, `cancelled` when unpaid five minutes after `paymentDeadline`.
+             * @enum {string}
+             */
+            status: "new" | "paid" | "cancelled";
             /**
              * @description The address the order is confirmed to.
              * @example anna.nowak@example.com
@@ -641,6 +764,17 @@ export interface components {
              * @example 2026-11-05T12:30:00+00:00
              */
             placedAt: string;
+            /**
+             * Format: date-time
+             * @description The order is to be paid by this moment, 30 minutes after the placement (RFC 3339, UTC).
+             * @example 2026-11-05T13:00:00+00:00
+             */
+            paymentDeadline: string;
+            /**
+             * @description The key of a guest to the order (starting a payment, reading its status), 43 characters of base64url; the same on a replay. Null for an order of a customer, who reaches it with the token of the session.
+             * @example dGhpcy1pcy1hLXRva2VuLW9mLXRoZS1ndWVzdC0xMjM
+             */
+            accessToken: string | null;
         };
         OrderShippingAddress: {
             /** @example ul. Długa 5/3 */
@@ -684,6 +818,72 @@ export interface components {
             gross: number;
             /** @enum {string} */
             currency: "PLN";
+        };
+        PaymentProvider: {
+            /** @enum {string} */
+            code: "demo-transfer" | "demo-card";
+            /**
+             * @description The name the customer sees.
+             * @example Szybki przelew (demo)
+             */
+            name: string;
+        };
+        /** @description A payment of an order at a provider. */
+        PaymentView: {
+            /** Format: uuid */
+            paymentId: string;
+            /** @enum {string} */
+            provider: "demo-transfer" | "demo-card";
+            /**
+             * @description `pending` until the provider confirms the payment (`succeeded`) or refuses it (`failed`); `cancelled` when a newer attempt cancelled it at the provider.
+             * @enum {string}
+             */
+            status: "pending" | "succeeded" | "failed" | "cancelled";
+            /**
+             * @description The page of the provider where the customer pays.
+             * @example http://localhost:8000/payment-simulator/demo-transfer/pay/7d3f0a8e-4a1b-4c55-9f1e-2b3c4d5e6f70
+             */
+            redirectUrl: string | null;
+        };
+        /** @description The order and its newest payment, as the confirmation page shows them. Amounts in grosze. */
+        PaymentStatusView: {
+            /** @example R-100001 */
+            orderNumber: string;
+            /** @enum {string} */
+            orderStatus: "new" | "paid" | "cancelled";
+            /**
+             * Format: date-time
+             * @description The order is to be paid by this moment (RFC 3339, UTC).
+             * @example 2026-11-05T13:00:00+00:00
+             */
+            paymentDeadline: string;
+            /** @example 39998 */
+            totalGross: number;
+            /** @enum {string} */
+            currency: "PLN";
+            /** @description Whether a payment can be started now (the order is new and before its deadline). A new attempt cancels a pending payment at its provider first. */
+            canStartPayment: boolean;
+            /** @description The newest payment of the order, null before the first one. */
+            latestPayment: components["schemas"]["LatestPayment"] | null;
+        };
+        LatestPayment: {
+            /** @enum {string} */
+            provider: "demo-transfer" | "demo-card";
+            /** @enum {string} */
+            status: "pending" | "succeeded" | "failed" | "cancelled";
+            /** @description The page of the provider of a pending payment, to go back to it while the order is payable; null otherwise. */
+            resumeUrl: string | null;
+        };
+        /** @description A 409 of the payment endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the order is paid, the order is cancelled or past its payment deadline, another payment of the order is in progress (a concurrent start, or the pending payment was executed at its provider and waits for its confirmation), or the `Idempotency-Key` was used by another request. */
+        PaymentConflictProblem: {
+            /** @enum {string} */
+            type: "tag:piotrp321.github.io,2026:shop/problems/order-already-paid" | "tag:piotrp321.github.io,2026:shop/problems/payment-deadline-passed" | "tag:piotrp321.github.io,2026:shop/problems/payment-in-progress" | "tag:piotrp321.github.io,2026:shop/problems/payment-idempotency-key-reused";
+            /** @example Conflict */
+            title: string;
+            /** @enum {integer} */
+            status: 409;
+            /** @description Polish text for the customer. */
+            detail: string;
         };
         /** @description Problem details (RFC 9457), `application/problem+json`. */
         Problem: {
@@ -843,6 +1043,15 @@ export interface components {
              * @example 39998
              */
             expectedTotalGross: number;
+        };
+        /** @description The provider the customer chose. */
+        StartPaymentRequest: {
+            /**
+             * @description Code of the provider, one of `GET /api/v1/payment-providers`.
+             * @example demo-transfer
+             * @enum {string}
+             */
+            provider: "demo-transfer" | "demo-card";
         };
         /** @description The offer of one variant of a product. Never the number of units. */
         VariantOfferResponse: {
@@ -2117,6 +2326,411 @@ export interface operations {
                 };
             };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startCustomerPayment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Key of the request, chosen by the client (new for every attempt and every change of provider, the same on a retry of an uncertain result): 1 to 100 characters, letters, digits, ".", "_", ":" or "-". */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Id of the order. */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartPaymentRequest"];
+            };
+        };
+        responses: {
+            /** @description The payment of an earlier request with this key for the same order and provider, as it is now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            /** @description The payment started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            /** @description The `Idempotency-Key` header is missing or malformed (problem details with `violations`), or the body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order of the customer: unknown, an id that is no UUID, an order of another customer or of a guest (problem details, one text for all). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The order is paid, cancelled or past its deadline, another payment is in progress, or the key was used by another request. Problem details with a stable `type` (see `PaymentConflictProblem`) and a Polish `detail`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PaymentConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `provider` is missing, empty or not one of the providers (problem details with a Polish violation). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The provider did not answer properly in 5 s, nothing changed; or the keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getCustomerPaymentStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the order. */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentStatusView"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order of the customer (problem details, one text for every case). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    startGuestPayment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The `accessToken` of the placed order. */
+                "Order-Access-Token": string;
+                /** @description Key of the request, chosen by the client (new for every attempt and every change of provider, the same on a retry of an uncertain result): 1 to 100 characters, letters, digits, ".", "_", ":" or "-". */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Id of the order (`orderId` of the placed order). */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartPaymentRequest"];
+            };
+        };
+        responses: {
+            /** @description The payment of an earlier request with this key for the same order and provider, as it is now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            /** @description The payment started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
+            };
+            /** @description The `Idempotency-Key` header is missing or malformed (problem details with `violations`), or the body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token of a session was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). None is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order for this token: unknown, an id that is no UUID, a missing or wrong `Order-Access-Token`, or an order of a customer (problem details, one text for all). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The order is paid, cancelled or past its deadline, another payment is in progress (a concurrent start, or the pending one was executed at its provider), or the key was used by another request. Problem details with a stable `type` (see `PaymentConflictProblem`) and a Polish `detail`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PaymentConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `provider` is missing, empty or not one of the providers (problem details with a Polish violation). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The provider did not answer properly in 5 s, nothing changed; or a token of a session was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getGuestPaymentStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The `accessToken` of the placed order. */
+                "Order-Access-Token": string;
+            };
+            path: {
+                /** @description Id of the order. */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentStatusView"];
+                };
+            };
+            /** @description An access token of a session was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). None is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order for this token (problem details, one text for every case). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token of a session was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listPaymentProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The providers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentProvider"][];
+                };
+            };
+        };
+    };
+    receivePaymentWebhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `demo-transfer`: hex HMAC-SHA256 of the raw body with the webhook secret. */
+                "X-Signature"?: string;
+                /** @description `demo-card`: `t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`. */
+                "Card-Signature"?: string;
+            };
+            path: {
+                /** @description Code of the provider. */
+                provider: "demo-transfer" | "demo-card";
+            };
+            cookie?: never;
+        };
+        /** @description The event as the provider sends it. `demo-transfer`: `{eventId, transactionId, merchantRef, status: PAID | REJECTED, amount (grosze), currency, paidAt (RFC 3339, with PAID)}`. `demo-card`: `{id, type: checkout.completed | checkout.failed, data: {sessionId, reference, amount ("123.45"), currency, completedAt (Unix seconds, with checkout.completed)}}`; other types are acknowledged and ignored. */
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description The event was handled, was handled before, or is of a type the shop ignores. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong signature, a timestamp outside the tolerance, or a body that breaks the format of the provider (problem details, one text for every cause). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token of a session was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). None is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unknown provider, or no payment of the session at this provider (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The amount is not the amount of the payment; nothing changed (problem details). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The order changed concurrently; nothing changed and the provider retries (problem details without detail). */
             503: {
                 headers: {
                     [name: string]: unknown;
