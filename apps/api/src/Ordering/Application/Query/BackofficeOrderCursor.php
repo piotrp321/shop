@@ -10,7 +10,7 @@ use App\Ordering\Application\Port\ListedOrder;
  * The position after an order in the sort of the order list: (placed_at, id) newest first, or (refund_due_at, id)
  * nearest first for the pending refunds. Handed out as opaque text, base64url without padding of a JSON object
  * `{"s": "placed" | "refund", "t": moment, "i": id}`, so the order can change without changing the API; a cursor of
- * one sort is no cursor of the other.
+ * one sort is no cursor of the other. The history of a customer pages by placement with the same cursor.
  */
 final readonly class BackofficeOrderCursor
 {
@@ -39,6 +39,15 @@ final readonly class BackofficeOrderCursor
         $at = $byRefundDueDate ? ($order->refundDueAt ?? throw new \LogicException('A pending refund has a due date.')) : $order->placedAt;
 
         return new self($byRefundDueDate, $at, $order->orderId);
+    }
+
+    /**
+     * The position after an order in the sort by placement, which the history of a customer shares with the list of the
+     * panel.
+     */
+    public static function placedAfter(\DateTimeImmutable $placedAt, string $orderId): self
+    {
+        return new self(false, $placedAt, $orderId);
     }
 
     /**

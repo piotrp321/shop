@@ -41,6 +41,18 @@ final class OrderingSchemaTest extends KernelTestCase
         ], $indexes);
     }
 
+    public function testTheHistoryOfACustomerHasItsPartialIndex(): void
+    {
+        $definition = $this->entityManager()->getConnection()->fetchOne(
+            "SELECT indexdef FROM pg_indexes WHERE tablename = 'ordering_order' AND indexname = 'ordering_order_customer_placed_at_id_idx'",
+        );
+
+        self::assertSame(
+            "CREATE INDEX ordering_order_customer_placed_at_id_idx ON public.ordering_order USING btree (customer_id, placed_at DESC, id DESC) WHERE ((owner_type)::text = 'customer'::text)",
+            $definition,
+        );
+    }
+
     private function entityManager(): EntityManagerInterface
     {
         $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');

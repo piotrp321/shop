@@ -30,6 +30,8 @@ use Doctrine\ORM\Mapping as ORM;
 // the migrated one.
 #[ORM\Index(name: 'ordering_order_placed_at_id_idx', columns: ['placed_at', 'id'])]
 #[ORM\Index(name: 'ordering_order_status_placed_at_id_idx', columns: ['status', 'placed_at', 'id'])]
+// The history of a customer: (customer_id, placed_at DESC, id DESC) of the orders of customers only, written the same way.
+#[ORM\Index(name: 'ordering_order_customer_placed_at_id_idx', columns: ['customer_id', 'placed_at', 'id'], options: ['where' => "((owner_type)::text = 'customer'::text)"])]
 #[ORM\Index(name: 'ordering_order_pending_refund_idx', columns: ['refund_due_at', 'id'], options: ['where' => '((refund_amount IS NOT NULL) AND (refund_completed_at IS NULL))'])]
 class OrderRecord
 {
