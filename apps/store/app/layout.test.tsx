@@ -53,7 +53,9 @@ describe("the root layout", () => {
   it("renders the empty search box when there is no slot (the 404 page of an unknown address)", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => json(TREE)));
     const html = renderToStaticMarkup(await RootLayout({ children: <p>page</p> } as unknown as Parameters<typeof RootLayout>[0]));
-    expect(html).toMatch(/<input[^>]*id="header-search"[^>]*value=""/);
+    const field = html.match(/<input[^>]*id="header-search"[^>]*>/)?.[0];
+    expect(field).toBeDefined();
+    expect(field).not.toContain("value=");
   });
 
   it("renders no menu for an empty tree", async () => {

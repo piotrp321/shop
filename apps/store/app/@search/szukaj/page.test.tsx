@@ -20,11 +20,12 @@ describe("the search slot of the header", () => {
     expect(fieldOf(renderToStaticMarkup(await SearchSlot(props({ q: ["kurtki", "plecak"] }))))).toContain('value="kurtki"');
   });
 
-  it("leaves the field empty without a phrase", async () => {
-    expect(fieldOf(renderToStaticMarkup(await SearchSlot(props({}))))).toContain('value=""');
+  // No `value` attribute at all, so no page HTML carries a `name="q" value=` the listing pages must not have.
+  it("leaves the field without a value without a phrase", async () => {
+    expect(fieldOf(renderToStaticMarkup(await SearchSlot(props({}))))).not.toContain("value=");
   });
 
-  it("is the empty field on every other page", () => {
-    expect(fieldOf(renderToStaticMarkup(<DefaultSearch />))).toContain('value=""');
+  it("is the field without a value on every other page", () => {
+    expect(fieldOf(renderToStaticMarkup(<DefaultSearch />))).not.toContain("value=");
   });
 });
