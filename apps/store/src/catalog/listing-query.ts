@@ -65,6 +65,12 @@ function all(value: string | string[] | undefined): string[] {
   return (Array.isArray(value) ? value : [value]).filter((item): item is string => item !== undefined && item !== "");
 }
 
+// The API trims the phrase with PHP `trim`, which also strips NUL; `String.trim` does not, so a phrase the front counts
+// as 2 characters would be 1 for the API (400, an invalid filter instead of the message about 2 characters).
+function trimPhrase(phrase: string | undefined): string | undefined {
+  return phrase?.replace(/^[\s\0]+|[\s\0]+$/g, "");
+}
+
 export function readListingState(query: SearchParams, mode: ListingMode): ListingState {
   const state: ListingState = { options: all(query.o) };
   const sort = first(query.sort);
@@ -78,7 +84,7 @@ export function readListingState(query: SearchParams, mode: ListingMode): Listin
   if (available !== undefined) state.available = available;
   if (page !== undefined) state.page = page;
   if (mode === "search") {
-    const phrase = first(query.q)?.trim();
+    const phrase = trimPhrase(first(query.q));
     if (phrase) state.q = [...phrase].slice(0, MAX_PHRASE).join("");
     const category = first(query.kategoria);
     if (category !== undefined) state.category = category;

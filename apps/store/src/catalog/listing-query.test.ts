@@ -43,6 +43,14 @@ describe("readListingState", () => {
     expect(readListingState({ q: "ą".repeat(150) }, "search").q).toBe("ą".repeat(100));
   });
 
+  it("trims NUL like the API does (PHP trim), so a phrase of one letter and NUL is short, not an invalid filter", () => {
+    expect(readListingState({ q: "\0kurtka\0 " }, "search").q).toBe("kurtka");
+    expect(readListingState({ q: "\0" }, "search").q).toBeUndefined();
+    const phrase = readListingState({ q: "a\0" }, "search").q;
+    expect(phrase).toBe(readListingState({ q: "a " }, "search").q);
+    expect(isShortPhrase(phrase)).toBe(true);
+  });
+
   it("ignores the phrase and the category on a listing page, so they reach neither the API nor the addresses", () => {
     const state = readListingState({ q: "kurtka", kategoria: "bieganie", sort: "nazwa" }, "list");
     expect(state).toEqual({ sort: "nazwa", options: [] });
