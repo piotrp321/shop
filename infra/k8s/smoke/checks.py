@@ -222,20 +222,44 @@ def check_order_mail():
     expect("Potwierdzenie zamówienia" in messages[0]["Subject"], f"Mailpit has the confirmation of the order {number}")
 
 
+def canonical(value):
+    """The value with every list in a fixed order: Keycloak returns sets (scopes, locales, ...) in no particular order."""
+    if isinstance(value, dict):
+        return {key: canonical(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return sorted((canonical(item) for item in value), key=lambda item: json.dumps(item, sort_keys=True))
+    return value
+
+
+def digest(value):
+    return hashlib.sha256(json.dumps(canonical(value), sort_keys=True).encode()).hexdigest()[:12]
+
+
 def snapshot():
+    """Digests of what an upgrade must not change, per realm and per part, so that a difference says where it is."""
     token = admin_token()
     realms = {}
     for realm in ("shop", "backoffice"):
-        document = {
-            "realm": admin_get(f"/{realm}", token),
-            "clients": sorted(admin_get(f"/{realm}/clients", token), key=lambda c: c["clientId"]),
-            "roles": sorted(admin_get(f"/{realm}/roles", token), key=lambda r: r["name"]),
-            "users": admin_get(f"/{realm}/users", token),
-        }
-        realms[realm] = hashlib.sha256(json.dumps(document, sort_keys=True).encode()).hexdigest()
+        document = admin_get(f"/{realm}", token)
+        parts = {f"realm.{key}": digest(value) for key, value in document.items()}
+        parts["clients"] = digest(sorted(admin_get(f"/{realm}/clients", token), key=lambda c: c["clientId"]))
+        parts["roles"] = digest(sorted(admin_get(f"/{realm}/roles", token), key=lambda r: r["name"]))
+        parts["users"] = digest(admin_get(f"/{realm}/users", token))
+        realms[realm] = parts
     status, _, text = through_ingress("/api/v1/products?perPage=1", "api")
     expect(status == 200, "the product list answers")
     return {"products": json.loads(text)["total"], "realms": realms}
+
+
+def differences(before, after):
+    found = []
+    if before["products"] != after["products"]:
+        found.append(f"products {before['products']} -> {after['products']}")
+    for realm, parts in before["realms"].items():
+        for part, value in parts.items():
+            if after["realms"][realm].get(part) != value:
+                found.append(f"{realm}: {part}")
+    return found
 
 
 def main():
@@ -251,7 +275,7 @@ def main():
     elif command == "compare":
         before = json.loads(sys.argv[2])
         after = snapshot()
-        expect(before == after, f"products and realms are unchanged (before {before}, after {after})")
+        expect(not differences(before, after), f"products and realms are unchanged (differences: {differences(before, after)})")
     else:
         raise SystemExit(f"checks.py: unknown command '{command}'")
 
