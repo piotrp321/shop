@@ -401,11 +401,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Testy
 
+- Kasa i płatności: cały `src/checkout/` (BFF kasy i płatności, strona kasy, `PaymentConfirmation`) oraz strony
+  `/checkout` i `/checkout/confirmation` mają testy. Testy czasu (odświeżanie co 2 s przez 30 s) używają fałszywych
+  zegarów Vitest (`vi.useFakeTimers`); wywołanie `window.location.assign` jest za `navigateTo`, które testy podmieniają.
 - Vitest i Testing Library. `*.test.ts(x)` to testy jednostkowe bez usług, `*.integration.test.ts` działają
   na usługach stosu (Redis).
 - Logika w komponentach (np. budowa `srcset`, mega menu, panel filtrów i sortowanie), `listing-query.ts` (mapowanie
   parametrów URL na zapytanie API i adresy), strony listingów (`app/page.test.tsx`, `app/c/`, `app/szukaj/`, liczba
   żądań w `app/page.requests.test.tsx`), cały `src/auth/`, cały `src/cart/` (BFF, przyciski,
-  strona koszyka) i cały `src/checkout/` (BFF kasy i płatności, strona kasy, `PaymentConfirmation`) oraz strony
-  `/checkout` i `/checkout/confirmation` mają testy. Testy czasu (odświeżanie co 2 s przez 30 s) używają fałszywych
-  zegarów Vitest (`vi.useFakeTimers`); wywołanie `window.location.assign` jest za `navigateTo`, które testy podmieniają.
+  strona koszyka) i cały `src/checkout/` (BFF, strona kasy) oraz strona potwierdzenia mają testy.

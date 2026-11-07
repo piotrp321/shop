@@ -29,7 +29,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
-  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień, płatności ani ich rezerwacji. Wszystkie sześć komend
+  seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
   w `prod` wymagają `--force-reset`. Potem `make seed` woła `catalog:reindex`, który przebudowuje indeks wyszukiwania
   z cenami i dostępnością, a na końcu `storefront:cache:purge-all` (zdarzenia cen i stanów ze źródła `seed` niczego
   nie reindeksują ani nie unieważniają). Błąd kroku przerywa `make seed`
@@ -366,19 +366,6 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   trasy i unieważnianie po zmianie danych (zdarzenie i konsument wołający `StorefrontCache`). Bez tego zmiana danych
   nie będzie widoczna w sklepie przed końcem `max-age`/`s-maxage`.
 
-- Transport Messengera `scheduled` (Doctrine,
-  `doctrine://default?queue_name=scheduled&auto_setup=false&redeliver_timeout=300`, `use_notify: false`, ta sama tabela `messenger_messages` i to samo połączenie co `outbox`) trzyma komendy opóźnione
-  `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
-  Wiadomość powstaje w transakcji wywołującego, a restart albo przestój workera tylko opóźnia jej obsługę; wiadomość
-  pobrana przez worker, który padł przed potwierdzeniem, wraca po 5 minutach. Ponowienia: 5 prób, 1 s, ×3, potem
-  `failed`. Worker (`infra/docker-compose.yml`, komenda i healthcheck) konsumuje `outbox events scheduled
-  payment_simulator` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
-  prawdziwy (Doctrine na `shop_test`).
-- Transport `payment_simulator` (Doctrine, `queue_name=payment_simulator`, ten sam DSN i opcje co `scheduled`:
-  `redeliver_timeout=300`, `use_notify: false`, ta sama tabela i połączenie) trzyma wiadomości `DeliverSimulatedWebhook`
-  symulatora płatności, zapisywane w transakcji decyzji klienta. Ponowienia: 5 prób po 1, 3, 9, 27 i 81 s (około
-  2 minut), potem `failed` (`messenger:failed:retry`). Kolejka czeka w bazie, więc przestój workera tylko opóźnia
-  webhooki. Długa kolejka `events` opóźnia je też, bo worker obsługuje transporty po kolei.
 - Indeks wyszukiwania (Elasticsearch, alias `products`) należy do Catalog. Dokument (`ProductIndexDefinition`,
   `dynamic: strict`): dane produktu, `name`, `category_names` (nazwy kategorii produktu i ich przodków)
   i `short_description` z analizatorem `polish_text` (`lowercase`, `polish_stem`, `asciifolding`) i podpolem `folded`
@@ -426,6 +413,19 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
+- Transport Messengera `scheduled` (Doctrine,
+  `doctrine://default?queue_name=scheduled&auto_setup=false&redeliver_timeout=300`, `use_notify: false`, ta sama tabela `messenger_messages` i to samo połączenie co `outbox`) trzyma komendy opóźnione
+  `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
+  Wiadomość powstaje w transakcji wywołującego, a restart albo przestój workera tylko opóźnia jej obsługę; wiadomość
+  pobrana przez worker, który padł przed potwierdzeniem, wraca po 5 minutach. Ponowienia: 5 prób, 1 s, ×3, potem
+  `failed`. Worker (`infra/docker-compose.yml`, komenda i healthcheck) konsumuje `outbox events scheduled
+  payment_simulator` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
+  prawdziwy (Doctrine na `shop_test`).
+- Transport `payment_simulator` (Doctrine, `queue_name=payment_simulator`, ten sam DSN i opcje co `scheduled`:
+  `redeliver_timeout=300`, `use_notify: false`, ta sama tabela i połączenie) trzyma wiadomości `DeliverSimulatedWebhook`
+  symulatora płatności, zapisywane w transakcji decyzji klienta. Ponowienia: 5 prób po 1, 3, 9, 27 i 81 s (około
+  2 minut), potem `failed` (`messenger:failed:retry`). Kolejka czeka w bazie, więc przestój workera tylko opóźnia
+  webhooki. Długa kolejka `events` opóźnia je też, bo worker obsługuje transporty po kolei.
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
 - Wyszukiwanie produktów po nazwie w panelu (`SearchBackofficeProducts`) używa rozszerzenia PostgreSQL `pg_trgm`
   (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)`.
