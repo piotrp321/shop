@@ -62,11 +62,6 @@ class TokenTest(unittest.TestCase):
 
 
 class InitContainerTest(unittest.TestCase):
-    def test_install_plugin_has_resources(self):
-        init = init_containers(by_logical("prod", "StatefulSet")["elasticsearch"])["install-plugin"]
-        self.assertTrue(init["resources"]["requests"]["memory"])
-        self.assertTrue(init["resources"]["limits"]["memory"])
-
     def test_every_init_container_has_resources(self):
         for case in ("prod", "ci"):
             for workload in of_kind(case, *WORKLOADS):

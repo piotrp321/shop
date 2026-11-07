@@ -3,7 +3,7 @@
 The pod reaches the services by their names and the ingresses through Traefik with the Host header, so no port of
 the host is involved. Usage: python - <command> [argument]
 
-  basic     the checks of a new installation (API, store, panel, realms, image, order e-mail)
+  basic     the checks of a new installation (search analysis, API, store, panel, realms, image, order e-mail)
   snapshot  prints a JSON snapshot of what an upgrade must not change (products, realms)
   compare   compares the snapshot given as the argument with the current state
 
@@ -24,6 +24,7 @@ TRAEFIK = "http://traefik.kube-system.svc.cluster.local"
 DOMAIN = "localhost"
 KEYCLOAK = "http://keycloak:8080"
 MAILPIT = "http://mailpit:8025"
+ELASTICSEARCH = "http://elasticsearch:9200"
 
 
 def request(method, url, host=None, body=None, headers=None, form=None):
@@ -103,6 +104,17 @@ def admin_get(path, token):
     status, _, text = request("GET", f"{KEYCLOAK}/admin/realms{path}", headers={"Authorization": f"Bearer {token}"})
     expect(status == 200, f"Keycloak admin API answers {path}")
     return json.loads(text)
+
+
+def check_search_analysis():
+    """The image of infra/elasticsearch/Dockerfile carries the Polish analysis plugin and its stemmer works."""
+    status, _, text = request("GET", f"{ELASTICSEARCH}/_cat/plugins?h=component")
+    expect(status == 200 and "analysis-stempel" in text.split(), f"Elasticsearch lists the plugin analysis-stempel ({text.strip()})")
+    status, _, text = request(
+        "POST", f"{ELASTICSEARCH}/_analyze", body={"tokenizer": "standard", "filter": ["lowercase", "polish_stem"], "text": "koszulkami"}
+    )
+    tokens = [token["token"] for token in json.loads(text).get("tokens", [])] if status == 200 else text[:200]
+    expect(tokens == ["koszulka"], f"polish_stem stems 'koszulkami' to 'koszulka' (got {status}: {tokens})")
 
 
 def check_api_and_store():
@@ -274,6 +286,7 @@ def differences(before, after):
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     if command == "basic":
+        check_search_analysis()
         check_api_and_store()
         check_admin_config()
         check_realms()

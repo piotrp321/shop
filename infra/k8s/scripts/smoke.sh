@@ -15,9 +15,10 @@
 # database that has orders and no products (initialize fails and changes nothing). The peak memory and disk of the
 # cluster are printed at the end. The cluster is deleted on every exit (success, error, interrupt).
 #
-# The images are tagged shop-smoke-<cluster>/<app>:r1..r4 (a registry name of their own per cluster) and removed at the
-# end, so runs from several worktrees never overwrite or delete each other's images; the profile ci only supplies a
-# default registry, the script passes its own.
+# The images (api, store, admin and elasticsearch from infra/elasticsearch/Dockerfile) are tagged
+# shop-smoke-<cluster>/<app>:r1..r4 (a registry name of their own per cluster) and removed at the end, so runs from
+# several worktrees never overwrite or delete each other's images; the profile ci only supplies a default registry, the
+# script passes its own.
 #
 # The tools run in containers on the Docker network of the cluster, so no port of the host is used and several
 # clusters (one per COMPOSE_PROJECT_NAME) can run side by side. The cluster is called sm-<COMPOSE_PROJECT_NAME>.
@@ -59,6 +60,8 @@ mkdir -p "$TOOLS_CACHE"
 KUBE_DIR="$(mktemp -d "$TOOLS_CACHE/kube-XXXXXX")"
 work="$KUBE_DIR"
 sampler_pid=""
+# The images built here: the production stage of each application and Elasticsearch with its plugin.
+apps="api store admin elasticsearch"
 
 cleanup() {
   status=$?
@@ -72,7 +75,7 @@ cleanup() {
   echo "smoke: deleting the cluster $cluster"
   k3d cluster delete "$cluster" >/dev/null 2>&1 || echo "smoke: could not delete the cluster $cluster" >&2
   for tag in r1 r2 r3 r4; do
-    for app in api store admin; do docker rmi -f "$registry/$app:$tag" >/dev/null 2>&1 || true; done
+    for app in $apps; do docker rmi -f "$registry/$app:$tag" >/dev/null 2>&1 || true; done
   done
   rm -rf "$KUBE_DIR"
   if [ "$status" -eq 0 ]; then echo "smoke: ok"; else echo "smoke: FAILED (exit $status)" >&2; fi
@@ -96,11 +99,13 @@ build_images() {
     echo "smoke: docker build --target prod $app"
     docker build -q --target prod -t "$registry/$app:r1" "$TOOLS_REPO/apps/$app" >/dev/null
   done
+  echo "smoke: docker build elasticsearch (infra/elasticsearch)"
+  docker build -q -t "$registry/elasticsearch:r1" "$TOOLS_REPO/infra/elasticsearch" >/dev/null
 }
 
 # retag <from> <to>: the same images under another revision (a new revision of the chart, the same code).
 retag() {
-  for app in api store admin; do docker tag "$registry/$app:$1" "$registry/$app:$2"; done
+  for app in $apps; do docker tag "$registry/$app:$1" "$registry/$app:$2"; done
 }
 
 # An api image whose migrations include one that throws, tagged <revision>.
@@ -135,7 +140,8 @@ break_image() {
 }
 
 import_images() {
-  k3d image import -c "$cluster" "$registry/api:$1" "$registry/store:$1" "$registry/admin:$1" >/dev/null
+  # shellcheck disable=SC2046 # the names have no spaces
+  k3d image import -c "$cluster" $(for app in $apps; do echo "$registry/$app:$1"; done) >/dev/null
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -256,7 +262,7 @@ count() { kc exec statefulset/postgres -- psql -U shop -d shop -tAc "SELECT coun
 # ---------------------------------------------------------------------------------------------------------------
 log "images"
 if [ "$SMOKE_BUILD" = 1 ]; then build_images; fi
-for app in api store admin; do
+for app in $apps; do
   docker image inspect "$registry/$app:r1" >/dev/null 2>&1 || { echo "smoke: image $registry/$app:r1 is missing" >&2; exit 1; }
 done
 case "$SMOKE_BREAK" in

@@ -36,8 +36,8 @@ Zakres: `infra/k8s`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.docker
 
 ## Cel i zakres
 
-- Produkcyjne obrazy `api` (także dla workera, Jobów i CronJobów), `store` i `admin`, budowane w GitHub Actions
-  z każdego commita na `main` i wypychane do GHCR.
+- Produkcyjne obrazy `api` (także dla workera, Jobów i CronJobów), `store`, `admin` i `elasticsearch`, budowane
+  w GitHub Actions z każdego commita na `main` i wypychane do GHCR.
 - Helm chart całego stosu w `infra/k8s/`, wdrażany przez Argo CD z gałęzi `deploy`.
 - Sekrety w repo tylko zaszyfrowane (Sealed Secrets).
 - Migracje i przygotowanie indeksu jako Job przed startem nowej wersji, nigdy przy starcie kontenera aplikacji.
@@ -73,7 +73,8 @@ Zakres: `infra/k8s`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.docker
 
 - **D1. k3s na jednym węźle, Traefik z k3s jako ingress, `local-path` jako storage.**
 - **D2. Własny chart zamiast gotowych chartów usług.** Jeden chart `infra/k8s/charts/shop` z szablonami dla każdej
-  usługi compose, na tych samych obrazach i wersjach co `infra/docker-compose.yml`. Gotowe charty tylko dla
+  usługi compose, na tych samych obrazach i wersjach co `infra/docker-compose.yml`. Elasticsearch działa na obrazie
+  budowanym z tego samego Dockerfile co w compose (`infra/elasticsearch/Dockerfile`). Gotowe charty tylko dla
   platformy: Argo CD i Sealed Secrets.
 - **D3. Nazwy usług w klastrze takie jak w compose**; wewnętrzne adresy i VCL (`api:80`) bez zmian.
 - **D4. Wdrażana gałąź `deploy`, przesuwana fast-forwardem.** Argo CD śledzi `deploy` i ustawia tag obrazów na
@@ -128,8 +129,8 @@ Argo CD, RabbitMQ, Mailpit, Garage, Elasticsearch i Postgres nie mają publiczne
 
 ## Obrazy produkcyjne
 
-Nazwy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `admin`), publiczne (runbook ustawia widoczność
-pakietów; k3s pobiera je bez `imagePullSecret`).
+Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `admin`, `elasticsearch`), publiczne
+(runbook ustawia widoczność pakietów; k3s pobiera je bez `imagePullSecret`).
 
 - **api:** etapy: `runtime` (FrankenPHP, rozszerzenia, konfiguracja PHP i Caddy), `base` z niego (Composer, git,
   unzip, entrypoint z `composer install`, jak dziś), `build` z `base` (`composer install --no-dev
@@ -143,6 +144,9 @@ pakietów; k3s pobiera je bez `imagePullSecret`).
   (`window.__ADMIN_CONFIG__`), fallbackiem SPA na `index.html` i `Cache-Control: no-cache` dla `index.html`
   i `/config.js`. Panel czyta najpierw `window.__ADMIN_CONFIG__`, a bez niego `import.meta.env`; lokalnie
   `public/config.js` jest pusty (bez 404 w `vite dev`). Brak wymaganego klucza w obu źródłach: błąd z nazwą klucza.
+- **elasticsearch:** `infra/elasticsearch/Dockerfile`, ten sam, który buduje compose: oficjalny obraz Elasticsearch
+  przypięty digestem i wtyczka `analysis-stempel` instalowana w czasie buildu (jej wersja jest wersją Elasticsearch).
+  Wersje w compose i w klastrze są zgodne z definicji; przy starcie poda nic nie jest pobierane.
 - Etap używany przez compose pozostaje ostatni; lokalny `make up` działa jak dziś.
 - Usługi bez własnego kodu używają obrazów i wersji z `infra/docker-compose.yml`. `garage-init` w klastrze: initContainer
   z obrazu Garage kopiuje binarkę do `emptyDir`, kontener Alpine uruchamia `infra/garage/init.sh`. Konfiguracja z repo
@@ -186,7 +190,7 @@ pakietów; k3s pobiera je bez `imagePullSecret`).
 
 1. Merge PR do `main` uruchamia `.github/workflows/deploy.yml`. Grupa `concurrency` bez anulowania trwającego runu:
    działa jeden, czeka najwyżej jeden, pośrednie są pomijane, więc wdraża się najnowszy commit.
-2. Workflow buduje i wypycha obrazy `api`, `store`, `admin` z tagiem SHA.
+2. Workflow buduje i wypycha obrazy `api`, `store`, `admin`, `elasticsearch` z tagiem SHA.
 3. Smoke test na k3d (niżej) na tych obrazach.
 4. Po zielonym smoke teście workflow przesuwa `deploy` fast-forwardem na ten commit (D4). Bez sekretu z deploy keyem
    (przed krokiem runbooka) workflow kończy się po smoke teście z ostrzeżeniem, bez błędu.
@@ -284,9 +288,10 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   przełączniki D10, CronJoby, ścieżki ingressu `auth`, middleware, fale (każdy Job i Deployment ma zależności we
   wcześniejszych falach), nazwy Jobów D11. Główny `make check` go wywołuje, więc działa w wymaganym jobie `checks`
   i w bramkach AO.
-- `make -C infra/k8s smoke`: buduje obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa klastra
-  i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze, czeka na
-  Joby i Deploymenty, a potem sprawdza: `/health` API, stronę główną sklepu z produktem, pasek i brak linku logowania
+- `make -C infra/k8s smoke`: buduje cztery obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa
+  klastra i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze,
+  czeka na Joby i Deploymenty, a potem sprawdza: wtyczkę `analysis-stempel` w Elasticsearchu (`_cat/plugins`)
+  i działanie filtra `polish_stem` (`_analyze`: „koszulkami” → „koszulka”), `/health` API, stronę główną sklepu z produktem, pasek i brak linku logowania
   na `/` i `/cart`, nagłówek `X-Robots-Tag`, `/config.js` panelu, discovery obu realmów, brak użytkowników demo
   i rejestracji w realmie `shop`, zdjęcie przez imgproxy, potwierdzenie zamówienia w Mailpicie, idempotencję (upgrade
   z nową rewizją: `initialize` i `keycloak-config` nie zmieniają danych ani realmów). Wypisuje szczytowe zużycie pamięci i dysku. Na koniec usuwa

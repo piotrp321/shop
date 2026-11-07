@@ -13,7 +13,7 @@ in the comment of each helper.
 {{ .root.Values.global.scheme }}://{{ include "shop.host" . }}
 {{- end }}
 
-{{/* Image of the code of ours. Parameters: root, app (api, store, admin). */}}
+{{/* Image built by us. Parameters: root, app (api, store, admin, elasticsearch). */}}
 {{- define "shop.appImage" -}}
 {{ .root.Values.image.registry }}/{{ .app }}:{{ required "image.tag (the revision) is required" .root.Values.image.tag }}
 {{- end }}

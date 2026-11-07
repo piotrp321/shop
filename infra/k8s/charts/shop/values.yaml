@@ -8,19 +8,20 @@ global:
   scheme: https
 
 image:
-  # ghcr.io/piotrp321/shop/<api|store|admin>:<tag>
+  # ghcr.io/piotrp321/shop/<api|store|admin|elasticsearch>:<tag>; elasticsearch is built from
+  # infra/elasticsearch/Dockerfile, the same Dockerfile compose builds (the official image with the Polish analysis
+  # plugin installed at build time).
   registry: ghcr.io/piotrp321/shop
   # The revision (commit SHA); required. Argo CD sets it from the revision it syncs.
   tag: ""
   pullPolicy: IfNotPresent
 
-# The images of the services without code of ours: the same as in infra/docker-compose.yml (checked by `make check`).
-# Elasticsearch is the official image; the Polish analysis plugin of infra/elasticsearch/Dockerfile is installed by
-# an initContainer. `kubectl` is the image of the initContainers of the jobs initialize and purge-caches that wait for the rollout of the deployments they need (api, varnish, store, worker).
+# The images of the services we do not build: the same as in infra/docker-compose.yml (checked by `make check`).
+# `kubectl` is the image of the initContainers of the jobs initialize and purge-caches that wait for the rollout of the
+# deployments they need (api, varnish, store, worker).
 images:
   postgres: postgres:18.6
   redis: redis:8.10.3
-  elasticsearch: docker.elastic.co/elasticsearch/elasticsearch:9.4.0
   rabbitmq: rabbitmq:4.4.0-management
   keycloak: quay.io/keycloak/keycloak:26.6.0
   garage: dxflrs/garage:v2.4.0

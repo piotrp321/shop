@@ -1,22 +1,9 @@
 {{- /*
-The official image, like the image that infra/elasticsearch/Dockerfile builds, plus its Polish analysis plugin: an
-initContainer installs the plugin into a volume that the server container mounts as its plugins directory.
+The image built from infra/elasticsearch/Dockerfile (the one compose builds): the Polish analysis plugin is installed
+in it at build time, so nothing is downloaded when the pod starts.
 */ -}}
-{{- define "shop.elasticsearch.init" -}}
-- name: install-plugin
-  image: {{ .Values.images.elasticsearch }}
-  command:
-    - sh
-    - -ec
-    - '[ -d plugins/analysis-stempel ] || bin/elasticsearch-plugin install --batch analysis-stempel'
-  volumeMounts:
-    - name: plugins
-      mountPath: /usr/share/elasticsearch/plugins
-  resources:
-    {{- include "shop.resources" (dict "root" . "resources" "job") | nindent 4 }}
-{{- end }}
-
 {{- define "shop.elasticsearch.container" -}}
+imagePullPolicy: {{ .Values.image.pullPolicy }}
 env:
   - name: discovery.type
     value: single-node
@@ -30,8 +17,6 @@ ports:
 volumeMounts:
   - name: data
     mountPath: /usr/share/elasticsearch/data
-  - name: plugins
-    mountPath: /usr/share/elasticsearch/plugins
 readinessProbe:
   exec:
     command:
@@ -42,15 +27,8 @@ readinessProbe:
   timeoutSeconds: 5
   failureThreshold: 60
 {{- end }}
-
-{{- define "shop.elasticsearch.volumes" -}}
-- name: plugins
-  emptyDir: {}
-{{- end }}
 {{ include "shop.service" (dict "root" . "name" "elasticsearch" "ports" (list (dict "name" "http" "port" 9200))) }}
 ---
-{{ include "shop.statefulset" (dict "root" . "name" "elasticsearch" "wave" "-1" "image" .Values.images.elasticsearch
+{{ include "shop.statefulset" (dict "root" . "name" "elasticsearch" "wave" "-1" "image" (include "shop.appImage" (dict "root" . "app" "elasticsearch"))
   "claims" (list (dict "name" "data" "size" .Values.storage.elasticsearch))
-  "initContainers" (include "shop.elasticsearch.init" .)
-  "container" (include "shop.elasticsearch.container" .)
-  "volumes" (include "shop.elasticsearch.volumes" .)) }}
+  "container" (include "shop.elasticsearch.container" .)) }}

@@ -6,12 +6,18 @@ from support import REPO, by_logical, containers, env_of, of_kind, pod_spec, qua
 STATEFUL = {"postgres", "elasticsearch", "rabbitmq", "redis", "garage"}
 STATELESS = {"api", "worker", "store", "admin", "imgproxy", "varnish", "keycloak", "mailpit"}
 VERSION_JOBS = {"garage-init", "migrate", "keycloak-config", "initialize", "purge-caches"}
+REVISION = "0123456789abcdef0123456789abcdef01234567"
 
 
 def compose_services():
     text = (REPO / "infra/docker-compose.yml").read_text()
     block = text.split("\nservices:\n", 1)[1].split("\nvolumes:\n", 1)[0]
     return re.findall(r"^  ([a-z][a-z-]*):\s*$", block, re.M)
+
+
+def compose_service(service):
+    text = (REPO / "infra/docker-compose.yml").read_text()
+    return re.search(rf"^  {service}:\n(.*?)(?=^  [a-z][a-z-]*:\s*$|\Z)", text, re.M | re.S).group(0)
 
 
 def compose_images():
@@ -60,9 +66,31 @@ class WorkloadsTest(unittest.TestCase):
             used |= {c["image"] for c in spec["containers"] + spec.get("initContainers", [])}
         for image in compose_images() - {"curlimages/curl:8.18.0"}:
             self.assertIn(image, used)
-        elastic = (REPO / "infra/elasticsearch/Dockerfile").read_text()
-        self.assertIn(re.search(r"^FROM (\S+)", elastic, re.M).group(1), used)
         self.assertIn("alpine:3.22", used)
+        # Elasticsearch is the image of its Dockerfile, which compose builds too: the official image is not in the chart.
+        self.assertRegex(compose_service("elasticsearch"), r"\n    build:\n      context: \./infra/elasticsearch\n")
+        self.assertEqual([], [image for image in used if "docker.elastic.co" in image])
+
+    def test_elasticsearch_runs_the_image_built_from_its_dockerfile(self):
+        for case, registry, policy in (("prod", "ghcr.io/piotrp321/shop", "IfNotPresent"), ("ci", "shop-smoke", "Never")):
+            container = containers(by_logical(case, "StatefulSet")["elasticsearch"])[0]
+            self.assertEqual(f"{registry}/elasticsearch:{REVISION}", container["image"], case)
+            self.assertEqual(policy, container["imagePullPolicy"], case)
+
+    def test_the_dockerfile_of_elasticsearch_pins_the_official_image_and_installs_the_plugin(self):
+        elastic = (REPO / "infra/elasticsearch/Dockerfile").read_text()
+        self.assertRegex(elastic, r"(?m)^FROM docker\.elastic\.co/elasticsearch/elasticsearch:[0-9.]+@sha256:[0-9a-f]{64}$")
+        self.assertIn("elasticsearch-plugin install --batch analysis-stempel", elastic)
+
+    def test_nothing_installs_plugins_when_a_pod_starts(self):
+        for case in ("prod", "ci"):
+            for workload in of_kind(case, "Deployment", "StatefulSet", "Job", "CronJob"):
+                spec = pod_spec(workload)
+                for container in spec["containers"] + spec.get("initContainers", []):
+                    line = " ".join(container.get("command", []) + container.get("args", []))
+                    self.assertNotIn("elasticsearch-plugin", line, f"{case} {workload['metadata']['name']}/{container['name']}")
+        volumes = [v["name"] for v in pod_spec(by_logical("prod", "StatefulSet")["elasticsearch"]).get("volumes", [])]
+        self.assertNotIn("plugins", volumes)
 
     def test_application_images_use_the_revision(self):
         for name in ("api", "worker", "store", "admin"):
