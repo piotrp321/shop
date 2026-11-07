@@ -15,7 +15,10 @@ use Doctrine\DBAL\Connection;
  */
 final readonly class PostgresPromotionWriteLock implements PromotionWriteLock
 {
-    /** The key of the lock, fixed for Pricing (a bigint; the two-int form of other locks is another key space). */
+    /**
+     * The key of the lock, fixed for Pricing (a bigint). PostgresSearchIndexRebuildLock uses the same one-argument form
+     * with a crc32 key, below 2^32; this key is above it, so the two never meet.
+     */
     public const int KEY = 0x50524F4D4F; // "PROMO"
 
     public function __construct(private Connection $connection)
