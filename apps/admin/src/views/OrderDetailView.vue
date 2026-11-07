@@ -110,6 +110,9 @@ function applyResult(result: OrderChange): void {
     case "failed":
       dialogMessage.value = result.message;
       break;
+    case "ignored":
+      closeDialog();
+      break;
   }
 }
 </script>
@@ -292,9 +295,7 @@ function applyResult(result: OrderChange): void {
           <template v-if="order.refund.completedAt">
             <dt>Wykonany</dt>
             <dd data-testid="refund-completed">
-              {{ formatDateTime(order.refund.completedAt) }}<template v-if="order.refund.completedByUsername">
-                , {{ order.refund.completedByUsername }}
-              </template>
+              {{ formatDateTime(order.refund.completedAt) }}<span v-if="order.refund.completedByUsername">, {{ order.refund.completedByUsername }}</span>
             </dd>
             <template v-if="order.refund.note">
               <dt>Notatka</dt>

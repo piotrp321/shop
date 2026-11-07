@@ -101,13 +101,15 @@ describe("useOrderDetail", () => {
 
     it("loads another order when the id changes", async () => {
       const id = ref("o-1");
-      await start(order(), id);
+      const detail = await start(order(), id);
 
       mocks.get.mockResolvedValue({ data: order({ orderId: "o-2", number: "R-100002" }), response: { status: 200 } });
       id.value = "o-2";
       await flushPromises();
 
       expect(mocks.get).toHaveBeenLastCalledWith(DETAIL, { params: { path: { orderId: "o-2" } } });
+      expect(detail.order.value?.orderId).toBe("o-2");
+      expect(detail.order.value?.number).toBe("R-100002");
     });
 
     it("says the order was not found on a 404, without an error to retry", async () => {
@@ -291,6 +293,74 @@ describe("useOrderDetail", () => {
       expect(mocks.get).toHaveBeenCalledTimes(2);
       expect(detail.order.value?.version).toBe(3);
       expect(detail.actions.value.map((action) => action.transition)).toEqual(["deliver"]);
+    });
+
+    it("does not bring back the old order when a read that was in flight answers after the change", async () => {
+      const detail = await start(order({ version: 2 }));
+      let answerRead!: () => void;
+      mocks.get.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answerRead = () => resolve({ data: order({ version: 2 }), response: { status: 200 } });
+          }),
+      );
+      const reading = detail.retry();
+      mocks.post.mockResolvedValue({ data: order({ status: "shipped", version: 3 }), response: { status: 200 } });
+
+      await detail.changeStatus("ship", null);
+      answerRead();
+      await reading;
+
+      expect(detail.order.value?.status).toBe("shipped");
+      expect(detail.order.value?.version).toBe(3);
+      expect(detail.loading.value).toBe(false);
+    });
+
+    it("ignores the answer of a change when the id has changed meanwhile, a conflict reload included", async () => {
+      const id = ref("o-1");
+      const detail = await start(order(), id);
+      let answerPost!: (answer: unknown) => void;
+      mocks.post.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            answerPost = resolve;
+          }),
+      );
+      mocks.get.mockResolvedValue({ data: order({ orderId: "o-2", number: "R-100002", version: 7 }), response: { status: 200 } });
+
+      const changing = detail.changeStatus("ship", null);
+      id.value = "o-2";
+      await flushPromises();
+      mocks.get.mockClear();
+      answerPost({ data: undefined, error: { status: 409 }, response: { status: 409 } });
+      const result = await changing;
+
+      expect(result).toEqual({ status: "ignored" });
+      expect(mocks.get).not.toHaveBeenCalled();
+      expect(detail.order.value?.orderId).toBe("o-2");
+    });
+
+    it("does not show the saved order of another id when the id has changed during the change", async () => {
+      const id = ref("o-1");
+      const detail = await start(order(), id);
+      let answerPost!: (answer: unknown) => void;
+      mocks.post.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            answerPost = resolve;
+          }),
+      );
+      mocks.get.mockResolvedValue({ data: order({ orderId: "o-2", number: "R-100002" }), response: { status: 200 } });
+
+      const changing = detail.changeStatus("ship", null);
+      id.value = "o-2";
+      await flushPromises();
+      answerPost({ data: order({ status: "shipped", version: 3 }), response: { status: 200 } });
+      const result = await changing;
+
+      expect(result).toEqual({ status: "ignored" });
+      expect(detail.order.value?.orderId).toBe("o-2");
+      expect(detail.order.value?.status).toBe("paid");
     });
 
     it("sends the version of the reloaded order after a conflict", async () => {

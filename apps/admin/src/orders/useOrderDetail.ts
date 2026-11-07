@@ -13,7 +13,9 @@ export type OrderChange =
   | { status: "saved" }
   | { status: "invalid"; fields: Partial<Record<ChangeField, string>>; message: string | null }
   | { status: "conflict"; message: string }
-  | { status: "failed"; message: string };
+  | { status: "failed"; message: string }
+  // The view moved to another order while the change was in flight: its answer is not for the order shown now.
+  | { status: "ignored" };
 
 export const CONFLICT_MESSAGE = "Zamówienie zostało w międzyczasie zmienione – sprawdź jego stan.";
 export const NOT_FOUND_MESSAGE = "Nie znaleźliśmy zamówienia.";
@@ -176,8 +178,12 @@ export function useOrderDetail(orderId: MaybeRefOrGetter<string>) {
       return { status: "failed", message: current === null ? NOT_FOUND_MESSAGE : "Poprzednia zmiana jest jeszcze zapisywana." };
     }
     saving.value = true;
+    const sentFor = toValue(orderId);
     try {
       const result = await send(current);
+      if (toValue(orderId) !== sentFor) {
+        return { status: "ignored" };
+      }
       if (result.data) {
         // An older read must not bring back the order as it was before this change.
         latest++;
@@ -192,6 +198,9 @@ export function useOrderDetail(orderId: MaybeRefOrGetter<string>) {
       }
       return changeFailure(result.response.status, result.error, texts);
     } catch {
+      if (toValue(orderId) !== sentFor) {
+        return { status: "ignored" };
+      }
       return { status: "failed", message: `${texts.failed}. Sprawdź połączenie z API.` };
     } finally {
       saving.value = false;

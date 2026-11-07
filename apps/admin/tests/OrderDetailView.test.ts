@@ -164,7 +164,7 @@ describe("OrderDetailView", () => {
     wrapper = await mountView();
 
     expect(text("refund-state")).toBe("Wykonany");
-    expect(text("refund-completed")).toBe("10.11.2026, 09:00:00 , celina");
+    expect(text("refund-completed")).toBe("10.11.2026, 09:00:00, celina");
     expect(text("refund-note")).toBe("Przelew wysłany");
     expect(wrapper.find("[data-testid=refund-overdue]").exists()).toBe(false);
   });
