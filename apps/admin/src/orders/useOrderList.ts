@@ -108,9 +108,12 @@ export function useOrderList() {
     }
   }
 
-  // The cursors and `next` belong to the list of the old filters. Dropping them now means that if the request for the
-  // new filters fails, the pager cannot pair them with an old cursor: it stays off until a retry succeeds.
+  // The rows, the cursors and `next` belong to the list of the old filters. Dropping them now means that if the request
+  // for the new filters fails, the table does not show rows that are not theirs and the pager cannot pair them with an
+  // old cursor: both stay off until a retry succeeds.
   function startFromFirstPage(): Promise<void> {
+    items.value = [];
+    loaded.value = false;
     cursors.value = [null];
     next.value = null;
     return load([null]);

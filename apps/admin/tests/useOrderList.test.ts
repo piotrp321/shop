@@ -207,6 +207,33 @@ describe("useOrderList", () => {
     expect(list.error.value).toBe("Nie udało się pobrać zamówień (HTTP 500).");
   });
 
+  it.each([
+    ["a status", (list: ReturnType<typeof useOrderList>) => list.selectStatus("shipped")],
+    ["the refund switch", (list: ReturnType<typeof useOrderList>) => list.setRefundPending(true)],
+    [
+      "a search",
+      (list: ReturnType<typeof useOrderList>) => {
+        list.search.value = "R-999999";
+        return list.submitSearch();
+      },
+    ],
+  ])("shows no rows of the old filters when the request for %s fails", async (_name, apply) => {
+    const list = await start({ "": page(["R-3", "R-2"]) });
+    serve({}, 500);
+
+    await apply(list);
+
+    expect(list.error.value).toBe("Nie udało się pobrać zamówień (HTTP 500).");
+    expect(list.items.value).toEqual([]);
+    expect(list.loaded.value).toBe(false);
+
+    serve({ "": page(["R-9"]) });
+    await list.retry();
+
+    expect(list.items.value.map((item) => item.number)).toEqual(["R-9"]);
+    expect(list.loaded.value).toBe(true);
+  });
+
   it("says there are no orders when the list is empty without a filter or a search", async () => {
     const list = await start({ "": page([]) });
 
