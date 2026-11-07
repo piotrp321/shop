@@ -2,7 +2,7 @@
 # Static checks of the chart, without a cluster and without a server. Every step runs in a container (tools.sh).
 #
 #   check.sh            all steps
-#   check.sh <step>...  only the given steps: lint, render, schema, kubeconform, shellcheck, tests
+#   check.sh <step>...  only the given steps: lint, render, schema, kubeconform, shellcheck, actionlint, tests
 #
 # The first failing step stops the script. REPO_ROOT (default: this repository) selects the tree to check; the
 # self-test (selftest.sh) points it at a copy with an injected error.
@@ -12,7 +12,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
 
-steps="${*:-lint render schema kubeconform shellcheck tests}"
+steps="${*:-lint render schema kubeconform shellcheck actionlint tests}"
 
 rev=0123456789abcdef0123456789abcdef01234567
 # The digests of the images built by us, which the profile prod requires.
@@ -112,6 +112,14 @@ do_shellcheck() {
   step "shellcheck"
   # shellcheck disable=SC2046 # the file names have no spaces
   shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh)
+}
+
+# The workflows of the repository (deploy.yml among them), with shellcheck on their run: scripts.
+do_actionlint() {
+  step "actionlint"
+  [ -f "$TOOLS_REPO/.github/workflows/deploy.yml" ] || { echo "actionlint: .github/workflows/deploy.yml is missing" >&2; return 1; }
+  # shellcheck disable=SC2046 # the file names have no spaces
+  actionlint $(cd "$TOOLS_REPO" && ls .github/workflows/*.yml)
 }
 
 do_tests() {

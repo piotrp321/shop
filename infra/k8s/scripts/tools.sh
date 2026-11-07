@@ -2,7 +2,7 @@
 # Sourced by the scripts of infra/k8s: runs every tool in a container with a pinned image, so nothing is installed on
 # the host (only Docker and sh are needed, on macOS and on Linux alike). The repository is mounted read-only at /repo.
 #
-#   helm, kubeconform, shellcheck, yq, py: tools working on files of the repository (cwd = /repo/infra/k8s)
+#   helm, kubeconform, shellcheck, actionlint, yq, py: tools working on files of the repository (cwd = /repo/infra/k8s)
 #   k3d, kubectl: tools talking to Docker (k3d) and to a k3d cluster over its Docker network (kubectl)
 #   browser_dom: the DOM of a page after its scripts ran, in headless Chromium on the Docker network of a cluster
 
@@ -11,6 +11,8 @@ TOOLS_REPO="${REPO_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 HELM_IMAGE="${HELM_IMAGE:-alpine/helm:3.22.1}"
 KUBECONFORM_IMAGE="${KUBECONFORM_IMAGE:-ghcr.io/yannh/kubeconform:v0.7.0}"
 SHELLCHECK_IMAGE="${SHELLCHECK_IMAGE:-koalaman/shellcheck:v0.11.0}"
+# Also runs shellcheck on the scripts of the steps (run:) of the workflows; the image has it.
+ACTIONLINT_IMAGE="${ACTIONLINT_IMAGE:-rhysd/actionlint:1.7.12}"
 YQ_IMAGE="${YQ_IMAGE:-mikefarah/yq:4.47.1}"
 PYTHON_IMAGE="${PYTHON_IMAGE:-python:3.13-alpine}"
 K3D_IMAGE="${K3D_IMAGE:-ghcr.io/k3d-io/k3d:5.9.0}"
@@ -54,6 +56,8 @@ helm_cluster() {
 }
 kubeconform() { tools_run "$KUBECONFORM_IMAGE" -cache /cache "$@"; }
 shellcheck() { tools_run "$SHELLCHECK_IMAGE" "$@"; }
+# actionlint works in the root of the repository (the workflows are in .github/workflows).
+actionlint() { tools_run -w /repo "$ACTIONLINT_IMAGE" "$@"; }
 yq() { tools_run "$YQ_IMAGE" "$@"; }
 # Python without third-party packages; -I ignores the environment and the current directory.
 py() { tools_run "$PYTHON_IMAGE" python -I "$@"; }

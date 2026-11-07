@@ -1,0 +1,332 @@
+# Deployment (docs/features/deploy/spec.md, "Wdrożenie nowej wersji" and D4).
+#
+#   push to main        images -> smoke -> deploy: builds the four production images and pushes them to GitHub Container
+#                       Registry tagged with the commit SHA, runs the smoke test on exactly those images (pulled by
+#                       digest), and only after it passes moves the branch `deploy` to the commit by fast-forward
+#                       (.github/scripts/deploy-ref.sh, deploy key from the secret DEPLOY_KEY; without the secret it
+#                       ends with a warning, not an error).
+#   pull request        smoke only, when the change touches the files that decide the images and the chart (paths
+#                       below); the images are built from the GitHub Actions cache and never pushed. Not a required check.
+#   workflow_dispatch   smoke only, on the branch it is started on (a rehearsal on an epic branch); nothing is pushed
+#                       and `deploy` does not move.
+#
+# Runs for main are never cancelled: one runs, at most one waits, and a waiting one is replaced by the newer commit, so
+# the latest commit is deployed. A pull request run is superseded by the next push to the same PR.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'infra/**'
+      - 'apps/*/Dockerfile'
+      - 'apps/api/config/**'
+      - 'apps/api/bin/**'
+      - 'apps/api/composer.lock'
+      - 'apps/store/package-lock.json'
+      - 'apps/admin/package-lock.json'
+      - 'apps/store/next.config.ts'
+      - '.github/workflows/deploy.yml'
+      - '.github/scripts/deploy-ref.sh'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.event_name == 'push' && 'main' || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+permissions:
+  contents: read
+
+env:
+  # The images of the chart (image.registry); k3s pulls them without credentials once the packages are public.
+  IMAGE_PREFIX: ghcr.io/piotrp321/shop
+  # The registry name the smoke test expects for the cluster of COMPOSE_PROJECT_NAME (infra/k8s/scripts/smoke.sh:
+  # shop-smoke-sm-<project>); it fails with "image ... is missing" if the two ever differ.
+  COMPOSE_PROJECT_NAME: deploy
+  SMOKE_REGISTRY: shop-smoke-sm-deploy
+
+jobs:
+  # Builds and pushes the four production images with the tag <commit sha>. An image that is already in the registry
+  # under that tag (a re-run of the same commit) is kept, not rebuilt, so one tag never gets two digests.
+  images:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api: ${{ steps.digests.outputs.api }}
+      store: ${{ steps.digests.outputs.store }}
+      admin: ${{ steps.digests.outputs.admin }}
+      elasticsearch: ${{ steps.digests.outputs.elasticsearch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GitHub Container Registry
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Find the images that are already there
+        id: existing
+        run: |
+          for app in api store admin elasticsearch; do
+            ref="$IMAGE_PREFIX/$app:$GITHUB_SHA"
+            if out="$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}' 2>&1)"; then
+              echo "$app=$out" >> "$GITHUB_OUTPUT"
+              echo "$ref exists ($out), it is kept"
+            elif printf '%s' "$out" | grep -qiE 'not found|manifest unknown|name unknown|denied|unauthorized'; then
+              echo "$ref is not there yet"
+            else
+              echo "::error::could not look up $ref: $out"
+              exit 1
+            fi
+          done
+
+      # provenance: false keeps one plain image manifest per tag, so the digest is that of the image that gets
+      # pulled and deployed.
+      - name: Build and push api
+        id: build-api
+        if: steps.existing.outputs.api == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/api
+          target: prod
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE_PREFIX }}/api:${{ github.sha }}
+          cache-from: type=gha,scope=deploy-api
+          cache-to: type=gha,mode=max,scope=deploy-api
+
+      - name: Build and push store
+        id: build-store
+        if: steps.existing.outputs.store == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/store
+          target: prod
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE_PREFIX }}/store:${{ github.sha }}
+          cache-from: type=gha,scope=deploy-store
+          cache-to: type=gha,mode=max,scope=deploy-store
+
+      - name: Build and push admin
+        id: build-admin
+        if: steps.existing.outputs.admin == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/admin
+          target: prod
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE_PREFIX }}/admin:${{ github.sha }}
+          cache-from: type=gha,scope=deploy-admin
+          cache-to: type=gha,mode=max,scope=deploy-admin
+
+      - name: Build and push elasticsearch
+        id: build-elasticsearch
+        if: steps.existing.outputs.elasticsearch == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: infra/elasticsearch
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE_PREFIX }}/elasticsearch:${{ github.sha }}
+          cache-from: type=gha,scope=deploy-elasticsearch
+          cache-to: type=gha,mode=max,scope=deploy-elasticsearch
+
+      # The digests of the four images, for the job outputs and the summary. Argo CD deploys by digest.
+      - name: Digests of the images
+        id: digests
+        env:
+          EXISTING_API: ${{ steps.existing.outputs.api }}
+          EXISTING_STORE: ${{ steps.existing.outputs.store }}
+          EXISTING_ADMIN: ${{ steps.existing.outputs.admin }}
+          EXISTING_ELASTICSEARCH: ${{ steps.existing.outputs.elasticsearch }}
+          BUILT_API: ${{ steps.build-api.outputs.digest }}
+          BUILT_STORE: ${{ steps.build-store.outputs.digest }}
+          BUILT_ADMIN: ${{ steps.build-admin.outputs.digest }}
+          BUILT_ELASTICSEARCH: ${{ steps.build-elasticsearch.outputs.digest }}
+        run: |
+          {
+            echo "### Images of $GITHUB_SHA"
+            echo
+            echo '| image | digest |'
+            echo '| --- | --- |'
+          } >> "$GITHUB_STEP_SUMMARY"
+          for app in api store admin elasticsearch; do
+            upper="$(printf '%s' "$app" | tr '[:lower:]' '[:upper:]')"
+            existing="EXISTING_$upper"
+            built="BUILT_$upper"
+            digest="${!built:-${!existing:-}}"
+            if ! printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+              echo "::error::no valid digest for $app (got '$digest')"
+              exit 1
+            fi
+            echo "$app=$digest" >> "$GITHUB_OUTPUT"
+            echo "| \`$IMAGE_PREFIX/$app:$GITHUB_SHA\` | \`$digest\` |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+  # The smoke test (make -C infra/k8s smoke) on an empty k3d cluster. On main it runs on the images the job above
+  # pushed (pulled by digest); otherwise on images built here from the cache of GitHub Actions.
+  smoke:
+    needs: images
+    # `images` is skipped unless this is a push to main; a failed or cancelled one stops the smoke test.
+    if: ${{ !cancelled() && (needs.images.result == 'success' || needs.images.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: github.event_name != 'push'
+
+      - name: Pull the pushed images by digest
+        if: github.event_name == 'push'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST_API: ${{ needs.images.outputs.api }}
+          DIGEST_STORE: ${{ needs.images.outputs.store }}
+          DIGEST_ADMIN: ${{ needs.images.outputs.admin }}
+          DIGEST_ELASTICSEARCH: ${{ needs.images.outputs.elasticsearch }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for app in api store admin elasticsearch; do
+            upper="$(printf '%s' "$app" | tr '[:lower:]' '[:upper:]')"
+            digest="DIGEST_$upper"
+            docker pull --quiet "$IMAGE_PREFIX/$app@${!digest}"
+            docker tag "$IMAGE_PREFIX/$app@${!digest}" "$SMOKE_REGISTRY/$app:r1"
+          done
+
+      - name: Build api image
+        if: github.event_name != 'push'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/api
+          target: prod
+          load: true
+          tags: ${{ env.SMOKE_REGISTRY }}/api:r1
+          cache-from: type=gha,scope=deploy-api
+          cache-to: type=gha,mode=max,scope=deploy-api
+
+      - name: Build store image
+        if: github.event_name != 'push'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/store
+          target: prod
+          load: true
+          tags: ${{ env.SMOKE_REGISTRY }}/store:r1
+          cache-from: type=gha,scope=deploy-store
+          cache-to: type=gha,mode=max,scope=deploy-store
+
+      - name: Build admin image
+        if: github.event_name != 'push'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/admin
+          target: prod
+          load: true
+          tags: ${{ env.SMOKE_REGISTRY }}/admin:r1
+          cache-from: type=gha,scope=deploy-admin
+          cache-to: type=gha,mode=max,scope=deploy-admin
+
+      - name: Build elasticsearch image
+        if: github.event_name != 'push'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: infra/elasticsearch
+          load: true
+          tags: ${{ env.SMOKE_REGISTRY }}/elasticsearch:r1
+          cache-from: type=gha,scope=deploy-elasticsearch
+          cache-to: type=gha,mode=max,scope=deploy-elasticsearch
+
+      # The runner is sampled every 10 s while the test runs, so the summary shows the peak memory and disk used
+      # (smoke.sh adds the peaks of the cluster itself to its log).
+      - name: Smoke test
+        run: |
+          df -m --output=used,size / | tail -n 1 > "$RUNNER_TEMP/disk-start"
+          (
+            while :; do
+              echo "$(free -m | awk '/^Mem:/ {print $3, $2}') $(df -m --output=used,size / | tail -n 1)" >> "$RUNNER_TEMP/samples"
+              sleep 10
+            done
+          ) &
+          sampler=$!
+          status=0
+          SMOKE_BUILD=0 make -C infra/k8s smoke 2>&1 | tee "$RUNNER_TEMP/smoke.log" || status=$?
+          kill "$sampler" 2> /dev/null || true
+          exit "$status"
+
+      - name: Resources in the summary
+        if: always()
+        run: |
+          {
+            echo "### Smoke test ($GITHUB_EVENT_NAME, $GITHUB_SHA)"
+            echo
+            echo "Status of the job so far: ${{ job.status }}"
+            echo
+            if [ -s "$RUNNER_TEMP/samples" ]; then
+              awk 'BEGIN { m = 0; d = 0 } { if ($1 > m) m = $1; if ($3 > d) d = $3; mt = $2; dt = $4 }
+                END { printf "- runner peak memory: %d MiB of %d MiB\n- runner peak disk used: %d MiB of %d MiB\n", m, mt, d, dt }' \
+                "$RUNNER_TEMP/samples"
+              read -r start_used _ < "$RUNNER_TEMP/disk-start" || true
+              echo "- runner disk used before the test: ${start_used:-?} MiB"
+            else
+              echo "- no resource samples (the test did not start)"
+            fi
+            if [ -f "$RUNNER_TEMP/smoke.log" ]; then
+              echo
+              echo '```'
+              grep -E '^smoke: (peak|image|docker disk usage|   )|^smoke: (ok|FAILED)' "$RUNNER_TEMP/smoke.log" || true
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Moves `deploy` to the commit by fast-forward after a green smoke test (D4). Without the secret DEPLOY_KEY the job
+  # ends with a warning.
+  deploy:
+    needs: [images, smoke]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # The full history, so the push can tell a fast-forward from a commit that is behind or has diverged.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fast-forward deploy
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          if [ -n "$DEPLOY_KEY" ]; then
+            # The host keys of GitHub, from its API over TLS (the key never leaves this step).
+            curl -fsS https://api.github.com/meta \
+              | python3 -c 'import json, sys; [print("github.com " + key) for key in json.load(sys.stdin)["ssh_keys"]]' \
+              > "$RUNNER_TEMP/known_hosts"
+            export DEPLOY_KNOWN_HOSTS="$RUNNER_TEMP/known_hosts"
+          fi
+          sh .github/scripts/deploy-ref.sh "$GITHUB_SHA" "git@github.com:$GITHUB_REPOSITORY.git" deploy
+          if [ -n "$DEPLOY_KEY" ]; then
+            echo "### deploy" >> "$GITHUB_STEP_SUMMARY"
+            echo "The branch deploy is at \`$GITHUB_SHA\`." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### deploy" >> "$GITHUB_STEP_SUMMARY"
+            echo "The secret DEPLOY_KEY is not set: the branch deploy did not move." >> "$GITHUB_STEP_SUMMARY"
+          fi
