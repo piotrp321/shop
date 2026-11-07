@@ -42,10 +42,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Struktura
 
 - `app/` – trasy App Router, w tym route handlery logowania w `app/auth/`, koszyka w `app/api/cart/`, kasy
-  w `app/api/checkout/` (płatność zamówienia w `app/api/checkout/payment/`) i rewalidacji ISR w `app/api/revalidate/`.
+  w `app/api/checkout/` (płatność zamówienia w `app/api/checkout/payment/`), przełączników wdrożenia w `app/api/site/`
+  i rewalidacji ISR w `app/api/revalidate/`.
 - `src/api/` – `client.ts` (jedyne miejsce rozmowy z API i jedyne miejsce wywołań `/auth/session`, `/api/cart/*`,
-  `/api/checkout` i `/api/checkout/payment` z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
+  `/api/checkout`, `/api/checkout/payment` i `/api/site` z przeglądarki) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
 - `src/account/` – komponent konta w nagłówku (Client Component).
+- `src/components/SiteSwitches.tsx` – `SiteSwitchesProvider`, `useSiteSwitches` i pasek `DemoNotice` (Client Components).
 - `src/cart/` – BFF koszyka (wybór koszyka, ciasteczka `store_cart` i `store_cart_notice`, scalanie koszyka gościa
   w `merge.ts`, wywołania API, mapowanie błędów) oraz komponenty koszyka: `AddToCartButton`, `CartBadge` i `CartPage`.
 - `src/checkout/` – BFF kasy (złożenie zamówienia i rozpoczęcie płatności, ciasteczko `store_order_confirmation`),
@@ -392,6 +394,22 @@ Klienta API generuje `make api-client` z katalogu głównego.
   nie ma imienia) albo `null`. Korzystają z niego konto w nagłówku i kasa (e-mail klienta, imię i nazwisko).
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.
 - Odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`.
+
+## Przełączniki wdrożenia (`GET /api/site`)
+
+- Route handler (dynamiczny, `Cache-Control: no-store`) zwraca `{ demoNotice, customerAccounts }` ze zmiennych serwera
+  `STORE_DEMO_NOTICE` (domyślnie `false`) i `STORE_CUSTOMER_ACCOUNTS` (domyślnie `true`). Wartością jest `true` albo
+  `false` (wielkość liter i spacje wokół bez znaczenia); każda inna, także pusta, daje wartość domyślną. Bez zmiennych
+  sklep działa jak lokalnie i w testach. Wartości ustawia chart (`environments/prod/values.yaml`).
+- Przełączniki czyta tylko przeglądarka: `SiteSwitchesProvider` w `app/layout.tsx` woła `loadSiteSwitches()`
+  (`src/api/client.ts`) raz na stronę i rozdaje wynik przez `useSiteSwitches()`. Layout i strony nie czytają tych
+  zmiennych na serwerze, więc HTML stron statycznych i ISR jest taki sam w każdym wdrożeniu. Nie czytaj ich w kodzie
+  serwera stron.
+- `DemoNotice` pokazuje nad nagłówkiem pasek „Sklep demonstracyjny: płatności i zamówienia są symulowane, nic nie
+  zostanie wysłane ani pobrane.”, gdy `demoNotice`. `AccountMenu` nie pokazuje „Zaloguj się”, gdy `!customerAccounts`,
+  i czeka z linkiem na odczyt przełączników, żeby nie mignął. Zalogowany klient nadal widzi „Wyloguj się”.
+- Błąd odczytu (sieć, status nie-2xx, zły JSON, przełącznik niebędący booleanem) daje stan domyślny: bez paska,
+  z linkiem.
 
 ## Wygląd
 

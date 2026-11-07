@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadAccountSession } from "@/api/client";
+import { loadAccountSession, loadSiteSwitches } from "@/api/client";
+import { SiteSwitchesProvider } from "@/components/SiteSwitches";
 import { AccountMenu } from "./AccountMenu";
 
-vi.mock("@/api/client", () => ({ loadAccountSession: vi.fn() }));
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  loadAccountSession: vi.fn(),
+  loadSiteSwitches: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
   useSearchParams: () => new URLSearchParams("category=abc&page=2"),
@@ -12,6 +17,7 @@ vi.mock("next/navigation", () => ({
 
 beforeEach(() => {
   vi.mocked(loadAccountSession).mockReset();
+  vi.mocked(loadSiteSwitches).mockReset();
 });
 
 afterEach(cleanup);
@@ -56,5 +62,61 @@ describe("AccountMenu", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("AccountMenu with the site switches", () => {
+  const renderOnSite = () =>
+    render(
+      <SiteSwitchesProvider>
+        <AccountMenu />
+      </SiteSwitchesProvider>,
+    );
+
+  it("hides the login link when the customer accounts are off", async () => {
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: false, customerAccounts: false });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    renderOnSite();
+
+    await vi.waitFor(() => expect(loadSiteSwitches).toHaveBeenCalled());
+    await vi.waitFor(() => expect(loadAccountSession).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole("link", { name: "Zaloguj się" })).toBeNull();
+  });
+
+  it("shows the login link when the customer accounts are on", async () => {
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: false, customerAccounts: true });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    renderOnSite();
+
+    expect(await screen.findByRole("link", { name: "Zaloguj się" })).toBeTruthy();
+  });
+
+  it("does not show the login link before the switches are read, so it never flashes on a store without accounts", async () => {
+    vi.mocked(loadSiteSwitches).mockReturnValue(new Promise(() => {}));
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    renderOnSite();
+
+    await vi.waitFor(() => expect(loadAccountSession).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole("link", { name: "Zaloguj się" })).toBeNull();
+  });
+
+  it("shows the login link when the switches cannot be read (the default state)", async () => {
+    // loadSiteSwitches itself gives the defaults for a failed read.
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: false, customerAccounts: true });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    renderOnSite();
+
+    expect(await screen.findByRole("link", { name: "Zaloguj się" })).toBeTruthy();
+  });
+
+  it("still shows a signed-in customer and the logout form when the customer accounts are off", async () => {
+    vi.mocked(loadSiteSwitches).mockResolvedValue({ demoNotice: false, customerAccounts: false });
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com" } });
+    renderOnSite();
+
+    expect(await screen.findByText("Zalogowany jako Jan")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Wyloguj się" })).toBeTruthy();
   });
 });

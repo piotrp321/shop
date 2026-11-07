@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { loadMenuCategories } from "@/catalog/category-tree";
 import { SiteHeader } from "@/catalog/SiteHeader";
+import { DemoNotice, SiteSwitchesProvider } from "@/components/SiteSwitches";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,8 +16,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="pl">
       <body className="min-h-screen antialiased">
-        <SiteHeader categories={categories} />
-        {children}
+        {/* The switches of the deployment (`/api/site`) are read in the browser, so this HTML is the same everywhere. */}
+        <SiteSwitchesProvider>
+          <DemoNotice />
+          <SiteHeader categories={categories} />
+          {children}
+        </SiteSwitchesProvider>
       </body>
     </html>
   );
