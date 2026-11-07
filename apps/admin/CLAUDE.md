@@ -75,7 +75,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   odczytu (bez akcji) pracownik bez roli `admin` ani `marketing` (`permissions.ts`, role z `/me`); `/products/new`
   bez tej roli przekierowuje na listę (`beforeEnter` w routerze, który w razie potrzeby sam pobiera `/me`).
   `ProductFormView` pyta o potwierdzenie przy opuszczeniu formularza z niezapisanymi zmianami (globalny guard
-  routera, bo po utworzeniu produktu ta sama instancja przechodzi między trasami) i ostrzega przy zamknięciu karty.
+  routera, bo po utworzeniu produktu ta sama instancja przechodzi między trasami) i ostrzega przy zamknięciu karty, ale nie przy wylogowaniu (`signingOut` w store `auth`; blokada wylogowania po bezczynności
+  zostawiłaby sesję bez limitu). Odpowiedź żądania, które skończyło się po opuszczeniu formularza, jest ignorowana.
+  Błąd 422 dla całej listy zdjęć (`images`) pokazuje sekcja „Zdjęcia”, dla jednego zdjęcia (`images[i]`) jego wiersz.
   `useImageUpload` (sekcja „Zdjęcia”, `ProductImages.vue`): pliki wysyłane po kolei jako `multipart` z osobnym
   statusem (oczekuje, wysyłanie, gotowe, błąd z `detail` 422 albo ogólnym komunikatem, ponowienie), klucz już
   obecny w formularzu nie jest dodawany drugi raz, z wybranych plików wysyłane są tylko te, które mieszczą się

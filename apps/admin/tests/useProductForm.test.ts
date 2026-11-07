@@ -259,6 +259,22 @@ describe("useProductForm", () => {
       expect(form.message.value).toContain("zapisany");
     });
 
+    it("ignores the answer of a post that finishes after the form was left", async () => {
+      const { form, onCreated, wrapper } = await start({ id: null });
+      const pending = deferred();
+      mocks.post.mockReturnValue(pending.promise);
+
+      const saving = form.save();
+      await flushPromises();
+      wrapper.unmount();
+      pending.resolve(ok(view(), 201));
+      await saving;
+
+      expect(onCreated).not.toHaveBeenCalled();
+      expect(form.view.value).toBeNull();
+      expect(form.message.value).toBeNull();
+    });
+
     it("does not navigate when the post fails", async () => {
       const { form, onCreated } = await start({ id: null });
       mocks.post.mockResolvedValue(problem(500));
@@ -561,6 +577,24 @@ describe("useProductForm", () => {
       expect(form.variantsErrors.value).toEqual(["Zła oś.", "Zła liczba wartości."]);
       expect(form.error.value).toBeNull();
       expect(form.dirty.value).toBe(true);
+    });
+
+    it("keeps a violation at the images list itself apart from the ones at a single image", async () => {
+      const { form } = await start();
+      form.form.value.name = "Inne";
+      mocks.put.mockResolvedValue(
+        problem(422, {
+          violations: [
+            { propertyPath: "images", title: "Produkt może mieć najwyżej 10 zdjęć." },
+            { propertyPath: "images[0].alt", title: "Opis zdjęcia jest wymagany." },
+          ],
+        }),
+      );
+
+      await form.save();
+
+      expect(form.imagesErrors.value).toEqual(["Produkt może mieć najwyżej 10 zdjęć."]);
+      expect(form.errorsAt("images[0]")).toEqual(["Opis zdjęcia jest wymagany."]);
     });
 
     it("shows a violation at an unknown path as a form message so that nothing is lost", async () => {

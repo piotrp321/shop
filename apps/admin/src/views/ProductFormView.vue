@@ -39,6 +39,7 @@ const {
   message,
   error,
   conflict,
+  imagesErrors,
   variantsErrors,
   errorsAt,
   upload,
@@ -88,7 +89,8 @@ function setAlt(index: number, value: string): void {
 const removeGuard = router.beforeEach(() => !dirty.value || window.confirm(LEAVE_MESSAGE));
 
 function warnBeforeUnload(event: BeforeUnloadEvent): void {
-  if (dirty.value) {
+  // The sign-out (e.g. the idle one) leaves the page by itself; holding it back would keep the session alive.
+  if (dirty.value && !auth.signingOut) {
     event.preventDefault();
     event.returnValue = "";
   }
@@ -354,6 +356,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
         :can-add-more="upload.canAddMore.value"
         :read-only="readOnly"
         :errors-at="errorsAt"
+        :errors="imagesErrors"
         @add="upload.addFiles($event)"
         @retry="upload.retry($event)"
         @dismiss="upload.dismiss($event)"

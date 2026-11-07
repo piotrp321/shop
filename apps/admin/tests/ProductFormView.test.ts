@@ -355,6 +355,37 @@ describe("ProductFormView", () => {
     });
   });
 
+  describe("signing out", () => {
+    it("does not hold back a sign-out with the warning about unsaved changes", async () => {
+      mounted = await mountForm("/products/p-1");
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      useAuthStore().signingOut = true;
+
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+  });
+
+  describe("after the view is left", () => {
+    it("no longer asks for confirmation on navigation and no longer warns when the tab is closed", async () => {
+      mounted = await mountForm("/products/p-1");
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      mounted.wrapper.unmount();
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+      await mounted.router.push("/products");
+      await flushPromises();
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(mounted.router.currentRoute.value.name).toBe("products");
+      expect(event.defaultPrevented).toBe(false);
+    });
+  });
+
   describe("load failures", () => {
     it("says that the product does not exist", async () => {
       serve(404);
@@ -410,6 +441,17 @@ describe("ProductFormView", () => {
 
       expect(mounted.wrapper.findAll("[data-testid=image-row]")[1]!.get("[data-testid=image-error]").text()).toBe("Opis zdjęcia jest wymagany.");
       expect(mounted.wrapper.findAll("[data-testid=image-row]")[0]!.find("[data-testid=image-error]").exists()).toBe(false);
+    });
+
+    it("shows an error at the list of images in the section", async () => {
+      mounted = await mountForm("/products/p-1");
+      mocks.put.mockResolvedValue(problem(422, { violations: [{ propertyPath: "images", title: "Produkt może mieć najwyżej 10 zdjęć." }] }));
+
+      await mounted.wrapper.get("[data-testid=name]").setValue("Inne");
+      await mounted.wrapper.get("[data-testid=save]").trigger("click");
+      await flushPromises();
+
+      expect(mounted.wrapper.get("[data-testid=images-error]").text()).toBe("Produkt może mieć najwyżej 10 zdjęć.");
     });
 
     it("uploads the chosen files one by one, shows a status per file and offers a retry for the failed one", async () => {

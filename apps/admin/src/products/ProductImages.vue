@@ -13,6 +13,8 @@ defineProps<{
   canAddMore: boolean;
   readOnly: boolean;
   errorsAt: (path: string) => string[];
+  /** Messages about the list as a whole, e.g. too many images. */
+  errors: string[];
 }>();
 
 const emit = defineEmits<{
@@ -56,6 +58,15 @@ function chosen(event: Event): void {
     <p class="hint">
       Pierwsze zdjęcie jest główne. Najwyżej {{ MAX_IMAGES }} zdjęć.
     </p>
+
+    <Message
+      v-for="title in errors"
+      :key="title"
+      data-testid="images-error"
+      severity="error"
+    >
+      {{ title }}
+    </Message>
 
     <template v-if="!readOnly">
       <input

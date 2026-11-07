@@ -64,6 +64,20 @@ describe("auth store", () => {
     expect(mocks.signoutRedirect).toHaveBeenCalledTimes(1);
   });
 
+  it("is signing out from the moment the redirect starts, and not any more when it fails", async () => {
+    const store = useAuthStore();
+    expect(store.signingOut).toBe(false);
+    let fail!: (reason: Error) => void;
+    mocks.signoutRedirect.mockReturnValue(new Promise((_resolve, reject) => (fail = reject)));
+
+    const loggingOut = store.logout();
+    expect(store.signingOut).toBe(true);
+
+    fail(new Error("Keycloak unreachable"));
+    await loggingOut;
+    expect(store.signingOut).toBe(false);
+  });
+
   it("reports a problem and does not throw when the sign-out redirect fails", async () => {
     mocks.signoutRedirect.mockRejectedValue(new Error("Keycloak unreachable"));
     const store = useAuthStore();

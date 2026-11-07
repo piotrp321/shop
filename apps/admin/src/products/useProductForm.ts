@@ -1,4 +1,4 @@
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 import { type FormImage, useImageUpload } from "./useImageUpload";
@@ -165,6 +165,8 @@ export function useProductForm(options: ProductFormOptions) {
 
   // Only the newest load may change the state; an older one that finishes late is ignored.
   let latest = 0;
+  // Set when the form is left: an answer that arrives later must not change it or send the staff member back to it.
+  let disposed = false;
 
   const readOnly = computed(() => !options.canManage());
   const dirty = computed(() => JSON.stringify(toBody(form.value)) !== baseline.value);
@@ -172,6 +174,8 @@ export function useProductForm(options: ProductFormOptions) {
   const canSave = idle;
   const canPublish = computed(() => idle.value && !dirty.value && view.value?.status === "draft");
   const canUnpublish = computed(() => idle.value && !dirty.value && view.value?.status === "published");
+  /** The messages for the list of images as a whole (`images`), not for a single image. */
+  const imagesErrors = computed(() => fieldErrors.value.images ?? []);
   const variantsErrors = computed(() => [
     ...(variantsConflict.value === null ? [] : [variantsConflict.value]),
     ...errorsAt("variantAxes"),
@@ -265,6 +269,10 @@ export function useProductForm(options: ProductFormOptions) {
     open(options.productId());
     void loadTaxClasses();
   });
+  onBeforeUnmount(() => {
+    disposed = true;
+    latest++;
+  });
   watch(
     () => options.productId(),
     (id) => open(id),
@@ -352,6 +360,9 @@ export function useProductForm(options: ProductFormOptions) {
     busy.value = true;
     try {
       const result = await request();
+      if (disposed) {
+        return;
+      }
       if (result.data) {
         const created = view.value === null;
         apply(result.data);
@@ -363,7 +374,9 @@ export function useProductForm(options: ProductFormOptions) {
         failure(action, result.response.status, result.error);
       }
     } catch {
-      error.value = "Nie udało się wykonać operacji. Sprawdź połączenie z API.";
+      if (!disposed) {
+        error.value = "Nie udało się wykonać operacji. Sprawdź połączenie z API.";
+      }
     } finally {
       busy.value = false;
     }
@@ -442,6 +455,7 @@ export function useProductForm(options: ProductFormOptions) {
     message,
     error,
     conflict,
+    imagesErrors,
     variantsErrors,
     errorsAt,
     upload,
