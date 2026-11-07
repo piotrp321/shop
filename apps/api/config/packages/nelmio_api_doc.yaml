@@ -673,6 +673,34 @@ nelmio_api_doc:
                     schemas:
                         # The same document as in the default area.
                         Problem: *problem
+                        ProductConflictProblem:
+                            type: object
+                            description: >-
+                                A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people
+                                and may change): the product changed since the given version, the slug belongs to another
+                                product, the slug is locked since the first publication, the product cannot be published (a draft
+                                without images) or lose its last image once published, an axis or the meaning of a variant cannot
+                                change after the first publication, or a removed variant has stock or reservations.
+                            required: [type, title, status, detail]
+                            properties:
+                                type:
+                                    type: string
+                                    enum:
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/product-modified'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/slug-taken'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/slug-locked'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/product-not-publishable'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/variant-locked'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/variant-in-use'
+                                title:
+                                    type: string
+                                    example: Conflict
+                                status:
+                                    type: integer
+                                    enum: [409]
+                                detail:
+                                    type: string
+                                    description: Polish text for the staff member.
                     securitySchemes:
                         backoffice:
                             type: http

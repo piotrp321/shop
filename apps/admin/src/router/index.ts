@@ -3,10 +3,14 @@ import { createRouter, createWebHistory, type RouterHistory } from "vue-router";
 import { LOGIN_SERVER_MESSAGE, reportLoginProblem } from "@/auth/loginProblem";
 import { getUserManager } from "@/auth/userManager";
 import AppLayout from "@/layout/AppLayout.vue";
+import { canManageProducts } from "@/products/permissions";
+import { useAuthStore } from "@/stores/auth";
 import AuthCallbackView from "@/views/AuthCallbackView.vue";
 import DashboardView from "@/views/DashboardView.vue";
 import InventoryView from "@/views/InventoryView.vue";
 import PricesView from "@/views/PricesView.vue";
+import ProductFormView from "@/views/ProductFormView.vue";
+import ProductsView from "@/views/ProductsView.vue";
 
 type SessionManager = Pick<UserManager, "getUser" | "signinRedirect">;
 
@@ -21,6 +25,21 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
         component: AppLayout,
         children: [
           { path: "", name: "dashboard", component: DashboardView },
+          { path: "products", name: "products", component: ProductsView },
+          {
+            path: "products/new",
+            name: "product-new",
+            component: ProductFormView,
+            // Only the staff who may change products create one; the roles come from /me, which the layout loads only after the route resolves.
+            beforeEnter: async () => {
+              const auth = useAuthStore();
+              if (auth.staff === null) {
+                await auth.load();
+              }
+              return canManageProducts(auth.staff) ? true : { name: "products" };
+            },
+          },
+          { path: "products/:id", name: "product", component: ProductFormView },
           { path: "prices", name: "prices", component: PricesView },
           { path: "inventory", name: "inventory", component: InventoryView },
           { path: ":pathMatch(.*)*", redirect: "/" },

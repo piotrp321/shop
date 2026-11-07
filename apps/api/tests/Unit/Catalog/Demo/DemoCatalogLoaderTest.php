@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Catalog\Demo;
 use App\Catalog\Application\Command\CreateCategory;
 use App\Catalog\Application\Command\CreateProduct;
 use App\Catalog\Application\Demo\DemoCatalogLoader;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Demo\YamlDemoCatalogSource;
 use App\Tests\Support\InMemory\InMemoryProductImageStorage;
 use App\Tests\Support\InMemory\RecordingMessageBus;
@@ -54,6 +55,9 @@ final class DemoCatalogLoaderTest extends TestCase
         self::assertSame([], $products[8]->variantAxes);
         self::assertCount(1, $products[8]->variants);
         self::assertSame([], $products[8]->variants[0]['values']);
+        // The demo catalog is in the storefront from the start, also its products without images; nobody made it.
+        self::assertSame([ProductStatus::Published], array_values(array_unique(array_map(static fn (CreateProduct $p): ProductStatus => $p->status, $products), \SORT_REGULAR)));
+        self::assertSame([null], array_values(array_unique(array_map(static fn (CreateProduct $p): ?string => $p->actorId, $products), \SORT_REGULAR)));
         foreach ($products as $product) {
             foreach ($product->variants as $variant) {
                 self::assertNotSame($product->id, $variant['id']);

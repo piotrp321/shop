@@ -7,10 +7,12 @@ namespace App\Catalog\Application\Demo;
 use App\Catalog\Application\Command\CreateCategory;
 use App\Catalog\Application\Command\CreateProduct;
 use App\Catalog\Application\Port\ProductImageStorage;
+use App\Catalog\Domain\Product\ProductStatus;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
- * Creates a demo catalog through the application commands (the `command.bus`, injected by the parameter name).
+ * Creates a demo catalog through the application commands (the `command.bus`, injected by the parameter name). Its
+ * products are published.
  */
 final readonly class DemoCatalogLoader
 {
@@ -50,6 +52,9 @@ final readonly class DemoCatalogLoader
                 array_map(static fn (array $image): array => ['key' => $keys[$image['file']], 'alt' => $image['alt']], $product->images),
                 $product->variantAxes,
                 $product->variants,
+                // In the storefront from the start (also without images), created by nobody; no ProductChanged.
+                ProductStatus::Published,
+                null,
             ));
         }
     }

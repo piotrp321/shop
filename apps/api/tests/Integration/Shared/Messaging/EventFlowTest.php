@@ -7,8 +7,10 @@ namespace App\Tests\Integration\Shared\Messaging;
 use App\Catalog\Application\Command\CreateCategory;
 use App\Catalog\Application\Command\CreateProduct;
 use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Tests\Integration\Catalog\Search\UsesTemporarySearchAlias;
+use App\Tests\Support\OriginalImages;
 use Elastic\Elasticsearch\Response\Elasticsearch;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -30,6 +32,7 @@ final class EventFlowTest extends MessagingKernelTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        OriginalImages::exist(self::getContainer(), 'originals/'.str_repeat('a', 64).'.jpg');
         $this->maintenance()->setup();
         self::getContainer()->set(
             ElasticsearchProductIndexer::class,
@@ -105,6 +108,8 @@ final class EventFlowTest extends MessagingKernelTestCase
             [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front']],
             [],
             [['id' => '20000000-0000-4000-8000-000000000001', 'values' => []]],
+            ProductStatus::Published,
+            null,
         ));
     }
 

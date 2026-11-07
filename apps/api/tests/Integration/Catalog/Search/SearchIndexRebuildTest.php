@@ -12,6 +12,7 @@ use App\Catalog\Application\Search\OfferFactsUnavailable;
 use App\Catalog\Application\Search\ProductDocumentBuilder;
 use App\Catalog\Application\Search\ProductIndexing;
 use App\Catalog\Application\Search\ProductSearchIndexRebuilder;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock;
@@ -105,7 +106,7 @@ final class SearchIndexRebuildTest extends KernelTestCase
         new DoctrineCategoryRepository($entityManager)->save($category);
         $variantId = (string) Uuid::v4();
         $product = ProductFactory::createOne(['mainCategory' => $category, 'variants' => [['id' => $variantId, 'values' => []]]]);
-        new DoctrineProductRepository($entityManager)->save($product);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
         VariantPriceRecordFactory::store($entityManager, ['variantId' => $variantId, 'gross' => 12_900]);
         StockFixture::stock($entityManager->getConnection(), 2, variantId: $variantId);
 
@@ -114,6 +115,22 @@ final class SearchIndexRebuildTest extends KernelTestCase
         $source = $this->indexedSource($product->id()->toString());
         self::assertSame(12_900, $source['from_gross']);
         self::assertSame([['gross' => 12_900, 'purchasable' => true, 'options' => [], 'pairs' => []]], $source['variants']);
+    }
+
+    public function testTheRebuildIndexesDraftsAsDraftDocuments(): void
+    {
+        $entityManager = $this->entityManager();
+        $category = CategoryFactory::createOne();
+        new DoctrineCategoryRepository($entityManager)->save($category);
+        $draft = ProductFactory::createOne(['mainCategory' => $category, 'status' => ProductStatus::Draft]);
+        $published = ProductFactory::createOne(['mainCategory' => $category]);
+        new DoctrineProductRepository($entityManager)->save($draft, null, null, new \DateTimeImmutable());
+        new DoctrineProductRepository($entityManager)->save($published, null, null, new \DateTimeImmutable());
+
+        self::assertSame(Command::SUCCESS, $this->reindexCommand()->execute([]));
+
+        self::assertSame('draft', $this->indexedSource($draft->id()->toString())['status']);
+        self::assertSame('published', $this->indexedSource($published->id()->toString())['status']);
     }
 
     public function testAFailureOfTheOfferFactsStopsTheRebuildAndKeepsTheAlias(): void
@@ -220,7 +237,7 @@ final class SearchIndexRebuildTest extends KernelTestCase
         $ids = [];
         for ($i = 0; $i < $count; ++$i) {
             $product = ProductFactory::createOne(['mainCategory' => $category]);
-            $products->save($product);
+            $products->save($product, null, null, new \DateTimeImmutable());
             $ids[] = $product->id()->toString();
         }
         sort($ids);

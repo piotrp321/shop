@@ -17,6 +17,7 @@ use App\Catalog\Application\Query\VariantIdentity;
 use App\Catalog\Application\Query\VariantInfo;
 use App\Catalog\Application\Query\VariantSummary;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -42,10 +43,11 @@ final class VariantQueriesTest extends KernelTestCase
     private const string WHITE_43 = 'a0000000-0000-4000-8000-000000000002';
     private const string BLACK_43 = 'b0000000-0000-4000-8000-000000000003';
     private const string HAT = 'd0000000-0000-4000-8000-000000000004';
+    private const string DRAFT_M = 'e0000000-0000-4000-8000-000000000005';
 
     private MessageBusInterface $queryBus;
     private StatementCounter $counter;
-    /** @var array{boots: Product, hat: Product} */
+    /** @var array{boots: Product, hat: Product, draft: Product} */
     private array $products;
 
     protected function setUp(): void
@@ -82,9 +84,19 @@ final class VariantQueriesTest extends KernelTestCase
             'taxClass' => \App\Catalog\Domain\Product\TaxClassCode::FreezeDriedMeal,
             'variants' => [['id' => self::HAT, 'values' => []]],
         ]);
-        $repository->save($boots);
-        $repository->save($hat);
-        $this->products = ['boots' => $boots, 'hat' => $hat];
+        $draft = ProductFactory::createOne([
+            'mainCategory' => $category,
+            'name' => 'Kurtka',
+            'slug' => 'kurtka-szkic',
+            'taxClass' => \App\Catalog\Domain\Product\TaxClassCode::PrintedBook,
+            'variantAxes' => ['Rozmiar'],
+            'variants' => [['id' => self::DRAFT_M, 'values' => ['M']]],
+            'status' => ProductStatus::Draft,
+        ]);
+        $repository->save($boots, null, null, new \DateTimeImmutable());
+        $repository->save($hat, null, null, new \DateTimeImmutable());
+        $repository->save($draft, null, null, new \DateTimeImmutable());
+        $this->products = ['boots' => $boots, 'hat' => $hat, 'draft' => $draft];
     }
 
     public function testSummariesInTheOrderOfTheRequestWithAbsentAndRepeatedIdsHandled(): void
@@ -204,6 +216,33 @@ final class VariantQueriesTest extends KernelTestCase
         }
     }
 
+    public function testSummariesLeaveOutTheVariantsOfADraft(): void
+    {
+        self::assertSame([self::HAT], array_map(static fn (VariantSummary $s): string => $s->variantId, $this->summaries([self::DRAFT_M, self::HAT])));
+    }
+
+    public function testProductVariantsLeaveOutADraftUnlessDraftsAreIncluded(): void
+    {
+        $draft = $this->products['draft']->id()->toString();
+        $hat = $this->products['hat']->id()->toString();
+
+        self::assertSame([$hat], array_map(static fn (ProductVariantList $l): string => $l->productId, $this->variantLists([$draft, $hat])));
+
+        $lists = $this->variantLists([$draft, $hat], includeDrafts: true);
+        self::assertSame([$draft, $hat], array_map(static fn (ProductVariantList $l): string => $l->productId, $lists));
+        self::assertSame(['Rozmiar'], $lists[0]->variantAxes);
+        self::assertSame([[self::DRAFT_M, 'M']], array_map(static fn ($v): array => [$v->variantId, $v->label], $lists[0]->variants));
+        self::assertSame(['printed_book', 'freeze_dried_meal'], array_map(static fn (ProductVariantList $l): string => $l->taxClass, $lists));
+    }
+
+    public function testGetVariantAndIdentitiesSeeTheVariantsOfADraft(): void
+    {
+        $info = $this->ask(new GetVariant(self::DRAFT_M));
+        self::assertInstanceOf(VariantInfo::class, $info);
+        self::assertSame($this->products['draft']->id()->toString(), $info->productId);
+        self::assertContains('kurtka-szkic/m', array_map(static fn (VariantIdentity $i): string => $i->key, $this->identities(null, 10)));
+    }
+
     public function testIdentitiesCarryKeyAndTaxClassInBatchesByVariantId(): void
     {
         $before = $this->counter->count();
@@ -214,7 +253,7 @@ final class VariantQueriesTest extends KernelTestCase
 
         self::assertSame([self::WHITE_43, self::BLACK_43], array_map(static fn (VariantIdentity $i): string => $i->variantId, $first));
         self::assertSame([self::BLACK_42, self::HAT], array_map(static fn (VariantIdentity $i): string => $i->variantId, $second));
-        self::assertSame([], $third);
+        self::assertSame([self::DRAFT_M], array_map(static fn (VariantIdentity $i): string => $i->variantId, $third));
         self::assertSame(
             ['buty-puls/biale-43', 'buty-puls/czarne-43', 'buty-puls/czarne-42', 'czapka/standard'],
             array_map(static fn (VariantIdentity $i): string => $i->key, [...$first, ...$second]),
@@ -253,9 +292,9 @@ final class VariantQueriesTest extends KernelTestCase
      *
      * @return list<ProductVariantList>
      */
-    private function variantLists(array $ids): array
+    private function variantLists(array $ids, bool $includeDrafts = false): array
     {
-        $result = $this->ask(new ListProductVariants($ids));
+        $result = $this->ask(new ListProductVariants($ids, $includeDrafts));
         self::assertIsArray($result);
         self::assertContainsOnlyInstancesOf(ProductVariantList::class, $result);
 

@@ -3,6 +3,7 @@ import { RouterLink } from "vue-router";
 
 const items = [
   { label: "Dashboard", icon: "pi pi-home", to: { name: "dashboard" } },
+  { label: "Produkty", icon: "pi pi-shopping-bag", to: { name: "products" } },
   { label: "Ceny", icon: "pi pi-tag", to: { name: "prices" } },
   { label: "Stany magazynowe", icon: "pi pi-box", to: { name: "inventory" } },
 ];

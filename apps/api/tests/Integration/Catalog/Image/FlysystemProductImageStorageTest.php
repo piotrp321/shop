@@ -113,7 +113,7 @@ final class FlysystemProductImageStorageTest extends KernelTestCase
             $storage->store('not an image at all');
             self::fail('Expected InvalidImage.');
         } catch (InvalidImage $e) {
-            self::assertSame('The image file is too large.', $e->getMessage());
+            self::assertSame('Plik jest za duży.', $e->getMessage());
         }
     }
 
@@ -152,6 +152,46 @@ final class FlysystemProductImageStorageTest extends KernelTestCase
         $this->expectException(InvalidImage::class);
 
         $this->storage()->store("\x89PNG\r\n\x1a\n");
+    }
+
+    public function testExistsTellsAStoredOriginalFromAMissingOne(): void
+    {
+        $key = $this->storage()->store(self::fixture('sample.png'));
+
+        self::assertTrue($this->storage()->exists($key));
+        self::assertFalse($this->storage()->exists('originals/'.str_repeat('0', 64).'.png'));
+    }
+
+    public function testExistsFindsNothingAfterPurge(): void
+    {
+        $key = $this->storage()->store(self::fixture('sample.jpg'));
+        $this->storage()->purge();
+
+        self::assertFalse($this->storage()->exists($key));
+    }
+
+    public function testRejectionsAreInPolish(): void
+    {
+        $storage = $this->storage();
+        $messages = [];
+        foreach (['<svg xmlns="http://www.w3.org/2000/svg"/>', substr(self::fixture('sample.png'), 0, 16)] as $contents) {
+            try {
+                $storage->store($contents);
+            } catch (InvalidImage $e) {
+                $messages[] = $e->getMessage();
+            }
+        }
+        try {
+            $this->storageWithLimits(67_108_864, 64 * 48 - 1)->store(self::fixture('sample.png'));
+        } catch (InvalidImage $e) {
+            $messages[] = $e->getMessage();
+        }
+
+        self::assertSame([
+            'Nieobsługiwany typ pliku. Wyślij zdjęcie JPEG, PNG, WebP, AVIF albo HEIC.',
+            'Nie można odczytać wymiarów zdjęcia.',
+            'Zdjęcie ma za dużą rozdzielczość (najwyżej 50 megapikseli).',
+        ], $messages);
     }
 
     public function testPurgeRemovesStoredOriginals(): void

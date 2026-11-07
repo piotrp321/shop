@@ -28,7 +28,20 @@ final readonly class HttpStorefrontCache implements StorefrontCache
 
     public function invalidateProduct(string $productId): void
     {
-        $tags = [CacheTags::product($productId)];
+        $this->invalidateTags([CacheTags::product($productId)]);
+    }
+
+    public function invalidateTags(array $tags): void
+    {
+        if ([] === $tags) {
+            throw new \InvalidArgumentException('At least one tag must be invalidated.');
+        }
+        foreach ($tags as $tag) {
+            if (!CacheTags::isTag($tag)) {
+                throw new \InvalidArgumentException('A tag to invalidate must come from CacheTags.');
+            }
+        }
+
         $this->purge($tags);
         $this->revalidate($tags);
     }

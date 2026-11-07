@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Catalog\Application;
 
+use App\Catalog\Application\Event\ProductChanged;
 use App\Catalog\Application\EventHandler\IndexProduct;
 use App\Catalog\Application\Search\IndexOutcome;
 use App\Catalog\Application\Search\OfferFactsUnavailable;
@@ -16,6 +17,7 @@ use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Application\Search\VariantFacts;
 use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryProductOfferFacts;
 use App\Tests\Support\InMemory\RecordingProductIndexer;
@@ -49,6 +51,34 @@ final class IndexProductTest extends TestCase
         self::assertSame('Buty biegowe', $document->name);
         self::assertSame(4_900, $document->fromGross);
         self::assertEquals([new VariantDocument(4_900, true, [])], $document->variants);
+    }
+
+    public function testAChangeOfTheProductIndexesItsCurrentState(): void
+    {
+        ($this->handler)(new ProductChanged(self::PRODUCT_ID, 'buty-biegowe', new \DateTimeImmutable('2026-10-29T12:00:00+00:00')));
+
+        self::assertCount(1, $this->indexer->indexed);
+        self::assertSame(self::PRODUCT_ID, $this->indexer->indexed[0]->id);
+        self::assertSame(4_900, $this->indexer->indexed[0]->fromGross);
+    }
+
+    public function testADraftIsIndexedAsADraftDocument(): void
+    {
+        $handler = $this->handlerFor([self::snapshot(self::PRODUCT_ID, ProductStatus::Draft)]);
+
+        $handler($this->event());
+        $handler(new ProductChanged(self::PRODUCT_ID, 'buty-biegowe', new \DateTimeImmutable('2026-10-29T12:00:00+00:00')));
+
+        self::assertSame([ProductStatus::Draft, ProductStatus::Draft], array_map(static fn ($d): ProductStatus => $d->status, $this->indexer->indexed));
+    }
+
+    public function testAChangeOfAProductThatDoesNotExistIsNotRetried(): void
+    {
+        $handler = $this->handlerFor([]);
+
+        $this->expectException(UnrecoverableMessageHandlingException::class);
+
+        $handler(new ProductChanged(self::PRODUCT_ID, 'buty-biegowe', new \DateTimeImmutable('2026-10-29T12:00:00+00:00')));
     }
 
     public function testStaleOutcomeEndsHandlingWithoutAnError(): void
@@ -141,8 +171,8 @@ final class IndexProductTest extends TestCase
         return new ProductCreated(self::PRODUCT_ID, new \DateTimeImmutable('2026-10-29T12:00:00+00:00'));
     }
 
-    private static function snapshot(string $id): ProductSearchSnapshot
+    private static function snapshot(string $id, ProductStatus $status = ProductStatus::Published): ProductSearchSnapshot
     {
-        return new ProductSearchSnapshot($id, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::MAIN_ID, [], [[self::MAIN_ID]], null, ['Buty'], [], [['id' => self::VARIANT_ID, 'values' => []]]);
+        return new ProductSearchSnapshot($id, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::MAIN_ID, [], [[self::MAIN_ID]], null, ['Buty'], [], [['id' => self::VARIANT_ID, 'values' => []]], $status);
     }
 }

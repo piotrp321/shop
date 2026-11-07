@@ -10,6 +10,7 @@ use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\ProductSort;
 use App\Catalog\Application\Search\SearchResult;
 use App\Catalog\Application\Search\VariantDocument;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
 use App\Tests\Factory\ProductDocumentFactory;
@@ -520,6 +521,38 @@ final class ProductSearchQueryTest extends TestCase
         self::assertCount(2, $second->items);
     }
 
+    /**
+     * A draft stays in the index as a tombstone; no storefront query sees it: not the results, not the total, not a
+     * facet, not the available count and not the price range.
+     */
+    public function testADraftIsInNoResultTotalOrFacet(): void
+    {
+        $this->indexShoes();
+        $criteria = [
+            new ProductSearchCriteria(1, 24),
+            new ProductSearchCriteria(1, 24, phrase: 'buty'),
+            new ProductSearchCriteria(1, 24, categoryId: self::CHILD_A, facetCategoryIds: [self::LEAF]),
+            new ProductSearchCriteria(1, 24, categoryId: self::ROOT, facetCategoryIds: [self::CHILD_A, self::CHILD_B]),
+            new ProductSearchCriteria(1, 24, options: ['Kolor' => ['czarne']]),
+            new ProductSearchCriteria(1, 24, options: ['Kolor' => ['czarne'], 'Rozmiar' => ['42']], availableOnly: true),
+            new ProductSearchCriteria(1, 24, priceMax: 2000),
+            new ProductSearchCriteria(1, 24, availableOnly: true, sort: ProductSort::PriceAsc),
+        ];
+        $before = array_map(fn (ProductSearchCriteria $c): SearchResult => $this->search($c), $criteria);
+
+        $this->index(
+            self::product('Buty Szkic', categoryAncestors: [self::ROOT, self::CHILD_A, self::LEAF], variants: [
+                self::variant(['Kolor' => 'czarne', 'Rozmiar' => '42'], 1000, true),
+                self::variant(['Kolor' => 'fioletowe', 'Materiał' => 'skóra'], 900, true),
+            ], fromGross: 900, status: ProductStatus::Draft),
+        );
+
+        foreach ($criteria as $i => $c) {
+            self::assertEquals($before[$i], $this->search($c), 'criteria #'.$i);
+        }
+        self::assertSame(0, $this->search(new ProductSearchCriteria(1, 24, phrase: 'szkic'))->total);
+    }
+
     public function testEmptyIndexGivesEmptyFacets(): void
     {
         $result = $this->search(new ProductSearchCriteria(1, 24, phrase: 'kask', options: ['Kolor' => ['czarne']]));
@@ -621,8 +654,10 @@ final class ProductSearchQueryTest extends TestCase
         array $variants = [],
         ?int $fromGross = null,
         ?string $id = null,
+        ProductStatus $status = ProductStatus::Published,
     ): ProductDocument {
         return ProductDocumentFactory::createOne([
+            'status' => $status,
             ...(null === $id ? [] : ['id' => $id]),
             'name' => $name,
             'shortDescription' => $description,

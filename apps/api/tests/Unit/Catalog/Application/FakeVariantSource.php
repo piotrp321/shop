@@ -10,7 +10,8 @@ use App\Catalog\Domain\Product\VariantId;
 
 /**
  * An in-memory VariantSource over a list of products with their variants. It answers like the database adapter:
- * in no particular order for the many-id reads, ordered by variant id for the pages.
+ * in no particular order for the many-id reads, ordered by variant id for the pages. A product without `status` is
+ * published.
  */
 final class FakeVariantSource implements VariantSource
 {
@@ -25,7 +26,8 @@ final class FakeVariantSource implements VariantSource
      *     taxClass: string,
      *     axes: list<string>,
      *     mainImage: array{key: string, alt: string}|null,
-     *     variants: list<array{id: string, values: list<string>}>
+     *     variants: list<array{id: string, values: list<string>}>,
+     *     status?: 'draft'|'published'
      * }> $products
      */
     public function __construct(private readonly array $products)
@@ -46,6 +48,7 @@ final class FakeVariantSource implements VariantSource
                         'name' => $product['name'],
                         'values' => $variant['values'],
                         'mainImage' => $product['mainImage'],
+                        'published' => self::published($product),
                     ];
                 }
             }
@@ -75,7 +78,13 @@ final class FakeVariantSource implements VariantSource
         $rows = [];
         foreach (array_reverse($this->products) as $product) {
             if (\in_array($product['id'], $wanted, true)) {
-                $rows[] = ['productId' => $product['id'], 'axes' => $product['axes'], 'variants' => $product['variants']];
+                $rows[] = [
+                    'productId' => $product['id'],
+                    'axes' => $product['axes'],
+                    'taxClass' => $product['taxClass'],
+                    'published' => self::published($product),
+                    'variants' => $product['variants'],
+                ];
             }
         }
 
@@ -101,5 +110,13 @@ final class FakeVariantSource implements VariantSource
         ksort($rows);
 
         return \array_slice(array_values($rows), 0, $limit);
+    }
+
+    /**
+     * @param array{status?: 'draft'|'published'} $product
+     */
+    private static function published(array $product): bool
+    {
+        return 'draft' !== ($product['status'] ?? 'published');
     }
 }

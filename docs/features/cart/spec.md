@@ -142,7 +142,7 @@ Stan linii, w kolejności priorytetu:
 
 | `state` | Warunek |
 |---|---|
-| `unavailable_product` | wariant nieznany Catalogowi (np. po resecie danych demo albo linia sprzed migracji, której produktu już nie ma) |
+| `unavailable_product` | wariant nieznany Catalogowi (np. po resecie danych demo, linia sprzed migracji, której produktu już nie ma, wariant usunięty w panelu) albo wariant szkicu (produkt nieopublikowany albo wycofany z publikacji: `GetVariantSummaries` pomija go jak nieznany) |
 | `no_price` | brak ceny w `GetCurrentPrices` (brak ceny, nieaktualna stawka VAT albo cena w walucie innej niż PLN) |
 | `out_of_stock` | `available = 0` (także produkt bez rekordu stanu) |
 | `insufficient_stock` | `quantity > available` |
@@ -528,7 +528,7 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 | scalenie z wygasłym koszykiem klienta | stare pozycje klienta usunięte, zostają pozycje gościa |
 | błąd w trakcie scalenia | całość wycofana, gość `open`, klient bez zmian; ponowienie przy następnym żądaniu |
 | wygasły koszyk gościa | 404, sklep pokazuje pusty koszyk |
-| produkt usunięty z katalogu | linia `unavailable_product` |
+| produkt usunięty z katalogu, wariant usunięty w panelu albo produkt wycofany z publikacji (szkic) | linia `unavailable_product`; dodanie wariantu szkicu do koszyka 404, złożenie zamówienia z taką linią 409 `CartNotOrderable`, oferta szkicu jak oferta nieznanego produktu |
 | zmiana ceny | koszyk pokazuje cenę aktualną |
 | żądanie zmieniające bez poprawnego `Origin` | 403 BFF |
 

@@ -12,6 +12,8 @@ export const useAuthStore = defineStore("auth", () => {
   const staff = ref<StaffMe | null>(null);
   const error = ref<string | null>(null);
   const logoutFailed = ref(false);
+  /** True from the moment the sign-out redirect starts until it fails; views must not hold back the page leaving then. */
+  const signingOut = ref(false);
 
   async function load(): Promise<void> {
     error.value = null;
@@ -28,14 +30,16 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function logout(): Promise<void> {
+    signingOut.value = true;
     try {
       await getUserManager().signoutRedirect();
       logoutFailed.value = false;
     } catch {
+      signingOut.value = false;
       logoutFailed.value = true;
       reportLoginProblem(LOGOUT_MESSAGE);
     }
   }
 
-  return { staff, error, logoutFailed, load, logout };
+  return { staff, error, logoutFailed, signingOut, load, logout };
 });

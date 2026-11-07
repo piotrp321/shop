@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Catalog\Application\Query;
 
 /**
- * The page of one product for the store, found by its slug; the answer is ProductDetails or null.
+ * The page of one published product for the store, found by its slug; the answer is ProductDetails or null (also for
+ * a draft).
  */
 final readonly class GetProductBySlug
 {

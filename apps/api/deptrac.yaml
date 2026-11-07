@@ -194,6 +194,9 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
+      # The controllers of product writes take the actor from AuthenticatedStaffMember, the security contract of
+      # Backoffice. Catalog_Domain and Catalog_Application stay free of Backoffice.
+      - Backoffice_Application
     Customer_Domain:
       - Native
       - Shared_Domain
@@ -257,8 +260,9 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
-      # Adapters of Pricing's ports ask Catalog through its queries on query.bus. The only dependency between the
-      # two modules, one way: Catalog depends on Pricing in no layer.
+      # Adapters of Pricing's ports ask Catalog through its queries on query.bus, and Pricing subscribes to the
+      # integration event ProductChanged of Catalog_Application. The only dependency between the two modules,
+      # one way: Catalog depends on Pricing in no layer.
       - Catalog_Application
       # PriceVoter decides on the staff roles of AuthenticatedStaffMember: Pricing uses only the security contract
       # of Backoffice (its Application layer), never StaffUser of Backoffice_Infrastructure.

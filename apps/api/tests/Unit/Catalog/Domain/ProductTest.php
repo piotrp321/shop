@@ -11,6 +11,7 @@ use App\Catalog\Domain\Product\ProductCreated;
 use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
@@ -79,6 +80,9 @@ final class ProductTest extends TestCase
                 new ProductVariant(VariantId::fromString('33333333-3333-4333-8333-333333333333'), VariantValues::fromList(['czarny'])),
                 new ProductVariant(VariantId::fromString('44444444-4444-4444-8444-444444444444'), VariantValues::fromList(['biały'])),
             ]),
+            ProductStatus::Published,
+            new \DateTimeImmutable('2026-11-01T10:00:00+00:00'),
+            1,
         );
 
         self::assertSame(['Kolor'], $product->variantAxes()->names());
@@ -141,6 +145,8 @@ final class ProductTest extends TestCase
             ProductVariants::create(VariantAxes::fromList([]), [
                 new ProductVariant(VariantId::fromString('33333333-3333-4333-8333-333333333333'), VariantValues::fromList([])),
             ]),
+            ProductStatus::Draft,
+            new \DateTimeImmutable(),
         );
     }
 }

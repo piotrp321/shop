@@ -16,6 +16,7 @@ use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\SearchUnavailable;
 use App\Catalog\Application\Search\VariantDocument;
 use App\Catalog\Application\Search\VariantFacts;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryProductOfferFacts;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -330,6 +331,7 @@ final class ProductSearchIndexRebuilderTest extends TestCase
                 [],
                 [],
                 [['id' => self::variantOf(\sprintf('00000000-0000-4000-8000-%012d', $i)), 'values' => []]],
+                ProductStatus::Published,
             );
         }
 

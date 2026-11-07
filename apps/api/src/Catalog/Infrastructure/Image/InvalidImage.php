@@ -4,27 +4,28 @@ declare(strict_types=1);
 
 namespace App\Catalog\Infrastructure\Image;
 
+use App\Catalog\Application\Image\InvalidImageUpload;
 use App\Shared\Domain\Exception\InvalidInput;
 
 final class InvalidImage extends \DomainException implements InvalidInput
 {
     public static function tooLarge(): self
     {
-        return new self('The image file is too large.');
+        return new self(InvalidImageUpload::TOO_LARGE);
     }
 
     public static function unsupportedType(): self
     {
-        return new self('The image type is not supported.');
+        return new self('Nieobsługiwany typ pliku. Wyślij zdjęcie JPEG, PNG, WebP, AVIF albo HEIC.');
     }
 
     public static function unreadableDimensions(): self
     {
-        return new self('The image dimensions cannot be read.');
+        return new self('Nie można odczytać wymiarów zdjęcia.');
     }
 
     public static function tooManyPixels(): self
     {
-        return new self('The image resolution is too high.');
+        return new self('Zdjęcie ma za dużą rozdzielczość (najwyżej 50 megapikseli).');
     }
 }
