@@ -25,7 +25,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
   źródłem `seed` i kluczem `seed:<variantId>`, stan 0 to rekord stanu bez wpisu historii; wariant bez wzorca kończy
   seed błędem bez zmian w danych), więc po seedzie nie ma zamówień ani ich rezerwacji. Wszystkie cztery komendy
-  w `prod` wymagają `--force-reset`. Potem `make seed` woła `catalog:reindex`, który przebudowuje indeks wyszukiwania
+  w `prod` wymagają `--force-reset`. Produkty demo są opublikowane (`firstPublishedAt` = czas seeda, bez pracownika). Potem `make seed` woła `catalog:reindex`, który przebudowuje indeks wyszukiwania
   z cenami i dostępnością, a na końcu `storefront:cache:purge-all` (zdarzenia cen i stanów ze źródła `seed` niczego
   nie reindeksują ani nie unieważniają). Błąd kroku przerywa `make seed`
 - `storefront:cache:purge-all` – unieważnia cały katalog w obu cache sklepu: purge tagu `catalog` w Varnishu, potem
@@ -127,21 +127,43 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## Reguły modelu
 
 - Pieniądze zawsze jako liczba całkowita w groszach plus waluta, nigdy float. Zaokrąglanie VAT jawnie, w jednym miejscu.
-- Agregaty edytowane równolegle (zamówienie, stan magazynowy, cena) mają optimistic locking (pole wersji): edycja
+- Agregaty edytowane równolegle (zamówienie, stan magazynowy, cena, produkt) mają optimistic locking (pole wersji): edycja
   z widoku sprawdza wersję, na której się opiera. Wyjątek: atomowe operacje na stanie magazynowym (przyjęcie,
   rezerwacja, zwolnienie, zatwierdzenie) nie sprawdzają wersji z widoku, tylko blokują wiersze (`SELECT … FOR UPDATE`
   w `StockItemRepository::lockMany`, w kolejności rosnącego `variant_id`; przyjęcie i korekta wariantu bez stanu
   zakładają wiersz przez `lockOrCreate`, `INSERT … ON CONFLICT DO NOTHING` przed blokadą) i czytają stan od nowa po
   uzyskaniu blokady; zapis i tak podnosi wersję. Korekta z panelu blokuje wiersz i dodatkowo sprawdza wersję z widoku.
+- Produkt (Catalog) ma status `draft` albo `published` (`ProductStatus`) i `firstPublishedAt` (pierwsza publikacja,
+  nigdy nie zerowana). Zapisuje się wyłącznie komendami `command.bus`: `CreateProduct` (status z komendy: panel
+  tworzy szkic, seed opublikowany produkt bez pracownika; pusty slug wylicza `Slug::slugify(name)`), `EditProduct`,
+  `PublishProduct`, `UnpublishProduct`. Te trzy porównują wersję z widoku (`expectedVersion`) z wersją wczytanego
+  produktu przed budową wariantów, odczytem stanów i każdą regułą domeny (`ProductModifiedConcurrently`, 409
+  `product-modified`), a `ProductRepository::save(product, expectedVersion, actorId, at)` porównuje ją jeszcze raz
+  z rekordem pod `#[ORM\Version]`. Zapis z widoku zawsze podnosi wersję (także bez zmiany danych), zapis bez widoku
+  (seed) tylko przy zmianie; `updated_at` i `updated_by` (`sub` pracownika) zmieniają się tylko przy zapisie, który
+  podnosi wersję. Publikacja opublikowanego i wycofanie szkicu nic nie zapisują. Reguły pilnuje agregat: publikacja
+  szkicu wymaga zdjęcia, zapis opublikowanego produktu ze zdjęciami nie usuwa ostatniego (`ProductNotPublishable`),
+  slug jest stały od pierwszej publikacji (`SlugLocked`), po pierwszej publikacji warianty zachowują tożsamość
+  (`VariantIdentityLocked`), a wariantu ze stanem nie da się usunąć (`VariantInUse`). Fakty stanu daje port
+  `VariantStockFacts` (`Catalog_Application`) z adapterem `QueryBusVariantStockFacts` w `Inventory_Infrastructure`
+  (Inventory `GetStockLevels` na `query.bus`, odczyt bez blokady; stan fizyczny > 0 albo zarezerwowany > 0), więc
+  Catalog nie zależy od Inventory w żadnej warstwie. Reguły i ich błędy opisuje `docs/features/catalog-admin/spec.md`.
 - Koszyk nie ma optimistic locking ani wersji z widoku: zmiany szereguje blokada wiersza koszyka, dodanie zwiększa
   ilość, a zmiana ilości z nieaktualnej karty nadpisuje nowszą (ostatni zapis wygrywa).
 - Zdarzenia domenowe zapisywane w transactional outbox w tej samej transakcji co agregat, potem wysyłane do RabbitMQ.
   Kto je publikuje: handler komendy (`releaseEvents()` agregatu i `DomainEventPublisher` w `command.bus`; Catalog
-  `ProductCreated`, Ordering `OrderPlaced`), gdy jedyną drogą zapisu jest ta komenda. Gdy agregat ma wiele ścieżek
+  `ProductCreated` i `ProductChanged`, Ordering `OrderPlaced`), gdy jedyną drogą zapisu jest ta komenda. Gdy agregat ma wiele ścieżek
   zapisu, także poza `command.bus` (Pricing: panel, seed, `pricing:reconcile-tax`; Inventory: panel, seed, port
   rezerwacji w zagnieżdżonym dispatchu), publikuje je `save` repozytorium w transakcji zapisu (`VariantPriceChanged`
   w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
   pominie, a odrzucony albo wycofany zapis nie zostawia zdarzenia.
+- Zdarzenie, które ma subskrybować inny context, jest zdarzeniem integracyjnym: publicznym kontraktem modułu w jego
+  warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Jedyne dziś:
+  `Catalog\Application\Event\ProductChanged` `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product`
+  zapisuje wewnętrzne `Catalog\Domain\Product\ProductChanged` przy każdej edycji, publikacji i wycofaniu, a handler
+  komendy tłumaczy je na kontrakt (`ProductChanged::translate`) przed publikacją przez outbox. Seed tworzy produkty
+  bez `ProductChanged` (tylko `ProductCreated`). Subskrybent czyta to, czego potrzebuje, zapytaniami Catalog; zmiana
+  pól kontraktu dotyka wszystkich subskrybentów.
 - Odbiorcy zdarzeń muszą być idempotentni: to samo zdarzenie może przyjść więcej niż raz.
 - Zamówienie przechowuje kopię cen, rabatów i adresu z chwili złożenia, nie referencje.
 - Elasticsearch to tylko model odczytu. Nigdy nie podejmuj na jego podstawie decyzji biznesowych.

@@ -26,12 +26,10 @@ Issues: #89
 Poza zakresem:
 - strona produktu i wybór wariantu w docelowym wyglądzie (PRODUCT-PAGE #93, VISUAL-DESIGN #97);
 - zamówienia (CHECKOUT #90): kontrakt rezerwacji ma klucz wariantu, zamówień jeszcze nie ma;
-- dodawanie i edycja produktów i wariantów w panelu (CATALOG-ADMIN #95); warianty powstają tylko w danych demo
-  i w migracji;
+- ekrany panelu do dodawania i edycji produktów i wariantów (CATALOG-ADMIN #95, `docs/features/catalog-admin/spec.md`);
 - wyszukiwanie i filtry po wartościach wariantów (SEARCH #94); indeks Elasticsearch zawiera warianty z wartościami
   osi, cenami i dostępnością (`docs/features/search/spec.md`);
-- zdjęcia per wariant i galeria, kody SKU i EAN, cena „od” w Varnishu i ISR;
-- usuwanie wariantu i zmiana osi istniejącego produktu.
+- zdjęcia per wariant i galeria, kody SKU i EAN, cena „od” w Varnishu i ISR.
 
 ## Decyzje użytkownika
 
@@ -88,13 +86,39 @@ Poza zakresem:
     `DuplicateVariantValues` (`InvalidInput`);
   - bez osi: dokładnie jeden wariant (domyślny, pusta lista wartości);
   - identyfikatory wariantów są unikalne (w produkcie i, przez klucz główny tabeli, w całym katalogu).
-- `Product::create` przyjmuje osie i warianty; `reconstitute` je odtwarza. Wariant nigdy nie zmienia produktu.
-- Komenda `CreateProduct` (używa jej tylko seed, `DemoCatalogLoader`) ma `variantAxes: list<string>` i
+- `Product::create` przyjmuje osie i warianty; `reconstitute` je odtwarza; `Product::edit` zastępuje je w całości
+  (sekcja „Edycja i usuwanie wariantów”). Wariant nigdy nie zmienia produktu.
+- Komenda `CreateProduct` (seed, `DemoCatalogLoader`, i panel) ma `variantAxes: list<string>` i
   `variants: list<{id, values: list<string>}>`. Identyfikator wariantu zajęty przez inny produkt:
   `VariantAlreadyExists` (`Conflict`). `DoctrineProductRepository::save` mapuje naruszenie klucza głównego
   `catalog_product_variant` na ten wyjątek, tak jak naruszenie unikalnego slugu na `SlugAlreadyTaken`.
 - Etykieta wariantu (`label`): wartości złączone „, ” (np. „czarne, 42”); wariant domyślny ma pustą etykietę.
   Etykietę buduje jedna funkcja w Catalog (`ProductVariant::label()`), używana przez wszystkie zapytania.
+
+### Edycja i usuwanie wariantów
+
+`EditProduct` (`docs/features/catalog-admin/spec.md`, decyzja K5) dostaje wiersze wariantów
+`{variantId: string|null, values}`. Handler buduje z nich `ProductVariants`: wiersz z identyfikatorem wariantu tego
+produktu zachowuje go, wiersz bez identyfikatora dostaje nowy UUIDv7, identyfikator spoza produktu to
+`UnknownVariant` (`InvalidInput`, z pozycją wiersza). Niezmienniki `ProductVariants` są te same co przy tworzeniu.
+
+- Dopóki produkt nie był nigdy opublikowany (`firstPublishedAt` puste), osie, wartości i lista wariantów zmieniają się
+  dowolnie. Produkt bez osi, któremu dochodzą osie, zachowuje identyfikator wariantu domyślnego w wierszu, który go
+  odeśle.
+- Od pierwszej publikacji (także po wycofaniu) wariant zachowuje tożsamość: osie mają tę samą liczbę i kolejność,
+  a każda nazwa ten sam klucz porównania (`mb_strtolower` po przycięciu); zachowany wariant ma ten sam
+  `VariantValues::comparisonKey()` (zmiana wielkości liter i spacji na brzegach jest dozwolona, np. „czarne” →
+  „Czarne”). Naruszenie to `VariantIdentityLocked` (`Conflict`, typ `variant-locked`) z zapisaną etykietą wariantu
+  albo nazwą osi w `detail`. Nowy wariant można dodać zawsze; inna zmiana znaczenia to dodanie nowego wariantu
+  i usunięcie starego.
+- Usunięcie wariantu (wariantu nie ma w nowej liście; także przed publikacją): handler pyta port `VariantStockFacts`
+  (`Catalog_Application`, adapter `QueryBusVariantStockFacts` w `Inventory_Infrastructure` nad `GetStockLevels`)
+  o usuwane warianty ze stanem fizycznym > 0 albo zarezerwowanym > 0. Usunięcie takiego wariantu to `VariantInUse`
+  (`Conflict`, typ `variant-in-use`) z etykietą pierwszego takiego wariantu. Fakty są czytane bez blokady wierszy
+  Inventory.
+- Usunięty wariant znika z `catalog_product_variant`. Jego cena, stan i historie zostają w Pricing i Inventory
+  (niewidoczne w panelu, bo listy idą po wariantach Catalog), a linia koszyka z nim ma stan `unavailable_product`
+  (wariant nieznany Catalogowi).
 
 ### Persystencja
 
@@ -399,5 +423,8 @@ Nieznany wariant: 404.
 - Oferta produktów listy żyje w Cart, bo tam jest reguła zakupu i porty do Catalog, Pricing i Inventory; nazwa
   contextu nie mówi o liście produktów (E1).
 - Etykieta wariantu jest wolnym tekstem z danych demo; tłumaczenia i słowniki wartości (np. rozmiarów) poza MVP.
-- Usuwania wariantu i zmiany osi istniejącego produktu nie ma; CATALOG-ADMIN musi ustalić, co dzieje się z ceną,
-  stanem i liniami koszyka usuniętego wariantu.
+- Usunięty wariant zostawia cenę, stan i historie w Pricing i Inventory. Blokada usunięcia czyta stan bez blokady:
+  przyjęcie albo rezerwacja zatwierdzona równolegle z usunięciem może zostawić stan usuniętego wariantu do ręcznego
+  wyjaśnienia.
+- Po publikacji literówki w wartości wariantu nie da się poprawić w miejscu (poza wielkością liter): trzeba dodać
+  nowy wariant, skorygować stan starego do zera i go usunąć.

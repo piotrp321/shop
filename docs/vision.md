@@ -142,7 +142,9 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - **Dane strukturalne**: JSON-LD `Product` (cena, dostępność, zdjęcia), `BreadcrumbList`, `Organization`.
 - **Mapa strony i robots**: `sitemap.xml` generowana z katalogu, `robots.txt`.
 - **Przyjazne adresy**: `/p/<slug>`, `/c/<ścieżka slugów kategorii>` (np. `/c/turystyka/biwak/namioty`),
-  przekierowania 301 przy zmianie sluga. Stary adres `/?category=<id>` przekierowuje trwale na `/c/<ścieżka>`.
+  przekierowania 301 przy zmianie sluga. Slug produktu jest stały od pierwszej publikacji (także po wycofaniu
+  z publikacji); zmienia się tylko w szkicu, który nie był nigdy opublikowany, więc w MVP adres produktu nie wymaga
+  przekierowania. Stary adres `/?category=<id>` przekierowuje trwale na `/c/<ścieżka>`.
 - **Wydajność**: Core Web Vitals jako wymaganie (obrazy z imgproxy w WebP z `srcset`,
   `priority` dla głównego zdjęcia produktu, minimum JavaScriptu po stronie klienta). Pomiar przez Lighthouse w CI.
 
