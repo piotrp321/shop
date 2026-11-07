@@ -97,15 +97,6 @@ class OrderRecord
     #[ORM\Column(length: 30, nullable: true)]
     public ?string $cancellationReason = null;
 
-    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
-    public ?\DateTimeImmutable $confirmationSentAt = null;
-
-    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
-    public ?\DateTimeImmutable $paymentNotificationSentAt = null;
-
-    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
-    public ?\DateTimeImmutable $cancellationNotificationSentAt = null;
-
     #[ORM\Version]
     #[ORM\Column(type: Types::INTEGER)]
     public int $version = 1;

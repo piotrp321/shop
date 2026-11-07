@@ -57,6 +57,7 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         $paid = $this->bus()->dispatch(new MarkOrderPaid($order->orderId, Uuid::v7()->toRfc4122(), 12_300, 'PLN', $this->clock->now))->last(HandledStamp::class)?->getResult();
         self::assertSame(MarkOrderPaidResult::Paid, $paid);
         self::assertSame(2, $this->rows('outbox'), 'OrderPlaced and OrderPaid');
+        $version = $this->version($order->orderId);
 
         $this->consumeOutboxAndEvents(4);
         $this->redeliver(new OrderPaid($order->orderId, $this->clock->now));
@@ -65,7 +66,8 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         self::assertCount(1, $emails);
         self::assertStringContainsString('Kwota: 123,00 zł', $emails[0]['text']);
         self::assertStringContainsString('Zamówienie przekazujemy do realizacji.', $emails[0]['text']);
-        self::assertNotNull($this->connection()->fetchOne('SELECT payment_notification_sent_at FROM ordering_order WHERE id = ?', [$order->orderId]));
+        self::assertNotNull(OrderingFixture::notificationSentAt($this->connection(), $order->orderId, 'payment_received'));
+        self::assertSame($version, $this->version($order->orderId), 'sending the emails does not change the order');
         self::assertSame(0, $this->rows('failed'));
         self::assertSame(0, $this->eventsInQueue());
     }
@@ -76,6 +78,7 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         $this->clock->now = $order->paymentDeadline->modify('+5 minutes');
         $this->bus()->dispatch(new Envelope(new ExpireUnpaidOrder($order->orderId), [new ReceivedStamp('scheduled')]));
         self::assertSame('cancelled', $this->connection()->fetchOne('SELECT status FROM ordering_order WHERE id = ?', [$order->orderId]));
+        $version = $this->version($order->orderId);
 
         $this->consumeOutboxAndEvents(4);
         $this->redeliver(new OrderCancelled($order->orderId, 'payment_timeout', $this->clock->now));
@@ -83,7 +86,8 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         $emails = $this->emails('Zamówienie '.$order->number.' anulowane');
         self::assertCount(1, $emails);
         self::assertStringContainsString('Nie otrzymaliśmy płatności w terminie, więc anulowaliśmy zamówienie.', $emails[0]['text']);
-        self::assertNotNull($this->connection()->fetchOne('SELECT cancellation_notification_sent_at FROM ordering_order WHERE id = ?', [$order->orderId]));
+        self::assertNotNull(OrderingFixture::notificationSentAt($this->connection(), $order->orderId, 'cancelled'));
+        self::assertSame($version, $this->version($order->orderId), 'sending the emails does not change the order');
         self::assertSame(0, $this->rows('failed'));
         self::assertSame(0, $this->eventsInQueue());
     }
@@ -108,6 +112,14 @@ final class SendOrderStatusEmailsFlowTest extends MessagingKernelTestCase
         $messages = $this->inbox->awaitMessages(2);
 
         return array_values(array_filter($messages, static fn (array $message): bool => $message['subject'] === $subject));
+    }
+
+    private function version(string $orderId): int
+    {
+        $version = $this->connection()->fetchOne('SELECT version FROM ordering_order WHERE id = ?', [$orderId]);
+        self::assertIsInt($version);
+
+        return $version;
     }
 
     private function place(): OrderView

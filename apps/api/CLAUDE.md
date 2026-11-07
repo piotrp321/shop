@@ -23,8 +23,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   i usuwa jego kolejkę `payment_simulator` (`DELETE FROM messenger_messages WHERE queue_name = 'payment_simulator'`;
   `outbox`, `scheduled`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
-  `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia i ich
-  linie jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
+  `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
+  linie i powiadomienia jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
   WHERE queue_name = 'scheduled'`; `outbox` i `failed` zostają); na końcu `inventory:seed-demo`, który czyści stany,
   rezerwacje i historię stanów i ustawia stan fizyczny każdemu wariantowi demo według wzorców kluczy wariantów z `fixtures/stock.yaml` (ten sam
   klucz z `ListVariantIdentities`, ta sama składnia i zasada pierwszego pasującego wzorca; stan > 0 to przyjęcie ze
@@ -129,8 +129,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     nieznane (po `make seed`) to wpis w logu. Konflikt wersji i błędy Inventory (`ReservationNotFound`,
     `ReservationStateConflict`) idą dalej: ponowienia transportu, potem `failed` (zamówienie zostaje `new`).
   - E-maile „Płatność przyjęta” (`SendPaymentReceived` po `OrderPaid`) i „Zamówienie … anulowane”
-    (`SendOrderCancelled` po `OrderCancelled`) działają jak `SendOrderConfirmation` (poniżej), każdy z własnym znacznikiem
-    (`paymentNotificationSentAt`, `cancellationNotificationSentAt`); port `OrderStatusMailer`, adapter
+    (`SendOrderCancelled` po `OrderCancelled`) działają jak `SendOrderConfirmation` (poniżej), każdy z własnym rodzajem
+    powiadomienia (`payment_received`, `cancelled`); port `OrderStatusMailer`, adapter
     `SymfonyOrderStatusMailer`, treści `PaymentReceivedText` i `OrderCancelledText`. E-mail z potwierdzeniem podaje
     termin płatności w strefie `Europe/Warsaw`.
 - Payment (`src/Payment`, `docs/features/payment/spec.md`): agregat `Payment` to jedna próba opłacenia zamówienia u jednego
@@ -187,7 +187,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `paid_after_deadline`, `duplicate`; `OrderPaymentResult::refundReason()`), handler loguje `error` „requires a manual
     refund”, a odpowiedź to 204 (dostawa kończy się bez ponowień). Zwrot jest ręczny, poza systemem: płatności do zwrotu
     to `payment_payment.refund_required_reason IS NOT NULL`. Konflikt wersji zamówienia (`OrderChangedConcurrently`, np.
-    równoległe `ExpireUnpaidOrder` albo `SendOrderConfirmation`) adapter tłumaczy na `OrderBusy` (marker `Unavailable`,
+    równoległe `ExpireUnpaidOrder`) adapter tłumaczy na `OrderBusy` (marker `Unavailable`,
     503), inne błędy Ordering przekazuje bez zmian (500); w obu przypadkach wycofana jest cała transakcja, także wiersz
     deduplikacji, a symulator ponawia dostawę.
   - Endpointy: `GET /api/v1/payment-providers` (publiczny), gość `POST /api/v1/orders/{id}/payments` i
@@ -248,13 +248,31 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   po `OrderPlaced` z outboxa). Wysyłka idzie przez Symfony Mailer (`symfony/mailer`) synchronicznie, bez Messengera:
   `framework.mailer.message_bus: false` (inaczej `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną
   szynę `command.bus`, a błąd SMTP nie wróciłby do handlera i nie uruchomił ponowień transportu `events`). Konfiguracja
-  w zmiennych środowiska: `MAILER_DSN` (`smtp://mailpit:1025`) i `MAILER_FROM` (`Rytm <zamowienia@rytm.localhost>`),
-  ustawianych w `infra/docker-compose.yml` dla `api` i `worker` (testy i CI biorą je z serwisu `api`; `phpunit.dist.xml`
-  ma te same wartości domyślne). Treść składa `OrderConfirmationText` (Ordering Application), a port
-  `OrderConfirmationMailer` ma adapter `SymfonyOrderConfirmationMailer` w Ordering Infrastructure. Handler najpierw
-  wysyła, potem zapisuje `confirmationSentAt` z wersją, bez transakcji wokół SMTP: awaria między jednym a drugim albo
-  równoległe dostarczenie tego samego zdarzenia może dać drugi e-mail (konflikt wersji przy zapisie znacznika kończy
-  się wyjątkiem i ponowieniem, które widzi znacznik i nic nie wysyła).
+  w zmiennych środowiska: `MAILER_DSN` (`smtp://mailpit:1025?timeout=10`) i `MAILER_FROM`
+  (`Rytm <zamowienia@rytm.localhost>`), ustawianych w `infra/docker-compose.yml` dla `api` i `worker` (testy i CI biorą
+  je z serwisu `api`; `phpunit.dist.xml` ma te same wartości domyślne). Opcję `timeout` DSN SMTP (sekundy, > 0) dodaje
+  `SmtpTimeoutTransportFactory` (`Shared\Infrastructure\Mail`, dekorator `mailer.transport_factory.smtp`): limit
+  każdego połączenia, odczytu i zapisu gniazda zamiast `default_socket_timeout` (60 s), więc wysyłka (około 7 wymian)
+  kończy się dużo przed końcem 5-minutowego zajęcia wysyłki; pilnuje tego `SmtpTimeoutWithinTheLeaseTest`. Treść składa `OrderConfirmationText` (Ordering Application), a port
+  `OrderConfirmationMailer` ma adapter `SymfonyOrderConfirmationMailer` w Ordering Infrastructure.
+- Znaczniki wysłanych e-maili Ordering są poza agregatem `Order`, więc wysłanie e-maila nie zmienia zamówienia ani
+  jego wersji (`docs/features/order-management/spec.md`, „Znaczniki wysyłki poza agregatem”). Tabela
+  `ordering_order_notification` (PK `(order_id, kind)`, FK do `ordering_order` bez `ON DELETE CASCADE`; `kind`:
+  `confirmation`, `payment_received`, `cancelled`, `shipped`, `return_received` jak enum `NotificationKind`;
+  `claimed_until`, `sent_at`). Port `OrderNotifications` (`claim`, `markSent`, `release`) z adapterem
+  `DbalOrderNotifications`: wyjątek od zapisu przez rekordy ORM, jak `payment_webhook_event` (rekord
+  `OrderNotificationRecord` tylko definiuje schemat). `claim(orderId, kind, now)` to jeden warunkowy
+  `INSERT … ON CONFLICT … DO UPDATE … WHERE … RETURNING`: zajmuje wysyłkę do `now` + 5 min (lease), gdy e-mail nie
+  wyszedł i nikt nie trzyma niewygasłego zajęcia; wynik `claimed`, `alreadySent` albo `inProgress(until)`. Równoległe
+  pierwsze zajęcie czeka na wiersz drugiego zamiast naruszenia unikalności, które zamknęłoby `EntityManager`.
+  Handlery (`event.bus`, bez transakcji, każdy krok zatwierdzany od razu) idą przez `NotificationSender::sendOnce`:
+  najpierw odczyt zamówienia (nieznane: `UnrecoverableMessageHandlingException`, nic nie jest zajmowane), potem
+  zajęcie; `alreadySent` nic nie robi; `inProgress` to `RecoverableMessageHandlingException` z opóźnieniem do końca
+  lease + 1 s (ponawiane bez limitu prób transportu); `claimed` wysyła i zapisuje `markSent`, a błąd wysyłki zwalnia
+  zajęcie (`release`) i idzie dalej do ponowień transportu `events`. Dwie równoległe dostawy tego samego zdarzenia
+  wysyłają jeden e-mail. Drugi e-mail jest możliwy, gdy wysyłka się udała, a znacznik nie został zapisany: awaria
+  procesu albo bazy przed `markSent` (po wygaśnięciu lease) albo błąd SMTP zgłoszony po przyjęciu wiadomości
+  (`release` i ponowienie); także gdy wysyłka trwa dłużej niż lease (limit czasu SMTP jest dużo krótszy).
 - Warstwa Application: handlery komend i zapytań na szynach Symfony Messenger, porty jako interfejsy.
 - UI: kontrolery HTTP i komendy konsoli. Tylko tłumaczą wejście na komendę/zapytanie i wynik na odpowiedź.
 - Context nigdy nie importuje Domain innego contextu. Używaj zdarzeń domenowych albo portu w warstwie aplikacji.
