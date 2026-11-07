@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Pricing\UI\Http\Promotion;
 
+use App\Pricing\Domain\Promotion\InvalidPromotion;
 use App\Pricing\Domain\Promotion\Promotion;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -37,8 +38,10 @@ final class PromotionBodyRules
 
             return;
         }
-        // Past the limit the domain refuses the list anyway; its elements are not looked at.
+        // Past the limit the elements are not looked at: the list is refused as the domain refuses it.
         if (\count($variantIds) > Promotion::MAX_VARIANTS) {
+            $context->buildViolation(InvalidPromotion::variantCount()->getMessage())->atPath('variantIds')->addViolation();
+
             return;
         }
         foreach ($variantIds as $index => $variantId) {

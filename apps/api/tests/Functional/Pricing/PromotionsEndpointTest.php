@@ -326,6 +326,40 @@ final class PromotionsEndpointTest extends WebTestCase
         self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM pricing_promotion'));
     }
 
+    /**
+     * @return iterable<string, array{mixed}>
+     */
+    public static function notVariantIds(): iterable
+    {
+        yield 'a string' => ['x'];
+        yield 'a number' => [12];
+        yield 'an object' => [new \stdClass()];
+    }
+
+    #[DataProvider('notVariantIds')]
+    public function testAListPastTheLimitWithAnElementThatIsNoUuidIsUnprocessable(mixed $element): void
+    {
+        $this->send('POST', '/api/v1/admin/promotions', $this->body($this->tooManyVariantIds($element)));
+
+        $problem = $this->assertProblem(422);
+        self::assertIsArray($problem['violations']);
+        self::assertContains('variantIds', array_column($problem['violations'], 'propertyPath'));
+        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM pricing_promotion'));
+    }
+
+    public function testARevisePastTheLimitWithAnElementThatIsNoUuidIsUnprocessable(): void
+    {
+        $a = $this->pricedVariant(5999);
+        $id = $this->storedPromotion('+1 day', '+5 days', [$a]);
+
+        $this->send('PUT', '/api/v1/admin/promotions/'.$id, [...$this->body($this->tooManyVariantIds('x')), 'version' => 1]);
+
+        $problem = $this->assertProblem(422);
+        self::assertIsArray($problem['violations']);
+        self::assertContains('variantIds', array_column($problem['violations'], 'propertyPath'));
+        self::assertSame(1, $this->connection->fetchOne('SELECT version FROM pricing_promotion WHERE id = ?', [$id]));
+    }
+
     public function testAVariantUnknownToCatalogOrWithoutAPriceIsRefusedAtItsPlace(): void
     {
         $priced = $this->pricedVariant(5999);
@@ -486,7 +520,18 @@ final class PromotionsEndpointTest extends WebTestCase
     }
 
     /**
-     * @param list<string> $variantIds
+     * @return list<mixed> one element over the limit of the variants, the last of them the given one
+     */
+    private function tooManyVariantIds(mixed $element): array
+    {
+        $ids = array_fill(0, 1000, self::UNKNOWN);
+        $ids[] = $element;
+
+        return $ids;
+    }
+
+    /**
+     * @param list<mixed> $variantIds
      *
      * @return array<string, mixed>
      */
