@@ -1,0 +1,54 @@
+{{- /*
+The official image, like the image that infra/elasticsearch/Dockerfile builds, plus its Polish analysis plugin: an
+initContainer installs the plugin into a volume that the server container mounts as its plugins directory.
+*/ -}}
+{{- define "shop.elasticsearch.init" -}}
+- name: install-plugin
+  image: {{ .Values.images.elasticsearch }}
+  command:
+    - sh
+    - -ec
+    - '[ -d plugins/analysis-stempel ] || bin/elasticsearch-plugin install --batch analysis-stempel'
+  volumeMounts:
+    - name: plugins
+      mountPath: /usr/share/elasticsearch/plugins
+{{- end }}
+
+{{- define "shop.elasticsearch.container" -}}
+env:
+  - name: discovery.type
+    value: single-node
+  - name: xpack.security.enabled
+    value: "false"
+  - name: ES_JAVA_OPTS
+    value: {{ .Values.elasticsearch.javaOpts | quote }}
+ports:
+  - name: http
+    containerPort: 9200
+volumeMounts:
+  - name: data
+    mountPath: /usr/share/elasticsearch/data
+  - name: plugins
+    mountPath: /usr/share/elasticsearch/plugins
+readinessProbe:
+  exec:
+    command:
+      - sh
+      - -c
+      - "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=2s' >/dev/null"
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 60
+{{- end }}
+
+{{- define "shop.elasticsearch.volumes" -}}
+- name: plugins
+  emptyDir: {}
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "elasticsearch" "ports" (list (dict "name" "http" "port" 9200))) }}
+---
+{{ include "shop.statefulset" (dict "root" . "name" "elasticsearch" "wave" "-1" "image" .Values.images.elasticsearch
+  "claims" (list (dict "name" "data" "size" .Values.storage.elasticsearch))
+  "initContainers" (include "shop.elasticsearch.init" .)
+  "container" (include "shop.elasticsearch.container" .)
+  "volumes" (include "shop.elasticsearch.volumes" .)) }}

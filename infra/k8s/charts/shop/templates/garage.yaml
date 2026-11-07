@@ -1,0 +1,39 @@
+{{- define "shop.garage.container" -}}
+{{ include "shop.envFromSecret" . }}
+ports:
+  - name: s3
+    containerPort: 3900
+  - name: rpc
+    containerPort: 3901
+  - name: admin
+    containerPort: 3903
+volumeMounts:
+  - name: config
+    mountPath: /etc/garage.toml
+    subPath: garage.toml
+    readOnly: true
+  - name: meta
+    mountPath: /var/lib/garage/meta
+  - name: data
+    mountPath: /var/lib/garage/data
+readinessProbe:
+  exec:
+    # The image has no shell. `garage status` checks that the daemon answers RPC.
+    command: ["/garage", "status"]
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 20
+{{- end }}
+
+{{- define "shop.garage.volumes" -}}
+- name: config
+  configMap:
+    name: garage-config
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "garage" "ports" (list (dict "name" "s3" "port" 3900) (dict "name" "rpc" "port" 3901) (dict "name" "admin" "port" 3903))) }}
+---
+{{ include "shop.statefulset" (dict "root" . "name" "garage" "wave" "-1" "image" .Values.images.garage
+  "claims" (list (dict "name" "meta" "size" .Values.storage.garageMeta) (dict "name" "data" "size" .Values.storage.garageData))
+  "podAnnotations" (dict "checksum/config" (.Files.Get "files/garage.toml" | sha256sum))
+  "container" (include "shop.garage.container" .)
+  "volumes" (include "shop.garage.volumes" .)) }}

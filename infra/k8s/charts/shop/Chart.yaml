@@ -1,0 +1,7 @@
+apiVersion: v2
+name: shop
+description: The whole shop stack (the services of infra/docker-compose.yml) on one k3s node.
+type: application
+# The chart is deployed from the repository, never published: the version does not change with the revision. The
+# revision of the images is image.tag (Argo CD sets it to the commit SHA).
+version: 0.1.0

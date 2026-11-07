@@ -1,0 +1,235 @@
+{{- /*
+The jobs of a version (D11) and the cron job. Every job waits in initContainers for what it needs (the names
+wait-for-<name> are read by the tests); the waves of Argo CD order the same dependencies. The pod template of a job
+carries the revision, and the checksums of the files it uses, so that its name changes with them.
+*/ -}}
+
+{{- /* The name of the revision, as a label of every job pod. */ -}}
+{{- define "shop.job.metadata" -}}
+metadata:
+  labels:
+    {{- include "shop.labels" . | nindent 4 }}
+    shop/revision: {{ required "image.tag (the revision) is required" .root.Values.image.tag | quote }}
+{{- end }}
+
+{{- define "shop.job.garageInit" -}}
+{{ include "shop.job.metadata" . }}
+spec:
+  restartPolicy: Never
+  enableServiceLinks: false
+  initContainers:
+    {{- include "shop.wait" (dict "root" .root "name" "garage" "check" "nc -z garage 3903") | nindent 4 }}
+    # The image of Garage has only the binary: it is mounted from the image (a volume of type image) and the script of
+    # the compose file runs with it on the path.
+  containers:
+    - name: garage-init
+      image: {{ .root.Values.images.alpine }}
+      command: ["/bin/sh", "/config/init.sh"]
+      env:
+        - name: PATH
+          value: /garage-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      {{- include "shop.envFromSecret" .root | nindent 6 }}
+      volumeMounts:
+        - name: garage-bin
+          mountPath: /garage-bin
+          readOnly: true
+        - name: config
+          mountPath: /etc/garage.toml
+          subPath: garage.toml
+          readOnly: true
+        - name: config
+          mountPath: /config
+          readOnly: true
+      resources:
+        {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
+  volumes:
+    - name: garage-bin
+      image:
+        reference: {{ .root.Values.images.garage }}
+        pullPolicy: IfNotPresent
+    - name: config
+      configMap:
+        name: garage-config
+{{- end }}
+
+{{- define "shop.job.migrate" -}}
+{{ include "shop.job.metadata" . }}
+spec:
+  restartPolicy: Never
+  enableServiceLinks: false
+  initContainers:
+    {{- include "shop.wait" (dict "root" .root "name" "postgres" "check" "nc -z postgres 5432") | nindent 4 }}
+    {{- include "shop.wait" (dict "root" .root "name" "elasticsearch" "check" "wget -qO /dev/null 'http://elasticsearch:9200/_cluster/health?wait_for_status=yellow&timeout=2s'") | nindent 4 }}
+  containers:
+    - name: migrate
+      image: {{ include "shop.appImage" (dict "root" .root "app" "api") }}
+      imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+      # The migrations never run at the start of the application: only here, before the new version starts.
+      command:
+        - sh
+        - -ec
+        - |
+          bin/console doctrine:migrations:migrate --no-interaction
+          bin/console catalog:search-index:setup
+      env:
+        {{- include "shop.apiEnv" .root | nindent 8 }}
+      {{- include "shop.envFromSecret" .root | nindent 6 }}
+      resources:
+        {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
+{{- end }}
+
+{{- define "shop.job.keycloakConfig" -}}
+{{ include "shop.job.metadata" . }}
+  annotations:
+    checksum/realms: {{ include "shop.job.realmsChecksum" .root | quote }}
+spec:
+  restartPolicy: Never
+  enableServiceLinks: false
+  initContainers:
+    {{- include "shop.wait" (dict "root" .root "name" "keycloak" "check" "wget -qO /dev/null http://keycloak:9000/health/ready") | nindent 4 }}
+  containers:
+    - name: keycloak-config
+      image: {{ .root.Values.images.keycloak }}
+      command: ["/bin/bash", "/scripts/keycloak-config.sh"]
+      env:
+        - name: KC_BOOTSTRAP_ADMIN_USERNAME
+          value: admin
+        - name: HOME
+          value: /tmp
+      {{- include "shop.envFromSecret" .root | nindent 6 }}
+      volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+          readOnly: true
+        - name: realms
+          mountPath: /realms
+          readOnly: true
+      resources:
+        {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
+  volumes:
+    - name: scripts
+      configMap:
+        name: shop-scripts
+    - name: realms
+      configMap:
+        name: keycloak-realms
+{{- end }}
+
+{{- /* The rendered realms and the script, so that a changed realm file gives a new job. */ -}}
+{{- define "shop.job.realmsChecksum" -}}
+{{- $realms := list -}}
+{{- range $realm := list "shop" "backoffice" -}}
+{{- $text := $.Files.Get (printf "files/realms/%s.json" $realm) -}}
+{{- $text = replace "${STORE_URL}" (include "shop.url" (dict "root" $ "sub" "")) $text -}}
+{{- $text = replace "${ADMIN_URL}" (include "shop.url" (dict "root" $ "sub" "admin")) $text -}}
+{{- $realms = append $realms $text -}}
+{{- end -}}
+{{- printf "%s%s" (join "" $realms) ($.Files.Get "files/scripts/keycloak-config.sh") | sha256sum -}}
+{{- end }}
+
+{{- define "shop.job.initialize" -}}
+{{ include "shop.job.metadata" . }}
+  annotations:
+    checksum/script: {{ .root.Files.Get "files/scripts/initialize.sh" | sha256sum | quote }}
+spec:
+  restartPolicy: Never
+  enableServiceLinks: false
+  serviceAccountName: shop-wait
+  initContainers:
+    {{- include "shop.wait" (dict "root" .root "name" "api" "check" "wget -qO /dev/null http://api/health") | nindent 4 }}
+    {{- include "shop.wait" (dict "root" .root "name" "varnish" "check" "wget -qO /dev/null http://varnish/health") | nindent 4 }}
+    {{- include "shop.wait" (dict "root" .root "name" "store" "check" "wget -qO /dev/null http://store:3000/favicon.ico") | nindent 4 }}
+    # The worker has no endpoint: wait for the rollout of its deployment.
+    - name: wait-for-worker
+      image: {{ .root.Values.images.kubectl }}
+      args: ["rollout", "status", "deployment/worker", "--timeout=1500s"]
+      resources:
+        {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
+  containers:
+    - name: initialize
+      image: {{ include "shop.appImage" (dict "root" .root "app" "api") }}
+      imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+      command: ["sh", "/scripts/initialize.sh"]
+      env:
+        {{- include "shop.apiEnv" .root | nindent 8 }}
+      {{- include "shop.envFromSecret" .root | nindent 6 }}
+      volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+          readOnly: true
+      resources:
+        {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
+  volumes:
+    - name: scripts
+      configMap:
+        name: shop-scripts
+{{- end }}
+
+{{- define "shop.job.purgeCaches" -}}
+{{ include "shop.job.metadata" . }}
+spec:
+  restartPolicy: Never
+  enableServiceLinks: false
+  initContainers:
+    {{- include "shop.wait" (dict "root" .root "name" "api" "check" "wget -qO /dev/null http://api/health") | nindent 4 }}
+    {{- include "shop.wait" (dict "root" .root "name" "varnish" "check" "wget -qO /dev/null http://varnish/health") | nindent 4 }}
+    {{- include "shop.wait" (dict "root" .root "name" "store" "check" "wget -qO /dev/null http://store:3000/favicon.ico") | nindent 4 }}
+  containers:
+    - name: purge-caches
+      image: {{ include "shop.appImage" (dict "root" .root "app" "api") }}
+      imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+      command: ["bin/console", "storefront:cache:purge-all"]
+      env:
+        {{- include "shop.apiEnv" .root | nindent 8 }}
+      {{- include "shop.envFromSecret" .root | nindent 6 }}
+      resources:
+        {{- include "shop.resources" (dict "root" .root "resources" "job") | nindent 8 }}
+{{- end }}
+
+{{ include "shop.job" (dict "root" . "name" "garage-init" "wave" "0" "template" (include "shop.job.garageInit" (dict "root" . "name" "garage-init"))) }}
+---
+{{ include "shop.job" (dict "root" . "name" "migrate" "wave" "0" "template" (include "shop.job.migrate" (dict "root" . "name" "migrate"))) }}
+---
+{{ include "shop.job" (dict "root" . "name" "keycloak-config" "wave" "0" "template" (include "shop.job.keycloakConfig" (dict "root" . "name" "keycloak-config"))) }}
+{{- if .Values.initialize.enabled }}
+---
+{{ include "shop.job" (dict "root" . "name" "initialize" "wave" "2" "template" (include "shop.job.initialize" (dict "root" . "name" "initialize"))) }}
+{{- end }}
+---
+{{ include "shop.job" (dict "root" . "name" "purge-caches" "wave" "3" "template" (include "shop.job.purgeCaches" (dict "root" . "name" "purge-caches"))) }}
+---
+{{- /* Expired carts, hourly. A run that is still going on is not started again. */}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cart-purge-expired
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "cart-purge-expired") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "1" | nindent 4 }}
+spec:
+  schedule: {{ .Values.cartPurge.schedule | quote }}
+  timeZone: {{ .Values.cartPurge.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "shop.labels" (dict "root" . "name" "cart-purge-expired") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          containers:
+            - name: cart-purge-expired
+              image: {{ include "shop.appImage" (dict "root" . "app" "api") }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["bin/console", "cart:purge-expired"]
+              env:
+                {{- include "shop.apiEnv" . | nindent 16 }}
+              {{- include "shop.envFromSecret" . | nindent 14 }}
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "job") | nindent 18 }}

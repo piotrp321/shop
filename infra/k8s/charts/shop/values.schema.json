@@ -1,0 +1,583 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Values of the shop chart",
+  "type": "object",
+  "required": [
+    "global",
+    "image",
+    "images",
+    "ingress",
+    "noindex",
+    "ipAllowList",
+    "secrets",
+    "mailer",
+    "initialize",
+    "jobs",
+    "cartPurge",
+    "storage",
+    "elasticsearch",
+    "keycloak",
+    "resources"
+  ],
+  "properties": {
+    "global": {
+      "type": "object",
+      "required": [
+        "domain",
+        "scheme"
+      ],
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "description": "Base domain; required."
+        },
+        "scheme": {
+          "type": "string",
+          "enum": [
+            "http",
+            "https"
+          ]
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "required": [
+        "registry",
+        "tag",
+        "pullPolicy"
+      ],
+      "properties": {
+        "registry": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$",
+          "description": "The revision (commit SHA); required."
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
+      }
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      },
+      "required": [
+        "postgres",
+        "redis",
+        "elasticsearch",
+        "rabbitmq",
+        "keycloak",
+        "garage",
+        "imgproxy",
+        "mailpit",
+        "varnish",
+        "alpine",
+        "kubectl"
+      ]
+    },
+    "ingress": {
+      "type": "object",
+      "required": [
+        "className",
+        "tls"
+      ],
+      "properties": {
+        "className": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tls": {
+          "type": "boolean"
+        }
+      }
+    },
+    "noindex": {
+      "type": "boolean"
+    },
+    "ipAllowList": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "sourceRange": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "enabled": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "sourceRange"
+        ],
+        "properties": {
+          "sourceRange": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "required": [
+        "create",
+        "name"
+      ],
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "values": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "create": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "values"
+        ],
+        "properties": {
+          "values": {
+            "type": "object",
+            "required": [
+              "POSTGRES_PASSWORD",
+              "KEYCLOAK_DB_PASSWORD",
+              "SHOP_DB_PASSWORD",
+              "RABBITMQ_DEFAULT_PASS",
+              "KC_BOOTSTRAP_ADMIN_PASSWORD",
+              "GARAGE_RPC_SECRET",
+              "GARAGE_ADMIN_TOKEN",
+              "GARAGE_ACCESS_KEY_ID",
+              "GARAGE_SECRET_ACCESS_KEY",
+              "IMGPROXY_KEY",
+              "IMGPROXY_SALT",
+              "STORE_CLIENT_SECRET",
+              "STORE_SESSION_SECRET",
+              "VARNISH_PURGE_SECRET",
+              "STORE_REVALIDATE_SECRET",
+              "PAYMENT_DEMO_TRANSFER_API_KEY",
+              "PAYMENT_DEMO_TRANSFER_WEBHOOK_SECRET",
+              "PAYMENT_DEMO_CARD_API_KEY",
+              "PAYMENT_DEMO_CARD_WEBHOOK_SECRET"
+            ],
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "mailer": {
+      "type": "object",
+      "required": [
+        "dsn"
+      ],
+      "properties": {
+        "dsn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "type": "string"
+        }
+      }
+    },
+    "initialize": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "jobs": {
+      "type": "object",
+      "required": [
+        "backoffLimit",
+        "activeDeadlineSeconds"
+      ],
+      "properties": {
+        "backoffLimit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "activeDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 60
+        }
+      }
+    },
+    "cartPurge": {
+      "type": "object",
+      "required": [
+        "schedule",
+        "timeZone"
+      ],
+      "properties": {
+        "schedule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeZone": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "required": [
+        "className",
+        "postgres",
+        "elasticsearch",
+        "rabbitmq",
+        "redis",
+        "garageMeta",
+        "garageData"
+      ]
+    },
+    "elasticsearch": {
+      "type": "object",
+      "required": [
+        "javaOpts"
+      ],
+      "properties": {
+        "javaOpts": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "keycloak": {
+      "type": "object",
+      "required": [
+        "javaHeap"
+      ],
+      "properties": {
+        "javaHeap": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "required": [
+        "postgres",
+        "redis",
+        "elasticsearch",
+        "rabbitmq",
+        "garage",
+        "keycloak",
+        "mailpit",
+        "api",
+        "worker",
+        "store",
+        "admin",
+        "imgproxy",
+        "varnish",
+        "job"
+      ],
+      "properties": {
+        "postgres": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "redis": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "elasticsearch": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "rabbitmq": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "garage": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "keycloak": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "mailpit": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "api": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "worker": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "store": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "admin": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "imgproxy": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "varnish": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "job": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    }
+  }
+}

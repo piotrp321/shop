@@ -1,0 +1,74 @@
+{{- /* The configuration files of the repository (symlinks in files/) and the scripts of the chart. */ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: varnish-vcl
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "varnish") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+data:
+  default.vcl: |
+    {{- .Files.Get "files/default.vcl" | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: garage-config
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "garage") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+data:
+  garage.toml: |
+    {{- .Files.Get "files/garage.toml" | nindent 4 }}
+  init.sh: |
+    {{- .Files.Get "files/garage-init.sh" | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "postgres") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+data:
+  10-create-databases.sh: |
+    {{- .Files.Get "files/10-create-databases.sh" | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-scripts
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "scripts") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+data:
+  initialize.sh: |
+    {{- .Files.Get "files/scripts/initialize.sh" | nindent 4 }}
+  keycloak-config.sh: |
+    {{- .Files.Get "files/scripts/keycloak-config.sh" | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realms
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "keycloak") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+data:
+  {{- /* The realms: the files of the repository without the section `users` (the demo accounts must not exist in
+  the cluster) and with the addresses of this environment. ${STORE_CLIENT_SECRET} stays: the job keycloak-config puts
+  the secret in when it creates the realm. */}}
+  {{- range $realm := list "shop" "backoffice" }}
+  {{- $text := $.Files.Get (printf "files/realms/%s.json" $realm) }}
+  {{- $text = replace "${STORE_URL}" (include "shop.url" (dict "root" $ "sub" "")) $text }}
+  {{- $text = replace "${ADMIN_URL}" (include "shop.url" (dict "root" $ "sub" "admin")) $text }}
+  {{- $document := fromJson $text }}
+  {{- $_ := unset $document "users" }}
+  {{ $realm }}.json: |
+    {{- toPrettyJson $document | nindent 4 }}
+  {{- end }}

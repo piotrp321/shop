@@ -1,0 +1,26 @@
+{{- define "shop.rabbitmq.container" -}}
+env:
+  - name: RABBITMQ_DEFAULT_USER
+    value: shop
+{{ include "shop.envFromSecret" . }}
+ports:
+  - name: amqp
+    containerPort: 5672
+  - name: management
+    containerPort: 15672
+volumeMounts:
+  - name: data
+    mountPath: /var/lib/rabbitmq
+readinessProbe:
+  exec:
+    # Runs as the server user: as root, an early probe on a fresh volume creates a root-owned .erlang.cookie.
+    command: ["gosu", "rabbitmq", "rabbitmq-diagnostics", "-q", "ping"]
+  periodSeconds: 5
+  timeoutSeconds: 10
+  failureThreshold: 30
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "rabbitmq" "ports" (list (dict "name" "amqp" "port" 5672) (dict "name" "management" "port" 15672))) }}
+---
+{{ include "shop.statefulset" (dict "root" . "name" "rabbitmq" "wave" "-1" "image" .Values.images.rabbitmq
+  "claims" (list (dict "name" "data" "size" .Values.storage.rabbitmq))
+  "container" (include "shop.rabbitmq.container" .)) }}

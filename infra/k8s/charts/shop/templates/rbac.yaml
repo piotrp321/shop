@@ -1,0 +1,38 @@
+{{- /* The initContainer that waits for the worker (it has no endpoint) reads the status of the deployments. */ -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shop-wait
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "wait") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shop-wait
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "wait") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shop-wait
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "wait") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: shop-wait
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shop-wait
