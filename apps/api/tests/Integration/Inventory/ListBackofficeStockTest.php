@@ -121,7 +121,7 @@ final class ListBackofficeStockTest extends KernelTestCase
                 $attributes += ['variantAxes' => ['Kolor'], 'variants' => array_map(static fn (int $v): array => ['id' => (string) Uuid::v4(), 'values' => ['kolor '.$v]], range(1, $variantsPerProduct))];
             }
             $product = ProductFactory::createOne($attributes);
-            new DoctrineProductRepository($this->entityManager)->save($product);
+            new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
             $variantIds = array_map(static fn (ProductVariant $variant): string => $variant->id()->toString(), $product->variants()->toList());
             self::assertNotContains($product->id()->toString(), $variantIds);
             $products[] = [$product->id()->toString(), $variantIds];

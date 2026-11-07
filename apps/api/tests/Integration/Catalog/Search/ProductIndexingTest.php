@@ -92,7 +92,7 @@ final class ProductIndexingTest extends KernelTestCase
         new DoctrineCategoryRepository($entityManager)->save($category);
         $variantId = (string) Uuid::v4();
         $product = ProductFactory::createOne(['mainCategory' => $category, 'name' => $name, 'variants' => [['id' => $variantId, 'values' => []]]]);
-        new DoctrineProductRepository($entityManager)->save($product);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
         VariantPriceRecordFactory::store($entityManager, ['variantId' => $variantId, 'gross' => $gross]);
         StockFixture::stock($entityManager->getConnection(), 3, variantId: $variantId);
 

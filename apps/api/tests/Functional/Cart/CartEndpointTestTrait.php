@@ -67,7 +67,7 @@ trait CartEndpointTestTrait
         new DoctrineCategoryRepository($this->entityManager)->save($category);
         $definitions = array_map(static fn (array $variant): array => ['id' => Uuid::v4()->toRfc4122(), 'values' => $variant[2]], $variants);
         $variant = ProductFactory::createOne(['mainCategory' => $category, 'name' => $name, 'imageAlts' => $imageAlts, 'variantAxes' => $axes, 'variants' => $definitions]);
-        new DoctrineProductRepository($this->entityManager)->save($variant);
+        new DoctrineProductRepository($this->entityManager)->save($variant, null, null, new \DateTimeImmutable());
         $ids = [];
         foreach ($variants as $index => [$gross, $stock]) {
             $id = $definitions[$index]['id'];

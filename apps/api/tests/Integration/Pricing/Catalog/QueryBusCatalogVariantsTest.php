@@ -89,7 +89,7 @@ final class QueryBusCatalogVariantsTest extends KernelTestCase
             $attributes += ['variantAxes' => $axes, 'variants' => $variants];
         }
         $product = ProductFactory::createOne($attributes);
-        new DoctrineProductRepository($entityManager)->save($product);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return $product;
     }

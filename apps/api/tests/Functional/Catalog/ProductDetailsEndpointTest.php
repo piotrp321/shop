@@ -54,7 +54,7 @@ final class ProductDetailsEndpointTest extends WebTestCase
                 ['id' => self::WHITE_43, 'values' => ['białe', '43']],
             ],
         ]);
-        new DoctrineProductRepository($entityManager)->save($product);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
         $this->categoryIds = [$sport->id()->toString(), $shoes->id()->toString()];
     }
 

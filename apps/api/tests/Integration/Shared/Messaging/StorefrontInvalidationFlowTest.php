@@ -76,7 +76,7 @@ final class StorefrontInvalidationFlowTest extends MessagingKernelTestCase
         $category = CategoryFactory::createOne();
         new DoctrineCategoryRepository($entityManager)->save($category);
         $product = ProductFactory::createOne(['mainCategory' => $category]);
-        new DoctrineProductRepository($entityManager)->save($product);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return [$product->id()->toString(), $product->variants()->toList()[0]->id()->toString()];
     }

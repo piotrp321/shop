@@ -17,10 +17,13 @@ use App\Catalog\Domain\Product\InvalidVariantAxes;
 use App\Catalog\Domain\Product\ProductAlreadyExists;
 use App\Catalog\Domain\Product\ProductCreated;
 use App\Catalog\Domain\Product\ProductId;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\SlugAlreadyTaken;
+use App\Catalog\Domain\Product\SlugRequired;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Domain\Product\VariantAlreadyExists;
+use App\Tests\Support\InMemory\FixedCatalogClock;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use App\Tests\Support\InMemory\InMemoryProductRepository;
 use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
@@ -38,6 +41,7 @@ final class CreateProductHandlerTest extends TestCase
     private InMemoryCategoryRepository $categories;
     private InMemoryProductRepository $products;
     private RecordingDomainEventPublisher $events;
+    private FixedCatalogClock $clock;
     private CreateProductHandler $handler;
 
     protected function setUp(): void
@@ -47,7 +51,8 @@ final class CreateProductHandlerTest extends TestCase
         $this->categories->save(Category::createRoot(CategoryId::fromString(self::EXTRA_ID), new CategoryName('Obuwie'), new CategorySlug('obuwie')));
         $this->products = new InMemoryProductRepository();
         $this->events = new RecordingDomainEventPublisher();
-        $this->handler = new CreateProductHandler($this->products, $this->categories, $this->events);
+        $this->clock = new FixedCatalogClock();
+        $this->handler = new CreateProductHandler($this->products, $this->categories, $this->events, $this->clock);
     }
 
     public function testProductWithMainAndAdditionalCategoryIsSavedAndProductCreatedPublishedOnce(): void
@@ -209,6 +214,49 @@ final class CreateProductHandlerTest extends TestCase
         self::assertSame([], $this->events->published);
     }
 
+    public function testAProductOfThePanelIsADraftSavedWithItsActorAndTimeAndOnlyProductCreatedIsPublished(): void
+    {
+        ($this->handler)($this->command(status: ProductStatus::Draft, actorId: 'staff-sub-1'));
+
+        $product = $this->products->get(ProductId::fromString(self::PRODUCT_ID));
+        self::assertSame(ProductStatus::Draft, $product->status());
+        self::assertNull($product->firstPublishedAt());
+        self::assertSame(1, $product->version());
+        self::assertEquals(['actorId' => 'staff-sub-1', 'at' => $this->clock->now], $this->products->lastWrites[self::PRODUCT_ID]);
+        self::assertEquals([new ProductCreated(self::PRODUCT_ID, $this->clock->now)], $this->events->published);
+    }
+
+    public function testAProductOfTheSeedIsPublishedAtTheTimeOfCreationWithoutAnActor(): void
+    {
+        ($this->handler)($this->command(status: ProductStatus::Published, actorId: null));
+
+        $product = $this->products->get(ProductId::fromString(self::PRODUCT_ID));
+        self::assertSame(ProductStatus::Published, $product->status());
+        self::assertEquals($this->clock->now, $product->firstPublishedAt());
+        self::assertNull($this->products->lastWrites[self::PRODUCT_ID]['actorId']);
+        self::assertCount(1, $this->events->published);
+        self::assertInstanceOf(ProductCreated::class, $this->events->published[0]);
+    }
+
+    public function testAnEmptySlugIsDerivedFromTheName(): void
+    {
+        ($this->handler)($this->command(name: 'Plecak Śnieżka 30 L', slug: ''));
+
+        self::assertSame('plecak-sniezka-30-l', $this->products->get(ProductId::fromString(self::PRODUCT_ID))->slug()->value());
+    }
+
+    public function testAnEmptySlugOfANameWithoutLettersOrDigitsIsSlugRequiredAndSavesNothing(): void
+    {
+        try {
+            ($this->handler)($this->command(name: '— ? —', slug: ''));
+            self::fail('Expected SlugRequired.');
+        } catch (SlugRequired) {
+        }
+
+        self::assertSame(0, $this->products->count());
+        self::assertSame([], $this->events->published);
+    }
+
     /**
      * @param list<string>                                       $additionalCategoryIds
      * @param list<string>                                       $variantAxes
@@ -222,6 +270,8 @@ final class CreateProductHandlerTest extends TestCase
         array $additionalCategoryIds = [self::EXTRA_ID],
         array $variantAxes = [],
         ?array $variants = null,
+        ProductStatus $status = ProductStatus::Draft,
+        ?string $actorId = 'staff-sub-1',
     ): CreateProduct {
         return new CreateProduct(
             $id,
@@ -234,6 +284,8 @@ final class CreateProductHandlerTest extends TestCase
             [['key' => 'originals/'.str_repeat('a', 64).'.jpg', 'alt' => 'front']],
             $variantAxes,
             $variants ?? [['id' => self::VARIANT_ID, 'values' => []]],
+            $status,
+            $actorId,
         );
     }
 }

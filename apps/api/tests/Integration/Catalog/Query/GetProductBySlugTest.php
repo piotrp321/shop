@@ -173,7 +173,7 @@ final class GetProductBySlugTest extends KernelTestCase
     private function saveProduct(array $attributes): Product
     {
         $product = ProductFactory::createOne($attributes);
-        new DoctrineProductRepository($this->entityManager)->save($product);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return $product;
     }

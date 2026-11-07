@@ -82,7 +82,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
             $additional[] = $this->savedCategory();
         }
         for ($i = 0; $i < 3; ++$i) {
-            $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => $additional]));
+            $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => $additional]), null, null, new \DateTimeImmutable());
         }
         $expectedIds = array_map(static fn (Category $c): string => $c->id()->toString(), $additional);
         sort($expectedIds);
@@ -109,7 +109,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
             'imageAlts' => ['front', 'back'],
             'shortDescription' => 'Short text',
         ]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         $page = $this->source->page(null, 10);
 
@@ -157,7 +157,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
                 ['id' => '10000000-0000-4000-8000-000000000001', 'values' => ['Białe', '43']],
             ],
         ]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         $snapshot = $this->source->page(null, 10)[0];
 
@@ -180,7 +180,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
             'mainCategory' => $this->savedCategory(name: 'Kosmetyki'),
             'variants' => [['id' => '10000000-0000-4000-8000-000000000001', 'values' => []]],
         ]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         $snapshot = $this->source->find($product->id()->toString());
 
@@ -192,7 +192,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
 
     public function testProductWithoutImagesHasNoMainImage(): void
     {
-        $this->products->save(ProductFactory::createOne(['mainCategory' => $this->savedCategory()]));
+        $this->products->save(ProductFactory::createOne(['mainCategory' => $this->savedCategory()]), null, null, new \DateTimeImmutable());
 
         $page = $this->source->page(null, 10);
 
@@ -279,7 +279,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         $main = $this->savedCategory();
         $additional = [$this->savedCategory(), $this->savedCategory(), $this->savedCategory()];
         for ($i = 0; $i < 5; ++$i) {
-            $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => $i % 2 ? $additional : []]));
+            $this->products->save(ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => $i % 2 ? $additional : []]), null, null, new \DateTimeImmutable());
         }
 
         $after = null;
@@ -305,7 +305,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
             'additionalCategories' => [$extra],
             'imageAlts' => ['front'],
         ]);
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->createProducts(2);
         $id = $product->id()->toString();
 
@@ -382,9 +382,9 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         );
         $this->connection->executeStatement(
             <<<'SQL'
-                INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, tax_class, images, variant_axes, version)
+                INSERT INTO catalog_product (id, slug, name, short_description, primary_category_id, tax_class, images, variant_axes, version, status, updated_at)
                 SELECT gen_random_uuid(), 'bulk-'||n, 'Bulk product '||n, repeat('x', 200), '00000000-0000-4000-8000-000000000001',
-                       'standard', '[{"key": "originals/a.jpg", "alt": "front"}]'::jsonb, '[]'::jsonb, 1
+                       'standard', '[{"key": "originals/a.jpg", "alt": "front"}]'::jsonb, '[]'::jsonb, 1, 'published', now()
                 FROM generate_series(1, 5000) AS n
                 SQL,
         );
@@ -443,7 +443,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
         $ids = [];
         for ($i = 0; $i < $count; ++$i) {
             $product = ProductFactory::createOne(['mainCategory' => $main]);
-            $this->products->save($product);
+            $this->products->save($product, null, null, new \DateTimeImmutable());
             $ids[] = $product->id()->toString();
         }
 
@@ -452,7 +452,7 @@ final class DbalProductSearchSourceTest extends KernelTestCase
 
     private function saveProductWithId(string $id, Category $main): string
     {
-        $this->products->save(ProductFactory::createOne(['id' => $id, 'mainCategory' => $main]));
+        $this->products->save(ProductFactory::createOne(['id' => $id, 'mainCategory' => $main]), null, null, new \DateTimeImmutable());
 
         return $id;
     }
