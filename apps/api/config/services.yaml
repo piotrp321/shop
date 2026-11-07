@@ -146,6 +146,14 @@ services:
             $revalidateSecret: '%env(STORE_REVALIDATE_SECRET)%'
     App\Shared\Infrastructure\Http\Cache\StorefrontCache: '@App\Shared\Infrastructure\Http\Cache\HttpStorefrontCache'
 
+    # The payment simulator: two fake providers inside the API (src/PaymentSimulator), reached over HTTP like real ones.
+    # Its secrets (PAYMENT_DEMO_*, .env.local, written by infra/scripts/init-env.sh) and addresses (compose file) are
+    # injected by #[Autowire(env: …)] where they are used.
+    # The client of every call between the shop and the simulator (the adapters of Payment and the webhook delivery
+    # of the simulator). The tests replace it with a client that forwards the requests to another kernel.
+    app.payment_http_client:
+        alias: http_client
+
     App\Backoffice\Infrastructure\MessagingStatisticsAdapter:
         arguments:
             $managementUrl: '%env(RABBITMQ_MANAGEMENT_URL)%'
@@ -282,5 +290,15 @@ when@test: &test
         App\Tests\Support\StatementCounter:
             public: true
             tags: ['doctrine.middleware']
+        # The calls between the shop and the simulator stay in the process (see the class); public, so a test can
+        # replace it with a client of constant responses.
+        app.payment_http_client:
+            class: Symfony\Component\HttpClient\MockHttpClient
+            factory: ['App\Tests\Support\KernelForwardingHttpClient', 'create']
+            arguments: ['%kernel.environment%']
+            public: true
+        # Replaced by the delivery tests with a builder that signs with the secrets of the shared test vector.
+        App\PaymentSimulator\SimulatedWebhooks:
+            public: true
 
 when@test_messaging: *test

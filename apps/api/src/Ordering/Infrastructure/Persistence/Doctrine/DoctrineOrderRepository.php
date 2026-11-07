@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Ordering\Infrastructure\Persistence\Doctrine;
 
+use App\Ordering\Domain\AccessToken;
+use App\Ordering\Domain\CancellationReason;
 use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\EmailAddress;
@@ -18,6 +20,7 @@ use App\Ordering\Domain\OrderNumber;
 use App\Ordering\Domain\OrderOwner;
 use App\Ordering\Domain\OrderRepository;
 use App\Ordering\Domain\OrderStatus;
+use App\Ordering\Domain\PaymentId;
 use App\Ordering\Domain\PriceCopy;
 use App\Ordering\Domain\ProductId;
 use App\Ordering\Domain\RequestFingerprint;
@@ -28,6 +31,7 @@ use App\Ordering\Infrastructure\Persistence\Doctrine\Record\OrderRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
+use Doctrine\ORM\Query;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -83,8 +87,9 @@ final readonly class DoctrineOrderRepository implements OrderRepository
     }
 
     /**
-     * Writes the confirmation marker, the only field that changes after placement. The version the order was read at
-     * must still be stored: the UPDATE checks it (and raises it), so of two concurrent saves only one succeeds.
+     * Writes what changes after placement: the status with the payment or the cancellation, and the markers of the
+     * emails. The version the order was read at must still be stored: the UPDATE checks it (and raises it), so of
+     * two concurrent saves (e.g. paying and cancelling) only one succeeds.
      */
     public function save(Order $order): void
     {
@@ -92,7 +97,7 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         if ($record->version !== $order->version()) {
             throw new OrderModifiedConcurrently();
         }
-        $record->confirmationSentAt = $order->confirmationSentAt();
+        self::writeChanges($order, $record);
 
         try {
             $this->entityManager->flush();
@@ -101,9 +106,22 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         }
     }
 
+    /**
+     * Reads the order from the database even when its record is in the identity map (a hint to refresh), so a read
+     * later in a transaction sees what others committed meanwhile (e.g. StartPayment after it waited for the lock of
+     * a payment).
+     */
     public function get(OrderId $id): Order
     {
-        $record = $this->entityManager->find(OrderRecord::class, $id->toString());
+        $record = $this->entityManager->createQueryBuilder()
+            ->select('o')
+            ->from(OrderRecord::class, 'o')
+            ->where('o.id = :id')
+            ->setParameter('id', $id->toString())
+            ->getQuery()
+            ->setHint(Query::HINT_REFRESH, true)
+            ->getOneOrNullResult();
+        \assert(null === $record || $record instanceof OrderRecord);
 
         return null === $record ? throw new OrderNotFound() : self::toDomain($record);
     }
@@ -121,7 +139,6 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         $address = $order->shippingAddress();
         $totals = $order->totals();
         $record->number = $order->number()->toString();
-        $record->status = $order->status()->value;
         $record->ownerType = $order->owner()->isGuest() ? self::GUEST : self::CUSTOMER;
         $record->customerId = $order->owner()->customerId();
         $record->email = $contact->email()->toString();
@@ -137,9 +154,23 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         $record->totalGross = $totals->gross()->amount();
         $record->idempotencyKey = $order->idempotencyKey()->toString();
         $record->requestFingerprint = $order->requestFingerprint()->toString();
+        $record->accessToken = $order->accessToken()?->toString();
         $record->placedAt = $order->placedAt();
-        $record->confirmationSentAt = $order->confirmationSentAt();
+        $record->paymentDeadline = $order->paymentDeadline();
+        self::writeChanges($order, $record);
         $record->version = $order->version();
+    }
+
+    private static function writeChanges(Order $order, OrderRecord $record): void
+    {
+        $record->status = $order->status()->value;
+        $record->paidAt = $order->paidAt();
+        $record->paymentId = $order->paymentId()?->toString();
+        $record->cancelledAt = $order->cancelledAt();
+        $record->cancellationReason = $order->cancellationReason()?->value;
+        $record->confirmationSentAt = $order->confirmationSentAt();
+        $record->paymentNotificationSentAt = $order->paymentNotificationSentAt();
+        $record->cancellationNotificationSentAt = $order->cancellationNotificationSentAt();
     }
 
     private static function toDomain(OrderRecord $record): Order
@@ -158,18 +189,26 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         }
 
         return Order::reconstitute(
-            OrderId::fromString($record->id),
-            OrderNumber::fromString($record->number),
-            self::CUSTOMER === $record->ownerType ? OrderOwner::customer($record->customerId ?? '') : OrderOwner::guest(),
-            Contact::of(EmailAddress::fromString($record->email), $record->fullName, $record->phone),
-            ShippingAddress::inPoland($record->street, $record->postalCode, $record->city),
-            $lines,
-            OrderStatus::from($record->status),
-            IdempotencyKey::fromString($record->idempotencyKey),
-            RequestFingerprint::fromString($record->requestFingerprint),
-            $record->placedAt,
-            $record->confirmationSentAt,
-            $record->version,
+            id: OrderId::fromString($record->id),
+            number: OrderNumber::fromString($record->number),
+            owner: self::CUSTOMER === $record->ownerType ? OrderOwner::customer($record->customerId ?? '') : OrderOwner::guest(),
+            accessToken: null === $record->accessToken ? null : AccessToken::fromString($record->accessToken),
+            contact: Contact::of(EmailAddress::fromString($record->email), $record->fullName, $record->phone),
+            shippingAddress: ShippingAddress::inPoland($record->street, $record->postalCode, $record->city),
+            lines: $lines,
+            status: OrderStatus::from($record->status),
+            idempotencyKey: IdempotencyKey::fromString($record->idempotencyKey),
+            requestFingerprint: RequestFingerprint::fromString($record->requestFingerprint),
+            placedAt: $record->placedAt,
+            paymentDeadline: $record->paymentDeadline,
+            paidAt: $record->paidAt,
+            paymentId: null === $record->paymentId ? null : PaymentId::fromString($record->paymentId),
+            cancelledAt: $record->cancelledAt,
+            cancellationReason: null === $record->cancellationReason ? null : CancellationReason::from($record->cancellationReason),
+            confirmationSentAt: $record->confirmationSentAt,
+            paymentNotificationSentAt: $record->paymentNotificationSentAt,
+            cancellationNotificationSentAt: $record->cancellationNotificationSentAt,
+            version: $record->version,
         );
     }
 }

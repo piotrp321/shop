@@ -70,8 +70,9 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   pushy do tego samego PR.
 - `.ao/setup` i `.ao/teardown` to wykonywalne skrypty uruchamiane przez AO z worktree zadania (zmienne
   `AO_COMPOSE_PROJECT` i `AO_PORT_BASE`, `AO_SETUP_READY_TIMEOUT` opcjonalnie). `setup` zapisuje `.env` (nazwa projektu
-  i 7 kolejnych portów od `AO_PORT_BASE`), sprawdza, że porty są wolne, uruchamia `make up` i `make seed`, po czym czeka
-  na `/health` API. `teardown` jest idempotentny: `docker compose -p "$AO_COMPOSE_PROJECT" down -v --remove-orphans`.
+  i 7 kolejnych portów od `AO_PORT_BASE`), sprawdza, że porty są wolne, uruchamia `make up`, czyści pulę `cache.oidc` API (cache w `apps/api/var/cache`
+  leży na bind mouncie worktree i przeżywa `teardown`, a nowy Keycloak ma nowe klucze), uruchamia `make seed`, po
+  czym czeka na `/health` API. `teardown` jest idempotentny: `docker compose -p "$AO_COMPOSE_PROJECT" down -v --remove-orphans`.
   Oba odmawiają pracy bez zmiennych albo bez Dockera. Testy: `python3 -m unittest discover -s .ao -p 'test_*.py'`.
 
 ## Kontrakt API

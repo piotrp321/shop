@@ -25,6 +25,8 @@ interface OrderRepository
     public function save(Order $order): void;
 
     /**
+     * The order read from the database (also later in a transaction, it sees what others committed meanwhile).
+     *
      * @throws OrderNotFound
      */
     public function get(OrderId $id): Order;

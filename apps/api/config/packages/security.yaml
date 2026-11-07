@@ -45,6 +45,12 @@ security:
         # A guest places an order of the guest cart named in the body (spec: docs/features/checkout/spec.md);
         # a customer uses /api/v1/me/orders, which the rule below covers.
         - { path: ^/api/v1/orders$, roles: PUBLIC_ACCESS }
+        # A guest starts and reads the payment of an order with its access token (header Order-Access-Token; spec:
+        # docs/features/payment/spec.md); the providers deliver webhooks signed, without a token; the checkout lists
+        # the providers. A customer uses /api/v1/me/orders/{id}/payment(s), which the rule below covers.
+        - { path: ^/api/v1/orders/[^/]+/payments?$, roles: PUBLIC_ACCESS }
+        - { path: ^/api/v1/payments/webhooks/, roles: PUBLIC_ACCESS }
+        - { path: ^/api/v1/payment-providers$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
         - { path: ^/api/v1(/|$), roles: ROLE_CUSTOMER }
 
 # Keys from the discovery document and JWKS of each realm, fetched through the internal URL and cached.

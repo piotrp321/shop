@@ -34,10 +34,12 @@ final class ConcurrentCommands
 
     /**
      * @param list<object> $commands
+     * @param string       $environment the kernel environment of the participants: `test_messaging` for the ones that
+     *                                  must write to the real Doctrine transports instead of the in-memory ones
      *
      * @return list<Outcome> in the order of the commands
      */
-    public static function run(Connection $control, array $commands): array
+    public static function run(Connection $control, array $commands, string $environment = 'test'): array
     {
         if (!\function_exists('pcntl_fork') || !\function_exists('posix_kill')) {
             throw new \RuntimeException('The concurrency tests need the pcntl and posix extensions.');
@@ -61,7 +63,7 @@ final class ConcurrentCommands
                     break;
                 }
                 if (0 === $pid) {
-                    self::participate($command, self::outcomeFile($directory, $index), $barrier);
+                    self::participate($command, self::outcomeFile($directory, $index), $barrier, $environment);
                 }
                 $children[$index] = $pid;
             }
@@ -104,7 +106,7 @@ final class ConcurrentCommands
      * Never returns: the process kills itself. POSIX delivers a signal a process sends to itself before kill()
      * returns, and SIGKILL cannot be blocked.
      */
-    private static function participate(object $command, string $outcomeFile, int $barrier): void
+    private static function participate(object $command, string $outcomeFile, int $barrier, string $environment): void
     {
         // A fatal error (e.g. the time limit) is no Throwable: the process still ends before any destructor runs
         // (the shutdown functions inherited from the parent run first; they only report), and writes nothing into
@@ -119,7 +121,7 @@ final class ConcurrentCommands
             // The parent's DAMA connection belongs to the parent (and to its open transaction): this process opens
             // a connection of its own, which commits.
             StaticDriver::setKeepStaticConnections(false);
-            $kernel = new Kernel('test', false);
+            $kernel = new Kernel($environment, false);
             $kernel->boot();
             $container = $kernel->getContainer()->get('test.service_container');
             \assert($container instanceof ContainerInterface);

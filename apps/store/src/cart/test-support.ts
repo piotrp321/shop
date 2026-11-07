@@ -5,6 +5,7 @@ import { createApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
 import { SESSION_COOKIE, signValue } from "@/auth/cookies";
 import { memorySessionStore, testConfig } from "@/auth/test-support";
+import { CONFIRMATION_COOKIE, type OrderConfirmation } from "@/checkout/cookies";
 import { CART_COOKIE } from "./cookies";
 import type { CartDeps } from "./deps";
 
@@ -46,7 +47,14 @@ export const problem = (status: number, detail?: string) =>
   );
 
 /** `idempotencyKey` only when the request has the header (`toEqual` ignores a property that is undefined). */
-export type ApiCall = { method: string; path: string; authorization: string | null; body: unknown; idempotencyKey?: string };
+export type ApiCall = {
+  method: string;
+  path: string;
+  authorization: string | null;
+  body: unknown;
+  idempotencyKey?: string;
+  orderAccessToken?: string;
+};
 
 /** The API client of the BFF on a fake network: every request is recorded and answered by `respond`. */
 export function cartTestDeps() {
@@ -70,6 +78,7 @@ export function cartTestDeps() {
             authorization: request.headers.get("authorization"),
             body: text === "" ? undefined : JSON.parse(text),
             idempotencyKey: request.headers.get("idempotency-key") ?? undefined,
+            orderAccessToken: request.headers.get("order-access-token") ?? undefined,
           };
           calls.push(call);
           for (const handler of handlers) {
@@ -130,3 +139,24 @@ export const setCookie = (response: Response, name: string) =>
   response.headers.getSetCookie().find((cookie) => cookie.startsWith(`${name}=`));
 
 export const isCleared = (cookie: string | undefined) => cookie !== undefined && /^[^=]+=;/.test(cookie) && cookie.includes("Max-Age=0");
+
+export const ORDER_ID = "0199a0b0-0000-7000-8000-000000000001";
+export const ORDER_ACCESS_TOKEN = "dGhpcy1pcy1hLXRva2VuLW9mLXRoZS1ndWVzdC0xMjM";
+
+/** What the checkout keeps in `store_order_confirmation` for a guest order; `accessToken: null` is a customer's. */
+export const guestConfirmation: OrderConfirmation = {
+  orderId: ORDER_ID,
+  number: "R-100001",
+  email: "anna.nowak@example.com",
+  totalGross: 39998,
+  currency: "PLN",
+  accessToken: ORDER_ACCESS_TOKEN,
+};
+export const customerConfirmation: OrderConfirmation = { ...guestConfirmation, email: "jan.kowalski@example.com", accessToken: null };
+
+/** The value of the signed `store_order_confirmation` cookie, as the checkout sets it. */
+export const signedConfirmationValue = (confirmation: OrderConfirmation = guestConfirmation, secret: string = testConfig.sessionSecret) =>
+  signValue(Buffer.from(JSON.stringify(confirmation)).toString("base64url"), secret);
+
+export const confirmationCookie = (confirmation: OrderConfirmation = guestConfirmation, secret: string = testConfig.sessionSecret) =>
+  `${CONFIRMATION_COOKIE}=${signedConfirmationValue(confirmation, secret)}`;

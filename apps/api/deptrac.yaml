@@ -117,6 +117,27 @@ deptrac:
       collectors:
         - type: classNameRegex
           value: '#^App\\Ordering\\UI\\#'
+    - name: Payment_Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Payment\\Domain\\#'
+    - name: Payment_Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Payment\\Application\\#'
+    - name: Payment_Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Payment\\Infrastructure\\#'
+    - name: Payment_UI
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Payment\\UI\\#'
+    # A fake external system, not a domain of the shop (flat module, one layer): see the ruleset.
+    - name: PaymentSimulator
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\PaymentSimulator\\#'
     - name: Shared_Domain
       collectors:
         - type: classNameRegex
@@ -322,8 +343,9 @@ deptrac:
       # The controllers of the customer cart take the owner from AuthenticatedCustomer (the `sub` of the token), the
       # security contract of Customer, never CustomerUser of Customer_Infrastructure.
       - Customer_Application
-    # No other module depends on Ordering in any layer. Ordering_Domain and Ordering_Application never see another
-    # module: the ports speak Ordering's own VariantId, PriceCopy and order data.
+    # Only Payment depends on Ordering (see Payment_Infrastructure); Ordering depends on Payment in no layer.
+    # Ordering_Domain and Ordering_Application never see another module: the ports speak Ordering's own VariantId,
+    # PriceCopy and order data.
     Ordering_Domain:
       - Native
       - Shared_Domain
@@ -357,6 +379,44 @@ deptrac:
       # The controller of a customer's order takes the customer from AuthenticatedCustomer, the security contract of
       # Customer, never CustomerUser of Customer_Infrastructure.
       - Customer_Application
+    # Only Payment depends on Ordering, one way (Payment_Infrastructure → Ordering_Application: the query
+    # GetOrderForPayment and the command MarkOrderPaid); Ordering depends on Payment in no layer, and no other
+    # module depends on Payment. Payment_Domain and Payment_Application never see another module: the ports speak
+    # Payment's own OrderId, Amount and order data.
+    Payment_Domain:
+      - Native
+      - Shared_Domain
+    Payment_Application:
+      - Native
+      - Payment_Domain
+      - Shared_Domain
+      - Vendor
+    Payment_Infrastructure:
+      - Native
+      - Payment_Application
+      - Payment_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      # PayableOrders asks Ordering through GetOrderForPayment on query.bus, OrderPayments pays orders through
+      # MarkOrderPaid on command.bus. Only its Application layer, never its Domain or Infrastructure.
+      - Ordering_Application
+    Payment_UI:
+      - Native
+      - Payment_Application
+      - Payment_Domain
+      - Shared_Domain
+      - Shared_Infrastructure
+      - Vendor
+      # The controllers of a customer's payment take the customer from AuthenticatedCustomer, the security contract
+      # of Customer, never CustomerUser of Customer_Infrastructure.
+      - Customer_Application
+    # The simulator of the payment providers talks to the shop over HTTP only, like a real provider: it depends on no
+    # context and no context depends on it (nor does Payment, which calls it through its HTTP adapters).
+    PaymentSimulator:
+      - Native
+      - Vendor
+      - Shared_Infrastructure
     Shared_Domain:
       - Native
     Shared_Application:

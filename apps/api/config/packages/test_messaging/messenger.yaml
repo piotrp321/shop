@@ -1,5 +1,6 @@
-# Real transports for the tests of the message route: the outbox in `shop_test` (doctrine.yaml) and `events` on the
-# `test` vhost, so the dev worker (database `shop`, vhost `/`) never sees test messages.
+# Real transports for the tests of the message route: the outbox, `scheduled` and `payment_simulator` in `shop_test` (doctrine.yaml, as
+# configured in messenger.yaml) and `events` on the `test` vhost, so the dev worker (database `shop`, vhost `/`)
+# never sees test messages.
 framework:
     messenger:
         transports:

@@ -2,7 +2,8 @@
 # Prepares the isolated stack of one AO task attempt (contract of the Agentic Orchestrator, run from the worktree).
 # Input: AO_COMPOSE_PROJECT (Compose project name) and AO_PORT_BASE (first of a block of free host ports).
 # Writes the gitignored .env with the project name and ports, starts the stack with `make up` (it waits for the
-# services to be healthy and creates .env.local with generated secrets), seeds demo data and waits for the API.
+# services to be healthy and creates .env.local with generated secrets), clears the OIDC key cache of the API, seeds
+# demo data and waits for the API.
 # Exit 0 = the stack is ready. Set AO_SETUP_READY_TIMEOUT (seconds, default 120) to change the API wait.
 set -eu
 # Name and number checks below must not depend on the locale (ranges like a-z).
@@ -65,6 +66,11 @@ trap - EXIT INT TERM
 
 export COMPOSE_PROJECT_NAME="$AO_COMPOSE_PROJECT"
 make up || fail "make up failed"
+# The API cache (apps/api/var/cache) is on the bind mount of the worktree, so it survives teardown. Its OIDC pool
+# would still hold the signing keys (kid) of the previous Keycloak, and the API would reject valid tokens (401).
+# Cleared inside the container: no host paths or file ownership involved.
+docker compose -p "$AO_COMPOSE_PROJECT" exec -T api bin/console cache:pool:clear cache.oidc \
+  || fail "clearing the API cache pool cache.oidc failed"
 make seed || fail "make seed failed"
 
 api_port=$((AO_PORT_BASE + 2))

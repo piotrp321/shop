@@ -24,6 +24,7 @@ use App\Tests\Unit\Ordering\InMemoryOrderCatalog;
 use App\Tests\Unit\Ordering\InMemoryOrderPrices;
 use App\Tests\Unit\Ordering\InMemoryOrders;
 use App\Tests\Unit\Ordering\InMemoryStockReservations;
+use App\Tests\Unit\Ordering\InMemoryUnpaidOrderExpiry;
 use App\Tests\Unit\Ordering\Journal;
 use App\Tests\Unit\Ordering\JournalingEventPublisher;
 use App\Tests\Unit\Ordering\SequenceOrderNumbers;
@@ -55,6 +56,7 @@ final class PlaceOrderHandlerTest extends TestCase
     private InMemoryOrders $orders;
     private JournalingEventPublisher $events;
     private SequenceOrderNumbers $numbers;
+    private InMemoryUnpaidOrderExpiry $expiry;
     private FixedOrderingClock $clock;
 
     protected function setUp(): void
@@ -73,6 +75,7 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->orders = new InMemoryOrders($this->journal);
         $this->events = new JournalingEventPublisher($this->journal);
         $this->numbers = new SequenceOrderNumbers($this->journal);
+        $this->expiry = new InMemoryUnpaidOrderExpiry($this->journal);
         $this->clock = new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:00:00+00:00'));
         $this->carts->put(self::guest(), [self::SHOES => 2, self::CAP => 1]);
     }
@@ -108,13 +111,72 @@ final class PlaceOrderHandlerTest extends TestCase
         self::assertSame([[self::SHOES, self::CAP]], $this->catalog->asked, 'one call for all the lines');
     }
 
+    public function testAGuestOrderGetsARandomAccessTokenAndTheDeadline(): void
+    {
+        $view = $this->place(self::command())->order;
+
+        self::assertIsString($view->accessToken);
+        self::assertMatchesRegularExpression('/^[A-Za-z0-9_-]{43}$/D', $view->accessToken, '32 random bytes in base64url');
+        self::assertSame($view->accessToken, $this->onlyOrder()->accessToken()?->toString());
+        self::assertEquals(new \DateTimeImmutable('2026-11-05 12:30:00+00:00'), $view->paymentDeadline);
+
+        $this->carts->put(CartReference::guest(self::OTHER_CART), [self::MAP => 1]);
+        $other = $this->place(self::command(cart: CartReference::guest(self::OTHER_CART), expectedTotalGross: 1_230, key: 'key-2'))->order;
+        self::assertNotSame($view->accessToken, $other->accessToken, 'every guest order has a token of its own');
+    }
+
+    public function testACustomerOrderHasNoAccessToken(): void
+    {
+        $this->carts->put(CartReference::customer(self::CUSTOMER), [self::MAP => 3]);
+
+        $view = $this->place(self::command(cart: CartReference::customer(self::CUSTOMER), expectedTotalGross: 3_690))->order;
+
+        self::assertNull($view->accessToken);
+        self::assertNull($this->onlyOrder()->accessToken());
+    }
+
+    public function testAReplayGivesTheSameAccessToken(): void
+    {
+        $first = $this->place(self::command())->order;
+
+        $replayed = $this->place(self::command());
+
+        self::assertTrue($replayed->replayed);
+        self::assertNotNull($first->accessToken);
+        self::assertSame($first->accessToken, $replayed->order->accessToken);
+    }
+
+    public function testThePlacementSchedulesTheExpiryFiveMinutesAfterTheDeadline(): void
+    {
+        $view = $this->place(self::command())->order;
+
+        self::assertEquals([[$view->orderId, new \DateTimeImmutable('2026-11-05 12:35:00+00:00')]], $this->expiry->scheduled);
+    }
+
+    public function testAReplayOrARefusedPlacementSchedulesNoExpiry(): void
+    {
+        $this->place(self::command());
+        $this->expiry->scheduled = [];
+
+        $this->place(self::command());
+        $this->carts->put(CartReference::guest(self::OTHER_CART), [self::MAP => 1]);
+        try {
+            $this->place(self::command(cart: CartReference::guest(self::OTHER_CART), expectedTotalGross: 1, key: 'key-2'));
+            self::fail('Expected OrderTotalChanged.');
+        } catch (OrderTotalChanged) {
+            $this->addToAssertionCount(1);
+        }
+
+        self::assertSame([], $this->expiry->scheduled);
+    }
+
     public function testTheStepsRunInTheOrderOfTheSpecification(): void
     {
         $this->place(self::command());
 
         // Replay check, cart lock, replay check under the lock, copies, number, cart cleared, reservation, then the
-        // order and its event last.
-        self::assertSame(['find', 'lock', 'find', 'prices', 'catalog', 'number', 'clear', 'reserve', 'add', 'publish'], $this->journal->calls);
+        // order, its event and its expiry last.
+        self::assertSame(['find', 'lock', 'find', 'prices', 'catalog', 'number', 'clear', 'reserve', 'add', 'publish', 'schedule'], $this->journal->calls);
     }
 
     public function testACustomerPlacesAnOrderFromTheCustomerCart(): void
@@ -333,7 +395,7 @@ final class PlaceOrderHandlerTest extends TestCase
 
     private function place(PlaceOrder $command): PlacedOrder
     {
-        $handler = new PlaceOrderHandler($this->orders, $this->carts, $this->prices, $this->catalog, $this->stock, $this->numbers, $this->events, $this->clock);
+        $handler = new PlaceOrderHandler($this->orders, $this->carts, $this->prices, $this->catalog, $this->stock, $this->numbers, $this->expiry, $this->events, $this->clock);
 
         return $handler($command);
     }
