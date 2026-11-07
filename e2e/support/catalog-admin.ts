@@ -119,24 +119,24 @@ export async function createDraftInPanel(page: Page, product: NewProduct): Promi
   await page.getByTestId("variant-value").fill(product.variantValue);
 
   await page.getByTestId("save").click();
-  await expect(page.getByTestId("form-error"), "saving the draft was rejected").toHaveCount(0);
   await expect(page.getByTestId("product-status")).toHaveText("Szkic");
   await expect(page).toHaveURL(/\/products\/[0-9a-f-]{36}$/);
+  await expect(page.getByTestId("form-error"), "saving the draft was rejected").toHaveCount(0);
   return new URL(page.url()).pathname.split("/").pop() ?? "";
 }
 
 /** Publishes the draft open in the form; resolves when the panel shows it as published. */
 export async function publishInPanel(page: Page): Promise<void> {
   await page.getByTestId("publish").click();
-  await expect(page.getByTestId("form-error"), "the publication was rejected").toHaveCount(0);
   await expect(page.getByTestId("product-status")).toHaveText("Opublikowany");
+  await expect(page.getByTestId("form-error"), "the publication was rejected").toHaveCount(0);
 }
 
 /** Withdraws the published product open in the form; resolves when the panel shows it as a draft. */
 export async function unpublishInPanel(page: Page): Promise<void> {
   await page.getByTestId("unpublish").click();
-  await expect(page.getByTestId("form-error"), "the withdrawal was rejected").toHaveCount(0);
   await expect(page.getByTestId("product-status")).toHaveText("Szkic");
+  await expect(page.getByTestId("form-error"), "the withdrawal was rejected").toHaveCount(0);
 }
 
 /**

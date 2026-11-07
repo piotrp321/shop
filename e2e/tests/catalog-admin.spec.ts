@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 import { staff } from "../support/accounts";
 import { createDraftInPanel, newProduct, publishInPanel, receiveStockInPanel, solidPng, unpublishInPanel } from "../support/catalog-admin";
 import { changePriceInPanel, formatPln, normalize } from "../support/price-change";
-import { loginStaff, trackBearerToken } from "../support/staff-login";
+import { loginStaff, waitForBearerToken } from "../support/staff-login";
 import { urls } from "../support/urls";
 
 // A change of the product is handled (outbox, RabbitMQ, purge of Varnish and revalidation of the store) within this
@@ -34,15 +34,19 @@ async function visit(page: Page, slug: string): Promise<StorePage> {
 /** Visits the address until the page satisfies the condition; the message names what was missing. */
 async function expectStorePage(page: Page, slug: string, message: string, accepted: (seen: StorePage) => boolean): Promise<StorePage> {
   let last: StorePage | undefined;
-  await expect
-    .poll(
-      async () => {
-        last = await visit(page, slug);
-        return accepted(last);
-      },
-      { message: `${message} within 20 s (last seen: ${JSON.stringify(last)})`, timeout: EVENT_WAIT_MS, intervals: [1_000] },
-    )
-    .toBe(true);
+  try {
+    await expect
+      .poll(
+        async () => {
+          last = await visit(page, slug);
+          return accepted(last);
+        },
+        { message, timeout: EVENT_WAIT_MS, intervals: [1_000] },
+      )
+      .toBe(true);
+  } catch (error) {
+    throw new Error(`${message} within 20 s (last seen: ${JSON.stringify(last)})`, { cause: error });
+  }
   return last as StorePage;
 }
 
@@ -81,7 +85,7 @@ test("marketing creates and publishes a product, admin prices it and receives st
   const renamed = `${product.name} nowa nazwa`;
   await page.getByTestId("name").fill(renamed);
   await page.getByTestId("save").click();
-  await expect(page.getByTestId("success-message")).toBeVisible();
+  await expect(page.getByTestId("success-message")).toHaveText("Produkt zapisany.");
   await expect(page.getByTestId("form-error")).toHaveCount(0);
   await expect(page.getByTestId("slug")).toHaveValue(product.slug);
   await expect(page.getByTestId("slug")).toBeDisabled();
@@ -124,9 +128,9 @@ test("production build: a slug visited before the publication is a 404 and shows
 
 test("the upload of an image refuses a file over upload_max_filesize and a request over post_max_size", async ({ page, request }) => {
   test.setTimeout(120_000);
-  const bearer = trackBearerToken(page);
+  const bearer = waitForBearerToken(page);
   await loginStaff(page, staff.marketing);
-  const headers = { Authorization: `Bearer ${await bearer.token()}` };
+  const headers = { Authorization: `Bearer ${await bearer}` };
   const upload = (file: { name: string; mimeType: string; buffer: Uint8Array }) =>
     request.post(`${urls.api}/api/v1/admin/product-images`, { headers, multipart: { file: { ...file, buffer: Buffer.from(file.buffer) } }, timeout: 90_000 });
 
