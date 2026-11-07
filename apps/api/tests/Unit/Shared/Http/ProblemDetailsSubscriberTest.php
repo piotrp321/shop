@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Shared\Http;
 
 use App\Shared\Domain\Exception\Conflict;
+use App\Shared\Domain\Exception\ExtendedProblem;
 use App\Shared\Domain\Exception\InvalidInput;
 use App\Shared\Domain\Exception\NotFound;
 use App\Shared\Domain\Exception\TypedProblem;
+use App\Shared\Domain\Exception\Unavailable;
 use App\Shared\Infrastructure\Http\ProblemDetailsSubscriber;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -45,6 +47,50 @@ final class ProblemDetailsSubscriberTest extends TestCase
         $problem = $this->problemOf(new HandlerFailedException(new Envelope(new \stdClass()), [$typed]));
 
         self::assertSame('tag:example.com,2026:problems/taken', $problem['type']);
+    }
+
+    public function testAnExtendedProblemAddsItsMembers(): void
+    {
+        $problem = $this->problemOf(new class('Overlap.') extends \DomainException implements Conflict, TypedProblem, ExtendedProblem {
+            public function problemType(): string
+            {
+                return 'tag:example.com,2026:problems/overlap';
+            }
+
+            public function problemExtensions(): array
+            {
+                return ['conflictingIds' => ['a', 'b']];
+            }
+        });
+
+        self::assertSame(
+            ['type' => 'tag:example.com,2026:problems/overlap', 'title' => 'Conflict', 'status' => 409, 'detail' => 'Overlap.', 'conflictingIds' => ['a', 'b']],
+            $problem,
+        );
+    }
+
+    public function testAnExtensionNeverReplacesAMemberOfTheProblem(): void
+    {
+        $problem = $this->problemOf(new HandlerFailedException(new Envelope(new \stdClass()), [new class('Overlap.') extends \DomainException implements Conflict, ExtendedProblem {
+            public function problemExtensions(): array
+            {
+                return ['type' => 'x', 'title' => 'x', 'status' => 200, 'detail' => 'x', 'instance' => 'x', 'violations' => [], 'extra' => 1];
+            }
+        }]));
+
+        self::assertSame(['type' => 'about:blank', 'title' => 'Conflict', 'status' => 409, 'detail' => 'Overlap.', 'extra' => 1], $problem);
+    }
+
+    public function testAServerErrorHasNoExtensions(): void
+    {
+        $problem = $this->problemOf(new class('Down.') extends \RuntimeException implements Unavailable, ExtendedProblem {
+            public function problemExtensions(): array
+            {
+                return ['secret' => 'x'];
+            }
+        });
+
+        self::assertSame(['type' => 'about:blank', 'title' => 'Service Unavailable', 'status' => 503], $problem);
     }
 
     public function testAProblemWithoutATypeIsAboutBlank(): void
