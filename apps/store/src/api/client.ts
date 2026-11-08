@@ -77,8 +77,11 @@ export type CartSummaryBody = { itemCount: number; notice: "merge_truncated" | n
 
 export type CartView = components["schemas"]["CartView"];
 
-/** Why a call to the store's cart endpoints did not give data. `detail` is the Polish text of the API, when there is one. */
-export type CartFailure = { status: "conflict" | "not_found" | "unauthorized" | "failed"; detail?: string };
+/**
+ * Why a call to the store's cart endpoints did not give data. `detail` is the Polish text of the API, when there is
+ * one. `invalid` is the discount code of a read that the API refuses outright (too long): `detail` is for its field.
+ */
+export type CartFailure = { status: "conflict" | "not_found" | "unauthorized" | "invalid" | "failed"; detail?: string };
 
 export type CartResult<T> = { status: "ok"; data: T } | CartFailure;
 
@@ -98,11 +101,12 @@ async function callCart<T>(path: string, init: { method: string; body?: unknown 
     switch (response.status) {
       case 401:
         return { status: "unauthorized" };
+      case 400:
       case 404:
       case 409: {
         const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
         const detail = typeof body?.detail === "string" ? body.detail : undefined;
-        return { status: response.status === 404 ? "not_found" : "conflict", detail };
+        return { status: response.status === 400 ? "invalid" : response.status === 404 ? "not_found" : "conflict", detail };
       }
       default:
         return { status: "failed" };
@@ -113,7 +117,11 @@ async function callCart<T>(path: string, init: { method: string; body?: unknown 
 }
 
 /** For the browser: the cart pages and buttons talk to the store's `/api/cart/*`, never to the API. */
-export const loadCart = () => callCart<CartView>("/api/cart");
+export const loadCart = (discountCode?: string) =>
+  callCart<CartView>(discountCode === undefined ? "/api/cart" : `/api/cart?${discountCodeQuery(discountCode)}`);
+
+/** `encodeURIComponent` throws on a lone surrogate; `URLSearchParams` turns it into U+FFFD. A space stays `%20`. */
+const discountCodeQuery = (discountCode: string) => new URLSearchParams({ discountCode }).toString().replace(/\+/g, "%20");
 
 export const loadCartSummary = () => callCart<CartSummaryBody>("/api/cart/summary");
 
@@ -208,6 +216,8 @@ export type PlaceOrderInput = {
   expectedTotalGross: number;
   /** Code of the payment provider chosen from `GET /api/v1/payment-providers`; the BFF checks it. */
   provider: string;
+  /** The discount code the customer applied in the checkout, as typed; the API judges it. Absent without a code. */
+  discountCode?: string;
 };
 
 export type OrderViolation = NonNullable<components["schemas"]["Problem"]["violations"]>[number];

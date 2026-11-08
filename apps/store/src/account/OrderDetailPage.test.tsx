@@ -58,6 +58,44 @@ describe("the order detail", () => {
     expect(address.textContent).toContain("00-950 Warszawa");
   });
 
+  it("shows the values of the lines before the discount, the line of the code and the totals after it", async () => {
+    const base = detail();
+    vi.mocked(loadCustomerOrder).mockResolvedValue(
+      ok({
+        ...base,
+        lines: [
+          { ...base.lines[0], discountGross: 3636, lineGross: 36362 },
+          { ...base.lines[1], discountGross: 364, lineGross: 1636 },
+        ],
+        discount: { code: "WITAJ10", kind: "percent", value: 10, amountGross: 4000 },
+        totals: { net: 29270, vat: 6728, gross: 37998, currency: "PLN" },
+      }),
+    );
+    await renderPage();
+
+    const lines = within(screen.getByRole("list", { name: "Pozycje zamówienia" })).getAllByRole("listitem");
+    // The value of a line is the one before the discount, so that the lines and the line of the code add up to the total.
+    expect(within(lines[0]).getByTestId("line-total").textContent).toMatch(/399,98/);
+    expect(within(lines[1]).getByTestId("line-total").textContent).toMatch(/20,00/);
+    const code = screen.getByTestId("order-discount");
+    expect(code.textContent).toMatch(/^Kod WITAJ10: −/);
+    expect(code.textContent).toMatch(/40,00/);
+    expect(screen.getByTestId("total-net").textContent).toMatch(/292,70/);
+    expect(screen.getByTestId("total-vat").textContent).toMatch(/67,28/);
+    expect(screen.getByTestId("total-gross").textContent).toMatch(/379,98/);
+  });
+
+  it("shows an order without a code as before: no line of a code, the values of the lines as they are", async () => {
+    vi.mocked(loadCustomerOrder).mockResolvedValue(ok(detail()));
+    await renderPage();
+
+    expect(screen.queryByTestId("order-discount")).toBeNull();
+    expect(screen.queryByText(/Kod /)).toBeNull();
+    const lines = within(screen.getByRole("list", { name: "Pozycje zamówienia" })).getAllByRole("listitem");
+    expect(within(lines[0]).getByTestId("line-total").textContent).toMatch(/399,98/);
+    expect(within(lines[1]).getByTestId("line-total").textContent).toMatch(/20,00/);
+  });
+
   it("lists the dates of the statuses the order went through, in Warsaw time", async () => {
     vi.mocked(loadCustomerOrder).mockResolvedValue(
       ok(detail({ status: "delivered", shippedAt: "2026-11-06T09:00:00+00:00", deliveredAt: "2026-11-07T23:30:00+00:00" })),

@@ -8,7 +8,7 @@ import type { CartDeps } from "./deps";
 import { applyGuestCartMerge, type GuestCartMerge, mergeGuestCart } from "./merge";
 
 export type CartCommand =
-  | { kind: "read" }
+  | { kind: "read"; discountCode?: string }
   | { kind: "summary" }
   | { kind: "add"; variantId: string; quantity: number }
   | { kind: "change"; variantId: string; quantity: number }
@@ -125,7 +125,7 @@ const isWrite = (command: CartCommand) => command.kind !== "read" && command.kin
 function perform(cart: CartApi, command: CartCommand): Promise<ApiResult<CartView>> | Promise<ApiResult<{ itemCount: number }>> {
   switch (command.kind) {
     case "read":
-      return cart.get();
+      return cart.get(command.discountCode);
     case "summary":
       return cart.summary();
     case "add":
@@ -146,6 +146,10 @@ function toOutcome(result: ApiResult<CartView | { itemCount: number }>, command:
   }
   if (result.status === 404 || result.status === 409 || result.status === 422) {
     return { status: result.status, body: { detail: result.detail } };
+  }
+  if (result.status === 400 && command.kind === "read" && command.discountCode !== undefined) {
+    // The code the customer typed is refused (too long, not text): the text of the API goes to the field of the code.
+    return { status: 400, body: { detail: result.violation ?? result.detail } };
   }
   // Includes a 400 or 415 from the API, which would be a bug of this BFF and not something the browser can fix.
   console.error(`The API answered ${result.status} to a cart request.`);

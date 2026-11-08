@@ -241,6 +241,34 @@ describe("POST /api/checkout as a guest", () => {
     expect(orderCalls()[0].body).toEqual({ cartId: GUEST_CART_ID, ...GUEST_ORDER });
   });
 
+  it("passes the discount code to the API and drops the other fields, for a guest and for a customer", async () => {
+    setup.answer("POST", GUEST_ORDERS, () => Response.json(orderView(), { status: 201 }));
+    setup.answer("POST", GUEST_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: { ...GUEST_FORM, discountCode: "WITAJ10", discountGross: 5000 } });
+    const { cookie } = await signedIn();
+    setup.answer("POST", CUSTOMER_ORDERS, () => Response.json(orderView({ accessToken: null }), { status: 201 }));
+    setup.answer("POST", CUSTOMER_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie, body: { ...CUSTOMER_FORM, discountCode: "WITAJ10", discountGross: 5000 } });
+
+    const orders = orderCalls().filter((call) => call.path === GUEST_ORDERS || call.path === CUSTOMER_ORDERS);
+    expect(orders.map((call) => call.body)).toEqual([
+      { cartId: GUEST_CART_ID, ...GUEST_ORDER, discountCode: "WITAJ10" },
+      { ...CUSTOMER_ORDER, discountCode: "WITAJ10" },
+    ]);
+  });
+
+  it.each([
+    ["discount-code-invalid", "Ten kod jest nieprawidłowy albo nieaktywny."],
+    ["discount-code-used-up", "Ten kod został już wykorzystany."],
+    ["discount-code-below-minimum", "Ten kod działa przy zamówieniu od 300,00 zł."],
+  ])("passes the 409 %s with its type and detail", async (slug, detail) => {
+    setup.answer("POST", GUEST_ORDERS, () => conflict(slug, detail));
+    const response = await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: { ...GUEST_FORM, discountCode: "X" } });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ type: `${PROBLEMS}${slug}`, detail });
+  });
+
   it("passes the values of the browser as they are, so that the API names what is wrong", async () => {
     setup.answer("POST", GUEST_ORDERS, () => problem(422));
     await checkout({ cookie: signedCartCookie(GUEST_CART_ID), body: { email: 5, phone: "", provider: PROVIDER } });

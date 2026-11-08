@@ -633,3 +633,423 @@ describe("CheckoutPage with an order waiting for its payment", () => {
     expect(screen.queryByRole("link", { name: /^Opłać zamówienie/ })).toBeNull();
   });
 });
+
+describe("CheckoutPage discount code", () => {
+  const REJECTIONS = [
+    ["invalid", "Ten kod jest nieprawidłowy albo nieaktywny.", null],
+    ["used_up", "Ten kod został już wykorzystany.", null],
+    ["below_minimum", "Ten kod działa przy zamówieniu od 300,00 zł.", 30000],
+  ] as const;
+
+  const applied = (code: string, amountGross: number): NonNullable<CartView["discount"]> => ({
+    status: "applied",
+    code,
+    amountGross,
+    kind: "percent",
+    value: 10,
+  });
+  const rejected = (code: string, reason: "invalid" | "used_up" | "below_minimum", detail: string, minimumOrderGross: number | null) => ({
+    status: "rejected" as const,
+    code,
+    reason,
+    detail,
+    minimumOrderGross,
+  });
+  /** The cart of the API with a code: the lines as they are, the totals after the discount. */
+  const discounted = (code: string, subtotal: number, amount: number): CartView => ({
+    ...cart(subtotal - amount),
+    totals: { subtotalGross: subtotal, discountGross: amount, gross: subtotal - amount, currency: "PLN", itemCount: 2 },
+    discount: applied(code, amount),
+  });
+  const withRejection = (reason: "invalid" | "used_up" | "below_minimum", detail: string, minimum: number | null): CartView => ({
+    ...cart(),
+    discount: rejected("LATO15", reason, detail, minimum),
+  });
+
+  const codeField = () => screen.getByLabelText("Kod rabatowy") as HTMLInputElement;
+  const applyButton = () => screen.getByRole("button", { name: "Zastosuj" }) as HTMLButtonElement;
+  const removeButton = () => screen.getByRole("button", { name: "Usuń kod" });
+  const total = () => screen.getByTestId("checkout-total").textContent;
+
+  async function apply(code: string, answer: Awaited<ReturnType<typeof loadCart>>) {
+    vi.mocked(loadCart).mockResolvedValueOnce(answer);
+    fireEvent.change(codeField(), { target: { value: code } });
+    await act(async () => {
+      fireEvent.click(applyButton());
+    });
+  }
+  const applyOk = (code: string, view: CartView) => apply(code, { status: "ok", data: view });
+
+  it("offers the field below the summary, labelled, limited to 64 characters, with the button „Zastosuj”", async () => {
+    await renderCheckout();
+
+    const input = codeField();
+    expect(input.maxLength).toBe(64);
+    expect(input.value).toBe("");
+    expect(applyButton().type).toBe("submit");
+    const summary = screen.getByRole("region", { name: "Podsumowanie zamówienia" });
+    expect(summary.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Usuń kod" })).toBeNull();
+  });
+
+  it.each([
+    ["an empty cart", cart(0, [])],
+    ["excluded lines", cart(1000, [line(A, "Buty", "", 1, 1000), line(B, "Baton", "", 1, 0, { state: "no_price", unitPrice: null, lineTotal: null })], true)],
+  ])("has no field with %s", async (_name, view) => {
+    await renderCheckout(view);
+
+    expect(screen.queryByLabelText("Kod rabatowy")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Zastosuj" })).toBeNull();
+  });
+
+  it("applies a code by reloading the summary with it: the discount line, the total after the discount, „Usuń kod” instead of the field", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+
+    expect(loadCart).toHaveBeenLastCalledWith("witaj10");
+    expect(screen.getByTestId("checkout-discount").textContent).toBe(`Kod WITAJ10: −${price(4000)}`);
+    expect(total()).toBe(price(35998));
+    expect(screen.getByTestId("checkout-line-total").textContent).toBe(price(39998));
+    expect(screen.queryByLabelText("Kod rabatowy")).toBeNull();
+    expect(document.activeElement).toBe(removeButton());
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("trims the code before it is sent", async () => {
+    await renderCheckout();
+    await applyOk("  WITAJ10 ", discounted("WITAJ10", 39998, 4000));
+
+    expect(loadCart).toHaveBeenLastCalledWith("WITAJ10");
+  });
+
+  it("applies the code with the Enter key of the field and does not order", async () => {
+    await renderCheckout();
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: discounted("WITAJ10", 39998, 4000) });
+    fireEvent.change(codeField(), { target: { value: "WITAJ10" } });
+    await act(async () => {
+      fireEvent.submit(codeField().closest("form") as HTMLFormElement);
+    });
+
+    expect(screen.getByTestId("checkout-discount")).toBeTruthy();
+    expect(placeOrder).not.toHaveBeenCalled();
+  });
+
+  it("asks for a code without a request when the field is empty or blank", async () => {
+    await renderCheckout();
+    fireEvent.change(codeField(), { target: { value: "   " } });
+    await act(async () => {
+      fireEvent.click(applyButton());
+    });
+
+    expect(screen.getByRole("alert").textContent).toBe("Wpisz kod rabatowy.");
+    expect(loadCart).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(codeField());
+  });
+
+  it("asks for a code, like for an empty field, when the API finds the code empty after its normalisation", async () => {
+    await renderCheckout();
+    await applyOk("\u200B", cart());
+
+    expect(screen.getByRole("alert").textContent).toBe("Wpisz kod rabatowy.");
+    expect(screen.queryByTestId("checkout-discount")).toBeNull();
+    expect(total()).toBe(price(39998));
+    expect(document.activeElement).toBe(codeField());
+  });
+
+  it.each(REJECTIONS)("shows the detail of a code rejected as %s at the field and the summary without a discount", async (reason, detail, minimum) => {
+    await renderCheckout();
+    await applyOk("lato15", withRejection(reason, detail, minimum));
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(detail);
+    expect(codeField().getAttribute("aria-invalid")).toBe("true");
+    expect(codeField().getAttribute("aria-describedby")).toBe(alert.id);
+    expect(codeField().value).toBe("lato15");
+    expect(document.activeElement).toBe(codeField());
+    expect(screen.queryByTestId("checkout-discount")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Usuń kod" })).toBeNull();
+    expect(total()).toBe(price(39998));
+  });
+
+  it("clears the message at the field when the customer types another code", async () => {
+    await renderCheckout();
+    await applyOk("lato15", withRejection("invalid", "Ten kod jest nieprawidłowy albo nieaktywny.", null));
+    fireEvent.change(codeField(), { target: { value: "lato1" } });
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(codeField().getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("shows the message of a 400 (a code that is too long) at the field and the summary without a code", async () => {
+    await renderCheckout();
+    await apply("A".repeat(65), { status: "invalid", detail: "Kod rabatowy może mieć najwyżej 64 znaki." });
+
+    expect(screen.getByRole("alert").textContent).toBe("Kod rabatowy może mieć najwyżej 64 znaki.");
+    expect(screen.queryByTestId("checkout-discount")).toBeNull();
+    expect(total()).toBe(price(39998));
+    // The summary is read again without the code, so it is the summary of no code whatever it was before.
+    expect(loadCart).toHaveBeenLastCalledWith();
+  });
+
+  it("says the code could not be checked when the API is down, and keeps the summary", async () => {
+    await renderCheckout();
+    await apply("WITAJ10", { status: "failed" });
+
+    expect(screen.getByRole("alert").textContent).toBe("Nie udało się sprawdzić kodu. Spróbuj ponownie.");
+    expect(total()).toBe(price(39998));
+    expect(applyButton().disabled).toBe(false);
+  });
+
+  it("says the session expired when the preview answers 401", async () => {
+    await renderCheckout(cart(), JAN);
+    await apply("WITAJ10", { status: "unauthorized" });
+
+    expect(screen.getByRole("alert").textContent).toContain("Twoja sesja wygasła");
+  });
+
+  it("removes the code: the summary is read again without it, the field is back, empty and focused", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+    await act(async () => {
+      fireEvent.click(removeButton());
+    });
+
+    expect(loadCart).toHaveBeenLastCalledWith();
+    expect(screen.queryByTestId("checkout-discount")).toBeNull();
+    expect(total()).toBe(price(39998));
+    expect(codeField().value).toBe("");
+    expect(document.activeElement).toBe(codeField());
+  });
+
+  it("keeps the code when it cannot be removed", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "failed" });
+    await act(async () => {
+      fireEvent.click(removeButton());
+    });
+
+    expect(screen.getByTestId("checkout-discount")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe("Nie udało się odświeżyć podsumowania. Spróbuj ponownie.");
+    expect(total()).toBe(price(35998));
+  });
+
+  it("announces the application and the removal of a code in a live region", async () => {
+    await renderCheckout();
+    const live = () => {
+      const region = screen.getByTestId("checkout-code-status");
+      expect(region.getAttribute("role")).toBe("status");
+      return region.textContent;
+    };
+    expect(live()).toBe("");
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    expect(live()).toBe("Zastosowano kod WITAJ10.");
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+    await act(async () => {
+      fireEvent.click(removeButton());
+    });
+    expect(live()).toBe("Usunięto kod rabatowy.");
+  });
+
+  it("orders with the applied code and the total after the discount", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    fillGuestForm();
+    await submit({ status: "ok", number: "R-100001", redirectUrl: REDIRECT_URL });
+
+    expect(vi.mocked(placeOrder).mock.calls[0][0]).toEqual({ ...GUEST_INPUT, expectedTotalGross: 35998, discountCode: "witaj10" });
+  });
+
+  it("orders without a code field in the request when no code is applied, and after a rejected one", async () => {
+    await renderCheckout();
+    await applyOk("lato15", withRejection("invalid", "Ten kod jest nieprawidłowy albo nieaktywny.", null));
+    fillGuestForm();
+    await submit({ status: "ok", number: "R-100001", redirectUrl: REDIRECT_URL });
+
+    expect(vi.mocked(placeOrder).mock.calls[0][0]).toEqual(GUEST_INPUT);
+    expect("discountCode" in vi.mocked(placeOrder).mock.calls[0][0]).toBe(false);
+  });
+
+  it("orders without the code after it is removed", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+    await act(async () => {
+      fireEvent.click(removeButton());
+    });
+    fillGuestForm();
+    await submit({ status: "ok", number: "R-100001", redirectUrl: REDIRECT_URL });
+
+    expect(vi.mocked(placeOrder).mock.calls[0][0]).toEqual(GUEST_INPUT);
+  });
+
+  it("starts a new attempt (a new Idempotency-Key) when a code is applied and when it is removed", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    const before = key(keys);
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    const afterApply = key(keys);
+    await submit({ status: "failed" });
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+    await act(async () => {
+      fireEvent.click(removeButton());
+    });
+    const afterRemove = key(keys);
+    await submit({ status: "failed" });
+
+    expect(afterApply).not.toBe(before);
+    expect(afterRemove).not.toBe(afterApply);
+    expect(vi.mocked(placeOrder).mock.calls.map((call) => call[1])).toEqual([afterApply, afterRemove]);
+  });
+
+  it("does not start a new attempt when a code is only rejected (the request is as it was)", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    const before = key(keys);
+    await applyOk("lato15", withRejection("used_up", "Ten kod został już wykorzystany.", null));
+    await submit({ status: "failed" });
+
+    expect(vi.mocked(placeOrder).mock.calls[0][1]).toBe(before);
+  });
+
+  describe.each(REJECTIONS)("when the order is refused with the 409 of a code rejected as %s", (reason, detail) => {
+    async function refuse() {
+      await renderCheckout();
+      await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+      fillGuestForm();
+      const used = key(keys);
+      // The summary the checkout reads after the refusal, without the code.
+      vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+      await submit({ status: "conflict", reason: "discount_code_rejected", detail });
+      await act(async () => {});
+      return used;
+    }
+
+    it("shows the detail at the field, takes the code off and reads the summary without it", async () => {
+      await refuse();
+
+      expect(screen.getByRole("alert").textContent).toBe(detail);
+      expect(codeField().getAttribute("aria-describedby")).toBe(screen.getByRole("alert").id);
+      expect(document.activeElement).toBe(codeField());
+      expect(loadCart).toHaveBeenLastCalledWith();
+      expect(screen.queryByTestId("checkout-discount")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Usuń kod" })).toBeNull();
+      expect(total()).toBe(price(39998));
+      expect(field("Telefon").value).toBe("600 100 200");
+      expect(submitButton().disabled).toBe(false);
+    });
+
+    it("orders nothing by itself; the next click orders without the code, the new total and a new key", async () => {
+      const used = await refuse();
+
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+      expect(push).not.toHaveBeenCalled();
+      await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+
+      const [first, second] = vi.mocked(placeOrder).mock.calls;
+      expect(first[0]).toMatchObject({ discountCode: "witaj10", expectedTotalGross: 35998 });
+      expect(second[0]).toEqual(GUEST_INPUT);
+      expect(second[1]).not.toBe(used);
+    });
+  });
+
+  describe("when the order is refused with the 409 of a rejected code and the summary cannot be read without it", () => {
+    async function refuseUnread(read: Awaited<ReturnType<typeof loadCart>>, session = null as typeof JAN | null) {
+      await renderCheckout(cart(), session);
+      await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+      if (session === null) fillGuestForm();
+      else fillContact();
+      vi.mocked(loadCart).mockResolvedValueOnce(read);
+      await submit({ status: "conflict", reason: "discount_code_rejected", detail: "Ten kod został już wykorzystany." });
+      await act(async () => {});
+    }
+
+    it("keeps the screen consistent: the code stays applied with its line and total, the field does not come back", async () => {
+      await refuseUnread({ status: "failed" });
+
+      expect(screen.getByTestId("checkout-discount").textContent).toBe(`Kod WITAJ10: −${price(4000)}`);
+      expect(total()).toBe(price(35998));
+      expect(screen.queryByLabelText("Kod rabatowy")).toBeNull();
+      expect(screen.getByRole("button", { name: "Usuń kod" })).toBeTruthy();
+      expect(screen.getByRole("alert").textContent).toContain("Ten kod został już wykorzystany.");
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Usuń kod" }));
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it("says the session expired when the summary answers 401", async () => {
+      await refuseUnread({ status: "unauthorized" }, JAN);
+
+      expect(screen.getAllByRole("alert").map((alert) => alert.textContent).join(" ")).toContain("Twoja sesja wygasła");
+    });
+  });
+
+  it("reads the summary again with the same code after a 409 OrderTotalChanged and orders the new total with it", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    fillGuestForm();
+    const used = key(keys);
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: discounted("WITAJ10", 41998, 4200) });
+    await submit({ status: "conflict", reason: "total_changed", detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
+    await act(async () => {});
+
+    expect(loadCart).toHaveBeenLastCalledWith("witaj10");
+    expect(total()).toBe(price(37798));
+    expect(screen.getByTestId("checkout-discount").textContent).toBe(`Kod WITAJ10: −${price(4200)}`);
+    expect(screen.getByRole("alert").textContent).toContain("Kwota zamówienia się zmieniła.");
+    expect(placeOrder).toHaveBeenCalledTimes(1);
+
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+    const second = vi.mocked(placeOrder).mock.calls[1];
+    expect(second[0]).toMatchObject({ discountCode: "witaj10", expectedTotalGross: 37798 });
+    expect(second[1]).not.toBe(used);
+  });
+
+  it("shows the detail at the field when the code stops working by the time the summary is read again", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    fillGuestForm();
+    vi.mocked(loadCart).mockResolvedValueOnce({
+      status: "ok",
+      data: { ...cart(), discount: rejected("WITAJ10", "used_up", "Ten kod został już wykorzystany.", null) },
+    });
+    await submit({ status: "conflict", reason: "total_changed", detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
+    await act(async () => {});
+
+    const alerts = screen.getAllByRole("alert").map((alert) => alert.textContent);
+    expect(alerts).toContain("Ten kod został już wykorzystany.");
+    expect(screen.queryByTestId("checkout-discount")).toBeNull();
+    expect(total()).toBe(price(39998));
+    await submit({ status: "ok", number: "R-100001", redirectUrl: null });
+    expect(vi.mocked(placeOrder).mock.calls[1][0]).toEqual(GUEST_INPUT);
+  });
+
+  it("does not keep the code over a reload of the page: a new checkout starts without one", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    cleanup();
+    vi.mocked(loadCart).mockClear();
+    await renderCheckout();
+
+    expect(loadCart).toHaveBeenCalledWith();
+    expect(codeField().value).toBe("");
+    expect(screen.queryByTestId("checkout-discount")).toBeNull();
+    expect(window.localStorage.length + window.sessionStorage.length).toBe(0);
+    expect(document.cookie).toBe("");
+  });
+
+  it("locks the code controls and the order button while a code is being checked", async () => {
+    await renderCheckout();
+    let release: (value: Awaited<ReturnType<typeof loadCart>>) => void = () => {};
+    vi.mocked(loadCart).mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+    fireEvent.change(codeField(), { target: { value: "WITAJ10" } });
+    await act(async () => {
+      fireEvent.click(applyButton());
+    });
+
+    expect(applyButton().disabled).toBe(true);
+    expect(submitButton().disabled).toBe(true);
+    await act(async () => release({ status: "ok", data: discounted("WITAJ10", 39998, 4000) }));
+    expect(submitButton().disabled).toBe(false);
+  });
+});
