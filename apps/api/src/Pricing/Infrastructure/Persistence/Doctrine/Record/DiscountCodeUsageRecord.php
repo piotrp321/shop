@@ -30,8 +30,10 @@ class DiscountCodeUsageRecord
         public readonly DiscountCodeRecord $code,
         #[ORM\Column(type: 'guid')]
         public readonly string $orderId,
+        // Not readonly: a refresh sets it again with another instance of the same moment, which Doctrine refuses for
+        // a readonly property.
         #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
-        public readonly \DateTimeImmutable $usedAt,
+        public \DateTimeImmutable $usedAt,
         #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
         public ?\DateTimeImmutable $releasedAt = null,
     ) {

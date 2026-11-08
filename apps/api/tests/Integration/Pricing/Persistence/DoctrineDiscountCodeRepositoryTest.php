@@ -145,6 +145,24 @@ final class DoctrineDiscountCodeRepositoryTest extends KernelTestCase
         self::assertNull($this->codes->findByCode(DiscountCodeValue::of('JESIEN-26')));
     }
 
+    public function testACodeIsFoundByItsIdAsStoredNow(): void
+    {
+        $code = DiscountCodeFactory::createOne();
+        $this->codes->save($code);
+        // The record stays in the identity map; another transaction disables the code meanwhile.
+        $before = $this->codes->find($code->id());
+        self::assertTrue($before?->isEnabled());
+        $this->connection->executeStatement('UPDATE pricing_discount_code SET enabled = false, version = version + 1 WHERE id = ?', [$code->id()->toString()]);
+
+        $found = $this->codes->find($code->id());
+
+        self::assertNotNull($found);
+        self::assertFalse($found->isEnabled());
+        self::assertSame(2, $found->version());
+        self::assertFalse($this->holdsARowLock(), 'a read takes no lock');
+        self::assertNull($this->codes->find(DiscountCodeId::fromString(Uuid::v7()->toRfc4122())));
+    }
+
     public function testALockReadsTheCodeAnewUnderTheLockOfItsRow(): void
     {
         $code = DiscountCodeFactory::createOne();

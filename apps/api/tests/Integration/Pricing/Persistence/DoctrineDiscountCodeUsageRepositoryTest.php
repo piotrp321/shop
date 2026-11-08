@@ -83,6 +83,45 @@ final class DoctrineDiscountCodeUsageRepositoryTest extends KernelTestCase
         self::assertStringContainsString('pricing_discount_code_usage_active_idx', $plan);
     }
 
+    public function testTheUsageOfAnOrderIsReadAsStoredNow(): void
+    {
+        $code = $this->storedCode();
+        $orderId = self::orderId();
+        $usage = DiscountCodeUsage::record(self::usageId(), $code->id(), $orderId, new \DateTimeImmutable('2030-01-01T10:00:00Z'));
+        $this->usages->add($usage);
+        // The record stays in the identity map; another transaction releases the usage meanwhile.
+        $before = $this->usages->ofOrder($orderId);
+        self::assertTrue($before?->isActive());
+        $this->connection->executeStatement("UPDATE pricing_discount_code_usage SET released_at = '2030-01-01T11:00:00Z' WHERE id = ?", [$usage->id()->toString()]);
+
+        $found = $this->usages->ofOrder($orderId);
+
+        self::assertNotNull($found);
+        self::assertTrue($found->id()->equals($usage->id()));
+        self::assertTrue($found->codeId()->equals($code->id()));
+        self::assertEquals(new \DateTimeImmutable('2030-01-01T10:00:00Z'), $found->usedAt());
+        self::assertEquals(new \DateTimeImmutable('2030-01-01T11:00:00Z'), $found->releasedAt());
+        self::assertNull($this->usages->ofOrder(self::orderId()));
+    }
+
+    public function testAReleaseIsWrittenWithoutTouchingTheCode(): void
+    {
+        $code = $this->storedCode();
+        $usage = DiscountCodeUsage::record(self::usageId(), $code->id(), $orderId = self::orderId(), new \DateTimeImmutable('2030-01-01T10:00:00Z'));
+        $this->usages->add($usage);
+        $this->entityManager->clear();
+
+        $this->usages->save($usage->release(new \DateTimeImmutable('2030-01-01T12:00:00Z')));
+
+        $this->connection->executeStatement("SET LOCAL TIME ZONE 'UTC'");
+        self::assertSame(
+            ['code_id' => $code->id()->toString(), 'order_id' => $orderId->toString(), 'used_at' => '2030-01-01 10:00:00+00', 'released_at' => '2030-01-01 12:00:00+00'],
+            $this->connection->fetchAssociative('SELECT code_id, order_id, used_at, released_at FROM pricing_discount_code_usage WHERE id = ?', [$usage->id()->toString()]) ?: null,
+        );
+        self::assertSame(1, $this->connection->fetchOne('SELECT version FROM pricing_discount_code WHERE id = ?', [$code->id()->toString()]));
+        self::assertSame(0, $this->usages->activeUsesOf($code->id()));
+    }
+
     public function testAnOrderHasAtMostOneUsage(): void
     {
         $code = $this->storedCode();

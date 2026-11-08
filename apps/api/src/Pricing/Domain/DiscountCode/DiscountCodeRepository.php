@@ -6,6 +6,9 @@ namespace App\Pricing\Domain\DiscountCode;
 
 interface DiscountCodeRepository
 {
+    /**
+     * The code as stored now (never as an earlier read of the same unit of work saw it), or null.
+     */
     public function find(DiscountCodeId $id): ?DiscountCode;
 
     /**

@@ -6,10 +6,13 @@ namespace App\Pricing\Infrastructure\Persistence\Doctrine;
 
 use App\Pricing\Domain\DiscountCode\DiscountCodeId;
 use App\Pricing\Domain\DiscountCode\DiscountCodeUsage;
+use App\Pricing\Domain\DiscountCode\DiscountCodeUsageId;
 use App\Pricing\Domain\DiscountCode\DiscountCodeUsageRepository;
+use App\Pricing\Domain\DiscountCode\OrderId;
 use App\Pricing\Infrastructure\Persistence\Doctrine\Record\DiscountCodeRecord;
 use App\Pricing\Infrastructure\Persistence\Doctrine\Record\DiscountCodeUsageRecord;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Query;
 
 /**
  * Usages through their records (the general rule). The active usages are counted by one statement on the connection,
@@ -33,6 +36,40 @@ final readonly class DoctrineDiscountCodeUsageRepository implements DiscountCode
             $usage->usedAt(),
             $usage->releasedAt(),
         ));
+        $this->entityManager->flush();
+    }
+
+    /**
+     * Along the unique index of the order; a record already in the identity map is refreshed by the read.
+     */
+    public function ofOrder(OrderId $orderId): ?DiscountCodeUsage
+    {
+        $record = $this->entityManager->createQueryBuilder()
+            ->select('u')
+            ->from(DiscountCodeUsageRecord::class, 'u')
+            ->where('u.orderId = :orderId')
+            ->setParameter('orderId', $orderId->toString())
+            ->getQuery()
+            ->setHint(Query::HINT_REFRESH, true)
+            ->getOneOrNullResult();
+        \assert(null === $record || $record instanceof DiscountCodeUsageRecord);
+
+        return null === $record ? null : DiscountCodeUsage::reconstitute(
+            DiscountCodeUsageId::fromString($record->id),
+            DiscountCodeId::fromString($record->code->id),
+            OrderId::fromString($record->orderId),
+            $record->usedAt,
+            $record->releasedAt,
+        );
+    }
+
+    /**
+     * Only the release changes; the UPDATE does not touch the foreign key, so it takes no lock of the code.
+     */
+    public function save(DiscountCodeUsage $usage): void
+    {
+        $record = $this->entityManager->find(DiscountCodeUsageRecord::class, $usage->id()->toString()) ?? throw new \LogicException('Only a stored usage is saved.');
+        $record->releasedAt = $usage->releasedAt();
         $this->entityManager->flush();
     }
 

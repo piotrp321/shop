@@ -34,9 +34,20 @@ final readonly class DoctrineDiscountCodeRepository implements DiscountCodeRepos
     {
     }
 
+    /**
+     * Along the primary key; a record already in the identity map is refreshed by the read.
+     */
     public function find(DiscountCodeId $id): ?DiscountCode
     {
-        $record = $this->entityManager->find(DiscountCodeRecord::class, $id->toString());
+        $record = $this->entityManager->createQueryBuilder()
+            ->select('c')
+            ->from(DiscountCodeRecord::class, 'c')
+            ->where('c.id = :id')
+            ->setParameter('id', $id->toString())
+            ->getQuery()
+            ->setHint(Query::HINT_REFRESH, true)
+            ->getOneOrNullResult();
+        \assert(null === $record || $record instanceof DiscountCodeRecord);
 
         return null === $record ? null : self::toDomain($record);
     }

@@ -113,6 +113,17 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   promocją „od teraz” jest przed jej startem (`startOfNow`: `now` ucięte do sekundy + 1 s), a cena wariantu w promocji
   aktywnej w chwili zapisu to 409 `PriceLockedByPromotion` przed sprawdzeniem wersji. `ReconcileTax` i przeliczenie
   po zmianie klasy (`reprice`, brutto bez zmian) blokady nie biorą.
+- Wyjątek: użycie kodu rabatowego (Pricing, decyzje A3, D7 w `docs/features/discount-codes/spec.md`).
+  `RedeemDiscountCode(codeId, orderId, subtotalGross)` (`command.bus`, wyłącznie zagnieżdżona w `PlaceOrder`) zapisuje
+  użycie przez rekord Doctrine (`DiscountCodeUsageRecord`), a nie przez DBAL jak Inventory: handler złożenia nigdy nie
+  łapie jej wyjątku, więc odrzucenie wycofuje całą transakcję i `UnitOfWork` nie zapisze wycofanych zmian. Rekord kodu
+  jest zawsze czytany od nowa (`DiscountCodeRepository::find` z odświeżeniem rekordu z identity map); kod z limitem
+  potem jeszcze raz pod blokadą wiersza (`lock`, `PESSIMISTIC_WRITE` przez ORM z odświeżeniem, jak koszyk), kod bez
+  limitu bez blokady (klucz obcy użycia bierze `FOR KEY SHARE`, które nie koliduje z `UPDATE` kodu w
+  `ReviseDiscountCode`). Zegar i liczba aktywnych użyć po blokadzie, potem `rejectionFor` jeszcze raz; odrzucenie to
+  `DiscountCodeRejected(rejection)` (Pricing Application). `ReleaseDiscountCodeUsage(orderId)` (`command.bus`,
+  zagnieżdżona w `ExpireUnpaidOrder`) ustawia `releasedAt = now` aktywnemu użyciu zamówienia przez rekord (zmienia tylko
+  wiersz użycia, kodu nie blokuje); brak użycia albo już zwolnione: bez skutku.
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony
   dispatch na tym samym połączeniu (savepoint), a ceny (Pricing `GetCurrentPrices`) i nazwy (Catalog
