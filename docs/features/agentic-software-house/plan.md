@@ -106,7 +106,8 @@ flowchart TB
    - Decyzje produktowe (zakres, reguły, limity, zachowanie klienta) podejmuje wyłącznie użytkownik. Agenci ich
      nie rozstrzygają między sobą. Zbierają je w jedną listę pytań, każde z rekomendacją. Użytkownik dostaje
      pytania raz, przed akceptacją.
-   - Akceptacja jest jedna: specyfikacja i jedno pytanie, czy końcowy PR da się przejrzeć w jednym posiedzeniu.
+   - Akceptacja jest jedna: specyfikacja z pozycjami użytkownika z „Wymaganych przed startem” i jedno pytanie, czy
+     końcowy PR da się przejrzeć w jednym posiedzeniu.
      Skill podaje do tego liczbę zadań i dotknięte aplikacje. Jeśli PR jest za duży, epik dzielimy na dwa,
      mergowane po kolei. Rozmiar pojedynczych zadań zostaje bez zmian. Podziału na zadania użytkownik nie
      akceptuje: `plan.md` musi przejść walidator manifestu.
@@ -114,6 +115,9 @@ flowchart TB
      szacunków z pomiaru; bez pomiaru jeden epik do przodu). Nie przygotowujemy wszystkich epików naraz, bo
      specyfikacja opisuje kod, którego jeszcze nie ma.
    - Specyfikacja ma linię `Zakres:`: ścieżki, które epik zmienia. Z niej lista na noc sprawdza rozłączność epików.
+   - Specyfikacja ma sekcję „Wymagane przed startem”: sekrety, konta, usługi zewnętrzne, uprawnienia i decyzje
+     infrastrukturalne potrzebne zadaniom. Przy akceptacji użytkownik potwierdza, że jego pozycje są gotowe albo
+     będą przed `/ao-run`, żeby taki bloker nie wyszedł dopiero w trakcie zadania.
    - Zgłoszenie `ux` zawsze idzie przez `/prepare-epic`. Drobne zgłoszenia `bug`
      i `tech-debt` trafiają razem do jednego epiku poprawek: krótka specyfikacja, jedno zadanie na issue.
    - Zaakceptowane `spec.md` i `plan.md` trafiają do `main` przez PR, który `/prepare-epic` merguje po zielonym CI.
