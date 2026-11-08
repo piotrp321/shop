@@ -200,7 +200,7 @@ JSON i AO powtarza rundę. Dlatego:
      nietypowych danych wejściowych; niedziałająca ścieżka użytkownika; regresja funkcjonalna względem `main` albo
      specyfikacji; komunikat widoczny dla użytkownika nie po polsku (ekran, a w API `title` i `detail` błędu,
      `violations[].title`); istotny problem dostępności: element niedostępny z klawiatury albo kontrolka bez
-     etykiety; błędne działanie w realnym scenariuszu; naruszenie kryterium akceptacji albo zasady z `CLAUDE.md`
+     etykiety; naruszenie kryterium akceptacji albo zasady z `CLAUDE.md`
      lub architektury, które da się naprawić; przypadki `Important` z kroków 3a, 4 i 6. To, że przypadek jest
      brzegowy albo panel go nie wysyła, nie obniża wagi, gdy problem da się wywołać.
    - `Minor`: kosmetyka (wygląd, odstępy, nazewnictwo), drobna jakość kodu (duplikacja, brakujący test zachowania,
