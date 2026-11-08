@@ -47,6 +47,7 @@ final readonly class ProductDocumentBuilder
             $snapshot->categoryNames,
             $variants,
             $facts?->fromGross,
+            $snapshot->status,
         );
     }
 }

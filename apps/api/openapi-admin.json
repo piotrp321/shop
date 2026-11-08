@@ -150,6 +150,832 @@
                 ]
             }
         },
+        "/api/v1/admin/products": {
+            "get": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Product list",
+                "description": "A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.",
+                "operationId": "listBackofficeProducts",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "A part of the product name, 2 to 100 characters.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 100,
+                            "minLength": 2
+                        }
+                    },
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "description": "Category id (UUID).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Only drafts or only published products.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "draft",
+                                "published"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `next` cursor of the previous page.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the product list. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "The `category` filter names a category that does not exist (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Create a product",
+                "description": "Creates a product as a draft (it is not in the store until it is published). Administrators and marketing only. The API gives the product and its new variants their ids and, for an empty `slug`, derives it from the name. A `variantId` in this body names no variant of the new product, so it is a 422. The product records the staff member of the token and the time of the change.",
+                "operationId": "createProduct",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateProductRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The created product.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductEditViewResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in marketing (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The slug belongs to another product (`type` slug-taken).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a category or a variant does not exist, an original of an image is not stored, or no slug can be derived from the name (problem details with `violations`, each at the path of its field).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The image storage (Garage) is unavailable, or the keys of the token issuer cannot be fetched (problem details without detail). Nothing was saved; the request can be repeated.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/products/{id}": {
+            "get": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Product edit view",
+                "description": "A product, also a draft, as the edit form needs it, with its `version`. Every staff member may read it.",
+                "operationId": "getProduct",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Product id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The product.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductEditViewResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such product, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Edit a product",
+                "description": "Replaces the whole data of the product (a form save). Administrators and marketing only. Send the `version` of the view the edit is based on: another current version is a 409 and nothing is overwritten. A successful save raises the version even when the data did not change. A row of `variants` with the `variantId` of the product keeps that variant, a row with `null` is a new one; a variant missing from the rows is removed. An empty `slug` derives it from the name, or keeps the slug once the product was published. The product records the staff member of the token and the time of the change.",
+                "operationId": "editProduct",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Product id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UpdateProductRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The product as saved, with its new version.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductEditViewResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in marketing (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such product, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The `type` names the cause: product-modified (the version is not the current one), slug-taken, slug-locked (the slug of a product that was published cannot change), product-not-publishable (the last image of a published product that had images cannot be removed), variant-locked (after the first publication an axis or the meaning of a variant cannot change), variant-in-use (a removed variant has stock or reservations).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a category or a variant does not exist, an original of an image is not stored, or no slug can be derived from the name (problem details with `violations`, each at the path of its field).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The image storage (Garage) is unavailable, or the keys of the token issuer cannot be fetched (problem details without detail). Nothing was saved; the request can be repeated.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/tax-classes": {
+            "get": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Tax classes",
+                "description": "The tax classes a product can have, with Polish names for the product form. Every staff member may read them.",
+                "operationId": "listTaxClasses",
+                "responses": {
+                    "200": {
+                        "description": "The tax classes.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TaxClassResponse"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/products/{id}/publish": {
+            "post": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Publish a product",
+                "description": "Makes a draft visible in the store; a draft needs at least one image. The first publication fixes the slug for good. Administrators and marketing only. Send the `version` of the view the action is based on: another current version is a 409 even when the product is already published. Publishing a published product changes nothing (200, same version).",
+                "operationId": "publishProduct",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Product id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PublicationRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The product after the action, or unchanged (with the same version) when it already was in the wanted status.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductEditViewResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in marketing (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such product, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The `type` names the cause: product-modified (the version is not the current one) or product-not-publishable (a draft without images).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The `version` is missing or not a positive integer (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/products/{id}/unpublish": {
+            "post": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Withdraw a product from the store",
+                "description": "Turns a published product back into a draft: the store stops showing it. The slug stays fixed. Administrators and marketing only. Send the `version` of the view the action is based on: another current version is a 409 even when the product is already a draft. Withdrawing a draft changes nothing (200, same version).",
+                "operationId": "unpublishProduct",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Product id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PublicationRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The product after the action, or unchanged (with the same version) when it already was in the wanted status.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductEditViewResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in marketing (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such product, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The `type` is product-modified: the version is not the current one.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The `version` is missing or not a positive integer (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/product-images": {
+            "post": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Upload the original of a product image",
+                "description": "Stores one image file in the image storage and answers with its key and a preview. Administrators and marketing only. One file per request, in the `file` field of a `multipart/form-data` body; send several files one after another. JPEG, PNG, WebP, AVIF and HEIC are accepted, decided by the content and not by the name, up to 64 MB and 50 megapixels. The key follows the content, so the same file always gives the same key and is stored once. Name the key in `images[].key` of a product write; an original that no product names stays in the storage. The `detail` of a 422 is a Polish text for the staff member.",
+                "operationId": "uploadProductImage",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "file"
+                                ],
+                                "properties": {
+                                    "file": {
+                                        "description": "The image file.",
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The original is stored.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ImageUploadResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in marketing (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "No file was sent, the file is too large, of an unsupported type, of unreadable dimensions or of too high a resolution (problem details with a Polish `detail`). The request is too large when its `Content-Length` is above `post_max_size` (70 MB) or the file above `upload_max_filesize` (64 MB).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The image storage (Garage) is unavailable, or the keys of the token issuer cannot be fetched (problem details without detail). Nothing was stored; the upload can be repeated.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
         "/api/v1/admin/stock": {
             "get": {
                 "tags": [
@@ -648,6 +1474,470 @@
                 ]
             }
         },
+        "/api/v1/admin/orders/{orderId}": {
+            "get": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Order detail",
+                "description": "The order with its contact, address, lines, totals, the moments of its statuses, the payment that paid it, its history oldest first, its refund and its `version`, which the next change of the status or the completion of the refund sends. `allowedTransitions` and `canCompleteRefund` say what the staff member of the token may do with it now. Administrators, support and the warehouse only.",
+                "operationId": "getOrder",
+                "parameters": [
+                    {
+                        "name": "orderId",
+                        "in": "path",
+                        "description": "Order id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The order.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrder"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not see orders (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such order, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/orders": {
+            "get": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Order list",
+                "description": "A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the total is not counted. Administrators, support and the warehouse only.",
+                "operationId": "listOrders",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Only the orders in this status.",
+                        "required": false,
+                        "schema": {
+                            "$ref": "#/components/schemas/BackofficeOrderStatus"
+                        }
+                    },
+                    {
+                        "name": "refund",
+                        "in": "query",
+                        "description": "`pending`: only the orders with a refund to do, nearest due date first.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "pending"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "description": "An order number or an email, exact, any letter case; 1 to 254 characters once trimmed.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 254,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `nextCursor` of the previous page.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the list. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrderList"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor, also a cursor of the other sort (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not see orders (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/orders/{orderId}/status-changes": {
+            "post": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Change the status of an order",
+                "description": "Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment, a cancellation and a return.",
+                "operationId": "changeOrderStatus",
+                "parameters": [
+                    {
+                        "name": "orderId",
+                        "in": "path",
+                        "description": "Order id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ChangeOrderStatusRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The order as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrder"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not see orders, or may not make this change (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such order, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The order changed since the given version, or its status does not allow the change (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrderConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The transition is unknown, the version is not an integer of at least 1, the note breaks its rules or is missing to cancel or register a return, or a key is missing or of a wrong type (problem details with Polish `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/orders/{orderId}/refund-completion": {
+            "post": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Mark the refund of an order made",
+                "description": "Marks the refund to do of an order (cancelled by staff or returned) as made, with the staff member of the token, the moment and an optional note; the money itself is transferred by hand, outside the system. The status of the order stays and no history entry is added. Administrators and support only. Send the `version` of the order you saw: an order changed since then is a 409, so repeating a completion that succeeded is a 409 too.",
+                "operationId": "completeOrderRefund",
+                "parameters": [
+                    {
+                        "name": "orderId",
+                        "in": "path",
+                        "description": "Order id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CompleteRefundRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The order as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrder"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member is neither an administrator nor in support (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such order, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The order changed since the given version, or it has no refund to do (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BackofficeOrderConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The version is not an integer of at least 1, the note breaks its rules, or a key is missing or of a wrong type (problem details with Polish `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
         "/api/v1/admin/prices": {
             "get": {
                 "tags": [
@@ -1045,6 +2335,919 @@
                 },
                 "type": "object"
             },
+            "BackofficeOrderList": {
+                "description": "A page of the order list.",
+                "required": [
+                    "items",
+                    "nextCursor"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeOrderListItem"
+                        }
+                    },
+                    "nextCursor": {
+                        "description": "Opaque cursor of the next page (send it as `after` with the same filters), null on the last page.",
+                        "type": "string",
+                        "example": "eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderListItem": {
+                "description": "An order in the list. Amounts in grosze.",
+                "required": [
+                    "orderId",
+                    "number",
+                    "placedAt",
+                    "status",
+                    "email",
+                    "fullName",
+                    "totalGross",
+                    "currency",
+                    "itemCount",
+                    "refund"
+                ],
+                "properties": {
+                    "orderId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "number": {
+                        "type": "string",
+                        "example": "R-100001"
+                    },
+                    "placedAt": {
+                        "description": "RFC 3339, UTC.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/BackofficeOrderStatus"
+                    },
+                    "email": {
+                        "type": "string",
+                        "example": "anna.nowak@example.com"
+                    },
+                    "fullName": {
+                        "type": "string",
+                        "example": "Anna Nowak"
+                    },
+                    "totalGross": {
+                        "type": "integer",
+                        "example": 39998
+                    },
+                    "currency": {
+                        "type": "string",
+                        "enum": [
+                            "PLN"
+                        ]
+                    },
+                    "itemCount": {
+                        "description": "Units of all lines of the order.",
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "refund": {
+                        "description": "The refund of an order cancelled by staff or returned; null for any other order.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderListRefund"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderListRefund": {
+                "required": [
+                    "amount",
+                    "dueAt",
+                    "completedAt",
+                    "overdue"
+                ],
+                "properties": {
+                    "amount": {
+                        "description": "The gross total of the order, in grosze, in its currency.",
+                        "type": "integer",
+                        "example": 39998
+                    },
+                    "dueAt": {
+                        "description": "The refund is to be made by this moment, 14 days after the cancellation or the return (RFC 3339, UTC).",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-19T12:30:00+00:00"
+                    },
+                    "completedAt": {
+                        "description": "When a staff member marked it made (RFC 3339, UTC); null while it is to do.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "overdue": {
+                        "description": "Still to do past `dueAt`, computed by the API.",
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderStatus": {
+                "description": "`new` (waits for the payment), `paid`, `shipped`, `delivered`, `cancelled` (unpaid in time, or by staff), `returned`.",
+                "type": "string",
+                "enum": [
+                    "new",
+                    "paid",
+                    "shipped",
+                    "delivered",
+                    "cancelled",
+                    "returned"
+                ]
+            },
+            "BackofficeOrderTransition": {
+                "description": "A change of the status by staff: `ship` (paid \u2192 shipped), `deliver` (shipped \u2192 delivered), `cancel` (paid \u2192 cancelled, a refund to do), `return` (shipped or delivered \u2192 returned, a refund to do).",
+                "type": "string",
+                "enum": [
+                    "ship",
+                    "deliver",
+                    "cancel",
+                    "return"
+                ]
+            },
+            "BackofficeOrder": {
+                "description": "An order with everything the panel shows of it, copies of the names and prices of its placement included. Amounts in grosze; moments in RFC 3339 and UTC, null until the status they belong to.",
+                "required": [
+                    "orderId",
+                    "number",
+                    "status",
+                    "version",
+                    "email",
+                    "fullName",
+                    "phone",
+                    "shippingAddress",
+                    "lines",
+                    "totals",
+                    "placedAt",
+                    "paymentDeadline",
+                    "paidAt",
+                    "paymentId",
+                    "shippedAt",
+                    "deliveredAt",
+                    "cancelledAt",
+                    "cancellationReason",
+                    "returnedAt",
+                    "history",
+                    "refund",
+                    "allowedTransitions",
+                    "canCompleteRefund"
+                ],
+                "properties": {
+                    "orderId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "number": {
+                        "type": "string",
+                        "example": "R-100001"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/BackofficeOrderStatus"
+                    },
+                    "version": {
+                        "description": "The version to send with the next change of the status or the completion of the refund.",
+                        "type": "integer",
+                        "example": 2,
+                        "minimum": 1
+                    },
+                    "email": {
+                        "type": "string",
+                        "example": "anna.nowak@example.com"
+                    },
+                    "fullName": {
+                        "type": "string",
+                        "example": "Anna Nowak"
+                    },
+                    "phone": {
+                        "description": "+48 and 9 digits.",
+                        "type": "string",
+                        "example": "+48600100200"
+                    },
+                    "shippingAddress": {
+                        "$ref": "#/components/schemas/BackofficeOrderAddress"
+                    },
+                    "lines": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeOrderLine"
+                        }
+                    },
+                    "totals": {
+                        "$ref": "#/components/schemas/BackofficeOrderTotals"
+                    },
+                    "placedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    },
+                    "paymentDeadline": {
+                        "description": "An order still `new` past this moment is cancelled.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T13:00:00+00:00"
+                    },
+                    "paidAt": {
+                        "description": "Stays after a cancellation by staff and a return.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "paymentId": {
+                        "description": "The payment that paid the order (the one to refund); stays after a cancellation by staff and a return.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "shippedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "deliveredAt": {
+                        "description": "Null also for an order returned without being delivered.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "cancelledAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "cancellationReason": {
+                        "description": "`payment_timeout` (unpaid in time) or `staff`; null unless cancelled.",
+                        "type": "string",
+                        "nullable": true,
+                        "enum": [
+                            "payment_timeout",
+                            "staff",
+                            null
+                        ]
+                    },
+                    "returnedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "history": {
+                        "description": "Every change of the status, oldest first.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeOrderStatusChange"
+                        }
+                    },
+                    "refund": {
+                        "description": "The refund of an order cancelled by staff or returned; null for any other order.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderRefund"
+                            }
+                        ]
+                    },
+                    "allowedTransitions": {
+                        "description": "The changes of the status the staff member of the token may make now (the status allows them and so do their roles).",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/BackofficeOrderTransition"
+                        }
+                    },
+                    "canCompleteRefund": {
+                        "description": "The refund is to do and the staff member of the token may mark it made.",
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderAddress": {
+                "required": [
+                    "street",
+                    "postalCode",
+                    "city",
+                    "country"
+                ],
+                "properties": {
+                    "street": {
+                        "type": "string",
+                        "example": "ul. D\u0142uga 5/3"
+                    },
+                    "postalCode": {
+                        "type": "string",
+                        "example": "00-950"
+                    },
+                    "city": {
+                        "type": "string",
+                        "example": "Warszawa"
+                    },
+                    "country": {
+                        "type": "string",
+                        "enum": [
+                            "PL"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderLine": {
+                "required": [
+                    "variantId",
+                    "productName",
+                    "variantLabel",
+                    "quantity",
+                    "unitGross",
+                    "lineGross"
+                ],
+                "properties": {
+                    "variantId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "productName": {
+                        "type": "string",
+                        "example": "Buty szosowe Tarvik Asfalt 200"
+                    },
+                    "variantLabel": {
+                        "description": "The values of the variant joined with \", \"; empty for the default variant of a product without variant axes.",
+                        "type": "string",
+                        "example": "czarne, 42"
+                    },
+                    "quantity": {
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "unitGross": {
+                        "type": "integer",
+                        "example": 19999
+                    },
+                    "lineGross": {
+                        "type": "integer",
+                        "example": 39998
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderTotals": {
+                "description": "Sums of the lines; net + vat = gross.",
+                "required": [
+                    "net",
+                    "vat",
+                    "gross",
+                    "currency"
+                ],
+                "properties": {
+                    "net": {
+                        "type": "integer",
+                        "example": 32519
+                    },
+                    "vat": {
+                        "type": "integer",
+                        "example": 7479
+                    },
+                    "gross": {
+                        "type": "integer",
+                        "example": 39998
+                    },
+                    "currency": {
+                        "type": "string",
+                        "enum": [
+                            "PLN"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderStatusChange": {
+                "description": "An entry of the history. Only a change by `staff` names the staff member, and only it may have a note.",
+                "required": [
+                    "from",
+                    "to",
+                    "occurredAt",
+                    "actorType",
+                    "staffId",
+                    "staffUsername",
+                    "note"
+                ],
+                "properties": {
+                    "from": {
+                        "description": "Null for the placement.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderStatus"
+                            }
+                        ]
+                    },
+                    "to": {
+                        "$ref": "#/components/schemas/BackofficeOrderStatus"
+                    },
+                    "occurredAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:40:00+00:00"
+                    },
+                    "actorType": {
+                        "description": "`customer` (the placement, also by a guest), `system` (the payment, the expiry), `staff`.",
+                        "type": "string",
+                        "enum": [
+                            "system",
+                            "customer",
+                            "staff"
+                        ]
+                    },
+                    "staffId": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "staffUsername": {
+                        "type": "string",
+                        "example": "anna",
+                        "nullable": true
+                    },
+                    "note": {
+                        "type": "string",
+                        "example": "Kurier DPD",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderRefund": {
+                "description": "The money the order owes the customer back; made by hand outside the system, then marked made.",
+                "required": [
+                    "amount",
+                    "currency",
+                    "dueAt",
+                    "overdue",
+                    "completedAt",
+                    "completedByStaffId",
+                    "completedByUsername",
+                    "note"
+                ],
+                "properties": {
+                    "amount": {
+                        "description": "The gross total of the order, in grosze.",
+                        "type": "integer",
+                        "example": 39998
+                    },
+                    "currency": {
+                        "type": "string",
+                        "enum": [
+                            "PLN"
+                        ]
+                    },
+                    "dueAt": {
+                        "description": "14 days after the cancellation or the return.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-19T12:30:00+00:00"
+                    },
+                    "overdue": {
+                        "description": "Still to do past `dueAt`, computed by the API.",
+                        "type": "boolean"
+                    },
+                    "completedAt": {
+                        "description": "Null while it is to do.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "completedByStaffId": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "completedByUsername": {
+                        "type": "string",
+                        "example": "bartek",
+                        "nullable": true
+                    },
+                    "note": {
+                        "type": "string",
+                        "example": "Przelew wys\u0142any",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderConflictProblem": {
+                "description": "A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed.",
+                "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed",
+                            "tag:piotrp321.github.io,2026:shop/problems/refund-not-pending",
+                            "about:blank"
+                        ]
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Conflict"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "enum": [
+                            409
+                        ]
+                    },
+                    "detail": {
+                        "description": "Polish text for the staff member.",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "ProductConflictProblem": {
+                "description": "A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations.",
+                "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "tag:piotrp321.github.io,2026:shop/problems/product-modified",
+                            "tag:piotrp321.github.io,2026:shop/problems/slug-taken",
+                            "tag:piotrp321.github.io,2026:shop/problems/slug-locked",
+                            "tag:piotrp321.github.io,2026:shop/problems/product-not-publishable",
+                            "tag:piotrp321.github.io,2026:shop/problems/variant-locked",
+                            "tag:piotrp321.github.io,2026:shop/problems/variant-in-use"
+                        ]
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Conflict"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "enum": [
+                            409
+                        ]
+                    },
+                    "detail": {
+                        "description": "Polish text for the staff member.",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "CreateProductRequest": {
+                "description": "The data of a new product. The product is a draft.",
+                "required": [
+                    "name",
+                    "slug",
+                    "shortDescription",
+                    "mainCategoryId",
+                    "additionalCategoryIds",
+                    "taxClass",
+                    "images",
+                    "variantAxes",
+                    "variants"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "Product name, 1 to 200 characters.",
+                        "type": "string",
+                        "example": "Buty biegowe Trail",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 200,
+                        "minLength": 1
+                    },
+                    "slug": {
+                        "description": "Slug: lower-case letters without Polish diacritics, digits and single dashes. Empty: the API derives it from the name (or keeps it once the product was published). Changeable only until the first publication.",
+                        "type": "string",
+                        "example": "buty-biegowe-trail",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 200
+                    },
+                    "shortDescription": {
+                        "description": "Short description, up to 500 characters; may be empty.",
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 500
+                    },
+                    "mainCategoryId": {
+                        "description": "Id of the main category; an unknown category is a 422 at this field.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "additionalCategoryIds": {
+                        "description": "Ids of up to 10 additional categories, different from each other and from the main one.",
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "nullable": true,
+                        "default": null,
+                        "maxItems": 10
+                    },
+                    "taxClass": {
+                        "description": "Code of the tax class, one of `GET /tax-classes`.",
+                        "type": "string",
+                        "example": "standard",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "images": {
+                        "description": "Up to 10 images in presentation order (the first one is the main one), each an original stored by `POST /product-images`; a key is used once.",
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "key",
+                                "alt"
+                            ],
+                            "properties": {
+                                "key": {
+                                    "description": "The `key` returned by the upload.",
+                                    "type": "string",
+                                    "example": "originals/0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9.jpg"
+                                },
+                                "alt": {
+                                    "description": "Alternative text.",
+                                    "type": "string",
+                                    "maxLength": 200,
+                                    "minLength": 1
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "nullable": true,
+                        "default": null,
+                        "maxItems": 10
+                    },
+                    "variantAxes": {
+                        "description": "Names of up to 2 variant axes, 1 to 30 characters, without a colon, different without regard to case.",
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "maxLength": 30,
+                            "minLength": 1
+                        },
+                        "nullable": true,
+                        "default": null,
+                        "maxItems": 2
+                    },
+                    "variants": {
+                        "description": "The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends.",
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "variantId",
+                                "values"
+                            ],
+                            "properties": {
+                                "variantId": {
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "nullable": true
+                                },
+                                "values": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "minLength": 1
+                                    }
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "nullable": true,
+                        "default": null,
+                        "maxItems": 100,
+                        "minItems": 1
+                    }
+                },
+                "type": "object"
+            },
+            "UpdateProductRequest": {
+                "description": "The whole data of the product and the version it is based on.",
+                "required": [
+                    "version",
+                    "name",
+                    "slug",
+                    "shortDescription",
+                    "mainCategoryId",
+                    "additionalCategoryIds",
+                    "taxClass",
+                    "images",
+                    "variantAxes",
+                    "variants"
+                ],
+                "properties": {
+                    "version": {
+                        "description": "The `version` of the product the edit is based on; another current version is a 409.",
+                        "type": "integer",
+                        "example": 3,
+                        "nullable": true,
+                        "default": null,
+                        "minimum": 1
+                    },
+                    "name": {
+                        "description": "Product name, 1 to 200 characters.",
+                        "type": "string",
+                        "example": "Buty biegowe Trail",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 200,
+                        "minLength": 1
+                    },
+                    "slug": {
+                        "description": "Slug: lower-case letters without Polish diacritics, digits and single dashes. Empty: the API derives it from the name (or keeps it once the product was published). Changeable only until the first publication.",
+                        "type": "string",
+                        "example": "buty-biegowe-trail",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 200
+                    },
+                    "shortDescription": {
+                        "description": "Short description, up to 500 characters; may be empty.",
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 500
+                    },
+                    "mainCategoryId": {
+                        "description": "Id of the main category; an unknown category is a 422 at this field.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "additionalCategoryIds": {
+                        "description": "Ids of up to 10 additional categories, different from each other and from the main one.",
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "nullable": true,
+                        "default": null,
+                        "maxItems": 10
+                    },
+                    "taxClass": {
+                        "description": "Code of the tax class, one of `GET /tax-classes`.",
+                        "type": "string",
+                        "example": "standard",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "images": {
+                        "description": "Up to 10 images in presentation order (the first one is the main one), each an original stored by `POST /product-images`; a key is used once.",
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "key",
+                                "alt"
+                            ],
+                            "properties": {
+                                "key": {
+                                    "description": "The `key` returned by the upload.",
+                                    "type": "string",
+                                    "example": "originals/0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9.jpg"
+                                },
+                                "alt": {
+                                    "description": "Alternative text.",
+                                    "type": "string",
+                                    "maxLength": 200,
+                                    "minLength": 1
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "nullable": true,
+                        "default": null,
+                        "maxItems": 10
+                    },
+                    "variantAxes": {
+                        "description": "Names of up to 2 variant axes, 1 to 30 characters, without a colon, different without regard to case.",
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "maxLength": 30,
+                            "minLength": 1
+                        },
+                        "nullable": true,
+                        "default": null,
+                        "maxItems": 2
+                    },
+                    "variants": {
+                        "description": "The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends.",
+                        "type": "array",
+                        "items": {
+                            "required": [
+                                "variantId",
+                                "values"
+                            ],
+                            "properties": {
+                                "variantId": {
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "nullable": true
+                                },
+                                "values": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "minLength": 1
+                                    }
+                                }
+                            },
+                            "type": "object"
+                        },
+                        "nullable": true,
+                        "default": null,
+                        "maxItems": 100,
+                        "minItems": 1
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeProductsQuery": {
+                "properties": {
+                    "q": {
+                        "type": "string",
+                        "pattern": "((?!\\0).)*",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 100,
+                        "minLength": 2
+                    },
+                    "category": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null
+                    },
+                    "status": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "draft",
+                            "published"
+                        ]
+                    },
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 25,
+                        "maximum": 100,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "PublicationRequest": {
+                "description": "The version of the product the action is based on.",
+                "required": [
+                    "version"
+                ],
+                "properties": {
+                    "version": {
+                        "description": "The `version` of the product the action is based on; another current version is a 409.",
+                        "type": "integer",
+                        "example": 3,
+                        "nullable": true,
+                        "default": null,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
             "BackofficeStockQuery": {
                 "properties": {
                     "q": {
@@ -1159,6 +3362,115 @@
                         "default": 25,
                         "maximum": 100,
                         "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderListQuery": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "new",
+                            "paid",
+                            "shipped",
+                            "delivered",
+                            "cancelled",
+                            "returned"
+                        ]
+                    },
+                    "refund": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "pending"
+                        ]
+                    },
+                    "q": {
+                        "type": "string",
+                        "pattern": "((?!\\0).)*",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 254,
+                        "minLength": 1
+                    },
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 25,
+                        "maximum": 100,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "ChangeOrderStatusRequest": {
+                "description": "A change of the status of an order, based on the version of the order the staff member saw.",
+                "required": [
+                    "transition",
+                    "version",
+                    "note"
+                ],
+                "properties": {
+                    "transition": {
+                        "description": "`ship` (paid \u2192 shipped), `deliver` (shipped \u2192 delivered), `cancel` (paid \u2192 cancelled, a refund to do), `return` (shipped or delivered \u2192 returned, a refund to do).",
+                        "type": "string",
+                        "example": "ship",
+                        "enum": [
+                            "ship",
+                            "deliver",
+                            "cancel",
+                            "return"
+                        ]
+                    },
+                    "version": {
+                        "description": "The `version` of the order the change is based on.",
+                        "type": "integer",
+                        "example": 2,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                    },
+                    "note": {
+                        "description": "One line, at most 500 characters once trimmed, without control characters; required for `cancel` and `return`, otherwise null or blank for none.",
+                        "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
+                        "example": "Kurier DPD",
+                        "nullable": true,
+                        "maxLength": 500
+                    }
+                },
+                "type": "object"
+            },
+            "CompleteRefundRequest": {
+                "description": "The refund of an order marked made, based on the version of the order the staff member saw.",
+                "required": [
+                    "version",
+                    "note"
+                ],
+                "properties": {
+                    "version": {
+                        "description": "The `version` of the order the completion is based on.",
+                        "type": "integer",
+                        "example": 3,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                    },
+                    "note": {
+                        "description": "One line, at most 500 characters once trimmed, without control characters; null or blank for none.",
+                        "type": "string",
+                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
+                        "example": "Przelew wys\u0142any",
+                        "nullable": true,
+                        "maxLength": 500
                     }
                 },
                 "type": "object"
@@ -1471,6 +3783,393 @@
                         "items": {
                             "$ref": "#/components/schemas/CategoryNode"
                         }
+                    }
+                },
+                "type": "object"
+            },
+            "ProductCategoryResponse": {
+                "description": "A category of a product.",
+                "required": [
+                    "id",
+                    "name"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Obuwie"
+                    }
+                },
+                "type": "object"
+            },
+            "ImageViewResponse": {
+                "description": "An image in the `thumbnail` size with signed URLs of its variants.",
+                "required": [
+                    "alt",
+                    "size",
+                    "aspectRatio",
+                    "variants"
+                ],
+                "properties": {
+                    "alt": {
+                        "description": "Alternative text.",
+                        "type": "string"
+                    },
+                    "size": {
+                        "description": "The image size.",
+                        "type": "string",
+                        "example": "thumbnail"
+                    },
+                    "aspectRatio": {
+                        "description": "Width to height of every variant.",
+                        "type": "string",
+                        "example": "1:1"
+                    },
+                    "variants": {
+                        "description": "Signed URLs by output format (the file extension), widths ascending.",
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "array",
+                            "items": {
+                                "required": [
+                                    "width",
+                                    "url"
+                                ],
+                                "properties": {
+                                    "width": {
+                                        "type": "integer",
+                                        "example": 96
+                                    },
+                                    "url": {
+                                        "type": "string",
+                                        "format": "uri"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "ProductListItemResponse": {
+                "description": "A row of the product list of the panel.",
+                "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "status",
+                    "mainCategory",
+                    "variantCount",
+                    "image",
+                    "updatedAt"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Buty biegowe Trail"
+                    },
+                    "slug": {
+                        "type": "string",
+                        "example": "buty-biegowe-trail"
+                    },
+                    "status": {
+                        "description": "A draft is seen only in the panel.",
+                        "type": "string",
+                        "enum": [
+                            "draft",
+                            "published"
+                        ]
+                    },
+                    "mainCategory": {
+                        "$ref": "#/components/schemas/ProductCategoryResponse"
+                    },
+                    "variantCount": {
+                        "description": "The number of variants (1 for a product without axes).",
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "image": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/ImageViewResponse"
+                            },
+                            {
+                                "type": "object",
+                                "nullable": true,
+                                "enum": [
+                                    null
+                                ]
+                            }
+                        ],
+                        "description": "The main image in the `thumbnail` size; null for a product without images."
+                    },
+                    "updatedAt": {
+                        "description": "When the product last changed (RFC 3339).",
+                        "type": "string",
+                        "example": "2026-11-01T12:30:00+00:00"
+                    }
+                },
+                "type": "object"
+            },
+            "ProductListResponse": {
+                "description": "A page of the product list of the panel.",
+                "required": [
+                    "items",
+                    "next"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductListItemResponse"
+                        }
+                    },
+                    "next": {
+                        "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
+                        "type": "string",
+                        "example": "eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "ProductEditImageResponse": {
+                "description": "An image of a product in the edit view.",
+                "required": [
+                    "key",
+                    "alt",
+                    "preview"
+                ],
+                "properties": {
+                    "key": {
+                        "description": "Key of the original.",
+                        "type": "string",
+                        "example": "originals/0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9.jpg"
+                    },
+                    "alt": {
+                        "description": "Alternative text.",
+                        "type": "string"
+                    },
+                    "preview": {
+                        "$ref": "#/components/schemas/ImageViewResponse"
+                    }
+                },
+                "type": "object"
+            },
+            "ProductEditVariantResponse": {
+                "description": "A variant of a product in the edit view.",
+                "required": [
+                    "variantId",
+                    "values"
+                ],
+                "properties": {
+                    "variantId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "values": {
+                        "description": "One value per axis, in the order of the axes; empty for the default variant of a product without axes.",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "example": [
+                            "czarne",
+                            "42"
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "ProductEditViewResponse": {
+                "description": "A product as the edit form needs it, with the `version` a save is based on.",
+                "required": [
+                    "id",
+                    "version",
+                    "status",
+                    "firstPublishedAt",
+                    "name",
+                    "slug",
+                    "slugLocked",
+                    "shortDescription",
+                    "mainCategoryId",
+                    "additionalCategoryIds",
+                    "taxClass",
+                    "images",
+                    "variantAxes",
+                    "variants",
+                    "updatedAt"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "version": {
+                        "description": "Version of the product: send it back with a save, a publication or a withdrawal.",
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "draft",
+                            "published"
+                        ]
+                    },
+                    "firstPublishedAt": {
+                        "description": "When the product was first published (RFC 3339); null while it never was.",
+                        "type": "string",
+                        "example": "2026-11-01T12:30:00+00:00",
+                        "nullable": true
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "slugLocked": {
+                        "description": "The slug cannot change: the product was published at least once.",
+                        "type": "boolean"
+                    },
+                    "shortDescription": {
+                        "type": "string"
+                    },
+                    "mainCategoryId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "additionalCategoryIds": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    "taxClass": {
+                        "type": "string",
+                        "example": "standard"
+                    },
+                    "images": {
+                        "description": "In presentation order; the first one is the main image.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductEditImageResponse"
+                        }
+                    },
+                    "variantAxes": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "example": [
+                            "Kolor",
+                            "Rozmiar"
+                        ]
+                    },
+                    "variants": {
+                        "description": "In presentation order.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductEditVariantResponse"
+                        }
+                    },
+                    "updatedAt": {
+                        "description": "When the product last changed (RFC 3339).",
+                        "type": "string",
+                        "example": "2026-11-01T12:30:00+00:00"
+                    }
+                },
+                "type": "object"
+            },
+            "TaxClassResponse": {
+                "description": "A tax class a product can have.",
+                "required": [
+                    "code",
+                    "name"
+                ],
+                "properties": {
+                    "code": {
+                        "description": "Code to send as `taxClass`.",
+                        "type": "string",
+                        "example": "printed_book"
+                    },
+                    "name": {
+                        "description": "Polish name for the form.",
+                        "type": "string",
+                        "example": "Ksi\u0105\u017cki drukowane"
+                    }
+                },
+                "type": "object"
+            },
+            "ImagePreviewResponse": {
+                "description": "A preview of an uploaded original: the `thumbnail` size with signed URLs of its variants.",
+                "required": [
+                    "size",
+                    "aspectRatio",
+                    "variants"
+                ],
+                "properties": {
+                    "size": {
+                        "description": "The image size.",
+                        "type": "string",
+                        "example": "thumbnail"
+                    },
+                    "aspectRatio": {
+                        "description": "Width to height of every variant.",
+                        "type": "string",
+                        "example": "1:1"
+                    },
+                    "variants": {
+                        "description": "Signed URLs by output format (the file extension), widths ascending.",
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "array",
+                            "items": {
+                                "required": [
+                                    "width",
+                                    "url"
+                                ],
+                                "properties": {
+                                    "width": {
+                                        "type": "integer",
+                                        "example": 96
+                                    },
+                                    "url": {
+                                        "type": "string",
+                                        "format": "uri"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "ImageUploadResponse": {
+                "description": "A stored original: its key for the product form and a preview.",
+                "required": [
+                    "key",
+                    "preview"
+                ],
+                "properties": {
+                    "key": {
+                        "description": "Key of the original (`originals/<sha256 of the content>.<extension of the detected type>`); the same file always gives the same key. Send it as `images[].key` of a product write.",
+                        "type": "string",
+                        "example": "originals/0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9.jpg"
+                    },
+                    "preview": {
+                        "$ref": "#/components/schemas/ImagePreviewResponse"
                     }
                 },
                 "type": "object"
@@ -2033,6 +4732,10 @@
         {
             "name": "Inventory",
             "description": "Inventory"
+        },
+        {
+            "name": "Ordering",
+            "description": "Ordering"
         },
         {
             "name": "Pricing",

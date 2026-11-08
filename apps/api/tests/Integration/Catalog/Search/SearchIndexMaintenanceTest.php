@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Catalog\Search;
 use App\Catalog\Application\Search\ActivationResult;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ProductIndexDefinition;
 use App\Tests\Support\Search\ResponseDroppingHttpClient;
 use PHPUnit\Framework\TestCase;
@@ -183,6 +184,6 @@ final class SearchIndexMaintenanceTest extends TestCase
 
     private static function document(string $id): ProductDocument
     {
-        return new ProductDocument($id, 1, 'Name', 'slug-'.$id, '', 'c', ['c'], ['c'], null, [], [], null);
+        return new ProductDocument($id, 1, 'Name', 'slug-'.$id, '', 'c', ['c'], ['c'], null, [], [], null, ProductStatus::Published);
     }
 }

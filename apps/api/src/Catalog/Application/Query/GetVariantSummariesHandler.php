@@ -23,7 +23,7 @@ final readonly class GetVariantSummariesHandler
 
     /**
      * One read for all the variants. The summaries follow the order of the request; a repeated id answers once,
-     * a variant that does not exist is left out.
+     * a variant that does not exist or belongs to a draft is left out.
      *
      * @return list<VariantSummary>
      *
@@ -54,7 +54,7 @@ final readonly class GetVariantSummariesHandler
         $summaries = [];
         foreach (array_keys($ids) as $key) {
             $row = $found[$key] ?? null;
-            if (null === $row) {
+            if (null === $row || !$row['published']) {
                 continue;
             }
             $image = $row['mainImage'];

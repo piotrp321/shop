@@ -30,6 +30,11 @@ final class InvalidBackofficeProductSearch extends \DomainException implements I
         return new self(\sprintf('The page size must be between 1 and %d.', SearchBackofficeProducts::MAX_PER_PAGE));
     }
 
+    public static function unknownStatus(): self
+    {
+        return new self('The status must be draft or published.');
+    }
+
     public static function notACategoryId(): self
     {
         return new self('A category id must be a UUID.');

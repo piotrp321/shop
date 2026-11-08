@@ -18,15 +18,18 @@ Funkcja opiera się na wariantach produktu w Catalog i na ofercie produktów `GE
 - Varnish (usługa w `infra`) przed publicznymi `GET` katalogu: `/api/v1/products`, `/api/v1/products/{slug}`,
   `/api/v1/categories`, `/api/v1/product-offers`. Odpowiedzi mają jawny `Cache-Control` i tagi xkey.
 - Zmiana ceny wariantu (Pricing) i poziomu dostępności wariantu (Inventory) publikuje zdarzenie domenowe; konsument
-  unieważnia w Varnishu odpowiedzi z tagiem produktu, a potem rewaliduje strony sklepu z tym tagiem.
+  unieważnia w Varnishu odpowiedzi z tagiem produktu, a potem rewaliduje strony sklepu z tym tagiem. Edycja,
+  publikacja i wycofanie produktu (`ProductChanged`, CATALOG-ADMIN) unieważniają tak samo tag produktu i tag jego
+  sluga (strona 404 sluga odwiedzonego przed publikacją).
+- Szkic (produkt nieopublikowany) nie ma strony: `GET /api/v1/products/{slug}` szkicu to 404 jak nieznany slug.
 - `make seed` kończy się pełnym unieważnieniem (Varnish i ISR).
 
 Poza zakresem:
 - docelowy wygląd strony, galeria z powiększeniem, karuzela (VISUAL-DESIGN #97);
 - wyszukiwarka i filtry (SEARCH #94);
-- przekierowania 301 po zmianie sluga: slug się nie zmienia, edycji produktu nie ma (CATALOG-ADMIN #95);
-- tagi i unieważnianie po zmianie kategorii albo produktu: kategorie i produkty powstają tylko w danych demo
-  (`make seed` z pełnym unieważnieniem); edycja to CATALOG-ADMIN;
+- przekierowania 301 po zmianie sluga: slug jest stały od pierwszej publikacji produktu (CATALOG-ADMIN #95);
+- tagi i unieważnianie po zmianie kategorii: kategorie powstają tylko w danych demo (`make seed` z pełnym
+  unieważnieniem);
 - `sitemap.xml`, `robots.txt`, JSON-LD `Organization`, pomiar Lighthouse w CI;
 - zdjęcia per wariant (decyzja E2 VARIANTS), długi opis produktu, kody SKU/EAN, marka jako osobne pole;
 - adres wariantu w URL (`?variant=`);
@@ -58,16 +61,21 @@ przeglądarka → sklep (Next.js, ISR /p/<slug>) → Varnish (API_CATALOG_URL) �
 panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker):
         1. PURGE xkey product-<productId> w Varnishu
         2. POST sklep /api/revalidate {tags: [product-<productId>]}
+panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → outbox → RabbitMQ → konsument (worker):
+        1. PURGE xkey product-<productId> product-slug-<slug> w Varnishu
+        2. POST sklep /api/revalidate {tags: [product-<productId>, product-slug-<slug>]}
 ```
 
 ## Tagi i nagłówki cache (API)
 
-- Słownik tagów, wspólny dla Varnisha i ISR: `catalog` (każda odpowiedź katalogu i każda strona produktu)
-  i `product-<productId>` (UUID małymi literami) dla każdego produktu, którego dane zawiera odpowiedź.
-- Nazwy tagów buduje jedna klasa w `Shared_Infrastructure` (`product(id)` z UUID małymi literami i stała `catalog`);
-  używają jej nagłówki odpowiedzi i `StorefrontCache` (`invalidateProduct(id)`; `purgeAll()` i `revalidateAll()`
-  dla tagu `catalog`, każda warstwa osobno, żeby `purge-all` ponawiał każdą z nich), konsumenci nie
-  składają napisów, więc nagłówek i purge nie mogą się rozjechać.
+- Słownik tagów, wspólny dla Varnisha i ISR: `catalog` (każda odpowiedź katalogu i każda strona produktu),
+  `product-<productId>` (UUID małymi literami) dla każdego produktu, którego dane zawiera odpowiedź, i
+  `product-slug-<slug>` (slug w formacie `Slug`) dla odpowiedzi 404 szczegółów i odczytu szczegółów strony produktu.
+- Nazwy tagów buduje jedna klasa w `Shared_Infrastructure` (`CacheTags`: `product(id)` z UUID małymi literami,
+  `productSlug(slug)` tylko dla sluga w formacie `Slug`, inny napis to wyjątek, i stała `catalog`); używają jej
+  nagłówki odpowiedzi i `StorefrontCache` (`invalidateProduct(id)`, `invalidateTags(tags)`; `purgeAll()`
+  i `revalidateAll()` dla tagu `catalog`, każda warstwa osobno, żeby `purge-all` ponawiał każdą z nich), konsumenci
+  nie składają napisów, więc nagłówek i purge nie mogą się rozjechać.
 - Nagłówek odpowiedzi `xkey: <tag> <tag> …` (spacje). Ustawia go mały serwis tagów w `Shared_Infrastructure`
   (A2), wołany z kontrolerów. Varnish usuwa nagłówek przed wysłaniem odpowiedzi.
 
@@ -76,7 +84,7 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 | `GET /api/v1/products` | `public, max-age=60` (bez zmian) | `catalog`, `product-<id>` każdego produktu strony |
 | `GET /api/v1/categories` | `public, max-age=60` (bez zmian) | `catalog` |
 | `GET /api/v1/products/{slug}` 200 | `public, max-age=60, s-maxage=3600` | `catalog`, `product-<id>` |
-| `GET /api/v1/products/{slug}` 404 | `public, max-age=60` | `catalog` |
+| `GET /api/v1/products/{slug}` 404 | `public, max-age=60` | `catalog`, `product-slug-<slug>` (slug w formacie `Slug`; inny: tylko `catalog`) |
 | `GET /api/v1/product-offers` 200 | `public, max-age=60, s-maxage=3600` | `catalog`, `product-<id>` każdego żądanego id |
 
 - `s-maxage=3600` to siatka bezpieczeństwa dla zmian bez zdarzenia (np. koniec okresu stawki VAT, utracone
@@ -94,9 +102,11 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
   - `images`: wszystkie zdjęcia produktu w kolejności pozycji (0–10), w rozmiarze `product`.
   - `variants` w kolejności pozycji; `label` z `ProductVariant::label()`, `values` w kolejności osi.
 - Rozmiar `product` (karta produktu) w `ImageSize`: 1:1, szerokości 640, 960, 1280, 1600, WebP, `fill`, `sm`.
-- `GET /api/v1/products/{slug}` (`Catalog_UI`, `PUBLIC_ACCESS`): 200 `ProductDetails`; nieznany slug albo slug
-  niezgodny z formatem `Slug`: 404 „Produkt nie istnieje.” (problem details). Nagłówki z tabeli wyżej. Kontrakt
-  w `openapi.json`, klient sklepu wygenerowany.
+- `GET /api/v1/products/{slug}` (`Catalog_UI`, `PUBLIC_ACCESS`): 200 `ProductDetails` opublikowanego produktu;
+  szkic, nieznany slug albo slug niezgodny z formatem `Slug`: ta sama odpowiedź 404 „Produkt nie istnieje.” (problem
+  details). Nagłówki z tabeli wyżej: 200 ma tagi `catalog` `product-<id>` (slug zmienia się tylko w szkicu, który nie
+  ma zapamiętanej odpowiedzi 200), 404 sluga w formacie `Slug` dodatkowo `product-slug-<slug>`, więc publikacja
+  produktu z tym slugiem usuwa zapamiętane 404. Kontrakt w `openapi.json`, klient sklepu wygenerowany.
 
 ## Pricing: zdarzenie zmiany ceny
 
@@ -121,8 +131,9 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 
 ## Unieważnianie (konsumenci zdarzeń)
 
-- `StorefrontCache` w `Shared_Infrastructure` (interfejs; implementacja `HttpStorefrontCache`): `invalidateProduct(id)`
-  (tag `product-<id>`) robi kolejno:
+- `StorefrontCache` w `Shared_Infrastructure` (interfejs; implementacja `HttpStorefrontCache`): `invalidateTags(tags)`
+  (co najmniej jeden tag z alfabetu `CacheTags`, inaczej wyjątek bez żadnego żądania) i `invalidateProduct(id)` (to samo
+  dla tagu `product-<id>`) robią kolejno, każda warstwa jednym żądaniem dla wszystkich tagów:
   1. Varnish: `PURGE` z nagłówkami `xkey-purge: <tagi>` i `X-Purge-Token: <VARNISH_PURGE_SECRET>` (twarde usunięcie, `xkey.purge`, nie `softpurge`, żeby
      regenerowana strona nie dostała starej odpowiedzi);
   2. sklep: `POST <STORE_INTERNAL_URL>/api/revalidate` z `{tags}` i sekretem `STORE_REVALIDATE_SECRET`.
@@ -133,6 +144,9 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
   - `Pricing_Infrastructure`: `VariantPriceChanged` → `productId` z Catalog `GetVariant` → `invalidateProduct(productId)`;
     wariant nieznany Catalogowi: nic do unieważnienia, wiadomość obsłużona.
   - `Inventory_Infrastructure`: `StockLevelChanged` → to samo.
+  - `Catalog_Infrastructure` (`InvalidateStorefrontOnProductChange`): integracyjne `ProductChanged` (edycja, publikacja,
+    wycofanie) → `invalidateTags([product-<productId>, product-slug-<slug>])`, bez odczytu bazy (zdarzenie ma id
+    i slug po zmianie). Id albo slug w złym formacie to `failed` bez ponowień.
   - Zdarzenie ze źródła `seed` konsument potwierdza bez unieważnienia (A3): seed kończy się `purge-all`, a ok. 2 tys.
     wywołań HTTP po każdym `make seed` opóźniałoby zdarzenia testów E2E w kolejce jednego workera.
 - Dostarczenie: istniejący outbox. Wiersz outboxu powstaje w transakcji zapisu ceny albo stanu i jest widoczny dla
@@ -196,9 +210,11 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
   i konto ładują Client Components.
 - Dane: `GET /api/v1/products/{slug}`, potem `GET /api/v1/product-offers?productId=<id>`, oba przez
   `API_CATALOG_URL`, wspólne dla `generateMetadata` i strony (`React.cache`). Tagi przekazuje opcja `tags`
-  klienta (`createApiClient` w `src/api/client.ts`, do `fetch` jako `next: { tags }`): odczyt szczegółów ma tag `catalog` (id nie jest jeszcze znane),
-  odczyt oferty `catalog` i `product-<id>`. Strona dziedziczy sumę tagów odczytów, więc rewalidacja `product-<id>`
-  albo `catalog` unieważnia HTML, a następne wejście pobiera od nowa oba odczyty (przez Varnish, już po purge).
+  klienta (`createApiClient` w `src/api/client.ts`, do `fetch` jako `next: { tags }`): odczyt szczegółów ma tagi
+  `catalog` i `product-slug-<slug>` (id nie jest jeszcze znane; tag sluga tylko dla sluga w formacie `Slug`, ten sam
+  wzorzec co w `/api/revalidate`, inny napis ma tylko `catalog`), odczyt oferty `catalog` i `product-<id>`. Strona
+  dziedziczy sumę tagów odczytów, także strona 404 sluga, więc rewalidacja `product-<id>`, `product-slug-<slug>` albo
+  `catalog` unieważnia HTML, a następne wejście pobiera od nowa oba odczyty (przez Varnish, już po purge).
   Odczyty nie trafiają do data cache Next na dłużej niż HTML strony. Layout czyta też drzewo kategorii dla menu
   działów w nagłówku (`GET /api/v1/categories` z tagiem `catalog`); gdy odczyt zawiedzie, nagłówek jest bez menu,
   a strona renderuje się dalej.
@@ -245,7 +261,8 @@ panel → API: zmiana ceny / stanu → outbox → RabbitMQ → konsument (worker
 ### Rewalidacja (`POST /api/revalidate`)
 
 - Route handler: `Authorization: Bearer <STORE_REVALIDATE_SECRET>` (porównanie w stałym czasie); treść
-  `{tags: string[]}`, 1–100 tagów, każdy `catalog` albo `product-<uuid małymi literami>`.
+  `{tags: string[]}`, 1–100 tagów, każdy `catalog`, `product-<uuid małymi literami>` albo `product-slug-<slug>`
+  (slug w formacie `Slug`: małe litery i cyfry w grupach łączonych pojedynczym `-`, do 200 znaków).
 - `revalidateTag(tag, { expire: 0 })` dla każdego tagu (P5); 200 `{revalidated: <liczba>}`.
 - Brak lub zły sekret: 401; zła treść lub inny `Content-Type` niż JSON: 400; brak `STORE_REVALIDATE_SECRET`
   w środowisku: 503. Wszystkie odpowiedzi `private, no-store`. Nie loguje sekretu.
@@ -360,9 +377,8 @@ Koszyk i checkout idą do API bezpośrednio (`API_INTERNAL_URL`, A1), nigdy prze
   ponownego `make seed` lub ręcznego `purge-all`).
 - Sekret `PURGE` jest porównywany w VCL zwykłym porównaniem napisów (nie w stałym czasie); Varnish jest dostępny
   tylko w sieci compose, a ACL zawęża nadawców.
-- Każdy nieznany slug zostawia wpis ISR 404 na dysku instancji; wpisy unieważnia tylko `catalog`, nic ich nie usuwa
-  (nieograniczony przyrost przy losowych adresach, razem z A6).
+- Każdy nieznany slug zostawia wpis ISR 404 na dysku instancji; wpisy unieważnia `catalog` albo tag ich sluga
+  (publikacja produktu z tym slugiem), nic ich nie usuwa (nieograniczony przyrost przy losowych adresach, razem z A6).
 - Seed publikuje zdarzenie dla każdej ceny i zmiany poziomu (ok. 2 tys. wiadomości); konsument potwierdza je bez
   wywołań HTTP.
-- Produkty i kategorie tworzone poza seedem (CATALOG-ADMIN) będą wymagać własnych zdarzeń i unieważniania.
 - Wydajność nie jest potwierdzona testami obciążeniowymi.

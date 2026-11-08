@@ -6,6 +6,8 @@ import {
   getPaymentStatus,
   loadAccountSession,
   loadCart,
+  loadCustomerOrder,
+  loadCustomerOrders,
   loadCartSummary,
   loadSiteSwitches,
   placeOrder,
@@ -573,5 +575,57 @@ describe("createApiClient cache tags", () => {
     await client.GET("/api/v1/categories");
 
     expect((fetch.mock.calls as unknown as unknown[][])[0][1]).toBeUndefined();
+  });
+});
+
+describe("the order history calls", () => {
+  const ORDER = "0199a0b0-0000-7000-8000-0000000000aa";
+  const page = { items: [], nextCursor: null };
+
+  it("loads the first page from the store's own /api/account/orders, same origin and uncached", async () => {
+    const fetch = stubFetch(async () => Response.json(page));
+
+    expect(await loadCustomerOrders()).toEqual({ status: "ok", data: page });
+    expect(fetch).toHaveBeenCalledWith("/api/account/orders", { method: "GET", credentials: "same-origin", cache: "no-store" });
+  });
+
+  it("sends the cursor of the next page, encoded", async () => {
+    const fetch = stubFetch(async () => Response.json(page));
+
+    await loadCustomerOrders("a+b/c=d");
+
+    expect(fetch).toHaveBeenCalledWith("/api/account/orders?after=a%2Bb%2Fc%3Dd", expect.objectContaining({ method: "GET" }));
+  });
+
+  it("loads one order from /api/account/orders/<id>, the id encoded", async () => {
+    const fetch = stubFetch(async () => Response.json({ orderId: ORDER }));
+
+    expect(await loadCustomerOrder(ORDER)).toEqual({ status: "ok", data: { orderId: ORDER } });
+    expect(fetch).toHaveBeenCalledWith(`/api/account/orders/${ORDER}`, { method: "GET", credentials: "same-origin", cache: "no-store" });
+    await loadCustomerOrder("../me");
+    expect(fetch).toHaveBeenLastCalledWith("/api/account/orders/..%2Fme", expect.anything());
+  });
+
+  it.each([
+    [401, { status: "unauthorized" }],
+    [404, { status: "not_found" }],
+    [400, { status: "failed" }],
+    [503, { status: "failed" }],
+    [500, { status: "failed" }],
+  ])("reports %s as %j", async (code, expected) => {
+    stubFetch(async () => Response.json({}, { status: code }));
+
+    expect(await loadCustomerOrders()).toEqual(expected);
+    expect(await loadCustomerOrder(ORDER)).toEqual(expected);
+  });
+
+  it("reports a network error and a body that is not JSON as failed", async () => {
+    stubFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    expect(await loadCustomerOrders()).toEqual({ status: "failed" });
+
+    stubFetch(async () => new Response("<html>", { status: 200 }));
+    expect(await loadCustomerOrder(ORDER)).toEqual({ status: "failed" });
   });
 });

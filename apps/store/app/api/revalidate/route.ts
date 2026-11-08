@@ -1,15 +1,21 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { revalidateTag } from "next/cache";
+import { isProductSlug } from "@/catalog/load-product";
 
 /**
  * On-demand revalidation of the ISR pages, called by the API worker after it purged Varnish (StorefrontCache in the
  * API): `Authorization: Bearer <STORE_REVALIDATE_SECRET>`, a JSON body `{ tags }` with 1 to 100 tags of the API's
- * dictionary (`catalog`, `product-<uuid in lower case>`). Each tag is revalidated with `expire: 0`, so the next
- * visitor waits for a fresh render instead of getting the stale page. The secret is never logged.
+ * dictionary (`catalog`, `product-<uuid in lower case>`, `product-slug-<slug in the format of a product slug>`). Each
+ * tag is revalidated with `expire: 0`, so the next visitor waits for a fresh render instead of getting the stale page.
+ * The secret is never logged.
  */
 
 const MAX_TAGS = 100;
 const TAG = /^(catalog|product-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+const SLUG_TAG_PREFIX = "product-slug-";
+
+const isKnownTag = (tag: string) =>
+  TAG.test(tag) || (tag.startsWith(SLUG_TAG_PREFIX) && isProductSlug(tag.slice(SLUG_TAG_PREFIX.length)));
 
 const answer = (status: number, body: unknown) =>
   Response.json(body, { status, headers: { "Cache-Control": "private, no-store" } });
@@ -30,7 +36,7 @@ function tagsOf(body: unknown): string[] | null {
   if (typeof body !== "object" || body === null || !("tags" in body)) return null;
   const { tags } = body;
   if (!Array.isArray(tags) || tags.length < 1 || tags.length > MAX_TAGS) return null;
-  return tags.every((tag): tag is string => typeof tag === "string" && TAG.test(tag)) ? tags : null;
+  return tags.every((tag): tag is string => typeof tag === "string" && isKnownTag(tag)) ? tags : null;
 }
 
 export async function POST(request: Request): Promise<Response> {

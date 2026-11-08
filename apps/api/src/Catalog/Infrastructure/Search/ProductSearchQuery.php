@@ -7,10 +7,13 @@ namespace App\Catalog\Infrastructure\Search;
 use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\ProductSort;
 use App\Catalog\Application\Search\VariantDocument;
+use App\Catalog\Domain\Product\ProductStatus;
 
 /**
- * The Elasticsearch request body of a product search: the phrase and the category in `query`, the conditions on one
- * variant in `post_filter`, and the facet aggregations, each of which adds the variant conditions without its own.
+ * The Elasticsearch request body of a product search: the status, the phrase and the category in `query`, the
+ * conditions on one variant in `post_filter`, and the facet aggregations, each of which adds the variant conditions
+ * without its own. The status is in `query`, so the results, the total and every aggregation see published products
+ * only; a draft document is never matched.
  */
 final readonly class ProductSearchQuery
 {
@@ -56,7 +59,10 @@ final readonly class ProductSearchQuery
      */
     private static function query(ProductSearchCriteria $criteria): array
     {
-        $bool = ['filter' => null === $criteria->categoryId ? [] : [['term' => ['category_ancestor_ids' => $criteria->categoryId]]]];
+        $bool = ['filter' => [['term' => ['status' => ProductStatus::Published->value]]]];
+        if (null !== $criteria->categoryId) {
+            $bool['filter'][] = ['term' => ['category_ancestor_ids' => $criteria->categoryId]];
+        }
         if (null !== $criteria->phrase) {
             $bool['must'] = [self::phrase($criteria->phrase)];
         }

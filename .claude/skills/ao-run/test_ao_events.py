@@ -233,5 +233,164 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(p.wait(timeout=5), 0)
 
 
+class HumanTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.file = os.path.join(self.tmp.name, 'sub', 'events.jsonl')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def human(self, *args, path=None):
+        return subprocess.run([sys.executable, SCRIPT, 'human', path or self.file, *args], capture_output=True,
+                              text=True)
+
+    def test_answer_with_task_appends_human_action(self):
+        before = time.time()
+        result = self.human('--action', 'answer', '--task', 'DEPLOY-3')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(self.file, encoding='utf-8') as f:
+            lines = f.read().splitlines()
+        self.assertEqual(len(lines), 1)
+        ev = json.loads(lines[0])
+        self.assertEqual({k: ev[k] for k in ('type', 'task_id', 'epic_id', 'data')},
+                         {'type': 'human_action', 'task_id': 'DEPLOY-3', 'epic_id': None, 'data': {'action': 'answer'}})
+        self.assertGreaterEqual(ev['at'], before)
+
+    def test_epic_level_action_has_no_task(self):
+        self.assertEqual(self.human('--action', 'epic-resume').returncode, 0)
+        with open(self.file, encoding='utf-8') as f:
+            self.assertIsNone(json.loads(f.readline())['task_id'])
+
+    def test_unknown_action_is_rejected_without_writing(self):
+        result = self.human('--action', 'merge', '--task', 'T-1')
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(os.path.exists(self.file))
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'root ignores permissions')
+    def test_unwritable_directory_exits_1_with_message(self):
+        locked = os.path.join(self.tmp.name, 'locked')
+        os.makedirs(locked)
+        os.chmod(locked, 0o500)
+        try:
+            result = self.human('--action', 'answer', '--task', 'T-1', path=os.path.join(locked, 'events.jsonl'))
+        finally:
+            os.chmod(locked, 0o700)
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue(result.stderr.strip())
+
+
+def at(ev, seconds):
+    return dict(ev, at=seconds)
+
+
+def blocked(task, seconds):
+    return at(event('status_changed', {'from': 'RUNNING', 'to': 'BLOCKED', 'reason': 'executor'}, task_id=task),
+              seconds)
+
+
+def human(action, seconds, task=None):
+    return {'type': 'human_action', 'task_id': task, 'epic_id': None, 'data': {'action': action}, 'at': seconds}
+
+
+class SummarizeTest(unittest.TestCase):
+    def summarize(self, events, now=10000.0):
+        return ao_events.summarize(events, now)
+
+    def test_no_events_is_zero(self):
+        self.assertEqual(self.summarize([]), {'interventions': 0, 'waits': 0, 'wait_s': 0.0, 'open': []})
+
+    def test_blocker_answered_counts_its_wait(self):
+        got = self.summarize([blocked('T-1', 100.0), human('answer', 700.0, 'T-1')])
+        self.assertEqual(got, {'interventions': 1, 'waits': 1, 'wait_s': 600.0, 'open': []})
+
+    def test_waits_are_paired_per_task(self):
+        got = self.summarize([blocked('A', 0.0), blocked('B', 100.0), human('answer', 400.0, 'B'),
+                              human('answer', 1000.0, 'A')])
+        self.assertEqual((got['waits'], got['wait_s']), (2, 1000.0))   # B lies inside A
+
+    def test_failed_task_ends_with_resume(self):
+        failed = at(event('status_changed', {'to': 'FAILED', 'reason': 'executor_reported'}, task_id='T-2'), 50.0)
+        got = self.summarize([failed, human('resume', 150.0, 'T-2')])
+        self.assertEqual((got['waits'], got['wait_s']), (1, 100.0))
+
+    def test_epic_blocked_and_queue_held_end_with_an_action_without_task(self):
+        got = self.summarize([at(event('epic_blocked', {'reason': 'epic_timeout'}, task_id=None), 0.0),
+                              human('epic-resume', 300.0),
+                              at(event('queue_held', {'kind': 'environment', 'task_id': 'T-3'}, task_id=None), 400.0),
+                              human('release', 500.0)])
+        self.assertEqual((got['interventions'], got['waits'], got['wait_s']), (2, 2, 400.0))
+
+    def test_repeated_block_before_answer_is_one_wait_from_the_first(self):
+        got = self.summarize([blocked('T-1', 0.0), blocked('T-1', 50.0), human('answer', 200.0, 'T-1')])
+        self.assertEqual((got['waits'], got['wait_s']), (1, 200.0))
+
+    def test_unanswered_blocker_is_open_with_time_until_now(self):
+        got = self.summarize([blocked('T-1', 100.0)], now=400.0)
+        self.assertEqual(got, {'interventions': 0, 'waits': 1, 'wait_s': 0.0,
+                               'open': [{'task_id': 'T-1', 'since': 100.0, 'wait_s': 300.0}]})
+
+    def test_action_without_a_wait_is_an_intervention_only(self):
+        got = self.summarize([human('resume', 10.0, 'T-1')])
+        self.assertEqual((got['interventions'], got['waits'], got['wait_s']), (1, 0, 0.0))
+
+    def test_other_events_and_bad_times_are_ignored(self):
+        got = self.summarize([event('epic_done'), at(event('host_on_battery', {'percent': 10}), 5.0),
+                              at(event('status_changed', {'to': 'PENDING'}), 6.0),
+                              blocked('T-1', 'x'), {'type': 'invalid_event', 'raw': ''}, 'not a dict'])
+        self.assertEqual(got, {'interventions': 0, 'waits': 0, 'wait_s': 0.0, 'open': []})
+
+    def test_overlapping_waits_count_wall_clock_time_once(self):
+        # an /integration blocker: the task is BLOCKED and the epic blocked 40 ms later, both answered
+        got = self.summarize([blocked('T-1', 0.0), at(event('epic_blocked', {'reason': 'x'}, task_id=None), 0.04),
+                              human('answer', 600.0, 'T-1'), human('epic-resume', 700.0),
+                              blocked('A', 1000.0), blocked('B', 1100.0), human('answer', 1200.0, 'A'),
+                              human('answer', 1500.0, 'B')])
+        self.assertEqual((got['waits'], got['wait_s']), (4, 1200.0))
+
+    def test_open_wait_ends_at_the_last_epic_done_after_it(self):
+        got = self.summarize([blocked('T-1', 100.0), at(event('epic_done'), 900.0)], now=50000.0)
+        self.assertEqual(got['open'], [{'task_id': 'T-1', 'since': 100.0, 'wait_s': 800.0}])
+
+    def test_epic_done_before_the_block_does_not_end_it(self):
+        got = self.summarize([at(event('epic_done'), 50.0), blocked('T-1', 100.0)], now=400.0)
+        self.assertEqual(got['open'][0]['wait_s'], 300.0)
+
+    def test_answer_before_block_does_not_go_negative(self):
+        got = self.summarize([human('answer', 100.0, 'T-1'), blocked('T-1', 200.0), human('answer', 260.0, 'T-1')])
+        self.assertEqual((got['interventions'], got['waits'], got['wait_s']), (2, 1, 60.0))
+
+
+class SummaryCliTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.file = os.path.join(self.tmp.name, 'events.jsonl')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def summary(self, *args):
+        return subprocess.run([sys.executable, SCRIPT, 'summary', self.file, *args], capture_output=True, text=True)
+
+    def test_prints_one_json_line_and_skips_non_json_lines(self):
+        with open(self.file, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(blocked('T-1', 100.0)) + '\nnot json\n' + json.dumps(human('answer', 220.0, 'T-1')))
+        result = self.summary('--now', '1000')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {'interventions': 1, 'waits': 1, 'wait_s': 120.0, 'open': []})
+
+    def test_missing_file_exits_1_without_zeros(self):
+        result = self.summary()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, '')
+        self.assertIn(self.file, result.stderr)
+
+    def test_directory_instead_of_file_exits_1(self):
+        os.makedirs(self.file)
+        result = self.summary()
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue(result.stderr.strip())
+
+
 if __name__ == '__main__':
     unittest.main()

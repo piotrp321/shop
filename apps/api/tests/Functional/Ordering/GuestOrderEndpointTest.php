@@ -178,10 +178,10 @@ final class GuestOrderEndpointTest extends WebTestCase
         self::assertSame(0, $this->orders());
     }
 
-    public function testALineWithoutAPriceOrUnknownToCatalogIsAConflict(): void
+    public function testALineWithoutAPriceUnknownToCatalogOrOfADraftIsAConflict(): void
     {
         $shoes = $this->variant(12_300, 10);
-        foreach (['no price' => $this->variant(null, 10), 'unknown to Catalog' => (string) Uuid::v7()] as $kind => $variant) {
+        foreach (['no price' => $this->variant(null, 10), 'unknown to Catalog' => (string) Uuid::v7(), 'of a draft' => $this->draftVariant(12_300, 10)] as $kind => $variant) {
             $cart = CartFixture::cart($this->connection, lines: [[$shoes, 1], [$variant, 1]]);
 
             $this->assertConflict('cart-not-orderable', 'Część pozycji w koszyku nie może zostać kupiona. Sprawdź koszyk.', $this->place(self::PATH, $this->body($cart, 12_300), key: 'key-'.$cart));

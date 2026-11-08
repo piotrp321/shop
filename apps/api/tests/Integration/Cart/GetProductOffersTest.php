@@ -38,7 +38,7 @@ final class GetProductOffersTest extends KernelTestCase
         for ($p = 0; $p < GetProductOffers::MAX_PRODUCTS; ++$p) {
             $variants = array_map(static fn (int $n): array => ['id' => (string) Uuid::v4(), 'values' => ['rozmiar '.$n]], range(1, 100));
             $product = ProductFactory::createOne(['mainCategory' => $category, 'variantAxes' => ['Rozmiar'], 'variants' => $variants]);
-            new DoctrineProductRepository($entityManager)->save($product);
+            new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
             $products[] = $product->id()->toString();
             if (0 === $p) {
                 VariantPriceRecordFactory::store($entityManager, ['variantId' => $variants[99]['id'], 'gross' => 4_900]);

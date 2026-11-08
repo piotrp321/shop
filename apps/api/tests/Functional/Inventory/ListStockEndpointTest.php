@@ -6,6 +6,7 @@ namespace App\Tests\Functional\Inventory;
 
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
@@ -72,6 +73,23 @@ final class ListStockEndpointTest extends WebTestCase
         $this->assertKeysMatchSchema($items[0], 'StockListItemResponse');
         $this->assertKeysMatchSchema($variants[1], 'StockListVariantResponse');
         $this->assertKeysMatchSchema($stock, 'ListedStockResponse');
+    }
+
+    public function testADraftIsListedWithItsVariantsAndStock(): void
+    {
+        $draft = $this->saveProduct('Szkic kajaka', status: ProductStatus::Draft);
+        $variant = $draft->variants()->toList()[0]->id()->toString();
+        StockFixture::stock($this->connection, 7, 0, 1, $variant);
+
+        $items = $this->items($this->get(''));
+
+        self::assertSame([$draft->id()->toString()], array_column($items, 'productId'));
+        self::assertIsArray($items[0]['variants']);
+        self::assertIsArray($items[0]['variants'][0]);
+        self::assertSame($variant, $items[0]['variants'][0]['variantId']);
+        $stock = $items[0]['variants'][0]['stock'];
+        self::assertIsArray($stock);
+        self::assertSame(7, $stock['physical']);
     }
 
     public function testAPageCountsProductsEachWithAllItsVariants(): void
@@ -236,14 +254,14 @@ final class ListStockEndpointTest extends WebTestCase
      * @param list<array{id: string, values: list<string>}> $variants none for the factory's default variant
      * @param list<string>                                  $axes
      */
-    private function saveProduct(string $name, ?Category $category = null, array $variants = [], array $axes = []): Product
+    private function saveProduct(string $name, ?Category $category = null, array $variants = [], array $axes = [], ProductStatus $status = ProductStatus::Published): Product
     {
-        $attributes = ['mainCategory' => $category ?? $this->category, 'name' => $name];
+        $attributes = ['mainCategory' => $category ?? $this->category, 'name' => $name, 'status' => $status];
         if ([] !== $variants) {
             $attributes += ['variantAxes' => $axes, 'variants' => $variants];
         }
         $product = ProductFactory::createOne($attributes);
-        new DoctrineProductRepository($this->entityManager)->save($product);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return $product;
     }

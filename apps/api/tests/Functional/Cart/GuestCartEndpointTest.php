@@ -183,6 +183,24 @@ final class GuestCartEndpointTest extends WebTestCase
         self::assertSame([], CartFixture::lines($this->connection, $this->cartId($cart)));
     }
 
+    public function testAVariantOfADraftIsAnUnavailableProductAndCannotBeAdded(): void
+    {
+        $draft = $this->draftVariant(1_000, 10);
+        $cart = $this->guestCart();
+
+        $this->assertProblem(404, 'Produkt nie jest już dostępny.', $this->add($cart, $draft, 1));
+        self::assertSame([], CartFixture::lines($this->connection, $this->cartId($cart)));
+
+        CartFixture::line($this->connection, $this->cartId($cart), $draft, 2);
+        $view = $this->request('GET', $cart);
+
+        self::assertIsArray($view['lines']);
+        self::assertSame(['unavailable_product'], array_column($view['lines'], 'state'));
+        self::assertIsArray($view['lines'][0]);
+        self::assertNull($view['lines'][0]['product']);
+        self::assertTrue($view['hasExcludedLines']);
+    }
+
     public function testAnUnknownVariantAndAMissingLineAreNotFound(): void
     {
         $cart = $this->guestCart();

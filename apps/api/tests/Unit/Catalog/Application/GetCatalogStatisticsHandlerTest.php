@@ -23,6 +23,7 @@ use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
@@ -130,6 +131,8 @@ final class GetCatalogStatisticsHandlerTest extends TestCase
             TaxClassCode::Standard,
             $images,
             ProductVariants::create(VariantAxes::fromList([]), [new ProductVariant(VariantId::fromString('2'.substr($id, 1)), VariantValues::fromList([]))]),
-        ));
+            ProductStatus::Published,
+            new \DateTimeImmutable(),
+        ), null, null, new \DateTimeImmutable());
     }
 }

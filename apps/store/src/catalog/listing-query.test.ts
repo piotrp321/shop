@@ -3,6 +3,7 @@ import {
   clearedFilters,
   defaultSort,
   hasFilters,
+  invalidFilterExit,
   isRefined,
   isShortPhrase,
   listingHref,
@@ -41,6 +42,23 @@ describe("readListingState", () => {
     expect(readListingState({ q: "   " }, "search").q).toBeUndefined();
     expect(readListingState({ q: "a".repeat(150) }, "search").q).toBe("a".repeat(100));
     expect(readListingState({ q: "ą".repeat(150) }, "search").q).toBe("ą".repeat(100));
+  });
+
+  it("trims NUL like the API does (PHP trim), so a phrase of one letter and NUL is short, not an invalid filter", () => {
+    expect(readListingState({ q: "\0kurtka\0 " }, "search").q).toBe("kurtka");
+    expect(readListingState({ q: "\0" }, "search").q).toBeUndefined();
+    const phrase = readListingState({ q: "a\0" }, "search").q;
+    expect(phrase).toBe(readListingState({ q: "a " }, "search").q);
+    expect(isShortPhrase(phrase)).toBe(true);
+  });
+
+  it("trims in linear time, so a long run of spaces or NUL inside the phrase cannot block the server", () => {
+    // A backtracking trim takes seconds here (quadratic in the run); a linear one well under a millisecond.
+    for (const run of [" ".repeat(50_000), "\0".repeat(50_000), " \0".repeat(25_000)]) {
+      const started = performance.now();
+      expect(readListingState({ q: `${run}a${run}b${run}` }, "search").q).toBe(`a${run}b`.slice(0, 100));
+      expect(performance.now() - started).toBeLessThan(100);
+    }
   });
 
   it("ignores the phrase and the category on a listing page, so they reach neither the API nor the addresses", () => {
@@ -178,5 +196,35 @@ describe("toggleOption, clearedFilters and the filter predicates", () => {
   it("sorts by relevance by default with a phrase and by name otherwise", () => {
     expect(defaultSort({ q: "kurtka", options: [] })).toBe("trafnosc");
     expect(defaultSort({ options: [] })).toBe("nazwa");
+  });
+});
+
+describe("invalidFilterExit", () => {
+  const BAD_PRICE = "Pokaż wyniki bez błędnej ceny";
+  const NO_FILTERS = "Pokaż wyniki bez filtrów";
+
+  it("drops only a price that is not whole zloty and keeps the other filters, the sort and the phrase", () => {
+    expect(invalidFilterExit("/c/buty", { priceFrom: "99,50", priceTo: "200", sort: "nazwa", options: ["Kolor:czarne"], page: "2" })).toEqual({
+      href: "/c/buty?sort=nazwa&cena-do=200&o=Kolor%3Aczarne",
+      label: BAD_PRICE,
+    });
+    expect(invalidFilterExit("/szukaj", { q: "kurtka", priceFrom: "1", priceTo: "abc", options: [], category: "bieganie" })).toEqual({
+      href: "/szukaj?q=kurtka&cena-od=1&kategoria=bieganie",
+      label: BAD_PRICE,
+    });
+    expect(invalidFilterExit("/", { priceFrom: "12.5", priceTo: "-3", options: ["Kolor:czarne"] })).toEqual({ href: "/?o=Kolor%3Aczarne", label: BAD_PRICE });
+  });
+
+  it("drops all filters and the sort when the cause is not a malformed price, or not only one the store can tell", () => {
+    expect(invalidFilterExit("/c/buty", { priceFrom: "300", priceTo: "100", options: ["Kolor:czarne"] })).toEqual({ href: "/c/buty", label: NO_FILTERS });
+    expect(invalidFilterExit("/c/buty", { priceFrom: "99,50", sort: "popularne", options: [] })).toEqual({ href: "/c/buty", label: NO_FILTERS });
+    expect(invalidFilterExit("/szukaj", { q: "kurtka zimowa", available: "tak", category: "nie-ma", options: [] })).toEqual({
+      href: "/szukaj?q=kurtka+zimowa",
+      label: NO_FILTERS,
+    });
+  });
+
+  it("has no link on the home page without a malformed price: „Zobacz cały katalog” is the way back", () => {
+    expect(invalidFilterExit("/", { sort: "popularne", options: [] })).toBeUndefined();
   });
 });

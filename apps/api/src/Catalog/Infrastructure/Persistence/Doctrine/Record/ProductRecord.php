@@ -20,6 +20,8 @@ use Doctrine\ORM\Mapping as ORM;
 // cannot express an access method or operator class.
 #[ORM\Index(name: 'catalog_product_name_trgm_idx', columns: ['name'])]
 #[ORM\Index(name: 'catalog_product_name_id_idx', columns: ['name', 'id'])]
+// The predicate as PostgreSQL reports it, so the mapping and the migrated schema compare equal.
+#[ORM\Index(name: 'catalog_product_draft_name_id_idx', columns: ['name', 'id'], options: ['where' => "((status)::text = 'draft'::text)"])]
 class ProductRecord
 {
     public const string SLUG_CONSTRAINT = 'catalog_product_slug_key';
@@ -62,7 +64,22 @@ class ProductRecord
     #[ORM\OrderBy(['position' => 'ASC'])]
     public Collection $variants;
 
-    /** Managed by Doctrine optimistic locking; not part of the domain. */
+    /** A ProductStatus value. */
+    #[ORM\Column(length: 16)]
+    public string $status;
+
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE, nullable: true)]
+    public ?\DateTimeImmutable $firstPublishedAt = null;
+
+    /** The staff member (`sub` of the backoffice token) of the last write that raised the version; null for the seed. */
+    #[ORM\Column(nullable: true)]
+    public ?string $updatedBy = null;
+
+    /** The time of the last write that raised the version. */
+    #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
+    public \DateTimeImmutable $updatedAt;
+
+    /** Doctrine optimistic locking; the domain gets it as the version the product was read at. */
     #[ORM\Version]
     #[ORM\Column(type: Types::BIGINT)]
     public int $version = 1;

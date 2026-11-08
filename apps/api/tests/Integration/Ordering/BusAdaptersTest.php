@@ -8,6 +8,8 @@ use App\Cart\Domain\CartNotFound;
 use App\Cart\Domain\GuestCartMerged;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
+use App\Inventory\Application\Command\ReservationNotFound;
+use App\Inventory\Application\Command\ReservationStateConflict;
 use App\Ordering\Application\CartReference;
 use App\Ordering\Application\Port\CartLineToOrder;
 use App\Ordering\Application\Port\CatalogVariant;
@@ -158,6 +160,31 @@ final class BusAdaptersTest extends KernelTestCase
         self::assertSame([5, 0], OrderingFixture::stock($this->connection, $a));
     }
 
+    public function testInventoryCommitsTheReservationOfTheOrderOnceAndPassesItsFailuresOn(): void
+    {
+        $a = StockFixture::stock($this->connection, 5);
+        $orderId = OrderId::fromString(Uuid::v7()->toRfc4122());
+        $this->reservations()->reserve($orderId, [new CartLineToOrder(VariantId::fromString($a), 3)]);
+
+        $this->reservations()->commit($orderId);
+        $this->reservations()->commit($orderId);
+
+        self::assertSame([2, 0], OrderingFixture::stock($this->connection, $a), 'the units leave the shelf once');
+        self::assertSame('committed', $this->connection->fetchOne('SELECT status FROM inventory_reservation WHERE reservation_key = ?', [$orderId->toString()]));
+        try {
+            $this->reservations()->release($orderId);
+            self::fail('Expected ReservationStateConflict.');
+        } catch (ReservationStateConflict) {
+            $this->addToAssertionCount(1);
+        }
+        try {
+            $this->reservations()->commit(OrderId::fromString(Uuid::v7()->toRfc4122()));
+            self::fail('Expected ReservationNotFound.');
+        } catch (ReservationNotFound) {
+            $this->addToAssertionCount(1);
+        }
+    }
+
     private function cart(): CommandBusOrderCart
     {
         return new CommandBusOrderCart($this->commandBus());
@@ -213,7 +240,7 @@ final class BusAdaptersTest extends KernelTestCase
             ? ['variantAxes' => [], 'variants' => [['id' => $variantIds[0], 'values' => []]]]
             : ['variantAxes' => ['Kolor'], 'variants' => array_map(static fn (string $id, int $n): array => ['id' => $id, 'values' => ['kolor '.$n]], $variantIds, array_keys($variantIds))];
         $product = ProductFactory::createOne(['mainCategory' => $category, 'name' => $name, ...$variants]);
-        new DoctrineProductRepository($this->entityManager)->save($product);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return [$product->id()->toString(), $variantIds];
     }

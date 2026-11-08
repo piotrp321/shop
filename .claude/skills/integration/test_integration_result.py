@@ -180,6 +180,38 @@ class IntegrationResultTest(unittest.TestCase):
         two[1]['title'] = two[0]['title'].upper()
         self.assertInvalid(result(status='FINDINGS', findings=two), 'fingerprint')
 
+    def ci_checks(self, sha=SHA, status='passed'):
+        return copy.deepcopy(GATES) + [{'name': 'ci:checks@' + sha, 'status': status},
+                                       {'name': 'ci:e2e@' + sha, 'status': status}]
+
+    def test_a_delta_round_may_take_the_test_gates_from_green_ci_of_its_head(self):
+        r = self.validate(result(mode='DELTA', checks=self.ci_checks()), '--mode', 'DELTA', '--head', SHA)
+        self.assertEqual(0, r.returncode, r.stderr)
+
+    def test_ci_gates_must_name_the_reviewed_head(self):
+        self.assertInvalid(result(mode='DELTA', checks=self.ci_checks(sha='b' * 40)), 'head_sha')
+
+    def test_ci_gates_are_for_delta_rounds_only(self):
+        self.assertInvalid(result(checks=self.ci_checks()), 'DELTA')
+
+    def test_ci_gates_come_in_pairs_and_only_green(self):
+        self.assertInvalid(result(mode='DELTA', checks=self.ci_checks()[:-1]), 'ci:e2e@')
+        self.assertInvalid(result(mode='DELTA', checks=self.ci_checks(status='failed')), 'passed')
+        self.assertInvalid(result(mode='DELTA', status='BLOCKED', blockers=[blocker()],
+                                  checks=self.ci_checks(status='skipped')), 'passed')
+
+    def test_ci_gates_must_match_the_local_gates_they_replace(self):
+        checks = self.ci_checks()
+        checks[2]['status'] = 'skipped'
+        self.assertInvalid(result(mode='DELTA', status='FINDINGS', findings=[finding()], checks=checks), 'make e2e')
+
+    def test_rejects_unknown_ci_entries(self):
+        for name in ('ci:test@' + SHA, 'ci:checks@' + SHA[:7], 'ci:checks', 'ci:checks@' + SHA.upper(),
+                     'ci:checks@' + SHA + '\n'):
+            with self.subTest(name=name):
+                checks = self.ci_checks() + [{'name': name, 'status': 'passed'}]
+                self.assertInvalid(result(mode='DELTA', checks=checks), 'not a CI gate')
+
     def test_reports_every_problem(self):
         r = self.validate(result(status='OK', mode='X', head_sha='1'))
         self.assertEqual(2, r.returncode)

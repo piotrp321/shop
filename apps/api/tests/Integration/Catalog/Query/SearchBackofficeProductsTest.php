@@ -437,7 +437,7 @@ final class SearchBackofficeProductsTest extends KernelTestCase
             'additionalCategories' => $additional,
             'taxClass' => TaxClassCode::from($taxClass),
         ], static fn (mixed $value): bool => null !== $value));
-        $this->products->save($product);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
 
         return $product;
     }

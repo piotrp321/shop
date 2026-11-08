@@ -25,6 +25,7 @@ use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryName;
 use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategorySlug;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Tests\Support\InMemory\InMemoryCategoryRepository;
 use PHPUnit\Framework\TestCase;
 
@@ -221,6 +222,6 @@ final class ListProductsHandlerTest extends TestCase
      */
     private static function document(string $name, ?array $mainImage): ProductDocument
     {
-        return new ProductDocument('id-'.$name, 1, $name, 'slug-'.$name, 'Short '.$name, self::CATEGORY, [self::CATEGORY], [self::CATEGORY], $mainImage, [], [], null);
+        return new ProductDocument('id-'.$name, 1, $name, 'slug-'.$name, 'Short '.$name, self::CATEGORY, [self::CATEGORY], [self::CATEGORY], $mainImage, [], [], null, ProductStatus::Published);
     }
 }

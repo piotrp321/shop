@@ -174,6 +174,7 @@ services:
     App\Catalog\Application\Port\CatalogReset: '@App\Catalog\Infrastructure\Demo\DbalCatalogReset'
     App\Catalog\Application\Port\DemoCatalogSource: '@App\Catalog\Infrastructure\Demo\YamlDemoCatalogSource'
     App\Catalog\Application\Port\BackofficeProductSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalBackofficeProductSource'
+    App\Catalog\Application\Port\ProductEditSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductEditSource'
     App\Catalog\Application\Port\VariantSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalVariantSource'
     App\Catalog\Application\Port\ProductDetailsSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductDetailsSource'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'
@@ -210,6 +211,13 @@ when@test: &test
         test.product_images.storage:
             alias: product_images.storage
             public: true
+        # Public (and so never inlined), so a functional test can replace the image storage with a stub that is down.
+        App\Catalog\Infrastructure\Image\FlysystemProductImageStorage:
+            public: true
+            arguments:
+                $filesystem: '@product_images.storage'
+                $maxBytes: 67108864 # 64 MB
+                $maxPixels: 50000000 # 50 MP
         # Tests switch the search backend (a temporary index, a failing stub) through this service.
         App\Tests\Support\SwitchableProductSearch:
             public: true

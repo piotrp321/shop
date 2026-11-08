@@ -38,4 +38,39 @@ final class CacheTagsTest extends TestCase
 
         CacheTags::product($id);
     }
+
+    public function testTheProductSlugTagHasTheSlug(): void
+    {
+        self::assertSame('product-slug-buty-szosowe-2', CacheTags::productSlug('buty-szosowe-2'));
+        self::assertSame('product-slug-'.str_repeat('a', 200), CacheTags::productSlug(str_repeat('a', 200)));
+    }
+
+    /**
+     * Only a slug in the format of Catalog's Slug names a product: anything else is a programming error, and could
+     * otherwise inject a second tag or a header.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function notSlugs(): iterable
+    {
+        yield 'empty' => [''];
+        yield 'upper case' => ['Buty-szosowe'];
+        yield 'Polish letter' => ['buty-różowe'];
+        yield 'leading dash' => ['-buty'];
+        yield 'trailing dash' => ['buty-'];
+        yield 'double dash' => ['buty--szosowe'];
+        yield 'two tags in one' => ['buty catalog'];
+        yield 'trailing newline' => ["buty\n"];
+        yield 'header injection' => ["buty\r\nX-Evil: 1"];
+        yield 'slash' => ['buty/szosowe'];
+        yield 'too long' => [str_repeat('a', 201)];
+    }
+
+    #[DataProvider('notSlugs')]
+    public function testTheProductSlugTagRejectsAnythingButASlug(string $slug): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        CacheTags::productSlug($slug);
+    }
 }

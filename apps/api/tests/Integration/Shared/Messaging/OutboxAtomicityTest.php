@@ -67,7 +67,7 @@ final class OutboxAtomicityTest extends MessagingKernelTestCase
     private function saveProductAndPublishItsEvents(): void
     {
         $product = ProductFactory::createOne(['mainCategory' => $this->category]);
-        (new DoctrineProductRepository($this->entityManager))->save($product);
+        (new DoctrineProductRepository($this->entityManager))->save($product, null, null, new \DateTimeImmutable());
         $this->publisher()->publish(...$product->releaseEvents());
     }
 

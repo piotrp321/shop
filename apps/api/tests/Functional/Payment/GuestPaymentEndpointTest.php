@@ -334,6 +334,31 @@ final class GuestPaymentEndpointTest extends WebTestCase
         self::assertFalse($status['canStartPayment']);
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function statusesAfterThePayment(): iterable
+    {
+        yield 'shipped' => ['shipped'];
+        yield 'delivered' => ['delivered'];
+        yield 'returned' => ['returned'];
+    }
+
+    #[DataProvider('statusesAfterThePayment')]
+    public function testAnOrderTakenOnAfterThePaymentIsPaidForPayment(string $orderStatus): void
+    {
+        $order = $this->guestOrder();
+        $this->markOrderPaid($order['orderId']);
+        $this->advancePaidOrder($order['orderId'], $orderStatus);
+
+        $status = $this->readStatus(self::statusPath($order), $order['accessToken']);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('paid', $status['orderStatus']);
+        self::assertFalse($status['canStartPayment']);
+        $this->assertPaymentConflict('order-already-paid', 'Zamówienie jest już opłacone.', $this->startPayment(self::startPath($order), accessToken: $order['accessToken']));
+    }
+
     public function testTheStatusWithoutAccessIsNotFound(): void
     {
         $order = $this->guestOrder();

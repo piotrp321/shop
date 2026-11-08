@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Catalog\Application\Search;
 
+use App\Catalog\Domain\Product\ProductStatus;
+
 /**
- * A product as stored in the search index (a read model, never a source of business decisions).
+ * A product as stored in the search index (a read model, never a source of business decisions). A draft has a
+ * document too, a tombstone with its version that the queries of the store never match (decision A3).
  */
 final readonly class ProductDocument
 {
@@ -30,6 +33,7 @@ final readonly class ProductDocument
         public array $categoryNames,
         public array $variants,
         public ?int $fromGross,
+        public ProductStatus $status,
     ) {
     }
 }

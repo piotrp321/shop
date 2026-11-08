@@ -10,9 +10,8 @@ Zakres: `apps/api/src/Ordering`, `apps/api/src/Payment/Infrastructure/Ordering`,
 `cancelled`, wersję (optimistic locking), rezerwację stanów o kluczu `orderId` i przejścia jako metody agregatu
 (`markPaid`, `expireUnpaid`). Inventory ma `CommitReservation(reservationKey)` (aktywna → zatwierdzona: `physical`
 i `reserved` maleją; już zatwierdzona → bez zmian; zwolniona → `ReservationStateConflict`) i
-`ReleaseReservation(reservationKey)` (`docs/features/inventory/spec.md`). Ordering zwalnia rezerwację przez port
-`StockReservations::release`. E-maile Ordering (`SendOrderConfirmation`, `SendPaymentReceived`, `SendOrderCancelled`)
-wysyłają, potem zapisują znacznik w zamówieniu z wersją.
+`ReleaseReservation(reservationKey)` (`docs/features/inventory/spec.md`). Ordering zatwierdza i zwalnia rezerwację
+przez port `StockReservations` (`commit`, `release`).
 
 ## Cel i zakres
 
@@ -54,7 +53,7 @@ Decyzje użytkownika:
 | P8 | Bez płatności z historii klienta (jak w PAYMENT): historia pokazuje „Czeka na płatność do 14:35” albo „Termin płatności minął”. |
 | P9 | Wyszukiwanie w panelu: dokładny numer (`R-100001`, bez względu na wielkość liter) albo dokładny e-mail (bez względu na wielkość liter); filtr statusu; od najnowszych; stronicowanie po kursorach. Bez wyszukiwania fragmentu. |
 | P10 | Historia klienta: lista od najnowszych, po 10 z „Pokaż więcej” (numer, data, status, kwota, liczba sztuk); szczegóły: pozycje, sumy, adres, daty kolejnych statusów. |
-| P12 | Strona potwierdzenia płatności w sklepie dla anulowanego zamówienia mówi neutralnie „Zamówienie zostało anulowane.” (dziś zawsze „…bo nie otrzymaliśmy płatności w terminie”, a A3 daje `cancelled` także po anulowaniu przez pracownika); przyczynę podaje e-mail. Payment nie poznaje przyczyny anulowania. |
+| P12 | Strona potwierdzenia płatności w sklepie dla anulowanego zamówienia mówi neutralnie „Zamówienie zostało anulowane.” (A3 daje `cancelled` także po anulowaniu przez pracownika); przyczynę podaje e-mail. Payment nie poznaje przyczyny anulowania. |
 | P13 | Szczegóły zamówienia w panelu pokazują `paymentId` opłacającej płatności (sekcja „Zwrot pieniędzy” i dane płatności), żeby pracownik wiedział, którą płatność zwraca. Dostawca i transakcja: #221. |
 | P14 | E-mail po zwrocie nie sugeruje, że klient odesłał towar (zwrot z `shipped` to paczka niedoręczona): „Zamówienie R-100001 wróciło do nas. Zwrócimy płatność.”. |
 | P11 | Bez zamówień w danych demo: panel po `make seed` jest pusty, E2E tworzy własne zamówienia. |
@@ -94,8 +93,7 @@ Decyzje użytkownika:
 - Nowe pola: `shippedAt`, `deliveredAt`, `returnedAt` (null do przejścia; zwrot z `shipped` zostawia `deliveredAt`
   null), `refund` (P3, niżej). `paidAt` i `paymentId` zostają po anulowaniu i zwrocie. Kto wykonał przejście, mówi
   historia (bez osobnych pól).
-- Pola znaczników e-maili (`confirmationSentAt`, `paymentNotificationSentAt`, `cancellationNotificationSentAt`)
-  wychodzą z agregatu do tabeli powiadomień (A4, „E-maile”).
+- Agregat nie ma pól znaczników e-maili: są w tabeli powiadomień (A4, „E-maile”).
 - Metody pracownika: `ship(StaffActor, ?note, now)`, `deliver(StaffActor, ?note, now)`, `cancel(StaffActor, note,
   now)`, `registerReturn(StaffActor, note, now)`, `completeRefund(StaffActor, ?note, now)`. Notatka: przycięta,
   1–500 znaków bez znaków sterujących (także nowej linii); wymagana przy `cancel` i `registerReturn` (P7); pusta po
@@ -123,25 +121,25 @@ Decyzje użytkownika:
 
 - Komendy pracownika najpierw blokują wiersz zamówienia (`OrderRepository::lock`, `PESSIMISTIC_WRITE` z odświeżeniem
   rekordu z identity map, jak koszyk), potem porównują `expectedVersion` z żądania z wersją odczytaną pod blokadą;
-  różna → `OrderModifiedConcurrently` (409, istniejący). Powtórzenie udanej zmiany z tą samą wersją jest więc 409
+  różna → `OrderModifiedConcurrently` (409). Powtórzenie udanej zmiany z tą samą wersją jest więc 409
   (jak korekta stanu). Blokada przed Inventory sprawia, że równoległe zmiany z tą samą wersją (np. `ship`
   i `cancel`) idą po kolei, a druga kończy się 409, nigdy `ReservationStateConflict` z Inventory.
 - Kolejność blokad: wiersz zamówienia, potem rezerwacja i stany (Inventory). `ExpireUnpaidOrderHandler` też zaczyna
-  od `lock` (dziś `get`), więc wygaśnięcie i zmiana z panelu nie zakleszczają się. Webhook (`MarkOrderPaid`) nie
+  od `lock`, więc wygaśnięcie i zmiana z panelu nie zakleszczają się. Webhook (`MarkOrderPaid`) nie
   dotyka Inventory i zostaje przy wersji.
 - Pracownik zmienia tylko zamówienia opłacone (`paid` i dalej), więc nie konkuruje z `markPaid` ani
   z `ExpireUnpaidOrder` (te zmieniają tylko `new`). Kolejny webhook dla wysłanego, dostarczonego, zwróconego albo
   anulowanego przez pracownika zamówienia nie zmienia go (`alreadyPaid`, `paidByAnotherPayment`, `orderCancelled`;
-  Payment oznacza płatność do zwrotu jak dziś).
+  Payment oznacza płatność do zwrotu: `payment_payment.refund_required_reason`).
 - E-maile nie zmieniają zamówienia (A4), więc nie dają fałszywych 409.
 
 ## Komendy i zapytania (Ordering Application)
 
 - `ChangeOrderStatus(orderId, transition, expectedVersion, note, staffId, staffUsername)` (`command.bus`, jedna
   transakcja) → `BackofficeOrderView`:
-  - nieznane zamówienie albo id spoza UUID: `OrderNotFound` (404, istniejący);
+  - nieznane zamówienie albo id spoza UUID: `OrderNotFound` (404);
   - blokada, wersja, metoda agregatu;
-  - `ship`: port `StockReservations::commit(orderId)` (nowa metoda; adapter `CommandBusStockReservations` →
+  - `ship`: port `StockReservations::commit(orderId)` (adapter `CommandBusStockReservations` →
     Inventory `CommitReservation`, zagnieżdżony dispatch) przed zapisem zamówienia;
   - `cancel`: `StockReservations::release(orderId)` przed zapisem;
   - błędy Inventory (`ReservationNotFound`, `ReservationStateConflict`) to błędy logiczne: 500, wycofanie całości;
@@ -180,8 +178,8 @@ trafia do e-maila.
 
 - `OrderShipped` → handler `SendOrderShipped`: „Zamówienie R-100001 wysłane”: powitanie, numer, „Zamówienie zostało
   wysłane na adres:”, adres.
-- `OrderCancelled` → istniejący `SendOrderCancelled` wybiera treść według `cancellationReason` zamówienia:
-  `payment_timeout` bez zmian; `staff` → „Zamówienie R-100001 anulowane”: „Anulowaliśmy Twoje zamówienie. Zwrócimy
+- `OrderCancelled` → `SendOrderCancelled` wybiera treść według `cancellationReason` zamówienia:
+  `payment_timeout` → „Nie otrzymaliśmy płatności w terminie, więc anulowaliśmy zamówienie.”; `staff` → „Zamówienie R-100001 anulowane”: „Anulowaliśmy Twoje zamówienie. Zwrócimy
   płatność.”.
 - `OrderReturned` → `SendReturnReceived`: „Zamówienie R-100001 wróciło do nas”: „Zamówienie R-100001 wróciło do nas.
   Zwrócimy płatność.” (P14).
@@ -204,14 +202,14 @@ trafia do e-maila.
      Błąd wysyłki: `release(orderId, kind)` (`claimed_until` null) i wyjątek dalej, transport ponawia (bez zmian
      w polityce `events`).
 - Skutek: dwie równoległe dostawy tego samego zdarzenia wysyłają jeden e-mail. Awaria procesu między wysyłką a
-  `markSent` daje drugi e-mail po wygaśnięciu lease (co najmniej raz, jak dziś); limit czasu SMTP jest krótszy niż
-  lease (`MAILER_DSN`, sprawdzone w zadaniu).
+  `markSent` daje drugi e-mail po wygaśnięciu lease (co najmniej raz); limit czasu SMTP jest krótszy niż
+  lease (`MAILER_DSN` z `timeout`, `SmtpTimeoutTransportFactory`).
 - Migracja przenosi istniejące znaczniki (`confirmation_sent_at`, `payment_notification_sent_at`,
   `cancellation_notification_sent_at`) do tabeli i usuwa te kolumny z `ordering_order`. Handlery
   `SendOrderConfirmation`, `SendPaymentReceived`, `SendOrderCancelled` przechodzą na port; nie zapisują zamówienia.
 - Testy:
   - jednostkowe handlerów z portem w pamięci: już wysłane (nic), zajęte (wyjątek z opóźnieniem do końca lease), błąd
-    wysyłki (zwolnienie i wyjątek; ponowienie wysyła raz), wygasły lease (wysyłka), zamówienie nieznane (jak dziś);
+    wysyłki (zwolnienie i wyjątek; ponowienie wysyła raz), wygasły lease (wysyłka), zamówienie nieznane (błąd trwały, wiadomość trafia do `failed`);
   - integracyjne adaptera na prawdziwej bazie: równoległe `claim` z kilku połączeń → dokładnie jedno `claimed`;
     `claim` po `markSent` → `alreadySent`; po `release` i po wygaśnięciu lease → `claimed`;
   - integracyjny ponowień Messengera (`test_messaging`, transport z polityką `events`): zajęta wysyłka wraca
@@ -223,16 +221,17 @@ trafia do e-maila.
 - `ordering_order`: `shipped_at`, `delivered_at`, `returned_at`, `refund_amount bigint NULL`, `refund_due_at NULL`,
   `refund_completed_at NULL`, `refund_completed_by_staff_id NULL`, `refund_completed_by_username NULL`,
   `refund_note varchar(500) NULL`; `cancellation_reason` przyjmuje `staff`; bez kolumn znaczników e-maili (A4).
-- Migracja zastępuje `ordering_order_paid_check` (dziś `(status = 'paid') = (paid_at IS NOT NULL AND payment_id IS
-  NOT NULL)`, blokowałby nowe statusy i anulowanie opłaconego):
+- Ograniczenia CHECK na `ordering_order` (opłacone zamówienie może być wysłane, zwrócone albo anulowane przez
+  pracownika, a `paid_at` i `payment_id` zostają):
   - `(paid_at IS NULL) = (payment_id IS NULL)`;
-  - `status IN ('paid','shipped','delivered','returned')` ⇒ `paid_at IS NOT NULL`;
-  - `cancellation_reason = 'staff'` ⇒ `paid_at IS NOT NULL`;
+  - `paid_at IS NOT NULL` ⇔ (`status IN ('paid','shipped','delivered','returned')` albo `cancellation_reason =
+    'staff'`);
   - `shipped_at IS NOT NULL` ⇔ `status IN ('shipped','delivered','returned')`; `delivered_at IS NOT NULL` ⇒ `status
     IN ('delivered','returned')`; `returned_at IS NOT NULL` ⇔ `status = 'returned'`;
   - `refund_amount IS NOT NULL` ⇔ `refund_due_at IS NOT NULL` ⇔ (`status = 'returned'` albo
     `cancellation_reason = 'staff'`); `refund_completed_at`, `refund_completed_by_staff_id`,
-    `refund_completed_by_username` razem null albo razem ustawione, tylko przy `refund_amount`.
+    `refund_completed_by_username` razem null albo razem ustawione, tylko przy `refund_amount`; `refund_note` tylko
+    przy wykonanym zwrocie.
 - Indeksy: `(placed_at DESC, id DESC)`, `(status, placed_at DESC, id DESC)`, `(lower(email))`,
   `(customer_id, placed_at DESC, id DESC) WHERE owner_type = 'customer'`,
   `(refund_due_at, id) WHERE refund_amount IS NOT NULL AND refund_completed_at IS NULL`.
@@ -323,7 +322,7 @@ sklepu się nie zmienia.
    `order-transition-not-allowed`, bez zmian.
 6. Nieaktualna wersja: 409, bez zmian. Równoległe żądania z tą samą wersją (także `ship` z `cancel`, test na
    prawdziwej bazie): jedno 200, pozostałe 409, rezerwacja zgodna ze zwycięzcą, bez 500.
-7. Wygaśnięcie i webhook opłacenia działają jak dziś; webhook dla wysłanego albo anulowanego przez pracownika
+7. Wygaśnięcie i webhook opłacenia zmieniają tylko zamówienia `new`; webhook dla wysłanego albo anulowanego przez pracownika
    zamówienia nie zmienia statusu. `GetPaymentStatus` dla wysłanego, dostarczonego i zwróconego widzi `paid` (A3).
 8. Role: `marketing` 403 na każdym endpointcie zamówień; `warehouse` 403 na `cancel`, `return` i wykonaniu zwrotu;
    `support` 403 na `ship` i `deliver`; token klienta nie przechodzi przez firewall panelu.
@@ -337,21 +336,3 @@ sklepu się nie zmienia.
     ponowienia jak w „E-maile”.
 11. E2E: logowanie klienta → złożenie i opłacenie → „Moje zamówienia” pokazuje „Opłacone” → pracownik wysyła je
     w panelu → historia klienta pokazuje „Wysłane”, Mailpit ma e-mail „wysłane”.
-
-## Zadania dokumentacji (razem z implementacją)
-
-- `docs/vision.md`: opis Ordering bez „(Symfony Workflow)” (A1).
-- `docs/features/payment/spec.md`: tekst strony potwierdzenia dla anulowanego zamówienia (P12).
-- `apps/api/CLAUDE.md`: cykl zamówienia (przejścia, blokada, historia, zwrot pieniędzy, port `commit`), znaczniki
-  e-maili w tabeli powiadomień (wyjątek DBAL), endpointy panelu i klienta.
-- `apps/admin/CLAUDE.md`: `src/orders/`; `apps/store/CLAUDE.md`: konto i BFF historii.
-- `docs/features/payment/spec.md` (A6, statusy, `OrderForPayment.statusForPayment`, znaczniki e-maili) i
-  `docs/features/checkout/spec.md` (enum `status`, znacznik `confirmationSentAt`): stan obecny z odesłaniem do tej
-  specyfikacji.
-
-## Ryzyka
-
-- Przejścia statusów i równoległe zmiany (panel, webhook, wygaśnięcie, wysyłka e-maili) to ryzyko CRITICAL dla
-  `/delivery`: testy współbieżności na prawdziwej bazie.
-- Migracja usuwa kolumny znaczników z `ordering_order`: kod czytający je (handlery, `DbalOrderingReset`, testy)
-  zmienia się w tym samym zadaniu.

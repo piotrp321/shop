@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Shared\Messaging;
 use App\Cart\Infrastructure\Catalog\QueryBusProductOfferFacts;
 use App\Catalog\Application\Search\ProductSearchSnapshot;
 use App\Catalog\Domain\Product\ProductCreated;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductSearchSource;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Shared\Domain\Event\DomainEventPublisher;
@@ -37,7 +38,7 @@ final class MessengerRoutingTest extends KernelTestCase
         $container->set(ElasticsearchProductIndexer::class, $this->indexer);
         $container->set(QueryBusProductOfferFacts::class, new InMemoryProductOfferFacts());
         $container->set(DbalProductSearchSource::class, new InMemoryProductSearchSource([
-            new ProductSearchSnapshot(self::PRODUCT_ID, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::CATEGORY_ID, [], [[self::CATEGORY_ID]], null, [], [], []),
+            new ProductSearchSnapshot(self::PRODUCT_ID, 'Buty biegowe', 'buty-biegowe', 'Lekkie', self::CATEGORY_ID, [], [[self::CATEGORY_ID]], null, [], [], [], ProductStatus::Published),
         ]));
     }
 

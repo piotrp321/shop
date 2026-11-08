@@ -8,6 +8,7 @@ use App\Tests\Integration\Inventory\CatalogFixture;
 use App\Tests\Integration\Inventory\StockFixture;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Rows of the modules an order is placed from, written as plain SQL on the given connection (the test's own, rolled
@@ -88,7 +89,53 @@ final class OrderingFixture
     }
 
     /**
-     * Deletes the orders (their lines first) and the reservations they hold, on a connection that commits.
+     * A guest order of one line (10,00 zł net, 12,30 zł gross) to $email, written as plain SQL with a number and keys
+     * of its own: new, or paid when $paid. No reservation, no outbox row.
+     *
+     * @return string the order id
+     */
+    public static function order(Connection $connection, string $email = 'jan@example.com', bool $paid = false): string
+    {
+        $orderId = Uuid::v7()->toRfc4122();
+        $connection->executeStatement(
+            "INSERT INTO ordering_order (id, number, status, owner_type, customer_id, access_token, email, full_name, phone, street, postal_code, city, country, currency, total_net, total_vat, total_gross, idempotency_key, request_fingerprint, placed_at, payment_deadline, paid_at, payment_id, version)
+             VALUES (?, ?, ?, 'guest', NULL, ?, ?, 'Jan Kowalski', '+48600100200', 'Długa 1', '00-950', 'Warszawa', 'PL', 'PLN', 1000, 230, 1230, ?, ?, now(), now() + interval '30 minutes', ?, ?, 1)",
+            [
+                $orderId,
+                'R-'.random_int(100_000_000, 999_999_999),
+                $paid ? 'paid' : 'new',
+                rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '='),
+                $email,
+                'fixture-'.$orderId,
+                str_repeat('a', 64),
+                $paid ? new \DateTimeImmutable()->format('Y-m-d H:i:sP') : null,
+                $paid ? Uuid::v7()->toRfc4122() : null,
+            ],
+        );
+        $connection->executeStatement(
+            "INSERT INTO ordering_order_line (id, order_id, position, variant_id, product_id, product_name, variant_label, quantity, unit_net, unit_vat, unit_gross, vat_rate_bp, tax_class, line_net, line_vat, line_gross)
+             VALUES (?, ?, 0, ?, ?, 'Kubek', 'Standard', 1, 1000, 230, 1230, 2300, 'standard', 1000, 230, 1230)",
+            [Uuid::v7()->toRfc4122(), $orderId, Uuid::v7()->toRfc4122(), Uuid::v7()->toRfc4122()],
+        );
+
+        return $orderId;
+    }
+
+    /**
+     * The moment the email of the kind (`confirmation`, `payment_received`, …) of the order went out, null when it
+     * has not.
+     */
+    public static function notificationSentAt(Connection $connection, string $orderId, string $kind): ?\DateTimeImmutable
+    {
+        $value = $connection->fetchOne('SELECT sent_at FROM ordering_order_notification WHERE order_id = ? AND kind = ?', [$orderId, $kind]);
+        \assert(false === $value || null === $value || \is_string($value));
+
+        return \is_string($value) ? new \DateTimeImmutable($value) : null;
+    }
+
+    /**
+     * Deletes the orders (their notifications, history and lines first) and the reservations they hold, on a connection that
+     * commits.
      *
      * @param list<string> $orderIds
      */
@@ -97,6 +144,8 @@ final class OrderingFixture
         if ([] === $orderIds) {
             return;
         }
+        $connection->executeStatement('DELETE FROM ordering_order_notification WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
+        $connection->executeStatement('DELETE FROM ordering_order_status_change WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order_line WHERE order_id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         $connection->executeStatement('DELETE FROM ordering_order WHERE id IN (?)', [$orderIds], [ArrayParameterType::STRING]);
         StockFixture::delete($connection, [], $orderIds);

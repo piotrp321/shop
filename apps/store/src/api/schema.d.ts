@@ -281,7 +281,7 @@ export interface paths {
         };
         /**
          * Product details
-         * @description The product page data: the category path from the root to the main category, all the images in position order, the variant axes and the variants (label and values in the order of the axes) in position order. The price and the availability are in the product offer. A slug that names no product, also one that is not in the format of a slug, gives 404. The 200 may be kept by a shared cache for an hour and is tagged for purging; the 404 for 60 seconds.
+         * @description The product page data: the category path from the root to the main category, all the images in position order, the variant axes and the variants (label and values in the order of the axes) in position order. The price and the availability are in the product offer. A slug that names no published product (a draft, an unknown slug, one that is not in the format of a slug) gives 404. The 200 may be kept by a shared cache for an hour and is tagged for purging; the 404 for 60 seconds, tagged for purging when the product is published.
          */
         get: operations["getProduct"];
         put?: never;
@@ -319,13 +319,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Orders of the customer
+         * @description A page of the orders the customer of the token placed, newest first (then by id); orders of guests and of other customers are never in it. Page with the opaque `nextCursor` as `after`; the total is not counted.
+         */
+        get: operations["listCustomerOrders"];
         put?: never;
         /**
          * Place an order of the cart of the customer
          * @description Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the body carries no lines, quantities or prices, unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.
          */
         post: operations["placeCustomerOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/orders/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An order of the customer
+         * @description The order with its lines, totals, address and the moments of its statuses. `paymentDeadlinePassed` is computed by the API: true only for a new order whose payment deadline has come. No history of changes, notes, data of staff or refunds.
+         */
+        get: operations["getCustomerOrder"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -737,11 +761,7 @@ export interface components {
              * @example R-100001
              */
             number: string;
-            /**
-             * @description `new` right after the placement; `paid` once paid, `cancelled` when unpaid five minutes after `paymentDeadline`.
-             * @enum {string}
-             */
-            status: "new" | "paid" | "cancelled";
+            status: components["schemas"]["CustomerOrderStatus"];
             /**
              * @description The address the order is confirmed to.
              * @example anna.nowak@example.com
@@ -818,6 +838,101 @@ export interface components {
             gross: number;
             /** @enum {string} */
             currency: "PLN";
+        };
+        /**
+         * @description `new` (waits for the payment; right after the placement), `paid`, `shipped`, `delivered`, `cancelled` (unpaid in time, or by staff), `returned`.
+         * @enum {string}
+         */
+        CustomerOrderStatus: "new" | "paid" | "shipped" | "delivered" | "cancelled" | "returned";
+        /** @description A page of the order history of the customer. */
+        CustomerOrderList: {
+            items: components["schemas"]["CustomerOrderListItem"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after`), null on the last page.
+             * @example eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0
+             */
+            nextCursor: string | null;
+        };
+        /** @description An order in the history. Amounts in grosze. */
+        CustomerOrderListItem: {
+            /** Format: uuid */
+            orderId: string;
+            /** @example R-100001 */
+            number: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339, UTC.
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            placedAt: string;
+            status: components["schemas"]["CustomerOrderStatus"];
+            /** @example 39998 */
+            totalGross: number;
+            /** @enum {string} */
+            currency: "PLN";
+            /**
+             * @description Units of all lines of the order.
+             * @example 3
+             */
+            itemCount: number;
+            /**
+             * Format: date-time
+             * @description The order was to be paid by this moment (RFC 3339, UTC); meaningful for a `new` order.
+             * @example 2026-11-05T13:00:00+00:00
+             */
+            paymentDeadline: string;
+            /** @description True only for a `new` order whose `paymentDeadline` has come, computed by the API; false for every other status. */
+            paymentDeadlinePassed: boolean;
+        };
+        /** @description An order of the customer with copies of the names and prices of the placement. Amounts in grosze. No history of changes, notes, data of staff, refund or payment. */
+        CustomerOrder: {
+            /** Format: uuid */
+            orderId: string;
+            /** @example R-100001 */
+            number: string;
+            status: components["schemas"]["CustomerOrderStatus"];
+            shippingAddress: components["schemas"]["OrderShippingAddress"];
+            lines: components["schemas"]["OrderLine"][];
+            totals: components["schemas"]["OrderTotals"];
+            /**
+             * Format: date-time
+             * @description RFC 3339, UTC.
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            placedAt: string;
+            /**
+             * Format: date-time
+             * @description The order was to be paid by this moment, 30 minutes after the placement (RFC 3339, UTC).
+             * @example 2026-11-05T13:00:00+00:00
+             */
+            paymentDeadline: string;
+            /** @description True only for a `new` order whose `paymentDeadline` has come, computed by the API; false for every other status. */
+            paymentDeadlinePassed: boolean;
+            /**
+             * Format: date-time
+             * @description When the payment was confirmed (RFC 3339, UTC); null until then.
+             */
+            paidAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the order was shipped (RFC 3339, UTC); null until then.
+             */
+            shippedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the order was delivered (RFC 3339, UTC); null until then, and for an order returned without being delivered.
+             */
+            deliveredAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the order was cancelled (RFC 3339, UTC); null for an order that was not.
+             */
+            cancelledAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the return was received (RFC 3339, UTC); null for an order that was not returned.
+             */
+            returnedAt: string | null;
         };
         PaymentProvider: {
             /** @enum {string} */
@@ -999,6 +1114,12 @@ export interface components {
              * @example 39998
              */
             expectedTotalGross: number;
+        };
+        CustomerOrderListQuery: {
+            /** @default null */
+            after: string | null;
+            /** @default 10 */
+            perPage: number;
         };
         /** @description The guest cart, the contact and the address of an order, and the total the guest saw. */
         PlaceGuestOrderRequest: {
@@ -2089,7 +2210,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description No product has the slug (problem details). */
+            /** @description No published product has the slug (problem details). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2128,6 +2249,58 @@ export interface operations {
                 };
             };
             /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listCustomerOrders: {
+        parameters: {
+            query?: {
+                /** @description The `nextCursor` of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the history. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerOrderList"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2219,6 +2392,56 @@ export interface operations {
             };
             /** @description A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field). */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getCustomerOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the order. */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerOrder"];
+                };
+            };
+            /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order of the customer: unknown, an id that is no UUID, an order of another customer or of a guest (problem details, one text for every case). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
