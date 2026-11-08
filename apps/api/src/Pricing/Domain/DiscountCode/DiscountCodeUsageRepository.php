@@ -15,4 +15,14 @@ interface DiscountCodeUsageRepository
      * The usages of the code that are not released, as stored now.
      */
     public function activeUsesOf(DiscountCodeId $codeId): int;
+
+    /**
+     * The usage of the order as stored now (released or not), or null.
+     */
+    public function ofOrder(OrderId $orderId): ?DiscountCodeUsage;
+
+    /**
+     * Writes the release of a stored usage (the only change a usage has).
+     */
+    public function save(DiscountCodeUsage $usage): void;
 }

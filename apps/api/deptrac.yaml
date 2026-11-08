@@ -361,10 +361,11 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
-      # Adapters of Ordering's ports (OrderCart, OrderPrices, OrderCatalog, StockReservations) dispatch the commands
-      # and queries of the other modules on command.bus and query.bus, nested in the transaction of PlaceOrder: Cart
-      # LockCartForOrder and ClearCartAfterOrder, Pricing GetCurrentPrices, Catalog GetVariantSummaries, Inventory
-      # ReserveStock. Only their Application layer, never their Domain or Infrastructure.
+      # Adapters of Ordering's ports (OrderCart, OrderPrices, DiscountCodeRedemptions, OrderCatalog, StockReservations)
+      # dispatch the commands and queries of the other modules on command.bus and query.bus, nested in the transaction
+      # of PlaceOrder: Cart LockCartForOrder and ClearCartAfterOrder, Pricing QuoteBasket and RedeemDiscountCode
+      # (ReleaseDiscountCodeUsage in ExpireUnpaidOrder), Catalog GetVariantSummaries, Inventory ReserveStock. Only
+      # their Application layer, never their Domain or Infrastructure.
       - Cart_Application
       - Catalog_Application
       - Pricing_Application

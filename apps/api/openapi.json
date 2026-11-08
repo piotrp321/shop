@@ -1502,7 +1502,7 @@
                     "Ordering"
                 ],
                 "summary": "Place an order of the cart of the customer",
-                "description": "Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the body carries no lines, quantities or prices, unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.",
+                "description": "Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the body carries no lines, quantities or prices, unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.",
                 "operationId": "placeCustomerOrder",
                 "parameters": [
                     {
@@ -1570,7 +1570,7 @@
                         }
                     },
                     "409": {
-                        "description": "The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
+                        "description": "The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -1692,7 +1692,7 @@
                     "Ordering"
                 ],
                 "summary": "Place an order of a guest cart",
-                "description": "Orders every line of the guest cart in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied (it stays open). The body carries no lines, quantities or prices; unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The `Idempotency-Key` identifies the request: sending it again with the same cart and content answers 200 with the same order and changes nothing, also once the cart expired or was merged; the same key with another cart or other content is a 409 that tells nothing about the order. The order cannot be read later, so there is no `Location`.",
+                "description": "Orders every line of the guest cart in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied (it stays open). The body carries no lines, quantities or prices; unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The `Idempotency-Key` identifies the request: sending it again with the same cart and content answers 200 with the same order and changes nothing, also once the cart expired or was merged; the same key with another cart or other content is a 409 that tells nothing about the order. The order cannot be read later, so there is no `Location`.",
                 "operationId": "placeGuestOrder",
                 "parameters": [
                     {
@@ -1770,7 +1770,7 @@
                         }
                     },
                     "409": {
-                        "description": "The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
+                        "description": "The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved.",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -3084,7 +3084,7 @@
                 "type": "object"
             },
             "OrderView": {
-                "description": "An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze.",
+                "description": "An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze; the totals are after the discount of the code.",
                 "required": [
                     "orderId",
                     "number",
@@ -3094,6 +3094,7 @@
                     "phone",
                     "shippingAddress",
                     "lines",
+                    "discount",
                     "totals",
                     "placedAt",
                     "paymentDeadline",
@@ -3135,6 +3136,15 @@
                         "items": {
                             "$ref": "#/components/schemas/OrderLine"
                         }
+                    },
+                    "discount": {
+                        "description": "The discount code the order was placed with; null without one.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/OrderDiscount"
+                            }
+                        ]
                     },
                     "totals": {
                         "$ref": "#/components/schemas/OrderTotals"
@@ -3199,6 +3209,8 @@
                     "variantLabel",
                     "quantity",
                     "unitGross",
+                    "grossBeforeDiscount",
+                    "discountGross",
                     "lineGross"
                 ],
                 "properties": {
@@ -3221,20 +3233,65 @@
                         "minimum": 1
                     },
                     "unitGross": {
-                        "description": "Gross price of one unit in grosze.",
+                        "description": "Gross price of one unit in grosze (the effective price, with a promotion if any).",
                         "type": "integer",
                         "example": 19999
                     },
-                    "lineGross": {
-                        "description": "Unit gross price \u00d7 quantity, in grosze.",
+                    "grossBeforeDiscount": {
+                        "description": "Unit gross price \u00d7 quantity, in grosze, before the discount of the code.",
                         "type": "integer",
                         "example": 39998
+                    },
+                    "discountGross": {
+                        "description": "The share of the line in the discount of the code, in grosze; 0 without a code.",
+                        "type": "integer",
+                        "example": 4000,
+                        "minimum": 0
+                    },
+                    "lineGross": {
+                        "description": "The value of the line after the discount (`grossBeforeDiscount` \u2212 `discountGross`), in grosze.",
+                        "type": "integer",
+                        "example": 35998
+                    }
+                },
+                "type": "object"
+            },
+            "OrderDiscount": {
+                "description": "The copy of the discount code of an order, as it was when the order was placed.",
+                "required": [
+                    "code",
+                    "kind",
+                    "value",
+                    "amountGross"
+                ],
+                "properties": {
+                    "code": {
+                        "description": "The code in its normalised form (upper case).",
+                        "type": "string",
+                        "example": "WITAJ10"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "percent",
+                            "amount"
+                        ]
+                    },
+                    "value": {
+                        "description": "The percent (1\u201390) of a `percent` code, the amount in grosze of an `amount` code.",
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "amountGross": {
+                        "description": "The discount of the order in grosze, the sum of `discountGross` of its lines.",
+                        "type": "integer",
+                        "example": 4000
                     }
                 },
                 "type": "object"
             },
             "OrderTotals": {
-                "description": "Sums of the lines; net + vat = gross.",
+                "description": "Sums of the lines after the discount of the code; net + vat = gross.",
                 "required": [
                     "net",
                     "vat",
@@ -3364,6 +3421,7 @@
                     "status",
                     "shippingAddress",
                     "lines",
+                    "discount",
                     "totals",
                     "placedAt",
                     "paymentDeadline",
@@ -3394,6 +3452,15 @@
                         "items": {
                             "$ref": "#/components/schemas/OrderLine"
                         }
+                    },
+                    "discount": {
+                        "description": "The discount code the order was placed with; null without one.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/OrderDiscount"
+                            }
+                        ]
                     },
                     "totals": {
                         "$ref": "#/components/schemas/OrderTotals"
@@ -3678,7 +3745,7 @@
                 "type": "object"
             },
             "OrderConflictProblem": {
-                "description": "A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, or the `Idempotency-Key` was used by another request.",
+                "description": "A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`), its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the rejected code in the cart.",
                 "required": [
                     "type",
                     "title",
@@ -3693,7 +3760,10 @@
                             "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable",
                             "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order",
                             "tag:piotrp321.github.io,2026:shop/problems/order-total-changed",
-                            "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused"
+                            "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused",
+                            "tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid",
+                            "tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up",
+                            "tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum"
                         ]
                     },
                     "title": {
@@ -3709,6 +3779,11 @@
                     "detail": {
                         "description": "Polish text for the customer.",
                         "type": "string"
+                    },
+                    "minimumOrderGross": {
+                        "description": "Only for `discount-code-below-minimum`, the smallest subtotal in grosze the code works from.",
+                        "type": "integer",
+                        "example": 30000
                     }
                 },
                 "type": "object"
@@ -3837,7 +3912,7 @@
                 "type": "object"
             },
             "PlaceCustomerOrderRequest": {
-                "description": "The contact and the address of an order of the cart of the customer, and the total the customer saw.",
+                "description": "The contact and the address of an order of the cart of the customer, the total the customer saw and the discount code applied.",
                 "required": [
                     "fullName",
                     "phone",
@@ -3884,6 +3959,14 @@
                         "type": "integer",
                         "example": 39998,
                         "minimum": 0
+                    },
+                    "discountCode": {
+                        "description": "The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.",
+                        "type": "string",
+                        "example": "WITAJ10",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 64
                     }
                 },
                 "type": "object"
@@ -3907,7 +3990,7 @@
                 "type": "object"
             },
             "PlaceGuestOrderRequest": {
-                "description": "The guest cart, the contact and the address of an order, and the total the guest saw.",
+                "description": "The guest cart, the contact and the address of an order, the total the guest saw and the discount code applied.",
                 "required": [
                     "cartId",
                     "email",
@@ -3969,6 +4052,14 @@
                         "type": "integer",
                         "example": 39998,
                         "minimum": 0
+                    },
+                    "discountCode": {
+                        "description": "The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.",
+                        "type": "string",
+                        "example": "WITAJ10",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 64
                     }
                 },
                 "type": "object"

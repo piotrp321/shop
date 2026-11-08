@@ -71,9 +71,10 @@ export const detail = (overrides: Partial<OrderDetail> = {}): OrderDetail => ({
   status: "paid",
   shippingAddress: { street: "ul. Długa 5/3", postalCode: "00-950", city: "Warszawa", country: "PL" },
   lines: [
-    { variantId: "00000000-0000-4000-8000-000000000001", productName: "Buty szosowe Tarvik Asfalt 200", variantLabel: "czarne, 42", quantity: 2, unitGross: 19999, lineGross: 39998 },
-    { variantId: "00000000-0000-4000-8000-000000000002", productName: "Czapka", variantLabel: "", quantity: 1, unitGross: 2000, lineGross: 2000 },
+    { variantId: "00000000-0000-4000-8000-000000000001", productName: "Buty szosowe Tarvik Asfalt 200", variantLabel: "czarne, 42", quantity: 2, unitGross: 19999, grossBeforeDiscount: 39998, discountGross: 0, lineGross: 39998 },
+    { variantId: "00000000-0000-4000-8000-000000000002", productName: "Czapka", variantLabel: "", quantity: 1, unitGross: 2000, grossBeforeDiscount: 2000, discountGross: 0, lineGross: 2000 },
   ],
+  discount: null,
   totals: { net: 34145, vat: 7853, gross: 41998, currency: "PLN" },
   placedAt: "2026-11-05T12:00:00+00:00",
   paymentDeadline: "2026-11-05T12:30:00+00:00",

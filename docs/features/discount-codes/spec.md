@@ -163,14 +163,14 @@ Decyzje DDD i architektoniczne:
 ### Komendy
 
 - `CreateDiscountCode`, `ReviseDiscountCode(id, expectedVersion, …)` (wersja z widoku, 409
-  `DiscountCodeModifiedConcurrently`). Zmiana pod blokadą wiersza kodu (`PESSIMISTIC_WRITE` przez ORM z odświeżeniem
-  rekordu), liczba aktywnych użyć czytana pod blokadą. Złożenie blokuje tylko kod z limitem, dlatego dodanie limitu
+  `DiscountCodeModifiedConcurrently`). Zmiana pod blokadą wiersza kodu (`SELECT … FOR NO KEY UPDATE`, potem odczyt
+  rekordu z odświeżeniem), liczba aktywnych użyć czytana pod blokadą. Złożenie blokuje tylko kod z limitem, dlatego dodanie limitu
   kodowi bez limitu jest dozwolone wyłącznie, gdy kod jest `planned` (taki kod nie ma użyć i złożenie go odrzuca), a
   wartość i minimum są stałe po starcie (reguły edycji, Q3). Bez tych reguł edycja w trakcie złożeń mogłaby przekroczyć
   dodany limit albo zapisać w zamówieniu wartość sprzed zmiany.
 - `RedeemDiscountCode(codeId, orderId, subtotalGross)` (`command.bus`, tylko zagnieżdżona w `PlaceOrder`): rekord kodu
   jest zawsze czytany od nowa z bazy (odświeżenie rekordu z identity map); kod z limitem pod blokadą
-  (`PESSIMISTIC_WRITE` przez ORM, jak koszyk), kod bez limitu bez blokady. Na tym odczycie `rejectionFor(subtotal,
+  (ta sama blokada `FOR NO KEY UPDATE` co zmiana kodu), kod bez limitu bez blokady. Na tym odczycie `rejectionFor(subtotal,
   activeUses, now)` jeszcze raz (`now` z zegara w chwili komendy); odrzucenie: `DiscountCodeRejected(rejection)`
   (Pricing Application); inaczej zapis `DiscountCodeUsage` przez rekord Doctrine.
 - `ReleaseDiscountCodeUsage(orderId)` (`command.bus`, zagnieżdżona w `ExpireUnpaidOrder`): aktywne użycie zamówienia
@@ -200,9 +200,10 @@ zatwierdzenia wyłączenia:
 | między wyceną a `RedeemDiscountCode` (krok 5a) | odczyt od nowa w `Redeem` widzi wyłączony kod; `DiscountCodeRejected` wycofuje całą transakcję (koszyk, numer bez luki poza sekwencją, brak rezerwacji, brak zamówienia, brak użycia); 409 `discount-code-invalid` |
 | po odczycie w `Redeem` (albo jeszcze niezatwierdzone w chwili odczytu) | zamówienie powstaje z kodem: złożenie jest uszeregowane przed wyłączeniem, bo kod był ważny w chwili ostatniego sprawdzenia w tej transakcji |
 
-- Zapis użycia nie czeka na edycję kodu: klucz obcy `code_id` bierze `FOR KEY SHARE` na wierszu kodu, a `UPDATE` kodu
-  bez zmiany klucza bierze `FOR NO KEY UPDATE`; te blokady się nie wykluczają, więc nie ma zakleszczenia ani
-  oczekiwania między złożeniem a edycją.
+- Zapis użycia nie czeka na edycję kodu ani edycja na zapis użycia: klucz obcy `code_id` bierze `FOR KEY SHARE` na
+  wierszu kodu, a edycja blokuje wiersz `FOR NO KEY UPDATE` (nie `FOR UPDATE`) i `UPDATE` kodu bez zmiany klucza
+  bierze tę samą blokadę; te blokady się nie wykluczają, więc nie ma zakleszczenia ani oczekiwania między złożeniem
+  a edycją.
 - Gwarancje spójności:
   - użycie i zamówienie powstają w jednej transakcji: nie ma użycia bez zamówienia ani zamówienia z rabatem bez
     użycia;

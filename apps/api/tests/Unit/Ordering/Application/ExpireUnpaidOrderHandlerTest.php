@@ -13,6 +13,7 @@ use App\Ordering\Domain\OrderModifiedConcurrently;
 use App\Ordering\Domain\OrderStatus;
 use App\Ordering\Domain\PaymentId;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
+use App\Tests\Unit\Ordering\InMemoryDiscountCodeRedemptions;
 use App\Tests\Unit\Ordering\InMemoryStockReservations;
 use App\Tests\Unit\Ordering\InMemoryUnpaidOrderExpiry;
 use App\Tests\Unit\Ordering\Journal;
@@ -34,6 +35,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
     private Journal $journal;
     private VersionedOrders $orders;
     private InMemoryStockReservations $stock;
+    private InMemoryDiscountCodeRedemptions $redemptions;
     private InMemoryUnpaidOrderExpiry $expiry;
     private JournalingEventPublisher $events;
     private FixedOrderingClock $clock;
@@ -45,6 +47,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
         $this->orders = new VersionedOrders();
         $this->orders->add(OrderExamples::placed());
         $this->stock = new InMemoryStockReservations($this->journal);
+        $this->redemptions = new InMemoryDiscountCodeRedemptions($this->journal);
         $this->expiry = new InMemoryUnpaidOrderExpiry($this->journal);
         $this->events = new JournalingEventPublisher($this->journal);
         $this->clock = new FixedOrderingClock(new \DateTimeImmutable(self::EXPIRY_DUE));
@@ -61,9 +64,10 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
         self::assertSame([OrderExamples::ORDER], $this->stock->released, 'the reservation has the order id as its key');
         self::assertEquals([new OrderCancelled(OrderExamples::ORDER, 'payment_timeout', $this->clock->now)], $this->events->published);
         self::assertSame([], $this->expiry->scheduled);
-        // The reservation is released before the order is written, so the flush of the nested command of Inventory
-        // has nothing of Ordering to write.
-        self::assertSame(['release', 'publish'], $this->journal->calls);
+        // The reservation and then the usage of a code are released before the order is written, so the flushes of the
+        // nested commands of Inventory and Pricing have nothing of Ordering to write.
+        self::assertSame(['release', 'release usage', 'publish'], $this->journal->calls);
+        self::assertSame([OrderExamples::ORDER], $this->redemptions->released, 'released also for an order without a code (then without effect)');
         self::assertSame([OrderExamples::ORDER], $this->orders->saved);
         self::assertSame([OrderExamples::ORDER], $this->orders->locked, 'the order is locked before the release, like a change of staff');
     }
@@ -77,6 +81,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
         self::assertSame(OrderStatus::New, $this->order()->status());
         self::assertEquals([[OrderExamples::ORDER, new \DateTimeImmutable('2026-11-05 12:35:01+00:00')]], $this->expiry->scheduled);
         self::assertSame([], $this->stock->released);
+        self::assertSame([], $this->redemptions->released);
         self::assertSame([], $this->events->published);
         self::assertSame([], $this->orders->saved);
     }
@@ -90,6 +95,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
 
         self::assertSame(OrderStatus::Paid, $this->order()->status());
         self::assertSame([], $this->stock->released);
+        self::assertSame([], $this->redemptions->released, 'a paid order keeps the usage of its code');
         self::assertSame([], $this->expiry->scheduled);
         self::assertSame([], $this->events->published);
         self::assertCount($saves, $this->orders->saved, 'nothing saved');
@@ -103,6 +109,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
         $this->handle();
 
         self::assertSame([OrderExamples::ORDER], $this->stock->released);
+        self::assertSame([OrderExamples::ORDER], $this->redemptions->released, 'the usage is released once');
         self::assertCount(1, $this->events->published);
         self::assertSame([OrderExamples::ORDER], $this->orders->saved);
         self::assertEquals(new \DateTimeImmutable(self::EXPIRY_DUE), $this->order()->cancelledAt());
@@ -157,6 +164,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
         }
         self::assertSame([], $this->orders->saved);
         self::assertSame([], $this->events->published);
+        self::assertSame([], $this->redemptions->released, 'the usage is released only after the reservation');
         self::assertSame(OrderStatus::New, $this->order()->status());
     }
 
@@ -167,7 +175,7 @@ final class ExpireUnpaidOrderHandlerTest extends TestCase
 
     private function handler(): ExpireUnpaidOrderHandler
     {
-        return new ExpireUnpaidOrderHandler($this->orders, $this->stock, $this->expiry, $this->events, $this->clock, $this->logger);
+        return new ExpireUnpaidOrderHandler($this->orders, $this->stock, $this->redemptions, $this->expiry, $this->events, $this->clock, $this->logger);
     }
 
     private function order(): Order

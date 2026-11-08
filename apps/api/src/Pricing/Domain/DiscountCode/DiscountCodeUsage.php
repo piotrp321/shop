@@ -30,6 +30,14 @@ final readonly class DiscountCodeUsage
         return new self($id, $codeId, $orderId, $usedAt, $releasedAt);
     }
 
+    /**
+     * The usage released at $now (the order expired unpaid, decision D4); one released already keeps its moment.
+     */
+    public function release(\DateTimeImmutable $now): self
+    {
+        return $this->isActive() ? new self($this->id, $this->codeId, $this->orderId, $this->usedAt, $now) : $this;
+    }
+
     public function isActive(): bool
     {
         return null === $this->releasedAt;

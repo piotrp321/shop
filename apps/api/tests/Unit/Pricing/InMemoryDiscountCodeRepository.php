@@ -27,9 +27,9 @@ final class InMemoryDiscountCodeRepository implements DiscountCodeRepository
 
     public function find(DiscountCodeId $id): ?DiscountCode
     {
-        $stored = $this->codes[$id->toString()] ?? null;
+        $this->journal->add('find');
 
-        return null === $stored ? null : self::copy($stored);
+        return $this->stored($id);
     }
 
     public function findByCode(DiscountCodeValue $code): ?DiscountCode
@@ -47,7 +47,7 @@ final class InMemoryDiscountCodeRepository implements DiscountCodeRepository
     {
         $this->journal->add('lock');
 
-        return $this->find($id);
+        return $this->stored($id);
     }
 
     public function save(DiscountCode $code): void
@@ -72,6 +72,13 @@ final class InMemoryDiscountCodeRepository implements DiscountCodeRepository
     public function store(DiscountCode $code): void
     {
         $this->codes[$code->id()->toString()] = self::copy($code);
+    }
+
+    private function stored(DiscountCodeId $id): ?DiscountCode
+    {
+        $stored = $this->codes[$id->toString()] ?? null;
+
+        return null === $stored ? null : self::copy($stored);
     }
 
     private static function copy(DiscountCode $code): DiscountCode

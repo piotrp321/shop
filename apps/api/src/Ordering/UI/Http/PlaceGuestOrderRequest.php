@@ -6,6 +6,7 @@ namespace App\Ordering\UI\Http;
 
 use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\ControlCharacters;
+use App\Ordering\Domain\DiscountCodeText;
 use App\Ordering\Domain\EmailAddress;
 use App\Ordering\Domain\ShippingAddress;
 use App\Ordering\UI\Http\Validation\MailerAcceptsEmail;
@@ -15,12 +16,12 @@ use Symfony\Component\Validator\Constraints as Assert;
 /**
  * Body of POST /api/v1/orders: the guest cart, the email, then the same fields with the same rules as
  * PlaceCustomerOrderRequest. Unknown keys are ignored: lines, quantities and prices never come from the body. Every
- * key is required: the serializer gives `null` for a missing key (the properties are `mixed`). The values are taken
+ * key but `discountCode` is required: the serializer gives `null` for a missing key (the properties are `mixed`). The values are taken
  * as JSON gives them and validated, never cast. The constraints of a field run in order up to the first violation,
  * so a field gives at most one, in Polish; the domain checks the same rules again. Names, street, city and email
  * refuse control characters, in the value as it came (before any trim).
  */
-#[OA\Schema(description: 'The guest cart, the contact and the address of an order, and the total the guest saw.', required: ['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross'])]
+#[OA\Schema(description: 'The guest cart, the contact and the address of an order, the total the guest saw and the discount code applied.', required: ['cartId', 'email', 'fullName', 'phone', 'street', 'postalCode', 'city', 'expectedTotalGross'])]
 final readonly class PlaceGuestOrderRequest
 {
     /**
@@ -107,6 +108,12 @@ final readonly class PlaceGuestOrderRequest
             new Assert\PositiveOrZero(message: 'Kwota zamówienia nie może być ujemna.'),
         ])]
         public mixed $expectedTotalGross,
+        #[OA\Property(type: 'string', nullable: true, maxLength: DiscountCodeText::MAX_LENGTH, description: 'The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.', example: 'WITAJ10')]
+        #[Assert\Sequentially([
+            new Assert\Type('string', message: 'Kod rabatowy musi być tekstem.'),
+            new Assert\Length(max: DiscountCodeText::MAX_LENGTH, maxMessage: 'Kod rabatowy może mieć najwyżej 64 znaki.'),
+        ])]
+        public mixed $discountCode = null,
     ) {
     }
 }

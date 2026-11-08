@@ -9,7 +9,8 @@ use App\Ordering\Application\View\OrderView;
 
 /**
  * The subject and the plain text of the order confirmation email, in Polish (MailFormat). The moment of placement
- * and the payment deadline are shown in Warsaw time.
+ * and the payment deadline are shown in Warsaw time. The items have their values before the discount of the code; an
+ * order with a code has the line „Kod <KOD>: −X zł” after them, and the total is after the discount (decision D5).
  */
 final readonly class OrderConfirmationText
 {
@@ -31,6 +32,7 @@ final readonly class OrderConfirmationText
             '',
             'Zamówione pozycje:',
             ...array_map(self::line(...), $order->lines),
+            ...(null === $order->discount ? [] : [\sprintf('Kod %s: −%s', $order->discount->code, MailFormat::amount($order->discount->amountGross))]),
             '',
             'Suma brutto: '.MailFormat::amount($order->totals->gross),
             '',
@@ -50,6 +52,6 @@ final readonly class OrderConfirmationText
     {
         $name = '' === $line->variantLabel ? $line->productName : $line->productName.', '.$line->variantLabel;
 
-        return \sprintf('- %s × %d: %s', $name, $line->quantity, MailFormat::amount($line->lineGross));
+        return \sprintf('- %s × %d: %s', $name, $line->quantity, MailFormat::amount($line->grossBeforeDiscount));
     }
 }

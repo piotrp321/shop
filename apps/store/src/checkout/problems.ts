@@ -4,7 +4,14 @@ import type { components } from "@/api/schema";
 export type OrderConflictType = components["schemas"]["OrderConflictProblem"]["type"];
 
 /** What the checkout does about a 409; `unknown` is any other `type` (or none), handled as a failure to retry. */
-export type OrderConflictReason = "cart_empty" | "cart_not_orderable" | "insufficient_stock" | "total_changed" | "key_reused" | "unknown";
+export type OrderConflictReason =
+  | "cart_empty"
+  | "cart_not_orderable"
+  | "insufficient_stock"
+  | "total_changed"
+  | "key_reused"
+  | "discount_code_rejected"
+  | "unknown";
 
 /** The own 409 of the BFF: no cart to order. */
 export const CART_EMPTY_TYPE: OrderConflictType = "tag:piotrp321.github.io,2026:shop/problems/cart-empty";
@@ -16,6 +23,9 @@ const REASONS = {
   "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order": "insufficient_stock",
   "tag:piotrp321.github.io,2026:shop/problems/order-total-changed": "total_changed",
   "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused": "key_reused",
+  "tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid": "discount_code_rejected",
+  "tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up": "discount_code_rejected",
+  "tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum": "discount_code_rejected",
 } as const satisfies Record<OrderConflictType, Exclude<OrderConflictReason, "unknown">>;
 
 /** The reason for the `type` of a 409; only the `type` decides, never the `detail`. */

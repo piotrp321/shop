@@ -625,6 +625,8 @@ export interface components {
             phone: string;
             shippingAddress: components["schemas"]["BackofficeOrderAddress"];
             lines: components["schemas"]["BackofficeOrderLine"][];
+            /** @description The discount code the order was placed with; null without one. */
+            discount: components["schemas"]["BackofficeOrderDiscount"] | null;
             totals: components["schemas"]["BackofficeOrderTotals"];
             /**
              * Format: date-time
@@ -694,12 +696,59 @@ export interface components {
             variantLabel: string;
             /** @example 2 */
             quantity: number;
-            /** @example 19999 */
+            /**
+             * @description Gross price of one unit in grosze (the effective price, with a promotion if any).
+             * @example 19999
+             */
             unitGross: number;
-            /** @example 39998 */
+            /**
+             * @description Unit gross price × quantity, in grosze, before the discount of the code.
+             * @example 39998
+             */
+            grossBeforeDiscount: number;
+            /**
+             * @description The share of the line in the discount of the code, in grosze; 0 without a code.
+             * @example 4000
+             */
+            discountGross: number;
+            /**
+             * @description The value of the line after the discount (`grossBeforeDiscount` − `discountGross`), in grosze.
+             * @example 35998
+             */
             lineGross: number;
+            /** @description The promotion that gave the unit price when the order was placed; null without one. */
+            promotion: components["schemas"]["BackofficeOrderLinePromotion"] | null;
         };
-        /** @description Sums of the lines; net + vat = gross. */
+        /** @description The copy of a promotion in a line of an order. */
+        BackofficeOrderLinePromotion: {
+            /** @example Jesienna wyprzedaż */
+            name: string;
+            /** @example 20 */
+            percentOff: number;
+            /**
+             * @description The catalog gross price of one unit the percent was taken off, in grosze.
+             * @example 24999
+             */
+            regularUnitGross: number;
+        };
+        /** @description The copy of the discount code of an order, as it was when the order was placed. */
+        BackofficeOrderDiscount: {
+            /** @example WITAJ10 */
+            code: string;
+            /** @enum {string} */
+            kind: "percent" | "amount";
+            /**
+             * @description The percent (1–90) of a `percent` code, the amount in grosze of an `amount` code.
+             * @example 10
+             */
+            value: number;
+            /**
+             * @description The discount of the order in grosze, the sum of `discountGross` of its lines.
+             * @example 4000
+             */
+            amountGross: number;
+        };
+        /** @description Sums of the lines after the discount of the code; net + vat = gross. */
         BackofficeOrderTotals: {
             /** @example 32519 */
             net: number;

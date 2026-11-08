@@ -11,6 +11,7 @@ use App\Ordering\Domain\OrderTotals;
 use App\Ordering\Domain\PriceCopy;
 use App\Ordering\Domain\ProductId;
 use App\Ordering\Domain\VariantId;
+use App\Tests\Unit\Ordering\OrderExamples;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -53,12 +54,12 @@ final class OrderLineTest extends TestCase
     public function testProductNameIsRequiredAndNamesAreAtMost255Characters(): void
     {
         $price = PriceCopy::of(100, 23, 123, 2300, 'standard', Currency::PLN);
-        $defaultVariant = OrderLine::of(self::variant(1), ProductId::fromString(self::PRODUCT), str_repeat('n', 255), '', 1, $price);
+        $defaultVariant = OrderLine::of(self::variant(1), ProductId::fromString(self::PRODUCT), str_repeat('n', 255), '', 1, $price, OrderExamples::undiscounted($price, 1), null);
         self::assertSame('', $defaultVariant->variantLabel());
 
         foreach ([['', ''], [str_repeat('n', 256), ''], ['Buty', str_repeat('l', 256)]] as [$name, $label]) {
             try {
-                OrderLine::of(self::variant(1), ProductId::fromString(self::PRODUCT), $name, $label, 1, $price);
+                OrderLine::of(self::variant(1), ProductId::fromString(self::PRODUCT), $name, $label, 1, $price, OrderExamples::undiscounted($price, 1), null);
                 self::fail('Expected InvalidOrder.');
             } catch (InvalidOrder) {
                 $this->addToAssertionCount(1);
@@ -105,7 +106,7 @@ final class OrderLineTest extends TestCase
 
     private static function line(int $variant, int $quantity, PriceCopy $price): OrderLine
     {
-        return OrderLine::of(self::variant($variant), ProductId::fromString(self::PRODUCT), 'Buty Asfalt', 'czarne, 42', $quantity, $price);
+        return OrderLine::of(self::variant($variant), ProductId::fromString(self::PRODUCT), 'Buty Asfalt', 'czarne, 42', $quantity, $price, OrderExamples::undiscounted($price, max(0, $quantity)), null);
     }
 
     private static function variant(int $number): VariantId

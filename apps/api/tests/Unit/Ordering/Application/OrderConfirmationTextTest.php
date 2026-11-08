@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Ordering\Application;
 
 use App\Ordering\Application\OrderConfirmationText;
+use App\Ordering\Application\View\OrderDiscountView;
 use App\Ordering\Application\View\OrderLineView;
 use App\Ordering\Application\View\OrderTotalsView;
 use App\Ordering\Application\View\OrderView;
@@ -47,6 +48,33 @@ final class OrderConfirmationTextTest extends TestCase
 
             TEXT;
         self::assertSame($expected, (new OrderConfirmationText())->body($view));
+    }
+
+    public function testWithACodeTheItemsAreBeforeTheDiscountThenTheCodeLineAndTheTotalAfterIt(): void
+    {
+        $view = self::view([
+            self::line('Buty Asfalt', '42', 2, 123_456, 12_345),
+            self::line('Czapka', '', 1, 2_000, 200),
+        ], 125_456 - 12_545, new OrderDiscountView('WITAJ10', 'percent', 10, 12_545));
+
+        $expected = <<<'TEXT'
+            Zamówione pozycje:
+            - Buty Asfalt, 42 × 2: 1 234,56 zł
+            - Czapka × 1: 20,00 zł
+            Kod WITAJ10: −125,45 zł
+
+            Suma brutto: 1 129,11 zł
+
+            TEXT;
+        self::assertStringContainsString($expected, (new OrderConfirmationText())->body($view));
+    }
+
+    public function testWithoutACodeThereIsNoCodeLine(): void
+    {
+        $body = (new OrderConfirmationText())->body(self::view([self::line('Czapka', '', 1, 2_000)], 2_000));
+
+        self::assertStringNotContainsString('Kod ', $body);
+        self::assertStringContainsString("\n- Czapka × 1: 20,00 zł\n\nSuma brutto: 20,00 zł\n", $body);
     }
 
     public function testTheDefaultVariantHasNeitherLabelNorSeparator(): void
@@ -136,7 +164,7 @@ final class OrderConfirmationTextTest extends TestCase
     /**
      * @param list<OrderLineView> $lines
      */
-    private static function view(array $lines = [], int $gross = 0, ?\DateTimeImmutable $placedAt = null, ?\DateTimeImmutable $deadline = null): OrderView
+    private static function view(array $lines = [], int $gross = 0, ?OrderDiscountView $discount = null, ?\DateTimeImmutable $placedAt = null, ?\DateTimeImmutable $deadline = null): OrderView
     {
         return new OrderView(
             '0192f0c4-7c1a-7c4e-9a6e-0000000000aa',
@@ -147,6 +175,7 @@ final class OrderConfirmationTextTest extends TestCase
             '+48600100200',
             new ShippingAddressView('Długa 1', '00-950', 'Warszawa', 'PL'),
             [] === $lines ? [self::line('Czapka', '', 1, 100)] : $lines,
+            $discount,
             new OrderTotalsView(0, 0, $gross, 'PLN'),
             $placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'),
             $deadline ?? ($placedAt ?? new \DateTimeImmutable('2026-11-05 12:00:00+00:00'))->modify('+30 minutes'),
@@ -154,8 +183,8 @@ final class OrderConfirmationTextTest extends TestCase
         );
     }
 
-    private static function line(string $name, string $label, int $quantity, int $lineGross): OrderLineView
+    private static function line(string $name, string $label, int $quantity, int $grossBeforeDiscount, int $discount = 0): OrderLineView
     {
-        return new OrderLineView('0192f0c4-7c1a-7c4e-9a6e-000000000001', $name, $label, $quantity, intdiv($lineGross, $quantity), $lineGross);
+        return new OrderLineView('0192f0c4-7c1a-7c4e-9a6e-000000000001', $name, $label, $quantity, intdiv($grossBeforeDiscount, $quantity), $grossBeforeDiscount, $discount, $grossBeforeDiscount - $discount, null);
     }
 }

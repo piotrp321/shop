@@ -9,6 +9,7 @@ use App\Ordering\Domain\Contact;
 use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\EmailAddress;
 use App\Ordering\Domain\IdempotencyKey;
+use App\Ordering\Domain\LineAmounts;
 use App\Ordering\Domain\Order;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderLine;
@@ -51,9 +52,10 @@ final class OrderExamples
             $contact,
             $address,
             [
-                OrderLine::of(VariantId::fromString('0192f0c4-7c1a-7c4e-9a6e-000000000001'), $product, 'Buty Asfalt', '42', 2, $price(12_300)),
-                OrderLine::of(VariantId::fromString('0192f0c4-7c1a-7c4e-9a6e-000000000002'), $product, 'Czapka', '', 1, $price(2_000)),
+                OrderLine::of(VariantId::fromString('0192f0c4-7c1a-7c4e-9a6e-000000000001'), $product, 'Buty Asfalt', '42', 2, $price(12_300), self::undiscounted($price(12_300), 2), null),
+                OrderLine::of(VariantId::fromString('0192f0c4-7c1a-7c4e-9a6e-000000000002'), $product, 'Czapka', '', 1, $price(2_000), self::undiscounted($price(2_000), 1), null),
             ],
+            null,
             IdempotencyKey::fromString('key-1'),
             RequestFingerprint::of('guest:cart', $contact, $address, self::TOTAL),
             new \DateTimeImmutable(self::PLACED_AT),
@@ -61,6 +63,14 @@ final class OrderExamples
         $order->releaseEvents();
 
         return $order;
+    }
+
+    /**
+     * The values of a line without a discount: the unit price times the quantity (net + vat = gross holds for them).
+     */
+    public static function undiscounted(PriceCopy $price, int $quantity): LineAmounts
+    {
+        return LineAmounts::of(0, $price->net()->amount() * $quantity, $price->vat()->amount() * $quantity, $price->gross()->amount() * $quantity, $price->currency());
     }
 
     /**
@@ -76,6 +86,7 @@ final class OrderExamples
             contact: $order->contact(),
             shippingAddress: $order->shippingAddress(),
             lines: $order->lines(),
+            discount: $order->discount(),
             status: $order->status(),
             idempotencyKey: $order->idempotencyKey(),
             requestFingerprint: $order->requestFingerprint(),

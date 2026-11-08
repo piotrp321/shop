@@ -7,8 +7,9 @@ namespace App\Ordering\Domain;
 /**
  * What tells a repeated placement from another one with the same Idempotency-Key: SHA-256 of the cart reference
  * (`guest:<cartId>` or `customer:<sub>`), the contact, the address and the expected gross total, as normalised by
- * their value objects (trimmed, the phone as +48 and 9 digits). The cart is part of it, so the same key and data from
- * another cart is another request.
+ * their value objects (trimmed, the phone as +48 and 9 digits), and the discount code (normalised) when there is one.
+ * The cart is part of it, so the same key and data from another cart is another request. Without a code the fields are
+ * exactly those of the time before discount codes, so a retry with a key of that time is still a replay.
  */
 final readonly class RequestFingerprint
 {
@@ -18,9 +19,12 @@ final readonly class RequestFingerprint
     {
     }
 
-    public static function of(string $cartReference, Contact $contact, ShippingAddress $address, int $expectedTotalGross): self
+    /**
+     * @param string|null $discountCode trimmed, in upper case; null for none
+     */
+    public static function of(string $cartReference, Contact $contact, ShippingAddress $address, int $expectedTotalGross, ?string $discountCode = null): self
     {
-        $normalised = json_encode([
+        $fields = [
             $cartReference,
             $contact->email()->toString(),
             $contact->fullName(),
@@ -30,7 +34,11 @@ final readonly class RequestFingerprint
             $address->city(),
             $address->country(),
             $expectedTotalGross,
-        ], \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
+        ];
+        if (null !== $discountCode) {
+            $fields[] = $discountCode;
+        }
+        $normalised = json_encode($fields, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE);
 
         return new self(hash('sha256', $normalised));
     }

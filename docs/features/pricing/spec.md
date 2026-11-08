@@ -222,8 +222,9 @@ kodów i jedynym miejscem tekstów ich odrzucenia.
   nie zapisuje jeszcze żadna komenda.
 - Komendy (`command.bus`, jedna transakcja): `CreateDiscountCode(id, code, kind, value, minimumOrderGross, startsAt,
   endsAt, usageLimit, enabled, actorId, actorName)` (aktor `null` to system) i `ReviseDiscountCode(id, expectedVersion,
-  …)`. `ReviseDiscountCode` zaczyna od blokady wiersza kodu (`DiscountCodeRepository::lock`, `PESSIMISTIC_WRITE` przez
-  ORM; rekord już w identity map jest odświeżany pod blokadą), potem czyta zegar i liczbę aktywnych użyć, buduje
+  …)`. `ReviseDiscountCode` zaczyna od blokady wiersza kodu (`DiscountCodeRepository::lock`: `SELECT … FOR NO KEY
+  UPDATE`, które nie czeka na `FOR KEY SHARE` klucza obcego użyć zapisywanych przez złożenia, potem odczyt rekordu
+  z odświeżeniem), potem czyta zegar i liczbę aktywnych użyć, buduje
   wartości (422), porównuje wersję (`DiscountCodeModifiedConcurrently`, 409) i woła `revise`. Nieznany kod i id spoza
   UUID: `DiscountCodeNotFound` (404).
 - `DiscountCodeRepository::findByCode(DiscountCodeValue)`: kod po tekście znormalizowanym (unikalny indeks), odczyt
