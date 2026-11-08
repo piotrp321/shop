@@ -1,0 +1,30 @@
+{{- /* Traefik middlewares referenced by the annotations of the ingresses (<namespace>-<name>@kubernetescrd). */ -}}
+{{- if .Values.ipAllowList.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: ipallowlist
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "ipallowlist") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+spec:
+  ipAllowList:
+    sourceRange:
+      {{- toYaml (required "ipAllowList.sourceRange is required when ipAllowList.enabled" .Values.ipAllowList.sourceRange) | nindent 6 }}
+{{- end }}
+{{- if .Values.noindex }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: noindex
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "noindex") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+spec:
+  headers:
+    customResponseHeaders:
+      X-Robots-Tag: "noindex, nofollow"
+{{- end }}

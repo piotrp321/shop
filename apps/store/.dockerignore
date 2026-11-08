@@ -1,0 +1,12 @@
+node_modules
+.next
+.env*
+.git
+*.pem
+*.tsbuildinfo
+coverage
+tests
+Dockerfile
+.dockerignore
+Makefile
+CLAUDE.md

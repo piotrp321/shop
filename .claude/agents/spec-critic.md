@@ -19,7 +19,11 @@ Zasady:
   - sprzeczności: w szkicu, ze specyfikacjami istniejących funkcji (`docs/features/`), z kodem, z `CLAUDE.md`
     i `docs/vision.md`;
   - przypadków brzegowych: współbieżność, nieaktualny widok, limity, paginacja, propagacja błędów do UI;
-  - nieweryfikowalnych kryteriów akceptacji i wymagań z issue bez pokrycia w szkicu.
+  - nieweryfikowalnych kryteriów akceptacji i wymagań z issue bez pokrycia w szkicu;
+  - niekompletnej sekcji „Wymagane przed startem”: sekret, konto, usługa zewnętrzna, uprawnienie albo artefakt
+    (obraz, rejestr, bucket, domena), którego wymagają zadania, a którego dziś nikt nie dostarcza (sprawdź w kodzie,
+    `infra/` i CI), bez pozycji albo źródła. Brak sekcji albo pozycja, bez której zadanie zatrzyma się
+    w trakcie, to `Important`; otwarta decyzja infrastrukturalna to znalezisko `architektoniczne`.
 - Nie rozstrzygaj decyzji produktowych (zakres, reguły, limity, zachowanie klienta): nazwij je jako znalezisko
   `produktowe` z rekomendacją wariantu.
 - Nie rozstrzygaj istotnych decyzji DDD i architektonicznych (agregaty, value objecty, granice modułów, persystencja,

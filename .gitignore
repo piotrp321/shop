@@ -30,5 +30,7 @@ docker-compose.override.yml
 .env.*.local
 .env.local.php
 *.pem
+# The certificate of the Sealed Secrets controller is public and versioned (infra/k8s/README.md).
+!infra/k8s/environments/prod/sealed-secrets.pem
 *.key
 ###< Secrets / local env ###

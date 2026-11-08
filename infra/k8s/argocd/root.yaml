@@ -1,0 +1,30 @@
+# The root of the app-of-apps (D4): the only Application that is applied by hand (bootstrap); it creates the others from
+# argocd/apps/. Argo CD tracks the branch deploy-images, a snapshot of the approved commit of main plus the images values
+# file, so the whole deployment (this file, the applications, the chart, the values, the sealed secrets, the digests of the
+# images) has one revision.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/piotrp321/shop.git
+    targetRevision: deploy-images
+    path: infra/k8s/argocd/apps
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 10m
