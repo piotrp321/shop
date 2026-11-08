@@ -93,7 +93,7 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
   `null` dla źródeł systemowych).
 
 Historia jest wejściem ceny Omnibus (sekcja „Cena skuteczna i cena Omnibus”); jej odczyt idzie po indeksie
-`(variant_id, changed_at, id)`.
+`(variant_id, changed_at DESC, id)`.
 
 ## Promocje
 
@@ -212,7 +212,7 @@ Pricing:
     `null` poza promocją; `lowestPriorGross` (`LowestPriorPrice`) jest liczone tylko z flagą, bez niej i dla wariantu
     bez ceny przed startem jest `null`. Wariant bez ceny lub z nieaktualną stawką nie ma ceny i nie może zostać kupiony.
   - Autorytatywny odczyt dla koszyka i zamówienia: wywoływany w procesie przez port Cart/Ordering, z bazy, bez cache
-    HTTP. Ordering kopiuje cenę skuteczną do pozycji zamówienia, a `version` pozwala wykryć zmianę ceny.
+    HTTP. Ordering kopiuje cenę skuteczną do pozycji zamówienia, a `version` (wersja ceny katalogowej) wykrywa zmianę ceny katalogowej, nie ceny skutecznej: start lub koniec promocji zmienia netto, VAT i brutto przy tej samej wersji.
 - `ListBackofficePrices(q, categoryId, after, perPage)`: strona produktów z portu `ProductDirectory`
   (Catalog `SearchBackofficeProducts`, kursor po produktach), warianty strony z etykietami jednym wywołaniem
   (Catalog `ListProductVariants` z `includeDrafts: true`) i ich ceny jednym zapytaniem. Wynik: produkty strony, także

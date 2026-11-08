@@ -19,7 +19,7 @@ use Doctrine\DBAL\Connection;
 /**
  * The input of the Omnibus price straight from the tables, one statement per method for all the variants: the
  * windows are an unnest() of three parallel arrays (variant, start of the window, start of the promotion), joined to
- * the history along its index (variant_id, changed_at, id) and to the promotions of each variant along the index
+ * the history along its index (variant_id, changed_at DESC, id) and to the promotions of each variant along the index
  * (variant_id) of pricing_promotion_variant. The start of each window comes from the domain
  * ({@see LowestPriorPrice::windowStart()}), not from interval arithmetic in the session's time zone.
  */
