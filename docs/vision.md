@@ -113,6 +113,11 @@ Trzy warstwy cache, każda z jasną rolą:
 - Varnish nigdy nie cache'uje: koszyka, checkoutu, konta klienta, panelu admina ani żadnego żądania
   z nagłówkiem `Authorization` lub ciasteczkiem sesji.
 - Odpowiedzi publiczne mają jawne nagłówki `Cache-Control` ustawiane w API, a nie domyślne zachowanie Varnisha.
+- Wyjątek: mapa strony produktów. Porcje (`/api/v1/sitemap/products?chunk=…`, do 10 000 produktów, rząd MB) nie mają
+  tagów obiektów ani nie przechodzą przez cache Varnisha: 10 000 tagów nie mieści się w nagłówku, a odpowiedzi
+  przy dowolnych kluczach wypychałyby z Varnisha katalog. Świeżość daje krótki `max-age` (5 min), a koszt odczytu jest
+  ograniczony (limit wierszy zakresu). Lista porcji (`/api/v1/sitemap/product-chunks`) ma tag `catalog` i jest
+  cache'owana jak reszta katalogu; granice porcji liczy API najwyżej raz na godzinę na instancję (pula cache API).
 
 ## Kontrakt API między aplikacjami
 
