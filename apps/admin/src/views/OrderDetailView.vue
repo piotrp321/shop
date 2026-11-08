@@ -327,6 +327,14 @@ function applyResult(result: OrderChange): void {
                 v-if="data.variantLabel"
                 class="variant"
               > ({{ data.variantLabel }})</span>
+              <div
+                v-if="data.promotion"
+                data-testid="line-promotion"
+                class="promotion-copy"
+              >
+                Promocja „{{ data.promotion.name }}”: −{{ data.promotion.percentOff }}% od ceny katalogowej
+                {{ formatMoney(data.promotion.regularUnitGross, order.totals.currency) }}
+              </div>
             </template>
           </Column>
           <Column
@@ -346,7 +354,25 @@ function applyResult(result: OrderChange): void {
             </template>
           </Column>
           <Column
-            header="Wartość brutto"
+            v-if="order.discount"
+            header="Wartość przed rabatem"
+            class="amount"
+          >
+            <template #body="{ data }">
+              <span data-testid="line-gross-before-discount">{{ formatMoney(data.grossBeforeDiscount, order.totals.currency) }}</span>
+            </template>
+          </Column>
+          <Column
+            v-if="order.discount"
+            header="Rabat"
+            class="amount"
+          >
+            <template #body="{ data }">
+              <span data-testid="line-discount">{{ data.discountGross === 0 ? "—" : `−${formatMoney(data.discountGross, order.totals.currency)}` }}</span>
+            </template>
+          </Column>
+          <Column
+            :header="order.discount ? 'Wartość po rabacie' : 'Wartość brutto'"
             class="amount"
           >
             <template #body="{ data }">
@@ -354,6 +380,13 @@ function applyResult(result: OrderChange): void {
             </template>
           </Column>
         </DataTable>
+        <p
+          v-if="order.discount"
+          data-testid="discount-line"
+          class="discount-line"
+        >
+          Kod {{ order.discount.code }}: −{{ formatMoney(order.discount.amountGross, order.totals.currency) }}
+        </p>
         <dl
           class="totals"
           data-testid="totals"
@@ -362,7 +395,7 @@ function applyResult(result: OrderChange): void {
           <dd>{{ formatMoney(order.totals.net, order.totals.currency) }}</dd>
           <dt>VAT</dt>
           <dd>{{ formatMoney(order.totals.vat, order.totals.currency) }}</dd>
-          <dt>Brutto</dt>
+          <dt>{{ order.discount ? "Brutto po rabacie" : "Brutto" }}</dt>
           <dd data-testid="total-gross">
             {{ formatMoney(order.totals.gross, order.totals.currency) }}
           </dd>
@@ -531,6 +564,16 @@ dd {
 
 .variant {
   color: var(--p-text-muted-color);
+}
+
+.promotion-copy {
+  color: var(--p-text-muted-color);
+  font-size: 0.875rem;
+}
+
+.discount-line {
+  align-self: flex-end;
+  margin: 0;
 }
 
 .overdue {

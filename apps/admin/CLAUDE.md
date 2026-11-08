@@ -21,9 +21,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (tokeny w pamięci).
 - `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`).
 - `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania.
-- `src/layout/` – menu boczne (pozycja „Promocje” widoczna dla każdego pracownika, pozycja „Zamówienia” tylko dla ról `admin`, `support` i `warehouse` z `/me`, do czasu
+- `src/layout/` – menu boczne (pozycje „Promocje” i „Kody rabatowe” widoczne dla każdego pracownika, pozycja „Zamówienia” tylko dla ról `admin`, `support` i `warehouse` z `/me`, do czasu
   wczytania `/me` ukryta; ukrywa tylko link, dostęp egzekwuje API), topbar i `AppLayout` (uruchamia `useIdleLogout`, 15 min).
-- `src/views/` – widoki przypisane do tras (m.in. `ProductsView`, `ProductFormView`, `PromotionsView`, `PromotionFormView`).
+- `src/views/` – widoki przypisane do tras (m.in. `ProductsView`, `ProductFormView`, `PromotionsView`, `PromotionFormView`, `DiscountCodesView`, `DiscountCodeFormView`).
 - `src/dashboard/` – komponenty i ładowanie danych dashboardu (`useDashboard`).
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
   list cen i stanów).
@@ -129,6 +129,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   z `src/prices/format.ts`. Widok szczegółów pokazuje kontakt, adres, pozycje z sumami od API, daty statusów, termin
   płatności tylko dla `new`, historię statusów (data, zmiana, aktor, notatka) oraz sekcję „Zwrot pieniędzy” (kwota,
   termin z „Po terminie”, wykonanie: data, pracownik, notatka, i `paymentId` płatności do zwrotu).
+  Rabat z kodu: gdy zamówienie ma `discount`, tabela pozycji ma kolumny „Wartość przed rabatem” (`grossBeforeDiscount`),
+  „Rabat” (`discountGross` linii, „—” przy zerze) i „Wartość po rabacie” (`lineGross`), pod nią stoi linia „Kod <KOD>:
+  −X zł” (`discount.amountGross`), a suma brutto nazywa się „Brutto po rabacie”; sumy netto, VAT i brutto są po rabacie,
+  z API. Zamówienie bez kodu ma jedną kolumnę „Wartość brutto” jak dotąd. Kopia promocji pozycji (`promotion`: nazwa,
+  procent, cena katalogowa jednostki) jest pod nazwą produktu, z kodem i bez.
 - `src/promotions/` – promocje (menu „Promocje”, trasy `/promotions`, `/promotions/new`, `/promotions/:id`: jedna ścieżka
   `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`): filtr
   statusu (Wszystkie, Zaplanowane, Aktywne, Zakończone) i stronicowanie po kursorach ze stosem kursorów w panelu, jak
@@ -156,6 +161,34 @@ Klienta API generuje `make api-client` z katalogu głównego.
   2 znaków, stronicowanie), „Dodaj wariant” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane; „Dodaj cały produkt” jest wyłączony, gdy nie ma czego dodać); lista
   wybranych z „Usuń”, wariant usunięty z katalogu ma znacznik „Wariant usunięty”. Odpowiedź żądania, które skończyło
   się po opuszczeniu formularza, jest ignorowana.
+- `src/discount-codes/` – kody rabatowe (menu „Kody rabatowe”, trasy `/discount-codes`, `/discount-codes/new`,
+  `/discount-codes/:id`: jedna ścieżka `discount-codes`, więc pozycja menu zostaje aktywna na formularzu).
+  `useDiscountCodeList` (widok `DiscountCodesView`): filtr statusu (Wszystkie, Zaplanowane, Aktywne, Wygasłe,
+  Wyłączone), wyszukiwanie po początku kodu (od 1 znaku, po przycięciu, z opóźnieniem; tekst dłuższy niż 32 znaki nie
+  jest wysyłany i widok to mówi; wielkość liter normalizuje API) i stronicowanie po kursorach ze stosem kursorów
+  w panelu, jak w `usePromotionList` (zmiana filtra albo wyszukiwania porzuca wiersze i kursory; błąd następnej strony
+  zostawia wyświetloną; 403 bez ponowienia). Kolumny: kod, rabat (procent albo kwota), minimum, okres (czas polski,
+  „bez końca”), użycia (`activeUses` / limit albo „(bez limitu)”) i status; status, `activeUses` i kwoty pochodzą
+  z API, panel niczego nie liczy (`format.ts`). Przycisk „Dodaj kod” i cała edycja: tylko `admin` i `marketing`
+  (`permissions.ts`, role z `/me`; API sprawdza niezależnie); pozostali pracownicy widzą listę i formularz tylko do
+  odczytu, a `/discount-codes/new` bez tej roli przekierowuje na listę (`beforeEnter`, jak `/products/new`).
+  `useDiscountCodeForm` (widok `DiscountCodeFormView`): ładuje kod (`GET /discount-codes/{id}`) albo zaczyna pusty
+  formularz. Po każdym sukcesie formularz jest budowany z odpowiedzi API. Pola według reguł edycji: tekst kodu
+  zmienia się tylko przy tworzeniu; kod `planned` zmienia wszystko poza tekstem; po starcie (`active`, `expired` i kod
+  `disabled`, którego początek już minął według zegara przeglądarki; zegar tylko wybiera, które pola są dostępne,
+  pomyłkę poprawia 409 z komunikatem i odświeżeniem) zmieniają się tylko koniec, `enabled` i limit (`termsLocked`:
+  rodzaj, wartość, minimum i początek zablokowane, do API idą zapisane wartości), a limit tylko wtedy, gdy kod już go
+  ma (`limitLocked`: nie da się go dodać; zdjęcie jest dozwolone). Kwoty (kwota rabatu, minimum) są wpisywane
+  w złotych i zamieniane na grosze przez `parseGross`, procent i limit to liczby całkowite (zakres sprawdza API),
+  czasy są w `Europe/Warsaw` przez `src/promotions/time.ts` (pole `datetime-local`; czas, którego nie edytowano, idzie
+  do API tak, jak go zwróciło; puste pole końca to brak końca, puste pole limitu to brak limitu, puste minimum to
+  brak minimum). „Zapisz”: `POST` (potem `onCreated(id)`, widok przechodzi na `/discount-codes/:id` tą samą instancją)
+  albo `PUT` z `version` (bez tekstu kodu). Błędy: 422 z `violations[].propertyPath` trafia do pól (`errorsAt`),
+  wartość, której nie da się odczytać, jest błędem pola bez żądania; 422 bez `violations`, 403, 404, 503 i sieć to
+  komunikat bez utraty formularza; 409 po `type`: `discount-code-taken` przy polu kodu (formularz zostaje), pozostałe
+  (wersja `about:blank`, `discount-code-not-editable` i inne) pokazują `detail` z API i przeładowują kod. Po
+  nieudanym zapisie fokus trafia na pierwsze pole z błędem, a bez takiego na komunikat formularza. Odpowiedź żądania,
+  które skończyło się po opuszczeniu formularza, jest ignorowana. Lista zamówień per kod jest poza panelem.
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 
 ## Konfiguracja i obraz produkcyjny
