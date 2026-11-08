@@ -111,6 +111,17 @@ describe("router guard", () => {
     expect(router.currentRoute.value.name).not.toBe("order-detail");
   });
 
+  it.each(["/discount-codes", "/discount-codes/new", "/discount-codes/0192f0c4"])("protects %s like every other route", async (path) => {
+    const { router, userManager } = setup(null);
+
+    await router.push(path);
+
+    expect(userManager.signinRedirect).toHaveBeenCalledWith({ state: { returnTo: path } });
+    expect(router.currentRoute.value.name).not.toBe("discount-codes");
+    expect(router.currentRoute.value.name).not.toBe("discount-code");
+    expect(router.currentRoute.value.name).not.toBe("discount-code-new");
+  });
+
   it("does not protect the callback route", async () => {
     const { router, userManager } = setup(null);
 
