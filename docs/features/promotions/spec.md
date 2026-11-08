@@ -83,8 +83,8 @@ Decyzje architektoniczne:
 
 | Metoda | Działanie | Błędy |
 |---|---|---|
-| `plan(id, name, percent, period, variantIds, actor, now)` | nowa promocja; `startsAt ≤ now` jest przesuwane na `startOfNow` (start „od teraz”) | `endsAt ≤ now`, okres, procent, nazwa, liczba wariantów: `InvalidPromotion` (`InvalidInput`, 422) |
-| `revise(name, percent, period, variantIds, actor, now)` | jedyna metoda zmiany (Q5). `planned`: zmienia wszystko (`startsAt ≤ now` przesuwane na `startOfNow`). `active`: tylko nazwa i koniec; `endsAt ≤ now` jest przesuwane na `startOfNow` (zakończenie od razu, „Zakończ teraz”), okres ≤ 90 dni. Zapisuje aktora i `updatedAt`; zwraca, czy zmienił się okres | `active` ze zmianą procentu, startu albo wariantów oraz każda zmiana `ended`: `PromotionNotEditable` (409, `…/promotion-not-editable`); `InvalidPromotion` |
+| `plan(id, name, percent, startsAt \| null, endsAt, variantIds, actor, now)` | nowa promocja; brak `startsAt` albo `startsAt ≤ now` daje `startOfNow` (start „od teraz”) | `endsAt ≤ now`, okres, procent, nazwa, liczba wariantów: `InvalidPromotion` (`InvalidInput`, 422) |
+| `revise(name, percent, startsAt \| null, endsAt, variantIds, actor, now)` | jedyna metoda zmiany (Q5). `planned`: zmienia wszystko (brak `startsAt` albo `startsAt ≤ now` daje `startOfNow`). `active`: tylko nazwa i koniec; `endsAt ≤ now` jest przesuwane na `startOfNow` (zakończenie od razu, „Zakończ teraz”), okres ≤ 90 dni. Zapisuje aktora i `updatedAt`; zwraca, czy zmienił się okres | `active` ze zmianą procentu, startu albo wariantów oraz każda zmiana `ended`: `PromotionNotEditable` (409, `…/promotion-not-editable`); `InvalidPromotion` |
 | `assertDeletable(now)` | tylko `planned` | `PromotionNotEditable` |
 
 - Nowo dodany wariant (przy `plan` i `revise`) musi być znany Catalogowi i mieć aktualną cenę katalogową; nieznany:
@@ -124,7 +124,7 @@ zmienia).
 
 ### Cena Omnibus
 
-`LowestPriorPrice::of(variant, promotionStart, history, promotions)` (domena, czysta funkcja):
+`LowestPriorPrice::of(promotionStart, history, promotions)` (domena, czysta funkcja, dla jednego wariantu):
 - okno `W = [startsAt − 30 dni, startsAt)`;
 - cena skuteczna w chwili `t ∈ W` = brutto wpisu historii cen obowiązującego w `t` (ostatni wpis z `changed_at ≤ t`),
   obniżone przez inną promocję tego wariantu aktywną w `t` (Q4 wyklucza dwie naraz);
@@ -147,8 +147,7 @@ Wejście: wpisy historii z `W` i ostatni wpis sprzed `W` (jedno zapytanie dla ws
   `vat`, `gross` jak dziś, więc koszyk i zamówienie bez zmian płacą cenę promocyjną) oraz nowe pola `regularGross`
   (cena katalogowa brutto) i `promotion: {promotionId, name, percentOff, endsAt, lowestPriorGross | null} | null`. Dwa
   zapytania: ceny (jak dziś) i promocje aktywne dla id (`pricing_promotion_variant` po `variant_id` z okresem).
-  `lowestPriorGross` jest liczone tylko z flagą zapytania `withLowestPriorPrice` (endpoint ofert listy i
-  `GetPromotion`): wtedy, gdy są warianty w promocji, jeszcze dwa zapytania (historia i promocje do Omnibusa). Koszyk,
+  `lowestPriorGross` jest liczone tylko z flagą zapytania `withLowestPriorPrice` (endpoint ofert listy): wtedy, gdy są warianty w promocji, jeszcze dwa zapytania (historia i promocje do Omnibusa). Koszyk,
   zamówienie i indeks go nie potrzebują. `version` to wersja ceny katalogowej.
 - Panel: `ListPromotions(status?, after, perPage)` (keyset po `(starts_at DESC, id)`; `perPage` 1–100, domyślnie 25;
   nieprzezroczysty kursor `after`; zły parametr albo kursor: 400) i `GetPromotion(id)` (warianty z etykietami
@@ -229,10 +228,10 @@ pozostali 403; odczyt: każdy pracownik):
 | Endpoint | Odpowiedzi |
 |---|---|
 | `GET /api/v1/admin/promotions?status&after&perPage` | 200 `{items: [{id, name, percentOff, startsAt, endsAt, status, variantCount, version}], next}`; 400 |
-| `POST /api/v1/admin/promotions` `{name, percentOff, startsAt \| null, endsAt, variantIds}` | 201 promocja; 403; 409 `promotion-overlap`; 422 |
+| `POST /api/v1/admin/promotions` `{name, percentOff, startsAt \| null, endsAt, variantIds}` | 201 promocja; 400 (treść nie jest JSON-em); 403; 409 `promotion-overlap`; 422 |
 | `GET /api/v1/admin/promotions/{id}` | 200 `{…, variants: [{variantId, productId, productName, label, regularGross \| null, promotionalGross \| null}]}`; 404 |
-| `PUT /api/v1/admin/promotions/{id}` `{name, percentOff, startsAt, endsAt, variantIds, version}` | 200; 403; 404; 409 (wersja, `promotion-not-editable`, `promotion-overlap`); 422. Dla `active` dozwolona zmiana wyłącznie `name` i `endsAt` (inne pola różne od zapisanych: 409 `promotion-not-editable`); `endsAt ≤` czas serwera kończy promocję od razu („Zakończ teraz” wysyła czas przeglądarki) |
-| `DELETE /api/v1/admin/promotions/{id}?version=` | 204; 403; 404; 409 |
+| `PUT /api/v1/admin/promotions/{id}` `{name, percentOff, startsAt, endsAt, variantIds, version}` | 200; 400 (treść nie jest JSON-em); 403; 404; 409 (wersja, `promotion-not-editable`, `promotion-overlap`); 422. Dla `active` dozwolona zmiana wyłącznie `name` i `endsAt` (inne pola różne od zapisanych: 409 `promotion-not-editable`); `endsAt ≤` czas serwera kończy promocję od razu („Zakończ teraz” wysyła czas przeglądarki) |
+| `DELETE /api/v1/admin/promotions/{id}?version=` | 204; 400 (brak albo zła `version`); 403; 404; 409 (wersja, `promotion-not-editable`) |
 | `PUT /api/v1/admin/variants/{variantId}/price` (istniejący) | nowe 409 `price-locked-by-promotion` |
 
 - Czasy w RFC 3339 ze strefą (zapis w UTC, odpowiedź w UTC). Kwoty w groszach, procenty jako liczby całkowite.
@@ -346,16 +345,3 @@ pozostali 403; odczyt: każdy pracownik):
   w promocji dwa kolejne; oferty są w Varnishu (`s-maxage` 1 h), koszyk i kasa nie liczą Omnibusa.
 - Blokada doradcza szereguje wszystkie zapisy promocji i (współdzielona) zapisy cen z panelu; zapisy promocji są rzadkie.
   Wydajność nie jest potwierdzona testami obciążeniowymi.
-
-## Dokumentacja do aktualizacji razem z implementacją
-
-- `docs/features/pricing/spec.md`: promocje, cena skuteczna i Omnibus w modelu, API i panelu; blokada ceny w aktywnej
-  promocji (`PUT` ceny: 409 `price-locked-by-promotion`); w „Poza zakresem” zostają tylko kody rabatowe.
-- `docs/features/cart/spec.md`: oferta z ceną skuteczną, `regularGross`, `promotion` i `fromPromotion`.
-- `docs/features/product-page/spec.md`: cena promocyjna, Omnibus i `priceValidUntil` w JSON-LD.
-- `docs/features/checkout/spec.md`: w „Poza zakresem” „kody rabatowe i promocje (PROMOTIONS #96)” → „kody rabatowe
-  (DISCOUNT-CODES #225)”; pozycja zamówienia kopiuje cenę skuteczną (promocyjną) z `GetCurrentPrices`.
-- `apps/api/CLAUDE.md`: transport `promotions` i worker, wiadomości granic, blokada zapisów promocji (wyjątek DBAL,
-  tryb współdzielony w `SetVariantPrice`), zdarzenie `PromotionPricesChanged` i jego konsumenci, `pricing:seed-demo`
-  z promocjami, nowe typy problemów.
-- `apps/store/CLAUDE.md` i `apps/admin/CLAUDE.md`: promocja i Omnibus w sklepie, widok promocji w panelu.
