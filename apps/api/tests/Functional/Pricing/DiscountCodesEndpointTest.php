@@ -240,6 +240,19 @@ final class DiscountCodesEndpointTest extends WebTestCase
         self::assertSame(['items' => [], 'next' => null], $none);
     }
 
+    public function testAPrefixOf32CharactersFollowedByANoBreakSpaceFiltersLikeOneOf32(): void
+    {
+        $long = str_repeat('A', 31).'B';
+        $id = $this->storedCode(['code' => $long]);
+        $this->storedCode(['code' => 'WITAJ10']);
+
+        $filtered = $this->send('GET', '/api/v1/admin/discount-codes?q='.rawurlencode($long."\u{A0}"));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertIsArray($filtered['items']);
+        self::assertSame([$id], array_column($filtered['items'], 'id'));
+    }
+
     /**
      * @return iterable<string, array{string, string, string|null}>
      */
@@ -254,6 +267,8 @@ final class DiscountCodesEndpointTest extends WebTestCase
         yield 'an empty status' => ['status=', 'status', $status];
         yield 'an empty prefix' => ['q=', 'q', $q];
         yield 'a blank prefix' => ['q=%20%20', 'q', $q];
+        yield 'a prefix of a no-break space only' => ['q=%C2%A0', 'q', $q];
+        yield 'a prefix of a zero width space only' => ['q=%E2%80%8B', 'q', $q];
         yield 'a prefix of 33 characters' => ['q='.str_repeat('A', 33), 'q', $q];
         yield 'a prefix that is not UTF-8' => ['q=%FF', 'q', $q];
         yield 'a page of 0' => ['perPage=0', 'perPage', $page];

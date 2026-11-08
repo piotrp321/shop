@@ -36,7 +36,7 @@ final readonly class DiscountCodeListQuery
         #[OA\Property(type: 'string', nullable: true)]
         #[Assert\Sequentially([
             new Assert\Type('string', message: self::PREFIX_MESSAGE),
-            new Assert\Length(min: 1, max: DiscountCodeValue::MAX_LENGTH, minMessage: self::PREFIX_MESSAGE, maxMessage: self::PREFIX_MESSAGE, charsetMessage: self::PREFIX_MESSAGE, normalizer: 'trim'),
+            new Assert\Length(min: 1, max: DiscountCodeValue::MAX_LENGTH, minMessage: self::PREFIX_MESSAGE, maxMessage: self::PREFIX_MESSAGE, charsetMessage: self::PREFIX_MESSAGE, normalizer: DiscountCodeValue::trimmed(...)),
         ])]
         public mixed $q = null,
         #[OA\Property(type: 'string', nullable: true)]

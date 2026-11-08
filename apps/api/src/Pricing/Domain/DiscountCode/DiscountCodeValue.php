@@ -30,13 +30,21 @@ final readonly class DiscountCodeValue
         // Trimmed of every Unicode space and invisible format character at the ends (a pasted code often has one);
         // anything else outside the alphabet, inside or not, is refused by the pattern. Upper case of ASCII only:
         // a letter outside A–Z stays as it is and is refused.
-        $trimmed = preg_replace('/^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/u', '', $text);
-        $value = strtoupper($trimmed ?? '');
+        $value = strtoupper(self::trimmed($text));
         if (1 !== preg_match(self::PATTERN, $value)) {
             throw InvalidDiscountCode::code();
         }
 
         return new self($value);
+    }
+
+    /**
+     * The text without the Unicode spaces and invisible format characters at its ends, the one trimming of a code and
+     * of the beginning of one (the list filter). Text that is not UTF-8 comes back as it is: check the encoding first.
+     */
+    public static function trimmed(string $text): string
+    {
+        return preg_replace('/^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/u', '', $text) ?? $text;
     }
 
     public function toString(): string

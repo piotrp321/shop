@@ -8,6 +8,7 @@ use App\Pricing\Application\Port\Clock;
 use App\Pricing\Application\Port\DiscountCodeReader;
 use App\Pricing\Application\Port\ListedDiscountCode;
 use App\Pricing\Domain\DiscountCode\DiscountCodeStatus;
+use App\Pricing\Domain\DiscountCode\DiscountCodeValue;
 use App\Pricing\Domain\DiscountCode\ValidityPeriod;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -70,7 +71,7 @@ final readonly class ListDiscountCodesHandler
         if (!mb_check_encoding($q, 'UTF-8')) {
             return false;
         }
-        $prefix = strtoupper(preg_replace('/^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/u', '', $q) ?? '');
+        $prefix = strtoupper(DiscountCodeValue::trimmed($q));
 
         return 1 === preg_match(self::PREFIX, $prefix) ? $prefix : false;
     }
