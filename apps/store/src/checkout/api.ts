@@ -8,7 +8,7 @@ export type Violation = NonNullable<components["schemas"]["Problem"]["violations
 export type OrderResult = { ok: true; status: number; data: OrderView } | Refusal;
 
 /** The fields of `PlaceCustomerOrderRequest`; the guest's contract adds `cartId` and `email`. */
-export const CUSTOMER_ORDER_FIELDS = ["fullName", "phone", "street", "postalCode", "city", "expectedTotalGross"] as const;
+export const CUSTOMER_ORDER_FIELDS = ["fullName", "phone", "street", "postalCode", "city", "expectedTotalGross", "discountCode"] as const;
 export const GUEST_ORDER_FIELDS = ["email", ...CUSTOMER_ORDER_FIELDS] as const;
 
 /**

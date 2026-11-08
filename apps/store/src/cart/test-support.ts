@@ -52,6 +52,8 @@ export const problem = (status: number, detail?: string) =>
 export type ApiCall = {
   method: string;
   path: string;
+  /** The query string, only when the request has one. */
+  search?: string;
   authorization: string | null;
   body: unknown;
   idempotencyKey?: string;
@@ -77,6 +79,7 @@ export function cartTestDeps() {
           const call: ApiCall = {
             method: request.method,
             path: new URL(request.url).pathname,
+            search: new URL(request.url).search || undefined,
             authorization: request.headers.get("authorization"),
             body: text === "" ? undefined : JSON.parse(text),
             idempotencyKey: request.headers.get("idempotency-key") ?? undefined,
