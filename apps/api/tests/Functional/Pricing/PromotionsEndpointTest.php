@@ -291,6 +291,8 @@ final class PromotionsEndpointTest extends WebTestCase
         yield 'a start that is a date only' => [['startsAt' => '2030-01-01'], 'startsAt'];
         yield 'an impossible start' => [['startsAt' => '2030-02-31T10:00:00Z'], 'startsAt'];
         yield 'a start that is a number' => [['startsAt' => 1893456000], 'startsAt'];
+        yield 'a start past the year 9999 in UTC' => [['startsAt' => '9999-12-31T23:00:00-05:00', 'endsAt' => '9999-12-31T23:30:00-05:00'], 'startsAt'];
+        yield 'an end past the year 9999 in UTC' => [['startsAt' => '9999-12-31T20:00:00Z', 'endsAt' => '9999-12-31T23:30:00-05:00'], 'endsAt'];
         yield 'no end' => [['endsAt' => null], 'endsAt'];
         yield 'an end in the past' => [['endsAt' => '-1 day'], 'endsAt'];
         yield 'an end before the start' => [['startsAt' => '+5 days', 'endsAt' => '+4 days'], 'endsAt'];
@@ -461,6 +463,30 @@ final class PromotionsEndpointTest extends WebTestCase
         $problem = $this->assertProblem(409);
         self::assertSame(self::TYPE_OVERLAP, $problem['type']);
         self::assertSame([$a], $problem['conflictingVariantIds']);
+    }
+
+    public function testAReviseToAMomentPastTheYear9999InUtcIsUnprocessable(): void
+    {
+        $a = $this->pricedVariant(5999);
+        $id = $this->storedPromotion('+1 day', '+5 days', [$a]);
+
+        $this->send('PUT', '/api/v1/admin/promotions/'.$id, [...$this->body([$a]), 'startsAt' => '9999-12-31T20:00:00Z', 'endsAt' => '9999-12-31T23:30:00-05:00', 'version' => 1]);
+
+        $problem = $this->assertProblem(422);
+        self::assertIsArray($problem['violations']);
+        self::assertContains('endsAt', array_column($problem['violations'], 'propertyPath'));
+        self::assertSame(1, $this->connection->fetchOne('SELECT version FROM pricing_promotion WHERE id = ?', [$id]));
+    }
+
+    public function testAPromotionEndingInTheLastSecondOfTheYear9999IsPlannedAndListed(): void
+    {
+        $a = $this->pricedVariant(5999);
+
+        $this->send('POST', '/api/v1/admin/promotions', [...$this->body([$a]), 'startsAt' => '9999-12-31T20:00:00Z', 'endsAt' => '9999-12-31T23:59:59Z']);
+        self::assertResponseStatusCodeSame(201);
+
+        $this->send('GET', '/api/v1/admin/promotions');
+        self::assertResponseIsSuccessful();
     }
 
     public function testAReviseWithAnInvalidBodyIsUnprocessable(): void

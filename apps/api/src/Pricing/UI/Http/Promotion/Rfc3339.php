@@ -6,7 +6,9 @@ namespace App\Pricing\UI\Http\Promotion;
 
 /**
  * A moment of a request: RFC 3339 with a time zone (`Z` or an offset), seconds and an optional fraction. Anything else,
- * also an impossible date or time ("2026-02-31", "24:00"), is no moment: PHP would move it to another one.
+ * also an impossible date or time ("2026-02-31", "24:00"), is no moment: PHP would move it to another one. So is a
+ * moment whose year in UTC is outside 1..9999 ("9999-12-31T23:30:00-05:00" is already in the year 10000): PostgreSQL
+ * stores it, but Doctrine cannot read it back.
  */
 final class Rfc3339
 {
@@ -26,6 +28,12 @@ final class Rfc3339
             return null;
         }
 
-        return new \DateTimeImmutable($value);
+        $moment = new \DateTimeImmutable($value);
+        $utcYear = (int) $moment->setTimezone(new \DateTimeZone('UTC'))->format('Y');
+        if ($utcYear < 1 || $utcYear > 9999) {
+            return null;
+        }
+
+        return $moment;
     }
 }
