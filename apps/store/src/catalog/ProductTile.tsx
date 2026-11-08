@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AvailabilityLabel } from "./availability-label";
 import { formatPrice } from "./format-price";
 import { ProductPhoto } from "./ProductPhoto";
+import { PromotionNotice } from "./PromotionNotice";
 import { TileOffer } from "./TileOffer";
 
 type ProductListItem = components["schemas"]["ProductListItem"];
@@ -11,7 +12,8 @@ type ProductOffer = components["schemas"]["ProductOfferResponse"];
 
 /**
  * A product of the list. The name and the photo link to the product page (`/p/<slug>`). The server renders the name, the photo, the price („od X zł” when the purchasable variants
- * cost differently) and the level of the product; the variant choice and the button are the client part (TileOffer).
+ * cost differently; the effective one, with the badge „Promocja” and the Omnibus line when the variant of that price is in
+ * a promotion that has the Omnibus price) and the level of the product; the variant choice and the button are the client part (TileOffer).
  * Without an offer (the call failed) the tile has no price, level, choice or button; a product without a purchasable
  * variant is „Niedostępny” without a price, a choice or a button.
  */
@@ -40,6 +42,7 @@ export function ProductTile({ product, offer, sizes, priority }: { product: Prod
             <p data-testid="price" className="text-sm font-semibold">
               {offer.hasPriceRange ? `od ${formatPrice(offer.fromGross, offer.currency)}` : formatPrice(offer.fromGross, offer.currency)}
             </p>
+            <PromotionNotice lowestPriorGross={offer.fromPromotion?.lowestPriorGross} currency={offer.currency} />
             <AvailabilityLabel level={offer.level} />
           </TileOffer>
         )}

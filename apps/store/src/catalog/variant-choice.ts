@@ -11,6 +11,8 @@ export type ChoiceVariant = {
   values: string[];
   purchasable: boolean;
   gross: number | null;
+  /** The Omnibus price of the promotion that gives `gross`; null or absent shows no promotion notice. */
+  lowestPriorGross: number | null;
   level: components["schemas"]["VariantOfferResponse"]["level"];
 };
 
@@ -36,6 +38,7 @@ export function buildChoiceVariants(details: ProductDetails, offer: ProductOffer
       values: variant.values,
       purchasable: offered?.purchasable === true,
       gross: offered?.gross ?? null,
+      lowestPriorGross: offered?.promotion?.lowestPriorGross ?? null,
       level: offered?.level ?? "out_of_stock",
     };
   });

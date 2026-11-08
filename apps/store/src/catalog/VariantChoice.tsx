@@ -6,6 +6,7 @@ import { AddToCartButton } from "@/cart/AddToCartButton";
 import { Button } from "@/components/ui/button";
 import { AvailabilityLabel } from "./availability-label";
 import { formatPrice } from "./format-price";
+import { PromotionNotice } from "./PromotionNotice";
 import { axisValues, buildChoiceVariants, chosenVariant, initialSelection, selectValue, valueState, type Selection } from "./variant-choice";
 
 type ProductDetails = components["schemas"]["ProductDetails"];
@@ -33,6 +34,7 @@ export function VariantChoice({ details, offer, children }: { details: ProductDe
           <p data-testid="price" className="text-xl font-semibold">
             {formatPrice(chosen.gross, offer.currency)}
           </p>
+          <PromotionNotice lowestPriorGross={chosen.lowestPriorGross} currency={offer.currency} />
           <AvailabilityLabel level={chosen.level} />
         </div>
       ) : (
