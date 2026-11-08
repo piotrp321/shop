@@ -6,6 +6,7 @@ namespace App\Pricing\Infrastructure\Promotion;
 
 use App\Pricing\Application\Port\PromotionBoundaries;
 use App\Pricing\Domain\Promotion\Promotion;
+use App\Pricing\Domain\Promotion\PromotionId;
 use App\Pricing\Domain\Promotion\PromotionPeriod;
 
 /**
@@ -15,6 +16,10 @@ use App\Pricing\Domain\Promotion\PromotionPeriod;
 final readonly class NoPromotionBoundaries implements PromotionBoundaries
 {
     public function promotionSaved(Promotion $promotion, ?PromotionPeriod $previousPeriod, \DateTimeImmutable $now): void
+    {
+    }
+
+    public function redeliverBoundary(PromotionId $promotionId, \DateTimeImmutable $boundary, \DateTimeImmutable $dueAt): void
     {
     }
 }
