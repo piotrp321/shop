@@ -1122,12 +1122,14 @@ nelmio_api_doc:
                         PricingConflictProblem:
                             type: object
                             description: >-
-                                A 409 of the prices and promotions of the panel. `type` names the cause (the `detail` is Polish
-                                text for people and may change): the price of a variant in an active promotion cannot change
-                                (end the promotion first), variants are in another promotion of an overlapping period (listed in
-                                `conflictingVariantIds`), the status of the promotion does not allow the change (after its start
-                                only the name and the end, an ended one not at all, only a planned one is deleted), or
-                                (`about:blank`) the price or the promotion changed since the `version` sent. Nothing is changed.
+                                A 409 of the prices, promotions and discount codes of the panel. `type` names the cause (the
+                                `detail` is Polish text for people and may change): the price of a variant in an active promotion
+                                cannot change (end the promotion first), variants are in another promotion of an overlapping
+                                period (listed in `conflictingVariantIds`), the status of the promotion does not allow the change
+                                (after its start only the name and the end, an ended one not at all, only a planned one is
+                                deleted), another discount code has the same text, the change of a started discount code is not
+                                allowed (only its end, `enabled` and an existing limit change), or (`about:blank`) the price, the
+                                promotion or the discount code changed since the `version` sent. Nothing is changed.
                             required: [type, title, status, detail]
                             properties:
                                 type:
@@ -1136,6 +1138,8 @@ nelmio_api_doc:
                                         - 'tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/promotion-overlap'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/promotion-not-editable'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/discount-code-taken'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/discount-code-not-editable'
                                         - about:blank
                                 title:
                                     type: string

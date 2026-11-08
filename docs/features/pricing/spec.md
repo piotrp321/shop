@@ -12,8 +12,9 @@ autorytatywny odczyt cen wielu wariantów dla koszyka i przyszłego checkoutu.
 Obsługujemy wyłącznie Polskę i PLN. Promocje (obniżka procentowa wariantów na okres) planuje się w panelu
 (sekcja „Promocje”). W aktywnej promocji cena skuteczna wariantu to cena promocyjna: odczyt cen (`GetCurrentPrices`),
 a przez niego oferta listy, indeks wyszukiwania, koszyk i zamówienie, płacą ją bez własnych obliczeń; odczyt podaje też
-cenę Omnibus (najniższa cena skuteczna z 30 dni przed startem promocji). Poza zakresem: kody rabatowe, wiele krajów
-i walut, harmonogramy zmian stawek. Klasę podatkową produktu zmienia edycja produktu w Catalog,
+cenę Omnibus (najniższa cena skuteczna z 30 dni przed startem promocji). Kody rabatowe (procent albo kwota na całe
+zamówienie, sekcja „Kody rabatowe”) zakłada i zmienia się w API panelu; kasa ich jeszcze nie stosuje. Poza zakresem:
+wiele krajów i walut, harmonogramy zmian stawek. Klasę podatkową produktu zmienia edycja produktu w Catalog,
 a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie klasy podatkowej”).
 
 ## Bounded contexty i zależności
@@ -21,7 +22,7 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
 | Context | Odpowiada za |
 |---|---|
 | Catalog | przypisanie produktowi klasy podatkowej (`TaxClassCode`), nazwy, kategorie i warianty, zapytania dla Pricing |
-| Pricing | stawka VAT dla klasy, obliczenia, cena wariantu, historia cen, autorytatywny odczyt cen |
+| Pricing | stawka VAT dla klasy, obliczenia, cena wariantu, historia cen, autorytatywny odczyt cen, promocje, kody rabatowe i ich użycia |
 | Sklep, panel | wyświetlanie i formatowanie kwot z API; żadnych obliczeń netto, VAT ani stawek |
 
 - Zależność jest jednokierunkowa: `Pricing_Infrastructure → Catalog_Application`. Adaptery portów Pricing wołają
@@ -29,8 +30,8 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
   subskrybuje integracyjne zdarzenie Catalog `ProductChanged` (konsument `RepriceOnTaxClassChange`, niżej).
 - Catalog nie zależy od Pricing w żadnej warstwie. Deptrac nie ma żadnej reguły `Catalog_* → Pricing_*`.
 - Pricing zależy od Backoffice wyłącznie przez kontrakt bezpieczeństwa `AuthenticatedStaffMember` z `Backoffice_Application`:
-  `Pricing_Infrastructure` (`PriceVoter` i `PromotionVoter`, role pracownika) i `Pricing_UI` (aktor zmiany ceny
-  w `ChangePriceController` i zapisu promocji w kontrolerach promocji).
+  `Pricing_Infrastructure` (`PriceVoter`, `PromotionVoter` i `DiscountCodeVoter`, role pracownika) i `Pricing_UI` (aktor
+  zmiany ceny w `ChangePriceController` i zapisu promocji i kodu w ich kontrolerach).
   `Pricing_Domain` i `Pricing_Application` nie zależą od Backoffice, a żadna warstwa Pricing nie zależy od
   `Backoffice_Infrastructure`, `Backoffice_Domain` ani `Backoffice_UI`.
 - Domena Pricing ma własne value objecty (`VariantId`, `TaxClass` jako kod tekstowy; `ProductId` w liście cen
@@ -181,6 +182,52 @@ Decyzje A2 i A3 w `docs/features/promotions/spec.md`: obie są liczone przy odcz
   w outboxie, w jednej transakcji. `RefreshPromotionProducts` nieznanej albo zakończonej promocji nic nie robi,
   inaczej działa jak granica.
 
+## Kody rabatowe
+
+Model i decyzje: `docs/features/discount-codes/spec.md` (D1, Q3, Q4, Q7, A1). Pricing jest jedynym miejscem reguł
+kodów i jedynym miejscem tekstów ich odrzucenia.
+
+- Value objecty (`Pricing\Domain\DiscountCode`): `DiscountCodeValue` (tekst po przycięciu białych znaków Unicode
+  i zamianie liter ASCII na wielkie, 3–32 znaki `[A-Z0-9-]`; inny znak, także NUL, U+2028 i polska litera, to odmowa),
+  `DiscountValue` (`percent(PercentOff)` 1–90 albo `amount(Money)` 100–1 000 000 groszy; niejawne minimum procentu
+  `ceil(100 / p)` groszy, Q7), `MinimumOrder` (1–100 000 000 groszy), `ValidityPeriod {startsAt, endsAt | null}` (pełne
+  sekundy w UTC, `startsAt < endsAt`, bez maksymalnej długości; `isValidAt(t)` = `startsAt ≤ t` i bez końca albo
+  `t < endsAt`), `UsageLimit` (1–1 000 000). Odmowa wartości to `InvalidDiscountCode` (422) z polem i polskim
+  komunikatem (sekcja „API”).
+- Agregat `DiscountCode` (UUID v7): tekst, wartość, minimum, okres, limit, `enabled`, `createdBy`/`updatedBy` (aktor
+  z tokena, `null` dla systemu), `createdAt`, `updatedAt`, wersja. Kod kwotowy ma minimum większe od kwoty. Status
+  z czasu i flagi: `disabled` (pierwszeństwo), `planned` (`now < startsAt`), `active`, `expired` (`now ≥ endsAt`).
+  - `create(…, enabled, actor, now)`: początek i koniec w przeszłości są dozwolone.
+  - `revise(wartość, minimum, okres, limit, enabled, aktywne użycia, aktor, now)`: przed startem (także kod wyłączony)
+    zmienia wszystko poza tekstem. Po starcie (`active`, `expired`, także wyłączony) zmieniają się tylko koniec,
+    `enabled` i istniejący limit (także zdjęty); inny rodzaj, wartość, minimum albo początek oraz limit dodany kodowi
+    bez limitu to `DiscountCodeNotEditable` (409). Zmieniony koniec musi być po `now`, a limit nie mniejszy od liczby
+    aktywnych użyć (422). Kolejność: reguły wartości (422), reguły edycji (409), koniec i limit (422). Każda zmiana
+    podnosi wersję.
+  - `rejectionFor(suma, aktywne użycia, now)`: `null` albo `DiscountCodeRejection {reason, minimumOrderGross}`, pierwszy
+    spełniony powód w kolejności `invalid` (wyłączony, przed początkiem, od końca), `used_up` (aktywne użycia ≥ limit),
+    `below_minimum` z minimum skutecznym `max(minimum kodu, ceil(100 / p))` (kod kwotowy: minimum kodu). Odrzucenie
+    daje typ problemu (`…/discount-code-invalid`, `…/discount-code-used-up`, `…/discount-code-below-minimum`) i polski
+    `detail` („Ten kod jest nieprawidłowy albo nieaktywny.”, „Ten kod został już wykorzystany.”, „Ten kod działa przy
+    zamówieniu od 300,00 zł.”).
+  - Tekst kodu się nie zmienia, kodu nie da się usunąć. Unikalność tekstu (bez rozróżniania wielkości liter, bo zapis
+    jest znormalizowany) pilnuje unikalny indeks; repozytorium tłumaczy naruszenie na `DiscountCodeTaken` (409).
+- `DiscountCodeUsage {id, codeId, orderId, usedAt, releasedAt | null}`: osobny agregat z repozytorium
+  `DiscountCodeUsageRepository` (`add`, `activeUsesOf`), nie kolekcja kodu; aktywne użycie ma `releasedAt = null`,
+  zamówienie ma najwyżej jedno użycie. Liczba aktywnych użyć jest liczona zapytaniem, kod nie ma licznika. Użycia
+  nie zapisuje jeszcze żadna komenda.
+- Komendy (`command.bus`, jedna transakcja): `CreateDiscountCode(id, code, kind, value, minimumOrderGross, startsAt,
+  endsAt, usageLimit, enabled, actorId, actorName)` (aktor `null` to system) i `ReviseDiscountCode(id, expectedVersion,
+  …)`. `ReviseDiscountCode` zaczyna od blokady wiersza kodu (`DiscountCodeRepository::lock`, `PESSIMISTIC_WRITE` przez
+  ORM; rekord już w identity map jest odświeżany pod blokadą), potem czyta zegar i liczbę aktywnych użyć, buduje
+  wartości (422), porównuje wersję (`DiscountCodeModifiedConcurrently`, 409) i woła `revise`. Nieznany kod i id spoza
+  UUID: `DiscountCodeNotFound` (404).
+- Odczyty (`query.bus`): `ListDiscountCodes(status?, q?, after, perPage)` przez port `DiscountCodeReader` (DBAL
+  `DbalDiscountCodeReader`, keyset `(created_at DESC, id)`, kursor `DiscountCodeCursor`, status liczony z `now`, `q`
+  przycięty i wielkimi literami jako prefiks `LIKE` tekstu; `q` ze znakiem spoza `[A-Z0-9-]` daje pustą stronę bez
+  zapytania) i `GetDiscountCode(id)` (repozytorium i `activeUsesOf`). Oba dają `DiscountCodeView` z liczbą aktywnych
+  użyć i statusem.
+
 ## Persystencja i transakcje
 
 - `pricing_promotion`: `id uuid` (PK), `name`, `percent_off smallint`, `starts_at`, `ends_at`, `created_at`,
@@ -191,6 +238,18 @@ Decyzje A2 i A3 w `docs/features/promotions/spec.md`: obie są liczone przy odcz
   (`DoctrinePromotionRepository`, `#[Version]`), warianty synchronizowane po identyfikatorze; nakładanie okresów
   i blokada ceny to zapytania na połączeniu. Promocje i ich warianty są przechowywane na zawsze (usuwa się tylko
   zaplanowane).
+- `pricing_discount_code`: `id uuid` (PK), `code varchar(32)` (unikalny indeks `pricing_discount_code_code_key`,
+  postać znormalizowana), `kind` (`percent`, `amount`), `percent_off smallint NULL`, `amount_gross integer NULL`,
+  `minimum_order_gross bigint NULL`, `starts_at`, `ends_at NULL`, `usage_limit integer NULL`, `enabled`, `created_at`,
+  `created_by_id`, `created_by_name`, `updated_at`, `updated_by_id`, `updated_by_name`, `version`; CHECK: wartość
+  zgodna z rodzajem (tylko jedna z `percent_off`, `amount_gross`), `percent_off BETWEEN 1 AND 90`, minimum kodu
+  kwotowego obecne i większe od kwoty, `starts_at < ends_at`, aktor z obiema wartościami albo bez; indeks
+  `(created_at DESC, id)`. Zapis przez rekordy Doctrine (`DoctrineDiscountCodeRepository`, `#[Version]`); kody nie są
+  usuwane.
+- `pricing_discount_code_usage`: `id uuid` (PK), `code_id` (FK do kodu, bez `ON DELETE`, indeks `(code_id)`),
+  `order_id uuid` (unikalny, bez FK do Ordering), `used_at`, `released_at NULL`; indeks częściowy
+  `pricing_discount_code_usage_active_idx (code_id) WHERE released_at IS NULL` liczy aktywne użycia. Zapis przez rekord
+  Doctrine (`DoctrineDiscountCodeUsageRepository`).
 - `pricing_variant_price`: `variant_id uuid` (PK), `currency`, `gross_amount`, `net_amount`, `vat_amount`,
   `vat_rate_bp`, `tax_class`, `version`, `updated_at`.
 - `pricing_price_history`: `id uuid` (PK), `variant_id`, `currency`, `gross_amount`, `net_amount`, `vat_amount`,
@@ -336,15 +395,34 @@ z tokenem realmu `shop`: 401):
 | `GET /api/v1/admin/promotions/{id}` | każdy pracownik | 200 `{id, name, percentOff, startsAt, endsAt, status, variantCount, version, updatedAt, updatedByName, variants: [{variantId, productId, productName, label, regularGross, promotionalGross}]}`; 404 |
 | `PUT /api/v1/admin/promotions/{id}`, body `{name, percentOff, startsAt \| null, endsAt, variantIds, version}` | `admin`, `marketing` | 200 promocja; 403; 404; 409 wersja (`about:blank`), `promotion-not-editable`, `promotion-overlap`; 422 |
 | `DELETE /api/v1/admin/promotions/{id}?version=` | `admin`, `marketing` | 204; 400 brak albo zła wersja; 403; 404; 409 wersja, `promotion-not-editable` |
+| `GET /api/v1/admin/discount-codes?status&q&after&perPage` | każdy pracownik | `200 {items: [DiscountCode], next}`; `status` `disabled`, `planned`, `active`, `expired`; `q` początek kodu (przycięty, bez rozróżniania wielkości liter, 1–32 znaki); `perPage` 1–100 (domyślnie 25); 400 zły parametr albo kursor |
+| `POST /api/v1/admin/discount-codes`, body `{code, kind, value, minimumOrderGross \| null, startsAt, endsAt \| null, usageLimit \| null, enabled}` | `admin`, `marketing` | 201 kod (`Location`); 403; 409 `discount-code-taken`; 422 |
+| `GET /api/v1/admin/discount-codes/{id}` | każdy pracownik | 200 `DiscountCode`; 404 |
+| `PUT /api/v1/admin/discount-codes/{id}`, body `{kind, value, minimumOrderGross, startsAt, endsAt, usageLimit, enabled, version}` | `admin`, `marketing` | 200 kod; 403; 404; 409 wersja (`about:blank`), `discount-code-not-editable`; 422 |
 | `GET /api/v1/admin/variants/{variantId}/price-history?after&perPage` | każdy pracownik | `200 {items: [{changedAt, currency, gross, net, vat, vatRate, taxClass, source, actorName}], next}`; 404 nieznany wariant |
 | `GET /api/v1/admin/categories` | każdy pracownik | 200 drzewo kategorii (`GetCategoryTree`) |
 
 - Uprawnienie do zmiany ceny sprawdza `PriceVoter` w `Pricing_Infrastructure` na podstawie ról
   `AuthenticatedStaffMember`. `marketing`, `support` i `warehouse` dostają 403. Zmiany promocji: `PromotionVoter`
   (`MANAGE_PROMOTIONS`: `admin`, `marketing`), sprawdzany przed treścią; odczyt promocji ma każdy pracownik.
-- 409 cen i promocji mają schemat `PricingConflictProblem`: `type` `…/price-locked-by-promotion`,
-  `…/promotion-overlap` (z rozszerzeniem `conflictingVariantIds`, posortowanym), `…/promotion-not-editable` albo
-  `about:blank` (wersja). Panel rozróżnia je po `type`.
+- 409 cen, promocji i kodów mają schemat `PricingConflictProblem`: `type` `…/price-locked-by-promotion`,
+  `…/promotion-overlap` (z rozszerzeniem `conflictingVariantIds`, posortowanym), `…/promotion-not-editable`,
+  `…/discount-code-taken` („Taki kod już istnieje.”), `…/discount-code-not-editable` („Tej zmiany nie można wprowadzić
+  w kodzie, który już obowiązuje albo był użyty.”) albo `about:blank` (wersja). Panel rozróżnia je po `type`.
+- Kody rabatowe: `DiscountCode` = `{id, code, kind, value, minimumOrderGross | null, startsAt, endsAt | null, usageLimit
+  | null, activeUses, enabled, status, version}` (`value` to procent dla `percent`, grosze dla `amount`; czasy w UTC).
+  Zmiany sprawdza `DiscountCodeVoter` (`MANAGE_DISCOUNT_CODES`: `admin`, `marketing`) przed treścią; odczyt ma każdy
+  pracownik. Kolejność sprawdzeń: 401, 403, 400 (parametry listy), 404 (także przed treścią `PUT`), 415/400/422
+  treści, 409. Treść czyta `DiscountCodeBodyReader` (zamiast `#[MapRequestPayload]`, żeby `PUT` sprawdzał kod przed
+  treścią): tylko JSON (inny format 415, nieczytelny JSON 400), typy ścisłe bez rzutowania, wszystkie klucze wymagane
+  (brak klucza: „To pole jest wymagane.” przy polu), klucze spoza treści są pomijane, a wartość JSON inna niż obiekt nie
+  ma żadnego klucza. Komunikaty 422 przy polu: `code` „Kod ma 3–32 znaki: litery, cyfry i myślnik.”; `kind` „Rodzaj
+  rabatu to percent albo amount.”; `value` „Wartość rabatu musi być liczbą całkowitą.”, „Rabat procentowy to 1–90%.”
+  albo „Kwota rabatu to 1–10 000 zł.”; `minimumOrderGross` „Kod kwotowy wymaga minimum większego od kwoty rabatu.”
+  albo „Minimum to 0,01–1 000 000 zł.”; `startsAt`, `endsAt` „Podaj czas w formacie RFC 3339 ze strefą, np.
+  2026-11-10T12:00:00Z.”; `endsAt` „Koniec musi być po początku.” albo „Koniec musi być w przyszłości.”; `usageLimit`
+  „Limit to 1–1 000 000 użyć.” albo „Limit nie może być mniejszy od liczby użyć (N).”; `enabled` „Włączenie kodu to
+  true albo false.”; `version` „Wersja musi być dodatnią liczbą całkowitą.”. Odpowiedzi `private, no-store`.
 - Promocje: typy ścisłe jak `PUT` ceny, wszystkie klucze wymagane (`startsAt` może być `null`), czasy w RFC 3339 ze
   strefą (data i godzina muszą istnieć), w odpowiedzi w UTC. Reguły promocji (nazwa, procent, okres, liczba
   i powtórzenia wariantów) sprawdza domena, a odmowa ma naruszenie przy swoim polu; wariant nieznany albo bez ceny ma
@@ -444,6 +522,10 @@ z tokenem realmu `shop`: 401):
   o `id` różnym od `id` produktu (wyjątek: test migracji).
 - Funkcjonalne API: każdy endpoint z przypadkami 200, 400 lub 422, 401 (bez tokena i z tokenem `shop`), 403
   (`marketing`, `support`, `warehouse` przy `PUT`), 404 (także identyfikator produktu zamiast wariantu) i 409.
+- Kody rabatowe: jednostkowe VO i `DiscountCode` (statusy, `rejectionFor` z kolejnością powodów i minimum skutecznym,
+  reguły edycji), handlery z adapterami in-memory (blokada przed zegarem i liczbą użyć, wersja), integracyjne
+  repozytoriów kodów i użyć (unikalny tekst, unikalne `order_id`, aktywne użycia po indeksie częściowym, CHECK-i,
+  blokada wiersza), czytnika listy i funkcjonalne endpointów panelu (`DiscountCodesEndpointTest`).
 - Vitest: sklep – `formatPrice` (kafelek z ofertą opisuje `docs/features/cart/spec.md`); panel – zamiana kwoty
   na grosze, widok cen (wiersz na wariant, kolumna „Wariant”, akcje na wierszu wariantu, 403, 409, pusty wynik),
   historia.

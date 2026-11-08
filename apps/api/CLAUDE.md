@@ -486,8 +486,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`), dwa 409 komend pracownika Ordering
   (`order-transition-not-allowed`, `refund-not-pending`; schemat `BackofficeOrderConflictProblem` w obszarze `admin`) i cztery 409 Payment: `order-already-paid`,
   `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
-  Trzy 409 Pricing w panelu: `price-locked-by-promotion`, `promotion-overlap`, `promotion-not-editable` (schemat
-  `PricingConflictProblem` w obszarze `admin`, razem z `about:blank` konfliktu wersji ceny i promocji).
+  Pięć 409 Pricing w panelu: `price-locked-by-promotion`, `promotion-overlap`, `promotion-not-editable`,
+  `discount-code-taken`, `discount-code-not-editable` (schemat `PricingConflictProblem` w obszarze `admin`, razem
+  z `about:blank` konfliktu wersji ceny, promocji i kodu rabatowego). Typy odrzucenia kodu (`discount-code-invalid`,
+  `discount-code-used-up`, `discount-code-below-minimum`) i ich polskie `detail` daje wyłącznie
+  `DiscountCodeRejection` (Pricing Domain).
   Nowy typ dopisz do `enum` schematu swojego contextu.
 - Wyjątek, który niesie dane dla klienta (np. listę kolidujących wariantów), implementuje
   `App\Shared\Domain\Exception\ExtendedProblem` (`problemExtensions()`): subscriber dopisuje te pola do dokumentu
@@ -640,6 +643,14 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   ze strefą, lista UUID), reguły promocji domena; `PromotionWriteFailures` zamienia `InvalidPromotion` na naruszenie
   przy jego polu, a `InvalidPromotionVariants` na naruszenia `variantIds[<indeks>]`. Odpowiedzi zapisu to `GetPromotion`
   odczytane po zapisie, `private, no-store`.
+- Kody rabatowe w panelu (`/api/v1/admin/discount-codes`, Pricing UI, `docs/features/pricing/spec.md`, „Kody
+  rabatowe”): `GET` lista (`status`, `q`, `after`, `perPage`) i szczegóły dla każdego pracownika, `POST` i `PUT /{id}`
+  dla `admin` i `marketing` (`DiscountCodeVoter`, `MANAGE_DISCOUNT_CODES`, przed treścią). Wyjątek od
+  `#[MapRequestPayload]`: treść czyta w kontrolerze `DiscountCodeBodyReader` (JSON, typy ścisłe, ta sama walidacja DTO),
+  bo `PUT` odpowiada 404 przed 422 treści, a brak klucza ma polski komunikat „To pole jest wymagane.” zamiast
+  angielskiego tekstu frameworka; `DiscountCodeWriteFailures` zamienia `InvalidDiscountCode` na naruszenie przy polu.
+  `ReviseDiscountCode` blokuje wiersz kodu (`PESSIMISTIC_WRITE` przez ORM z odświeżeniem rekordu, jak koszyk) i czyta
+  liczbę aktywnych użyć pod blokadą. Odpowiedzi to `GetDiscountCode` odczytane po zapisie, `private, no-store`.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
