@@ -18,13 +18,17 @@ use App\Ordering\Domain\OrderShipped;
 use App\Ordering\Domain\OrderTransitionNotAllowed;
 use App\Ordering\Domain\RefundNotPending;
 use App\Ordering\Domain\StaffTransition;
+use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeRepository;
+use App\Tests\Factory\DiscountCodeFactory;
 use App\Tests\Integration\Cart\CartFixture;
 use App\Tests\Integration\Shared\Messaging\MessagingKernelTestCase;
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Uid\Uuid;
+use Zenstruck\Foundry\Test\Factories;
 
 /**
  * ChangeOrderStatus and CompleteRefund on shop_test with the Doctrine transports (the `test_messaging` kernel; rolled
@@ -33,6 +37,8 @@ use Symfony\Component\Uid\Uuid;
  */
 final class ChangeOrderStatusTest extends MessagingKernelTestCase
 {
+    use Factories;
+
     private Connection $db;
 
     protected function setUp(): void
@@ -120,18 +126,39 @@ final class ChangeOrderStatusTest extends MessagingKernelTestCase
         self::assertSame($after, $this->state($orderId, $shoes));
     }
 
+    public function testCancelAndReturnByStaffKeepTheUsageOfTheDiscountCode(): void
+    {
+        // Q1: the refund of a paid order is after the discount already, so its usage stays.
+        $code = DiscountCodeFactory::createOne(['code' => 'STAFF-Q1', 'value' => 10]);
+        $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        new DoctrineDiscountCodeRepository($entityManager)->save($code);
+        [, $cancelled] = $this->paidOrder('STAFF-Q1');
+        [, $returned] = $this->paidOrder('STAFF-Q1');
+
+        $this->change($cancelled, StaffTransition::Cancel, 2, 'Klient zrezygnował');
+        $this->change($returned, StaffTransition::Ship, 2, null);
+        $this->change($returned, StaffTransition::Return, 3, 'Zwrot towaru');
+
+        self::assertSame(
+            [[$cancelled, true], [$returned, true]],
+            $this->db->fetchAllNumeric('SELECT order_id, released_at IS NULL FROM pricing_discount_code_usage WHERE code_id = ? ORDER BY order_id = ? DESC', [$code->id()->toString(), $cancelled]),
+        );
+    }
+
     /**
      * @return array{string, string} the variant (5 units, 2 reserved by the order) and the id of the order, placed and
-     *                               paid (version 2)
+     *                               paid (version 2), with the discount code if one is given (10 %)
      */
-    private function paidOrder(): array
+    private function paidOrder(?string $discountCode = null): array
     {
         [$shoes] = OrderingFixture::variant($this->db, 10_000, 5);
         $cart = CartFixture::cart($this->db, expiresAt: '+3 days', lines: [[$shoes, 2]]);
-        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', 2 * 12_300, 'key-'.$cart));
+        $total = null === $discountCode ? 2 * 12_300 : 2 * 12_300 - 2_460;
+        $placed = $this->dispatch(new PlaceOrder(CartReference::guest($cart), 'jan@example.com', 'Jan Kowalski', '600100200', 'Długa 1', '00-950', 'Warszawa', $total, 'key-'.$cart, $discountCode));
         self::assertInstanceOf(PlacedOrder::class, $placed);
         $orderId = $placed->order->orderId;
-        $this->dispatch(new MarkOrderPaid($orderId, Uuid::v7()->toRfc4122(), 2 * 12_300, 'PLN', new \DateTimeImmutable()));
+        $this->dispatch(new MarkOrderPaid($orderId, Uuid::v7()->toRfc4122(), $total, 'PLN', new \DateTimeImmutable()));
         self::assertSame([5, 2], OrderingFixture::stock($this->db, $shoes));
 
         return [$shoes, $orderId];

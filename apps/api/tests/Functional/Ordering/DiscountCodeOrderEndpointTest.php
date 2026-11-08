@@ -85,10 +85,11 @@ final class DiscountCodeOrderEndpointTest extends WebTestCase
         $this->code(['code' => 'OFF-F3', 'enabled' => false]);
         $this->code(['code' => 'OLD-F3', 'startsAt' => '-10 days', 'endsAt' => '-1 day']);
 
-        foreach (['NO-SUCH-CODE', 'off-f3', 'OLD-F3', 'x'] as $text) {
+        // A text that cannot be a code (too short, a NUL, a line separator inside) is an unknown code, never a 500.
+        foreach (['NO-SUCH-CODE', 'off-f3', 'OLD-F3', 'x', "OFF\0-F3", "OFF\u{2028}F3", 'ŻÓŁW-10'] as $text) {
             [$shoes, , $cart] = $this->cart();
 
-            $problem = $this->place(self::PATH, $this->body($cart, 25_830, $text), key: 'key-'.$text);
+            $problem = $this->place(self::PATH, $this->body($cart, 25_830, $text), key: 'key-'.bin2hex($text));
 
             $this->assertConflict('discount-code-invalid', 'Ten kod jest nieprawidłowy albo nieaktywny.', $problem);
             self::assertArrayNotHasKey('minimumOrderGross', $problem);
