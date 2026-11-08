@@ -92,7 +92,7 @@ final class ProductOffersController
         }
 
         /** @var list<ProductOfferView> $offers */
-        $offers = $this->handle(new GetProductOffers($query->productId));
+        $offers = $this->handle(new GetProductOffers($query->productId, withLowestPriorPrice: true));
 
         $response = new JsonResponse(new ProductOfferListResponse(array_map(
             static fn (ProductOfferView $offer): ProductOfferResponse => ProductOfferResponse::of($offer),

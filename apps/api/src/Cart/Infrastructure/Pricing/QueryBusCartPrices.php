@@ -9,6 +9,7 @@ use App\Cart\Application\Port\CartPrices;
 use App\Cart\Domain\Currency;
 use App\Cart\Domain\Money;
 use App\Cart\Domain\VariantId;
+use App\Cart\Domain\VariantPromotion;
 use App\Cart\Infrastructure\QueryBusFailure;
 use App\Pricing\Application\Query\GetCurrentPrices;
 use App\Pricing\Application\Query\PriceSnapshot;
@@ -18,8 +19,9 @@ use Symfony\Component\Messenger\HandleTrait;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
- * The current gross prices of variants through Pricing's GetCurrentPrices on the query bus. A price in a currency the
- * cart does not sell in counts as no current price.
+ * The current (effective) gross prices of variants through Pricing's GetCurrentPrices on the query bus, with the
+ * catalog gross and the promotion that gives the price. A price in a currency the cart does not sell in counts as no
+ * current price.
  */
 final class QueryBusCartPrices implements CartPrices
 {
@@ -30,14 +32,14 @@ final class QueryBusCartPrices implements CartPrices
         $this->messageBus = $queryBus;
     }
 
-    public function current(array $ids): array
+    public function current(array $ids, bool $withLowestPriorPrice = false): array
     {
         if ([] === $ids) {
             return [];
         }
 
         try {
-            $current = $this->handle(new GetCurrentPrices(array_map(static fn (VariantId $id): string => $id->toString(), $ids)));
+            $current = $this->handle(new GetCurrentPrices(array_map(static fn (VariantId $id): string => $id->toString(), $ids), $withLowestPriorPrice));
         } catch (HandlerFailedException $failure) {
             throw QueryBusFailure::cause($failure);
         }
@@ -48,7 +50,16 @@ final class QueryBusCartPrices implements CartPrices
             \assert($price instanceof PriceSnapshot);
             $currency = Currency::tryFrom($price->currency);
             if (null !== $currency) {
-                $prices[] = new CartPrice(VariantId::fromString($price->variantId), Money::of($price->gross, $currency));
+                $promotion = $price->promotion;
+                $prices[] = new CartPrice(
+                    VariantId::fromString($price->variantId),
+                    Money::of($price->gross, $currency),
+                    Money::of($price->regularGross, $currency),
+                    null === $promotion ? null : new VariantPromotion(
+                        $promotion->endsAt,
+                        null === $promotion->lowestPriorGross ? null : Money::of($promotion->lowestPriorGross, $currency),
+                    ),
+                );
             }
         }
 

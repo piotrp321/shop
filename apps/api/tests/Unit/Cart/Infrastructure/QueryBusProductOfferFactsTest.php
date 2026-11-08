@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Cart\Infrastructure;
 
 use App\Cart\Application\Query\GetProductOffers;
+use App\Cart\Application\View\FromPromotionView;
 use App\Cart\Application\View\ProductOfferView;
 use App\Cart\Application\View\VariantOfferView;
+use App\Cart\Application\View\VariantPromotionView;
 use App\Cart\Infrastructure\Catalog\QueryBusProductOfferFacts;
 use App\Catalog\Application\Search\OfferFactsUnavailable;
 use App\Catalog\Application\Search\ProductFacts;
@@ -20,6 +22,8 @@ final class QueryBusProductOfferFactsTest extends TestCase
 {
     /** @var list<list<string>> the product ids of every GetProductOffers */
     private array $asked = [];
+    /** @var list<bool> the withLowestPriorPrice flag of every GetProductOffers */
+    private array $flags = [];
 
     private ?\Throwable $failure = null;
 
@@ -30,6 +34,8 @@ final class QueryBusProductOfferFactsTest extends TestCase
         $facts = $this->facts()->of($ids);
 
         self::assertSame([48, 48, 1], array_map(\count(...), $this->asked));
+        // The index needs no Omnibus price, so the offers do not read the history for it.
+        self::assertSame([false, false, false], $this->flags);
         self::assertSame($ids, array_merge(...$this->asked));
         self::assertSame($ids, array_keys($facts));
         self::assertEquals(new ProductFacts(1_000, [
@@ -74,11 +80,12 @@ final class QueryBusProductOfferFactsTest extends TestCase
                     throw $this->failure;
                 }
                 $this->asked[] = $query->productIds;
+                $this->flags[] = $query->withLowestPriorPrice;
 
                 return array_map(static fn (string $id): ProductOfferView => new ProductOfferView($id, [], 1_000, false, 'PLN', 'in_stock', [
-                    new VariantOfferView('10000000-0000-4000-8000-000000000001', '', 1_000, 'in_stock', true),
-                    new VariantOfferView('10000000-0000-4000-8000-000000000002', '', null, 'out_of_stock', false),
-                ]), $query->productIds);
+                    new VariantOfferView('10000000-0000-4000-8000-000000000001', '', 1_000, 'in_stock', true, 1_250, new VariantPromotionView(new \DateTimeImmutable('2026-11-20T00:00:00Z'), null)),
+                    new VariantOfferView('10000000-0000-4000-8000-000000000002', '', null, 'out_of_stock', false, null, null),
+                ], new FromPromotionView(null)), $query->productIds);
             }],
         ]))]));
     }

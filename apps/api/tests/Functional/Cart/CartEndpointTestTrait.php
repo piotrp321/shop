@@ -53,6 +53,23 @@ trait CartEndpointTestTrait
     }
 
     /**
+     * Puts the variants in a promotion of Pricing active now (from an hour ago until tomorrow).
+     *
+     * @param list<string> $variantIds
+     */
+    private function promote(int $percentOff, array $variantIds): void
+    {
+        $id = Uuid::v7()->toRfc4122();
+        $this->connection->executeStatement(
+            "INSERT INTO pricing_promotion (id, name, percent_off, starts_at, ends_at, created_at, updated_at, version) VALUES (?, 'Promocja', ?, date_trunc('second', NOW()) - INTERVAL '1 hour', date_trunc('second', NOW()) + INTERVAL '1 day', NOW(), NOW(), 1)",
+            [$id, $percentOff],
+        );
+        foreach ($variantIds as $variantId) {
+            $this->connection->executeStatement('INSERT INTO pricing_promotion_variant (promotion_id, variant_id) VALUES (?, ?)', [$id, $variantId]);
+        }
+    }
+
+    /**
      * The one (default) variant of a new draft of Catalog, with a gross price and a physical stock: everything but
      * the publication.
      */

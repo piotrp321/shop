@@ -554,8 +554,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   i `status` (`keyword`, `published` albo `draft`: szkic zostaje w indeksie jako trwały tombstone z wersją, a każde
   zapytanie sklepu ma `term status: published` w `query`, więc wyniki, `total` i agregacje widzą tylko opublikowane).
   Ceny i dostępność daje port `ProductOfferFacts` (`Catalog_Application`) z adapterem `QueryBusProductOfferFacts`
-  w `Cart_Infrastructure` (Cart `GetProductOffers` na `query.bus`, paczki po 48): reguła „możliwy do kupienia” i cena
-  „od” są tylko w Cart. Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
+  w `Cart_Infrastructure` (Cart `GetProductOffers` na `query.bus`, paczki po 48, bez ceny Omnibus): reguła „możliwy
+  do kupienia” i cena „od” są tylko w Cart, a ceny są skuteczne (w aktywnej promocji promocyjne, Pricing
+  `GetCurrentPrices`). Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
   Inventory.
 - Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, poza `command.bus`): znacznik
   czasu w mikrosekundach pobrany przed odczytem (DBAL Catalog i `ProductOfferFacts`) jest wersją dokumentu
