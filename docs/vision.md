@@ -272,25 +272,41 @@ sklep ma wyglądać jak prawdziwy.
 9. Rezerwacja stanów bez sprzedaży ponad stan przy równoległych zakupach.
 10. Promocje i kody rabatowe, z ceną Omnibus.
 
-## Po MVP: publiczne środowisko demo
+## Środowisko wdrożeniowe
 
-Publiczna wersja jest jednocześnie środowiskiem pokazowym (bez osobnej produkcji). Cel: pełny,
-realistyczny deployment przy kosztach rzędu kilkudziesięciu euro miesięcznie.
+Pierwsze wdrożenie poza komputerem dewelopera: jeden serwer, jeden klaster, jeden pipeline. Na start działa jako
+demonstracja (sklep publiczny z paskiem o symulowanych płatnościach, `noindex`, panel za Cloudflare Access, rejestracja
+klientów wyłączona, potwierdzenia zamówień nie wychodzą na zewnątrz). Te ograniczenia są wartościami konfiguracji
+(`infra/k8s/environments/prod/values.yaml`), więc przejście na publiczny sklep nie wymaga przebudowy obrazów.
+Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra/k8s/README.md`.
 
-- **Serwer**: jeden serwer (dedykowany lub VPS z odpowiednią ilością RAM).
-- **Kubernetes**: k3s na jednym węźle. Aplikacje i usługi jako Helm charty w `infra/k8s/`.
-- **GitOps**: Argo CD. Zmiana w repo → Argo synchronizuje klaster. Żadnego ręcznego `kubectl apply`.
-- **CI**: GitHub Actions buduje obrazy, wypycha je do GitHub Container Registry i aktualizuje tagi w repo,
-  które Argo wdraża.
-- **Obserwowalność**: Grafana Cloud (darmowy plan) – metryki, logi i trace'y przez agenta Grafana Alloy
-  w klastrze, bez własnego Prometheusa i Lokiego.
-- **Błędy**: Sentry SaaS (darmowy plan) dla API, store i admin.
-- **Brzeg sieci**: Cloudflare (darmowy plan) – DNS, TLS, cache obrazów z imgproxy.
-- **Sekrety**: nigdy w repo w postaci jawnej (Sealed Secrets albo SOPS).
-- **Migracje i indeks**: osobny Job przed wdrożeniem nowej wersji, nigdy przy starcie kontenera aplikacji.
-- **Tryb demo**: dane resetowane co noc z danych demo, konta demo podane na stronie logowania,
-  płatności udawane, e-maile nie wychodzą na zewnątrz.
+- **Serwer**: jeden VPS (8 vCore, 24 GB RAM, OVH) z Ubuntu 24.04, przygotowany po SSH przez `make -C infra/k8s bootstrap`.
+- **Kubernetes**: k3s na jednym węźle (Traefik z k3s jako ingress, `local-path` jako storage). Własny chart
+  `infra/k8s/charts/shop` na tych samych obrazach usług co `infra/docker-compose.yml`; gotowe charty tylko dla
+  platformy (Argo CD, Sealed Secrets).
+- **GitOps**: Argo CD (app-of-apps w `infra/k8s/argocd/`) śledzi gałąź `deploy-images`. Zmiana w repo → Argo
+  synchronizuje klaster, bez ręcznego `kubectl apply`.
+- **CI**: GitHub Actions z każdego commita na `main` buduje cztery obrazy produkcyjne (api, store, admin,
+  elasticsearch), wypycha je do GitHub Container Registry, uruchamia smoke test na k3d na tych obrazach i dopiero
+  po zielonym jednym atomowym pushem przesuwa `deploy` (fast-forward na commit z `main`) i dodaje do `deploy-images`
+  snapshot: ten commit plus plik z tagiem i digestami obrazów. Obrazy są wdrażane po digeście.
+- **Sekrety**: nigdy w repo w postaci jawnej; Sealed Secrets (certyfikat kontrolera w repo, klucz prywatny w kopii
+  u właściciela).
+- **Migracje i indeks**: osobny Job przed wdrożeniem nowej wersji, nigdy przy starcie kontenera aplikacji; dane demo
+  wczytuje idempotentny Job.
+- **Brzeg sieci**: Cloudflare (proxy, „Full (strict)” z certyfikatem Origin CA, cache obrazów z imgproxy, Access przed
+  panelem); serwer przyjmuje HTTP(S) tylko od Cloudflare.
+- **Poczta**: Brevo SMTP dla Keycloaka i (za przełącznikiem) potwierdzeń zamówień; SPF, DKIM, DMARC w Cloudflare.
 - **Świadomie bez Ranchera**: przy jednym klastrze to narzut bez korzyści.
+
+Kolejne kroki, osobne zgłoszenia:
+
+- **DEPLOY-OPS** (#178): kopie zapasowe poza serwerem, ich weryfikacja i odtwarzanie, monitoring. Obserwowalność przez
+  Grafana Cloud (darmowy plan) – metryki, logi i trace'y przez agenta Grafana Alloy w klastrze, bez własnego Prometheusa
+  i Lokiego. Musi być skończone przed przełączeniem na publiczny sklep albo przed pierwszymi prawdziwymi danymi.
+- **Tryb publicznego demo** (#179): dane resetowane co noc z danych demo, konta demo podane na stronie logowania, limity
+  uploadów.
+- **Sentry** (#180): Sentry SaaS (darmowy plan) dla API, store i admin, także Sentry Performance.
 
 ## Poza zakresem (na razie)
 
@@ -329,7 +345,7 @@ zmiana decyzji to edycja, porzucenie to usunięcie. Do opisania:
   kategorii to ścieżka slugów od korzenia, liczona przy odczycie drzewa, bez kolumny w bazie.
 - Klasa podatkowa produktu (`taxClass`) w Catalog zamiast stawki VAT; stawkę dla PL wyznacza Pricing, tabela w kodzie.
 - SPX zamiast Blackfire do profilowania (darmowe, wystarczające przy tej skali).
-- k3s + Argo CD na jednym serwerze; Grafana Cloud i Sentry SaaS zamiast hostowania obserwowalności u siebie.
+- Grafana Cloud i Sentry SaaS zamiast hostowania obserwowalności u siebie.
 
 ## Praca z agentami AI
 

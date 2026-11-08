@@ -198,7 +198,8 @@ class SmokeValues(unittest.TestCase):
         smoke = (REPO / "infra/k8s/scripts/smoke.sh").read_text()
         self.assertIn("-f environments/ci/values.yaml -f /kube/values-images.yaml", smoke)
         self.assertIn("check_registry_images", smoke)
-        self.assertIn("--registry-config /kube/registries.yaml", smoke)
+        self.assertIn("--registry-config /registry/registries.yaml", smoke)
+        self.assertIn('K3D_MOUNT="$registry_dir:/registry:ro"', smoke)
         self.assertIn("umask 077", smoke)
         self.assertIn("unset SMOKE_GHCR_TOKEN", smoke)
         # The token is only ever written to the private file, never printed.

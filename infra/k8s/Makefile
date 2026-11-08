@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke rerun create-admin seal-secrets bootstrap kubeconfig status reinitialize
+.PHONY: check selftest smoke rerun create-admin seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render). Needs only Docker.
@@ -60,3 +60,9 @@ status:
 # make -C infra/k8s reinitialize HOST=<user>@<address>
 reinitialize:
 	sh scripts/reinitialize.sh "$(HOST)"
+
+# Brings the Cloudflare ranges of ipAllowList in environments/prod/values.yaml up to date with the ones Cloudflare publishes
+# (rewrites the file; commit the change): make -C infra/k8s cloudflare-ips. With CHECK=1 it only reports (exit 1 when the
+# list is out of date).
+cloudflare-ips:
+	sh scripts/update-cloudflare-ips.sh $(if $(CHECK),--check,)

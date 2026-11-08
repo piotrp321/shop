@@ -3,6 +3,8 @@
 # copy, which must fail and say why. The unbroken copy must pass (a check that always fails proves nothing).
 #
 # Usage: selftest.sh        (make -C infra/k8s selftest)
+#        SELFTEST_ONLY='<regex>' selftest.sh   only the cases whose name matches the regular expression (grep -E, case
+#                                              insensitive); the unbroken copy is then not run. For working on a case.
 set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -46,6 +48,9 @@ replace() {
 run_case() {
   name="$1" expected="$2"
   shift 2
+  if [ -n "${SELFTEST_ONLY:-}" ] && ! printf '%s' "$name" | grep -Eqi "$SELFTEST_ONLY"; then
+    return 0
+  fi
   fresh_copy
   "$@"
   if output="$(sh "$tree/infra/k8s/scripts/check.sh" 2>&1)"; then
@@ -119,7 +124,7 @@ certificate_with_a_key_unsealed() {
   {
     printf 'apiVersion: bitnami.com/v1alpha1\nkind: SealedSecret\nmetadata:\n  name: shop-secrets\n  namespace: shop\nspec:\n  encryptedData:\n'
     awk -v q="'" '/^(secrets|appendable)=/ { inblock = 1; sub(/^[a-z]+=/, "") }
-      inblock { line = $0; sub("^" q, "", line); ended = (line ~ (q "$")); sub(q "$", "", line); if (line != "") print $1; if (ended) inblock = 0 }' \
+      inblock { line = $0; sub("^" q, "", line); ended = (line ~ (q "$")); sub(q "$", "", line); if (line != "") { split(line, parts, " "); print parts[1] }; if (ended) inblock = 0 }' \
       "$tree/infra/scripts/init-env.sh" | grep -v '^PAYMENT_DEMO_CARD_API_KEY$' | sed 's/^\(.*\)$/    \1: AgBselftest/'
     printf '  template:\n    type: Opaque\n'
   } > "$tree/infra/k8s/environments/prod/secrets/shop-secrets.yaml"
@@ -139,9 +144,11 @@ seal_secrets_replaces_existing_keys() { replace infra/k8s/scripts/seal-secrets.s
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 nothing_broken() { :; }
 
-echo "selftest: the unbroken copy passes"
-fresh_copy
-sh "$tree/infra/k8s/scripts/check.sh" >/dev/null 2>&1 || { echo "selftest: FAIL the unbroken copy does not pass the check" >&2; failures=$((failures + 1)); }
+if [ -z "${SELFTEST_ONLY:-}" ]; then
+  echo "selftest: the unbroken copy passes"
+  fresh_copy
+  sh "$tree/infra/k8s/scripts/check.sh" >/dev/null 2>&1 || { echo "selftest: FAIL the unbroken copy does not pass the check" >&2; failures=$((failures + 1)); }
+fi
 
 run_case "broken template" "unexpected EOF" broken_template
 run_case "init-env.sh key missing from the secret template" "keys of infra/scripts/init-env.sh missing from the secret template" secret_key_missing

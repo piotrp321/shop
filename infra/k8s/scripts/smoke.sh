@@ -74,16 +74,18 @@ KUBE_NETWORK="k3d-$cluster"
 mkdir -p "$TOOLS_CACHE"
 KUBE_DIR="$(mktemp -d "$TOOLS_CACHE/kube-XXXXXX")"
 work="$KUBE_DIR"
+registry_dir=""
 chart_registry="$(sed -n 's/^  registry: //p' "$here/../charts/shop/values.yaml" | head -n 1)"
 if [ -n "$SMOKE_VALUES" ]; then
   # In the directory that the helm and k3d containers mount as /kube.
   cp "$SMOKE_VALUES" "$KUBE_DIR/values-images.yaml"
   if [ -n "${SMOKE_GHCR_TOKEN:-}" ]; then
-    # A file for k3d (registries.yaml of the nodes) with the credentials for ghcr.io; the directory is private (mktemp -d)
-    # and removed on exit. Nothing here prints the token.
+    # A file for k3d (registries.yaml of the nodes) with the credentials for ghcr.io, alone in a private directory (mktemp -d)
+    # that only the k3d container mounts and that is removed on exit. Nothing here prints the token.
+    registry_dir="$(mktemp -d "$TOOLS_CACHE/registry-XXXXXX")"
     (umask 077 && printf 'configs:\n  ghcr.io:\n    auth:\n      username: %s\n      password: %s\n' \
-      "${SMOKE_GHCR_USER:-token}" "$SMOKE_GHCR_TOKEN" > "$KUBE_DIR/registries.yaml")
-    K3D_MOUNT="$KUBE_DIR:/kube:ro"
+      "${SMOKE_GHCR_USER:-token}" "$SMOKE_GHCR_TOKEN" > "$registry_dir/registries.yaml")
+    K3D_MOUNT="$registry_dir:/registry:ro"
     export K3D_MOUNT
   fi
 fi
@@ -113,6 +115,7 @@ cleanup() {
     for app in $apps; do docker rmi -f "$registry/$app:$tag" >/dev/null 2>&1 || true; done
   done
   rm -rf "$KUBE_DIR"
+  [ -z "$registry_dir" ] || rm -rf "$registry_dir"
   if [ "$status" -eq 0 ]; then echo "smoke: ok"; else echo "smoke: FAILED (exit $status)" >&2; fi
   exit "$status"
 }
@@ -456,7 +459,7 @@ else
   log "cluster $cluster ($K3S_IMAGE)"
   k3d cluster delete "$cluster" >/dev/null 2>&1 || true
   registry_config=""
-  [ ! -f "$KUBE_DIR/registries.yaml" ] || registry_config="--registry-config /kube/registries.yaml"
+  [ -z "$registry_dir" ] || registry_config="--registry-config /registry/registries.yaml"
   # shellcheck disable=SC2086 # $registry_config is an option and its value
   k3d cluster create "$cluster" --no-lb --image "$K3S_IMAGE" --wait --timeout 300s $registry_config \
     --k3s-arg '--disable=metrics-server@server:*' --k3s-arg '--disable=servicelb@server:*' >/dev/null
