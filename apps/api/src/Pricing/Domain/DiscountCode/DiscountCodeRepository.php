@@ -1,0 +1,24 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Pricing\Domain\DiscountCode;
+
+interface DiscountCodeRepository
+{
+    public function find(DiscountCodeId $id): ?DiscountCode;
+
+    /**
+     * The code read anew under the lock of its row (SELECT … FOR UPDATE) until the end of the transaction, or null.
+     * Only in a transaction.
+     */
+    public function lock(DiscountCodeId $id): ?DiscountCode;
+
+    /**
+     * Writes a new code (version 1) or a revised one (written at its version, checked against the stored one).
+     *
+     * @throws DiscountCodeTaken                when another code has the same text
+     * @throws DiscountCodeModifiedConcurrently when the stored version is not the one the code was read with
+     */
+    public function save(DiscountCode $code): void;
+}
