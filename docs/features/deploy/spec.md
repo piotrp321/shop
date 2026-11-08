@@ -243,8 +243,10 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
    kończy się po smoke teście z ostrzeżeniem, bez błędu.
 5. Argo CD synchronizuje `root`, a przez niego `sealed-secrets`, `secrets` i `shop` (fale −2, −1, 0) z `deploy-images`;
    chart rozkłada zasoby w falach.
-6. Wycofanie wersji: revert na `main` (nowe wdrożenie); Argo może też wrócić do poprzedniego snapshotu `deploy-images`
-   (jego obrazy zostają w GHCR). Schemat bazy jest zgodny wstecz tylko z poprzednią wersją; cofnięcie o więcej wersji
+6. Wycofanie wersji: revert na `main` (nowe wdrożenie). Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
+   `deploy-images` (jego obrazy zostają w GHCR), po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona
+   `syncPolicy` aplikacji `shop`), a potem `shop`; po revercie automatyczną synchronizację włącza się z powrotem, najpierw
+   `root`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją; cofnięcie o więcej wersji
    wymaga odtworzenia kopii (DEPLOY-OPS) albo pełnego ponownego wczytania danych (`reinitialize`, zgoda użytkownika).
 
 Zasady dla kolejnych epików (dokumentacja w `apps/api/CLAUDE.md` i `CLAUDE.md`): migracje zgodne wstecz z poprzednią

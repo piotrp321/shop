@@ -172,9 +172,12 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 - **Nowa wersja**: merge PR do `main`; pipeline sam publikuje snapshot, a Argo CD synchronizuje klaster. Błąd renderu albo
   migracji zatrzymuje wdrożenie, a poprzednia wersja działa dalej (aplikacja `Degraded`).
 - **Cofnięcie wersji**: revert na `main` (nowe wdrożenie). Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu;
-  cofnięcie o więcej wersji wymaga kopii (DEPLOY-OPS) albo `reinitialize`. Awaryjnie **użytkownik** może zatrzymać automatyczną
-  synchronizację aplikacji `shop` w Argo CD i zsynchronizować ją z poprzednim snapshotem `deploy-images` (jego obrazy są w
-  GHCR); potem robi revert na `main` i włącza synchronizację z powrotem.
+  cofnięcie o więcej wersji wymaga kopii (DEPLOY-OPS) albo `reinitialize`. Awaryjnie **użytkownik** wyłącza w Argo CD
+  automatyczną synchronizację aplikacji `root`, a potem aplikacji `shop` (kolejność ma znaczenie: `root` z `selfHeal`
+  przywraca z gita `syncPolicy` aplikacji `shop`, a Argo CD nie synchronizuje do innej rewizji aplikacji z automatyczną
+  synchronizacją) i synchronizuje `shop` z poprzednim snapshotem `deploy-images` (jego obrazy są w GHCR). Potem robi revert
+  na `main`, a po opublikowaniu nowego snapshotu włącza automatyczną synchronizację `root` (z `prune` i `selfHeal`, jak w
+  `argocd/root.yaml`): `root` przywraca z gita automatyczną synchronizację `shop`, która wdraża nowy snapshot.
 - **Argo CD i inne narzędzia** (bez publicznego adresu): `ssh -L 8080:localhost:8080 <user>@<adres> 'sudo k3s kubectl -n argocd
   port-forward svc/argocd-server 8080:80'`, hasło w sekrecie `argocd-initial-admin-secret` (**użytkownik**).
 - **Utrata klucza Sealed Secrets**: bez kopii (2.4) sekretów z repo nie da się odszyfrować. Nowy certyfikat: usuń
