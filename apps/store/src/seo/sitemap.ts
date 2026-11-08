@@ -24,13 +24,13 @@ function xml(body: string): Response {
 }
 
 function notFound(): Response {
-  return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+  return new Response(null, { status: 404, headers: { "Cache-Control": "no-store" } });
 }
 
 function unavailable(what: string, error: unknown): Response {
   const reason = error instanceof Error ? error.message : "unknown error";
   console.error(`The ${what} could not be built (${reason}).`);
-  return new Response("Service unavailable", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+  return new Response(null, { status: 503, headers: { "Cache-Control": "no-store" } });
 }
 
 function catalogClient() {
@@ -48,8 +48,12 @@ function isCategoryList(value: unknown): value is CategoryNode[] {
   return Array.isArray(value) && value.every((node) => isRecord(node) && isText(node.path) && isCategoryList(node.children));
 }
 
+// `format: date-time` of the contract: RFC 3339 with an offset (or Z); it goes into <lastmod> as it is.
+const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+const isDateTime = (value: unknown): value is string => typeof value === "string" && DATE_TIME.test(value) && !Number.isNaN(Date.parse(value));
+
 function isProductList(value: unknown): value is SitemapProduct[] {
-  return Array.isArray(value) && value.every((item) => isRecord(item) && isText(item.slug) && isText(item.updatedAt));
+  return Array.isArray(value) && value.every((item) => isRecord(item) && isText(item.slug) && isDateTime(item.updatedAt));
 }
 
 /** The paths of the tree, every level, parents before their children. */
@@ -69,13 +73,14 @@ export async function sitemapIndexResponse(): Promise<Response> {
       throw new Unusable(`GET /api/v1/sitemap/product-chunks failed with status ${response.status}`);
     }
     const chunks: unknown = (data as { chunks?: unknown }).chunks;
-    if (!Array.isArray(chunks) || !chunks.every((chunk) => isRecord(chunk) && isText(chunk.key))) {
+    // An empty catalogue has one chunk, so an empty list breaks the contract.
+    if (!Array.isArray(chunks) || chunks.length === 0 || !chunks.every((chunk) => isRecord(chunk) && isText(chunk.key))) {
       throw new Unusable("GET /api/v1/sitemap/product-chunks returned an unexpected body");
     }
     return xml(
       buildSitemapIndex([
         `${storeUrl}/sitemaps/listing.xml`,
-        ...(chunks as { key: string }[]).map(({ key }) => `${storeUrl}/sitemaps/products/${key}.xml`),
+        ...(chunks as { key: string }[]).map(({ key }) => `${storeUrl}/sitemaps/products/${encodeURIComponent(key)}.xml`),
       ]),
     );
   } catch (error) {

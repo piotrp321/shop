@@ -74,16 +74,26 @@ describe("sitemapIndexResponse", () => {
     }
   });
 
-  it("lists only the listing map for an empty list of chunks", async () => {
+  it("answers 503 no-store and logs an empty list of chunks: the API gives one chunk even for an empty catalogue", async () => {
     stubApi(() => json({ chunks: [] }));
-    expect(locs(await (await sitemapIndexResponse()).text())).toEqual(["http://store.test/sitemaps/listing.xml"]);
+    const response = await sitemapIndexResponse();
+    expectUnavailable(response);
+    expect(await response.text()).toBe("");
+  });
+
+  it("percent-encodes the key in the address of the chunk map; a key of base64url is unchanged", async () => {
+    stubApi(() => json({ chunks: [{ key: "Zmlyc3Q-_9" }, { key: "a+b/c=d e" }] }));
+    expect(locs(await (await sitemapIndexResponse()).text()).slice(1)).toEqual([
+      "http://store.test/sitemaps/products/Zmlyc3Q-_9.xml",
+      "http://store.test/sitemaps/products/a%2Bb%2Fc%3Dd%20e.xml",
+    ]);
   });
 
   it("answers 503 no-store and logs an API error, never a partial map", async () => {
     stubApi(() => problem(500));
     const response = await sitemapIndexResponse();
     expectUnavailable(response);
-    expect(await response.text()).not.toContain("<sitemapindex");
+    expect(await response.text()).toBe("");
   });
 
   it("answers 503 no-store and logs a network error", async () => {
@@ -216,6 +226,7 @@ describe("productChunkSitemapResponse", () => {
     const response = await productChunkSitemapResponse("nope.xml");
     expect(response.status).toBe(404);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.text()).toBe("");
     expect(logged).not.toHaveBeenCalled();
   });
 
@@ -247,9 +258,21 @@ describe("productChunkSitemapResponse", () => {
     ["an item without a slug", { items: [{ updatedAt: "2026-11-02T10:00:00+01:00" }] }],
     ["an item without updatedAt", { items: [{ slug: "a" }] }],
     ["an empty slug", { items: [{ slug: "", updatedAt: "2026-11-02T10:00:00+01:00" }] }],
+    ["an updatedAt that is not a date", { items: [{ slug: "a", updatedAt: "yesterday" }] }],
+    ["an updatedAt without the offset", { items: [{ slug: "a", updatedAt: "2026-11-02T10:00:00" }] }],
+    ["an updatedAt with a date only", { items: [{ slug: "a", updatedAt: "2026-11-02" }] }],
+    ["an updatedAt with a month out of range", { items: [{ slug: "a", updatedAt: "2026-13-02T10:00:00+01:00" }] }],
+    ["an updatedAt with markup", { items: [{ slug: "a", updatedAt: "2026-11-02T10:00:00+01:00</lastmod>" }] }],
   ])("answers 503 no-store and logs %s", async (_label, body) => {
     stubApi(() => json(body));
     expectUnavailable(await productChunkSitemapResponse("a.xml"));
+  });
+
+  it.each(["2026-11-02T10:00:00Z", "2026-11-02T10:00:00.123456+00:00", "2026-11-02T10:00:00-05:30"])("accepts the RFC 3339 time %s", async (updatedAt) => {
+    stubApi(() => json({ items: [{ slug: "a", updatedAt }] }));
+    const response = await productChunkSitemapResponse("a.xml");
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain(`<lastmod>${updatedAt}</lastmod>`);
   });
 
   it("is a configuration error without STORE_URL", async () => {

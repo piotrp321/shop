@@ -257,7 +257,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   sprawdza.
 - Odpowiedzi: 200 z `Content-Type: application/xml; charset=utf-8` i `Cache-Control: public, max-age=300`; pusta lista
   produktów to 200 z pustym `urlset`; adres bez `.xml` i klucz, który API odrzuca (400), to 404; każdy inny błąd API
-  (także 404), błąd sieci albo nieoczekiwana treść to 503 z `Cache-Control: no-store` i wpisem w logu serwera. Sklep nigdy
+  (także 404), błąd sieci albo nieoczekiwana treść (m.in. pusta lista porcji, `updatedAt` spoza RFC 3339 z przesunięciem) to 503 z `Cache-Control: no-store` i wpisem w logu serwera. Odpowiedzi 404 i 503 mają puste ciało (tylko nagłówki). Klucz porcji w adresie indeksu
+  przechodzi przez `encodeURIComponent` (base64url bez zmian), a Next dekoduje segment `[file]` z powrotem. Sklep nigdy
   nie wysyła pustej ani częściowej mapy zamiast błędu.
 - Bez data cache Next.js: trasy mają `export const dynamic = "force-dynamic"`, a każdy odczyt API `cache: "no-store"`. Cache
   to Varnish i pula API (jak przy listingu). Odczyty idą przez `API_CATALOG_URL`; `STORE_URL` i `API_CATALOG_URL` są czytane
