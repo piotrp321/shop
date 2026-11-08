@@ -140,19 +140,19 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setIdempotencyKey(newIdempotencyKey());
   }
 
-  /** Reads the summary again with `code` and shows what the API says of it; false when the summary could not be read. */
-  async function reloadPreview(code: string | null, session: AccountSession): Promise<boolean> {
+  /** Reads the summary again with `code` and shows what the API says of it; answers how the read ended. */
+  async function reloadPreview(code: string | null, session: AccountSession): Promise<Preview["status"]> {
     const preview = await loadPreview(code);
     if (preview.status === "unauthorized") {
       setFailure({ kind: "unauthorized" });
-      return false;
+      return "unauthorized";
     }
-    if (preview.status === "failed") return false;
+    if (preview.status === "failed") return "failed";
     setLoaded({ status: "ready", cart: preview.cart, session });
     setAppliedCode(preview.appliedCode);
     setCodeError(preview.codeError);
     announceCartChange(preview.cart.totals.itemCount);
-    return true;
+    return "ok";
   }
 
   async function applyCode(event: FormEvent<HTMLFormElement>) {
@@ -277,16 +277,17 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         const detail = result.detail || SUBMIT_FAILED;
         if (result.reason === "discount_code_rejected") {
           // The code does not work any more. It comes off, the summary is read without it, and nothing is ordered:
-          // the customer sees the new total and clicks again.
+          // the customer sees the new total and clicks again. When the summary cannot be read, the screen stays as it
+          // was (the code applied, with its line and total) and the customer can take the code off by hand.
           setIdempotencyKey(newIdempotencyKey());
-          setAppliedCode(null);
-          setCodeError(detail);
-          const reloaded = await loadPreview(null);
-          if (reloaded.status === "ok") {
-            setLoaded({ status: "ready", cart: reloaded.cart, session });
-            announceCartChange(reloaded.cart.totals.itemCount);
+          const read = await reloadPreview(null, session);
+          if (read === "ok") {
+            setCodeError(detail);
+            return CODE_INPUT_ID;
           }
-          return CODE_INPUT_ID;
+          if (read === "unauthorized") return FAILURE_ID;
+          setCodeError(`${detail} ${CODE_NOT_REMOVED}`);
+          return CODE_REMOVE_ID;
         }
         if (result.reason === "key_reused") {
           // The key belongs to another request: the form is fine, the next click is a new attempt.
@@ -386,7 +387,7 @@ async function loadPreview(code: string | null): Promise<Preview> {
   if (code === null) return { status: "ok", cart: result.data, appliedCode: null, codeError: null };
   const discount = result.data.discount;
   if (discount?.status === "applied") return { status: "ok", cart: result.data, appliedCode: code, codeError: null };
-  return { status: "ok", cart: result.data, appliedCode: null, codeError: discount?.status === "rejected" ? discount.detail : CODE_NOT_CHECKED };
+  return { status: "ok", cart: result.data, appliedCode: null, codeError: discount?.status === "rejected" ? discount.detail : CODE_BLANK };
 }
 
 async function loadCheckout(): Promise<Loaded> {

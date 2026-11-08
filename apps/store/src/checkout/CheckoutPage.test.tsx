@@ -746,6 +746,16 @@ describe("CheckoutPage discount code", () => {
     expect(document.activeElement).toBe(codeField());
   });
 
+  it("asks for a code, like for an empty field, when the API finds the code empty after its normalisation", async () => {
+    await renderCheckout();
+    await applyOk("\u200B", cart());
+
+    expect(screen.getByRole("alert").textContent).toBe("Wpisz kod rabatowy.");
+    expect(screen.queryByTestId("checkout-discount")).toBeNull();
+    expect(total()).toBe(price(39998));
+    expect(document.activeElement).toBe(codeField());
+  });
+
   it.each(REJECTIONS)("shows the detail of a code rejected as %s at the field and the summary without a discount", async (reason, detail, minimum) => {
     await renderCheckout();
     await applyOk("lato15", withRejection(reason, detail, minimum));
@@ -941,6 +951,36 @@ describe("CheckoutPage discount code", () => {
       expect(first[0]).toMatchObject({ discountCode: "witaj10", expectedTotalGross: 35998 });
       expect(second[0]).toEqual(GUEST_INPUT);
       expect(second[1]).not.toBe(used);
+    });
+  });
+
+  describe("when the order is refused with the 409 of a rejected code and the summary cannot be read without it", () => {
+    async function refuseUnread(read: Awaited<ReturnType<typeof loadCart>>, session = null as typeof JAN | null) {
+      await renderCheckout(cart(), session);
+      await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+      if (session === null) fillGuestForm();
+      else fillContact();
+      vi.mocked(loadCart).mockResolvedValueOnce(read);
+      await submit({ status: "conflict", reason: "discount_code_rejected", detail: "Ten kod został już wykorzystany." });
+      await act(async () => {});
+    }
+
+    it("keeps the screen consistent: the code stays applied with its line and total, the field does not come back", async () => {
+      await refuseUnread({ status: "failed" });
+
+      expect(screen.getByTestId("checkout-discount").textContent).toBe(`Kod WITAJ10: −${price(4000)}`);
+      expect(total()).toBe(price(35998));
+      expect(screen.queryByLabelText("Kod rabatowy")).toBeNull();
+      expect(screen.getByRole("button", { name: "Usuń kod" })).toBeTruthy();
+      expect(screen.getByRole("alert").textContent).toContain("Ten kod został już wykorzystany.");
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Usuń kod" }));
+      expect(placeOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it("says the session expired when the summary answers 401", async () => {
+      await refuseUnread({ status: "unauthorized" }, JAN);
+
+      expect(screen.getAllByRole("alert").map((alert) => alert.textContent).join(" ")).toContain("Twoja sesja wygasła");
     });
   });
 
