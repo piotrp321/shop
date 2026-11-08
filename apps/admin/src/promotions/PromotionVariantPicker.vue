@@ -35,11 +35,13 @@ function addVariant(row: PriceRow): void {
   emit("add", [toVariant(row)]);
 }
 
+/** The variants of a product that "Dodaj cały produkt" would add: those with a price that are not chosen yet. */
+function addableOf(productId: string): PriceRow[] {
+  return rows.value.filter((row) => row.productId === productId && row.price !== null && !isChosen(row));
+}
+
 function addProduct(productId: string): void {
-  emit(
-    "add",
-    rows.value.filter((row) => row.productId === productId && row.price !== null).map(toVariant),
-  );
+  emit("add", addableOf(productId).map(toVariant));
 }
 
 function isChosen(row: PriceRow): boolean {
@@ -138,6 +140,7 @@ function isChosen(row: PriceRow): boolean {
               icon="pi pi-plus-circle"
               severity="secondary"
               size="small"
+              :disabled="addableOf(data.productId).length === 0"
               @click="addProduct(data.productId)"
             />
           </div>

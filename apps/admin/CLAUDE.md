@@ -152,7 +152,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `promotion-overlap` oznacza warianty z `conflictingVariantIds` („Koliduje z inną promocją”) i zostawia formularz,
   pozostałe (wersja `about:blank` z własnym komunikatem, `promotion-not-editable` i inne z `detail`) pokazują komunikat
   i przeładowują promocję z API. `PromotionVariantPicker.vue`: wybór wariantów przez `usePriceList` (wyszukiwanie od
-  2 znaków, stronicowanie), „Dodaj wariant” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane); lista
+  2 znaków, stronicowanie), „Dodaj wariant” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane; „Dodaj cały produkt” jest wyłączony, gdy nie ma czego dodać); lista
   wybranych z „Usuń”, wariant usunięty z katalogu ma znacznik „Wariant usunięty”. Odpowiedź żądania, które skończyło
   się po opuszczeniu formularza, jest ignorowana.
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.

@@ -504,6 +504,25 @@ describe("PromotionFormView", () => {
       expect(selectedIds(wrapper)).toEqual(["a-red", "a-green"]);
     });
 
+    it("offers to add a whole product only while it has a variant that can be added", async () => {
+      const wrapper = await openPicker();
+      const button = (index: number) => wrapper.findAll("[data-testid=picker-row]")[index]!.get("[data-testid=add-product]");
+      expect(button(0).attributes("disabled")).toBeUndefined();
+
+      await button(0).trigger("click");
+      await settle();
+
+      // The variant without a price is never added, so nothing is left to add for this product.
+      expect(button(0).attributes("disabled")).toBeDefined();
+      expect(selectedIds(wrapper)).toEqual(["a-green", "a-red"]);
+      expect(button(3).attributes("disabled")).toBeUndefined();
+
+      await wrapper.findAll("[data-testid=picker-row]")[3]!.get("[data-testid=add-variant]").trigger("click");
+      await settle();
+
+      expect(button(3).attributes("disabled")).toBeDefined();
+    });
+
     it("cannot add a variant without a price", async () => {
       const wrapper = await openPicker();
 
