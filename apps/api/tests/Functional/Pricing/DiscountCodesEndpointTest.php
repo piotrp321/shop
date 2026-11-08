@@ -179,6 +179,17 @@ final class DiscountCodesEndpointTest extends WebTestCase
         $this->assertProblem(401);
     }
 
+    public function testAPageSizeWithLeadingZerosIsANumber(): void
+    {
+        $this->storedCode();
+
+        $list = $this->send('GET', '/api/v1/admin/discount-codes?perPage=001');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertIsArray($list['items']);
+        self::assertCount(1, $list['items']);
+    }
+
     public function testTheListPagesNewestFirst(): void
     {
         $oldest = $this->storedCode(['createdAt' => '-3 days']);
@@ -247,7 +258,14 @@ final class DiscountCodesEndpointTest extends WebTestCase
         yield 'a prefix that is not UTF-8' => ['q=%FF', 'q', $q];
         yield 'a page of 0' => ['perPage=0', 'perPage', $page];
         yield 'a page of 101' => ['perPage=101', 'perPage', $page];
-        yield 'a page that is no number' => ['perPage=many', 'perPage', null];
+        yield 'a page that is no number' => ['perPage=many', 'perPage', $page];
+        yield 'a fractional page' => ['perPage=2.5', 'perPage', $page];
+        yield 'a negative page' => ['perPage=-1', 'perPage', $page];
+        yield 'an empty page' => ['perPage=', 'perPage', $page];
+        yield 'a page as a list' => ['perPage[]=2', 'perPage', $page];
+        yield 'a status as a list' => ['status[]=active', 'status', $status];
+        yield 'a prefix as a list' => ['q[]=WIT', 'q', $q];
+        yield 'a cursor as a list' => ['after[]=x', 'after', $cursor];
         yield 'a cursor nobody handed out' => ['after=garbage', 'after', $cursor];
         yield 'an empty cursor' => ['after=', 'after', $cursor];
         yield 'a cursor that is not UTF-8' => ['after=%FF', 'after', $cursor];

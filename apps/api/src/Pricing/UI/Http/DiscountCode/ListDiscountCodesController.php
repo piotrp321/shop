@@ -58,11 +58,11 @@ final class ListDiscountCodesController
     )]
     public function __invoke(#[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] DiscountCodeListQuery $query = new DiscountCodeListQuery()): JsonResponse
     {
-        $status = null === $query->status ? null : DiscountCodeStatus::from($query->status);
+        $status = $query->statusFilter();
 
         try {
             /** @var DiscountCodeList $list */
-            $list = $this->handle(new ListDiscountCodes($status, $query->q, $query->after, $query->perPage));
+            $list = $this->handle(new ListDiscountCodes(null === $status ? null : DiscountCodeStatus::from($status), $query->codePrefix(), $query->cursor(), $query->pageSize()));
         } catch (HandlerFailedException $failure) {
             // The sync bus wraps the handler's exception; a cursor nobody issued is a bad parameter, a 400.
             $wrapped = $failure->getWrappedExceptions();
