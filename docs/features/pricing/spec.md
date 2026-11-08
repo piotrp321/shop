@@ -41,6 +41,10 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
   zapis odrzucony albo wycofany nie zostawia zdarzenia. Jedyny konsument (`Pricing_Infrastructure`) unieważnia cache
   sklepu produktu wariantu (`docs/features/product-page/spec.md`, „Unieważnianie”); zdarzenie ze źródła `seed`
   potwierdza bez unieważnienia.
+- Granice okresów promocji publikują `PromotionPricesChanged {productId, source, occurredAt}`, jedno na produkt
+  promocji (niżej, „Granice promocji”). Konsumenci w `Pricing_Infrastructure` (transport `events`):
+  `ReindexProductOnPromotionChange` (reindeksacja produktu) i `InvalidateStorefrontOnPromotionChange` (unieważnienie
+  cache sklepu produktu); źródło `seed` potwierdzają bez skutku.
 - Konsument `RepriceOnTaxClassChange` (`Pricing_Infrastructure`, transport `events`) przelicza ceny po zmianie klasy
   podatkowej produktu. Poza tym integracje w modularnym monolicie są synchroniczne.
 
@@ -119,7 +123,7 @@ Model i decyzje: `docs/features/promotions/spec.md` (Q1–Q5, Q13, A1). Pricing 
   (422). Wariant usunięty z Catalog, który już jest w promocji, nie blokuje zmiany. Niezmiennik Q4: promocja, której
   okres nakłada się na okres innej ze wspólnym wariantem, to `PromotionOverlap` (409) z listą
   `conflictingVariantIds`. Po zapisie handler woła port `PromotionBoundaries` (promocja, poprzedni okres albo `null`,
-  `now`); dziś adapter nic nie robi.
+  `now`), który wysyła wiadomości granic na transport `promotions` (niżej).
 - Odczyty (`query.bus`): `ListPromotions(status?, after, perPage)` przez port `PromotionReader` (DBAL, keyset
   `(starts_at DESC, id)`, kursor `PromotionCursor`, status liczony z `now`) i `GetPromotion(id)`: warianty z Catalog
   (produkt, nazwa, etykieta; wariant nieznany Catalogowi ma je `null`), `regularGross` = aktualna cena katalogowa,
@@ -138,6 +142,19 @@ Model i decyzje: `docs/features/promotions/spec.md` (Q1–Q5, Q13, A1). Pricing 
 - `ReconcileTax` i przeliczenie po zmianie klasy (`reprice`, brutto bez zmian) nie biorą blokady. Seed cen idzie
   przez `SetVariantPrice` (`bySeed`), więc bierze blokadę współdzieloną i ma tę samą odmowę dla wariantu w aktywnej
   promocji.
+
+### Granice promocji (A2)
+
+- Transport Messengera `promotions` (Doctrine, `queue_name=promotions`, opcje jak `scheduled`). Port
+  `PromotionBoundaries` (adapter `MessengerPromotionBoundaries`, `DelayStamp`) wysyła w transakcji zapisu promocji
+  `PromotionBoundaryReached(promotionId, at)` na każdą granicę `≥ now`, której poprzedni okres nie miał (start „od
+  teraz” i „Zakończ teraz” to `startOfNow`), a przy przesunięciu końca aktywnej promocji na chwilę po `startOfNow`
+  także `RefreshPromotionProducts(promotionId)` bez opóźnienia. Usunięcie zaplanowanej promocji nic nie wysyła.
+- Handler granicy: promocja nieznana albo `at` różne od jej bieżącego startu i końca to wiadomość bez skutku;
+  wiadomość za wczesna wraca na `at` + 1 s; inaczej produkty wariantów promocji z Catalog (`VariantSummaries`,
+  paczkami po 100, wariant nieznany pominięty) i jedno `PromotionPricesChanged` (źródło `promotion`) na produkt
+  w outboxie, w jednej transakcji. `RefreshPromotionProducts` nieznanej albo zakończonej promocji nic nie robi,
+  inaczej działa jak granica.
 
 ## Persystencja i transakcje
 
