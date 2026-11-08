@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { getApiClient } from "@/api/client";
 import type { components } from "@/api/schema";
+import { formatDateTime } from "@/prices/format";
 import { instantToWarsaw, warsawToInstant } from "./time";
 
 export type PromotionView = components["schemas"]["PromotionResponse"];
@@ -359,7 +360,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
 
   type Outcome = { data?: PromotionView; error?: unknown; response: { status: number } };
 
-  async function perform(allowed: boolean, request: () => Promise<Outcome> | null, success: string): Promise<ActionResult> {
+  async function perform(allowed: boolean, request: () => Promise<Outcome> | null, success: string | ((saved: PromotionView) => string)): Promise<ActionResult> {
     if (!allowed) {
       return null;
     }
@@ -377,7 +378,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
       if (result.data) {
         const created = view.value === null;
         apply(result.data);
-        message.value = success;
+        message.value = typeof success === "string" ? success : success(result.data);
         if (created) {
           options.onCreated(result.data.id);
         }
@@ -415,7 +416,10 @@ export function usePromotionForm(options: PromotionFormOptions) {
     );
   }
 
-  /** Ends an active promotion: sends the stored promotion with the end set to the time of the browser. */
+  /**
+   * Ends an active promotion: sends the stored promotion with the end set to the time of the browser. When the clock of
+   * the browser is ahead of the server's, the API only shortens the promotion, so the message follows its status.
+   */
   function endNow(): Promise<ActionResult> {
     const current = view.value;
     return perform(
@@ -432,7 +436,7 @@ export function usePromotionForm(options: PromotionFormOptions) {
             version: current!.version,
           },
         }),
-      "Promocja zakończona.",
+      (saved) => (saved.status === "ended" ? "Promocja zakończona." : `Koniec promocji ustawiony na ${formatDateTime(saved.endsAt)}.`),
     );
   }
 

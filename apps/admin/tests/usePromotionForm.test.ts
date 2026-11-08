@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, ref } from "vue";
 import type { components } from "@/api/schema";
+import { formatDateTime } from "@/prices/format";
 import { usePromotionForm } from "@/promotions/usePromotionForm";
 
 type Promotion = components["schemas"]["PromotionResponse"];
@@ -435,6 +436,17 @@ describe("usePromotionForm", () => {
       });
       expect(form.status.value).toBe("ended");
       expect(form.message.value).toBe("Promocja zakończona.");
+    });
+
+    it("says that the end was set, not that the promotion ended, when the API leaves it active", async () => {
+      // The clock of the browser is ahead of the server: the API only shortens the promotion.
+      const { form } = await open(promotion({ status: "active" }));
+      mocks.put.mockResolvedValue(ok(promotion({ status: "active", endsAt: "2026-11-15T10:20:31+00:00" })));
+
+      expect(await form.endNow()).toBe("success");
+
+      expect(form.status.value).toBe("active");
+      expect(form.message.value).toBe(`Koniec promocji ustawiony na ${formatDateTime("2026-11-15T10:20:31+00:00")}.`);
     });
 
     it("does nothing for a promotion that is not active", async () => {

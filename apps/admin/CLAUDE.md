@@ -142,7 +142,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   zablokowane, a do API idą zapisane wartości), zakończona i pracownik bez roli: tylko odczyt. „Zapisz”: `POST` (potem
   `onCreated(id)`, widok przechodzi na `/promotions/:id` tą samą instancją) albo `PUT` z `version`. „Zakończ teraz”
   (aktywna) wysyła `PUT` z zapisanymi wartościami i `endsAt` równym czasowi przeglądarki, „Usuń” (zaplanowana) wysyła
-  `DELETE ?version=`; oba pytają o potwierdzenie i są wyłączone przy niezapisanych zmianach. Czasy są wpisywane
+  `DELETE ?version=`; oba pytają o potwierdzenie i są wyłączone przy niezapisanych zmianach. Komunikat po „Zakończ teraz” wynika ze `status` odpowiedzi: `ended` to „Promocja zakończona.”, a `active` (zegar przeglądarki wyprzedza serwer, API tylko skraca promocję) to „Koniec promocji ustawiony na <czas>.”. Czasy są wpisywane
   i pokazywane w `Europe/Warsaw` (pole `datetime-local`, nie `DatePicker`, bo ten liczy w strefie przeglądarki):
   `time.ts` zamienia je z i na moment RFC 3339 przez `Intl`, bez bibliotek (godzina z przejścia na czas letni, która
   nie istnieje, jest błędem pola, a godzina powtórzona jesienią daje pierwsze wystąpienie); czas, którego nie
