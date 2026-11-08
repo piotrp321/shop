@@ -663,7 +663,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `startOfNow`, więc też), także tę, którą miał poprzedni okres (jej wcześniejsza wiadomość mogła trafić do `failed`,
   a powtórzona jest nieszkodliwa, bo handler i konsumenci są idempotentni), oraz
   `RefreshPromotionProducts(promotionId)` bez opóźnienia, gdy zapis przesuwa koniec aktywnej promocji na chwilę po
-  `startOfNow`. Usunięcie zaplanowanej promocji nic nie wysyła. Handlery (`command.bus`, poza transakcją panelu):
+  `startOfNow`. Wyjątek: seed (`PlanPromotion::bySeed`, źródło `seed`) przekazuje portowi `announceStart: false`, więc
+  planuje tylko granicę końca. Usunięcie zaplanowanej promocji nic nie wysyła. Handlery (`command.bus`, poza transakcją panelu):
   granica nieznanej promocji albo inna niż jej bieżący start i koniec to wiadomość obsłużona bez skutku, za wczesna
   wraca na `at` + 1 s (`redeliverBoundary`); `RefreshPromotionProducts` nieznanej albo zakończonej promocji nic nie
   robi. Inaczej `PromotionPriceEvents` wyznacza produkty wariantów promocji (port `VariantSummaries`, Catalog
