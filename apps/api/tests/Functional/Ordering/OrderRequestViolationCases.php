@@ -33,6 +33,8 @@ trait OrderRequestViolationCases
     private const string TOTAL_REQUIRED = 'Kwota zamówienia jest wymagana.';
     private const string TOTAL_INTEGER = 'Kwota zamówienia musi być liczbą całkowitą.';
     private const string TOTAL_NEGATIVE = 'Kwota zamówienia nie może być ujemna.';
+    private const string CODE_TEXT = 'Kod rabatowy musi być tekstem.';
+    private const string CODE_TOO_LONG = 'Kod rabatowy może mieć najwyżej 64 znaki.';
 
     /**
      * The fields both endpoints take: contact (without the email) and address, and the expected total.
@@ -96,9 +98,13 @@ trait OrderRequestViolationCases
         yield 'expectedTotalGross a boolean' => [['expectedTotalGross' => true], [['expectedTotalGross', self::TOTAL_INTEGER]]];
         yield 'expectedTotalGross an array' => [['expectedTotalGross' => [100]], [['expectedTotalGross', self::TOTAL_INTEGER]]];
         yield 'expectedTotalGross negative' => [['expectedTotalGross' => -1], [['expectedTotalGross', self::TOTAL_NEGATIVE]]];
+        yield 'discountCode a number' => [['discountCode' => 10], [['discountCode', self::CODE_TEXT]]];
+        yield 'discountCode a boolean' => [['discountCode' => true], [['discountCode', self::CODE_TEXT]]];
+        yield 'discountCode an array' => [['discountCode' => ['WITAJ10']], [['discountCode', self::CODE_TEXT]]];
+        yield 'discountCode of 65 characters' => [['discountCode' => str_repeat('Ą', 65)], [['discountCode', self::CODE_TOO_LONG]]];
         yield 'several fields wrong' => [
-            ['fullName' => '', 'phone' => '123', 'expectedTotalGross' => '1'],
-            [['fullName', self::NAME_REQUIRED], ['phone', self::PHONE_INVALID], ['expectedTotalGross', self::TOTAL_INTEGER]],
+            ['fullName' => '', 'phone' => '123', 'expectedTotalGross' => '1', 'discountCode' => str_repeat('A', 65)],
+            [['fullName', self::NAME_REQUIRED], ['phone', self::PHONE_INVALID], ['expectedTotalGross', self::TOTAL_INTEGER], ['discountCode', self::CODE_TOO_LONG]],
         ];
     }
 
