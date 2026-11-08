@@ -118,7 +118,10 @@ async function callCart<T>(path: string, init: { method: string; body?: unknown 
 
 /** For the browser: the cart pages and buttons talk to the store's `/api/cart/*`, never to the API. */
 export const loadCart = (discountCode?: string) =>
-  callCart<CartView>(discountCode === undefined ? "/api/cart" : `/api/cart?discountCode=${encodeURIComponent(discountCode)}`);
+  callCart<CartView>(discountCode === undefined ? "/api/cart" : `/api/cart?${discountCodeQuery(discountCode)}`);
+
+/** `encodeURIComponent` throws on a lone surrogate; `URLSearchParams` turns it into U+FFFD. A space stays `%20`. */
+const discountCodeQuery = (discountCode: string) => new URLSearchParams({ discountCode }).toString().replace(/\+/g, "%20");
 
 export const loadCartSummary = () => callCart<CartSummaryBody>("/api/cart/summary");
 

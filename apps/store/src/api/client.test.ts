@@ -115,6 +115,17 @@ describe("the cart calls", () => {
     });
   });
 
+  it("does not throw on a code with a lone surrogate: the request goes with U+FFFD and the promise is kept", async () => {
+    const fetch = stubFetch(async () => Response.json(cart));
+
+    expect(await loadCart("AB\uD800")).toEqual({ status: "ok", data: cart });
+    expect(fetch).toHaveBeenCalledWith("/api/cart?discountCode=AB%EF%BF%BD", {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  });
+
   it("maps the 400 of a code that is refused to invalid with the Polish detail", async () => {
     stubFetch(async () => Response.json({ detail: "Kod rabatowy może mieć najwyżej 64 znaki." }, { status: 400 }));
 
