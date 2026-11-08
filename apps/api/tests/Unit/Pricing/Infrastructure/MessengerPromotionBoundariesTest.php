@@ -103,6 +103,27 @@ final class MessengerPromotionBoundariesTest extends TestCase
         ], $this->sent());
     }
 
+    public function testASeededPromotionSendsOnlyItsEnd(): void
+    {
+        ($this->plan)(PlanPromotion::bySeed(self::ID, 'Jesień', 20, new \DateTimeImmutable('2026-12-10T12:00:00Z'), [self::A, self::B]));
+
+        self::assertSame('2026-11-10T12:00:01+00:00', $this->promotions->find(PromotionId::fromString(self::ID))?->period()->startsAt()->format(\DATE_ATOM), 'the seeded promotion starts at the start of now');
+        self::assertSame([
+            [PromotionBoundaryReached::class, self::ID, '2026-12-10T12:00:00+00:00', self::secondsFromNow('2026-12-10T12:00:00Z') * 1000],
+        ], $this->sent(), 'the start of the seed needs no event: make seed purges the store afterwards');
+    }
+
+    public function testTheStartIsLeftOutWhenTheAdapterIsToldNotToAnnounceIt(): void
+    {
+        $promotion = $this->promotion('2026-11-11T00:00:00Z', '2026-11-21T00:00:00Z');
+
+        new MessengerPromotionBoundaries($this->bus)->promotionSaved($promotion, null, new \DateTimeImmutable(self::NOW), announceStart: false);
+
+        self::assertSame([
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+        ], $this->sent());
+    }
+
     public function testEndNowOfAnActivePromotionSendsTheBoundaryOfItsNewEndOnly(): void
     {
         $this->storeActive();

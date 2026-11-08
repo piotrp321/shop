@@ -10,6 +10,8 @@ use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Pricing\Application\Demo\DemoPriceSeeder;
 use App\Pricing\Application\Demo\DemoPromotionSeeder;
+use App\Pricing\Application\Query\GetCurrentPrices;
+use App\Pricing\Application\Query\PriceSnapshot;
 use App\Pricing\Infrastructure\Demo\DbalPricingReset;
 use App\Pricing\Infrastructure\Demo\YamlDemoPriceSource;
 use App\Pricing\Infrastructure\Demo\YamlDemoPromotionSource;
@@ -22,6 +24,8 @@ use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
@@ -117,6 +121,28 @@ final class SeedDemoPricesTest extends KernelTestCase
         self::assertSame(['Namioty', 20, null, null, null, true], [$promotion['name'], $promotion['percent_off'], $promotion['created_by_id'], $promotion['created_by_name'], $promotion['updated_by_id'], $promotion['starts_now']]);
         self::assertEqualsWithDelta(30, is_numeric($promotion['days']) ? (float) $promotion['days'] : -1.0, 0.01);
         self::assertSame([$tent], $this->connection->fetchFirstColumn('SELECT variant_id FROM pricing_promotion_variant WHERE promotion_id = ?', [$promotion['id']]));
+    }
+
+    public function testAfterTheSeedAPromotedVariantHasThePromotionalPriceAndTheCatalogPriceAsItsOmnibusPrice(): void
+    {
+        $tent = $this->catalogVariants('namiot-turystyczny-norvane-biwak-2-zielony', TaxClassCode::Standard)[0];
+        $tester = $this->tester("\"namiot-*\": 100000\n", "- name: Namioty\n  percentOff: 20\n  days: 30\n  variants: [\"namiot-*\"]\n");
+        self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
+        // A promotion from now starts at the start of the next second.
+        usleep(1_200_000);
+
+        $queryBus = self::getContainer()->get('query.bus');
+        self::assertInstanceOf(MessageBusInterface::class, $queryBus);
+        $stamp = $queryBus->dispatch(new GetCurrentPrices([$tent], true))->last(HandledStamp::class);
+        self::assertInstanceOf(HandledStamp::class, $stamp);
+        $snapshots = $stamp->getResult();
+        self::assertIsArray($snapshots);
+        $snapshot = $snapshots[0] ?? null;
+
+        self::assertInstanceOf(PriceSnapshot::class, $snapshot);
+        self::assertSame(80000, $snapshot->gross, 'the promotional price');
+        self::assertSame(100000, $snapshot->regularGross);
+        self::assertSame(100000, $snapshot->promotion?->lowestPriorGross, 'the history has the seed entry only: the Omnibus price is the catalog price');
     }
 
     public function testAPromotionPatternWithoutAVariantFailsAndLeavesThePricesAndPromotionsUnchanged(): void

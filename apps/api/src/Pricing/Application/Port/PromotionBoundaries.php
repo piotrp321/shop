@@ -19,8 +19,10 @@ interface PromotionBoundaries
     /**
      * @param PromotionPeriod|null $previousPeriod the period before the write; null for a new promotion
      * @param \DateTimeImmutable   $now            the moment of the write (read after the lock)
+     * @param bool                 $announceStart  false leaves out the message of the start (the demo seed, which needs no
+     *                                             event for it); the end is always sent
      */
-    public function promotionSaved(Promotion $promotion, ?PromotionPeriod $previousPeriod, \DateTimeImmutable $now): void;
+    public function promotionSaved(Promotion $promotion, ?PromotionPeriod $previousPeriod, \DateTimeImmutable $now, bool $announceStart): void;
 
     /**
      * Sends PromotionBoundaryReached of the boundary again, due at the moment given (a message that came too early).

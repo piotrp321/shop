@@ -22,8 +22,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
   pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych), a na końcu planuje
   promocje z `fixtures/promotions.yaml` (lista: `name`, `percentOff`, `days`, `variants` = wzorce kluczy w tej samej
-  składni) komendą `PlanPromotion` bez aktora, od chwili seeda na `days` dni (granice na kolejce `promotions` jak
-  w panelu); wariant należy do pierwszej promocji, która go dopasuje, żeby okresy się nie nakładały; plik promocji jest
+  składni) komendą `PlanPromotion` bez aktora i ze źródłem `seed`, od chwili seeda na `days` dni (planuje tylko
+  granicę końca na kolejce `promotions`, bez wiadomości startu: `make seed` kończy się reindeksacją i czyszczeniem
+  cache sklepu; port `PromotionBoundaries` dostaje jawny `announceStart`); wariant należy do pierwszej promocji, która go dopasuje, żeby okresy się nie nakładały; plik promocji jest
   sprawdzany przed resetem, więc promocja bez wariantu (albo z ponad 1000) kończy seed błędem bez zmian w danych.
   Promocje demo omijają produkty E2E i kategorię Bieganie > Buty biegowe (pilnuje tego `RealDemoPromotionsTest`, lista
   wykluczeń w teście, razem z produktem `promotions.spec.ts`); potem

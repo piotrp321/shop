@@ -79,6 +79,8 @@ test("a promotion created in the panel shows on the product page and on the list
     await expect(page.getByTestId("success-message"), "the promotion was rejected (conflict, validation or API error)").toHaveText("Promocja zapisana.");
     const savedAt = Date.now();
 
+    // The panel moves to the page of the new promotion after the save (the route is replaced without waiting).
+    await expect(page).toHaveURL(/\/promotions\/[0-9a-f-]{36}$/);
     const id = new URL(page.url()).pathname.split("/").pop() ?? "";
     const promotion = await promotionDetails(request, await token.fresh(page), id);
     const productId = promotion.variants[0]?.productId;
