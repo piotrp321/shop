@@ -47,17 +47,18 @@ final class DiscountCodeOrderEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(201);
         $this->assertOrderView($order);
+        self::assertSame(self::CONTACT, array_intersect_key($order, self::CONTACT));
         self::assertSame(['code' => 'WITAJ-F1', 'kind' => 'percent', 'value' => 10, 'amountGross' => 2_583], $order['discount']);
-        self::assertIsArray($order['lines']);
-        self::assertSame([$shoes, 24_600], [$order['lines'][0]['variantId'], $order['lines'][0]['grossBeforeDiscount']]);
-        self::assertSame([$map, 1_230], [$order['lines'][1]['variantId'], $order['lines'][1]['grossBeforeDiscount']]);
-        self::assertSame(2_583, $order['lines'][0]['discountGross'] + $order['lines'][1]['discountGross'], 'the discount is allocated over the lines');
-        foreach ($order['lines'] as $line) {
-            self::assertSame($line['grossBeforeDiscount'] - $line['discountGross'], $line['lineGross']);
+        [$first, $second] = [self::line($order, 0), self::line($order, 1)];
+        self::assertSame([$shoes, 24_600], [$first['variantId'], $first['grossBeforeDiscount']]);
+        self::assertSame([$map, 1_230], [$second['variantId'], $second['grossBeforeDiscount']]);
+        self::assertSame(2_583, self::int($first['discountGross']) + self::int($second['discountGross']), 'the discount is allocated over the lines');
+        foreach ([$first, $second] as $line) {
+            self::assertSame(self::int($line['grossBeforeDiscount']) - self::int($line['discountGross']), $line['lineGross']);
         }
         self::assertIsArray($order['totals']);
         self::assertSame(23_247, $order['totals']['gross']);
-        self::assertSame(23_247, $order['totals']['net'] + $order['totals']['vat']);
+        self::assertSame(23_247, self::int($order['totals']['net']) + self::int($order['totals']['vat']));
         self::assertSame(1, $this->activeUses($code));
         self::assertIsString($order['orderId']);
         self::assertSame(1, OrderingFixture::count($this->connection, 'SELECT COUNT(*) FROM pricing_discount_code_usage WHERE order_id = ? AND code_id = ?', [$order['orderId'], $code->id()->toString()]));
@@ -201,9 +202,8 @@ final class DiscountCodeOrderEndpointTest extends WebTestCase
         self::assertIsArray($detail);
         self::assertMatchesSchema('CustomerOrder', $detail);
         self::assertSame(['code' => 'KLIENT-F9', 'kind' => 'amount', 'value' => 5_000, 'amountGross' => 5_000], $detail['discount']);
-        self::assertIsArray($detail['lines']);
-        self::assertSame(5_000, $detail['lines'][0]['discountGross'] + $detail['lines'][1]['discountGross']);
-        self::assertArrayNotHasKey('promotion', $detail['lines'][0], 'the store does not see the promotion');
+        self::assertSame(5_000, self::int(self::line($detail, 0)['discountGross']) + self::int(self::line($detail, 1)['discountGross']));
+        self::assertArrayNotHasKey('promotion', self::line($detail, 0), 'the store does not see the promotion');
         self::assertIsArray($detail['totals']);
         self::assertSame(20_830, $detail['totals']['gross']);
     }
@@ -227,12 +227,32 @@ final class DiscountCodeOrderEndpointTest extends WebTestCase
         $detail = json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR);
         self::assertIsArray($detail);
         self::assertSame(['code' => 'PANEL-F10', 'kind' => 'percent', 'value' => 10, 'amountGross' => 2_091], $detail['discount']);
-        self::assertIsArray($detail['lines']);
-        self::assertSame(['name' => 'Jesień', 'percentOff' => 20, 'regularUnitGross' => 12_300], $detail['lines'][0]['promotion']);
-        self::assertSame([9_840, 19_680], [$detail['lines'][0]['unitGross'], $detail['lines'][0]['grossBeforeDiscount']]);
-        self::assertNull($detail['lines'][1]['promotion']);
+        self::assertSame(['name' => 'Jesień', 'percentOff' => 20, 'regularUnitGross' => 12_300], self::line($detail, 0)['promotion']);
+        self::assertSame([9_840, 19_680], [self::line($detail, 0)['unitGross'], self::line($detail, 0)['grossBeforeDiscount']]);
+        self::assertNull(self::line($detail, 1)['promotion']);
         self::assertIsArray($detail['totals']);
         self::assertSame(18_819, $detail['totals']['gross']);
+    }
+
+    /**
+     * @param array<mixed> $order
+     *
+     * @return array<mixed>
+     */
+    private static function line(array $order, int $index): array
+    {
+        self::assertIsArray($order['lines'] ?? null);
+        $line = $order['lines'][$index] ?? null;
+        self::assertIsArray($line);
+
+        return $line;
+    }
+
+    private static function int(mixed $value): int
+    {
+        self::assertIsInt($value);
+
+        return $value;
     }
 
     /**
