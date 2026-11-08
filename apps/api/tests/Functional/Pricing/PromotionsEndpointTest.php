@@ -280,6 +280,10 @@ final class PromotionsEndpointTest extends WebTestCase
         yield 'an empty name' => [['name' => '  '], 'name'];
         yield 'a name of 101 characters' => [['name' => str_repeat('a', 101)], 'name'];
         yield 'a name with a new line' => [['name' => "Jesień\nw górach"], 'name'];
+        yield 'a name of no-break spaces' => [['name' => "\u{A0}\u{A0}"], 'name'];
+        yield 'a name of an em space and an ideographic space' => [['name' => "\u{2003}\u{3000}"], 'name'];
+        yield 'a name of a zero width space' => [['name' => "\u{200B}"], 'name'];
+        yield 'a name with a line separator' => [['name' => "a\u{2028}b"], 'name'];
         yield 'a name that is no string' => [['name' => 12], 'name'];
         yield 'a percent of 0' => [['percentOff' => 0], 'percentOff'];
         yield 'a percent of 91' => [['percentOff' => 91], 'percentOff'];
@@ -499,6 +503,22 @@ final class PromotionsEndpointTest extends WebTestCase
             $this->assertProblem(422);
         }
         self::assertSame(1, $this->connection->fetchOne('SELECT version FROM pricing_promotion WHERE id = ?', [$id]));
+    }
+
+    public function testAReviseWithANameOfUnicodeSpacesIsUnprocessableAndATrimmedNameIsStored(): void
+    {
+        $a = $this->pricedVariant(5999);
+        $id = $this->storedPromotion('+1 day', '+5 days', [$a]);
+
+        $this->send('PUT', '/api/v1/admin/promotions/'.$id, [...$this->body([$a]), 'name' => "\u{A0}\u{3000}", 'version' => 1]);
+        $problem = $this->assertProblem(422);
+        self::assertIsArray($problem['violations']);
+        self::assertContains('name', array_column($problem['violations'], 'propertyPath'));
+        self::assertSame(1, $this->connection->fetchOne('SELECT version FROM pricing_promotion WHERE id = ?', [$id]));
+
+        $this->send('PUT', '/api/v1/admin/promotions/'.$id, [...$this->body([$a]), 'name' => "\u{A0}Wiosna\u{3000}", 'version' => 1]);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame('Wiosna', $this->connection->fetchOne('SELECT name FROM pricing_promotion WHERE id = ?', [$id]));
     }
 
     public function testAPlannedPromotionIsDeleted(): void

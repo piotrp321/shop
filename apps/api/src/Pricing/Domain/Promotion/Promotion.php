@@ -250,9 +250,14 @@ final class Promotion
      */
     private static function validName(string $name): string
     {
-        $name = trim($name);
-        // The encoding first: a pattern with /u does not match invalid UTF-8 at all.
-        if ('' === $name || !mb_check_encoding($name, 'UTF-8') || mb_strlen($name) > self::MAX_NAME_LENGTH || 1 === preg_match('/\p{Cc}/u', $name)) {
+        // The encoding first: a pattern with /u does not match invalid UTF-8 at all (preg_replace returns null).
+        if (!mb_check_encoding($name, 'UTF-8')) {
+            throw InvalidPromotion::name();
+        }
+        // Trimmed at the ends only, of every Unicode space and invisible format character (zero width space, BOM);
+        // inside the name a format character stays (the joiner of an emoji), a line or paragraph separator does not.
+        $name = preg_replace('/^[\s\p{Z}\p{Cf}]+|[\s\p{Z}\p{Cf}]+$/u', '', $name);
+        if (null === $name || '' === $name || mb_strlen($name) > self::MAX_NAME_LENGTH || 1 === preg_match('/[\p{Cc}\p{Zl}\p{Zp}]/u', $name)) {
             throw InvalidPromotion::name();
         }
 
