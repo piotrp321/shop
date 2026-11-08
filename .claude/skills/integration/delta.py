@@ -3,15 +3,17 @@
 
   sync --previous SHA --head SHA [--main origin/main]
       Whether the commits from the previous head to HEAD are only a sync with main. Prints JSON:
-      kind      `sync` when every commit in previous..HEAD that is not on main is a merge commit and at least one
+      kind      `sync` when every commit in previous..HEAD that is not on main is a two-parent merge commit that
+                differs from Git's automatic merge of its parents only in the conflicted files, and at least one
                 commit of main comes in; anything else (a non-merge commit, a squashed sync, a merge of another
-                branch, a merge that brings nothing from main, no commits) is `delta`
+                branch, a change made in a merge, an octopus merge, a merge that brings nothing from main, no
+                commits) is `delta`
       reason    one sentence why
       merges, other_commits   the commits in previous..HEAD that are not on main: merge commits and the rest
-      both_sides  files that both parents of a merge changed since their merge base (where a resolution may lose
-                  either side, also when it kept one of them whole)
-      resolved    files of a merge that differ from every parent (the conflict resolutions and any change made in
-                  the merge itself)
+      conflicts   files of the merges that Git cannot merge on its own (`git merge-tree` of their parents): the
+                  resolutions to review, also one that kept a side whole
+      extra       files where a merge differs from Git's automatic merge outside its conflicts (a change made in
+                  the merge itself); any of them, like an octopus merge, makes the kind `delta`
       generated   generated files (OpenAPI documents, TS clients) that differ between the previous head and HEAD
       Exit code 0 for both kinds; 2 when Git fails, a commit or ref is unknown or the previous head is not an
       ancestor of HEAD.
@@ -61,6 +63,31 @@ def commit(ref):
     return git('rev-parse', '--verify', '--quiet', ref + '^{commit}').strip()
 
 
+def run_git(*args):
+    """(exit code, stdout, stderr) of git that may legitimately exit with 1."""
+    try:
+        r = subprocess.run(['git', '-c', 'core.quotePath=false', *args], capture_output=True, text=True,
+                           timeout=TIMEOUT_S)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Failure('cannot run git %s: %s' % (args[0], e))
+    return r.returncode, r.stdout, r.stderr.strip()
+
+
+def check_merge(merge):
+    """(conflicts, extra, octopus) of a merge commit: the files Git could not merge on its own (the resolutions to
+    review) and the files where the merge differs from Git's automatic merge of its parents outside those conflicts
+    (changes made in the merge itself)."""
+    parents = git('rev-list', '--parents', '-n', '1', merge).split()[1:]
+    if len(parents) != 2:
+        return [], [], True
+    code, out, err = run_git('merge-tree', '--write-tree', '--name-only', '--no-messages', *parents)
+    if code not in (0, 1):
+        raise Failure('git merge-tree %s failed: %s' % (merge, err or 'exit code %d' % code))
+    tree, conflicts = out.splitlines()[0], set(lines('\n'.join(out.splitlines()[1:])))
+    extra = set(lines(git('diff', '--name-only', tree, merge + '^{tree}'))) - conflicts
+    return sorted(conflicts), sorted(extra), False
+
+
 def sync(previous, head, main):
     try:
         previous, head = commit(previous), commit(head)
@@ -70,35 +97,38 @@ def sync(previous, head, main):
         main_sha = commit(main)
     except Failure:
         raise Failure('unknown ref %s (fetch it first)' % main)
-    r = subprocess.run(['git', 'merge-base', '--is-ancestor', previous, head], capture_output=True, text=True)
-    if r.returncode == 1:
+    code, _, err = run_git('merge-base', '--is-ancestor', previous, head)
+    if code == 1:
         raise Failure('the previous head %s is not an ancestor of HEAD %s' % (previous, head))
-    if r.returncode != 0:
-        raise Failure('git merge-base failed: %s' % r.stderr.strip())
+    if code != 0:
+        raise Failure('git merge-base failed: %s' % (err or 'exit code %d' % code))
     epic_only = lines(git('rev-list', '--reverse', head, '^' + previous, '^' + main_sha))
     from_main = [sha for sha in lines(git('rev-list', head, '^' + previous)) if sha not in set(epic_only)]
     merges, others = [], []
     for sha in epic_only:
         (merges if len(git('rev-list', '--parents', '-n', '1', sha).split()) > 2 else others).append(sha)
-    both, resolved = set(), set()
+    conflicts, extra, octopus = set(), set(), False
     for merge in merges:
-        parents = git('rev-list', '--parents', '-n', '1', merge).split()[1:]
-        for other in parents[1:]:
-            base = git('merge-base', parents[0], other).strip()
-            first = set(lines(git('diff', '--name-only', base, parents[0])))
-            both |= first & set(lines(git('diff', '--name-only', base, other)))
-        resolved |= set(lines(git('diff-tree', '-r', '-c', '--name-only', '--no-commit-id', merge)))
+        c, e, o = check_merge(merge)
+        conflicts |= set(c)
+        extra |= set(e)
+        octopus = octopus or o
     changed = set(lines(git('diff', '--name-only', previous, head)))
     if not epic_only and not from_main:
         kind, reason = 'delta', 'no commits between the previous head and HEAD'
     elif others:
         kind, reason = 'delta', '%d commit(s) that are not merges and not on main' % len(others)
+    elif octopus:
+        kind, reason = 'delta', 'an octopus merge, which is not checked against an automatic merge'
     elif not from_main:
         kind, reason = 'delta', 'the merges bring no commit of main'
+    elif extra:
+        kind, reason = 'delta', 'the merges change files beyond their conflicts: %s' % ', '.join(sorted(extra))
     else:
         kind, reason = 'sync', '%d merge(s) bringing %d commit(s) of main, nothing else' % (len(merges), len(from_main))
-    return {'kind': kind, 'reason': reason, 'merges': merges, 'other_commits': others, 'both_sides': sorted(both),
-            'resolved': sorted(resolved), 'generated': [f for f in GENERATED if f in changed]}
+    return {'kind': kind, 'reason': reason, 'merges': merges, 'other_commits': others,
+            'conflicts': sorted(conflicts), 'extra': sorted(extra),
+            'generated': [f for f in GENERATED if f in changed]}
 
 
 def gh(*args):
