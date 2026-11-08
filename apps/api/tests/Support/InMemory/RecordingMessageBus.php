@@ -14,12 +14,16 @@ final class RecordingMessageBus implements MessageBusInterface
 {
     /** @var list<object> */
     public array $dispatched = [];
+    /** @var list<Envelope> the dispatched messages with the stamps given */
+    public array $envelopes = [];
 
     public function dispatch(object $message, array $stamps = []): Envelope
     {
         $this->dispatched[] = $message;
+        $envelope = Envelope::wrap($message, $stamps);
+        $this->envelopes[] = $envelope;
 
-        return Envelope::wrap($message, $stamps);
+        return $envelope;
     }
 
     /**

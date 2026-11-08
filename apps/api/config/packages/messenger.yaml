@@ -87,3 +87,5 @@ framework:
             App\Shared\Domain\Event\DomainEvent: outbox
             App\Ordering\Application\Command\ExpireUnpaidOrder: scheduled
             App\PaymentSimulator\DeliverSimulatedWebhook: payment_simulator
+            App\Pricing\Application\Command\PromotionBoundaryReached: promotions
+            App\Pricing\Application\Command\RefreshPromotionProducts: promotions
