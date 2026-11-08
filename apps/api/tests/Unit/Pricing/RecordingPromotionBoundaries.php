@@ -13,12 +13,15 @@ final class RecordingPromotionBoundaries implements PromotionBoundaries
 {
     /** @var list<array{string, PromotionPeriod, PromotionPeriod|null, \DateTimeImmutable}> promotion id, its period, the period before, now */
     public array $saved = [];
+    /** @var list<bool> announceStart of every save, in order */
+    public array $announcedStart = [];
     /** @var list<array{string, \DateTimeImmutable, \DateTimeImmutable}> promotion id, the boundary, the moment it is due */
     public array $redelivered = [];
 
-    public function promotionSaved(Promotion $promotion, ?PromotionPeriod $previousPeriod, \DateTimeImmutable $now): void
+    public function promotionSaved(Promotion $promotion, ?PromotionPeriod $previousPeriod, \DateTimeImmutable $now, bool $announceStart): void
     {
         $this->saved[] = [$promotion->id()->toString(), $promotion->period(), $previousPeriod, $now];
+        $this->announcedStart[] = $announceStart;
     }
 
     public function redeliverBoundary(PromotionId $promotionId, \DateTimeImmutable $boundary, \DateTimeImmutable $dueAt): void

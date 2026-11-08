@@ -124,7 +124,7 @@ Model i decyzje: `docs/features/promotions/spec.md` (Q1–Q5, Q13, A1). Pricing 
   (422). Wariant usunięty z Catalog, który już jest w promocji, nie blokuje zmiany. Niezmiennik Q4: promocja, której
   okres nakłada się na okres innej ze wspólnym wariantem, to `PromotionOverlap` (409) z listą
   `conflictingVariantIds`. Po zapisie handler woła port `PromotionBoundaries` (promocja, poprzedni okres albo `null`,
-  `now`), który wysyła wiadomości granic na transport `promotions` (niżej).
+  `now`, jawne `announceStart`: `false` tylko dla seeda), który wysyła wiadomości granic na transport `promotions` (niżej).
 - Odczyty (`query.bus`): `ListPromotions(status?, after, perPage)` przez port `PromotionReader` (DBAL, keyset
   `(starts_at DESC, id)`, kursor `PromotionCursor`, status liczony z `now`) i `GetPromotion(id)`: warianty z Catalog
   (produkt, nazwa, etykieta; wariant nieznany Catalogowi ma je `null`), `regularGross` = aktualna cena katalogowa,
@@ -171,7 +171,7 @@ Decyzje A2 i A3 w `docs/features/promotions/spec.md`: obie są liczone przy odcz
 - Transport Messengera `promotions` (Doctrine, `queue_name=promotions`, opcje jak `scheduled`). Port
   `PromotionBoundaries` (adapter `MessengerPromotionBoundaries`, `DelayStamp`) wysyła w transakcji zapisu promocji
   `PromotionBoundaryReached(promotionId, at)` na każdą granicę `≥ now` (start „od teraz” i „Zakończ teraz” to
-  `startOfNow`), także tę, którą miał poprzedni okres: jej wcześniejsza wiadomość mogła trafić do `failed`, a powtórzona
+  `startOfNow`; seed (`announceStart = false`) wysyła tylko koniec), także tę, którą miał poprzedni okres: jej wcześniejsza wiadomość mogła trafić do `failed`, a powtórzona
   jest nieszkodliwa, bo handler i konsumenci `PromotionPricesChanged` są idempotentni. Przy przesunięciu końca aktywnej
   promocji na chwilę po `startOfNow` zapis wysyła też `RefreshPromotionProducts(promotionId)` bez opóźnienia.
   Usunięcie zaplanowanej promocji nic nie wysyła.
@@ -205,7 +205,8 @@ Decyzje A2 i A3 w `docs/features/promotions/spec.md`: obie są liczone przy odcz
   w repozytorium, `reconstitute()` bez wpisów. Optimistic locking przez `#[Version]` na cenie.
 - Cena i jej nowe wpisy historii zapisują się w jednej transakcji. Nie ma zmiany ceny bez wpisu ani wpisu bez zmiany.
 - Kod tylko dopisuje historię: repozytorium nie ma operacji zmiany ani usuwania wpisów. Tabele Pricing czyści tylko
-  reset danych demo: `pricing:seed-demo` (`DbalPricingReset`), który `make seed` uruchamia po seedzie katalogu.
+  reset danych demo: `pricing:seed-demo` (`DbalPricingReset`, które czyści też promocje i kolejkę `promotions`), który
+  `make seed` uruchamia po seedzie katalogu.
 
 ## Warstwa aplikacji
 
@@ -246,7 +247,11 @@ Pricing:
   map i dań liofilizowanych). Warianty z portu `VariantsForPricing` (Catalog `ListVariantIdentities`), zapis przez
   `SetVariantPrice` ze źródłem `seed`. Wariant demo bez dopasowanego
   wzorca kończy seed błędem bez zmian w danych. `make seed` uruchamia go po danych katalogu, więc każdy wariant demo
-  ma cenę.
+  ma cenę. Po cenach planuje promocje z `fixtures/promotions.yaml` (`name`, `percentOff`, `days`, `variants` jako wzorce
+  kluczy tej samej składni): komendą `PlanPromotion` bez aktora i ze źródłem `seed`, od chwili seeda na `days` dni (planuje tylko granicę końca,
+  bez wiadomości startu); wariant należy do
+  pierwszej promocji, która go dopasuje. Plik promocji jest sprawdzany przed resetem: promocja bez wariantu kończy
+  seed błędem bez zmian w danych.
 
 Catalog (zapytania o warianty opisuje `docs/features/variants/spec.md`):
 - `GetVariant(variantId)` → `{variantId, productId, taxClass}` albo `null`.

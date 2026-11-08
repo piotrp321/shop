@@ -21,7 +21,7 @@ use Symfony\Component\Messenger\Stamp\DelayStamp;
  *
  * - PromotionBoundaryReached for every boundary of the saved period at or after now (a start "from now" and an end
  *   "end now" are the start of now, so they have one too), delayed until it. A boundary the period had before the
- *   write is sent again: its earlier message may have ended in `failed`, and a duplicate is harmless (the handler
+ *   write is sent again (the start only when the write announces it: the demo seed does not): its earlier message may have ended in `failed`, and a duplicate is harmless (the handler
  *   and the consumers of PromotionPricesChanged are idempotent).
  * - RefreshPromotionProducts without a delay when the write moved the end of an active promotion to another moment
  *   after the start of now: the products show the end, and no boundary comes before the new end. An end moved to the
@@ -33,10 +33,10 @@ final readonly class MessengerPromotionBoundaries implements PromotionBoundaries
     {
     }
 
-    public function promotionSaved(Promotion $promotion, ?PromotionPeriod $previousPeriod, \DateTimeImmutable $now): void
+    public function promotionSaved(Promotion $promotion, ?PromotionPeriod $previousPeriod, \DateTimeImmutable $now, bool $announceStart): void
     {
         $period = $promotion->period();
-        foreach ([$period->startsAt(), $period->endsAt()] as $boundary) {
+        foreach ($announceStart ? [$period->startsAt(), $period->endsAt()] : [$period->endsAt()] as $boundary) {
             if ($boundary >= $now) {
                 $this->sendBoundary($promotion->id(), $boundary, $boundary);
             }

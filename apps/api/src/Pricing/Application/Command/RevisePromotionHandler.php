@@ -64,6 +64,6 @@ final readonly class RevisePromotionHandler
         PromotionWrites::assertNoOverlap($this->promotions, $promotion);
 
         $this->promotions->save($promotion);
-        $this->boundaries->promotionSaved($promotion, $previousPeriod, $now);
+        $this->boundaries->promotionSaved($promotion, $previousPeriod, $now, true);
     }
 }

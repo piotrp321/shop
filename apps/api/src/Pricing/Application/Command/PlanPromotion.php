@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Pricing\Application\Command;
 
+use App\Pricing\Domain\Promotion\PromotionPriceChangeSource;
+
 /**
- * Plans a new promotion. A start that is null or not after now starts it now (at the start of now).
+ * Plans a new promotion. A start that is null or not after now starts it now (at the start of now). A staff change
+ * names the staff member, a seed change has no actor. The source tells whether the start needs an event: a seed has none
+ * (`make seed` purges the store afterwards), a staff write has.
  */
 final readonly class PlanPromotion
 {
@@ -22,6 +26,7 @@ final readonly class PlanPromotion
         public array $variantIds,
         public ?string $actorId,
         public ?string $actorName,
+        public PromotionPriceChangeSource $source,
     ) {
     }
 
@@ -32,6 +37,16 @@ final readonly class PlanPromotion
      */
     public static function byStaff(string $id, string $name, int $percentOff, ?\DateTimeImmutable $startsAt, \DateTimeImmutable $endsAt, array $variantIds, string $actorId, string $actorName): self
     {
-        return new self($id, $name, $percentOff, $startsAt, $endsAt, $variantIds, $actorId, $actorName);
+        return new self($id, $name, $percentOff, $startsAt, $endsAt, $variantIds, $actorId, $actorName, PromotionPriceChangeSource::Promotion);
+    }
+
+    /**
+     * The demo data: a promotion that starts now and has no actor (source `seed`).
+     *
+     * @param list<string> $variantIds
+     */
+    public static function bySeed(string $id, string $name, int $percentOff, \DateTimeImmutable $endsAt, array $variantIds): self
+    {
+        return new self($id, $name, $percentOff, null, $endsAt, $variantIds, null, null, PromotionPriceChangeSource::Seed);
     }
 }

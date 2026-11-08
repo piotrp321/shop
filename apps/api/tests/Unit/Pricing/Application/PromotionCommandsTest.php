@@ -124,6 +124,15 @@ final class PromotionCommandsTest extends TestCase
         self::assertEquals($this->clock->now, $now);
     }
 
+    public function testTheStartIsAnnouncedForTheStaffAndNotForTheSeed(): void
+    {
+        ($this->plan)(self::planCommand());
+        ($this->plan)(PlanPromotion::bySeed(self::OTHER, 'Demo', 10, new \DateTimeImmutable('2026-12-10T12:00:00Z'), [self::C]));
+        ($this->revise)(new RevisePromotion(self::ID, 1, 'Jesień', 20, new \DateTimeImmutable('2026-11-12T00:00:00Z'), new \DateTimeImmutable('2026-11-21T00:00:00Z'), [self::A, self::B], 'sub-2', 'Bartek'));
+
+        self::assertSame([true, false, true], $this->boundaries->announcedStart);
+    }
+
     public function testAVariantUnknownToCatalogOrWithoutACurrentPriceIsRefused(): void
     {
         try {
