@@ -159,6 +159,43 @@ export const changeCartItemQuantity = (variantId: string, quantity: number) =>
 export const removeCartItem = (variantId: string) =>
   queueWrite(() => callCart<CartView>(`/api/cart/items/${encodeURIComponent(variantId)}`, { method: "DELETE" }));
 
+export type CustomerOrderList = components["schemas"]["CustomerOrderList"];
+export type CustomerOrderListItem = components["schemas"]["CustomerOrderListItem"];
+export type CustomerOrder = components["schemas"]["CustomerOrder"];
+export type CustomerOrderStatus = components["schemas"]["CustomerOrderStatus"];
+
+/** Why a call to the store's order history endpoints did not give data: `unauthorized` is a session that is over. */
+export type AccountResult<T> = { status: "ok"; data: T } | { status: "unauthorized" | "not_found" | "failed" };
+
+async function callAccount<T>(path: string): Promise<AccountResult<T>> {
+  try {
+    const response = await fetch(path, { method: "GET", credentials: "same-origin", cache: "no-store" });
+    switch (response.status) {
+      case 200:
+        return { status: "ok", data: (await response.json()) as T };
+      case 401:
+        return { status: "unauthorized" };
+      case 404:
+        return { status: "not_found" };
+      default:
+        return { status: "failed" };
+    }
+  } catch {
+    // A network error and a body that is no JSON.
+    return { status: "failed" };
+  }
+}
+
+/**
+ * For the browser: a page of the order history from the store's `/api/account/orders`; `after` is the `nextCursor` of
+ * the previous page. Never rejects.
+ */
+export const loadCustomerOrders = (after?: string) =>
+  callAccount<CustomerOrderList>(after === undefined ? "/api/account/orders" : `/api/account/orders?after=${encodeURIComponent(after)}`);
+
+/** For the browser: one order of the customer from the store's `/api/account/orders/<id>`. Never rejects. */
+export const loadCustomerOrder = (orderId: string) => callAccount<CustomerOrder>(`/api/account/orders/${encodeURIComponent(orderId)}`);
+
 /** The checkout form as the browser sends it to `/api/checkout`; a signed-in customer has no `email` (the account's). */
 export type PlaceOrderInput = {
   email?: string;

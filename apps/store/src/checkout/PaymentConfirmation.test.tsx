@@ -159,10 +159,11 @@ describe("the order and its payment", () => {
     expect(text(WAITING)).toBeNull();
   });
 
-  it("says a cancelled order was cancelled for the missing payment, with a link to the store", async () => {
+  it("says neutrally that a cancelled order was cancelled (the reason is in the e-mail), with a link to the store", async () => {
     renderPage(ok(view({ orderStatus: "cancelled", canStartPayment: false, latestPayment: null })));
 
-    expect(screen.getByText("Zamówienie zostało anulowane, bo nie otrzymaliśmy płatności w terminie.")).toBeTruthy();
+    expect(screen.getByText("Zamówienie zostało anulowane.")).toBeTruthy();
+    expect(screen.queryByText(/nie otrzymaliśmy płatności/)).toBeNull();
     expect(screen.getByRole("link", { name: "Wróć do sklepu" }).getAttribute("href")).toBe("/");
     expect(screen.queryByRole("radiogroup")).toBeNull();
     await advance(60_000);
@@ -470,7 +471,7 @@ describe("paying", () => {
     choose("Szybki przelew (demo)");
     await click("Zapłać");
 
-    expect(screen.getByText("Zamówienie zostało anulowane, bo nie otrzymaliśmy płatności w terminie.")).toBeTruthy();
+    expect(screen.getByText("Zamówienie zostało anulowane.")).toBeTruthy();
   });
 
   it("on 409 reused key shows the detail and tries again with a new key", async () => {

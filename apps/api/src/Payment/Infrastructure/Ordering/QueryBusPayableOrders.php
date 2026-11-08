@@ -50,7 +50,7 @@ final class QueryBusPayableOrders implements PayableOrders
         return new OrderToPay(
             OrderId::fromString($order->orderId),
             $order->number,
-            OrderState::from($order->status),
+            OrderState::from($order->statusForPayment),
             $order->totalGross,
             Currency::from($order->currency),
             $order->paymentDeadline,

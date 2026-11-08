@@ -16,6 +16,7 @@ use App\Catalog\Domain\Product\ProductModifiedConcurrently;
 use App\Catalog\Domain\Product\ProductName;
 use App\Catalog\Domain\Product\ProductNotFound;
 use App\Catalog\Domain\Product\ProductRepository;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
@@ -39,13 +40,13 @@ final readonly class DoctrineProductRepository implements ProductRepository
     {
     }
 
-    public function save(Product $product): void
+    public function save(Product $product, ?int $expectedVersion, ?string $actorId, \DateTimeImmutable $at): void
     {
         $this->refuseVariantIdOfAnotherKnownProduct($product);
 
         try {
-            $this->entityManager->wrapInTransaction(function () use ($product): void {
-                $this->write($product);
+            $this->entityManager->wrapInTransaction(function () use ($product, $expectedVersion, $actorId, $at): void {
+                $this->write($product, $expectedVersion, $actorId, $at);
             });
         } catch (OptimisticLockException) {
             throw new ProductModifiedConcurrently();
@@ -121,16 +122,25 @@ final readonly class DoctrineProductRepository implements ProductRepository
         }
     }
 
-    private function write(Product $product): void
+    private function write(Product $product, ?int $expectedVersion, ?string $actorId, \DateTimeImmutable $at): void
     {
         $id = $product->id()->toString();
         $existing = $this->entityManager->find(ProductRecord::class, $id);
+        if (null !== $existing && null !== $expectedVersion && $existing->version !== $expectedVersion) {
+            throw new ProductModifiedConcurrently();
+        }
         $record = $existing ?? new ProductRecord($id);
         $record->slug = $product->slug()->value();
         $record->name = $product->name()->value();
         $record->shortDescription = $product->shortDescription()->value();
         $record->primaryCategory = $this->categoryReference($product->categories()->main());
         $record->taxClass = $product->taxClass()->value;
+        $record->status = $product->status()->value;
+        // Compared by value: Doctrine sees a new DateTimeImmutable instance as a change. The column keeps whole seconds.
+        $firstPublishedAt = $product->firstPublishedAt();
+        if ($record->firstPublishedAt?->getTimestamp() !== $firstPublishedAt?->getTimestamp()) {
+            $record->firstPublishedAt = $firstPublishedAt;
+        }
         $images = array_map(
             static fn (ProductImage $image): array => ['key' => $image->key()->toString(), 'alt' => $image->alt()],
             $product->images()->toList(),
@@ -162,8 +172,14 @@ final readonly class DoctrineProductRepository implements ProductRepository
         );
         $variantsChanged = null !== $existing && $variants !== $this->storedVariants($record);
 
-        if (null !== $existing && ($categoriesChanged || $variantsChanged) && !$this->rowChanged($record)) {
-            // Doctrine does not touch the version when only a collection changes.
+        // A write from a view (expectedVersion) always raises the version; another write only when something changed.
+        $raisesVersion = null === $existing || null !== $expectedVersion || $categoriesChanged || $variantsChanged || $this->rowChanged($record);
+        if ($raisesVersion) {
+            $record->updatedAt = $at;
+            $record->updatedBy = $actorId;
+        }
+        if (null !== $existing && $raisesVersion && !$this->rowChanged($record)) {
+            // Doctrine does not touch the version when only a collection changes, nor when the row is the same.
             $this->incrementVersion($record);
         }
         if ($categoriesChanged) {
@@ -273,6 +289,9 @@ final readonly class DoctrineProductRepository implements ProductRepository
                     ),
                 )->toArray()),
             ),
+            ProductStatus::from($record->status),
+            $record->firstPublishedAt,
+            $record->version,
         );
     }
 }

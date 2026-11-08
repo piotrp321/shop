@@ -40,8 +40,6 @@ final class OrderPaymentTest extends TestCase
         self::assertNull($order->paymentId());
         self::assertNull($order->cancelledAt());
         self::assertNull($order->cancellationReason());
-        self::assertNull($order->paymentNotificationSentAt());
-        self::assertNull($order->cancellationNotificationSentAt());
     }
 
     public function testAGuestOrderHasTheTokenAndACustomerOrderNone(): void
@@ -263,37 +261,20 @@ final class OrderPaymentTest extends TestCase
         self::assertSame([], $cancelled->releaseEvents());
     }
 
-    public function testTheNotificationMarkersKeepTheFirstMoment(): void
-    {
-        $order = OrderExamples::placed();
-        $first = new \DateTimeImmutable('2026-11-05 12:40:00+00:00');
-
-        $order->markPaymentNotificationSent($first);
-        $order->markPaymentNotificationSent($first->modify('+1 minute'));
-        $order->markCancellationNotificationSent($first);
-        $order->markCancellationNotificationSent($first->modify('+1 minute'));
-
-        self::assertEquals($first, $order->paymentNotificationSentAt());
-        self::assertEquals($first, $order->cancellationNotificationSentAt());
-        self::assertSame([], $order->releaseEvents());
-    }
-
     public function testReconstituteKeepsThePaymentState(): void
     {
         $paid = OrderExamples::placed();
         $paid->markPaid(self::paymentId(), OrderExamples::TOTAL, 'PLN', new \DateTimeImmutable('2026-11-05 12:10:00+00:00'), new \DateTimeImmutable('2026-11-05 12:10:05+00:00'));
-        $paid->markPaymentNotificationSent(new \DateTimeImmutable('2026-11-05 12:11:00+00:00'));
         $cancelled = OrderExamples::placed(byCustomer: true);
         $cancelled->expireUnpaid(new \DateTimeImmutable('2026-11-05 12:35:00+00:00'));
-        $cancelled->markCancellationNotificationSent(new \DateTimeImmutable('2026-11-05 12:36:00+00:00'));
 
         $paidCopy = OrderExamples::copy($paid, 4);
         $cancelledCopy = OrderExamples::copy($cancelled, 3);
 
         self::assertSame([OrderStatus::Paid, self::PAYMENT_ID, OrderExamples::TOKEN, 4], [$paidCopy->status(), $paidCopy->paymentId()?->toString(), $paidCopy->accessToken()?->toString(), $paidCopy->version()]);
-        self::assertEquals([new \DateTimeImmutable('2026-11-05 12:10:05+00:00'), new \DateTimeImmutable('2026-11-05 12:11:00+00:00'), new \DateTimeImmutable(OrderExamples::DEADLINE)], [$paidCopy->paidAt(), $paidCopy->paymentNotificationSentAt(), $paidCopy->paymentDeadline()]);
+        self::assertEquals([new \DateTimeImmutable('2026-11-05 12:10:05+00:00'), new \DateTimeImmutable(OrderExamples::DEADLINE)], [$paidCopy->paidAt(), $paidCopy->paymentDeadline()]);
         self::assertSame([OrderStatus::Cancelled, CancellationReason::PaymentTimeout, null, 3], [$cancelledCopy->status(), $cancelledCopy->cancellationReason(), $cancelledCopy->accessToken(), $cancelledCopy->version()]);
-        self::assertEquals([new \DateTimeImmutable('2026-11-05 12:35:00+00:00'), new \DateTimeImmutable('2026-11-05 12:36:00+00:00')], [$cancelledCopy->cancelledAt(), $cancelledCopy->cancellationNotificationSentAt()]);
+        self::assertEquals(new \DateTimeImmutable('2026-11-05 12:35:00+00:00'), $cancelledCopy->cancelledAt());
         self::assertSame([], $paidCopy->releaseEvents());
         self::assertSame([], $cancelledCopy->releaseEvents());
     }

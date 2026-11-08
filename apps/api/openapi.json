@@ -1270,7 +1270,7 @@
                     "Catalog"
                 ],
                 "summary": "Product details",
-                "description": "The product page data: the category path from the root to the main category, all the images in position order, the variant axes and the variants (label and values in the order of the axes) in position order. The price and the availability are in the product offer. A slug that names no product, also one that is not in the format of a slug, gives 404. The 200 may be kept by a shared cache for an hour and is tagged for purging; the 404 for 60 seconds.",
+                "description": "The product page data: the category path from the root to the main category, all the images in position order, the variant axes and the variants (label and values in the order of the axes) in position order. The price and the availability are in the product offer. A slug that names no published product (a draft, an unknown slug, one that is not in the format of a slug) gives 404. The 200 may be kept by a shared cache for an hour and is tagged for purging; the 404 for 60 seconds, tagged for purging when the product is published.",
                 "operationId": "getProduct",
                 "parameters": [
                     {
@@ -1305,7 +1305,7 @@
                         }
                     },
                     "404": {
-                        "description": "No product has the slug (problem details).",
+                        "description": "No published product has the slug (problem details).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -1375,6 +1375,86 @@
             }
         },
         "/api/v1/me/orders": {
+            "get": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "Orders of the customer",
+                "description": "A page of the orders the customer of the token placed, newest first (then by id); orders of guests and of other customers are never in it. Page with the opaque `nextCursor` as `after`; the total is not counted.",
+                "operationId": "listCustomerOrders",
+                "parameters": [
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `nextCursor` of the previous page.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10,
+                            "maximum": 50,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the history. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CustomerOrderList"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "shop": []
+                    }
+                ]
+            },
             "post": {
                 "tags": [
                     "Ordering"
@@ -1469,6 +1549,75 @@
                     },
                     "422": {
                         "description": "A key is missing, of a wrong type or invalid (problem details with Polish `violations`, one per field).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "shop": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/me/orders/{orderId}": {
+            "get": {
+                "tags": [
+                    "Ordering"
+                ],
+                "summary": "An order of the customer",
+                "description": "The order with its lines, totals, address and the moments of its statuses. `paymentDeadlinePassed` is computed by the API: true only for a new order whose payment deadline has come. No history of changes, notes, data of staff or refunds.",
+                "operationId": "getCustomerOrder",
+                "parameters": [
+                    {
+                        "name": "orderId",
+                        "in": "path",
+                        "description": "Id of the order.",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The order.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CustomerOrder"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such order of the customer: unknown, an id that is no UUID, an order of another customer or of a guest (problem details, one text for every case).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -2795,13 +2944,7 @@
                         "example": "R-100001"
                     },
                     "status": {
-                        "description": "`new` right after the placement; `paid` once paid, `cancelled` when unpaid five minutes after `paymentDeadline`.",
-                        "type": "string",
-                        "enum": [
-                            "new",
-                            "paid",
-                            "cancelled"
-                        ]
+                        "$ref": "#/components/schemas/CustomerOrderStatus"
                     },
                     "email": {
                         "description": "The address the order is confirmed to.",
@@ -2950,6 +3093,190 @@
                         "enum": [
                             "PLN"
                         ]
+                    }
+                },
+                "type": "object"
+            },
+            "CustomerOrderStatus": {
+                "description": "`new` (waits for the payment; right after the placement), `paid`, `shipped`, `delivered`, `cancelled` (unpaid in time, or by staff), `returned`.",
+                "type": "string",
+                "enum": [
+                    "new",
+                    "paid",
+                    "shipped",
+                    "delivered",
+                    "cancelled",
+                    "returned"
+                ]
+            },
+            "CustomerOrderList": {
+                "description": "A page of the order history of the customer.",
+                "required": [
+                    "items",
+                    "nextCursor"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CustomerOrderListItem"
+                        }
+                    },
+                    "nextCursor": {
+                        "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
+                        "type": "string",
+                        "example": "eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "CustomerOrderListItem": {
+                "description": "An order in the history. Amounts in grosze.",
+                "required": [
+                    "orderId",
+                    "number",
+                    "placedAt",
+                    "status",
+                    "totalGross",
+                    "currency",
+                    "itemCount",
+                    "paymentDeadline",
+                    "paymentDeadlinePassed"
+                ],
+                "properties": {
+                    "orderId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "number": {
+                        "type": "string",
+                        "example": "R-100001"
+                    },
+                    "placedAt": {
+                        "description": "RFC 3339, UTC.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/CustomerOrderStatus"
+                    },
+                    "totalGross": {
+                        "type": "integer",
+                        "example": 39998
+                    },
+                    "currency": {
+                        "type": "string",
+                        "enum": [
+                            "PLN"
+                        ]
+                    },
+                    "itemCount": {
+                        "description": "Units of all lines of the order.",
+                        "type": "integer",
+                        "example": 3
+                    },
+                    "paymentDeadline": {
+                        "description": "The order was to be paid by this moment (RFC 3339, UTC); meaningful for a `new` order.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T13:00:00+00:00"
+                    },
+                    "paymentDeadlinePassed": {
+                        "description": "True only for a `new` order whose `paymentDeadline` has come, computed by the API; false for every other status.",
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "CustomerOrder": {
+                "description": "An order of the customer with copies of the names and prices of the placement. Amounts in grosze. No history of changes, notes, data of staff, refund or payment.",
+                "required": [
+                    "orderId",
+                    "number",
+                    "status",
+                    "shippingAddress",
+                    "lines",
+                    "totals",
+                    "placedAt",
+                    "paymentDeadline",
+                    "paymentDeadlinePassed",
+                    "paidAt",
+                    "shippedAt",
+                    "deliveredAt",
+                    "cancelledAt",
+                    "returnedAt"
+                ],
+                "properties": {
+                    "orderId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "number": {
+                        "type": "string",
+                        "example": "R-100001"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/CustomerOrderStatus"
+                    },
+                    "shippingAddress": {
+                        "$ref": "#/components/schemas/OrderShippingAddress"
+                    },
+                    "lines": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrderLine"
+                        }
+                    },
+                    "totals": {
+                        "$ref": "#/components/schemas/OrderTotals"
+                    },
+                    "placedAt": {
+                        "description": "RFC 3339, UTC.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T12:30:00+00:00"
+                    },
+                    "paymentDeadline": {
+                        "description": "The order was to be paid by this moment, 30 minutes after the placement (RFC 3339, UTC).",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-05T13:00:00+00:00"
+                    },
+                    "paymentDeadlinePassed": {
+                        "description": "True only for a `new` order whose `paymentDeadline` has come, computed by the API; false for every other status.",
+                        "type": "boolean"
+                    },
+                    "paidAt": {
+                        "description": "When the payment was confirmed (RFC 3339, UTC); null until then.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "shippedAt": {
+                        "description": "When the order was shipped (RFC 3339, UTC); null until then.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "deliveredAt": {
+                        "description": "When the order was delivered (RFC 3339, UTC); null until then, and for an order returned without being delivered.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "cancelledAt": {
+                        "description": "When the order was cancelled (RFC 3339, UTC); null for an order that was not.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                    },
+                    "returnedAt": {
+                        "description": "When the return was received (RFC 3339, UTC); null for an order that was not returned.",
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
                     }
                 },
                 "type": "object"
@@ -3380,6 +3707,24 @@
                         "type": "integer",
                         "example": 39998,
                         "minimum": 0
+                    }
+                },
+                "type": "object"
+            },
+            "CustomerOrderListQuery": {
+                "properties": {
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 10,
+                        "maximum": 50,
+                        "minimum": 1
                     }
                 },
                 "type": "object"

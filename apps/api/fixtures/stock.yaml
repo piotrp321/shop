@@ -17,8 +17,11 @@
 # - buty-trailowe-*-hala-500 (50 units, the most of the demo) and buty-szosowe-*-tempo-600 (45): the checkout tests
 #   order Buty trailowe Norvane Hala 500 (guest, 2 units, checkout-guest.spec.ts; guest, 1 unit, payment-resume.spec.ts)
 #   and Buty szosowe Norvane Tempo 600 (Jan, 1 unit, checkout-customer.spec.ts). The tests pay for their orders, and the
-#   reservation of a paid order stays until it is shipped (ORDER-MANAGEMENT), so every run takes units for good until
-#   `make seed`; the tests choose the first variant that can still be bought.
+#   reservation of a paid order stays until it is shipped or the order is cancelled, so the checkout tests take units
+#   for good until `make seed`; the tests choose the first variant that can still be bought. The order management test
+#   (order-management.spec.ts) orders 1 unit of Tempo 600 (Jan) and the warehouse ships it: the shipment commits the
+#   reservation and the unit is gone for good. It also orders 1 unit of Hala 500 (Anna) and the support cancels it: the
+#   unit comes back.
 # Products with variants both in and out of stock: kajak-turystyczny-dravik-rzeka-2, narty-skiturowe-stavro-gran-95.
 
 # Out of stock

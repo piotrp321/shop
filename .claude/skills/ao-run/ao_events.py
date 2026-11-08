@@ -9,6 +9,19 @@
       Follows FILE like `tail -F` (waits for it to appear, reads only new lines unless --from-start) and prints one
       push-message line per notifiable event, flushed. Lines that are not JSON are skipped. Exit code 0 on SIGTERM
       or SIGINT.
+  human FILE --action (answer|resume|release|epic-resume) [--task ID]
+      Appends {"type": "human_action", "task_id": ID or null, "epic_id": null, "data": {"action"}, "at": <now>} to
+      FILE: /ao-run records each decision of the user it passes to AO (`ao answer`, `ao resume`, `ao release`,
+      `ao epic resume`). A task decision has --task; a decision on the epic or the queue has none. Exit code 0 when the
+      line was written, 1 (message on stderr) when it was not, 2 for invalid arguments.
+  summary FILE [--now EPOCH]
+      Prints one JSON line {"interventions", "waits", "wait_s", "open": [{"task_id", "since", "wait_s"}]} for FILE:
+      interventions = human_action events; a wait for the user starts at a task's status_changed to BLOCKED or FAILED
+      (key: the task) or at epic_blocked / queue_held (key: null) and ends at the next human_action with the same key;
+      wait_s is the wall-clock time covered by at least one ended wait (overlapping waits count once), `open` lists
+      the waits not ended yet, each measured until the last epic_done after its start or else until --now (default:
+      the current time). `interventions` counts the decisions recorded by /ao-run; `ao report` counts AO's own. Lines that are not JSON objects are skipped. A missing or unreadable FILE is exit code 1 with a message on
+      stderr and nothing on stdout: no data is not zero.
 
 An AO event is {"type", "task_id", "epic_id", "data", "at"} (orchestrator/notify.py, Notifier._payload). The `data`
 keys of the notifiable events (AO origin/main):
@@ -30,6 +43,9 @@ import signal
 import sys
 import time
 
+HUMAN_ACTIONS = ('answer', 'resume', 'release', 'epic-resume')
+WAIT_STATUSES = ('BLOCKED', 'FAILED')
+EPIC_WAITS = ('epic_blocked', 'queue_held')
 MAX_MESSAGE = 200
 RAW_LIMIT = 500
 POLL_S = 1.0
@@ -91,14 +107,7 @@ def format_event(event, label):
     return text if len(text) <= MAX_MESSAGE else text[:MAX_MESSAGE - 1] + '…'
 
 
-def record(path):
-    raw = sys.stdin.read()
-    try:
-        event = json.loads(raw)
-        if not isinstance(event, dict) or 'type' not in event:
-            raise ValueError('no type')
-    except ValueError:
-        event = {'type': 'invalid_event', 'raw': raw[:RAW_LIMIT]}
+def _append(path, event):
     line = json.dumps(event, ensure_ascii=False) + '\n'
     try:
         directory = os.path.dirname(os.path.abspath(path))
@@ -108,6 +117,88 @@ def record(path):
     except OSError as e:
         print('ao_events: cannot write %s: %s' % (path, e.strerror or e), file=sys.stderr)
         return 1
+    return 0
+
+
+def record(path):
+    raw = sys.stdin.read()
+    try:
+        event = json.loads(raw)
+        if not isinstance(event, dict) or 'type' not in event:
+            raise ValueError('no type')
+    except ValueError:
+        event = {'type': 'invalid_event', 'raw': raw[:RAW_LIMIT]}
+    return _append(path, event)
+
+
+def human(path, action, task):
+    return _append(path, {'type': 'human_action', 'task_id': task, 'epic_id': None, 'data': {'action': action},
+                          'at': time.time()})
+
+
+def _wait_key(event):
+    """(True, key) when the event starts a wait for the user, else (False, None)."""
+    kind = event.get('type')
+    data = event.get('data') if isinstance(event.get('data'), dict) else {}
+    if kind == 'status_changed' and data.get('to') in WAIT_STATUSES and event.get('task_id'):
+        return True, event['task_id']
+    if kind in EPIC_WAITS:
+        return True, None
+    return False, None
+
+
+def _union_s(intervals):
+    """Seconds covered by at least one of the (start, end) intervals."""
+    total, reach = 0.0, None
+    for start, end in sorted(intervals):
+        if reach is None or start > reach:
+            total += end - start
+            reach = end
+        elif end > reach:
+            total += end - reach
+            reach = end
+    return total
+
+
+def summarize(events, now):
+    """Interventions and waits for the user in a list of AO events (see `summary` in the module docstring)."""
+    interventions, waits, closed, opened, done = 0, 0, [], {}, []
+    for event in events:
+        if not isinstance(event, dict) or isinstance(event.get('at'), bool) \
+                or not isinstance(event.get('at'), (int, float)):
+            continue
+        if event.get('type') == 'epic_done':
+            done.append(float(event['at']))
+        if event.get('type') == 'human_action':
+            interventions += 1
+            since = opened.pop(event.get('task_id'), None)
+            if since is not None:
+                closed.append((since, max(since, float(event['at']))))
+            continue
+        starts, key = _wait_key(event)
+        if starts and key not in opened:
+            opened[key] = float(event['at'])
+            waits += 1
+    still = []
+    for key, since in opened.items():
+        end = max([at for at in done if at >= since], default=now)
+        still.append({'task_id': key, 'since': since, 'wait_s': max(0.0, end - since)})
+    return {'interventions': interventions, 'waits': waits, 'wait_s': _union_s(closed), 'open': still}
+
+
+def summary(path, now):
+    events = []
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                try:
+                    events.append(json.loads(line))
+                except ValueError:
+                    continue
+    except OSError as e:
+        print('ao_events: cannot read %s: %s' % (path, e.strerror or e), file=sys.stderr)
+        return 1
+    print(json.dumps(summarize(events, time.time() if now is None else now), ensure_ascii=False))
     return 0
 
 
@@ -170,9 +261,20 @@ def main():
     wat.add_argument('file')
     wat.add_argument('--from-start', action='store_true')
     wat.add_argument('--epic-label')
+    hum = commands.add_parser('human')
+    hum.add_argument('file')
+    hum.add_argument('--action', required=True, choices=HUMAN_ACTIONS)
+    hum.add_argument('--task')
+    summ = commands.add_parser('summary')
+    summ.add_argument('file')
+    summ.add_argument('--now', type=float)
     args = parser.parse_args()
     if args.command == 'record':
         return record(args.file)
+    if args.command == 'human':
+        return human(args.file, args.action, args.task)
+    if args.command == 'summary':
+        return summary(args.file, args.now)
     return watch(args.file, args.from_start, args.epic_label)
 
 

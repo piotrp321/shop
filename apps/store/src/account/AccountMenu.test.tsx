@@ -120,3 +120,31 @@ describe("AccountMenu with the site switches", () => {
     expect(screen.getByRole("button", { name: "Wyloguj się" })).toBeTruthy();
   });
 });
+
+describe("AccountMenu: the order history", () => {
+  it("links a signed-in customer to their orders", async () => {
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: { name: "Jan", email: "jan.kowalski@example.com" } });
+    render(<AccountMenu />);
+
+    const link = await screen.findByRole("link", { name: "Moje zamówienia" });
+    expect(link.getAttribute("href")).toBe("/konto/zamowienia");
+  });
+
+  it("does not offer the orders to a visitor, while loading or when the session cannot be checked", async () => {
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "ok", session: null });
+    render(<AccountMenu />);
+    await screen.findByRole("link", { name: "Zaloguj się" });
+    expect(screen.queryByRole("link", { name: "Moje zamówienia" })).toBeNull();
+    cleanup();
+
+    vi.mocked(loadAccountSession).mockReturnValue(new Promise(() => {}));
+    render(<AccountMenu />);
+    expect(screen.queryByRole("link", { name: "Moje zamówienia" })).toBeNull();
+    cleanup();
+
+    vi.mocked(loadAccountSession).mockResolvedValue({ status: "unavailable" });
+    render(<AccountMenu />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole("link", { name: "Moje zamówienia" })).toBeNull();
+  });
+});

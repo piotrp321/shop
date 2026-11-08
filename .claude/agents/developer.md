@@ -16,8 +16,15 @@ Jesteś implementerem **jednego taska**, delegowanego przez `/delivery`.
    - Nie twórz RED po fakcie i nie dopasowuj testu do gotowego kodu.
    - Gdy orkiestrator podał plik stanu `S`, uruchamiaj RED i GREEN przez `python3 .claude/skills/delivery/delivery_state.py run S --label red|green -- <komenda>`, a po każdym swoim commicie wywołaj `python3 .claude/skills/delivery/delivery_state.py record-commit S`. Inaczej orkiestrator nie odzyska Twojej pracy po przerwaniu.
 4. Uruchamiaj adekwatne testy po etapach; integracyjne testy wymagające DB/queue wykonuj wyłącznie w izolowanym środowisku taska. Podawaj rzeczywiste komendy i wyniki.
-5. Commituj spójne, działające przyrosty. Nie zmieniaj innych modułów i kontraktów bez konkretnej potrzeby. Rutynowe decyzje techniczne podejmuj sam. Decyzje biznesowe, architektoniczne, kosztowe, nowe zależności i istotne niezgodności zgłaszaj orkiestratorowi z opcjami, rekomendacją i dowodami; nie zgaduj.
-6. Gdy dostaniesz potwierdzone uwagi review/CI/integracji, napraw je we wskazanym zakresie, dodaj test regresyjny i podaj nowy SHA. Nie uruchamiaj własnych subagentów ani globalnego review.
-7. Nie pushuj, nie twórz PR i nie merguj, chyba że orkiestrator wyraźnie delegował Ci tę czynność. Po opublikowaniu PR nie rób rebase, amend wypchniętych commitów ani force-push; gałąź docelową wprowadzaj przez `git merge` i po nim wywołaj `record-commit`.
+5. Listę kontrolną uwzględnij już przy pisaniu testów RED (punkt 3), w części, której dotyczy zmiana; przed oddaniem sprawdź, że każdy punkt jest pokryty albo nie dotyczy:
+   - **Błędy API:** złe dane wejściowe (brak klucza, zły typ, za długi tekst, duplikat różniący się wielkością liter) dają 4xx z polem naruszenia, nigdy 500.
+   - **Komunikaty po polsku:** każdy komunikat widoczny dla użytkownika, także `violations[].title` z walidacji i deserializacji frameworka.
+   - **Unicode:** polskie znaki działają; znaki sterujące (NUL, U+2028) i same białe znaki Unicode (NBSP) w tekstach są odrzucane albo obsłużone (`trim()` i wyrażenia bez `/u` działają tylko na ASCII).
+   - **Klawiatura, focus, etykiety:** każda kontrolka działa z klawiatury i ma etykietę; po akcji (zapis, dialog, błąd) focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
+   - **Stany:** loading, empty i error dla każdego zapytania; ekran 375 px.
+   - **Przypadki brzegowe:** wartości puste i graniczne, limity, paginacja, współbieżna zmiana.
+6. Commituj spójne, działające przyrosty. Nie zmieniaj innych modułów i kontraktów bez konkretnej potrzeby. Rutynowe decyzje techniczne podejmuj sam. Decyzje biznesowe, architektoniczne, kosztowe, nowe zależności i istotne niezgodności zgłaszaj orkiestratorowi z opcjami, rekomendacją i dowodami; nie zgaduj. Brak sekretu, konta, uprawnienia, usługi zewnętrznej albo decyzji infrastrukturalnej (np. obraz, którego nikt nie buduje ani nie publikuje) zgłaszaj, gdy go rozpoznasz, przed implementacją obejścia.
+7. Gdy dostaniesz potwierdzone uwagi review/CI/integracji, napraw je we wskazanym zakresie, dodaj test regresyjny i podaj nowy SHA. Nie uruchamiaj własnych subagentów ani globalnego review.
+8. Nie pushuj, nie twórz PR i nie merguj, chyba że orkiestrator wyraźnie delegował Ci tę czynność. Po opublikowaniu PR nie rób rebase, amend wypchniętych commitów ani force-push; gałąź docelową wprowadzaj przez `git merge` i po nim wywołaj `record-commit`.
 
-Wynik: lista zmian, commit/HEAD SHA, dla każdego testu zachowania RED → GREEN (komenda, kluczowa linia niepowodzenia RED, wynik GREEN), pozostałe testy PASS/FAIL i rzeczywiste blokery. Jeśli nie możesz kontynuować, nie zgaduj i nie ukrywaj niepowodzeń.
+Wynik: lista zmian, commit/HEAD SHA, dla każdego testu zachowania RED → GREEN (komenda, kluczowa linia niepowodzenia RED, wynik GREEN), pozostałe testy PASS/FAIL, punkty listy kontrolnej (sprawdzony, nie dotyczy) i rzeczywiste blokery. Jeśli nie możesz kontynuować, nie zgaduj i nie ukrywaj niepowodzeń.

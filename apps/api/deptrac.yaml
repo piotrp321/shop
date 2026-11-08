@@ -194,6 +194,9 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
+      # The controllers of product writes take the actor from AuthenticatedStaffMember, the security contract of
+      # Backoffice. Catalog_Domain and Catalog_Application stay free of Backoffice.
+      - Backoffice_Application
     Customer_Domain:
       - Native
       - Shared_Domain
@@ -257,8 +260,9 @@ deptrac:
       - Shared_Domain
       - Shared_Infrastructure
       - Vendor
-      # Adapters of Pricing's ports ask Catalog through its queries on query.bus. The only dependency between the
-      # two modules, one way: Catalog depends on Pricing in no layer.
+      # Adapters of Pricing's ports ask Catalog through its queries on query.bus, and Pricing subscribes to the
+      # integration event ProductChanged of Catalog_Application. The only dependency between the two modules,
+      # one way: Catalog depends on Pricing in no layer.
       - Catalog_Application
       # PriceVoter decides on the staff roles of AuthenticatedStaffMember: Pricing uses only the security contract
       # of Backoffice (its Application layer), never StaffUser of Backoffice_Infrastructure.
@@ -365,6 +369,9 @@ deptrac:
       - Catalog_Application
       - Pricing_Application
       - Inventory_Application
+      # OrderVoter decides on the staff roles of AuthenticatedStaffMember: Ordering uses only the security contract
+      # of Backoffice (its Application layer), never StaffUser of Backoffice_Infrastructure.
+      - Backoffice_Application
     Ordering_UI:
       - Native
       - Ordering_Application
@@ -375,6 +382,10 @@ deptrac:
       # The controller of a customer's order takes the customer from AuthenticatedCustomer, the security contract of
       # Customer, never CustomerUser of Customer_Infrastructure.
       - Customer_Application
+      # The controllers of the panel take the staff member of a status change and of a refund completion from
+      # AuthenticatedStaffMember, the security contract of Backoffice. Ordering_Domain and Ordering_Application stay
+      # free of Backoffice.
+      - Backoffice_Application
     # Only Payment depends on Ordering, one way (Payment_Infrastructure → Ordering_Application: the query
     # GetOrderForPayment and the command MarkOrderPaid); Ordering depends on Payment in no layer, and no other
     # module depends on Payment. Payment_Domain and Payment_Application never see another module: the ports speak

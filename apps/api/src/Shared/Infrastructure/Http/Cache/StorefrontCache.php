@@ -19,6 +19,16 @@ interface StorefrontCache
     public function invalidateProduct(string $productId): void;
 
     /**
+     * Purges every tag in Varnish with one request, then revalidates every tag in the store with one request.
+     *
+     * @param list<string> $tags built by CacheTags, at least one
+     *
+     * @throws \InvalidArgumentException when no tag is given or a tag does not have the form of CacheTags; nothing is sent
+     * @throws StorefrontCacheFailure    when either layer fails; after a failed purge the store is not called
+     */
+    public function invalidateTags(array $tags): void;
+
+    /**
      * Purges the catalog tag in Varnish: every cached catalog response.
      *
      * @throws StorefrontCacheFailure

@@ -85,9 +85,11 @@ final class OrderExamples
             paymentId: $order->paymentId(),
             cancelledAt: $order->cancelledAt(),
             cancellationReason: $order->cancellationReason(),
-            confirmationSentAt: $order->confirmationSentAt(),
-            paymentNotificationSentAt: $order->paymentNotificationSentAt(),
-            cancellationNotificationSentAt: $order->cancellationNotificationSentAt(),
+            shippedAt: $order->shippedAt(),
+            deliveredAt: $order->deliveredAt(),
+            returnedAt: $order->returnedAt(),
+            refund: $order->refund(),
+            history: $order->history(),
             version: $version ?? $order->version(),
         );
     }

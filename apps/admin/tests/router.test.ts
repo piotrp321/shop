@@ -81,6 +81,36 @@ describe("router guard", () => {
     expect(router.currentRoute.value.name).not.toBe("inventory");
   });
 
+  it("serves the order list at /orders to a signed-in user", async () => {
+    const { router, userManager } = setup({ expired: false });
+
+    await router.push("/orders");
+
+    expect(router.currentRoute.value.name).toBe("orders");
+    expect(router.currentRoute.value.path).toBe("/orders");
+    expect(userManager.signinRedirect).not.toHaveBeenCalled();
+  });
+
+  it("serves the order detail at /orders/:orderId with the id as a parameter", async () => {
+    const { router, userManager } = setup({ expired: false });
+
+    await router.push("/orders/0192f0c4-0000-7000-8000-000000000001");
+
+    expect(router.currentRoute.value.name).toBe("order-detail");
+    expect(router.currentRoute.value.params.orderId).toBe("0192f0c4-0000-7000-8000-000000000001");
+    expect(userManager.signinRedirect).not.toHaveBeenCalled();
+  });
+
+  it.each(["/orders", "/orders/0192f0c4"])("protects %s like every other route", async (path) => {
+    const { router, userManager } = setup(null);
+
+    await router.push(path);
+
+    expect(userManager.signinRedirect).toHaveBeenCalledWith({ state: { returnTo: path } });
+    expect(router.currentRoute.value.name).not.toBe("orders");
+    expect(router.currentRoute.value.name).not.toBe("order-detail");
+  });
+
   it("does not protect the callback route", async () => {
     const { router, userManager } = setup(null);
 

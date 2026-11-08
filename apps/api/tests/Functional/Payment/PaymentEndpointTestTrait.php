@@ -165,6 +165,19 @@ trait PaymentEndpointTestTrait
         $this->connection->executeStatement("UPDATE ordering_order SET status = 'paid', paid_at = now(), payment_id = gen_random_uuid() WHERE id = ?", [$orderId]);
     }
 
+    /**
+     * Takes a paid order on in the panel by SQL: `shipped`, `delivered` or `returned` (with the refund of a return).
+     */
+    private function advancePaidOrder(string $orderId, string $status): void
+    {
+        $this->connection->executeStatement(match ($status) {
+            'shipped' => "UPDATE ordering_order SET status = 'shipped', shipped_at = now() WHERE id = ?",
+            'delivered' => "UPDATE ordering_order SET status = 'delivered', shipped_at = now(), delivered_at = now() WHERE id = ?",
+            'returned' => "UPDATE ordering_order SET status = 'returned', shipped_at = now(), returned_at = now(), refund_amount = total_gross, refund_due_at = now() + interval '14 days' WHERE id = ?",
+            default => throw new \InvalidArgumentException($status),
+        }, [$orderId]);
+    }
+
     private function cancelOrder(string $orderId): void
     {
         $this->connection->executeStatement("UPDATE ordering_order SET status = 'cancelled', cancelled_at = now(), cancellation_reason = 'payment_timeout' WHERE id = ?", [$orderId]);

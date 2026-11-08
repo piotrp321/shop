@@ -6,6 +6,7 @@ namespace App\Tests\Functional\Pricing;
 
 use App\Catalog\Domain\Category\Category;
 use App\Catalog\Domain\Product\Product;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
@@ -85,6 +86,23 @@ final class BackofficePricesEndpointTest extends WebTestCase
         $this->assertKeysMatchSchema($items[0], 'PriceListItemResponse');
         $this->assertKeysMatchSchema($variants[1], 'PriceListVariantResponse');
         $this->assertKeysMatchSchema($price, 'ListedPriceResponse');
+    }
+
+    public function testADraftIsListedWithItsVariantsAndPrices(): void
+    {
+        $draft = $this->saveProduct('Szkic kurtki', TaxClassCode::Standard, status: ProductStatus::Draft);
+        $variant = $this->defaultVariant($draft);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $variant, 'gross' => 12300, 'taxClass' => 'standard', 'vatRateBp' => 2300]);
+
+        $items = $this->items($this->get(''));
+
+        self::assertSame([$draft->id()->toString()], array_column($items, 'productId'));
+        self::assertIsArray($items[0]['variants']);
+        self::assertIsArray($items[0]['variants'][0]);
+        self::assertSame($variant, $items[0]['variants'][0]['variantId']);
+        $price = $items[0]['variants'][0]['price'];
+        self::assertIsArray($price);
+        self::assertSame(12300, $price['gross']);
     }
 
     public function testAPriceAtAnOutdatedRateIsMarkedAndTheCurrentRateIsApplicable(): void
@@ -286,14 +304,14 @@ final class BackofficePricesEndpointTest extends WebTestCase
      * @param list<string>                                  $axes
      * @param list<array{id: string, values: list<string>}> $variants none for one default variant
      */
-    private function saveProduct(string $name, TaxClassCode $taxClass, ?Category $category = null, array $axes = [], array $variants = []): Product
+    private function saveProduct(string $name, TaxClassCode $taxClass, ?Category $category = null, array $axes = [], array $variants = [], ProductStatus $status = ProductStatus::Published): Product
     {
-        $attributes = ['mainCategory' => $category ?? $this->category, 'name' => $name, 'taxClass' => $taxClass];
+        $attributes = ['mainCategory' => $category ?? $this->category, 'name' => $name, 'taxClass' => $taxClass, 'status' => $status];
         if ([] !== $variants) {
             $attributes += ['variantAxes' => $axes, 'variants' => $variants];
         }
         $product = ProductFactory::createOne($attributes);
-        new DoctrineProductRepository($this->entityManager)->save($product);
+        new DoctrineProductRepository($this->entityManager)->save($product, null, null, new \DateTimeImmutable());
 
         return $product;
     }

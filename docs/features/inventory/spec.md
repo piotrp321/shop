@@ -17,7 +17,7 @@ Poza zakresem: wiele magazynów, lokalizacje, kompletacja. Nie powstają endpoin
 | Context | Odpowiada za |
 |---|---|
 | Inventory | stany, przyjęcia, korekty, rezerwacje i historia wariantu, poziom dostępności |
-| Catalog | warianty produktów, zapytania dla Inventory: `GetVariant`, `ListVariantIdentities`, `ListProductVariants`, `SearchBackofficeProducts` |
+| Catalog | warianty produktów, zapytania dla Inventory: `GetVariant`, `ListVariantIdentities`, `ListProductVariants`, `SearchBackofficeProducts`; port `VariantStockFacts` (blokada usunięcia wariantu ze stanem) |
 | Ordering | rezerwacja stanów zamówienia przez `ReserveStock` w transakcji `PlaceOrder` |
 | Sklep, panel | wyświetlanie wartości z API; żadnego liczenia dostępności ani poziomów |
 
@@ -26,6 +26,9 @@ Poza zakresem: wiele magazynów, lokalizacje, kompletacja. Nie powstają endpoin
 - `Inventory_Infrastructure → Backoffice_Application` (`StockVoter`) i `Inventory_UI → Backoffice_Application`
   (aktor operacji): wyłącznie kontrakt `AuthenticatedStaffMember`. `Inventory_Domain` i `Inventory_Application`
   nie zależą od Backoffice.
+- `QueryBusVariantStockFacts` (`Inventory_Infrastructure`) to adapter portu Catalog `VariantStockFacts`: Inventory
+  `GetStockLevels` na `query.bus`, odczyt bez blokady; wariant ze stanem fizycznym > 0 albo zarezerwowanym > 0 jest
+  „w użyciu”, a jego usunięcie w panelu Catalog odrzuca (`VariantInUse`). Wariant bez rekordu stanu nie jest w użyciu.
 - Catalog i Pricing nie zależą od Inventory w żadnej warstwie. Inventory nie zależy od Pricing ani od Ordering.
 - `Ordering_Infrastructure → Inventory_Application`: adapter portu `StockReservations` Ordering
   (`CommandBusStockReservations`) wysyła `ReserveStock` przez `command.bus`; Ordering zna tylko warstwę Application
@@ -42,8 +45,8 @@ Zapytania Catalog dla Inventory (`query.bus`, DBAL; opisuje je `docs/features/va
 - `GetVariant(variantId)`: wariant albo `null` (port `VariantCatalog`, istnienie wariantu).
 - `ListVariantIdentities(after, limit)`: `{variantId, key}` partiami po `variantId`, dla seeda Inventory (port
   `VariantsForInventory`).
-- `ListProductVariants(productIds)`: warianty produktów z etykietami w kolejności pozycji (port `ProductDirectory`,
-  lista panelu).
+- `ListProductVariants(productIds, includeDrafts: true)`: warianty produktów z etykietami w kolejności pozycji, także
+  szkiców (port `ProductDirectory`, lista panelu; stan szkicu ustawia się przed publikacją).
 - `SearchBackofficeProducts`: strona produktów listy panelu (port `ProductDirectory`).
 
 ## Model domenowy
@@ -184,8 +187,9 @@ wiersz, a stan nie zmienia się dwa razy.
 Komendy (`command.bus`):
 - `ReceiveStock` (`byStaff(variantId, quantity, receiptKey, note, actorId, actorName)` z panelu,
   `bySeed(variantId, quantity, receiptKey)` dla seeda) → `StockView` (z `variantId`) i znacznik, czy to powtórzenie.
-  Nieznany wariant (port `VariantCatalog`, Catalog `GetVariant`; także identyfikator produktu): `VariantNotFound`
-  (404, „Wariant produktu nie istnieje.”).
+  Nieznany wariant (port `VariantCatalog`, Catalog `GetVariant`; także identyfikator produktu i wariant usunięty
+  w panelu): `VariantNotFound` (404, „Wariant produktu nie istnieje.”). Wariant szkicu jest znany (`GetVariant` widzi
+  szkice).
 - `CorrectStock(variantId, countedPhysical, expectedVersion|null, reason, note, actorId, actorName)` → `StockView`.
   Nieznany wariant: 404. Wariant bez rekordu wymaga `expectedVersion = null`; rekord istnieje, a wersja jest inna
   (także `null`): 409.
@@ -207,8 +211,8 @@ Zapytania (`query.bus`):
 - `ListBackofficeStock(term, categoryId, after, perPage)`: strona produktów z portu `ProductDirectory` (Catalog
   `SearchBackofficeProducts`, kursor po produktach), warianty strony z etykietami jednym wywołaniem (Catalog
   `ListProductVariants`) i ich stany jednym zapytaniem. Wynik: produkty strony, a w każdym jego warianty w kolejności
-  pozycji, każdy ze stanem albo bez (brak rekordu). Produkt, dla którego Catalog nie ma już wariantów, jest na liście
-  bez wariantów.
+  pozycji, każdy ze stanem albo bez (brak rekordu). Szkice są na liście z wariantami, bez oznaczenia statusu. Produkt,
+  dla którego Catalog nie ma już wariantów, jest na liście bez wariantów.
 - `GetStockHistory(variantId, after, perPage)`: od najnowszych, keyset po `(occurred_at, id)` malejąco. Nieznany
   wariant: 404. Wariant bez rekordu: pusta lista.
 

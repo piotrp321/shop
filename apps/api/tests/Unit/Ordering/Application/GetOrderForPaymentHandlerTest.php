@@ -11,6 +11,7 @@ use App\Ordering\Application\Query\OrderForPayment;
 use App\Ordering\Domain\Order;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\PaymentId;
+use App\Ordering\Domain\StaffActor;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
 use App\Tests\Unit\Ordering\OrderExamples;
 use App\Tests\Unit\Ordering\VersionedOrders;
@@ -50,9 +51,11 @@ final class GetOrderForPaymentHandlerTest extends TestCase
             paymentId: null,
             cancelledAt: null,
             cancellationReason: null,
-            confirmationSentAt: null,
-            paymentNotificationSentAt: null,
-            cancellationNotificationSentAt: null,
+            shippedAt: null,
+            deliveredAt: null,
+            returnedAt: null,
+            refund: null,
+            history: $customerOrder->history(),
             version: 1,
         ));
         $this->clock = new FixedOrderingClock(new \DateTimeImmutable('2026-11-05 12:10:00+00:00'));
@@ -84,14 +87,52 @@ final class GetOrderForPaymentHandlerTest extends TestCase
         $atDeadline = $this->ask(OrderExamples::ORDER, OrderAccess::guest(OrderExamples::TOKEN));
         self::assertNotNull($atDeadline);
         self::assertFalse($atDeadline->payable);
-        self::assertSame('new', $atDeadline->status);
+        self::assertSame('new', $atDeadline->statusForPayment);
 
         $this->clock->now = new \DateTimeImmutable('2026-11-05 12:10:00+00:00');
         $this->orders->changeElsewhere(OrderId::fromString(OrderExamples::ORDER), static fn (Order $order) => $order->markPaid(PaymentId::fromString('0192f0c4-7c1a-7c4e-9a6e-0000000000b1'), OrderExamples::TOTAL, 'PLN', new \DateTimeImmutable('2026-11-05 12:05:00+00:00'), new \DateTimeImmutable('2026-11-05 12:05:01+00:00')));
         $paid = $this->ask(OrderExamples::ORDER, OrderAccess::guest(OrderExamples::TOKEN));
         self::assertNotNull($paid);
-        self::assertSame('paid', $paid->status);
+        self::assertSame('paid', $paid->statusForPayment);
         self::assertFalse($paid->payable);
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(Order): mixed, string}> how staff take the paid order on, the status for
+     *                                                                 the payment
+     */
+    public static function statusesAfterThePayment(): iterable
+    {
+        $staff = StaffActor::of('kc-staff-1', 'anna');
+        $at = new \DateTimeImmutable('2026-11-06 09:00:00+00:00');
+        yield 'shipped' => [static fn (Order $order) => $order->ship($staff, null, $at), 'paid'];
+        yield 'delivered' => [static function (Order $order) use ($staff, $at): void {
+            $order->ship($staff, null, $at);
+            $order->deliver($staff, null, $at);
+        }, 'paid'];
+        yield 'returned' => [static function (Order $order) use ($staff, $at): void {
+            $order->ship($staff, null, $at);
+            $order->registerReturn($staff, 'Zwrot', $at);
+        }, 'paid'];
+        yield 'cancelled by staff' => [static fn (Order $order) => $order->cancel($staff, 'Brak towaru', $at), 'cancelled'];
+    }
+
+    /**
+     * Payment knows only new, paid and cancelled: an order taken on after its payment is paid for the payment.
+     *
+     * @param \Closure(Order): mixed $takeOn
+     */
+    #[DataProvider('statusesAfterThePayment')]
+    public function testTheStatusForThePaymentOfAnOrderTakenOnAfterItsPayment(\Closure $takeOn, string $statusForPayment): void
+    {
+        $id = OrderId::fromString(OrderExamples::ORDER);
+        $this->orders->changeElsewhere($id, static fn (Order $order) => $order->markPaid(PaymentId::fromString('0192f0c4-7c1a-7c4e-9a6e-0000000000b1'), OrderExamples::TOTAL, 'PLN', new \DateTimeImmutable('2026-11-05 12:05:00+00:00'), new \DateTimeImmutable('2026-11-05 12:05:01+00:00')));
+        $this->orders->changeElsewhere($id, $takeOn);
+
+        self::assertEquals(
+            new OrderForPayment(OrderExamples::ORDER, 'R-100001', $statusForPayment, OrderExamples::TOTAL, 'PLN', new \DateTimeImmutable(OrderExamples::DEADLINE), false),
+            $this->ask(OrderExamples::ORDER, OrderAccess::guest(OrderExamples::TOKEN)),
+        );
     }
 
     /**

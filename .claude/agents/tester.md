@@ -114,7 +114,9 @@ nich wyczytasz.
 - **Rodzaj:** `bug`, gdy działanie jest niezgodne ze specyfikacją albo z oczekiwaniem (także 5xx i błąd JS), `ux`, gdy
   działa, ale jest trudne w użyciu albo niedostępne.
 - **Waga:** `Critical` utrata danych albo luka bezpieczeństwa, `Important` zadanie nie do wykonania albo mylące
-  w realnym scenariuszu, `Minor` reszta. Nie zawyżaj.
+  w realnym scenariuszu, zawsze też: odpowiedź 500, reguła ze specyfikacji, która nie działa, komunikat widoczny dla
+  użytkownika nie po polsku, element niedostępny z klawiatury albo bez etykiety; `Minor` kosmetyka i reszta.
+  Nie zawyżaj.
 - **Dowód tekstowy** w treści propozycji: wpis konsoli, nieudane żądanie z kodem, fragment `ariaSnapshot`, reguła axe
   z selektorem, fragment skryptu odtwarzającego; bez tokenów, nagłówków `authorization`, haseł i sekretów TOTP. Zrzut, trace i skrypt zostają w `<AGENT_DIR>/evidence/<nr>/`
   (ścieżki w propozycji), bo issue nie przyjmie plików.

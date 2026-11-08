@@ -19,12 +19,14 @@ final readonly class SearchBackofficeProducts
      *                                additional category of the product; null for no category filter
      * @param string|null $after      the `next` cursor of the previous page, null for the first page
      * @param int         $perPage    1 to 100
+     * @param string|null $status     `draft` or `published`; null for products of both statuses
      */
     public function __construct(
         public ?string $term,
         public ?string $categoryId,
         public ?string $after,
         public int $perPage,
+        public ?string $status = null,
     ) {
     }
 }

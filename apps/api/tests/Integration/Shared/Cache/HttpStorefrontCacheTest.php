@@ -47,6 +47,50 @@ final class HttpStorefrontCacheTest extends TestCase
         self::assertArrayNotHasKey('authorization', $requests[0]['headers']);
     }
 
+    public function testInvalidatingTagsPurgesAllOfThemInVarnishThenRevalidatesAllOfThemInTheStore(): void
+    {
+        $this->double = HttpDouble::start();
+
+        $this->cache($this->double->url, $this->double->url)->invalidateTags(['product-0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', 'product-slug-buty-puls']);
+
+        $requests = $this->double->requests();
+        self::assertSame(['varnish', 'store'], array_column($requests, 'side'));
+        self::assertSame('PURGE', $requests[0]['method']);
+        self::assertSame('product-0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60 product-slug-buty-puls', $requests[0]['headers']['xkey-purge']);
+        self::assertSame(self::PURGE_SECRET, $requests[0]['headers']['x-purge-token']);
+        self::assertSame('/api/revalidate', $requests[1]['path']);
+        self::assertSame(['tags' => ['product-0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60', 'product-slug-buty-puls']], json_decode($requests[1]['body'], true));
+    }
+
+    public function testAFailedPurgeOfTagsStopsTheRevalidation(): void
+    {
+        $double = $this->double = HttpDouble::start(['varnish' => ['statuses' => [500]]]);
+
+        $this->assertFailure(fn () => $this->cache($double->url, $double->url)->invalidateTags(['product-slug-buty-puls']), 'Varnish');
+
+        self::assertSame(['varnish'], $double->sides());
+    }
+
+    /**
+     * Tags come from CacheTags: no tag, or a tag outside its alphabet (a space would purge a second tag, a line break
+     * would add a header), is a programming error and sends nothing.
+     */
+    public function testNoTagOrATagOutsideTheAlphabetOfCacheTagsIsRefusedBeforeAnyRequest(): void
+    {
+        $double = $this->double = HttpDouble::start();
+        $cache = $this->cache($double->url, $double->url);
+
+        foreach ([[], ['catalog other'], ["catalog\r\nX-Evil: 1"], [''], ['Catalog']] as $tags) {
+            try {
+                $cache->invalidateTags($tags);
+                self::fail('Expected InvalidArgumentException.');
+            } catch (\InvalidArgumentException) {
+            }
+        }
+
+        self::assertSame([], $double->sides());
+    }
+
     public function testTheWholeCatalogIsTheCatalogTagInEachLayer(): void
     {
         $this->double = HttpDouble::start();

@@ -26,16 +26,22 @@ export async function waitForEmail(to: string): Promise<{ html: string }> {
   throw new Error(`No e-mail to ${to} arrived in Mailpit within ${TIMEOUT_MS / 1000} s`);
 }
 
-/** The e-mails of an order, told apart by their subjects: the confirmation of the placement and the payment received. */
+/**
+ * The e-mails of an order, told apart by their subjects: the confirmation of the placement, the payment received, the
+ * shipment and the cancellation by the staff.
+ */
 const ORDER_EMAIL_SUBJECTS = {
   confirmation: (number: string) => `Potwierdzenie zamówienia ${number}`,
   payment: (number: string) => `Płatność przyjęta – zamówienie ${number}`,
+  shipped: (number: string) => `Zamówienie ${number} wysłane`,
+  cancelled: (number: string) => `Zamówienie ${number} anulowane`,
 } as const;
 
 /**
  * Waits (up to 30 s) for an e-mail of the order `number` to `to` and returns its subject and text: the confirmation of
- * the placement (default) or the payment received. Searching by address and subject matters: the same address (a demo
- * account) gets e-mails for every order of every run, and one order sends two e-mails.
+ * the placement (default), the payment received, the shipment or the cancellation. Searching by address and subject
+ * matters: the same address (a demo account) gets e-mails for every order of every run, and one order sends several
+ * e-mails.
  */
 export async function waitForOrderEmail(
   to: string,

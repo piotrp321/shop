@@ -8,6 +8,7 @@ use App\Catalog\Application\Port\BackofficeProductSource;
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Category\CategoryNotFound;
 use App\Catalog\Domain\Category\CategoryRepository;
+use App\Catalog\Domain\Product\ProductStatus;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
@@ -43,6 +44,11 @@ final readonly class SearchBackofficeProductsHandler
             throw InvalidBackofficeProductSearch::perPageOutOfRange();
         }
 
+        $status = null;
+        if (null !== $query->status) {
+            $status = ProductStatus::tryFrom($query->status) ?? throw InvalidBackofficeProductSearch::unknownStatus();
+        }
+
         $path = null;
         if (null !== $query->categoryId) {
             try {
@@ -54,7 +60,7 @@ final readonly class SearchBackofficeProductsHandler
         }
         $after = null === $query->after ? null : ProductCursor::decode($query->after);
 
-        $products = $this->source->page($query->term, $path, $after, $query->perPage + 1);
+        $products = $this->source->page($query->term, $path, $status, $after, $query->perPage + 1);
         if (\count($products) <= $query->perPage) {
             return new BackofficeProductPage($products, null);
         }

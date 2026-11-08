@@ -21,6 +21,9 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
  * cancelled order and OrderCancelled in the outbox together or not at all. It always decides on the current state
  * and deadline of the order, so a message delivered again changes nothing.
  *
+ * The order is locked first, before the release reaches Inventory, like the changes of staff, so the expiry and a
+ * change of staff run one after another and never deadlock.
+ *
  * A message that came too early (the transport stores the moment to the second) is sent again for a second after
  * the expiry. A paid or cancelled order needs nothing. An order paid concurrently makes the save fail on its version;
  * the exception rolls everything back (also the release) and the retry of the message sees the paid order. Any
@@ -47,7 +50,7 @@ final readonly class ExpireUnpaidOrderHandler
     public function __invoke(ExpireUnpaidOrder $command): void
     {
         try {
-            $order = $this->orders->get(OrderId::fromString($command->orderId));
+            $order = $this->orders->lock(OrderId::fromString($command->orderId));
         } catch (OrderNotFound) {
             // Orders are never deleted, only the demo seed removes them (with the queue of these messages).
             $this->logger->warning('The order of ExpireUnpaidOrder does not exist; nothing to cancel.', ['orderId' => $command->orderId]);

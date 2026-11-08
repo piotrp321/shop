@@ -268,7 +268,7 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
       ) : null}
 
       {status && phase === "paid" ? <p>Płatność przyjęta. Potwierdzenie wysłaliśmy na adres {order.email}.</p> : null}
-      {status && phase === "cancelled" ? <p>Zamówienie zostało anulowane, bo nie otrzymaliśmy płatności w terminie.</p> : null}
+      {status && phase === "cancelled" ? <p>Zamówienie zostało anulowane.</p> : null}
       {status && phase === "pending" ? (
         <>
           <p>Opłać do {formatDeadlineTime(status.paymentDeadline)}</p>

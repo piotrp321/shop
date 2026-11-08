@@ -13,9 +13,9 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * Runs the real migration of the payment cycle of orders on the real PostgreSQL tables, in the transaction DAMA rolls
- * back after each test: the migration's own down() first puts the order table back to its shape before it
- * (PostgreSQL DDL is transactional), orders are inserted in that shape, the migration's up() is executed and the
- * result is read. Nothing is committed.
+ * back after each test: the down() of the later migration of the email markers and then the migration's own down()
+ * first put the order table back to its shape before it (PostgreSQL DDL is transactional), orders are inserted in
+ * that shape, the migration's up() is executed and the result is read. Nothing is committed.
  */
 final class OrderPaymentCycleMigrationTest extends KernelTestCase
 {
@@ -103,6 +103,10 @@ final class OrderPaymentCycleMigrationTest extends KernelTestCase
 
     private function runMigration(string $direction): void
     {
+        if ('down' === $direction) {
+            // The later migration of the markers of the emails first, so the table has the columns this one drops.
+            OrderEmailMarkersMigrationTest::runMigration($this->connection, 'down');
+        }
         self::assertFileExists(self::MIGRATION_FILE);
         require_once self::MIGRATION_FILE;
         $class = 'DoctrineMigrations\\'.basename(self::MIGRATION_FILE, '.php');

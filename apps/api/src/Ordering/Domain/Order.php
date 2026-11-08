@@ -16,20 +16,26 @@ use App\Shared\Domain\Event\DomainEvent;
  *
  * A new order is to be paid by its deadline, PAYMENT_TIME after the placement. Whether a payment pays it is decided
  * by the moment the provider executed it, not by when the news arrives: the webhooks get DELIVERY_WINDOW after the
- * deadline, and only then is an order still unpaid cancelled. A paid order is never cancelled and a cancelled one is
- * never paid. A guest reaches the order by its access token, a customer by the id.
+ * deadline, and only then is an order still unpaid cancelled. A cancelled order is never paid. A guest reaches the
+ * order by its access token, a customer by the id.
+ *
+ * Staff take a paid order on (ship, deliver, cancel, registerReturn) only as the table of OrderStatus allows. A
+ * cancellation by staff and a return create the refund of the gross total, due REFUND_TIME later, which staff then
+ * mark completed. Every change of the status appends an entry to the history, which is never rewritten.
  */
 final class Order
 {
     public const int MAX_LINES = 50;
     public const string PAYMENT_TIME = '+30 minutes';
     public const string DELIVERY_WINDOW = '+5 minutes';
+    public const string REFUND_TIME = '+14 days';
 
     /** @var list<DomainEvent> */
     private array $events = [];
 
     /**
-     * @param list<OrderLine> $lines
+     * @param list<OrderLine>         $lines
+     * @param list<OrderStatusChange> $history
      */
     private function __construct(
         private readonly OrderId $id,
@@ -49,9 +55,11 @@ final class Order
         private ?PaymentId $paymentId,
         private ?\DateTimeImmutable $cancelledAt,
         private ?CancellationReason $cancellationReason,
-        private ?\DateTimeImmutable $confirmationSentAt,
-        private ?\DateTimeImmutable $paymentNotificationSentAt,
-        private ?\DateTimeImmutable $cancellationNotificationSentAt,
+        private ?\DateTimeImmutable $shippedAt,
+        private ?\DateTimeImmutable $deliveredAt,
+        private ?\DateTimeImmutable $returnedAt,
+        private ?Refund $refund,
+        private array $history,
         private readonly int $version,
     ) {
     }
@@ -81,7 +89,8 @@ final class Order
         if ($owner->isGuest() !== (null !== $accessToken)) {
             throw new InvalidOrder('A guest order has an access token, a customer order has none.');
         }
-        $order = new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, OrderTotals::of($lines), OrderStatus::New, $idempotencyKey, $requestFingerprint, $now, $now->modify(self::PAYMENT_TIME), null, null, null, null, null, null, null, 1);
+        $history = [new OrderStatusChange(null, OrderStatus::New, $now, StatusActor::customer(), null)];
+        $order = new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, OrderTotals::of($lines), OrderStatus::New, $idempotencyKey, $requestFingerprint, $now, $now->modify(self::PAYMENT_TIME), null, null, null, null, null, null, null, null, $history, 1);
         $order->events[] = new OrderPlaced($id->toString(), $now);
 
         return $order;
@@ -90,7 +99,8 @@ final class Order
     /**
      * The order as stored, without events.
      *
-     * @param list<OrderLine> $lines in their positions
+     * @param list<OrderLine>         $lines   in their positions
+     * @param list<OrderStatusChange> $history oldest first
      */
     public static function reconstitute(
         OrderId $id,
@@ -109,12 +119,14 @@ final class Order
         ?PaymentId $paymentId,
         ?\DateTimeImmutable $cancelledAt,
         ?CancellationReason $cancellationReason,
-        ?\DateTimeImmutable $confirmationSentAt,
-        ?\DateTimeImmutable $paymentNotificationSentAt,
-        ?\DateTimeImmutable $cancellationNotificationSentAt,
+        ?\DateTimeImmutable $shippedAt,
+        ?\DateTimeImmutable $deliveredAt,
+        ?\DateTimeImmutable $returnedAt,
+        ?Refund $refund,
+        array $history,
         int $version,
     ): self {
-        return new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, OrderTotals::of($lines), $status, $idempotencyKey, $requestFingerprint, $placedAt, $paymentDeadline, $paidAt, $paymentId, $cancelledAt, $cancellationReason, $confirmationSentAt, $paymentNotificationSentAt, $cancellationNotificationSentAt, $version);
+        return new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, OrderTotals::of($lines), $status, $idempotencyKey, $requestFingerprint, $placedAt, $paymentDeadline, $paidAt, $paymentId, $cancelledAt, $cancellationReason, $shippedAt, $deliveredAt, $returnedAt, $refund, $history, $version);
     }
 
     /**
@@ -151,8 +163,9 @@ final class Order
     /**
      * A payment of the order succeeded at the provider at $executedAt (the moment the provider signed), and the news
      * of it arrived $now. A new order is paid if the payment was executed by the deadline (inclusive); one executed
-     * later leaves it new. A paid or cancelled order stays as it is. The amount is checked only when it pays the
-     * order: the payment takes it from the order, so another one is a logic error.
+     * later leaves it new. An order paid before (also shipped, delivered or returned) or cancelled stays as it is.
+     * The amount is checked only when it pays the order: the payment takes it from the order, so another one is
+     * a logic error.
      *
      * @throws InvalidOrder the amount or the currency is not the gross total of the order
      */
@@ -161,7 +174,7 @@ final class Order
         if (OrderStatus::Cancelled === $this->status) {
             return PaymentResult::OrderCancelled;
         }
-        if (OrderStatus::Paid === $this->status) {
+        if ($this->status->isPaidFor()) {
             return null !== $this->paymentId && $this->paymentId->equals($paymentId) ? PaymentResult::AlreadyPaid : PaymentResult::PaidByAnotherPayment;
         }
         if ($executedAt > $this->paymentDeadline) {
@@ -172,7 +185,7 @@ final class Order
             throw new InvalidOrder('A payment pays the gross total of the order in its currency.');
         }
 
-        $this->status = OrderStatus::Paid;
+        $this->changeStatus(OrderStatus::Paid, $now, StatusActor::system(), null);
         $this->paidAt = $now;
         $this->paymentId = $paymentId;
         $this->events[] = new OrderPaid($this->id->toString(), $now);
@@ -182,7 +195,7 @@ final class Order
 
     /**
      * Cancels a new order still unpaid once the deadline and the window for the webhooks after it have passed
-     * (expiryDueAt()); records OrderCancelled. A paid or cancelled order is left as it is.
+     * (expiryDueAt()); records OrderCancelled. Any order but a new one is left as it is.
      */
     public function expireUnpaid(\DateTimeImmutable $now): ExpiryResult
     {
@@ -193,7 +206,7 @@ final class Order
             return ExpiryResult::TooEarly;
         }
 
-        $this->status = OrderStatus::Cancelled;
+        $this->changeStatus(OrderStatus::Cancelled, $now, StatusActor::system(), null);
         $this->cancelledAt = $now;
         $this->cancellationReason = CancellationReason::PaymentTimeout;
         $this->events[] = new OrderCancelled($this->id->toString(), CancellationReason::PaymentTimeout->value, $now);
@@ -202,35 +215,95 @@ final class Order
     }
 
     /**
+     * A staff member shipped the paid order; records OrderShipped. The caller commits its reservation.
+     *
+     * @throws InvalidOrderInput         the note breaks the rules of StaffNote
+     * @throws OrderTransitionNotAllowed
+     */
+    public function ship(StaffActor $staff, ?string $note, \DateTimeImmutable $now): void
+    {
+        $note = StaffNote::optional($note);
+        $this->assertAllowed(StaffTransition::Ship);
+
+        $this->changeStatus(OrderStatus::Shipped, $now, StatusActor::staff($staff), $note);
+        $this->shippedAt = $now;
+        $this->events[] = new OrderShipped($this->id->toString(), $now);
+    }
+
+    /**
+     * A staff member marked the shipped order delivered. No event: the customer gets no email about it.
+     *
+     * @throws InvalidOrderInput         the note breaks the rules of StaffNote
+     * @throws OrderTransitionNotAllowed
+     */
+    public function deliver(StaffActor $staff, ?string $note, \DateTimeImmutable $now): void
+    {
+        $note = StaffNote::optional($note);
+        $this->assertAllowed(StaffTransition::Deliver);
+
+        $this->changeStatus(OrderStatus::Delivered, $now, StatusActor::staff($staff), $note);
+        $this->deliveredAt = $now;
+    }
+
+    /**
+     * A staff member cancelled the paid order before shipping it, with a note; the payment stays recorded and its
+     * refund is due. Records OrderCancelled. The caller releases its reservation.
+     *
+     * @throws InvalidOrderInput         no note, or one breaking the rules of StaffNote
+     * @throws OrderTransitionNotAllowed
+     */
+    public function cancel(StaffActor $staff, ?string $note, \DateTimeImmutable $now): void
+    {
+        $note = StaffNote::required($note);
+        $this->assertAllowed(StaffTransition::Cancel);
+
+        $this->changeStatus(OrderStatus::Cancelled, $now, StatusActor::staff($staff), $note);
+        $this->cancelledAt = $now;
+        $this->cancellationReason = CancellationReason::Staff;
+        $this->refund = Refund::due($this->totals->gross(), $now->modify(self::REFUND_TIME));
+        $this->events[] = new OrderCancelled($this->id->toString(), CancellationReason::Staff->value, $now);
+    }
+
+    /**
+     * A staff member received the shipped (undelivered, came back) or delivered order back, with a note; its refund
+     * is due. Records OrderReturned. The goods do not go back on the stock by themselves.
+     *
+     * @throws InvalidOrderInput         no note, or one breaking the rules of StaffNote
+     * @throws OrderTransitionNotAllowed
+     */
+    public function registerReturn(StaffActor $staff, ?string $note, \DateTimeImmutable $now): void
+    {
+        $note = StaffNote::required($note);
+        $this->assertAllowed(StaffTransition::Return);
+
+        $this->changeStatus(OrderStatus::Returned, $now, StatusActor::staff($staff), $note);
+        $this->returnedAt = $now;
+        $this->refund = Refund::due($this->totals->gross(), $now->modify(self::REFUND_TIME));
+        $this->events[] = new OrderReturned($this->id->toString(), $now);
+    }
+
+    /**
+     * A staff member transferred the pending refund (outside the system). The status and the history stay.
+     *
+     * @throws InvalidOrderInput the note breaks the rules of StaffNote
+     * @throws RefundNotPending  no refund, or it is completed already
+     */
+    public function completeRefund(StaffActor $staff, ?string $note, \DateTimeImmutable $now): void
+    {
+        $note = StaffNote::optional($note);
+        if (null === $this->refund) {
+            throw new RefundNotPending();
+        }
+
+        $this->refund = $this->refund->complete($staff, $note, $now);
+    }
+
+    /**
      * From when an unpaid order is cancelled: the deadline and the window for the webhooks after it.
      */
     public function expiryDueAt(): \DateTimeImmutable
     {
         return $this->paymentDeadline->modify(self::DELIVERY_WINDOW);
-    }
-
-    /**
-     * The confirmation email went out; a repetition keeps the first moment.
-     */
-    public function markConfirmationSent(\DateTimeImmutable $now): void
-    {
-        $this->confirmationSentAt ??= $now;
-    }
-
-    /**
-     * The email about the payment went out; a repetition keeps the first moment.
-     */
-    public function markPaymentNotificationSent(\DateTimeImmutable $now): void
-    {
-        $this->paymentNotificationSentAt ??= $now;
-    }
-
-    /**
-     * The email about the cancellation went out; a repetition keeps the first moment.
-     */
-    public function markCancellationNotificationSent(\DateTimeImmutable $now): void
-    {
-        $this->cancellationNotificationSentAt ??= $now;
     }
 
     /**
@@ -332,24 +405,53 @@ final class Order
         return $this->cancellationReason;
     }
 
-    public function confirmationSentAt(): ?\DateTimeImmutable
+    public function shippedAt(): ?\DateTimeImmutable
     {
-        return $this->confirmationSentAt;
+        return $this->shippedAt;
     }
 
-    public function paymentNotificationSentAt(): ?\DateTimeImmutable
+    public function deliveredAt(): ?\DateTimeImmutable
     {
-        return $this->paymentNotificationSentAt;
+        return $this->deliveredAt;
     }
 
-    public function cancellationNotificationSentAt(): ?\DateTimeImmutable
+    public function returnedAt(): ?\DateTimeImmutable
     {
-        return $this->cancellationNotificationSentAt;
+        return $this->returnedAt;
+    }
+
+    public function refund(): ?Refund
+    {
+        return $this->refund;
+    }
+
+    /**
+     * @return list<OrderStatusChange> oldest first
+     */
+    public function history(): array
+    {
+        return $this->history;
     }
 
     public function version(): int
     {
         return $this->version;
+    }
+
+    /**
+     * @throws OrderTransitionNotAllowed
+     */
+    private function assertAllowed(StaffTransition $transition): void
+    {
+        if (!$this->status->allowsStaff($transition)) {
+            throw new OrderTransitionNotAllowed();
+        }
+    }
+
+    private function changeStatus(OrderStatus $to, \DateTimeImmutable $now, StatusActor $actor, ?string $note): void
+    {
+        $this->history[] = new OrderStatusChange($this->status, $to, $now, $actor, $note);
+        $this->status = $to;
     }
 
     /**

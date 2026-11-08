@@ -13,6 +13,7 @@ use App\Catalog\Domain\Product\ProductId;
 use App\Catalog\Domain\Product\ProductImage;
 use App\Catalog\Domain\Product\ProductImages;
 use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Domain\Product\ProductVariant;
 use App\Catalog\Domain\Product\ProductVariants;
 use App\Catalog\Domain\Product\ShortDescription;
@@ -27,7 +28,7 @@ use Zenstruck\Foundry\ObjectFactory;
  * Builds Product aggregates through Product::create(); tests persist them through the repository.
  * Categories are given as Category aggregates; image keys as a list of alt texts. Without `variantAxes` and `variants`
  * the product has one default variant with a random id (never the id of the product); `variants` is a list of
- * `['id' => string, 'values' => list<string>]`.
+ * `['id' => string, 'values' => list<string>]`. Products are published by default (`status`), as the stored data is.
  *
  * @extends ObjectFactory<Product>
  */
@@ -54,6 +55,8 @@ final class ProductFactory extends ObjectFactory
             'imageAlts' => [],
             'variantAxes' => [],
             'variants' => [['id' => self::faker()->uuid(), 'values' => []]],
+            'status' => ProductStatus::Published,
+            'createdAt' => new \DateTimeImmutable(),
         ];
     }
 
@@ -71,7 +74,9 @@ final class ProductFactory extends ObjectFactory
             'id' => $id, 'name' => $name, 'slug' => $slug, 'shortDescription' => $shortDescription,
             'mainCategory' => $main, 'additionalCategories' => $additional, 'taxClass' => $taxClass,
             'imageAlts' => $imageAlts, 'variantAxes' => $variantAxes, 'variants' => $variants,
+            'status' => $status, 'createdAt' => $createdAt,
         ] = $attributes;
+        \assert($status instanceof ProductStatus && $createdAt instanceof \DateTimeImmutable);
         \assert(\is_string($id) && \is_string($name) && \is_string($slug) && \is_string($shortDescription));
         \assert($main instanceof Category && $taxClass instanceof TaxClassCode);
         \assert(\is_array($additional) && array_is_list($additional) && \is_array($imageAlts) && array_is_list($imageAlts));
@@ -103,6 +108,8 @@ final class ProductFactory extends ObjectFactory
                     return new ProductVariant(VariantId::fromString($variant['id']), VariantValues::fromList(self::strings($variant['values'])));
                 }, $variants),
             ),
+            $status,
+            $createdAt,
         );
     }
 

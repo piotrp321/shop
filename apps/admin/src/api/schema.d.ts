@@ -64,6 +64,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product list
+         * @description A page of products, drafts included, sorted by name, then by id. Every staff member may read it. Page with the opaque `next` cursor as `after`; the total is not counted. The category filter includes the subcategories and the products that have the category as an additional one; an unknown category gives 404. The search term is a literal part of the name, case-insensitive.
+         */
+        get: operations["listBackofficeProducts"];
+        put?: never;
+        /**
+         * Create a product
+         * @description Creates a product as a draft (it is not in the store until it is published). Administrators and marketing only. The API gives the product and its new variants their ids and, for an empty `slug`, derives it from the name. A `variantId` in this body names no variant of the new product, so it is a 422. The product records the staff member of the token and the time of the change.
+         */
+        post: operations["createProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/products/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Product edit view
+         * @description A product, also a draft, as the edit form needs it, with its `version`. Every staff member may read it.
+         */
+        get: operations["getProduct"];
+        /**
+         * Edit a product
+         * @description Replaces the whole data of the product (a form save). Administrators and marketing only. Send the `version` of the view the edit is based on: another current version is a 409 and nothing is overwritten. A successful save raises the version even when the data did not change. A row of `variants` with the `variantId` of the product keeps that variant, a row with `null` is a new one; a variant missing from the rows is removed. An empty `slug` derives it from the name, or keeps the slug once the product was published. The product records the staff member of the token and the time of the change.
+         */
+        put: operations["editProduct"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/tax-classes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tax classes
+         * @description The tax classes a product can have, with Polish names for the product form. Every staff member may read them.
+         */
+        get: operations["listTaxClasses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/products/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish a product
+         * @description Makes a draft visible in the store; a draft needs at least one image. The first publication fixes the slug for good. Administrators and marketing only. Send the `version` of the view the action is based on: another current version is a 409 even when the product is already published. Publishing a published product changes nothing (200, same version).
+         */
+        post: operations["publishProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/products/{id}/unpublish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw a product from the store
+         * @description Turns a published product back into a draft: the store stops showing it. The slug stays fixed. Administrators and marketing only. Send the `version` of the view the action is based on: another current version is a 409 even when the product is already a draft. Withdrawing a draft changes nothing (200, same version).
+         */
+        post: operations["unpublishProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/product-images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload the original of a product image
+         * @description Stores one image file in the image storage and answers with its key and a preview. Administrators and marketing only. One file per request, in the `file` field of a `multipart/form-data` body; send several files one after another. JPEG, PNG, WebP, AVIF and HEIC are accepted, decided by the content and not by the name, up to 64 MB and 50 megapixels. The key follows the content, so the same file always gives the same key and is stored once. Name the key in `images[].key` of a product write; an original that no product names stays in the storage. The `detail` of a 422 is a Polish text for the staff member.
+         */
+        post: operations["uploadProductImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/stock": {
         parameters: {
             query?: never;
@@ -138,6 +266,86 @@ export interface paths {
         get: operations["getStockHistory"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Order detail
+         * @description The order with its contact, address, lines, totals, the moments of its statuses, the payment that paid it, its history oldest first, its refund and its `version`, which the next change of the status or the completion of the refund sends. `allowedTransitions` and `canCompleteRefund` say what the staff member of the token may do with it now. Administrators, support and the warehouse only.
+         */
+        get: operations["getOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Order list
+         * @description A page of orders, newest first (then by id); with `refund=pending` only the orders with a refund to do, the nearest due date first (then by id), with `overdue` for the ones past it. The status filter and the search combine with it. The search is an exact order number (`R-100001`, any letter case) or an exact email (any letter case); anything else finds nothing. Page with the opaque `nextCursor` as `after`, with the same filters; the total is not counted. Administrators, support and the warehouse only.
+         */
+        get: operations["listOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{orderId}/status-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the status of an order
+         * @description Ships (the reserved units leave the stock), delivers, cancels (a paid order only; the reservation is released and a refund of the gross total is due in 14 days) or registers the return of an order (shipped or delivered; a refund is due in 14 days, the stock stays). Administrators and the warehouse ship and deliver, administrators and support cancel and register returns. A note is required to cancel and to register a return. Send the `version` of the order you saw: an order changed since then is a 409 and nothing is changed, so repeating a change that succeeded is a 409 too. The history entry names the staff member of the token. The customer gets an email about a shipment, a cancellation and a return.
+         */
+        post: operations["changeOrderStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/{orderId}/refund-completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark the refund of an order made
+         * @description Marks the refund to do of an order (cancelled by staff or returned) as made, with the staff member of the token, the moment and an optional note; the money itself is transferred by hand, outside the system. The status of the order stays and no history entry is added. Administrators and support only. Send the `version` of the order you saw: an order changed since then is a 409, so repeating a completion that succeeded is a 409 too.
+         */
+        post: operations["completeOrderRefund"];
         delete?: never;
         options?: never;
         head?: never;
@@ -226,6 +434,411 @@ export interface components {
                 title: string;
             }[];
         };
+        /** @description A page of the order list. */
+        BackofficeOrderList: {
+            items: components["schemas"]["BackofficeOrderListItem"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after` with the same filters), null on the last page.
+             * @example eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0
+             */
+            nextCursor: string | null;
+        };
+        /** @description An order in the list. Amounts in grosze. */
+        BackofficeOrderListItem: {
+            /** Format: uuid */
+            orderId: string;
+            /** @example R-100001 */
+            number: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339, UTC.
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            placedAt: string;
+            status: components["schemas"]["BackofficeOrderStatus"];
+            /** @example anna.nowak@example.com */
+            email: string;
+            /** @example Anna Nowak */
+            fullName: string;
+            /** @example 39998 */
+            totalGross: number;
+            /** @enum {string} */
+            currency: "PLN";
+            /**
+             * @description Units of all lines of the order.
+             * @example 3
+             */
+            itemCount: number;
+            /** @description The refund of an order cancelled by staff or returned; null for any other order. */
+            refund: components["schemas"]["BackofficeOrderListRefund"] | null;
+        };
+        BackofficeOrderListRefund: {
+            /**
+             * @description The gross total of the order, in grosze, in its currency.
+             * @example 39998
+             */
+            amount: number;
+            /**
+             * Format: date-time
+             * @description The refund is to be made by this moment, 14 days after the cancellation or the return (RFC 3339, UTC).
+             * @example 2026-11-19T12:30:00+00:00
+             */
+            dueAt: string;
+            /**
+             * Format: date-time
+             * @description When a staff member marked it made (RFC 3339, UTC); null while it is to do.
+             */
+            completedAt: string | null;
+            /** @description Still to do past `dueAt`, computed by the API. */
+            overdue: boolean;
+        };
+        /**
+         * @description `new` (waits for the payment), `paid`, `shipped`, `delivered`, `cancelled` (unpaid in time, or by staff), `returned`.
+         * @enum {string}
+         */
+        BackofficeOrderStatus: "new" | "paid" | "shipped" | "delivered" | "cancelled" | "returned";
+        /**
+         * @description A change of the status by staff: `ship` (paid → shipped), `deliver` (shipped → delivered), `cancel` (paid → cancelled, a refund to do), `return` (shipped or delivered → returned, a refund to do).
+         * @enum {string}
+         */
+        BackofficeOrderTransition: "ship" | "deliver" | "cancel" | "return";
+        /** @description An order with everything the panel shows of it, copies of the names and prices of its placement included. Amounts in grosze; moments in RFC 3339 and UTC, null until the status they belong to. */
+        BackofficeOrder: {
+            /** Format: uuid */
+            orderId: string;
+            /** @example R-100001 */
+            number: string;
+            status: components["schemas"]["BackofficeOrderStatus"];
+            /**
+             * @description The version to send with the next change of the status or the completion of the refund.
+             * @example 2
+             */
+            version: number;
+            /** @example anna.nowak@example.com */
+            email: string;
+            /** @example Anna Nowak */
+            fullName: string;
+            /**
+             * @description +48 and 9 digits.
+             * @example +48600100200
+             */
+            phone: string;
+            shippingAddress: components["schemas"]["BackofficeOrderAddress"];
+            lines: components["schemas"]["BackofficeOrderLine"][];
+            totals: components["schemas"]["BackofficeOrderTotals"];
+            /**
+             * Format: date-time
+             * @example 2026-11-05T12:30:00+00:00
+             */
+            placedAt: string;
+            /**
+             * Format: date-time
+             * @description An order still `new` past this moment is cancelled.
+             * @example 2026-11-05T13:00:00+00:00
+             */
+            paymentDeadline: string;
+            /**
+             * Format: date-time
+             * @description Stays after a cancellation by staff and a return.
+             */
+            paidAt: string | null;
+            /**
+             * Format: uuid
+             * @description The payment that paid the order (the one to refund); stays after a cancellation by staff and a return.
+             */
+            paymentId: string | null;
+            /** Format: date-time */
+            shippedAt: string | null;
+            /**
+             * Format: date-time
+             * @description Null also for an order returned without being delivered.
+             */
+            deliveredAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            /**
+             * @description `payment_timeout` (unpaid in time) or `staff`; null unless cancelled.
+             * @enum {string|null}
+             */
+            cancellationReason: "payment_timeout" | "staff" | null;
+            /** Format: date-time */
+            returnedAt: string | null;
+            /** @description Every change of the status, oldest first. */
+            history: components["schemas"]["BackofficeOrderStatusChange"][];
+            /** @description The refund of an order cancelled by staff or returned; null for any other order. */
+            refund: components["schemas"]["BackofficeOrderRefund"] | null;
+            /** @description The changes of the status the staff member of the token may make now (the status allows them and so do their roles). */
+            allowedTransitions: components["schemas"]["BackofficeOrderTransition"][];
+            /** @description The refund is to do and the staff member of the token may mark it made. */
+            canCompleteRefund: boolean;
+        };
+        BackofficeOrderAddress: {
+            /** @example ul. Długa 5/3 */
+            street: string;
+            /** @example 00-950 */
+            postalCode: string;
+            /** @example Warszawa */
+            city: string;
+            /** @enum {string} */
+            country: "PL";
+        };
+        BackofficeOrderLine: {
+            /** Format: uuid */
+            variantId: string;
+            /** @example Buty szosowe Tarvik Asfalt 200 */
+            productName: string;
+            /**
+             * @description The values of the variant joined with ", "; empty for the default variant of a product without variant axes.
+             * @example czarne, 42
+             */
+            variantLabel: string;
+            /** @example 2 */
+            quantity: number;
+            /** @example 19999 */
+            unitGross: number;
+            /** @example 39998 */
+            lineGross: number;
+        };
+        /** @description Sums of the lines; net + vat = gross. */
+        BackofficeOrderTotals: {
+            /** @example 32519 */
+            net: number;
+            /** @example 7479 */
+            vat: number;
+            /** @example 39998 */
+            gross: number;
+            /** @enum {string} */
+            currency: "PLN";
+        };
+        /** @description An entry of the history. Only a change by `staff` names the staff member, and only it may have a note. */
+        BackofficeOrderStatusChange: {
+            /** @description Null for the placement. */
+            from: components["schemas"]["BackofficeOrderStatus"] | null;
+            to: components["schemas"]["BackofficeOrderStatus"];
+            /**
+             * Format: date-time
+             * @example 2026-11-05T12:40:00+00:00
+             */
+            occurredAt: string;
+            /**
+             * @description `customer` (the placement, also by a guest), `system` (the payment, the expiry), `staff`.
+             * @enum {string}
+             */
+            actorType: "system" | "customer" | "staff";
+            staffId: string | null;
+            /** @example anna */
+            staffUsername: string | null;
+            /** @example Kurier DPD */
+            note: string | null;
+        };
+        /** @description The money the order owes the customer back; made by hand outside the system, then marked made. */
+        BackofficeOrderRefund: {
+            /**
+             * @description The gross total of the order, in grosze.
+             * @example 39998
+             */
+            amount: number;
+            /** @enum {string} */
+            currency: "PLN";
+            /**
+             * Format: date-time
+             * @description 14 days after the cancellation or the return.
+             * @example 2026-11-19T12:30:00+00:00
+             */
+            dueAt: string;
+            /** @description Still to do past `dueAt`, computed by the API. */
+            overdue: boolean;
+            /**
+             * Format: date-time
+             * @description Null while it is to do.
+             */
+            completedAt: string | null;
+            completedByStaffId: string | null;
+            /** @example bartek */
+            completedByUsername: string | null;
+            /** @example Przelew wysłany */
+            note: string | null;
+        };
+        /** @description A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the status of the order does not allow the change, the order has no refund to do, or (`about:blank`) the order changed since the `version` sent, also when a change that succeeded is sent again. Nothing is changed. */
+        BackofficeOrderConflictProblem: {
+            /** @enum {string} */
+            type: "tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed" | "tag:piotrp321.github.io,2026:shop/problems/refund-not-pending" | "about:blank";
+            /** @example Conflict */
+            title: string;
+            /** @enum {integer} */
+            status: 409;
+            /** @description Polish text for the staff member. */
+            detail: string;
+        };
+        /** @description A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the product changed since the given version, the slug belongs to another product, the slug is locked since the first publication, the product cannot be published (a draft without images) or lose its last image once published, an axis or the meaning of a variant cannot change after the first publication, or a removed variant has stock or reservations. */
+        ProductConflictProblem: {
+            /** @enum {string} */
+            type: "tag:piotrp321.github.io,2026:shop/problems/product-modified" | "tag:piotrp321.github.io,2026:shop/problems/slug-taken" | "tag:piotrp321.github.io,2026:shop/problems/slug-locked" | "tag:piotrp321.github.io,2026:shop/problems/product-not-publishable" | "tag:piotrp321.github.io,2026:shop/problems/variant-locked" | "tag:piotrp321.github.io,2026:shop/problems/variant-in-use";
+            /** @example Conflict */
+            title: string;
+            /** @enum {integer} */
+            status: 409;
+            /** @description Polish text for the staff member. */
+            detail: string;
+        };
+        /** @description The data of a new product. The product is a draft. */
+        CreateProductRequest: {
+            /**
+             * @description Product name, 1 to 200 characters.
+             * @default null
+             * @example Buty biegowe Trail
+             */
+            name: string | null;
+            /**
+             * @description Slug: lower-case letters without Polish diacritics, digits and single dashes. Empty: the API derives it from the name (or keeps it once the product was published). Changeable only until the first publication.
+             * @default null
+             * @example buty-biegowe-trail
+             */
+            slug: string | null;
+            /**
+             * @description Short description, up to 500 characters; may be empty.
+             * @default null
+             */
+            shortDescription: string | null;
+            /**
+             * Format: uuid
+             * @description Id of the main category; an unknown category is a 422 at this field.
+             * @default null
+             */
+            mainCategoryId: string | null;
+            /**
+             * @description Ids of up to 10 additional categories, different from each other and from the main one.
+             * @default null
+             */
+            additionalCategoryIds: string[] | null;
+            /**
+             * @description Code of the tax class, one of `GET /tax-classes`.
+             * @default null
+             * @example standard
+             */
+            taxClass: string | null;
+            /**
+             * @description Up to 10 images in presentation order (the first one is the main one), each an original stored by `POST /product-images`; a key is used once.
+             * @default null
+             */
+            images: {
+                /**
+                 * @description The `key` returned by the upload.
+                 * @example originals/0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9.jpg
+                 */
+                key: string;
+                /** @description Alternative text. */
+                alt: string;
+            }[] | null;
+            /**
+             * @description Names of up to 2 variant axes, 1 to 30 characters, without a colon, different without regard to case.
+             * @default null
+             */
+            variantAxes: string[] | null;
+            /**
+             * @description The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends.
+             * @default null
+             */
+            variants: {
+                /** Format: uuid */
+                variantId: string | null;
+                values: string[];
+            }[] | null;
+        };
+        /** @description The whole data of the product and the version it is based on. */
+        UpdateProductRequest: {
+            /**
+             * @description The `version` of the product the edit is based on; another current version is a 409.
+             * @default null
+             * @example 3
+             */
+            version: number | null;
+            /**
+             * @description Product name, 1 to 200 characters.
+             * @default null
+             * @example Buty biegowe Trail
+             */
+            name: string | null;
+            /**
+             * @description Slug: lower-case letters without Polish diacritics, digits and single dashes. Empty: the API derives it from the name (or keeps it once the product was published). Changeable only until the first publication.
+             * @default null
+             * @example buty-biegowe-trail
+             */
+            slug: string | null;
+            /**
+             * @description Short description, up to 500 characters; may be empty.
+             * @default null
+             */
+            shortDescription: string | null;
+            /**
+             * Format: uuid
+             * @description Id of the main category; an unknown category is a 422 at this field.
+             * @default null
+             */
+            mainCategoryId: string | null;
+            /**
+             * @description Ids of up to 10 additional categories, different from each other and from the main one.
+             * @default null
+             */
+            additionalCategoryIds: string[] | null;
+            /**
+             * @description Code of the tax class, one of `GET /tax-classes`.
+             * @default null
+             * @example standard
+             */
+            taxClass: string | null;
+            /**
+             * @description Up to 10 images in presentation order (the first one is the main one), each an original stored by `POST /product-images`; a key is used once.
+             * @default null
+             */
+            images: {
+                /**
+                 * @description The `key` returned by the upload.
+                 * @example originals/0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9.jpg
+                 */
+                key: string;
+                /** @description Alternative text. */
+                alt: string;
+            }[] | null;
+            /**
+             * @description Names of up to 2 variant axes, 1 to 30 characters, without a colon, different without regard to case.
+             * @default null
+             */
+            variantAxes: string[] | null;
+            /**
+             * @description The variants in presentation order: one row per variant with one value per axis (1 to 40 characters); exactly one row without values for a product without axes. A row with the `variantId` of the product keeps that variant, a row with `null` is a new one. No two rows have the same values without regard to case and spaces at the ends.
+             * @default null
+             */
+            variants: {
+                /** Format: uuid */
+                variantId: string | null;
+                values: string[];
+            }[] | null;
+        };
+        BackofficeProductsQuery: {
+            /** @default null */
+            q: string | null;
+            /** @default null */
+            category: string | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            status: "draft" | "published" | null;
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
+        };
+        /** @description The version of the product the action is based on. */
+        PublicationRequest: {
+            /**
+             * @description The `version` of the product the action is based on; another current version is a 409.
+             * @default null
+             * @example 3
+             */
+            version: number | null;
+        };
         BackofficeStockQuery: {
             /** @default null */
             q: string | null;
@@ -278,6 +891,56 @@ export interface components {
             after: string | null;
             /** @default 25 */
             perPage: number;
+        };
+        BackofficeOrderListQuery: {
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            status: "new" | "paid" | "shipped" | "delivered" | "cancelled" | "returned" | null;
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            refund: "pending" | null;
+            /** @default null */
+            q: string | null;
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
+        };
+        /** @description A change of the status of an order, based on the version of the order the staff member saw. */
+        ChangeOrderStatusRequest: {
+            /**
+             * @description `ship` (paid → shipped), `deliver` (shipped → delivered), `cancel` (paid → cancelled, a refund to do), `return` (shipped or delivered → returned, a refund to do).
+             * @example ship
+             * @enum {string}
+             */
+            transition: "ship" | "deliver" | "cancel" | "return";
+            /**
+             * @description The `version` of the order the change is based on.
+             * @example 2
+             */
+            version: number;
+            /**
+             * @description One line, at most 500 characters once trimmed, without control characters; required for `cancel` and `return`, otherwise null or blank for none.
+             * @example Kurier DPD
+             */
+            note: string | null;
+        };
+        /** @description The refund of an order marked made, based on the version of the order the staff member saw. */
+        CompleteRefundRequest: {
+            /**
+             * @description The `version` of the order the completion is based on.
+             * @example 3
+             */
+            version: number;
+            /**
+             * @description One line, at most 500 characters once trimmed, without control characters; null or blank for none.
+             * @example Przelew wysłany
+             */
+            note: string | null;
         };
         BackofficePricesQuery: {
             /** @default null */
@@ -414,6 +1077,184 @@ export interface components {
             slug: string;
             path: string;
             children: components["schemas"]["CategoryNode"][];
+        };
+        /** @description A category of a product. */
+        ProductCategoryResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @example Obuwie */
+            name: string;
+        };
+        /** @description An image in the `thumbnail` size with signed URLs of its variants. */
+        ImageViewResponse: {
+            /** @description Alternative text. */
+            alt: string;
+            /**
+             * @description The image size.
+             * @example thumbnail
+             */
+            size: string;
+            /**
+             * @description Width to height of every variant.
+             * @example 1:1
+             */
+            aspectRatio: string;
+            /** @description Signed URLs by output format (the file extension), widths ascending. */
+            variants: {
+                [key: string]: {
+                    /** @example 96 */
+                    width: number;
+                    /** Format: uri */
+                    url: string;
+                }[];
+            };
+        };
+        /** @description A row of the product list of the panel. */
+        ProductListItemResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @example Buty biegowe Trail */
+            name: string;
+            /** @example buty-biegowe-trail */
+            slug: string;
+            /**
+             * @description A draft is seen only in the panel.
+             * @enum {string}
+             */
+            status: "draft" | "published";
+            mainCategory: components["schemas"]["ProductCategoryResponse"];
+            /**
+             * @description The number of variants (1 for a product without axes).
+             * @example 3
+             */
+            variantCount: number;
+            /** @description The main image in the `thumbnail` size; null for a product without images. */
+            image: components["schemas"]["ImageViewResponse"] | (never | null);
+            /**
+             * @description When the product last changed (RFC 3339).
+             * @example 2026-11-01T12:30:00+00:00
+             */
+            updatedAt: string;
+        };
+        /** @description A page of the product list of the panel. */
+        ProductListResponse: {
+            items: components["schemas"]["ProductListItemResponse"][];
+            /**
+             * @description Opaque cursor of the next page (send it as `after`), null on the last page.
+             * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
+             */
+            next: string | null;
+        };
+        /** @description An image of a product in the edit view. */
+        ProductEditImageResponse: {
+            /**
+             * @description Key of the original.
+             * @example originals/0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9.jpg
+             */
+            key: string;
+            /** @description Alternative text. */
+            alt: string;
+            preview: components["schemas"]["ImageViewResponse"];
+        };
+        /** @description A variant of a product in the edit view. */
+        ProductEditVariantResponse: {
+            /** Format: uuid */
+            variantId: string;
+            /**
+             * @description One value per axis, in the order of the axes; empty for the default variant of a product without axes.
+             * @example [
+             *       "czarne",
+             *       "42"
+             *     ]
+             */
+            values: string[];
+        };
+        /** @description A product as the edit form needs it, with the `version` a save is based on. */
+        ProductEditViewResponse: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Version of the product: send it back with a save, a publication or a withdrawal.
+             * @example 3
+             */
+            version: number;
+            /** @enum {string} */
+            status: "draft" | "published";
+            /**
+             * @description When the product was first published (RFC 3339); null while it never was.
+             * @example 2026-11-01T12:30:00+00:00
+             */
+            firstPublishedAt: string | null;
+            name: string;
+            slug: string;
+            /** @description The slug cannot change: the product was published at least once. */
+            slugLocked: boolean;
+            shortDescription: string;
+            /** Format: uuid */
+            mainCategoryId: string;
+            additionalCategoryIds: string[];
+            /** @example standard */
+            taxClass: string;
+            /** @description In presentation order; the first one is the main image. */
+            images: components["schemas"]["ProductEditImageResponse"][];
+            /**
+             * @example [
+             *       "Kolor",
+             *       "Rozmiar"
+             *     ]
+             */
+            variantAxes: string[];
+            /** @description In presentation order. */
+            variants: components["schemas"]["ProductEditVariantResponse"][];
+            /**
+             * @description When the product last changed (RFC 3339).
+             * @example 2026-11-01T12:30:00+00:00
+             */
+            updatedAt: string;
+        };
+        /** @description A tax class a product can have. */
+        TaxClassResponse: {
+            /**
+             * @description Code to send as `taxClass`.
+             * @example printed_book
+             */
+            code: string;
+            /**
+             * @description Polish name for the form.
+             * @example Książki drukowane
+             */
+            name: string;
+        };
+        /** @description A preview of an uploaded original: the `thumbnail` size with signed URLs of its variants. */
+        ImagePreviewResponse: {
+            /**
+             * @description The image size.
+             * @example thumbnail
+             */
+            size: string;
+            /**
+             * @description Width to height of every variant.
+             * @example 1:1
+             */
+            aspectRatio: string;
+            /** @description Signed URLs by output format (the file extension), widths ascending. */
+            variants: {
+                [key: string]: {
+                    /** @example 96 */
+                    width: number;
+                    /** Format: uri */
+                    url: string;
+                }[];
+            };
+        };
+        /** @description A stored original: its key for the product form and a preview. */
+        ImageUploadResponse: {
+            /**
+             * @description Key of the original (`originals/<sha256 of the content>.<extension of the detected type>`); the same file always gives the same key. Send it as `images[].key` of a product write.
+             * @example originals/0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9.jpg
+             */
+            key: string;
+            preview: components["schemas"]["ImagePreviewResponse"];
         };
         /** @description The stored stock of a product variant, in whole units; all computed by the API. */
         ListedStockResponse: {
@@ -852,6 +1693,611 @@ export interface operations {
             };
         };
     };
+    listBackofficeProducts: {
+        parameters: {
+            query?: {
+                /** @description A part of the product name, 2 to 100 characters. */
+                q?: string;
+                /** @description Category id (UUID). */
+                category?: string;
+                /** @description Only drafts or only published products. */
+                status?: "draft" | "published";
+                /** @description The `next` cursor of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the product list. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductListResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The `category` filter names a category that does not exist (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProductRequest"];
+            };
+        };
+        responses: {
+            /** @description The created product. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductEditViewResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in marketing (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The slug belongs to another product (`type` slug-taken). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProductConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a category or a variant does not exist, an original of an image is not stored, or no slug can be derived from the name (problem details with `violations`, each at the path of its field). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The image storage (Garage) is unavailable, or the keys of the token issuer cannot be fetched (problem details without detail). Nothing was saved; the request can be repeated. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Product id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The product. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductEditViewResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    editProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Product id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProductRequest"];
+            };
+        };
+        responses: {
+            /** @description The product as saved, with its new version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductEditViewResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in marketing (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The `type` names the cause: product-modified (the version is not the current one), slug-taken, slug-locked (the slug of a product that was published cannot change), product-not-publishable (the last image of a published product that had images cannot be removed), variant-locked (after the first publication an axis or the meaning of a variant cannot change), variant-in-use (a removed variant has stock or reservations). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProductConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a category or a variant does not exist, an original of an image is not stored, or no slug can be derived from the name (problem details with `violations`, each at the path of its field). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The image storage (Garage) is unavailable, or the keys of the token issuer cannot be fetched (problem details without detail). Nothing was saved; the request can be repeated. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listTaxClasses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tax classes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxClassResponse"][];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    publishProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Product id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description The product after the action, or unchanged (with the same version) when it already was in the wanted status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductEditViewResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in marketing (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The `type` names the cause: product-modified (the version is not the current one) or product-not-publishable (a draft without images). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProductConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The `version` is missing or not a positive integer (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    unpublishProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Product id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description The product after the action, or unchanged (with the same version) when it already was in the wanted status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductEditViewResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in marketing (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such product, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The `type` is product-modified: the version is not the current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProductConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The `version` is missing or not a positive integer (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    uploadProductImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description The image file.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The original is stored. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageUploadResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in marketing (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No file was sent, the file is too large, of an unsupported type, of unreadable dimensions or of too high a resolution (problem details with a Polish `detail`). The request is too large when its `Content-Length` is above `post_max_size` (70 MB) or the file above `upload_max_filesize` (64 MB). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The image storage (Garage) is unavailable, or the keys of the token issuer cannot be fetched (problem details without detail). Nothing was stored; the upload can be repeated. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listStock: {
         parameters: {
             query?: {
@@ -1173,6 +2619,330 @@ export interface operations {
             };
             /** @description No such variant, or the id is not a UUID (problem details). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Order id (UUID). */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeOrder"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not see orders (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listOrders: {
+        parameters: {
+            query?: {
+                /** @description Only the orders in this status. */
+                status?: components["schemas"]["BackofficeOrderStatus"];
+                /** @description `pending`: only the orders with a refund to do, nearest due date first. */
+                refund?: "pending";
+                /** @description An order number or an email, exact, any letter case; 1 to 254 characters once trimmed. */
+                q?: string;
+                /** @description The `nextCursor` of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the list. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeOrderList"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor, also a cursor of the other sort (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not see orders (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    changeOrderStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Order id (UUID). */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeOrderStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description The order as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeOrder"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not see orders, or may not make this change (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The order changed since the given version, or its status does not allow the change (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["BackofficeOrderConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The transition is unknown, the version is not an integer of at least 1, the note breaks its rules or is missing to cancel or register a return, or a key is missing or of a wrong type (problem details with Polish `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    completeOrderRefund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Order id (UUID). */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteRefundRequest"];
+            };
+        };
+        responses: {
+            /** @description The order as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackofficeOrder"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member is neither an administrator nor in support (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such order, or the id is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The order changed since the given version, or it has no refund to do (problem details with a stable `type`, see `BackofficeOrderConflictProblem`). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["BackofficeOrderConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The version is not an integer of at least 1, the note breaks its rules, or a key is missing or of a wrong type (problem details with Polish `violations`). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -9,7 +9,10 @@ use App\Ordering\Application\View\OrderView;
 
 final class SpyOrderStatusMailer implements OrderStatusMailer
 {
-    /** @var list<array{string, OrderView}> the kind of email (`payment_received`, `order_cancelled`) and its order */
+    /**
+     * @var list<array{string, OrderView}> the kind of email (`payment_received`, `order_cancelled`,
+     *                                     `order_cancelled_by_staff`, `shipped`, `return_received`) and its order
+     */
     public array $sent = [];
 
     public ?\Throwable $failure = null;
@@ -25,6 +28,21 @@ final class SpyOrderStatusMailer implements OrderStatusMailer
     public function sendOrderCancelled(OrderView $order): void
     {
         $this->send('order_cancelled', $order);
+    }
+
+    public function sendOrderCancelledByStaff(OrderView $order): void
+    {
+        $this->send('order_cancelled_by_staff', $order);
+    }
+
+    public function sendOrderShipped(OrderView $order): void
+    {
+        $this->send('shipped', $order);
+    }
+
+    public function sendReturnReceived(OrderView $order): void
+    {
+        $this->send('return_received', $order);
     }
 
     private function send(string $kind, OrderView $order): void

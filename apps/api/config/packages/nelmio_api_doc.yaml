@@ -392,9 +392,7 @@ nelmio_api_doc:
                                     description: The number the customer is told, `R-` and a number from 100001.
                                     example: R-100001
                                 status:
-                                    type: string
-                                    description: '`new` right after the placement; `paid` once paid, `cancelled` when unpaid five minutes after `paymentDeadline`.'
-                                    enum: [new, paid, cancelled]
+                                    $ref: '#/components/schemas/CustomerOrderStatus'
                                 email:
                                     type: string
                                     description: The address the order is confirmed to.
@@ -495,6 +493,124 @@ nelmio_api_doc:
                                 currency:
                                     type: string
                                     enum: [PLN]
+                        # Response schemas of the order history of the customer (Ordering\Application\Query\CustomerOrderList and
+                        # View\CustomerOrderView, formatted by Ordering\UI\Http\CustomerOrderJson), checked against real
+                        # responses by the functional tests of the order history endpoints.
+                        CustomerOrderStatus:
+                            type: string
+                            description: '`new` (waits for the payment; right after the placement), `paid`, `shipped`, `delivered`, `cancelled` (unpaid in time, or by staff), `returned`.'
+                            enum: [new, paid, shipped, delivered, cancelled, returned]
+                        CustomerOrderList:
+                            type: object
+                            description: A page of the order history of the customer.
+                            required: [items, nextCursor]
+                            properties:
+                                items:
+                                    type: array
+                                    items:
+                                        $ref: '#/components/schemas/CustomerOrderListItem'
+                                nextCursor:
+                                    type: string
+                                    nullable: true
+                                    description: Opaque cursor of the next page (send it as `after`), null on the last page.
+                                    example: eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0
+                        CustomerOrderListItem:
+                            type: object
+                            description: An order in the history. Amounts in grosze.
+                            required: [orderId, number, placedAt, status, totalGross, currency, itemCount, paymentDeadline, paymentDeadlinePassed]
+                            properties:
+                                orderId:
+                                    type: string
+                                    format: uuid
+                                number:
+                                    type: string
+                                    example: R-100001
+                                placedAt:
+                                    type: string
+                                    format: date-time
+                                    description: RFC 3339, UTC.
+                                    example: '2026-11-05T12:30:00+00:00'
+                                status:
+                                    $ref: '#/components/schemas/CustomerOrderStatus'
+                                totalGross:
+                                    type: integer
+                                    example: 39998
+                                currency:
+                                    type: string
+                                    enum: [PLN]
+                                itemCount:
+                                    type: integer
+                                    description: Units of all lines of the order.
+                                    example: 3
+                                paymentDeadline:
+                                    type: string
+                                    format: date-time
+                                    description: The order was to be paid by this moment (RFC 3339, UTC); meaningful for a `new` order.
+                                    example: '2026-11-05T13:00:00+00:00'
+                                paymentDeadlinePassed:
+                                    type: boolean
+                                    description: True only for a `new` order whose `paymentDeadline` has come, computed by the API; false for every other status.
+                        CustomerOrder:
+                            type: object
+                            description: >-
+                                An order of the customer with copies of the names and prices of the placement. Amounts in grosze.
+                                No history of changes, notes, data of staff, refund or payment.
+                            required: [orderId, number, status, shippingAddress, lines, totals, placedAt, paymentDeadline, paymentDeadlinePassed, paidAt, shippedAt, deliveredAt, cancelledAt, returnedAt]
+                            properties:
+                                orderId:
+                                    type: string
+                                    format: uuid
+                                number:
+                                    type: string
+                                    example: R-100001
+                                status:
+                                    $ref: '#/components/schemas/CustomerOrderStatus'
+                                shippingAddress:
+                                    $ref: '#/components/schemas/OrderShippingAddress'
+                                lines:
+                                    type: array
+                                    items:
+                                        $ref: '#/components/schemas/OrderLine'
+                                totals:
+                                    $ref: '#/components/schemas/OrderTotals'
+                                placedAt:
+                                    type: string
+                                    format: date-time
+                                    description: RFC 3339, UTC.
+                                    example: '2026-11-05T12:30:00+00:00'
+                                paymentDeadline:
+                                    type: string
+                                    format: date-time
+                                    description: The order was to be paid by this moment, 30 minutes after the placement (RFC 3339, UTC).
+                                    example: '2026-11-05T13:00:00+00:00'
+                                paymentDeadlinePassed:
+                                    type: boolean
+                                    description: True only for a `new` order whose `paymentDeadline` has come, computed by the API; false for every other status.
+                                paidAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                    description: When the payment was confirmed (RFC 3339, UTC); null until then.
+                                shippedAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                    description: When the order was shipped (RFC 3339, UTC); null until then.
+                                deliveredAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                    description: When the order was delivered (RFC 3339, UTC); null until then, and for an order returned without being delivered.
+                                cancelledAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                    description: When the order was cancelled (RFC 3339, UTC); null for an order that was not.
+                                returnedAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                    description: When the return was received (RFC 3339, UTC); null for an order that was not returned.
                         # Response schemas of Payment (Payment\Application\View\PaymentView, Query\PaymentStatusView,
                         # Query\PaymentProviderView, formatted by PaymentEndpoints), checked against real responses by the
                         # functional tests of the payment endpoints.
@@ -673,6 +789,364 @@ nelmio_api_doc:
                     schemas:
                         # The same document as in the default area.
                         Problem: *problem
+                        # Response schemas of the orders of the panel (Ordering\Application\Query\BackofficeOrderList and
+                        # View\BackofficeOrderView, formatted by Ordering\UI\Http\BackofficeOrderJson), checked against real
+                        # responses by the functional tests of the order endpoints of the panel.
+                        BackofficeOrderList:
+                            type: object
+                            description: A page of the order list.
+                            required: [items, nextCursor]
+                            properties:
+                                items:
+                                    type: array
+                                    items:
+                                        $ref: '#/components/schemas/BackofficeOrderListItem'
+                                nextCursor:
+                                    type: string
+                                    nullable: true
+                                    description: Opaque cursor of the next page (send it as `after` with the same filters), null on the last page.
+                                    example: eyJzIjoicGxhY2VkIiwidCI6IjIwMjYtMTEtMDVUMTI6MDA6MDAuMDAwMDAwKzAwOjAwIiwiaSI6IjAxOTJmMGM0In0
+                        BackofficeOrderListItem:
+                            type: object
+                            description: An order in the list. Amounts in grosze.
+                            required: [orderId, number, placedAt, status, email, fullName, totalGross, currency, itemCount, refund]
+                            properties:
+                                orderId:
+                                    type: string
+                                    format: uuid
+                                number:
+                                    type: string
+                                    example: R-100001
+                                placedAt:
+                                    type: string
+                                    format: date-time
+                                    description: RFC 3339, UTC.
+                                    example: '2026-11-05T12:30:00+00:00'
+                                status:
+                                    $ref: '#/components/schemas/BackofficeOrderStatus'
+                                email:
+                                    type: string
+                                    example: anna.nowak@example.com
+                                fullName:
+                                    type: string
+                                    example: Anna Nowak
+                                totalGross:
+                                    type: integer
+                                    example: 39998
+                                currency:
+                                    type: string
+                                    enum: [PLN]
+                                itemCount:
+                                    type: integer
+                                    description: Units of all lines of the order.
+                                    example: 3
+                                refund:
+                                    allOf:
+                                        - $ref: '#/components/schemas/BackofficeOrderListRefund'
+                                    nullable: true
+                                    description: The refund of an order cancelled by staff or returned; null for any other order.
+                        BackofficeOrderListRefund:
+                            type: object
+                            required: [amount, dueAt, completedAt, overdue]
+                            properties:
+                                amount:
+                                    type: integer
+                                    description: The gross total of the order, in grosze, in its currency.
+                                    example: 39998
+                                dueAt:
+                                    type: string
+                                    format: date-time
+                                    description: The refund is to be made by this moment, 14 days after the cancellation or the return (RFC 3339, UTC).
+                                    example: '2026-11-19T12:30:00+00:00'
+                                completedAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                    description: When a staff member marked it made (RFC 3339, UTC); null while it is to do.
+                                overdue:
+                                    type: boolean
+                                    description: Still to do past `dueAt`, computed by the API.
+                        BackofficeOrderStatus:
+                            type: string
+                            description: '`new` (waits for the payment), `paid`, `shipped`, `delivered`, `cancelled` (unpaid in time, or by staff), `returned`.'
+                            enum: [new, paid, shipped, delivered, cancelled, returned]
+                        BackofficeOrderTransition:
+                            type: string
+                            description: 'A change of the status by staff: `ship` (paid → shipped), `deliver` (shipped → delivered), `cancel` (paid → cancelled, a refund to do), `return` (shipped or delivered → returned, a refund to do).'
+                            enum: [ship, deliver, cancel, return]
+                        BackofficeOrder:
+                            type: object
+                            description: >-
+                                An order with everything the panel shows of it, copies of the names and prices of its placement included.
+                                Amounts in grosze; moments in RFC 3339 and UTC, null until the status they belong to.
+                            required: [orderId, number, status, version, email, fullName, phone, shippingAddress, lines, totals, placedAt, paymentDeadline, paidAt, paymentId, shippedAt, deliveredAt, cancelledAt, cancellationReason, returnedAt, history, refund, allowedTransitions, canCompleteRefund]
+                            properties:
+                                orderId:
+                                    type: string
+                                    format: uuid
+                                number:
+                                    type: string
+                                    example: R-100001
+                                status:
+                                    $ref: '#/components/schemas/BackofficeOrderStatus'
+                                version:
+                                    type: integer
+                                    minimum: 1
+                                    description: The version to send with the next change of the status or the completion of the refund.
+                                    example: 2
+                                email:
+                                    type: string
+                                    example: anna.nowak@example.com
+                                fullName:
+                                    type: string
+                                    example: Anna Nowak
+                                phone:
+                                    type: string
+                                    description: +48 and 9 digits.
+                                    example: '+48600100200'
+                                shippingAddress:
+                                    $ref: '#/components/schemas/BackofficeOrderAddress'
+                                lines:
+                                    type: array
+                                    items:
+                                        $ref: '#/components/schemas/BackofficeOrderLine'
+                                totals:
+                                    $ref: '#/components/schemas/BackofficeOrderTotals'
+                                placedAt:
+                                    type: string
+                                    format: date-time
+                                    example: '2026-11-05T12:30:00+00:00'
+                                paymentDeadline:
+                                    type: string
+                                    format: date-time
+                                    description: An order still `new` past this moment is cancelled.
+                                    example: '2026-11-05T13:00:00+00:00'
+                                paidAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                    description: Stays after a cancellation by staff and a return.
+                                paymentId:
+                                    type: string
+                                    format: uuid
+                                    nullable: true
+                                    description: The payment that paid the order (the one to refund); stays after a cancellation by staff and a return.
+                                shippedAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                deliveredAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                    description: Null also for an order returned without being delivered.
+                                cancelledAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                cancellationReason:
+                                    type: string
+                                    nullable: true
+                                    description: '`payment_timeout` (unpaid in time) or `staff`; null unless cancelled.'
+                                    enum: [payment_timeout, staff, null]
+                                returnedAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                history:
+                                    type: array
+                                    description: Every change of the status, oldest first.
+                                    items:
+                                        $ref: '#/components/schemas/BackofficeOrderStatusChange'
+                                refund:
+                                    allOf:
+                                        - $ref: '#/components/schemas/BackofficeOrderRefund'
+                                    nullable: true
+                                    description: The refund of an order cancelled by staff or returned; null for any other order.
+                                allowedTransitions:
+                                    type: array
+                                    description: The changes of the status the staff member of the token may make now (the status allows them and so do their roles).
+                                    items:
+                                        $ref: '#/components/schemas/BackofficeOrderTransition'
+                                canCompleteRefund:
+                                    type: boolean
+                                    description: The refund is to do and the staff member of the token may mark it made.
+                        BackofficeOrderAddress:
+                            type: object
+                            required: [street, postalCode, city, country]
+                            properties:
+                                street:
+                                    type: string
+                                    example: ul. Długa 5/3
+                                postalCode:
+                                    type: string
+                                    example: '00-950'
+                                city:
+                                    type: string
+                                    example: Warszawa
+                                country:
+                                    type: string
+                                    enum: [PL]
+                        BackofficeOrderLine:
+                            type: object
+                            required: [variantId, productName, variantLabel, quantity, unitGross, lineGross]
+                            properties:
+                                variantId:
+                                    type: string
+                                    format: uuid
+                                productName:
+                                    type: string
+                                    example: Buty szosowe Tarvik Asfalt 200
+                                variantLabel:
+                                    type: string
+                                    description: The values of the variant joined with ", "; empty for the default variant of a product without variant axes.
+                                    example: czarne, 42
+                                quantity:
+                                    type: integer
+                                    example: 2
+                                unitGross:
+                                    type: integer
+                                    example: 19999
+                                lineGross:
+                                    type: integer
+                                    example: 39998
+                        BackofficeOrderTotals:
+                            type: object
+                            description: Sums of the lines; net + vat = gross.
+                            required: [net, vat, gross, currency]
+                            properties:
+                                net:
+                                    type: integer
+                                    example: 32519
+                                vat:
+                                    type: integer
+                                    example: 7479
+                                gross:
+                                    type: integer
+                                    example: 39998
+                                currency:
+                                    type: string
+                                    enum: [PLN]
+                        BackofficeOrderStatusChange:
+                            type: object
+                            description: An entry of the history. Only a change by `staff` names the staff member, and only it may have a note.
+                            required: [from, to, occurredAt, actorType, staffId, staffUsername, note]
+                            properties:
+                                from:
+                                    allOf:
+                                        - $ref: '#/components/schemas/BackofficeOrderStatus'
+                                    nullable: true
+                                    description: Null for the placement.
+                                to:
+                                    $ref: '#/components/schemas/BackofficeOrderStatus'
+                                occurredAt:
+                                    type: string
+                                    format: date-time
+                                    example: '2026-11-05T12:40:00+00:00'
+                                actorType:
+                                    type: string
+                                    description: '`customer` (the placement, also by a guest), `system` (the payment, the expiry), `staff`.'
+                                    enum: [system, customer, staff]
+                                staffId:
+                                    type: string
+                                    nullable: true
+                                staffUsername:
+                                    type: string
+                                    nullable: true
+                                    example: anna
+                                note:
+                                    type: string
+                                    nullable: true
+                                    example: Kurier DPD
+                        BackofficeOrderRefund:
+                            type: object
+                            description: The money the order owes the customer back; made by hand outside the system, then marked made.
+                            required: [amount, currency, dueAt, overdue, completedAt, completedByStaffId, completedByUsername, note]
+                            properties:
+                                amount:
+                                    type: integer
+                                    description: The gross total of the order, in grosze.
+                                    example: 39998
+                                currency:
+                                    type: string
+                                    enum: [PLN]
+                                dueAt:
+                                    type: string
+                                    format: date-time
+                                    description: 14 days after the cancellation or the return.
+                                    example: '2026-11-19T12:30:00+00:00'
+                                overdue:
+                                    type: boolean
+                                    description: Still to do past `dueAt`, computed by the API.
+                                completedAt:
+                                    type: string
+                                    format: date-time
+                                    nullable: true
+                                    description: Null while it is to do.
+                                completedByStaffId:
+                                    type: string
+                                    nullable: true
+                                completedByUsername:
+                                    type: string
+                                    nullable: true
+                                    example: bartek
+                                note:
+                                    type: string
+                                    nullable: true
+                                    example: Przelew wysłany
+                        # A separate schema from OrderConflictProblem of the store (default area), which stays as it is.
+                        BackofficeOrderConflictProblem:
+                            type: object
+                            description: >-
+                                A 409 of the order endpoints of the panel. `type` names the cause (the `detail` is Polish text for
+                                people and may change): the status of the order does not allow the change, the order has no
+                                refund to do, or (`about:blank`) the order changed since the `version` sent, also when a change
+                                that succeeded is sent again. Nothing is changed.
+                            required: [type, title, status, detail]
+                            properties:
+                                type:
+                                    type: string
+                                    enum:
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/order-transition-not-allowed'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/refund-not-pending'
+                                        - about:blank
+                                title:
+                                    type: string
+                                    example: Conflict
+                                status:
+                                    type: integer
+                                    enum: [409]
+                                detail:
+                                    type: string
+                                    description: Polish text for the staff member.
+                        ProductConflictProblem:
+                            type: object
+                            description: >-
+                                A 409 of the product endpoints. `type` names the cause (the `detail` is Polish text for people
+                                and may change): the product changed since the given version, the slug belongs to another
+                                product, the slug is locked since the first publication, the product cannot be published (a draft
+                                without images) or lose its last image once published, an axis or the meaning of a variant cannot
+                                change after the first publication, or a removed variant has stock or reservations.
+                            required: [type, title, status, detail]
+                            properties:
+                                type:
+                                    type: string
+                                    enum:
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/product-modified'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/slug-taken'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/slug-locked'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/product-not-publishable'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/variant-locked'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/variant-in-use'
+                                title:
+                                    type: string
+                                    example: Conflict
+                                status:
+                                    type: integer
+                                    enum: [409]
+                                detail:
+                                    type: string
+                                    description: Polish text for the staff member.
                     securitySchemes:
                         backoffice:
                             type: http

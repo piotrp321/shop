@@ -86,6 +86,8 @@ Klient sklepu (`Customer`) i pracownik obsługujący panel (`Staff`) to dwa osob
 - API ma dwa firewalle. `/api/v1/...` przyjmuje tylko tokeny z realmu `shop`, `/api/v1/admin/...` tylko z realmu
   `backoffice` (sprawdzany wystawca tokena). Token klienta nie przejdzie przez firewall panelu, niezależnie od ról.
 - Uprawnienia pracowników sprawdzane w voterach na podstawie ról z tokena.
+- Katalog (tworzenie i edycja produktów, upload zdjęć, publikacja i wycofanie) edytują `admin` i `marketing`; listę
+  i podgląd produktów widzi każdy pracownik. Ceny zmienia `admin`, stany magazynowe `admin` i `warehouse`.
 - Zmiany wykonane w panelu zapisują identyfikator pracownika (z tokena), żeby było wiadomo, kto zmienił
   cenę, stan czy status zamówienia.
 - Ta sama osoba jako klient i jako pracownik ma dwa osobne konta. To świadoma decyzja.
@@ -142,7 +144,9 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - **Dane strukturalne**: JSON-LD `Product` (cena, dostępność, zdjęcia), `BreadcrumbList`, `Organization`.
 - **Mapa strony i robots**: `sitemap.xml` generowana z katalogu, `robots.txt`.
 - **Przyjazne adresy**: `/p/<slug>`, `/c/<ścieżka slugów kategorii>` (np. `/c/turystyka/biwak/namioty`),
-  przekierowania 301 przy zmianie sluga. Stary adres `/?category=<id>` przekierowuje trwale na `/c/<ścieżka>`.
+  przekierowania 301 przy zmianie sluga. Slug produktu jest stały od pierwszej publikacji (także po wycofaniu
+  z publikacji); zmienia się tylko w szkicu, który nie był nigdy opublikowany, więc w MVP adres produktu nie wymaga
+  przekierowania. Stary adres `/?category=<id>` przekierowuje trwale na `/c/<ścieżka>`.
 - **Wydajność**: Core Web Vitals jako wymaganie (obrazy z imgproxy w WebP z `srcset`,
   `priority` dla głównego zdjęcia produktu, minimum JavaScriptu po stronie klienta). Pomiar przez Lighthouse w CI.
 
@@ -168,7 +172,7 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 | Catalog | Produkty, warianty, kategorie, atrybuty, zdjęcia |
 | Pricing | Ceny katalogowe (netto, VAT, brutto), promocje, kody rabatowe, historia cen (Omnibus) |
 | Cart | Pozycje koszyka, podgląd sum, koszyki gości i zalogowanych w PostgreSQL |
-| Ordering | Checkout, cykl życia zamówienia (Symfony Workflow), historia zamówień |
+| Ordering | Checkout, cykl życia zamówienia (przejścia jako metody agregatu `Order`), historia zamówień |
 | Payment | Dostawcy płatności za jednym portem, status płatności, webhooki dostawców |
 | Inventory | Stany magazynowe, rezerwacja przy zamówieniu, zwolnienie przy anulowaniu |
 | Customer | Profil klienta, adresy; sama tożsamość jest w Keycloak |

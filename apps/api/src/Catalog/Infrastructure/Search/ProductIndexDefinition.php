@@ -7,6 +7,7 @@ namespace App\Catalog\Infrastructure\Search;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\SearchIndexError;
 use App\Catalog\Application\Search\VariantDocument;
+use App\Catalog\Domain\Product\ProductStatus;
 
 /**
  * Settings and mapping of a physical product index. The hash of the definition (mapping and analysis, without
@@ -72,6 +73,7 @@ final readonly class ProductIndexDefinition
                 'pairs' => array_map(self::pair(...), $variant->options),
             ], $document->variants),
             ...(null === $document->fromGross ? [] : ['from_gross' => $document->fromGross]),
+            'status' => $document->status->value,
         ];
     }
 
@@ -81,7 +83,8 @@ final readonly class ProductIndexDefinition
     public static function document(mixed $source): ProductDocument
     {
         $fromGross = \is_array($source) ? ($source['from_gross'] ?? null) : null;
-        if (!\is_array($source)
+        $status = \is_array($source) && \is_string($source['status'] ?? null) ? ProductStatus::tryFrom($source['status']) : null;
+        if (!\is_array($source) || null === $status
             || !\is_string($source['id'] ?? null) || !\is_int($source['version'] ?? null)
             || !\is_string($source['name'] ?? null) || !\is_string($source['slug'] ?? null)
             || !\is_string($source['short_description'] ?? null) || !\is_string($source['main_category_id'] ?? null)
@@ -110,6 +113,7 @@ final readonly class ProductIndexDefinition
             $source['category_names'],
             array_map(self::variant(...), $source['variants']),
             $fromGross,
+            $status,
         );
     }
 
@@ -217,6 +221,9 @@ final readonly class ProductIndexDefinition
                 ],
                 // The lowest price of the purchasable variants; absent without one.
                 'from_gross' => ['type' => 'long'],
+                // `published` or `draft`: every query of the store matches `published` only, a draft stays as a
+                // tombstone with its version.
+                'status' => $keyword,
             ],
         ];
     }

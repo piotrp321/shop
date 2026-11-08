@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Catalog\Search;
 use App\Catalog\Application\Search\ProductDocument;
 use App\Catalog\Application\Search\ProductSearchCriteria;
 use App\Catalog\Application\Search\SearchResult;
+use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductSearch;
 use PHPUnit\Framework\TestCase;
@@ -112,6 +113,6 @@ final class ProductSearchTest extends TestCase
      */
     private static function document(string $id, string $name, string $main, array $additional, array $ancestors): ProductDocument
     {
-        return new ProductDocument($id, 1, $name, 'slug-'.$id, 'Short', $main, [$main, ...$additional], $ancestors, null, [], [], null);
+        return new ProductDocument($id, 1, $name, 'slug-'.$id, 'Short', $main, [$main, ...$additional], $ancestors, null, [], [], null, ProductStatus::Published);
     }
 }
