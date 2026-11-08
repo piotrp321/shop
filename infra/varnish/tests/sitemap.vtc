@@ -1,0 +1,84 @@
+varnishtest "The sitemap chunk list is cached by its exact path; a chunk of products is never cached"
+
+server s1 -listen 127.0.0.1:80 {
+	rxreq
+	expect req.url == "/api/v1/sitemap/product-chunks"
+	txresp -hdr "Cache-Control: public, max-age=60, s-maxage=3600" -hdr "xkey: catalog" -body "chunks"
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/sitemap/products?chunk=eyJmIjpudWxsLCJ0IjpudWxsfQ"
+		txresp -hdr "Cache-Control: public, max-age=300" -body "chunk"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/sitemap/product-chunks?x=1"
+		txresp -hdr "Cache-Control: public, max-age=60, s-maxage=3600" -hdr "xkey: catalog" -body "chunks with a query"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/sitemap/product-chunks/x"
+		txresp -hdr "Cache-Control: public, max-age=60, s-maxage=3600" -body "under the chunk list"
+	}
+	loop 2 {
+		rxreq
+		expect req.url == "/api/v1/sitemap/product-chunksx"
+		txresp -hdr "Cache-Control: public, max-age=60, s-maxage=3600" -body "prefix"
+	}
+} -start
+
+setenv VARNISH_PURGE_SECRET "s3cret"
+# -t 0: the default TTL of the varnish service in infra/docker-compose.yml.
+varnish v1 -arg "-t 0" -cliok "vcl.load main /etc/varnish/default.vcl" -cliok "vcl.use main" -start
+
+client c1 {
+	txreq -url "/api/v1/sitemap/product-chunks"
+	rxresp
+	expect resp.status == 200
+	expect resp.body == "chunks"
+	expect resp.http.X-Cache == "MISS"
+	expect resp.http.xkey == <undef>
+
+	txreq -url "/api/v1/sitemap/product-chunks"
+	rxresp
+	expect resp.body == "chunks"
+	expect resp.http.X-Cache == "HIT"
+	expect resp.http.xkey == <undef>
+
+	txreq -req HEAD -url "/api/v1/sitemap/product-chunks"
+	rxresp -no_obj
+	expect resp.status == 200
+	expect resp.http.X-Cache == "HIT"
+
+	# Every chunk goes to the API, whatever the key and however often it is asked for.
+	loop 2 {
+		txreq -url "/api/v1/sitemap/products?chunk=eyJmIjpudWxsLCJ0IjpudWxsfQ"
+		rxresp
+		expect resp.body == "chunk"
+		expect resp.http.X-Cache == "MISS"
+	}
+
+	# Only the exact path of the chunk list is cached: a query string would give a new object for every request.
+	loop 2 {
+		txreq -url "/api/v1/sitemap/product-chunks?x=1"
+		rxresp
+		expect resp.body == "chunks with a query"
+		expect resp.http.X-Cache == "MISS"
+		expect resp.http.xkey == <undef>
+	}
+	loop 2 {
+		txreq -url "/api/v1/sitemap/product-chunks/x"
+		rxresp
+		expect resp.body == "under the chunk list"
+		expect resp.http.X-Cache == "MISS"
+	}
+	loop 2 {
+		txreq -url "/api/v1/sitemap/product-chunksx"
+		rxresp
+		expect resp.body == "prefix"
+		expect resp.http.X-Cache == "MISS"
+	}
+} -run
+
+# The chunk list was fetched once; everything else went to the API.
+varnish v1 -expect cache_hit == 2
+varnish v1 -expect backend_req == 9
