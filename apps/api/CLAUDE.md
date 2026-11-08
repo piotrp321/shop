@@ -703,7 +703,7 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   niezgodną (usunięcie lub zmiana nazwy kolumny albo tabeli, nowe ograniczenie `NOT NULL` bez wartości domyślnej,
   zmiana typu) rozbij na dwie wersje: najpierw dodaj nowe i zacznij je zapisywać, w kolejnej wersji usuń stare.
   Schemat jest zgodny wstecz tylko z poprzednią wersją: cofnięcie o więcej wersji wymaga kopii zapasowej.
-- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled` i `payment_simulator`) są zgodne w obie
+- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator` i `promotions`) są zgodne w obie
   strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka może je jeszcze
   mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Pola dodawaj jako opcjonalne
   z wartością domyślną, nie usuwaj i nie zmieniaj znaczenia pól w jednej wersji, nie zmieniaj nazw klas wiadomości
