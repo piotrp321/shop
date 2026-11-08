@@ -78,3 +78,45 @@ describe("product routes", () => {
     expect(router.currentRoute.value.params.id).toBeUndefined();
   });
 });
+
+describe("promotion routes", () => {
+  beforeEach(() => mocks.get.mockReset());
+
+  it("serves the list at /promotions and the page of a promotion at /promotions/:id to every signed-in staff member", async () => {
+    const router = setup(["support"]);
+
+    await router.push("/promotions");
+    expect(router.currentRoute.value.name).toBe("promotions");
+
+    await router.push("/promotions/promo-1");
+    expect(router.currentRoute.value.name).toBe("promotion");
+    expect(router.currentRoute.value.params.id).toBe("promo-1");
+  });
+
+  it.each([["admin"], ["marketing"]] as const)("lets %s open /promotions/new", async (role) => {
+    const router = setup([role]);
+
+    await router.push("/promotions/new");
+
+    expect(router.currentRoute.value.name).toBe("promotion-new");
+  });
+
+  it.each([[["support"]], [["warehouse"]], [[]]] as [StaffMe["roles"]][])("sends %j from /promotions/new to the list", async (roles) => {
+    const router = setup(roles);
+
+    await router.push("/promotions/new");
+
+    expect(router.currentRoute.value.name).toBe("promotions");
+    expect(router.currentRoute.value.path).toBe("/promotions");
+  });
+
+  it("reads the roles from the API when the staff member is not loaded yet", async () => {
+    const router = setup(null);
+    mocks.get.mockResolvedValue({ data: { id: "u1", username: "anna", roles: ["marketing"] }, response: { status: 200 } });
+
+    await router.push("/promotions/new");
+
+    expect(mocks.get).toHaveBeenCalledWith("/api/v1/admin/me");
+    expect(router.currentRoute.value.name).toBe("promotion-new");
+  });
+});
