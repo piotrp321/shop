@@ -198,13 +198,23 @@ class SmokeValues(unittest.TestCase):
         smoke = (REPO / "infra/k8s/scripts/smoke.sh").read_text()
         self.assertIn("-f environments/ci/values.yaml -f /kube/values-images.yaml $(smoke_pull_args)", smoke)
         self.assertIn("check_registry_images", smoke)
-        self.assertIn("--registry-config /registry/registries.yaml", smoke)
-        self.assertIn('K3D_MOUNT="$registry_dir:/registry:ro"', smoke)
+        self.assertIn('--registry-config $k3d_dir/registries.yaml', smoke)
+        self.assertIn('K3D_MOUNT="$k3d_dir:$k3d_dir:ro"', smoke)
         self.assertIn("umask 077", smoke)
         self.assertIn("unset SMOKE_GHCR_TOKEN", smoke)
         # The token is only ever written to the private file, never printed.
         self.assertNotRegex(smoke, r"echo[^\n]*SMOKE_GHCR_TOKEN")
 
+
+    def test_the_kubelet_of_the_smoke_cluster_runs_the_imported_images_under_any_name(self):
+        # On main the kubelet pulls the images from GHCR first and keeps a pull record per image ID that names only the
+        # repository of GHCR; with the default policy the same image ID imported as shop-smoke-.../<app>:r2 is refused
+        # under pullPolicy Never (ErrImageNeverPull). The cluster runs only images loaded into it, so nothing is verified.
+        smoke = (REPO / "infra/k8s/scripts/smoke.sh").read_text()
+        self.assertIn("imagePullCredentialsVerificationPolicy: NeverVerify", smoke)
+        self.assertIn('-v "$k3d_dir/90-smoke-kubelet.conf:/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/90-smoke-kubelet.conf@server:*"', smoke)
+        self.assertIn('"imagePullCredentialsVerificationPolicy":"NeverVerify"', smoke)
+        self.assertLess(smoke.index("check_kubelet_policy\n"), smoke.index('log "install r1"'))
 
 class Deploy(unittest.TestCase):
     def test_it_needs_a_green_smoke_test_and_the_images(self):
