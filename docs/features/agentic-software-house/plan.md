@@ -125,10 +125,13 @@ flowchart TB
      zakresie, bez zależności od otwartych epików i, przy pomiarze czasu, mieszczące się do rana. Użytkownik
      zatwierdza ją jednym „tak”. Pierwszy epik rusza po „tak”, a każdy kolejny po `epic_done` poprzedniego, bez
      czekania na merge, tylko gdy jego szacunek mieści się do rana i w limitach subskrypcji. Inaczej noc się kończy.
-   - Bez zgody sesja niczego nie uruchamia. Na raz trwa jeden epik.
+   - Bez zgody sesja niczego nie uruchamia. Na raz trwa jeden epik z jednej sesji. Gdy działa epik innej sesji,
+     `/ao-run` przed startem opisuje pliki wspólne obu epików (CI, `CLAUDE.md`, kontrakt OpenAPI, klienci TS, menu
+     panelu) jako ryzyko konfliktu, bez blokowania startu. Na zasilaniu z baterii sesja pyta, zanim uruchomi epik.
    - Sesja z `/ao-run <epik>` uruchamia `ao epic start` i `ao run --until-idle`. AO prowadzi zadania przez
      `/delivery` po jednym naraz, squash-merguje je do `epic/<epik>`, uruchamia `/integration` i otwiera końcowy
-     PR `epic/<epik>` → `main` z raportem `ao report`.
+     PR `epic/<epik>` → `main` z raportem `ao report`. Konflikt końcowego PR z `main` naprawia zadanie REPAIR
+     prawdziwym `git merge origin/main` (zasady w `/delivery`), mergowane do `epic/<epik>` merge commitem.
    - `code-reviewer` w `/delivery` sprawdza każde zadanie, a `/integration` cały epik. Usunięty, wyłączony albo
      osłabiony istniejący test lub zmieniona wartość oczekiwana bez podstawy w specyfikacji to `BLOCKER` w zadaniu
      i `Important` w epiku. Plik albo zmiana spoza `scope` zadania to zgłoszenie. `code-reviewer` sprawdza też,
@@ -150,13 +153,17 @@ flowchart TB
      `Gałąź docelowa PR: epic/<epik>`), zmergowany przez użytkownika po zielonym CI. AO traktuje nowy HEAD jako
      kod po przeglądzie: robi rundę `DELTA` `/integration`, a końcowy PR czeka na jej wynik. Potem odbiór od nowa.
      Taka poprawka liczy się jako ręczna.
+   - Konflikt końcowego PR z `main`, którego AO nie usunie (epik `DONE` przed zmianą `main`, `BLOCKED` po naprawach):
+     `/ao-run` po zgodzie użytkownika robi PR `sync/<epik>-main` z prawdziwym merge'em `main` do `epic/<epik>`
+     i merguje go merge commitem po zielonym CI. Końcowy PR zostaje ten sam. To też ręczna poprawka.
    - Problem spoza zakresu albo większy: nowe issue `bug` lub `ux`. Epik mergujemy bez tej poprawki, o ile
      niczego na `main` nie psuje. Uwagi `Minor` z raportu `/integration`, które warto zrobić, też stają się
      issues.
-   - Użytkownik dopisuje `Closes #N` każdego issue epiku do opisu końcowego PR i merguje go (squash). Issue
-     zamykają się same. Merge do `main` zostaje wyłącznie u użytkownika.
-   - Po każdym epiku trzy liczby w komentarzu do issue epiku: minuty użytkownika (spec, blokery, triage, raport),
-     liczba interwencji (z `ao report`) i liczba ręcznych poprawek.
+   - `/ao-run` dopisuje do opisu końcowego PR `Closes #N` każdego issue z linii `Issues:` specyfikacji. Użytkownik
+     sprawdza je i merguje PR (squash). Issue zamykają się same. Merge do `main` zostaje wyłącznie u użytkownika.
+   - Po każdym epiku trzy liczby w komentarzu do issue epiku: liczba interwencji (z `ao report`), czas czekania na
+     decyzje użytkownika (z `events.jsonl`, `ao_events.py summary`) i liczba ręcznych poprawek. Minut pracy
+     użytkownika nie szacujemy.
 6. **Po merge'u (`/sweep [epik]`).** Użytkownik uruchamia komendę po merge'u epiku.
    Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne ścieżki z sekcji „Testy”
    w `docs/vision.md` i nową funkcję ze specyfikacji, jako klient i jako pracownik. Przed zaproponowaniem zgłoszenia
