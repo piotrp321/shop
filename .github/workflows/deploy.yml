@@ -1,10 +1,13 @@
 # Deployment (docs/features/deploy/spec.md, "Wdrożenie nowej wersji" and D4).
 #
 #   push to main        images -> smoke -> deploy: builds the four production images and pushes them to GitHub Container
-#                       Registry tagged with the commit SHA, runs the smoke test on exactly those images (pulled by
-#                       digest), and only after it passes moves the branch `deploy` to the commit by fast-forward
-#                       (.github/scripts/deploy-ref.sh, deploy key from the secret DEPLOY_KEY; without the secret it
-#                       ends with a warning, not an error).
+#                       Registry tagged with the commit SHA and writes the images values file (the revision and the four
+#                       digests, infra/k8s/scripts/images-values.sh) once. The smoke test installs the chart with that
+#                       very file, so the cluster pulls the images from the registry by digest. Only after it passes, and
+#                       after the render of prod with that file is checked, does one atomic push move the branch `deploy`
+#                       to the commit by fast-forward and add a snapshot commit (the commit plus the file) to the branch
+#                       `deploy-images`, which Argo CD tracks (.github/scripts/deploy-ref.sh, deploy key from the secret
+#                       DEPLOY_KEY; without the secret it ends with a warning, not an error).
 #   pull request        smoke only, when the change touches the files that decide the images and the chart (paths
 #                       below); the images are built from the GitHub Actions cache and never pushed. Not a required check.
 #   workflow_dispatch   smoke only, on the branch it is started on; nothing is pushed and `deploy` does not move. GitHub
@@ -68,6 +71,9 @@ jobs:
       store: ${{ steps.digests.outputs.store }}
       admin: ${{ steps.digests.outputs.admin }}
       elasticsearch: ${{ steps.digests.outputs.elasticsearch }}
+      # The images values file, generated here once; the jobs that need it write these bytes and check the checksum.
+      values: ${{ steps.values.outputs.values }}
+      values_sha256: ${{ steps.values.outputs.sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -182,8 +188,37 @@ jobs:
             echo "| \`$IMAGE_PREFIX/$app:$GITHUB_SHA\` | \`$digest\` |" >> "$GITHUB_STEP_SUMMARY"
           done
 
-  # The smoke test (make -C infra/k8s smoke) on an empty k3d cluster. On main it runs on the images the job above
-  # pushed (pulled by digest); otherwise on images built here from the cache of GitHub Actions.
+      # The file that Argo CD, the smoke test and the check of the render all use (scripts/images-values.sh refuses a
+      # malformed digest). Its content goes to the job output between a delimiter that the content cannot contain.
+      - name: Images values file
+        id: values
+        env:
+          DIGEST_API: ${{ steps.digests.outputs.api }}
+          DIGEST_STORE: ${{ steps.digests.outputs.store }}
+          DIGEST_ADMIN: ${{ steps.digests.outputs.admin }}
+          DIGEST_ELASTICSEARCH: ${{ steps.digests.outputs.elasticsearch }}
+        run: |
+          sh infra/k8s/scripts/images-values.sh "$GITHUB_SHA" "$RUNNER_TEMP/values-images.yaml"
+          sum="$(sha256sum "$RUNNER_TEMP/values-images.yaml" | cut -d' ' -f1)"
+          {
+            echo 'values<<IMAGES_VALUES_EOF'
+            cat "$RUNNER_TEMP/values-images.yaml"
+            echo 'IMAGES_VALUES_EOF'
+            echo "sha256=$sum"
+          } >> "$GITHUB_OUTPUT"
+          echo "values-images.yaml sha256: $sum"
+          {
+            echo
+            echo "values-images.yaml (sha256 \`$sum\`):"
+            echo '```yaml'
+            cat "$RUNNER_TEMP/values-images.yaml"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The smoke test (make -C infra/k8s smoke) on an empty k3d cluster. On main the first install uses the images values
+  # file of the job above, so the cluster pulls the pushed images from the registry by digest (the later phases of the
+  # test run on the same images, loaded from the local daemon); otherwise it runs on images built here from the cache of
+  # GitHub Actions.
   smoke:
     needs: images
     # `images` is skipped unless this is a push to main; a failed or cancelled one stops the smoke test.
@@ -207,6 +242,16 @@ jobs:
         with:
           use: false
 
+      - name: Write the images values file
+        if: github.event_name == 'push'
+        env:
+          IMAGES_VALUES: ${{ needs.images.outputs.values }}
+          IMAGES_VALUES_SHA256: ${{ needs.images.outputs.values_sha256 }}
+        run: |
+          printf '%s\n' "$IMAGES_VALUES" > "$RUNNER_TEMP/values-images.yaml"
+          echo "$IMAGES_VALUES_SHA256  $RUNNER_TEMP/values-images.yaml" | sha256sum -c -
+
+      # The later phases of the smoke test (new revisions, a broken migration) build on the images in the local daemon.
       - name: Pull the pushed images by digest
         if: github.event_name == 'push'
         env:
@@ -273,8 +318,16 @@ jobs:
 
       # The runner is sampled every 10 s while the test runs, so the summary shows the peak memory and disk used
       # (smoke.sh adds the peaks of the cluster itself to its log).
+      # On main SMOKE_VALUES is the images values file: the first install pulls the images from the registry by digest, with
+      # the token of the run (packages: read) given to k3d in a private registries file that is never printed.
       - name: Smoke test
+        env:
+          SMOKE_GHCR_USER: ${{ github.event_name == 'push' && github.actor || '' }}
+          SMOKE_GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            export SMOKE_VALUES="$RUNNER_TEMP/values-images.yaml"
+          fi
           df -m --output=used,size / | tail -n 1 > "$RUNNER_TEMP/disk-start"
           (
             while :; do
@@ -313,8 +366,9 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Moves `deploy` to the commit by fast-forward after a green smoke test (D4). Without the secret DEPLOY_KEY the job
-  # ends with a warning.
+  # Publishes the version after a green smoke test (D4): checks the render of prod with the images values file, then one
+  # atomic push moves `deploy` to the commit by fast-forward and adds the snapshot to `deploy-images`. Without the secret
+  # DEPLOY_KEY the job ends with a warning. A failed check or push publishes nothing.
   deploy:
     needs: [images, smoke]
     if: github.event_name == 'push'
@@ -329,7 +383,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Fast-forward deploy
+      - name: Write the images values file
+        env:
+          IMAGES_VALUES: ${{ needs.images.outputs.values }}
+          IMAGES_VALUES_SHA256: ${{ needs.images.outputs.values_sha256 }}
+        run: |
+          printf '%s\n' "$IMAGES_VALUES" > "$RUNNER_TEMP/values-images.yaml"
+          echo "$IMAGES_VALUES_SHA256  $RUNNER_TEMP/values-images.yaml" | sha256sum -c -
+
+      - name: Check the render of prod with the images values file
+        run: sh infra/k8s/scripts/verify-images.sh "$RUNNER_TEMP/values-images.yaml" "$GITHUB_SHA"
+
+      - name: Publish deploy and deploy-images
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
@@ -340,11 +405,11 @@ jobs:
               > "$RUNNER_TEMP/known_hosts"
             export DEPLOY_KNOWN_HOSTS="$RUNNER_TEMP/known_hosts"
           fi
-          sh .github/scripts/deploy-ref.sh "$GITHUB_SHA" "git@github.com:$GITHUB_REPOSITORY.git" deploy
+          export DEPLOY_SNAPSHOT_FILE="$RUNNER_TEMP/snapshot"
+          sh .github/scripts/deploy-ref.sh "$GITHUB_SHA" "git@github.com:$GITHUB_REPOSITORY.git" "$RUNNER_TEMP/values-images.yaml"
+          echo "### deploy" >> "$GITHUB_STEP_SUMMARY"
           if [ -n "$DEPLOY_KEY" ]; then
-            echo "### deploy" >> "$GITHUB_STEP_SUMMARY"
-            echo "The branch deploy is at \`$GITHUB_SHA\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "The branch deploy is at \`$GITHUB_SHA\`, the branch deploy-images at \`$(cat "$DEPLOY_SNAPSHOT_FILE")\`." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "### deploy" >> "$GITHUB_STEP_SUMMARY"
-            echo "The secret DEPLOY_KEY is not set: the branch deploy did not move." >> "$GITHUB_STEP_SUMMARY"
+            echo "The secret DEPLOY_KEY is not set: the branches deploy and deploy-images did not move." >> "$GITHUB_STEP_SUMMARY"
           fi

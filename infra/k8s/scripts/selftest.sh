@@ -25,6 +25,9 @@ fresh_copy() {
   # actionlint checks the workflows.
   mkdir -p "$base/tree/.github"
   cp -R "$TOOLS_REPO/.github/workflows" "$base/tree/.github/workflows"
+  # The deployment script is shellchecked and its push is tested.
+  mkdir -p "$base/tree/.github/scripts"
+  cp "$TOOLS_REPO/.github/scripts/deploy-ref.sh" "$base/tree/.github/scripts/deploy-ref.sh"
   tree="$base/tree"
 }
 
@@ -80,6 +83,30 @@ deploy_images_pushed_for_every_event() { replace .github/workflows/deploy.yml " 
 runs_for_main_cancelled() { replace .github/workflows/deploy.yml "cancel-in-progress: \${{ github.event_name != 'push' }}" 'cancel-in-progress: true'; }
 # bash -e {0} is what GitHub runs without `shell:`: no pipefail, so `make smoke | tee log` hides a red smoke test
 deploy_without_pipefail() { replace .github/workflows/deploy.yml '    shell: bash' '    shell: bash -e {0}'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+deploy_push_not_atomic() { replace .github/scripts/deploy-ref.sh 'git push --atomic "$remote"' 'git push "$remote"'; }
+# shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
+deploy_without_the_render_check() { replace .github/workflows/deploy.yml 'run: sh infra/k8s/scripts/verify-images.sh "$RUNNER_TEMP/values-images.yaml" "$GITHUB_SHA"' 'run: "true"'; }
+# shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
+smoke_values_for_every_event() { replace .github/workflows/deploy.yml 'if [ "$GITHUB_EVENT_NAME" = push ]; then' 'if true; then'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+generator_accepts_short_digests() { replace infra/k8s/scripts/images-values.sh '[ "${#2}" -eq 71 ] || fail' 'true || fail'; }
+package_cleanup_added() {
+  cat > "$tree/.github/workflows/cleanup.yml" <<'YAML'
+name: Cleanup
+on:
+  workflow_dispatch:
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          package-name: shop/api
+          package-type: container
+          min-versions-to-keep: 3
+YAML
+}
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 nothing_broken() { :; }
 
@@ -104,6 +131,11 @@ run_case "deploy without waiting for the smoke test" "test_it_needs_a_green_smok
 run_case "images pushed for every event" "test_images_are_pushed_and_deploy_moves_only_for_a_push_to_main" deploy_images_pushed_for_every_event
 run_case "runs for main cancelled" "test_runs_for_main_are_never_cancelled_and_other_runs_are" runs_for_main_cancelled
 run_case "deploy.yml steps without pipefail (smoke test piped to tee)" "test_every_run_step_has_pipefail" deploy_without_pipefail
+run_case "deploy pushing the two branches without --atomic" "test_the_script_pushes_both_branches_in_one_atomic_push" deploy_push_not_atomic
+run_case "deploy without the check of the render of prod" "test_the_render_of_prod_is_checked_before_anything_is_published" deploy_without_the_render_check
+run_case "smoke test on the registry images for every event" "test_on_main_the_first_install_uses_the_values_file_and_the_registry" smoke_values_for_every_event
+run_case "images values generator accepting a short digest" "test_a_missing_or_malformed_digest_fails_and_writes_nothing" generator_accepts_short_digests
+run_case "a workflow that deletes package versions (retention)" "test_no_workflow_deletes_package_versions" package_cleanup_added
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then

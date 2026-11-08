@@ -44,6 +44,12 @@ render() {
   render prod-nodemo prod --set image.tag=$rev1 $digests --set demoNotice=false
   render prod-order-brevo prod --set image.tag=$rev1 $digests --set orderMail=brevo
 }
+# Argo CD renders prod from the two values files only: the profile and the images file of the branch deploy-images,
+# which scripts/images-values.sh writes (no --set). The file is in the output directory, which the helm container
+# mounts as /cache/<name of the directory>.
+DIGEST_API="$(digest a)" DIGEST_STORE="$(digest b)" DIGEST_ADMIN="$(digest c)" DIGEST_ELASTICSEARCH="$(digest d)" \
+  sh "$here/images-values.sh" "$rev1" "$out/values-images.yaml"
+render prod-images-file prod -f "/cache/${out##*/}/values-images.yaml"
 render ci ci --set image.tag=$rev1
 render ci-rev2 ci --set image.tag=$rev2
 render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true

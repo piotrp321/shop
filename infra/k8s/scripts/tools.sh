@@ -62,8 +62,9 @@ yq() { tools_run "$YQ_IMAGE" "$@"; }
 # Python without third-party packages; -I ignores the environment and the current directory.
 py() { tools_run "$PYTHON_IMAGE" python -I "$@"; }
 
-# k3d talks to the Docker daemon through its socket.
-k3d() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$K3D_IMAGE" "$@"; }
+# k3d talks to the Docker daemon through its socket. K3D_MOUNT (<host dir>:<dir in the container>[:ro]), when set, mounts
+# a directory with a file the command reads (the registries file of the smoke test).
+k3d() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ${K3D_MOUNT:+-v "$K3D_MOUNT"} "$K3D_IMAGE" "$@"; }
 # kubectl reaches the cluster by the name of its server container, on the Docker network of the cluster.
 # KUBE_NETWORK and KUBE_DIR (the directory with the file `config`) are set by smoke.sh; rerun.sh takes them from the
 # environment (KUBE_NETWORK defaults to host, KUBE_DIR to ~/.kube).
