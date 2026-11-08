@@ -144,6 +144,31 @@ class SyncTest(unittest.TestCase):
         self.assertEqual('delta', out['kind'], out)
         self.assertEqual(['epic.txt'], out['extra'])
 
+    def test_a_sync_merged_into_the_epic_through_a_pull_request_merge_commit_is_a_sync(self):
+        self.advance_main({'main.txt': 'main\n'})
+        self.repo.git('checkout', '-q', '-b', 'task/repair')
+        self.repo.merge('main')
+        self.repo.on('epic')
+        self.repo.merge('task/repair', message='Merge pull request from task/repair')
+        out = self.report()
+        self.assertEqual('sync', out['kind'], out)
+        self.assertEqual(2, len(out['merges']))
+
+    def test_a_generated_file_changed_by_the_sync_is_listed(self):
+        self.advance_main({'apps/api/openapi.json': '{"main": 1}\n'})
+        self.repo.merge('main')
+        out = self.report()
+        self.assertEqual('sync', out['kind'], out)
+        self.assertEqual(['apps/api/openapi.json'], out['generated'])
+
+    def test_a_commit_after_the_merge_makes_a_regular_delta(self):
+        self.advance_main({'main.txt': 'main\n'})
+        self.repo.merge('main')
+        fix = self.repo.commit('regenerate the contract', {'apps/api/openapi.json': '{"x": 1}\n'})
+        out = self.report()
+        self.assertEqual('delta', out['kind'], out)
+        self.assertEqual([fix], out['other_commits'])
+
     def test_an_octopus_merge_makes_a_regular_delta(self):
         # Parents: the previous head and two commits of main; nothing but main comes in, yet octopus merges are
         # not checked against an automatic merge.
