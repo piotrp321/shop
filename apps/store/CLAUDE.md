@@ -66,6 +66,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `product-metadata.ts` i `product-json-ld.ts`.
 - `app/page.tsx` (`/`), `app/c/[...path]/` (kategoria) i `app/szukaj/` (wyszukiwanie) – listing (SSR przy każdym
   żądaniu); `app/p/[slug]/` – strona produktu (ISR).
+- `src/seo/` – mapa strony i `robots.txt`: `xml.ts` (budowanie `sitemapindex` i `urlset` z ucieczką `& < > " '`),
+  `sitemap.ts` (odpowiedzi tras mapy), `robots-rules.ts` (reguły `robots.txt`) i `store-url.ts` (`STORE_URL` czytany przy
+  żądaniu).
+- `app/sitemap.xml/`, `app/sitemaps/listing.xml/`, `app/sitemaps/products/[file]/` (route handlery mapy strony)
+  i `app/robots.ts` – patrz „Mapa strony i `robots.txt`”.
 - `src/components/ui/` – komponenty shadcn/ui.
 - `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu.
 
@@ -234,6 +239,29 @@ Klienta API generuje `make api-client` z katalogu głównego.
   elementu `script`.
 - Kafelek listy (`ProductTile`): nazwa i zdjęcie to linki do `/p/<slug>`; link zdjęcia jest `aria-hidden` i poza
   kolejnością tabulatora, nazwa jest linkiem dla klawiatury i czytników.
+
+## Mapa strony i `robots.txt`
+
+- Trasy: `/sitemap.xml` (`sitemapindex`: najpierw `<STORE_URL>/sitemaps/listing.xml`, potem po jednej pozycji na porcję
+  z `GET /api/v1/sitemap/product-chunks`, w kolejności API: `<STORE_URL>/sitemaps/products/<klucz>.xml`),
+  `/sitemaps/listing.xml` (`urlset`: `<STORE_URL>/` i `/c/<path>` każdej kategorii z `GET /api/v1/categories`, w głąb)
+  i `/sitemaps/products/<klucz>.xml` (`/p/<slug>` z `lastmod` = `updatedAt` z `GET /api/v1/sitemap/products?chunk=<klucz>`).
+  Bez `lastmod` w indeksie i w mapie listingu. To własne route handlery (konwencja `sitemap.ts` z `generateSitemaps` nie
+  tworzy `sitemapindex` ani 404 dla złego klucza). Segment `[file]` to `<klucz>.xml`; sklep nie dekoduje klucza, API go
+  sprawdza.
+- Odpowiedzi: 200 z `Content-Type: application/xml; charset=utf-8` i `Cache-Control: public, max-age=300`; pusta lista
+  produktów to 200 z pustym `urlset`; adres bez `.xml` i klucz, który API odrzuca (400), to 404; każdy inny błąd API
+  (także 404), błąd sieci albo nieoczekiwana treść to 503 z `Cache-Control: no-store` i wpisem w logu serwera. Sklep nigdy
+  nie wysyła pustej ani częściowej mapy zamiast błędu.
+- Bez data cache Next.js: trasy mają `export const dynamic = "force-dynamic"`, a każdy odczyt API `cache: "no-store"`. Cache
+  to Varnish i pula API (jak przy listingu). Odczyty idą przez `API_CATALOG_URL`; `STORE_URL` i `API_CATALOG_URL` są czytane
+  przy żądaniu, a brak którejkolwiek to błąd konfiguracji (wyjątek, 500).
+- `app/robots.ts` (`MetadataRoute.Robots`, `dynamic = "force-dynamic"`, bo trasa metadanych jest domyślnie statyczna
+  i utrwaliłaby `STORE_URL` z builda): `Disallow` dla `/cart`, `/checkout`, `/konto`, `/auth/`, `/api/`, reszta dozwolona,
+  `Sitemap: <STORE_URL>/sitemap.xml`. Strony z `noindex, follow` zostają dozwolone, żeby robot widział ich dyrektywę.
+  Reguły są takie same w każdym środowisku.
+- Nowa trasa mapy albo `robots.txt` musi być dynamiczna; build produkcyjny pilnuje tego `check-dynamic-routes`
+  (patrz „Komendy”).
 
 ## Rewalidacja (`POST /api/revalidate`)
 

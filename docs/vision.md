@@ -147,7 +147,13 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - **Metadane**: tytuł, opis, Open Graph (z obrazem z imgproxy), `canonical` generowane per strona
   (Metadata API w Next.js).
 - **Dane strukturalne**: JSON-LD `Product` (cena, dostępność, zdjęcia), `BreadcrumbList`, `Organization`.
-- **Mapa strony i robots**: `sitemap.xml` generowana z katalogu, `robots.txt`.
+- **Mapa strony i robots**: `/sitemap.xml` to indeks map: mapa listingu (`/sitemaps/listing.xml`: `/` i każda kategoria
+  `/c/<ścieżka>`) i po jednej pozycji na porcję produktów z API (`/sitemaps/products/<klucz>.xml`: `/p/<slug>`
+  z `lastmod` równym czasowi ostatniej zmiany produktu). Porcje wyznacza API (kolejne `id` produktów, nieprzezroczysty
+  klucz), więc sklep nie ładuje katalogu do pamięci. Trasy są renderowane przy każdym żądaniu, bez data cache Next.js;
+  błąd API daje 503 bez cache, nigdy pustą ani częściową mapę. `robots.txt` blokuje `/cart`, `/checkout`, `/konto`,
+  `/auth/` i `/api/`, nie blokuje stron z `noindex, follow` (listing z filtrami, `/szukaj`), żeby robot widział ich
+  dyrektywę, i wskazuje indeks map; jest taki sam w każdym środowisku.
 - **Przyjazne adresy**: `/p/<slug>`, `/c/<ścieżka slugów kategorii>` (np. `/c/turystyka/biwak/namioty`),
   przekierowania 301 przy zmianie sluga. Slug produktu jest stały od pierwszej publikacji (także po wycofaniu
   z publikacji); zmienia się tylko w szkicu, który nie był nigdy opublikowany, więc w MVP adres produktu nie wymaga
