@@ -56,8 +56,19 @@ export function variantId(n: number, v: number): string {
   return `00000000-0000-4000-9000-${String(n * 100 + v).padStart(12, "0")}`;
 }
 
+/** Outside a promotion by default: the catalog price is the price. */
 export function makeVariant(n: number, v: number, overrides: Partial<VariantOffer> = {}): VariantOffer {
-  return { variantId: variantId(n, v), label: "", gross: 12300, level: "in_stock", purchasable: true, ...overrides };
+  const gross = overrides.gross === undefined ? 12300 : overrides.gross;
+  return {
+    variantId: variantId(n, v),
+    label: "",
+    gross,
+    regularGross: gross,
+    promotion: null,
+    level: "in_stock",
+    purchasable: true,
+    ...overrides,
+  };
 }
 
 /** The offer of product n; by default one purchasable default variant at 123 zł. */
@@ -66,6 +77,7 @@ export function makeOffer(n: number, overrides: Partial<ProductOffer> = {}): Pro
     productId: makeProduct(n).id,
     variantAxes: [],
     fromGross: 12300,
+    fromPromotion: null,
     hasPriceRange: false,
     currency: "PLN",
     level: "in_stock",

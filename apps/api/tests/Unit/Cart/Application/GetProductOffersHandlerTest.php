@@ -7,8 +7,10 @@ namespace App\Tests\Unit\Cart\Application;
 use App\Cart\Application\Query\GetProductOffers;
 use App\Cart\Application\Query\GetProductOffersHandler;
 use App\Cart\Application\Query\InvalidProductOffersQuery;
+use App\Cart\Application\View\FromPromotionView;
 use App\Cart\Application\View\ProductOfferView;
 use App\Cart\Application\View\VariantOfferView;
+use App\Cart\Application\View\VariantPromotionView;
 use App\Tests\Unit\Cart\InMemoryProducts;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -70,6 +72,47 @@ final class GetProductOffersHandlerTest extends TestCase
         );
     }
 
+    public function testAPromotedVariantHasItsEffectivePriceTheCatalogPriceAndItsPromotion(): void
+    {
+        // 45 is the cheapest purchasable variant in a promotion; 42 is promoted too.
+        $this->products
+            ->variant(self::SHOES_45, 'Buty Asfalt', 24_000, 3, self::SHOES, 'czarne, 45')
+            ->promoted(self::SHOES_45, 32_000, '2026-11-20T00:00:00Z', 29_000)
+            ->promoted(self::SHOES_42, 37_500, '2026-11-21T00:00:00Z', null);
+
+        [$shoes] = $this->offers([self::SHOES], withLowestPriorPrice: true);
+
+        self::assertSame(24_000, $shoes->fromGross);
+        self::assertEquals(new FromPromotionView(29_000), $shoes->fromPromotion);
+        self::assertEquals(
+            [
+                [self::SHOES_42, 30_000, 37_500, new VariantPromotionView(new \DateTimeImmutable('2026-11-21T00:00:00Z'), null)],
+                [self::SHOES_43, null, null, null],
+                [self::SHOES_44, 25_000, 25_000, null],
+                [self::SHOES_45, 24_000, 32_000, new VariantPromotionView(new \DateTimeImmutable('2026-11-20T00:00:00Z'), 29_000)],
+            ],
+            array_map(static fn (VariantOfferView $v): array => [$v->variantId, $v->gross, $v->regularGross, $v->promotion], $shoes->variants),
+        );
+        self::assertSame([true], $this->products->lowestPriorPriceFlags);
+    }
+
+    public function testTheFromPromotionIsNullWhenTheVariantOfTheFromPriceIsNotPromoted(): void
+    {
+        $this->products->promoted(self::SHOES_45, 40_000, '2026-11-20T00:00:00Z', 35_000);
+
+        [$shoes] = $this->offers([self::SHOES], withLowestPriorPrice: true);
+
+        self::assertSame(30_000, $shoes->fromGross);
+        self::assertNull($shoes->fromPromotion);
+    }
+
+    public function testWithoutTheFlagPricingIsNotAskedForTheOmnibusPrice(): void
+    {
+        $this->offers([self::SHOES]);
+
+        self::assertSame([false], $this->products->lowestPriorPriceFlags);
+    }
+
     public function testAProductWithTheDefaultVariantHasItsPriceWithoutARange(): void
     {
         [$dumbbells] = $this->offers([self::DUMBBELLS]);
@@ -103,6 +146,7 @@ final class GetProductOffersHandlerTest extends TestCase
         self::assertFalse($unknown->hasPriceRange);
         self::assertSame('PLN', $unknown->currency);
         self::assertSame('out_of_stock', $unknown->level);
+        self::assertNull($unknown->fromPromotion);
     }
 
     public function testEveryPortIsAskedOnceForAllTheVariantsOfAllTheProducts(): void
@@ -163,8 +207,8 @@ final class GetProductOffersHandlerTest extends TestCase
      *
      * @return list<ProductOfferView>
      */
-    private function offers(array $productIds): array
+    private function offers(array $productIds, bool $withLowestPriorPrice = false): array
     {
-        return new GetProductOffersHandler($this->products, $this->products, $this->products)(new GetProductOffers($productIds));
+        return new GetProductOffersHandler($this->products, $this->products, $this->products)(new GetProductOffers($productIds, $withLowestPriorPrice));
     }
 }

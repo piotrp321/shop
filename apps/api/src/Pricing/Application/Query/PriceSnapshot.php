@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Pricing\Application\Query;
 
 /**
- * The price of a variant as stored, at a VAT rate that is still the rate of its class. Amounts are in grosze.
- * `version` lets a consumer that copied the price (an order line) tell later that the price changed.
+ * The effective price of a variant now, from a catalog price at a VAT rate that is still the rate of its class.
+ * Amounts are in grosze. Net, VAT and gross are the price to pay: the promotional price in an active promotion
+ * (`promotion`), else the catalog price; `regularGross` is the catalog gross. `version` is the version of the catalog
+ * price: it detects a change of the catalog price, not of the effective price (the start or end of a promotion changes
+ * net, VAT and gross under the same version).
  */
 final readonly class PriceSnapshot
 {
@@ -19,6 +22,8 @@ final readonly class PriceSnapshot
         public int $gross,
         public string $currency,
         public int $version,
+        public int $regularGross,
+        public ?PricePromotion $promotion,
     ) {
     }
 }

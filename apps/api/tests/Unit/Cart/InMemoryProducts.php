@@ -17,6 +17,7 @@ use App\Cart\Domain\Money;
 use App\Cart\Domain\ProductId;
 use App\Cart\Domain\StockLevel;
 use App\Cart\Domain\VariantId;
+use App\Cart\Domain\VariantPromotion;
 
 /**
  * Catalog, Pricing and Inventory as Cart's ports see them, with the calls each port got.
@@ -32,8 +33,12 @@ final class InMemoryProducts implements ProductCatalog, CartPrices, StockAvailab
     private array $axes = [];
     /** @var array<string, int> */
     private array $prices = [];
+    /** @var array<string, array{regularGross: int, promotion: VariantPromotion}> by variant id */
+    private array $promotions = [];
     /** @var array<string, int> */
     private array $available = [];
+    /** @var list<bool> the withLowestPriorPrice flag of every current() call */
+    public array $lowestPriorPriceFlags = [];
     /** @var array{summaries: list<list<string>>, current: list<list<string>>, of: list<list<string>>} the ids of each call by method */
     private array $calls = ['summaries' => [], 'current' => [], 'of' => []];
     /** @var list<list<string>> */
@@ -51,6 +56,20 @@ final class InMemoryProducts implements ProductCatalog, CartPrices, StockAvailab
             unset($this->prices[$id]);
         }
         $this->available[$id] = $available;
+
+        return $this;
+    }
+
+    /**
+     * Puts a variant with a price in a promotion: its gross (of variant()) becomes the promotional one, the catalog
+     * gross is given.
+     */
+    public function promoted(string $id, int $regularGross, string $endsAt, ?int $lowestPriorGross): self
+    {
+        $this->promotions[$id] = [
+            'regularGross' => $regularGross,
+            'promotion' => new VariantPromotion(new \DateTimeImmutable($endsAt), null === $lowestPriorGross ? null : Money::of($lowestPriorGross, Currency::PLN)),
+        ];
 
         return $this;
     }
@@ -135,13 +154,21 @@ final class InMemoryProducts implements ProductCatalog, CartPrices, StockAvailab
         return $lists;
     }
 
-    public function current(array $ids): array
+    public function current(array $ids, bool $withLowestPriorPrice = false): array
     {
         $this->calls['current'][] = self::keys($ids);
+        $this->lowestPriorPriceFlags[] = $withLowestPriorPrice;
         $prices = [];
         foreach ($ids as $id) {
-            if (isset($this->prices[$id->toString()])) {
-                $prices[] = new CartPrice($id, Money::of($this->prices[$id->toString()], Currency::PLN));
+            $key = $id->toString();
+            if (isset($this->prices[$key])) {
+                $promotion = $this->promotions[$key] ?? null;
+                $prices[] = new CartPrice(
+                    $id,
+                    Money::of($this->prices[$key], Currency::PLN),
+                    Money::of($promotion['regularGross'] ?? $this->prices[$key], Currency::PLN),
+                    $promotion['promotion'] ?? null,
+                );
             }
         }
 

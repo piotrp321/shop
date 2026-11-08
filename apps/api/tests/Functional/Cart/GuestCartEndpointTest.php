@@ -89,6 +89,31 @@ final class GuestCartEndpointTest extends WebTestCase
         self::assertMatchesSchema('CartSummary', $summary);
     }
 
+    /**
+     * The cart reads the effective price of Pricing: in an active promotion the promotional one, without code of its
+     * own and without a mark of the promotion.
+     */
+    public function testALineOfAPromotedVariantHasThePromotionalPrice(): void
+    {
+        $promoted = $this->variant(19_999, 10);
+        $regular = $this->variant(4_990, 10, 'Czapka');
+        $this->promote(20, [$promoted]);
+        $cart = $this->guestCart();
+        $this->request('POST', $cart.'/items', json_encode(['variantId' => $promoted, 'quantity' => 2], \JSON_THROW_ON_ERROR));
+        $this->request('POST', $cart.'/items', json_encode(['variantId' => $regular, 'quantity' => 1], \JSON_THROW_ON_ERROR));
+
+        $view = $this->request('GET', $cart);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertMatchesSchema('CartView', $view);
+        self::assertIsArray($view['lines']);
+        // 19 999 − floor(19 999 × 20 / 100) = 16 000.
+        self::assertSame([['gross' => 16_000, 'currency' => 'PLN'], ['gross' => 4_990, 'currency' => 'PLN']], array_column($view['lines'], 'unitPrice'));
+        self::assertSame([['gross' => 32_000, 'currency' => 'PLN'], ['gross' => 4_990, 'currency' => 'PLN']], array_column($view['lines'], 'lineTotal'));
+        self::assertSame(['gross' => 36_990, 'currency' => 'PLN', 'itemCount' => 3], $view['totals']);
+        self::assertStringNotContainsString('promotion', (string) $this->response()->getContent());
+    }
+
     public function testTheLineStatesAndTotalsComeFromTheApi(): void
     {
         $cart = $this->guestCart();

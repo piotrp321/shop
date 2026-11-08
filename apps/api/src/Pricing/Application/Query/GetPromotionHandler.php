@@ -7,7 +7,7 @@ namespace App\Pricing\Application\Query;
 use App\Pricing\Application\Port\Clock;
 use App\Pricing\Application\Port\VariantSummaries;
 use App\Pricing\Domain\Price\VariantPriceRepository;
-use App\Pricing\Domain\Promotion\PromotionalPrice;
+use App\Pricing\Domain\Promotion\EffectivePrice;
 use App\Pricing\Domain\Promotion\PromotionId;
 use App\Pricing\Domain\Promotion\PromotionNotFound;
 use App\Pricing\Domain\Promotion\PromotionRepository;
@@ -28,8 +28,9 @@ final readonly class GetPromotionHandler
     }
 
     /**
-     * The variants from Catalog (in batches) and their prices in one read. An ended promotion has no promotional
-     * prices: the catalog price may have changed since, and what was paid is in the orders.
+     * The variants from Catalog (in batches) and their prices in one read. The promotional price is the effective
+     * price the variant has (planned: will have) in the promotion, from its current catalog price. An ended promotion
+     * has no promotional prices: the catalog price may have changed since, and what was paid is in the orders.
      *
      * @throws PromotionNotFound also for an id that is no UUID
      */
@@ -45,25 +46,24 @@ final readonly class GetPromotionHandler
 
         $variantIds = $promotion->variantIds();
         $summaries = $this->catalog->of($variantIds);
-        $current = [];
+        $percentOff = PromotionStatus::Ended === $status ? null : $promotion->percentOff();
+        $effective = [];
         foreach ($this->prices->findMany($variantIds) as $price) {
-            if ($price->isCurrent($this->rates)) {
-                $current[$price->id()->toString()] = $price->breakdown()->gross();
-            }
+            $effective[$price->id()->toString()] = EffectivePrice::of($price, $this->rates, $percentOff);
         }
 
         $variants = [];
         foreach ($variantIds as $variantId) {
             $key = $variantId->toString();
             $summary = $summaries[$key] ?? null;
-            $gross = $current[$key] ?? null;
+            $price = $effective[$key] ?? null;
             $variants[] = new PromotionVariantView(
                 $key,
                 $summary?->productId,
                 $summary?->productName,
                 $summary?->label,
-                $gross?->amount(),
-                null === $gross || PromotionStatus::Ended === $status ? null : PromotionalPrice::apply($gross, $promotion->percentOff())->amount(),
+                $price?->regularGross()->amount(),
+                null === $price || null === $percentOff ? null : $price->breakdown()->gross()->amount(),
             );
         }
 

@@ -14,6 +14,7 @@ use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Inventory\StockFixture;
+use App\Tests\Support\StatementCounter;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -73,5 +74,51 @@ final class ProductOfferFactsTest extends KernelTestCase
         self::assertEquals([new VariantFacts(null, false)], array_values($result[$ids[0]]->variants));
         // A product Catalog does not know has no variants.
         self::assertEquals(new ProductFacts(null, []), $result[$unknown]);
+    }
+
+    /**
+     * The index gets the effective price: a variant in an active promotion has its promotional gross, and the "from"
+     * price follows it. The offers are read without the Omnibus price, so neither the history nor the earlier
+     * promotions are read.
+     */
+    public function testTheFactsHaveTheEffectivePriceOfAPromotedVariantWithoutReadingTheOmnibusInput(): void
+    {
+        $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $category = CategoryFactory::createOne();
+        new DoctrineCategoryRepository($entityManager)->save($category);
+        $promoted = (string) Uuid::v4();
+        $regular = (string) Uuid::v4();
+        $product = ProductFactory::createOne(['mainCategory' => $category, 'variantAxes' => ['Kolor'], 'variants' => [
+            ['id' => $regular, 'values' => ['czarne']],
+            ['id' => $promoted, 'values' => ['białe']],
+        ]]);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
+        VariantPriceRecordFactory::store($entityManager, ['variantId' => $regular, 'gross' => 4_900]);
+        VariantPriceRecordFactory::store($entityManager, ['variantId' => $promoted, 'gross' => 5_000]);
+        StockFixture::stock($entityManager->getConnection(), 5, variantId: $regular);
+        StockFixture::stock($entityManager->getConnection(), 5, variantId: $promoted);
+        $promotion = (string) Uuid::v7();
+        $entityManager->getConnection()->executeStatement(
+            "INSERT INTO pricing_promotion (id, name, percent_off, starts_at, ends_at, created_at, updated_at, version) VALUES (?, 'Promocja', 20, date_trunc('second', NOW()) - INTERVAL '1 hour', date_trunc('second', NOW()) + INTERVAL '1 day', NOW(), NOW(), 1)",
+            [$promotion],
+        );
+        $entityManager->getConnection()->executeStatement('INSERT INTO pricing_promotion_variant (promotion_id, variant_id) VALUES (?, ?)', [$promotion, $promoted]);
+        $entityManager->clear();
+        $bus = self::getContainer()->get('query.bus');
+        self::assertInstanceOf(MessageBusInterface::class, $bus);
+        $counter = self::getContainer()->get(StatementCounter::class);
+        self::assertInstanceOf(StatementCounter::class, $counter);
+
+        $before = $counter->count();
+        $facts = new QueryBusProductOfferFacts($bus)->of([$product->id()->toString()]);
+        $statements = $counter->count() - $before;
+
+        self::assertEquals(new ProductFacts(4_000, [
+            $regular => new VariantFacts(4_900, true),
+            $promoted => new VariantFacts(4_000, true),
+        ]), $facts[$product->id()->toString()]);
+        // Catalog's variants, the prices, the active promotions and the stock; no history, no earlier promotions.
+        self::assertSame(4, $statements);
     }
 }

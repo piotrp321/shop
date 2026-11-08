@@ -7,6 +7,8 @@ namespace App\Tests\Integration\Pricing;
 use App\Pricing\Application\Query\GetCurrentPrices;
 use App\Pricing\Application\Query\InvalidCurrentPricesQuery;
 use App\Pricing\Application\Query\PriceSnapshot;
+use App\Pricing\Domain\Promotion\PromotionPeriod;
+use App\Tests\Factory\PriceHistoryRecordFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Support\StatementCounter;
 use Doctrine\DBAL\Connection;
@@ -42,9 +44,10 @@ final class GetCurrentPricesTest extends KernelTestCase
     }
 
     /**
-     * 48 products of 100 variants: the most a page of the store list can ask for.
+     * 48 products of 100 variants: the most a page of the store list can ask for. One statement for the prices, one
+     * for the active promotions.
      */
-    public function test4800VariantsAreReadWithOneStatement(): void
+    public function test4800VariantsAreReadWithTwoStatements(): void
     {
         $ids = array_map(
             static fn (mixed $id): string => \is_string($id) ? $id : throw new \LogicException('Expected a UUID.'),
@@ -60,10 +63,50 @@ final class GetCurrentPricesTest extends KernelTestCase
         $snapshots = $this->ask($ids);
         $statements = $this->counter->count() - $before;
 
-        self::assertSame(1, $statements);
+        self::assertSame(2, $statements);
         self::assertCount(4800, $snapshots);
         self::assertSame($ids, array_map(static fn (PriceSnapshot $s): string => $s->variantId, $snapshots));
-        self::assertEquals(new PriceSnapshot($ids[0], 'standard', 2300, 8130, 1870, 10000, 'PLN', 1), $snapshots[0]);
+        self::assertEquals(new PriceSnapshot($ids[0], 'standard', 2300, 8130, 1870, 10000, 'PLN', 1, 10000, null), $snapshots[0]);
+    }
+
+    /**
+     * Variants of two active promotions: their promotional prices, and with the flag their Omnibus prices from one
+     * statement for the history and one for the earlier promotions of all of them.
+     */
+    public function testPromotedVariantsWithTheirOmnibusPricesInFourStatements(): void
+    {
+        $now = new \DateTimeImmutable()->setTimezone(new \DateTimeZone('UTC'));
+        $book = $this->insertPrice(5490, 'printed_book', 500);
+        $tent = $this->insertPrice(60000, 'standard', 2300);
+        $regular = $this->insertPrice(12300, 'standard', 2300);
+        $this->insertHistory($book, $now->modify('-60 days'), 6000);
+        $this->insertHistory($book, $now->modify('-10 days'), 5490);
+        $this->insertHistory($tent, $now->modify('-60 days'), 60000);
+        $autumn = $this->insertPromotion('Jesień', 20, $now->modify('-1 day'), $now->modify('+1 day'), [$book]);
+        $this->insertPromotion('Namioty', 10, $now->modify('-2 hours'), $now->modify('+2 days'), [$tent]);
+        $this->insertPromotion('Wcześniej', 50, $now->modify('-20 days'), $now->modify('-15 days'), [$tent]);
+
+        $before = $this->counter->count();
+        $snapshots = $this->ask([$book, $tent, $regular], withLowestPriorPrice: true);
+        $statements = $this->counter->count() - $before;
+
+        self::assertSame(4, $statements);
+        self::assertSame([4392, 54000, 12300], array_map(static fn (PriceSnapshot $s): int => $s->gross, $snapshots));
+        self::assertSame([5490, 60000, 12300], array_map(static fn (PriceSnapshot $s): int => $s->regularGross, $snapshots));
+        self::assertSame([[4183, 209], [43902, 10098], [10000, 2300]], array_map(static fn (PriceSnapshot $s): array => [$s->net, $s->vat], $snapshots));
+        self::assertSame([5490, 30000, null], array_map(static fn (PriceSnapshot $s): ?int => $s->promotion?->lowestPriorGross, $snapshots));
+        self::assertSame($autumn, $snapshots[0]->promotion?->promotionId);
+        self::assertSame(['Jesień', 20], [$snapshots[0]->promotion->name, $snapshots[0]->promotion->percentOff]);
+        self::assertSame(
+            PromotionPeriod::wholeSecond($now->modify('+1 day'))->format(\DATE_ATOM),
+            $snapshots[0]->promotion->endsAt->format(\DATE_ATOM),
+        );
+
+        $before = $this->counter->count();
+        $withoutFlag = $this->ask([$book, $tent, $regular]);
+        self::assertSame(2, $this->counter->count() - $before);
+        self::assertSame([null, null], [$withoutFlag[0]->promotion?->lowestPriorGross, $withoutFlag[1]->promotion?->lowestPriorGross]);
+        self::assertSame([4392, 54000, 12300], array_map(static fn (PriceSnapshot $s): int => $s->gross, $withoutFlag));
     }
 
     public function testReturnsOnlyPricesAtTheCurrentRateOfTheirClass(): void
@@ -76,7 +119,7 @@ final class GetCurrentPricesTest extends KernelTestCase
         $snapshots = $this->ask([$outdated, $current, $withoutRate, $withoutPrice]);
 
         self::assertSame([$current], array_map(static fn (PriceSnapshot $s): string => $s->variantId, $snapshots));
-        self::assertEquals(new PriceSnapshot($current, 'printed_book', 500, 5229, 261, 5490, 'PLN', 1), $snapshots[0]);
+        self::assertEquals(new PriceSnapshot($current, 'printed_book', 500, 5229, 261, 5490, 'PLN', 1, 5490, null), $snapshots[0]);
     }
 
     public function testReadsTheStoredStateNotACachedOne(): void
@@ -114,14 +157,36 @@ final class GetCurrentPricesTest extends KernelTestCase
         return VariantPriceRecordFactory::store($this->entityManager, ['gross' => $gross, 'taxClass' => $taxClass, 'vatRateBp' => $basisPoints]);
     }
 
+    private function insertHistory(string $variantId, \DateTimeImmutable $changedAt, int $gross): void
+    {
+        PriceHistoryRecordFactory::store($this->entityManager, ['variantId' => $variantId, 'changedAt' => PromotionPeriod::wholeSecond($changedAt), 'grossAmount' => $gross]);
+    }
+
+    /**
+     * @param list<string> $variantIds
+     */
+    private function insertPromotion(string $name, int $percentOff, \DateTimeImmutable $startsAt, \DateTimeImmutable $endsAt, array $variantIds): string
+    {
+        $id = (string) Uuid::v7();
+        $this->connection->executeStatement(
+            'INSERT INTO pricing_promotion (id, name, percent_off, starts_at, ends_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, NOW(), NOW(), 1)',
+            [$id, $name, $percentOff, PromotionPeriod::wholeSecond($startsAt)->format('Y-m-d H:i:sP'), PromotionPeriod::wholeSecond($endsAt)->format('Y-m-d H:i:sP')],
+        );
+        foreach ($variantIds as $variantId) {
+            $this->connection->executeStatement('INSERT INTO pricing_promotion_variant (promotion_id, variant_id) VALUES (?, ?)', [$id, $variantId]);
+        }
+
+        return $id;
+    }
+
     /**
      * @param list<string> $ids
      *
      * @return list<PriceSnapshot>
      */
-    private function ask(array $ids): array
+    private function ask(array $ids, bool $withLowestPriorPrice = false): array
     {
-        $stamp = $this->queryBus->dispatch(new GetCurrentPrices($ids))->last(HandledStamp::class);
+        $stamp = $this->queryBus->dispatch(new GetCurrentPrices($ids, $withLowestPriorPrice))->last(HandledStamp::class);
         self::assertInstanceOf(HandledStamp::class, $stamp);
         $result = $stamp->getResult();
         self::assertIsArray($result);

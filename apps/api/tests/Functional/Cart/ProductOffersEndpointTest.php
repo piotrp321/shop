@@ -8,6 +8,7 @@ use App\Catalog\Domain\Product\ProductStatus;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
+use App\Tests\Factory\PriceHistoryRecordFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Inventory\StockFixture;
@@ -57,31 +58,76 @@ final class ProductOffersEndpointTest extends WebTestCase
             [
                 'productId' => $shoes,
                 'variantAxes' => ['Kolor', 'Rozmiar'],
-                'fromGross' => 30_000,
+                'fromGross' => 30_000, 'fromPromotion' => null,
                 'hasPriceRange' => true,
                 'currency' => 'PLN',
                 'level' => 'in_stock',
                 'variants' => [
-                    ['variantId' => $v42, 'label' => 'czarne, 42', 'gross' => 30_000, 'level' => 'in_stock', 'purchasable' => true],
-                    ['variantId' => $v43, 'label' => 'czarne, 43', 'gross' => null, 'level' => 'in_stock', 'purchasable' => false],
-                    ['variantId' => $v44, 'label' => 'czarne, 44', 'gross' => 25_000, 'level' => 'out_of_stock', 'purchasable' => false],
-                    ['variantId' => $v45, 'label' => 'czarne, 45', 'gross' => 32_000, 'level' => 'low_stock', 'purchasable' => true],
+                    ['variantId' => $v42, 'label' => 'czarne, 42', 'gross' => 30_000, 'regularGross' => 30_000, 'promotion' => null, 'level' => 'in_stock', 'purchasable' => true],
+                    ['variantId' => $v43, 'label' => 'czarne, 43', 'gross' => null, 'regularGross' => null, 'promotion' => null, 'level' => 'in_stock', 'purchasable' => false],
+                    ['variantId' => $v44, 'label' => 'czarne, 44', 'gross' => 25_000, 'regularGross' => 25_000, 'promotion' => null, 'level' => 'out_of_stock', 'purchasable' => false],
+                    ['variantId' => $v45, 'label' => 'czarne, 45', 'gross' => 32_000, 'regularGross' => 32_000, 'promotion' => null, 'level' => 'low_stock', 'purchasable' => true],
                 ],
             ],
             [
                 'productId' => $dumbbells,
                 'variantAxes' => [],
-                'fromGross' => 19_900,
+                'fromGross' => 19_900, 'fromPromotion' => null,
                 'hasPriceRange' => false,
                 'currency' => 'PLN',
                 'level' => 'in_stock',
-                'variants' => [['variantId' => $default, 'label' => '', 'gross' => 19_900, 'level' => 'in_stock', 'purchasable' => true]],
+                'variants' => [['variantId' => $default, 'label' => '', 'gross' => 19_900, 'regularGross' => 19_900, 'promotion' => null, 'level' => 'in_stock', 'purchasable' => true]],
             ],
         ]], $body);
         self::assertNotSame($dumbbells, $default);
         $this->assertKeysMatchSchema($body, 'ProductOfferListResponse');
         $this->assertKeysMatchSchema($body['items'][0], 'ProductOfferResponse');
         $this->assertKeysMatchSchema($body['items'][0]['variants'][0], 'VariantOfferResponse');
+    }
+
+    /**
+     * Two of three variants in a promotion active now: their effective price is the promotional one, with the catalog
+     * price, the end and the Omnibus price; the "from" price is that of the cheapest purchasable variant, with its
+     * promotion.
+     */
+    public function testPromotedVariantsHaveTheirPromotionalPriceAndTheOmnibusPrice(): void
+    {
+        [$tent, [$red, $blue, $green]] = $this->product(['Kolor'], [
+            [['czerwony'], 30_000, 2300, 20],
+            [['niebieski'], 30_000, 2300, 20],
+            [['zielony'], 40_000, 2300, 20],
+        ]);
+        $now = new \DateTimeImmutable('@'.time());
+        $endsAt = $now->modify('+5 days');
+        // Blue: 30 000 since long before the window, 28 000 for a while in it; green: no history before the start.
+        PriceHistoryRecordFactory::store($this->entityManager, ['variantId' => $blue, 'changedAt' => $now->modify('-40 days'), 'grossAmount' => 30_000]);
+        PriceHistoryRecordFactory::store($this->entityManager, ['variantId' => $blue, 'changedAt' => $now->modify('-10 days'), 'grossAmount' => 28_000]);
+        PriceHistoryRecordFactory::store($this->entityManager, ['variantId' => $blue, 'changedAt' => $now->modify('-5 days'), 'grossAmount' => 30_000]);
+        $this->promotion(20, $now->modify('-1 day'), $endsAt, [$blue, $green]);
+
+        $body = $this->get([$tent]);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertIsArray($body['items']);
+        $offer = $body['items'][0];
+        self::assertIsArray($offer);
+        $promotion = static fn (?int $lowestPriorGross): array => ['endsAt' => $endsAt->format(\DATE_ATOM), 'lowestPriorGross' => $lowestPriorGross];
+        self::assertSame([
+            'productId' => $tent,
+            'variantAxes' => ['Kolor'],
+            'fromGross' => 24_000,
+            'fromPromotion' => ['lowestPriorGross' => 28_000],
+            'hasPriceRange' => true,
+            'currency' => 'PLN',
+            'level' => 'in_stock',
+            'variants' => [
+                ['variantId' => $red, 'label' => 'czerwony', 'gross' => 30_000, 'regularGross' => 30_000, 'promotion' => null, 'level' => 'in_stock', 'purchasable' => true],
+                ['variantId' => $blue, 'label' => 'niebieski', 'gross' => 24_000, 'regularGross' => 30_000, 'promotion' => $promotion(28_000), 'level' => 'in_stock', 'purchasable' => true],
+                ['variantId' => $green, 'label' => 'zielony', 'gross' => 32_000, 'regularGross' => 40_000, 'promotion' => $promotion(null), 'level' => 'in_stock', 'purchasable' => true],
+            ],
+        ], $offer);
+        $this->assertKeysMatchSchema($offer['fromPromotion'], 'FromPromotionResponse');
+        $this->assertKeysMatchSchema($offer['variants'][1]['promotion'], 'VariantOfferPromotionResponse');
     }
 
     public function testTheNumberOfUnitsIsNeverReturned(): void
@@ -135,11 +181,11 @@ final class ProductOffersEndpointTest extends WebTestCase
         self::assertIsArray($body['items']);
         self::assertSame([$kayak, $unknown, $priced], array_column($body['items'], 'productId'));
         self::assertSame(
-            ['productId' => $kayak, 'variantAxes' => ['Kolor'], 'fromGross' => null, 'hasPriceRange' => false, 'currency' => 'PLN', 'level' => 'out_of_stock', 'variants' => [['variantId' => $green, 'label' => 'zielony', 'gross' => 150_000, 'level' => 'out_of_stock', 'purchasable' => false]]],
+            ['productId' => $kayak, 'variantAxes' => ['Kolor'], 'fromGross' => null, 'fromPromotion' => null, 'hasPriceRange' => false, 'currency' => 'PLN', 'level' => 'out_of_stock', 'variants' => [['variantId' => $green, 'label' => 'zielony', 'gross' => 150_000, 'regularGross' => 150_000, 'promotion' => null, 'level' => 'out_of_stock', 'purchasable' => false]]],
             $body['items'][0],
         );
         self::assertSame(
-            ['productId' => $unknown, 'variantAxes' => [], 'fromGross' => null, 'hasPriceRange' => false, 'currency' => 'PLN', 'level' => 'out_of_stock', 'variants' => []],
+            ['productId' => $unknown, 'variantAxes' => [], 'fromGross' => null, 'fromPromotion' => null, 'hasPriceRange' => false, 'currency' => 'PLN', 'level' => 'out_of_stock', 'variants' => []],
             $body['items'][1],
         );
     }
@@ -152,7 +198,7 @@ final class ProductOffersEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame(
-            [['productId' => $draft, 'variantAxes' => [], 'fromGross' => null, 'hasPriceRange' => false, 'currency' => 'PLN', 'level' => 'out_of_stock', 'variants' => []]],
+            [['productId' => $draft, 'variantAxes' => [], 'fromGross' => null, 'fromPromotion' => null, 'hasPriceRange' => false, 'currency' => 'PLN', 'level' => 'out_of_stock', 'variants' => []]],
             $body['items'],
         );
     }
@@ -249,6 +295,22 @@ final class ProductOffersEndpointTest extends WebTestCase
         }
 
         return [$product->id()->toString(), array_column($definitions, 'id')];
+    }
+
+    /**
+     * @param list<string> $variantIds
+     */
+    private function promotion(int $percentOff, \DateTimeImmutable $startsAt, \DateTimeImmutable $endsAt, array $variantIds): void
+    {
+        $connection = $this->entityManager->getConnection();
+        $id = (string) Uuid::v7();
+        $connection->executeStatement(
+            'INSERT INTO pricing_promotion (id, name, percent_off, starts_at, ends_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, NOW(), NOW(), 1)',
+            [$id, 'Promocja', $percentOff, $startsAt->format(\DATE_ATOM), $endsAt->format(\DATE_ATOM)],
+        );
+        foreach ($variantIds as $variantId) {
+            $connection->executeStatement('INSERT INTO pricing_promotion_variant (promotion_id, variant_id) VALUES (?, ?)', [$id, $variantId]);
+        }
     }
 
     /**

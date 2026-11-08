@@ -56,6 +56,26 @@ final class GuestOrderEndpointTest extends WebTestCase
         self::assertSame('open', $this->connection->fetchOne('SELECT status FROM cart_cart WHERE id = ?', [$cart]));
     }
 
+    /**
+     * The order copies the effective price of Pricing: in an active promotion the promotional gross with its net and
+     * VAT at the rate of the catalog price, without code of Ordering for it.
+     */
+    public function testAVariantInAPromotionIsOrderedAtItsPromotionalPrice(): void
+    {
+        $promoted = $this->variant(12_300, 10, 'Buty Asfalt');
+        $map = $this->variant(1_230, 5, 'Mapa');
+        $this->promote(20, [$promoted]);
+        $cart = CartFixture::cart($this->connection, lines: [[$promoted, 2], [$map, 1]]);
+
+        // 12 300 − floor(12 300 × 20 / 100) = 9 840: net 8 000 and VAT 1 840 at 23%.
+        $order = $this->place(self::PATH, $this->body($cart, 2 * 9_840 + 1_230));
+
+        self::assertResponseStatusCodeSame(201);
+        self::assertIsArray($order['lines']);
+        self::assertSame([[9_840, 19_680], [1_230, 1_230]], array_map(static fn (mixed $line): array => \is_array($line) ? [$line['unitGross'], $line['lineGross']] : [], $order['lines']));
+        self::assertSame(['net' => 17_000, 'vat' => 3_910, 'gross' => 20_910, 'currency' => 'PLN'], $order['totals']);
+    }
+
     public function testARepeatAnswers200WithTheSameOrderAndNoSecondReservation(): void
     {
         $shoes = $this->variant(12_300, 10);

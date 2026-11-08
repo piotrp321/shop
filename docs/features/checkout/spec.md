@@ -27,7 +27,7 @@ Poza zakresem:
 - płatność, statusy `paid` i `cancelled`, anulowanie nieopłaconych zamówień ze zwolnieniem rezerwacji (PAYMENT #91,
   `docs/features/payment/spec.md`);
 - statusy po opłaceniu, anulowanie z panelu, zamówienia w panelu, historia zamówień klienta (ORDER-MANAGEMENT #92);
-- kody rabatowe i promocje (PROMOTIONS #96);
+- kody rabatowe (DISCOUNT-CODES #225);
 - metody i koszty dostawy (decyzja P3, #120), adresy zapisane na koncie klienta (decyzja P5, #117), faktury i dane
   firmy, kraje inne niż Polska;
 - rate limiting składania zamówień (decyzja T2, #116);
@@ -62,7 +62,7 @@ Decyzje użytkownika:
 |---|---|
 | Ordering (nowy) | złożenie zamówienia, agregat `Order`, idempotencja, numer, e-mail z potwierdzeniem |
 | Cart | blokada i odczyt linii koszyka do zamówienia, opróżnienie koszyka po złożeniu |
-| Pricing | `GetCurrentPrices(variantIds)`: autorytatywna cena (netto, VAT, brutto, stawka, klasa) |
+| Pricing | `GetCurrentPrices(variantIds)`: autorytatywna cena skuteczna (netto, VAT, brutto, stawka, klasa; w aktywnej promocji cena promocyjna) |
 | Catalog | `GetVariantSummaries(variantIds)`: nazwa produktu, etykieta wariantu, `productId` |
 | Inventory | `ReserveStock(reservationKey, lines)`: rezerwacja „wszystko albo nic” |
 | Customer | `AuthenticatedCustomer` (`id`, `email`, `name` z tokena realmu `shop`) |
@@ -105,7 +105,9 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 - `ShippingAddress {street, postalCode, city, country}`: `street` 1–100, `city` 1–60 znaków po przycięciu, oba bez znaków sterujących,
   `postalCode` `NN-NNN`, `country` zawsze `PL`.
 - `Money`: nieujemne grosze (`int`) i `Currency` (tylko `PLN`).
-- `PriceCopy {net, vat, gross, vatRateBp, taxClass}`: cena jednostkowa skopiowana z Pricing; `net + vat = gross`.
+- `PriceCopy {net, vat, gross, vatRateBp, taxClass}`: cena jednostkowa skopiowana z Pricing; `net + vat = gross`. To
+  cena skuteczna z chwili złożenia: w aktywnej promocji cena promocyjna (netto i VAT ze stawki ceny katalogowej,
+  `docs/features/pricing/spec.md`, „Cena skuteczna i cena Omnibus”); pozycja nie kopiuje danych promocji.
 - `OrderLine {variantId, productId, productName, variantLabel, quantity, unitPrice: PriceCopy}`; `quantity` 1–99;
   wartości linii: `lineNet = unit.net × quantity`, `lineVat = unit.vat × quantity`, `lineGross = unit.gross × quantity`.
 - `OrderTotals {net, vat, gross}`: sumy wartości linii; `net + vat = gross` co do grosza (suma linii, w których to
@@ -177,7 +179,8 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
    Koszyk jest częścią odcisku, więc dwa koszyki gości z tym samym kluczem i tymi samymi danymi dostają 409, a nie
    cudze zamówienie.
 3. Brak linii: `CartEmpty` (409).
-4. **Kopie danych.** Porty `OrderPrices::current(variantIds)` (Pricing `GetCurrentPrices`, tylko ceny aktualne w PLN)
+4. **Kopie danych.** Porty `OrderPrices::current(variantIds)` (Pricing `GetCurrentPrices` bez ceny Omnibus, ceny
+   skuteczne, tylko aktualne w PLN)
    i `OrderCatalog::variants(variantIds)` (Catalog `GetVariantSummaries`), po jednym wywołaniu. Wariant bez aktualnej
    ceny albo nieznany Catalogowi: `CartNotOrderable` (409, decyzja P1).
 5. **Kwota.** Linie i sumy w domenie (`OrderLine`, `OrderTotals`). `totals.gross ≠ expectedTotalGross`:
@@ -545,6 +548,9 @@ Oba endpointy: 201, 200 (powtórzenie), 400 (brak klucza, zły klucz, zły JSON)
 `backoffice`; niepoprawny token na `/orders`), 404 (koszyk gościa nieznany, wygasły, scalony, koszyk klienta), 409
 (każda przyczyna), 415, 422 (każdy wiersz tabeli komunikatów, dokładna lista `violations`), `Cache-Control:
 private, no-store`.
+
+- Wariant w aktywnej promocji: pozycja i sumy zamówienia gościa mają cenę promocyjną (netto i VAT ze stawki ceny
+  katalogowej), bez kodu Ordering dla promocji.
 
 - Ceny: treść z dodatkowymi polami (`lines` z innymi ilościami, `totals`, `unitGross`, `price`) daje zamówienie
   z ilościami z koszyka i cenami z Pricing; `expectedTotalGross` niższe (także 0) i wyższe od sumy daje 409
