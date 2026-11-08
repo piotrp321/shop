@@ -17,16 +17,22 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - dane demo ładuje `make seed` z głównego `Makefile`, czyli `bin/seed-demo` (skrypt `sh`, `set -eu`; konsolę woła względem
   własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog), potem
   `pricing:seed-demo`, który w jednej transakcji czyści ceny z historią, promocje (`pricing_promotion`,
-  `pricing_promotion_variant`) i ich kolejkę (`DELETE FROM messenger_messages WHERE queue_name = 'promotions'`;
+  `pricing_promotion_variant`), kody rabatowe z użyciami (`pricing_discount_code`, `pricing_discount_code_usage`) i kolejkę promocji (`DELETE FROM messenger_messages WHERE queue_name = 'promotions'`;
   pozostałe kolejki zostają), potem ustawia cenę (źródło `seed`) każdemu wariantowi demo według
   wzorców kluczy wariantów z `fixtures/prices.yaml` (klucz z Catalog `ListVariantIdentities`:
   `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
-  pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych), a na końcu planuje
+  pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych), potem planuje
   promocje z `fixtures/promotions.yaml` (lista: `name`, `percentOff`, `days`, `variants` = wzorce kluczy w tej samej
   składni) komendą `PlanPromotion` bez aktora i ze źródłem `seed`, od chwili seeda na `days` dni (planuje tylko
   granicę końca na kolejce `promotions`, bez wiadomości startu: `make seed` kończy się reindeksacją i czyszczeniem
   cache sklepu; port `PromotionBoundaries` dostaje jawny `announceStart`); wariant należy do pierwszej promocji, która go dopasuje, żeby okresy się nie nakładały; plik promocji jest
   sprawdzany przed resetem, więc promocja bez wariantu (albo z ponad 1000) kończy seed błędem bez zmian w danych.
+  Na końcu tworzy kody rabatowe z `fixtures/discount-codes.yaml` (lista: `code`, jedno z `percentOff` i `amountOff`,
+  `minimumOrder`, `startsInDays` i opcjonalne `endsInDays` jako dni od chwili seeda, ujemne w przeszłości) komendą
+  `CreateDiscountCode` bez aktora, włączone i bez limitu użyć: `WITAJ10` (10%), `MINUS50` (50 zł od 300 zł) i wygasły
+  `LATO15` (15%, okres od 60 do 30 dni przed seedem). Plik kodów jest sprawdzany przed resetem tymi samymi value objectami
+  i agregatem co zapis kodu w panelu (zły format kodu, kod kwotowy bez minimum, koniec przed początkiem, powtórzony kod),
+  więc błąd kończy seed bez zmian w danych; testy E2E nie używają kodów demo, tworzą własne przez API panelu.
   Promocje demo omijają produkty E2E i kategorię Bieganie > Buty biegowe (pilnuje tego `RealDemoPromotionsTest`, lista
   wykluczeń w teście, razem z produktem `promotions.spec.ts`); potem
   `payment-simulator:seed-demo`, który w jednej transakcji opróżnia (`TRUNCATE`) tabelę transakcji symulatora płatności

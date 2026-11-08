@@ -16,7 +16,7 @@ final readonly class DbalPricingReset implements PricingReset
     public function reset(): void
     {
         $this->connection->transactional(static function (Connection $connection): void {
-            $connection->executeStatement('TRUNCATE pricing_price_history, pricing_variant_price, pricing_promotion_variant, pricing_promotion');
+            $connection->executeStatement('TRUNCATE pricing_price_history, pricing_variant_price, pricing_promotion_variant, pricing_promotion, pricing_discount_code_usage, pricing_discount_code');
             // Only the queue of the promotion boundaries: outbox, scheduled, events and failed belong to the other seeds.
             $connection->executeStatement("DELETE FROM messenger_messages WHERE queue_name = 'promotions'");
         });

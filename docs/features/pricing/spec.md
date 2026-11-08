@@ -298,7 +298,7 @@ Reguły i decyzje: `docs/features/discount-codes/spec.md` („Wycena koszyka i r
   w repozytorium, `reconstitute()` bez wpisów. Optimistic locking przez `#[Version]` na cenie.
 - Cena i jej nowe wpisy historii zapisują się w jednej transakcji. Nie ma zmiany ceny bez wpisu ani wpisu bez zmiany.
 - Kod tylko dopisuje historię: repozytorium nie ma operacji zmiany ani usuwania wpisów. Tabele Pricing czyści tylko
-  reset danych demo: `pricing:seed-demo` (`DbalPricingReset`, które czyści też promocje i kolejkę `promotions`), który
+  reset danych demo: `pricing:seed-demo` (`DbalPricingReset`, które czyści też promocje i kolejkę `promotions` oraz kody rabatowe z użyciami), który
   `make seed` uruchamia po seedzie katalogu.
 
 ## Warstwa aplikacji
@@ -345,6 +345,9 @@ Pricing:
   bez wiadomości startu); wariant należy do
   pierwszej promocji, która go dopasuje. Plik promocji jest sprawdzany przed resetem: promocja bez wariantu kończy
   seed błędem bez zmian w danych.
+  Na końcu tworzy kody rabatowe z `fixtures/discount-codes.yaml` (`WITAJ10`, `MINUS50`, wygasły `LATO15`; czasy względne
+  od chwili seeda) komendą `CreateDiscountCode` bez aktora; plik jest sprawdzany przed resetem tak jak zapis kodu
+  w panelu (opis w `docs/features/discount-codes/spec.md`, „Dane demo”).
 
 Catalog (zapytania o warianty opisuje `docs/features/variants/spec.md`):
 - `GetVariant(variantId)` → `{variantId, productId, taxClass}` albo `null`.

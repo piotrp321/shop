@@ -1,0 +1,25 @@
+# Demo discount codes created by `pricing:seed-demo` (`make seed`) after the prices and the promotions: a list in the
+# order of this file. Each code has a text (3 to 32 characters of A-Z, 0-9 and the dash; the case does not matter), exactly
+# one of `percentOff` (1 to 90) and `amountOff` (grosze, 100 to 1000000), and a period relative to the moment of the seed:
+# `startsInDays` (required) and `endsInDays` (optional, no end without it), days from the seed, negative in the past.
+# An amount code needs `minimumOrder` (grosze) greater than its amount; a percent code may have one. The codes have no
+# usage limit. A code the domain would refuse (or a repeated one) stops the seed with an error and nothing is changed.
+#
+# E2E tests create their own codes through the panel API (e2e/support/discount-codes.ts), they never use these.
+
+# 10% off any order, valid from the seed, no end.
+- code: "WITAJ10"
+  percentOff: 10
+  startsInDays: 0
+
+# 50 zl off an order of at least 300 zl, valid from the seed, no end.
+- code: "MINUS50"
+  amountOff: 5000
+  minimumOrder: 30000
+  startsInDays: 0
+
+# 15% off, valid from 60 to 30 days before the seed: expired, the checkout refuses it.
+- code: "LATO15"
+  percentOff: 15
+  startsInDays: -60
+  endsInDays: -30
