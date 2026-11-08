@@ -22,7 +22,16 @@ Skill odmawia startu i mówi dlaczego, gdy:
   i przed `ao epic start`;
 - `ao epic start --dry-run` kończy się odmową (np. epik już zarejestrowany z innego commita planu).
 
-Skill nie sprawdza zasilania ani Remote Control i nie pyta o nie.
+Dwa sprawdzenia przed startem nie odmawiają:
+
+- **Zasilanie.** `pmset -g batt` bez `'AC Power'` (albo z błędem): skill pyta „Komputer na baterii, uruchomić epik?”
+  w rozmowie i pushem i startuje tylko po „tak”. `caffeinate -s` działa tylko na zasilaniu sieciowym.
+- **Inne epiki w toku** (proces AO z innym `$HOME/.local/state/ao-<x>` albo otwarty końcowy PR `epic/<x>` → `main`):
+  skill porównuje pliki wspólne (`.github/workflows/ci.yml`, pliki `CLAUDE.md`, `apps/api/openapi*.json`, klienci TS,
+  menu panelu) z linii `Zakres:` obu specyfikacji i z diffu `origin/main...origin/epic/<x>`. Wspólne pliki opisuje
+  jako ryzyko konfliktu w rozmowie i w raporcie odbioru, bez pytania i bez blokady.
+
+Remote Control skill nie sprawdza.
 
 ## Pliki
 
@@ -34,6 +43,13 @@ Skill nie sprawdza zasilania ani Remote Control i nie pyta o nie.
   - `watch <plik>`: czyta nowe linie pliku zdarzeń i dla każdej wypisuje jedną linię komunikatu do 200 znaków,
     np. `cart-fixes: BLOCKED CART-FIXES-2: <pierwsze pytanie>`, `cart-fixes: końcowy PR <url>`; linie bez znaczenia
     dla człowieka pomija.
+  - `human <plik> --action answer|resume|release|epic-resume [--task ID]`: dopisuje zdarzenie `human_action`
+    z bieżącym czasem. Sesja zapisuje tak każdą decyzję użytkownika przekazaną AO.
+  - `summary <plik> [--now EPOCH]`: jedna linia JSON `{"interventions", "waits", "wait_s", "open"}`. Czekanie na
+    użytkownika zaczyna `status_changed` do `BLOCKED` albo `FAILED` (klucz: zadanie) albo `epic_blocked`
+    i `queue_held` (klucz: epik), a kończy następne `human_action` z tym samym kluczem (decyzja dotycząca epiku nie
+    ma `--task`). `open` to czekania bez decyzji, mierzone do teraz. Brak albo nieczytelny plik: kod 1 i komunikat,
+    bez zer na wyjściu.
 - `.claude/skills/ao-run/next_epic.py` (Python 3.9+, bez zależności) i `test_next_epic.py`: wybór następnego epiku.
   Sam wykonuje `gh project item-list 1 --owner piotrp321` (pozycje w kolejności tablicy „Backlog sklepu”),
   `gh issue list --label epic --state open`, `git ls-remote --heads origin 'epic/*'`, `git ls-tree` i `git show`
@@ -80,19 +96,23 @@ Skill nie sprawdza zasilania ani Remote Control i nie pyta o nie.
 4. **Bloker.** Push z pytaniem. Użytkownik odpowiada w sesji (także z telefonu). Sesja wykonuje
    `ao answer <ID> --text "<odpowiedź>"` z jego słowami i, jeśli `ao run` się zakończył, uruchamia go ponownie.
    Inne zatrzymania (`FAILED`, `epic_blocked`, `queue_held`) sesja diagnozuje przez `ao status` i opisuje w pushu;
-   `ao resume`, `ao release` i `ao epic resume` wykonuje tylko na polecenie użytkownika.
+   `ao resume`, `ao release` i `ao epic resume` wykonuje tylko na polecenie użytkownika. Po każdej z tych komend
+   i po `ao answer` zapisuje decyzję przez `ao_events.py human`.
 5. **Raport odbioru.** Po `epic_done` (AO ustawia go dopiero przy zielonym CI końcowego PR) sesja czyta `ao report --epic <epik>`
    i sekcję „Lista odbioru” z ostatniego raportu `/integration` i zostawia w rozmowie raport odbioru:
    - rekomendacja: „merge” albo „najpierw sprawdź: …” (każda pozycja „Sprawdź:” z listy odbioru, znaleziska bez naprawy,
      ujawnione luki TDD);
    - zakres, zadania i PR, interwencje, czas, koszt;
-   - link do końcowego PR i lista `Closes #N` do dopisania (issue epiku i issues, które epik realizuje).
+   - czekanie na użytkownika z `ao_events.py summary` i ryzyko z innymi epikami w toku, gdy było;
+   - link do końcowego PR i linie `Closes #N`, które sesja dopisała do jego opisu (`gh pr edit`): każde issue z linii
+     `Issues:` specyfikacji na `origin/main`, tylko brakujące. Gdy się nie uda, raport podaje listę do dopisania.
    Push: „`<epik>`: końcowy PR gotowy, rekomendacja: …”. Sesja nigdy nie merguje do `main`.
 6. **Pomiar.** Po wysłaniu raportu odbioru sesja uruchamia w tle (Bash w tle) pętlę, która co 5 minut sprawdza
    `gh pr view <końcowy PR> --json state` i kończy się przy `MERGED` albo `CLOSED`; jej zakończenie budzi sesję.
-   Użytkownik może też napisać w sesji, że zmergował: po potwierdzeniu `MERGED` sesja zatrzymuje pętlę. Po merge'u sesja pyta o minuty użytkownika (spec, blokery,
-   triage, raport) i po zgodzie dopisuje komentarz do issue epiku: minuty, liczba interwencji z `ao report`, liczba
-   ręcznych poprawek. PR zamknięty bez merge'u: sesja mówi o tym i nie przechodzi do punktu 7.
+   Użytkownik może też napisać w sesji, że zmergował: po potwierdzeniu `MERGED` sesja zatrzymuje pętlę. Po merge'u
+   sesja pokazuje komentarz do issue epiku i po zgodzie go dopisuje: liczba interwencji z `ao report`, czekanie na
+   użytkownika z `ao_events.py summary` (liczba czekań, suma, czekania otwarte osobno, przy błędzie „brak danych”),
+   liczba ręcznych poprawek. Minut pracy użytkownika sesja nie pyta i nie szacuje. PR zamknięty bez merge'u: sesja mówi o tym i nie przechodzi do punktu 7.
 7. **Następny epik.** Po merge'u końcowego PR albo na prośbę użytkownika (`/ao-run` bez argumentu) sesja uruchamia
    `next_epic.py`:
    - `epic` jest: push „Zacząć epik `<ID>` (#`<nr>`)?”, a w rozmowie także pozycje `skipped` (np. epik wyżej na
@@ -101,8 +121,15 @@ Skill nie sprawdza zasilania ani Remote Control i nie pyta o nie.
    - `epic` jest `null`: push (krótszy niż 200 znaków) z powodem: pierwsza pozycja `in_progress` albo pierwsza
      `skipped` z liczbą pozostałych, np. „Brak przygotowanego epiku: VARIANTS (#89) bez spec.md i plan.md na main,
      następny krok `/prepare-epic` (+2 inne)”; pełna lista w rozmowie. Jeśli `in_progress` to epik właśnie
-     zmergowanego PR, issue epiku jest nadal otwarte (brak `Closes #N`): sesja mówi to, prosi o zamknięcie issue
+     zmergowanego PR, issue epiku jest nadal otwarte (zwykle brak jego `Closes #N`): sesja mówi to, prosi o zamknięcie issue
      i o ponowne `/ao-run`.
+
+**Konflikt końcowego PR poza AO.** Gdy końcowy PR ma konflikt z `main`, a AO go nie naprawi (epik `DONE` przed
+zmianą `main`, epik `BLOCKED`, konflikt wrócił po REPAIR), sesja opisuje stan i po „tak” użytkownika: zakłada
+worktree `sync/<epik>-main` z `origin/epic/<epik>` i stos (`.ao/setup`), wykonuje `git merge origin/main` według zasad
+`/delivery` (pliki generowane od nowa, reszta semantycznie z obu stron, kontrola diffu i dokumentów), uruchamia
+`make check` i testy aplikacji z konfliktami, otwiera PR do `epic/<epik>` i po zielonym CI merguje go
+`gh pr merge --merge` (nigdy squash, `--admin` ani `--auto`). Końcowy PR zostaje ten sam; zastępczego nie ma.
 
 Pomiar epiku (każdy przebieg, także poza nocą): zaraz po udanym `ao epic start` sesja wykonuje
 `night_queue.py start <epik>`, a na `epic_done` `night_queue.py done <epik>`. Oba dostają na stdin stan limitów
@@ -190,7 +217,8 @@ gdy końcowy PR każdego epiku nocy jest zamknięty albo zmergowany.
 ### Ograniczenia
 
 - Zakres to deklaracja z `/prepare-epic`. Gdy epik zmieni plik spoza niej, rano końcowy PR drugiego epiku może mieć
-  konflikt po merge'u pierwszego. Rozwiązanie to poprawka przez PR do `epic/<epik>` (punkt 5 procesu).
+  konflikt po merge'u pierwszego. Naprawia go zadanie REPAIR w AO, a gdy AO tego nie zrobi, PR `sync/<epik>-main`
+  (wyżej, „Konflikt końcowego PR poza AO”).
 - Binarka z Homebrew znika przy `brew upgrade` (katalog starej wersji w `Caskroom`). Gdy zniknie w trakcie epiku,
   AO nie uruchomi kolejnego wykonawcy; trwalsza jest kopia z instalatora natywnego (`claude install <wersja>`).
 - CI końcowego PR drugiego epiku przeszło na `main` bez pierwszego. Rozłączny zakres zmniejsza, ale nie wyklucza
@@ -198,7 +226,8 @@ gdy końcowy PR każdego epiku nocy jest zamknięty albo zmergowany.
 
 ## Czego skill nie robi
 
-Nie zmienia kodu ani konfiguracji AO, nie merguje do `main`, nie odpowiada na blokery sam, nie uruchamia kilku epików
+Nie zmienia kodu ani konfiguracji AO, nie merguje do `main` (jedyny merge to PR `sync/<epik>-main` do `epic/<epik>`
+merge commitem, po zgodzie użytkownika), nie odpowiada na blokery sam, nie uruchamia kilku epików
 naraz (epiki nocy idą jeden po drugim), nie zaczyna epiku bez „tak” użytkownika (na pytanie „Zacząć epik?” albo na
 listę nocy), nie przygotowuje epiku (`/prepare-epic`) i nie zmienia tablicy.
 
@@ -206,7 +235,9 @@ listę nocy), nie przygotowuje epiku (`/prepare-epic`) i nie zmienia tablicy.
 
 `python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'`: `record` (poprawne zdarzenie, pusty
 i niepoprawny JSON, brak katalogu), `watch` (każdy typ zdarzenia z README AO, limit 200 znaków, pomijanie zdarzeń bez
-znaczenia, linie dopisane w trakcie); `claude_pin.py` z checkoutem AO w repo tymczasowym i podstawionymi binarkami
+znaczenia, linie dopisane w trakcie), `human` (zadanie i epik, nieznana akcja, katalog bez zapisu → kod 1),
+`summary` (pary na zadanie, `FAILED` i `resume`, epik i kolejka, powtórzony bloker, czekanie otwarte, decyzja bez
+czekania, decyzja przed blokerem, zdarzenia bez znaczenia i zły czas, linie nie-JSON, brak pliku i katalog → kod 1); `claude_pin.py` z checkoutem AO w repo tymczasowym i podstawionymi binarkami
 (wersja z `origin/main`, nie z drzewa roboczego; drugi kandydat, gdy pierwszego brak albo zgłasza inną wersję; brak
 pliku i katalogu, plik niewykonywalny, inna wersja, błąd i przekroczony czas `--version` → kod 2 z komendą
 instalacji; brak `origin/main`, brak checkoutu, brak pola, nieczytelny plik, wartość, która nie jest wersją → kod 1;
@@ -227,7 +258,7 @@ odnawiane przed końcem; `close`: ustawienie końca nocy, drugie wywołanie bez 
 
 `docs/features/agentic-software-house/plan.md`: krok 5 wskazuje `/ao-run`, kolejka epików jest w punkcie 7
 przebiegu, status kroku 5 i rola „Kolejka epików” bez „do zrobienia”, sprawdzenie w kroku 7. Odbiór (punkt 5 procesu) to przeczytanie
-raportu odbioru i merge; trzy liczby obejmują minuty na spec, blokery, triage i raport. Krok 9 rusza po kroku 7, bo
+raportu odbioru i merge; trzy liczby to interwencje, czekanie na decyzje użytkownika i ręczne poprawki. Krok 9 rusza po kroku 7, bo
 lista odbioru ma najpierw zadziałać na prawdziwym epiku.
 
 Krok 8 (w tym samym PR co `night_queue.py`): status kroku 8; punkt 2 procesu przygotowuje epiki do przodu, aż

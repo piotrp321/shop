@@ -33,6 +33,31 @@ w repo i bez uruchamiania AO):
 Odmowa dla epiku z listy nocy to koniec nocy: zapisz go przez `night_queue.py close --reason "<powód>"` przed pushem
 (sekcja „Noc”, „Koniec nocy”).
 
+Po warunkach startu, przed krokiem 2, dwa sprawdzenia, które nie odmawiają startu:
+
+- **Zasilanie.** `pmset -g batt`: pierwsza linia `Now drawing from 'AC Power'` oznacza zasilanie sieciowe. Inna
+  (`'Battery Power'`) albo błąd komendy: zapytaj „Komputer na baterii (<procent>), uruchomić epik `<epik>`?” (przy
+  błędzie „stan zasilania nieznany”) i wyślij to samo pytanie pushem. Start tylko po „tak” użytkownika w sesji; inna
+  odpowiedź albo brak odpowiedzi: nic nie uruchamiaj. `caffeinate -s` działa tylko na zasilaniu sieciowym, a rozładowana
+  bateria usypia host w trakcie przebiegu. Epik z listy nocy też czeka na tę odpowiedź; noc nie kończy się przez samo pytanie.
+- **Inne epiki w toku.** Epik w toku to `<x>` różny od `<epik>`, dla którego działa proces AO z
+  `--home "$HOME/.local/state/ao-<x>"` albo jest otwarty końcowy PR `epic/<x>` → `main`:
+
+  ```bash
+  ps -axo command= | grep -o "[o]rchestrator --home $HOME/.local/state/ao-[^ ]*" | sed 's|.*/ao-||' | sort -u
+  cd "$SHOP" && gh pr list --base main --state open --json number,headRefName -q '.[] | select(.headRefName | startswith("epic/"))'
+  ```
+
+  Dla każdego takiego epiku sprawdź, które pliki wspólne zmieniają oba epiki. Pliki wspólne: `.github/workflows/ci.yml`, pliki `CLAUDE.md`,
+  `apps/api/openapi.json`, `apps/api/openapi-admin.json`, klienci TS (`apps/store/src/api/schema.d.ts`,
+  `apps/admin/src/api/schema.d.ts`) i menu panelu (`apps/admin/src/layout/AppMenu.vue`, `apps/admin/src/router/index.ts`).
+  Pliki epiku to ścieżki z linii `Zakres:` jego `docs/features/<epik>/spec.md` na `origin/main` (ścieżka katalogu
+  obejmuje pliki w nim), a dla epiku w toku dodatkowo
+  `git diff --name-only origin/main...origin/epic/<x>` (po `git fetch origin epic/<x>`). Wspólny plik z tej listy to
+  ryzyko konfliktu końcowego PR epiku, który zmerguje się później. Opisz je w rozmowie przed startem (epik, pliki,
+  skutek: naprawa przez AO albo procedura z sekcji 6a) i powtórz w raporcie odbioru. Bez wspólnych plików napisz
+  „brak wspólnych plików z <x>”, bez epiku w toku nic nie pisz. Ryzyko nie blokuje startu i nie wymaga pytania.
+
 ## 2. Przygotowanie
 
 **Blok startowy.** Bash nie zachowuje stanu między wywołaniami, a Monitor działa w świeżej powłoce. Dlatego wklej
@@ -128,6 +153,15 @@ Zapamiętaj identyfikator zadania tła: jego zakończenie budzi sesję. Gdy zada
   Nie odpowiadaj sam, nie parafrazuj, nie uzupełniaj. Jeśli `run` się zakończył, uruchom go ponownie (krok 4), uzbrój Monitor, jeśli wygasł, i zrób `ao status` (krok 3).
 - **Inne zatrzymania** (`FAILED`, `epic_blocked`, `queue_held`): zdiagnozuj przez `ao status --epic <epik>`, opisz
   przyczynę w pushu. `ao resume`, `ao release` i `ao epic resume` wykonuj wyłącznie na wyraźne polecenie użytkownika.
+- **Zapis decyzji.** Zaraz po udanym `ao answer <ID>`, `ao resume <ID>`, `ao release` albo `ao epic resume <epik>`
+  zapisz decyzję w `events.jsonl` (to koniec czekania na użytkownika w pomiarze, sekcja 7):
+
+  ```bash
+  python3 "$SKILL_ROOT/.claude/skills/ao-run/ao_events.py" human "$AO_HOME/events.jsonl" --action answer --task <ID>
+  ```
+
+  `--action` to `answer`, `resume`, `release` albo `epic-resume`; `--task <ID>` tylko przy `answer` i `resume`. Kod
+  wyjścia różny od 0: powiedz o tym użytkownikowi (pomiar czasu oczekiwania będzie zawyżony) i prowadź epik dalej.
 
 ## 6. Raport odbioru
 
@@ -146,13 +180,42 @@ USAGE
 ```
 
 Wyjście to pomiar (zadania, minuty, przyrost okien limitu). Kod wyjścia różny od 0: przekaż komunikat ze stderr
-i prowadź epik dalej; epik z listy nocy kończy wtedy noc po sobie (`close`, sekcja „Noc”). Zostaw w rozmowie raport odbioru:
+i prowadź epik dalej; epik z listy nocy kończy wtedy noc po sobie (`close`, sekcja „Noc”).
+
+Dopisz do opisu końcowego PR linie `Closes #N` dla każdego issue z linii `Issues:` specyfikacji epiku na `origin/main`
+(issue epiku i issues, które epik realizuje; inne numery ze specyfikacji, np. zależności, się nie liczą). Komenda
+dopisuje tylko brakujące linie, więc jej powtórzenie niczego nie dubluje:
+
+```bash
+cd "$SHOP" && git fetch origin main &&
+issues="$(git show origin/main:docs/features/<epik>/spec.md | sed -n 's/^Issues: //p' | head -n 1 | grep -o '#[0-9][0-9]*')" &&
+[ -n "$issues" ] && body="$(gh pr view <nr> --json body -q .body)" &&
+missing="$(for i in $issues; do printf '%s\n' "$body" | grep -qx "Closes $i" || echo "Closes $i"; done)" &&
+{ [ -z "$missing" ] || gh pr edit <nr> --body "$(printf '%s\n\n%s\n' "$body" "$missing")"; } &&
+gh pr view <nr> --json body -q .body | grep -x 'Closes #[0-9]*'
+```
+
+Ostatnia linia pokazuje linie `Closes` w opisie PR po zmianie. Kod wyjścia różny od 0 (brak linii `Issues:`, błąd
+`gh`): podaj w raporcie listę `Closes #N` do dopisania ręcznie i przyczynę.
+
+Pomiar czekania na użytkownika (sekcja 7) czyta `events.jsonl`:
+
+```bash
+python3 "$SKILL_ROOT/.claude/skills/ao-run/ao_events.py" summary "$AO_HOME/events.jsonl"
+```
+
+Wyjście: `interventions` (zapisane decyzje), `waits` (blokery i zatrzymania czekające na użytkownika), `wait_s` (suma
+zakończonych czekań w sekundach) i `open` (czekania bez zapisanej decyzji, mierzone do teraz). Kod wyjścia różny od 0:
+pomiar „brak danych”, nie zero.
+
+Zostaw w rozmowie raport odbioru:
 
 - **Rekomendacja:** „merge” albo „najpierw sprawdź: …”, gdzie lista to każda pozycja „Sprawdź:” z listy odbioru,
   znaleziska bez naprawy i ujawnione luki TDD.
 - **Zakres, zadania i PR, interwencje, czas i koszt** z `ao report --epic <epik>`.
-- **Link do końcowego PR i lista `Closes #N`** do dopisania przez użytkownika: issue epiku i issues wymienione w spec
-  epiku (`docs/features/<epik>/spec.md`).
+- **Czekanie na użytkownika:** liczba czekań, ich suma i czekania otwarte z `summary`.
+- **Ryzyko z innymi epikami** (sekcja 1, „Inne epiki w toku”), gdy było.
+- **Link do końcowego PR i dopisane linie `Closes #N`** (albo lista do dopisania ręcznie, gdy komenda się nie udała).
 
 Gdy epik kończy się jako `BLOCKED` (np. `max_repairs`, `epic_timeout`) albo AO zatrzymał się bez `DONE`, nie buduj raportu
 odbioru ani pomiaru (`done`): opisz ten stan i powiedz, co użytkownik musi rozstrzygnąć. Epik z listy nocy kończy
@@ -176,12 +239,56 @@ Epik z listy nocy, gdy noc trwa (nie było „Koniec nocy”): po uruchomieniu p
 w sekcji „Noc”, bez czekania na merge. `next` sam odmawia po `close`, więc spóźniony powrót do tej sekcji nie
 uruchomi kolejnego epiku.
 
+## 6a. Konflikt końcowego PR, którego AO nie usunie
+
+Dotyczy końcowego PR w konflikcie z `main` (`gh pr view <nr> --json mergeable -q .mergeable` daje `CONFLICTING`), gdy AO
+go nie naprawi: epik jest `DONE`, a `main` zmienił się po nim; epik jest `BLOCKED` (np. `max_repairs`); konflikt wrócił
+po zmergowanym REPAIR. Opisz stan pushem i w rozmowie, a procedurę wykonaj tylko po „tak” użytkownika w sesji. To „tak”
+obejmuje merge PR synchronizacji do `epic/<epik>` po zielonym CI. Nie zakładaj zastępczego końcowego PR i nie zamykaj
+istniejącego: końcowy PR zostaje ten sam, razem z liniami `Closes`.
+
+1. Worktree z gałęzi epiku i stos (porty: 7 wolnych od `AO_PORT_BASE`, poza portami działających stosów):
+
+   ```bash
+   cd "$SHOP" && git fetch origin main epic/<epik> &&
+   git worktree add -b sync/<epik>-main "$SHOP/../shop-sync-<epik>" origin/epic/<epik> &&
+   cd "$SHOP/../shop-sync-<epik>" && AO_COMPOSE_PROJECT=sync-<epik> AO_PORT_BASE=<port> .ao/setup
+   ```
+
+2. `git merge origin/main` i rozwiązanie konfliktów według sekcji „Konflikt z gałęzią docelową lub z `main`” skilla
+   `/delivery` (`.claude/skills/delivery/SKILL.md`): pliki generowane od nowa, reszta semantycznie z obu stron, kontrola
+   `git diff origin/main...HEAD` i dokumentów z liczbami. Nigdy squash ani rebase. Konflikt, którego nie da się
+   rozstrzygnąć bez decyzji o zachowaniu: zatrzymaj się i zapytaj użytkownika.
+3. `make check` i testy aplikacji, których dotyczyły konflikty (`make -C apps/<app> test`). Czerwone: napraw w tym
+   samym merge'u albo zapytaj użytkownika.
+4. Push i PR do gałęzi epiku:
+
+   ```bash
+   git push -u origin sync/<epik>-main &&
+   gh pr create --base epic/<epik> --head sync/<epik>-main --title "chore(<epik>): merge main into epic/<epik>" --body-file <plik>
+   ```
+
+   Opis PR: pliki w konflikcie, sposób rozwiązania każdego, wynik kontroli i testów.
+5. CI: `gh pr checks <nr sync> --watch --required`. Zielone: `gh pr merge <nr sync> --merge --delete-branch
+   --match-head-commit <sha>`, nigdy `--squash`, `--admin` ani `--auto`. Merge commit wprowadza `main` do historii
+   `epic/<epik>`, więc rozwiązany konflikt nie wraca. Czerwone: napraw na tej samej gałęzi (krok 3) albo zgłoś
+   użytkownikowi.
+6. Sprawdź końcowy PR: `gh pr view <nr> --json mergeable,headRefOid` (`MERGEABLE`, HEAD to merge commit) i jego CI.
+   Epik `BLOCKED` w AO wznawia wyłącznie użytkownik (`ao epic resume`, sekcja 5). Na koniec
+   `.ao/teardown` z tymi samymi zmiennymi i `git worktree remove`.
+
+Push: „`<epik>`: końcowy PR bez konfliktu po PR #<nr sync>, CI: …”. PR synchronizacji to ręczna poprawka w pomiarze
+(sekcja 7).
+
 ## 7. Pomiar po merge'u
 
 Stan końcowego PR to `MERGED` albo `CLOSED` (wynik pętli z sekcji 6 albo `gh pr view`). Przy `CLOSED` powiedz o tym
-użytkownikowi, bez komentarza z pomiarem, i nie przechodź do sekcji 8 (epik z listy nocy: reguła niżej). Przy `MERGED` zapytaj o jego minuty (spec, blokery, triage, raport). Po jego zgodzie dopisz komentarz do
-issue epiku (`cd "$SHOP" && gh issue comment <nr>`): minuty, liczba interwencji z `ao report` i liczba ręcznych poprawek. Bez zgody
-niczego nie komentuj. Potem sekcja 8.
+użytkownikowi, bez komentarza z pomiarem, i nie przechodź do sekcji 8 (epik z listy nocy: reguła niżej). Przy `MERGED`
+uruchom ponownie `ao_events.py summary` (sekcja 6) i pokaż użytkownikowi treść komentarza: liczba interwencji
+(`Interwencje człowieka` z `ao report`), czekanie na użytkownika z `summary` (liczba czekań i suma `wait_s` w minutach,
+czekania `open` osobno, a przy błędzie „brak danych”) i liczba ręcznych poprawek (np. PR `sync/<epik>-main`). Nie pytaj
+o minuty pracy użytkownika i nie podawaj szacunku. Po jego zgodzie dopisz komentarz do issue epiku
+(`cd "$SHOP" && gh issue comment <nr>`). Bez zgody niczego nie komentuj. Potem sekcja 8.
 
 Epik z listy nocy: po `MERGED` albo `CLOSED` (z regułami wyżej) przejdź do sekcji 8 dopiero wtedy, gdy końcowy PR
 każdego epiku uruchomionego tej nocy jest `MERGED` albo `CLOSED`, bez względu na to, który zamknął się ostatni. `CLOSED`
@@ -208,8 +315,8 @@ Wyjście to jedna linia JSON: `epic` (`dir`, `id`, `issue`, `title`) albo `null`
   pierwsza pozycja `skipped` i liczba pozostałych, np. „Brak przygotowanego epiku: VARIANTS (#89) bez spec.md i
   plan.md na main, następny krok /prepare-epic (+2 inne)”. Pełną listę podaj w rozmowie.
 - **Epik z `in_progress` to ten, którego końcowy PR właśnie zmergowano:** nie pisz „epik w toku”. Powiedz push i w
-  rozmowie, że issue #<nr> tego epiku jest nadal otwarte (zapewne końcowy PR nie miał `Closes #<nr>`), poproś o jego
-  zamknięcie i o ponowne `/ao-run`.
+  rozmowie, że issue #<nr> tego epiku jest nadal otwarte (sprawdź linie `Closes` w opisie zmergowanego PR: zwykle
+  brakowało `Closes #<nr>`), poproś o jego zamknięcie i o ponowne `/ao-run`.
 - **Kod wyjścia 1:** opisz błąd ze stderr użytkownikowi, nie zgaduj epiku.
 
 ## Noc
@@ -287,9 +394,11 @@ epiku uruchomionego tej nocy jest `MERGED` albo `CLOSED`, bez względu na to, kt
 ## Czego nie robisz
 
 - Nie zmieniasz kodu ani konfiguracji AO.
-- Nie mergujesz do `main`.
+- Nie mergujesz do `main`. Jedyny merge, który robisz, to PR `sync/<epik>-main` do `epic/<epik>` (sekcja 6a): po zgodzie
+  użytkownika, po zielonym CI i wyłącznie merge commitem.
 - Nie odpowiadasz na blokery sam: przekazujesz słowa użytkownika.
-- Nie uruchamiasz kilku epików naraz: epiki nocy idą jeden po drugim.
+- Nie uruchamiasz kilku epików naraz: epiki nocy idą jeden po drugim. Epik innej sesji w toku nie blokuje startu,
+  ale jego ryzyko opisujesz (sekcja 1).
 - Nie zaczynasz epiku bez „tak” użytkownika w sesji (na „Zacząć epik?” albo na listę nocy). Kolejny epik listy
   zaczynasz bez pytania tylko wtedy, gdy zwróci go `next`.
 - Nie zapisujesz listy nocy (`approve`) bez „tak” użytkownika ani z innymi epikami niż zaproponowane.
