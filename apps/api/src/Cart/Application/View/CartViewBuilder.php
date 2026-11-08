@@ -54,6 +54,7 @@ final readonly class CartViewBuilder
 
         $views = [];
         $excluded = false;
+        $quotedLines = 0;
         foreach ($lines as $index => $line) {
             $variantId = $line->variantId();
             $summary = $data->summary($variantId);
@@ -69,6 +70,7 @@ final readonly class CartViewBuilder
                 } else {
                     $price = $quoted->unitGross;
                     $lineTotal = $quoted->grossBeforeDiscount;
+                    ++$quotedLines;
                 }
             }
             $excluded = $excluded || CartLineState::Purchasable !== $state;
@@ -81,6 +83,11 @@ final readonly class CartViewBuilder
                 null === $lineTotal ? null : GrossAmount::of($lineTotal),
                 $state->value,
             );
+        }
+
+        // A quote that left out every purchasable line priced nothing: no totals and no verdict on the code.
+        if (0 === $quotedLines) {
+            $quote = null;
         }
 
         return new CartView(

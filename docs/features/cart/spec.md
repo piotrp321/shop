@@ -147,7 +147,7 @@ Stan linii, w kolejności priorytetu:
 | `state` | Warunek |
 |---|---|
 | `unavailable_product` | wariant nieznany Catalogowi (np. po resecie danych demo, linia sprzed migracji, której produktu już nie ma, wariant usunięty w panelu) albo wariant szkicu (produkt nieopublikowany albo wycofany z publikacji: `GetVariantSummaries` pomija go jak nieznany) |
-| `no_price` | brak ceny w `GetCurrentPrices` (brak ceny, nieaktualna stawka VAT albo cena w walucie innej niż PLN; promocja tego nie zmienia), także linia możliwa do kupienia według `GetCurrentPrices`, której wycena nie wyceniła (cena usunięta między odczytami) |
+| `no_price` | brak ceny w `GetCurrentPrices` (brak ceny, nieaktualna stawka VAT albo cena w walucie innej niż PLN; promocja tego nie zmienia), także linia możliwa do kupienia według `GetCurrentPrices`, której wycena nie wyceniła (cena usunięta między odczytami); gdy wycena pominie wszystkie takie linie, sumy są 0 i `discount = null` jak bez linii kupowalnych |
 | `out_of_stock` | `available = 0` (także produkt bez rekordu stanu) |
 | `insufficient_stock` | `quantity > available` |
 | `purchasable` | pozostałe |
@@ -603,7 +603,7 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 - `CartViewBuilder` (z `FakeCartQuote`): priorytet stanów, `unitPrice`, `lineTotal` (wartość przed rabatem) i sumy
   linii `purchasable` z wyceny (inne niż z `CartPrices`), wycena tylko linii `purchasable` w kolejności koszyka z kodem,
   linie wykluczone z `lineTotal = null`, bez linii `purchasable` brak wyceny, sumy 0 i `discount = null` także z kodem,
-  linia pominięta przez wycenę jako `no_price`, `itemCount` ze wszystkich linii, `hasExcludedLines`, pusty koszyk.
+  linia pominięta przez wycenę jako `no_price` (wszystkie pominięte: sumy 0 i `discount = null` także z kodem), `itemCount` ze wszystkich linii, `hasExcludedLines`, pusty koszyk.
 - `GetCart` przekazuje kod do wyceny; komendy wyceniają bez kodu.
 - Handlery: 404 dla gościa nieznanego, wygasłego i scalonego; `ProductNotFound`; `nothing_to_merge` dla nieznanego,
   wygasłego i klienckiego `guestCartId`; `GetCart` klienta bez koszyka nic nie zakłada.

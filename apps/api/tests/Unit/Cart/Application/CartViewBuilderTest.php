@@ -172,6 +172,26 @@ final class CartViewBuilderTest extends TestCase
         self::assertTrue($view->hasExcludedLines);
     }
 
+    public function testNoDiscountWhenTheQuoteLeavesOutEveryPurchasableLine(): void
+    {
+        // The prices were removed between the read of CartPrices and the quote: nothing is quoted, so nothing is rejected either.
+        $data = new ProductData(
+            [self::summary(self::A, 'Buty', null), self::summary(self::B, 'Czapka', null)],
+            [self::price(self::A, 1_000), self::price(self::B, 2_000)],
+            [self::stock(self::A, 5), self::stock(self::B, 5)],
+        );
+        $this->quote->discount(new RejectedCartDiscount('MINUS50', 'below_minimum', 'Ten kod działa przy zamówieniu od 300,00 zł.', 30_000));
+
+        $view = $this->builder()->build(null, [self::line(self::A, 1), self::line(self::B, 2)], $data, 'minus50');
+
+        self::assertSame([[[[self::A, 1], [self::B, 2]], 'minus50']], $this->quote->calls);
+        self::assertSame(['no_price', 'no_price'], array_map(static fn (CartLineView $l): string => $l->state, $view->lines));
+        self::assertSame([0, 0, 0], [$view->totals->subtotalGross, $view->totals->discountGross, $view->totals->gross]);
+        self::assertSame(3, $view->totals->itemCount);
+        self::assertTrue($view->hasExcludedLines);
+        self::assertNull($view->discount);
+    }
+
     public function testEveryStateInTheOrderOfPriorityAndOnlyPurchasableLinesInTheSum(): void
     {
         $data = new ProductData(
