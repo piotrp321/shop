@@ -20,9 +20,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (tokeny w pamięci).
 - `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`).
 - `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania.
-- `src/layout/` – menu boczne (pozycja „Zamówienia” tylko dla ról `admin`, `support` i `warehouse` z `/me`, do czasu
+- `src/layout/` – menu boczne (pozycja „Promocje” widoczna dla każdego pracownika, pozycja „Zamówienia” tylko dla ról `admin`, `support` i `warehouse` z `/me`, do czasu
   wczytania `/me` ukryta; ukrywa tylko link, dostęp egzekwuje API), topbar i `AppLayout` (uruchamia `useIdleLogout`, 15 min).
-- `src/views/` – widoki przypisane do tras (m.in. `ProductsView`, `ProductFormView`).
+- `src/views/` – widoki przypisane do tras (m.in. `ProductsView`, `ProductFormView`, `PromotionsView`, `PromotionFormView`).
 - `src/dashboard/` – komponenty i ładowanie danych dashboardu (`useDashboard`).
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
   list cen i stanów).
@@ -30,7 +30,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   stronicowanie po kursorach ze stosem kursorów w panelu; strona to produkty z API, a `rows` ma wiersz na wariant pod
   nazwą swojego produktu, z etykietą wariantu w kolumnie „Wariant”, pustą dla wariantu domyślnego; zmiana ceny
   wariantu wiersza: zapisana cena z API zastępuje wiersz, a spóźniona odpowiedź listy z niższą wersją ceny jej nie
-  nadpisuje, 409 odświeża bieżącą stronę), `format.ts` (kwoty z groszy i stawki z punktów
+  nadpisuje, 409 odświeża bieżącą stronę, a 409 po `type` `price-locked-by-promotion`, czyli wariant w aktywnej promocji,
+  zwraca `locked` z `detail` z API: `PricesView` pokazuje go przy polu ceny, bez komunikatu o zmianie w międzyczasie
+  i bez odświeżania wiersza), `format.ts` (kwoty z groszy i stawki z punktów
   bazowych przez `Intl`, bez liczenia czegokolwiek), `parseGross.ts` (tekst kwoty w złotych na grosze na cyfrach
   tekstu, bez `float`; zakres kwoty sprawdza API). Dialog „Zmień cenę” w `PricesView` widzi tylko rola `admin`
   (role z `/me`). `usePriceHistory` (dialog „Historia” w `PricesView`, dostępny dla każdego pracownika): pierwsza
@@ -126,6 +128,33 @@ Klienta API generuje `make api-client` z katalogu głównego.
   z `src/prices/format.ts`. Widok szczegółów pokazuje kontakt, adres, pozycje z sumami od API, daty statusów, termin
   płatności tylko dla `new`, historię statusów (data, zmiana, aktor, notatka) oraz sekcję „Zwrot pieniędzy” (kwota,
   termin z „Po terminie”, wykonanie: data, pracownik, notatka, i `paymentId` płatności do zwrotu).
+- `src/promotions/` – promocje (menu „Promocje”, trasy `/promotions`, `/promotions/new`, `/promotions/:id`: jedna ścieżka
+  `promotions`, więc pozycja menu zostaje aktywna na formularzu). `usePromotionList` (widok `PromotionsView`): filtr
+  statusu (Wszystkie, Zaplanowane, Aktywne, Zakończone) i stronicowanie po kursorach ze stosem kursorów w panelu, jak
+  w `useOrderList` (zmiana filtra porzuca wiersze i kursory; błąd następnej strony zostawia wyświetloną; 403 bez
+  ponowienia). Status wiersza i jego etykieta (`format.ts`) pochodzą z API. Przycisk „Dodaj promocję” i cała edycja:
+  tylko `admin` i `marketing` (`permissions.ts`, role z `/me`; API sprawdza niezależnie); pozostali pracownicy widzą
+  listę i szczegóły tylko do odczytu, a `/promotions/new` bez tej roli przekierowuje na listę (`beforeEnter`, jak
+  `/products/new`). `usePromotionForm` (widok `PromotionFormView`): ładuje promocję (`GET /promotions/{id}`) albo zaczyna
+  pusty formularz. Panel niczego nie liczy: status, wersja i ceny (katalogowa i promocyjna wariantu, `null` dla
+  zakończonej) pochodzą z odpowiedzi API, a po każdym sukcesie formularz jest budowany z odpowiedzi. Status wyznacza
+  pola: zaplanowana zmienia wszystko, aktywna tylko nazwę i koniec (`scheduleLocked`: procent, początek i warianty
+  zablokowane, a do API idą zapisane wartości), zakończona i pracownik bez roli: tylko odczyt. „Zapisz”: `POST` (potem
+  `onCreated(id)`, widok przechodzi na `/promotions/:id` tą samą instancją) albo `PUT` z `version`. „Zakończ teraz”
+  (aktywna) wysyła `PUT` z zapisanymi wartościami i `endsAt` równym czasowi przeglądarki, „Usuń” (zaplanowana) wysyła
+  `DELETE ?version=`; oba pytają o potwierdzenie i są wyłączone przy niezapisanych zmianach. Czasy są wpisywane
+  i pokazywane w `Europe/Warsaw` (pole `datetime-local`, nie `DatePicker`, bo ten liczy w strefie przeglądarki):
+  `time.ts` zamienia je z i na moment RFC 3339 przez `Intl`, bez bibliotek (godzina z przejścia na czas letni, która
+  nie istnieje, jest błędem pola, a godzina powtórzona jesienią daje pierwsze wystąpienie); czas, którego nie
+  edytowano, idzie do API tak, jak go zwróciło (sekundy się nie gubią). „Od teraz” wysyła `startsAt: null`. Procent
+  to tekst z liczbą całkowitą (zakres sprawdza API). Błędy: 422 z `violations[].propertyPath` trafia do pól
+  (`errorsAt`), 422 bez `violations`, 403, 404, 503 i sieć to komunikat bez utraty formularza; 409 po `type`:
+  `promotion-overlap` oznacza warianty z `conflictingVariantIds` („Koliduje z inną promocją”) i zostawia formularz,
+  pozostałe (wersja `about:blank` z własnym komunikatem, `promotion-not-editable` i inne z `detail`) pokazują komunikat
+  i przeładowują promocję z API. `PromotionVariantPicker.vue`: wybór wariantów przez `usePriceList` (wyszukiwanie od
+  2 znaków, stronicowanie), „Dodaj wariant” i „Dodaj cały produkt” (warianty bez ceny nie są oferowane); lista
+  wybranych z „Usuń”, wariant usunięty z katalogu ma znacznik „Wariant usunięty”. Odpowiedź żądania, które skończyło
+  się po opuszczeniu formularza, jest ignorowana.
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 
 ## Dane i API
