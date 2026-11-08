@@ -3,6 +3,8 @@
 # copy, which must fail and say why. The unbroken copy must pass (a check that always fails proves nothing).
 #
 # Usage: selftest.sh        (make -C infra/k8s selftest)
+#        SELFTEST_ONLY='<regex>' selftest.sh   only the cases whose name matches the regular expression (grep -E, case
+#                                              insensitive); the unbroken copy is then not run. For working on a case.
 set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -25,6 +27,9 @@ fresh_copy() {
   # actionlint checks the workflows.
   mkdir -p "$base/tree/.github"
   cp -R "$TOOLS_REPO/.github/workflows" "$base/tree/.github/workflows"
+  # The deployment script is shellchecked and its push is tested.
+  mkdir -p "$base/tree/.github/scripts"
+  cp "$TOOLS_REPO/.github/scripts/deploy-ref.sh" "$base/tree/.github/scripts/deploy-ref.sh"
   tree="$base/tree"
 }
 
@@ -43,6 +48,9 @@ replace() {
 run_case() {
   name="$1" expected="$2"
   shift 2
+  if [ -n "${SELFTEST_ONLY:-}" ] && ! printf '%s' "$name" | grep -Eqi "$SELFTEST_ONLY"; then
+    return 0
+  fi
   fresh_copy
   "$@"
   if output="$(sh "$tree/infra/k8s/scripts/check.sh" 2>&1)"; then
@@ -80,12 +88,83 @@ deploy_images_pushed_for_every_event() { replace .github/workflows/deploy.yml " 
 runs_for_main_cancelled() { replace .github/workflows/deploy.yml "cancel-in-progress: \${{ github.event_name != 'push' }}" 'cancel-in-progress: true'; }
 # bash -e {0} is what GitHub runs without `shell:`: no pipefail, so `make smoke | tee log` hides a red smoke test
 deploy_without_pipefail() { replace .github/workflows/deploy.yml '    shell: bash' '    shell: bash -e {0}'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+deploy_push_not_atomic() { replace .github/scripts/deploy-ref.sh 'git push --atomic "$remote"' 'git push "$remote"'; }
+# shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
+deploy_without_the_render_check() { replace .github/workflows/deploy.yml 'run: sh infra/k8s/scripts/verify-images.sh "$RUNNER_TEMP/values-images.yaml" "$GITHUB_SHA"' 'run: "true"'; }
+# shellcheck disable=SC2016 # the texts are lines of the workflow, with their variables
+smoke_values_for_every_event() { replace .github/workflows/deploy.yml 'if [ "$GITHUB_EVENT_NAME" = push ]; then' 'if true; then'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+generator_accepts_short_digests() { replace infra/k8s/scripts/images-values.sh '[ "${#2}" -eq 71 ] || fail' 'true || fail'; }
+package_cleanup_added() {
+  cat > "$tree/.github/workflows/cleanup.yml" <<'YAML'
+name: Cleanup
+on:
+  workflow_dispatch:
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          package-name: shop/api
+          package-type: container
+          min-versions-to-keep: 3
+YAML
+}
+argocd_shop_on_another_branch() { replace infra/k8s/argocd/apps/shop.yaml 'targetRevision: deploy-images' 'targetRevision: deploy'; }
+argocd_shop_ignores_missing_images_file() { replace infra/k8s/argocd/apps/shop.yaml '      releaseName: shop' '      ignoreMissingValueFiles: true
+      releaseName: shop'; }
+# A (made-up) certificate of the controller in the repository: every key of init-env.sh must then be sealed.
+add_certificate() { printf -- '-----BEGIN CERTIFICATE-----\nMIIDselftest\n-----END CERTIFICATE-----\n' > "$tree/infra/k8s/environments/prod/sealed-secrets.pem"; }
+certificate_without_sealed_secrets() { add_certificate; }
+# shellcheck disable=SC2016 # awk program
+certificate_with_a_key_unsealed() {
+  add_certificate
+  {
+    printf 'apiVersion: bitnami.com/v1alpha1\nkind: SealedSecret\nmetadata:\n  name: shop-secrets\n  namespace: shop\nspec:\n  encryptedData:\n'
+    awk -v q="'" '/^(secrets|appendable)=/ { inblock = 1; sub(/^[a-z]+=/, "") }
+      inblock { line = $0; sub("^" q, "", line); ended = (line ~ (q "$")); sub(q "$", "", line); if (line != "") { split(line, parts, " "); print parts[1] }; if (ended) inblock = 0 }' \
+      "$tree/infra/scripts/init-env.sh" | grep -v '^PAYMENT_DEMO_CARD_API_KEY$' | sed 's/^\(.*\)$/    \1: AgBselftest/'
+    printf '  template:\n    type: Opaque\n'
+  } > "$tree/infra/k8s/environments/prod/secrets/shop-secrets.yaml"
+}
+plain_secret_committed() {
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: shop-secrets\n  namespace: shop\nstringData:\n  POSTGRES_PASSWORD: plain\n' \
+    > "$tree/infra/k8s/environments/prod/secrets/shop-secrets.yaml"
+}
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+bootstrap_without_the_root_check() { replace infra/k8s/scripts/server-bootstrap.sh '[ "$(id -u)" -eq 0 ] || fail "must run as root' 'true || fail "must run as root'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+bootstrap_sets_sysctl_every_time() { replace infra/k8s/scripts/server-bootstrap.sh 'if [ "$(sysctl -n vm.max_map_count)" != 262144 ]; then' 'if true; then'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+reinitialize_without_confirmation() { replace infra/k8s/scripts/reinitialize.sh 'if [ "$answer" != tak ]; then' 'if [ "$answer" = never ]; then'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+seal_secrets_replaces_existing_keys() { replace infra/k8s/scripts/seal-secrets.sh 'grep -q "^$key$tab" "$work/$name.pairs" && continue' 'false && continue'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+smoke_pull_args_never_pull() { replace infra/k8s/scripts/tools.sh '--set image.pullPolicy=IfNotPresent' '--set image.pullPolicy=Never'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+smoke_installs_without_pull_args() { replace infra/k8s/scripts/smoke.sh '-f /kube/values-images.yaml $(smoke_pull_args)' '-f /kube/values-images.yaml'; }
+secrets_application_includes_everything() { replace infra/k8s/argocd/apps/secrets.yaml 'include: "*.yaml"' 'include: "*"'; }
+secret_in_a_yml_file() {
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: x\n  namespace: shop\nstringData:\n  A: plain\n' > "$tree/infra/k8s/environments/prod/secrets/x.yml"
+}
+sealed_secrets_key_rotates() { replace infra/k8s/argocd/apps/sealed-secrets.yaml 'keyrenewperiod: "0"' 'keyrenewperiod: "720h"'; }
+argocd_without_application_health() { replace infra/k8s/argocd/install/argocd.yaml 'resource.customizations.health.argoproj.io_Application' 'resource.customizations.health.argoproj.io_Other'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts
+bootstrap_never_restarts_k3s() { replace infra/k8s/scripts/server-bootstrap.sh '    systemctl restart k3s' '    true'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts
+bootstrap_accepts_only_a_secret_backup() { replace infra/k8s/scripts/server-bootstrap.sh "grep -Eq '^[[:space:]-]*kind: Secret\$'" "grep -q '^kind: Secret'"; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts
+bootstrap_applies_root_whatever_the_certificate() { replace infra/k8s/scripts/server-bootstrap.sh 'if [ -f "$payload/sealed-secrets.pem" ] && ! cmp' 'if false && ! cmp'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 nothing_broken() { :; }
 
-echo "selftest: the unbroken copy passes"
-fresh_copy
-sh "$tree/infra/k8s/scripts/check.sh" >/dev/null 2>&1 || { echo "selftest: FAIL the unbroken copy does not pass the check" >&2; failures=$((failures + 1)); }
+if [ -z "${SELFTEST_ONLY:-}" ]; then
+  echo "selftest: the unbroken copy passes"
+  fresh_copy
+  sh "$tree/infra/k8s/scripts/check.sh" >/dev/null 2>&1 || { echo "selftest: FAIL the unbroken copy does not pass the check" >&2; failures=$((failures + 1)); }
+fi
 
 run_case "broken template" "unexpected EOF" broken_template
 run_case "init-env.sh key missing from the secret template" "keys of infra/scripts/init-env.sh missing from the secret template" secret_key_missing
@@ -104,6 +183,29 @@ run_case "deploy without waiting for the smoke test" "test_it_needs_a_green_smok
 run_case "images pushed for every event" "test_images_are_pushed_and_deploy_moves_only_for_a_push_to_main" deploy_images_pushed_for_every_event
 run_case "runs for main cancelled" "test_runs_for_main_are_never_cancelled_and_other_runs_are" runs_for_main_cancelled
 run_case "deploy.yml steps without pipefail (smoke test piped to tee)" "test_every_run_step_has_pipefail" deploy_without_pipefail
+run_case "deploy pushing the two branches without --atomic" "test_the_script_pushes_both_branches_in_one_atomic_push" deploy_push_not_atomic
+run_case "deploy without the check of the render of prod" "test_the_render_of_prod_is_checked_before_anything_is_published" deploy_without_the_render_check
+run_case "smoke test on the registry images for every event" "test_on_main_the_first_install_uses_the_values_file_and_the_registry" smoke_values_for_every_event
+run_case "images values generator accepting a short digest" "test_a_missing_or_malformed_digest_fails_and_writes_nothing" generator_accepts_short_digests
+run_case "a workflow that deletes package versions (retention)" "test_no_workflow_deletes_package_versions" package_cleanup_added
+run_case "Argo CD shop application on another branch than the rest" "test_everything_from_git_tracks_the_same_branch_of_the_same_repository" argocd_shop_on_another_branch
+run_case "Argo CD shop application ignoring a missing images file" "test_the_values_are_the_profile_and_the_images_file_in_this_order_and_nothing_else" argocd_shop_ignores_missing_images_file
+run_case "certificate in the repository and no sealed secrets" "keys of infra/scripts/init-env.sh without a sealed value" certificate_without_sealed_secrets
+run_case "certificate in the repository and one key unsealed" "PAYMENT_DEMO_CARD_API_KEY" certificate_with_a_key_unsealed
+run_case "plain secret committed to environments/prod/secrets" "not a SealedSecret" plain_secret_committed
+run_case "bootstrap without the check for root" "FAIL no root" bootstrap_without_the_root_check
+run_case "bootstrap setting vm.max_map_count on every run" "FAIL sysctl again" bootstrap_sets_sysctl_every_time
+run_case "reinitialize going on without tak" "test_without_the_word_tak_nothing_runs" reinitialize_without_confirmation
+run_case "seal-secrets.sh sealing keys that are already there" "test_the_second_run_changes_nothing_and_does_not_call_kubeseal" seal_secrets_replaces_existing_keys
+run_case "smoke pull arguments that never pull" "test_the_images_are_those_of_the_registry_by_digest_and_may_be_pulled" smoke_pull_args_never_pull
+run_case "smoke installing without the pull arguments" "test_smoke_sh_uses_the_values_file_and_checks_the_digests_of_the_pods" smoke_installs_without_pull_args
+run_case "secrets application including every file" "test_the_application_includes_only_yaml" secrets_application_includes_everything
+run_case "secret in a yml file of the secrets directory" "test_the_directory_of_the_repository_has_only_yaml_files_and_the_two_documents" secret_in_a_yml_file
+run_case "sealed secrets key that rotates" "test_the_key_of_the_controller_is_not_rotated" sealed_secrets_key_rotates
+run_case "Argo CD without the health of applications" "test_the_root_waits_for_the_health_of_the_applications_of_the_waves" argocd_without_application_health
+run_case "bootstrap never restarting k3s" "FAIL restart" bootstrap_never_restarts_k3s
+run_case "bootstrap accepting only a plain Secret backup" "FAIL list backup" bootstrap_accepts_only_a_secret_backup
+run_case "bootstrap applying root whatever the certificate" "FAIL other cert" bootstrap_applies_root_whatever_the_certificate
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then

@@ -2,7 +2,7 @@
 # Sourced by the scripts of infra/k8s: runs every tool in a container with a pinned image, so nothing is installed on
 # the host (only Docker and sh are needed, on macOS and on Linux alike). The repository is mounted read-only at /repo.
 #
-#   helm, kubeconform, shellcheck, actionlint, yq, py: tools working on files of the repository (cwd = /repo/infra/k8s)
+#   helm, kubeconform, shellcheck, actionlint, yq, py, kubeseal: tools working on files of the repository (cwd = /repo/infra/k8s)
 #   k3d, kubectl: tools talking to Docker (k3d) and to a k3d cluster over its Docker network (kubectl)
 #   browser_dom: the DOM of a page after its scripts ran, in headless Chromium on the Docker network of a cluster
 
@@ -22,9 +22,22 @@ K3S_IMAGE="${K3S_IMAGE:-rancher/k3s:$K3S_VERSION}"
 KUBERNETES_VERSION="${KUBERNETES_VERSION:-${K3S_VERSION%%-*}}"
 KUBERNETES_VERSION="${KUBERNETES_VERSION#v}"
 KUBECTL_IMAGE="${KUBECTL_IMAGE:-registry.k8s.io/kubectl:v$KUBERNETES_VERSION}"
+# kubeseal, the client of Sealed Secrets, of the version of the controller chart pinned in argocd/apps/sealed-secrets.yaml.
+KUBESEAL_IMAGE="${KUBESEAL_IMAGE:-ghcr.io/bitnami/sealed-secrets-kubeseal:0.41.2@sha256:6697225a70537d94061b56e6a138ba9ca26307a702f827dac0a77b0a007bc84f}"
+# Ubuntu 24.04, the system bootstrap.sh supports: the image the test of the bootstrap runs it in (infra/k8s/tests/bootstrap).
+UBUNTU_IMAGE="${UBUNTU_IMAGE:-ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852}"
 CURL_IMAGE="${CURL_IMAGE:-curlimages/curl:8.18.0}"
 # The browser of the smoke test: the Chromium of the image the E2E tests are built on (e2e/Dockerfile, the same tag).
 PLAYWRIGHT_IMAGE="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.64.1-noble}"
+
+# The arguments of helm that make the profile ci pull the images of the registry named in an images values file (the
+# revision and the digests, scripts/images-values.sh) instead of the local ones: the profile ci names a local registry and
+# never pulls. smoke.sh installs r1 with them (SMOKE_VALUES) and render.sh renders the same case, so the test of the render
+# sees what the smoke test deploys.
+smoke_pull_args() {
+  printf '%s %s' "--set image.registry=$(sed -n 's/^  registry: //p' "$TOOLS_REPO/infra/k8s/charts/shop/values.yaml" | head -n 1)" \
+    "--set image.pullPolicy=IfNotPresent"
+}
 
 # Downloaded schemas of kubeconform; survives between runs.
 TOOLS_CACHE="${TOOLS_CACHE:-${TMPDIR:-/tmp}/shop-k8s-cache}"
@@ -59,11 +72,14 @@ shellcheck() { tools_run "$SHELLCHECK_IMAGE" "$@"; }
 # actionlint works in the root of the repository (the workflows are in .github/workflows).
 actionlint() { tools_run -w /repo "$ACTIONLINT_IMAGE" "$@"; }
 yq() { tools_run "$YQ_IMAGE" "$@"; }
+# kubeseal reads the secret on its standard input; the certificate is a file of the repository (mounted at /repo).
+kubeseal() { tools_run "$KUBESEAL_IMAGE" "$@"; }
 # Python without third-party packages; -I ignores the environment and the current directory.
 py() { tools_run "$PYTHON_IMAGE" python -I "$@"; }
 
-# k3d talks to the Docker daemon through its socket.
-k3d() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$K3D_IMAGE" "$@"; }
+# k3d talks to the Docker daemon through its socket. K3D_MOUNT (<host dir>:<dir in the container>[:ro]), when set, mounts
+# a directory with a file the command reads (the registries file of the smoke test).
+k3d() { docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ${K3D_MOUNT:+-v "$K3D_MOUNT"} "$K3D_IMAGE" "$@"; }
 # kubectl reaches the cluster by the name of its server container, on the Docker network of the cluster.
 # KUBE_NETWORK and KUBE_DIR (the directory with the file `config`) are set by smoke.sh; rerun.sh takes them from the
 # environment (KUBE_NETWORK defaults to host, KUBE_DIR to ~/.kube).

@@ -6,6 +6,13 @@
 #   SMOKE_BREAK=migration smoke.sh the api image gets a migration that fails: the test must fail
 #   SMOKE_BREAK=image smoke.sh     the store image is unable to start: the test must fail
 #   SMOKE_BUILD=0 smoke.sh         use the images shop-smoke-<cluster>/<app>:r1 that are already there
+#   SMOKE_VALUES=<file> smoke.sh   install r1 with the images values file of the deployment (scripts/images-values.sh: the
+#                                  revision and the digests) instead of the local images: the cluster pulls
+#                                  ghcr.io/piotrp321/shop/<app>:<sha>@<digest> from the registry, and the test checks
+#                                  that the pods run exactly those digests. The later phases use the local images
+#                                  shop-smoke-<cluster>/<app>:r1 (SMOKE_BUILD=0), which must be there as well.
+#                                  SMOKE_GHCR_USER and SMOKE_GHCR_TOKEN (packages: read) are given to k3d in a private
+#                                  registries file when the packages are not public; the token is never printed.
 #   SMOKE_KEEP=1 smoke.sh          keep the cluster after a failure, to look at it (delete it by hand)
 #   SMOKE_REUSE=1 smoke.sh         go on with the later phases on the cluster that SMOKE_KEEP=1 left (a debugging aid)
 #   SMOKE_TIMEOUT=900              seconds to wait for the cluster to settle after each install or upgrade
@@ -33,10 +40,16 @@ here="$(cd "$(dirname "$0")" && pwd)"
 SMOKE_BREAK="${SMOKE_BREAK:-}"
 SMOKE_BUILD="${SMOKE_BUILD:-1}"
 SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-900}"
+SMOKE_VALUES="${SMOKE_VALUES:-}"
 case "$SMOKE_BREAK" in
   "" | migration | image) ;;
   *) echo "smoke: SMOKE_BREAK must be empty, migration or image, got '$SMOKE_BREAK'" >&2; exit 2 ;;
 esac
+if [ -n "$SMOKE_VALUES" ]; then
+  [ -f "$SMOKE_VALUES" ] || { echo "smoke: SMOKE_VALUES '$SMOKE_VALUES' is not a file" >&2; exit 2; }
+  [ -z "$SMOKE_BREAK" ] || { echo "smoke: SMOKE_VALUES and SMOKE_BREAK cannot be used together" >&2; exit 2; }
+  [ "${SMOKE_REUSE:-}" != 1 ] || { echo "smoke: SMOKE_VALUES and SMOKE_REUSE cannot be used together" >&2; exit 2; }
+fi
 
 namespace=shop
 
@@ -61,6 +74,23 @@ KUBE_NETWORK="k3d-$cluster"
 mkdir -p "$TOOLS_CACHE"
 KUBE_DIR="$(mktemp -d "$TOOLS_CACHE/kube-XXXXXX")"
 work="$KUBE_DIR"
+registry_dir=""
+chart_registry="$(sed -n 's/^  registry: //p' "$here/../charts/shop/values.yaml" | head -n 1)"
+if [ -n "$SMOKE_VALUES" ]; then
+  # In the directory that the helm and k3d containers mount as /kube.
+  cp "$SMOKE_VALUES" "$KUBE_DIR/values-images.yaml"
+  if [ -n "${SMOKE_GHCR_TOKEN:-}" ]; then
+    # A file for k3d (registries.yaml of the nodes) with the credentials for ghcr.io, alone in a private directory (mktemp -d)
+    # outside the cache of the tools (which every tool container mounts) that only the k3d container mounts and that is
+    # removed on exit. Nothing here prints the token.
+    registry_dir="$(mktemp -d "${TMPDIR:-/tmp}/shop-smoke-registry-XXXXXX")"
+    (umask 077 && printf 'configs:\n  ghcr.io:\n    auth:\n      username: %s\n      password: %s\n' \
+      "${SMOKE_GHCR_USER:-token}" "$SMOKE_GHCR_TOKEN" > "$registry_dir/registries.yaml")
+    K3D_MOUNT="$registry_dir:/registry:ro"
+    export K3D_MOUNT
+  fi
+fi
+unset SMOKE_GHCR_TOKEN
 sampler_pid=""
 # The images built here: the production stage of each application and Elasticsearch with its plugin.
 apps="api store admin elasticsearch"
@@ -86,6 +116,7 @@ cleanup() {
     for app in $apps; do docker rmi -f "$registry/$app:$tag" >/dev/null 2>&1 || true; done
   done
   rm -rf "$KUBE_DIR"
+  [ -z "$registry_dir" ] || rm -rf "$registry_dir"
   if [ "$status" -eq 0 ]; then echo "smoke: ok"; else echo "smoke: FAILED (exit $status)" >&2; fi
   exit "$status"
 }
@@ -284,9 +315,32 @@ case "$SMOKE_BREAK" in
 esac
 
 # install <revision> [chart]: the chart of the repository unless another directory is given (a path in the container).
+# With SMOKE_VALUES the first install (r1) takes the revision and the digests from the images values file and pulls the
+# images from the registry of the chart (the profile ci would name the local registry and never pull: smoke_pull_args).
 install() {
-  helm_cluster upgrade --install shop "${2:-charts/shop}" --namespace "$namespace" --create-namespace \
-    -f environments/ci/values.yaml --set "image.tag=$1" --set "image.registry=$registry" >/dev/null
+  if [ -n "$SMOKE_VALUES" ] && [ "$1" = r1 ]; then
+    # shellcheck disable=SC2046 # smoke_pull_args prints options
+    helm_cluster upgrade --install shop "${2:-charts/shop}" --namespace "$namespace" --create-namespace \
+      -f environments/ci/values.yaml -f /kube/values-images.yaml $(smoke_pull_args) >/dev/null
+  else
+    helm_cluster upgrade --install shop "${2:-charts/shop}" --namespace "$namespace" --create-namespace \
+      -f environments/ci/values.yaml --set "image.tag=$1" --set "image.registry=$registry" >/dev/null
+  fi
+}
+
+# The pods run the images of the registry by the digests of the images values file (the point of SMOKE_VALUES).
+check_registry_images() {
+  image_ids="$(kc get pods -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.imageID}{"\n"}{end}{end}')"
+  for app in $apps; do
+    digest="$(sed -n "s/^    $app: \(sha256:[0-9a-f]\{64\}\)\$/\1/p" "$KUBE_DIR/values-images.yaml")"
+    [ -n "$digest" ] || { echo "smoke: no digest of $app in $SMOKE_VALUES" >&2; return 1; }
+    if ! printf '%s\n' "$image_ids" | grep -qF "$chart_registry/$app@$digest"; then
+      echo "smoke: no pod runs $chart_registry/$app@$digest; the image ids of the pods:" >&2
+      printf '%s\n' "$image_ids" | sort -u >&2
+      return 1
+    fi
+    echo "ok: a pod runs $chart_registry/$app@$digest"
+  done
 }
 
 # The store of the image built without flags, in a real browser (the bar and the login link come from /api/site, read by
@@ -407,11 +461,15 @@ if [ "${SMOKE_REUSE:-}" = 1 ]; then
 else
   log "cluster $cluster ($K3S_IMAGE)"
   k3d cluster delete "$cluster" >/dev/null 2>&1 || true
-  k3d cluster create "$cluster" --no-lb --image "$K3S_IMAGE" --wait --timeout 300s \
+  registry_config=""
+  [ -z "$registry_dir" ] || registry_config="--registry-config /registry/registries.yaml"
+  # shellcheck disable=SC2086 # $registry_config is an option and its value
+  k3d cluster create "$cluster" --no-lb --image "$K3S_IMAGE" --wait --timeout 300s $registry_config \
     --k3s-arg '--disable=metrics-server@server:*' --k3s-arg '--disable=servicelb@server:*' >/dev/null
   k3d kubeconfig get "$cluster" | sed -E "s#server: https://[^:]+:[0-9]+#server: https://$node:6443#" > "$KUBE_DIR/config"
   start_sampler
-  import_images r1
+  # With SMOKE_VALUES the first install pulls the images from the registry; nothing is imported for it.
+  [ -n "$SMOKE_VALUES" ] || import_images r1
 
   log "install r1"
   wait_for_traefik
@@ -420,6 +478,10 @@ else
   wait_ready "install r1"
   kc wait --for=condition=Ready pod/smoke-tools --timeout=180s >/dev/null
   read_secrets
+  if [ -n "$SMOKE_VALUES" ]; then
+    log "images pulled from the registry by digest"
+    check_registry_images
+  fi
 
   log "checks of the installation"
   checks basic

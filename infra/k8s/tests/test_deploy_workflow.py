@@ -79,8 +79,8 @@ class Images(unittest.TestCase):
         for app in APPS:
             self.assertEqual("steps.existing.outputs.%s == ''" % app, by_id["build-" + app]["if"])
 
-    def test_the_digests_of_all_four_images_are_job_outputs(self):
-        self.assertEqual(sorted(APPS), sorted(jobs["images"]["outputs"]))
+    def test_the_digests_of_all_four_images_and_the_values_file_are_job_outputs(self):
+        self.assertEqual(sorted(APPS) + ["values", "values_sha256"], sorted(jobs["images"]["outputs"]))
 
     def test_no_latest_tag(self):
         self.assertNotRegex(json.dumps(workflow), r"[:@]latest")
@@ -144,18 +144,100 @@ class ExistingImages(unittest.TestCase):
         self.assertIn('echo "$app=$digest" >> "$GITHUB_OUTPUT"', lookup)
 
 
+def step_index(job, name):
+    return [s.get("name") for s in steps(job)].index(name)
+
+
+class ImagesValuesFile(unittest.TestCase):
+    """B1 (spec, D4): the digests reach Argo CD in one file, generated once, that the smoke test installs and the snapshot
+    on deploy-images contains."""
+
+    def test_the_file_is_generated_once_in_the_images_job(self):
+        scripts = {job: "\n".join(run_scripts(job)) for job in jobs}
+        self.assertEqual(1, sum(script.count("images-values.sh") for script in scripts.values()))
+        self.assertIn('sh infra/k8s/scripts/images-values.sh "$GITHUB_SHA"', scripts["images"])
+        generate = next(s for s in steps("images") if s.get("id") == "values")
+        self.assertEqual({f"DIGEST_{a.upper()}": "${{ steps.digests.outputs.%s }}" % a for a in APPS}, generate["env"])
+        self.assertIn("sha256sum", generate["run"])
+        self.assertEqual("${{ steps.values.outputs.values }}", jobs["images"]["outputs"]["values"])
+
+    def test_smoke_and_deploy_write_the_same_bytes_and_check_the_checksum(self):
+        for job in ("smoke", "deploy"):
+            write = next(s for s in steps(job) if s.get("name") == "Write the images values file")
+            self.assertEqual("${{ needs.images.outputs.values }}", write["env"]["IMAGES_VALUES"])
+            self.assertEqual("${{ needs.images.outputs.values_sha256 }}", write["env"]["IMAGES_VALUES_SHA256"])
+            self.assertIn("printf '%s\\n' \"$IMAGES_VALUES\"", write["run"])
+            self.assertIn("sha256sum -c -", write["run"])
+            # The content goes through the environment, never into the script text (injection).
+            self.assertNotIn("${{", write["run"])
+
+    def test_the_output_is_read_through_the_environment_everywhere(self):
+        for job in jobs:
+            for step in steps(job):
+                if "run" in step:
+                    self.assertNotIn("outputs.values", step["run"])
+
+
+class SmokeValues(unittest.TestCase):
+    def test_on_main_the_first_install_uses_the_values_file_and_the_registry(self):
+        smoke = next(s for s in steps("smoke") if s.get("name") == "Smoke test")
+        self.assertIn('if [ "$GITHUB_EVENT_NAME" = push ]; then', smoke["run"])
+        self.assertIn('export SMOKE_VALUES="$RUNNER_TEMP/values-images.yaml"', smoke["run"])
+        self.assertLess(smoke["run"].index("export SMOKE_VALUES"), smoke["run"].index("make -C infra/k8s smoke"))
+        self.assertLess(step_index("smoke", "Write the images values file"), step_index("smoke", "Smoke test"))
+
+    def test_the_token_is_read_only_for_packages_and_only_given_on_main(self):
+        smoke = next(s for s in steps("smoke") if s.get("name") == "Smoke test")
+        self.assertEqual("${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}", smoke["env"]["SMOKE_GHCR_TOKEN"])
+        self.assertEqual("read", jobs["smoke"]["permissions"]["packages"])
+        self.assertNotIn("SMOKE_GHCR_TOKEN", smoke["run"])
+        holders = [(j, s.get("name")) for j in jobs for s in steps(j) if "SMOKE_GHCR_TOKEN" in json.dumps(s.get("env", {}))]
+        self.assertEqual([("smoke", "Smoke test")], holders)
+
+    def test_smoke_sh_uses_the_values_file_and_checks_the_digests_of_the_pods(self):
+        smoke = (REPO / "infra/k8s/scripts/smoke.sh").read_text()
+        self.assertIn("-f environments/ci/values.yaml -f /kube/values-images.yaml $(smoke_pull_args)", smoke)
+        self.assertIn("check_registry_images", smoke)
+        self.assertIn("--registry-config /registry/registries.yaml", smoke)
+        self.assertIn('K3D_MOUNT="$registry_dir:/registry:ro"', smoke)
+        self.assertIn("umask 077", smoke)
+        self.assertIn("unset SMOKE_GHCR_TOKEN", smoke)
+        # The token is only ever written to the private file, never printed.
+        self.assertNotRegex(smoke, r"echo[^\n]*SMOKE_GHCR_TOKEN")
+
+
 class Deploy(unittest.TestCase):
     def test_it_needs_a_green_smoke_test_and_the_images(self):
         self.assertEqual(["images", "smoke"], jobs["deploy"]["needs"])
         self.assertNotIn("continue-on-error", jobs["smoke"])
         self.assertNotIn("continue-on-error", jobs["deploy"])
 
-    def test_it_moves_the_branch_only_with_the_script_without_force(self):
+    def test_it_publishes_only_with_the_script_without_force(self):
         scripts = "\n".join(run_scripts())
         self.assertNotIn("git push", scripts)
         self.assertNotIn("--force", scripts)
         self.assertEqual(1, scripts.count("deploy-ref.sh"))
-        self.assertIn('sh .github/scripts/deploy-ref.sh "$GITHUB_SHA" "git@github.com:$GITHUB_REPOSITORY.git" deploy', scripts)
+        self.assertIn(
+            'sh .github/scripts/deploy-ref.sh "$GITHUB_SHA" "git@github.com:$GITHUB_REPOSITORY.git" "$RUNNER_TEMP/values-images.yaml"',
+            scripts,
+        )
+
+    def test_the_script_pushes_both_branches_in_one_atomic_push(self):
+        script = (REPO / ".github/scripts/deploy-ref.sh").read_text()
+        pushes = [line for line in script.splitlines() if "git push" in line and not line.lstrip().startswith("#")]
+        self.assertEqual(1, len(pushes), pushes)
+        self.assertIn("--atomic", pushes[0])
+        self.assertIn('"$sha:refs/heads/deploy" "$snapshot:refs/heads/deploy-images"', pushes[0])
+        self.assertNotRegex(pushes[0], r"--force|\s\+")
+
+    def test_the_render_of_prod_is_checked_before_anything_is_published(self):
+        verify = next(s for s in steps("deploy") if s.get("name") == "Check the render of prod with the images values file")
+        self.assertEqual('sh infra/k8s/scripts/verify-images.sh "$RUNNER_TEMP/values-images.yaml" "$GITHUB_SHA"', verify["run"])
+        order = [s.get("name") for s in steps("deploy")]
+        self.assertLess(order.index("Write the images values file"), order.index("Check the render of prod with the images values file"))
+        self.assertLess(order.index("Check the render of prod with the images values file"), order.index("Publish deploy and deploy-images"))
+        self.assertNotIn("if", verify)
+        self.assertNotIn("continue-on-error", verify)
 
     def test_the_checkout_has_the_full_history_and_leaves_no_token(self):
         checkout = next(s for s in steps("deploy") if uses(s, "actions/checkout"))
@@ -164,11 +246,44 @@ class Deploy(unittest.TestCase):
 
     def test_the_key_is_in_the_environment_of_one_step_only(self):
         holders = [(j, s.get("name")) for j in jobs for s in steps(j) if "DEPLOY_KEY" in json.dumps(s.get("env", {}))]
-        self.assertEqual([("deploy", "Fast-forward deploy")], holders)
+        self.assertEqual([("deploy", "Publish deploy and deploy-images")], holders)
         self.assertNotIn("DEPLOY_KEY", json.dumps({k: v for k, v in workflow.items() if k != "jobs"}))
         for job in jobs.values():
             self.assertNotIn("DEPLOY_KEY", json.dumps(job.get("env", {})))
         self.assertNotIn("set -x", "\n".join(run_scripts()))
+
+
+class Retention(unittest.TestCase):
+    """The branch deploy-images points at digests of images in GHCR, and a rollback means going back to an older
+    snapshot: no workflow may delete versions of the packages (a retention policy would break the rollback)."""
+
+    FORBIDDEN = (
+        r"delete-package-versions",
+        r"actions/delete-package",
+        r"container-retention",
+        r"snok/container-retention-policy",
+        r"-X\s+DELETE",
+        r"--method\s+DELETE",
+        r"/packages/container/[^\s]*/versions",
+        r"gh\s+api[^\n]*packages",
+    )
+
+    def test_no_workflow_deletes_package_versions(self):
+        workflows = sorted((REPO / ".github/workflows").glob("*.yml"))
+        self.assertGreaterEqual(len(workflows), 2)
+        for path in workflows:
+            text = path.read_text()
+            for pattern in self.FORBIDDEN:
+                self.assertIsNone(re.search(pattern, text, re.I), f"{path.name} matches {pattern}")
+
+    def test_the_patterns_catch_the_usual_ways(self):
+        for example in (
+            "uses: actions/delete-package-versions@v5",
+            "uses: snok/container-retention-policy@v3",
+            "gh api -X DELETE /user/packages/container/shop%2Fapi/versions/1",
+            "curl --method DELETE https://api.github.com/orgs/x/packages/container/shop%2Fapi/versions/2",
+        ):
+            self.assertTrue(any(re.search(p, example, re.I) for p in self.FORBIDDEN), example)
 
 
 class Shell(unittest.TestCase):

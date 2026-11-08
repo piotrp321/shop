@@ -44,10 +44,37 @@ render() {
   render prod-nodemo prod --set image.tag=$rev1 $digests --set demoNotice=false
   render prod-order-brevo prod --set image.tag=$rev1 $digests --set orderMail=brevo
 }
+# Argo CD renders prod from the two values files only: the profile and the images file of the branch deploy-images,
+# which scripts/images-values.sh writes (no --set). The file is in the output directory, which the helm container
+# mounts as /cache/<name of the directory>.
+DIGEST_API="$(digest a)" DIGEST_STORE="$(digest b)" DIGEST_ADMIN="$(digest c)" DIGEST_ELASTICSEARCH="$(digest d)" \
+  sh "$here/images-values.sh" "$rev1" "$out/values-images.yaml"
+render prod-images-file prod -f "/cache/${out##*/}/values-images.yaml"
 render ci ci --set image.tag=$rev1
+# The smoke test with SMOKE_VALUES: the profile ci, the images file and the arguments smoke.sh adds (tools.sh).
+# shellcheck disable=SC2046 # smoke_pull_args prints options
+render ci-images-file ci -f "/cache/${out##*/}/values-images.yaml" $(smoke_pull_args)
 render ci-rev2 ci --set image.tag=$rev2
 render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true
 render ci-keycloak-brevo ci --set image.tag=$rev1 --set keycloak.mail=brevo --set brevo.secretName=smoke-brevo
+# The Argo CD manifests (argocd/): the root, the applications it creates and what bootstrap installs. argocd.yaml is the
+# whole set for kubeconform, the .ndjson files are one JSON document per line for tests/test_argocd.py.
+: > "$out/argocd.yaml"
+for part in root apps install; do
+  files="argocd/$part.yaml"
+  [ -d "$here/../argocd/$part" ] && files="$(cd "$here/.." && ls argocd/"$part"/*.yaml)"
+  # shellcheck disable=SC2086 # the file names have no spaces
+  yq -o=json -I=0 '.' $files > "$out/argocd-$part.ndjson"
+  for file in $files; do { cat "$here/../$file"; echo '---'; } >> "$out/argocd.yaml"; done
+done
+# The sealed secrets in the repository (environments/prod/secrets), for tests/test_sealed_secrets.py; empty when there are none.
+sealed_files="$(cd "$here/.." && ls environments/prod/secrets/*.yaml 2> /dev/null || true)"
+if [ -n "$sealed_files" ]; then
+  # shellcheck disable=SC2086 # the file names have no spaces
+  yq -o=json -I=0 '.' $sealed_files > "$out/sealed.ndjson"
+else
+  : > "$out/sealed.ndjson"
+fi
 # The deployment workflow as JSON, for tests/test_deploy_workflow.py.
 [ -f "$TOOLS_REPO/.github/workflows/deploy.yml" ] || { echo "render: .github/workflows/deploy.yml is missing" >&2; exit 1; }
 yq -o=json '.' < "$TOOLS_REPO/.github/workflows/deploy.yml" > "$out/deploy-workflow.json"

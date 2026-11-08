@@ -169,6 +169,9 @@
         },
         "tls": {
           "type": "boolean"
+        },
+        "tlsSecretName": {
+          "type": "string"
         }
       }
     },

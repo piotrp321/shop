@@ -1,7 +1,8 @@
 """Structure tests of the repository rulesets in this directory (offline, standard library only).
 
 The files are request bodies of `POST /repos/{owner}/{repo}/rulesets`. GitHub applies the bypass list of a ruleset to
-all of its rules, so the deploy branch is protected by two rulesets: `deploy` (deletion and non-fast-forward, no bypass
+all of its rules, so the deploy branches (`deploy` and `deploy-images`, the snapshots Argo CD tracks) are protected by
+two rulesets, both covering exactly these two refs: `deploy` (deletion and non-fast-forward, no bypass
 actor at all) and `deploy-push` (the rules `creation` and `update`, whose only bypass actor is the deploy key, so
 nobody else can create the branch on any commit). The tests also try the
 ways of weakening them: a bypass actor in the ruleset with the unconditional rules, another actor type, a mode other
@@ -14,6 +15,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UNCONDITIONAL = {"deletion", "non_fast_forward"}
+DEPLOY_REFS = ["refs/heads/deploy", "refs/heads/deploy-images"]
 
 
 def load(name):
@@ -22,7 +24,7 @@ def load(name):
 
 
 def problems(deploy, push):
-    """What is wrong with the pair of rulesets that protect refs/heads/deploy (empty list: nothing)."""
+    """What is wrong with the pair of rulesets that protect the deploy branches (empty list: nothing)."""
     found = []
     for ruleset in (deploy, push):
         name = ruleset.get("name")
@@ -31,8 +33,8 @@ def problems(deploy, push):
         if ruleset.get("enforcement") != "active":
             found.append(f"{name}: enforcement is not active")
         ref_name = ruleset.get("conditions", {}).get("ref_name", {})
-        if ref_name.get("include") != ["refs/heads/deploy"] or ref_name.get("exclude") != []:
-            found.append(f"{name}: the ref pattern is not exactly refs/heads/deploy without exclusions")
+        if ref_name.get("include") != DEPLOY_REFS or ref_name.get("exclude") != []:
+            found.append(f"{name}: the ref pattern is not exactly {' and '.join(DEPLOY_REFS)} without exclusions")
     deploy_types = [rule.get("type") for rule in deploy.get("rules", [])]
     if sorted(deploy_types) != sorted(UNCONDITIONAL):
         found.append(f"deploy: the rules are {deploy_types}, not deletion and non_fast_forward")
@@ -67,6 +69,11 @@ class DeployRulesets(unittest.TestCase):
 
     def test_the_files_as_committed_have_no_problems(self):
         self.assertEqual([], problems(self.deploy, self.push))
+
+    def test_both_rulesets_cover_deploy_and_deploy_images(self):
+        for ruleset in (self.deploy, self.push):
+            self.assertEqual(DEPLOY_REFS, ruleset["conditions"]["ref_name"]["include"])
+            self.assertEqual([], ruleset["conditions"]["ref_name"]["exclude"])
 
     def test_names(self):
         self.assertEqual("deploy", self.deploy["name"])
@@ -151,12 +158,24 @@ class AttemptsToWeakenThem(unittest.TestCase):
         self.assert_caught(self.deploy, push, "exactly one bypass actor")
 
     def test_wider_ref_pattern_and_exclusions(self):
-        for pattern in (["refs/heads/*"], ["refs/heads/deploy*"], ["~DEFAULT_BRANCH"], ["refs/heads/deploy", "refs/heads/main"]):
+        for pattern in (
+            ["refs/heads/*"],
+            ["refs/heads/deploy*"],
+            ["~DEFAULT_BRANCH"],
+            ["refs/heads/deploy"],
+            ["refs/heads/deploy-images"],
+            ["refs/heads/deploy-images", "refs/heads/deploy"],
+            ["refs/heads/deploy", "refs/heads/deploy-images", "refs/heads/main"],
+            ["refs/heads/deploy", "refs/heads/main"],
+        ):
             deploy = copy.deepcopy(self.deploy)
             deploy["conditions"]["ref_name"]["include"] = pattern
             self.assert_caught(deploy, self.push, "ref pattern")
         push = copy.deepcopy(self.push)
-        push["conditions"]["ref_name"]["exclude"] = ["refs/heads/deploy"]
+        push["conditions"]["ref_name"]["exclude"] = ["refs/heads/deploy-images"]
+        self.assert_caught(self.deploy, push, "ref pattern")
+        push = copy.deepcopy(self.push)
+        push["conditions"]["ref_name"]["include"] = ["refs/heads/deploy"]
         self.assert_caught(self.deploy, push, "ref pattern")
 
     def test_not_active_or_not_a_branch_ruleset(self):

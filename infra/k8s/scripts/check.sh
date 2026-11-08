@@ -2,7 +2,7 @@
 # Static checks of the chart, without a cluster and without a server. Every step runs in a container (tools.sh).
 #
 #   check.sh            all steps
-#   check.sh <step>...  only the given steps: lint, render, schema, kubeconform, shellcheck, actionlint, tests
+#   check.sh <step>...  only the given steps: lint, render, schema, images, kubeconform, shellcheck, actionlint, tests, bootstrap
 #
 # The first failing step stops the script. REPO_ROOT (default: this repository) selects the tree to check; the
 # self-test (selftest.sh) points it at a copy with an injected error.
@@ -12,7 +12,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
 
-steps="${*:-lint render schema kubeconform shellcheck actionlint tests}"
+steps="${*:-lint render schema images kubeconform shellcheck actionlint tests bootstrap}"
 
 rev=0123456789abcdef0123456789abcdef01234567
 # The digests of the images built by us, which the profile prod requires.
@@ -93,10 +93,48 @@ do_schema() {
   }
 }
 
+# The images values file of the branch deploy-images (what Argo CD reads next to the profile prod): the generator writes
+# it, the render with it has exactly the images of the file, and a file with a digest missing or wrong does not render.
+do_images() {
+  step "images values file (scripts/images-values.sh): the prod render with it, and without a digest or with a wrong one"
+  digest_of() { printf 'sha256:%064d' 0 | tr 0 "$1"; }
+  mkdir -p "$work"
+  DIGEST_API="$(digest_of 1)" DIGEST_STORE="$(digest_of 2)" DIGEST_ADMIN="$(digest_of 3)" DIGEST_ELASTICSEARCH="$(digest_of 4)" \
+    sh "$here/images-values.sh" "$rev" "$work/values-images.yaml"
+  sh "$here/verify-images.sh" "$work/values-images.yaml" "$rev"
+  # The generator refuses what the chart would refuse, and the chart refuses a file that lacks an image.
+  if DIGEST_API=latest DIGEST_STORE="$(digest_of 2)" DIGEST_ADMIN="$(digest_of 3)" DIGEST_ELASTICSEARCH="$(digest_of 4)" \
+    sh "$here/images-values.sh" "$rev" "$work/bad.yaml" 2> /dev/null || [ -e "$work/bad.yaml" ]; then
+    echo "images: the generator accepted a digest that is a tag" >&2
+    return 1
+  fi
+  echo "ok: the generator refuses a malformed digest and writes nothing"
+  in_cache="/cache/${work##*/}"
+  grep -v '^    elasticsearch:' "$work/values-images.yaml" > "$work/no-elasticsearch.yaml"
+  expect_failure "images file without the digest of elasticsearch" "/image/digests/elasticsearch" \
+    -f environments/prod/values.yaml -f "$in_cache/no-elasticsearch.yaml"
+  sed 's/^    store: .*/    store: latest/' "$work/values-images.yaml" > "$work/bad-store.yaml"
+  expect_failure "images file with a digest that is a tag" "/image/digests/store" \
+    -f environments/prod/values.yaml -f "$in_cache/bad-store.yaml"
+  sed 's/^  tag: .*/  tag: latest/' "$work/values-images.yaml" > "$work/latest.yaml"
+  expect_failure "images file with the revision latest" "/image/tag" -f environments/prod/values.yaml -f "$in_cache/latest.yaml"
+  if sh "$here/verify-images.sh" "$work/values-images.yaml" 89abcdef0123456789abcdef0123456789abcdef > "$work/verify-wrong.log" 2>&1; then
+    echo "images: verify-images.sh accepted a render for another commit" >&2
+    return 1
+  fi
+  grep -q 'are not the ones in' "$work/verify-wrong.log" || { cat "$work/verify-wrong.log" >&2; return 1; }
+  echo "ok: verify-images.sh refuses a render that is not for the given commit"
+  if sh "$here/verify-images.sh" "$work/does-not-exist.yaml" "$rev" > /dev/null 2>&1; then
+    echo "images: verify-images.sh accepted a missing file" >&2
+    return 1
+  fi
+  echo "ok: verify-images.sh refuses a missing file"
+}
+
 do_kubeconform() {
   step "kubeconform (Kubernetes $KUBERNETES_VERSION)"
-  for case_name in prod ci; do
-    # The CRDs of Traefik (Middleware) are validated against the schemas of the CRDs catalog, pinned to a commit.
+  for case_name in prod ci argocd; do
+    # The CRDs of Traefik (Middleware), of Argo CD (Application) and of the Helm controller of k3s (HelmChart) are validated against the schemas of the CRDs catalog, pinned to a commit.
     if ! output="$(kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
       -schema-location default \
       -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/c86448cbf1a840ca62d119259864863897c8748a/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
@@ -111,7 +149,8 @@ do_kubeconform() {
 do_shellcheck() {
   step "shellcheck"
   # shellcheck disable=SC2046 # the file names have no spaces
-  shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh)
+  shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh tests/bootstrap/*.sh) \
+    ../../.github/scripts/deploy-ref.sh
 }
 
 # The workflows of the repository (deploy.yml among them), with shellcheck on their run: scripts.
@@ -126,6 +165,13 @@ do_tests() {
   [ -f "$work/prod.ndjson" ] || do_render
   step "tests of the rendered chart and of the scripts"
   tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests
+}
+
+# scripts/server-bootstrap.sh in a container with Ubuntu 24.04 (root, no k3s, no systemd): the refusals before any change, then
+# two runs; see tests/bootstrap/test.sh for what is real and what is stubbed.
+do_bootstrap() {
+  step "server-bootstrap.sh in Ubuntu 24.04 without k3s: refusals and two runs"
+  docker run --rm -v "$TOOLS_REPO:/repo:ro" "$UBUNTU_IMAGE" sh /repo/infra/k8s/tests/bootstrap/test.sh
 }
 
 for name in $steps; do

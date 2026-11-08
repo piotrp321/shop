@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke rerun create-admin
+.PHONY: check selftest smoke rerun create-admin seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render). Needs only Docker.
@@ -9,7 +9,9 @@ check:
 # auth ingress exposing the master realm, a job in a wave before its dependency, an image without a digest, a chart
 # allowed on Kubernetes older than 1.36, Brevo allowed without its secret, keycloak-config printing a secret,
 # create-admin going on without tak, deploy.yml needing a job that does not exist, an unquoted variable in its scripts, no
-# smoke test before deploy, images pushed for every event, runs for main cancelled, steps of deploy.yml without pipefail, or missing).
+# smoke test before deploy, images pushed for every event, runs for main cancelled, steps of deploy.yml without pipefail,
+# the two deploy branches pushed without --atomic, no check of the render before the push, a short digest accepted by
+# the images values generator, a workflow that deletes package versions, or deploy.yml missing).
 selftest:
 	sh scripts/selftest.sh
 
@@ -30,3 +32,37 @@ rerun:
 # KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 create-admin:
 	sh scripts/create-admin.sh "$(LOGIN)" "$(EMAIL)"
+
+# Encrypts the secrets of the environment with the certificate of the controller (environments/prod/sealed-secrets.pem) into
+# environments/prod/secrets: make -C infra/k8s seal-secrets [WHAT="shop brevo tls"]. shop: the missing keys of
+# infra/scripts/init-env.sh with random values, existing ones are never changed. brevo and tls: asked for in the terminal
+# without echo, once. An error writes nothing. Needs only Docker.
+seal-secrets:
+	sh scripts/seal-secrets.sh $(WHAT)
+
+# Prepares a clean Ubuntu 24.04 server over SSH (k3s, firewall, security updates, Argo CD, Sealed Secrets):
+# make -C infra/k8s bootstrap HOST=<user>@<address> [SEALED_KEY_FILE=<backup of the key of the controller>].
+# Idempotent; refuses without root and on another system before any change. Writes the certificate of the controller to
+# environments/prod/sealed-secrets.pem when the repository has none. SSH_OPTS adds options for ssh.
+bootstrap:
+	sh scripts/bootstrap.sh "$(HOST)"
+
+# Copies the kubeconfig of the cluster from the server into KUBE_DIR (outside the repository) for rerun and create-admin:
+# make -C infra/k8s kubeconfig HOST=<user>@<address> KUBE_DIR=<directory>.
+kubeconfig:
+	sh scripts/kubeconfig.sh "$(HOST)"
+
+# The applications of Argo CD, the pods and the jobs of the shop, read over SSH: make -C infra/k8s status HOST=<user>@<address>.
+status:
+	sh scripts/status.sh "$(HOST)"
+
+# Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak.
+# make -C infra/k8s reinitialize HOST=<user>@<address>
+reinitialize:
+	sh scripts/reinitialize.sh "$(HOST)"
+
+# Brings the Cloudflare ranges of ipAllowList in environments/prod/values.yaml up to date with the ones Cloudflare publishes
+# (rewrites the file; commit the change): make -C infra/k8s cloudflare-ips. With CHECK=1 it only reports (exit 1 when the
+# list is out of date).
+cloudflare-ips:
+	sh scripts/update-cloudflare-ips.sh $(if $(CHECK),--check,)
