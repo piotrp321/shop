@@ -101,6 +101,8 @@ final class SitemapChunkKeyTest extends TestCase
         yield 'start differs from end by case only' => [$encode('{"f":"'.self::LOW.'","t":"'.strtoupper(self::LOW).'"}')];
         yield 'start above end' => [$encode('{"f":"'.self::HIGH.'","t":"'.self::LOW.'"}')];
         yield 'over-long text' => [str_repeat('A', 1000)];
+        // Valid JSON of the right shape, so only the length of the text can reject it.
+        yield 'valid json padded over the length limit' => [$encode('{"f":null,"t":null}'.str_repeat(' ', 200))];
         yield 'deeply nested json' => [$encode('{"f":{"a":{"b":1}},"t":null}')];
     }
 
