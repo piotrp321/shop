@@ -367,7 +367,7 @@ z tokenem realmu `shop`: 401):
 
 ## Panel (`apps/admin`)
 
-- Pozycja menu „Ceny” i trasa `/prices`.
+- Pozycja menu „Ceny” i trasa `/prices`. Promocje mają własną pozycję „Promocje” (`docs/features/promotions/spec.md`).
 - Lista: wyszukiwanie po nazwie (od 2 znaków, z opóźnieniem), filtr kategorii (drzewo), stronicowanie
   „następna/poprzednia” po kursorach (strona to produkty). Wiersz na wariant, warianty pod nazwą swojego produktu
   (nazwa i klasa w pierwszym wierszu produktu); kolumny nazwa, wariant (etykieta, pusta dla wariantu domyślnego),
@@ -376,7 +376,9 @@ z tokenem realmu `shop`: 401):
 - „Zmień cenę” (tylko dla roli `admin`, role z `/api/v1/admin/me`; API sprawdza niezależnie):
   - pole brutto w PLN, zamiana tekstu na grosze bez `float` w osobnym helperze;
   - podgląd stawki z `applicableVatRate`, bez liczenia netto na froncie;
-  - 409: „Cena została w międzyczasie zmieniona – odśwież” i odświeżenie wiersza;
+  - 409 po `type`: `price-locked-by-promotion` (wariant w aktywnej promocji) pokazuje `detail` przy polu ceny, bez
+    komunikatu o zmianie w międzyczasie i bez odświeżania wiersza; każdy inny 409: „Cena została w międzyczasie zmieniona
+    – odśwież” i odświeżenie wiersza;
   - 422: komunikat naruszenia z API przy polu; kwota poza zakresem daje „Cena brutto musi wynosić od 0,01 zł do
     999 999,99 zł.” (zakres zdefiniowany tylko w API).
 - „Historia”: wpisy od najnowszych, „Pokaż więcej”, etykiety źródeł (Pracownik, Dane demo, Uzgodnienie podatkowe).

@@ -740,6 +740,73 @@ describe("PricesView: changing a price", () => {
     expect(mocks.put).toHaveBeenLastCalledWith(PRICE, { params: { path: { variantId: "v-b" } }, body: { gross: 5990, version: 2 } });
   });
 
+  describe("a 409 by its type", () => {
+    const LOCKED = "tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion";
+    const DETAIL = "Cena wariantu w aktywnej promocji nie może się zmienić. Zakończ promocję, żeby zmienić cenę.";
+
+    function conflictWith(body: unknown) {
+      mocks.put.mockResolvedValue({ data: undefined, error: body, response: { status: 409 } });
+    }
+
+    it("shows the detail at the price field of a price locked by a promotion, without the concurrent-change message", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView();
+      conflictWith({ type: LOCKED, title: "Conflict", status: 409, detail: DETAIL });
+
+      await openDialog();
+      await submit("59,90");
+
+      expect(wrapper.get("[data-testid=gross-error]").text()).toBe(DETAIL);
+      expect(wrapper.get("[data-testid=gross-input]").attributes("aria-invalid")).toBe("true");
+      expect(wrapper.find("[data-testid=change-conflict]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(true);
+    });
+
+    it("does not reload the page after a price locked by a promotion", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView();
+      conflictWith({ type: LOCKED, title: "Conflict", status: 409, detail: DETAIL });
+      await openDialog();
+      const callsBefore = priceCalls().length;
+
+      await submit("59,90");
+
+      expect(priceCalls()).toHaveLength(callsBefore);
+      expect(wrapper.get("[data-testid=price-row]").get("[data-testid=gross]").text()).toMatch(/^54,90\s*zł$/);
+    });
+
+    it.each([
+      ["about:blank", { type: "about:blank", title: "Conflict", status: 409, detail: "Cena zmieniona." }],
+      ["a problem of another type", { type: "tag:piotrp321.github.io,2026:shop/problems/promotion-overlap", title: "Conflict", status: 409, detail: "x" }],
+      ["a body without a type", { status: 409 }],
+    ])("keeps the concurrent-change message and the reload for %s", async (_name, body) => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView();
+      conflictWith(body);
+      await openDialog();
+      const callsBefore = priceCalls().length;
+
+      await submit("59,90");
+
+      expect(wrapper.get("[data-testid=change-conflict]").text()).toBe("Cena została w międzyczasie zmieniona – odśwież");
+      expect(wrapper.find("[data-testid=gross-error]").exists()).toBe(false);
+      expect(priceCalls()).toHaveLength(callsBefore + 1);
+    });
+
+    it("clears the lock message when the staff member sends the price again", async () => {
+      serve({ pages: { "": { items: [item("A")], next: null } } });
+      wrapper = await mountView();
+      conflictWith({ type: LOCKED, title: "Conflict", status: 409, detail: DETAIL });
+      await openDialog();
+      await submit("59,90");
+
+      answer(200, price({ gross: 5990, version: 2 }));
+      await submit("59,90");
+
+      expect(wrapper.find("[data-testid=change-dialog]").exists()).toBe(false);
+    });
+  });
+
   it("on a 403 says the staff member may not change prices", async () => {
     serve({ pages: { "": { items: [item("A")], next: null } } });
     wrapper = await mountView();

@@ -4,6 +4,7 @@ import { LOGIN_SERVER_MESSAGE, reportLoginProblem } from "@/auth/loginProblem";
 import { getUserManager } from "@/auth/userManager";
 import AppLayout from "@/layout/AppLayout.vue";
 import { canManageProducts } from "@/products/permissions";
+import { canManagePromotions } from "@/promotions/permissions";
 import { useAuthStore } from "@/stores/auth";
 import AuthCallbackView from "@/views/AuthCallbackView.vue";
 import DashboardView from "@/views/DashboardView.vue";
@@ -13,6 +14,8 @@ import OrdersView from "@/views/OrdersView.vue";
 import PricesView from "@/views/PricesView.vue";
 import ProductFormView from "@/views/ProductFormView.vue";
 import ProductsView from "@/views/ProductsView.vue";
+import PromotionFormView from "@/views/PromotionFormView.vue";
+import PromotionsView from "@/views/PromotionsView.vue";
 
 type SessionManager = Pick<UserManager, "getUser" | "signinRedirect">;
 
@@ -43,6 +46,27 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
           },
           { path: "products/:id", name: "product", component: ProductFormView },
           { path: "prices", name: "prices", component: PricesView },
+          {
+            // One path for the list and the pages, so the menu item of the promotions stays active on a promotion.
+            path: "promotions",
+            children: [
+              { path: "", name: "promotions", component: PromotionsView },
+              {
+                path: "new",
+                name: "promotion-new",
+                component: PromotionFormView,
+                // Only the staff who may change promotions create one; the roles come from /me, as for a new product.
+                beforeEnter: async () => {
+                  const auth = useAuthStore();
+                  if (auth.staff === null) {
+                    await auth.load();
+                  }
+                  return canManagePromotions(auth.staff) ? true : { name: "promotions" };
+                },
+              },
+              { path: ":id", name: "promotion", component: PromotionFormView },
+            ],
+          },
           { path: "inventory", name: "inventory", component: InventoryView },
           {
             // One path for the list and the detail, so the menu item of the orders stays active on a detail.

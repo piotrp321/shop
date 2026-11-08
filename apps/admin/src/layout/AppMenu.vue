@@ -17,6 +17,7 @@ const allItems: MenuItem[] = [
   { label: "Dashboard", icon: "pi pi-home", to: { name: "dashboard" } },
   { label: "Produkty", icon: "pi pi-shopping-bag", to: { name: "products" } },
   { label: "Ceny", icon: "pi pi-tag", to: { name: "prices" } },
+  { label: "Promocje", icon: "pi pi-percentage", to: { name: "promotions" } },
   { label: "Stany magazynowe", icon: "pi pi-box", to: { name: "inventory" } },
   { label: "Zamówienia", icon: "pi pi-shopping-cart", to: { name: "orders" }, roles: ["admin", "support", "warehouse"] },
 ];
