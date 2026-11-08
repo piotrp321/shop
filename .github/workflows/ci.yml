@@ -226,6 +226,7 @@ jobs:
       - name: Install dependencies
         if: env.FULL_CI == 'true'
         run: |
+          # shellcheck disable=SC2086 # CI_RUN is a command with its arguments, split on spaces
           sh .github/scripts/retry.sh 3 30 $CI_RUN api true
           $CI_RUN store true
           $CI_RUN admin true
