@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { instantToWarsaw, warsawToInstant } from "@/promotions/time";
 
 describe("warsawToInstant", () => {
@@ -14,10 +14,31 @@ describe("warsawToInstant", () => {
     expect(warsawToInstant("2026-11-11T08:15:42")).toBe("2026-11-11T07:15:42Z");
   });
 
-  it("does not depend on the time zone of the browser", () => {
-    // The tests run in the zone of the container; the Warsaw offset must come from the zone name, not from it.
-    expect(warsawToInstant("2026-01-01T00:00")).toBe("2025-12-31T23:00:00Z");
-    expect(warsawToInstant("2026-06-01T00:00")).toBe("2026-05-31T22:00:00Z");
+  describe("whatever the time zone of the browser is", () => {
+    // The tests run on Node, which follows `TZ` at run time; the app has no Node typings, so `process` is reached by hand.
+    const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env;
+    const originalZone = env.TZ;
+
+    afterEach(() => {
+      if (originalZone === undefined) {
+        delete env.TZ;
+      } else {
+        env.TZ = originalZone;
+      }
+    });
+
+    it.each(["UTC", "America/Los_Angeles", "Asia/Tokyo", "Europe/Warsaw"])("gives the same moments in %s", (zone) => {
+      env.TZ = zone;
+      // Guards the test itself: the zone of the process really changed, so the local clock follows it.
+      const expectedOffset = { UTC: 0, "America/Los_Angeles": 480, "Asia/Tokyo": -540, "Europe/Warsaw": -60 }[zone];
+      expect(new Date("2026-01-01T12:00:00Z").getTimezoneOffset()).toBe(expectedOffset);
+
+      expect(warsawToInstant("2026-01-01T00:00")).toBe("2025-12-31T23:00:00Z");
+      expect(warsawToInstant("2026-06-01T00:00")).toBe("2026-05-31T22:00:00Z");
+      expect(warsawToInstant("2026-10-25T02:30")).toBe("2026-10-25T00:30:00Z");
+      expect(warsawToInstant("2026-03-29T02:30")).toBeNull();
+      expect(instantToWarsaw("2026-07-15T10:30:00Z")).toBe("2026-07-15T12:30");
+    });
   });
 
   it("takes the earlier of the two moments of an hour that happens twice (the end of summer time)", () => {

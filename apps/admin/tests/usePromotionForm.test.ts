@@ -484,7 +484,7 @@ describe("usePromotionForm", () => {
       expect(mocks.delete).not.toHaveBeenCalled();
     });
 
-    it("treats a promotion that is already gone as deleted", async () => {
+    it("keeps the form and shows an error when the promotion to delete is already gone", async () => {
       const { form, onDeleted } = await open();
       mocks.delete.mockResolvedValue(problem(404));
 
