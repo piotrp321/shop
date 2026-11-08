@@ -1,0 +1,12 @@
+# Traefik of k3s sees the real address of the client only with externalTrafficPolicy Local, which the ipAllowList of the
+# chart (D6) relies on. Bootstrap applies this file; the Helm controller of k3s passes it to the chart of Traefik.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        externalTrafficPolicy: Local

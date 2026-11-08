@@ -26,28 +26,17 @@ logs:
 ps:
 	docker compose ps
 
-# Resets the catalog and loads the demo data; waits (60 s) until the worker has indexed every product.
-# Then resets the prices and sets the demo price of every product (fails when a product has no price pattern).
-# Then removes the transactions of the payment simulator and its queued webhook deliveries.
-# Then removes all orders, before the stocks: the reservations the orders hold go with the stocks.
-# Then resets the stocks and sets the demo stock of every product (fails when a product has no stock pattern).
-# Then rebuilds the search index with the prices and the availability: the price and stock events of the seeds are
-# acked without reindexing, so the index is complete only after this step (a failure stops the target here).
-# Last, purges the catalog in both caches of the store.
+# Loads the demo data with apps/api/bin/seed-demo (the order of the seeds, the reindex and the cache purge are described
+# there); the first failing step stops the target.
 seed:
-	$(RUN) api bin/console catalog:seed-demo
-	$(RUN) api bin/console pricing:seed-demo
-	$(RUN) api bin/console payment-simulator:seed-demo
-	$(RUN) api bin/console payment:seed-demo
-	$(RUN) api bin/console ordering:seed-demo
-	$(RUN) api bin/console inventory:seed-demo
-	$(RUN) api bin/console catalog:reindex
-	$(RUN) api bin/console storefront:cache:purge-all
+	$(RUN) api bin/seed-demo
 
+# The last one checks the Helm chart of infra/k8s (render, manifests, scripts, tests of the render); it needs only Docker.
 check:
 	$(MAKE) -C apps/api check
 	$(MAKE) -C apps/store check
 	$(MAKE) -C apps/admin check
+	$(MAKE) -C infra/k8s check
 
 test:
 	$(MAKE) -C apps/api test

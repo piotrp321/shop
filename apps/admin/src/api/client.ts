@@ -1,7 +1,7 @@
 import type { UserManager } from "oidc-client-ts";
 import createClient, { type Client, type Middleware } from "openapi-fetch";
 import { getUserManager } from "@/auth/userManager";
-import { requiredUrl } from "@/auth/config";
+import { readUrl } from "@/config";
 import { LOGIN_SERVER_MESSAGE, reportLoginProblem, SESSION_REJECTED_MESSAGE } from "@/auth/loginProblem";
 import { clearSigninAttempt, hasSigninAttempt, markSigninAttempt } from "@/auth/signinAttempt";
 import type { paths } from "./schema";
@@ -62,7 +62,7 @@ let instance: ApiClient | undefined;
 
 export function getApiClient(): ApiClient {
   instance ??= createApiClient({
-    baseUrl: requiredUrl(import.meta.env, "VITE_API_URL"),
+    baseUrl: readUrl("VITE_API_URL"),
     userManager: getUserManager(),
   });
   return instance;

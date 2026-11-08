@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Only the production image build (STORE_STANDALONE=1 in the Dockerfile) emits the self-contained server that the
+  // image runs with `node server.js`. `next start` (STORE_MODE=production in Compose) and `next dev` are unchanged.
+  output: process.env.STORE_STANDALONE === "1" ? "standalone" : undefined,
   // Stops `next dev` from generating AGENTS.md. Its guidance lives in CLAUDE.md.
   agentRules: false,
   experimental: {

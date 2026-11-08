@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.env*
+.git
+*.tsbuildinfo
+Dockerfile
+.dockerignore
+Makefile
+CLAUDE.md
