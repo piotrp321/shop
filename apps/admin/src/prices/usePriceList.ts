@@ -26,9 +26,11 @@ export type PriceChange =
   | { status: "saved" }
   | { status: "invalid"; message: string }
   | { status: "conflict"; message: string }
+  | { status: "locked"; message: string }
   | { status: "failed"; message: string };
 
 export const CONFLICT_MESSAGE = "Cena została w międzyczasie zmieniona – odśwież";
+const PRICE_LOCKED_TYPE = "tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion";
 
 /** The API searches names of 2 to 100 characters (code points, as it counts them), not UTF-16 units. */
 export const MIN_SEARCH_LENGTH = 2;
@@ -73,6 +75,18 @@ function problemMessage(body: unknown): string | null {
   return typeof detail === "string" && detail !== "" ? detail : null;
 }
 
+/** The `detail` of a 409 saying the variant is in an active promotion; null for any other 409. */
+function lockedDetail(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const { type, detail } = body as { type?: unknown; detail?: unknown };
+  if (type !== PRICE_LOCKED_TYPE) {
+    return null;
+  }
+  return typeof detail === "string" && detail !== "" ? detail : "Cena wariantu w aktywnej promocji nie może się zmienić.";
+}
+
 function changeFailure(status: number, body: unknown): PriceChange {
   switch (status) {
     case 422:
@@ -96,7 +110,8 @@ function changeFailure(status: number, body: unknown): PriceChange {
  *
  * `changePrice` sends a new gross (in grosze) of one variant with the version its row shows. The saved price from the
  * API replaces the one in the row; a conflict (the price changed meanwhile) reloads the page shown, so the row has the current
- * price and version. The API decides on the amount and the permission, the panel only shows its answer.
+ * price and version. A 409 of the type `price-locked-by-promotion` (the variant is in an active promotion) is told apart
+ * by its `type`: it is `locked` with the `detail` of the API and does not reload the page. The API decides on the amount and the permission, the panel only shows its answer.
  */
 export function usePriceList() {
   const search = ref("");
@@ -253,6 +268,11 @@ export function usePriceList() {
         return { status: "saved" };
       }
       if (result.response.status === 409) {
+        // The price did not change meanwhile, it is locked by a promotion: the row is current, nothing to reload.
+        const locked = lockedDetail(result.error);
+        if (locked !== null) {
+          return { status: "locked", message: locked };
+        }
         await load(cursors.value);
         return { status: "conflict", message: CONFLICT_MESSAGE };
       }
