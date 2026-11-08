@@ -39,14 +39,22 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
 AO czyta tylko ostatni `result` sesji. Pobudka, która przyjdzie po wyniku, otwiera nową turę, a jej tekst zastępuje
 JSON i AO powtarza rundę. Dlatego:
 
-- Wszystko działa na pierwszym planie. Bash i Agent bez `run_in_background`, bez `ScheduleWakeup`, `CronCreate`,
-  `Monitor`, `/loop`, `nohup` ani `&`. Agentów równoległych uruchamiasz kilkoma wywołaniami Agent w jednej
-  wiadomości: pracują jednocześnie, a ich wyniki wracają w tej samej turze.
-- Każda bramka (i `make seed`) to osobne wywołanie Bash z parametrem `timeout: 600000`, z komendą w
-  `timeout 570 …` i wyjściem do pliku logu w katalogu `<report_path>`, potem `tail` logu. Kod 124 oznacza, że bramka
-  nie skończyła się w limicie: zapisz ją jako `failed` z tym dowodem (`make e2e` powtarzasz według kroku 4).
-- Wynik wypisujesz dopiero, gdy nic nie działa w tle i nie ma zaplanowanej pobudki. Blok ```` ```json ```` jest
-  ostatnim blokiem ostatniej wiadomości i nic po nim nie piszesz.
+- Nie planujesz pobudek ani pracy w tle: bez `ScheduleWakeup`, `CronCreate`, `Monitor`, `/loop`, `nohup`, `&`
+  i bez `run_in_background` w Bash.
+- Agenci (`architecture-reviewer`, `qa-adversarial`, `ux-reviewer`) działają asynchronicznie, także bez
+  `run_in_background`. Uruchomienie zwraca od razu, a wynik przychodzi jako powiadomienie o zakończeniu agenta. Po
+  uruchomieniu zakończ turę jednym zdaniem statusu, bez JSON i bez pobudki. Powiadomienie otworzy kolejną turę.
+  Następny krok zaczynasz dopiero po powiadomieniach wszystkich uruchomionych agentów.
+- Bramki działają na pierwszym planie. Każda to osobne wywołanie Bash z parametrem `timeout: 600000`, z komendą
+  w `timeout 570 …` i wyjściem do pliku logu w katalogu pliku `<report_path>`, potem `tail` logu. `make test` to
+  cztery wywołania: `make -C apps/api test`, `make -C apps/store test`, `make -C apps/admin test` (każde
+  z `RUN="docker compose exec -T"`) i `make varnish-test`. To te same kroki, które wykonuje `make test`.
+  W wyniku występują razem jako jeden wpis `make test`: `passed`, gdy wszystkie przeszły, inaczej `failed`. `make seed` też jest osobnym wywołaniem.
+- Kod 124 oznacza przekroczenie limitu czasu, nie błąd kodu. `make e2e` powtarzasz raz według kroku 4. Drugi kod
+  124 albo kod 124 innej bramki to awaria środowiska z kroku 4: bramka ma `skipped`, a bloker `technical` dostaje
+  komendę i koniec logu.
+- Wynik wypisujesz dopiero po powiadomieniach wszystkich agentów i po ostatniej bramce, gdy nic nie działa w tle.
+  Blok ```` ```json ```` jest ostatnim blokiem ostatniej wiadomości i nic po nim nie piszesz.
 - Gdy po wypisaniu wyniku przyjdzie jakakolwiek wiadomość (pobudka, powiadomienie o zadaniu, wiadomość agenta,
   pytanie), odpowiadasz tylko tym samym blokiem ```` ```json ````, znak w znak, bez innego tekstu. Nie wznawiasz
   pracy i nie zmieniasz wyniku.
@@ -69,13 +77,25 @@ JSON i AO powtarza rundę. Dlatego:
    te zmiany wywołuje lub którego kontrakty zmieniają (grep użyć, testy, OpenAPI, klienty). Bez wiarygodnego
    poprzedniego HEAD pracuj jak w `FULL`, napisz to w raporcie i zaznacz, że poprzednich znalezisk nie dało się
    porównać (lista do sprawdzenia pochodzi z tego samego poprzedniego raportu). Bramki uruchamiasz zawsze w całości
-   (w `DELTA` testy mogą pochodzić z CI, krok 4).
+   (w `DELTA` testy mogą pochodzić z CI, niżej).
+   **Testy z CI (tylko `DELTA`).** Uruchom `python3 .claude/skills/integration/delta.py ci --head <HEAD>`. AO
+   zaczyna rundę na HEAD z zielonym CI, więc zwykle zwraca kod 0. Skrypt bierze ostatni run workflow CI z pusha
+   dokładnie dla HEAD. Runy PR się nie liczą, bo pomijają pracę przy zmianach dokumentacji i narzędzi. Wynik
+   obowiązuje w kroku 3a i 4. Kod 0 oznacza, że wymagane joby `checks` i `e2e` mają `success`. Kod 1 oznacza
+   bramki lokalne: inny SHA, brak runu, run w toku, czerwony lub brakujący job albo błąd `gh`.
    W `DELTA` z wiarygodnym poprzednim HEAD rozpoznaj rodzaj zmiany:
    `python3 .claude/skills/integration/delta.py sync --previous <poprzedni> --head <HEAD> --main origin/main`.
-   `kind: sync` oznacza, że każdy commit z `<poprzedni>..HEAD`, którego nie ma na `origin/main`, jest merge'em,
-   a merge'e wnoszą commity z `main`. Wtedy pracujesz w trybie **DELTA po syncu** (krok 3a). `kind: delta` to
-   zwykła `DELTA` (powód w `reason`: commit niebędący merge'em, sync przez squash, merge innej gałęzi, merge bez
-   commitów `main`). Kod wyjścia 2 oznacza, że poprzedni HEAD nie jest wiarygodny (jak wyżej, praca jak w `FULL`).
+   `kind: sync` oznacza, że każdy commit z `<poprzedni>..HEAD`, którego nie ma na `origin/main`, jest merge'em
+   dwóch rodziców, a merge'e wnoszą commity z `main`. Taki merge różni się od automatycznego merge'a Gita
+   (`git merge-tree`) tylko w plikach z konfliktem. Wtedy pracujesz w trybie **DELTA po syncu** (krok 3a). `kind: delta`
+   to zwykła `DELTA`, a powód jest w `reason`. Może to być:
+   - commit niebędący merge'em,
+   - sync przez squash,
+   - merge innej gałęzi,
+   - zmiana zrobiona w samym merge'u (`extra`),
+   - merge więcej niż dwóch rodziców,
+   - merge bez commitów `main`.
+   Kod wyjścia 2 oznacza, że poprzedni HEAD nie jest wiarygodny (jak wyżej, praca jak w `FULL`).
    Decyduje wyłącznie wynik skryptu, nie opis commitów.
 3. **Review równolegle.** W trybie DELTA po syncu pomiń ten krok i wykonaj krok 3a.
    W jednej wiadomości uruchom `architecture-reviewer` i `qa-adversarial`; `ux-reviewer`
@@ -134,34 +154,34 @@ JSON i AO powtarza rundę. Dlatego:
 3a. **DELTA po syncu.** Zmiana od poprzedniego HEAD to tylko połączenie z `main`, więc przeglądasz sam, bez
    `architecture-reviewer`, `qa-adversarial` i `ux-reviewer` (`ux-review: skipped`, w raporcie powód „DELTA po
    syncu”). Zakres to merge'e z wyniku `delta.py sync`:
-   - **Obie strony zostały.** Dla każdego pliku z `both_sides` i `resolved` porównaj wynik merge'a z jego rodzicami
-     (`git diff <rodzic> <merge> -- <plik>`) oraz zmiany obu stron od bazy
-     (`git diff $(git merge-base <rodzic1> <rodzic2>) <rodzic> -- <plik>`). Zgubiona zmiana epiku albo `main`
-     (także rozwiązanie, które wzięło jedną stronę w całości) to znalezisko `Important` z `files` = ten plik.
-   - **Nic poza połączeniem.** Plik z `resolved` spoza `both_sides` to zmiana zrobiona w samym merge'u. Dostosowanie
-     kodu epiku do zmian z `main` (np. nowa sygnatura) jest częścią syncu. Nowe zachowanie albo zmiana bez związku
-     z połączeniem oznacza, że to nie jest sam sync: wróć do kroku 3 i pracuj jak w zwykłej `DELTA`.
-   - **Pliki generowane** (`generated`, a także gdy `both_sides` lub `resolved` dotyka kontrolerów, DTO albo
-     konfiguracji OpenAPI) mają być wygenerowane od nowa z połączonych źródeł. Gdy krok 4 bierze testy z CI, sprawdza
-     to krok „Contract freshness” joba `checks`. W przeciwnym razie uruchom `make -C apps/api openapi
-     RUN="docker compose exec -T"` i `make api-client RUN="docker compose exec -T"`, potem
-     `git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json apps/store/src/api/schema.d.ts apps/admin/src/api/schema.d.ts`
-     i przywróć te pliki (`git checkout -- <te cztery pliki>`), żeby `git status --porcelain` był jak w preflighcie.
+   - **Rozwiązania konfliktów.** Dla każdego pliku z `conflicts` porównaj wynik merge'a z jego rodzicami
+     (`git diff <rodzic> <merge> -- <plik>`). Porównaj też zmiany obu stron od bazy:
+     `git diff $(git merge-base <rodzic1> <rodzic2>) <rodzic> -- <plik>`. Zgubiona zmiana epiku albo `main` to
+     znalezisko `Important` z `files` = ten plik. Dotyczy to także rozwiązania, które wzięło jedną stronę w całości.
+     Pozostałe pliki Git połączył sam, a skrypt potwierdził, że merge ich nie zmienił.
+   - **Pliki generowane** mają być wygenerowane od nowa z połączonych źródeł. Dotyczy to plików z `generated`, a także
+     sytuacji, gdy `conflicts` dotyka kontrolerów, DTO albo konfiguracji OpenAPI. Gdy `delta.py ci` z kroku 2 zwrócił
+     0, sprawdził to krok „Contract freshness” joba `checks`. W przeciwnym razie:
+     1. Uruchom `make -C apps/api openapi RUN="docker compose exec -T"` i
+        `make api-client RUN="docker compose exec -T"`.
+     2. Uruchom
+        `git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json apps/store/src/api/schema.d.ts apps/admin/src/api/schema.d.ts`.
+     3. Przywróć te pliki (`git checkout -- <te cztery pliki>`), żeby `git status --porcelain` był jak w preflighcie.
+
      Różnica to znalezisko `Important` („pliki generowane nie odpowiadają źródłom”).
    - **Poprzednie znaleziska** przenosisz bez zmian (ten sam `title`, `severity`, `files`). Ponownie sprawdzasz tylko
-     te, których pliki zmienił sync (`git diff --name-only <poprzedni>..HEAD`); naprawione przez `main` znikają.
+     te, których pliki zmienił sync (`git diff --name-only <poprzedni>..HEAD`). Znaleziska naprawione przez `main`
+     znikają.
    Potem bramki (krok 4), weryfikacja (krok 5) i lista odbioru (krok 6) jak zawsze.
 4. **Bramki.** Po zakończeniu agentów (także agenta UX, jeśli był uruchamiany) albo przeglądu z kroku 3a, sekwencyjnie,
    na pierwszym planie (sekcja „Pierwszy plan i ostatni blok”).
-   **Testy z CI (tylko `DELTA`).** Najpierw `python3 .claude/skills/integration/delta.py ci --head <HEAD>`. Skrypt
-   bierze ostatni run workflow CI z pusha dokładnie dla HEAD (runy PR się nie liczą, bo pomijają pracę przy zmianach
-   dokumentacji i narzędzi). Kod 0: wymagane joby `checks` i `e2e` mają `success`, więc nie uruchamiasz lokalnie
-   `make test`, `make seed` ani `make e2e`. W `checks` wyniku `make test` i `make e2e` mają wtedy `passed`, a obok
-   dodajesz oba wpisy z pola `checks` skryptu (`ci:checks@<HEAD>`, `ci:e2e@<HEAD>`). W raporcie źródło: CI, SHA,
-   numer runu. Kod 1 (inny SHA, brak runu, run w toku, czerwony lub brakujący job, błąd `gh`): bramki lokalne,
-   a `reason` trafia do raportu. `make check` uruchamiasz zawsze lokalnie, a w `FULL` wszystkie bramki.
+   Gdy `delta.py ci` z kroku 2 zwrócił 0, nie uruchamiasz lokalnie `make test`, `make seed` ani `make e2e`.
+   W `checks` wyniku `make test` i `make e2e` mają wtedy `passed`, a obok dodajesz oba wpisy z pola `checks`
+   skryptu (`ci:checks@<HEAD>`, `ci:e2e@<HEAD>`). W raporcie podajesz źródło: CI, SHA, numer runu. Przy awarii
+   środowiska te cztery wpisy zostają bez zmian, a `skipped` dostaje tylko `make check`. Kod 1: bramki lokalne, a `reason` trafia do raportu. `make check`
+   uruchamiasz zawsze lokalnie, a w `FULL` wszystkie bramki.
    Bramki lokalne:
-   `make check RUN="docker compose exec -T"`, `make test RUN="docker compose exec -T"`, potem
+   `make check RUN="docker compose exec -T"`, `make test` (cztery wywołania z sekcji „Pierwszy plan i ostatni blok”), potem
    `make seed RUN="docker compose exec -T"` i `make e2e E2E_FLAGS=-T` (sesja nie ma terminala, więc bez `-T` komendy padają).
    Zapisy QA i agenta UX trafiły do bazy dev stosu. `make check` nie czyta danych, a `make test` działa na osobnych zasobach
    testowych (baza `shop_test`, indeks `test_products`, vhost `test`, Redis DB 1), więc jedyną bramką zależną od
@@ -180,11 +200,13 @@ JSON i AO powtarza rundę. Dlatego:
      nietypowych danych wejściowych; niedziałająca ścieżka użytkownika; regresja funkcjonalna względem `main` albo
      specyfikacji; komunikat widoczny dla użytkownika nie po polsku (ekran, a w API `title` i `detail` błędu,
      `violations[].title`); istotny problem dostępności: element niedostępny z klawiatury albo kontrolka bez
-     etykiety; naruszenie kryterium akceptacji albo zasady z `CLAUDE.md` / architektury, które da się naprawić.
-     To, że przypadek jest brzegowy albo panel go nie wysyła, nie obniża wagi, gdy problem da się wywołać.
-   - `Minor`: kosmetyka i drobna jakość bez wpływu na działanie (wygląd, odstępy, nazewnictwo, duplikacja w kodzie,
-     brakujący test zachowania, które działa poprawnie).
-   Przykłady oznaczone wcześniej jako `Minor`, które są `Important`: NUL w nazwie produktu daje 500 (#247), duplikat
+     etykiety; błędne działanie w realnym scenariuszu; naruszenie kryterium akceptacji albo zasady z `CLAUDE.md`
+     lub architektury, które da się naprawić; przypadki `Important` z kroków 3a, 4 i 6. To, że przypadek jest
+     brzegowy albo panel go nie wysyła, nie obniża wagi, gdy problem da się wywołać.
+   - `Minor`: kosmetyka (wygląd, odstępy, nazewnictwo), drobna jakość kodu (duplikacja, brakujący test zachowania,
+     które działa poprawnie) i pozostałe potwierdzone problemy o niewielkim wpływie, których nie ma na liście
+     `Important`.
+   Przykłady `Important`: NUL w nazwie produktu daje 500 (#247), duplikat
    wariantu różniący się wielkością liter daje 500 zamiast 422 (#248), notatka z samych białych znaków Unicode
    przechodzi mimo wymagania specyfikacji (#256), angielski komunikat 422 (#257).
    Każde znalezisko ma w `detail` jedno zdanie „Wpływ: …”, które uzasadnia wagę skutkiem dla użytkownika albo
@@ -225,7 +247,7 @@ JSON i AO powtarza rundę. Dlatego:
    ani nie dziel problemu, żeby uniknąć odcisku. Naprawiony problem znika z wyniku.
 8. **Raport.** Zapisz Markdown po polsku do `<report_path>` (tworząc katalog, jeśli trzeba; ścieżka leży poza repo,
    nie dodawaj jej do Git). Pierwsze linie: `Epik:`, `Gałąź:`, `Przegląd HEAD: <sha>`, `Tryb:`, `Zakres:` (w DELTA
-   z poprzednim HEAD, a po syncu z dopiskiem „DELTA po syncu” i merge'ami z `delta.py sync`). Dalej: werdykt, sekcja
+   z poprzednim HEAD, a po syncu z dopiskiem „DELTA po syncu”, merge'ami i plikami `conflicts` z `delta.py sync`). Dalej: werdykt, sekcja
    `## Lista odbioru` (pozycje z kroku 6, wynik QA na stosie w jednym zdaniu, liczba znalezisk `Minor`), znaleziska (id, waga, zadanie, plik, dowód, sugerowana naprawa), bramki
    (komenda, kod wyjścia, koniec wyjścia; dla testów z CI: run, SHA i joby z `delta.py ci`), werdykt i uwagi architekta, wyniki UX (sekcja `## Wyniki UX`: ekrany i stany z obejrzanymi zrzutami, znaleziska, w `DELTA` poprzednie
    znaleziska „naprawione”/„nadal”, uwagi, ścieżka `AGENT_DIR`, albo powód pominięcia), wyniki QA w dwóch grupach: **wykonane**
