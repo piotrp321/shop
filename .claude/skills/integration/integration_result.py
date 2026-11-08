@@ -26,7 +26,7 @@ REQUIRED_CHECKS = ('make check', 'make test', 'make e2e')
 # A DELTA round may take `make test` and `make e2e` from the green required CI checks of its head (delta.py ci):
 # the entries `ci:checks@<head_sha>` and `ci:e2e@<head_sha>` name that source, always together and passed.
 CI_GATES = {'checks': 'make test', 'e2e': 'make e2e'}
-CI_ENTRY = re.compile(r'^ci:(checks|e2e)@([0-9a-f]{40})$')
+CI_ENTRY = re.compile(r'ci:(checks|e2e)@([0-9a-f]{40})')
 KEYS = ('schema_version', 'epic_id', 'status', 'mode', 'head_sha', 'findings', 'checks', 'blockers', 'report_file')
 FINDING_KEYS = ('id', 'severity', 'title', 'detail', 'evidence', 'files', 'task_id')
 BLOCKER_KEYS = ('id', 'type', 'question', 'options', 'recommendation', 'evidence')
@@ -169,7 +169,7 @@ def check_ci_gates(problems, value):
     for name, state in checks.items():
         if not name.startswith('ci:'):
             continue
-        match = CI_ENTRY.match(name)
+        match = CI_ENTRY.fullmatch(name)
         if not match:
             problems.append('checks: %r is not a CI gate; use ci:checks@<head_sha> or ci:e2e@<head_sha>' % name)
             continue

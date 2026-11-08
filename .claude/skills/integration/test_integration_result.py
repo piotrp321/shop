@@ -206,10 +206,11 @@ class IntegrationResultTest(unittest.TestCase):
         self.assertInvalid(result(mode='DELTA', status='FINDINGS', findings=[finding()], checks=checks), 'make e2e')
 
     def test_rejects_unknown_ci_entries(self):
-        for name in ('ci:test@' + SHA, 'ci:checks@' + SHA[:7], 'ci:checks', 'ci:checks@' + SHA.upper()):
+        for name in ('ci:test@' + SHA, 'ci:checks@' + SHA[:7], 'ci:checks', 'ci:checks@' + SHA.upper(),
+                     'ci:checks@' + SHA + '\n'):
             with self.subTest(name=name):
-                checks = copy.deepcopy(GATES) + [{'name': name, 'status': 'passed'}]
-                self.assertInvalid(result(mode='DELTA', checks=checks), 'ci:')
+                checks = self.ci_checks() + [{'name': name, 'status': 'passed'}]
+                self.assertInvalid(result(mode='DELTA', checks=checks), 'not a CI gate')
 
     def test_reports_every_problem(self):
         r = self.validate(result(status='OK', mode='X', head_sha='1'))
