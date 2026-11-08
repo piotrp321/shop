@@ -1,0 +1,151 @@
+{{- /*
+The environment of the API, the worker and the jobs: the one of the compose file with the addresses of this environment.
+The secrets come with envFrom (the .env.local of the compose file).
+*/ -}}
+{{- define "shop.apiEnv" -}}
+- name: APP_ENV
+  value: prod
+# Database connection (not secrets); the password is SHOP_DB_PASSWORD of the secret.
+- name: SHOP_DB_HOST
+  value: postgres
+- name: SHOP_DB_NAME
+  value: shop
+- name: SHOP_DB_USER
+  value: shop
+# Public browser-facing URLs. Only the admin origin gets CORS.
+- name: ADMIN_URL
+  value: {{ include "shop.url" (dict "root" . "sub" "admin") | quote }}
+- name: STORE_URL
+  value: {{ include "shop.url" (dict "root" . "sub" "") | quote }}
+- name: GARAGE_S3_ENDPOINT
+  value: http://garage:3900
+- name: IMAGES_BUCKET
+  value: product-images
+- name: IMGPROXY_PUBLIC_URL
+  value: {{ include "shop.url" (dict "root" . "sub" "img") | quote }}
+- name: RABBITMQ_HOST
+  value: rabbitmq
+- name: RABBITMQ_USER
+  value: shop
+- name: RABBITMQ_VHOST
+  value: /
+- name: ELASTICSEARCH_URL
+  value: http://elasticsearch:9200
+# Keycloak: tokens carry the public URL as issuer, discovery and JWKS are fetched through the internal one.
+- name: KEYCLOAK_PUBLIC_URL
+  value: {{ include "shop.url" (dict "root" . "sub" "auth") | quote }}
+- name: KEYCLOAK_INTERNAL_URL
+  value: http://keycloak:8080
+# Where the dashboard of the admin panel probes the services.
+- name: REDIS_HOST
+  value: redis
+- name: RABBITMQ_MANAGEMENT_URL
+  value: http://rabbitmq:15672
+- name: KEYCLOAK_MANAGEMENT_URL
+  value: http://keycloak:9000
+- name: GARAGE_ADMIN_URL
+  value: http://garage:3903
+- name: IMGPROXY_INTERNAL_URL
+  value: http://imgproxy:8080
+- name: MAILPIT_INTERNAL_URL
+  value: http://mailpit:8025
+# orderMail: the Mailpit of the cluster or Brevo SMTP. Kubernetes puts the login and the key of the Brevo secret into
+# MAILER_DSN ($(VAR) refers to the variables defined before it).
+# `timeout=10` (seconds, every socket operation, SmtpTimeoutTransportFactory) is the one of compose: it keeps a sending well
+# within the lease of its claim.
+{{- if eq .Values.orderMail "brevo" }}
+- name: BREVO_SMTP_LOGIN
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.brevo.secretName }}
+      key: BREVO_SMTP_LOGIN
+- name: BREVO_SMTP_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.brevo.secretName }}
+      key: BREVO_SMTP_PASSWORD
+- name: MAILER_DSN
+  value: {{ printf "smtp://$(BREVO_SMTP_LOGIN):$(BREVO_SMTP_PASSWORD)@%s:%v?timeout=10" .Values.brevo.host .Values.brevo.port | quote }}
+{{- else }}
+- name: MAILER_DSN
+  value: smtp://mailpit:1025?timeout=10
+{{- end }}
+- name: MAILER_FROM
+  value: {{ include "shop.mailerFrom" . | quote }}
+# The caches of the store invalidated after a price or stock change.
+- name: VARNISH_URL
+  value: http://varnish
+- name: STORE_INTERNAL_URL
+  value: http://store:3000
+# The payment simulator inside the API: addresses only (the keys and webhook secrets are in the secret).
+- name: PAYMENT_PROVIDER_BASE_URL
+  value: http://api
+- name: PAYMENT_SIMULATOR_PUBLIC_URL
+  value: {{ include "shop.url" (dict "root" . "sub" "api") | quote }}
+- name: PAYMENT_WEBHOOK_BASE_URL
+  value: http://api
+{{- end }}
+
+{{/* Waits until the migrations of this revision are applied (the api and the worker never start on an old schema). */}}
+{{- define "shop.api.waitMigrations" -}}
+- name: wait-for-migrate
+  image: {{ include "shop.appImage" (dict "root" . "app" "api") }}
+  imagePullPolicy: {{ .Values.image.pullPolicy }}
+  command: ["sh", "-c"]
+  args:
+    - |
+      until bin/console doctrine:migrations:up-to-date >/dev/null 2>&1; do
+        echo "waiting for the migrations"
+        sleep 2
+      done
+  env:
+    {{- include "shop.apiEnv" . | nindent 4 }}
+  {{- include "shop.envFromSecret" . | nindent 2 }}
+  resources:
+    {{- include "shop.resources" (dict "root" . "resources" "job") | nindent 4 }}
+{{- end }}
+
+{{- define "shop.api.container" -}}
+imagePullPolicy: {{ .Values.image.pullPolicy }}
+env:
+  {{- include "shop.apiEnv" . | nindent 2 }}
+{{ include "shop.envFromSecret" . }}
+ports:
+  - name: http
+    containerPort: 80
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 80
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 20
+{{- end }}
+
+{{- define "shop.worker.container" -}}
+imagePullPolicy: {{ .Values.image.pullPolicy }}
+# The transports one after another: the outbox relay, the events of RabbitMQ, the delayed commands and the webhook
+# deliveries of the payment simulator and the boundaries of the promotion periods (the same as in the compose file).
+command: ["php", "bin/console", "messenger:consume", "outbox", "events", "scheduled", "payment_simulator", "promotions"]
+env:
+  {{- include "shop.apiEnv" . | nindent 2 }}
+{{ include "shop.envFromSecret" . }}
+readinessProbe:
+  exec:
+    command:
+      - sh
+      - -c
+      - "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled payment_simulator promotions'"
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 6
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "api" "ports" (list (dict "name" "http" "port" 80))) }}
+---
+{{ include "shop.deployment" (dict "root" . "name" "api" "wave" "1" "image" (include "shop.appImage" (dict "root" . "app" "api"))
+  "initContainers" (include "shop.api.waitMigrations" .)
+  "container" (include "shop.api.container" .)) }}
+---
+{{ include "shop.deployment" (dict "root" . "name" "worker" "wave" "1" "image" (include "shop.appImage" (dict "root" . "app" "api"))
+  "initContainers" (print (include "shop.api.waitMigrations" .) "\n" (include "shop.wait" (dict "root" . "name" "rabbitmq" "check" "nc -z rabbitmq 5672")))
+  "container" (include "shop.worker.container" .)) }}

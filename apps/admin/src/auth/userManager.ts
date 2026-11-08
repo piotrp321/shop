@@ -15,8 +15,8 @@ export function createUserManager(config: AuthConfig): UserManager {
 
 let instance: UserManager | undefined;
 
-/** The one user manager of the running panel; created on first use so that importing it needs no env. */
+/** The one user manager of the running panel; created on first use so that importing it needs no configuration. */
 export function getUserManager(): UserManager {
-  instance ??= createUserManager(readAuthConfig(import.meta.env));
+  instance ??= createUserManager(readAuthConfig());
   return instance;
 }

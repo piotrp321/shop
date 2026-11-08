@@ -44,6 +44,34 @@ export async function loadAccountSession(): Promise<AccountSessionResult> {
   }
 }
 
+/** Body of the store's own `GET /api/site` (route handler in app/api/site): the switches of this deployment. */
+export type SiteSwitches = { demoNotice: boolean; customerAccounts: boolean };
+
+/** The state of a store without the variables, and of a failed read. */
+export const DEFAULT_SITE_SWITCHES: SiteSwitches = { demoNotice: false, customerAccounts: true };
+
+/**
+ * For the browser: asks the store's `/api/site` (same origin) for the switches of this deployment. A failed read, an
+ * error status or a body that is not JSON gives the defaults, and so does every switch that is not a boolean. Never
+ * rejects.
+ */
+export async function loadSiteSwitches(): Promise<SiteSwitches> {
+  try {
+    const response = await fetch("/api/site", { credentials: "same-origin", cache: "no-store" });
+    if (!response.ok) {
+      return DEFAULT_SITE_SWITCHES;
+    }
+    const body = (await response.json()) as Partial<Record<keyof SiteSwitches, unknown>> | null;
+    return {
+      demoNotice: typeof body?.demoNotice === "boolean" ? body.demoNotice : DEFAULT_SITE_SWITCHES.demoNotice,
+      customerAccounts:
+        typeof body?.customerAccounts === "boolean" ? body.customerAccounts : DEFAULT_SITE_SWITCHES.customerAccounts,
+    };
+  } catch {
+    return DEFAULT_SITE_SWITCHES;
+  }
+}
+
 /** Body of the store's own `GET /api/cart/summary` (route handler in app/api/cart/summary). */
 export type CartSummaryBody = { itemCount: number; notice: "merge_truncated" | null };
 

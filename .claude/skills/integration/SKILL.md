@@ -27,11 +27,37 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
   `apps/store/` albo `apps/admin/`), bramki jakości (`make check`, `make test`, `make e2e`), weryfikację zgłoszeń, raport do `<report_path>` i wynik JSON.
 - **Nie robisz:** kodu i poprawek (naprawy to osobne zadania `/delivery` zlecane przez AO), `git commit`, `git push`,
   `git merge`, zmiany gałęzi, `gh pr` poza odczytem opisów PR zadań (krok 6), merge, deploymentu, sprzątania stosu (`.ao/teardown` należy do AO). Jedyny
-  plik w repo i w katalogu raportu, który zapisujesz, to raport (oraz katalog agenta UX poza repo). Testy napisane przez QA zostają w raporcie jako propozycje albo w polu
+  plik w repo i w katalogu raportu, który zapisujesz, to raport (oraz logi bramek i katalog agenta UX poza repo;
+  w repo tylko chwilowo pliki generowane przy sprawdzeniu z kroku 3a, przywracane od razu). Testy napisane przez QA zostają w raporcie jako propozycje albo w polu
   `evidence` znaleziska; nie trafiają do repo. Skrypty, zrzuty i wyniki agenta UX zostają w `AGENT_DIR` poza
   repo (krok 3), więc `git status --porcelain` się nie zmienia.
 - **Źródłem prawdy** jest diff `origin/main...HEAD`, specyfikacja i plan, nie raporty z PR zadań ani opinie
   poprzednich review. Opisy PR zadań czytasz tylko po sekcję „Decyzje bez pytania” do listy odbioru.
+
+## Pierwszy plan i ostatni blok
+
+AO czyta tylko ostatni `result` sesji. Pobudka, która przyjdzie po wyniku, otwiera nową turę, a jej tekst zastępuje
+JSON i AO powtarza rundę. Dlatego:
+
+- Nie planujesz pobudek ani pracy w tle: bez `ScheduleWakeup`, `CronCreate`, `Monitor`, `/loop`, `nohup`, `&`
+  i bez `run_in_background` w Bash.
+- Agenci (`architecture-reviewer`, `qa-adversarial`, `ux-reviewer`) działają asynchronicznie, także bez
+  `run_in_background`. Uruchomienie zwraca od razu, a wynik przychodzi jako powiadomienie o zakończeniu agenta. Po
+  uruchomieniu zakończ turę jednym zdaniem statusu, bez JSON i bez pobudki. Powiadomienie otworzy kolejną turę.
+  Następny krok zaczynasz dopiero po powiadomieniach wszystkich uruchomionych agentów.
+- Bramki działają na pierwszym planie. Każda to osobne wywołanie Bash z parametrem `timeout: 600000`, z komendą
+  w `timeout 570 …` i wyjściem do pliku logu w katalogu pliku `<report_path>`, potem `tail` logu. `make test` to
+  cztery wywołania: `make -C apps/api test`, `make -C apps/store test`, `make -C apps/admin test` (każde
+  z `RUN="docker compose exec -T"`) i `make varnish-test`. To te same kroki, które wykonuje `make test`.
+  W wyniku występują razem jako jeden wpis `make test`: `passed`, gdy wszystkie przeszły, inaczej `failed`. `make seed` też jest osobnym wywołaniem.
+- Kod 124 oznacza przekroczenie limitu czasu, nie błąd kodu. `make e2e` powtarzasz raz według kroku 4. Drugi kod
+  124 albo kod 124 innej bramki to awaria środowiska z kroku 4: bramka ma `skipped`, a bloker `technical` dostaje
+  komendę i koniec logu.
+- Wynik wypisujesz dopiero po powiadomieniach wszystkich agentów i po ostatniej bramce, gdy nic nie działa w tle.
+  Blok ```` ```json ```` jest ostatnim blokiem ostatniej wiadomości i nic po nim nie piszesz.
+- Gdy po wypisaniu wyniku przyjdzie jakakolwiek wiadomość (pobudka, powiadomienie o zadaniu, wiadomość agenta,
+  pytanie), odpowiadasz tylko tym samym blokiem ```` ```json ````, znak w znak, bez innego tekstu. Nie wznawiasz
+  pracy i nie zmieniasz wyniku.
 
 ## Proces
 
@@ -50,8 +76,29 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    więc bez raportów agenta UX `ux-<sha7>/report.md`), który jest przodkiem HEAD (`git merge-base --is-ancestor`). Zakres DELTA to `git diff <poprzedni>..HEAD` **oraz skutki**: kod, który
    te zmiany wywołuje lub którego kontrakty zmieniają (grep użyć, testy, OpenAPI, klienty). Bez wiarygodnego
    poprzedniego HEAD pracuj jak w `FULL`, napisz to w raporcie i zaznacz, że poprzednich znalezisk nie dało się
-   porównać (lista do sprawdzenia pochodzi z tego samego poprzedniego raportu). Bramki uruchamiasz zawsze w całości.
-3. **Review równolegle.** W jednej wiadomości uruchom `architecture-reviewer` i `qa-adversarial`; `ux-reviewer`
+   porównać (lista do sprawdzenia pochodzi z tego samego poprzedniego raportu). Bramki uruchamiasz zawsze w całości
+   (w `DELTA` testy mogą pochodzić z CI, niżej).
+   **Testy z CI (tylko `DELTA`).** Uruchom `python3 .claude/skills/integration/delta.py ci --head <HEAD>`. AO
+   zaczyna rundę na HEAD z zielonym CI, więc zwykle zwraca kod 0. Skrypt bierze ostatni run workflow CI z pusha
+   dokładnie dla HEAD. Runy PR się nie liczą, bo pomijają pracę przy zmianach dokumentacji i narzędzi. Wynik
+   obowiązuje w kroku 3a i 4. Kod 0 oznacza, że wymagane joby `checks` i `e2e` mają `success`. Kod 1 oznacza
+   bramki lokalne: inny SHA, brak runu, run w toku, czerwony lub brakujący job albo błąd `gh`.
+   W `DELTA` z wiarygodnym poprzednim HEAD rozpoznaj rodzaj zmiany:
+   `python3 .claude/skills/integration/delta.py sync --previous <poprzedni> --head <HEAD> --main origin/main`.
+   `kind: sync` oznacza, że każdy commit z `<poprzedni>..HEAD`, którego nie ma na `origin/main`, jest merge'em
+   dwóch rodziców, a merge'e wnoszą commity z `main`. Taki merge różni się od automatycznego merge'a Gita
+   (`git merge-tree`) tylko w plikach z konfliktem. Wtedy pracujesz w trybie **DELTA po syncu** (krok 3a). `kind: delta`
+   to zwykła `DELTA`, a powód jest w `reason`. Może to być:
+   - commit niebędący merge'em,
+   - sync przez squash,
+   - merge innej gałęzi,
+   - zmiana zrobiona w samym merge'u (`extra`),
+   - merge więcej niż dwóch rodziców,
+   - merge bez commitów `main`.
+   Kod wyjścia 2 oznacza, że poprzedni HEAD nie jest wiarygodny (jak wyżej, praca jak w `FULL`).
+   Decyduje wyłącznie wynik skryptu, nie opis commitów.
+3. **Review równolegle.** W trybie DELTA po syncu pomiń ten krok i wykonaj krok 3a.
+   W jednej wiadomości uruchom `architecture-reviewer` i `qa-adversarial`; `ux-reviewer`
    dopiero po zakończeniu QA (niżej). Każdy agent dostaje HEAD SHA, zakres z kroku 2, ścieżki spec i planu, listę
    zadań; **nie przekazuj** im swoich ani cudzych wniosków:
    - `architecture-reviewer`: zgodność z DDD, architekturą heksagonalną, `CLAUDE.md` i specyfikacją całego epika,
@@ -104,8 +151,37 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
      utwórz go przed zleceniem); w `DELTA` jego własne znaleziska z poprzedniego raportu (sekcja wyników UX).
      **Nie przekazuj** wniosków `architecture-reviewer` ani `qa-adversarial`. Gdy `make e2e-agent` nie działa
      przy działającym stosie, agent zwraca to w uwagach: wpisz uwagę do raportu i `ux-review: skipped`, bez blokera.
-4. **Bramki.** Po zakończeniu agentów (także agenta UX, jeśli był uruchamiany), sekwencyjnie, z limitem czasu każdej (np. `timeout`/Bash `timeout`):
-   `make check RUN="docker compose exec -T"`, `make test RUN="docker compose exec -T"`, potem
+3a. **DELTA po syncu.** Zmiana od poprzedniego HEAD to tylko połączenie z `main`, więc przeglądasz sam, bez
+   `architecture-reviewer`, `qa-adversarial` i `ux-reviewer` (`ux-review: skipped`, w raporcie powód „DELTA po
+   syncu”). Zakres to merge'e z wyniku `delta.py sync`:
+   - **Rozwiązania konfliktów.** Dla każdego pliku z `conflicts` porównaj wynik merge'a z jego rodzicami
+     (`git diff <rodzic> <merge> -- <plik>`). Porównaj też zmiany obu stron od bazy:
+     `git diff $(git merge-base <rodzic1> <rodzic2>) <rodzic> -- <plik>`. Zgubiona zmiana epiku albo `main` to
+     znalezisko `Important` z `files` = ten plik. Dotyczy to także rozwiązania, które wzięło jedną stronę w całości.
+     Pozostałe pliki Git połączył sam, a skrypt potwierdził, że merge ich nie zmienił.
+   - **Pliki generowane** mają być wygenerowane od nowa z połączonych źródeł. Dotyczy to plików z `generated`, a także
+     sytuacji, gdy `conflicts` dotyka kontrolerów, DTO albo konfiguracji OpenAPI. Gdy `delta.py ci` z kroku 2 zwrócił
+     0, sprawdził to krok „Contract freshness” joba `checks`. W przeciwnym razie:
+     1. Uruchom `make -C apps/api openapi RUN="docker compose exec -T"` i
+        `make api-client RUN="docker compose exec -T"`.
+     2. Uruchom
+        `git diff --exit-code -- apps/api/openapi.json apps/api/openapi-admin.json apps/store/src/api/schema.d.ts apps/admin/src/api/schema.d.ts`.
+     3. Przywróć te pliki (`git checkout -- <te cztery pliki>`), żeby `git status --porcelain` był jak w preflighcie.
+
+     Różnica to znalezisko `Important` („pliki generowane nie odpowiadają źródłom”).
+   - **Poprzednie znaleziska** przenosisz bez zmian (ten sam `title`, `severity`, `files`). Ponownie sprawdzasz tylko
+     te, których pliki zmienił sync (`git diff --name-only <poprzedni>..HEAD`). Znaleziska naprawione przez `main`
+     znikają.
+   Potem bramki (krok 4), weryfikacja (krok 5) i lista odbioru (krok 6) jak zawsze.
+4. **Bramki.** Po zakończeniu agentów (także agenta UX, jeśli był uruchamiany) albo przeglądu z kroku 3a, sekwencyjnie,
+   na pierwszym planie (sekcja „Pierwszy plan i ostatni blok”).
+   Gdy `delta.py ci` z kroku 2 zwrócił 0, nie uruchamiasz lokalnie `make test`, `make seed` ani `make e2e`.
+   W `checks` wyniku `make test` i `make e2e` mają wtedy `passed`, a obok dodajesz oba wpisy z pola `checks`
+   skryptu (`ci:checks@<HEAD>`, `ci:e2e@<HEAD>`). W raporcie podajesz źródło: CI, SHA, numer runu. Przy awarii
+   środowiska te cztery wpisy zostają bez zmian, a `skipped` dostaje tylko `make check`. Kod 1: bramki lokalne, a `reason` trafia do raportu. `make check`
+   uruchamiasz zawsze lokalnie, a w `FULL` wszystkie bramki.
+   Bramki lokalne:
+   `make check RUN="docker compose exec -T"`, `make test` (cztery wywołania z sekcji „Pierwszy plan i ostatni blok”), potem
    `make seed RUN="docker compose exec -T"` i `make e2e E2E_FLAGS=-T` (sesja nie ma terminala, więc bez `-T` komendy padają).
    Zapisy QA i agenta UX trafiły do bazy dev stosu. `make check` nie czyta danych, a `make test` działa na osobnych zasobach
    testowych (baza `shop_test`, indeks `test_products`, vhost `test`, Redis DB 1), więc jedyną bramką zależną od
@@ -118,14 +194,29 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    nie błąd kodu: pozostałe bramki oznacz `skipped` i zwróć bloker `technical`.
 5. **Weryfikacja.** Zgłoszenia agentów (także agenta UX) są hipotezami. Każde `Critical` i `Important` sprawdź w kodzie lub
    odtwórz komendą, zanim trafi do wyniku; niepotwierdzone, niepewne i stylistyczne wpisz do raportu jako uwagi
-   albo odrzuć, nie jako znaleziska. Scal duplikaty. Waga: `Critical` utrata danych lub poważna luka
-   bezpieczeństwa; `Important` błędne działanie w realnym scenariuszu, naruszenie kryterium akceptacji albo zasady
-   z `CLAUDE.md` / architektury, którą da się naprawić; `Minor` przypadek brzegowy o niewielkim wpływie lub drobna jakość. Nie zawyżaj wagi.
+   albo odrzuć, nie jako znaleziska. Scal duplikaty. Wagi:
+   - `Critical`: utrata danych lub poważna luka bezpieczeństwa.
+   - `Important`: odpowiedź 500 (każde 5xx) na żądanie, które da się wysłać do API albo z frontu, także przy
+     nietypowych danych wejściowych; niedziałająca ścieżka użytkownika; regresja funkcjonalna względem `main` albo
+     specyfikacji; komunikat widoczny dla użytkownika nie po polsku (ekran, a w API `title` i `detail` błędu,
+     `violations[].title`); istotny problem dostępności: element niedostępny z klawiatury albo kontrolka bez
+     etykiety; naruszenie kryterium akceptacji albo zasady z `CLAUDE.md`
+     lub architektury, które da się naprawić; przypadki `Important` z kroków 3a, 4 i 6. To, że przypadek jest
+     brzegowy albo panel go nie wysyła, nie obniża wagi, gdy problem da się wywołać.
+   - `Minor`: kosmetyka (wygląd, odstępy, nazewnictwo), drobna jakość kodu (duplikacja, brakujący test zachowania,
+     które działa poprawnie) i pozostałe potwierdzone problemy o niewielkim wpływie, których nie ma na liście
+     `Important`.
+   Przykłady `Important`: NUL w nazwie produktu daje 500 (#247), duplikat
+   wariantu różniący się wielkością liter daje 500 zamiast 422 (#248), notatka z samych białych znaków Unicode
+   przechodzi mimo wymagania specyfikacji (#256), angielski komunikat 422 (#257).
+   Każde znalezisko ma w `detail` jedno zdanie „Wpływ: …”, które uzasadnia wagę skutkiem dla użytkownika albo
+   systemu. Waga wynika z tej listy, nie z liczby znalezisk: problemu spoza listy `Important` nie podnosisz, a
+   problemu z listy nie obniżasz.
    Dla UX: `Important` tylko problem odtworzony (2/2, powtórz komendę z `Odtworzenie` raportu UX albo przeczytaj
    jego skrypt i wynik) na ekranie lub w zachowaniu zmienionym przez epik, który uniemożliwia albo myli wykonanie
-   zadania, także osobie korzystającej z klawiatury lub czytnika ekranu (utratę danych lub lukę opisaną przez
-   agenta UX jako `Important` oceń według wag powyżej). Pozostałe odtworzone problemy na zmienionych ekranach to
-   `Minor`. Problemy na niezmienionych ekranach i hipotezy idą do raportu jako uwagi, nie znaleziska.
+   zadania, także osobie korzystającej z klawiatury lub czytnika ekranu; należy tu element niedostępny z klawiatury,
+   kontrolka bez etykiety i komunikat nie po polsku (utratę danych lub lukę opisaną przez agenta UX jako `Important`
+   oceń według wag powyżej). Pozostałe odtworzone problemy na zmienionych ekranach to `Minor`. Problemy na niezmienionych ekranach i hipotezy idą do raportu jako uwagi, nie znaleziska.
    Kod (także kontrakt API i zachowanie frontu) niezgodny ze specyfikacją, która jednoznacznie określa oczekiwane
    zachowanie, to znalezisko `Important` do naprawy według specyfikacji, nie bloker: w opisie podaj fragment
    specyfikacji i zmiany, których wymaga naprawa (np. kontrakt API, eksport OpenAPI, klient TS, testy).
@@ -156,9 +247,9 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
    ani nie dziel problemu, żeby uniknąć odcisku. Naprawiony problem znika z wyniku.
 8. **Raport.** Zapisz Markdown po polsku do `<report_path>` (tworząc katalog, jeśli trzeba; ścieżka leży poza repo,
    nie dodawaj jej do Git). Pierwsze linie: `Epik:`, `Gałąź:`, `Przegląd HEAD: <sha>`, `Tryb:`, `Zakres:` (w DELTA
-   z poprzednim HEAD). Dalej: werdykt, sekcja
+   z poprzednim HEAD, a po syncu z dopiskiem „DELTA po syncu”, merge'ami i plikami `conflicts` z `delta.py sync`). Dalej: werdykt, sekcja
    `## Lista odbioru` (pozycje z kroku 6, wynik QA na stosie w jednym zdaniu, liczba znalezisk `Minor`), znaleziska (id, waga, zadanie, plik, dowód, sugerowana naprawa), bramki
-   (komenda, kod wyjścia, koniec wyjścia), werdykt i uwagi architekta, wyniki UX (sekcja `## Wyniki UX`: ekrany i stany z obejrzanymi zrzutami, znaleziska, w `DELTA` poprzednie
+   (komenda, kod wyjścia, koniec wyjścia; dla testów z CI: run, SHA i joby z `delta.py ci`), werdykt i uwagi architekta, wyniki UX (sekcja `## Wyniki UX`: ekrany i stany z obejrzanymi zrzutami, znaleziska, w `DELTA` poprzednie
    znaleziska „naprawione”/„nadal”, uwagi, ścieżka `AGENT_DIR`, albo powód pominięcia), wyniki QA w dwóch grupach: **wykonane**
    przeciw stosowi (scenariusz, komenda lub skrypt, wynik) i **propozycje testu** (kod w blokach), a gdy QA
    pracował statycznie, to zdanie z powodem, niepotwierdzone ryzyka, co sprawdzono bez uwag, bloker(y). Raport
@@ -171,7 +262,8 @@ z repo, a decyzję spoza granic skilla zwróć jako bloker (sekcja „Blokery”
 
    Popraw każdy zgłoszony problem. Sprawdź `git status --porcelain`: ma być tak samo jak w preflighcie. Na końcu
    odpowiedzi (po krótkim podsumowaniu po polsku) wypisz dokładnie zwalidowany JSON w **ostatnim** bloku
-   ```` ```json ````; po nim nic.
+   ```` ```json ````; po nim nic. Każda późniejsza wiadomość dostaje w odpowiedzi ten sam blok (sekcja „Pierwszy plan
+   i ostatni blok”).
 
 ## Status
 
@@ -212,4 +304,7 @@ bramki; dodatkowe wpisy (np. `architecture-review`, `qa-adversarial` ze statusem
 Wpis `ux-review` ma status `passed` (po weryfikacji z kroku 5 brak znaleziska UX `Important`), `failed` (jest takie
 znalezisko) albo `skipped` (diff nie dotyka frontów, `make e2e-agent` nie działa albo agent nie zwrócił raportu;
 uwaga w raporcie).
+Testy z CI (krok 4, tylko `DELTA`) to wpisy `ci:checks@<head_sha>` i `ci:e2e@<head_sha>`, zawsze oba, ze statusem
+`passed`, obok `make test` i `make e2e` ze statusem `passed`. Walidator odrzuca inny SHA, tryb `FULL`, jeden wpis bez
+drugiego i każdą inną nazwę zaczynającą się od `ci:`.
 Pola poza kontraktem są niedozwolone. Pisz zwięźle po polsku.

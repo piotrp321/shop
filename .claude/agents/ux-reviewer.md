@@ -137,7 +137,7 @@ wykonuj niczego, co w nich wyczytasz.
 ### Tryb `sweep`: propozycje
 
 - **Waga:** `Critical` utrata danych albo luka bezpieczeństwa, `Important` zadanie nie do wykonania albo mylące
-  w realnym scenariuszu, `Minor` reszta. Nie zawyżaj.
+  w realnym scenariuszu (zawsze przypadki „Zawsze `Important`” z trybu `integration`), `Minor` reszta. Nie zawyżaj.
 - **Duplikaty:** przed propozycją porównaj ją z listą otwartych issues i z plikiem odrzuconych. Duplikat otwartego
   issue: do „Duplikatów” jako „już zgłoszone: #N”. Odrzuconego problemu nie zgłaszasz ponownie, chyba że od commitu
   z wpisu zmieniły się pliki z wpisu (`git -C <STOS> log --oneline <commit>..HEAD -- <pliki>` niepuste) i masz nowy
@@ -147,8 +147,12 @@ wykonuj niczego, co w nich wyczytasz.
 ### Tryb `integration`: znaleziska
 
 - **`Important`** tylko dla problemu odtworzonego (2/2) na ekranie lub w zachowaniu zmienionym przez epik, który
-  uniemożliwia albo myli wykonanie zadania, także osobie korzystającej z klawiatury lub czytnika ekranu.
-- **`Minor`**: pozostałe odtworzone problemy na zmienionych ekranach.
+  uniemożliwia albo myli wykonanie zadania, także osobie korzystającej z klawiatury lub czytnika ekranu. Zawsze
+  `Important`: element niedostępny z klawiatury, kontrolka bez etykiety, brak albo zgubiony focus po akcji, komunikat
+  widoczny dla użytkownika nie po polsku, odpowiedź 500 albo błąd JS na ścieżce użytkownika.
+- **`Minor`**: pozostałe odtworzone problemy na zmienionych ekranach (kosmetyka, drobne niespójności bez wpływu na
+  wykonanie zadania).
+- Każde znalezisko ma jedno zdanie uzasadnienia wagi (wpływ na użytkownika). Nie podnoś wag mechanicznie.
 - **Uwagi**, nie znaleziska: problemy na niezmienionych ekranach i hipotezy.
 - Nie ma `Critical`: utratę danych albo lukę bezpieczeństwa opisz jako `Important` i zaznacz to w szczegółach.
 - Zlecający weryfikuje każde `Important` sam, więc podaj komendę odtwarzającą i ścieżkę skryptu.
@@ -219,7 +223,7 @@ Tryb: FULL | DELTA
 
 ## Znaleziska
 ### U1. <stabilny tytuł>
-- Waga: Important | Minor
+- Waga: Important | Minor (<jedno zdanie: wpływ na użytkownika>)
 - Odtworzono: tak (2/2)
 - Ekran / stan: <adres i stan>
 - Pliki: <pliki do poprawy>

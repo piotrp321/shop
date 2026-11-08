@@ -1,0 +1,54 @@
+{{- /*
+One ingress per host. Keycloak is exposed only at the paths of the realms of the shop and of the panel and at its
+static resources: the realm master and the administration console are not reachable from outside.
+*/ -}}
+{{- $middlewares := list }}
+{{- if .Values.ipAllowList.enabled }}{{- $middlewares = append $middlewares (printf "%s-ipallowlist@kubernetescrd" .Release.Namespace) }}{{- end }}
+{{- if .Values.noindex }}{{- $middlewares = append $middlewares (printf "%s-noindex@kubernetescrd" .Release.Namespace) }}{{- end }}
+{{- $hosts := list
+  (dict "name" "store" "sub" "" "service" "store" "port" 3000 "paths" (list "/"))
+  (dict "name" "admin" "sub" "admin" "service" "admin" "port" 8080 "paths" (list "/"))
+  (dict "name" "api" "sub" "api" "service" "api" "port" 80 "paths" (list "/"))
+  (dict "name" "auth" "sub" "auth" "service" "keycloak" "port" 8080 "paths" (list "/realms/shop/" "/realms/backoffice/" "/resources/"))
+  (dict "name" "img" "sub" "img" "service" "imgproxy" "port" 8080 "paths" (list "/")) }}
+{{- range $index, $host := $hosts }}
+{{- if $index }}
+---
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $host.name }}
+  labels:
+    {{- include "shop.labels" (dict "root" $ "name" (printf "ingress-%s" $host.name)) | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "1" | nindent 4 }}
+    traefik.ingress.kubernetes.io/router.entrypoints: {{ if $.Values.ingress.tls }}websecure{{ else }}web{{ end }}
+    {{- if $.Values.ingress.tls }}
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    {{- end }}
+    {{- if $middlewares }}
+    traefik.ingress.kubernetes.io/router.middlewares: {{ join "," $middlewares | quote }}
+    {{- end }}
+spec:
+  ingressClassName: {{ $.Values.ingress.className }}
+  {{- if and $.Values.ingress.tls $.Values.ingress.tlsSecretName }}
+  tls:
+    - hosts:
+        - {{ include "shop.host" (dict "root" $ "sub" $host.sub) }}
+      secretName: {{ $.Values.ingress.tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ include "shop.host" (dict "root" $ "sub" $host.sub) }}
+      http:
+        paths:
+          {{- range $host.paths }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $host.service }}
+                port:
+                  number: {{ $host.port }}
+          {{- end }}
+{{- end }}

@@ -98,6 +98,8 @@ jobs:
           sh .github/scripts/test_background.sh;
           sh .github/scripts/test_retry.sh;
           sh .github/scripts/test_ghcr_image.sh;
+          sh .github/scripts/test_deploy_ref.sh;
+          python3 -m unittest discover -s tools/rulesets -p "test_*.py";
           python3 -m unittest discover -s .ao -p "test_*.py";
           python3 -m unittest discover -s .claude/skills/delivery -p "test_*.py";
           python3 -m unittest discover -s .claude/skills/planner -p "test_*.py";
@@ -224,6 +226,7 @@ jobs:
       - name: Install dependencies
         if: env.FULL_CI == 'true'
         run: |
+          # shellcheck disable=SC2086 # CI_RUN is a command with its arguments, split on spaces
           sh .github/scripts/retry.sh 3 30 $CI_RUN api true
           $CI_RUN store true
           $CI_RUN admin true

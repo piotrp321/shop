@@ -1,0 +1,53 @@
+{{- /*
+Keycloak in `start` mode behind the proxy (Cloudflare and Traefik). The realms are not imported at the start: the job
+keycloak-config creates the ones that do not exist. Tokens are issued for the public URL; the containers of the
+cluster reach Keycloak at http://keycloak:8080 (KC_HOSTNAME_BACKCHANNEL_DYNAMIC).
+*/ -}}
+{{- define "shop.keycloak.container" -}}
+# Maps our secret name to the one Keycloak expects.
+command:
+  - /bin/bash
+  - -c
+  - 'export KC_DB_PASSWORD="$KEYCLOAK_DB_PASSWORD"; exec /opt/keycloak/bin/kc.sh "$@"'
+  - kc
+args: ["start"]
+env:
+  - name: KC_DB
+    value: postgres
+  - name: KC_DB_URL
+    value: jdbc:postgresql://postgres:5432/keycloak
+  - name: KC_DB_USERNAME
+    value: keycloak
+  - name: KC_BOOTSTRAP_ADMIN_USERNAME
+    value: admin
+  - name: KC_HEALTH_ENABLED
+    value: "true"
+  - name: KC_HOSTNAME
+    value: {{ include "shop.url" (dict "root" . "sub" "auth") | quote }}
+  - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+    value: "true"
+  - name: KC_PROXY_HEADERS
+    value: xforwarded
+  - name: KC_HTTP_ENABLED
+    value: "true"
+  - name: JAVA_OPTS_KC_HEAP
+    value: {{ .Values.keycloak.javaHeap | quote }}
+{{ include "shop.envFromSecret" . }}
+ports:
+  - name: http
+    containerPort: 8080
+  - name: management
+    containerPort: 9000
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: 9000
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 60
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "keycloak" "ports" (list (dict "name" "http" "port" 8080) (dict "name" "management" "port" 9000))) }}
+---
+{{ include "shop.deployment" (dict "root" . "name" "keycloak" "wave" "-1" "image" .Values.images.keycloak
+  "initContainers" (include "shop.wait" (dict "root" . "name" "postgres" "check" "nc -z postgres 5432"))
+  "container" (include "shop.keycloak.container" .)) }}

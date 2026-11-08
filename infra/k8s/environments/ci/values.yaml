@@ -1,0 +1,75 @@
+# The smoke test (make -C infra/k8s smoke): an empty k3d cluster on a standard runner (ubuntu-latest: 4 vCPU,
+# 16 GB RAM, 14 GB disk). Plain HTTP on *.localhost, no IP policy, minimal requests, small heaps, mail to Mailpit.
+# The secrets are throwaway values, not secrets.
+
+global:
+  domain: localhost
+  scheme: http
+
+# The images are built (or tagged) locally and imported into the cluster: never pulled.
+image:
+  registry: shop-smoke
+  pullPolicy: Never
+
+ingress:
+  tls: false
+
+noindex: true
+
+# The switches as in prod (the smoke test checks the bar and the hidden login link); all mail goes to Mailpit.
+demoNotice: true
+customerAccounts: false
+orderMail: mailpit
+
+ipAllowList:
+  enabled: false
+
+secrets:
+  create: true
+  values:
+    POSTGRES_PASSWORD: smoke-postgres-password
+    KEYCLOAK_DB_PASSWORD: smoke-keycloak-db-password
+    SHOP_DB_PASSWORD: smoke-shop-db-password
+    RABBITMQ_DEFAULT_PASS: smoke-rabbitmq-password
+    KC_BOOTSTRAP_ADMIN_PASSWORD: smoke-keycloak-admin-password
+    GARAGE_RPC_SECRET: 3a1f0c9e5b7d2468a0c1e3f5b7d9a1c3e5f70912b4d6f8a0c2e4f6081a3c5e7f
+    GARAGE_ADMIN_TOKEN: smoke-garage-admin-token
+    GARAGE_ACCESS_KEY_ID: GK0123456789abcdef01234567
+    GARAGE_SECRET_ACCESS_KEY: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0
+    IMGPROXY_KEY: 943b421c9eb07c830af81030552c86009268de4e532ba2ee2eab8247c6da0881
+    IMGPROXY_SALT: 520f986b998545b4785e0defbc4f3c1203f22de2374a3d53cb7a7fe9fea309c5
+    STORE_CLIENT_SECRET: smoke-store-client-secret
+    STORE_SESSION_SECRET: smoke-store-session-secret-0123456789abcdef
+    VARNISH_PURGE_SECRET: smoke-varnish-purge-secret
+    STORE_REVALIDATE_SECRET: smoke-store-revalidate-secret
+    PAYMENT_DEMO_TRANSFER_API_KEY: smoke-transfer-api-key
+    PAYMENT_DEMO_TRANSFER_WEBHOOK_SECRET: smoke-transfer-webhook-secret
+    PAYMENT_DEMO_CARD_API_KEY: smoke-card-api-key
+    PAYMENT_DEMO_CARD_WEBHOOK_SECRET: smoke-card-webhook-secret
+
+jobs:
+  backoffLimit: 1
+
+elasticsearch:
+  javaOpts: -Xms512m -Xmx512m
+
+keycloak:
+  javaHeap: -Xms128m -Xmx512m
+  mail: mailpit
+
+# Requests only (nothing is overcommitted on one node and a limit would only turn a spike into an OOM kill).
+resources:
+  postgres: { requests: { cpu: 20m, memory: 128Mi } }
+  redis: { requests: { cpu: 10m, memory: 16Mi } }
+  elasticsearch: { requests: { cpu: 100m, memory: 1Gi } }
+  rabbitmq: { requests: { cpu: 20m, memory: 128Mi } }
+  garage: { requests: { cpu: 10m, memory: 32Mi } }
+  keycloak: { requests: { cpu: 100m, memory: 512Mi } }
+  mailpit: { requests: { cpu: 10m, memory: 16Mi } }
+  api: { requests: { cpu: 50m, memory: 128Mi } }
+  worker: { requests: { cpu: 50m, memory: 128Mi } }
+  store: { requests: { cpu: 50m, memory: 128Mi } }
+  admin: { requests: { cpu: 10m, memory: 16Mi } }
+  imgproxy: { requests: { cpu: 20m, memory: 64Mi } }
+  varnish: { requests: { cpu: 10m, memory: 32Mi } }
+  job: { requests: { cpu: 20m, memory: 64Mi } }

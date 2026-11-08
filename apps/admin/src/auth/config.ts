@@ -1,23 +1,15 @@
 import type { UserManagerSettings } from "oidc-client-ts";
+import { readUrl, type ConfigSources } from "@/config";
 
 export interface AuthConfig {
   keycloakUrl: string;
   adminUrl: string;
 }
 
-/** Reads a required, browser-facing URL from the Vite env and drops a trailing slash. */
-export function requiredUrl(env: Partial<Record<string, string>>, name: string): string {
-  const value = env[name];
-  if (!value) {
-    throw new Error(`${name} is not set. Compose passes it to the admin container.`);
-  }
-  return value.replace(/\/+$/, "");
-}
-
-export function readAuthConfig(env: Partial<Record<string, string>>): AuthConfig {
+export function readAuthConfig(sources?: ConfigSources): AuthConfig {
   return {
-    keycloakUrl: requiredUrl(env, "VITE_KEYCLOAK_URL"),
-    adminUrl: requiredUrl(env, "VITE_ADMIN_URL"),
+    keycloakUrl: readUrl("VITE_KEYCLOAK_URL", sources),
+    adminUrl: readUrl("VITE_ADMIN_URL", sources),
   };
 }
 

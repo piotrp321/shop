@@ -1,0 +1,33 @@
+{{- /* The cache of the catalog reads of the API (infra/varnish/default.vcl). */ -}}
+{{- define "shop.varnish.container" -}}
+# Extra flags of the image's standard varnishd command: default TTL 0, so a response without Cache-Control is not cached.
+args: ["-t", "0"]
+{{ include "shop.envFromSecret" . }}
+ports:
+  - name: http
+    containerPort: 80
+volumeMounts:
+  - name: vcl
+    mountPath: /etc/varnish/default.vcl
+    subPath: default.vcl
+    readOnly: true
+readinessProbe:
+  exec:
+    # The child process runs and has loaded the VCL.
+    command: ["sh", "-c", "varnishadm status | grep -q running"]
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 10
+{{- end }}
+
+{{- define "shop.varnish.volumes" -}}
+- name: vcl
+  configMap:
+    name: varnish-vcl
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "varnish" "ports" (list (dict "name" "http" "port" 80))) }}
+---
+{{ include "shop.deployment" (dict "root" . "name" "varnish" "wave" "1" "image" .Values.images.varnish
+  "podAnnotations" (dict "checksum/vcl" (.Files.Get "files/default.vcl" | sha256sum))
+  "container" (include "shop.varnish.container" .)
+  "volumes" (include "shop.varnish.volumes" .)) }}

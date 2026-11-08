@@ -1,0 +1,28 @@
+#!/bin/sh
+# Loads the demo data: the seeds of the modules in dependency order, then the search index and the caches of the store.
+# `make seed` runs it. In prod the seeds refuse to run without --force-reset, so the script passes it there (the
+# caller decides whether wiping data is allowed).
+# The first failing command stops the script with its exit code.
+set -eu
+
+console="$(dirname "$0")/console"
+
+force_reset=""
+if [ "${APP_ENV:-}" = "prod" ]; then
+  force_reset="--force-reset"
+fi
+
+# Resets the catalog and loads the demo products; waits (60 s) until the worker has indexed every product.
+# Then the prices, the payment simulator transactions, the payments, the orders (before the stocks: the reservations
+# they hold go with the stocks) and the stocks. Each seed fails when a product has no price or stock pattern.
+for seed in catalog pricing payment-simulator payment ordering inventory; do
+  # shellcheck disable=SC2086 # force_reset is empty or one flag
+  "$console" "$seed:seed-demo" $force_reset
+done
+
+# The price and stock events of the seeds are acked without reindexing, so the search index is complete (prices and
+# availability) only after this step.
+"$console" catalog:reindex
+
+# Last, the catalog in both caches of the store.
+"$console" storefront:cache:purge-all

@@ -8,7 +8,10 @@ const config = { keycloakUrl: "http://localhost:46080", adminUrl: "http://localh
 describe("readAuthConfig", () => {
   it("reads the Keycloak and admin URLs", () => {
     expect(
-      readAuthConfig({ VITE_KEYCLOAK_URL: "http://localhost:46080/", VITE_ADMIN_URL: "http://localhost:46173/" }),
+      readAuthConfig({
+        runtime: undefined,
+        env: { VITE_KEYCLOAK_URL: "http://localhost:46080/", VITE_ADMIN_URL: "http://localhost:46173/" },
+      }),
     ).toEqual(config);
   });
 
@@ -17,7 +20,7 @@ describe("readAuthConfig", () => {
     [{ VITE_KEYCLOAK_URL: "http://localhost:46080" }, "VITE_ADMIN_URL"],
     [{ VITE_KEYCLOAK_URL: "", VITE_ADMIN_URL: "http://localhost:46173" }, "VITE_KEYCLOAK_URL"],
   ])("throws naming the missing variable %#", (env, name) => {
-    expect(() => readAuthConfig(env)).toThrow(name);
+    expect(() => readAuthConfig({ runtime: undefined, env })).toThrow(name);
   });
 });
 

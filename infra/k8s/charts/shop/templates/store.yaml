@@ -1,0 +1,45 @@
+{{- define "shop.store.container" -}}
+imagePullPolicy: {{ .Values.image.pullPolicy }}
+env:
+  # Kubernetes sets HOSTNAME to the name of the pod; the server must listen on every address.
+  - name: HOSTNAME
+    value: 0.0.0.0
+  - name: PORT
+    value: "3000"
+  # The server calls the API inside the cluster, never through the public address.
+  - name: API_INTERNAL_URL
+    value: http://api
+  # The catalog reads (list, categories, offers) go through Varnish; the cart, checkout and login never do.
+  - name: API_CATALOG_URL
+    value: http://varnish
+  - name: STORE_URL
+    value: {{ include "shop.url" (dict "root" . "sub" "") | quote }}
+  - name: REDIS_URL
+    value: redis://redis:6379
+  - name: KEYCLOAK_PUBLIC_URL
+    value: {{ include "shop.url" (dict "root" . "sub" "auth") | quote }}
+  - name: KEYCLOAK_INTERNAL_URL
+    value: http://keycloak:8080
+  # The switches of this deployment, read by /api/site of the store in the browser (D10).
+  - name: STORE_DEMO_NOTICE
+    value: {{ .Values.demoNotice | quote }}
+  - name: STORE_CUSTOMER_ACCOUNTS
+    value: {{ .Values.customerAccounts | quote }}
+{{ include "shop.envFromSecret" . }}
+ports:
+  - name: http
+    containerPort: 3000
+readinessProbe:
+  httpGet:
+    # A static route: `/` renders the catalog from the API.
+    path: /favicon.ico
+    port: 3000
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 20
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "store" "ports" (list (dict "name" "http" "port" 3000))) }}
+---
+{{ include "shop.deployment" (dict "root" . "name" "store" "wave" "1" "image" (include "shop.appImage" (dict "root" . "app" "store"))
+  "initContainers" (include "shop.wait" (dict "root" . "name" "redis" "check" "nc -z redis 6379"))
+  "container" (include "shop.store.container" .)) }}

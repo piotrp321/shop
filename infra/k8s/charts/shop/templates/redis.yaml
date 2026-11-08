@@ -1,0 +1,18 @@
+{{- define "shop.redis.container" -}}
+ports:
+  - name: redis
+    containerPort: 6379
+volumeMounts:
+  - name: data
+    mountPath: /data
+readinessProbe:
+  exec:
+    command: ["redis-cli", "ping"]
+  periodSeconds: 5
+  timeoutSeconds: 3
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "redis" "ports" (list (dict "name" "redis" "port" 6379))) }}
+---
+{{ include "shop.statefulset" (dict "root" . "name" "redis" "wave" "-1" "image" .Values.images.redis
+  "claims" (list (dict "name" "data" "size" .Values.storage.redis))
+  "container" (include "shop.redis.container" .)) }}

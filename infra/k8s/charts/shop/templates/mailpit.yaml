@@ -1,0 +1,16 @@
+{{- define "shop.mailpit.container" -}}
+ports:
+  - name: smtp
+    containerPort: 1025
+  - name: http
+    containerPort: 8025
+readinessProbe:
+  exec:
+    command: ["/mailpit", "readyz"]
+  periodSeconds: 5
+  timeoutSeconds: 5
+{{- end }}
+{{ include "shop.service" (dict "root" . "name" "mailpit" "ports" (list (dict "name" "smtp" "port" 1025) (dict "name" "http" "port" 8025))) }}
+---
+{{ include "shop.deployment" (dict "root" . "name" "mailpit" "wave" "-1" "image" .Values.images.mailpit
+  "container" (include "shop.mailpit.container" .)) }}

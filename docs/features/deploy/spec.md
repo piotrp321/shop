@@ -4,41 +4,18 @@ Pierwsze wdrożenie sklepu i panelu poza komputerem dewelopera: jeden serwer, je
 GitOps przez Argo CD. Na start działa jako demonstracja (sklep publiczny z informacją o symulowanych płatnościach,
 `noindex`, panel za Cloudflare Access, rejestracja wyłączona, potwierdzenia zamówień nie wychodzą na zewnątrz). Te
 ograniczenia są wartościami konfiguracji, więc przejście na publiczny sklep nie wymaga przebudowy obrazów ani
-architektury. Realizowany równolegle z MVP decyzją użytkownika; zastępuje sekcję „Po MVP: publiczne środowisko
-demo” z `docs/vision.md`. Część 1 z 2: kopie zapasowe i monitoring są w DEPLOY-OPS (#178), które musi być
-skończone przed przełączeniem na publiczny sklep albo przed pierwszymi prawdziwymi danymi.
+architektury. Kopie zapasowe i monitoring są w DEPLOY-OPS (#178), które musi być skończone przed przełączeniem na
+publiczny sklep albo przed pierwszymi prawdziwymi danymi.
 
 Issues: #175
-Zakres: `infra/k8s`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.dockerignore`, `apps/api/bin`, `apps/store/Dockerfile`, `apps/store/.dockerignore`, `apps/store/next.config.ts`, `apps/store/app/layout.tsx`, `apps/store/app/api/site`, `apps/store/src/components`, `apps/store/src/account`, `apps/admin/Dockerfile`, `apps/admin/.dockerignore`, `apps/admin/index.html`, `apps/admin/public`, `apps/admin/src/auth`, `apps/admin/src/api/client.ts`, `apps/admin/src/config`, `Makefile`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `apps/admin/CLAUDE.md`, `docs/vision.md`, `docs/adr`, `tools/rulesets`
-
-## Stan wyjściowy
-
-- Obrazy aplikacji są tylko deweloperskie. `apps/api/Dockerfile` ma etap `base` (FrankenPHP, rozszerzenia, Composer,
-  git, unzip, entrypoint z `composer install`) i `dev` (SPX); kod jest montowany z hosta. `apps/store/Dockerfile`
-  i `apps/admin/Dockerfile` zawierają same zależności (`npm ci`); serwer uruchamia komenda z compose.
-- Compose buduje `store` i `admin` bez `target` (ostatni etap), `api` i `worker` z `target: dev`, a `garage-init`
-  z obrazu budowanego inline (`dockerfile_inline`: binarka `/garage` w Alpine).
-- CI (`.github/workflows/ci.yml`) trzyma w GHCR obrazy deweloperskie `ghcr.io/piotrp321/shop-<app>:<klucz>` i uruchamia
-  cały stos compose z E2E na `ubuntu-latest`. Repo jest publiczne.
-- Gałąź `main` chroni ruleset: zmiany tylko przez PR (tylko squash w praktyce, historia liniowa), wymagane checki
-  `checks` i `e2e`, bez bypassu.
-- Sekrety lokalne generuje `infra/scripts/init-env.sh` do `.env.local` (lista kluczy w skrypcie).
-- API ma w `prod` logi JSON na stderr, komendy `catalog:search-index:setup`, `catalog:reindex`,
-  `storefront:cache:purge-all` (wymaga Varnisha i sklepu), `cart:purge-expired` i seedy `<moduł>:seed-demo`, które
-  w `prod` wymagają `--force-reset`. `catalog:seed-demo` czeka do 60 s, aż worker zaindeksuje produkty. `make seed`
-  uruchamia seedy w kolejności z głównego `Makefile` (zamówienia przed stanami).
-- Pliki realmów (`infra/keycloak/realms/*.json`, publiczne repo) zawierają konta demo z hasłami i sekretami TOTP;
-  placeholdery `${STORE_URL}`, `${ADMIN_URL}`, `${STORE_CLIENT_SECRET}` Keycloak podstawia przy imporcie przy starcie
-  (`--import-realm`, tylko brakujące realmy). Panel loguje się przez `oidc-client-ts` (discovery, wymiana kodu
-  i odnawianie tokenu to zapytania `fetch` z originu panelu do Keycloaka).
-- Layout sklepu (`apps/store/app/layout.tsx`) jest wspólny; część stron (`/cart`, `/checkout`, strona 404) jest
-  renderowana w czasie buildu, strony katalogu przez ISR. Link „Zaloguj się” jest w `src/account/AccountMenu.tsx`.
+Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.github/workflows/ci.yml`, `.github/scripts`, `.gitignore`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.dockerignore`, `apps/api/bin`, `apps/store/Dockerfile`, `apps/store/.dockerignore`, `apps/store/next.config.ts`, `apps/store/app/layout.tsx`, `apps/store/app/api/site`, `apps/store/src/api/client.ts`, `apps/store/src/components`, `apps/store/src/account`, `apps/admin/Dockerfile`, `apps/admin/.dockerignore`, `apps/admin/docker`, `apps/admin/index.html`, `apps/admin/public`, `apps/admin/src/auth`, `apps/admin/src/api/client.ts`, `apps/admin/src/config`, `Makefile`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `apps/admin/CLAUDE.md`, `docs/vision.md`, `docs/adr`, `tools/rulesets`
 
 ## Cel i zakres
 
-- Produkcyjne obrazy `api` (także dla workera, Jobów i CronJobów), `store` i `admin`, budowane w GitHub Actions
-  z każdego commita na `main` i wypychane do GHCR.
-- Helm chart całego stosu w `infra/k8s/`, wdrażany przez Argo CD z gałęzi `deploy`.
+- Produkcyjne obrazy `api` (także dla workera, Jobów i CronJobów), `store`, `admin` i `elasticsearch`, budowane
+  w GitHub Actions z każdego commita na `main` i wypychane do GHCR.
+- Helm chart całego stosu w `infra/k8s/`, wdrażany przez Argo CD z gałęzi `deploy-images` (snapshoty gałęzi `deploy`
+  z plikiem digestów obrazów).
 - Sekrety w repo tylko zaszyfrowane (Sealed Secrets).
 - Migracje i przygotowanie indeksu jako Job przed startem nowej wersji, nigdy przy starcie kontenera aplikacji.
 - Jednorazowa, idempotentna inicjalizacja katalogu demo; kolejne wdrożenia nie nadpisują danych.
@@ -55,37 +32,57 @@ Zakres: `infra/k8s`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.docker
 
 ## Poza zakresem
 
-- Kopie zapasowe (restic, weryfikacja, odtwarzanie), Grafana Alloy i alerty – DEPLOY-OPS (#178). W tym epiku tylko
-  włączenie backupu VPS-a od OVH (runbook).
+- Kopie zapasowe (restic, weryfikacja, odtwarzanie), Grafana Alloy i alerty – DEPLOY-OPS (#178). Tu tylko włączenie
+  backupu VPS-a od OVH (runbook).
 - Osobne środowiska demo i produkcji, wiele węzłów, autoskalowanie, Rancher, własny Prometheus i Loki.
 - Tryb publicznego demo (nocny reset danych, publiczne konta demo, limity uploadów) – #179.
 - Sentry (SDK w api, store i admin) oraz trace'y i Sentry Performance – #180.
 - Włączenie publicznej rejestracji i wysyłki zamówień przez Brevo: wymaga polityki prywatności i zabezpieczeń przed
-  nadużyciami (#181); ten epik daje przełączniki i działającą weryfikację e-mail.
+  nadużyciami (#181); środowisko ma przełączniki i działającą weryfikację e-mail.
 - Testy obciążeniowe.
 - Zakup serwera, domeny, założenie kont zewnętrznych (Cloudflare, Brevo), ruleset
-  i deploy key na GitHubie oraz samo uruchomienie na serwerze – po merge'u epiku, poza AO, według runbooka (agent
-  prowadzi kroki oznaczone „agent”). Zadania epiku nie wymagają serwera ani zmian w ustawieniach repo.
+  i deploy key na GitHubie oraz samo uruchomienie na serwerze – według runbooka (agent prowadzi kroki oznaczone
+  „agent”). Repo, jego testy i CI nie wymagają serwera ani zmian w ustawieniach repo.
 - Sprawdzenie nazwy sklepu w bazach znaków towarowych (UPRP, EUIPO).
-- Zmiany środowiska lokalnego poza wspólnym skryptem seedów i przełącznikami sklepu (domyślnie jak dziś).
+- Zmiany środowiska lokalnego poza wspólnym skryptem seedów i przełącznikami sklepu (ich wartości domyślne dają zachowanie lokalne).
 
 ## Decyzje
 
 - **D1. k3s na jednym węźle, Traefik z k3s jako ingress, `local-path` jako storage.**
 - **D2. Własny chart zamiast gotowych chartów usług.** Jeden chart `infra/k8s/charts/shop` z szablonami dla każdej
-  usługi compose, na tych samych obrazach i wersjach co `infra/docker-compose.yml`. Gotowe charty tylko dla
+  usługi compose, na tych samych obrazach i wersjach co `infra/docker-compose.yml`. Elasticsearch działa na obrazie
+  budowanym z tego samego Dockerfile co w compose (`infra/elasticsearch/Dockerfile`). Gotowe charty tylko dla
   platformy: Argo CD i Sealed Secrets.
 - **D3. Nazwy usług w klastrze takie jak w compose**; wewnętrzne adresy i VCL (`api:80`) bez zmian.
-- **D4. Wdrażana gałąź `deploy`, przesuwana fast-forwardem.** Argo CD śledzi `deploy` i ustawia tag obrazów na
-  `$ARGOCD_APP_REVISION` (parametr Helma aplikacji Argo), czyli SHA commita. Workflow wdrożenia po zbudowaniu obrazów
-  z tagiem SHA i zielonym smoke teście przesuwa `deploy` fast-forwardem na ten commit z `main` (historia `main` jest
-  liniowa, więc `deploy` jest zawsze jej przodkiem). Bez commitów z tagami i bez force pusha. Wypycha deploy key
-  z prawem zapisu (sekret repo). Ruleset `deploy` (`tools/rulesets/deploy.json`) zabrania usunięcia i force pusha
-  wszystkim, a zwykły push dopuszcza tylko dla tego deploy keya (jedyny aktor bypass, typ `DeployKey`). Założenie
-  rulesetu i deploy keya oraz próby (push innym poświadczeniem i usunięcie odrzucone, push deploy keyem przyjęty) to
-  krok runbooka po merge'u, z zapisem wyników.
+- **D4. Gałęzie `deploy` i `deploy-images`, przesuwane jednym atomowym pushem.** `deploy` przesuwa się wyłącznie
+  fast-forwardem na zatwierdzony commit z `main` (historia `main` jest liniowa, więc `deploy` jest zawsze jej przodkiem).
+  `deploy-images` to kolejne snapshoty: każdy commit ma drzewo commita z `deploy` plus wygenerowany plik
+  `infra/k8s/environments/prod/values-images.yaml` (`image.tag: <sha>` i `image.digests.{api,store,admin,elasticsearch}`)
+  i dwóch rodziców: poprzedni `deploy-images` (gdy istnieje) i commit z `deploy`. Commit tworzy CI przez `git commit-tree`
+  (tymczasowy indeks, working tree nietknięty); bez merge'a i bez force-pusha, a komunikat ma SHA źródłowego commita
+  i cztery digesty. Ponowny run tego samego commitu z identycznym drzewem nie tworzy nowego snapshotu. Argo CD śledzi
+  tylko `deploy-images`: aplikacja `shop` ma jedno źródło (repo, `targetRevision: deploy-images`, ścieżka
+  `infra/k8s/charts/shop`, `helm.valueFiles` `../../environments/prod/values.yaml` i
+  `../../environments/prod/values-images.yaml`, bez `ignoreMissingValueFiles`), bez wielu źródeł i bez parametru
+  `$ARGOCD_APP_REVISION` (rewizja `deploy-images` nie jest tagiem obrazu; tag daje plik). Pozostałe aplikacje (`root`,
+  sekrety) też czytają `deploy-images`, więc całe wdrożenie ma jedną rewizję. Obrazy są wdrażane po digeście
+  (`image.digests`, `image.requireDigests: true`), bez `latest`, bez fallbacku do tagów, bez Image Updatera. Workflow po
+  zbudowaniu obrazów z tagiem SHA raz generuje plik (`infra/k8s/scripts/images-values.sh`), smoke test instaluje chart
+  dokładnie z tym plikiem, a po zielonym smoke teście i sprawdzeniu renderu `prod` z tym plikiem
+  (`infra/k8s/scripts/verify-images.sh`) przesuwa obie gałęzie jednym `git push --atomic` (`.github/scripts/deploy-ref.sh`,
+  deploy key z sekretu repo `DEPLOY_KEY`, bez `--force`): błąd walidacji albo pusha nie publikuje niczego, a przy
+  odrzuconym non-fast-forward żadna gałąź się nie przesuwa. Bypass rulesetu dotyczy wszystkich jego reguł, więc obie
+  gałęzie chronią dwa rulesety na `refs/heads/deploy` i `refs/heads/deploy-images`: `deploy` (`tools/rulesets/deploy.json`:
+  `deletion` i `non_fast_forward`, bez żadnego aktora bypass) zabrania usunięcia i force pusha wszystkim, a `deploy-push`
+  (`tools/rulesets/deploy-push.json`: reguły `creation` i `update`) dopuszcza utworzenie gałęzi i zwykły push tylko dla
+  deploy keya (jedyny aktor bypass, typ `DeployKey`, tryb `always`); bez wymogu PR. Aktor `DeployKey` obejmuje każdy
+  deploy key repo z prawem zapisu, więc repo ma mieć tylko jeden taki klucz (warunek dla runbooka wdrożenia). Założenie
+  rulesetów i deploy keya oraz próby (push innym poświadczeniem i usunięcie odrzucone na obu gałęziach, push deploy
+  keyem przyjęty) to krok runbooka po merge'u, z zapisem wyników. Obrazy z digestami, do których odwołuje się
+  `deploy-images`, nie mogą być usuwane z GHCR (rollback to powrót do starszego snapshotu): żadna retencja pakietów ani
+  workflow nie usuwa ich wersji (test w `check`).
 - **D5. Sealed Secrets.** Publiczny certyfikat kontrolera trafia do repo przy bootstrapie, więc kolejne sekrety
-  zaszyfruje każdy (także agent AO) bez dostępu do klastra. Kopia klucza prywatnego kontrolera jest u użytkownika.
+  zaszyfruje każdy (także agent) bez dostępu do klastra. Kopia klucza prywatnego kontrolera jest u użytkownika.
 - **D6. TLS i dostęp do originu.** Cloudflare w trybie proxy, „Full (strict)”, certyfikat Cloudflare Origin CA jako
   zaszyfrowany sekret TLS Traefika. Ruch HTTP(S) spoza Cloudflare odrzuca middleware Traefika `ipAllowList` z zakresami
   Cloudflare (lista w wartościach chartu, aktualizowana skryptem), na wszystkich ingressach; serwis Traefika ma
@@ -101,8 +98,9 @@ Zakres: `infra/k8s`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.docker
   `users` i z podstawionymi adresami (Helm `fromJson`). Job `keycloak-config` (obraz Keycloaka, `kcadm`) zakłada realm,
   gdy go nie ma, a gdy jest, robi `partialImport` z `ifResourceExists=SKIP` (dodaje brakujące klienty, role i grupy,
   niczego nie nadpisuje). Potem zawsze ustawia wartości sterowane konfiguracją: sekret klienta `store`, `redirectUris`
-  i `webOrigins` z domeny, rejestrację, `verifyEmail`, SMTP. Nie usuwa użytkowników, haseł ani zasobów. Lokalny
-  `--import-realm` z kontami demo zostaje bez zmian.
+  i `webOrigins` z domeny, rejestrację, `verifyEmail`, SMTP. Nie usuwa użytkowników, haseł ani zasobów. Pliki
+  realmów w repo (publicznym) mają konta demo z hasłami i sekretami TOTP, więc w klastrze nie trafiają do realmów.
+  Lokalny `--import-realm` z kontami demo działa jak w compose.
 - **D10. Ograniczenia startowe są wartościami chartu** (`environments/prod/values.yaml`): `demoNotice`, `noindex`,
   `customerAccounts` (rejestracja w realmie `shop` i link logowania w sklepie), `orderMail` (`brevo` albo `mailpit`).
   Zmiana to commit z wartością, który przechodzi zwykły pipeline (build z cache, smoke, wdrożenie); kod i obrazy się
@@ -119,7 +117,7 @@ Domena bazowa jest parametrem wartości chartu (`global.domain`); użytkownik po
 |---|---|---|
 | `<domena>` | store | publiczny; `X-Robots-Tag: noindex`, gdy `noindex` |
 | `admin.<domena>` | admin | Cloudflare Access (lista uprawnionych e-maili) |
-| `api.<domena>` | api | publiczny; API panelu (token realmu `backoffice` i role, jak dziś) i strona płatności symulatora; sklep i webhooki symulatora wołają API wewnątrz klastra |
+| `api.<domena>` | api | publiczny; API panelu (token realmu `backoffice` i role) i strona płatności symulatora; sklep i webhooki symulatora wołają API wewnątrz klastra |
 | `auth.<domena>` | keycloak | tylko `/realms/shop/`, `/realms/backoffice/` i `/resources/`; realm `master` i konsola administracyjna niedostępne z zewnątrz; bez Access (panel wymienia kod na token zapytaniem z innego originu), realm `backoffice` chronią hasło, TOTP i blokada brute force |
 | `img.<domena>` | imgproxy | publiczny; reguła cache Cloudflare dla całego hosta |
 
@@ -128,13 +126,13 @@ Argo CD, RabbitMQ, Mailpit, Garage, Elasticsearch i Postgres nie mają publiczne
 
 ## Obrazy produkcyjne
 
-Nazwy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `admin`), publiczne (runbook ustawia widoczność
-pakietów; k3s pobiera je bez `imagePullSecret`).
+Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `admin`, `elasticsearch`), publiczne
+(runbook ustawia widoczność pakietów; k3s pobiera je bez `imagePullSecret`).
 
 - **api:** etapy: `runtime` (FrankenPHP, rozszerzenia, konfiguracja PHP i Caddy), `base` z niego (Composer, git,
-  unzip, entrypoint z `composer install`, jak dziś), `build` z `base` (`composer install --no-dev
+  unzip, entrypoint z `composer install`, jak w compose), `build` z `base` (`composer install --no-dev
   --classmap-authoritative`, rozgrzany cache `prod`), `prod` z `runtime` (kod i `vendor` z `build`, produkcyjne opcache,
-  bez entrypointu instalującego zależności, bez Composera, git i SPX), `dev` z `base` jako ostatni (compose bez zmian).
+  bez entrypointu instalującego zależności, bez Composera, git i SPX), `dev` z `base` jako ostatni (używa go compose).
   Dane demo (`apps/api/fixtures`) są w obrazie. Ten sam obraz uruchamia worker (te same transporty co compose), Joby
   i CronJoby.
 - **store:** etap `prod`: `next build` z `output: "standalone"` włączanym zmienną tylko w buildzie obrazu (lokalny
@@ -143,12 +141,32 @@ pakietów; k3s pobiera je bez `imagePullSecret`).
   (`window.__ADMIN_CONFIG__`), fallbackiem SPA na `index.html` i `Cache-Control: no-cache` dla `index.html`
   i `/config.js`. Panel czyta najpierw `window.__ADMIN_CONFIG__`, a bez niego `import.meta.env`; lokalnie
   `public/config.js` jest pusty (bez 404 w `vite dev`). Brak wymaganego klucza w obu źródłach: błąd z nazwą klucza.
-- Etap używany przez compose pozostaje ostatni; lokalny `make up` działa jak dziś.
-- Usługi bez własnego kodu używają obrazów i wersji z `infra/docker-compose.yml`. `garage-init` w klastrze: initContainer
-  z obrazu Garage kopiuje binarkę do `emptyDir`, kontener Alpine uruchamia `infra/garage/init.sh`. Konfiguracja z repo
-  (VCL, `garage.toml`, init Postgresa, `init.sh`, realmy) trafia do ConfigMap przez symlinki
-  w `infra/k8s/charts/shop/files/`. Pierwsze zadanie sprawdza, że Helm i Argo CD czytają symlinki wewnątrz repo; jeśli
-  nie, chart trzyma kopie, a `check` sprawdza ich zgodność z oryginałami.
+- **elasticsearch:** `infra/elasticsearch/Dockerfile`, ten sam, który buduje compose: oficjalny obraz Elasticsearch
+  przypięty digestem i wtyczka `analysis-stempel` instalowana w czasie buildu (jej wersja jest wersją Elasticsearch).
+  Wersje w compose i w klastrze są zgodne z definicji.
+- Wdrożenie po digeście, nigdy `latest`: obraz własny to `<rejestr>/<app>:<sha>@<digest>`, gdy wartość
+  `image.digests.<app>` jest podana, inaczej `<rejestr>/<app>:<sha>`; w `prod` tag i digesty daje wyłącznie plik
+  `values-images.yaml` snapshotu (D4). `image.requireDigests: true` (profil `prod`)
+  wymaga wszystkich czterech digestów (`sha256:` i 64 znaki hex); podany digest zawsze musi mieć ten format,
+  a `image.tag` nie może być `latest` (schemat wartości, błąd renderu z nazwą wartości). Profil `ci` digestów nie
+  wymaga (smoke test importuje obrazy lokalne po tagu).
+- Obrazy usług bez własnego kodu (`images.*` w wartościach chartu) mają postać `nazwa:tag@sha256:<digest indeksu
+  wieloarchitekturowego>`, z tagiem takim jak w `infra/docker-compose.yml`; compose zostaje przy samych tagach.
+- Kontenery przy starcie niczego nie pobierają (wtyczek ani innych artefaktów); klaster pobiera tylko obrazy
+  o przypiętych digestach.
+- Compose buduje `api` i `worker` z `target: dev`, a `store` i `admin` bez `target` (ostatni etap, `dev`), więc
+  lokalny `make up` nie zależy od etapów `prod`.
+- Usługi bez własnego kodu używają obrazów i wersji z `infra/docker-compose.yml`. `garage-init` w klastrze: kontener
+  Alpine uruchamia `infra/garage/init.sh` z binarką Garage zamontowaną z jej obrazu wolumenem typu `image` (bez kopii
+  w `emptyDir`). Wolumen `image` (ImageVolume) jest alfa w Kubernetes 1.31–1.32, betą domyślnie wyłączoną w 1.33–1.34,
+  betą domyślnie włączoną w 1.35 i stabilny od 1.36; wymaga też runtime'u z obsługą wolumenów obrazów (containerd 2.1
+  lub nowszy). Wymaganie: k3s/Kubernetes ≥ 1.36. Pilnuje go `kubeVersion: ">=1.36.0-0"` w `Chart.yaml` (Helm, a przez
+  niego Argo CD, odmawia renderu dla starszego klastra). Smoke test i bootstrap serwera używają tego samego k3s
+  `v1.36.6-k3s1` (`infra/k8s/scripts/tools.sh`); bootstrap odmawia wersji starszej niż v1.36. Konfiguracja z repo
+  (VCL, `garage.toml`, init Postgresa, `init.sh`, realmy) trafia do ConfigMap przez symlinki w
+  `infra/k8s/charts/shop/files/`, które Helm i Argo CD czytają wewnątrz repo; test w `check` pilnuje, że symlinki
+  nie wychodzą poza repo, a ConfigMap mają treść oryginałów. Skrypty Jobów (`initialize.sh`, `keycloak-config.sh`) są
+  zwykłymi plikami w `files/scripts/`.
 
 ## Chart `shop`
 
@@ -162,14 +180,19 @@ pakietów; k3s pobiera je bez `imagePullSecret`).
 
   | Fala | Zasoby | Czeka w initContainerze na |
   |---|---|---|
-  | −2 | Secret, ConfigMap, middleware Traefika | – |
+  | −2 | Secret, ConfigMap, middleware Traefika, ServiceAccount `shop-wait` z Role i RoleBinding | – |
   | −1 | StatefulSety, Keycloak, Mailpit | Keycloak: Postgres |
   | 0 | Joby `garage-init`, `migrate` (`doctrine:migrations:migrate --no-interaction`, `catalog:search-index:setup`), `keycloak-config` | Garage; Postgres i Elasticsearch; gotowy Keycloak |
-  | 1 | Deploymenty api, worker, store, admin, imgproxy, varnish | api i worker: `doctrine:migrations:up-to-date`; imgproxy: Garage z bucketami |
-  | 2 | Job `initialize` (dane startowe) | gotowe api, worker, varnish, store |
-  | 3 | Job `purge-caches` (`storefront:cache:purge-all`) | gotowe api, varnish, store |
+  | 1 | Deploymenty api, worker, store, admin, imgproxy, varnish; Ingress; CronJob | api i worker: `doctrine:migrations:up-to-date` (api i worker także RabbitMQ); store: Redis; imgproxy: Garage z bucketami |
+  | 2 | Job `initialize` (dane startowe) | zakończony rollout Deploymentów api, varnish, store, worker |
+  | 3 | Job `purge-caches` (`storefront:cache:purge-all`) | zakończony rollout Deploymentów api, varnish, store |
 
   Nieudana migracja: nowe `api` i `worker` nigdy nie są gotowe, stare działają (`maxUnavailable: 0`).
+- `initialize` i `purge-caches` czekają na rollout (`kubectl rollout status`) w initContainerach z obrazem `kubectl`,
+  a nie na odpowiedź Service, którą mógłby jeszcze dać stary pod. Te Joby działają na ServiceAccount `shop-wait`
+  (Role: tylko `get`, `list`, `watch` na `deployments`), a token API Kubernetes (wolumen `projected`) montują tylko te
+  initContainery. Pozostałe pody i kontenery nie montują tokenu (`automountServiceAccountToken: false`). Deploymenty
+  mają `progressDeadlineSeconds` nie krótszy niż czas oczekiwania Jobów (1500 s).
 - Middleware Traefika: `ipAllowList` (D6) na wszystkich ingressach; `X-Robots-Tag: noindex` na wszystkich hostach,
   gdy `noindex: true`.
 - CronJob `cart:purge-expired` (co godzinę, `concurrencyPolicy: Forbid`, strefa `Europe/Warsaw`).
@@ -186,16 +209,26 @@ pakietów; k3s pobiera je bez `imagePullSecret`).
 
 1. Merge PR do `main` uruchamia `.github/workflows/deploy.yml`. Grupa `concurrency` bez anulowania trwającego runu:
    działa jeden, czeka najwyżej jeden, pośrednie są pomijane, więc wdraża się najnowszy commit.
-2. Workflow buduje i wypycha obrazy `api`, `store`, `admin` z tagiem SHA.
-3. Smoke test na k3d (niżej) na tych obrazach.
-4. Po zielonym smoke teście workflow przesuwa `deploy` fast-forwardem na ten commit (D4). Bez sekretu z deploy keyem
-   (przed krokiem runbooka) workflow kończy się po smoke teście z ostrzeżeniem, bez błędu.
-5. Argo CD synchronizuje `shop` z `deploy` według fal.
-6. Wycofanie wersji: revert na `main` (nowe wdrożenie). Schemat bazy jest zgodny wstecz tylko z poprzednią wersją;
-   cofnięcie o więcej wersji wymaga odtworzenia kopii (DEPLOY-OPS) albo pełnego ponownego wczytania danych
-   (`reinitialize`, zgoda użytkownika).
+2. Workflow buduje i wypycha obrazy `api`, `store`, `admin`, `elasticsearch` z tagiem SHA; wdrażane są po digeście
+   (D4). Digesty czterech obrazów są w podsumowaniu runu i w outputach joba `images`, który raz generuje z nich plik
+   `values-images.yaml` (output wieloliniowy z sumą kontrolną; kolejne joby zapisują te same bajty i sprawdzają sumę).
+   Obraz, który już ma ten tag (ponowny run tego samego commitu), zostaje bez przebudowy, więc jeden tag nie dostaje
+   drugiego digestu.
+3. Smoke test na k3d (niżej) instaluje chart z tym plikiem: klaster pobiera obrazy z GHCR po digeście i test sprawdza,
+   że pody api, store, admin i elasticsearch działają na tych digestach.
+4. Po zielonym smoke teście workflow sprawdza render `prod` z tym plikiem (każdy obraz własny to dokładnie
+   `ghcr.io/piotrp321/shop/<app>:<sha>@<digest>` z pliku) i jednym atomowym pushem przesuwa `deploy` fast-forwardem na ten
+   commit oraz dodaje snapshot do `deploy-images` (D4). Bez sekretu z deploy keyem (przed krokiem runbooka) workflow
+   kończy się po smoke teście z ostrzeżeniem, bez błędu.
+5. Argo CD synchronizuje `root`, a przez niego `sealed-secrets`, `secrets` i `shop` (fale −2, −1, 0) z `deploy-images`;
+   chart rozkłada zasoby w falach.
+6. Wycofanie wersji: revert na `main` (nowe wdrożenie). Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
+   `deploy-images` (jego obrazy zostają w GHCR), po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona
+   `syncPolicy` aplikacji `shop`), a potem `shop`; po revercie automatyczną synchronizację włącza się z powrotem, najpierw
+   `root`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją; cofnięcie o więcej wersji
+   wymaga odtworzenia kopii (DEPLOY-OPS) albo pełnego ponownego wczytania danych (`reinitialize`, zgoda użytkownika).
 
-Zasady dla kolejnych epików (dokumentacja w `apps/api/CLAUDE.md` i `CLAUDE.md`): migracje zgodne wstecz z poprzednią
+Zasady dla zmian w repo (dokumentacja w `apps/api/CLAUDE.md` i `CLAUDE.md`): migracje zgodne wstecz z poprzednią
 wersją kodu; wiadomości Messengera zgodne w obie strony między kolejnymi wersjami; zmiana usług, zmiennych,
 transportów workera albo sekretów w compose i zmiana realmów (nowy klient, rola, adres) wymagają tej samej zmiany
 w chartcie w tym samym PR.
@@ -205,10 +238,13 @@ w chartcie w tym samym PR.
 - Wspólny skrypt `apps/api/bin/seed-demo` uruchamia komendy `<moduł>:seed-demo` w kolejności z `make seed`
   (z modułami PAYMENT) i `storefront:cache:purge-all`; w `prod` przekazuje `--force-reset`. `make seed` woła ten sam
   skrypt.
-- Job `initialize` (fala 2) wczytuje dane tylko wtedy, gdy baza `shop` nie ma żadnego produktu, ceny, stanu ani
-  zamówienia (zapytania tylko do odczytu w skrypcie). Gdy wszystkie te tabele mają dane – sukces bez zmian. Gdy
-  katalog jest pusty, a inne dane istnieją – błąd z opisem stanu, bez zmian (seed z `--force-reset` skasowałby
-  zamówienia). Wyłączany wartością `initialize.enabled: false` (na potrzeby odtwarzania kopii w DEPLOY-OPS).
+- Job `initialize` (fala 2, skrypt `files/scripts/initialize.sh`) liczy produkty, ceny, stany i zamówienia w bazie
+  `shop` (zapytania tylko do odczytu) i rozróżnia trzy stany:
+  - wszystkie cztery liczby są zerowe – wczytuje dane demo (`bin/seed-demo`, w `prod` z `--force-reset`);
+  - są produkty, ceny i stany – sukces bez zmian, niezależnie od zamówień;
+  - każdy inny stan jest mieszany – błąd z liczbami i bez zmian, np. pusty katalog z zamówieniami albo cenami (reset
+    seeda by je skasował) albo produkty bez cen lub stanów (przerwana inicjalizacja, wymaga decyzji człowieka).
+- Wyłączany wartością `initialize.enabled: false` (na potrzeby odtwarzania kopii w DEPLOY-OPS).
 - Inicjalizacja przerwana w połowie: kolejne uruchomienie kończy się błędem stanu mieszanego; runbook opisuje ponowne
   wymuszone wczytanie (`make -C infra/k8s reinitialize`), które kasuje dane i wymaga zgody użytkownika.
 
@@ -218,8 +254,8 @@ w chartcie w tym samym PR.
 - Pierwszy administrator: `make -C infra/k8s create-admin LOGIN=… EMAIL=…` (po zgodzie użytkownika; może go uruchomić
   agent). Zakłada użytkownika w realmie `backoffice` z rolą `admin` bez hasła i wysyła mu przez SMTP Brevo e-mail
   z akcjami „ustaw hasło” i „skonfiguruj TOTP” (`execute-actions-email`, link ważny 12 h). Hasło i TOTP ustawia
-  administrator w przeglądarce, więc nie trafiają do repo, skryptów, logów ani kontekstu agenta. Istniejący login:
-  błąd bez zmian.
+  administrator w przeglądarce, więc nie trafiają do repo, skryptów, logów ani kontekstu agenta. Istniejący login albo
+  e-mail: błąd (kod 3) bez zmian; błąd po założeniu użytkownika usuwa go, więc polecenie można powtórzyć.
 - Konta klientów: `customerAccounts: false` w `prod` wyłącza rejestrację w realmie `shop` i ukrywa link „Zaloguj się”
   w sklepie (przełącznik z `/api/site`). `verifyEmail` włączone; e-mail weryfikacyjny i reset hasła idą przez Brevo.
 
@@ -236,65 +272,112 @@ w chartcie w tym samym PR.
 
 - Endpoint `/api/site` (route handler, dynamiczny, `Cache-Control: no-store`) zwraca `{ demoNotice, customerAccounts }`
   ze zmiennych serwera `STORE_DEMO_NOTICE` i `STORE_CUSTOMER_ACCOUNTS`. Domyślnie (lokalnie, w testach):
-  `demoNotice: false`, `customerAccounts: true`, czyli jak dziś.
+  `demoNotice: false`, `customerAccounts: true`, czyli zachowanie lokalne.
 - Komponent klienta w layoutcie pokazuje nad nagłówkiem pasek: „Sklep demonstracyjny: płatności i zamówienia są
   symulowane, nic nie zostanie wysłane ani pobrane.”, gdy `demoNotice`. `AccountMenu` nie pokazuje „Zaloguj się”, gdy
   `!customerAccounts`. Błąd odczytu `/api/site`: bez paska i z linkiem (stan domyślny).
 - Testy komponentów (z flagą, bez niej, błąd odczytu); smoke test sprawdza pasek i brak linku na `/` i `/cart`
-  w obrazie zbudowanym bez flag.
+  w przeglądarce, w obrazie zbudowanym bez flag.
 
 ## Kopie zapasowe
 
-W tym epiku tylko automatyczny backup VPS-a od OVH (runbook: włączenie). Kopie baz i obiektów poza serwerem,
+Tu tylko automatyczny backup VPS-a od OVH (runbook: włączenie). Kopie baz i obiektów poza serwerem,
 weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 
 ## Sekrety
 
-- Klucze z `infra/scripts/init-env.sh` oraz zewnętrzne: Brevo SMTP, certyfikat i klucz Cloudflare Origin CA.
-- `infra/k8s/scripts/seal-secrets.sh` (w kontenerze z `kubeseal`) szyfruje certyfikatem z repo
-  (`environments/prod/sealed-secrets.pem`). Klucze z listy `init-env.sh` (czytanej z pliku) dopisuje tylko brakujące,
-  z losową wartością; istniejących nie zmienia. Wartości zewnętrzne czyta interaktywnie z terminala (bez echa), nie
-  z argumentów ani zmiennych, i nie wypisuje ich; krok runbooka „użytkownik”. Brak certyfikatu, pusta wartość albo
-  nieudany `kubeseal` kończą skrypt błędem bez zapisu.
+- Klucze z `infra/scripts/init-env.sh` oraz zewnętrzne: Brevo SMTP, certyfikat i klucz Cloudflare Origin CA. Zaszyfrowane
+  sekrety są w `infra/k8s/environments/prod/secrets/` (SealedSecrety dla przestrzeni `shop`): `shop-secrets.yaml` (klucze
+  `init-env.sh`), `shop-brevo-smtp.yaml` (`BREVO_SMTP_LOGIN`, `BREVO_SMTP_PASSWORD`), `shop-origin-tls.yaml` (typ
+  `kubernetes.io/tls`; `ingress.tlsSecretName` w wartościach `prod` wskazuje go na wszystkich ingressach). Kontroler i
+  sekrety stawiają aplikacje Argo `sealed-secrets` i `secrets` w falach przed `shop`.
+- `infra/k8s/scripts/seal-secrets.sh` (`make -C infra/k8s seal-secrets`, w kontenerze z `kubeseal` przypiętym wersją i
+  digestem) szyfruje certyfikatem z repo (`environments/prod/sealed-secrets.pem`). Klucze z listy `init-env.sh` (czytanej z
+  pliku) dopisuje tylko brakujące, z losową wartością; istniejących nie zmienia. Wartości zewnętrzne (login i klucz Brevo,
+  certyfikat i klucz Origin CA) czyta interaktywnie z terminala (bez echa), nie z argumentów ani zmiennych, i nie
+  wypisuje ich; tworzy je raz (gdy plik istnieje, niczego nie pyta); krok runbooka „użytkownik”. Brak certyfikatu, pusta
+  wartość, zły format albo nieudany `kubeseal` kończą skrypt błędem bez zapisu (pliki powstają dopiero, gdy wszystko się
+  udało), a plik w innym formacie niż zapisuje skrypt nie jest ruszany.
 - `check` chartu: każdy klucz z `init-env.sh` jest w szablonie sekretu chartu (zawsze); gdy w repo jest certyfikat,
-  także ma zaszyfrowaną wartość w `environments/prod/secrets/`.
+  także ma zaszyfrowaną wartość w `environments/prod/secrets/`. Zawsze: w tym katalogu są tylko SealedSecrety (jawny
+  Secret to błąd), w przestrzeni `shop`, bez jawnych danych.
 
 ## Serwer, bootstrap i wdrożenie przez Claude Code
 
 - Cele `infra/k8s/Makefile` działają z komputera użytkownika (narzędzia w kontenerach) i łączą się z serwerem po SSH
   (`HOST=user@adres`):
-  - `bootstrap`: na czystym Ubuntu 24.04 LTS przypięta wersja k3s, `vm.max_map_count=262144`, ufw (SSH i API k3s;
-    D6), automatyczne poprawki bezpieczeństwa, Sealed Secrets (z kluczem z kopii, jeśli jest; inaczej zapis
-    certyfikatu do repo), Argo CD z aplikacją `root` (app-of-apps w `infra/k8s/argocd/`). Idempotentny; brak uprawnień
-    root albo inny system kończą go błędem przed zmianami.
-  - `status`: stan aplikacji Argo, podów i Jobów.
+  - `bootstrap` (`SEALED_KEY_FILE=<kopia klucza>` opcjonalnie): na czystym Ubuntu 24.04 LTS przypięta wersja k3s (≥ v1.36,
+    wymaganie chartu; instalator z tagu wydania), `vm.max_map_count=262144`, ufw (SSH i API k3s oraz sieci podów i usług;
+    D6), automatyczne poprawki bezpieczeństwa, Traefik z `externalTrafficPolicy: Local` (`HelmChartConfig`), Argo CD
+    (przypięty chart instalowany przez kontroler Helma k3s), Sealed Secrets (z kluczem z kopii, jeśli jest, stosowanym
+    przed kontrolerem; inaczej zapis certyfikatu do repo), aplikacja `root` (app-of-apps w `infra/k8s/argocd/`).
+    Idempotentny; brak uprawnień root albo inny system kończą go błędem przed zmianami; zmiana konfiguracji k3s
+    (`tls-san`) przy tej samej wersji restartuje k3s. Kopia klucza to Secret albo `List` Secretów (wynik polecenia
+    z runbooka). Certyfikat kontrolera trafia do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma; inny niż w repo
+    to błąd zgłaszany przed zastosowaniem `root` (sekrety z repo nie dałyby się odszyfrować), nic nie jest nadpisywane.
+    Kontroler nie rotuje klucza (`keyrenewperiod: "0"`), więc certyfikat w repo i kopia klucza zostają aktualne.
+    `argocd-cm` ma standardową customizację zdrowia `Application`, więc `root` czeka na aplikacje-dzieci w falach.
+  - `kubeconfig`: kubeconfig klastra do katalogu poza repo (`KUBE_DIR`), dla `rerun` i `create-admin`.
+  - `status`: stan aplikacji Argo, podów i Jobów (tylko odczyt).
   - `rerun JOB=…`: ponowienie Joba wersji (D11).
-  - `create-admin`, `reinitialize`: wypisują, co zrobią, i wymagają potwierdzenia słowem `tak`; agent
-    uruchamia je tylko po zgodzie użytkownika w rozmowie.
+  - `create-admin`, `reinitialize` (kasuje dane sklepu i wczytuje dane demo od nowa przez `bin/seed-demo` w podzie api):
+    wypisują, co zrobią, i wymagają potwierdzenia słowem `tak`; agent uruchamia je tylko po zgodzie użytkownika w rozmowie.
+  - `seal-secrets` (Sekrety) i `cloudflare-ips` (zakresy Cloudflare w `ipAllowList` z opublikowanych list; `CHECK=1`
+    tylko raportuje).
 - Runbook `infra/k8s/README.md` jest sekwencją tych celów i kroków w Cloudflare, Brevo i GitHubie, oznaczonych:
   „agent”, „zgoda użytkownika” (firewall, operacje kasujące dane, konta), „użytkownik” (zakupy, konta zewnętrzne,
   wartości sekretów, Cloudflare Access, ruleset i deploy key, backup VPS-a w OVH). Zawiera sprawdzenia po uruchomieniu: żądanie na IP
   serwera spoza Cloudflare odrzucone, logowanie do panelu przez Access, e-mail z `create-admin` dotarł, próby
-  rulesetu `deploy`.
+  rulesetów `deploy` i `deploy-push` na obu gałęziach (`deploy`, `deploy-images`).
 
 ## Weryfikacja bez serwera
 
 - `make -C infra/k8s check`: `helm lint`, render dla `prod` i `ci` (`prod` z testowym SHA), `kubeconform`,
-  `shellcheck`, test sekretów, (przy kopiach) zgodność kopii z oryginałami, `actionlint` workflowu, testy renderu:
-  przełączniki D10, CronJoby, ścieżki ingressu `auth`, middleware, fale (każdy Job i Deployment ma zależności we
-  wcześniejszych falach), nazwy Jobów D11. Główny `make check` go wywołuje, więc działa w wymaganym jobie `checks`
-  i w bramkach AO.
-- `make -C infra/k8s smoke`: buduje obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa klastra
-  i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze, czeka na
-  Joby i Deploymenty, a potem sprawdza: `/health` API, stronę główną sklepu z produktem, pasek i brak linku logowania
-  na `/` i `/cart`, nagłówek `X-Robots-Tag`, `/config.js` panelu, discovery obu realmów, brak użytkowników demo
-  i rejestracji w realmie `shop`, zdjęcie przez imgproxy, potwierdzenie zamówienia w Mailpicie, idempotencję (upgrade
-  z nową rewizją: `initialize` i `keycloak-config` nie zmieniają danych ani realmów). Wypisuje szczytowe zużycie pamięci i dysku. Na koniec usuwa
-  klaster (także po błędzie).
+  `shellcheck` (także `deploy-ref.sh`), `actionlint` workflowów, testy renderu i skryptów: zgodność ConfigMap
+  z oryginałami przez symlinki, sekrety (każdy klucz `init-env.sh` w szablonie, SealedSecrety), przełączniki D10,
+  utwardzenie (tokeny API tylko w initContainerach `kubectl`, `progressDeadlineSeconds`), zasoby `prod` na serwer,
+  workflow `deploy.yml`, generator pliku digestów, skrypty `keycloak-config`, `initialize`, `create-admin`,
+  `seal-secrets`, `cloudflare-ips` i skrypty serwera na atrapach, CronJoby, ścieżki ingressu `auth`, middleware, fale (każdy Job i Deployment ma zależności we
+  wcześniejszych falach), nazwy Jobów D11, obrazy (własne z rejestru, z digestem w `prod`; pozostałe z tagiem jak
+  w compose i digestem; Elasticsearch z `infra/elasticsearch/Dockerfile`, bez `elasticsearch-plugin` w kontenerach).
+  Render (z wersją Kubernetes klastra smoke testu, `--kube-version`), który musi się nie udać: `prod` bez digestów,
+  `image.tag=latest`, digest w złym formacie, obraz usługi bez digestu, klaster Kubernetes 1.35 (`kubeVersion`), plik
+  `values-images.yaml` bez digestu `elasticsearch`, z digestem będącym tagiem albo z `latest`. Render `prod` z samym
+  wygenerowanym plikiem (bez `--set`) ma dokładnie obrazy z pliku. Manifesty Argo CD (`argocd/`) przechodzą
+  `kubeconform` (schematy CRD z katalogu CRDs-catalog), a testy sprawdzają: `root` obejmuje `shop`, `sealed-secrets` i
+  `secrets`, `shop` ma jedno źródło na `deploy-images`, aplikacje czytają tę samą gałąź, fale. `server-bootstrap.sh`
+  przechodzi `shellcheck` i dwa przebiegi w kontenerze Ubuntu 24.04 bez k3s (atrapy `k3s`, `apt-get`, `ufw`, `sysctl` i
+  instalatora; prawdziwe są sprawdzenia, zapisy plików i idempotencja), z odmową bez roota i na innym systemie przed
+  zmianami. Ostatni krok sprawdza gitem na hoście, że `.gitignore` nie ignoruje certyfikatu
+  `environments/prod/sealed-secrets.pem`. Główny `make check` woła `check` chartu, więc działa on w wymaganym jobie
+  `checks` i w bramkach AO. Testy skryptu `.github/scripts/deploy-ref.sh` (lokalne repo bare, także odrzucony
+  non-fast-forward) i struktury rulesetów (`tools/rulesets`) uruchamia job narzędzi repo w `ci.yml`.
+- `make -C infra/k8s smoke`: buduje cztery obrazy produkcyjne lokalnie i importuje je do k3d (bez wypychania; nazwa
+  klastra i porty z `COMPOSE_PROJECT_NAME` i `.env` worktree), instaluje chart z profilem `ci` na pustym klastrze,
+  czeka na Joby i Deploymenty, a potem sprawdza: wtyczkę `analysis-stempel` w Elasticsearchu (`_cat/plugins`)
+  i działanie filtra `polish_stem` (`_analyze`: „koszulkami” → „koszulka”), `/health` API, stronę główną sklepu z produktem,
+  `/api/site` (przełączniki profilu `ci`, `no-store`), nagłówek `X-Robots-Tag`, `/config.js` panelu, discovery obu
+  realmów, brak dostępu do realmu `master` i konsoli przez `auth` (także próby obejścia ścieżkami z `..` i zakodowanymi
+  znakami), brak użytkowników demo i rejestracji w realmie `shop`, ustawienia realmów z konfiguracji (SMTP,
+  `verifyEmail`, adresy klientów), logowanie klienta sklepu (sekret klienta `store`), zdjęcie przez imgproxy i potwierdzenie zamówienia w Mailpicie. Pasek demonstracji
+  i brak linku logowania na `/` i `/cart` sprawdza w prawdziwej przeglądarce (Chromium), bo przełączniki czyta
+  komponent klienta. Dalej: `create-admin` (bez słowa `tak` niczego nie zmienia; z nim zakłada administratora i wysyła e-mail do
+  Mailpita; istniejący login kończy się kodem 3 bez zmian; wynik nie zawiera sekretów), upgrade
+  z nową rewizją (`initialize` i `keycloak-config` nie zmieniają danych ani realmów), upgrade z klientem dodanym do pliku
+  realmu `shop` (`keycloak-config` dodaje go, użytkownicy zostają), `rerun` zakończonego Joba, upgrade ze zepsutą
+  migracją (poprzednie `api` i `worker` działają) i upgrade na bazie z zamówieniami bez produktów (`initialize` kończy
+  się błędem stanu mieszanego bez zmian). Wypisuje szczytowe zużycie pamięci i dysku. Na koniec usuwa klaster (także po
+  błędzie). Z `SMOKE_VALUES=<values-images.yaml>` (workflow na `main`) pierwsza instalacja używa tego
+  pliku zamiast obrazów lokalnych: k3d pobiera `ghcr.io/piotrp321/shop/<app>:<sha>@<digest>` z GHCR (uwierzytelnienie
+  tokenem runu z prawem `packages: read` w prywatnym pliku `registries.yaml`, którego token nigdy nie jest wypisany), a
+  test sprawdza imageID podów; dalsze fazy (nowe rewizje, zepsuta migracja) idą na obrazach lokalnych jak dotąd. Ścieżkę
+  GHCR sprawdza dopiero run na `main`.
 - CI (`deploy.yml`): `smoke` na `ubuntu-latest` dla PR zmieniających `infra/**`, `apps/*/Dockerfile`,
   `apps/api/config/**`, `apps/api/bin/**`, `apps/api/composer.lock`, `apps/store/package-lock.json`,
-  `apps/admin/package-lock.json`, `apps/store/next.config.ts` (obrazy z cache GHA)
-  i na `workflow_dispatch` (próba na gałęzi epiku, bez przesuwania `deploy`), oraz zawsze na `main` przed wdrożeniem.
+  `apps/admin/package-lock.json`, `apps/store/next.config.ts` oraz sam workflow i `deploy-ref.sh` (obrazy z cache GHA)
+  i na `workflow_dispatch` (bez przesuwania `deploy`), oraz zawsze na `main` przed wdrożeniem. `workflow_dispatch`
+  GitHub oferuje dopiero, gdy `deploy.yml` jest na gałęzi domyślnej (`main`); wcześniej próbę daje zdarzenie
+  `pull_request` (PR zmienia `deploy.yml`, który jest w filtrze ścieżek).
   `smoke` nie jest wymaganym checkiem `main`.
 
 ## Scenariusze błędów
@@ -304,30 +387,17 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 | Pierwsza synchronizacja na pustym klastrze | fale i initContainery; `initialize` wczytuje katalog; bez ręcznych kroków |
 | Kolejne wdrożenie | `initialize` widzi dane i nic nie zmienia; `keycloak-config` dodaje tylko brakujące zasoby realmów |
 | Pusty katalog, ale są zamówienia | `initialize` kończy się błędem stanu, dane nietknięte, synchronizacja czerwona |
-| Nieudany build albo smoke test na `main` | `deploy` bez zmian, działa poprzednia wersja, workflow czerwony |
+| Nieudany build albo smoke test na `main` | `deploy` i `deploy-images` bez zmian, działa poprzednia wersja, workflow czerwony |
+| Render `prod` z plikiem digestów nie zgadza się z plikiem albo odrzucony push (non-fast-forward, ruleset) | nic nie jest opublikowane (atomowy push), workflow czerwony |
+| Rewizja `deploy-images` bez pliku `values-images.yaml` albo z brakującym digestem | render chartu kończy się błędem z nazwą wartości, synchronizacja nie startuje, działa poprzednia wersja |
 | Nieudana migracja | Job `migrate` pada, nowe `api` i `worker` nie są gotowe, stare działają, aplikacja w Argo `Degraded` |
 | Nieudany `purge-caches` | nowa wersja działa, synchronizacja czerwona; `rerun` albo kolejna rewizja |
 | Brak wymaganej wartości (np. sekret SMTP przy `orderMail: brevo`) | render chartu kończy się błędem z nazwą wartości; synchronizacja nie startuje, działa poprzednia wersja |
 | Żądanie HTTP(S) na IP serwera spoza Cloudflare | 403 z `ipAllowList` |
-| Push do `deploy` spoza workflowu, force push, usunięcie | odrzucone przez ruleset |
+| Push do `deploy` albo `deploy-images` spoza workflowu, force push, usunięcie | odrzucone przez ruleset |
+| Certyfikat kontrolera Sealed Secrets inny niż w repo (bootstrap bez kopii klucza) | `bootstrap` kończy się błędem, niczego nie nadpisuje; kopia klucza albo nowy certyfikat i ponowne zaszyfrowanie (runbook) |
 | Restart serwera | k3s i usługi wstają same; dane na PVC zostają |
 | Utrata klucza Sealed Secrets | nowy certyfikat w repo, nowe sekrety skryptem (runbook); wymaga ponownego wczytania danych albo odtworzenia z kopii (DEPLOY-OPS) |
-
-## Zmiany dokumentacji (zadania z implementacją)
-
-- `docs/vision.md`: sekcja „Po MVP: publiczne środowisko demo” zastąpiona opisem środowiska wdrożeniowego (jeden
-  serwer i pipeline, gałąź `deploy`, przełączniki startowe, Brevo); kopie i monitoring (DEPLOY-OPS), tryb
-  publicznego demo i Sentry (także Sentry Performance z sekcji „Obserwowalność”) jako kolejne kroki; pozycja
-  „k3s + Argo CD…” znika z listy „Do opisania”.
-- `docs/adr/k3s-argo-cd.md`: k3s na jednym węźle, Argo CD z gałęzią `deploy` (fast-forward, tag z rewizji), własny
-  chart, kolejność przez initContainery i fale, realmy addytywnie, Sealed Secrets, Cloudflare (Origin CA, Access,
-  `ipAllowList`).
-- `CLAUDE.md`: `infra/k8s` w „Strukturze”; cele `make -C infra/k8s …`; zasady zgodności chartu z compose i realmami
-  (nowy sekret szyfrowany `seal-secrets.sh`); gałąź i ruleset `deploy`; agent wykonuje operacje na serwerze tylko
-  celami Makefile, a kroki „zgoda użytkownika” i „użytkownik” z runbooka nie są jego decyzją.
-- `apps/api/CLAUDE.md`: etapy obrazu, `bin/seed-demo`, migracje i wiadomości zgodne wstecz.
-- `apps/store/CLAUDE.md`: obraz produkcyjny, `/api/site` i przełączniki; `apps/admin/CLAUDE.md`: obraz produkcyjny,
-  `/config.js`.
 
 ## Kryteria akceptacji
 
@@ -337,19 +407,23 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 2. `make -C infra/k8s smoke` przechodzi lokalnie i na `ubuntu-latest` z zapisanym szczytowym zużyciem pamięci i dysku;
    zepsuta migracja albo zepsuty obraz kończą go błędem, a klaster zostaje usunięty.
 3. Obrazy produkcyjne budują się bez działającego stosu; obraz `api` nie ma SPX, Composera, gita ani zależności `dev`.
-4. Lokalny `make up`, `make seed`, `make check`, `make test` i `make e2e` (także `STORE_MODE=production`) działają jak
-   przed epikiem.
+4. Lokalny `make up`, `make seed`, `make check`, `make test` i `make e2e` (także `STORE_MODE=production`) działają
+   niezależnie od środowiska wdrożeniowego (compose nie używa etapów `prod` obrazów).
 5. Przełączniki sklepu: testy komponentów i `/api/site` (z flagami, bez nich, błąd odczytu) i smoke test na obrazie
    zbudowanym bez flag.
-6. `deploy.yml` przechodzi `actionlint`; uruchomiony `workflow_dispatch` na gałęzi epiku buduje obrazy i przechodzi
-   smoke test, a bez sekretu deploy keya kończy się bez przesuwania `deploy`.
+6. `deploy.yml` przechodzi `actionlint`; uruchomiony w PR zmieniającym pliki z filtra ścieżek (zdarzenie `pull_request`; na
+   `main` także `workflow_dispatch`) buduje obrazy i przechodzi smoke test, a bez sekretu deploy keya kończy się bez
+   przesuwania `deploy` i `deploy-images`. Na `main` smoke test instaluje chart z plikiem digestów (obrazy z GHCR), a
+   publikacja to jeden atomowy push po sprawdzeniu renderu (test na lokalnym repo bare, także odrzucony
+   non-fast-forward, który nie przesuwa żadnej gałęzi).
 7. `initialize` i `keycloak-config` są idempotentne (smoke: upgrade z nową rewizją bez zmian danych i realmów; realm
    bez użytkowników demo); `initialize` przy mieszanym stanie kończy się błędem bez zmian (test w smoke).
-8. `seal-secrets.sh` na ścieżce błędu nie zapisuje plików, a ponowne uruchomienie nie zmienia istniejących sekretów.
+8. `seal-secrets.sh` na ścieżce błędu nie zapisuje plików, a ponowne uruchomienie nie zmienia istniejących sekretów;
+   po dodaniu certyfikatu do repo `check` wymaga zaszyfrowanej wartości dla każdego klucza `init-env.sh`.
 9. `bootstrap` przechodzi `shellcheck`, uruchomiony dwa razy w kontenerze z Ubuntu 24.04 (bez k3s) nie psuje
    konfiguracji; cele z potwierdzeniem bez `tak` niczego nie zmieniają.
-10. Runbook prowadzi od pustego serwera do działającego środowiska; przejście go na serwerze (z próbami rulesetu,
-    Access, poczty i `ipAllowList`) robi się po epiku, poza AO, z dostępami od użytkownika.
+10. Runbook prowadzi od pustego serwera do działającego środowiska (z próbami rulesetów, Access, poczty
+    i `ipAllowList`); wykonuje się go na serwerze, poza AO, z dostępami od użytkownika.
 
 ## Ryzyka
 
@@ -358,11 +432,9 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   istniejącego klienta – runbook: ręczna zmiana przez `kcadm` albo osobny krok w Jobie).
 - **Argo bez Argo w smoke teście.** Fale sprawdza test renderu w `check`, a synchronizację Argo dopiero serwer; ryzyko
   ogranicza D8.
-- **Epiki równoległe.** PAYMENT zmienia `infra/docker-compose.yml`, `init-env.sh`, `Makefile` i transporty workera;
-  DEPLOY startuje w AO po zmergowaniu PAYMENT do `main`.
-- **Zasoby runnera i maszyny AO.** Cały stos w k3d na `ubuntu-latest` jest blisko limitów (16 GB, 14 GB dysku);
+- **Zasoby runnera.** Cały stos w k3d na `ubuntu-latest` jest blisko limitów (16 GB, 14 GB dysku);
   profil `ci` i pomiar w kryterium 2 to sprawdzają.
-- **Publiczne API panelu i checkout.** `api.<domena>/api/v1/admin` chroni token Keycloaka i role (jak dziś). Publiczny
+- **Publiczne API panelu i checkout.** `api.<domena>/api/v1/admin` chroni token Keycloaka i role. Publiczny
   checkout gościa bez limitów pozwala blokować stany fikcyjnymi zamówieniami; rate limiting jest w osobnym
   zgłoszeniu.
 - **Klucz Sealed Secrets** jest jedyną rzeczą, której nie da się odtworzyć z repo; trzyma go użytkownik.

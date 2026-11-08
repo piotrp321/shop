@@ -5,3 +5,13 @@ var
 .git
 *.pem
 *.key
+# Not part of the application image: tests, tooling configuration, local docs and the Makefile.
+tests
+phpunit.dist.xml
+phpstan.dist.neon
+deptrac.yaml
+.php-cs-fixer.dist.php
+Makefile
+CLAUDE.md
+Dockerfile
+.dockerignore

@@ -16,7 +16,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 ## Struktura
 
 - `src/api/` – `client.ts` (jedyne miejsce rozmowy z API) i wygenerowany `schema.d.ts` (nie edytuj ręcznie).
-- `src/auth/` – logowanie OIDC (`oidc-client-ts`): `config.ts` (ustawienia z env `VITE_*`), `userManager.ts`
+- `src/config/` – `readUrl(klucz)`: jedyny czytnik konfiguracji (adresy API, Keycloaka i panelu), patrz „Konfiguracja”.
+- `src/auth/` – logowanie OIDC (`oidc-client-ts`): `config.ts` (adresy przez `readUrl`), `userManager.ts`
   (tokeny w pamięci).
 - `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`).
 - `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania.
@@ -156,6 +157,24 @@ Klienta API generuje `make api-client` z katalogu głównego.
   wybranych z „Usuń”, wariant usunięty z katalogu ma znacznik „Wariant usunięty”. Odpowiedź żądania, które skończyło
   się po opuszczeniu formularza, jest ignorowana.
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
+
+## Konfiguracja i obraz produkcyjny
+
+- Panel czyta trzy adresy: `VITE_API_URL`, `VITE_KEYCLOAK_URL`, `VITE_ADMIN_URL`. `readUrl` (`src/config`) bierze
+  wartość najpierw z `window.__ADMIN_CONFIG__`, a gdy nie ma tam klucza (albo jest pusty), z `import.meta.env`.
+  Brak klucza w obu źródłach to błąd z nazwą klucza. Końcowe `/` jest obcinane. Nie czytaj `import.meta.env` poza
+  `src/config`.
+- `index.html` ładuje `/config.js` przed modułem aplikacji. Lokalnie `public/config.js` jest pusty (komentarz), więc
+  `vite dev` nie daje 404, a adresy idą ze zmiennych `VITE_*` kontenera `admin` (compose).
+- `apps/admin/Dockerfile` ma etapy `node`, `build` (`npm run build`: `vue-tsc` i `vite build`), `prod` i `dev`; `dev`
+  jest ostatni, bo compose buduje panel bez `target`. `docker build --target prod apps/admin` działa bez stosu.
+- `prod` to `nginxinc/nginx-unprivileged` (przypięta wersja, port 8080, użytkownik `nginx`) z `dist`. Przy starcie
+  kontenera `docker/40-admin-config.sh` (hook `/docker-entrypoint.d`) zapisuje `/tmp/admin-config/config.js` ze
+  zmiennych środowiska `VITE_API_URL`, `VITE_KEYCLOAK_URL`, `VITE_ADMIN_URL` jako `window.__ADMIN_CONFIG__ = {...}`
+  (wartości jako napisy JSON). Brak zmiennej, pusta wartość albo biały znak w wartości kończy start błędem z nazwą
+  zmiennej. Przy katalogu głównym tylko do odczytu `/tmp` musi być zapisywalny (`emptyDir`).
+- `docker/nginx.conf`: `/config.js` z zapisanego pliku, fallback SPA na `index.html` (np. `/auth/callback`),
+  `Cache-Control: no-cache` dla `index.html` i `/config.js`, długi cache tylko dla haszowanych `/assets/`.
 
 ## Dane i API
 
