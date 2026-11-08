@@ -30,6 +30,9 @@ fresh_copy() {
   # The deployment script is shellchecked and its push is tested.
   mkdir -p "$base/tree/.github/scripts"
   cp "$TOOLS_REPO/.github/scripts/deploy-ref.sh" "$base/tree/.github/scripts/deploy-ref.sh"
+  # The step gitignore asks git about the rules of .gitignore, so the copy is a (fresh, empty) repository with the same rules.
+  cp "$TOOLS_REPO/.gitignore" "$base/tree/.gitignore"
+  git init -q "$base/tree"
   tree="$base/tree"
 }
 
@@ -157,6 +160,8 @@ bootstrap_never_restarts_k3s() { replace infra/k8s/scripts/server-bootstrap.sh '
 bootstrap_accepts_only_a_secret_backup() { replace infra/k8s/scripts/server-bootstrap.sh "grep -Eq '^[[:space:]-]*kind: Secret\$'" "grep -q '^kind: Secret'"; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts
 bootstrap_applies_root_whatever_the_certificate() { replace infra/k8s/scripts/server-bootstrap.sh 'if [ -f "$payload/sealed-secrets.pem" ] && ! cmp' 'if false && ! cmp'; }
+# The rule *.pem without the exception for the certificate: it could not be committed.
+certificate_ignored_by_git() { replace .gitignore '!infra/k8s/environments/prod/sealed-secrets.pem' '# no exception'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 nothing_broken() { :; }
 
@@ -190,6 +195,7 @@ run_case "images values generator accepting a short digest" "test_a_missing_or_m
 run_case "a workflow that deletes package versions (retention)" "test_no_workflow_deletes_package_versions" package_cleanup_added
 run_case "Argo CD shop application on another branch than the rest" "test_everything_from_git_tracks_the_same_branch_of_the_same_repository" argocd_shop_on_another_branch
 run_case "Argo CD shop application ignoring a missing images file" "test_the_values_are_the_profile_and_the_images_file_in_this_order_and_nothing_else" argocd_shop_ignores_missing_images_file
+run_case "certificate of Sealed Secrets ignored by git" "is ignored by git" certificate_ignored_by_git
 run_case "certificate in the repository and no sealed secrets" "keys of infra/scripts/init-env.sh without a sealed value" certificate_without_sealed_secrets
 run_case "certificate in the repository and one key unsealed" "PAYMENT_DEMO_CARD_API_KEY" certificate_with_a_key_unsealed
 run_case "plain secret committed to environments/prod/secrets" "not a SealedSecret" plain_secret_committed

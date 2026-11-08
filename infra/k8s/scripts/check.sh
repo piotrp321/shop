@@ -2,7 +2,8 @@
 # Static checks of the chart, without a cluster and without a server. Every step runs in a container (tools.sh).
 #
 #   check.sh            all steps
-#   check.sh <step>...  only the given steps: lint, render, schema, images, kubeconform, shellcheck, actionlint, tests, bootstrap
+#   check.sh <step>...  only the given steps: lint, render, schema, images, kubeconform, shellcheck, actionlint, tests, bootstrap,
+#                       gitignore
 #
 # The first failing step stops the script. REPO_ROOT (default: this repository) selects the tree to check; the
 # self-test (selftest.sh) points it at a copy with an injected error.
@@ -12,7 +13,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
 
-steps="${*:-lint render schema images kubeconform shellcheck actionlint tests bootstrap}"
+steps="${*:-lint render schema images kubeconform shellcheck actionlint tests bootstrap gitignore}"
 
 rev=0123456789abcdef0123456789abcdef01234567
 # The digests of the images built by us, which the profile prod requires.
@@ -172,6 +173,24 @@ do_tests() {
 do_bootstrap() {
   step "server-bootstrap.sh in Ubuntu 24.04 without k3s: refusals and two runs"
   docker run --rm -v "$TOOLS_REPO:/repo:ro" "$UBUNTU_IMAGE" sh /repo/infra/k8s/tests/bootstrap/test.sh
+}
+
+# The certificate of the Sealed Secrets controller is committed (the runbook says so), so git must not ignore it. This is the
+# only step that runs git, on the host (the containers of the other steps have no .git); --no-index asks the rules alone,
+# so the answer stays the same once the file is tracked.
+do_gitignore() {
+  step "git does not ignore the certificate of Sealed Secrets"
+  cert=infra/k8s/environments/prod/sealed-secrets.pem
+  command -v git > /dev/null || { echo "gitignore: git is not installed" >&2; return 1; }
+  status=0
+  git -C "$TOOLS_REPO" check-ignore --no-index -q "$cert" || status=$?
+  case "$status" in
+    1) echo "ok: $cert is not ignored" ;;
+    0) echo "gitignore: $cert is ignored by git (an exception after the rule that matches it is missing in .gitignore): the certificate could not be committed:" >&2
+       git -C "$TOOLS_REPO" check-ignore --no-index -v "$cert" >&2 || true
+       return 1 ;;
+    *) echo "gitignore: git check-ignore failed (exit $status): is $TOOLS_REPO a git repository?" >&2; return 1 ;;
+  esac
 }
 
 for name in $steps; do

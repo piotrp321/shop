@@ -1,7 +1,7 @@
 .PHONY: check selftest smoke rerun create-admin seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
-# render). Needs only Docker.
+# render; git does not ignore the certificate of Sealed Secrets). Needs Docker, and git for that last step.
 check:
 	sh scripts/check.sh
 
@@ -11,7 +11,8 @@ check:
 # create-admin going on without tak, deploy.yml needing a job that does not exist, an unquoted variable in its scripts, no
 # smoke test before deploy, images pushed for every event, runs for main cancelled, steps of deploy.yml without pipefail,
 # the two deploy branches pushed without --atomic, no check of the render before the push, a short digest accepted by
-# the images values generator, a workflow that deletes package versions, or deploy.yml missing).
+# the images values generator, a workflow that deletes package versions, the certificate of Sealed Secrets ignored by git,
+# or deploy.yml missing).
 selftest:
 	sh scripts/selftest.sh
 
