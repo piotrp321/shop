@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeDetails, makeOffer, makeVariant, variantId } from "./fixtures";
 import { ProductDetailsView } from "./ProductDetailsView";
@@ -109,5 +109,90 @@ describe("ProductDetailsView", () => {
       expect(screen.queryByRole("button")).toBeNull();
       expect(screen.queryByRole("group")).toBeNull();
     });
+  });
+});
+
+describe("ProductDetailsView promotion", () => {
+  const badge = () => screen.queryByTestId("promotion-badge");
+  const omnibus = () => screen.queryByTestId("omnibus");
+  const PROMOTION = { endsAt: "2026-12-01T00:00:00+01:00", lowestPriorGross: 29900 };
+
+  // Size 42 promoted from 300 zł to 240 zł, size 44 at 320 zł.
+  const PROMOTED = makeOffer(1, {
+    variantAxes: ["Kolor", "Rozmiar"],
+    fromGross: 24000,
+    fromPromotion: { lowestPriorGross: 29900 },
+    hasPriceRange: true,
+    variants: [
+      makeVariant(1, 1, { label: "czarne, 42", gross: 24000, regularGross: 30000, promotion: { ...PROMOTION, lowestPriorGross: 27000 } }),
+      makeVariant(1, 2, { label: "czarne, 44", gross: 32000 }),
+    ],
+  });
+  const choose = (...values: string[]) => values.forEach((value) => fireEvent.click(screen.getByRole("button", { name: value })));
+
+  it("before a choice shows the effective 'od' price with the badge and the Omnibus line of fromPromotion", () => {
+    render(<ProductDetailsView details={SHOES_DETAILS} offer={PROMOTED} />);
+
+    expect(screen.getByTestId("price").textContent).toBe("od 240,00\u00a0zł");
+    expect(badge()?.textContent).toBe("Promocja");
+    expect(omnibus()?.textContent).toBe("Najniższa cena z 30 dni przed obniżką: 299,00\u00a0zł");
+  });
+
+  it("before a choice shows neither when fromPromotion has no lowestPriorGross or is absent", () => {
+    const { rerender } = render(<ProductDetailsView details={SHOES_DETAILS} offer={{ ...PROMOTED, fromPromotion: { lowestPriorGross: null } }} />);
+    expect(screen.getByTestId("price").textContent).toBe("od 240,00\u00a0zł");
+    expect(badge()).toBeNull();
+    expect(omnibus()).toBeNull();
+
+    rerender(<ProductDetailsView details={SHOES_DETAILS} offer={SHOES} />);
+    expect(badge()).toBeNull();
+    expect(omnibus()).toBeNull();
+  });
+
+  it("after choosing a promoted variant shows its price, the badge and its own Omnibus line", () => {
+    render(<ProductDetailsView details={SHOES_DETAILS} offer={PROMOTED} />);
+
+    choose("czarne", "42");
+
+    expect(screen.getByTestId("price").textContent).toBe("240,00\u00a0zł");
+    expect(badge()?.textContent).toBe("Promocja");
+    expect(omnibus()?.textContent).toBe("Najniższa cena z 30 dni przed obniżką: 270,00\u00a0zł");
+  });
+
+  it("after choosing a variant without a promotion shows neither badge nor line", () => {
+    render(<ProductDetailsView details={SHOES_DETAILS} offer={PROMOTED} />);
+
+    choose("czarne", "44");
+
+    expect(screen.getByTestId("price").textContent).toBe("320,00\u00a0zł");
+    expect(badge()).toBeNull();
+    expect(omnibus()).toBeNull();
+  });
+
+  it("after choosing a promoted variant with lowestPriorGross null shows the price without badge and line", () => {
+    const offer = { ...PROMOTED, variants: [
+      makeVariant(1, 1, { label: "czarne, 42", gross: 24000, regularGross: 30000, promotion: { ...PROMOTION, lowestPriorGross: null } }),
+      PROMOTED.variants[1],
+    ] };
+    render(<ProductDetailsView details={SHOES_DETAILS} offer={offer} />);
+
+    choose("czarne", "42");
+
+    expect(screen.getByTestId("price").textContent).toBe("240,00\u00a0zł");
+    expect(badge()).toBeNull();
+    expect(omnibus()).toBeNull();
+  });
+
+  it("shows the badge and the line of the one purchasable variant chosen at once", () => {
+    const offer = makeOffer(1, {
+      fromGross: 24000,
+      fromPromotion: { lowestPriorGross: 29900 },
+      variants: [makeVariant(1, 1, { gross: 24000, regularGross: 30000, promotion: PROMOTION })],
+    });
+    render(<ProductDetailsView details={makeDetails(1)} offer={offer} />);
+
+    expect(screen.getByTestId("price").textContent).toBe("240,00\u00a0zł");
+    expect(badge()?.textContent).toBe("Promocja");
+    expect(omnibus()?.textContent).toBe("Najniższa cena z 30 dni przed obniżką: 299,00\u00a0zł");
   });
 });

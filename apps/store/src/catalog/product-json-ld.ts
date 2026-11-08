@@ -13,7 +13,19 @@ const AVAILABILITY: Record<Level, string> = {
   out_of_stock: "https://schema.org/OutOfStock",
 };
 
-/** Structured data of the product (schema.org `Product`): an `Offer` for each variant that has a price. */
+const WARSAW_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Warsaw", year: "numeric", month: "2-digit", day: "2-digit" });
+
+/**
+ * The last day of a promotion: the Warsaw calendar date (`YYYY-MM-DD`) of the moment one second before `endsAt`, because
+ * the promotion lasts until before its end (an end at 00:00 means the previous day). Only the date is formatted here.
+ */
+function lastDayOfPromotion(endsAt: string): string {
+  const parts = WARSAW_DAY.formatToParts(new Date(new Date(endsAt).getTime() - 1000));
+  const part = (type: string) => parts.find((candidate) => candidate.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+/** Structured data of the product (schema.org `Product`): an `Offer` for each variant that has a price (the price the API gives, the effective one; in a promotion with `priceValidUntil`). */
 export function buildProductJsonLd(details: ProductDetails, offer: ProductOffer, storeUrl: string) {
   const url = productUrl(details.slug, storeUrl);
   const images = details.images.flatMap((image) => {
@@ -37,6 +49,7 @@ export function buildProductJsonLd(details: ProductDetails, offer: ProductOffer,
               // Grosze from the API written as zloty with a dot; the amount itself is not computed here.
               price: (variant.gross / 100).toFixed(2),
               priceCurrency: offer.currency,
+              ...(variant.promotion === null ? {} : { priceValidUntil: lastDayOfPromotion(variant.promotion.endsAt) }),
               availability: AVAILABILITY[variant.level],
               url,
             },
