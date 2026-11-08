@@ -110,6 +110,24 @@ YAML
 argocd_shop_on_another_branch() { replace infra/k8s/argocd/apps/shop.yaml 'targetRevision: deploy-images' 'targetRevision: deploy'; }
 argocd_shop_ignores_missing_images_file() { replace infra/k8s/argocd/apps/shop.yaml '      releaseName: shop' '      ignoreMissingValueFiles: true
       releaseName: shop'; }
+# A (made-up) certificate of the controller in the repository: every key of init-env.sh must then be sealed.
+add_certificate() { printf -- '-----BEGIN CERTIFICATE-----\nMIIDselftest\n-----END CERTIFICATE-----\n' > "$tree/infra/k8s/environments/prod/sealed-secrets.pem"; }
+certificate_without_sealed_secrets() { add_certificate; }
+# shellcheck disable=SC2016 # awk program
+certificate_with_a_key_unsealed() {
+  add_certificate
+  {
+    printf 'apiVersion: bitnami.com/v1alpha1\nkind: SealedSecret\nmetadata:\n  name: shop-secrets\n  namespace: shop\nspec:\n  encryptedData:\n'
+    awk -v q="'" '/^(secrets|appendable)=/ { inblock = 1; sub(/^[a-z]+=/, "") }
+      inblock { line = $0; sub("^" q, "", line); ended = (line ~ (q "$")); sub(q "$", "", line); if (line != "") print $1; if (ended) inblock = 0 }' \
+      "$tree/infra/scripts/init-env.sh" | grep -v '^PAYMENT_DEMO_CARD_API_KEY$' | sed 's/^\(.*\)$/    \1: AgBselftest/'
+    printf '  template:\n    type: Opaque\n'
+  } > "$tree/infra/k8s/environments/prod/secrets/shop-secrets.yaml"
+}
+plain_secret_committed() {
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: shop-secrets\n  namespace: shop\nstringData:\n  POSTGRES_PASSWORD: plain\n' \
+    > "$tree/infra/k8s/environments/prod/secrets/shop-secrets.yaml"
+}
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 nothing_broken() { :; }
 
@@ -141,6 +159,9 @@ run_case "images values generator accepting a short digest" "test_a_missing_or_m
 run_case "a workflow that deletes package versions (retention)" "test_no_workflow_deletes_package_versions" package_cleanup_added
 run_case "Argo CD shop application on another branch than the rest" "test_everything_from_git_tracks_the_same_branch_of_the_same_repository" argocd_shop_on_another_branch
 run_case "Argo CD shop application ignoring a missing images file" "test_the_values_are_the_profile_and_the_images_file_in_this_order_and_nothing_else" argocd_shop_ignores_missing_images_file
+run_case "certificate in the repository and no sealed secrets" "keys of infra/scripts/init-env.sh without a sealed value" certificate_without_sealed_secrets
+run_case "certificate in the repository and one key unsealed" "PAYMENT_DEMO_CARD_API_KEY" certificate_with_a_key_unsealed
+run_case "plain secret committed to environments/prod/secrets" "not a SealedSecret" plain_secret_committed
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then

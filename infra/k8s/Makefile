@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke rerun create-admin
+.PHONY: check selftest smoke rerun create-admin seal-secrets
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render). Needs only Docker.
@@ -32,3 +32,10 @@ rerun:
 # KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 create-admin:
 	sh scripts/create-admin.sh "$(LOGIN)" "$(EMAIL)"
+
+# Encrypts the secrets of the environment with the certificate of the controller (environments/prod/sealed-secrets.pem) into
+# environments/prod/secrets: make -C infra/k8s seal-secrets [WHAT="shop brevo tls"]. shop: the missing keys of
+# infra/scripts/init-env.sh with random values, existing ones are never changed. brevo and tls: asked for in the terminal
+# without echo, once. An error writes nothing. Needs only Docker.
+seal-secrets:
+	sh scripts/seal-secrets.sh $(WHAT)

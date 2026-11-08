@@ -59,11 +59,19 @@ render ci-keycloak-brevo ci --set image.tag=$rev1 --set keycloak.mail=brevo --se
 : > "$out/argocd.yaml"
 for part in root apps install; do
   files="argocd/$part.yaml"
-  [ -d "argocd/$part" ] && files="$(ls argocd/"$part"/*.yaml)"
+  [ -d "$here/../argocd/$part" ] && files="$(cd "$here/.." && ls argocd/"$part"/*.yaml)"
   # shellcheck disable=SC2086 # the file names have no spaces
   yq -o=json -I=0 '.' $files > "$out/argocd-$part.ndjson"
   for file in $files; do { cat "$here/../$file"; echo '---'; } >> "$out/argocd.yaml"; done
 done
+# The sealed secrets in the repository (environments/prod/secrets), for tests/test_sealed_secrets.py; empty when there are none.
+sealed_files="$(cd "$here/.." && ls environments/prod/secrets/*.yaml 2> /dev/null || true)"
+if [ -n "$sealed_files" ]; then
+  # shellcheck disable=SC2086 # the file names have no spaces
+  yq -o=json -I=0 '.' $sealed_files > "$out/sealed.ndjson"
+else
+  : > "$out/sealed.ndjson"
+fi
 # The deployment workflow as JSON, for tests/test_deploy_workflow.py.
 [ -f "$TOOLS_REPO/.github/workflows/deploy.yml" ] || { echo "render: .github/workflows/deploy.yml is missing" >&2; exit 1; }
 yq -o=json '.' < "$TOOLS_REPO/.github/workflows/deploy.yml" > "$out/deploy-workflow.json"
