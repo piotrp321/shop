@@ -14,10 +14,16 @@ framework:
         pools:
             # Discovery documents and JWKS of the Keycloak realms (TTL from the JWKS response, at most 1 h by default).
             cache.oidc: ~
+            # Boundaries of the sitemap chunks (TTL 1 h, set where they are cached).
+            cache.sitemap: ~
 
 when@test: &test
     framework:
         test: true
+        cache:
+            pools:
+                cache.sitemap:
+                    adapter: cache.adapter.array
 
 # Kernel of the tests that run messages through the real transports (Doctrine outbox, RabbitMQ).
 when@test_messaging: *test

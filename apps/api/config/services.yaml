@@ -23,6 +23,10 @@ parameters:
     app.search.request_timeout: 2.0
     # Bulk writes, index creation and refresh.
     app.search.long_request_timeout: 30.0
+    # Sitemap of the products (spec: docs/features/seo/spec.md): products per chunk, and the most rows that reading one
+    # chunk takes from the database (drafts count).
+    app.sitemap.chunk_size: 10000
+    app.sitemap.row_limit: 50000
 
 services:
     _defaults:
@@ -96,6 +100,18 @@ services:
     App\Catalog\Infrastructure\Persistence\Doctrine\PostgresSearchIndexRebuildLock:
         arguments:
             $alias: '%app.search.alias%'
+
+    App\Catalog\Application\Query\ListSitemapProductChunksHandler:
+        arguments:
+            $chunkSize: '%app.sitemap.chunk_size%'
+
+    App\Catalog\Infrastructure\Persistence\Doctrine\DbalSitemapProductSource:
+        arguments:
+            $rowLimit: '%app.sitemap.row_limit%'
+
+    App\Catalog\Infrastructure\Persistence\Doctrine\CachingSitemapProductSource:
+        arguments:
+            $inner: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalSitemapProductSource'
 
     # A key source that cannot be read is a 503, not a 401 (see the class).
     app.security.shop_token_handler:
@@ -177,6 +193,7 @@ services:
     App\Catalog\Application\Port\ProductEditSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductEditSource'
     App\Catalog\Application\Port\VariantSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalVariantSource'
     App\Catalog\Application\Port\ProductDetailsSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\DbalProductDetailsSource'
+    App\Catalog\Application\Port\SitemapProductSource: '@App\Catalog\Infrastructure\Persistence\Doctrine\CachingSitemapProductSource'
     App\Shared\Domain\Event\DomainEventPublisher: '@App\Shared\Infrastructure\Messaging\MessengerDomainEventPublisher'
 
 when@test: &test
@@ -189,6 +206,9 @@ when@test: &test
         app.rabbitmq.vhost: test
         # The tests of storefront:cache:purge-all do not wait between the attempts.
         app.storefront_cache.retry_delay: 0.0
+        # Small enough for the tests to cut chunks of a few products and to pass the row limit.
+        app.sitemap.chunk_size: 3
+        app.sitemap.row_limit: 10
 
     services:
         _defaults:
