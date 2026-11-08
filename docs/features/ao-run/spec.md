@@ -25,8 +25,10 @@ Skill odmawia startu i mówi dlaczego, gdy:
 Dwa sprawdzenia przed startem nie odmawiają:
 
 - **Zasilanie.** `pmset -g batt` bez `'AC Power'` (albo z błędem): skill pyta „Komputer na baterii, uruchomić epik?”
-  w rozmowie i pushem i startuje tylko po „tak”. `caffeinate -s` działa tylko na zasilaniu sieciowym.
-- **Inne epiki w toku** (proces AO z innym `$HOME/.local/state/ao-<x>` albo otwarty końcowy PR `epic/<x>` → `main`):
+  w rozmowie i pushem i startuje tylko po „tak”, także przed kolejnym epikiem nocy (jedyne pytanie w nocy).
+  `caffeinate -s` działa tylko na zasilaniu sieciowym.
+- **Inne epiki w toku** (proces AO z innym `$HOME/.local/state/ao-<x>`, otwarty końcowy PR `epic/<x>` → `main` albo
+  `in_progress` z `next_epic.py`):
   skill porównuje pliki wspólne (`.github/workflows/ci.yml`, pliki `CLAUDE.md`, `apps/api/openapi*.json`, klienci TS,
   menu panelu) z linii `Zakres:` obu specyfikacji i z diffu `origin/main...origin/epic/<x>`. Wspólne pliki opisuje
   jako ryzyko konfliktu w rozmowie i w raporcie odbioru, bez pytania i bez blokady.
@@ -48,7 +50,9 @@ Remote Control skill nie sprawdza.
   - `summary <plik> [--now EPOCH]`: jedna linia JSON `{"interventions", "waits", "wait_s", "open"}`. Czekanie na
     użytkownika zaczyna `status_changed` do `BLOCKED` albo `FAILED` (klucz: zadanie) albo `epic_blocked`
     i `queue_held` (klucz: epik), a kończy następne `human_action` z tym samym kluczem (decyzja dotycząca epiku nie
-    ma `--task`). `open` to czekania bez decyzji, mierzone do teraz. Brak albo nieczytelny plik: kod 1 i komunikat,
+    ma `--task`). `wait_s` to czas zegarowy, w którym trwało co najmniej jedno zakończone czekanie (nakładające się
+    liczą się raz). `open` to czekania bez decyzji, mierzone do ostatniego `epic_done` po ich początku albo do teraz.
+    `interventions` liczy decyzje zapisane przez sesję; liczba interwencji w raporcie pochodzi z `ao report`. Brak albo nieczytelny plik: kod 1 i komunikat,
     bez zer na wyjściu.
 - `.claude/skills/ao-run/next_epic.py` (Python 3.9+, bez zależności) i `test_next_epic.py`: wybór następnego epiku.
   Sam wykonuje `gh project item-list 1 --owner piotrp321` (pozycje w kolejności tablicy „Backlog sklepu”),
@@ -129,7 +133,8 @@ zmianą `main`, epik `BLOCKED`, konflikt wrócił po REPAIR), sesja opisuje stan
 worktree `sync/<epik>-main` z `origin/epic/<epik>` i stos (`.ao/setup`), wykonuje `git merge origin/main` według zasad
 `/delivery` (pliki generowane od nowa, reszta semantycznie z obu stron, kontrola diffu i dokumentów), uruchamia
 `make check` i testy aplikacji z konfliktami, otwiera PR do `epic/<epik>` i po zielonym CI merguje go
-`gh pr merge --merge` (nigdy squash, `--admin` ani `--auto`). Końcowy PR zostaje ten sam; zastępczego nie ma.
+`gh pr merge --merge` (nigdy squash, `--admin` ani `--auto`). Końcowy PR zostaje ten sam; zastępczego nie ma. Gdy AO
+działa, nowy HEAD gałęzi epiku przechodzi rundę `DELTA` `/integration`, a raport odbioru powstaje od nowa.
 
 Pomiar epiku (każdy przebieg, także poza nocą): zaraz po udanym `ao epic start` sesja wykonuje
 `night_queue.py start <epik>`, a na `epic_done` `night_queue.py done <epik>`. Oba dostają na stdin stan limitów
@@ -236,8 +241,8 @@ listę nocy), nie przygotowuje epiku (`/prepare-epic`) i nie zmienia tablicy.
 `python3 -m unittest discover -s .claude/skills/ao-run -p 'test_*.py'`: `record` (poprawne zdarzenie, pusty
 i niepoprawny JSON, brak katalogu), `watch` (każdy typ zdarzenia z README AO, limit 200 znaków, pomijanie zdarzeń bez
 znaczenia, linie dopisane w trakcie), `human` (zadanie i epik, nieznana akcja, katalog bez zapisu → kod 1),
-`summary` (pary na zadanie, `FAILED` i `resume`, epik i kolejka, powtórzony bloker, czekanie otwarte, decyzja bez
-czekania, decyzja przed blokerem, zdarzenia bez znaczenia i zły czas, linie nie-JSON, brak pliku i katalog → kod 1); `claude_pin.py` z checkoutem AO w repo tymczasowym i podstawionymi binarkami
+`summary` (pary na zadanie, `FAILED` i `resume`, epik i kolejka, powtórzony bloker, nakładające się czekania,
+czekanie otwarte do teraz i do `epic_done`, decyzja bez czekania, decyzja przed blokerem, zdarzenia bez znaczenia i zły czas, linie nie-JSON, brak pliku i katalog → kod 1); `claude_pin.py` z checkoutem AO w repo tymczasowym i podstawionymi binarkami
 (wersja z `origin/main`, nie z drzewa roboczego; drugi kandydat, gdy pierwszego brak albo zgłasza inną wersję; brak
 pliku i katalogu, plik niewykonywalny, inna wersja, błąd i przekroczony czas `--version` → kod 2 z komendą
 instalacji; brak `origin/main`, brak checkoutu, brak pola, nieczytelny plik, wartość, która nie jest wersją → kod 1;

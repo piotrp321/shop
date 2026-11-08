@@ -11,7 +11,7 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 7), nie 
 
 W toku: DEPLOY (#175) przez `/ao-run`. Następne epiki „Zakresu MVP”: PROMOTIONS (#96), DISCOUNT-CODES (#225)
 i VISUAL-DESIGN (#97), kolejność na tablicy „Backlog sklepu”. Blokery: brak. Krok 7: CART-FIXES (#88) przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy
-PR #112): 30 minut użytkownika, 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD
+PR #112): 30 minut użytkownika (szacunek użytkownika, nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD
 według Claude CLI.
 
 | Krok | Zakres | Status |
@@ -130,8 +130,9 @@ flowchart TB
      panelu) jako ryzyko konfliktu, bez blokowania startu. Na zasilaniu z baterii sesja pyta, zanim uruchomi epik.
    - Sesja z `/ao-run <epik>` uruchamia `ao epic start` i `ao run --until-idle`. AO prowadzi zadania przez
      `/delivery` po jednym naraz, squash-merguje je do `epic/<epik>`, uruchamia `/integration` i otwiera końcowy
-     PR `epic/<epik>` → `main` z raportem `ao report`. Konflikt końcowego PR z `main` naprawia zadanie REPAIR
-     prawdziwym `git merge origin/main` (zasady w `/delivery`), mergowane do `epic/<epik>` merge commitem.
+     PR `epic/<epik>` → `main` z raportem `ao report`. Czerwone CI gałęzi epiku i konflikt końcowego PR z `main`
+     naprawia zadanie REPAIR (konflikt: prawdziwy `git merge origin/main`, zasady w `/delivery`), mergowane do
+     `epic/<epik>` merge commitem.
    - `code-reviewer` w `/delivery` sprawdza każde zadanie, a `/integration` cały epik. Usunięty, wyłączony albo
      osłabiony istniejący test lub zmieniona wartość oczekiwana bez podstawy w specyfikacji to `BLOCKER` w zadaniu
      i `Important` w epiku. Plik albo zmiana spoza `scope` zadania to zgłoszenie. `code-reviewer` sprawdza też,

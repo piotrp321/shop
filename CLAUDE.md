@@ -58,15 +58,16 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   specyfikacji, a użytkownik sprawdza je przed merge'em. Proces:
   `docs/features/agentic-software-house/plan.md`.
 - Epik realizowany przez AO ma gałąź `epic/<epik>` (zakładaną z `main`). PR zadań (`task/<id>`) mają bazę `epic/<epik>`
-  i AO squash-merguje je tylko tam, nigdy do `main`. Wyjątek: naprawę konfliktu końcowego PR z `main` (zadanie REPAIR
-  w AO albo PR `sync/<epik>-main` z `/ao-run`) wprowadza merge commit z prawdziwym `git merge origin/main`.
+  i AO squash-merguje je tylko tam, nigdy do `main`. Wyjątek: zadanie REPAIR w AO (naprawa czerwonego CI gałęzi
+  epiku albo konfliktu końcowego PR z `main`, przez prawdziwy `git merge origin/main`) i PR `sync/<epik>-main`
+  z `/ao-run` trafiają do `epic/<epik>` merge commitem.
   PR `epic/<epik>` → `main` zatwierdza i merguje użytkownik.
   Skill `/delivery` dostaje gałąź docelową PR w linii `Gałąź docelowa PR:` (domyślnie `main`) i tworzy PR z `--base`.
 - Ruleset `epic` (`tools/rulesets/epic.json`, wzorzec `refs/heads/epic/*`): zakaz force-push i usuwania gałęzi, zmiany
   tylko przez PR (0 zatwierdzeń, squash albo merge commit), wymagane checki `checks` i `e2e` (bez „up to date”), bez
-  bypassu. Merge commit służy wyłącznie naprawie konfliktu i synchronizacji z `main`: squash nie przesuwa
-  merge-base gałęzi epiku, więc rozwiązany konflikt wracał przy każdym kolejnym merge'u `main`. PR zadań i poprawek
-  idą przez squash.
+  bypassu. Merge commit służy wyłącznie zadaniom REPAIR i synchronizacji z `main`: squash nie przesuwa
+  merge-base gałęzi epiku, więc rozwiązany konflikt wracał przy każdym kolejnym merge'u `main`. PR zadań planu
+  i poprawek QA idą przez squash.
   Tworzenia gałęzi nie blokuje: `do_not_enforce_on_create` pozwala AO wypchnąć nową gałąź od commita z `main`.
   Zakładanie lub aktualizacja (wymaga uprawnień admina repo):
   `gh api repos/piotrp321/shop/rulesets -X POST --input tools/rulesets/epic.json`
@@ -119,14 +120,14 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
 - Jeden PR to jedna logiczna, weryfikowalna zmiana. Powiązane, niewielkie zadania planu mogą trafić do jednego PR.
   PR przechodzi CI i review. Nie merguj bez zgody użytkownika. Wyjątek: akceptacja epiku w `/prepare-epic` (specyfikacja
   i rozmiar końcowego PR) obejmuje zgodę na squash-merge PR zadań do jego gałęzi `epic/<epik>` po zielonym CI
-  (naprawa konfliktu z `main`: merge commit).
+  (zadanie REPAIR: merge commit).
   Drugi wyjątek: PR ze specyfikacją i planem epiku z `/prepare-epic` merguje skill po akceptacji użytkownika
   i zielonym CI, gdy PR zmienia wyłącznie te dwa pliki. Trzeci wyjątek: PR `sync/<epik>-main` z `/ao-run` merguje
   skill merge commitem po zgodzie użytkownika na tę procedurę i zielonym CI. Pozostałe PR do `main`, także końcowy
   PR epiku, merguje wyłącznie użytkownik.
 - Każdy PR/MR mergujemy wyłącznie w trybie squash, a po merge'u usuwamy jego branch
-  (np. `gh pr merge <nr> --squash --delete-branch`). Jedyny wyjątek to naprawa konfliktu z `main` do `epic/*`
-  (REPAIR, `sync/<epik>-main`): merge commit (`--merge`).
+  (np. `gh pr merge <nr> --squash --delete-branch`). Jedyny wyjątek to PR do `epic/*` z zadania REPAIR i PR
+  `sync/<epik>-main`: merge commit (`--merge`).
 - CI (`.github/workflows/ci.yml`) uruchamia `make check`, testy wszystkich aplikacji i E2E przy każdym PR i każdym
   pushu na `main` i `epic/**`. Wyjątki dotyczą tylko PR (`.github/scripts/scope.sh`): PR zmieniający wyłącznie
   dokumentację niczego nie uruchamia, a PR zmieniający wyłącznie narzędzia repo (`.claude/**`, `.ao/**`, `tools/**`,

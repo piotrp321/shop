@@ -39,14 +39,20 @@ Po warunkach startu, przed krokiem 2, dwa sprawdzenia, które nie odmawiają sta
   (`'Battery Power'`) albo błąd komendy: zapytaj „Komputer na baterii (<procent>), uruchomić epik `<epik>`?” (przy
   błędzie „stan zasilania nieznany”) i wyślij to samo pytanie pushem. Start tylko po „tak” użytkownika w sesji; inna
   odpowiedź albo brak odpowiedzi: nic nie uruchamiaj. `caffeinate -s` działa tylko na zasilaniu sieciowym, a rozładowana
-  bateria usypia host w trakcie przebiegu. Epik z listy nocy też czeka na tę odpowiedź; noc nie kończy się przez samo pytanie.
+  bateria usypia host w trakcie przebiegu. Epik z listy nocy też czeka na tę odpowiedź (to jedyne pytanie przed
+  kolejnym epikiem nocy); noc nie kończy się przez samo pytanie.
 - **Inne epiki w toku.** Epik w toku to `<x>` różny od `<epik>`, dla którego działa proces AO z
   `--home "$HOME/.local/state/ao-<x>"` albo jest otwarty końcowy PR `epic/<x>` → `main`:
 
   ```bash
   ps -axo command= | grep -o "[o]rchestrator --home $HOME/.local/state/ao-[^ ]*" | sed 's|.*/ao-||' | sort -u
   cd "$SHOP" && gh pr list --base main --state open --json number,headRefName -q '.[] | select(.headRefName | startswith("epic/"))'
+  python3 "$SKILL_ROOT/.claude/skills/ao-run/next_epic.py" --repo "$SHOP"
   ```
+
+  Z wyjścia `next_epic.py` liczy się pole `in_progress` (gałąź `epic/<x>` i otwarte issue): łapie epik, którego `run`
+  się zakończył, np. `BLOCKED` albo czekający na odpowiedź. Błąd którejś komendy nie blokuje startu: napisz, czego nie
+  sprawdzono.
 
   Dla każdego takiego epiku sprawdź, które pliki wspólne zmieniają oba epiki. Pliki wspólne: `.github/workflows/ci.yml`, pliki `CLAUDE.md`,
   `apps/api/openapi.json`, `apps/api/openapi-admin.json`, klienci TS (`apps/store/src/api/schema.d.ts`,
@@ -189,14 +195,15 @@ dopisuje tylko brakujące linie, więc jej powtórzenie niczego nie dubluje:
 ```bash
 cd "$SHOP" && git fetch origin main &&
 issues="$(git show origin/main:docs/features/<epik>/spec.md | sed -n 's/^Issues: //p' | head -n 1 | grep -o '#[0-9][0-9]*')" &&
-[ -n "$issues" ] && body="$(gh pr view <nr> --json body -q .body)" &&
-missing="$(for i in $issues; do printf '%s\n' "$body" | grep -qx "Closes $i" || echo "Closes $i"; done)" &&
+[ -n "$issues" ] && body="$(gh pr view <nr> --json body -q .body | tr -d '\r')" &&
+missing="$(printf '%s\n' "$issues" | while IFS= read -r i; do printf '%s\n' "$body" | grep -qx "Closes $i" || echo "Closes $i"; done)" &&
 { [ -z "$missing" ] || gh pr edit <nr> --body "$(printf '%s\n\n%s\n' "$body" "$missing")"; } &&
 gh pr view <nr> --json body -q .body | grep -x 'Closes #[0-9]*'
 ```
 
-Ostatnia linia pokazuje linie `Closes` w opisie PR po zmianie. Kod wyjścia różny od 0 (brak linii `Issues:`, błąd
-`gh`): podaj w raporcie listę `Closes #N` do dopisania ręcznie i przyczynę.
+Ostatnia linia pokazuje linie `Closes` w opisie PR po zmianie: sprawdź, że jest tam każde issue z linii `Issues:`.
+Pętla `while read` działa tak samo w zsh i bash (`for i in $issues` w zsh nie dzieli słów). Kod wyjścia różny od 0
+(brak linii `Issues:`, błąd `gh`): podaj w raporcie listę `Closes #N` do dopisania ręcznie i przyczynę.
 
 Pomiar czekania na użytkownika (sekcja 7) czyta `events.jsonl`:
 
@@ -204,8 +211,11 @@ Pomiar czekania na użytkownika (sekcja 7) czyta `events.jsonl`:
 python3 "$SKILL_ROOT/.claude/skills/ao-run/ao_events.py" summary "$AO_HOME/events.jsonl"
 ```
 
-Wyjście: `interventions` (zapisane decyzje), `waits` (blokery i zatrzymania czekające na użytkownika), `wait_s` (suma
-zakończonych czekań w sekundach) i `open` (czekania bez zapisanej decyzji, mierzone do teraz). Kod wyjścia różny od 0:
+Wyjście: `interventions` (decyzje zapisane przez tę sesję; liczbę interwencji do raportu bierz z `ao report`),
+`waits` (blokery i zatrzymania czekające na użytkownika), `wait_s` (czas zegarowy, w którym trwało co najmniej jedno
+zakończone czekanie, w sekundach; nakładające się czekania liczą się raz) i `open` (czekania bez zapisanej decyzji,
+mierzone do ostatniego `epic_done` po ich początku albo do teraz). Czekanie otwarte po końcu epiku zwykle oznacza
+decyzję podjętą poza tą sesją: opisz je osobno, nie dodawaj do sumy. Kod wyjścia różny od 0:
 pomiar „brak danych”, nie zero.
 
 Zostaw w rozmowie raport odbioru:
@@ -255,6 +265,9 @@ istniejącego: końcowy PR zostaje ten sam, razem z liniami `Closes`.
    cd "$SHOP/../shop-sync-<epik>" && AO_COMPOSE_PROJECT=sync-<epik> AO_PORT_BASE=<port> .ao/setup
    ```
 
+Bash tej sesji wraca po każdym wywołaniu do jej katalogu roboczego, więc każdą komendę kroków 2–4 zacznij od
+`cd "$SHOP/../shop-sync-<epik>" &&` (po bloku startowym). Bez tego `git merge` trafiłby do checkoutu sesji.
+
 2. `git merge origin/main` i rozwiązanie konfliktów według sekcji „Konflikt z gałęzią docelową lub z `main`” skilla
    `/delivery` (`.claude/skills/delivery/SKILL.md`): pliki generowane od nowa, reszta semantycznie z obu stron, kontrola
    `git diff origin/main...HEAD` i dokumentów z liczbami. Nigdy squash ani rebase. Konflikt, którego nie da się
@@ -269,13 +282,19 @@ istniejącego: końcowy PR zostaje ten sam, razem z liniami `Closes`.
    ```
 
    Opis PR: pliki w konflikcie, sposób rozwiązania każdego, wynik kontroli i testów.
-5. CI: `gh pr checks <nr sync> --watch --required`. Zielone: `gh pr merge <nr sync> --merge --delete-branch
-   --match-head-commit <sha>`, nigdy `--squash`, `--admin` ani `--auto`. Merge commit wprowadza `main` do historii
+5. CI: `gh pr checks <nr sync> --watch --required`. Zaraz po `gh pr create` checki mogą jeszcze nie być zgłoszone
+   („no checks reported”): to nie jest czerwone CI, ponów po minucie. Zielone (`cd "$SHOP"`):
+   `gh pr merge <nr sync> --merge --match-head-commit <sha>`, nigdy `--squash`, `--admin`, `--auto` ani
+   `--delete-branch` (lokalna gałąź jest w worktree synchronizacji). Merge commit wprowadza `main` do historii
    `epic/<epik>`, więc rozwiązany konflikt nie wraca. Czerwone: napraw na tej samej gałęzi (krok 3) albo zgłoś
    użytkownikowi.
 6. Sprawdź końcowy PR: `gh pr view <nr> --json mergeable,headRefOid` (`MERGEABLE`, HEAD to merge commit) i jego CI.
-   Epik `BLOCKED` w AO wznawia wyłącznie użytkownik (`ao epic resume`, sekcja 5). Na koniec
-   `.ao/teardown` z tymi samymi zmiennymi i `git worktree remove`.
+   Sprzątanie, w tej kolejności: `cd "$SHOP/../shop-sync-<epik>" && AO_COMPOSE_PROJECT=sync-<epik> AO_PORT_BASE=<port> .ao/teardown`,
+   potem `cd "$SHOP" && git worktree remove "$SHOP/../shop-sync-<epik>" && git branch -D sync/<epik>-main && git push origin --delete sync/<epik>-main`.
+7. AO po merge'u: gdy `ao run` działa, AO traktuje nowy HEAD gałęzi epiku jak poprawkę (runda `DELTA` `/integration`),
+   więc czekaj na `epic_done` i zrób raport odbioru od nowa (sekcja 6). Epik `BLOCKED` wznawia wyłącznie użytkownik
+   (`ao epic resume`, sekcja 5), potem `run` od nowa (krok 4). Epik był `DONE`, a AO już nie działa: uzupełnij raport
+   odbioru o PR synchronizacji i wynik CI końcowego PR.
 
 Push: „`<epik>`: końcowy PR bez konfliktu po PR #<nr sync>, CI: …”. PR synchronizacji to ręczna poprawka w pomiarze
 (sekcja 7).
@@ -400,6 +419,6 @@ epiku uruchomionego tej nocy jest `MERGED` albo `CLOSED`, bez względu na to, kt
 - Nie uruchamiasz kilku epików naraz: epiki nocy idą jeden po drugim. Epik innej sesji w toku nie blokuje startu,
   ale jego ryzyko opisujesz (sekcja 1).
 - Nie zaczynasz epiku bez „tak” użytkownika w sesji (na „Zacząć epik?” albo na listę nocy). Kolejny epik listy
-  zaczynasz bez pytania tylko wtedy, gdy zwróci go `next`.
+  zaczynasz bez pytania tylko wtedy, gdy zwróci go `next`; wyjątek to pytanie o zasilanie na baterii (sekcja 1).
 - Nie zapisujesz listy nocy (`approve`) bez „tak” użytkownika ani z innymi epikami niż zaproponowane.
 - Nie przygotowujesz epiku (to `/prepare-epic`) i nie zmieniasz tablicy.
