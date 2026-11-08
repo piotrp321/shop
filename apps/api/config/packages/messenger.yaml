@@ -66,6 +66,18 @@ framework:
                     max_retries: 5
                     delay: 1000
                     multiplier: 3
+            # The boundaries of the promotion periods (PromotionBoundaryReached, delayed by a DelayStamp) and the
+            # refresh of the products of a promotion whose end moved (RefreshPromotionProducts), written in the
+            # transaction of the promotion write on the same connection. A queue of its own, so the demo seeds that
+            # empty `scheduled` (ordering:seed-demo) leave them alone. Retried like `scheduled`, then `failed`.
+            promotions:
+                dsn: 'doctrine://default?queue_name=promotions&auto_setup=false&redeliver_timeout=300'
+                options:
+                    use_notify: false
+                retry_strategy:
+                    max_retries: 5
+                    delay: 1000
+                    multiplier: 3
             failed:
                 dsn: 'doctrine://default?queue_name=failed&auto_setup=false'
                 options:
