@@ -345,15 +345,16 @@ services:
       # change) deletes the container files this long-running process still loads lazily, and the worker crashes.
       APP_CACHE_DIR: /tmp/cache
     # The transports one after another: the outbox relay, the events of RabbitMQ, the delayed commands
-    # (ExpireUnpaidOrder) whose moment has come and the webhook deliveries of the payment simulator.
-    command: ["bin/console", "messenger:consume", "outbox", "events", "scheduled", "payment_simulator"]
+    # (ExpireUnpaidOrder) whose moment has come, the webhook deliveries of the payment simulator and the boundaries
+    # of the promotion periods.
+    command: ["bin/console", "messenger:consume", "outbox", "events", "scheduled", "payment_simulator", "promotions"]
     restart: unless-stopped
     volumes:
       - ./apps/api:/app
       - api-vendor:/app/vendor
     healthcheck:
       # Healthy once PID 1 is the consumer itself, not the entrypoint that may still be installing dependencies.
-      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled payment_simulator'"]
+      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled payment_simulator promotions'"]
       interval: 10s
       start_interval: 1s
       timeout: 3s

@@ -144,6 +144,9 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   - `Pricing_Infrastructure`: `VariantPriceChanged` → `productId` z Catalog `GetVariant` → `invalidateProduct(productId)`;
     wariant nieznany Catalogowi: nic do unieważnienia, wiadomość obsłużona.
   - `Inventory_Infrastructure`: `StockLevelChanged` → to samo.
+  - `Pricing_Infrastructure` (`InvalidateStorefrontOnPromotionChange`): `PromotionPricesChanged` (granica okresu
+    promocji albo przesunięty koniec aktywnej, jedno na produkt) → `invalidateProduct(productId)` ze zdarzenia, bez
+    pytania Catalog.
   - `Catalog_Infrastructure` (`InvalidateStorefrontOnProductChange`): integracyjne `ProductChanged` (edycja, publikacja,
     wycofanie) → `invalidateTags([product-<productId>, product-slug-<slug>])`, bez odczytu bazy (zdarzenie ma id
     i slug po zmianie). Id albo slug w złym formacie to `failed` bez ponowień.

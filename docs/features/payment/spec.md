@@ -373,7 +373,7 @@ przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`Star
   Wiadomość czeka w bazie, więc restart albo przestój workera przed terminem tylko opóźnia anulowanie.
 - Routing: `ExpireUnpaidOrder` → `scheduled` (ponowienia: 5 prób, 1 s, ×3); `DeliverSimulatedWebhook` →
   `payment_simulator` (ponowienia: 5 prób, 1 s, ×3, około 2 minut, potem `failed`).
-- Worker: `messenger:consume outbox events scheduled payment_simulator` (`infra/docker-compose.yml`, także
+- Worker: `messenger:consume outbox events scheduled payment_simulator promotions` (`infra/docker-compose.yml`, także
   healthcheck z linią komendy; CI uruchamia stos przez compose).
 
 ## Testy wywołań HTTP dostawców
@@ -636,7 +636,7 @@ przekierowanie, link „Opłać zamówienie” przy pustym koszyku i ciasteczku)
   obciążeniowymi płatności symulator trzeba uruchomić jako osobną usługę (decyzja A3).
 - `ExpireUnpaidOrder` po wyczerpaniu ponowień trafia do `failed`: zamówienie zostaje `new`, a rezerwacja aktywna, aż
   ktoś ponowi wiadomość (`bin/console messenger:failed:retry`).
-- Worker obsługuje transporty po kolei (`outbox events scheduled payment_simulator`): długa kolejka zdarzeń opóźnia
+- Worker obsługuje transporty po kolei (`outbox events scheduled payment_simulator promotions`): długa kolejka zdarzeń opóźnia
   webhooki symulatora, a sklep po 30 s pokazuje „Nie mamy jeszcze potwierdzenia płatności.”.
 - Gość traci możliwość zapłaty po utracie ciasteczka potwierdzenia (inne urządzenie, wylogowanie); zamówienie
   wygasa.

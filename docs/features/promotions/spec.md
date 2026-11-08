@@ -179,7 +179,7 @@ Wejście: wpisy historii z `W` i ostatni wpis sprzed `W` (jedno zapytanie dla ws
   komendy nie czyta Catalog ani nie publikuje zdarzeń; robi to handler wiadomości, poza transakcją panelu.
 - Handler `PromotionBoundaryReached`: promocja nieznana albo jej bieżące `startsAt`/`endsAt` różne od `at` (zmieniona,
   usunięta): wiadomość obsłużona bez skutku. Wiadomość za wczesna (zegar, zaokrąglenie `available_at`) wraca na
-  `at` + 1 s. Inaczej wyznacza produkty wariantów promocji (port `PromotionProducts`, Catalog `GetVariantSummaries`
+  `at` + 1 s. Inaczej wyznacza produkty wariantów promocji (port `VariantSummaries`, Catalog `GetVariantSummaries`
   paczkami po 100; wariant nieznany Catalogowi pomija) i publikuje jedno `PromotionPricesChanged {productId, source:
   promotion, occurredAt}` na produkt (outbox, jedna transakcja). Produkt z 20 wariantami w promocji to jeden reindeks
   i jedno unieważnienie.
