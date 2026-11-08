@@ -13,7 +13,8 @@ Obsługujemy wyłącznie Polskę i PLN. Promocje (obniżka procentowa wariantów
 (sekcja „Promocje”). W aktywnej promocji cena skuteczna wariantu to cena promocyjna: odczyt cen (`GetCurrentPrices`),
 a przez niego oferta listy, indeks wyszukiwania, koszyk i zamówienie, płacą ją bez własnych obliczeń; odczyt podaje też
 cenę Omnibus (najniższa cena skuteczna z 30 dni przed startem promocji). Kody rabatowe (procent albo kwota na całe
-zamówienie, sekcja „Kody rabatowe”) zakłada i zmienia się w API panelu; kasa ich jeszcze nie stosuje. Poza zakresem:
+zamówienie, sekcja „Kody rabatowe”) zakłada i zmienia się w API panelu; wycena koszyka (`QuoteBasket`, sekcja „Wycena
+koszyka”) liczy ich rabat i rozkłada go na linie, a widok koszyka pokazuje ją z kodem w podglądzie. Poza zakresem:
 wiele krajów i walut, harmonogramy zmian stawek. Klasę podatkową produktu zmienia edycja produktu w Catalog,
 a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie klasy podatkowej”).
 
@@ -82,10 +83,13 @@ a Pricing przelicza po niej ceny wariantów (sekcja „Przeliczenie po zmianie k
 - `VatRate`: stawka w punktach bazowych (`2300` = 23%), liczba całkowita.
 - `PolishVatRates`: `rateFor(TaxClass): VatRate`, tabela w kodzie domeny. Klasa bez stawki: `TaxClassWithoutRate`
   (`InvalidInput`).
-- `PriceBreakdown::fromGross(GrossPrice, VatRate)`: jedyne miejsce obliczeń.
+- `PriceBreakdown`: jedyne miejsce obliczeń netto i VAT (jedna formuła dla ceny i dla wartości linii).
   - `d = 10000 + bp`, netto = `intdiv(2 · brutto · 10000 + d, 2 · d)` (HALF_UP do grosza, tylko liczby całkowite).
   - VAT = brutto − netto, więc netto + VAT = brutto zawsze co do grosza.
-  - Zakres `GrossPrice` wyklucza przepełnienie `int`.
+  - `fromGross(GrossPrice, VatRate)`: cena; zakres `GrossPrice` wyklucza przepełnienie `int`.
+  - `ofLineGross(Money, VatRate)`: `LineBreakdown {gross, net, vat, rate}` wartości linii koszyka po rabacie, 0 –
+    `MAX_LINE_GROSS` (99 × `GrossPrice::MAX`) groszy; poza zakresem `\InvalidArgumentException`. W zakresie
+    `GrossPrice` wynik jest równy `fromGross`.
 - Agregat `VariantPrice` (identyfikator = `VariantId`): `breakdown`, `taxClass`, `version`, niezapisane wpisy historii.
   - `create(id, gross, taxClass, rates, origin)` – pierwsza cena, jeden wpis historii.
   - `changeGross(gross, rates, origin): bool` – nowa kwota, z bieżącą stawką dla klasy ceny.
@@ -222,11 +226,40 @@ kodów i jedynym miejscem tekstów ich odrzucenia.
   ORM; rekord już w identity map jest odświeżany pod blokadą), potem czyta zegar i liczbę aktywnych użyć, buduje
   wartości (422), porównuje wersję (`DiscountCodeModifiedConcurrently`, 409) i woła `revise`. Nieznany kod i id spoza
   UUID: `DiscountCodeNotFound` (404).
+- `DiscountCodeRepository::findByCode(DiscountCodeValue)`: kod po tekście znormalizowanym (unikalny indeks), odczyt
+  z bazy z odświeżeniem rekordu z identity map.
 - Odczyty (`query.bus`): `ListDiscountCodes(status?, q?, after, perPage)` przez port `DiscountCodeReader` (DBAL
   `DbalDiscountCodeReader`, keyset `(created_at DESC, id)`, kursor `DiscountCodeCursor`, status liczony z `now`, `q`
   przycięty i wielkimi literami jako prefiks `LIKE` tekstu; `q` ze znakiem spoza `[A-Z0-9-]` daje pustą stronę bez
   zapytania) i `GetDiscountCode(id)` (repozytorium i `activeUsesOf`). Oba dają `DiscountCodeView` z liczbą aktywnych
   użyć i statusem.
+
+## Wycena koszyka
+
+Reguły i decyzje: `docs/features/discount-codes/spec.md` („Wycena koszyka i rozkład rabatu”, D2, D8, D9, Q2, Q7).
+
+- `BasketQuote::of(lines, prices, code | null, activeUses, now)` (`Pricing\Domain\Basket`, czysta funkcja): linie
+  `BasketLine {variantId, quantity 1–99}` (1–50, różne warianty, w kolejności koszyka) i ceny skuteczne `BasketPrice
+  {EffectivePrice, taxClass, promotion {id, name, percentOff} | null}` po `variantId`. Linia bez ceny nie wchodzi do
+  wyceny. `g_i` = brutto jednostkowe × ilość, `S` = suma `g_i`. Kod: `rejectionFor(S, activeUses, now)`; odrzucony daje
+  wycenę bez rabatu z odrzuceniem. Rabat `D`: procentowy `floor(S × p / 100)`, kwotowy kwota kodu (zawsze
+  `1 ≤ D < S`). Rozkład metodą największych reszt: `d_i = floor(g_i × D / S)`, brakujące grosze po jednym liniom
+  o największej reszcie `g_i × D mod S`, przy remisie wcześniejszej; iloczyny przez `ext-gmp` (`gmp_mul`,
+  `gmp_div_qr`), wyniki w `int`. Linia po rabacie `L_i = g_i − d_i`, netto i VAT z `PriceBreakdown::ofLineGross`;
+  bez kodu `d_i = 0` i netto liczone z brutto linii, nie jako netto jednostkowe × ilość. Sumy (`net`, `vat`, `gross`)
+  to sumy linii. `BasketQuote::withUnknownCode(lines, prices)`: kod nieznany, odrzucenie `invalid`.
+- `QuoteBasket(lines {variantId, quantity}, discountCode | null)` (`query.bus`): najpierw sprawdza zapytanie (1–50
+  linii, UUID, ilość 1–99, różne warianty, kod do 64 znaków; inaczej `InvalidBasketQuery`, `InvalidInput`), potem
+  czyta ceny skuteczne przez `CurrentEffectivePrices` (ten sam odczyt co `GetCurrentPrices`, bez Omnibusa: ceny
+  i promocje aktywne o `now` z zegara), kod przez `findByCode` i liczbę aktywnych użyć tylko dla kodu z limitem
+  (indeks częściowy). Kod pusty albo z samych białych znaków Unicode to brak kodu; tekst, który nie jest kodem (zły
+  format, znak sterujący, bajty spoza UTF-8) albo którego nikt nie ma, to kod nieznany (`invalid`), nie błąd zapytania.
+  Wynik `QuotedBasket {lines, subtotalGross, discountGross, net, vat, gross, currency, discount {codeId, code, kind,
+  value, amountGross} | null, rejection {code, reason, type, detail, minimumOrderGross | null} | null}`, linia
+  `{variantId, quantity, unit {net, vat, gross, vatRateBp, taxClass}, regularUnitGross, promotion {promotionId, name,
+  percentOff} | null, grossBeforeDiscount, discountGross, net, vat, gross}`. `rejection.code` to tekst po przycięciu
+  i zamianie liter ASCII na wielkie (bajty spoza UTF-8 zastąpione), `type` i `detail` z `DiscountCodeRejection`.
+  Wołający: Cart (`QueryBusCartQuote`, widok koszyka).
 
 ## Persystencja i transakcje
 
@@ -281,7 +314,7 @@ Pricing:
   - Istniejąca cena: `changeGross` z bieżącą stawką klasy ceny (zapis naprawia też nieaktualną stawkę, jednym wpisem).
 - `GetCurrentPrices(variantIds, withLowestPriorPrice = false)` (1–4800 id, czyli 48 produktów po 100 wariantów)
   - Zapytanie o ceny `WHERE variant_id = ANY(:ids)` i, gdy jest aktualna cena, zapytanie o promocje aktywne teraz
-    (`ActivePromotions`, zegar `Clock`). Z flagą `withLowestPriorPrice` i wariantem w promocji jeszcze dwa zapytania
+    (`ActivePromotions`, zegar `Clock`); oba w `CurrentEffectivePrices`, wspólnym z `QuoteBasket`. Z flagą `withLowestPriorPrice` i wariantem w promocji jeszcze dwa zapytania
     (`OmnibusHistory`: historia i promocje okien); bez flagi żadnego z nich. Flagę podaje tylko oferta listy dla
     endpointu sklepu; koszyk, zamówienie i indeks wyszukiwania jej nie podają.
   - Zwraca `PriceSnapshot {variantId, taxClass, vatRateBp, net, vat, gross, currency, version, regularGross,
@@ -525,7 +558,13 @@ z tokenem realmu `shop`: 401):
 - Kody rabatowe: jednostkowe VO i `DiscountCode` (statusy, `rejectionFor` z kolejnością powodów i minimum skutecznym,
   reguły edycji), handlery z adapterami in-memory (blokada przed zegarem i liczbą użyć, wersja), integracyjne
   repozytoriów kodów i użyć (unikalny tekst, unikalne `order_id`, aktywne użycia po indeksie częściowym, CHECK-i,
-  blokada wiersza), czytnika listy i funkcjonalne endpointów panelu (`DiscountCodesEndpointTest`).
+  blokada wiersza, `findByCode` z odświeżeniem), czytnika listy i funkcjonalne endpointów panelu
+  (`DiscountCodesEndpointTest`).
+- Wycena koszyka (TDD): `PriceBreakdown::ofLineGross` (0 groszy, maksimum linii, równość z `fromGross` w zakresie
+  `GrossPrice`), `BasketQuoteTest` (netto z brutto linii, kod procentowy i kwotowy, reszty i remis, linia 1 grosz,
+  maksymalny koszyk 50 × 99 × `GrossPrice::MAX` przy 90% liczony dokładnie, kopia promocji, każde odrzucenie, Q7),
+  `QuoteBasketHandlerTest` (kod po tekście znormalizowanym, użycia tylko dla kodu z limitem, kod pusty, zły format,
+  bajty spoza UTF-8, 65 znaków, granice linii).
 - Vitest: sklep – `formatPrice` (kafelek z ofertą opisuje `docs/features/cart/spec.md`); panel – zamiana kwoty
   na grosze, widok cen (wiersz na wariant, kolumna „Wariant”, akcje na wierszu wariantu, 403, 409, pusty wynik),
   historia.

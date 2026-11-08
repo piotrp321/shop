@@ -24,7 +24,13 @@ type Effects = { cart?: { id: string } | "clear"; merge?: GuestCartMerge; notice
 const LINE_MISSING = "Tej pozycji nie ma w koszyku.";
 const INVALID_BODY = "Nieprawidłowe dane.";
 
-const emptyCart: CartView = { id: null, lines: [], totals: { gross: 0, currency: "PLN", itemCount: 0 }, hasExcludedLines: false };
+const emptyCart: CartView = {
+  id: null,
+  lines: [],
+  totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 0 },
+  hasExcludedLines: false,
+  discount: null,
+};
 const emptySummary: CartSummaryBody = { itemCount: 0, notice: null };
 
 /**

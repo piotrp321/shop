@@ -29,8 +29,16 @@ const line = (variantId: string, name: string, quantity: number, overrides: Part
 const view = (lines: Line[], totals: Partial<CartView["totals"]> = {}, hasExcludedLines = false): CartView => ({
   id: "c1",
   lines,
-  totals: { gross: 0, currency: "PLN", itemCount: lines.reduce((sum, l) => sum + l.quantity, 0), ...totals },
+  totals: {
+    subtotalGross: totals.gross ?? 0,
+    discountGross: 0,
+    gross: 0,
+    currency: "PLN",
+    itemCount: lines.reduce((sum, l) => sum + l.quantity, 0),
+    ...totals,
+  },
   hasExcludedLines,
+  discount: null,
 });
 
 const ok = (data: CartView) => ({ status: "ok" as const, data });

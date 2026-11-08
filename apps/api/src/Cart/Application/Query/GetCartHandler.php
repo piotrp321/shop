@@ -26,6 +26,7 @@ final readonly class GetCartHandler
 
     /**
      * Creates nothing: a customer without a cart gets the empty view without id, an expired customer cart is empty.
+     * The code is quoted only with a purchasable line.
      */
     public function __invoke(GetCart $query): CartView
     {
@@ -36,6 +37,6 @@ final readonly class GetCartHandler
 
         $lines = $cart->linesAt($this->clock->now());
 
-        return $this->views->build($cart->id(), $lines, $this->products->load(array_map(static fn (CartLine $line): VariantId => $line->variantId(), $lines)));
+        return $this->views->build($cart->id(), $lines, $this->products->load(array_map(static fn (CartLine $line): VariantId => $line->variantId(), $lines)), $query->discountCode);
     }
 }

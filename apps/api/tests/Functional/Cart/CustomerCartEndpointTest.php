@@ -25,7 +25,7 @@ final class CustomerCartEndpointTest extends WebTestCase
         $view = $this->request('GET', '/api/v1/me/cart', token: TestTokenFactory::customer());
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
-        self::assertSame(['id' => null, 'lines' => [], 'totals' => ['gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false], $view);
+        self::assertSame(['id' => null, 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null], $view);
         self::assertMatchesSchema('CartView', $view);
 
         self::assertSame(['itemCount' => 0], $this->request('GET', '/api/v1/me/cart/summary', token: TestTokenFactory::customer()));
@@ -55,7 +55,7 @@ final class CustomerCartEndpointTest extends WebTestCase
         $changed = $this->request('PUT', '/api/v1/me/cart/items/'.$shoes, '{"quantity": 5}', $token);
         self::assertResponseStatusCodeSame(200);
         $this->assertNoStore();
-        self::assertSame(['gross' => 5 * 19_999 + 4_990, 'currency' => 'PLN', 'itemCount' => 6], $changed['totals']);
+        self::assertSame(['subtotalGross' => 5 * 19_999 + 4_990, 'discountGross' => 0, 'gross' => 5 * 19_999 + 4_990, 'currency' => 'PLN', 'itemCount' => 6], $changed['totals']);
 
         $removed = $this->request('DELETE', '/api/v1/me/cart/items/'.$cap, null, $token);
         self::assertResponseStatusCodeSame(200);

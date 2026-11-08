@@ -9,6 +9,7 @@ use App\Pricing\Domain\DiscountCode\DiscountCodeId;
 use App\Pricing\Domain\DiscountCode\DiscountCodeModifiedConcurrently;
 use App\Pricing\Domain\DiscountCode\DiscountCodeRepository;
 use App\Pricing\Domain\DiscountCode\DiscountCodeTaken;
+use App\Pricing\Domain\DiscountCode\DiscountCodeValue;
 
 /**
  * Keeps discount codes like the database does: find() and lock() return a copy, save() checks the version it was
@@ -29,6 +30,17 @@ final class InMemoryDiscountCodeRepository implements DiscountCodeRepository
         $stored = $this->codes[$id->toString()] ?? null;
 
         return null === $stored ? null : self::copy($stored);
+    }
+
+    public function findByCode(DiscountCodeValue $code): ?DiscountCode
+    {
+        foreach ($this->codes as $stored) {
+            if ($stored->code()->equals($code)) {
+                return self::copy($stored);
+            }
+        }
+
+        return null;
     }
 
     public function lock(DiscountCodeId $id): ?DiscountCode

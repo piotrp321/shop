@@ -7,7 +7,7 @@ import { VariantChoice } from "./VariantChoice";
 
 vi.mock("@/api/client", () => ({ addCartItem: vi.fn() }));
 
-const cart = { id: "c", lines: [], totals: { gross: 0, currency: "PLN" as const, itemCount: 1 }, hasExcludedLines: false };
+const cart = { id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN" as const, itemCount: 1 }, hasExcludedLines: false, discount: null };
 
 beforeEach(() => {
   vi.mocked(addCartItem).mockReset();

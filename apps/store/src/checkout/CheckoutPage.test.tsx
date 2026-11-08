@@ -34,8 +34,9 @@ const line = (variantId: string, name: string, variantLabel: string, quantity: n
 const cart = (gross = 39998, lines: Line[] = [line(A, "Buty trailowe", "czarne, 42", 2, 39998)], hasExcludedLines = false): CartView => ({
   id: "c1",
   lines,
-  totals: { gross, currency: "PLN", itemCount: lines.reduce((sum, l) => sum + l.quantity, 0) },
+  totals: { subtotalGross: gross, discountGross: 0, gross, currency: "PLN", itemCount: lines.reduce((sum, l) => sum + l.quantity, 0) },
   hasExcludedLines,
+  discount: null,
 });
 
 const PROVIDERS: PaymentProvider[] = [

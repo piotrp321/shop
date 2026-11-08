@@ -426,6 +426,17 @@ final class CartHandlersTest extends TestCase
         self::assertSame(2, $this->summary($cart)->itemCount);
     }
 
+    public function testTheCartIsQuotedWithTheCodeOfTheReadAndChangesWithoutOne(): void
+    {
+        $cart = $this->guest();
+        $this->add($cart, self::A, 2);
+
+        $view = $this->getCart($cart, 'WITAJ10');
+
+        self::assertSame([[[self::A], null], [[self::A], 'WITAJ10']], $this->products->quoteCalls);
+        self::assertSame([20_000, 0, 20_000], [$view->totals->subtotalGross, $view->totals->discountGross, $view->totals->gross]);
+    }
+
     public function testASummaryAsksNoPort(): void
     {
         $cart = $this->guest();
@@ -439,27 +450,27 @@ final class CartHandlersTest extends TestCase
 
     public function createGuestCart(): CartView
     {
-        return new CreateGuestCartHandler($this->carts, new CartViewBuilder(), $this->clock)(new CreateGuestCart());
+        return new CreateGuestCartHandler($this->carts, new CartViewBuilder($this->products), $this->clock)(new CreateGuestCart());
     }
 
     public function add(CartRef $cart, string $variantId, int $quantity): CartView
     {
-        return new AddCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder(), $this->clock)(new AddCartItem($cart, $variantId, $quantity));
+        return new AddCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder($this->products), $this->clock)(new AddCartItem($cart, $variantId, $quantity));
     }
 
     public function change(CartRef $cart, string $variantId, int $quantity): CartView
     {
-        return new ChangeCartItemQuantityHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder(), $this->clock)(new ChangeCartItemQuantity($cart, $variantId, $quantity));
+        return new ChangeCartItemQuantityHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder($this->products), $this->clock)(new ChangeCartItemQuantity($cart, $variantId, $quantity));
     }
 
     public function remove(CartRef $cart, string $variantId): CartView
     {
-        return new RemoveCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder(), $this->clock)(new RemoveCartItem($cart, $variantId));
+        return new RemoveCartItemHandler(new LockedCarts($this->carts), $this->carts, $this->loader(), new CartViewBuilder($this->products), $this->clock)(new RemoveCartItem($cart, $variantId));
     }
 
-    public function getCart(CartRef $cart): CartView
+    public function getCart(CartRef $cart, ?string $discountCode = null): CartView
     {
-        return new GetCartHandler($this->carts, $this->loader(), new CartViewBuilder(), $this->clock)(new GetCart($cart));
+        return new GetCartHandler($this->carts, $this->loader(), new CartViewBuilder($this->products), $this->clock)(new GetCart($cart, $discountCode));
     }
 
     public function summary(CartRef $cart): \App\Cart\Application\Query\CartSummary

@@ -8,6 +8,7 @@ use App\Pricing\Domain\DiscountCode\DiscountCodeActor;
 use App\Pricing\Domain\DiscountCode\DiscountCodeId;
 use App\Pricing\Domain\DiscountCode\DiscountCodeModifiedConcurrently;
 use App\Pricing\Domain\DiscountCode\DiscountCodeTaken;
+use App\Pricing\Domain\DiscountCode\DiscountCodeValue;
 use App\Pricing\Domain\DiscountCode\DiscountKind;
 use App\Pricing\Domain\DiscountCode\DiscountValue;
 use App\Pricing\Domain\DiscountCode\MinimumOrder;
@@ -125,6 +126,23 @@ final class DoctrineDiscountCodeRepositoryTest extends KernelTestCase
 
         $this->expectException(DiscountCodeTaken::class);
         $this->codes->save(DiscountCodeFactory::createOne(['code' => 'lato-15']));
+    }
+
+    public function testACodeIsFoundByItsNormalisedTextAsStoredNow(): void
+    {
+        $code = DiscountCodeFactory::createOne(['code' => 'Jesien-25']);
+        $this->codes->save($code);
+        // The record stays in the identity map; another transaction disables the code meanwhile.
+        self::assertTrue($this->codes->find($code->id())?->isEnabled());
+        $this->connection->executeStatement('UPDATE pricing_discount_code SET enabled = false, version = version + 1 WHERE id = ?', [$code->id()->toString()]);
+
+        $found = $this->codes->findByCode(DiscountCodeValue::of(' jesien-25 '));
+
+        self::assertNotNull($found);
+        self::assertTrue($found->id()->equals($code->id()));
+        self::assertFalse($found->isEnabled());
+        self::assertSame(2, $found->version());
+        self::assertNull($this->codes->findByCode(DiscountCodeValue::of('JESIEN-26')));
     }
 
     public function testALockReadsTheCodeAnewUnderTheLockOfItsRow(): void

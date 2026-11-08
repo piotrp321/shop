@@ -12,8 +12,20 @@
                     "Cart"
                 ],
                 "summary": "Cart of the customer",
-                "description": "The cart with its lines, their states and the totals, all computed by the API. A customer without a cart gets an empty one with `id: null`, and none is created; an expired cart (180 days after its last change) is empty.",
+                "description": "The cart with its lines, their states and the totals, all computed by the API (Pricing's quote of the purchasable lines), with the preview of a discount code when one is given. A customer without a cart gets an empty one with `id: null`, and none is created; an expired cart (180 days after its last change) is empty.",
                 "operationId": "getCustomerCart",
+                "parameters": [
+                    {
+                        "name": "discountCode",
+                        "in": "query",
+                        "description": "A discount code to preview (the checkout): the totals and `discount` show it applied or why not. Blank is no code; at most 64 characters.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 64
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "The cart.",
@@ -21,6 +33,16 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/CartView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The discount code is not text, is not UTF-8 or has more than 64 characters (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
                                 }
                             }
                         }
@@ -538,7 +560,7 @@
                     "Cart"
                 ],
                 "summary": "Guest cart",
-                "description": "The cart with its lines, their states and the totals, all computed by the API. Nothing is changed.",
+                "description": "The cart with its lines, their states and the totals, all computed by the API (Pricing's quote of the purchasable lines), with the preview of a discount code when one is given. Nothing is changed.",
                 "operationId": "getGuestCart",
                 "parameters": [
                     {
@@ -551,6 +573,16 @@
                             "format": "uuid",
                             "pattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
                         }
+                    },
+                    {
+                        "name": "discountCode",
+                        "in": "query",
+                        "description": "A discount code to preview (the checkout): the totals and `discount` show it applied or why not. Blank is no code; at most 64 characters.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 64
+                        }
                     }
                 ],
                 "responses": {
@@ -560,6 +592,16 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/CartView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The discount code is not text, is not UTF-8 or has more than 64 characters (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
                                 }
                             }
                         }
@@ -2709,7 +2751,8 @@
                     "id",
                     "lines",
                     "totals",
-                    "hasExcludedLines"
+                    "hasExcludedLines",
+                    "discount"
                 ],
                 "properties": {
                     "id": {
@@ -2729,8 +2772,118 @@
                         "$ref": "#/components/schemas/CartTotals"
                     },
                     "hasExcludedLines": {
-                        "description": "Whether a line is not purchasable and so not part of `totals.gross`.",
+                        "description": "Whether a line is not purchasable and so not part of the totals.",
                         "type": "boolean"
+                    },
+                    "discount": {
+                        "description": "The discount code of the read (`discountCode`), applied or rejected; null without a code, for a blank one and for a cart without a purchasable line (no quote). Changes of the cart answer without a code.",
+                        "discriminator": {
+                            "propertyName": "status",
+                            "mapping": {
+                                "applied": "#/components/schemas/AppliedCartDiscount",
+                                "rejected": "#/components/schemas/RejectedCartDiscount"
+                            }
+                        },
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/AppliedCartDiscount"
+                            },
+                            {
+                                "$ref": "#/components/schemas/RejectedCartDiscount"
+                            },
+                            {
+                                "type": "object",
+                                "nullable": true,
+                                "enum": [
+                                    null
+                                ]
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "AppliedCartDiscount": {
+                "description": "A code the quote applied to the purchasable lines.",
+                "required": [
+                    "status",
+                    "code",
+                    "amountGross",
+                    "kind",
+                    "value"
+                ],
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "applied"
+                        ]
+                    },
+                    "code": {
+                        "description": "The code in its normalised form (upper case).",
+                        "type": "string",
+                        "example": "WITAJ10"
+                    },
+                    "amountGross": {
+                        "description": "The discount in grosze, at least 1; `totals.gross` is `totals.subtotalGross` less it.",
+                        "type": "integer",
+                        "example": 4498
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "percent",
+                            "amount"
+                        ]
+                    },
+                    "value": {
+                        "description": "The percent (1\u201390) of a `percent` code, the amount in grosze of an `amount` code.",
+                        "type": "integer",
+                        "example": 10
+                    }
+                },
+                "type": "object"
+            },
+            "RejectedCartDiscount": {
+                "description": "A code the quote did not apply; the totals are without discount.",
+                "required": [
+                    "status",
+                    "code",
+                    "reason",
+                    "detail",
+                    "minimumOrderGross"
+                ],
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "rejected"
+                        ]
+                    },
+                    "code": {
+                        "description": "The code as read (trimmed, ASCII letters in upper case).",
+                        "type": "string",
+                        "example": "LATO15"
+                    },
+                    "reason": {
+                        "description": "`invalid`: unknown, disabled, not started or expired (also a text that is no code); `used_up`: the usage limit is reached; `below_minimum`: the subtotal is below the minimum of the code.",
+                        "type": "string",
+                        "enum": [
+                            "invalid",
+                            "used_up",
+                            "below_minimum"
+                        ]
+                    },
+                    "detail": {
+                        "description": "The Polish message for the customer, the same as the `detail` of the 409 of an order with the code.",
+                        "type": "string",
+                        "example": "Ten kod jest nieprawid\u0142owy albo nieaktywny."
+                    },
+                    "minimumOrderGross": {
+                        "description": "The smallest subtotal in grosze the code works from, only for `below_minimum`.",
+                        "type": "integer",
+                        "example": 30000,
+                        "nullable": true
                     }
                 },
                 "type": "object"
@@ -2765,7 +2918,7 @@
                         "minimum": 1
                     },
                     "unitPrice": {
-                        "description": "The current gross price; null without a current price.",
+                        "description": "The current (effective) gross price, for a purchasable line from Pricing's quote; null without a current price.",
                         "nullable": true,
                         "allOf": [
                             {
@@ -2774,7 +2927,7 @@
                         ]
                     },
                     "lineTotal": {
-                        "description": "Unit price \u00d7 quantity, only for a `purchasable` line.",
+                        "description": "Unit price \u00d7 quantity before the discount code, only for a `purchasable` line.",
                         "nullable": true,
                         "allOf": [
                             {
@@ -2852,16 +3005,29 @@
                 "type": "object"
             },
             "CartTotals": {
+                "description": "The totals of Pricing's quote of the purchasable lines; all 0 without a purchasable line.",
                 "required": [
+                    "subtotalGross",
+                    "discountGross",
                     "gross",
                     "currency",
                     "itemCount"
                 ],
                 "properties": {
-                    "gross": {
-                        "description": "Sum of the purchasable lines in grosze, 0 for an empty cart.",
+                    "subtotalGross": {
+                        "description": "Sum of the `lineTotal` of the purchasable lines in grosze, before the discount code.",
                         "type": "integer",
-                        "example": 39998
+                        "example": 44988
+                    },
+                    "discountGross": {
+                        "description": "The discount of the applied code in grosze, 0 without one.",
+                        "type": "integer",
+                        "example": 4498
+                    },
+                    "gross": {
+                        "description": "The total to pay in grosze, `subtotalGross` \u2212 `discountGross`.",
+                        "type": "integer",
+                        "example": 40490
                     },
                     "currency": {
                         "type": "string",
@@ -3543,6 +3709,17 @@
                     "detail": {
                         "description": "Polish text for the customer.",
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "CartQuery": {
+                "properties": {
+                    "discountCode": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 64
                     }
                 },
                 "type": "object"

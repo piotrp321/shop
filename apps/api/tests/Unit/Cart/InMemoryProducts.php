@@ -6,8 +6,12 @@ namespace App\Tests\Unit\Cart;
 
 use App\Cart\Application\Port\CartPrice;
 use App\Cart\Application\Port\CartPrices;
+use App\Cart\Application\Port\CartQuote;
+use App\Cart\Application\Port\CartQuoteLine;
+use App\Cart\Application\Port\CartQuoteResult;
 use App\Cart\Application\Port\ProductCatalog;
 use App\Cart\Application\Port\ProductVariants;
+use App\Cart\Application\Port\QuotedCartLine;
 use App\Cart\Application\Port\StockAvailability;
 use App\Cart\Application\Port\VariantAvailability;
 use App\Cart\Application\Port\VariantLabel;
@@ -20,12 +24,13 @@ use App\Cart\Domain\VariantId;
 use App\Cart\Domain\VariantPromotion;
 
 /**
- * Catalog, Pricing and Inventory as Cart's ports see them, with the calls each port got.
+ * Catalog, Pricing and Inventory as Cart's ports see them, with the calls each port got. The quote prices the lines
+ * at their gross (of variant()) and applies no code.
  *
  * Every variant belongs to a product whose id differs from the id of the variant (productOf() unless one is given),
  * so a test that mixes them up fails.
  */
-final class InMemoryProducts implements ProductCatalog, CartPrices, StockAvailability
+final class InMemoryProducts implements ProductCatalog, CartPrices, StockAvailability, CartQuote
 {
     /** @var array<string, array{productId: string, name: string, label: string}> by variant id */
     private array $variants = [];
@@ -43,6 +48,8 @@ final class InMemoryProducts implements ProductCatalog, CartPrices, StockAvailab
     private array $calls = ['summaries' => [], 'current' => [], 'of' => []];
     /** @var list<list<string>> */
     private array $variantsOfCalls = [];
+    /** @var list<array{list<string>, ?string}> the variant ids and the code of every quote() call */
+    public array $quoteCalls = [];
 
     /**
      * A variant Catalog knows, with a gross price (null: none) and the available units.
@@ -173,6 +180,22 @@ final class InMemoryProducts implements ProductCatalog, CartPrices, StockAvailab
         }
 
         return $prices;
+    }
+
+    public function quote(array $lines, ?string $discountCode): CartQuoteResult
+    {
+        $this->quoteCalls[] = [array_map(static fn (CartQuoteLine $line): string => $line->variantId->toString(), $lines), $discountCode];
+        $quoted = [];
+        $subtotal = 0;
+        foreach ($lines as $line) {
+            $key = $line->variantId->toString();
+            if (isset($this->prices[$key])) {
+                $quoted[$key] = new QuotedCartLine(Money::of($this->prices[$key], Currency::PLN), Money::of($this->prices[$key] * $line->quantity, Currency::PLN));
+                $subtotal += $this->prices[$key] * $line->quantity;
+            }
+        }
+
+        return new CartQuoteResult($quoted, Money::of($subtotal, Currency::PLN), Money::zero(Currency::PLN), Money::of($subtotal, Currency::PLN), null);
     }
 
     public function of(array $ids): array

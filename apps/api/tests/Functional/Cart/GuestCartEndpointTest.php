@@ -27,7 +27,7 @@ final class GuestCartEndpointTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
         self::assertIsString($cart['id']);
         self::assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/D', $cart['id'], 'a random UUID v4');
-        self::assertSame(['id' => $cart['id'], 'lines' => [], 'totals' => ['gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false], $cart);
+        self::assertSame(['id' => $cart['id'], 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null], $cart);
         self::assertSame('/api/v1/guest-carts/'.$cart['id'], $this->response()->headers->get('Location'));
         $this->assertNoStore();
         self::assertMatchesSchema('CartView', $cart);
@@ -61,7 +61,7 @@ final class GuestCartEndpointTest extends WebTestCase
         $this->request('POST', $cart.'/items', json_encode(['variantId' => $cap, 'quantity' => 1], \JSON_THROW_ON_ERROR));
         $again = $this->request('POST', $cart.'/items', json_encode(['variantId' => strtoupper($shoes), 'quantity' => 1], \JSON_THROW_ON_ERROR));
         self::assertSame([[$shoes, 3], [$cap, 1]], self::quantities($again));
-        self::assertSame(['gross' => 3 * 19_999 + 4_990, 'currency' => 'PLN', 'itemCount' => 4], $again['totals']);
+        self::assertSame(['subtotalGross' => 3 * 19_999 + 4_990, 'discountGross' => 0, 'gross' => 3 * 19_999 + 4_990, 'currency' => 'PLN', 'itemCount' => 4], $again['totals']);
 
         $changed = $this->request('PUT', $cart.'/items/'.$shoes, '{"quantity": 1}');
         self::assertResponseStatusCodeSame(200);
@@ -110,7 +110,7 @@ final class GuestCartEndpointTest extends WebTestCase
         // 19 999 − floor(19 999 × 20 / 100) = 16 000.
         self::assertSame([['gross' => 16_000, 'currency' => 'PLN'], ['gross' => 4_990, 'currency' => 'PLN']], array_column($view['lines'], 'unitPrice'));
         self::assertSame([['gross' => 32_000, 'currency' => 'PLN'], ['gross' => 4_990, 'currency' => 'PLN']], array_column($view['lines'], 'lineTotal'));
-        self::assertSame(['gross' => 36_990, 'currency' => 'PLN', 'itemCount' => 3], $view['totals']);
+        self::assertSame(['subtotalGross' => 36_990, 'discountGross' => 0, 'gross' => 36_990, 'currency' => 'PLN', 'itemCount' => 3], $view['totals']);
         self::assertStringNotContainsString('promotion', (string) $this->response()->getContent());
     }
 
@@ -135,7 +135,7 @@ final class GuestCartEndpointTest extends WebTestCase
         self::assertIsArray($view['lines'][0]);
         self::assertArrayHasKey('product', $view['lines'][0]);
         self::assertNull($view['lines'][0]['product']);
-        self::assertSame(['gross' => 3_000, 'currency' => 'PLN', 'itemCount' => 8], $view['totals']);
+        self::assertSame(['subtotalGross' => 3_000, 'discountGross' => 0, 'gross' => 3_000, 'currency' => 'PLN', 'itemCount' => 8], $view['totals']);
         self::assertTrue($view['hasExcludedLines']);
         self::assertStringNotContainsString('"available"', (string) $this->response()->getContent());
     }

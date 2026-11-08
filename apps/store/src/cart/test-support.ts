@@ -20,8 +20,9 @@ export const PRODUCT_ID = "00000000-0000-4000-8000-0000000000f1";
 export const emptyView = (id: string | null = null): CartView => ({
   id,
   lines: [],
-  totals: { gross: 0, currency: "PLN", itemCount: 0 },
+  totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 0 },
   hasExcludedLines: false,
+  discount: null,
 });
 
 export const viewWithOneLine = (cartId: string | null, quantity = 1): CartView => ({
@@ -36,8 +37,9 @@ export const viewWithOneLine = (cartId: string | null, quantity = 1): CartView =
       state: "purchasable",
     },
   ],
-  totals: { gross: 1000 * quantity, currency: "PLN", itemCount: quantity },
+  totals: { subtotalGross: 1000 * quantity, discountGross: 0, gross: 1000 * quantity, currency: "PLN", itemCount: quantity },
   hasExcludedLines: false,
+  discount: null,
 });
 
 export const problem = (status: number, detail?: string) =>

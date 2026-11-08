@@ -8,7 +8,7 @@ import { subscribeToCartChanges } from "./events";
 vi.mock("@/api/client", () => ({ addCartItem: vi.fn() }));
 
 const PRODUCT = "00000000-0000-4000-8000-000000000001";
-const cartWith = (itemCount: number) => ({ id: "c", lines: [], totals: { gross: 0, currency: "PLN" as const, itemCount }, hasExcludedLines: false });
+const cartWith = (itemCount: number) => ({ id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN" as const, itemCount }, hasExcludedLines: false, discount: null });
 
 const counts: number[] = [];
 let unsubscribe: () => void;
