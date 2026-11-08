@@ -146,7 +146,7 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - **Koszyk, checkout, konto klienta**: renderowane po stronie klienta, `noindex`.
 - **Metadane**: tytuł, opis, Open Graph (z obrazem z imgproxy), `canonical` generowane per strona
   (Metadata API w Next.js).
-- **Dane strukturalne**: JSON-LD `Product` (cena, dostępność, zdjęcia), `BreadcrumbList`, `Organization`.
+- **Dane strukturalne**: JSON-LD `Product` (cena, dostępność, zdjęcia), `BreadcrumbList` oraz `Organization` i `WebSite` na stronie głównej.
 - **Mapa strony i robots**: `/sitemap.xml` to indeks map: mapa listingu (`/sitemaps/listing.xml`: `/` i każda kategoria
   `/c/<ścieżka>`) i po jednej pozycji na porcję produktów z API (`/sitemaps/products/<klucz>.xml`: `/p/<slug>`
   z `lastmod` równym czasowi ostatniej zmiany produktu). Porcje wyznacza API (kolejne `id` produktów, nieprzezroczysty
