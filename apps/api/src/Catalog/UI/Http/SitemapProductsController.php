@@ -35,9 +35,10 @@ final class SitemapProductsController
         summary: 'Products of one chunk of the product sitemap',
         description: 'The published products of the chunk, in the order of the product id, with the slug and the time of the last '
             .'change of the product (prices and stock levels do not change it). A chunk without published products has an empty '
-            .'list. At most 50 000 products of the range of the chunk are read, drafts included: past that the published ones among '
-            .'the first 50 000 are returned, and the rest comes with the next cut of the chunks. The response is public and kept '
-            .'for 5 minutes by a browser; it is not tagged and a shared cache must not keep it.',
+            .'list. The number of rows read from the range of the chunk is bounded, drafts included: past the limit the published ones '
+            .'among the rows read are returned, and the rest comes with the next cut of the chunks. The response is public and kept '
+            .'by a browser for 5 minutes; it is not tagged and the Varnish of the store does not keep it, so its freshness is the '
+            .'short `max-age`.',
         tags: ['Catalog'],
         parameters: [
             new OA\Parameter(name: 'chunk', in: 'query', required: true, description: 'Key of the chunk, as the chunk list issued it.', schema: new OA\Schema(type: 'string', maxLength: 200)),

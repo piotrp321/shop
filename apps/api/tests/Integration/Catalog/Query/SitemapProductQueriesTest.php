@@ -166,6 +166,19 @@ final class SitemapProductQueriesTest extends KernelTestCase
         self::assertSame(['product-7', 'above'], $slugsOf($keys[2]));
     }
 
+    public function testAChunkReadsAtMostTheRowLimitOfTheTestConfigurationDraftsIncluded(): void
+    {
+        // The test configuration has a limit of 10 rows: products 11 and 12 are beyond it, and the draft 3 is among the 10.
+        $this->createProducts(12, [3 => ProductStatus::Draft]);
+
+        $items = $this->items(SitemapChunkKey::between(null, null))->items;
+
+        self::assertSame(
+            ['product-1', 'product-2', 'product-4', 'product-5', 'product-6', 'product-7', 'product-8', 'product-9', 'product-10'],
+            array_column($this->itemRows($items), 'slug'),
+        );
+    }
+
     public function testTheBoundariesAreNotReadAgainWithinTheirTimeToLive(): void
     {
         $this->createProducts(7);
