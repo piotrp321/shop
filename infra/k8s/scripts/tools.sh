@@ -30,6 +30,15 @@ CURL_IMAGE="${CURL_IMAGE:-curlimages/curl:8.18.0}"
 # The browser of the smoke test: the Chromium of the image the E2E tests are built on (e2e/Dockerfile, the same tag).
 PLAYWRIGHT_IMAGE="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.64.1-noble}"
 
+# The arguments of helm that make the profile ci pull the images of the registry named in an images values file (the
+# revision and the digests, scripts/images-values.sh) instead of the local ones: the profile ci names a local registry and
+# never pulls. smoke.sh installs r1 with them (SMOKE_VALUES) and render.sh renders the same case, so the test of the render
+# sees what the smoke test deploys.
+smoke_pull_args() {
+  printf '%s %s' "--set image.registry=$(sed -n 's/^  registry: //p' "$TOOLS_REPO/infra/k8s/charts/shop/values.yaml" | head -n 1)" \
+    "--set image.pullPolicy=IfNotPresent"
+}
+
 # Downloaded schemas of kubeconform; survives between runs.
 TOOLS_CACHE="${TOOLS_CACHE:-${TMPDIR:-/tmp}/shop-k8s-cache}"
 

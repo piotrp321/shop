@@ -141,6 +141,22 @@ bootstrap_sets_sysctl_every_time() { replace infra/k8s/scripts/server-bootstrap.
 reinitialize_without_confirmation() { replace infra/k8s/scripts/reinitialize.sh 'if [ "$answer" != tak ]; then' 'if [ "$answer" = never ]; then'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
 seal_secrets_replaces_existing_keys() { replace infra/k8s/scripts/seal-secrets.sh 'grep -q "^$key$tab" "$work/$name.pairs" && continue' 'false && continue'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+smoke_pull_args_never_pull() { replace infra/k8s/scripts/tools.sh '--set image.pullPolicy=IfNotPresent' '--set image.pullPolicy=Never'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+smoke_installs_without_pull_args() { replace infra/k8s/scripts/smoke.sh '-f /kube/values-images.yaml $(smoke_pull_args)' '-f /kube/values-images.yaml'; }
+secrets_application_includes_everything() { replace infra/k8s/argocd/apps/secrets.yaml 'include: "*.yaml"' 'include: "*"'; }
+secret_in_a_yml_file() {
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: x\n  namespace: shop\nstringData:\n  A: plain\n' > "$tree/infra/k8s/environments/prod/secrets/x.yml"
+}
+sealed_secrets_key_rotates() { replace infra/k8s/argocd/apps/sealed-secrets.yaml 'keyrenewperiod: "0"' 'keyrenewperiod: "720h"'; }
+argocd_without_application_health() { replace infra/k8s/argocd/install/argocd.yaml 'resource.customizations.health.argoproj.io_Application' 'resource.customizations.health.argoproj.io_Other'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts
+bootstrap_never_restarts_k3s() { replace infra/k8s/scripts/server-bootstrap.sh '    systemctl restart k3s' '    true'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts
+bootstrap_accepts_only_a_secret_backup() { replace infra/k8s/scripts/server-bootstrap.sh "grep -Eq '^[[:space:]-]*kind: Secret\$'" "grep -q '^kind: Secret'"; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts
+bootstrap_applies_root_whatever_the_certificate() { replace infra/k8s/scripts/server-bootstrap.sh 'if [ -f "$payload/sealed-secrets.pem" ] && ! cmp' 'if false && ! cmp'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 nothing_broken() { :; }
 
@@ -181,6 +197,15 @@ run_case "bootstrap without the check for root" "FAIL no root" bootstrap_without
 run_case "bootstrap setting vm.max_map_count on every run" "FAIL sysctl again" bootstrap_sets_sysctl_every_time
 run_case "reinitialize going on without tak" "test_without_the_word_tak_nothing_runs" reinitialize_without_confirmation
 run_case "seal-secrets.sh sealing keys that are already there" "test_the_second_run_changes_nothing_and_does_not_call_kubeseal" seal_secrets_replaces_existing_keys
+run_case "smoke pull arguments that never pull" "test_the_images_are_those_of_the_registry_by_digest_and_may_be_pulled" smoke_pull_args_never_pull
+run_case "smoke installing without the pull arguments" "test_smoke_sh_uses_the_values_file_and_checks_the_digests_of_the_pods" smoke_installs_without_pull_args
+run_case "secrets application including every file" "test_the_application_includes_only_yaml" secrets_application_includes_everything
+run_case "secret in a yml file of the secrets directory" "test_the_directory_of_the_repository_has_only_yaml_files_and_the_two_documents" secret_in_a_yml_file
+run_case "sealed secrets key that rotates" "test_the_key_of_the_controller_is_not_rotated" sealed_secrets_key_rotates
+run_case "Argo CD without the health of applications" "test_the_root_waits_for_the_health_of_the_applications_of_the_waves" argocd_without_application_health
+run_case "bootstrap never restarting k3s" "FAIL restart" bootstrap_never_restarts_k3s
+run_case "bootstrap accepting only a plain Secret backup" "FAIL list backup" bootstrap_accepts_only_a_secret_backup
+run_case "bootstrap applying root whatever the certificate" "FAIL other cert" bootstrap_applies_root_whatever_the_certificate
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then

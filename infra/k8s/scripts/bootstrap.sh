@@ -43,6 +43,10 @@ cp "$here/server-bootstrap.sh" "$stage/payload/scripts/server-bootstrap.sh"
 if [ -n "$key_file" ]; then
   (umask 077 && cp "$key_file" "$stage/payload/sealed-secrets-key.yaml")
 fi
+# The certificate of the repository (public): the server compares it with the controller's before it applies the root.
+if [ -f "$cert" ]; then
+  cp "$cert" "$stage/payload/sealed-secrets.pem"
+fi
 (umask 077 && tar -cf "$stage/payload.tar" -C "$stage/payload" .) || fail "cannot pack the payload"
 
 echo "bootstrap: $host: k3s $version, Argo CD and Sealed Secrets${key_file:+ (with the key from the backup)}"

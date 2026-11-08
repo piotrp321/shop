@@ -196,7 +196,7 @@ class SmokeValues(unittest.TestCase):
 
     def test_smoke_sh_uses_the_values_file_and_checks_the_digests_of_the_pods(self):
         smoke = (REPO / "infra/k8s/scripts/smoke.sh").read_text()
-        self.assertIn("-f environments/ci/values.yaml -f /kube/values-images.yaml", smoke)
+        self.assertIn("-f environments/ci/values.yaml -f /kube/values-images.yaml $(smoke_pull_args)", smoke)
         self.assertIn("check_registry_images", smoke)
         self.assertIn("--registry-config /registry/registries.yaml", smoke)
         self.assertIn('K3D_MOUNT="$registry_dir:/registry:ro"', smoke)

@@ -330,9 +330,12 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
     D6), automatyczne poprawki bezpieczeństwa, Traefik z `externalTrafficPolicy: Local` (`HelmChartConfig`), Argo CD
     (przypięty chart instalowany przez kontroler Helma k3s), Sealed Secrets (z kluczem z kopii, jeśli jest, stosowanym
     przed kontrolerem; inaczej zapis certyfikatu do repo), aplikacja `root` (app-of-apps w `infra/k8s/argocd/`).
-    Idempotentny; brak uprawnień root albo inny system kończą go błędem przed zmianami. Certyfikat kontrolera trafia
-    do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma; inny niż w repo to błąd (sekrety z repo nie dałyby
-    się odszyfrować), nic nie jest nadpisywane.
+    Idempotentny; brak uprawnień root albo inny system kończą go błędem przed zmianami; zmiana konfiguracji k3s
+    (`tls-san`) przy tej samej wersji restartuje k3s. Kopia klucza to Secret albo `List` Secretów (wynik polecenia
+    z runbooka). Certyfikat kontrolera trafia do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma; inny niż w repo
+    to błąd zgłaszany przed zastosowaniem `root` (sekrety z repo nie dałyby się odszyfrować), nic nie jest nadpisywane.
+    Kontroler nie rotuje klucza (`keyrenewperiod: "0"`), więc certyfikat w repo i kopia klucza zostają aktualne.
+    `argocd-cm` ma standardową customizację zdrowia `Application`, więc `root` czeka na aplikacje-dzieci w falach.
   - `kubeconfig`: kubeconfig klastra do katalogu poza repo (`KUBE_DIR`), dla `rerun` i `create-admin`.
   - `status`: stan aplikacji Argo, podów i Jobów (tylko odczyt).
   - `rerun JOB=…`: ponowienie Joba wersji (D11).

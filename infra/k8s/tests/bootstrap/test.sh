@@ -37,6 +37,10 @@ case "$1" in
   -w) echo "sysctl $*" >> /tmp/fake/log; echo "${2#*=}" > "$state" ;;
 esac
 STUB
+cat > "$bin/systemctl" << 'STUB'
+#!/bin/sh
+echo "systemctl $*" >> /tmp/fake/log
+STUB
 cat > "$bin/ufw" << 'STUB'
 #!/bin/sh
 echo "ufw $*" >> /tmp/fake/log
@@ -156,6 +160,7 @@ if [ "$status" -eq 2 ] && nothing_changed; then ok "a key backup without the lab
 clean_system
 TLS_SAN=203.0.113.7 run "$payload"
 log="$(cat "$fake/log")"
+if ! grep -q '^systemctl' "$fake/log"; then ok "the first run does not restart a freshly installed k3s"; else fail "first restart" "$(grep systemctl "$fake/log")"; fi
 if [ "$status" -eq 0 ]; then ok "the first run ends with exit 0"; else fail "first run" "status $status: $(tail -n 15 "$fake/out")"; fi
 if grep -q 'APT::Periodic::Unattended-Upgrade "1";' /etc/apt/apt.conf.d/20auto-upgrades; then ok "automatic security updates are configured"; else fail "unattended" "missing"; fi
 if [ "$(cat /etc/sysctl.d/90-shop.conf)" = "vm.max_map_count=262144" ] && [ "$(cat "$fake/state/max_map_count")" = 262144 ]; then ok "vm.max_map_count is set now and kept in /etc/sysctl.d"; else fail "sysctl" "wrong"; fi
@@ -190,6 +195,10 @@ if [ "$(grep -c 'unchanged:' "$fake/out")" -ge 3 ]; then ok "the second run repo
 
 TLS_SAN=198.51.100.9 run "$payload"
 if grep -q '^  - 198.51.100.9$' /etc/rancher/k3s/config.yaml; then ok "a new address changes the k3s config"; else fail "new san" "$(cat /etc/rancher/k3s/config.yaml)"; fi
+if [ "$(grep -c '^systemctl restart k3s$' "$fake/log")" -eq 1 ]; then ok "a changed k3s config (same version) restarts k3s once"; else fail "restart" "$(grep systemctl "$fake/log")"; fi
+: > "$fake/log"
+TLS_SAN=198.51.100.9 run "$payload"
+if ! grep -q '^systemctl' "$fake/log"; then ok "an unchanged k3s config does not restart k3s"; else fail "restart again" "$(grep systemctl "$fake/log")"; fi
 
 # --- the key from the backup -------------------------------------------------------------------------------------
 
@@ -200,6 +209,43 @@ run "$fake/payload-key"
 order="$(grep '^applied ' "$fake/log" | cut -d' ' -f2)"
 if [ "$status" -eq 0 ] && [ "$order" = "$(printf 'traefik.yaml\nargocd.yaml\nsealed-secrets-key.yaml\nsealed-secrets.yaml\nroot.yaml')" ]; then ok "with a backup the key is applied before the controller"; else fail "key order" "status $status: $order"; fi
 if grep -q "$KEY_MATERIAL" "$fake/out" "$fake/log"; then fail "key printed" "the key material is in the output or the log"; else ok "the key material is not printed"; fi
+
+# --- the backup in the format of the command of the runbook (kind: List) ------------------------------------------
+
+clean_system
+cp -R "$payload" "$fake/payload-list"
+cat > "$fake/payload-list/sealed-secrets-key.yaml" << YAML
+apiVersion: v1
+items:
+- apiVersion: v1
+  data:
+    tls.crt: AAAA
+    tls.key: $KEY_MATERIAL
+  kind: Secret
+  metadata:
+    labels:
+      sealedsecrets.bitnami.com/sealed-secrets-key: active
+    name: sealed-secrets-key7xk2p
+    namespace: kube-system
+  type: kubernetes.io/tls
+kind: List
+metadata:
+  resourceVersion: ""
+YAML
+run "$fake/payload-list"
+if [ "$status" -eq 0 ] && grep -q '^applied sealed-secrets-key.yaml' "$fake/log"; then ok "a backup in the format of the runbook (a List of Secrets) is accepted and applied"; else fail "list backup" "status $status: $(tail -n 3 "$fake/out")"; fi
+
+# --- the certificate of the repository against the controller's, before the root ---------------------------------
+
+clean_system
+cp -R "$payload" "$fake/payload-cert"
+cp "$fake/cert.pem" "$fake/payload-cert/sealed-secrets.pem"
+run "$fake/payload-cert"
+if [ "$status" -eq 0 ] && grep -q '^applied root.yaml' "$fake/log"; then ok "the certificate of the repository equals the controller's: the root is applied"; else fail "same cert" "status $status"; fi
+clean_system
+printf -- '-----BEGIN CERTIFICATE-----\nMIIDanothercert\n-----END CERTIFICATE-----\n' > "$fake/payload-cert/sealed-secrets.pem"
+run "$fake/payload-cert"
+if [ "$status" -eq 1 ] && grep -q 'NOT the one in the repository' "$fake/out" && ! grep -q '^applied root.yaml' "$fake/log"; then ok "another certificate than the repository's: exit 1 and the root is not applied"; else fail "other cert" "status $status: $(tail -n 3 "$fake/out")"; fi
 
 # --- downgrade and a failing installer --------------------------------------------------------------------------
 

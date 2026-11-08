@@ -81,8 +81,9 @@ if [ -n "$SMOKE_VALUES" ]; then
   cp "$SMOKE_VALUES" "$KUBE_DIR/values-images.yaml"
   if [ -n "${SMOKE_GHCR_TOKEN:-}" ]; then
     # A file for k3d (registries.yaml of the nodes) with the credentials for ghcr.io, alone in a private directory (mktemp -d)
-    # that only the k3d container mounts and that is removed on exit. Nothing here prints the token.
-    registry_dir="$(mktemp -d "$TOOLS_CACHE/registry-XXXXXX")"
+    # outside the cache of the tools (which every tool container mounts) that only the k3d container mounts and that is
+    # removed on exit. Nothing here prints the token.
+    registry_dir="$(mktemp -d "${TMPDIR:-/tmp}/shop-smoke-registry-XXXXXX")"
     (umask 077 && printf 'configs:\n  ghcr.io:\n    auth:\n      username: %s\n      password: %s\n' \
       "${SMOKE_GHCR_USER:-token}" "$SMOKE_GHCR_TOKEN" > "$registry_dir/registries.yaml")
     K3D_MOUNT="$registry_dir:/registry:ro"
@@ -314,11 +315,13 @@ case "$SMOKE_BREAK" in
 esac
 
 # install <revision> [chart]: the chart of the repository unless another directory is given (a path in the container).
-# With SMOKE_VALUES the first install (r1) takes the revision, the registry and the digests from the images values file.
+# With SMOKE_VALUES the first install (r1) takes the revision and the digests from the images values file and pulls the
+# images from the registry of the chart (the profile ci would name the local registry and never pull: smoke_pull_args).
 install() {
   if [ -n "$SMOKE_VALUES" ] && [ "$1" = r1 ]; then
+    # shellcheck disable=SC2046 # smoke_pull_args prints options
     helm_cluster upgrade --install shop "${2:-charts/shop}" --namespace "$namespace" --create-namespace \
-      -f environments/ci/values.yaml -f /kube/values-images.yaml >/dev/null
+      -f environments/ci/values.yaml -f /kube/values-images.yaml $(smoke_pull_args) >/dev/null
   else
     helm_cluster upgrade --install shop "${2:-charts/shop}" --namespace "$namespace" --create-namespace \
       -f environments/ci/values.yaml --set "image.tag=$1" --set "image.registry=$registry" >/dev/null

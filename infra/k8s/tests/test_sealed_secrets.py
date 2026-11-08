@@ -43,6 +43,15 @@ def problems(sealed, certificate_present, keys):
     return found
 
 
+ALLOWED_OTHER = {".gitkeep", "README.md"}
+
+
+def stray_files(names):
+    """Files of environments/prod/secrets that are neither *.yaml (what the application applies) nor the two documentation
+    files: a Secret in foo.yml or foo.json would be applied by a directory application with the default include."""
+    return sorted(n for n in names if not n.endswith(".yaml") and n not in ALLOWED_OTHER)
+
+
 def sealed_doc(name, keys, kind="SealedSecret"):
     return {
         "apiVersion": "bitnami.com/v1alpha1",
@@ -55,6 +64,21 @@ def sealed_doc(name, keys, kind="SealedSecret"):
 class RepositoryTree(unittest.TestCase):
     def test_the_secrets_of_the_repository_have_no_problems(self):
         self.assertEqual([], problems(docs("sealed"), CERT.exists(), init_env_keys()))
+
+
+class Directory(unittest.TestCase):
+    def test_the_directory_of_the_repository_has_only_yaml_files_and_the_two_documents(self):
+        names = [p.name for p in (REPO / "infra/k8s/environments/prod/secrets").iterdir()]
+        self.assertEqual([], stray_files(names))
+
+    def test_the_application_includes_only_yaml(self):
+        from test_argocd import apps  # the rendered Application of the sealed secrets
+
+        self.assertEqual("*.yaml", apps["secrets"]["spec"]["source"]["directory"]["include"])
+
+    def test_the_ways_around_it_are_caught(self):
+        for name in ("shop.yml", "shop.json", "shop.yaml.bak", "shop", "secret.YAML", "sub.d"):
+            self.assertEqual([name], stray_files(["shop-secrets.yaml", "README.md", ".gitkeep", name]), name)
 
 
 class TheCheckItself(unittest.TestCase):

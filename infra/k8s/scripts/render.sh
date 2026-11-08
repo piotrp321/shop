@@ -51,6 +51,9 @@ DIGEST_API="$(digest a)" DIGEST_STORE="$(digest b)" DIGEST_ADMIN="$(digest c)" D
   sh "$here/images-values.sh" "$rev1" "$out/values-images.yaml"
 render prod-images-file prod -f "/cache/${out##*/}/values-images.yaml"
 render ci ci --set image.tag=$rev1
+# The smoke test with SMOKE_VALUES: the profile ci, the images file and the arguments smoke.sh adds (tools.sh).
+# shellcheck disable=SC2046 # smoke_pull_args prints options
+render ci-images-file ci -f "/cache/${out##*/}/values-images.yaml" $(smoke_pull_args)
 render ci-rev2 ci --set image.tag=$rev2
 render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true
 render ci-keycloak-brevo ci --set image.tag=$rev1 --set keycloak.mail=brevo --set brevo.secretName=smoke-brevo

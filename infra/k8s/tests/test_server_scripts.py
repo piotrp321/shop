@@ -129,6 +129,16 @@ class Bootstrap(ServerScripts):
         self.assertEqual(before, self.cert_path().read_bytes())
         self.assertIn("is the one of the controller", result.stdout)
 
+    def test_the_certificate_of_the_repository_goes_with_the_payload_for_the_comparison_before_the_root(self):
+        self.cert_path().write_text(PEM)
+        self.run_script("bootstrap.sh", "deploy@203.0.113.7")
+        archive = self.payload()
+        self.assertEqual(PEM, archive.extractfile("./sealed-secrets.pem").read().decode())
+
+    def test_without_a_certificate_in_the_repository_the_payload_has_none(self):
+        self.run_script("bootstrap.sh", "deploy@203.0.113.7")
+        self.assertNotIn("./sealed-secrets.pem", self.payload().getnames())
+
     def test_a_different_certificate_of_the_controller_is_an_error_and_nothing_is_overwritten(self):
         self.cert_path().write_text(OTHER_PEM)
         result = self.run_script("bootstrap.sh", "deploy@203.0.113.7")

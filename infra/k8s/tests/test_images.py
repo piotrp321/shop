@@ -4,9 +4,33 @@
 import re
 import unittest
 
-from support import DIGESTS, REVISION, WORKLOADS, docs, images, of_kind
+from support import DIGESTS, REVISION, WORKLOADS, docs, images, of_kind, pod_spec
 
 REGISTRY = "ghcr.io/piotrp321/shop"
+
+
+class SmokeWithTheImagesFile(unittest.TestCase):
+    """smoke.sh with SMOKE_VALUES installs the profile ci with the images file and smoke_pull_args (tools.sh). The profile
+    names a local registry and never pulls, so without the arguments the pods would end in ErrImageNeverPull."""
+
+    def test_the_images_are_those_of_the_registry_by_digest_and_may_be_pulled(self):
+        expected = {f"{REGISTRY}/{app}:{REVISION}@{digest}" for app, digest in DIGESTS.items()}
+        found = set()
+        for workload in of_kind("ci-images-file", *WORKLOADS):
+            spec = pod_spec(workload)
+            for container in spec["containers"] + spec.get("initContainers", []):
+                if container["image"].startswith(REGISTRY + "/"):
+                    found.add(container["image"])
+                    self.assertNotEqual("Never", container["imagePullPolicy"], container["image"])
+        self.assertEqual(expected, found)
+
+    def test_without_the_arguments_the_profile_would_not_pull(self):
+        # The case the arguments exist for: the plain profile keeps the local registry and Never.
+        for workload in of_kind("ci", *WORKLOADS):
+            spec = pod_spec(workload)
+            for container in spec["containers"]:
+                if container["image"].startswith("shop-smoke/"):
+                    self.assertEqual("Never", container["imagePullPolicy"])
 
 
 class ImagesFileRender(unittest.TestCase):

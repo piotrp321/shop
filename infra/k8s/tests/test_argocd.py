@@ -99,6 +99,11 @@ class Secrets(unittest.TestCase):
         self.assertEqual("sealed-secrets-controller", source["helm"]["valuesObject"]["fullnameOverride"])
         self.assertEqual("kube-system", apps["sealed-secrets"]["spec"]["destination"]["namespace"])
 
+    def test_the_key_of_the_controller_is_not_rotated(self):
+        # A rotating key (every 30 days by default) makes the certificate in the repository and the byte comparison with the
+        # controller's wrong, and an old backup incomplete.
+        self.assertEqual("0", apps["sealed-secrets"]["spec"]["source"]["helm"]["valuesObject"]["keyrenewperiod"])
+
 
 class AllApplications(unittest.TestCase):
     def test_everything_from_git_tracks_the_same_branch_of_the_same_repository(self):
@@ -133,6 +138,12 @@ class Install(unittest.TestCase):
         self.assertIn("fullnameOverride: argocd", install["argocd"]["spec"]["valuesContent"])
         bootstrap = (REPO / "infra/k8s/scripts/server-bootstrap.sh").read_text()
         self.assertIn("argocd-server argocd-repo-server", bootstrap)
+
+    def test_the_root_waits_for_the_health_of_the_applications_of_the_waves(self):
+        values = install["argocd"]["spec"]["valuesContent"]
+        self.assertIn("resource.customizations.health.argoproj.io_Application: |", values)
+        self.assertIn("hs.status = obj.status.health.status", values)
+        self.assertIn('hs.status = "Progressing"', values)
 
     def test_traefik_keeps_the_address_of_the_client(self):
         config = install["traefik"]

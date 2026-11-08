@@ -8,7 +8,9 @@
 #   K3S_VERSION  the k3s release to install, e.g. v1.36.6+k3s1 (at least v1.36: the chart needs image volumes)
 #   TLS_SAN      the address the API of k3s is reached by (added to its certificate), optional
 # The payload directory has argocd/ (the manifests of infra/k8s/argocd) and, optionally, sealed-secrets-key.yaml (the
-# backup of the key of the Sealed Secrets controller; then the certificate in the repository stays valid).
+# backup of the key of the Sealed Secrets controller: a Secret or the List that the runbook's command prints; then the
+# certificate in the repository stays valid) and, when the repository has it, sealed-secrets.pem (that certificate: when the
+# controller's differs, the script stops before it applies the root application).
 #
 # Before any change it checks: root, Ubuntu 24.04, the k3s version, the payload. Then: packages, automatic security
 # updates, vm.max_map_count, the firewall (ufw: SSH and the API of k3s), k3s, Argo CD (the Helm controller of k3s installs
@@ -61,8 +63,10 @@ done
 key_file=""
 if [ -f "$payload/sealed-secrets-key.yaml" ]; then
   key_file="$payload/sealed-secrets-key.yaml"
-  if ! { grep -q 'sealedsecrets.bitnami.com/sealed-secrets-key' "$key_file" && grep -q '^kind: Secret' "$key_file"; }; then
-    fail "sealed-secrets-key.yaml is not a backup of the key of the controller (a Secret with the label sealedsecrets.bitnami.com/sealed-secrets-key); nothing was changed" 2
+  # A Secret, or a List of them (what `kubectl get secret -l ... -o yaml` of the runbook prints: kind: List with the Secrets
+  # as items, so `kind: Secret` is indented).
+  if ! { grep -q 'sealedsecrets.bitnami.com/sealed-secrets-key' "$key_file" && grep -Eq '^[[:space:]-]*kind: Secret$' "$key_file"; }; then
+    fail "sealed-secrets-key.yaml is not a backup of the key of the controller (a Secret, or a List of Secrets, with the label sealedsecrets.bitnami.com/sealed-secrets-key); nothing was changed" 2
   fi
 fi
 
@@ -81,15 +85,18 @@ wait_until() {
   done
 }
 
-# write_if_different <path> <mode>: the content on the standard input; leaves a file that is already right alone.
+# write_if_different <path> <mode>: the content on the standard input; leaves a file that is already right alone. Sets
+# `written` to 1 when it wrote the file, 0 when it was already right.
 write_if_different() {
   new="$(mktemp)"
   cat > "$new"
   if [ -f "$1" ] && cmp -s "$new" "$1"; then
     rm -f "$new"
+    written=0
     echo "unchanged: $1"
     return 0
   fi
+  written=1
   mkdir -p "$(dirname "$1")"
   install -m "$2" "$new" "$1"
   rm -f "$new"
@@ -145,6 +152,7 @@ write-kubeconfig-mode: "0600"
 ${TLS_SAN:+tls-san:
   - $TLS_SAN}
 EOF2
+k3s_config_written="$written"
 wanted="$(printf '%s' "$k3s_version" | sed 's/+/-/')"
 installed=""
 if command -v k3s > /dev/null 2>&1; then
@@ -152,6 +160,11 @@ if command -v k3s > /dev/null 2>&1; then
 fi
 if [ "$installed" = "$wanted" ]; then
   echo "k3s $k3s_version is installed"
+  if [ "$k3s_config_written" = 1 ]; then
+    # k3s reads its config only at start. (A fresh install or an upgrade by the installer starts k3s with the new config.)
+    echo "the config of k3s changed: restarting k3s"
+    systemctl restart k3s
+  fi
 else
   if [ -n "$installed" ] && [ "$(printf '%s\n%s\n' "$installed" "$wanted" | sort -V | tail -n 1)" = "$installed" ]; then
     fail "k3s $installed is installed, newer than $k3s_version: refusing to downgrade"
@@ -205,6 +218,11 @@ head -n 1 "$cert_tmp" | grep -q -- '-----BEGIN CERTIFICATE-----' || fail "the co
 install -m 644 "$cert_tmp" "$state_dir/sealed-secrets.pem"
 rm -f "$cert_tmp"
 echo "the certificate is in $state_dir/sealed-secrets.pem"
+# The sealed secrets of the repository are encrypted with the certificate in the repository: if the controller has another,
+# they could not be decrypted, so the root application (and with it the deployment) is not applied.
+if [ -f "$payload/sealed-secrets.pem" ] && ! cmp -s "$payload/sealed-secrets.pem" "$state_dir/sealed-secrets.pem"; then
+  fail "the certificate of the controller is NOT the one in the repository (infra/k8s/environments/prod/sealed-secrets.pem): the sealed secrets of the repository could not be decrypted. The root application was not applied. Restore the key from the backup (SEALED_KEY_FILE) or seal the secrets again (see the runbook)"
+fi
 
 # ---------------------------------------------------------------------------------------------------------------
 log "the root application of Argo CD (app-of-apps, branch deploy-images)"

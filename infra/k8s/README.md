@@ -79,10 +79,14 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
 
    Idempotentny: można go uruchomić ponownie. Bez roota (i bez `sudo -n`) albo na innym systemie niż Ubuntu 24.04
    kończy się błędem przed zmianami. Zapisuje certyfikat kontrolera do `infra/k8s/environments/prod/sealed-secrets.pem`,
-   gdy repo go nie ma; inny certyfikat w repo niż na serwerze to błąd (nic nie jest nadpisywane: użyj kopii klucza albo
-   zaszyfruj sekrety od nowa, zob. „Utrata klucza”). Aplikacja `root` czeka na gałąź `deploy-images` (krok 1.4).
+   gdy repo go nie ma. Gdy repo ma certyfikat, serwer porównuje go z certyfikatem kontrolera **przed** zastosowaniem aplikacji
+   `root`: inny certyfikat to błąd (root nie jest zastosowany, nic nie jest nadpisywane: użyj kopii klucza albo zaszyfruj
+   sekrety od nowa, zob. „Utrata klucza”). Kontroler nie rotuje klucza (`keyrenewperiod: "0"` w aplikacji `sealed-secrets`),
+   więc certyfikat w repo i jedna kopia klucza zostają aktualne. Aplikacja `root` czeka na gałąź `deploy-images` (krok 1.4).
+   Zmiana adresu serwera (`tls-san`) przy tej samej wersji k3s restartuje k3s.
 4. **użytkownik** – robi kopię klucza prywatnego kontrolera Sealed Secrets i trzyma ją poza repo i poza serwerem
-   (menedżer haseł). Jest jedyną rzeczą, której nie da się odtworzyć z repo:
+   (menedżer haseł). Jest jedyną rzeczą, której nie da się odtworzyć z repo. Plik (`kind: List` z Secretami) jest podawany
+   bootstrapowi jako `SEALED_KEY_FILE`:
 
    ```sh
    ssh <user>@<adres> 'sudo k3s kubectl -n kube-system get secret -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml' > sealed-secrets-key-backup.yaml

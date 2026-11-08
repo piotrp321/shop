@@ -21,3 +21,19 @@ spec:
     configs:
       params:
         server.insecure: true
+      cm:
+        # The health of an Application, as the documentation of Argo CD gives it. Without it the root does not wait for the
+        # health of the applications it created, so the waves (sealed-secrets, secrets, shop) would not be waited for.
+        resource.customizations.health.argoproj.io_Application: |
+          hs = {}
+          hs.status = "Progressing"
+          hs.message = ""
+          if obj.status ~= nil then
+            if obj.status.health ~= nil then
+              hs.status = obj.status.health.status
+              if obj.status.health.message ~= nil then
+                hs.message = obj.status.health.message
+              end
+            end
+          end
+          return hs
