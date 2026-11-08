@@ -96,8 +96,9 @@ sekcji „Poza zakresem” specyfikacji z powodem.
      - decyzje infrastrukturalne: artefakty, których dziś nikt nie buduje ani nie publikuje (kto je buduje, gdzie
        trafiają, jak wersja dociera do wdrożenia).
 
-     Każda pozycja: co, po co (zadanie albo sekcja spec), kto dostarcza (użytkownik albo zadanie epiku) i stan
-     (`gotowe`, `dostarcza użytkownik przed /ao-run`, `robi zadanie <ID>`). Otwarta decyzja infrastrukturalna to
+     Każda pozycja: co, po co (zadanie albo sekcja spec) i źródło, które się nie starzeje: `istnieje: <miejsce>`,
+     `użytkownik: <co i gdzie>` albo `zadanie <ID>`. Gotowość pozycji użytkownika potwierdza się w kroku 6, nie
+     w spec (stan prac jest tylko w „Status” planu). Otwarta decyzja infrastrukturalna to
      pytanie z kroku 4, nie pozycja do rozstrzygnięcia w trakcie zadania. Epik bez takich potrzeb: „Brak.” i jedno
      zdanie dlaczego. Przykład: DEPLOY-3 zgłosił bloker po 2 h 24 min i $17, bo chart wymagał obrazu Elasticsearch
      z wtyczką `analysis-stempel`, którego nikt nie budował ani nie publikował. DEPLOY-6 zatrzymał się na pytaniu,
@@ -144,7 +145,7 @@ sekcji „Poza zakresem” specyfikacji z powodem.
    - issues epiku;
    - rozmiar końcowego PR: liczba zadań, fale z walidatora, dotknięte aplikacje (`apps/api`, `apps/store`,
      `apps/admin`, `e2e`, `infra`, `docs`) i linia `Zakres:`;
-   - sekcja „Wymagane przed startem”: każda pozycja ze stanem, osobno te, które dostarcza użytkownik;
+   - sekcja „Wymagane przed startem”: pozycje, osobno te, które dostarcza użytkownik;
    - pytanie: czy specyfikację akceptujesz, czy końcowy PR da się przejrzeć w jednym posiedzeniu i czy pozycje
      użytkownika z „Wymaganych przed startem” są gotowe albo będą przed `/ao-run`.
 

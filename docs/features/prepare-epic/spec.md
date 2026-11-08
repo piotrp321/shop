@@ -85,9 +85,9 @@ Praca toczy się na gałęzi `prepare/<katalog>` od `origin/main`.
    - Specyfikacja ma sekcję `## Wymagane przed startem`: wszystko, czego zadania potrzebują spoza repo, zanim AO
      je uruchomi. Kategorie: sekrety (nazwa i miejsce), konta i usługi zewnętrzne (rejestr obrazów, DNS, bramka
      płatności, SMTP, serwer), uprawnienia (zakres tokenu, admin repo, dostęp CI do klastra) i decyzje
-     infrastrukturalne (artefakty, których nikt nie buduje ani nie publikuje). Każda pozycja ma cel, dostawcę
-     (użytkownik albo zadanie epiku) i stan (`gotowe`, `dostarcza użytkownik przed /ao-run`, `robi zadanie <ID>`).
-     Otwarta decyzja infrastrukturalna jest pytaniem z kroku 4. Epik bez takich potrzeb ma „Brak.” z jednym zdaniem
+     infrastrukturalne (artefakty, których nikt nie buduje ani nie publikuje). Każda pozycja ma cel i źródło, które
+     się nie starzeje (`istnieje: <miejsce>`, `użytkownik: <co i gdzie>`, `zadanie <ID>`). Gotowość pozycji
+     użytkownika potwierdza się w kroku 6, nie w spec. Otwarta decyzja infrastrukturalna jest pytaniem z kroku 4. Epik bez takich potrzeb ma „Brak.” z jednym zdaniem
      uzasadnienia. Powód: bloker zgłoszony w trakcie zadania kosztuje godziny (DEPLOY-3: 2 h 24 min i $17, bo obrazu
      Elasticsearch z wtyczką nikt nie budował ani nie publikował).
 2. **Review szkicu.** `spec-critic` i `architecture-reviewer` równolegle, w jednej wiadomości, na pierwszym planie.
@@ -114,7 +114,7 @@ Praca toczy się na gałęzi `prepare/<katalog>` od `origin/main`.
    - issues epiku;
    - rozmiar końcowego PR: liczba zadań, fale z walidatora, dotknięte aplikacje (`apps/api`, `apps/store`,
      `apps/admin`, `e2e`, `infra`, `docs`) i linia `Zakres:`;
-   - sekcja „Wymagane przed startem”: każda pozycja ze stanem, osobno te, które dostarcza użytkownik;
+   - sekcja „Wymagane przed startem”: pozycje, osobno te, które dostarcza użytkownik;
    - pytanie: czy specyfikację akceptujesz, czy końcowy PR da się przejrzeć w jednym posiedzeniu i czy pozycje
      użytkownika z „Wymaganych przed startem” są gotowe albo będą przed `/ao-run`.
 
@@ -166,7 +166,7 @@ epiku, szkic i kod, którego szkic dotyczy. Nie sugeruje się opinią analityka.
 - przypadków brzegowych: współbieżność, nieaktualny widok, limity, paginacja, propagacja błędów do UI;
 - nieweryfikowalnych kryteriów akceptacji i wymagań z issue bez pokrycia w szkicu;
 - niekompletnej sekcji „Wymagane przed startem”: sekret, konto, usługa zewnętrzna, uprawnienie albo artefakt,
-  którego wymagają zadania, a którego dziś nikt nie dostarcza, bez pozycji, dostawcy albo stanu. Brak sekcji albo
+  którego wymagają zadania, a którego dziś nikt nie dostarcza, bez pozycji albo źródła. Brak sekcji albo
   pozycja, bez której zadanie zatrzyma się w trakcie, to `Important`; otwarta decyzja infrastrukturalna to
   znalezisko `architektoniczne`.
 

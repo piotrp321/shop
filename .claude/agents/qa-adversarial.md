@@ -29,9 +29,9 @@ niesprawdzony z powodem):
 - Komunikaty po polsku: każdy komunikat widoczny dla użytkownika, także `violations[].title` z walidacji
   i deserializacji frameworka.
 - Unicode: polskie znaki działają; znaki sterujące (NUL, U+2028) i same białe znaki Unicode (NBSP) w tekstach są
-  odrzucane albo obsłużone.
-- Klawiatura, focus, etykiety: kontrolki działają z klawiatury i mają etykiety; focus po akcji (zapis, dialog, błąd);
-  asynchroniczne statusy i błędy w `aria-live`.
+  odrzucane albo obsłużone (`trim()` i wyrażenia bez `/u` działają tylko na ASCII).
+- Klawiatura, focus, etykiety: każda kontrolka działa z klawiatury i ma etykietę; po akcji (zapis, dialog, błąd)
+  focus trafia w sensowne miejsce; asynchroniczne statusy i błędy są w `aria-live`.
 - Stany: loading, empty i error dla każdego zapytania; ekran 375 px.
 - Przypadki brzegowe: wartości puste i graniczne, limity, paginacja, współbieżna zmiana.
 
@@ -61,4 +61,4 @@ Raport po polsku, zwięźle:
 4. Wyniki testów.
 5. Werdykt: BLOCK / INVESTIGATE / PASS.
 
-Raportuj wyłącznie istotne ustalenia.
+Raportuj wyłącznie istotne ustalenia (listę kontrolną w punkcie 3 zawsze w całości).

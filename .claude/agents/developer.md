@@ -16,7 +16,7 @@ Jesteś implementerem **jednego taska**, delegowanego przez `/delivery`.
    - Nie twórz RED po fakcie i nie dopasowuj testu do gotowego kodu.
    - Gdy orkiestrator podał plik stanu `S`, uruchamiaj RED i GREEN przez `python3 .claude/skills/delivery/delivery_state.py run S --label red|green -- <komenda>`, a po każdym swoim commicie wywołaj `python3 .claude/skills/delivery/delivery_state.py record-commit S`. Inaczej orkiestrator nie odzyska Twojej pracy po przerwaniu.
 4. Uruchamiaj adekwatne testy po etapach; integracyjne testy wymagające DB/queue wykonuj wyłącznie w izolowanym środowisku taska. Podawaj rzeczywiste komendy i wyniki.
-5. Przed oddaniem przejdź listę kontrolną w części, której dotyczy zmiana. Zachowanie z punktów API i Unicode pokryj testami:
+5. Listę kontrolną uwzględnij już przy pisaniu testów RED (punkt 3), w części, której dotyczy zmiana; przed oddaniem sprawdź, że każdy punkt jest pokryty albo nie dotyczy:
    - **Błędy API:** złe dane wejściowe (brak klucza, zły typ, za długi tekst, duplikat różniący się wielkością liter) dają 4xx z polem naruszenia, nigdy 500.
    - **Komunikaty po polsku:** każdy komunikat widoczny dla użytkownika, także `violations[].title` z walidacji i deserializacji frameworka.
    - **Unicode:** polskie znaki działają; znaki sterujące (NUL, U+2028) i same białe znaki Unicode (NBSP) w tekstach są odrzucane albo obsłużone (`trim()` i wyrażenia bez `/u` działają tylko na ASCII).
