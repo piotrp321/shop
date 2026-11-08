@@ -307,7 +307,7 @@ class SummarizeTest(unittest.TestCase):
     def test_waits_are_paired_per_task(self):
         got = self.summarize([blocked('A', 0.0), blocked('B', 100.0), human('answer', 400.0, 'B'),
                               human('answer', 1000.0, 'A')])
-        self.assertEqual((got['waits'], got['wait_s']), (2, 1300.0))
+        self.assertEqual((got['waits'], got['wait_s']), (2, 1000.0))   # B lies inside A
 
     def test_failed_task_ends_with_resume(self):
         failed = at(event('status_changed', {'to': 'FAILED', 'reason': 'executor_reported'}, task_id='T-2'), 50.0)
@@ -339,6 +339,22 @@ class SummarizeTest(unittest.TestCase):
                               at(event('status_changed', {'to': 'PENDING'}), 6.0),
                               blocked('T-1', 'x'), {'type': 'invalid_event', 'raw': ''}, 'not a dict'])
         self.assertEqual(got, {'interventions': 0, 'waits': 0, 'wait_s': 0.0, 'open': []})
+
+    def test_overlapping_waits_count_wall_clock_time_once(self):
+        # an /integration blocker: the task is BLOCKED and the epic blocked 40 ms later, both answered
+        got = self.summarize([blocked('T-1', 0.0), at(event('epic_blocked', {'reason': 'x'}, task_id=None), 0.04),
+                              human('answer', 600.0, 'T-1'), human('epic-resume', 700.0),
+                              blocked('A', 1000.0), blocked('B', 1100.0), human('answer', 1200.0, 'A'),
+                              human('answer', 1500.0, 'B')])
+        self.assertEqual((got['waits'], got['wait_s']), (4, 1200.0))
+
+    def test_open_wait_ends_at_the_last_epic_done_after_it(self):
+        got = self.summarize([blocked('T-1', 100.0), at(event('epic_done'), 900.0)], now=50000.0)
+        self.assertEqual(got['open'], [{'task_id': 'T-1', 'since': 100.0, 'wait_s': 800.0}])
+
+    def test_epic_done_before_the_block_does_not_end_it(self):
+        got = self.summarize([at(event('epic_done'), 50.0), blocked('T-1', 100.0)], now=400.0)
+        self.assertEqual(got['open'][0]['wait_s'], 300.0)
 
     def test_answer_before_block_does_not_go_negative(self):
         got = self.summarize([human('answer', 100.0, 'T-1'), blocked('T-1', 200.0), human('answer', 260.0, 'T-1')])

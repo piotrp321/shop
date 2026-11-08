@@ -18,8 +18,9 @@
       Prints one JSON line {"interventions", "waits", "wait_s", "open": [{"task_id", "since", "wait_s"}]} for FILE:
       interventions = human_action events; a wait for the user starts at a task's status_changed to BLOCKED or FAILED
       (key: the task) or at epic_blocked / queue_held (key: null) and ends at the next human_action with the same key;
-      wait_s sums the ended waits, `open` lists the waits not ended yet, measured until --now (default: the current
-      time). Lines that are not JSON objects are skipped. A missing or unreadable FILE is exit code 1 with a message on
+      wait_s is the wall-clock time covered by at least one ended wait (overlapping waits count once), `open` lists
+      the waits not ended yet, each measured until the last epic_done after its start or else until --now (default:
+      the current time). `interventions` counts the decisions recorded by /ao-run; `ao report` counts AO's own. Lines that are not JSON objects are skipped. A missing or unreadable FILE is exit code 1 with a message on
       stderr and nothing on stdout: no data is not zero.
 
 An AO event is {"type", "task_id", "epic_id", "data", "at"} (orchestrator/notify.py, Notifier._payload). The `data`
@@ -146,25 +147,43 @@ def _wait_key(event):
     return False, None
 
 
+def _union_s(intervals):
+    """Seconds covered by at least one of the (start, end) intervals."""
+    total, reach = 0.0, None
+    for start, end in sorted(intervals):
+        if reach is None or start > reach:
+            total += end - start
+            reach = end
+        elif end > reach:
+            total += end - reach
+            reach = end
+    return total
+
+
 def summarize(events, now):
     """Interventions and waits for the user in a list of AO events (see `summary` in the module docstring)."""
-    interventions, waits, wait_s, opened = 0, 0, 0.0, {}
+    interventions, waits, closed, opened, done = 0, 0, [], {}, []
     for event in events:
         if not isinstance(event, dict) or isinstance(event.get('at'), bool) \
                 or not isinstance(event.get('at'), (int, float)):
             continue
+        if event.get('type') == 'epic_done':
+            done.append(float(event['at']))
         if event.get('type') == 'human_action':
             interventions += 1
             since = opened.pop(event.get('task_id'), None)
             if since is not None:
-                wait_s += max(0.0, event['at'] - since)
+                closed.append((since, max(since, float(event['at']))))
             continue
         starts, key = _wait_key(event)
         if starts and key not in opened:
             opened[key] = float(event['at'])
             waits += 1
-    still = [{'task_id': key, 'since': since, 'wait_s': max(0.0, now - since)} for key, since in opened.items()]
-    return {'interventions': interventions, 'waits': waits, 'wait_s': wait_s, 'open': still}
+    still = []
+    for key, since in opened.items():
+        end = max([at for at in done if at >= since], default=now)
+        still.append({'task_id': key, 'since': since, 'wait_s': max(0.0, end - since)})
+    return {'interventions': interventions, 'waits': waits, 'wait_s': _union_s(closed), 'open': still}
 
 
 def summary(path, now):
