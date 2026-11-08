@@ -54,6 +54,20 @@ const FIELD_ID_PREFIX = "checkout-";
 const FAILURE_ID = "checkout-failure";
 const LOGIN_HREF = `/auth/login?returnTo=${encodeURIComponent("/checkout")}`;
 
+const CODE_INPUT_ID = "checkout-discount-code";
+const CODE_ERROR_ID = "checkout-discount-code-error";
+const CODE_REMOVE_ID = "checkout-discount-remove";
+const CODE_MAX_LENGTH = 64;
+const CODE_BLANK = "Wpisz kod rabatowy.";
+const CODE_NOT_CHECKED = "Nie udało się sprawdzić kodu. Spróbuj ponownie.";
+const CODE_NOT_REMOVED = "Nie udało się odświeżyć podsumowania. Spróbuj ponownie.";
+
+/** What the summary of the cart says about the code asked for: applied (the code), or the text of its rejection. */
+type Preview =
+  | { status: "ok"; cart: CartView; appliedCode: string | null; codeError: string | null }
+  | { status: "unauthorized" }
+  | { status: "failed" };
+
 const emptyForm: Form = { email: "", fullName: "", phone: "", street: "", postalCode: "", city: "" };
 
 /** The key of one order attempt; sent again on a retry, so that a repeated request never places a second order. */
@@ -81,11 +95,19 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   const [provider, setProvider] = useState<string | null>(null);
   const [providerError, setProviderError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // The discount code lives in this component only (D3): a reload of the page starts without one. `appliedCode` is the
+  // code the summary of `loaded` was priced with; `codeInput` is what the customer types.
+  const [codeInput, setCodeInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeStatus, setCodeStatus] = useState("");
+  const [codeBusy, setCodeBusy] = useState(false);
   // Where the focus goes after a refusal: the button was locked during the request, so the focus would be on the body.
   const [attention, setAttention] = useState<{ id: string; seq: number } | null>(null);
   // The key of one logical attempt. Made on entry and kept for a retry of an uncertain result (a network error, 403,
   // 5xx) and after a 409 that leaves the request as it was. A new one for a new attempt: after every change of the
-  // form, after `IdempotencyKeyReused` and after `OrderTotalChanged` (the request now carries another total).
+  // form, after `IdempotencyKeyReused` and after `OrderTotalChanged` (the request now carries another total), and
+  // when a code is applied or removed or refused (the request carries another code and total).
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
 
   useEffect(() => {
@@ -118,9 +140,80 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setIdempotencyKey(newIdempotencyKey());
   }
 
+  /** Reads the summary again with `code` and shows what the API says of it; false when the summary could not be read. */
+  async function reloadPreview(code: string | null, session: AccountSession): Promise<boolean> {
+    const preview = await loadPreview(code);
+    if (preview.status === "unauthorized") {
+      setFailure({ kind: "unauthorized" });
+      return false;
+    }
+    if (preview.status === "failed") return false;
+    setLoaded({ status: "ready", cart: preview.cart, session });
+    setAppliedCode(preview.appliedCode);
+    setCodeError(preview.codeError);
+    announceCartChange(preview.cart.totals.itemCount);
+    return true;
+  }
+
+  async function applyCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (loaded.status !== "ready" || codeBusy || submitting) return;
+    const code = codeInput.trim();
+    if (code === "") {
+      setCodeError(CODE_BLANK);
+      setAttention((current) => ({ id: CODE_INPUT_ID, seq: (current?.seq ?? 0) + 1 }));
+      return;
+    }
+    setCodeBusy(true);
+    setCodeError(null);
+    const preview = await loadPreview(code);
+    setCodeBusy(false);
+    let target = CODE_INPUT_ID;
+    if (preview.status === "ok") {
+      setLoaded({ status: "ready", cart: preview.cart, session: loaded.session });
+      setAppliedCode(preview.appliedCode);
+      setCodeError(preview.codeError);
+      if (preview.appliedCode !== null) {
+        // The request now carries a code and another total; a rejected code leaves it as it was.
+        setIdempotencyKey(newIdempotencyKey());
+        setCodeStatus(`Zastosowano kod ${preview.cart.discount?.code ?? preview.appliedCode}.`);
+        target = CODE_REMOVE_ID;
+      }
+    } else if (preview.status === "unauthorized") {
+      setFailure({ kind: "unauthorized" });
+      target = FAILURE_ID;
+    } else {
+      setCodeError(CODE_NOT_CHECKED);
+    }
+    setAttention((current) => ({ id: target, seq: (current?.seq ?? 0) + 1 }));
+  }
+
+  async function removeCode() {
+    if (loaded.status !== "ready" || codeBusy || submitting) return;
+    setCodeBusy(true);
+    setCodeError(null);
+    const preview = await loadPreview(null);
+    setCodeBusy(false);
+    let target = CODE_REMOVE_ID;
+    if (preview.status === "ok") {
+      setLoaded({ status: "ready", cart: preview.cart, session: loaded.session });
+      setAppliedCode(null);
+      setCodeInput("");
+      setCodeStatus("Usunięto kod rabatowy.");
+      setIdempotencyKey(newIdempotencyKey());
+      target = CODE_INPUT_ID;
+    } else if (preview.status === "unauthorized") {
+      setFailure({ kind: "unauthorized" });
+      target = FAILURE_ID;
+    } else {
+      setCodeError(CODE_NOT_REMOVED);
+    }
+    setAttention((current) => ({ id: target, seq: (current?.seq ?? 0) + 1 }));
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (loaded.status !== "ready" || submitting || providers === null || providers.length === 0) return;
+    if (loaded.status !== "ready" || submitting || codeBusy || providers === null || providers.length === 0) return;
     if (provider === null) {
       setProviderError(CHOOSE_PROVIDER);
       setAttention((current) => ({ id: `${PROVIDER_ID_PREFIX}${providers[0].code}`, seq: (current?.seq ?? 0) + 1 }));
@@ -136,6 +229,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       ...contact,
       expectedTotalGross: loaded.cart.totals.gross,
       provider,
+      ...(appliedCode === null ? {} : { discountCode: appliedCode }),
     };
     const result = await placeOrder(input, idempotencyKey);
     if (result.status === "ok") {
@@ -181,6 +275,19 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       case "conflict": {
         // Told by the type of the problem only. Nothing is ordered again by itself.
         const detail = result.detail || SUBMIT_FAILED;
+        if (result.reason === "discount_code_rejected") {
+          // The code does not work any more. It comes off, the summary is read without it, and nothing is ordered:
+          // the customer sees the new total and clicks again.
+          setIdempotencyKey(newIdempotencyKey());
+          setAppliedCode(null);
+          setCodeError(detail);
+          const reloaded = await loadPreview(null);
+          if (reloaded.status === "ok") {
+            setLoaded({ status: "ready", cart: reloaded.cart, session });
+            announceCartChange(reloaded.cart.totals.itemCount);
+          }
+          return CODE_INPUT_ID;
+        }
         if (result.reason === "key_reused") {
           // The key belongs to another request: the form is fine, the next click is a new attempt.
           setIdempotencyKey(newIdempotencyKey());
@@ -192,12 +299,8 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           setIdempotencyKey(newIdempotencyKey());
         }
         setFailure({ kind: "conflict", detail, offersCart: result.reason !== "total_changed" });
-        // The cart as the API sees it now; an empty or unorderable one replaces the form.
-        const reloaded = await loadCart();
-        if (reloaded.status === "ok") {
-          setLoaded({ status: "ready", cart: reloaded.data, session });
-          announceCartChange(reloaded.data.totals.itemCount);
-        }
+        // The cart as the API sees it now, with the same code; an empty or unorderable one replaces the form.
+        await reloadPreview(appliedCode, session);
         return FAILURE_ID;
       }
       case "not_found":
@@ -245,6 +348,13 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           providerError={providerError}
           pendingOrderNumber={pendingOrderNumber}
           submitting={submitting}
+          code={{ input: codeInput, applied: appliedCode !== null, error: codeError, status: codeStatus, busy: codeBusy }}
+          onCodeInput={(value) => {
+            setCodeInput(value);
+            setCodeError(null);
+          }}
+          onApplyCode={(event) => void applyCode(event)}
+          onRemoveCode={() => void removeCode()}
           onChange={change}
           onProviderChange={(code) => {
             setProvider(code);
@@ -255,6 +365,28 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
       ) : null}
     </main>
   );
+}
+
+/**
+ * The summary with the preview of `code` (none: the plain summary). A code the API refuses outright (400) leaves the
+ * plain summary and the API's text for the field; a rejected one gives the summary without a discount and its `detail`.
+ * Nothing is computed here: whether a code applies, and what it takes off, is the API's.
+ */
+async function loadPreview(code: string | null): Promise<Preview> {
+  const result = await loadCart(...(code === null ? [] : [code]));
+  if (result.status === "unauthorized") return { status: "unauthorized" };
+  if (result.status === "invalid") {
+    const plain = await loadCart();
+    if (plain.status === "unauthorized") return { status: "unauthorized" };
+    return plain.status === "ok"
+      ? { status: "ok", cart: plain.data, appliedCode: null, codeError: result.detail ?? CODE_NOT_CHECKED }
+      : { status: "failed" };
+  }
+  if (result.status !== "ok") return { status: "failed" };
+  if (code === null) return { status: "ok", cart: result.data, appliedCode: null, codeError: null };
+  const discount = result.data.discount;
+  if (discount?.status === "applied") return { status: "ok", cart: result.data, appliedCode: code, codeError: null };
+  return { status: "ok", cart: result.data, appliedCode: null, codeError: discount?.status === "rejected" ? discount.detail : CODE_NOT_CHECKED };
 }
 
 async function loadCheckout(): Promise<Loaded> {
@@ -306,6 +438,10 @@ function CheckoutContent({
   providerError,
   pendingOrderNumber,
   submitting,
+  code,
+  onCodeInput,
+  onApplyCode,
+  onRemoveCode,
   onChange,
   onProviderChange,
   onSubmit,
@@ -319,6 +455,10 @@ function CheckoutContent({
   providerError: string | null;
   pendingOrderNumber: string | null;
   submitting: boolean;
+  code: CodeState;
+  onCodeInput: (value: string) => void;
+  onApplyCode: (event: FormEvent<HTMLFormElement>) => void;
+  onRemoveCode: () => void;
   onChange: (name: FieldName, value: string) => void;
   onProviderChange: (code: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -346,6 +486,13 @@ function CheckoutContent({
   return (
     <>
       <OrderSummary cart={cart} />
+      <DiscountCode
+        state={code}
+        disabled={submitting}
+        onInput={onCodeInput}
+        onApply={onApplyCode}
+        onRemove={onRemoveCode}
+      />
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
         {session === null ? (
           <p className="text-sm text-muted-foreground">
@@ -369,7 +516,7 @@ function CheckoutContent({
         ) : (
           <>
             <ProviderChoice providers={providers} value={provider} error={providerError} onChange={onProviderChange} />
-            <Button type="submit" className="self-end" disabled={submitting}>
+            <Button type="submit" className="self-end" disabled={submitting || code.busy}>
               Zamawiam z obowiązkiem zapłaty
             </Button>
           </>
@@ -468,6 +615,69 @@ function FormField({
   );
 }
 
+type CodeState = { input: string; applied: boolean; error: string | null; status: string; busy: boolean };
+
+/**
+ * The discount code of the checkout, a form of its own so that Enter applies the code and does not order. Applied, it is
+ * replaced by the button that removes the code (the line of the code is in the summary); the live region announces
+ * what happened to the code.
+ */
+function DiscountCode({
+  state,
+  disabled,
+  onInput,
+  onApply,
+  onRemove,
+}: {
+  state: CodeState;
+  disabled: boolean;
+  onInput: (value: string) => void;
+  onApply: (event: FormEvent<HTMLFormElement>) => void;
+  onRemove: () => void;
+}) {
+  const locked = disabled || state.busy;
+  return (
+    <div className="flex flex-col gap-2">
+      <div data-testid="checkout-code-status" role="status" className="sr-only">
+        {state.status}
+      </div>
+      {state.applied ? (
+        <Button id={CODE_REMOVE_ID} type="button" variant="outline" className="self-start" disabled={locked} onClick={onRemove}>
+          Usuń kod
+        </Button>
+      ) : (
+        <form noValidate onSubmit={onApply} className="flex flex-col gap-1">
+          <label htmlFor={CODE_INPUT_ID} className="text-sm font-medium">
+            Kod rabatowy
+          </label>
+          <div className="flex gap-2">
+            <Input
+              id={CODE_INPUT_ID}
+              name="discountCode"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              maxLength={CODE_MAX_LENGTH}
+              value={state.input}
+              aria-invalid={state.error ? true : undefined}
+              aria-describedby={state.error ? CODE_ERROR_ID : undefined}
+              onChange={(event) => onInput(event.target.value)}
+            />
+            <Button type="submit" variant="outline" disabled={locked} aria-busy={state.busy || undefined}>
+              Zastosuj
+            </Button>
+          </div>
+        </form>
+      )}
+      {state.error ? (
+        <p id={CODE_ERROR_ID} role="alert" className="text-sm text-destructive">
+          {state.error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /** Lines and total exactly as the API gave them; nothing is computed here. */
 function OrderSummary({ cart }: { cart: CartView }) {
   return (
@@ -494,6 +704,11 @@ function OrderSummary({ cart }: { cart: CartView }) {
           </li>
         ))}
       </ul>
+      {cart.discount?.status === "applied" ? (
+        <p data-testid="checkout-discount" className="flex justify-between text-sm">
+          Kod {cart.discount.code}: −{formatPrice(cart.discount.amountGross, cart.totals.currency)}
+        </p>
+      ) : null}
       <p className="flex justify-between border-t border-border pt-2 font-semibold">
         <span>Do zapłaty (brutto)</span>
         <span data-testid="checkout-total">{formatPrice(cart.totals.gross, cart.totals.currency)}</span>
