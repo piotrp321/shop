@@ -3396,6 +3396,7 @@
                     "phone",
                     "shippingAddress",
                     "lines",
+                    "discount",
                     "totals",
                     "placedAt",
                     "paymentDeadline",
@@ -3450,6 +3451,15 @@
                         "items": {
                             "$ref": "#/components/schemas/BackofficeOrderLine"
                         }
+                    },
+                    "discount": {
+                        "description": "The discount code the order was placed with; null without one.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderDiscount"
+                            }
+                        ]
                     },
                     "totals": {
                         "$ref": "#/components/schemas/BackofficeOrderTotals"
@@ -3574,7 +3584,10 @@
                     "variantLabel",
                     "quantity",
                     "unitGross",
-                    "lineGross"
+                    "grossBeforeDiscount",
+                    "discountGross",
+                    "lineGross",
+                    "promotion"
                 ],
                 "properties": {
                     "variantId": {
@@ -3595,18 +3608,97 @@
                         "example": 2
                     },
                     "unitGross": {
+                        "description": "Gross price of one unit in grosze (the effective price, with a promotion if any).",
                         "type": "integer",
                         "example": 19999
                     },
-                    "lineGross": {
+                    "grossBeforeDiscount": {
+                        "description": "Unit gross price \u00d7 quantity, in grosze, before the discount of the code.",
                         "type": "integer",
                         "example": 39998
+                    },
+                    "discountGross": {
+                        "description": "The share of the line in the discount of the code, in grosze; 0 without a code.",
+                        "type": "integer",
+                        "example": 4000,
+                        "minimum": 0
+                    },
+                    "lineGross": {
+                        "description": "The value of the line after the discount (`grossBeforeDiscount` \u2212 `discountGross`), in grosze.",
+                        "type": "integer",
+                        "example": 35998
+                    },
+                    "promotion": {
+                        "description": "The promotion that gave the unit price when the order was placed; null without one.",
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/BackofficeOrderLinePromotion"
+                            }
+                        ]
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderLinePromotion": {
+                "description": "The copy of a promotion in a line of an order.",
+                "required": [
+                    "name",
+                    "percentOff",
+                    "regularUnitGross"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "example": "Jesienna wyprzeda\u017c"
+                    },
+                    "percentOff": {
+                        "type": "integer",
+                        "example": 20
+                    },
+                    "regularUnitGross": {
+                        "description": "The catalog gross price of one unit the percent was taken off, in grosze.",
+                        "type": "integer",
+                        "example": 24999
+                    }
+                },
+                "type": "object"
+            },
+            "BackofficeOrderDiscount": {
+                "description": "The copy of the discount code of an order, as it was when the order was placed.",
+                "required": [
+                    "code",
+                    "kind",
+                    "value",
+                    "amountGross"
+                ],
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "example": "WITAJ10"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "percent",
+                            "amount"
+                        ]
+                    },
+                    "value": {
+                        "description": "The percent (1\u201390) of a `percent` code, the amount in grosze of an `amount` code.",
+                        "type": "integer",
+                        "example": 10
+                    },
+                    "amountGross": {
+                        "description": "The discount of the order in grosze, the sum of `discountGross` of its lines.",
+                        "type": "integer",
+                        "example": 4000
                     }
                 },
                 "type": "object"
             },
             "BackofficeOrderTotals": {
-                "description": "Sums of the lines; net + vat = gross.",
+                "description": "Sums of the lines after the discount of the code; net + vat = gross.",
                 "required": [
                     "net",
                     "vat",

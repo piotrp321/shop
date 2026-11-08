@@ -26,9 +26,10 @@ function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
     phone: "+48600100200",
     shippingAddress: { street: "ul. Długa 5/3", postalCode: "00-950", city: "Warszawa", country: "PL" },
     lines: [
-      { variantId: "v-1", productName: "Buty szosowe Tarvik Asfalt 200", variantLabel: "czarne, 42", quantity: 2, unitGross: 19999, lineGross: 39998 },
-      { variantId: "v-2", productName: "Bidon", variantLabel: "", quantity: 1, unitGross: 2500, lineGross: 2500 },
+      { variantId: "v-1", productName: "Buty szosowe Tarvik Asfalt 200", variantLabel: "czarne, 42", quantity: 2, unitGross: 19999, grossBeforeDiscount: 39998, discountGross: 0, lineGross: 39998, promotion: null },
+      { variantId: "v-2", productName: "Bidon", variantLabel: "", quantity: 1, unitGross: 2500, grossBeforeDiscount: 2500, discountGross: 0, lineGross: 2500, promotion: null },
     ],
+    discount: null,
     totals: { net: 32519, vat: 7479, gross: 39998, currency: "PLN" },
     placedAt: "2026-11-05T12:30:00+00:00",
     paymentDeadline: "2026-11-05T13:00:00+00:00",

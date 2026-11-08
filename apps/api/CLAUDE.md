@@ -125,18 +125,25 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   zagnieżdżona w `ExpireUnpaidOrder`) ustawia `releasedAt = now` aktywnemu użyciu zamówienia przez rekord (zmienia tylko
   wiersz użycia, kodu nie blokuje); brak użycia albo już zwolnione: bez skutku.
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
-  `ClearCartAfterOrder`) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony
-  dispatch na tym samym połączeniu (savepoint), a ceny (Pricing `GetCurrentPrices`) i nazwy (Catalog
-  `GetVariantSummaries`) przez `query.bus`. Zasady:
+  `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
+  kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym
+  połączeniu (savepoint), a wycena (Pricing `QuoteBasket` z kodem z żądania, port `OrderPrices`; wartości linii, rabat
+  i kopie promocji pochodzą z niej) i nazwy (Catalog `GetVariantSummaries`) przez `query.bus`. Zasady:
   - handler nigdy nie łapie wyjątku zagnieżdżonej komendy, żeby pisać dalej: każdy błąd wycofuje całą transakcję
-    (koszyk, rezerwację, zamówienie, outbox). Adapter tłumaczy tylko niedobór Inventory (`InsufficientStock`) na
-    `InsufficientStockForOrder` i rzuca go dalej, inne wyjątki przekazuje bez zmian;
+    (koszyk, użycie kodu, rezerwację, zamówienie, outbox). Adaptery tłumaczą tylko niedobór Inventory
+    (`InsufficientStock`) na `InsufficientStockForOrder` i odrzucenie kodu Pricing (`DiscountCodeRejected` Pricing
+    Application) na `DiscountCodeRejected` Ordering (typ, `detail` i minimum z Pricing) i rzucają je dalej, inne wyjątki
+    przekazują bez zmian. Kod odrzucony już w wycenie to ten sam 409, przed porównaniem kwoty;
   - zamówienie zapisuje się na końcu (po rezerwacji), więc `flush` komend zagnieżdżonych nie zapisuje niczego
     z Ordering; Ordering zapisuje przez rekordy Doctrine według ogólnej zasady, a `OrderRepository::get` czyta
     zamówienie z bazy z odświeżeniem rekordu z identity map, więc kolejny odczyt w tej samej transakcji widzi zmiany
     zatwierdzone w międzyczasie;
-  - kolejność blokad: wiersz koszyka (`LockCartForOrder`), potem wiersze stanów (`lockMany` Inventory, rosnąco po
-    `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, więc nie ma cyklu;
+  - kolejność blokad: wiersz koszyka (`LockCartForOrder`), potem wiersz kodu rabatowego (tylko kod z limitem,
+    `RedeemDiscountCode` po nadaniu `orderId`, przed numerem), potem wiersze stanów (`lockMany` Inventory, rosnąco po
+    `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, zmiana kodu
+    (`ReviseDiscountCode`) tylko wiersz kodu, a zwolnienie użycia nie blokuje kodu, więc nie ma cyklu;
+  - odcisk żądania obejmuje kod znormalizowany (`DiscountCodeText`), dopisany tylko, gdy jest, więc odcisk bez kodu
+    jest taki sam jak przed kodami rabatowymi; powtórzenie nie zapisuje drugiego użycia;
   - idempotencja: zamówienie z tym samym `Idempotency-Key` i tym samym odciskiem żądania (koszyk i treść) jest
     zwracane jako powtórzenie przed blokadą koszyka i jeszcze raz pod nią; inny odcisk to `IdempotencyKeyReused` (409),
     także z unikalnego indeksu `idempotency_key` przy równoległym złożeniu z innego koszyka;
@@ -161,7 +168,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - Anulowanie nieopłaconego: `PlaceOrder` w swojej transakcji wysyła `ExpireUnpaidOrder(orderId)` z `DelayStamp` na
     termin + 5 min (port `UnpaidOrderExpiry`; powtórzenie złożenia nic nie wysyła). Handler w transakcji `command.bus`
     zaczyna od blokady zamówienia (`OrderRepository::lock`, jak komendy pracownika), przy anulowaniu najpierw zwalnia rezerwację (port `StockReservations::release`, Inventory `ReleaseReservation`,
-    zagnieżdżony dispatch), potem zapisuje zamówienie z `OrderCancelled` w outboxie; wiadomość za wczesna (zegar,
+    zagnieżdżony dispatch), potem użycie kodu rabatowego (port `DiscountCodeRedemptions::release`, Pricing
+    `ReleaseDiscountCodeUsage`, także dla zamówienia bez kodu, bez skutku), potem zapisuje zamówienie z `OrderCancelled` w outboxie; wiadomość za wczesna (zegar,
     zaokrąglenie `available_at`) wraca na termin + 5 min + 1 s, opłacone albo anulowane zamówienie nic nie zmienia,
     nieznane (po `make seed`) to wpis w logu. Konflikt wersji i błędy Inventory (`ReservationNotFound`,
     `ReservationStateConflict`) idą dalej: ponowienia transportu, potem `failed` (zamówienie zostaje `new`).
@@ -493,20 +501,21 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Błędy w formacie RFC 9457 (problem details). `type` to domyślnie `about:blank`. Wyjątek projektu, którego przyczynę
   klient ma rozróżniać maszynowo, implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType()`) i trzyma
   wartość w stałej `TYPE`; subscriber wpisuje ją do odpowiedzi, a Shared nie zna contextów. Format wartości:
-  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je pięć 409 Ordering
-  sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`), dwa 409 komend pracownika Ordering
+  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je osiem 409 Ordering
+  sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`, także trzy typy odrzucenia kodu), dwa 409 komend pracownika Ordering
   (`order-transition-not-allowed`, `refund-not-pending`; schemat `BackofficeOrderConflictProblem` w obszarze `admin`) i cztery 409 Payment: `order-already-paid`,
   `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
   Pięć 409 Pricing w panelu: `price-locked-by-promotion`, `promotion-overlap`, `promotion-not-editable`,
   `discount-code-taken`, `discount-code-not-editable` (schemat `PricingConflictProblem` w obszarze `admin`, razem
   z `about:blank` konfliktu wersji ceny, promocji i kodu rabatowego). Typy odrzucenia kodu (`discount-code-invalid`,
   `discount-code-used-up`, `discount-code-below-minimum`) i ich polskie `detail` daje wyłącznie
-  `DiscountCodeRejection` (Pricing Domain).
+  `DiscountCodeRejection` (Pricing Domain); `DiscountCodeRejected` Ordering (409 złożenia) dostaje je od adapterów.
   Nowy typ dopisz do `enum` schematu swojego contextu.
 - Wyjątek, który niesie dane dla klienta (np. listę kolidujących wariantów), implementuje
   `App\Shared\Domain\Exception\ExtendedProblem` (`problemExtensions()`): subscriber dopisuje te pola do dokumentu
   problemu, nigdy w miejsce `type`, `title`, `status`, `detail`, `instance` ani `violations`, i nie przy 5xx. Dziś:
-  `PromotionOverlap` (`conflictingVariantIds`).
+  `PromotionOverlap` (`conflictingVariantIds`) i `DiscountCodeRejected` Ordering (`minimumOrderGross`, tylko przy
+  `discount-code-below-minimum`).
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
   (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Wyjątek: znacznik
   `Unavailable` (zależność nieosiągalna albo przegrany wyścig, który ponowienie rozwiązuje) to 503 bez `detail`, jak

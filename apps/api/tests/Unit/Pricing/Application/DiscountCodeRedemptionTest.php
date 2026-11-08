@@ -128,8 +128,8 @@ final class DiscountCodeRedemptionTest extends TestCase
             ($this->redeem)(new RedeemDiscountCode(self::CODE, self::ORDER, 100));
             self::fail('The code must be rejected.');
         } catch (DiscountCodeRejected $rejected) {
-            self::assertSame('tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum', $rejected->rejection->problemType());
-            self::assertSame('Ten kod działa przy zamówieniu od 300,00 zł.', $rejected->rejection->detail());
+            self::assertSame('tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum', $rejected->type);
+            self::assertSame('Ten kod działa przy zamówieniu od 300,00 zł.', $rejected->getMessage());
         }
     }
 
@@ -176,8 +176,8 @@ final class DiscountCodeRedemptionTest extends TestCase
             ($this->redeem)($command);
             self::fail('The code must be rejected.');
         } catch (DiscountCodeRejected $rejected) {
-            self::assertSame($reason, $rejected->rejection->reason);
-            self::assertSame($minimum, $rejected->rejection->minimumOrderGross);
+            self::assertSame($reason->value, $rejected->reason);
+            self::assertSame($minimum, $rejected->minimumOrderGross);
         }
     }
 

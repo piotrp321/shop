@@ -11,7 +11,11 @@ use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\EmailAddress;
 use App\Ordering\Domain\IdempotencyKey;
 use App\Ordering\Domain\IdempotencyKeyReused;
+use App\Ordering\Domain\LineAmounts;
+use App\Ordering\Domain\Money;
 use App\Ordering\Domain\Order;
+use App\Ordering\Domain\OrderDiscount;
+use App\Ordering\Domain\OrderDiscountKind;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderLine;
 use App\Ordering\Domain\OrderModifiedConcurrently;
@@ -24,6 +28,7 @@ use App\Ordering\Domain\PaymentId;
 use App\Ordering\Domain\PaymentResult;
 use App\Ordering\Domain\PriceCopy;
 use App\Ordering\Domain\ProductId;
+use App\Ordering\Domain\PromotionCopy;
 use App\Ordering\Domain\RequestFingerprint;
 use App\Ordering\Domain\ShippingAddress;
 use App\Ordering\Domain\StaffActor;
@@ -31,6 +36,7 @@ use App\Ordering\Domain\StatusActor;
 use App\Ordering\Domain\VariantId;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DbalOrderNumbers;
 use App\Ordering\Infrastructure\Persistence\Doctrine\DoctrineOrderRepository;
+use App\Tests\Unit\Ordering\OrderExamples;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -87,6 +93,44 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         self::assertSame(['owner_type' => 'customer', 'total_net' => 63_626, 'total_vat' => 14_174, 'total_gross' => 77_800, 'currency' => 'PLN', 'country' => 'PL', 'request_fingerprint' => $order->requestFingerprint()->toString()], $row);
         $line = $this->connection->fetchAssociative('SELECT position, quantity, unit_net, unit_vat, unit_gross, vat_rate_bp, tax_class, line_net, line_vat, line_gross FROM ordering_order_line WHERE order_id = ? ORDER BY position LIMIT 1', [$order->id()->toString()]);
         self::assertSame(['position' => 0, 'quantity' => 2, 'unit_net' => 30_000, 'unit_vat' => 6_900, 'unit_gross' => 36_900, 'vat_rate_bp' => 2300, 'tax_class' => 'standard', 'line_net' => 60_000, 'line_vat' => 13_800, 'line_gross' => 73_800], $line);
+    }
+
+    public function testAnOrderWithACodeAndAPromotionIsStoredAndReadBackWithTheirCopies(): void
+    {
+        $base = $this->order('key-discount');
+        $promotion = PromotionCopy::of(Uuid::v7()->toRfc4122(), 'Jesień -20%', 20, 46_125);
+        $price = PriceCopy::of(30_000, 6_900, 36_900, 2300, 'standard', Currency::PLN);
+        $order = Order::place($base->id(), $base->number(), $base->owner(), $base->accessToken(), $base->contact(), $base->shippingAddress(), [
+            OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Buty Asfalt', 'czarne, 42', 2, $price, LineAmounts::of(7_380, 54_000, 12_420, 66_420, Currency::PLN), $promotion),
+            OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Mapa Gorce', '', 1, PriceCopy::of(1_626, 374, 2_000, 2300, 'standard', Currency::PLN), LineAmounts::of(200, 1_463, 337, 1_800, Currency::PLN), null),
+        ], OrderDiscount::of('WITAJ10', OrderDiscountKind::Percent, 10, Money::of(7_580, Currency::PLN)), $base->idempotencyKey(), $base->requestFingerprint(), $base->placedAt());
+        $this->orders->add($order);
+        $this->entityManager->clear();
+
+        $stored = $this->orders->get($order->id());
+
+        self::assertEquals($order->discount(), $stored->discount());
+        self::assertEquals($order->lines(), $stored->lines(), 'the stored values of the lines, the discounts and the promotion copy');
+        self::assertSame([68_220, 55_463, 12_757], [$stored->totals()->gross()->amount(), $stored->totals()->net()->amount(), $stored->totals()->vat()->amount()]);
+        self::assertSame(
+            ['discount_code' => 'WITAJ10', 'discount_kind' => 'percent', 'discount_value' => 10, 'discount_gross' => 7_580, 'total_gross' => 68_220],
+            $this->connection->fetchAssociative('SELECT discount_code, discount_kind, discount_value, discount_gross, total_gross FROM ordering_order WHERE id = ?', [$order->id()->toString()]),
+        );
+        self::assertSame(
+            [[7_380, 54_000, 12_420, 66_420, $promotion->promotionId(), 'Jesień -20%', 20, 46_125], [200, 1_463, 337, 1_800, null, null, null, null]],
+            $this->connection->fetchAllNumeric('SELECT discount_gross, line_net, line_vat, line_gross, promotion_id, promotion_name, promotion_percent_off, regular_unit_gross FROM ordering_order_line WHERE order_id = ? ORDER BY position', [$order->id()->toString()]),
+        );
+    }
+
+    public function testAnOrderWithoutACodeHasNoDiscountColumnsAndLinesWithoutDiscount(): void
+    {
+        $order = $this->order('key-no-discount');
+        $this->orders->add($order);
+        $this->entityManager->clear();
+
+        self::assertNull($this->orders->get($order->id())->discount());
+        self::assertSame([null, null, null, null], $this->connection->fetchNumeric('SELECT discount_code, discount_kind, discount_value, discount_gross FROM ordering_order WHERE id = ?', [$order->id()->toString()]));
+        self::assertSame([0, 0, 0], $this->connection->fetchFirstColumn('SELECT discount_gross FROM ordering_order_line WHERE order_id = ? ORDER BY position', [$order->id()->toString()]));
     }
 
     public function testAGuestOrderHasNoCustomer(): void
@@ -356,6 +400,14 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         yield 'a variant twice' => ['UPDATE ordering_order_line SET variant_id = (SELECT variant_id FROM ordering_order_line WHERE order_id = :id AND position = 0) WHERE order_id = :id', '23505'];
         yield 'a line of no order' => ['UPDATE ordering_order_line SET order_id = gen_random_uuid() WHERE order_id = :id', '23503'];
         yield 'an order deleted with its lines' => ['DELETE FROM ordering_order WHERE id = :id', '23503'];
+        yield 'a discount code without its amount' => ["UPDATE ordering_order SET discount_code = 'WITAJ10', discount_kind = 'percent', discount_value = 10 WHERE id = :id", '23514'];
+        yield 'a discount amount without its code' => ['UPDATE ordering_order SET discount_gross = 100 WHERE id = :id', '23514'];
+        yield 'a discount of an unknown kind' => ["UPDATE ordering_order SET discount_code = 'WITAJ10', discount_kind = 'free', discount_value = 10, discount_gross = 100 WHERE id = :id", '23514'];
+        yield 'a discount of no grosz' => ["UPDATE ordering_order SET discount_code = 'WITAJ10', discount_kind = 'percent', discount_value = 10, discount_gross = 0 WHERE id = :id", '23514'];
+        yield 'a negative discount of a line' => ['UPDATE ordering_order_line SET discount_gross = -1 WHERE order_id = :id', '23514'];
+        yield 'a line without a discount value' => ['UPDATE ordering_order_line SET discount_gross = NULL WHERE order_id = :id', '23502'];
+        yield 'a promotion without its name' => ['UPDATE ordering_order_line SET promotion_id = gen_random_uuid(), promotion_percent_off = 20, regular_unit_gross = 100 WHERE order_id = :id', '23514'];
+        yield 'a promotion name without the promotion' => ["UPDATE ordering_order_line SET promotion_name = 'Jesień' WHERE order_id = :id", '23514'];
     }
 
     /**
@@ -366,6 +418,7 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
         yield 'cancelled by staff after the payment, with its refund' => ["UPDATE ordering_order SET status = 'cancelled', cancelled_at = now(), cancellation_reason = 'staff', paid_at = now(), payment_id = gen_random_uuid(), refund_amount = 1230, refund_due_at = now() + interval '14 days' WHERE id = :id"];
         yield 'returned from shipped with a completed refund' => ["UPDATE ordering_order SET status = 'returned', paid_at = now(), payment_id = gen_random_uuid(), shipped_at = now(), returned_at = now(), refund_amount = 1230, refund_due_at = now(), refund_completed_at = now(), refund_completed_by_staff_id = 'kc', refund_completed_by_username = 'anna', refund_note = 'Przelew' WHERE id = :id"];
         yield 'delivered' => ["UPDATE ordering_order SET status = 'delivered', paid_at = now(), payment_id = gen_random_uuid(), shipped_at = now(), delivered_at = now() WHERE id = :id"];
+        yield 'a copy of a discount code' => ["UPDATE ordering_order SET discount_code = 'MINUS50', discount_kind = 'amount', discount_value = 5000, discount_gross = 5000 WHERE id = :id"];
     }
 
     #[DataProvider('rowsOfTheLifecycle')]
@@ -419,10 +472,11 @@ final class DoctrineOrderRepositoryTest extends KernelTestCase
             $contact,
             $address,
             [
-                OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Buty Asfalt', 'czarne, 42', 2, PriceCopy::of(30_000, 6_900, 36_900, 2300, 'standard', Currency::PLN)),
-                OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Mapa Gorce', '', 1, PriceCopy::of(1_626, 374, 2_000, 2300, 'standard', Currency::PLN)),
-                OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Książka', '', 1, PriceCopy::of(2_000, 0, 2_000, 0, 'zero', Currency::PLN)),
+                OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Buty Asfalt', 'czarne, 42', 2, PriceCopy::of(30_000, 6_900, 36_900, 2300, 'standard', Currency::PLN), OrderExamples::undiscounted(PriceCopy::of(30_000, 6_900, 36_900, 2300, 'standard', Currency::PLN), 2), null),
+                OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Mapa Gorce', '', 1, PriceCopy::of(1_626, 374, 2_000, 2300, 'standard', Currency::PLN), OrderExamples::undiscounted(PriceCopy::of(1_626, 374, 2_000, 2300, 'standard', Currency::PLN), 1), null),
+                OrderLine::of(VariantId::fromString(Uuid::v7()->toRfc4122()), ProductId::fromString(Uuid::v7()->toRfc4122()), 'Książka', '', 1, PriceCopy::of(2_000, 0, 2_000, 0, 'zero', Currency::PLN), OrderExamples::undiscounted(PriceCopy::of(2_000, 0, 2_000, 0, 'zero', Currency::PLN), 1), null),
             ],
+            null,
             IdempotencyKey::fromString($key),
             RequestFingerprint::of('guest:'.$key, $contact, $address, 77_800),
             new \DateTimeImmutable('@'.time()),

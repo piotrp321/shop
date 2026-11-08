@@ -17,7 +17,8 @@ use Doctrine\ORM\Mapping as ORM;
  * cancelled by staff), cancelled_at and cancellation_reason exactly for a cancelled one, shipped_at exactly from
  * shipped on, delivered_at only for delivered and returned, returned_at exactly for returned, the refund (amount and
  * due date) exactly for returned and cancelled by staff, its completion (moment, staff id and name together, the note
- * only with them) only with a refund. No foreign key to the tables of other modules: the order keeps copies
+ * only with them) only with a refund, the copy of the discount code (code, kind, value, amount) together or not at all.
+ * No foreign key to the tables of other modules: the order keeps copies
  * (payment_id too).
  */
 #[ORM\Entity]
@@ -85,6 +86,19 @@ class OrderRecord
 
     #[ORM\Column(type: Types::BIGINT)]
     public int $totalGross;
+
+    /** The copy of the discount code: the migration requires the four columns together or none. */
+    #[ORM\Column(length: 32, nullable: true)]
+    public ?string $discountCode = null;
+
+    #[ORM\Column(length: 8, nullable: true)]
+    public ?string $discountKind = null;
+
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    public ?int $discountValue = null;
+
+    #[ORM\Column(type: Types::BIGINT, nullable: true)]
+    public ?int $discountGross = null;
 
     #[ORM\Column(length: 100)]
     public string $idempotencyKey;

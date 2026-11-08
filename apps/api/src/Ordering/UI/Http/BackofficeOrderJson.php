@@ -40,13 +40,14 @@ final class BackofficeOrderJson
                 'country' => $order->shippingAddress->country,
             ],
             'lines' => array_map(static fn (OrderLineView $line): array => [
-                'variantId' => $line->variantId,
-                'productName' => $line->productName,
-                'variantLabel' => $line->variantLabel,
-                'quantity' => $line->quantity,
-                'unitGross' => $line->unitGross,
-                'lineGross' => $line->lineGross,
+                ...OrderLineJson::line($line),
+                'promotion' => null === $line->promotion ? null : [
+                    'name' => $line->promotion->name,
+                    'percentOff' => $line->promotion->percentOff,
+                    'regularUnitGross' => $line->promotion->regularUnitGross,
+                ],
             ], $order->lines),
+            'discount' => OrderLineJson::discount($order->discount),
             'totals' => [
                 'net' => $order->totals->net,
                 'vat' => $order->totals->vat,

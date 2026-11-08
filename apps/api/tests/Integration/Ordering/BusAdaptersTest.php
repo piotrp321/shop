@@ -13,15 +13,22 @@ use App\Inventory\Application\Command\ReservationStateConflict;
 use App\Ordering\Application\CartReference;
 use App\Ordering\Application\Port\CartLineToOrder;
 use App\Ordering\Application\Port\CatalogVariant;
+use App\Ordering\Application\Port\QuotedCodeRejection;
+use App\Ordering\Domain\DiscountCodeRejected;
 use App\Ordering\Domain\InsufficientStockForOrder;
+use App\Ordering\Domain\LineAmounts;
+use App\Ordering\Domain\OrderDiscountKind;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\PriceCopy;
 use App\Ordering\Domain\VariantId;
 use App\Ordering\Infrastructure\Cart\CommandBusOrderCart;
 use App\Ordering\Infrastructure\Catalog\QueryBusOrderCatalog;
 use App\Ordering\Infrastructure\Inventory\CommandBusStockReservations;
+use App\Ordering\Infrastructure\Pricing\CommandBusDiscountCodeRedemptions;
 use App\Ordering\Infrastructure\Pricing\QueryBusOrderPrices;
+use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeRepository;
 use App\Tests\Factory\CategoryFactory;
+use App\Tests\Factory\DiscountCodeFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Cart\CartFixture;
@@ -101,7 +108,7 @@ final class BusAdaptersTest extends KernelTestCase
         self::assertGreaterThan(new \DateTimeImmutable('+29 days'), new \DateTimeImmutable($expiresAt));
     }
 
-    public function testPricingGivesCopiesOfTheCurrentPricesOfKnownVariantsOnly(): void
+    public function testPricingQuotesTheLinesWithCurrentPricesOnly(): void
     {
         $standard = VariantPriceRecordFactory::store($this->entityManager, ['variantId' => Uuid::v7()->toRfc4122(), 'gross' => 12_300]);
         $reduced = VariantPriceRecordFactory::store($this->entityManager, ['variantId' => Uuid::v7()->toRfc4122(), 'gross' => 1_080, 'taxClass' => 'energy_gel', 'vatRateBp' => 800]);
@@ -109,11 +116,101 @@ final class BusAdaptersTest extends KernelTestCase
         $outdated = VariantPriceRecordFactory::store($this->entityManager, ['variantId' => Uuid::v7()->toRfc4122(), 'gross' => 5_000, 'vatRateBp' => 800]);
         $unknown = Uuid::v7()->toRfc4122();
 
-        $prices = new QueryBusOrderPrices($this->queryBus())->current(array_map(VariantId::fromString(...), [$reduced, $outdated, $unknown, $standard]));
+        $quote = new QueryBusOrderPrices($this->queryBus())->quote(self::lines([$reduced, 3], [$outdated, 1], [$unknown, 1], [$standard, 2]), null);
 
-        self::assertSame([$reduced, $standard], array_keys($prices));
-        self::assertSame([10_000, 2_300, 12_300, 2300, 'standard'], self::priceData($prices[$standard]));
-        self::assertSame([1_000, 80, 1_080, 800, 'energy_gel'], self::priceData($prices[$reduced]));
+        self::assertSame([$reduced, $standard], array_keys($quote->lines));
+        self::assertSame([10_000, 2_300, 12_300, 2300, 'standard'], self::priceData($quote->lines[$standard]->unitPrice));
+        self::assertSame([1_000, 80, 1_080, 800, 'energy_gel'], self::priceData($quote->lines[$reduced]->unitPrice));
+        self::assertSame([0, 20_000, 4_600, 24_600], self::amountData($quote->lines[$standard]->amounts));
+        // The net of the line is computed from its gross (D8): 3 × 10,80 zł at 8 % is 30,00 zł net.
+        self::assertSame([0, 3_000, 240, 3_240], self::amountData($quote->lines[$reduced]->amounts));
+        self::assertNull($quote->lines[$standard]->promotion);
+        self::assertSame(27_840, $quote->subtotalGross);
+        self::assertNull($quote->discount);
+        self::assertNull($quote->discountCodeId);
+        self::assertNull($quote->rejection);
+    }
+
+    public function testPricingQuotesThePromotionOfALine(): void
+    {
+        $promoted = VariantPriceRecordFactory::store($this->entityManager, ['variantId' => Uuid::v7()->toRfc4122(), 'gross' => 10_000]);
+        $promotion = Uuid::v7()->toRfc4122();
+        $this->connection->executeStatement(
+            "INSERT INTO pricing_promotion (id, name, percent_off, starts_at, ends_at, created_at, updated_at, version) VALUES (?, 'Jesień', 20, NOW() - interval '1 hour', NOW() + interval '1 day', NOW(), NOW(), 1)",
+            [$promotion],
+        );
+        $this->connection->executeStatement('INSERT INTO pricing_promotion_variant (promotion_id, variant_id) VALUES (?, ?)', [$promotion, $promoted]);
+
+        $line = new QueryBusOrderPrices($this->queryBus())->quote(self::lines([$promoted, 1]), null)->lines[$promoted];
+
+        self::assertSame(8_000, $line->unitPrice->gross()->amount());
+        self::assertNotNull($line->promotion);
+        self::assertSame([$promotion, 'Jesień', 20, 10_000], [$line->promotion->promotionId(), $line->promotion->name(), $line->promotion->percentOff(), $line->promotion->regularUnitGross()->amount()]);
+    }
+
+    public function testPricingQuotesACodeWithItsCopyAndIdOrItsRejection(): void
+    {
+        $variant = VariantPriceRecordFactory::store($this->entityManager, ['variantId' => Uuid::v7()->toRfc4122(), 'gross' => 12_300]);
+        $code = DiscountCodeFactory::createOne(['code' => 'ORDER-10', 'value' => 10]);
+        $limited = DiscountCodeFactory::createOne(['code' => 'ORDER-MIN', 'minimumOrderGross' => 30_000]);
+        $codes = new DoctrineDiscountCodeRepository($this->entityManager);
+        $codes->save($code);
+        $codes->save($limited);
+        $prices = new QueryBusOrderPrices($this->queryBus());
+
+        $quote = $prices->quote(self::lines([$variant, 2]), 'ORDER-10');
+
+        self::assertNotNull($quote->discount);
+        self::assertSame(['ORDER-10', OrderDiscountKind::Percent, 10, 2_460], [$quote->discount->code(), $quote->discount->kind(), $quote->discount->value(), $quote->discount->amount()->amount()]);
+        self::assertSame($code->id()->toString(), $quote->discountCodeId);
+        self::assertSame(24_600, $quote->subtotalGross);
+        self::assertSame([2_460, 18_000, 4_140, 22_140], self::amountData($quote->lines[$variant]->amounts));
+
+        $rejected = $prices->quote(self::lines([$variant, 2]), 'ORDER-MIN');
+        self::assertNull($rejected->discount);
+        self::assertNull($rejected->discountCodeId);
+        self::assertEquals(new QuotedCodeRejection('tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum', 'Ten kod działa przy zamówieniu od 300,00 zł.', 30_000), $rejected->rejection);
+        self::assertEquals(new QuotedCodeRejection('tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid', 'Ten kod jest nieprawidłowy albo nieaktywny.', null), $prices->quote(self::lines([$variant, 2]), 'NO-SUCH-CODE')->rejection);
+    }
+
+    public function testPricingRecordsAndReleasesTheUsageOfACode(): void
+    {
+        $code = DiscountCodeFactory::createOne(['usageLimit' => 1]);
+        new DoctrineDiscountCodeRepository($this->entityManager)->save($code);
+        $orderId = OrderId::fromString(Uuid::v7()->toRfc4122());
+        $redemptions = new CommandBusDiscountCodeRedemptions($this->commandBus());
+
+        $redemptions->redeem($code->id()->toString(), $orderId, 10_000);
+
+        self::assertSame(1, $this->activeUses($code->id()->toString()));
+        try {
+            $redemptions->redeem($code->id()->toString(), OrderId::fromString(Uuid::v7()->toRfc4122()), 10_000);
+            self::fail('Expected DiscountCodeRejected.');
+        } catch (DiscountCodeRejected $rejected) {
+            self::assertSame('tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up', $rejected->problemType());
+            self::assertSame('Ten kod został już wykorzystany.', $rejected->getMessage());
+            self::assertSame([], $rejected->problemExtensions());
+        }
+
+        $redemptions->release($orderId);
+        $redemptions->release($orderId);
+        $redemptions->release(OrderId::fromString(Uuid::v7()->toRfc4122()));
+
+        self::assertSame(0, $this->activeUses($code->id()->toString()));
+    }
+
+    public function testARejectionBelowTheMinimumKeepsTheMinimum(): void
+    {
+        $code = DiscountCodeFactory::createOne(['minimumOrderGross' => 30_000]);
+        new DoctrineDiscountCodeRepository($this->entityManager)->save($code);
+
+        try {
+            new CommandBusDiscountCodeRedemptions($this->commandBus())->redeem($code->id()->toString(), OrderId::fromString(Uuid::v7()->toRfc4122()), 29_999);
+            self::fail('Expected DiscountCodeRejected.');
+        } catch (DiscountCodeRejected $rejected) {
+            self::assertSame('tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum', $rejected->problemType());
+            self::assertSame(['minimumOrderGross' => 30_000], $rejected->problemExtensions());
+        }
     }
 
     public function testCatalogGivesTheNamesAndLabelsOfKnownVariantsOnly(): void
@@ -217,6 +314,35 @@ final class BusAdaptersTest extends KernelTestCase
     private static function priceData(PriceCopy $price): array
     {
         return [$price->net()->amount(), $price->vat()->amount(), $price->gross()->amount(), $price->vatRateBp(), $price->taxClass()];
+    }
+
+    /**
+     * @return list<int>
+     */
+    private static function amountData(LineAmounts $amounts): array
+    {
+        return [$amounts->discount()->amount(), $amounts->net()->amount(), $amounts->vat()->amount(), $amounts->gross()->amount()];
+    }
+
+    /**
+     * @param array{string, int} ...$lines variant id and quantity
+     *
+     * @return non-empty-list<CartLineToOrder>
+     */
+    private static function lines(array ...$lines): array
+    {
+        $toOrder = array_map(static fn (array $line): CartLineToOrder => new CartLineToOrder(VariantId::fromString($line[0]), $line[1]), array_values($lines));
+        \assert([] !== $toOrder);
+
+        return $toOrder;
+    }
+
+    private function activeUses(string $codeId): int
+    {
+        $count = $this->connection->fetchOne('SELECT count(*) FROM pricing_discount_code_usage WHERE code_id = ? AND released_at IS NULL', [$codeId]);
+        \assert(\is_int($count));
+
+        return $count;
     }
 
     /**

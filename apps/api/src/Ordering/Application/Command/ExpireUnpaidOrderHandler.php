@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Ordering\Application\Command;
 
 use App\Ordering\Application\Port\Clock;
+use App\Ordering\Application\Port\DiscountCodeRedemptions;
 use App\Ordering\Application\Port\StockReservations;
 use App\Ordering\Application\Port\UnpaidOrderExpiry;
 use App\Ordering\Domain\ExpiryResult;
@@ -18,11 +19,13 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 /**
  * Cancels an unpaid order in the transaction of command.bus: the release of its reservation (Inventory, nested), the
- * cancelled order and OrderCancelled in the outbox together or not at all. It always decides on the current state
- * and deadline of the order, so a message delivered again changes nothing.
+ * release of the usage of its discount code (Pricing, nested; called for every order, without effect for one without
+ * a code, decision D4), the cancelled order and OrderCancelled in the outbox together or not at all. It always decides
+ * on the current state and deadline of the order, so a message delivered again changes nothing.
  *
  * The order is locked first, before the release reaches Inventory, like the changes of staff, so the expiry and a
- * change of staff run one after another and never deadlock.
+ * change of staff run one after another and never deadlock. The usage is released after the reservation and Pricing
+ * does not lock the code for it, so the locks (order, stock, usage) form no cycle with a placement (cart, code, stock).
  *
  * A message that came too early (the transport stores the moment to the second) is sent again for a second after
  * the expiry. A paid or cancelled order needs nothing. An order paid concurrently makes the save fail on its version;
@@ -37,6 +40,7 @@ final readonly class ExpireUnpaidOrderHandler
     public function __construct(
         private OrderRepository $orders,
         private StockReservations $reservations,
+        private DiscountCodeRedemptions $redemptions,
         private UnpaidOrderExpiry $expiry,
         private DomainEventPublisher $events,
         private Clock $clock,
@@ -60,8 +64,10 @@ final readonly class ExpireUnpaidOrderHandler
 
         switch ($order->expireUnpaid($this->clock->now())) {
             case ExpiryResult::Cancelled:
-                // The reservation first: the flush of the nested command of Inventory then has nothing of Ordering.
+                // The reservation and the usage first: the flushes of the nested commands of Inventory and Pricing then
+                // have nothing of Ordering.
                 $this->reservations->release($order->id());
+                $this->redemptions->release($order->id());
                 $this->orders->save($order);
                 $this->events->publish(...$order->releaseEvents());
                 break;

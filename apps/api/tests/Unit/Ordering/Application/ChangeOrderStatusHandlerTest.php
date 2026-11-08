@@ -8,6 +8,7 @@ use App\Ordering\Application\Command\ChangeOrderStatus;
 use App\Ordering\Application\Command\ChangeOrderStatusHandler;
 use App\Ordering\Application\Command\CompleteRefund;
 use App\Ordering\Application\Command\CompleteRefundHandler;
+use App\Ordering\Application\Port\DiscountCodeRedemptions;
 use App\Ordering\Application\View\BackofficeOrderView;
 use App\Ordering\Application\View\RefundView;
 use App\Ordering\Application\View\StatusChangeView;
@@ -96,6 +97,16 @@ final class ChangeOrderStatusHandlerTest extends TestCase
         self::assertEquals(new RefundView(OrderExamples::TOTAL, 'PLN', new \DateTimeImmutable('2026-11-20 09:00:00+00:00'), false, null, null, null, null), $view->refund);
         self::assertSame([], $view->statusTransitions);
         self::assertSame(self::PAYMENT, $view->paymentId);
+    }
+
+    public function testCancelAndReturnByStaffDoNotReleaseTheUsageOfADiscountCode(): void
+    {
+        // Q1: the refund of a paid order is after the discount already, so the usage stays. The handler has no way
+        // to release one: it does not depend on the port of the redemptions.
+        $parameters = new \ReflectionMethod(ChangeOrderStatusHandler::class, '__construct')->getParameters();
+        $types = array_map(static fn (\ReflectionParameter $parameter): string => (string) $parameter->getType(), $parameters);
+
+        self::assertNotContains(DiscountCodeRedemptions::class, $types);
     }
 
     public function testDeliverAndReturnLeaveTheReservationAlone(): void

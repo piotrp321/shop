@@ -12,6 +12,11 @@ use App\Shared\Domain\Exception\InvalidInput;
  */
 final class InvalidOrderInput extends \DomainException implements InvalidInput
 {
+    public static function discountCodeTooLong(): self
+    {
+        return new self(\sprintf('Kod rabatowy może mieć najwyżej %d znaki.', DiscountCodeText::MAX_LENGTH));
+    }
+
     public static function email(): self
     {
         return new self('Podaj poprawny adres e-mail.');

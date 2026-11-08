@@ -4,19 +4,17 @@ declare(strict_types=1);
 
 namespace App\Ordering\Application\Port;
 
-use App\Ordering\Domain\PriceCopy;
-use App\Ordering\Domain\VariantId;
-
 /**
- * The authoritative current unit prices (Pricing), asked once for all the lines of an order.
+ * The one pricing of the lines of an order (Pricing's quote of a basket, decision A2), asked once for all of them:
+ * the effective unit prices and promotions, the discount of the code allocated over the lines, and the net, VAT and
+ * gross of each line after it.
  */
 interface OrderPrices
 {
     /**
-     * @param non-empty-list<VariantId> $variantIds at most 50, each once
-     *
-     * @return array<string, PriceCopy> by variant id; a variant without a current price in a currency of Ordering
-     *                                  is left out
+     * @param non-empty-list<CartLineToOrder> $lines        at most 50, each variant once, in the order of the cart
+     * @param string|null                     $discountCode trimmed, in upper case (ASCII), at most 64 characters; null
+     *                                                      for none
      */
-    public function current(array $variantIds): array;
+    public function quote(array $lines, ?string $discountCode): OrderQuote;
 }

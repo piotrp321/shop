@@ -38,9 +38,9 @@ final class GuestOrderEndpointTest extends WebTestCase
         self::assertSame(self::EMAIL, $order['email']);
         self::assertSame(self::CONTACT, array_intersect_key($order, self::CONTACT));
         self::assertSame([
-            ['variantId' => $size43, 'productName' => 'Buty Asfalt', 'variantLabel' => 'czarne, 43', 'quantity' => 2, 'unitGross' => 12_300, 'lineGross' => 24_600],
-            ['variantId' => $map, 'productName' => 'Mapa', 'variantLabel' => '', 'quantity' => 1, 'unitGross' => 1_230, 'lineGross' => 1_230],
-            ['variantId' => $size42, 'productName' => 'Buty Asfalt', 'variantLabel' => 'czarne, 42', 'quantity' => 1, 'unitGross' => 12_300, 'lineGross' => 12_300],
+            ['variantId' => $size43, 'productName' => 'Buty Asfalt', 'variantLabel' => 'czarne, 43', 'quantity' => 2, 'unitGross' => 12_300, 'grossBeforeDiscount' => 24_600, 'discountGross' => 0, 'lineGross' => 24_600],
+            ['variantId' => $map, 'productName' => 'Mapa', 'variantLabel' => '', 'quantity' => 1, 'unitGross' => 1_230, 'grossBeforeDiscount' => 1_230, 'discountGross' => 0, 'lineGross' => 1_230],
+            ['variantId' => $size42, 'productName' => 'Buty Asfalt', 'variantLabel' => 'czarne, 42', 'quantity' => 1, 'unitGross' => 12_300, 'grossBeforeDiscount' => 12_300, 'discountGross' => 0, 'lineGross' => 12_300],
         ], $order['lines'], 'the lines of the cart in its order, with the names of Catalog and the prices of Pricing');
         self::assertSame(['net' => 31_000, 'vat' => 7_130, 'gross' => 38_130, 'currency' => 'PLN'], $order['totals']);
         self::assertIsString($order['accessToken']);
@@ -268,7 +268,7 @@ final class GuestOrderEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(201);
         self::assertIsArray($order['lines']);
-        self::assertSame([['variantId' => $shoes, 'productName' => 'Buty Puls', 'variantLabel' => '', 'quantity' => 2, 'unitGross' => 12_300, 'lineGross' => 24_600]], $order['lines']);
+        self::assertSame([['variantId' => $shoes, 'productName' => 'Buty Puls', 'variantLabel' => '', 'quantity' => 2, 'unitGross' => 12_300, 'grossBeforeDiscount' => 24_600, 'discountGross' => 0, 'lineGross' => 24_600]], $order['lines']);
         self::assertSame(['net' => 20_000, 'vat' => 4_600, 'gross' => 24_600, 'currency' => 'PLN'], $order['totals']);
         self::assertIsString($order['orderId']);
         self::assertSame([$shoes => 2], OrderingFixture::reservation($this->connection, $order['orderId']));
