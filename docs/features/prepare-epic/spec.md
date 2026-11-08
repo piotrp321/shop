@@ -82,6 +82,14 @@ Praca toczy się na gałęzi `prepare/<katalog>` od `origin/main`.
      - nowe pliki o własnych nazwach w katalogach wspólnych (migracje, nowy plik w `e2e/tests`) nie wchodzą;
        własny `docs/features/<katalog>/` też nie (należy do zakresu zawsze).
      Analityk zapisuje linię w szkicu, planner uzupełnia ją po podziale na zadania (pola `scope` manifestu).
+   - Specyfikacja ma sekcję `## Wymagane przed startem`: wszystko, czego zadania potrzebują spoza repo, zanim AO
+     je uruchomi. Kategorie: sekrety (nazwa i miejsce), konta i usługi zewnętrzne (rejestr obrazów, DNS, bramka
+     płatności, SMTP, serwer), uprawnienia (zakres tokenu, admin repo, dostęp CI do klastra) i decyzje
+     infrastrukturalne (artefakty, których nikt nie buduje ani nie publikuje). Każda pozycja ma cel, dostawcę
+     (użytkownik albo zadanie epiku) i stan (`gotowe`, `dostarcza użytkownik przed /ao-run`, `robi zadanie <ID>`).
+     Otwarta decyzja infrastrukturalna jest pytaniem z kroku 4. Epik bez takich potrzeb ma „Brak.” z jednym zdaniem
+     uzasadnienia. Powód: bloker zgłoszony w trakcie zadania kosztuje godziny (DEPLOY-3: 2 h 24 min i $17, bo obrazu
+     Elasticsearch z wtyczką nikt nie budował ani nie publikował).
 2. **Review szkicu.** `spec-critic` i `architecture-reviewer` równolegle, w jednej wiadomości, na pierwszym planie.
    Każdy dostaje numery issues i ścieżkę szkicu, bez rozumowania analityka ani cudzych wniosków.
 3. **Poprawki.** Analityk weryfikuje każde znalezisko w issue, kodzie i dokumentacji. Odrzucone wpisuje do
@@ -106,11 +114,14 @@ Praca toczy się na gałęzi `prepare/<katalog>` od `origin/main`.
    - issues epiku;
    - rozmiar końcowego PR: liczba zadań, fale z walidatora, dotknięte aplikacje (`apps/api`, `apps/store`,
      `apps/admin`, `e2e`, `infra`, `docs`) i linia `Zakres:`;
-   - pytanie: czy specyfikację akceptujesz i czy końcowy PR da się przejrzeć w jednym posiedzeniu.
+   - sekcja „Wymagane przed startem”: każda pozycja ze stanem, osobno te, które dostarcza użytkownik;
+   - pytanie: czy specyfikację akceptujesz, czy końcowy PR da się przejrzeć w jednym posiedzeniu i czy pozycje
+     użytkownika z „Wymaganych przed startem” są gotowe albo będą przed `/ao-run`.
 
    Odpowiedzi:
-   - „tak”: krok 7;
-   - uwagi do specyfikacji: poprawka specyfikacji i planu, ponowny walidator (i krok 2, gdy zmienia się projekt),
+   - „tak”: krok 7; „tak” potwierdza też pozycje użytkownika z „Wymaganych przed startem”;
+   - uwagi do specyfikacji (także brakująca pozycja „Wymaganych przed startem” albo pozycja, której użytkownik nie
+     dostarczy): poprawka specyfikacji i planu, ponowny walidator (i krok 2, gdy zmienia się projekt),
      ponowna akceptacja;
    - „za duży”: skill proponuje podział na dwie części, mergowane po kolei, z zakresem każdej. Po zgodzie
      użytkownika zawęża specyfikację i plan do części 1, zakłada issue z etykietą `epic` na część 2 (sekcje jak
@@ -136,7 +147,8 @@ Praca toczy się na gałęzi `prepare/<katalog>` od `origin/main`.
    - W worktree `--delete-branch` może zgłosić błąd po merge'u (`main` jest pobrany w głównym klonie). O wyniku
      decyduje `gh pr view --json state` (`MERGED`); gdy została gałąź zdalna, skill ją usuwa
      (`git push origin --delete prepare/<katalog>`).
-   - Raport: link do PR, merge albo powód jego braku, następny krok `/ao-run <katalog>`.
+   - Raport: link do PR, merge albo powód jego braku, pozycje użytkownika z „Wymaganych przed startem”, następny
+     krok `/ao-run <katalog>`.
 
 ## Czego skill nie robi
 
@@ -152,7 +164,11 @@ epiku, szkic i kod, którego szkic dotyczy. Nie sugeruje się opinią analityka.
   uprawnienia, cykl życia danych, puste i brakujące dane);
 - sprzeczności: w szkicu, ze specyfikacjami istniejących funkcji, z kodem, z `CLAUDE.md` i `docs/vision.md`;
 - przypadków brzegowych: współbieżność, nieaktualny widok, limity, paginacja, propagacja błędów do UI;
-- nieweryfikowalnych kryteriów akceptacji i wymagań z issue bez pokrycia w szkicu.
+- nieweryfikowalnych kryteriów akceptacji i wymagań z issue bez pokrycia w szkicu;
+- niekompletnej sekcji „Wymagane przed startem”: sekret, konto, usługa zewnętrzna, uprawnienie albo artefakt,
+  którego wymagają zadania, a którego dziś nikt nie dostarcza, bez pozycji, dostawcy albo stanu. Brak sekcji albo
+  pozycja, bez której zadanie zatrzyma się w trakcie, to `Important`; otwarta decyzja infrastrukturalna to
+  znalezisko `architektoniczne`.
 
 Każde znalezisko: rodzaj (`techniczne`, `produktowe` albo `architektoniczne`), waga (`Critical`, `Important`,
 `Minor`), miejsce w szkicu, dowód (plik, issue, linia) i propozycja. Decyzji produktowych (zakres, reguły, limity,

@@ -114,6 +114,9 @@ flowchart TB
      szacunków z pomiaru; bez pomiaru jeden epik do przodu). Nie przygotowujemy wszystkich epików naraz, bo
      specyfikacja opisuje kod, którego jeszcze nie ma.
    - Specyfikacja ma linię `Zakres:`: ścieżki, które epik zmienia. Z niej lista na noc sprawdza rozłączność epików.
+   - Specyfikacja ma sekcję „Wymagane przed startem”: sekrety, konta, usługi zewnętrzne, uprawnienia i decyzje
+     infrastrukturalne potrzebne zadaniom. Użytkownik potwierdza ją przy akceptacji, żeby taki bloker nie wyszedł
+     dopiero w trakcie zadania.
    - Zgłoszenie `ux` zawsze idzie przez `/prepare-epic`. Drobne zgłoszenia `bug`
      i `tech-debt` trafiają razem do jednego epiku poprawek: krótka specyfikacja, jedno zadanie na issue.
    - Zaakceptowane `spec.md` i `plan.md` trafiają do `main` przez PR, który `/prepare-epic` merguje po zielonym CI.

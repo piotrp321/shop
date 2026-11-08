@@ -88,6 +88,21 @@ sekcji „Poza zakresem” specyfikacji z powodem.
        ani własnego `docs/features/<katalog>/` (należy do zakresu zawsze).
 
      Linię zapisujesz w szkicu, a w kroku 5 uzupełniasz ją po podziale na zadania (pola `scope` manifestu).
+   - Specyfikacja ma sekcję `## Wymagane przed startem`: wszystko, czego zadania potrzebują spoza repo, zanim AO
+     je uruchomi. Bez tego zadanie zatrzymuje się w trakcie, po godzinach pracy. Sprawdź kategorie:
+     - sekrety: nazwa i miejsce (sekret GitHub Actions, `.env.local`, klaster);
+     - konta i usługi zewnętrzne: rejestr obrazów, domena i DNS, bramka płatności, SMTP, serwer;
+     - uprawnienia: zakres tokenu, admin repo, dostęp CI do klastra lub serwera;
+     - decyzje infrastrukturalne: artefakty, których dziś nikt nie buduje ani nie publikuje (kto je buduje, gdzie
+       trafiają, jak wersja dociera do wdrożenia).
+
+     Każda pozycja: co, po co (zadanie albo sekcja spec), kto dostarcza (użytkownik albo zadanie epiku) i stan
+     (`gotowe`, `dostarcza użytkownik przed /ao-run`, `robi zadanie <ID>`). Otwarta decyzja infrastrukturalna to
+     pytanie z kroku 4, nie pozycja do rozstrzygnięcia w trakcie zadania. Epik bez takich potrzeb: „Brak.” i jedno
+     zdanie dlaczego. Przykład: DEPLOY-3 zgłosił bloker po 2 h 24 min i $17, bo chart wymagał obrazu Elasticsearch
+     z wtyczką `analysis-stempel`, którego nikt nie budował ani nie publikował. DEPLOY-6 zatrzymał się na pytaniu,
+     jak digesty obrazów mają trafić do Argo CD, gdy CI nie ma dostępu do klastra. Obie pozycje należały do tej
+     sekcji jako decyzje przed startem.
 2. **Review szkicu.** Uruchom `spec-critic` i `architecture-reviewer` (narzędzie Agent, `subagent_type`)
    równolegle, w jednej wiadomości, na pierwszym planie, i poczekaj na oba wyniki. Każdy dostaje tylko numery issues
    i ścieżkę szkicu, bez rozumowania analityka ani cudzych wniosków:
@@ -129,11 +144,14 @@ sekcji „Poza zakresem” specyfikacji z powodem.
    - issues epiku;
    - rozmiar końcowego PR: liczba zadań, fale z walidatora, dotknięte aplikacje (`apps/api`, `apps/store`,
      `apps/admin`, `e2e`, `infra`, `docs`) i linia `Zakres:`;
-   - pytanie: czy specyfikację akceptujesz i czy końcowy PR da się przejrzeć w jednym posiedzeniu.
+   - sekcja „Wymagane przed startem”: każda pozycja ze stanem, osobno te, które dostarcza użytkownik;
+   - pytanie: czy specyfikację akceptujesz, czy końcowy PR da się przejrzeć w jednym posiedzeniu i czy pozycje
+     użytkownika z „Wymaganych przed startem” są gotowe albo będą przed `/ao-run`.
 
    Odpowiedzi:
-   - „tak”: krok 7;
-   - uwagi do specyfikacji: poprawka specyfikacji i planu, ponowny walidator (i krok 2, gdy zmienia się projekt),
+   - „tak”: krok 7; „tak” potwierdza też pozycje użytkownika z „Wymaganych przed startem”;
+   - uwagi do specyfikacji (także brakująca pozycja „Wymaganych przed startem” albo pozycja, której użytkownik nie
+     dostarczy): poprawka specyfikacji i planu, ponowny walidator (i krok 2, gdy zmienia się projekt),
      ponowna akceptacja (ten krok);
    - „za duży”: zaproponuj podział na dwie części, mergowane po kolei, z zakresem każdej i tytułem issue części 2
      (z własnym prefiksem ID). Po zgodzie użytkownika zawęź specyfikację i plan do części 1, załóż issue części 2
@@ -175,8 +193,8 @@ sekcji „Poza zakresem” specyfikacji z powodem.
    - W worktree `--delete-branch` może zgłosić błąd po merge'u (`main` jest pobrany w głównym klonie). O wyniku
      decyduje `gh pr view <nr> --json state` (`MERGED`); gdy została gałąź zdalna,
      `git push origin --delete prepare/<katalog>`.
-   - Raport: link do PR, merge (`gh pr view <nr> --json state` to `MERGED`) albo powód jego braku, następny krok
-     `/ao-run <katalog>`.
+   - Raport: link do PR, merge (`gh pr view <nr> --json state` to `MERGED`) albo powód jego braku, pozycje
+     użytkownika z „Wymaganych przed startem”, następny krok `/ao-run <katalog>`.
 
 ## Czego nie robisz
 
