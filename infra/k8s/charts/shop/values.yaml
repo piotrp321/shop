@@ -45,6 +45,9 @@ ingress:
   className: traefik
   # true: entrypoint websecure with TLS (the certificate is the default one of Traefik); false: plain HTTP (web).
   tls: true
+  # The kubernetes.io/tls Secret of the certificate every ingress presents (the Cloudflare Origin CA certificate in prod,
+  # a SealedSecret created outside the chart); empty: the default certificate of Traefik.
+  tlsSecretName: ""
 
 # Adds X-Robots-Tag: noindex, nofollow to every host.
 noindex: false

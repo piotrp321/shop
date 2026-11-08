@@ -10,8 +10,10 @@ global:
 image:
   requireDigests: true
 
+# Cloudflare is in Full (strict) mode: the origin presents the Origin CA certificate (SealedSecret shop-origin-tls).
 ingress:
   tls: true
+  tlsSecretName: shop-origin-tls
 
 # The demo is not for search engines.
 noindex: true

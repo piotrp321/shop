@@ -1,0 +1,21 @@
+# Argo CD itself, installed by bootstrap through the Helm controller of k3s from the published chart pinned by version.
+# No ingress and no SSO: it is reached with `kubectl port-forward` over SSH (D6).
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: argocd
+  namespace: kube-system
+spec:
+  repo: https://argoproj.github.io/argo-helm
+  chart: argo-cd
+  version: 10.15.0
+  targetNamespace: argocd
+  createNamespace: true
+  valuesContent: |-
+    dex:
+      enabled: false
+    notifications:
+      enabled: false
+    configs:
+      params:
+        server.insecure: true

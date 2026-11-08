@@ -32,6 +32,12 @@ metadata:
     {{- end }}
 spec:
   ingressClassName: {{ $.Values.ingress.className }}
+  {{- if and $.Values.ingress.tls $.Values.ingress.tlsSecretName }}
+  tls:
+    - hosts:
+        - {{ include "shop.host" (dict "root" $ "sub" $host.sub) }}
+      secretName: {{ $.Values.ingress.tlsSecretName }}
+  {{- end }}
   rules:
     - host: {{ include "shop.host" (dict "root" $ "sub" $host.sub) }}
       http:

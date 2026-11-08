@@ -107,6 +107,9 @@ jobs:
           min-versions-to-keep: 3
 YAML
 }
+argocd_shop_on_another_branch() { replace infra/k8s/argocd/apps/shop.yaml 'targetRevision: deploy-images' 'targetRevision: deploy'; }
+argocd_shop_ignores_missing_images_file() { replace infra/k8s/argocd/apps/shop.yaml '      releaseName: shop' '      ignoreMissingValueFiles: true
+      releaseName: shop'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 nothing_broken() { :; }
 
@@ -136,6 +139,8 @@ run_case "deploy without the check of the render of prod" "test_the_render_of_pr
 run_case "smoke test on the registry images for every event" "test_on_main_the_first_install_uses_the_values_file_and_the_registry" smoke_values_for_every_event
 run_case "images values generator accepting a short digest" "test_a_missing_or_malformed_digest_fails_and_writes_nothing" generator_accepts_short_digests
 run_case "a workflow that deletes package versions (retention)" "test_no_workflow_deletes_package_versions" package_cleanup_added
+run_case "Argo CD shop application on another branch than the rest" "test_everything_from_git_tracks_the_same_branch_of_the_same_repository" argocd_shop_on_another_branch
+run_case "Argo CD shop application ignoring a missing images file" "test_the_values_are_the_profile_and_the_images_file_in_this_order_and_nothing_else" argocd_shop_ignores_missing_images_file
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then

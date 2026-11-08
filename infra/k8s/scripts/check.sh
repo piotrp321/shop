@@ -133,8 +133,8 @@ do_images() {
 
 do_kubeconform() {
   step "kubeconform (Kubernetes $KUBERNETES_VERSION)"
-  for case_name in prod ci; do
-    # The CRDs of Traefik (Middleware) are validated against the schemas of the CRDs catalog, pinned to a commit.
+  for case_name in prod ci argocd; do
+    # The CRDs of Traefik (Middleware), of Argo CD (Application) and of the Helm controller of k3s (HelmChart) are validated against the schemas of the CRDs catalog, pinned to a commit.
     if ! output="$(kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
       -schema-location default \
       -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/c86448cbf1a840ca62d119259864863897c8748a/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \

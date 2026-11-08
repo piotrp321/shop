@@ -30,6 +30,12 @@ class IngressTest(unittest.TestCase):
                 self.assertIn(f"{prefix}{domain}", hosts, case)
                 self.assertEqual({service}, backend(hosts[f"{prefix}{domain}"][1]), f"{case} {prefix}{domain}")
 
+    def test_prod_presents_the_origin_certificate_on_every_host_and_ci_the_default_one(self):
+        for ingress, rule in ingress_by_host("prod").values():
+            self.assertEqual([{"hosts": [rule["host"]], "secretName": "shop-origin-tls"}], ingress["spec"]["tls"])
+        for ingress, _ in ingress_by_host("ci").values():
+            self.assertNotIn("tls", ingress["spec"])
+
     def test_domain_is_a_parameter(self):
         self.assertIn("auth.other.example.net", ingress_by_host("prod-domain"))
 
