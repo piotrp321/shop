@@ -206,26 +206,35 @@ final class PromotionsEndpointTest extends WebTestCase
     }
 
     /**
-     * @return iterable<string, array{string, string}>
+     * @return iterable<string, array{string, string, string|null}>
      */
     public static function badListParameters(): iterable
     {
-        yield 'an unknown status' => ['status=running', 'status'];
-        yield 'a page of 0' => ['perPage=0', 'perPage'];
-        yield 'a page of 101' => ['perPage=101', 'perPage'];
-        yield 'a page that is no number' => ['perPage=many', 'perPage'];
-        yield 'a cursor nobody handed out' => ['after=garbage', 'after'];
-        yield 'an empty cursor' => ['after=', 'after'];
+        $status = 'Status promocji musi być jednym z: planned, active, ended.';
+        $page = 'Liczba promocji na stronie musi być od 1 do 100.';
+        $cursor = 'Kursor stronicowania jest nieprawidłowy.';
+
+        yield 'an unknown status' => ['status=running', 'status', $status];
+        yield 'a page of 0' => ['perPage=0', 'perPage', $page];
+        yield 'a page of 101' => ['perPage=101', 'perPage', $page];
+        yield 'a page that is no number' => ['perPage=many', 'perPage', null];
+        yield 'a cursor nobody handed out' => ['after=garbage', 'after', $cursor];
+        yield 'a cursor that is no base64' => ['after=%25%25%25', 'after', $cursor];
+        yield 'an empty cursor' => ['after=', 'after', $cursor];
+        yield 'a cursor past the maximum length' => ['after='.str_repeat('a', 2049), 'after', $cursor];
     }
 
     #[DataProvider('badListParameters')]
-    public function testBadListParametersAreABadRequest(string $query, string $field): void
+    public function testBadListParametersAreABadRequest(string $query, string $field, ?string $title): void
     {
         $this->send('GET', '/api/v1/admin/promotions?'.$query);
 
         $problem = $this->assertProblem(400);
         self::assertIsArray($problem['violations']);
         self::assertSame([$field], array_column($problem['violations'], 'propertyPath'));
+        if (null !== $title) {
+            self::assertSame([$title], array_column($problem['violations'], 'title'));
+        }
     }
 
     public function testAPromotionShowsItsVariantsAlsoOneDeletedFromTheCatalog(): void
@@ -551,6 +560,7 @@ final class PromotionsEndpointTest extends WebTestCase
         yield 'no version' => [''];
         yield 'a version that is no number' => ['?version=one'];
         yield 'a version of 0' => ['?version=0'];
+        yield 'a version that is letters' => ['?version=abc'];
     }
 
     #[DataProvider('badVersions')]
@@ -563,6 +573,7 @@ final class PromotionsEndpointTest extends WebTestCase
         $problem = $this->assertProblem(400);
         self::assertIsArray($problem['violations']);
         self::assertSame(['version'], array_column($problem['violations'], 'propertyPath'));
+        self::assertSame(['Wersja musi być dodatnią liczbą całkowitą.'], array_column($problem['violations'], 'title'));
     }
 
     /**

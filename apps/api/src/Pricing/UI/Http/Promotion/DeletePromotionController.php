@@ -54,7 +54,7 @@ final readonly class DeletePromotionController
     {
         $version = $request->query->get('version');
         if (!\is_string($version) || 1 !== preg_match(self::VERSION, $version)) {
-            throw new ValidationFailedException($request, new ConstraintViolationList([new ConstraintViolation('The version must be a positive integer.', null, [], $request, 'version', null)]));
+            throw new ValidationFailedException($request, new ConstraintViolationList([new ConstraintViolation('Wersja musi być dodatnią liczbą całkowitą.', null, [], $request, 'version', null)]));
         }
 
         $this->commandBus->dispatch(new DeletePromotion($id, (int) $version));
