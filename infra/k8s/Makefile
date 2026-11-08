@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke rerun create-admin seal-secrets
+.PHONY: check selftest smoke rerun create-admin seal-secrets bootstrap kubeconfig status reinitialize
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render). Needs only Docker.
@@ -39,3 +39,24 @@ create-admin:
 # without echo, once. An error writes nothing. Needs only Docker.
 seal-secrets:
 	sh scripts/seal-secrets.sh $(WHAT)
+
+# Prepares a clean Ubuntu 24.04 server over SSH (k3s, firewall, security updates, Argo CD, Sealed Secrets):
+# make -C infra/k8s bootstrap HOST=<user>@<address> [SEALED_KEY_FILE=<backup of the key of the controller>].
+# Idempotent; refuses without root and on another system before any change. Writes the certificate of the controller to
+# environments/prod/sealed-secrets.pem when the repository has none. SSH_OPTS adds options for ssh.
+bootstrap:
+	sh scripts/bootstrap.sh "$(HOST)"
+
+# Copies the kubeconfig of the cluster from the server into KUBE_DIR (outside the repository) for rerun and create-admin:
+# make -C infra/k8s kubeconfig HOST=<user>@<address> KUBE_DIR=<directory>.
+kubeconfig:
+	sh scripts/kubeconfig.sh "$(HOST)"
+
+# The applications of Argo CD, the pods and the jobs of the shop, read over SSH: make -C infra/k8s status HOST=<user>@<address>.
+status:
+	sh scripts/status.sh "$(HOST)"
+
+# Loads the demo data again and WIPES the current data: says what it will do and asks for the word tak.
+# make -C infra/k8s reinitialize HOST=<user>@<address>
+reinitialize:
+	sh scripts/reinitialize.sh "$(HOST)"

@@ -2,7 +2,7 @@
 # Static checks of the chart, without a cluster and without a server. Every step runs in a container (tools.sh).
 #
 #   check.sh            all steps
-#   check.sh <step>...  only the given steps: lint, render, schema, images, kubeconform, shellcheck, actionlint, tests
+#   check.sh <step>...  only the given steps: lint, render, schema, images, kubeconform, shellcheck, actionlint, tests, bootstrap
 #
 # The first failing step stops the script. REPO_ROOT (default: this repository) selects the tree to check; the
 # self-test (selftest.sh) points it at a copy with an injected error.
@@ -12,7 +12,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
 
-steps="${*:-lint render schema images kubeconform shellcheck actionlint tests}"
+steps="${*:-lint render schema images kubeconform shellcheck actionlint tests bootstrap}"
 
 rev=0123456789abcdef0123456789abcdef01234567
 # The digests of the images built by us, which the profile prod requires.
@@ -149,7 +149,7 @@ do_kubeconform() {
 do_shellcheck() {
   step "shellcheck"
   # shellcheck disable=SC2046 # the file names have no spaces
-  shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh) \
+  shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh tests/bootstrap/*.sh) \
     ../../.github/scripts/deploy-ref.sh
 }
 
@@ -165,6 +165,13 @@ do_tests() {
   [ -f "$work/prod.ndjson" ] || do_render
   step "tests of the rendered chart and of the scripts"
   tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests
+}
+
+# scripts/server-bootstrap.sh in a container with Ubuntu 24.04 (root, no k3s, no systemd): the refusals before any change, then
+# two runs; see tests/bootstrap/test.sh for what is real and what is stubbed.
+do_bootstrap() {
+  step "server-bootstrap.sh in Ubuntu 24.04 without k3s: refusals and two runs"
+  docker run --rm -v "$TOOLS_REPO:/repo:ro" "$UBUNTU_IMAGE" sh /repo/infra/k8s/tests/bootstrap/test.sh
 }
 
 for name in $steps; do

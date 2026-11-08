@@ -128,6 +128,14 @@ plain_secret_committed() {
   printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: shop-secrets\n  namespace: shop\nstringData:\n  POSTGRES_PASSWORD: plain\n' \
     > "$tree/infra/k8s/environments/prod/secrets/shop-secrets.yaml"
 }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+bootstrap_without_the_root_check() { replace infra/k8s/scripts/server-bootstrap.sh '[ "$(id -u)" -eq 0 ] || fail "must run as root' 'true || fail "must run as root'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+bootstrap_installs_k3s_every_time() { replace infra/k8s/scripts/server-bootstrap.sh 'if [ "$installed" = "$wanted" ]; then' 'if false; then'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+reinitialize_without_confirmation() { replace infra/k8s/scripts/reinitialize.sh 'if [ "$answer" != tak ]; then' 'if [ "$answer" = never ]; then'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+seal_secrets_replaces_existing_keys() { replace infra/k8s/scripts/seal-secrets.sh 'grep -q "^$key$tab" "$work/$name.pairs" && continue' 'false && continue'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 nothing_broken() { :; }
 
@@ -162,6 +170,10 @@ run_case "Argo CD shop application ignoring a missing images file" "test_the_val
 run_case "certificate in the repository and no sealed secrets" "keys of infra/scripts/init-env.sh without a sealed value" certificate_without_sealed_secrets
 run_case "certificate in the repository and one key unsealed" "PAYMENT_DEMO_CARD_API_KEY" certificate_with_a_key_unsealed
 run_case "plain secret committed to environments/prod/secrets" "not a SealedSecret" plain_secret_committed
+run_case "bootstrap without the check for root" "FAIL without root" bootstrap_without_the_root_check
+run_case "bootstrap installing k3s on every run" "FAIL reinstall" bootstrap_installs_k3s_every_time
+run_case "reinitialize going on without tak" "test_without_the_word_tak_nothing_runs" reinitialize_without_confirmation
+run_case "seal-secrets.sh sealing keys that are already there" "test_the_second_run_changes_nothing_and_does_not_call_kubeseal" seal_secrets_replaces_existing_keys
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then
