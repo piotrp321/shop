@@ -147,9 +147,11 @@ Model i decyzje: `docs/features/promotions/spec.md` (Q1–Q5, Q13, A1). Pricing 
 
 - Transport Messengera `promotions` (Doctrine, `queue_name=promotions`, opcje jak `scheduled`). Port
   `PromotionBoundaries` (adapter `MessengerPromotionBoundaries`, `DelayStamp`) wysyła w transakcji zapisu promocji
-  `PromotionBoundaryReached(promotionId, at)` na każdą granicę `≥ now`, której poprzedni okres nie miał (start „od
-  teraz” i „Zakończ teraz” to `startOfNow`), a przy przesunięciu końca aktywnej promocji na chwilę po `startOfNow`
-  także `RefreshPromotionProducts(promotionId)` bez opóźnienia. Usunięcie zaplanowanej promocji nic nie wysyła.
+  `PromotionBoundaryReached(promotionId, at)` na każdą granicę `≥ now` (start „od teraz” i „Zakończ teraz” to
+  `startOfNow`), także tę, którą miał poprzedni okres: jej wcześniejsza wiadomość mogła trafić do `failed`, a powtórzona
+  jest nieszkodliwa, bo handler i konsumenci `PromotionPricesChanged` są idempotentni. Przy przesunięciu końca aktywnej
+  promocji na chwilę po `startOfNow` zapis wysyła też `RefreshPromotionProducts(promotionId)` bez opóźnienia.
+  Usunięcie zaplanowanej promocji nic nie wysyła.
 - Handler granicy: promocja nieznana albo `at` różne od jej bieżącego startu i końca to wiadomość bez skutku;
   wiadomość za wczesna wraca na `at` + 1 s; inaczej produkty wariantów promocji z Catalog (`VariantSummaries`,
   paczkami po 100, wariant nieznany pominięty) i jedno `PromotionPricesChanged` (źródło `promotion`) na produkt

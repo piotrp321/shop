@@ -650,7 +650,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   czyści całe `scheduled`. Zapis promocji (`PlanPromotion`, `RevisePromotion`) wysyła je w swojej transakcji przez
   port `PromotionBoundaries` (adapter `MessengerPromotionBoundaries`, `command.bus` z `DelayStamp`):
   `PromotionBoundaryReached(promotionId, at)` na każdą granicę okresu `≥ now` (start „od teraz” i „Zakończ teraz” to
-  `startOfNow`, więc też), której poprzedni okres nie miał (jej wiadomość już czeka), oraz
+  `startOfNow`, więc też), także tę, którą miał poprzedni okres (jej wcześniejsza wiadomość mogła trafić do `failed`,
+  a powtórzona jest nieszkodliwa, bo handler i konsumenci są idempotentni), oraz
   `RefreshPromotionProducts(promotionId)` bez opóźnienia, gdy zapis przesuwa koniec aktywnej promocji na chwilę po
   `startOfNow`. Usunięcie zaplanowanej promocji nic nie wysyła. Handlery (`command.bus`, poza transakcją panelu):
   granica nieznanej promocji albo inna niż jej bieżący start i koniec to wiadomość obsłużona bez skutku, za wczesna

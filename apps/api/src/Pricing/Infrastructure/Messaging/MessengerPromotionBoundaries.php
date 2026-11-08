@@ -21,10 +21,11 @@ use Symfony\Component\Messenger\Stamp\DelayStamp;
  *
  * - PromotionBoundaryReached for every boundary of the saved period at or after now (a start "from now" and an end
  *   "end now" are the start of now, so they have one too), delayed until it. A boundary the period had before the
- *   write already has its message waiting, which stays valid, so it is not sent twice.
+ *   write is sent again: its earlier message may have ended in `failed`, and a duplicate is harmless (the handler
+ *   and the consumers of PromotionPricesChanged are idempotent).
  * - RefreshPromotionProducts without a delay when the write moved the end of an active promotion to another moment
  *   after the start of now: the products show the end, and no boundary comes before the new end. An end moved to the
- *   start of now ("end now") is refreshed by its boundary within a second.
+ *   start of now ("end now") is refreshed by its boundary within a couple of seconds (available_at is rounded up).
  */
 final readonly class MessengerPromotionBoundaries implements PromotionBoundaries
 {
@@ -36,7 +37,7 @@ final readonly class MessengerPromotionBoundaries implements PromotionBoundaries
     {
         $period = $promotion->period();
         foreach ([$period->startsAt(), $period->endsAt()] as $boundary) {
-            if ($boundary >= $now && !self::isBoundaryOf($previousPeriod, $boundary)) {
+            if ($boundary >= $now) {
                 $this->sendBoundary($promotion->id(), $boundary, $boundary);
             }
         }
@@ -58,10 +59,5 @@ final readonly class MessengerPromotionBoundaries implements PromotionBoundaries
     private function sendBoundary(PromotionId $promotionId, \DateTimeImmutable $boundary, \DateTimeImmutable $dueAt): void
     {
         $this->commandBus->dispatch(new PromotionBoundaryReached($promotionId->toString(), $boundary), [DelayStamp::delayUntil($dueAt)]);
-    }
-
-    private static function isBoundaryOf(?PromotionPeriod $period, \DateTimeImmutable $moment): bool
-    {
-        return null !== $period && ($moment == $period->startsAt() || $moment == $period->endsAt());
     }
 }

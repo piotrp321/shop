@@ -137,16 +137,30 @@ final class MessengerPromotionBoundariesTest extends TestCase
         ], $this->sent());
     }
 
-    public function testRenamingAnActivePromotionSendsNothing(): void
+    public function testRenamingAnActivePromotionSendsItsEndAgainWithoutARefresh(): void
     {
         $this->storeActive();
 
         ($this->revise)(self::revise(name: 'Nowa nazwa'));
 
-        self::assertSame([], $this->sent());
+        self::assertSame([
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+        ], $this->sent());
     }
 
-    public function testAPlannedPromotionWithAnotherStartSendsOnlyTheNewStart(): void
+    public function testAPlannedPromotionSavedWithTheSameBoundariesSendsBothAgain(): void
+    {
+        $this->promotions->store($this->promotion('2026-11-11T00:00:00Z', '2026-11-21T00:00:00Z'));
+
+        ($this->revise)(self::revise(name: 'Nowa nazwa', startsAt: '2026-11-11T00:00:00Z'));
+
+        self::assertSame([
+            [PromotionBoundaryReached::class, self::ID, '2026-11-11T00:00:00+00:00', self::secondsFromNow('2026-11-11T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+        ], $this->sent());
+    }
+
+    public function testAPlannedPromotionWithAnotherStartSendsItsNewStartAndItsKeptEnd(): void
     {
         $this->promotions->store($this->promotion('2026-11-11T00:00:00Z', '2026-11-21T00:00:00Z'));
 
@@ -154,16 +168,20 @@ final class MessengerPromotionBoundariesTest extends TestCase
 
         self::assertSame([
             [PromotionBoundaryReached::class, self::ID, '2026-11-12T00:00:00+00:00', self::secondsFromNow('2026-11-12T00:00:00Z') * 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
         ], $this->sent());
     }
 
-    public function testAPlannedPromotionStartedFromNowSendsItsStartForTheStartOfNow(): void
+    public function testAPlannedPromotionStartedFromNowSendsItsStartForTheStartOfNowAndItsKeptEnd(): void
     {
         $this->promotions->store($this->promotion('2026-11-11T00:00:00Z', '2026-11-21T00:00:00Z'));
 
         ($this->revise)(self::revise(startsAt: null));
 
-        self::assertSame([[PromotionBoundaryReached::class, self::ID, '2026-11-10T12:00:01+00:00', 1000]], $this->sent());
+        self::assertSame([
+            [PromotionBoundaryReached::class, self::ID, '2026-11-10T12:00:01+00:00', 1000],
+            [PromotionBoundaryReached::class, self::ID, '2026-11-21T00:00:00+00:00', self::secondsFromNow('2026-11-21T00:00:00Z') * 1000],
+        ], $this->sent());
     }
 
     public function testDeletingAPlannedPromotionSendsNothing(): void
