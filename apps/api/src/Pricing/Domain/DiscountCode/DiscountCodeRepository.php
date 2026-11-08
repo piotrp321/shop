@@ -17,7 +17,9 @@ interface DiscountCodeRepository
     public function findByCode(DiscountCodeValue $code): ?DiscountCode;
 
     /**
-     * The code read anew under the lock of its row (SELECT … FOR UPDATE) until the end of the transaction, or null.
+     * The code read anew under the lock of its row until the end of the transaction, or null. The lock excludes another
+     * lock of the code and its change, but not the usages written meanwhile (a code without a limit is never locked by
+     * a placement).
      * Only in a transaction.
      */
     public function lock(DiscountCodeId $id): ?DiscountCode;

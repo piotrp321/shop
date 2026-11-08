@@ -18,15 +18,14 @@ use App\Pricing\Domain\DiscountCode\UsageLimit;
 use App\Pricing\Domain\DiscountCode\ValidityPeriod;
 use App\Pricing\Infrastructure\Persistence\Doctrine\Record\DiscountCodeRecord;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
-use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
 use Doctrine\ORM\Query;
 
 /**
- * Discount codes through their records (the general rule). The lock is a PESSIMISTIC_WRITE (SELECT … FOR UPDATE) of
- * the row through the ORM; a record already in the identity map is refreshed under the lock, so the code is always
- * read as stored, never as an earlier read of the same transaction saw it.
+ * Discount codes through their records (the general rule). The lock is a SELECT … FOR NO KEY UPDATE of the row (see
+ * lock()); every read refreshes a record already in the identity map, so the code is always read as stored, never as
+ * an earlier read of the same transaction saw it.
  */
 final readonly class DoctrineDiscountCodeRepository implements DiscountCodeRepository
 {
@@ -70,26 +69,28 @@ final readonly class DoctrineDiscountCodeRepository implements DiscountCodeRepos
         return null === $record ? null : self::toDomain($record);
     }
 
+    /**
+     * The lock is FOR NO KEY UPDATE, not the FOR UPDATE of PESSIMISTIC_WRITE: the foreign key of a usage written by a
+     * placement takes FOR KEY SHARE on the row of its code, which FOR UPDATE would wait for, so a change of a code
+     * without a limit would wait for every placement with it. FOR NO KEY UPDATE does not conflict with FOR KEY SHARE
+     * and still excludes another FOR NO KEY UPDATE (a change, or the usage of a code with a limit) and the versioned
+     * UPDATE. The code is read after the lock by a statement of its own, with the record refreshed, so it is the last
+     * committed state (READ COMMITTED).
+     */
     public function lock(DiscountCodeId $id): ?DiscountCode
     {
-        $managed = $this->entityManager->getUnitOfWork()->tryGetById($id->toString(), DiscountCodeRecord::class);
-        if (!$managed instanceof DiscountCodeRecord) {
-            $record = $this->entityManager->find(DiscountCodeRecord::class, $id->toString(), LockMode::PESSIMISTIC_WRITE);
-
-            return null === $record ? null : self::toDomain($record);
-        }
-
-        // A refresh of a row that no longer exists keeps the stale record, so whether the row still exists is asked
-        // first, under the same lock.
-        $exists = $this->entityManager->getConnection()->fetchOne('SELECT 1 FROM pricing_discount_code WHERE id = CAST(:id AS uuid) FOR UPDATE', ['id' => $id->toString()]);
+        $exists = $this->entityManager->getConnection()->fetchOne('SELECT 1 FROM pricing_discount_code WHERE id = CAST(:id AS uuid) FOR NO KEY UPDATE', ['id' => $id->toString()]);
         if (false === $exists) {
-            $this->entityManager->detach($managed);
+            // A refresh of a row that no longer exists would keep a stale record in the identity map.
+            $managed = $this->entityManager->getUnitOfWork()->tryGetById($id->toString(), DiscountCodeRecord::class);
+            if ($managed instanceof DiscountCodeRecord) {
+                $this->entityManager->detach($managed);
+            }
 
             return null;
         }
-        $this->entityManager->refresh($managed, LockMode::PESSIMISTIC_WRITE);
 
-        return self::toDomain($managed);
+        return $this->find($id);
     }
 
     /**

@@ -118,9 +118,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   użycie przez rekord Doctrine (`DiscountCodeUsageRecord`), a nie przez DBAL jak Inventory: handler złożenia nigdy nie
   łapie jej wyjątku, więc odrzucenie wycofuje całą transakcję i `UnitOfWork` nie zapisze wycofanych zmian. Rekord kodu
   jest zawsze czytany od nowa (`DiscountCodeRepository::find` z odświeżeniem rekordu z identity map); kod z limitem
-  potem jeszcze raz pod blokadą wiersza (`lock`, `PESSIMISTIC_WRITE` przez ORM z odświeżeniem, jak koszyk), kod bez
-  limitu bez blokady (klucz obcy użycia bierze `FOR KEY SHARE`, które nie koliduje z `UPDATE` kodu w
-  `ReviseDiscountCode`). Zegar i liczba aktywnych użyć po blokadzie, potem `rejectionFor` jeszcze raz; odrzucenie to
+  potem jeszcze raz pod blokadą wiersza (`lock`: `SELECT … FOR NO KEY UPDATE`, potem odczyt rekordu z odświeżeniem), kod bez limitu bez blokady.
+  Blokada kodu to `FOR NO KEY UPDATE`, nie `FOR UPDATE` z `PESSIMISTIC_WRITE`: klucz obcy użycia bierze
+  `FOR KEY SHARE` na wierszu kodu, z którym `FOR UPDATE` by się wykluczało, więc zmiana kodu bez limitu
+  (`ReviseDiscountCode`) czekałaby na złożenia z nim; `FOR NO KEY UPDATE` wyklucza tylko inną blokadę kodu i jego
+  `UPDATE`. Zegar i liczba aktywnych użyć po blokadzie, potem `rejectionFor` jeszcze raz; odrzucenie to
   `DiscountCodeRejected(rejection)` (Pricing Application). `ReleaseDiscountCodeUsage(orderId)` (`command.bus`,
   zagnieżdżona w `ExpireUnpaidOrder`) ustawia `releasedAt = now` aktywnemu użyciu zamówienia przez rekord (zmienia tylko
   wiersz użycia, kodu nie blokuje); brak użycia albo już zwolnione: bez skutku.
@@ -669,8 +671,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `#[MapRequestPayload]`: treść czyta w kontrolerze `DiscountCodeBodyReader` (JSON, typy ścisłe, ta sama walidacja DTO),
   bo `PUT` odpowiada 404 przed 422 treści, a brak klucza ma polski komunikat „To pole jest wymagane.” zamiast
   angielskiego tekstu frameworka; `DiscountCodeWriteFailures` zamienia `InvalidDiscountCode` na naruszenie przy polu.
-  `ReviseDiscountCode` blokuje wiersz kodu (`PESSIMISTIC_WRITE` przez ORM z odświeżeniem rekordu, jak koszyk) i czyta
-  liczbę aktywnych użyć pod blokadą. Odpowiedzi to `GetDiscountCode` odczytane po zapisie, `private, no-store`.
+  `ReviseDiscountCode` blokuje wiersz kodu (`DiscountCodeRepository::lock`: `SELECT … FOR NO KEY UPDATE`, potem odczyt rekordu z odświeżeniem)
+  i czyta liczbę aktywnych użyć pod blokadą. Odpowiedzi to `GetDiscountCode` odczytane po zapisie, `private, no-store`.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
