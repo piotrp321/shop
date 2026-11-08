@@ -54,8 +54,9 @@ użytkownika. Szczegóły: `docs/features/deploy/spec.md`, uruchomienie: `infra/
 
 - Rulesety `deploy` i `deploy-push` obejmują obie gałęzie; repo ma mieć jeden deploy key (aktor `DeployKey` obejmuje
   każdy). Ruleset i deploy key zakłada użytkownik po merge'u epiku (runbook).
-- Rollback to revert na `main` (nowe wdrożenie); Argo może też wrócić do poprzedniego snapshotu `deploy-images`. Schemat
-  bazy jest zgodny wstecz tylko z poprzednią wersją kodu.
+- Rollback to revert na `main` (nowe wdrożenie). Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
+  `deploy-images`, po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona `syncPolicy` aplikacji `shop`),
+  a potem `shop`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu.
 - Żadna retencja GHCR ani workflow nie usuwa wersji pakietów (test w `make check`).
 - Klucz prywatny Sealed Secrets jest jedyną rzeczą, której nie da się odtworzyć z repo; jego utrata oznacza nowy
   certyfikat i ponowne zaszyfrowanie sekretów oraz ponowne wczytanie danych albo odtworzenie z kopii (DEPLOY-OPS).

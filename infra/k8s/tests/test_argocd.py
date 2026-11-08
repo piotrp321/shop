@@ -39,6 +39,23 @@ class Root(unittest.TestCase):
     def test_it_synchronizes_by_itself_and_prunes(self):
         self.assertEqual({"prune": True, "selfHeal": True}, root["spec"]["syncPolicy"]["automated"])
 
+    def test_the_emergency_rollback_of_the_runbook_stops_the_root_before_the_shop(self):
+        # The root heals the shop application (and its syncPolicy) from git, and Argo CD refuses to sync an application with
+        # automated sync to another revision: the rollback to a previous snapshot has to switch off the root first.
+        self.assertEqual({"prune": True, "selfHeal": True}, root["spec"]["syncPolicy"]["automated"])
+        self.assertEqual({"prune": True, "selfHeal": True}, apps["shop"]["spec"]["syncPolicy"]["automated"])
+        readme = (REPO / "infra/k8s/README.md").read_text()
+        section = re.search(r"^## 7\..*?(?=^## |\Z)", readme, re.S | re.M)
+        self.assertIsNotNone(section, "README.md has no section '## 7.'")
+        item = re.search(r"^- \*\*Cofnięcie wersji\*\*.*?(?=^- |\Z)", section.group(0), re.S | re.M)
+        self.assertIsNotNone(item, "section 7 of README.md has no item 'Cofnięcie wersji'")
+        emergency = item.group(0).split("Awaryjnie", 1)
+        self.assertEqual(2, len(emergency), "the item has no emergency rollback ('Awaryjnie')")
+        text = emergency[1]
+        self.assertIn("`root`", text, "the emergency rollback does not switch off the automated sync of root")
+        self.assertIn("`shop`", text)
+        self.assertLess(text.index("`root`"), text.index("`shop`"), "root must be stopped before shop")
+
     def test_no_application_deletes_its_resources_with_itself(self):
         for application in (root, *apps.values()):
             self.assertEqual([], application["metadata"].get("finalizers", []), application["metadata"]["name"])
