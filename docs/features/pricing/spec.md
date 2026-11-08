@@ -205,7 +205,8 @@ Decyzje A2 i A3 w `docs/features/promotions/spec.md`: obie są liczone przy odcz
   w repozytorium, `reconstitute()` bez wpisów. Optimistic locking przez `#[Version]` na cenie.
 - Cena i jej nowe wpisy historii zapisują się w jednej transakcji. Nie ma zmiany ceny bez wpisu ani wpisu bez zmiany.
 - Kod tylko dopisuje historię: repozytorium nie ma operacji zmiany ani usuwania wpisów. Tabele Pricing czyści tylko
-  reset danych demo: `pricing:seed-demo` (`DbalPricingReset`), który `make seed` uruchamia po seedzie katalogu.
+  reset danych demo: `pricing:seed-demo` (`DbalPricingReset`, które czyści też promocje i kolejkę `promotions`), który
+  `make seed` uruchamia po seedzie katalogu.
 
 ## Warstwa aplikacji
 
@@ -246,7 +247,10 @@ Pricing:
   map i dań liofilizowanych). Warianty z portu `VariantsForPricing` (Catalog `ListVariantIdentities`), zapis przez
   `SetVariantPrice` ze źródłem `seed`. Wariant demo bez dopasowanego
   wzorca kończy seed błędem bez zmian w danych. `make seed` uruchamia go po danych katalogu, więc każdy wariant demo
-  ma cenę.
+  ma cenę. Po cenach planuje promocje z `fixtures/promotions.yaml` (`name`, `percentOff`, `days`, `variants` jako wzorce
+  kluczy tej samej składni): komendą `PlanPromotion` bez aktora, od chwili seeda na `days` dni; wariant należy do
+  pierwszej promocji, która go dopasuje. Plik promocji jest sprawdzany przed resetem: promocja bez wariantu kończy
+  seed błędem bez zmian w danych.
 
 Catalog (zapytania o warianty opisuje `docs/features/variants/spec.md`):
 - `GetVariant(variantId)` → `{variantId, productId, taxClass}` albo `null`.

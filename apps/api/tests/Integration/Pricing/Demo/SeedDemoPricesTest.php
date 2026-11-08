@@ -9,8 +9,10 @@ use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Pricing\Application\Demo\DemoPriceSeeder;
+use App\Pricing\Application\Demo\DemoPromotionSeeder;
 use App\Pricing\Infrastructure\Demo\DbalPricingReset;
 use App\Pricing\Infrastructure\Demo\YamlDemoPriceSource;
+use App\Pricing\Infrastructure\Demo\YamlDemoPromotionSource;
 use App\Pricing\UI\Console\SeedDemoPricesCommand;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
@@ -33,6 +35,7 @@ final class SeedDemoPricesTest extends KernelTestCase
 
     private Connection $connection;
     private ?string $file = null;
+    private ?string $promotionsFile = null;
 
     protected function setUp(): void
     {
@@ -43,8 +46,10 @@ final class SeedDemoPricesTest extends KernelTestCase
 
     protected function tearDown(): void
     {
-        if (null !== $this->file && is_file($this->file)) {
-            unlink($this->file);
+        foreach ([$this->file, $this->promotionsFile] as $file) {
+            if (null !== $file && is_file($file)) {
+                unlink($file);
+            }
         }
         parent::tearDown();
     }
@@ -98,6 +103,39 @@ final class SeedDemoPricesTest extends KernelTestCase
         self::assertSame(1, $this->connection->fetchOne('SELECT COUNT(*) FROM pricing_price_history'));
     }
 
+    public function testThePromotionsAreSeededWithoutAnActorAfterThePrices(): void
+    {
+        $tent = $this->catalogVariants('namiot-turystyczny-norvane-biwak-2-zielony', TaxClassCode::Standard)[0];
+        $this->catalogVariants('mapa-turystyczna-tarvik-press-gorce', TaxClassCode::Standard);
+
+        $tester = $this->tester("\"namiot-*\": 100000\n\"mapa-*\": 2490\n", "- name: Namioty\n  percentOff: 20\n  days: 30\n  variants: [\"namiot-*\"]\n");
+
+        self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
+        self::assertStringContainsString('promotions: 1', $tester->getDisplay());
+        $promotion = $this->connection->fetchAssociative('SELECT id, name, percent_off, created_by_id, created_by_name, updated_by_id, EXTRACT(EPOCH FROM ends_at - starts_at) / 86400 AS days, starts_at <= NOW() + interval \'2 seconds\' AS starts_now FROM pricing_promotion');
+        self::assertIsArray($promotion);
+        self::assertSame(['Namioty', 20, null, null, null, true], [$promotion['name'], $promotion['percent_off'], $promotion['created_by_id'], $promotion['created_by_name'], $promotion['updated_by_id'], $promotion['starts_now']]);
+        self::assertEqualsWithDelta(30, is_numeric($promotion['days']) ? (float) $promotion['days'] : -1.0, 0.01);
+        self::assertSame([$tent], $this->connection->fetchFirstColumn('SELECT variant_id FROM pricing_promotion_variant WHERE promotion_id = ?', [$promotion['id']]));
+    }
+
+    public function testAPromotionPatternWithoutAVariantFailsAndLeavesThePricesAndPromotionsUnchanged(): void
+    {
+        $tent = $this->catalogVariants('namiot-turystyczny-norvane-biwak-2-zielony', TaxClassCode::Standard)[0];
+        $this->tester("\"namiot-*\": 89900\n", "- name: Namioty\n  percentOff: 20\n  days: 30\n  variants: [\"namiot-*\"]\n")->execute([]);
+        self::assertSame(1, $this->connection->fetchOne('SELECT COUNT(*) FROM pricing_promotion'));
+
+        $tester = $this->tester("\"namiot-*\": 99900\n", "- name: Namioty\n  percentOff: 30\n  days: 30\n  variants: [\"namiot-*\"]\n- name: Kajaki\n  percentOff: 10\n  days: 30\n  variants: [\"kajak-*\"]\n");
+
+        self::assertSame(Command::FAILURE, $tester->execute([]));
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        self::assertStringContainsString('Kajaki', $display);
+        self::assertStringContainsString('Nothing was changed', $display);
+        self::assertSame(89900, $this->price($tent)['gross_amount']);
+        self::assertSame(1, $this->connection->fetchOne('SELECT COUNT(*) FROM pricing_variant_price'));
+        self::assertSame([20], $this->connection->fetchFirstColumn('SELECT percent_off FROM pricing_promotion'));
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -109,16 +147,21 @@ final class SeedDemoPricesTest extends KernelTestCase
         return $row;
     }
 
-    private function tester(string $prices): CommandTester
+    private function tester(string $prices, string $promotions = "- name: Namioty\n  percentOff: 20\n  days: 30\n  variants: [\"namiot-*\"]\n"): CommandTester
     {
         $this->file ??= tempnam(sys_get_temp_dir(), 'prices') ?: null;
+        $this->promotionsFile ??= tempnam(sys_get_temp_dir(), 'promotions') ?: null;
         self::assertIsString($this->file);
+        self::assertIsString($this->promotionsFile);
         file_put_contents($this->file, $prices);
+        file_put_contents($this->promotionsFile, $promotions);
         $kernel = self::bootKernel();
         $seeder = self::getContainer()->get(DemoPriceSeeder::class);
         self::assertInstanceOf(DemoPriceSeeder::class, $seeder);
+        $promotionSeeder = self::getContainer()->get(DemoPromotionSeeder::class);
+        self::assertInstanceOf(DemoPromotionSeeder::class, $promotionSeeder);
         $application = new Application($kernel);
-        $application->addCommand(new SeedDemoPricesCommand(new YamlDemoPriceSource($this->file), $seeder, new DbalPricingReset($this->connection), 'test'));
+        $application->addCommand(new SeedDemoPricesCommand(new YamlDemoPriceSource($this->file), $seeder, new YamlDemoPromotionSource($this->promotionsFile), $promotionSeeder, new DbalPricingReset($this->connection), 'test'));
 
         return new CommandTester($application->find('pricing:seed-demo'));
     }

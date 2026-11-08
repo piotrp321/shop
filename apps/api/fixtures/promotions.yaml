@@ -1,0 +1,31 @@
+# Demo promotions planned by `pricing:seed-demo` (`make seed`) after the prices: a list in the order of this file.
+# Each promotion starts when the seed plans it and lasts `days` days (1 to 90). `variants` are patterns of variant keys,
+# `<product slug>/<label slug>` (`<product slug>/standard` for the default variant), in the syntax of prices.yaml:
+# `*` matches any run of characters, also `/`, and the pattern has to match the whole key.
+#
+# A variant is in the FIRST promotion that matches it (the periods of promotions must not overlap), so a specific
+# promotion goes before a general one. A promotion that has no variant (or more than 1000) stops the seed with an error
+# and nothing is changed.
+#
+# Keep out of these patterns what the E2E tests rely on (RealDemoPromotionsTest checks it): the products
+# "Hantle regulowane Lumora Para 10", "Buty szosowe Tarvik Asfalt 200", "Elektrolity w tabletkach Lumora Nawodnienie 20"
+# (e2e/tests/promotions.spec.ts creates its own promotion on it) and the whole category Bieganie > Buty biegowe.
+# After the seed the Omnibus price of a promoted variant equals its catalog price: its history has the seed entry only.
+
+- name: "Namioty turystyczne -20%"
+  percentOff: 20
+  days: 30
+  variants:
+    - "namiot-turystyczny-*"
+
+- name: "Żele energetyczne -15%"
+  percentOff: 15
+  days: 30
+  variants:
+    - "zel-energetyczny-*"
+
+- name: "Narty zjazdowe -10%"
+  percentOff: 10
+  days: 30
+  variants:
+    - "narty-zjazdowe-*"

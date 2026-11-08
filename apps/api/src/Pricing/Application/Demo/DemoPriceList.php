@@ -14,7 +14,7 @@ use App\Pricing\Domain\Price\GrossPriceOutOfRange;
  */
 final readonly class DemoPriceList
 {
-    /** @var list<array{regex: string, gross: int}> */
+    /** @var list<array{pattern: VariantKeyPattern, gross: int}> */
     private array $rules;
 
     /**
@@ -30,19 +30,14 @@ final readonly class DemoPriceList
 
         $compiled = [];
         foreach ($rules as ['pattern' => $pattern, 'gross' => $gross]) {
-            if (1 !== preg_match('/[a-z0-9]/', $pattern)) {
-                throw new \InvalidArgumentException(\sprintf('The demo price pattern "%s" must contain a letter or digit.', $pattern));
-            }
-            if (1 !== preg_match('~^[a-z0-9*/-]+$~D', $pattern)) {
-                throw new \InvalidArgumentException(\sprintf('The demo price pattern "%s" may only contain a-z, 0-9, "-", "/" and the wildcard "*".', $pattern));
-            }
+            $compiledPattern = new VariantKeyPattern($pattern);
             try {
                 GrossPrice::pln($gross);
             } catch (GrossPriceOutOfRange $e) {
                 throw new \InvalidArgumentException(\sprintf('The demo price of "%s" is invalid: %s', $pattern, $e->getMessage()), 0, $e);
             }
 
-            $compiled[] = ['regex' => '/^'.str_replace('\*', '.*', preg_quote($pattern, '/')).'$/D', 'gross' => $gross];
+            $compiled[] = ['pattern' => $compiledPattern, 'gross' => $gross];
         }
         $this->rules = $compiled;
     }
@@ -52,8 +47,8 @@ final readonly class DemoPriceList
      */
     public function grossFor(string $key): ?int
     {
-        foreach ($this->rules as ['regex' => $regex, 'gross' => $gross]) {
-            if (1 === preg_match($regex, $key)) {
+        foreach ($this->rules as ['pattern' => $pattern, 'gross' => $gross]) {
+            if ($pattern->matches($key)) {
                 return $gross;
             }
         }
