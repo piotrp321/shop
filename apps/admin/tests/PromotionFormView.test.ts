@@ -309,6 +309,17 @@ describe("PromotionFormView", () => {
       expect(wrapper.find("[data-testid=confirm-box]").exists()).toBe(false);
       expect(mocks.put).not.toHaveBeenCalled();
     });
+
+    it("closes the confirmation of ending when the form is edited meanwhile", async () => {
+      const wrapper = await open("/promotions/promo-1", undefined, active());
+
+      await click(wrapper, "end-now");
+      expect(wrapper.find("[data-testid=confirm-box]").exists()).toBe(true);
+      await wrapper.get("[data-testid=name-input]").setValue("Inna nazwa");
+
+      expect(wrapper.find("[data-testid=confirm-box]").exists()).toBe(false);
+      expect(mocks.put).not.toHaveBeenCalled();
+    });
   });
 
   describe("an ended promotion", () => {
@@ -336,6 +347,17 @@ describe("PromotionFormView", () => {
 
       expect(mocks.delete).toHaveBeenCalledWith(PROMOTION, { params: { path: { id: "promo-1" }, query: { version: 4 } } });
       expect(mounted!.router.currentRoute.value.name).toBe("promotions");
+    });
+
+    it("closes the confirmation of deleting when the form is edited meanwhile", async () => {
+      const wrapper = await open();
+
+      await click(wrapper, "delete");
+      expect(wrapper.find("[data-testid=confirm-box]").exists()).toBe(true);
+      await wrapper.get("[data-testid=name-input]").setValue("Inna nazwa");
+
+      expect(wrapper.find("[data-testid=confirm-box]").exists()).toBe(false);
+      expect(mocks.delete).not.toHaveBeenCalled();
     });
 
     it("shows the detail of a 409 and the promotion as it is now", async () => {

@@ -7,7 +7,7 @@ import Message from "primevue/message";
 import Skeleton from "primevue/skeleton";
 import Tag from "primevue/tag";
 import ToggleSwitch from "primevue/toggleswitch";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { formatMoney } from "@/prices/format";
 import { CURRENCY, statusLabel, statusSeverity } from "@/promotions/format";
@@ -55,6 +55,14 @@ const {
 
 // Ending and deleting cannot be undone, so they ask first.
 const confirming = ref<"end" | "delete" | null>(null);
+// The confirmation follows the button that opened it: once the action is not allowed (the form was edited, a request
+// is running), the question goes away instead of a click that does nothing.
+const confirmAllowed = computed(() => (confirming.value === "end" ? canEndNow.value : confirming.value === "delete" ? canDelete.value : true));
+watch(confirmAllowed, (allowed) => {
+  if (!allowed) {
+    confirming.value = null;
+  }
+});
 const confirmText = computed(() => (confirming.value === "end" ? "Zakończyć promocję teraz?" : "Usunąć promocję?"));
 
 async function confirmAction(): Promise<void> {
