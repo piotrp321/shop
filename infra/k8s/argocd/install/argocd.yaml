@@ -12,6 +12,8 @@ spec:
   targetNamespace: argocd
   createNamespace: true
   valuesContent: |-
+    # The names of the resources the bootstrap waits for: argocd-server, argocd-repo-server.
+    fullnameOverride: argocd
     dex:
       enabled: false
     notifications:

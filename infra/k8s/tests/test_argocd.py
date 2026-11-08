@@ -129,6 +129,11 @@ class Install(unittest.TestCase):
         self.assertTrue(spec["createNamespace"])
         self.assertTrue(spec["repo"].startswith("https://"))
 
+    def test_the_names_of_the_deployments_the_bootstrap_waits_for(self):
+        self.assertIn("fullnameOverride: argocd", install["argocd"]["spec"]["valuesContent"])
+        bootstrap = (REPO / "infra/k8s/scripts/server-bootstrap.sh").read_text()
+        self.assertIn("argocd-server argocd-repo-server", bootstrap)
+
     def test_traefik_keeps_the_address_of_the_client(self):
         config = install["traefik"]
         self.assertEqual("HelmChartConfig", config["kind"])
