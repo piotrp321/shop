@@ -200,13 +200,14 @@ final class DiscountCodePlacementConcurrencyTest extends KernelTestCase
             return;
         }
         $orders = $this->control->fetchAllAssociative(
-            'SELECT o.id, o.status, o.discount_code, u.released_at IS NULL AS active, c.code AS used_code FROM ordering_order o LEFT JOIN pricing_discount_code_usage u ON u.order_id = o.id LEFT JOIN pricing_discount_code c ON c.id = u.code_id WHERE o.idempotency_key IN (?)',
+            'SELECT o.id, o.status, o.discount_code, (u.id IS NOT NULL AND u.released_at IS NULL) AS active, c.code AS used_code FROM ordering_order o LEFT JOIN pricing_discount_code_usage u ON u.order_id = o.id LEFT JOIN pricing_discount_code c ON c.id = u.code_id WHERE o.idempotency_key IN (?)',
             [$this->keys],
             [ArrayParameterType::STRING],
         );
         foreach ($orders as $order) {
-            self::assertSame($order['discount_code'], $order['used_code'], $message.': the order '.$order['id'].' has the usage of its code');
-            self::assertSame('cancelled' !== $order['status'], $order['active'], $message.': the usage of '.$order['id'].' is active while the order is not cancelled');
+            $orderId = \is_string($order['id']) ? $order['id'] : '';
+            self::assertSame($order['discount_code'], $order['used_code'], $message.': the order '.$orderId.' has the usage of its code');
+            self::assertSame(null !== $order['discount_code'] && 'cancelled' !== $order['status'], $order['active'], $message.': the usage of '.$orderId.' is active while the order is not cancelled');
         }
         self::assertSame(0, $this->control->fetchOne(
             'SELECT COUNT(*) FROM pricing_discount_code_usage u WHERE u.code_id IN (?) AND NOT EXISTS (SELECT 1 FROM ordering_order o WHERE o.id = u.order_id)',
