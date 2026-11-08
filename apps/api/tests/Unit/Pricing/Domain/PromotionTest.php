@@ -157,6 +157,14 @@ final class PromotionTest extends TestCase
         yield 'a tab' => ["Jesień\tw górach"];
         yield 'a NUL inside' => ["Jesień\0w górach"];
         yield 'invalid UTF-8' => ["Jesie\xC5"];
+        yield 'only no-break spaces' => ["\u{A0}\u{A0}"];
+        yield 'only an em space' => ["\u{2003}"];
+        yield 'only an ideographic space' => ["\u{3000}"];
+        yield 'only a zero width space' => ["\u{200B}"];
+        yield 'a mix of Unicode spaces' => ["\u{A0}\u{3000}\u{200B} \u{2003}"];
+        yield 'a line separator inside' => ["a\u{2028}b"];
+        yield 'a paragraph separator inside' => ["a\u{2029}b"];
+        yield '101 characters between no-break spaces' => ["\u{A0}".str_repeat('ą', 101)."\u{A0}"];
     }
 
     #[DataProvider('invalidNames')]
@@ -167,6 +175,42 @@ final class PromotionTest extends TestCase
         ));
     }
 
+    public function testTheNameIsTrimmedAtBothEndsOfUnicodeSpacesAndInvisibleFormatCharacters(): void
+    {
+        $promotion = Promotion::plan(
+            PromotionId::fromString(self::ID), "\u{A0}\u{3000}\u{200B} Promo \u{2003}\u{FEFF}\u{A0}", PercentOff::of(10), null, new \DateTimeImmutable('2026-12-01T00:00:00Z'), self::variants(self::A), null, self::now(),
+        );
+
+        self::assertSame('Promo', $promotion->name());
+    }
+
+    public function testANameKeepsFormatCharactersAndSpacesInside(): void
+    {
+        $name = "Rodzina \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{A0}zimą";
+        $promotion = Promotion::plan(
+            PromotionId::fromString(self::ID), $name, PercentOff::of(10), null, new \DateTimeImmutable('2026-12-01T00:00:00Z'), self::variants(self::A), null, self::now(),
+        );
+
+        self::assertSame($name, $promotion->name());
+    }
+
+    #[DataProvider('invalidNames')]
+    public function testReviseRefusesTheSameInvalidNames(string $name): void
+    {
+        $promotion = $this->planned('2026-11-11T00:00:00Z', '2026-11-21T00:00:00Z');
+
+        $this->expectInvalid(InvalidPromotion::NAME, static fn () => $promotion->revise($name, PercentOff::of(10), null, new \DateTimeImmutable('2026-11-21T00:00:00Z'), self::variants(self::A), null, self::now()));
+    }
+
+    public function testReviseTrimsTheNameOfUnicodeSpaces(): void
+    {
+        $promotion = $this->planned('2026-11-11T00:00:00Z', '2026-11-21T00:00:00Z');
+
+        $promotion->revise("\u{A0}Nowa\u{3000}", PercentOff::of(10), null, new \DateTimeImmutable('2026-11-21T00:00:00Z'), self::variants(self::A), null, self::now());
+
+        self::assertSame('Nowa', $promotion->name());
+    }
+
     public function testANameOf100CharactersIsAccepted(): void
     {
         $promotion = Promotion::plan(
@@ -174,6 +218,15 @@ final class PromotionTest extends TestCase
         );
 
         self::assertSame(100, mb_strlen($promotion->name()));
+    }
+
+    public function testANameOf100CharactersBetweenUnicodeSpacesIsStoredWithoutThem(): void
+    {
+        $promotion = Promotion::plan(
+            PromotionId::fromString(self::ID), "\u{A0}".str_repeat('ą', 100)."\u{3000}", PercentOff::of(10), null, new \DateTimeImmutable('2026-12-01T00:00:00Z'), self::variants(self::A), null, self::now(),
+        );
+
+        self::assertSame(str_repeat('ą', 100), $promotion->name());
     }
 
     public function testAPromotionHas1To1000Variants(): void
