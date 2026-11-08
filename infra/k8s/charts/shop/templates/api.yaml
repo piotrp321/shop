@@ -51,6 +51,8 @@ The secrets come with envFrom (the .env.local of the compose file).
   value: http://mailpit:8025
 # orderMail: the Mailpit of the cluster or Brevo SMTP. Kubernetes puts the login and the key of the Brevo secret into
 # MAILER_DSN ($(VAR) refers to the variables defined before it).
+# `timeout=10` (seconds, every socket operation, SmtpTimeoutTransportFactory) is the one of compose: it keeps a sending well
+# within the lease of its claim.
 {{- if eq .Values.orderMail "brevo" }}
 - name: BREVO_SMTP_LOGIN
   valueFrom:
@@ -63,10 +65,10 @@ The secrets come with envFrom (the .env.local of the compose file).
       name: {{ .Values.brevo.secretName }}
       key: BREVO_SMTP_PASSWORD
 - name: MAILER_DSN
-  value: {{ printf "smtp://$(BREVO_SMTP_LOGIN):$(BREVO_SMTP_PASSWORD)@%s:%v" .Values.brevo.host .Values.brevo.port | quote }}
+  value: {{ printf "smtp://$(BREVO_SMTP_LOGIN):$(BREVO_SMTP_PASSWORD)@%s:%v?timeout=10" .Values.brevo.host .Values.brevo.port | quote }}
 {{- else }}
 - name: MAILER_DSN
-  value: smtp://mailpit:1025
+  value: smtp://mailpit:1025?timeout=10
 {{- end }}
 - name: MAILER_FROM
   value: {{ include "shop.mailerFrom" . | quote }}

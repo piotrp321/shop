@@ -18,8 +18,8 @@ SWITCHES = {
 }
 # The Secret with the Brevo SMTP login and key: the prod profile names it, the case ci-keycloak-brevo sets it.
 BREVO_SECRET = {case: "shop-brevo-smtp" for case in SWITCHES if case.startswith("prod")} | {"ci-keycloak-brevo": "smoke-brevo"}
-BREVO_DSN = "smtp://$(BREVO_SMTP_LOGIN):$(BREVO_SMTP_PASSWORD)@smtp-relay.brevo.com:587"
-MAILPIT_DSN = "smtp://mailpit:1025"
+BREVO_DSN = "smtp://$(BREVO_SMTP_LOGIN):$(BREVO_SMTP_PASSWORD)@smtp-relay.brevo.com:587?timeout=10"
+MAILPIT_DSN = "smtp://mailpit:1025?timeout=10"
 DOMAIN = {"prod": "shop.example.org", "ci": "localhost"}
 
 

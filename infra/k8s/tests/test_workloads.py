@@ -184,7 +184,7 @@ class WorkloadsTest(unittest.TestCase):
 
     def test_ci_mail_goes_to_mailpit(self):
         env = env_of(containers(by_logical("ci", "Deployment")["api"])[0])
-        self.assertEqual("smtp://mailpit:1025", env["MAILER_DSN"])
+        self.assertEqual("smtp://mailpit:1025?timeout=10", env["MAILER_DSN"])
 
 
 if __name__ == "__main__":
