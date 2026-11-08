@@ -69,3 +69,20 @@ test("a chunk address without .xml or with a key the API refuses is a 404", asyn
   expect((await request.get("/sitemaps/products/eyJmIjpudWxsLCJ0IjpudWxsfQ")).status()).toBe(404);
   expect((await request.get("/sitemaps/products/not-a-key.xml")).status()).toBe(404);
 });
+
+test("the home page HTML has the Organization and WebSite structured data, the category page does not", async ({ request }) => {
+  const scriptsOf = (html: string): { "@type": string; name: string; url: string }[] =>
+    [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)].map((match) => JSON.parse(match[1]!));
+
+  const home = await request.get("/");
+  expect(home.status()).toBe(200);
+  const data = scriptsOf(await home.text());
+  expect(data.map((item) => item["@type"])).toEqual(["Organization", "WebSite"]);
+  for (const item of data) {
+    expect(item).toMatchObject({ "@context": "https://schema.org", name: "Rytm", url: `${urls.store}/` });
+  }
+
+  const tree = (await (await request.get(`${urls.api}/api/v1/categories`)).json()) as CategoryNode[];
+  const category = await request.get(`/c/${tree[0]!.path}`);
+  expect(scriptsOf(await category.text()).map((item) => item["@type"])).toEqual(["BreadcrumbList"]);
+});

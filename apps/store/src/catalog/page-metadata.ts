@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { catalogHref, categoryHref } from "./catalog-href";
+import { STORE_NAME } from "@/site";
 import type { CatalogResult } from "./load-catalog";
-
-const SITE = "Rytm";
 
 type Listing = Exclude<CatalogResult, { kind: "unknown-category" }>;
 
@@ -25,13 +24,13 @@ function listingMetadata(catalog: Listing, subject: string | undefined, canonica
   const alternates = { canonical };
 
   if (catalog.kind === "invalid-filter") {
-    return { title: `Nieprawidłowy filtr | ${SITE}`, alternates, robots: { index: false } };
+    return { title: `Nieprawidłowy filtr | ${STORE_NAME}`, alternates, robots: { index: false } };
   }
 
   const { page, items } = catalog.products;
   const metadata: Metadata = {
-    title: `${subject ?? "Wszystkie produkty"}${page > 1 ? ` – strona ${page}` : ""} | ${SITE}`,
-    description: subject ? `Produkty z kategorii ${subject} w sklepie ${SITE}.` : `Wszystkie produkty w sklepie ${SITE}.`,
+    title: `${subject ?? "Wszystkie produkty"}${page > 1 ? ` – strona ${page}` : ""} | ${STORE_NAME}`,
+    description: subject ? `Produkty z kategorii ${subject} w sklepie ${STORE_NAME}.` : `Wszystkie produkty w sklepie ${STORE_NAME}.`,
     alternates,
   };
   if (refined) return { ...metadata, robots: NOINDEX_FOLLOW };
@@ -66,15 +65,15 @@ export function buildCategoryMetadata(catalog: Listing, category: { name: string
  */
 export function buildSearchMetadata(result: Listing | { kind: "short-phrase" }, phrase: string | undefined): Metadata {
   if (result.kind === "invalid-filter") {
-    return { title: `Nieprawidłowy filtr | ${SITE}`, robots: { index: false } };
+    return { title: `Nieprawidłowy filtr | ${STORE_NAME}`, robots: { index: false } };
   }
   if (result.kind === "short-phrase" || phrase === undefined) {
-    return { title: `Wyszukiwanie | ${SITE}`, robots: NOINDEX_FOLLOW };
+    return { title: `Wyszukiwanie | ${STORE_NAME}`, robots: NOINDEX_FOLLOW };
   }
   const { page } = result.products;
   return {
-    title: `Wyniki dla „${phrase}”${page > 1 ? ` – strona ${page}` : ""} | ${SITE}`,
-    description: `Wyniki wyszukiwania w sklepie ${SITE}.`,
+    title: `Wyniki dla „${phrase}”${page > 1 ? ` – strona ${page}` : ""} | ${STORE_NAME}`,
+    description: `Wyniki wyszukiwania w sklepie ${STORE_NAME}.`,
     robots: NOINDEX_FOLLOW,
   };
 }

@@ -73,8 +73,16 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `app/page.tsx` (`/`), `app/c/[...path]/` (kategoria) i `app/szukaj/` (wyszukiwanie) – listing (SSR przy każdym
   żądaniu); `app/p/[slug]/` – strona produktu (ISR).
 - `src/seo/` – mapa strony i `robots.txt`: `xml.ts` (budowanie `sitemapindex` i `urlset` z ucieczką `& < > " '`),
-  `sitemap.ts` (odpowiedzi tras mapy), `robots-rules.ts` (reguły `robots.txt`) i `store-url.ts` (`STORE_URL` czytany przy
-  żądaniu).
+  `sitemap.ts` (odpowiedzi tras mapy), `robots-rules.ts` (reguły `robots.txt`), `store-url.ts` (`STORE_URL` czytany przy
+  żądaniu) i `home-json-ld.ts` (JSON-LD strony głównej).
+- `src/site.ts` – `STORE_NAME`, jedyne miejsce nazwy sklepu: znak słowny w `SiteHeader`, `title` i `description`
+  w `app/layout.tsx`, tytuły i opisy w `page-metadata.ts` i `product-metadata.ts` oraz JSON-LD strony głównej. Nie wpisuj
+  nazwy w komponentach ani w metadanych.
+- JSON-LD strony głównej: `/` renderuje dwa `<script type="application/ld+json">` (`Organization` i `WebSite` z `name`
+  = `STORE_NAME` i `url` = `<STORE_URL>/`, przez `serializeJsonLd`), zawsze gdy pokazuje listing (z wynikami albo pustą
+  listą, także z parametrami filtrów i strony); nie na „Nieprawidłowym filtrze”, przy przekierowaniu `?category=`
+  ani na 404. Bez `logo`, `sameAs`, `SearchAction` i `ItemList`. `/c/` ma tylko `BreadcrumbList`, `/p/` `Product`
+  i `BreadcrumbList`, `/szukaj` nie ma JSON-LD.
 - `app/sitemap.xml/`, `app/sitemaps/listing.xml/`, `app/sitemaps/products/[file]/` (route handlery mapy strony)
   i `app/robots.ts` – patrz „Mapa strony i `robots.txt`”.
 - `src/components/ui/` – komponenty shadcn/ui.
