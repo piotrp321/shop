@@ -9,6 +9,11 @@ interface DiscountCodeRepository
     public function find(DiscountCodeId $id): ?DiscountCode;
 
     /**
+     * The code with this text, as stored now (never as an earlier read of the same unit of work saw it), or null.
+     */
+    public function findByCode(DiscountCodeValue $code): ?DiscountCode;
+
+    /**
      * The code read anew under the lock of its row (SELECT … FOR UPDATE) until the end of the transaction, or null.
      * Only in a transaction.
      */

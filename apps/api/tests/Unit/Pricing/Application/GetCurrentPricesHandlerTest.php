@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Pricing\Application;
 
+use App\Pricing\Application\Query\CurrentEffectivePrices;
 use App\Pricing\Application\Query\GetCurrentPrices;
 use App\Pricing\Application\Query\GetCurrentPricesHandler;
 use App\Pricing\Application\Query\InvalidCurrentPricesQuery;
@@ -42,7 +43,7 @@ final class GetCurrentPricesHandlerTest extends TestCase
     {
         $this->prices = new InMemoryVariantPriceRepository();
         $this->promotions = new InMemoryPromotionPrices();
-        $this->handler = new GetCurrentPricesHandler($this->prices, new PolishVatRates(), $this->promotions, $this->promotions, new FixedPricingClock(self::NOW));
+        $this->handler = new GetCurrentPricesHandler(new CurrentEffectivePrices($this->prices, new PolishVatRates(), $this->promotions), $this->promotions, new FixedPricingClock(self::NOW));
         $this->store(self::BOOK, 5490, 'printed_book', 500, 3);
         $this->store(self::SHOES, 12300, 'standard', 2300, 1);
         // Stored at 8%, while the class is at 23% today.

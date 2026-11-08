@@ -21,6 +21,7 @@ use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
+use Doctrine\ORM\Query;
 
 /**
  * Discount codes through their records (the general rule). The lock is a PESSIMISTIC_WRITE (SELECT … FOR UPDATE) of
@@ -36,6 +37,24 @@ final readonly class DoctrineDiscountCodeRepository implements DiscountCodeRepos
     public function find(DiscountCodeId $id): ?DiscountCode
     {
         $record = $this->entityManager->find(DiscountCodeRecord::class, $id->toString());
+
+        return null === $record ? null : self::toDomain($record);
+    }
+
+    /**
+     * Along the unique index of the text; a record already in the identity map is refreshed by the read.
+     */
+    public function findByCode(DiscountCodeValue $code): ?DiscountCode
+    {
+        $record = $this->entityManager->createQueryBuilder()
+            ->select('c')
+            ->from(DiscountCodeRecord::class, 'c')
+            ->where('c.code = :code')
+            ->setParameter('code', $code->toString())
+            ->getQuery()
+            ->setHint(Query::HINT_REFRESH, true)
+            ->getOneOrNullResult();
+        \assert(null === $record || $record instanceof DiscountCodeRecord);
 
         return null === $record ? null : self::toDomain($record);
     }
