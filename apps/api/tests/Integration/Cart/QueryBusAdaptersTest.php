@@ -9,15 +9,19 @@ use App\Cart\Application\Port\ProductVariants;
 use App\Cart\Application\Port\VariantAvailability;
 use App\Cart\Application\Port\VariantLabel;
 use App\Cart\Application\Port\VariantSummary;
+use App\Cart\Domain\Currency;
+use App\Cart\Domain\Money;
 use App\Cart\Domain\ProductId;
 use App\Cart\Domain\StockLevel;
 use App\Cart\Domain\VariantId;
+use App\Cart\Domain\VariantPromotion;
 use App\Cart\Infrastructure\Catalog\QueryBusProductCatalog;
 use App\Cart\Infrastructure\Inventory\QueryBusStockAvailability;
 use App\Cart\Infrastructure\Pricing\QueryBusCartPrices;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Tests\Factory\CategoryFactory;
+use App\Tests\Factory\PriceHistoryRecordFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
 use App\Tests\Integration\Inventory\StockFixture;
@@ -91,6 +95,35 @@ final class QueryBusAdaptersTest extends KernelTestCase
         ));
 
         self::assertSame([[$red, 21_000], [$black, 19_999]], array_map(static fn (CartPrice $p): array => [$p->variantId->toString(), $p->gross->amount()], $prices));
+    }
+
+    public function testPricingGivesTheEffectivePriceTheCatalogPriceAndThePromotionWithTheOmnibusPriceOnlyWhenAsked(): void
+    {
+        [, [$promoted, $regular]] = $this->product([(string) Uuid::v7(), (string) Uuid::v7()]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $promoted, 'gross' => 10_000]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $regular, 'gross' => 4_990]);
+        $now = new \DateTimeImmutable('@'.time());
+        PriceHistoryRecordFactory::store($this->entityManager, ['variantId' => $promoted, 'changedAt' => $now->modify('-40 days'), 'grossAmount' => 9_500]);
+        $endsAt = $now->modify('+1 day');
+        $connection = $this->entityManager->getConnection();
+        $promotion = (string) Uuid::v7();
+        $connection->executeStatement(
+            "INSERT INTO pricing_promotion (id, name, percent_off, starts_at, ends_at, created_at, updated_at, version) VALUES (?, 'Promocja', 10, ?, ?, NOW(), NOW(), 1)",
+            [$promotion, $now->modify('-1 hour')->format(\DATE_ATOM), $endsAt->format(\DATE_ATOM)],
+        );
+        $connection->executeStatement('INSERT INTO pricing_promotion_variant (promotion_id, variant_id) VALUES (?, ?)', [$promotion, $promoted]);
+        $ids = [VariantId::fromString($promoted), VariantId::fromString($regular)];
+        $prices = new QueryBusCartPrices($this->queryBus);
+
+        $withOmnibus = $prices->current($ids, withLowestPriorPrice: true);
+        $without = $prices->current($ids);
+
+        self::assertEquals([
+            new CartPrice($ids[0], Money::of(9_000, Currency::PLN), Money::of(10_000, Currency::PLN), new VariantPromotion($endsAt, Money::of(9_500, Currency::PLN))),
+            new CartPrice($ids[1], Money::of(4_990, Currency::PLN), Money::of(4_990, Currency::PLN), null),
+        ], $withOmnibus);
+        self::assertEquals(new VariantPromotion($endsAt, null), $without[0]->promotion);
+        self::assertSame(9_000, $without[0]->gross->amount());
     }
 
     public function testInventoryGivesTheAvailableUnitsAndTheLevelOfEveryVariant(): void

@@ -17,7 +17,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 check_host reinitialize "${1:-}"
 cat << EOF2
 reinitialize: on $host, in the api pod of the namespace shop:
-  - WIPES the products, prices, stocks and orders of the shop (bin/seed-demo with --force-reset, as in production);
+  - WIPES the products, prices, promotions, stocks and orders of the shop (bin/seed-demo with --force-reset, as in production);
   - loads the demo data again and purges the caches of the store.
   Accounts in Keycloak are not touched. The data that is wiped cannot be brought back.
 EOF2

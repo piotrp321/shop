@@ -151,8 +151,10 @@ kategorii, `main_image`) służą do filtra kategorii i do wyświetlenia listy.
 - `Pricing_Infrastructure`: `ReindexProductOnPriceChange` na `VariantPriceChanged` (transport `events`, niezależny od
   konsumenta unieważniania z PRODUCT-PAGE) → `productId` z Catalog `GetVariant` → `ProductIndexing::reindex`. Wariant nieznany
   Catalogowi albo „brak produktu”: wiadomość obsłużona. Błąd przejściowy (ES, oferta) → ponowienie, trwały → `failed`.
+  `ReindexProductOnPromotionChange` na `PromotionPricesChanged` (transport `events`) tak samo, ale `productId` jest
+  w zdarzeniu, bez `GetVariant`.
 - `Inventory_Infrastructure`: `ReindexProductOnStockLevelChange` na `StockLevelChanged`, tak samo.
-- Zdarzenia ze źródła `seed` oba handlery potwierdzają bez reindeksacji: `make seed` po seedach katalogu, cen, zamówień
+- Zdarzenia ze źródła `seed` te handlery potwierdzają bez reindeksacji: `make seed` po seedach katalogu, cen, zamówień
   i stanów uruchamia `catalog:reindex` (synchronicznie), a dopiero potem `storefront:cache:purge-all`. Indeks jest pełny przed końcem
   `make seed`, a ok. 2 tys. zdarzeń seeda nie zajmuje workera.
 - Handler reindeksacji i konsument unieważniania są niezależne. Lista sklepu może przez kilka sekund po purge pokazać

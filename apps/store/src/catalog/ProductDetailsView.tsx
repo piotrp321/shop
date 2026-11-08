@@ -4,6 +4,7 @@ import { crumbsOf } from "./breadcrumb";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { formatPrice } from "./format-price";
 import { ProductPhoto } from "./ProductPhoto";
+import { PromotionNotice } from "./PromotionNotice";
 import { VariantChoice } from "./VariantChoice";
 
 type ProductDetails = components["schemas"]["ProductDetails"];
@@ -40,6 +41,7 @@ export function ProductDetailsView({ details, offer }: { details: ProductDetails
                 <p data-testid="price" className="text-xl font-semibold">
                   {offer.hasPriceRange ? `od ${formatPrice(offer.fromGross, offer.currency)}` : formatPrice(offer.fromGross, offer.currency)}
                 </p>
+                <PromotionNotice lowestPriorGross={offer.fromPromotion?.lowestPriorGross} currency={offer.currency} />
                 <AvailabilityLabel level={offer.level} />
               </div>
             </VariantChoice>

@@ -96,6 +96,7 @@ jobs:
           sh .github/scripts/background.sh start script-tests sh -c
           'set -e;
           sh .github/scripts/test_background.sh;
+          sh .github/scripts/test_retry.sh;
           sh .github/scripts/test_ghcr_image.sh;
           sh .github/scripts/test_deploy_ref.sh;
           python3 -m unittest discover -s tools/rulesets -p "test_*.py";
@@ -219,11 +220,14 @@ jobs:
       # Dependencies go into the named volumes, as in local development: the api entrypoint runs `composer install`;
       # the store and admin images carry node_modules, which Docker copies into a volume when it creates it. The
       # volumes are created here, one at a time, because the steps below use them in parallel: a container that mounts
-      # a volume while another one is still creating it sees it empty.
+      # a volume while another one is still creating it sees it empty. The api install is retried, because downloading
+      # Composer packages fails now and then with a transient error: the vendor volume stays and the entrypoint repeats
+      # the install until the lock stamp matches.
       - name: Install dependencies
         if: env.FULL_CI == 'true'
         run: |
-          $CI_RUN api true
+          # shellcheck disable=SC2086 # CI_RUN is a command with its arguments, split on spaces
+          sh .github/scripts/retry.sh 3 30 $CI_RUN api true
           $CI_RUN store true
           $CI_RUN admin true
 

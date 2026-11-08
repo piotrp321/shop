@@ -154,6 +154,6 @@ final class CartViewBuilderTest extends TestCase
 
     private static function price(string $id, int $gross): CartPrice
     {
-        return new CartPrice(self::id($id), Money::of($gross, Currency::PLN));
+        return new CartPrice(self::id($id), Money::of($gross, Currency::PLN), Money::of($gross, Currency::PLN), null);
     }
 }

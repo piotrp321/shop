@@ -34,11 +34,13 @@ final class VariantPrice
     }
 
     /**
+     * @param \DateTimeImmutable|null $at the moment of the change; now when not given
+     *
      * @throws TaxClassWithoutRate
      */
-    public static function create(VariantId $id, GrossPrice $gross, TaxClass $taxClass, VatRates $rates, PriceChangeOrigin $origin): self
+    public static function create(VariantId $id, GrossPrice $gross, TaxClass $taxClass, VatRates $rates, PriceChangeOrigin $origin, ?\DateTimeImmutable $at = null): self
     {
-        $changedAt = new \DateTimeImmutable();
+        $changedAt = $at ?? new \DateTimeImmutable();
         $price = new self($id, PriceBreakdown::fromGross($gross, $rates->rateFor($taxClass)), $taxClass, 1, $changedAt);
         $price->record($changedAt, $origin);
 
@@ -56,13 +58,15 @@ final class VariantPrice
     /**
      * A new gross at the current rate of the price's class (which also fixes an outdated rate).
      *
+     * @param \DateTimeImmutable|null $at the moment of the change; now when not given
+     *
      * @return bool false when the result is identical to the current price
      *
      * @throws TaxClassWithoutRate
      */
-    public function changeGross(GrossPrice $gross, VatRates $rates, PriceChangeOrigin $origin): bool
+    public function changeGross(GrossPrice $gross, VatRates $rates, PriceChangeOrigin $origin, ?\DateTimeImmutable $at = null): bool
     {
-        return $this->apply(PriceBreakdown::fromGross($gross, $rates->rateFor($this->taxClass)), $this->taxClass, $origin);
+        return $this->apply(PriceBreakdown::fromGross($gross, $rates->rateFor($this->taxClass)), $this->taxClass, $origin, $at);
     }
 
     /**
@@ -136,7 +140,7 @@ final class VariantPrice
         return $this->updatedAt;
     }
 
-    private function apply(PriceBreakdown $breakdown, TaxClass $taxClass, PriceChangeOrigin $origin): bool
+    private function apply(PriceBreakdown $breakdown, TaxClass $taxClass, PriceChangeOrigin $origin, ?\DateTimeImmutable $at = null): bool
     {
         if ($breakdown->equals($this->breakdown) && $taxClass->equals($this->taxClass)) {
             return false;
@@ -147,7 +151,7 @@ final class VariantPrice
         }
         $this->breakdown = $breakdown;
         $this->taxClass = $taxClass;
-        $this->updatedAt = new \DateTimeImmutable();
+        $this->updatedAt = $at ?? new \DateTimeImmutable();
         $this->record($this->updatedAt, $origin);
 
         return true;

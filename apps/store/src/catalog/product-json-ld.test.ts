@@ -62,6 +62,34 @@ describe("buildProductJsonLd", () => {
   });
 });
 
+describe("buildProductJsonLd promotion", () => {
+  const promoted = (endsAt: string) =>
+    makeOffer(1, { variants: [makeVariant(1, 1, { gross: 24000, regularGross: 30000, promotion: { endsAt, lowestPriorGross: 29900 } })] });
+
+  it.each([
+    ["an end at midnight Warsaw time (CET) is the previous day", "2026-12-01T00:00:00+01:00", "2026-11-30"],
+    ["the same moment written in UTC", "2026-11-30T23:00:00+00:00", "2026-11-30"],
+    ["an end at midnight Warsaw time in summer (CEST)", "2026-07-01T00:00:00+02:00", "2026-06-30"],
+    ["an end in the evening Warsaw time", "2026-12-01T20:30:00+01:00", "2026-12-01"],
+    ["an end at 00:00:01 Warsaw time", "2026-12-01T00:00:01+01:00", "2026-12-01"],
+    ["an end that is the first second of a year in Warsaw", "2027-01-01T00:00:00+01:00", "2026-12-31"],
+  ])("gives priceValidUntil of endsAt - 1 s in Warsaw: %s", (_name, endsAt, expected) => {
+    const ld = buildProductJsonLd(makeDetails(1), promoted(endsAt), STORE);
+    expect(ld.offers[0]).toMatchObject({ price: "240.00", priceValidUntil: expected });
+  });
+
+  it("has no priceValidUntil outside a promotion and keeps the price", () => {
+    const ld = buildProductJsonLd(makeDetails(1), makeOffer(1), STORE);
+    expect(ld.offers[0]).not.toHaveProperty("priceValidUntil");
+    expect(ld.offers[0]).toMatchObject({ price: "123.00" });
+  });
+
+  it("has priceValidUntil also when the promotion has no lowestPriorGross", () => {
+    const offer = makeOffer(1, { variants: [makeVariant(1, 1, { gross: 24000, regularGross: 30000, promotion: { endsAt: "2026-12-01T00:00:00+01:00", lowestPriorGross: null } })] });
+    expect(buildProductJsonLd(makeDetails(1), offer, STORE).offers[0]).toMatchObject({ price: "240.00", priceValidUntil: "2026-11-30" });
+  });
+});
+
 describe("buildBreadcrumbJsonLd", () => {
   it("lists All products and the categories of the path with absolute addresses", () => {
     expect(buildBreadcrumbJsonLd(makeDetails(1), STORE)).toEqual({

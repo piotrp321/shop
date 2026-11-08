@@ -2057,7 +2057,7 @@
                     "Pricing"
                 ],
                 "summary": "Change the price of a product variant",
-                "description": "Sets the gross price of one variant; the API computes the net and the VAT at the current rate of the price's tax class (the class of the variant's product for a first price). Administrators only. Send the `version` of the price you saw (null for a variant without a price): a price changed since then is a 409 and nothing is overwritten. The same gross at the same rate changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token.",
+                "description": "Sets the gross price of one variant; the API computes the net and the VAT at the current rate of the price's tax class (the class of the variant's product for a first price). Administrators only. Send the `version` of the price you saw (null for a variant without a price): a price changed since then is a 409 and nothing is overwritten. The same gross at the same rate changes nothing: the version stays and no history entry is recorded. The history entry names the staff member of the token. The price of a variant in an active promotion does not change.",
                 "operationId": "changePrice",
                 "parameters": [
                     {
@@ -2134,11 +2134,11 @@
                         }
                     },
                     "409": {
-                        "description": "The price was changed since the given version, or created since the null version (problem details). Reload it.",
+                        "description": "The variant is in an active promotion (`price-locked-by-promotion`, whatever the version: end the promotion first), or the price was changed since the given version, or created since the null version (`about:blank`); see `PricingConflictProblem`. Nothing is changed.",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/Problem"
+                                    "$ref": "#/components/schemas/PricingConflictProblem"
                                 }
                             }
                         }
@@ -2258,6 +2258,503 @@
                     },
                     "404": {
                         "description": "No such variant, or the id is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/promotions/{id}": {
+            "get": {
+                "tags": [
+                    "Pricing"
+                ],
+                "summary": "A promotion",
+                "description": "A promotion with its variants (product, name and label from the catalog) and their catalog and promotional prices. Every staff member may read it.",
+                "operationId": "getPromotion",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Promotion id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The promotion.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PromotionResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such promotion, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Pricing"
+                ],
+                "summary": "Change a promotion",
+                "description": "Sends the whole promotion as it should be, based on the `version` seen. Administrators and marketing only. A planned promotion changes everything. An active one changes only its name and its end: any other value different from the stored one is a 409 `promotion-not-editable`, and an end at or before the time of the server ends it at once (the next whole second; \"end now\" sends the time of the browser). An ended promotion changes no more. A period overlapping another promotion with a common variant is a 409 `promotion-overlap`; a variant the promotion gains must exist in the catalog and have a current price.",
+                "operationId": "revisePromotion",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Promotion id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RevisePromotionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The promotion as saved.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PromotionResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change promotions (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such promotion, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The promotion changed since the given version (`about:blank`), its status does not allow the change (`promotion-not-editable`), or variants are in another promotion of an overlapping period (`promotion-overlap`); see `PricingConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PricingConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a key is missing or of a wrong type, or an added variant does not exist or has no current price (problem details with `violations`, a variant at `variantIds[<index>]`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Pricing"
+                ],
+                "summary": "Delete a planned promotion",
+                "description": "Deletes a promotion that has not started, based on the `version` seen. Administrators and marketing only. An active or ended promotion is kept for ever (409 `promotion-not-editable`); end an active one with a change of its end.",
+                "operationId": "deletePromotion",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Promotion id (UUID).",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "version",
+                        "in": "query",
+                        "description": "The `version` of the promotion the deletion is based on.",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Deleted."
+                    },
+                    "400": {
+                        "description": "The version is missing or not a positive integer (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change promotions (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such promotion, also an id that is not a UUID (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The promotion changed since the given version (`about:blank`) or is not planned (`promotion-not-editable`); see `PricingConflictProblem`. Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PricingConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/admin/promotions": {
+            "get": {
+                "tags": [
+                    "Pricing"
+                ],
+                "summary": "Promotion list",
+                "description": "A page of promotions, newest start first (then by id), with the status at the time of the server. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filter; the total is not counted.",
+                "operationId": "listPromotions",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Only the promotions in this status now.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "planned",
+                                "active",
+                                "ended"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "description": "The `next` cursor of the previous page.",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 2048,
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "perPage",
+                        "in": "query",
+                        "description": "Page size.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 25,
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of the list. Possibly an empty one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PromotionListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters or paging cursor (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "The keys of the token issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "backoffice": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Pricing"
+                ],
+                "summary": "Plan a promotion",
+                "description": "Plans a percent off on a list of variants for a period. Administrators and marketing only. A variant is in at most one promotion at any moment: a period overlapping another promotion with a common variant is a 409 that lists the variants. Every variant must exist in the catalog and have a current price. The promotion names the staff member of the token.",
+                "operationId": "planPromotion",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PromotionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The planned promotion (`Location` names it).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PromotionResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The body is not valid JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "The staff member may not change promotions (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Variants are in another promotion of an overlapping period (`promotion-overlap` with `conflictingVariantIds`, see `PricingConflictProblem`). Nothing is changed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PricingConflictProblem"
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "The body is not JSON (problem details).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "A field is invalid, a key is missing or of a wrong type, or a variant does not exist or has no current price (problem details with `violations`, each at the path of its field, a variant at `variantIds[<index>]`).",
                         "content": {
                             "application/problem+json": {
                                 "schema": {
@@ -2871,6 +3368,49 @@
                     "detail": {
                         "description": "Polish text for the staff member.",
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "PricingConflictProblem": {
+                "description": "A 409 of the prices and promotions of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the price of a variant in an active promotion cannot change (end the promotion first), variants are in another promotion of an overlapping period (listed in `conflictingVariantIds`), the status of the promotion does not allow the change (after its start only the name and the end, an ended one not at all, only a planned one is deleted), or (`about:blank`) the price or the promotion changed since the `version` sent. Nothing is changed.",
+                "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion",
+                            "tag:piotrp321.github.io,2026:shop/problems/promotion-overlap",
+                            "tag:piotrp321.github.io,2026:shop/problems/promotion-not-editable",
+                            "about:blank"
+                        ]
+                    },
+                    "title": {
+                        "type": "string",
+                        "example": "Conflict"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "enum": [
+                            409
+                        ]
+                    },
+                    "detail": {
+                        "description": "Polish text for the staff member.",
+                        "type": "string"
+                    },
+                    "conflictingVariantIds": {
+                        "description": "Only with `promotion-overlap`. The variants of the request that are in another promotion of an overlapping period, ordered by id.",
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
                     }
                 },
                 "type": "object"
@@ -3543,6 +4083,138 @@
                         "default": 25,
                         "maximum": 100,
                         "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "PromotionListQuery": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "enum": [
+                            "planned",
+                            "active",
+                            "ended"
+                        ]
+                    },
+                    "after": {
+                        "type": "string",
+                        "nullable": true,
+                        "default": null,
+                        "maxLength": 2048,
+                        "minLength": 1
+                    },
+                    "perPage": {
+                        "type": "integer",
+                        "default": 25,
+                        "maximum": 100,
+                        "minimum": 1
+                    }
+                },
+                "type": "object"
+            },
+            "PromotionRequest": {
+                "description": "A new promotion.",
+                "required": [
+                    "name",
+                    "percentOff",
+                    "startsAt",
+                    "endsAt",
+                    "variantIds"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "1 to 100 characters once trimmed, without control characters.",
+                        "type": "string",
+                        "example": "Jesie\u0144 w g\u00f3rach",
+                        "maxLength": 100
+                    },
+                    "percentOff": {
+                        "description": "The discount of every variant, in percent.",
+                        "type": "integer",
+                        "example": 20,
+                        "maximum": 90,
+                        "minimum": 1
+                    },
+                    "startsAt": {
+                        "description": "RFC 3339 with a time zone. Null, now or a moment before now: the promotion starts now (at the next whole second). A fraction of a second is cut.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-11T00:00:00+01:00",
+                        "nullable": true
+                    },
+                    "endsAt": {
+                        "description": "RFC 3339 with a time zone, after now and the start, at most 90 days after the start. The promotion is in force until before this moment. A fraction of a second is cut.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-21T00:00:00+01:00"
+                    },
+                    "variantIds": {
+                        "description": "1 to 1000 variants, each once; every one must exist in the catalog and have a current price.",
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "maxItems": 1000,
+                        "minItems": 1
+                    }
+                },
+                "type": "object"
+            },
+            "RevisePromotionRequest": {
+                "description": "A promotion as it should be. Once started only the name and the end may differ from the stored values.",
+                "required": [
+                    "name",
+                    "percentOff",
+                    "startsAt",
+                    "endsAt",
+                    "variantIds",
+                    "version"
+                ],
+                "properties": {
+                    "name": {
+                        "description": "1 to 100 characters once trimmed, without control characters.",
+                        "type": "string",
+                        "example": "Jesie\u0144 w g\u00f3rach",
+                        "maxLength": 100
+                    },
+                    "percentOff": {
+                        "description": "The discount of every variant, in percent. Fixed once the promotion started.",
+                        "type": "integer",
+                        "example": 20,
+                        "maximum": 90,
+                        "minimum": 1
+                    },
+                    "startsAt": {
+                        "description": "RFC 3339 with a time zone; null, now or before now starts a planned promotion now. Fixed once the promotion started (send the stored one).",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-11T00:00:00+01:00",
+                        "nullable": true
+                    },
+                    "endsAt": {
+                        "description": "RFC 3339 with a time zone, at most 90 days after the start. For an active promotion, now or before now ends it at once (\"end now\": the next whole second).",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-21T00:00:00+01:00"
+                    },
+                    "variantIds": {
+                        "description": "1 to 1000 variants, each once. Fixed once the promotion started; an added one must exist in the catalog and have a current price.",
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "maxItems": 1000,
+                        "minItems": 1
+                    },
+                    "version": {
+                        "description": "The `version` of the promotion the change is based on.",
+                        "type": "integer",
+                        "example": 1
                     }
                 },
                 "type": "object"
@@ -4705,6 +5377,207 @@
                         "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
                         "type": "string",
                         "example": "eyJ0IjoiMjAyNi0xMS0wMVQxMjozMDowMC4wMDAwMDArMDA6MDAiLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0",
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "PromotionVariantResponse": {
+                "description": "A variant of a promotion with its prices, all computed by the API. A variant deleted from the catalog has no product, name or label.",
+                "required": [
+                    "variantId",
+                    "productId",
+                    "productName",
+                    "label",
+                    "regularGross",
+                    "promotionalGross"
+                ],
+                "properties": {
+                    "variantId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "productId": {
+                        "description": "Null for a variant deleted from the catalog.",
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "productName": {
+                        "description": "Null for a variant deleted from the catalog.",
+                        "type": "string",
+                        "example": "Namiot Tarvik 2",
+                        "nullable": true
+                    },
+                    "label": {
+                        "description": "Empty for the default variant, null for a variant deleted from the catalog.",
+                        "type": "string",
+                        "example": "Zielony",
+                        "nullable": true
+                    },
+                    "regularGross": {
+                        "description": "The current catalog gross in grosze; null without a current price.",
+                        "type": "integer",
+                        "example": 5999,
+                        "nullable": true
+                    },
+                    "promotionalGross": {
+                        "description": "The gross in the promotion in grosze; null without a catalog price and for an ended promotion (what was paid is in the orders).",
+                        "type": "integer",
+                        "example": 4800,
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "PromotionResponse": {
+                "description": "A promotion with its variants. Times in UTC (RFC 3339), whole seconds; the period is [startsAt, endsAt).",
+                "required": [
+                    "id",
+                    "name",
+                    "percentOff",
+                    "startsAt",
+                    "endsAt",
+                    "status",
+                    "variantCount",
+                    "version",
+                    "updatedAt",
+                    "updatedByName",
+                    "variants"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Jesie\u0144 w g\u00f3rach"
+                    },
+                    "percentOff": {
+                        "type": "integer",
+                        "example": 20
+                    },
+                    "startsAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-10T23:00:00+00:00"
+                    },
+                    "endsAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-20T23:00:00+00:00"
+                    },
+                    "status": {
+                        "description": "From the time of the server: planned before the start, active until before the end, ended after.",
+                        "type": "string",
+                        "enum": [
+                            "planned",
+                            "active",
+                            "ended"
+                        ]
+                    },
+                    "variantCount": {
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "version": {
+                        "description": "Version of the promotion, for the optimistic locking of changes.",
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "updatedAt": {
+                        "description": "When the promotion was planned or last changed.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-07T12:30:00+00:00"
+                    },
+                    "updatedByName": {
+                        "description": "The staff member of the last change; null for the demo data.",
+                        "type": "string",
+                        "example": "ola.marketing",
+                        "nullable": true
+                    },
+                    "variants": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PromotionVariantResponse"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "PromotionListItemResponse": {
+                "description": "A promotion of the list. Times in UTC (RFC 3339); the period is [startsAt, endsAt).",
+                "required": [
+                    "id",
+                    "name",
+                    "percentOff",
+                    "startsAt",
+                    "endsAt",
+                    "status",
+                    "variantCount",
+                    "version"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Jesie\u0144 w g\u00f3rach"
+                    },
+                    "percentOff": {
+                        "type": "integer",
+                        "example": 20
+                    },
+                    "startsAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-10T23:00:00+00:00"
+                    },
+                    "endsAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-20T23:00:00+00:00"
+                    },
+                    "status": {
+                        "description": "From the time of the server.",
+                        "type": "string",
+                        "enum": [
+                            "planned",
+                            "active",
+                            "ended"
+                        ]
+                    },
+                    "variantCount": {
+                        "type": "integer",
+                        "example": 2
+                    },
+                    "version": {
+                        "type": "integer",
+                        "example": 1
+                    }
+                },
+                "type": "object"
+            },
+            "PromotionListResponse": {
+                "description": "A page of the promotions, newest start first.",
+                "required": [
+                    "items",
+                    "next"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PromotionListItemResponse"
+                        }
+                    },
+                    "next": {
+                        "description": "Opaque cursor of the next page (send it as `after`), null on the last page.",
+                        "type": "string",
                         "nullable": true
                     }
                 },

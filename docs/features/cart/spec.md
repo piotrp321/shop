@@ -8,8 +8,9 @@ Klient sklepu (gość albo zalogowany w realmie `shop`) dodaje wariant produktu 
 usuwa pozycje i widzi sumy policzone przez API. Koszyk przeżywa odświeżenie i ponowne wejście. Po zalogowaniu koszyk
 gościa łączy się z koszykiem klienta, a klient widzi ten sam koszyk na każdym urządzeniu.
 
-Poza zakresem: rezerwacja stanu (robi ją złożenie zamówienia w Ordering), płatności, promocje i kody rabatowe, koszty
-dostawy, strona produktu, panel administracyjny, rate limiting tworzenia koszyków.
+Cena wariantu w koszyku i w ofercie listy to cena skuteczna z Pricing (w aktywnej promocji cena promocyjna,
+`docs/features/promotions/spec.md`); koszyk nie oznacza promocji. Poza zakresem: rezerwacja stanu (robi ją złożenie
+zamówienia w Ordering), płatności, kody rabatowe, koszty dostawy, strona produktu, panel administracyjny, rate limiting tworzenia koszyków.
 
 ## Decyzje biznesowe
 
@@ -143,7 +144,7 @@ Stan linii, w kolejności priorytetu:
 | `state` | Warunek |
 |---|---|
 | `unavailable_product` | wariant nieznany Catalogowi (np. po resecie danych demo, linia sprzed migracji, której produktu już nie ma, wariant usunięty w panelu) albo wariant szkicu (produkt nieopublikowany albo wycofany z publikacji: `GetVariantSummaries` pomija go jak nieznany) |
-| `no_price` | brak ceny w `GetCurrentPrices` (brak ceny, nieaktualna stawka VAT albo cena w walucie innej niż PLN) |
+| `no_price` | brak ceny w `GetCurrentPrices` (brak ceny, nieaktualna stawka VAT albo cena w walucie innej niż PLN; promocja tego nie zmienia) |
 | `out_of_stock` | `available = 0` (także produkt bez rekordu stanu) |
 | `insufficient_stock` | `quantity > available` |
 | `purchasable` | pozostałe |
@@ -160,20 +161,28 @@ Kafelek produktu na liście sklepu pokazuje cenę „od” i dostępność produ
 oraz pozwala wybrać wariant (decyzje D6–D8 i E1–E3 w `docs/features/variants/spec.md`). Liczy to Cart, bo tu jest reguła
 zakupu i porty do Catalog, Pricing i Inventory.
 
-- Zapytanie `GetProductOffers(productIds)` (1–48 id; inaczej `InvalidProductOffersQuery`, `InvalidInput`) w
-  `Cart_Application`: warianty z `ProductCatalog::variantsOf` (Catalog `ListProductVariants`), ceny z `CartPrices`
-  (Pricing `GetCurrentPrices`) i stany z poziomem z `StockAvailability` (Inventory `GetStockLevels`), po jednym
-  wywołaniu każdego portu dla wszystkich wariantów strony (bez wariantów ceny i stany nie są pytane). Odczyt bez blokad.
+- Zapytanie `GetProductOffers(productIds, withLowestPriorPrice)` (1–48 id; inaczej `InvalidProductOffersQuery`,
+  `InvalidInput`) w `Cart_Application`: warianty z `ProductCatalog::variantsOf` (Catalog `ListProductVariants`), ceny
+  skuteczne z `CartPrices` (Pricing `GetCurrentPrices` z tą samą flagą) i stany z poziomem z `StockAvailability`
+  (Inventory `GetStockLevels`), po jednym wywołaniu każdego portu dla wszystkich wariantów strony (bez wariantów ceny
+  i stany nie są pytane). Odczyt bez blokad. Flaga `withLowestPriorPrice` (cena Omnibus w promocjach) jest `true` dla
+  endpointu ofert i `false` w `QueryBusProductOfferFacts` (indeks wyszukiwania dostaje cenę skuteczną bez Omnibusa;
+  mapowanie indeksu bez zmian).
 - Wariant jest możliwy do kupienia, gdy `ProductOffer::purchasability(1)` = `Purchasable` (aktualna cena i
   `available > 0`; `VariantOffer::isPurchasable`): ta sama reguła co przy dodaniu do koszyka, bez drugiej implementacji.
 - Podsumowanie produktu liczy value object domeny `ProductOfferSummary`, jedyne miejsce tej reguły: `fromGross` =
-  najniższe brutto wariantów możliwych do kupienia, `hasPriceRange` = ich najwyższe brutto ≠ najniższe, `level` =
-  najlepszy poziom (`in_stock` > `low_stock`) wśród nich; bez wariantu możliwego do kupienia (także produkt nieznany
-  Catalogowi): `fromGross = null`, `hasPriceRange = false`, `level = out_of_stock`. Próg poziomu zostaje w Inventory.
+  najniższe brutto (skuteczne) wariantów możliwych do kupienia, `fromPromotion` = promocja (`VariantPromotion`)
+  wariantu, który daje `fromGross` (przy równych cenach pierwszy w kolejności pozycji; `null`, gdy ten wariant nie jest
+  w promocji), `hasPriceRange` = ich najwyższe brutto ≠ najniższe, `level` = najlepszy poziom (`in_stock` > `low_stock`)
+  wśród nich; bez wariantu możliwego do kupienia (także produkt nieznany Catalogowi): `fromGross = null`,
+  `fromPromotion = null`, `hasPriceRange = false`, `level = out_of_stock`. Próg poziomu zostaje w Inventory.
 - Wynik: oferta dla każdego żądanego id (powtórzone id raz, w kolejności żądania) `{productId, variantAxes, fromGross|null,
-  hasPriceRange, currency: "PLN", level, variants: [{variantId, label, gross|null, level, purchasable}]}`, warianty
-  w kolejności pozycji; `gross` tylko z aktualnej ceny. Produkt nieznany Catalogowi: `variantAxes: []`, `variants: []`.
-  Liczba sztuk nigdy nie jest zwracana.
+  fromPromotion: {lowestPriorGross|null}|null, hasPriceRange, currency: "PLN", level, variants: [{variantId, label,
+  gross|null, regularGross|null, promotion: {endsAt, lowestPriorGross|null}|null, level, purchasable}]}`, warianty
+  w kolejności pozycji. `gross` to cena skuteczna (w promocji promocyjna), `regularGross` cena katalogowa brutto, oba
+  tylko z aktualnej ceny; `promotion` to promocja aktywna wariantu (`endsAt` w UTC, RFC 3339, okres prawostronnie
+  otwarty), `lowestPriorGross` jej cena Omnibus z Pricing (`null`: wariant bez ceny przed startem promocji). Produkt
+  nieznany Catalogowi: `variantAxes: []`, `variants: []`. Liczba sztuk nigdy nie jest zwracana.
 
 ## Persystencja i transakcje
 
@@ -301,7 +310,7 @@ Porty (`Cart_Application/Port`) i adaptery (`Cart_Infrastructure`):
 |---|---|---|
 | `ProductCatalog::summaries(variantIds)` → `VariantSummary {variantId, productId, name, label, image}` | `QueryBusProductCatalog` | Catalog `GetVariantSummaries` |
 | `ProductCatalog::variantsOf(productIds)` → `ProductVariants {productId, variantAxes, variants: [{variantId, label}]}` | `QueryBusProductCatalog` | Catalog `ListProductVariants` |
-| `CartPrices::current(variantIds)` → `CartPrice {variantId, gross: Money}` | `QueryBusCartPrices` | Pricing `GetCurrentPrices` |
+| `CartPrices::current(variantIds, withLowestPriorPrice = false)` → `CartPrice {variantId, gross: Money, regularGross: Money, promotion: VariantPromotion {endsAt, lowestPriorGross: Money\|null}\|null}` | `QueryBusCartPrices` | Pricing `GetCurrentPrices` |
 | `StockAvailability::of(variantIds)` → `VariantAvailability {variantId, available, level}` | `QueryBusStockAvailability` | Inventory `GetStockLevels` |
 | `CartReader::find(id)`, `findForCustomer(customerId)` | `DbalCartReader` | odczyt DBAL |
 | `ExpiredCarts::purgeBatch(now, limit)` | `DbalExpiredCarts` | usunięcie partii DBAL |
@@ -573,9 +582,11 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
   `expiresAt`, klient, klient bez koszyka bez zmian, gość `merged`).
 
 - `ProductOfferSummary` (TDD): pominięcie wariantów bez ceny, z ceną nieaktualną i z `available = 0`, równe i różne
-  ceny, brak wariantów możliwych do kupienia (`fromGross = null`, `out_of_stock`), najlepszy poziom.
+  ceny, brak wariantów możliwych do kupienia (`fromGross = null`, `out_of_stock`), najlepszy poziom, `fromPromotion`
+  wariantu ceny „od” (także remis cen i tańszy wariant w promocji, którego nie da się kupić).
 - `GetProductOffersHandler`: oferta na każde żądane id w kolejności żądania, produkt nieznany, jedno wywołanie
-  każdego portu, 0, 49 i niepoprawne id.
+  każdego portu, 0, 49 i niepoprawne id, wariant w promocji (`regularGross`, `promotion`, `fromPromotion`) i flaga
+  `withLowestPriorPrice` przekazana do `CartPrices`; `QueryBusProductOfferFacts` pyta bez flagi.
 
 ### Integracyjne (PostgreSQL)
 
@@ -585,8 +596,11 @@ W `apps/api/tests/Integration`:
   (bezpośredni SQL łamiący reguły jest odrzucany), kaskada linii, `lockOrCreateForCustomer` (`ON CONFLICT`), blokada z
   `refresh` rekordu obecnego w identity map (także usuniętego w międzyczasie) i ponowienie po usunięciu koszyka przez
   czyszczenie.
-- `Cart/QueryBusAdaptersTest`: adaptery Catalog, Pricing i Inventory na wariantach.
-- `Cart/GetProductOffersTest`: 48 produktów po 100 wariantów to trzy zapytania (warianty, ceny, stany).
+- `Cart/QueryBusAdaptersTest`: adaptery Catalog, Pricing (także cena skuteczna, cena katalogowa i promocja z ceną
+  Omnibus tylko z flagą) i Inventory na wariantach.
+- `Cart/ProductOfferFactsTest`: fakty indeksu z ceną skuteczną wariantu w promocji, bez zapytań Omnibusa.
+- `Cart/GetProductOffersTest`: 48 produktów po 100 wariantów z wariantem w promocji to sześć zapytań (warianty, ceny,
+  promocje aktywne, historia i promocje okna Omnibusa, stany).
 - `Cart/Persistence/CartLinesByVariantMigrationTest`: migracja na danych sprzed zmiany (linia zachowuje `id`, ilość
   i koszyk, wskazuje wariant domyślny swojego produktu), unikalność `(cart_id, variant_id)`, `down`.
 - `Cart/MergeGuestCartTest`: wymuszony błąd w trakcie scalenia wycofuje całość (gość `open`, klient bez zmian, także
@@ -621,7 +635,10 @@ Każdy endpoint: 200/201, 400 (zły JSON), 401 (`/me/cart…` bez tokena i z tok
 nieznany, wygasły i scalony koszyk gościa, nieznany wariant i id produktu zamiast wariantu, brak linii), 409 (każda przyczyna), 415, 422 (każdy przypadek tabeli komunikatów: brak klucza, `null`, zły typ, zły UUID, ilość spoza 1–99; asercja na dokładną listę `violations`), `Cache-Control: private, no-store`; `merge`: każdy `result` i `truncated`.
 `ProductOffersEndpointTest`: oferty bez tokena (cena „od”, zakres, poziom, warianty z etykietami, cena nieaktualna i brak
 stanu pominięte), kolejność i powtórzone id, produkt nieznany i id wariantu zamiast produktu, 48 id, 400 (brak, 49,
-niepoprawny UUID, forma `[]`), 401 przy złym tokenie, `public, max-age=60, s-maxage=3600`, brak liczby sztuk w odpowiedzi.
+niepoprawny UUID, forma `[]`), 401 przy złym tokenie, `public, max-age=60, s-maxage=3600`, brak liczby sztuk w odpowiedzi,
+warianty w promocji (`gross` promocyjne, `regularGross`, `promotion` z `endsAt` i ceną Omnibus, także `null` bez ceny
+przed startem, `fromPromotion`). `GuestCartEndpointTest`: linia wariantu w promocji ma cenę promocyjną bez oznaczenia
+promocji.
 
 ### Architektura
 

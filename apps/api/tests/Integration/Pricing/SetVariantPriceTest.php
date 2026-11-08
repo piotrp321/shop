@@ -12,7 +12,10 @@ use App\Pricing\Application\Command\SetVariantPriceHandler;
 use App\Pricing\Domain\Price\PriceModifiedConcurrently;
 use App\Pricing\Domain\Price\VariantNotFound;
 use App\Pricing\Domain\Tax\PolishVatRates;
+use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrinePromotionRepository;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineVariantPriceRepository;
+use App\Pricing\Infrastructure\Persistence\Doctrine\PostgresPromotionWriteLock;
+use App\Pricing\Infrastructure\SystemClock;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
@@ -175,6 +178,9 @@ final class SetVariantPriceTest extends KernelTestCase
             new InterleavingVariantPriceRepository(new DoctrineVariantPriceRepository($entityManager, new RecordingDomainEventPublisher()), $afterRead),
             new InMemoryVariantTaxClasses([$variantId => 'standard']),
             new PolishVatRates(),
+            new DoctrinePromotionRepository($entityManager),
+            new PostgresPromotionWriteLock($entityManager->getConnection()),
+            new SystemClock(),
         );
 
         return static function (SetVariantPrice $command) use ($entityManager, $handler): void {

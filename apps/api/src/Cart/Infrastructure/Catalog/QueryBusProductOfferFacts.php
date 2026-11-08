@@ -18,8 +18,9 @@ use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * Catalog's search index reads the offers of the product list (Cart's GetProductOffers on query.bus), so the index
- * knows what can be bought and the "from" price by the same rule as the tile. One query per batch of
- * {@see GetProductOffers::MAX_PRODUCTS} products.
+ * knows what can be bought and the "from" price (the effective one, in a promotion the promotional price) by the same
+ * rule as the tile. One query per batch of {@see GetProductOffers::MAX_PRODUCTS} products, without the Omnibus price
+ * (the index does not keep it).
  */
 final class QueryBusProductOfferFacts implements ProductOfferFacts
 {
@@ -35,7 +36,7 @@ final class QueryBusProductOfferFacts implements ProductOfferFacts
         $facts = [];
         foreach (array_chunk(array_values(array_unique($productIds)), GetProductOffers::MAX_PRODUCTS) as $batch) {
             try {
-                $offers = $this->handle(new GetProductOffers($batch));
+                $offers = $this->handle(new GetProductOffers($batch, withLowestPriorPrice: false));
             } catch (HandlerFailedException $failure) {
                 $cause = QueryBusFailure::cause($failure);
 

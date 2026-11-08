@@ -205,6 +205,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
   zdjęcia jedno pod drugim przez `ProductPhoto` (pierwsze `priority`, bez zdjęć `PhotoPlaceholder`), krótki opis,
   cena „od X zł” (gdy `hasPriceRange`) albo „X zł” i etykieta `level` produktu; produkt bez wariantu możliwego do kupienia
   (`fromGross = null`): „Niedostępny” bez ceny, wyboru i przycisku. Wartości pochodzą z oferty, front niczego nie liczy.
+  Cena to zawsze cena skuteczna z API (bez przekreślonej ceny katalogowej). `PromotionNotice` pokazuje oznaczenie
+  „Promocja” zawsze razem z linią „Najniższa cena z 30 dni przed obniżką: X zł” (Omnibus, `lowestPriorGross` przez
+  `formatPrice`); `lowestPriorGross = null` albo brak promocji to żadne z dwóch. Przed wyborem wariantu bierze je
+  z `fromPromotion` oferty, po wyborze z `promotion` wybranego wariantu (to samo na kafelku w `TileOffer`).
 - Wybór wariantu (`VariantChoice`, Client Component osadzony w `ProductDetailsView`; reguły w czystych funkcjach
   `variant-choice.ts`, z testami): jedna grupa przycisków (`fieldset`, `aria-pressed`) na oś z `variantAxes`, wartości
   w kolejności pierwszego wystąpienia w `variants` szczegółów. Wariant ze szczegółów jest możliwy do kupienia tylko, gdy
@@ -216,14 +220,16 @@ Klienta API generuje `make api-client` z katalogu głównego.
   przestały pasować, więc wybór nigdy się nie blokuje. Kliknięcie wybranej wartości niczego nie zmienia (bez odznaczania).
   Wariant możliwy do kupienia, jeśli jest jedyny (także spośród wielu), jest wybrany od pierwszego renderu (stan
   początkowy zależy tylko od danych, więc HTML ISR jest taki sam dla każdego). Produkt z jednym wariantem pokazuje
-  wartości osi jako tekst („Kolor: czarne”), bez wyboru. Do pełnego wyboru strona pokazuje cenę i poziom produktu
-  (`children` z serwera), po nim cenę i poziom wybranego wariantu. `AddToCartButton` jest wyłączony do pełnego wyboru
+  wartości osi jako tekst („Kolor: czarne”), bez wyboru. Do pełnego wyboru strona pokazuje cenę, oznaczenie promocji
+  i poziom produktu (`children` z serwera), po nim cenę, oznaczenie promocji i poziom wybranego wariantu. `AddToCartButton` jest wyłączony do pełnego wyboru
   i dodaje 1 sztukę wybranego wariantu (ilość zmienia się w koszyku). Wariantu nie ma w URL.
 - Metadane (`buildProductMetadata`): tytuł `<nazwa> | Rytm`, opis = krótki opis (bez opisu: brak), kanoniczny
   `<STORE_URL>/p/<slug>`, Open Graph (tytuł, opis, adres, obraz = pierwsze zdjęcie w największej szerokości; bez zdjęć
   bez obrazu).
 - JSON-LD (`product-json-ld.ts`, dwa `<script type="application/ld+json">`): `Product` z `Offer` tylko dla wariantów
-  z ceną (`gross` ≠ `null`; `name` = etykieta, `price` w złotych z kropką, `availability` z `level`) i `BreadcrumbList`
+  z ceną (`gross` ≠ `null`; `name` = etykieta, `price` w złotych z kropką, czyli cena skuteczna z API, `availability`
+  z `level`; wariant w promocji ma `priceValidUntil`: data `YYYY-MM-DD` chwili `endsAt − 1 s` w `Europe/Warsaw`, więc
+  koniec o 00:00 czasu warszawskiego daje poprzedni dzień; samo formatowanie daty) i `BreadcrumbList`
   z adresami bezwzględnymi. `serializeJsonLd` zamienia każdy `<` na ucieczkę Unicode, więc tekst produktu nie zamknie
   elementu `script`.
 - Kafelek listy (`ProductTile`): nazwa i zdjęcie to linki do `/p/<slug>`; link zdjęcia jest `aria-hidden` i poza
@@ -283,11 +289,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   bez wysłania żądania; funkcje zapisu nigdy nie odrzucają obietnicy. Bez `navigator.locks` (kontekst bez HTTPS poza
   `localhost`) działa sama kolejka karty i ta gwarancja obejmuje tylko jedną kartę. Odczyty nie czekają ani w kolejce,
   ani na blokadę. Testy ustawiają `navigator` przez `vi.stubGlobal` (Node ma własne `navigator.locks`).
-- UI: `ProductTile` (Server Component: nazwa, zdjęcie, cena „od X zł” przy `hasPriceRange`, poziom produktu; produkt
+- UI: `ProductTile` (Server Component: nazwa, zdjęcie, cena „od X zł” przy `hasPriceRange` z oznaczeniem promocji i linią Omnibus z `fromPromotion`, poziom produktu; produkt
   bez wariantu możliwego do kupienia, `fromGross = null`: „Niedostępny” bez ceny, listy i przycisku) z częścią kliencką
   `TileOffer`: produkt z jednym wariantem ma przycisk `AddToCartButton` dodający ten wariant, produkt z ≥ 2 wariantami
   listę wariantów (etykieta: nazwy osi) bez wyboru domyślnego, z wariantami `purchasable = false` opisanymi
-  „niedostępny” i wyłączonymi; po wyborze kafelek pokazuje cenę i poziom wybranego wariantu, a przycisk (wyłączony do
+  „niedostępny” i wyłączonymi; po wyborze kafelek pokazuje cenę, oznaczenie promocji (z `promotion` wariantu) i poziom wybranego wariantu, a przycisk (wyłączony do
   wyboru) dodaje 1 sztukę wybranego wariantu. `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
   (`CartPage`, Client Component ładujący `/api/cart`), linia z nazwą produktu i etykietą wariantu, pod podsumowaniem
   przycisk „Przejdź do kasy” (link do `/checkout`; przy `hasExcludedLines` nieaktywny z tekstem „Usuń albo popraw

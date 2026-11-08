@@ -3814,12 +3814,51 @@
                 },
                 "type": "object"
             },
+            "FromPromotionResponse": {
+                "description": "The promotion of the variant that gives the \"from\" price of a product.",
+                "required": [
+                    "lowestPriorGross"
+                ],
+                "properties": {
+                    "lowestPriorGross": {
+                        "description": "The lowest gross price in grosze of the 30 days before the start of the promotion (the Omnibus price); null when the variant had no price before the start.",
+                        "type": "integer",
+                        "example": 29900,
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
+            "VariantOfferPromotionResponse": {
+                "description": "The promotion that gives the price of a variant now.",
+                "required": [
+                    "endsAt",
+                    "lowestPriorGross"
+                ],
+                "properties": {
+                    "endsAt": {
+                        "description": "The end of the promotion in UTC (RFC 3339, whole seconds); the promotion lasts until before it.",
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-20T23:00:00+00:00"
+                    },
+                    "lowestPriorGross": {
+                        "description": "The lowest gross price in grosze of the 30 days before the start of the promotion (the Omnibus price); null when the variant had no price before the start.",
+                        "type": "integer",
+                        "example": 29900,
+                        "nullable": true
+                    }
+                },
+                "type": "object"
+            },
             "VariantOfferResponse": {
                 "description": "The offer of one variant of a product. Never the number of units.",
                 "required": [
                     "variantId",
                     "label",
                     "gross",
+                    "regularGross",
+                    "promotion",
                     "level",
                     "purchasable"
                 ],
@@ -3835,10 +3874,31 @@
                         "example": "czarne, 42"
                     },
                     "gross": {
-                        "description": "The current gross price in grosze; null without a current price.",
+                        "description": "The current gross price in grosze, the price to pay: in a promotion the promotional price; null without a current price.",
                         "type": "integer",
                         "example": 30000,
                         "nullable": true
+                    },
+                    "regularGross": {
+                        "description": "The catalog gross price in grosze (equal to `gross` outside a promotion); null without a current price.",
+                        "type": "integer",
+                        "example": 37500,
+                        "nullable": true
+                    },
+                    "promotion": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/VariantOfferPromotionResponse"
+                            },
+                            {
+                                "type": "object",
+                                "nullable": true,
+                                "enum": [
+                                    null
+                                ]
+                            }
+                        ],
+                        "description": "The promotion that gives `gross`; null outside a promotion."
                     },
                     "level": {
                         "description": "Availability level computed by the API.",
@@ -3863,6 +3923,7 @@
                     "productId",
                     "variantAxes",
                     "fromGross",
+                    "fromPromotion",
                     "hasPriceRange",
                     "currency",
                     "level",
@@ -3886,10 +3947,25 @@
                         ]
                     },
                     "fromGross": {
-                        "description": "The lowest gross price in grosze among the purchasable variants; null when no variant can be bought.",
+                        "description": "The lowest current (in a promotion: promotional) gross price in grosze among the purchasable variants; null when no variant can be bought.",
                         "type": "integer",
                         "example": 30000,
                         "nullable": true
+                    },
+                    "fromPromotion": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/FromPromotionResponse"
+                            },
+                            {
+                                "type": "object",
+                                "nullable": true,
+                                "enum": [
+                                    null
+                                ]
+                            }
+                        ],
+                        "description": "The promotion of the variant that gives `fromGross` (of variants of the same price, the first in order); null when that variant is not in a promotion or no variant can be bought."
                     },
                     "hasPriceRange": {
                         "description": "Whether the purchasable variants have different prices (the tile shows \"od\").",

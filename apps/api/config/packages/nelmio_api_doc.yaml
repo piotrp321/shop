@@ -1119,6 +1119,39 @@ nelmio_api_doc:
                                 detail:
                                     type: string
                                     description: Polish text for the staff member.
+                        PricingConflictProblem:
+                            type: object
+                            description: >-
+                                A 409 of the prices and promotions of the panel. `type` names the cause (the `detail` is Polish
+                                text for people and may change): the price of a variant in an active promotion cannot change
+                                (end the promotion first), variants are in another promotion of an overlapping period (listed in
+                                `conflictingVariantIds`), the status of the promotion does not allow the change (after its start
+                                only the name and the end, an ended one not at all, only a planned one is deleted), or
+                                (`about:blank`) the price or the promotion changed since the `version` sent. Nothing is changed.
+                            required: [type, title, status, detail]
+                            properties:
+                                type:
+                                    type: string
+                                    enum:
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/promotion-overlap'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/promotion-not-editable'
+                                        - about:blank
+                                title:
+                                    type: string
+                                    example: Conflict
+                                status:
+                                    type: integer
+                                    enum: [409]
+                                detail:
+                                    type: string
+                                    description: Polish text for the staff member.
+                                conflictingVariantIds:
+                                    type: array
+                                    description: Only with `promotion-overlap`. The variants of the request that are in another promotion of an overlapping period, ordered by id.
+                                    items:
+                                        type: string
+                                        format: uuid
                         ProductConflictProblem:
                             type: object
                             description: >-

@@ -1174,6 +1174,28 @@ export interface components {
              */
             provider: "demo-transfer" | "demo-card";
         };
+        /** @description The promotion of the variant that gives the "from" price of a product. */
+        FromPromotionResponse: {
+            /**
+             * @description The lowest gross price in grosze of the 30 days before the start of the promotion (the Omnibus price); null when the variant had no price before the start.
+             * @example 29900
+             */
+            lowestPriorGross: number | null;
+        };
+        /** @description The promotion that gives the price of a variant now. */
+        VariantOfferPromotionResponse: {
+            /**
+             * Format: date-time
+             * @description The end of the promotion in UTC (RFC 3339, whole seconds); the promotion lasts until before it.
+             * @example 2026-11-20T23:00:00+00:00
+             */
+            endsAt: string;
+            /**
+             * @description The lowest gross price in grosze of the 30 days before the start of the promotion (the Omnibus price); null when the variant had no price before the start.
+             * @example 29900
+             */
+            lowestPriorGross: number | null;
+        };
         /** @description The offer of one variant of a product. Never the number of units. */
         VariantOfferResponse: {
             /**
@@ -1187,10 +1209,17 @@ export interface components {
              */
             label: string;
             /**
-             * @description The current gross price in grosze; null without a current price.
+             * @description The current gross price in grosze, the price to pay: in a promotion the promotional price; null without a current price.
              * @example 30000
              */
             gross: number | null;
+            /**
+             * @description The catalog gross price in grosze (equal to `gross` outside a promotion); null without a current price.
+             * @example 37500
+             */
+            regularGross: number | null;
+            /** @description The promotion that gives `gross`; null outside a promotion. */
+            promotion: components["schemas"]["VariantOfferPromotionResponse"] | (never | null);
             /**
              * @description Availability level computed by the API.
              * @example in_stock
@@ -1216,10 +1245,12 @@ export interface components {
              */
             variantAxes: string[];
             /**
-             * @description The lowest gross price in grosze among the purchasable variants; null when no variant can be bought.
+             * @description The lowest current (in a promotion: promotional) gross price in grosze among the purchasable variants; null when no variant can be bought.
              * @example 30000
              */
             fromGross: number | null;
+            /** @description The promotion of the variant that gives `fromGross` (of variants of the same price, the first in order); null when that variant is not in a promotion or no variant can be bought. */
+            fromPromotion: components["schemas"]["FromPromotionResponse"] | (never | null);
             /** @description Whether the purchasable variants have different prices (the tile shows "od"). */
             hasPriceRange: boolean;
             /**

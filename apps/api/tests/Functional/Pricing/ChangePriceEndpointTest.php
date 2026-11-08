@@ -8,7 +8,12 @@ use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
 use App\Pricing\Domain\Price\GrossPrice;
+use App\Pricing\Domain\Price\VariantId;
 use App\Pricing\Domain\Price\VariantPriceRepository;
+use App\Pricing\Domain\Promotion\PercentOff;
+use App\Pricing\Domain\Promotion\Promotion;
+use App\Pricing\Domain\Promotion\PromotionId;
+use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrinePromotionRepository;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineVariantPriceRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
@@ -21,6 +26,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
@@ -76,6 +82,52 @@ final class ChangePriceEndpointTest extends WebTestCase
             array_diff_key($price, ['updatedAt' => 1]),
         );
         self::assertSame(['gross_amount' => 1080, 'version' => 1], $this->storedPrice($variantId));
+    }
+
+    /**
+     * @return iterable<string, array{int|null}>
+     */
+    public static function anyVersion(): iterable
+    {
+        yield 'the current version' => [1];
+        yield 'a stale version' => [7];
+        yield 'null' => [null];
+    }
+
+    #[DataProvider('anyVersion')]
+    public function testThePriceOfAVariantInAnActivePromotionIsLockedBeforeTheVersionIsChecked(?int $version): void
+    {
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
+        $this->promotion($variantId, '-1 day', '+1 day');
+
+        $this->put($variantId, ['gross' => 5990, 'version' => $version]);
+
+        $problem = $this->assertProblem(409);
+        self::assertSame('tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion', $problem['type']);
+        self::assertSame('Cena wariantu w aktywnej promocji nie może się zmienić. Zakończ promocję, żeby zmienić cenę.', $problem['detail']);
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
+        self::assertSame([], $this->history($variantId));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function inactivePromotions(): iterable
+    {
+        yield 'planned' => ['+1 day', '+2 days'];
+        yield 'ended' => ['-2 days', '-1 day'];
+    }
+
+    #[DataProvider('inactivePromotions')]
+    public function testThePriceOfAVariantInAPlannedOrEndedPromotionChanges(string $startsAt, string $endsAt): void
+    {
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
+        $this->promotion($variantId, $startsAt, $endsAt);
+
+        $this->put($variantId, ['gross' => 5990, 'version' => 1]);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(['gross_amount' => 5990, 'version' => 2], $this->storedPrice($variantId));
     }
 
     public function testTheSameAmountChangesNeitherTheVersionNorTheHistory(): void
@@ -419,6 +471,15 @@ final class ChangePriceEndpointTest extends WebTestCase
         $this->entityManager->clear();
 
         return $variantId;
+    }
+
+    private function promotion(string $variantId, string $startsAt, string $endsAt): void
+    {
+        new DoctrinePromotionRepository($this->entityManager)->save(Promotion::plan(
+            PromotionId::fromString(Uuid::v7()->toRfc4122()), 'Jesień', PercentOff::of(20), new \DateTimeImmutable($startsAt), new \DateTimeImmutable($endsAt),
+            [VariantId::fromString($variantId)], null, new \DateTimeImmutable('-30 days'),
+        ));
+        $this->entityManager->clear();
     }
 
     /**

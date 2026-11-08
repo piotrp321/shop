@@ -129,6 +129,7 @@ async function saveChange(): Promise<void> {
       closeChange();
       break;
     case "invalid":
+    case "locked":
       fieldError.value = result.message;
       break;
     case "conflict":

@@ -9,6 +9,7 @@ use App\Cart\Domain\Money;
 use App\Cart\Domain\ProductOfferSummary;
 use App\Cart\Domain\StockLevel;
 use App\Cart\Domain\VariantOffer;
+use App\Cart\Domain\VariantPromotion;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -151,8 +152,60 @@ final class ProductOfferSummaryTest extends TestCase
         self::assertFalse(self::variant(1000, 0, StockLevel::OutOfStock)->isPurchasable());
     }
 
-    private static function variant(?int $gross, int $available, StockLevel $level): VariantOffer
+    public function testTheFromPromotionIsThePromotionOfTheVariantThatGivesTheFromPrice(): void
     {
-        return new VariantOffer(null === $gross ? null : Money::of($gross, Currency::PLN), $available, $level);
+        $promotion = self::promotion(8_000);
+
+        $summary = ProductOfferSummary::of([
+            self::variant(12_000, 5, StockLevel::InStock, self::promotion(10_000)),
+            self::variant(9_000, 5, StockLevel::InStock, $promotion),
+            self::variant(9_500, 5, StockLevel::InStock),
+        ]);
+
+        self::assertSame(9_000, $summary->fromGross?->amount());
+        self::assertSame($promotion, $summary->fromPromotion);
+    }
+
+    public function testWhenTheCheapestPurchasableVariantIsNotPromotedThereIsNoFromPromotion(): void
+    {
+        $summary = ProductOfferSummary::of([
+            // Cheaper and promoted, but out of stock.
+            self::variant(5_000, 0, StockLevel::OutOfStock, self::promotion(6_000)),
+            self::variant(9_000, 5, StockLevel::InStock),
+            self::variant(9_500, 5, StockLevel::InStock, self::promotion(11_000)),
+        ]);
+
+        self::assertSame(9_000, $summary->fromGross?->amount());
+        self::assertNull($summary->fromPromotion);
+    }
+
+    public function testOfVariantsOfTheSameFromPriceTheFirstInOrderGivesTheFromPromotion(): void
+    {
+        $promotion = self::promotion(null);
+
+        self::assertSame($promotion, ProductOfferSummary::of([
+            self::variant(9_000, 5, StockLevel::InStock, $promotion),
+            self::variant(9_000, 5, StockLevel::InStock),
+        ])->fromPromotion);
+        self::assertNull(ProductOfferSummary::of([
+            self::variant(9_000, 5, StockLevel::InStock),
+            self::variant(9_000, 5, StockLevel::InStock, $promotion),
+        ])->fromPromotion);
+    }
+
+    public function testWithoutAPurchasableVariantThereIsNoFromPromotion(): void
+    {
+        self::assertNull(ProductOfferSummary::of([self::variant(9_000, 0, StockLevel::OutOfStock, self::promotion(9_500))])->fromPromotion);
+        self::assertNull(ProductOfferSummary::of([])->fromPromotion);
+    }
+
+    private static function variant(?int $gross, int $available, StockLevel $level, ?VariantPromotion $promotion = null): VariantOffer
+    {
+        return new VariantOffer(null === $gross ? null : Money::of($gross, Currency::PLN), $available, $level, $promotion);
+    }
+
+    private static function promotion(?int $lowestPriorGross): VariantPromotion
+    {
+        return new VariantPromotion(new \DateTimeImmutable('2026-11-20T00:00:00Z'), null === $lowestPriorGross ? null : Money::of($lowestPriorGross, Currency::PLN));
     }
 }

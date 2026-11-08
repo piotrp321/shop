@@ -5,6 +5,7 @@ import type { components } from "@/api/schema";
 import { AddToCartButton } from "@/cart/AddToCartButton";
 import { AvailabilityLabel } from "./availability-label";
 import { formatPrice } from "./format-price";
+import { PromotionNotice } from "./PromotionNotice";
 
 type ProductOffer = components["schemas"]["ProductOfferResponse"];
 
@@ -12,7 +13,7 @@ type ProductOffer = components["schemas"]["ProductOfferResponse"];
  * The interactive part of a tile of a product with a purchasable variant. With one variant only, the button adds it.
  * With more, a list offers every variant in the order of the offer, without a default choice; a variant that cannot be
  * bought is listed as „niedostępny” and cannot be chosen. Until a choice, the tile shows `children` (the price and the
- * level of the product, rendered on the server) and the button is disabled; after it, the price and the level of the
+ * level of the product, rendered on the server) and the button is disabled; after it, the price, the promotion notice (if any) and the level of the
  * chosen variant. Everything shown comes from the offer of the API.
  */
 export function TileOffer({ offer, children }: { offer: ProductOffer; children: ReactNode }) {
@@ -28,6 +29,7 @@ export function TileOffer({ offer, children }: { offer: ProductOffer; children: 
           <p data-testid="price" className="text-sm font-semibold">
             {formatPrice(chosen.gross, offer.currency)}
           </p>
+          <PromotionNotice lowestPriorGross={chosen.promotion?.lowestPriorGross} currency={offer.currency} />
           <AvailabilityLabel level={chosen.level} />
         </>
       ) : (

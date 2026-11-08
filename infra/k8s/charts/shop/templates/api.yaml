@@ -125,8 +125,8 @@ readinessProbe:
 {{- define "shop.worker.container" -}}
 imagePullPolicy: {{ .Values.image.pullPolicy }}
 # The transports one after another: the outbox relay, the events of RabbitMQ, the delayed commands and the webhook
-# deliveries of the payment simulator (the same as in the compose file).
-command: ["php", "bin/console", "messenger:consume", "outbox", "events", "scheduled", "payment_simulator"]
+# deliveries of the payment simulator and the boundaries of the promotion periods (the same as in the compose file).
+command: ["php", "bin/console", "messenger:consume", "outbox", "events", "scheduled", "payment_simulator", "promotions"]
 env:
   {{- include "shop.apiEnv" . | nindent 2 }}
 {{ include "shop.envFromSecret" . }}
@@ -135,7 +135,7 @@ readinessProbe:
     command:
       - sh
       - -c
-      - "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled payment_simulator'"
+      - "tr '\\0' ' ' < /proc/1/cmdline | grep -q '^php bin/console messenger:consume outbox events scheduled payment_simulator promotions'"
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 6

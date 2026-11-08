@@ -11,7 +11,7 @@ use OpenApi\Attributes as OA;
 
 #[OA\Schema(
     description: 'The offer of a product of the list, computed by the API from its purchasable variants (a current price and an available unit). Never the number of units.',
-    required: ['productId', 'variantAxes', 'fromGross', 'hasPriceRange', 'currency', 'level', 'variants'],
+    required: ['productId', 'variantAxes', 'fromGross', 'fromPromotion', 'hasPriceRange', 'currency', 'level', 'variants'],
 )]
 final readonly class ProductOfferResponse
 {
@@ -24,8 +24,10 @@ final readonly class ProductOfferResponse
         public string $productId,
         #[OA\Property(description: 'Names of the variant axes in order (e.g. "Kolor, Rozmiar"); empty for a product with the default variant only, and for a product unknown to Catalog.', type: 'array', items: new OA\Items(type: 'string'), example: ['Kolor', 'Rozmiar'])]
         public array $variantAxes,
-        #[OA\Property(description: 'The lowest gross price in grosze among the purchasable variants; null when no variant can be bought.', nullable: true, example: 30000)]
+        #[OA\Property(description: 'The lowest current (in a promotion: promotional) gross price in grosze among the purchasable variants; null when no variant can be bought.', nullable: true, example: 30000)]
         public ?int $fromGross,
+        #[OA\Property(description: 'The promotion of the variant that gives `fromGross` (of variants of the same price, the first in order); null when that variant is not in a promotion or no variant can be bought.', ref: new Model(type: FromPromotionResponse::class), nullable: true)]
+        public ?FromPromotionResponse $fromPromotion,
         #[OA\Property(description: 'Whether the purchasable variants have different prices (the tile shows "od").')]
         public bool $hasPriceRange,
         #[OA\Property(description: 'ISO 4217 code.', enum: ['PLN'])]
@@ -43,6 +45,7 @@ final readonly class ProductOfferResponse
             $view->productId,
             $view->variantAxes,
             $view->fromGross,
+            null === $view->fromPromotion ? null : FromPromotionResponse::of($view->fromPromotion),
             $view->hasPriceRange,
             $view->currency,
             $view->level,

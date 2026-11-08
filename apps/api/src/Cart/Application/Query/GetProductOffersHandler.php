@@ -4,19 +4,22 @@ declare(strict_types=1);
 
 namespace App\Cart\Application\Query;
 
+use App\Cart\Application\Port\CartPrice;
 use App\Cart\Application\Port\CartPrices;
 use App\Cart\Application\Port\ProductCatalog;
 use App\Cart\Application\Port\ProductVariants;
 use App\Cart\Application\Port\StockAvailability;
 use App\Cart\Application\Port\VariantAvailability;
+use App\Cart\Application\View\FromPromotionView;
 use App\Cart\Application\View\ProductOfferView;
 use App\Cart\Application\View\VariantOfferView;
+use App\Cart\Application\View\VariantPromotionView;
 use App\Cart\Domain\Currency;
-use App\Cart\Domain\Money;
 use App\Cart\Domain\ProductId;
 use App\Cart\Domain\ProductOfferSummary;
 use App\Cart\Domain\StockLevel;
 use App\Cart\Domain\VariantOffer;
+use App\Cart\Domain\VariantPromotion;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
 #[AsMessageHandler(bus: 'query.bus')]
@@ -67,8 +70,8 @@ final readonly class GetProductOffersHandler
         $prices = [];
         $stock = [];
         if ([] !== $variantIds) {
-            foreach ($this->prices->current($variantIds) as $price) {
-                $prices[$price->variantId->toString()] = $price->gross;
+            foreach ($this->prices->current($variantIds, $query->withLowestPriorPrice) as $price) {
+                $prices[$price->variantId->toString()] = $price;
             }
             foreach ($this->stock->of($variantIds) as $one) {
                 $stock[$one->variantId->toString()] = $one;
@@ -84,7 +87,7 @@ final readonly class GetProductOffersHandler
     }
 
     /**
-     * @param array<string, Money>               $prices by variant id
+     * @param array<string, CartPrice>           $prices by variant id
      * @param array<string, VariantAvailability> $stock  by variant id
      */
     private static function offer(string $productId, ?ProductVariants $list, array $prices, array $stock): ProductOfferView
@@ -95,9 +98,18 @@ final readonly class GetProductOffersHandler
             $key = $variant->variantId->toString();
             $available = $stock[$key] ?? null;
             // A variant Inventory gave nothing for has no unit.
-            $offer = new VariantOffer($prices[$key] ?? null, $available->available ?? 0, $available->level ?? StockLevel::OutOfStock);
+            $price = $prices[$key] ?? null;
+            $offer = new VariantOffer($price?->gross, $available->available ?? 0, $available->level ?? StockLevel::OutOfStock, $price?->promotion);
             $offers[] = $offer;
-            $views[] = new VariantOfferView($key, $variant->label, $offer->gross?->amount(), $offer->level->value, $offer->isPurchasable());
+            $views[] = new VariantOfferView(
+                $key,
+                $variant->label,
+                $offer->gross?->amount(),
+                $offer->level->value,
+                $offer->isPurchasable(),
+                $price?->regularGross->amount(),
+                null === $offer->promotion ? null : new VariantPromotionView($offer->promotion->endsAt, self::lowestPrior($offer->promotion)),
+            );
         }
         $summary = ProductOfferSummary::of($offers);
 
@@ -109,6 +121,12 @@ final readonly class GetProductOffersHandler
             Currency::PLN->value,
             $summary->level->value,
             $views,
+            null === $summary->fromPromotion ? null : new FromPromotionView(self::lowestPrior($summary->fromPromotion)),
         );
+    }
+
+    private static function lowestPrior(VariantPromotion $promotion): ?int
+    {
+        return $promotion->lowestPriorGross?->amount();
     }
 }

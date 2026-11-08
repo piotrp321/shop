@@ -14,10 +14,14 @@ use App\Pricing\Domain\Price\PriceBreakdown;
 use App\Pricing\Domain\Price\VariantId;
 use App\Pricing\Domain\Price\VariantPrice;
 use App\Pricing\Domain\Price\VariantPriceRepository;
+use App\Pricing\Domain\Promotion\PercentOff;
+use App\Pricing\Domain\Promotion\Promotion;
+use App\Pricing\Domain\Promotion\PromotionId;
 use App\Pricing\Domain\Tax\PolishVatRates;
 use App\Pricing\Domain\Tax\VatRate;
 use App\Pricing\Infrastructure\Catalog\QueryBusCatalogVariants;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrinePersistenceSession;
+use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrinePromotionRepository;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineVariantPriceRepository;
 use App\Pricing\UI\Console\ReconcileTaxCommand;
 use App\Tests\Factory\CategoryFactory;
@@ -35,6 +39,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Application as ConsoleApplication;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Uid\Uuid;
 use Zenstruck\Foundry\Test\Factories;
 
 /**
@@ -102,6 +107,26 @@ final class ReconcileTaxTest extends KernelTestCase
      * then read again and fixed, twice for the first one, which is reported. The refused saves close the entity
      * manager; the next saves work on a fresh one.
      */
+    /**
+     * The lock of a price in an active promotion (Q13) is a rule of the panel's change: the gross stays, so the
+     * reconciliation repairs such a price like any other.
+     */
+    public function testAPriceOfAVariantInAnActivePromotionIsStillRepriced(): void
+    {
+        $tent = $this->catalogVariant(TaxClassCode::Standard);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $tent, 'gross' => 89900, 'taxClass' => 'standard', 'vatRateBp' => 800]);
+        new DoctrinePromotionRepository($this->entityManager)->save(Promotion::plan(
+            PromotionId::fromString(Uuid::v7()->toRfc4122()), 'Jesień', PercentOff::of(20), new \DateTimeImmutable('-1 day'), new \DateTimeImmutable('+1 day'),
+            [VariantId::fromString($tent)], null, new \DateTimeImmutable('-2 days'),
+        ));
+        $this->entityManager->clear();
+        $tester = $this->containerCommand();
+
+        self::assertSame(0, $tester->execute(['--apply' => true]), $tester->getDisplay());
+
+        self::assertSame(['gross_amount' => 89900, 'vat_rate_bp' => 2300, 'version' => 2], $this->connection->fetchAssociative('SELECT gross_amount, vat_rate_bp, version FROM pricing_variant_price WHERE variant_id = ?', [$tent]));
+    }
+
     public function testConcurrentChangeIsRetriedOnceThenReportedWithoutStoppingTheRun(): void
     {
         $ids = [

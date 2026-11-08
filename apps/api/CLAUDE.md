@@ -16,13 +16,22 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - `migrate`, `migration` – uruchomienie i wygenerowanie migracji
 - dane demo ładuje `make seed` z głównego `Makefile`, czyli `bin/seed-demo` (skrypt `sh`, `set -eu`; konsolę woła względem
   własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog), potem
-  `pricing:seed-demo`, który czyści ceny i ich historię i ustawia cenę (źródło `seed`) każdemu wariantowi demo według
+  `pricing:seed-demo`, który w jednej transakcji czyści ceny z historią, promocje (`pricing_promotion`,
+  `pricing_promotion_variant`) i ich kolejkę (`DELETE FROM messenger_messages WHERE queue_name = 'promotions'`;
+  pozostałe kolejki zostają), potem ustawia cenę (źródło `seed`) każdemu wariantowi demo według
   wzorców kluczy wariantów z `fixtures/prices.yaml` (klucz z Catalog `ListVariantIdentities`:
   `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
-  pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych); potem
+  pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych), a na końcu planuje
+  promocje z `fixtures/promotions.yaml` (lista: `name`, `percentOff`, `days`, `variants` = wzorce kluczy w tej samej
+  składni) komendą `PlanPromotion` bez aktora i ze źródłem `seed`, od chwili seeda na `days` dni (planuje tylko
+  granicę końca na kolejce `promotions`, bez wiadomości startu: `make seed` kończy się reindeksacją i czyszczeniem
+  cache sklepu; port `PromotionBoundaries` dostaje jawny `announceStart`); wariant należy do pierwszej promocji, która go dopasuje, żeby okresy się nie nakładały; plik promocji jest
+  sprawdzany przed resetem, więc promocja bez wariantu (albo z ponad 1000) kończy seed błędem bez zmian w danych.
+  Promocje demo omijają produkty E2E i kategorię Bieganie > Buty biegowe (pilnuje tego `RealDemoPromotionsTest`, lista
+  wykluczeń w teście, razem z produktem `promotions.spec.ts`); potem
   `payment-simulator:seed-demo`, który w jednej transakcji opróżnia (`TRUNCATE`) tabelę transakcji symulatora płatności
   i usuwa jego kolejkę `payment_simulator` (`DELETE FROM messenger_messages WHERE queue_name = 'payment_simulator'`;
-  `outbox`, `scheduled`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
+  `outbox`, `scheduled`, `promotions`, `events` i `failed` zostają; błąd bazy wycofuje obie zmiany i kończy komendę wyjątkiem); potem
   `payment:seed-demo`, który opróżnia płatności i obsłużone zdarzenia webhooków jednym
   `TRUNCATE payment_payment, payment_webhook_event`; potem `ordering:seed-demo`, który usuwa wszystkie zamówienia, ich
   linie, historię statusów i powiadomienia jednym `TRUNCATE` (sekwencja numerów zostaje, luki są dopuszczalne) i kolejkę `scheduled` ich wiadomości `ExpireUnpaidOrder` (`DELETE FROM messenger_messages
@@ -93,6 +102,17 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wiersza wskazanego jako koszyk gościa (może to być koszyk innego klienta). Odczyty (`GetCart`, `GetCartSummary`) idą przez DBAL,
   bez blokady i bez transakcji. Linie są zapisywane w miejscu po wariancie, więc usunięcie i ponowne dodanie wariantu
   w jednej zmianie nie trafia na unikalny indeks `(cart_id, variant_id)`.
+- Wyjątek: blokada zapisów promocji (Pricing, `docs/features/pricing/spec.md`, „Promocje”). Promocje zapisują się
+  przez rekordy Doctrine według ogólnej zasady, a DBAL służy tylko do blokady doradczej transakcji
+  (`PostgresPromotionWriteLock`: `pg_advisory_xact_lock` na stałym kluczu Pricing, poza transakcją adapter odmawia) i do
+  dwóch zapytań między promocjami (nakładanie okresów, wariant w aktywnej promocji). `PlanPromotion`,
+  `RevisePromotion` i `DeletePromotion` biorą blokadę na wyłączność, więc niezmiennik „wariant najwyżej w jednej
+  promocji naraz” jest sprawdzany na zatwierdzonych danych; `SetVariantPrice` bierze ją w trybie współdzielonym, więc
+  zmiany cen nie czekają na siebie, a zmiana ceny i równoległy zapis promocji idą po kolei. Każdy z tych handlerów
+  czyta zegar (port `Clock`) dopiero po blokadzie, a cena dostaje ten czas (`changed_at`), więc cena zapisana przed
+  promocją „od teraz” jest przed jej startem (`startOfNow`: `now` ucięte do sekundy + 1 s), a cena wariantu w promocji
+  aktywnej w chwili zapisu to 409 `PriceLockedByPromotion` przed sprawdzeniem wersji. `ReconcileTax` i przeliczenie
+  po zmianie klasy (`reprice`, brutto bez zmian) blokady nie biorą.
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
   `ClearCartAfterOrder`) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony
   dispatch na tym samym połączeniu (savepoint), a ceny (Pricing `GetCurrentPrices`) i nazwy (Catalog
@@ -419,7 +439,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   w `DoctrineVariantPriceRepository`, `StockLevelChanged` w `DoctrineStockItemRepository`), więc żadna ścieżka go nie
   pominie, a odrzucony albo wycofany zapis nie zostawia zdarzenia.
   Catalog publikuje też `ProductChanged` z handlera komendy, jak `ProductCreated`; Pricing ma ścieżkę zapisu także
-  przy przeliczeniu po zmianie klasy podatkowej produktu.
+  przy przeliczeniu po zmianie klasy podatkowej produktu. `PromotionPricesChanged` `{productId, source, occurredAt}`
+  (Pricing, źródło `promotion` albo `seed`) publikują handlery wiadomości granic promocji (niżej), nie zapis promocji.
 - Zdarzenie, które ma subskrybować inny context, jest zdarzeniem integracyjnym: publicznym kontraktem modułu w jego
   warstwie Application, jak zapytania (Deptrac nie pozwala sięgać do Domain innego contextu). Jedyne dziś:
   `Catalog\Application\Event\ProductChanged` `{productId, slug, occurredAt}` (`slug` po zmianie). Agregat `Product`
@@ -465,7 +486,13 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`), dwa 409 komend pracownika Ordering
   (`order-transition-not-allowed`, `refund-not-pending`; schemat `BackofficeOrderConflictProblem` w obszarze `admin`) i cztery 409 Payment: `order-already-paid`,
   `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
+  Trzy 409 Pricing w panelu: `price-locked-by-promotion`, `promotion-overlap`, `promotion-not-editable` (schemat
+  `PricingConflictProblem` w obszarze `admin`, razem z `about:blank` konfliktu wersji ceny i promocji).
   Nowy typ dopisz do `enum` schematu swojego contextu.
+- Wyjątek, który niesie dane dla klienta (np. listę kolidujących wariantów), implementuje
+  `App\Shared\Domain\Exception\ExtendedProblem` (`problemExtensions()`): subscriber dopisuje te pola do dokumentu
+  problemu, nigdy w miejsce `type`, `title`, `status`, `detail`, `instance` ani `violations`, i nie przy 5xx. Dziś:
+  `PromotionOverlap` (`conflictingVariantIds`).
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
   (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Wyjątek: znacznik
   `Unavailable` (zależność nieosiągalna albo przegrany wyścig, który ponowienie rozwiązuje) to 503 bez `detail`, jak
@@ -521,7 +548,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   zatrzymuje rewalidację. Wołają go konsumenci zdarzeń na transporcie `events`: `InvalidateStorefrontOnPriceChange`
   (`Pricing_Infrastructure`, `VariantPriceChanged`) i `InvalidateStorefrontOnStockLevelChange`
   (`Inventory_Infrastructure`, `StockLevelChanged`): produkt z Catalog `GetVariant` (`query.bus`), `invalidateProduct`.
-  Wariant nieznany Catalogowi i źródło `seed` to wiadomość obsłużona bez unieważnienia. `InvalidateStorefrontOnProductChange`
+  Wariant nieznany Catalogowi i źródło `seed` to wiadomość obsłużona bez unieważnienia.
+  `InvalidateStorefrontOnPromotionChange` (`Pricing_Infrastructure`, `PromotionPricesChanged`): `invalidateProduct`
+  produktu ze zdarzenia, bez pytania Catalog; źródło `seed` to wiadomość obsłużona bez unieważnienia. `InvalidateStorefrontOnProductChange`
   (`Catalog_Infrastructure`, integracyjne `ProductChanged`): `invalidateTags([product-<id>, product-slug-<slug>])` bez
   odczytu bazy (id albo slug w złym formacie to `failed`). Błąd `StorefrontCache` idzie dalej (ponowienia transportu
   `events`, potem `failed`). Bez zdarzenia (np. koniec okresu stawki VAT) odpowiedź
@@ -539,8 +568,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   i `status` (`keyword`, `published` albo `draft`: szkic zostaje w indeksie jako trwały tombstone z wersją, a każde
   zapytanie sklepu ma `term status: published` w `query`, więc wyniki, `total` i agregacje widzą tylko opublikowane).
   Ceny i dostępność daje port `ProductOfferFacts` (`Catalog_Application`) z adapterem `QueryBusProductOfferFacts`
-  w `Cart_Infrastructure` (Cart `GetProductOffers` na `query.bus`, paczki po 48): reguła „możliwy do kupienia” i cena
-  „od” są tylko w Cart. Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
+  w `Cart_Infrastructure` (Cart `GetProductOffers` na `query.bus`, paczki po 48, bez ceny Omnibus): reguła „możliwy
+  do kupienia” i cena „od” są tylko w Cart, a ceny są skuteczne (w aktywnej promocji promocyjne, Pricing
+  `GetCurrentPrices`). Produkt bez faktów nie ma cen ani nic do kupienia. Catalog nie importuje Cart, Pricing ani
   Inventory.
 - Zapis produktu do indeksu robi `ProductIndexing::reindex` (`Catalog_Application`, poza `command.bus`): znacznik
   czasu w mikrosekundach pobrany przed odczytem (DBAL Catalog i `ProductOfferFacts`) jest wersją dokumentu
@@ -550,8 +580,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `ProductChanged`; brak produktu to `failed`), `ReindexProductOnPriceChange`
   (`Pricing_Infrastructure`, `VariantPriceChanged`) i `ReindexProductOnStockLevelChange` (`Inventory_Infrastructure`,
   `StockLevelChanged`): produkt z Catalog `GetVariant`, wariant nieznany, brak produktu i źródło `seed` to wiadomość
-  obsłużona bez zapisu; `SearchUnavailable` i `OfferFactsUnavailable` są ponawiane, `SearchIndexError` idzie do
-  `failed`. Przebudowa (`catalog:reindex`) pobiera fakty ofert każdej paczki; ich błąd przerywa przebudowę, a zmiany
+  obsłużona bez zapisu; `ReindexProductOnPromotionChange` (`Pricing_Infrastructure`, `PromotionPricesChanged`) tak
+  samo, ale produkt jest w zdarzeniu (bez `GetVariant`). `SearchUnavailable` i `OfferFactsUnavailable` są ponawiane,
+  `SearchIndexError` idzie do `failed`. Przebudowa (`catalog:reindex`) pobiera fakty ofert każdej paczki; ich błąd przerywa przebudowę, a zmiany
   cen i stanów obsłużone w jej trakcie trafiają do starego indeksu (przebudowa nie jest online).
 
 - `GET /api/v1/products` (`listProducts`) szuka i filtruje w indeksie (`ElasticsearchProductSearch`, zapytanie składa
@@ -603,6 +634,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   wskazują miejsce w ciele (`ImageNotFound`, `UnknownVariant`, `UnknownCategory`, `SlugRequired`), `ProductWriteFailures`
   zamienia na 422 z naruszeniem pola; błędy z typem (409) opisuje schemat `ProductConflictProblem`. Odpowiedzi zapisu to
   widok edycji odczytany po zapisie, `private, no-store`.
+- Promocje w panelu (`/api/v1/admin/promotions`, Pricing UI, `docs/features/pricing/spec.md`): `GET` lista (`status`,
+  `after`, `perPage`) i szczegóły dla każdego pracownika, `POST`, `PUT /{id}` i `DELETE /{id}?version=` dla `admin`
+  i `marketing` (`PromotionVoter`, `MANAGE_PROMOTIONS`, przed treścią). Treść waliduje DTO (typy ścisłe, czasy RFC 3339
+  ze strefą, lista UUID), reguły promocji domena; `PromotionWriteFailures` zamienia `InvalidPromotion` na naruszenie
+  przy jego polu, a `InvalidPromotionVariants` na naruszenia `variantIds[<indeks>]`. Odpowiedzi zapisu to `GetPromotion`
+  odczytane po zapisie, `private, no-store`.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
@@ -612,13 +649,30 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Wiadomość powstaje w transakcji wywołującego, a restart albo przestój workera tylko opóźnia jej obsługę; wiadomość
   pobrana przez worker, który padł przed potwierdzeniem, wraca po 5 minutach. Ponowienia: 5 prób, 1 s, ×3, potem
   `failed`. Worker (`infra/docker-compose.yml`, komenda i healthcheck) konsumuje `outbox events scheduled
-  payment_simulator` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
+  payment_simulator promotions` po kolei. W środowisku `test` transport jest w pamięci (jak `outbox`), w `test_messaging`
   prawdziwy (Doctrine na `shop_test`).
 - Transport `payment_simulator` (Doctrine, `queue_name=payment_simulator`, ten sam DSN i opcje co `scheduled`:
   `redeliver_timeout=300`, `use_notify: false`, ta sama tabela i połączenie) trzyma wiadomości `DeliverSimulatedWebhook`
   symulatora płatności, zapisywane w transakcji decyzji klienta. Ponowienia: 5 prób po 1, 3, 9, 27 i 81 s (około
   2 minut), potem `failed` (`messenger:failed:retry`). Kolejka czeka w bazie, więc przestój workera tylko opóźnia
   webhooki. Długa kolejka `events` opóźnia je też, bo worker obsługuje transporty po kolei.
+- Transport `promotions` (Doctrine, `queue_name=promotions`, ten sam DSN, opcje i ponowienia co `scheduled`; w `test`
+  w pamięci, w `test_messaging` prawdziwy) trzyma wiadomości granic promocji (Pricing,
+  `docs/features/promotions/spec.md`, „Granice promocji i unieważnianie”). Osobna kolejka, bo `ordering:seed-demo`
+  czyści całe `scheduled`. Zapis promocji (`PlanPromotion`, `RevisePromotion`) wysyła je w swojej transakcji przez
+  port `PromotionBoundaries` (adapter `MessengerPromotionBoundaries`, `command.bus` z `DelayStamp`):
+  `PromotionBoundaryReached(promotionId, at)` na każdą granicę okresu `≥ now` (start „od teraz” i „Zakończ teraz” to
+  `startOfNow`, więc też), także tę, którą miał poprzedni okres (jej wcześniejsza wiadomość mogła trafić do `failed`,
+  a powtórzona jest nieszkodliwa, bo handler i konsumenci są idempotentni), oraz
+  `RefreshPromotionProducts(promotionId)` bez opóźnienia, gdy zapis przesuwa koniec aktywnej promocji na chwilę po
+  `startOfNow`. Wyjątek: seed (`PlanPromotion::bySeed`, źródło `seed`) przekazuje portowi `announceStart: false`, więc
+  planuje tylko granicę końca. Usunięcie zaplanowanej promocji nic nie wysyła. Handlery (`command.bus`, poza transakcją panelu):
+  granica nieznanej promocji albo inna niż jej bieżący start i koniec to wiadomość obsłużona bez skutku, za wczesna
+  wraca na `at` + 1 s (`redeliverBoundary`); `RefreshPromotionProducts` nieznanej albo zakończonej promocji nic nie
+  robi. Inaczej `PromotionPriceEvents` wyznacza produkty wariantów promocji (port `VariantSummaries`, Catalog
+  `GetVariantSummaries` paczkami po 100; wariant nieznany Catalogowi pomija) i publikuje jedno
+  `PromotionPricesChanged` (źródło `promotion`) na produkt w outboxie, w jednej transakcji. Handler komendy promocji
+  nie czyta Catalog w tym celu ani nie publikuje zdarzeń. Przestój workera opóźnia tylko indeks i cache sklepu.
 - Nigdy nie edytuj migracji, która jest już w repo. Utwórz nową.
 - Wyszukiwanie produktów po nazwie w panelu (`SearchBackofficeProducts`) używa rozszerzenia PostgreSQL `pg_trgm`
   (indeks GIN `gin_trgm_ops` na `catalog_product.name`, tworzony migracją) i stronicuje kursorem keyset po `(name, id)`.
@@ -649,7 +703,7 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   niezgodną (usunięcie lub zmiana nazwy kolumny albo tabeli, nowe ograniczenie `NOT NULL` bez wartości domyślnej,
   zmiana typu) rozbij na dwie wersje: najpierw dodaj nowe i zacznij je zapisywać, w kolejnej wersji usuń stare.
   Schemat jest zgodny wstecz tylko z poprzednią wersją: cofnięcie o więcej wersji wymaga kopii zapasowej.
-- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled` i `payment_simulator`) są zgodne w obie
+- Wiadomości Messengera (zdarzenia w `outbox` i `events`, komendy w `scheduled`, `payment_simulator` i `promotions`) są zgodne w obie
   strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka może je jeszcze
   mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Pola dodawaj jako opcjonalne
   z wartością domyślną, nie usuwaj i nie zmieniaj znaczenia pól w jednej wersji, nie zmieniaj nazw klas wiadomości

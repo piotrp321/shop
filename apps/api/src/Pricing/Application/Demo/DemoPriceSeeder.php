@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Pricing\Application\Demo;
 
 use App\Pricing\Application\Command\SetVariantPrice;
-use App\Pricing\Application\Port\CatalogVariant;
 use App\Pricing\Application\Port\VariantsForPricing;
 use Symfony\Component\Messenger\MessageBusInterface;
 
@@ -16,8 +15,6 @@ use Symfony\Component\Messenger\MessageBusInterface;
  */
 final readonly class DemoPriceSeeder
 {
-    private const int BATCH_SIZE = 500;
-
     public function __construct(
         private VariantsForPricing $variants,
         private MessageBusInterface $commandBus,
@@ -30,7 +27,7 @@ final readonly class DemoPriceSeeder
     public function unpricedKeys(DemoPriceList $prices): array
     {
         $unpriced = [];
-        foreach ($this->allVariants() as $variant) {
+        foreach (CatalogVariantPages::of($this->variants) as $variant) {
             if (null === $prices->grossFor($variant->key)) {
                 $unpriced[] = $variant->key;
             }
@@ -49,7 +46,7 @@ final readonly class DemoPriceSeeder
     public function seed(DemoPriceList $prices): int
     {
         $count = 0;
-        foreach ($this->allVariants() as $variant) {
+        foreach (CatalogVariantPages::of($this->variants) as $variant) {
             $gross = $prices->grossFor($variant->key)
                 ?? throw new \RuntimeException(\sprintf('No demo price pattern matches the variant "%s".', $variant->key));
             $this->commandBus->dispatch(SetVariantPrice::bySeed($variant->id->toString(), $gross));
@@ -57,18 +54,5 @@ final readonly class DemoPriceSeeder
         }
 
         return $count;
-    }
-
-    /**
-     * @return iterable<CatalogVariant>
-     */
-    private function allVariants(): iterable
-    {
-        $after = null;
-        do {
-            $batch = $this->variants->page($after, self::BATCH_SIZE);
-            yield from $batch;
-            $after = [] === $batch ? null : $batch[\count($batch) - 1]->id;
-        } while (self::BATCH_SIZE === \count($batch));
     }
 }

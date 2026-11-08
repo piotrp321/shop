@@ -144,6 +144,9 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   - `Pricing_Infrastructure`: `VariantPriceChanged` → `productId` z Catalog `GetVariant` → `invalidateProduct(productId)`;
     wariant nieznany Catalogowi: nic do unieważnienia, wiadomość obsłużona.
   - `Inventory_Infrastructure`: `StockLevelChanged` → to samo.
+  - `Pricing_Infrastructure` (`InvalidateStorefrontOnPromotionChange`): `PromotionPricesChanged` (granica okresu
+    promocji albo przesunięty koniec aktywnej, jedno na produkt) → `invalidateProduct(productId)` ze zdarzenia, bez
+    pytania Catalog.
   - `Catalog_Infrastructure` (`InvalidateStorefrontOnProductChange`): integracyjne `ProductChanged` (edycja, publikacja,
     wycofanie) → `invalidateTags([product-<productId>, product-slug-<slug>])`, bez odczytu bazy (zdarzenie ma id
     i slug po zmianie). Id albo slug w złym formacie to `failed` bez ponowień.
@@ -228,6 +231,13 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
     opis;
   - cena i dostępność: bez wyboru „od X zł” (gdy `hasPriceRange`) albo „X zł” i etykieta `level` produktu; po
     wyborze wariantu jego cena i etykieta `level`;
+  - cena promocyjna i Omnibus (`docs/features/promotions/spec.md`, Q11): cena jest zawsze skuteczną ceną z API
+    (`fromGross` albo `gross` wariantu), bez przekreślonej ceny katalogowej. Oznaczenie „Promocja” pojawia się zawsze
+    razem z linią „Najniższa cena z 30 dni przed obniżką: X zł” (`lowestPriorGross` sformatowane `formatPrice`), jako
+    tekst, nie tylko kolor (`PromotionNotice`). Bez wyboru wariantu pokazuje je oferta `fromPromotion` (promocja
+    wariantu ceny „od”), po wyborze wariantu jego `promotion`, z jego `lowestPriorGross`; wariant bez promocji nie ma
+    ani oznaczenia, ani linii. `lowestPriorGross = null` (albo brak `fromPromotion`) pokazuje cenę promocyjną bez
+    oznaczenia i bez linii;
   - wybór wariantu (Client Component, P1): dla każdej osi lista wartości w kolejności pierwszego wystąpienia
     w wariantach; dostępność wartości liczona hierarchicznie, w kolejności osi:
     - pierwsza oś: wartość jest wyłączona (z dopiskiem „niedostępny”) tylko wtedy, gdy żaden wariant możliwy do
@@ -254,7 +264,10 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   - `Product`: `name`, `description`, `image` (największa szerokość każdego zdjęcia), `url` (kanoniczny), `offers`:
     `Offer` dla każdego wariantu z ceną (`gross` ≠ `null`): `name` = etykieta, `price` (złote z groszy, kropka
     dziesiętna), `priceCurrency: PLN`, `availability` (`in_stock` → `InStock`, `low_stock` → `LimitedAvailability`,
-    `out_of_stock` → `OutOfStock`), `url`;
+    `out_of_stock` → `OutOfStock`), `url`. `price` to cena skuteczna z API (przy promocji cena promocyjna); wariant
+    w promocji ma też `priceValidUntil`: data `YYYY-MM-DD` chwili `endsAt − 1 s` w strefie `Europe/Warsaw` (promocja
+    trwa do chwili przed `endsAt`, więc koniec o 00:00 czasu warszawskiego daje poprzedni dzień); to formatowanie
+    daty z API, nie logika cenowa. Wariant bez promocji nie ma `priceValidUntil`;
   - `BreadcrumbList`: „Wszystkie produkty” i kategorie ścieżki z bezwzględnymi adresami `/c/<ścieżka>`.
 - Kafelek listy: nazwa i zdjęcie to link do `/p/<slug>`; reszta kafelka bez zmian.
 
@@ -337,9 +350,10 @@ Koszyk i checkout idą do API bezpośrednio (`API_INTERNAL_URL`, A1), nigdy prze
   `Cache-Control` i `xkey`); nagłówki `xkey` listy, kategorii i ofert; `storefront:cache:purge-all` (0 i 2 przy
   niedostępnym Varnishu).
 - VCL: `varnishtest` (sekcja „Varnish”).
-- Vitest: strona produktu (cena „od”/„X zł”, wybór osi i wyłączone wartości według kolejności osi, oś późniejsza wyłączona przed wyborem wcześniejszej, czyszczenie niezgodnego wyboru późniejszej osi, przypadek „czarne, 42” i „białe, 44” bez blokady, brak
+- Vitest: strona produktu (cena „od”/„X zł”, oznaczenie „Promocja” i linia Omnibus przed i po wyborze wariantu oraz ich brak
+  bez promocji i przy `lowestPriorGross = null`, wybór osi i wyłączone wartości według kolejności osi, oś późniejsza wyłączona przed wyborem wcześniejszej, czyszczenie niezgodnego wyboru późniejszej osi, przypadek „czarne, 42” i „białe, 44” bez blokady, brak
   odznaczania drugim kliknięciem, automatyczny wybór jedynego wariantu możliwego do kupienia, jeden wariant, brak
-  wariantu możliwego do kupienia, wariant spoza oferty), metadane i JSON-LD (oferty tylko z ceną, mapowanie dostępności, ucieczka `<`), 404,
+  wariantu możliwego do kupienia, wariant spoza oferty), metadane i JSON-LD (oferty tylko z ceną, `priceValidUntil` promocji także dla końca o 00:00 czasu warszawskiego, mapowanie dostępności, ucieczka `<`), 404,
   błąd oferty; `/api/revalidate` (401, 400, 503, 200 z `revalidateTag`); kafelek z linkiem; odczyty katalogu idą pod
   `API_CATALOG_URL`, a koszyk i logowanie pod `API_INTERNAL_URL`.
 - Funkcjonalne/integracyjne `StorefrontCache` i `purge-all`: sklep odpowiadający po kilku sekundach (mieści się
