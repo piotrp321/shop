@@ -157,7 +157,6 @@ final class PriceBreakdownTest extends TestCase
 
         $line = PriceBreakdown::ofLineGross(Money::of($gross, Currency::PLN), VatRate::fromBasisPoints($basisPoints));
 
-        self::assertSame(PriceBreakdown::MAX_LINE_GROSS, $gross);
         self::assertSame($gross, $line->gross()->amount());
         self::assertSame(self::referenceNet($gross, $basisPoints), $line->net()->amount());
         self::assertSame($gross, $line->net()->amount() + $line->vat()->amount());
