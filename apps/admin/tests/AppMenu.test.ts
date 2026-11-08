@@ -25,6 +25,15 @@ async function mountMenu(path: string, roles: Role[] | null) {
           { path: ":id", name: "promotion", component: empty },
         ],
       },
+      // The shape of the router of the app: the list, the new code and a code are children of one `discount-codes` path.
+      {
+        path: "/discount-codes",
+        children: [
+          { path: "", name: "discount-codes", component: empty },
+          { path: "new", name: "discount-code-new", component: empty },
+          { path: ":id", name: "discount-code", component: empty },
+        ],
+      },
       { path: "/inventory", name: "inventory", component: empty },
       // The shape of the router of the app: the list and the detail are children of one `orders` path.
       {
@@ -50,7 +59,7 @@ function links(wrapper: Awaited<ReturnType<typeof mountMenu>>) {
 }
 
 describe("AppMenu", () => {
-  it("links the dashboard, the products, the price list, the promotions and the stock list", async () => {
+  it("links the dashboard, the products, the price list, the promotions, the discount codes and the stock list", async () => {
     const wrapper = await mountMenu("/prices", ["marketing"]);
 
     expect(links(wrapper)).toEqual([
@@ -58,6 +67,7 @@ describe("AppMenu", () => {
       ["Produkty", "/products"],
       ["Ceny", "/prices"],
       ["Promocje", "/promotions"],
+      ["Kody rabatowe", "/discount-codes"],
       ["Stany magazynowe", "/inventory"],
     ]);
     expect(wrapper.get("a[href='/prices']").classes()).toContain("menu-item--active");
@@ -72,6 +82,7 @@ describe("AppMenu", () => {
       ["Produkty", "/products"],
       ["Ceny", "/prices"],
       ["Promocje", "/promotions"],
+      ["Kody rabatowe", "/discount-codes"],
       ["Stany magazynowe", "/inventory"],
       ["Zamówienia", "/orders"],
     ]);
@@ -105,6 +116,25 @@ describe("AppMenu", () => {
     const wrapper = await mountMenu("/", null);
 
     expect(links(wrapper)).toContainEqual(["Promocje", "/promotions"]);
+  });
+
+  it.each(["admin", "marketing", "support", "warehouse"] as const)("links the discount codes for %s", async (role) => {
+    const wrapper = await mountMenu("/", [role]);
+
+    expect(links(wrapper)).toContainEqual(["Kody rabatowe", "/discount-codes"]);
+  });
+
+  it("links the discount codes before the staff member is known: every staff member may read them", async () => {
+    const wrapper = await mountMenu("/", null);
+
+    expect(links(wrapper)).toContainEqual(["Kody rabatowe", "/discount-codes"]);
+  });
+
+  it.each(["/discount-codes", "/discount-codes/new", "/discount-codes/0192f0c4"])("keeps the discount codes marked active on %s, not the promotions", async (path) => {
+    const wrapper = await mountMenu(path, ["marketing"]);
+
+    expect(wrapper.get("a[href='/discount-codes']").classes()).toContain("menu-item--active");
+    expect(wrapper.get("a[href='/promotions']").classes()).not.toContain("menu-item--active");
   });
 
   it.each(["/promotions", "/promotions/new", "/promotions/0192f0c4"])("keeps the promotions marked active on %s", async (path) => {
