@@ -460,6 +460,12 @@ jobs:
         if: env.FULL_CI == 'true'
         run: make seed RUN="docker compose exec -T"
 
+      # The production build must not prerender /robots.txt, /sitemap.xml and the /sitemaps/ routes (the stack above runs
+      # with STORE_MODE=production; `exec` needs -T).
+      - name: Check that the robots and sitemap routes are dynamic
+        if: env.FULL_CI == 'true'
+        run: make -C apps/store check-dynamic-routes RUN="docker compose exec -T"
+
       - name: make e2e
         if: env.FULL_CI == 'true'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=

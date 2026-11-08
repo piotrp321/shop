@@ -21,6 +21,12 @@ Uruchamiaj z katalogu głównego przez `make -C apps/store <cel>`:
 - `test` – wszystkie testy (Vitest), także integracyjne na usługach stosu
 - `test-unit` – tylko testy jednostkowe, bez usług
 - `shell` – powłoka w kontenerze `store`
+- `check-dynamic-routes` – na buildzie produkcyjnym (`STORE_MODE=production make up`) czyta w kontenerze `store`
+  `.next/prerender-manifest.json` (`scripts/check-dynamic-routes.mjs`) i kończy się kodem skryptu 1, gdy `/robots.txt`,
+  `/sitemap.xml` albo trasa `/sitemaps/…` jest prerenderowana, a kodem 2, gdy `STORE_MODE` kontenera nie jest `production`
+  (manifest po wcześniejszym buildzie zostaje na bind moucie także w trybie `dev`) albo manifestu brak lub jest
+  nieczytelny; `make` pokazuje kod skryptu w wierszu `Error N` (sam kończy się kodem 2 przy każdym błędzie przepisu). CI
+  uruchamia go w jobie `e2e` po starcie stosu.
 
 Klienta API generuje `make api-client` z katalogu głównego.
 
