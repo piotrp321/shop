@@ -221,6 +221,7 @@ final class PromotionsEndpointTest extends WebTestCase
         yield 'a cursor nobody handed out' => ['after=garbage', 'after', $cursor];
         yield 'a cursor that is no base64' => ['after=%25%25%25', 'after', $cursor];
         yield 'an empty cursor' => ['after=', 'after', $cursor];
+        yield 'a cursor that is not UTF-8' => ['after=%FF', 'after', $cursor];
         yield 'a cursor past the maximum length' => ['after='.str_repeat('a', 2049), 'after', $cursor];
     }
 

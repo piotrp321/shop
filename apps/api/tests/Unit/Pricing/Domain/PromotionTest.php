@@ -220,6 +220,15 @@ final class PromotionTest extends TestCase
         self::assertSame(100, mb_strlen($promotion->name()));
     }
 
+    public function testANameOf100CharactersBetweenUnicodeSpacesIsStoredWithoutThem(): void
+    {
+        $promotion = Promotion::plan(
+            PromotionId::fromString(self::ID), "\u{A0}".str_repeat('ą', 100)."\u{3000}", PercentOff::of(10), null, new \DateTimeImmutable('2026-12-01T00:00:00Z'), self::variants(self::A), null, self::now(),
+        );
+
+        self::assertSame(str_repeat('ą', 100), $promotion->name());
+    }
+
     public function testAPromotionHas1To1000Variants(): void
     {
         $thousand = array_map(static fn (int $i): string => \sprintf('0192f0c4-7c1a-7c4e-9a6e-%012x', $i), range(1, 1000));

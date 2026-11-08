@@ -22,7 +22,7 @@ final readonly class PromotionListQuery
     public function __construct(
         #[Assert\Choice(choices: self::STATUSES, message: 'Status promocji musi być jednym z: planned, active, ended.')]
         public ?string $status = null,
-        #[Assert\Length(min: 1, max: self::MAX_CURSOR_LENGTH, minMessage: self::CURSOR_MESSAGE, maxMessage: self::CURSOR_MESSAGE)]
+        #[Assert\Length(min: 1, max: self::MAX_CURSOR_LENGTH, minMessage: self::CURSOR_MESSAGE, maxMessage: self::CURSOR_MESSAGE, charsetMessage: self::CURSOR_MESSAGE)]
         public ?string $after = null,
         #[Assert\Range(min: 1, max: ListPromotions::MAX_PER_PAGE, notInRangeMessage: 'Liczba promocji na stronie musi być od {{ min }} do {{ max }}.')]
         public int $perPage = ListPromotions::DEFAULT_PER_PAGE,
