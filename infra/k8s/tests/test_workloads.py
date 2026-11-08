@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 
@@ -136,8 +137,13 @@ class WorkloadsTest(unittest.TestCase):
         self.assertEqual("false", env["xpack.security.enabled"])
 
     def test_worker_consumes_the_transports_of_compose(self):
-        line = " ".join(containers(by_logical("prod", "Deployment")["worker"])[0]["command"])
-        self.assertIn("messenger:consume outbox events scheduled payment_simulator", line)
+        compose = json.loads(re.search(r"^    command: (\[.*\])$", compose_service("worker"), re.M).group(1))
+        worker = containers(by_logical("prod", "Deployment")["worker"])[0]
+        self.assertEqual(["php", *compose], worker["command"])
+        self.assertEqual(["php", *compose], containers(by_logical("ci", "Deployment")["worker"])[0]["command"])
+        # The probe waits for PID 1 to be this very consumer: the same command line, up to the last transport.
+        probe = worker["readinessProbe"]["exec"]["command"][-1]
+        self.assertIn(f"grep -q '^php {' '.join(compose)}'", probe)
 
     def test_environment_of_the_api_has_the_public_urls_from_the_domain(self):
         env = env_of(containers(by_logical("ci", "Deployment")["api"])[0])
