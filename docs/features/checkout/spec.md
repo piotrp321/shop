@@ -417,6 +417,11 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 - Body niesie też `provider` (kod z `GET /api/v1/payment-providers`). Brak albo kod spoza listy: 422 z naruszeniem pola
   `provider` („Wybierz sposób płatności.”), lista niedostępna: 503, w obu przypadkach przed scaleniem koszyka i bez
   składania zamówienia.
+- Body może nieść `discountCode` (zastosowany kod; `CUSTOMER_ORDER_FIELDS` w `src/checkout/api.ts` przepuszcza go jak
+  pola formularza do API, które go waliduje i normalizuje: `docs/features/discount-codes/spec.md`).
+- `GET /api/cart` (BFF koszyka) przyjmuje jeden parametr, `discountCode` (podgląd kodu na kasie), i przekazuje go do
+  API; inne parametry pomija. 400 API na kod (za długi, nie tekst) trafia do przeglądarki jako 400 `{detail}` z tekstem
+  API; w innych odczytach 400 API to 503.
 - Sukces (201 i 200): ciasteczko `store_order_confirmation` z `{orderId, number, email, totalGross, currency,
   accessToken}` (`accessToken` z `OrderView`: gość token, klient `null`) podpisane jak `store_cart`, `HttpOnly`,
   `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina. Potem BFF rozpoczyna płatność tym samym `Idempotency-Key`
@@ -436,8 +441,10 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 - `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (wynik `ok` z `number` i `redirectUrl`), `startPayment`
   i `getPaymentStatus` (jedyne miejsce `fetch`). Wynik 409 to `conflict` z `reason`
   wyznaczonym wyłącznie z `type` (`src/checkout/problems.ts`: mapa typów ze schematu OpenAPI `OrderConflictProblem`
-  na przyczyny, kompilator wymaga wpisu dla każdego typu schematu; inny albo brakujący `type` to `unknown`). `detail`
-  służy tylko do wyświetlenia.
+  na przyczyny, kompilator wymaga wpisu dla każdego typu schematu; inny albo brakujący `type` to `unknown`; trzy typy
+  kodu rabatowego to jedna przyczyna `discount_code_rejected`). `detail` służy tylko do wyświetlenia.
+- `loadCart(discountCode?)` w tym samym pliku wysyła kod w zapytaniu `/api/cart?discountCode=…` (kodowanie, które nie
+  rzuca na samotnym surogacie UTF-16: zamienia go na U+FFFD) i mapuje 400 na `invalid` z `detail`.
 
 ### UI
 
@@ -452,10 +459,23 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat i link do koszyka; przy pustym koszyku
   i poprawnym `store_order_confirmation` także link „Opłać zamówienie R-…” na `/checkout/confirmation` (powrót ze
   strony dostawcy bez decyzji, `docs/features/payment/spec.md`, P7).
+- Kod rabatowy (`docs/features/discount-codes/spec.md`): pod podsumowaniem pole „Kod rabatowy” (`maxLength` 64,
+  etykieta) w osobnym formularzu, więc Enter zastosuje kod i nie złoży zamówienia, z przyciskiem „Zastosuj”. Zastosowanie
+  wczytuje podsumowanie z kodem (`/api/cart?discountCode=…`; kod przycięty z białych znaków). Zastosowany kod: linia
+  „Kod <KOD>: −X zł”, suma po rabacie (wartości linii przed rabatem, wszystko z API) i przycisk „Usuń kod” zamiast pola
+  (usunięcie wczytuje podsumowanie bez kodu; gdy się nie uda, kod zostaje i jest komunikat). Odrzucenie: `detail`
+  z podsumowania (`rejected`) albo 400 koszyka pokazane przy polu (`role="alert"`, `aria-invalid`,
+  `aria-describedby`), podsumowanie bez rabatu, fokus w polu; pole puste albo kod pusty po normalizacji w API:
+  „Wpisz kod rabatowy.”. Pole znika razem z formularzem (pusty koszyk, `hasExcludedLines`). Zastosowanie i usunięcie
+  ogłasza obszar `role="status"`. Złożenie wysyła `discountCode` zastosowanego kodu (bez kodu: bez klucza)
+  i `expectedTotalGross` z podsumowania po rabacie. Kod nie przeżywa przeładowania strony (stan tylko w pamięci
+  strony).
 - `Idempotency-Key`: UUID (`crypto.randomUUID`) tworzony przy wejściu na `/checkout` i używany ponownie przy
   ponowieniu niepewnego wyniku (błąd sieci, 403, 5xx, 503). Klucz należy do jednej logicznej próby: nowy powstaje
-  po zmianie danych formularza, po 409 `IdempotencyKeyReused` i po 409 `OrderTotalChanged` (żądanie niesie wtedy
-  inną kwotę, która należy do odcisku żądania, a nic nie zostało złożone). Po 409 `CartEmpty`, `CartNotOrderable`,
+  po zmianie danych formularza, po zastosowaniu i usunięciu kodu rabatowego (żądanie niesie inny kod i kwotę), po 409
+  `IdempotencyKeyReused`, po 409 `OrderTotalChanged` (żądanie niesie wtedy inną kwotę, która należy do odcisku
+  żądania, a nic nie zostało złożone) i po 409 kodu rabatowego. Odrzucony podgląd kodu klucza nie zmienia (żądanie
+  zostaje, jakie było). Po 409 `CartEmpty`, `CartNotOrderable`,
   `InsufficientStockForOrder` i po nieznanym 409 klucz zostaje: ponowienie tym samym kluczem po ewentualnym sukcesie
   da powtórzenie 200, nie drugie zamówienie. Strona niczego nie ponawia sama: każdy POST to kliknięcie klienta.
   Znany skutek reguły „zmiana danych = nowy klucz”: gdy wynik poprzedniej próby był niepewny (błąd sieci, 5xx, 503,
@@ -476,7 +496,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | Sytuacja | UI na `/checkout` |
 |---|---|
 | 422 | komunikaty przy polach (`violations`) |
-| 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania (nowa kwota), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
+| 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania z tym samym kodem (nowa kwota), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
+| 409 `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` (Q6) | `detail` przy polu kodu, kod zdjęty, podsumowanie wczytane bez kodu (nowa kwota), nowy klucz, nic nie składa się samo: zamówienie składa dopiero kolejne kliknięcie; gdy podsumowania nie da się wczytać, ekran zostaje taki jak był (kod zastosowany, „Usuń kod” z fokusem) z `detail` i komunikatem o odświeżeniu, a 401 pokazuje komunikat sesji |
 | 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
 | 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje, bez linku do koszyka (kolejne kliknięcie składa zamówienie z nowym kluczem) |
 | 409 nieznany (inny `type` albo brak) | `detail` (bez niego „Nie udało się złożyć zamówienia. Spróbuj ponownie.”) i link „Wróć do koszyka”, klucz zostaje, bez automatycznego ponawiania |
