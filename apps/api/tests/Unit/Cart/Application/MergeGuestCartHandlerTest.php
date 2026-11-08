@@ -210,7 +210,7 @@ final class MergeGuestCartHandlerTest extends TestCase
 
     public function merge(string $guestCartId): MergeResult
     {
-        $handler = new MergeGuestCartHandler($this->carts, $this->carts, new ProductDataLoader($this->products, $this->products, $this->products), new CartViewBuilder(), $this->clock);
+        $handler = new MergeGuestCartHandler($this->carts, $this->carts, new ProductDataLoader($this->products, $this->products, $this->products), new CartViewBuilder($this->products), $this->clock);
 
         return $handler(new MergeGuestCart(self::CUSTOMER, $guestCartId));
     }

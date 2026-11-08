@@ -11,7 +11,7 @@ const SIZES = "50vw";
 const product = makeProduct(1);
 const button = () => screen.queryByRole("button", { name: "Do koszyka" }) as HTMLButtonElement | null;
 const picker = () => screen.queryByRole("combobox") as HTMLSelectElement | null;
-const cartWith = (itemCount: number) => ({ id: "c", lines: [], totals: { gross: 0, currency: "PLN" as const, itemCount }, hasExcludedLines: false });
+const cartWith = (itemCount: number) => ({ id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN" as const, itemCount }, hasExcludedLines: false, discount: null });
 
 // Shoes in three sizes: 42 at 300 zł, 43 not purchasable, 44 at 320 zł with the last units.
 const SIZES_OFFER = makeOffer(1, {
