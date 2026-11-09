@@ -63,7 +63,7 @@ describe("the search page", () => {
 
     it("has the title Wyszukiwanie, is noindex, follow and has no canonical address", async () => {
       const metadata = await generateMetadata(metaProps({ q: "k" }));
-      expect(metadata).toMatchObject({ title: "Wyszukiwanie | Rytm", robots: { index: false, follow: true } });
+      expect(metadata).toMatchObject({ title: "Wyszukiwanie | Worf", robots: { index: false, follow: true } });
       expect(metadata).not.toHaveProperty("alternates");
       expect(loadCatalog).not.toHaveBeenCalled();
     });
@@ -110,7 +110,7 @@ describe("the search page", () => {
     expect(await html({ q: "kurtka", "cena-od": "abc" })).toContain("Nieprawidłowy filtr");
     expect(loadCatalog).toHaveBeenCalledExactlyOnceWith({ q: "kurtka", priceMin: "abc" });
     const metadata = await generateMetadata(metaProps({ q: "kurtka", "cena-od": "abc" }));
-    expect(metadata).toMatchObject({ title: "Nieprawidłowy filtr | Rytm", robots: { index: false } });
+    expect(metadata).toMatchObject({ title: "Nieprawidłowy filtr | Worf", robots: { index: false } });
     expect(metadata).not.toHaveProperty("alternates");
   });
 
@@ -157,7 +157,7 @@ describe("the search page", () => {
 
     it("needs no STORE_URL: the page has no address of its own to publish", async () => {
       vi.stubEnv("STORE_URL", "");
-      await expect(generateMetadata(metaProps({ q: "kurtki" }))).resolves.toMatchObject({ title: "Wyniki dla „kurtki” | Rytm" });
+      await expect(generateMetadata(metaProps({ q: "kurtki" }))).resolves.toMatchObject({ title: "Wyniki dla „kurtki” | Worf" });
     });
   });
 });

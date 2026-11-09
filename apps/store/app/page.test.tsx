@@ -86,7 +86,7 @@ describe("Home page", () => {
       const queries: Query[] = [{ sort: "popularne" }, { dostepne: "0" }];
       for (const query of queries) {
         expect(renderToStaticMarkup(await Home(props(query)))).toContain("Nieprawidłowy filtr");
-        expect(await generateMetadata(metaProps(query))).toMatchObject({ title: "Nieprawidłowy filtr | Rytm", robots: { index: false } });
+        expect(await generateMetadata(metaProps(query))).toMatchObject({ title: "Nieprawidłowy filtr | Worf", robots: { index: false } });
       }
       expect(loadCatalog).not.toHaveBeenCalled();
     });
@@ -114,8 +114,8 @@ describe("Home page", () => {
     const jsonLdOf = (markup: string) =>
       [...markup.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map((match) => JSON.parse(match[1]!) as { "@type": string; name: string; url: string });
     const EXPECTED = [
-      { "@context": "https://schema.org", "@type": "Organization", name: "Rytm", url: "http://store.test/" },
-      { "@context": "https://schema.org", "@type": "WebSite", name: "Rytm", url: "http://store.test/" },
+      { "@context": "https://schema.org", "@type": "Organization", name: "Worf", url: "http://store.test/" },
+      { "@context": "https://schema.org", "@type": "WebSite", name: "Worf", url: "http://store.test/" },
     ];
 
     it("has the Organization and the WebSite for a list with results", async () => {
@@ -193,7 +193,7 @@ describe("Home page", () => {
       const markup = renderToStaticMarkup(await Home(props({ category: "not-a-uuid" })));
       expect(markup).toContain("Nieprawidłowy filtr");
       expect(await generateMetadata(metaProps({ category: "not-a-uuid" }))).toMatchObject({
-        title: "Nieprawidłowy filtr | Rytm",
+        title: "Nieprawidłowy filtr | Worf",
         robots: { index: false },
       });
     });
@@ -214,7 +214,7 @@ describe("Home page", () => {
       const metadata = await generateMetadata(metaProps({ page: ["2", "3"], utm_source: "x" }));
       expect(loadCatalog).toHaveBeenCalledWith({ page: "2" });
       expect(metadata).toMatchObject({
-        title: "Wszystkie produkty – strona 2 | Rytm",
+        title: "Wszystkie produkty – strona 2 | Worf",
         alternates: { canonical: "http://store.test/?page=2" },
       });
     });

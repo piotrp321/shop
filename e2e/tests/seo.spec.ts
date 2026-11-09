@@ -79,7 +79,7 @@ test("the home page HTML has the Organization and WebSite structured data, the c
   const data = scriptsOf(await home.text());
   expect(data.map((item) => item["@type"])).toEqual(["Organization", "WebSite"]);
   for (const item of data) {
-    expect(item).toMatchObject({ "@context": "https://schema.org", name: "Rytm", url: `${urls.store}/` });
+    expect(item).toMatchObject({ "@context": "https://schema.org", name: "Worf", url: `${urls.store}/` });
   }
 
   const tree = (await (await request.get(`${urls.api}/api/v1/categories`)).json()) as CategoryNode[];
