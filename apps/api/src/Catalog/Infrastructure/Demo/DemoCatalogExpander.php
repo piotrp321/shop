@@ -17,6 +17,8 @@ use Symfony\Component\Uid\Uuid;
  *
  * Products get a global 0-based expansion index: templates in file order, then brands and models. A product
  * is imageless when (index + 1) % imagelessEvery == 0; the others take pool[index % count(pool)] of their template.
+ * A product (brand + model) with images of its own in the template's "productImages" takes all of them in file order
+ * instead, also where the imageless rule would apply; the index of every product is counted the same either way.
  * The variants of a product are the product of the values of its axes in file order (the first axis varies slowest);
  * a product without axes has one default variant. Ids are UUID v5 in the definition's namespace: 'category:<slug path>',
  * 'product:<slug>' and 'variant:<variant key>' (<slug>/standard for the default variant). The key is the one of
@@ -74,7 +76,7 @@ final readonly class DemoCatalogExpander
                         $main,
                         $additional,
                         $template->taxClass,
-                        $this->images($template, $index, $definition->imagelessEvery),
+                        $this->images($template, $brand, $model['name'], $index, $definition->imagelessEvery),
                         $template->variantAxes,
                         $variants,
                     );
@@ -158,8 +160,12 @@ final readonly class DemoCatalogExpander
     /**
      * @return list<array{file: string, alt: string}>
      */
-    private function images(DemoProductTemplate $template, int $index, int $imagelessEvery): array
+    private function images(DemoProductTemplate $template, string $brand, string $model, int $index, int $imagelessEvery): array
     {
+        $own = $template->imagesOf($brand, $model);
+        if (null !== $own) {
+            return $own;
+        }
         if (0 === ($index + 1) % $imagelessEvery) {
             return [];
         }
