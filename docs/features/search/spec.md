@@ -280,8 +280,8 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   `/szukaj`: „Wszystkie produkty” › „Wyniki wyszukiwania” (z `kategoria` ten element jest linkiem, po nim ścieżka
   kategorii). Na `/` breadcrumbów nie ma.
 - `h1`: nazwa kategorii, „Wszystkie produkty” albo `Wyniki dla „<fraza>”`; obok liczba produktów z odmianą
-  („1 produkt”, „2–4 produkty” i 22–24 itd., pozostałe „produktów”). Wyjątek: `/` w stanie domyślnym (bez filtrów
-  i sortowania, `page` brak albo 1) ma nad listą hero z `h1` i kafelki działów; „Wszystkie produkty” jest wtedy `h2`,
+  („1 produkt”, „2–4 produkty” i 22–24 itd., pozostałe „produktów”). Wyjątek: `/` w stanie domyślnym (bez filtrów,
+  z domyślnym sortowaniem, `sort` brak albo `nazwa`, i `page` brak albo 1) ma nad listą hero z `h1` i kafelki działów; „Wszystkie produkty” jest wtedy `h2`,
   a nazwy produktów `h3` (`docs/features/visual-design/spec.md`, „Strona główna”).
 - Panel filtrów (po lewej na szerokim ekranie, rozwijany przyciskiem „Filtry” na wąskim): „Kategorie” (faseta
   `categories` jako linki z liczbą, zachowujące filtry: na `/` i `/c/` do `/c/<ścieżka>`, na `/szukaj` z `kategoria`),

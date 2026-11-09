@@ -145,10 +145,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Strona główna `/`
 
-- Stan domyślny listingu: bez sortowania, filtrów i z `page` brak albo `1` (parametry spoza listingu, np. `utm_*`, nie
-  liczą się; `isDefaultState` w `app/page.tsx`). Tylko w nim `/` ma nad listą `HomeIntro` (`CatalogListing` dostaje
+- Stan domyślny listingu: bez filtrów, bez sortowania innego niż domyślne (`sort` brak albo `nazwa`, czyli `defaultSort`
+  `/`; formularz filtrów bez JavaScriptu zawsze wysyła `sort=nazwa`) i z `page` brak albo `1` (parametry spoza listingu,
+  np. `utm_*`, nie liczą się; `isDefaultState` w `app/page.tsx`; `isRefined`, od którego zależą `noindex` i canonical,
+  liczy każdy `sort` i się nie zmienia, więc `/?sort=nazwa` ma hero, ale zostaje `noindex`). Tylko w nim `/` ma nad listą `HomeIntro` (`CatalogListing` dostaje
   `intro`): hero (zdjęcie na całą szerokość, `h1`, krótki tekst, link do działu Turystyka) i kafelki każdej kategorii
-  głównej z drzewa (zdjęcie, nazwa jako `h2` będąca linkiem do `/c/<ścieżka>`). W innym stanie (`?page=2`, sort, filtr)
+  głównej z drzewa (zdjęcie, nazwa jako `h2` będąca linkiem do `/c/<ścieżka>`). W innym stanie (`?page=2`, inny sort, filtr)
   `/` jest samym listingiem z `h1` „Wszystkie produkty” i nazwami produktów w `h2`.
 - Nagłówki w stanie domyślnym: `h1` to nagłówek hero, `h2` nazwy działów i „Wszystkie produkty” nad listą, `h3` nazwy
   produktów (`ProductGrid home`, `ProductTile headingLevel`). Priorytet ładowania ma tylko zdjęcie hero, kafelki

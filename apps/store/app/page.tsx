@@ -4,7 +4,7 @@ import { loadCategoryTreeForRequest, loadMenuCategories } from "@/catalog/catego
 import { findCategoryPath } from "@/catalog/category-path";
 import { CatalogListing } from "@/catalog/CatalogListing";
 import { InvalidFilter } from "@/catalog/InvalidFilter";
-import { invalidFilterExit, isRefined, type ListingState, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
+import { defaultSort, invalidFilterExit, isRefined, type ListingState, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
 import { type CatalogResult, loadCatalogForRequest } from "@/catalog/load-catalog";
 import { buildCatalogMetadata } from "@/catalog/page-metadata";
 import { serializeJsonLd } from "@/catalog/product-json-ld";
@@ -57,12 +57,14 @@ function categoryRedirectUrl(path: string, query: SearchParams): string {
 }
 
 /**
- * The default state of the listing, the one that gets the hero and the department tiles: no sort, no filter and the
+ * The default state of the listing, the one that gets the hero and the department tiles: no filter, the default sort
+ * (`sort` absent or the one `/` has without it, `nazwa`; a filter form without JavaScript always sends it) and the
  * first page (`page` absent or 1). Parameters that are not the listing's own (`utm_*`, the phrase of the search) do not
- * count, as in `readListingState`.
+ * count, as in `readListingState`. `isRefined` (noindex, canonical) is not used as it is: it counts every `sort`.
  */
 function isDefaultState(state: ListingState): boolean {
-  return !isRefined(state) && (state.page === undefined || state.page === "1");
+  const withoutDefaultSort = { ...state, sort: state.sort === defaultSort(state) ? undefined : state.sort };
+  return !isRefined(withoutDefaultSort) && (state.page === undefined || state.page === "1");
 }
 
 export async function generateMetadata({ searchParams }: PageProps<"/">): Promise<Metadata> {

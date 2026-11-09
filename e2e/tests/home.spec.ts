@@ -11,7 +11,7 @@ const scrollWidth = (page: Page): Promise<number> => page.evaluate(() => documen
 const tiles = (page: Page) => page.getByRole("region", { name: "Działy sklepu" });
 
 test.describe("the default state of /", () => {
-  for (const path of ["/", "/?utm_source=x", "/?page=1"]) {
+  for (const path of ["/", "/?utm_source=x", "/?page=1", "/?sort=nazwa"]) {
     test(`${path} has the hero with one h1 and a tile of every department, the listing under them`, async ({ page }) => {
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sprzęt na każdy szlak");
@@ -25,7 +25,7 @@ test.describe("the default state of /", () => {
     });
   }
 
-  for (const path of ["/?page=2", "/?sort=nazwa", "/?dostepne=1"]) {
+  for (const path of ["/?page=2", "/?sort=cena-rosnaco", "/?sort=nazwa&dostepne=1"]) {
     test(`${path} is only the listing: h1 „Wszystkie produkty”, no hero, no tiles`, async ({ page }) => {
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("Wszystkie produkty");

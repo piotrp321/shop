@@ -112,10 +112,14 @@ describe("Home page", () => {
   });
 
   describe("the hero and the department tiles (the default state of the listing)", () => {
-    const DEFAULT_STATES: Query[] = [{}, { utm_source: "x" }, { page: "1" }, { page: ["1", "2"], utm_source: "x" }, { q: "kurtka", kategoria: "bieganie" }];
+    // `sort=nazwa` is the default sort of `/` (a filter form without JavaScript always sends it).
+    const DEFAULT_STATES: Query[] = [{}, { utm_source: "x" }, { page: "1" }, { page: ["1", "2"], utm_source: "x" }, { q: "kurtka", kategoria: "bieganie" }, { sort: "nazwa" }, { sort: "nazwa", page: "1" }];
     const OTHER_STATES: Query[] = [
       { page: "2" },
-      { sort: "nazwa" },
+      { sort: "cena-rosnaco" },
+      { sort: "cena-malejaco" },
+      { sort: "nazwa", page: "2" },
+      { sort: "nazwa", dostepne: "1" },
       { "cena-od": "100" },
       { "cena-do": "250" },
       { dostepne: "1" },
