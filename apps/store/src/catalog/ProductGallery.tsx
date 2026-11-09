@@ -180,7 +180,7 @@ function ZoomView({ name, zooms, start, onCloseAutoFocus }: { name: string; zoom
       showCloseButton={false}
       aria-describedby={undefined}
       data-surface="inverse"
-      className="top-0 left-0 h-dvh w-screen max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 rounded-none border-0 bg-inverse p-0 text-inverse-foreground sm:max-w-none"
+      className="top-0 left-0 h-dvh w-screen max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 rounded-none border-0 bg-inverse p-0 text-inverse-foreground data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:max-w-none"
       onCloseAutoFocus={onCloseAutoFocus}
       onKeyDown={(event) => {
         // The arrow keys work wherever the focus is in the window.
@@ -205,7 +205,7 @@ function ZoomView({ name, zooms, start, onCloseAutoFocus }: { name: string; zoom
         </DialogClose>
       </div>
       <div className="relative min-h-0">
-        <div ref={ref} role="group" aria-label="Powiększone zdjęcia" className={cn(stripClasses, "h-full")} onScroll={onScroll}>
+        <div ref={ref} role="group" aria-label="Powiększone zdjęcia" tabIndex={0} className={cn(stripClasses, "h-full")} onScroll={onScroll}>
           {zooms.map((zoom, position) => {
             const props = buildZoomImageProps(zoom, ZOOM_SIZES)!;
             return (

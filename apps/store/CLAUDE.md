@@ -68,7 +68,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   slugów → kategorie), `CatalogListing`, `Breadcrumbs` z `breadcrumb.ts`, `SiteHeader`, `MegaMenu` i `SearchBox`,
   `listing-query.ts` (parametry URL ↔ zapytanie API, adresy listingu), `listing-context.tsx`, `ListingFilters`, `ActiveFilters`, `SortSelect`
   i `EmptyResults` (panel filtrów i sortowanie),
-  `load-product.ts` (odczyty strony produktu), `ProductDetailsView`, `VariantChoice` z `variant-choice.ts` (wybór wariantu),
+  `load-product.ts` (odczyty strony produktu), `ProductDetailsView`, `ProductGallery` (galeria i powiększenie), `ProductPrice`, `VariantChoice` z `variant-choice.ts` (wybór wariantu),
   `product-metadata.ts` i `product-json-ld.ts`.
 - `app/page.tsx` (`/`), `app/c/[...path]/` (kategoria) i `app/szukaj/` (wyszukiwanie) – listing (SSR przy każdym
   żądaniu); `app/p/[slug]/` – strona produktu (ISR).
@@ -272,14 +272,29 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - 404 szczegółów → `notFound()` (strona 404 z `noindex`; `generateMetadata` zwraca wtedy `{}`). Każdy inny błąd
   szczegółów albo oferty (status, sieć, nieoczekiwana treść, brak oferty produktu) to wyjątek, czyli `app/error.tsx`,
   którego ISR nie cache'uje; strona bez ceny nigdy nie powstaje.
-- `ProductDetailsView` (Server Component): ścieżka „Wszystkie produkty” › kategorie (linki `/c/<ścieżka>`, `Breadcrumbs`), `h1`,
-  zdjęcia jedno pod drugim przez `ProductPhoto` (pierwsze `priority`, bez zdjęć `PhotoPlaceholder`), krótki opis,
+- `ProductDetailsView` (Server Component): ścieżka „Wszystkie produkty” › kategorie (linki `/c/<ścieżka>`, `Breadcrumbs`), od `lg`
+  galeria (`ProductGallery`) po lewej i dane po prawej (kolumny 7:5), na telefonie galeria nad danymi; dane: `h1`, krótki
+  opis,
   cena „od X zł” (gdy `hasPriceRange`) albo „X zł” i etykieta `level` produktu; produkt bez wariantu możliwego do kupienia
   (`fromGross = null`): „Niedostępny” bez ceny, wyboru i przycisku. Wartości pochodzą z oferty, front niczego nie liczy.
   Cena to zawsze cena skuteczna z API (bez przekreślonej ceny katalogowej). `PromotionNotice` pokazuje oznaczenie
   „Promocja” zawsze razem z linią „Najniższa cena z 30 dni przed obniżką: X zł” (Omnibus, `lowestPriorGross` przez
   `formatPrice`); `lowestPriorGross = null` albo brak promocji to żadne z dwóch. Przed wyborem wariantu bierze je
   z `fromPromotion` oferty, po wyborze z `promotion` wybranego wariantu (to samo na kafelku w `TileOffer`).
+- Galeria (`ProductGallery`, Client Component renderowany też na serwerze, z `usePhotoStrip` w `use-photo-strip.ts`; pełny
+  opis i testy: `docs/features/product-page/spec.md`, „Galeria i powiększenie”). HTML z serwera ma cały pasek zdjęć
+  (CSS `scroll-snap`, `id="zdjecie-n"`, `alt` z API), miniatury jako linki `#zdjecie-n` (`alt=""`, najmniejsza szerokość
+  rozmiaru `product`) i licznik „1 / m”: działa bez JavaScriptu i jest taki sam przed hydratacją i po niej. Po hydratacji
+  (`useSyncExternalStore` z migawką serwera `false`: tego, co dodaje JavaScript, nie ma w pierwszym renderze) dochodzą
+  `aria-current` miniatury, licznik podążający za paskiem (też za przesunięciem palcem, po 100 ms bez przewijania),
+  przyciski „Poprzednie zdjęcie” i „Następne zdjęcie” (ułożone bezwzględnie, bez przesunięcia układu), płynne przewijanie
+  z miniatur bez zmiany adresu (`preventDefault`) i ← →. Zdjęcie paska jest w przycisku „Powiększ zdjęcie n z m: <alt>”,
+  który otwiera shadcn `dialog` na całe okno z paskiem `zoomImages` (`sizes="100vw"`, `object-fit: contain`, widoczne
+  `eager`, reszta `lazy`); fokus wraca na przycisk otwierający przez `onCloseAutoFocus`. Jedno zdjęcie: bez miniatur,
+  licznika i strzałek, z powiększeniem; bez zdjęć: `PhotoPlaceholder`. Rozmiary obrazów pochodzą tylko z API
+  (`buildImageProps`, `buildZoomImageProps`, `smallestVariant` w `image-props.ts`); `STAGE_SIZES` opisuje tylko szerokość
+  sceny galerii w układzie strony. Test E2E dotyku używa `Input.dispatchTouchEvent`: `Input.synthesizeScrollGesture`
+  z `gestureSourceType: "touch"` niczego nie przewija w tym Chromium.
 - Wybór wariantu (`VariantChoice`, Client Component osadzony w `ProductDetailsView`; reguły w czystych funkcjach
   `variant-choice.ts`, z testami): jedna grupa przycisków (`fieldset`, `aria-pressed`) na oś z `variantAxes`, wartości
   w kolejności pierwszego wystąpienia w `variants` szczegółów. Wariant ze szczegółów jest możliwy do kupienia tylko, gdy
@@ -612,7 +627,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Obrazy
 
-- Zdjęcia wyłącznie z wariantów zwróconych przez API (`image.variants`), przez komponent `ProductPhoto`.
+- Zdjęcia wyłącznie z wariantów zwróconych przez API (`image.variants`), przez komponent `ProductPhoto` (powiększenie w galerii
+  strony produktu: `<img>` z `buildZoomImageProps` z wariantów rozmiaru `zoom`).
   Sklep nie podpisuje adresów i nie dodaje rozmiarów. Nowy rozmiar dopisuje się do listy w API.
 - `<Image>` z `next/image` bez loadera wariantów nie zadziała: globalny loader celowo rzuca błąd.
 - Wyjątek: zdjęcia marketingowe strony głównej (hero i kafelki działów, nie produktów) to statyczne pliki WebP sklepu
