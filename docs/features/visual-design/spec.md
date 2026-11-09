@@ -381,6 +381,12 @@ zdjęć. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 
 - `/cart` (`CartPage`), `/checkout` (`CheckoutPage`), `/checkout/confirmation` (`PaymentConfirmation`), konto
   (`/konto/zamowienia` i szczegóły, ORDER-MANAGEMENT, jeśli są na `main`), `app/error.tsx`: tokeny, typografia
   i wspólne komponenty (przyciski, pola, karty, komunikaty `role="alert"`), bez zmiany treści i zachowania.
+- Rama ekranów koszyka, kasy, potwierdzenia i konta: `ScreenMain` i `ScreenTitle` (`src/components/ScreenLayout.tsx`),
+  czyli ten sam margines `px-gutter` i szerokość `max-w-content` co pozostałe ekrany, a robocza kolumna (`max-w-3xl`)
+  przy lewej krawędzi tytułu. Wspólne komponenty: `Alert` (komunikaty `role="alert"` i `role="status"`), `Card`
+  (podsumowania, pozycje zamówień), `Badge` (status zamówienia), `Label`, `Separator`, `Button` (także jako link
+  `variant="link"`). Wybór płatności zostaje natywnym polem `radio` (stylowanym tokenami), bo zachowanie i testy
+  opierają się na jego `checked` i `labels`. `app/error.tsx` ma ramę strony 404.
 - Agent UX (D8; VISUAL-DESIGN-10, osobne zadanie narzędzi repo bez zależności od wyglądu) ocenia, w `/sweep` i w `/integration` epików z frontem sklepu, oprócz użyteczności i dostępności także:
   responsywność (375, 768 i 1440 px: układ, brak poziomego przewijania, cele dotyku, obrazy w rozmiarze ekranu),
   dostępność (klawiatura, fokus, nazwy, `alt`, kontrast, axe), spójność komponentów (te same przyciski, pola, karty
