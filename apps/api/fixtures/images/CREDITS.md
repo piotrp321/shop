@@ -1,6 +1,6 @@
 # Źródła zdjęć
 
-Zdjęcia pochodzą z Unsplash i są udostępnione na licencji Unsplash License (https://unsplash.com/license): wolne do użycia komercyjnego, bez obowiązku podania autora. Autorzy są wymienieni z szacunku i dla porządku. Pliki zostały przeskalowane do 1600 px na dłuższym boku i zapisane jako JPEG.
+Zdjęcia pochodzą z Unsplash i są udostępnione na licencji Unsplash License (https://unsplash.com/license): wolne do użycia komercyjnego, bez obowiązku podania autora. Autorzy są wymienieni z szacunku i dla porządku. Pliki zostały przeskalowane do 1600 px na dłuższym boku i zapisane jako JPEG. Plik kayak-green-tandem-river-close.jpg to kadr (wycinek 1600×1200 px) tego samego zdjęcia co kayak-green-tandem-river.jpg.
 
 | Plik | Strona zdjęcia | Autor | Licencja |
 |---|---|---|---|
@@ -16,6 +16,10 @@ Zdjęcia pochodzą z Unsplash i są udostępnione na licencji Unsplash License (
 | hikers-mountain-trail-group.jpg | https://unsplash.com/photos/people-hiking-on-mountain-trail-zO0le9E7Ono | Benjamin Chambon | Unsplash License |
 | hikers-trail-switzerland.jpg | https://unsplash.com/photos/two-hikers-walk-on-a-trail-with-trees-shLCyYaG9ys | Thierry Lemaitre | Unsplash License |
 | hikers-trail-toward-peaks-chile.jpg | https://unsplash.com/photos/hikers-on-trail-toward-mountain-peaks-Yizrl9N_eDA | Toomas Tartes | Unsplash License |
+| kayak-green-single-autumn-lake.jpg | https://unsplash.com/photos/a-man-in-a-kayak-paddling-on-a-lake-239VAIyhMe0 | Bennie Bates | Unsplash License |
+| kayak-green-single-mountain-lake.jpg | https://unsplash.com/photos/woman-on-kayak-in-the-middle-of-body-of-water-w58KovW_d0A | Mark Basky | Unsplash License |
+| kayak-green-tandem-river-close.jpg | https://unsplash.com/photos/woman-in-yellow-and-black-jacket-riding-green-kayak-on-lake-during-daytime-tpAl66fUZjA | Iryna Khan | Unsplash License |
+| kayak-green-tandem-river.jpg | https://unsplash.com/photos/woman-in-yellow-and-black-jacket-riding-green-kayak-on-lake-during-daytime-tpAl66fUZjA | Iryna Khan | Unsplash License |
 | kayak-lake-mountains.jpg | https://unsplash.com/photos/two-people-kayak-on-a-calm-lake-surrounded-by-mountains-Cu08YCemJu8 | WesternCanoeKayak | Unsplash License |
 | open-water-swimmer-lake.jpg | https://unsplash.com/photos/man-swimming-on-body-of-water-E9PJO_vL3E8 | Todd Quackenbush | Unsplash License |
 | orange-tent-turquoise-lake.jpg | https://unsplash.com/photos/orange-tent-by-turquoise-mountain-lake-RwVoo-YIHbc | Hanna Lazar | Unsplash License |
@@ -25,7 +29,10 @@ Zdjęcia pochodzą z Unsplash i są udostępnione na licencji Unsplash License (
 | runner-road-fitz-roy.jpg | https://unsplash.com/photos/person-running-on-road-at-daytime-QVD3Xht9txA | Andrea Leopardi | Unsplash License |
 | ski-hikers-snowy-trail.jpg | https://unsplash.com/photos/hikers-ascend-a-snowy-mountain-trail-under-bright-sun-K8cZ8oTtVYE | Mohammad Eskandari | Unsplash License |
 | ski-touring-steep-slope.jpg | https://unsplash.com/photos/two-people-ski-touring-up-a-steep-snowy-mountain-b8T20b3BoeM | Matthew Stephenson | Unsplash License |
+| skier-carrying-blue-skis-ascent.jpg | https://unsplash.com/photos/a-man-with-skis-and-ski-poles-walking-in-the-snow-bpp8Hh0t3Lk | Alex Moliski | Unsplash License |
 | skier-val-disere.jpg | https://unsplash.com/photos/man-in-orange-jacket-and-black-pants-riding-ski-blades-on-snow-covered-mountain-during-daytime-cITgqiIsg3c | Cyprien Delaporte | Unsplash License |
+| skis-blue-tips-snow.jpg | https://unsplash.com/photos/pair-of-blue-and-white-skis-in-snow-8gy0couPnm0 | Katja Ano | Unsplash License |
+| skis-blue-touring-stone-wall.jpg | https://unsplash.com/photos/blue-skis-leaning-against-stone-wall-ltDda3LOTQk | Maël Balland | Unsplash License |
 | sleeping-bag-alpine-meadow.jpg | https://unsplash.com/photos/blue-sleeping-bag-on-mountain-during-daytime-hcti0k5E2Iw | Felix M. Dorn | Unsplash License |
 | soccer-ball-field-blue.jpg | https://unsplash.com/photos/a-soccer-ball-rests-on-the-fields-grass-bZIbDiD3dnY | Lukáš Parničan | Unsplash License |
 | tent-orange-forest-mountain.jpg | https://unsplash.com/photos/a-tent-pitched-up-in-the-woods-with-a-mountain-in-the-background-7QFS9h0zfAI | Ali Kazal | Unsplash License |
