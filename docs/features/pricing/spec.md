@@ -218,8 +218,10 @@ kodów i jedynym miejscem tekstów ich odrzucenia.
     jest znormalizowany) pilnuje unikalny indeks; repozytorium tłumaczy naruszenie na `DiscountCodeTaken` (409).
 - `DiscountCodeUsage {id, codeId, orderId, usedAt, releasedAt | null}`: osobny agregat z repozytorium
   `DiscountCodeUsageRepository` (`add`, `activeUsesOf`), nie kolekcja kodu; aktywne użycie ma `releasedAt = null`,
-  zamówienie ma najwyżej jedno użycie. Liczba aktywnych użyć jest liczona zapytaniem, kod nie ma licznika. Użycia
-  nie zapisuje jeszcze żadna komenda.
+  zamówienie ma najwyżej jedno użycie. Liczba aktywnych użyć jest liczona zapytaniem, kod nie ma licznika. Użycie
+  zapisuje komenda `RedeemDiscountCode` (tylko zagnieżdżona w `PlaceOrder`) i zwalnia `ReleaseDiscountCodeUsage`
+  (zagnieżdżona w `ExpireUnpaidOrder`, idempotentna); opisuje je `docs/features/discount-codes/spec.md` („Warstwa
+  aplikacji”).
 - Komendy (`command.bus`, jedna transakcja): `CreateDiscountCode(id, code, kind, value, minimumOrderGross, startsAt,
   endsAt, usageLimit, enabled, actorId, actorName)` (aktor `null` to system) i `ReviseDiscountCode(id, expectedVersion,
   …)`. `ReviseDiscountCode` zaczyna od blokady wiersza kodu (`DiscountCodeRepository::lock`: `SELECT … FOR NO KEY
