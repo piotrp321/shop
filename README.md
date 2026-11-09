@@ -1,4 +1,4 @@
-# Shop („Rytm”)
+# Shop („Worf”)
 
 Sklep internetowy z branży sport i outdoor w monorepo: API, sklep dla klientów i panel administracyjny.
 Projekt jest budowany jak system produkcyjny, a większość kodu piszą agenci Claude Code według specyfikacji,
@@ -85,7 +85,7 @@ ich konfiguracji uruchom go od nowa: `docker compose restart worker` (`make up` 
 
 Jawne dane demo, nie sekrety: występują tylko w lokalnym stosie, a ich źródłem są realmy w `infra/keycloak/realms/`.
 Kod TOTP panelu: SHA1, 6 cyfr, 30 s. Sekret w base32 dodaj ręcznie w aplikacji uwierzytelniającej albo użyj URI
-`otpauth://totp/Rytm:<login>?secret=<sekret>&issuer=Rytm&algorithm=SHA1&digits=6&period=30` (np. do wygenerowania
+`otpauth://totp/Worf:<login>?secret=<sekret>&issuer=Worf&algorithm=SHA1&digits=6&period=30` (np. do wygenerowania
 kodu QR).
 
 | Realm | Login | Hasło | TOTP (base32) |

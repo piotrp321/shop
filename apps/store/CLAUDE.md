@@ -130,7 +130,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   „2–4 produkty”, 22–24 itd., reszta „produktów”, także 12–14), panel filtrów (po lewej od `lg`), nad siatką aktywne
   filtry i lista „Sortuj”, siatka i paginacja. Wszystkie adresy strony (paginacja, linki kategorii, chipy) buduje
   `listingHref(basePath, state, patch)` z adresu listingu bez parametrów (`basePath`) i jego parametrów (`state`).
-- SEO: tytuł `/c/` to `<nazwa>[ – strona n] | Rytm`, kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1);
+- SEO: tytuł `/c/` to `<nazwa>[ – strona n] | Worf`, kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1);
   pusta strona poza zakresem i niepoprawny `page` mają `noindex`. `/c/` ma JSON-LD `BreadcrumbList` (bezwzględne
   adresy, ten sam `serializeJsonLd` co strona produktu).
 
@@ -242,7 +242,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   wartości osi jako tekst („Kolor: czarne”), bez wyboru. Do pełnego wyboru strona pokazuje cenę, oznaczenie promocji
   i poziom produktu (`children` z serwera), po nim cenę, oznaczenie promocji i poziom wybranego wariantu. `AddToCartButton` jest wyłączony do pełnego wyboru
   i dodaje 1 sztukę wybranego wariantu (ilość zmienia się w koszyku). Wariantu nie ma w URL.
-- Metadane (`buildProductMetadata`): tytuł `<nazwa> | Rytm`, opis = krótki opis (bez opisu: brak), kanoniczny
+- Metadane (`buildProductMetadata`): tytuł `<nazwa> | Worf`, opis = krótki opis (bez opisu: brak), kanoniczny
   `<STORE_URL>/p/<slug>`, Open Graph (tytuł, opis, adres, obraz = pierwsze zdjęcie w największej szerokości; bez zdjęć
   bez obrazu).
 - JSON-LD (`product-json-ld.ts`, dwa `<script type="application/ld+json">`): `Product` z `Offer` tylko dla wariantów

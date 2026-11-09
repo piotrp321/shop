@@ -733,7 +733,7 @@ w tej kolejności:
 ## Sklep (`apps/store`)
 
 Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Components. Robocza nazwa sklepu:
-„Rytm”.
+„Worf”.
 
 ### Wygląd
 

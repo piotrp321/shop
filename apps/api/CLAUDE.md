@@ -387,7 +387,7 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `framework.mailer.message_bus: false` (inaczej `MailerInterface::send()` wysłałby `SendEmailMessage` na domyślną
   szynę `command.bus`, a błąd SMTP nie wróciłby do handlera i nie uruchomił ponowień transportu `events`). Konfiguracja
   w zmiennych środowiska: `MAILER_DSN` (`smtp://mailpit:1025?timeout=10`) i `MAILER_FROM`
-  (`Rytm <zamowienia@rytm.localhost>`), ustawianych w `infra/docker-compose.yml` dla `api` i `worker` (testy i CI biorą
+  (`Worf <zamowienia@worf.localhost>`), ustawianych w `infra/docker-compose.yml` dla `api` i `worker` (testy i CI biorą
   je z serwisu `api`; `phpunit.dist.xml` ma te same wartości domyślne). Opcję `timeout` DSN SMTP (sekundy, > 0) dodaje
   `SmtpTimeoutTransportFactory` (`Shared\Infrastructure\Mail`, dekorator `mailer.transport_factory.smtp`): limit
   każdego połączenia, odczytu i zapisu gniazda zamiast `default_socket_timeout` (60 s), więc wysyłka (około 7 wymian)
