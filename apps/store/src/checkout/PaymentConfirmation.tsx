@@ -354,7 +354,7 @@ function PayForm({
               value={code}
               checked={value === code}
               onChange={() => onChange(code)}
-              className="accent-primary"
+              className="accent-foreground"
             />
             {name}
           </label>

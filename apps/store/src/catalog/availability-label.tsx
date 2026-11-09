@@ -4,8 +4,8 @@ type Level = components["schemas"]["ProductOfferResponse"]["level"];
 
 // The level is decided by the API; the store only names it.
 const AVAILABILITY_LABELS: Record<Level, { text: string; className: string }> = {
-  in_stock: { text: "Dostępny", className: "text-primary" },
-  low_stock: { text: "Ostatnie sztuki", className: "text-destructive" },
+  in_stock: { text: "Dostępny", className: "text-success" },
+  low_stock: { text: "Ostatnie sztuki", className: "text-warning" },
   out_of_stock: { text: "Niedostępny", className: "text-muted-foreground" },
 };
 

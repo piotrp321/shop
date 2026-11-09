@@ -41,11 +41,14 @@ describe("colours only from tokens", () => {
     expect(errors[0].ruleId).toBe("better-tailwindcss/no-unknown-classes");
   });
 
-  it.each([["bg-gray-500"], ["bg-white"], ["text-brand-600"]])("rejects the raw palette class %s", async (className) => {
-    const errors = await lint(jsx(className), tsx);
-    expect(errors).toHaveLength(1);
-    expect(errors[0].ruleId).toBe("better-tailwindcss/no-unknown-classes");
-  });
+  it.each([["bg-gray-500"], ["bg-white"], ["text-brand-600"], ["bg-palette-accent"], ["text-palette-ink"], ["bg-accent-deep"], ["bg-dark"]])(
+    "rejects the raw palette class %s",
+    async (className) => {
+      const errors = await lint(jsx(className), tsx);
+      expect(errors).toHaveLength(1);
+      expect(errors[0].ruleId).toBe("better-tailwindcss/no-unknown-classes");
+    },
+  );
 
   it.each([
     ["named colour", arbitrary("bg", "red")],
