@@ -61,7 +61,8 @@ envFrom:
 An initContainer that waits until a shell condition holds. It is named wait-for-<name>, where <name> is the logical
 name of what it waits for: `make check` reads these names to verify that every dependency is in an earlier wave.
 Parameters: root, name, and check (a shell condition) or script (a shell function body that returns non-zero until
-ready); optional: secret (true: the container reads the secret).
+ready); optional: secret (true: the container reads the secret). Every connection in a check has a timeout
+(nc -w, wget -T): without one, the first attempt at a service whose pod is not there yet hangs for minutes.
 */}}
 {{- define "shop.wait" -}}
 - name: wait-for-{{ .name }}
