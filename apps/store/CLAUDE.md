@@ -636,6 +636,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `next/font/local` (`src/styles/fonts.ts`, zmienna `--font-outfit` w `--font-sans`). Bez żądań do hostów fontów,
   także w buildzie; `e2e/tests/visual-foundation.spec.ts` sprawdza, że przeglądarka pyta tylko o hosty stosu.
   Vitest podmienia `next/font/local` atrapą (`tests/stubs/next-font-local.ts`), bo to transformacja kompilatora.
+- Koszyk, kasa, potwierdzenie i konto (`/konto/zamowienia`) mają wspólną ramę `ScreenMain` i `ScreenTitle`
+  (`src/components/ScreenLayout.tsx`: margines `px-gutter`, szerokość `max-w-content`, wąska kolumna robocza `max-w-3xl`
+  przy lewej krawędzi tytułu). Komunikaty `role="alert"` to `Alert`, pozycje list zamówień i podsumowania to `Card`,
+  status zamówienia to `Badge`, etykiety pól to `Label`. Wybór płatności zostaje natywnym `<input type="radio">`
+  (testy czytają `radio.checked` i `radio.labels`), stylowanym tokenami. Strona błędu (`app/error.tsx`) ma ramę 404.
 - Focus: globalna reguła `:focus-visible` w `tokens.css` (3 px, `--ring`); komponenty jej nie wyłączają
   (bez `outline-none`). Na ciemnym tle (`data-surface="inverse"`, np. stopka) pierścień ma kolor `--ring-inverse`.
 
