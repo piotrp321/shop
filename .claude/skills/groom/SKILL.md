@@ -133,7 +133,8 @@ rusza; gdy nie rusza, push z tej sekcji podaje komendę `/prepare-epic <nr>`. In
 
 ## Czego nie robisz
 
-- Nie zmieniasz niczego w GitHubie poza `groom.py apply` po decyzji użytkownika.
+- Nie zmieniasz niczego w GitHubie poza `groom.py apply` po decyzji użytkownika i krokiem 7 (publikacja PR ze
+  specyfikacją według kroku 7 `/prepare-epic`, dopiero po akceptacji użytkownika i bramce).
 - Nie zmieniasz treści, tytułów ani kolejności issues na tablicy i nie nadajesz etykiety `epic` istniejącym issues.
 - Nie zmieniasz repo poza krokiem 7 (gałąź `prepare/<katalog>` w worktree `<run_dir>/prepare`); główny klon
   zostaje na czystym `main`.

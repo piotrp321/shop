@@ -1432,11 +1432,47 @@ class GateTest(unittest.TestCase):
         self.write_state([review('spec-critic'), review('architecture-reviewer', open_=2)])
         self.assertGateFails('critical', fragment='architecture-reviewer: 2 otwartych')
 
-    def test_open_critical_of_round_one_is_settled_by_round_two(self):
+    def test_open_critical_of_round_one_stays_open_after_round_two(self):
         self.write_state([review('spec-critic', resolved=1, open_=1), review('architecture-reviewer'),
                           review('spec-critic', 2)])
+        self.assertGateFails('critical', fragment='rundzie 1')
+
+    def test_malformed_review_entries_fail_the_review_check(self):
+        cases = {
+            'bez liczników': {'agent': 'spec-critic', 'round': 1, 'file': 'review-spec-critic-1.md', 'ok': True},
+            'licznik jako tekst': dict(review('spec-critic'), critical_open='1'),
+            'ujemny licznik': dict(review('spec-critic'), critical_resolved=-1),
+            'ok jako tekst': dict(review('spec-critic'), ok='true'),
+            'runda 0': dict(review('spec-critic'), round=0),
+            'nieznany agent': dict(review('spec-critic'), agent='someone'),
+        }
+        for name, entry in cases.items():
+            with self.subTest(name=name):
+                self.write_state([entry, review('architecture-reviewer')])
+                self.assertGateFails('review', fragment='niepoprawny wpis')
+
+    def test_report_file_outside_the_state_directory_fails(self):
+        for path in ('/etc/hosts', '../state.json', 'sub/review.md'):
+            with self.subTest(path=path):
+                self.write_state()
+                state = read_json(os.path.join(self.state_dir, 'state.json'))
+                state['reviews'][0]['file'] = path
+                write_json(os.path.join(self.state_dir, 'state.json'), state)
+                self.assertGateFails('review', fragment='niepoprawny wpis')
+
+    def test_non_utf8_spec_fails_the_scope_check(self):
+        self.write_state()
+        with open(os.path.join(self.feature, 'spec.md'), 'wb') as f:
+            f.write(b'Zakres: \xff\xfe\n')
         code, out, err, _ = self.gate()
-        self.assertEqual(0, code, out)
+        self.assertEqual(3, code, err)
+        self.assertIn('scope', self.failed(out))
+
+    def test_git_failure_clears_the_saved_gate(self):
+        self.write_state(gate={'ok': True, 'checks': []})
+        code, out, err, _ = self.gate(GateRunner(git_fails=True))
+        self.assertEqual(1, code)
+        self.assertIsNone(read_json(os.path.join(self.state_dir, 'state.json'))['gate'])
 
     def test_validator_failure(self):
         self.write_state()

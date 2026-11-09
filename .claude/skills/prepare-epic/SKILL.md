@@ -215,7 +215,7 @@ w kolejności; pierwszy niespełniony kończy tryb bez worktree, gałęzi i zmia
 1. `python3 "$G" origin <nr>` ma kod 0 (wyjście `{run_dir, id, issues, prepare}`; zapamiętaj `run_dir`).
 2. `pgrep -f 'ao run'` nic nie zwraca i `docker compose ls` nie ma projektu `sweep-*` (sprawdzone od nowa).
 3. `get_usage` i `python3 "$NQ" room --hours 2` z obiektem `plan` (jak krok 2 `/groom`) zwraca `ok`; bez `get_usage`:
-   „brak stanu limitów”. Zapamiętaj `plan` i `date -Iseconds` jako stan na starcie przygotowania.
+   „brak stanu limitów”. Obiekt `plan` i `date -Iseconds` zapiszesz w `state.json` jako `usage_start`.
 4. `python3 "$NQ" ahead` ma `full: false` (pełna noc: powód „noc pełna”, bez pytania o potwierdzenie).
 5. Warunki „Odmowy startu” z „Wejścia” (bez warunku czystego drzewa: pracujesz w nowym worktree).
 
@@ -227,7 +227,8 @@ mkdir -p "<run_dir>/prepare-epic" && git rev-parse origin/main
 ```
 
 Zapisz `$S/state.json`: `{issue, id, katalog, worktree: "<run_dir>/prepare", branch: "prepare/<katalog>",
-base_commit: <sha z komendy>, status: "running", stages: [], reviews: [], gate: null}`. Po każdym ukończonym etapie
+base_commit: <sha z komendy>, status: "running", stages: [], reviews: [], gate: null, usage_start: {plan, at}}`.
+Po każdym ukończonym etapie
 dopisz go do `stages` od razu (kolejność: `analyst`, `review`, `fixes`, `review2`, `planner`, `acceptance`). Komendy
 kroków 1–7 uruchamiasz w worktree (`cd "<run_dir>/prepare"`), nie w głównym klonie.
 
@@ -241,12 +242,14 @@ kroków 1–7 uruchamiasz w worktree (`cd "<run_dir>/prepare"`), nie w głównym
    decyzje do akceptacji, ścieżka szkicu.” Zapisz raport w `$S/analyst.md`.
 2. `review` — krok 2 (oba agenty równolegle, zlecenia bez zmian, ścieżka szkicu w worktree). Każdy raport dosłownie
    do `$S/review-<agent>-1.md`. Raport poprawny: każde znalezisko ma rodzaj i wagę albo „brak znalezisk”; błąd,
-   przerwanie albo brak wag: jedno ponowienie, potem wpis z `ok: false`.
+   przerwanie albo brak wag: jedno ponowienie. Na końcu etapu dopisz do `reviews` wpis rundy 1 każdego agenta:
+   `{agent, round: 1, file: "review-<agent>-1.md", ok}` (`ok: false` po nieudanym ponowieniu); liczniki uzupełnia
+   etap 3.
 3. `fixes` — analityk dostaje oba raporty dosłownie (`SendMessage` do tego samego agenta; bez niego nowy agent jak
    w etapie 1 ze ścieżką szkicu, `$S/analyst.md` i raportami) i wykonuje krok 3. Odpowiada listą: dla każdego
-   znaleziska `Critical` — poprawione, odrzucone (z dowodem) albo pytanie do użytkownika. Dopisz do `reviews` wpis
-   rundy 1 każdego agenta: `{agent, round: 1, file, ok, critical_resolved, critical_open}`; `critical_resolved` to
-   poprawione i odrzucone, `critical_open` to pytania. Dopisz nowe pytania do `$S/analyst.md`.
+   znaleziska `Critical` — poprawione, odrzucone (z dowodem) albo pytanie do użytkownika. Uzupełnij wpisy rundy 1
+   o `critical_resolved` (poprawione i odrzucone) i `critical_open` (pytania; runda 2 ich nie zamyka, zamyka je tylko
+   odpowiedź użytkownika). Dopisz nowe pytania do `$S/analyst.md`.
 4. `review2` — tylko dla agenta z `critical_resolved` > 0: nowy agent tego typu na poprawionym szkicu (to samo
    zlecenie, bez raportu z rundy 1), raport do `$S/review-<agent>-2.md`, wpis `round: 2` z `critical_open` równym
    liczbie znalezisk `Critical` w tym raporcie; techniczne poprawki z rundy 2 robi analityk jak w etapie 3. Rundy 3
@@ -258,9 +261,12 @@ kroków 1–7 uruchamiasz w worktree (`cd "<run_dir>/prepare"`), nie w głównym
    - Bramka przeszła (kod 0): na końcu pytanie z kroku 6 i informacja, że „tak” przyjmuje też rekomendacje.
    - Kod 3: bez propozycji „tak”; wymień, co blokuje i czego trzeba (odpowiedzi na pytania `Critical`, decyzji
      o ponownym przygotowaniu przy zmianach na `main`).
-   - Kod 1 albo 2: błąd w rozmowie i w pushu, `status: "failed"` z powodem, koniec.
+   - Kod 1 (błąd `git`, np. sieć): `status` zostaje `running`, `acceptance` nie trafia do `stages`; błąd w rozmowie
+     i push „Epik <ID>: bramka nie policzona (<błąd>). Wznów: /prepare-epic <nr>”, koniec. Wznowienie zaczyna od
+     tego etapu, bez powtarzania wcześniejszych.
+   - Kod 2 (zepsuty `state.json`): błąd w rozmowie i w pushu, `status: "failed"` z powodem, koniec.
 
-   `get_usage` jeszcze raz; na końcu `$S/acceptance.md` sekcja `## Zużycie` (czas od startu, przyrost procentu
+   `get_usage` jeszcze raz; na końcu `$S/acceptance.md` sekcja `## Zużycie` (względem `usage_start`: czas, przyrost procentu
    każdego okna; okno z innym `resetsAt`: „odnowione w trakcie”). Push: „Epik <ID>: <k> pytań, specyfikacja do
    akceptacji” albo „Epik <ID>: przygotowanie wymaga decyzji (<pierwszy niespełniony warunek>)”. `status: "awaiting"`.
 
@@ -270,14 +276,19 @@ nią nie jest. Bez odpowiedzi czekasz: bez terminu i bez przypomnień.
 - „tak”: najpierw `python3 "$G" gate <run_dir>` od nowa. Kod 0: krok 7 w worktree bez zmian (warunki merge'u
   z kroku 7), potem `status: "published"` albo `"failed"` z powodem z kroku 7; po merge'u
   `cd "$SHOP" && git worktree remove "<run_dir>/prepare"`. Kod różny od 0: to nie jest akceptacja; podaj powód
-  z `checks` i czekaj dalej.
+  (z `checks` przy kodzie 3, błąd `git` przy kodzie 1) i czekaj dalej; kolejne „tak” liczy bramkę od nowa.
 - Każda inna odpowiedź: `status: "interactive"`. Odpowiedzi wpisuje analityk (jak w etapie 3), przy zmianie projektu
   krok 2 i 3 (nowe pliki raportów z kolejnym numerem rundy), potem walidator i zwykła akceptacja z kroku 6. Od tej
   chwili obowiązuje przebieg z sekcji „Przebieg”, w tej sesji i w tym worktree.
 
-**Wznowienie** (ręczne `/prepare-epic <nr>`, gdy gałąź `prepare/<katalog>` istnieje). `python3
-.claude/skills/groom/groom.py origin <nr>` z kodem 0, `prepare.status` to `running`, `awaiting` albo `interactive`
-i katalog `prepare.worktree` istnieje: nie odmawiaj, pracuj w tym worktree i katalogu stanu.
+**Wznowienie** (ręczne `/prepare-epic <nr>`, gdy gałąź `prepare/<katalog>` istnieje), tylko gdy sesja `/groom`,
+która prowadziła przygotowanie, jest zamknięta albo zatrzymana (zapytaj użytkownika, gdy nie wiesz): dwie sesje nie
+pracują w jednym worktree. Zmienne ustaw sam, bez bloku startowego `/groom`:
+`G="<ten klon>/.claude/skills/groom/groom.py"`, `NQ="<ten klon>/.claude/skills/ao-run/night_queue.py"`,
+`SHOP` = główny klon (`git rev-parse --path-format=absolute --git-common-dir`, katalog nadrzędny). `python3 "$G" origin
+<nr>` z kodem 0, `prepare.status` to `running`, `awaiting` albo `interactive` i katalog `prepare.worktree` istnieje:
+nie odmawiaj; `run_dir` z wyjścia `origin`, `S="<run_dir>/prepare-epic"`, pracuj w worktree `prepare.worktree`.
+`## Zużycie` liczysz względem `usage_start` ze `state.json`.
 
 - Nie powtarzaj etapów z `stages`: bez nowych agentów i review dla ukończonych etapów. Zacznij od pierwszego
   nieukończonego, na plikach w worktree i w `$S`. Etap przerwany w połowie zaczyna się od nowa.

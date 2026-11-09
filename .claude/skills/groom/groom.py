@@ -40,10 +40,11 @@ is that fix_epic.id ending with -FIXES. Prints one JSON line {run_dir, id, issue
 <run_dir>/prepare-epic/state.json of /prepare-epic after /groom, or null. Exit 1 when the issue has no such origin.
 
 gate: the gate of /prepare-epic after /groom, from <run_dir>/prepare-epic/state.json: both reviews of round 1 and
-every needed round 2 are ok with their report files, no open Critical in the last round of each agent, the plan
+every needed round 2 are well-formed and ok with their report files, no open Critical in any round, the plan
 manifest validates, the spec has a Zakres line, and no commit on origin/main after base_commit touches the scope or
 the spec and plan of the epic. Prints one JSON line {ok, checks: [{name, ok, detail}]} and writes it to state.json as
-`gate`; exit 0 when it passes, 3 when it does not. Earlier gate results are ignored.
+`gate`; exit 0 when it passes, 3 when it does not, 1 on a `git` error (then `gate` is cleared). Earlier gate
+results are ignored.
 
 Exit codes: 0 success; 1 a `git`/`gh` command failed, returned unexpected JSON or the limit of 500 issues was
 reached (collect), the issue has no /groom origin (origin); 2 usage and state errors (missing files, a list that is
@@ -850,23 +851,50 @@ def cmd_origin(args, run):
     return 0
 
 
+def _review_entry_problem(entry):
+    """Why a `reviews` entry of state.json is malformed, or None."""
+    if not isinstance(entry, dict) or entry.get('agent') not in REVIEWERS:
+        return 'agent spoza %s' % ', '.join(REVIEWERS)
+    if not _is_int(entry.get('round')) or entry['round'] < 1:
+        return 'round nie jest liczbą >= 1'
+    if not isinstance(entry.get('ok'), bool):
+        return 'ok nie jest true/false'
+    for key in ('critical_resolved', 'critical_open'):
+        if not _is_int(entry.get(key)) or entry[key] < 0:
+            return '%s nie jest liczbą >= 0' % key
+    name = entry.get('file')
+    if not isinstance(name, str) or not name or name in ('.', '..') or os.sep in name or '/' in name:
+        return 'file nie jest nazwą pliku w katalogu stanu'
+    return None
+
+
 def _review_checks(reviews, state_dir):
-    problems, open_critical = [], []
+    """Problems of the review check and the open Critical findings.
+
+    A Critical left open in any round blocks the gate: an open Critical of round 1 is a question for the user that
+    round 2 does not settle (its reviewer does not see round 1).
+    """
+    problems, open_critical, valid = [], [], []
+    for i, entry in enumerate(reviews):
+        problem = _review_entry_problem(entry)
+        if problem:
+            problems.append('niepoprawny wpis reviews[%d]: %s' % (i, problem))
+        else:
+            valid.append(entry)
     for agent in REVIEWERS:
-        rounds = {r['round']: r for r in reviews
-                  if isinstance(r, dict) and r.get('agent') == agent and _is_int(r.get('round'))}
+        rounds = {r['round']: r for r in valid if r['agent'] == agent}
         needed = [1] + ([2] if (rounds.get(1) or {}).get('critical_resolved') else [])
         for n in needed:
             entry = rounds.get(n)
             if entry is None:
                 problems.append('%s: runda %d: brak' % (agent, n))
-            elif entry.get('ok') is not True:
+            elif not entry['ok']:
                 problems.append('%s: runda %d niezakończona poprawnie' % (agent, n))
-            elif not os.path.isfile(os.path.join(state_dir, entry.get('file') or '')):
-                problems.append('%s: brak raportu %s' % (agent, entry.get('file')))
-        last = rounds.get(max(rounds)) if rounds else None
-        if last and last.get('critical_open'):
-            open_critical.append('%s: %d otwartych Critical w rundzie %d' % (agent, last['critical_open'], last['round']))
+            elif not os.path.isfile(os.path.join(state_dir, entry['file'])):
+                problems.append('%s: brak raportu %s' % (agent, entry['file']))
+        for n in sorted(rounds):
+            if rounds[n]['critical_open']:
+                open_critical.append('%s: %d otwartych Critical w rundzie %d' % (agent, rounds[n]['critical_open'], n))
     return problems, open_critical
 
 
@@ -908,11 +936,18 @@ def cmd_gate(args, run):
         check_('scope', [])
     except OSError:
         check_('scope', ['brak pliku %s' % epic_files[0]])
+    except UnicodeDecodeError:
+        check_('scope', ['%s nie jest w UTF-8' % epic_files[0]])
     except night_queue.ScopeError as e:
         check_('scope', [str(e)])
-    run(['git', '-C', worktree, 'fetch', 'origin', 'main'])
-    log = run(['git', '-C', worktree, 'log', '--format=%h %s', state['base_commit'] + '..origin/main', '--']
-              + list(scope) + epic_files)
+    try:
+        run(['git', '-C', worktree, 'fetch', 'origin', 'main'])
+        log = run(['git', '-C', worktree, 'log', '--format=%h %s', state['base_commit'] + '..origin/main', '--']
+                  + list(scope) + epic_files)
+    except next_epic.CommandError:
+        state['gate'] = None  # no stale result next to a gate that could not be computed
+        _write_json(state_path, state)
+        raise
     commits = [line for line in log.splitlines() if line.strip()]
     check_('main', ['zmiany na origin/main po %s: %s' % (state['base_commit'][:7], ', '.join(commits))] if commits else [])
     result = {'ok': all(c['ok'] for c in checks), 'checks': checks}

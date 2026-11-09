@@ -193,12 +193,15 @@ w GitHubie, a sesja wysyła push (do 200 znaków) `Epik <ID> #<nr>: przygotowani
 - Worktree `git worktree add -b prepare/<katalog> <run_dir>/prepare origin/main` w katalogu przebiegu `/groom`.
   Główny klon zostaje na czystym `main`, bo tego wymaga następny przebieg `/groom` z harmonogramu.
 - Katalog stanu `<run_dir>/prepare-epic/`:
-  - `state.json`: `{issue, id, katalog, worktree, branch, base_commit, status, stages, reviews, gate}`; `status` to
+  - `state.json`: `{issue, id, katalog, worktree, branch, base_commit, status, stages, reviews, gate, usage_start}`;
+    `usage_start` to obiekt `plan` z `get_usage` i czas startu (sekcja `## Zużycie` także po wznowieniu); `status` to
     `running`, `awaiting`, `interactive`, `published` albo `failed`; `base_commit` to `origin/main` z chwili startu;
     `stages` to ukończone etapy w kolejności (`analyst`, `review`, `fixes`, `review2`, `planner`, `acceptance`),
     dopisywane zaraz po ukończeniu etapu; `reviews` to lista `{agent, round, file, ok, critical_resolved,
-    critical_open}` (ocena raportu przez sesję: liczba znalezisk `Critical` poprawionych albo odrzuconych i liczba
-    otwartych, z tymi, które wymagają decyzji użytkownika); `gate` to ostatni wynik `groom.py gate`;
+    critical_open}`: wpis powstaje na końcu review (`agent`, `round`, `file` jako nazwa pliku w katalogu stanu, `ok`),
+    liczniki uzupełnia etap poprawek (ocena raportu przez sesję: liczba znalezisk `Critical` poprawionych albo
+    odrzuconych i liczba otwartych, z tymi, które wymagają decyzji użytkownika); `gate` to ostatni wynik
+    `groom.py gate` albo `null`, gdy bramki nie dało się policzyć;
   - raporty recenzentów, każdy w osobnym pliku (`review-<agent>-<runda>.md`), dosłownie;
   - `acceptance.md`: wiadomość z kroku „Pytania i akceptacja”.
 - Gałąź, worktree i stan zostają do odpowiedzi użytkownika. Brak terminu i przypomnień. Worktree usuwa krok 7 po
@@ -234,16 +237,19 @@ dosłownie, zapisuje stan. Treść `spec.md` i `plan.md` pisze wyłącznie podag
 ### Bramka
 
 Bramkę liczy `groom.py gate <run_dir>`, nie model. Kod 0: przechodzi, kod 3: nie przechodzi (także błąd walidatora
-manifestu), kod 1: błąd `git`, kod 2: brak albo zły `state.json`. Wypisuje jedną linię JSON `{ok, checks: [{name, ok, detail}]}`
+manifestu i niepoprawny wpis `reviews`), kod 1: błąd `git` (zapisany `gate` jest wtedy czyszczony; przygotowanie
+zostaje w `running` i da się je wznowić), kod 2: brak albo zły `state.json`. Wypisuje jedną linię JSON `{ok, checks: [{name, ok, detail}]}`
 i zapisuje ją w `state.json` jako `gate`. Sesja uruchamia ją przed wysłaniem wiadomości i po każdej odpowiedzi „tak”,
 także po wznowieniu, niezależnie od wcześniejszego wyniku.
 
 Odpowiedź „tak” akceptuje rekomendacje, specyfikację, rozmiar końcowego PR i pozycje użytkownika z „Wymaganych przed
 startem” tylko wtedy, gdy w chwili odpowiedzi wszystkie warunki są spełnione:
 
-- oba review z kroku 2 i każda runda 2 zakończyły się poprawnie (`reviews`: runda 1 obu agentów z `ok`, runda 2
+- oba review z kroku 2 i każda runda 2 zakończyły się poprawnie (`reviews`: każdy wpis poprawny — agent z dwóch
+  recenzentów, runda ≥ 1, `ok` true/false, liczniki ≥ 0, plik w katalogu stanu; runda 1 obu agentów z `ok`, runda 2
   z `ok` dla każdego agenta z `critical_resolved` > 0 w rundzie 1, plik raportu istnieje);
-- nie ma otwartego znaleziska `Critical` (`critical_open` = 0 w ostatniej rundzie każdego agenta): poprawionego bez
+- nie ma otwartego znaleziska `Critical` (`critical_open` = 0 w każdej rundzie każdego agenta; runda 2 nie zamyka
+  pytań z rundy 1, bo jej recenzent nie widzi raportu rundy 1): poprawionego bez
   potwierdzenia w rundzie 2, zgłoszonego w rundzie 2 albo wymagającego decyzji użytkownika (produktowego lub
   architektonicznego). Takie znalezisko jest osobnym pytaniem, którego „tak” nie rozstrzyga;
 - walidator manifestu i `night_queue.py scope` przeszły na obecnych plikach (sesja uruchamia je jeszcze raz po
@@ -269,7 +275,8 @@ Akceptację daje wyłącznie użytkownik w rozmowie, jak w kroku 6.
 
 ### Wznowienie
 
-Gdy sesja `/groom` się zamknęła w trakcie przygotowania albo przy czekającej akceptacji, ręczne `/prepare-epic <nr>`
+Gdy sesja `/groom` się zamknęła w trakcie przygotowania albo przy czekającej akceptacji (wznowienie tylko przy
+zamkniętej albo zatrzymanej sesji `/groom`: dwie sesje nie pracują w jednym worktree), ręczne `/prepare-epic <nr>`
 nie odmawia startu z powodu istniejącej gałęzi `prepare/<katalog>`, jeśli `groom.py origin <nr>` zwraca stan
 przygotowania (`prepare`) ze `status` `running`, `awaiting` albo `interactive`, a worktree istnieje. Wtedy:
 
@@ -304,9 +311,10 @@ Każdy inny stan gałęzi (bez stanu, `published`, `failed`, brak worktree): odm
    `fix_epic` `skipped`, `error`, `rejected`, bez decyzji albo `null` → kod 1; issue zamknięte, bez `epic`,
    z `needs-info` albo z innym ID → kod 1; brak katalogów przebiegów → kod 1; błąd `gh` → kod 1.
    Testy `groom.py gate`: wszystko spełnione → kod 0; brak rundy 1 agenta, review bez `ok`, brak pliku raportu,
-   `critical_resolved` bez rundy 2, `critical_open` > 0 w ostatniej rundzie, błąd walidatora, linia `Zakres:` nie do
-   odczytania, commit w zakresie albo w plikach epiku po `base_commit` → kod 3 z nazwą warunku; błąd `git` → kod 1;
-   brak `state.json` → kod 2; wynik zapisany w `state.json`.
+   `critical_resolved` bez rundy 2, `critical_open` > 0 w dowolnej rundzie (także pytanie z rundy 1 po rundzie 2),
+   niepoprawny wpis `reviews` (brak liczników, typy, plik poza katalogiem stanu), błąd walidatora, linia `Zakres:`
+   nie do odczytania (także spoza UTF-8), commit w zakresie albo w plikach epiku po `base_commit` → kod 3 z nazwą
+   warunku; błąd `git` → kod 1 i wyczyszczony `gate`; brak `state.json` → kod 2; wynik zapisany w `state.json`.
 2. Ścieżka błędu startu: każdy z warunków 1–5 kończy tryb pushem z powodem, bez worktree i bez gałęzi. Pokazane na
    atrapach (`ao run`, projekt `sweep-*`, okno ≥ 80%, `ahead` z `full: true`, istniejąca gałąź `prepare/*`).
 3. Bramka na prawdziwym repo: `groom.py gate` na przygotowanym stanie (worktree ze szkicem, `Critical` otwarty,
