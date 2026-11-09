@@ -1156,3 +1156,93 @@ class ParseUntilLocalTest(unittest.TestCase):
         now = datetime(2026, 11, 4, 5, 0).astimezone()
         until = night_queue.parse_until('07:00', now)
         self.assertEqual((4, 7, 0), (until.day, until.hour, until.minute))
+
+
+class RoomCliTest(unittest.TestCase):
+    """room: is there room in the usage limits for a review that does not count into the night estimates."""
+
+    @staticmethod
+    def no_commands(args):
+        raise AssertionError('room ran a command: %r' % (args,))
+
+    def room(self, plan, hours='2', raw=None, argv=None):
+        stdin = io.StringIO(raw if raw is not None else json.dumps(plan))
+        out, err = io.StringIO(), io.StringIO()
+        argv = argv if argv is not None else ['room', '--hours', hours]
+        with tempfile.TemporaryDirectory() as missing_parent:
+            # A state directory that does not exist: room must not read or write the state.
+            state = os.path.join(missing_parent, 'absent')
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
+                    mock.patch.object(night_queue, 'read_events', side_effect=AssertionError('read state')), \
+                    mock.patch.object(night_queue, 'read_night', side_effect=AssertionError('read state')):
+                code = night_queue.main(['--state', state] + argv, run=self.no_commands, now=T0, stdin=stdin)
+            self.assertFalse(os.path.exists(state))
+        return code, (json.loads(out.getvalue()) if out.getvalue() else None), err.getvalue()
+
+    def test_window_below_80_is_ok(self):
+        self.assertEqual((0, {'ok': True}, ''), self.room(usage(79.9)))
+
+    def test_window_at_80_blocks_with_label_and_percent(self):
+        self.assertEqual((0, {'ok': False, 'reason': 'okno Weekly · all models: 80.0% >= 80%'}, ''), self.room(usage(80)))
+
+    def test_window_resetting_within_hours_does_not_block(self):
+        soon = (T0 + timedelta(hours=1, minutes=59)).isoformat()
+        self.assertEqual({'ok': True}, self.room(usage(95, reset=soon))[1])
+
+    def test_window_resetting_after_hours_blocks(self):
+        later = (T0 + timedelta(hours=2, minutes=1)).isoformat()
+        self.assertEqual({'ok': False, 'reason': 'okno Weekly · all models: 95.0% >= 80%'},
+                         self.room(usage(95, reset=later))[1])
+
+    def test_window_resetting_exactly_at_the_horizon_does_not_block(self):
+        self.assertEqual({'ok': True}, self.room(usage(95, reset=(T0 + timedelta(hours=2)).isoformat()))[1])
+
+    def test_fractional_hours(self):
+        reset = (T0 + timedelta(hours=1, minutes=45)).isoformat()
+        self.assertFalse(self.room(usage(95, reset=reset), hours='1.5')[1]['ok'])
+        self.assertEqual({'ok': True}, self.room(usage(95, reset=reset), hours='1.75')[1])
+
+    def test_soon_resetting_full_window_next_to_free_window_is_ok(self):
+        soon = (T0 + timedelta(hours=1)).isoformat()
+        plan = usage(99, reset=soon, extra_windows=[{'label': 'Weekly · Fable', 'percentUsed': 10, 'resetsAt': RESET}])
+        self.assertEqual({'ok': True}, self.room(plan)[1])
+
+    def test_any_blocking_window_blocks(self):
+        plan = usage(10, extra_windows=[{'label': 'Weekly · Fable', 'percentUsed': 85, 'resetsAt': RESET}])
+        result = self.room(plan)[1]
+        self.assertFalse(result['ok'])
+        self.assertIn('Weekly · Fable', result['reason'])
+
+    def test_no_windows_is_ok(self):
+        self.assertEqual({'ok': True}, self.room({'status': 'ok', 'windows': []})[1])
+
+    def test_status_not_ok_blocks(self):
+        result = self.room(usage(10, status='rate_limited'))[1]
+        self.assertFalse(result['ok'])
+        self.assertIn('rate_limited', result['reason'])
+
+    def test_empty_and_invalid_json_block_as_unreadable(self):
+        for raw in ['', '{', '[]', '{}']:
+            with self.subTest(raw=raw):
+                code, result, _ = self.room(None, raw=raw)
+                self.assertEqual(0, code)
+                self.assertFalse(result['ok'])
+                self.assertIn('nieczytelny', result['reason'])
+
+    def test_bad_hours_exits_1(self):
+        for hours in ['x', '-1', '0', 'nan', 'inf', '-inf', '1e12']:
+            with self.subTest(hours=hours):
+                code, result, err = self.room(usage(10), argv=['room', '--hours=%s' % hours])
+                self.assertEqual(1, code)
+                self.assertIsNone(result)
+                self.assertIn('night_queue: --hours', err)
+                self.assertNotIn('Traceback', err)
+
+    def test_missing_hours_exits_1(self):
+        code, result, err = self.room(usage(10), argv=['room'])
+        self.assertEqual((1, None), (code, result))
+        self.assertIn('night_queue: --hours', err)
+
+    def test_reads_no_board(self):
+        # no_commands raises on any command: room must not call gh or git.
+        self.assertEqual(0, self.room(usage(10))[0])
