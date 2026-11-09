@@ -107,9 +107,7 @@ test.describe("the default state of /", () => {
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       await expect(page.getByTestId("product-grid")).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
-      // The pagination under the listing (its link names do not contain their visible text) is part of the listing,
-      // which VISUAL-DESIGN-7 restyles and checks with axe; this test is about the hero and the tiles.
-      const results = await new AxeBuilder({ page }).exclude("nextjs-portal").exclude('nav[aria-label="Paginacja"]').analyze();
+      const results = await new AxeBuilder({ page }).exclude("nextjs-portal").analyze();
       const serious = results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
       expect(serious.map((violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`)).toEqual([]);
       expect(await scrollWidth(page)).toBeLessThanOrEqual(viewport.width);

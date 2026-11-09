@@ -68,7 +68,8 @@ function PaginationPrevious({
 }: React.ComponentProps<typeof PaginationLink> & { text?: string }) {
   return (
     <PaginationLink
-      aria-label="Przejdź do poprzedniej strony"
+      // The name starts with the visible text: a name that does not contain it fails WCAG 2.5.3 (label in name).
+      aria-label={`${text} – przejdź do poprzedniej strony`}
       size="default"
       className={cn("pl-1.5!", className)}
       {...props}
@@ -86,7 +87,7 @@ function PaginationNext({
 }: React.ComponentProps<typeof PaginationLink> & { text?: string }) {
   return (
     <PaginationLink
-      aria-label="Przejdź do następnej strony"
+      aria-label={`${text} – przejdź do następnej strony`}
       size="default"
       className={cn("pr-1.5!", className)}
       {...props}
