@@ -6,6 +6,8 @@
   groom.py apply <run_dir> --approve <1,3,5|all|none> [--reject N=reason]... [--current FILE] [--state DIR]
   groom.py expire <run_dir>
   groom.py fail <run_dir> [--empty]
+  groom.py origin <issue> [--state DIR]
+  groom.py gate <run_dir>
 
 State directory (--state, default ~/.local/state/shop-groom): `rejected.jsonl`.
 
@@ -32,9 +34,21 @@ expire: marks an undecided list as expired (`decided_at`, `result` = "wygasła")
 fail: marks an undecided list as failed (`result` = "błąd walidacji", or "brak propozycji" with --empty); works also
 when proposals.json is missing or is not valid JSON.
 
+origin: confirms that <issue> is the fix epic created by an approved /groom list (a run directory whose fix_epic has
+result status `done` and the issue URL) and that the issue is open, has `epic`, has no `needs-info` and its title ID
+is that fix_epic.id ending with -FIXES. Prints one JSON line {run_dir, id, issues, prepare}; `prepare` is
+<run_dir>/prepare-epic/state.json of /prepare-epic after /groom, or null. Exit 1 when the issue has no such origin.
+
+gate: the gate of /prepare-epic after /groom, from <run_dir>/prepare-epic/state.json: both reviews of round 1 and
+every needed round 2 are well-formed and ok with their report files, no open Critical in any round, the plan
+manifest validates, the spec has a Zakres line, and no commit on origin/main after base_commit touches the scope or
+the spec and plan of the epic. Prints one JSON line {ok, checks: [{name, ok, detail}]} and writes it to state.json as
+`gate`; exit 0 when it passes, 3 when it does not, 1 on a `git` error (then `gate` is cleared). Earlier gate
+results are ignored.
+
 Exit codes: 0 success; 1 a `git`/`gh` command failed, returned unexpected JSON or the limit of 500 issues was
-reached (collect); 2 usage and state errors (missing files, a list that is already decided, bad --approve/--reject);
-3 the list does not validate.
+reached (collect), the issue has no /groom origin (origin); 2 usage and state errors (missing files, a list that is
+already decided, bad --approve/--reject, a bad state.json); 3 the list does not validate, the gate does not pass.
 """
 import argparse
 import json
@@ -67,11 +81,19 @@ EPIC_SECTIONS = ('## Punkt „Zakresu MVP”', '## Zakres', '## Poza zakresem', 
 FIXES_ID = re.compile(r'-FIXES(-\d+)?$')
 WEIGHT = re.compile(r'\bwaga[ \t:*_-]*(Critical|Important|Minor)\b', re.IGNORECASE)
 WEIGHT_RANK = {'Minor': 0, 'Important': 1, 'Critical': 2}
+PLAN_MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'planner', 'plan_manifest.py')
+PREPARE_DIR = 'prepare-epic'
+STATE_FILE = 'state.json'
+REVIEWERS = ('spec-critic', 'architecture-reviewer')
 BLOCK = re.compile(r'\n?<!-- groom:collisions -->.*?<!-- /groom:collisions -->\n?', re.DOTALL)
 
 
 class StateError(Exception):
     """Bad usage, a missing file or a list that is already decided: exit code 2."""
+
+
+class NoOrigin(Exception):
+    """The issue is not a fix epic of an approved /groom list: exit code 1."""
 
 
 class ValidationFailed(Exception):
@@ -780,6 +802,161 @@ def _close_list(run_dir, result, now, minimal_ok):
     return 0
 
 
+# ---------------------------------------------------------------- origin and gate (/prepare-epic after /groom)
+
+def _origin_run_dir(state_dir, number):
+    url = issue_url(number)
+    try:
+        names = sorted(os.listdir(state_dir), reverse=True)
+    except OSError:
+        names = []
+    for name in names:
+        path = os.path.join(state_dir, name, PROPOSALS_FILE)
+        if not os.path.isfile(path):
+            continue
+        try:
+            props = _read_json(path, PROPOSALS_FILE)
+        except StateError:
+            continue
+        fix = props.get('fix_epic') if isinstance(props, dict) else None
+        result = fix.get('result') if isinstance(fix, dict) else None
+        if isinstance(result, dict) and result.get('status') == 'done' and url in (result.get('urls') or []):
+            return os.path.join(state_dir, name), fix
+    raise NoOrigin('issue #%d nie jest epikiem poprawek z zatwierdzonej listy /groom' % number)
+
+
+def cmd_origin(args, run):
+    try:
+        number = int(args.issue)
+    except ValueError:
+        raise StateError('numer issue: %s' % args.issue)
+    run_dir, fix = _origin_run_dir(os.path.expanduser(args.state), number)
+    if not FIXES_ID.search(fix.get('id') or ''):
+        raise NoOrigin('ID %s nie kończy się na -FIXES' % fix.get('id'))
+    view = next_epic._json(run or next_epic.make_runner(None),
+                           ['gh', 'issue', 'view', str(number), '--repo', REPOSITORY, '--json', 'state,labels,title'])
+    labels = {l.get('name') for l in view.get('labels') or []}
+    if view.get('state') != 'OPEN':
+        raise NoOrigin('issue #%d jest zamknięte' % number)
+    if 'epic' not in labels:
+        raise NoOrigin('issue #%d nie ma etykiety epic' % number)
+    if 'needs-info' in labels:
+        raise NoOrigin('issue #%d ma etykietę needs-info' % number)
+    if next_epic._epic_id(view.get('title') or '') != fix['id']:
+        raise NoOrigin('tytuł issue #%d nie ma ID %s' % (number, fix['id']))
+    state_path = os.path.join(run_dir, PREPARE_DIR, STATE_FILE)
+    prepare = _read_json(state_path, STATE_FILE) if os.path.exists(state_path) else None
+    print(json.dumps({'run_dir': run_dir, 'id': fix['id'], 'issues': fix.get('issues'), 'prepare': prepare},
+                     ensure_ascii=False))
+    return 0
+
+
+def _review_entry_problem(entry):
+    """Why a `reviews` entry of state.json is malformed, or None."""
+    if not isinstance(entry, dict) or entry.get('agent') not in REVIEWERS:
+        return 'agent spoza %s' % ', '.join(REVIEWERS)
+    if not _is_int(entry.get('round')) or entry['round'] < 1:
+        return 'round nie jest liczbą >= 1'
+    if not isinstance(entry.get('ok'), bool):
+        return 'ok nie jest true/false'
+    for key in ('critical_resolved', 'critical_open'):
+        if not _is_int(entry.get(key)) or entry[key] < 0:
+            return '%s nie jest liczbą >= 0' % key
+    name = entry.get('file')
+    if not isinstance(name, str) or not name or name in ('.', '..') or os.sep in name or '/' in name:
+        return 'file nie jest nazwą pliku w katalogu stanu'
+    return None
+
+
+def _review_checks(reviews, state_dir):
+    """Problems of the review check and the open Critical findings.
+
+    A Critical left open in any round blocks the gate: an open Critical of round 1 is a question for the user that
+    round 2 does not settle (its reviewer does not see round 1).
+    """
+    problems, open_critical, valid = [], [], []
+    for i, entry in enumerate(reviews):
+        problem = _review_entry_problem(entry)
+        if problem:
+            problems.append('niepoprawny wpis reviews[%d]: %s' % (i, problem))
+        else:
+            valid.append(entry)
+    for agent in REVIEWERS:
+        rounds = {r['round']: r for r in valid if r['agent'] == agent}
+        needed = [1] + ([2] if (rounds.get(1) or {}).get('critical_resolved') else [])
+        for n in needed:
+            entry = rounds.get(n)
+            if entry is None:
+                problems.append('%s: runda %d: brak' % (agent, n))
+            elif not entry['ok']:
+                problems.append('%s: runda %d niezakończona poprawnie' % (agent, n))
+            elif not os.path.isfile(os.path.join(state_dir, entry['file'])):
+                problems.append('%s: brak raportu %s' % (agent, entry['file']))
+        for n in sorted(rounds):
+            if rounds[n]['critical_open']:
+                open_critical.append('%s: %d otwartych Critical w rundzie %d' % (agent, rounds[n]['critical_open'], n))
+    return problems, open_critical
+
+
+def cmd_gate(args, run):
+    run_dir = os.path.expanduser(args.run_dir)
+    state_dir = os.path.join(run_dir, PREPARE_DIR)
+    state_path = os.path.join(state_dir, STATE_FILE)
+    state = _read_json(state_path, STATE_FILE)
+    missing = [k for k in ('worktree', 'katalog', 'base_commit', 'reviews') if not isinstance(state, dict) or not state.get(k)]
+    if missing or not isinstance(state['reviews'], list):
+        raise StateError('%s: brak pól %s' % (STATE_FILE, ', '.join(missing or ['reviews'])))
+    run = run or next_epic.make_runner(None)
+    worktree, directory = state['worktree'], state['katalog']
+    feature = os.path.join(worktree, 'docs', 'features', directory)
+    epic_files = ['docs/features/%s/spec.md' % directory, 'docs/features/%s/plan.md' % directory]
+    checks = []
+
+    def check_(name, problems):
+        checks.append({'name': name, 'ok': not problems, 'detail': '; '.join(problems) or 'ok'})
+
+    problems, open_critical = _review_checks(state['reviews'], state_dir)
+    check_('review', problems)
+    check_('critical', open_critical)
+    plan = os.path.join(feature, 'plan.md')
+    if not os.path.isfile(plan):
+        check_('plan', ['brak pliku %s' % epic_files[1]])
+    else:
+        command = [sys.executable, PLAN_MANIFEST, 'validate', plan]
+        try:
+            run(command)
+            check_('plan', [])
+        except next_epic.CommandError as e:
+            prefix = ' '.join(command) + ': '
+            check_('plan', ['walidator: %s' % str(e)[len(prefix):] if str(e).startswith(prefix) else str(e)])
+    scope = []
+    try:
+        with open(os.path.join(feature, 'spec.md'), encoding='utf-8') as f:
+            scope = night_queue.parse_scope(f.read())
+        check_('scope', [])
+    except OSError:
+        check_('scope', ['brak pliku %s' % epic_files[0]])
+    except UnicodeDecodeError:
+        check_('scope', ['%s nie jest w UTF-8' % epic_files[0]])
+    except night_queue.ScopeError as e:
+        check_('scope', [str(e)])
+    try:
+        run(['git', '-C', worktree, 'fetch', 'origin', 'main'])
+        log = run(['git', '-C', worktree, 'log', '--format=%h %s', state['base_commit'] + '..origin/main', '--']
+                  + list(scope) + epic_files)
+    except next_epic.CommandError:
+        state['gate'] = None  # no stale result next to a gate that could not be computed
+        _write_json(state_path, state)
+        raise
+    commits = [line for line in log.splitlines() if line.strip()]
+    check_('main', ['zmiany na origin/main po %s: %s' % (state['base_commit'][:7], ', '.join(commits))] if commits else [])
+    result = {'ok': all(c['ok'] for c in checks), 'checks': checks}
+    state['gate'] = result
+    _write_json(state_path, state)
+    print(json.dumps(result, ensure_ascii=False))
+    return 0 if result['ok'] else 3
+
+
 # ---------------------------------------------------------------- CLI
 
 def build_parser():
@@ -804,6 +981,10 @@ def build_parser():
     fail = sub.add_parser('fail', help='mark the list as failed or empty')
     fail.add_argument('run_dir')
     fail.add_argument('--empty', action='store_true')
+    origin = sub.add_parser('origin', help='confirm the /groom origin of a fix epic issue')
+    origin.add_argument('issue')
+    origin.add_argument('--state', default=STATE_DEFAULT)
+    sub.add_parser('gate', help='the gate of /prepare-epic after /groom').add_argument('run_dir')
     return parser
 
 
@@ -820,6 +1001,10 @@ def main(argv=None, run=None, now=None):
             return cmd_validate(args)
         if args.command == 'apply':
             return cmd_apply(args, run, now)
+        if args.command == 'origin':
+            return cmd_origin(args, run)
+        if args.command == 'gate':
+            return cmd_gate(args, run)
         if args.command == 'expire':
             return _close_list(args.run_dir, 'wygasła', now, minimal_ok=False)
         return _close_list(args.run_dir, 'brak propozycji' if args.empty else 'błąd walidacji', now, minimal_ok=True)
@@ -830,7 +1015,7 @@ def main(argv=None, run=None, now=None):
         for error in e.errors:
             print('groom: %s' % error, file=sys.stderr)
         return 3
-    except next_epic.CommandError as e:
+    except (next_epic.CommandError, NoOrigin) as e:
         print('groom: %s' % e, file=sys.stderr)
         return 1
 

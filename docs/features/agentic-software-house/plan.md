@@ -30,7 +30,7 @@ Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykiet�
 | 11 | Po MVP: release i monitoring | do zrobienia |
 | 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione (kryteria 7–9 sprawdza pierwszy merge epiku) |
 | 13 | Agent porządkujący backlog (`/groom`) | zrobione (pierwszy przebieg 2026-11-09; zadanie zaplanowane o 8:00 w aplikacji Claude) |
-| 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | do zrobienia |
+| 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy epik `-FIXES` po QUALITY-FIXES) |
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | do zrobienia |
 
 ## Role
@@ -135,9 +135,11 @@ flowchart TB
      będą przed `/ao-run`, żeby taki bloker nie wyszedł dopiero w trakcie zadania.
    - Zgłoszenie `ux` zawsze idzie przez `/prepare-epic`. Drobne zgłoszenia `bug`
      i `tech-debt` trafiają razem do jednego epiku poprawek: krótka specyfikacja, jedno zadanie na issue.
-   - (14) Epik poprawek zatwierdzony z listy `/groom` sesja przygotowuje bez użytkownika aż do pytań: analityk,
-     krytyk, architekt i planner. Użytkownik dostaje jedno powiadomienie push z pytaniami (każde z rekomendacją)
-     i akceptacją; zasady akceptacji i merge'u PR ze specyfikacją się nie zmieniają.
+   - Epik poprawek zatwierdzony z listy `/groom` sesja `/groom` przygotowuje bez użytkownika aż do pytań: analityk
+     i planner (podagent na Opusie), krytyk i architekt. Użytkownik dostaje jedno powiadomienie push z pytaniami
+     (każde z rekomendacją) i akceptacją. „Tak” akceptuje rekomendacje i specyfikację tylko przy spełnionej bramce
+     `groom.py gate` (review poprawne, bez otwartego `Critical`, walidator, bez zmian na `main` w zakresie epiku);
+     zasady merge'u PR ze specyfikacją się nie zmieniają.
    - Zaakceptowane `spec.md` i `plan.md` trafiają do `main` przez PR, który `/prepare-epic` merguje po zielonym CI.
 3. **Wykonanie (AO, w nocy).**
    - Start epiku: sesja z Remote Control bierze następny epik z tablicy, który ma zaakceptowane `spec.md`
@@ -261,10 +263,12 @@ równolegle z przebiegiem AO, a jego czas i zużycie limitu są mierzone jak prz
    zaplanowanego w aplikacji Claude albo ręcznie. Agent proponuje, skrypt sprawdza listę i po „tak” użytkownika
    wykonuje tylko zatwierdzone pozycje. Jeden epik poprawek naraz, do 8 issues; issues otwartych epików bez
    propozycji. Opis: `docs/features/groom/spec.md`.
-14. **Epik poprawek bez użytkownika aż do pytań.** `/prepare-epic` dostaje tryb dla epiku zatwierdzonego
-   w `/groom`: kroki 1–3 i 5 skilla przebiegają bez rozmowy, a kroki 4 i 6 (pytania i akceptacja) idą jednym
-   powiadomieniem push z rekomendacjami. Odpowiedź „tak” akceptuje rekomendacje i specyfikację. Inny wariant
-   wraca do kroku 2 skilla jak dziś. Zmiana: `docs/features/prepare-epic/spec.md`.
+14. **Epik poprawek bez użytkownika aż do pytań.** Sesja `/groom` po utworzeniu zatwierdzonego epiku poprawek
+   prowadzi `/prepare-epic` w trybie po `/groom`: kroki 1–3 i 5 bez rozmowy, kroki 4 i 6 jedną wiadomością z pushem.
+   „Tak” akceptuje rekomendacje i specyfikację tylko przy spełnionej bramce `groom.py gate`; inna odpowiedź wraca do
+   zwykłego przebiegu. Ręczne `/prepare-epic <nr>` wznawia przerwane przygotowanie bez powtarzania ukończonych
+   etapów. Opis: sekcja „Tryb po `/groom`” w `docs/features/prepare-epic/spec.md`. Prawdziwy przebieg sprawdza
+   pierwszy epik `-FIXES` po QUALITY-FIXES.
 15. **`/retro` i „Status”.** Nowy skill uruchamiany po merge'u epiku (po `/sweep`, punkt 7 procesu). Zastępuje
    ręczne aktualizowanie sekcji „Status” i ręczne zbieranie wniosków z przebiegów. Nowa specyfikacja:
    `docs/features/retro/spec.md`.

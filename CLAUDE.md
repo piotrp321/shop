@@ -258,7 +258,10 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   użytkownika (etykiety `bug`/`ux` i `agent`), nie issues.
 - `/groom` (codziennie o 8:00 z zadania zaplanowanego w aplikacji Claude albo ręcznie): agent `backlog-groomer`
   proponuje duplikaty, nieaktualne zgłoszenia, braki, etykiety i jeden epik poprawek (`-FIXES`), a `groom.py` sprawdza
-  listę i wykonuje w GitHubie tylko pozycje zatwierdzone przez użytkownika w rozmowie.
+  listę i wykonuje w GitHubie tylko pozycje zatwierdzone przez użytkownika w rozmowie. Zatwierdzony epik poprawek ta
+  sama sesja przygotowuje według `/prepare-epic` bez użytkownika aż do jednej wiadomości z pytaniami i akceptacją;
+  samo „tak” akceptuje tylko przy spełnionej bramce `groom.py gate`, a przerwane przygotowanie wznawia
+  `/prepare-epic <nr>`.
 - Orkiestrator sam rozstrzyga szczegóły implementacji (wpis `Ruling:` w ledgerze). Istotne decyzje DDD (agregaty,
   value objecty, granice modułów, persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury
   przedstawia użytkownikowi przed implementacją.
