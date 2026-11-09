@@ -8,6 +8,7 @@ Wyboru kierunku dokonuje właściciel (VISUAL-DESIGN-4). Makiety są ilustracją
 
 - Otwórz wybrany plik `kierunek-*.html` w przeglądarce (z dysku, `file://`); fonty i zdjęcia są pobierane ze ścieżek względnych (`fonts/`, `../../../../apps/api/fixtures/images/`), więc plik trzeba otwierać z jego miejsca w repozytorium. Chromium otwiera makiety bez dodatkowych ustawień.
 - Wersja 375 px: narzędzia deweloperskie przeglądarki, tryb responsywny (np. Chrome: `Ctrl/Cmd + Shift + M`, szerokość 375). Poniżej 1024 px działa układ telefonu, od 1024 px układ desktopu.
+- Makiety nie używają `position: sticky` ani żadnego innego położenia zależnego od przewijania, więc zrzut pełnej wysokości pokazuje układ tak, jak widać go po przewinięciu strony od góry do dołu (filtry i dane produktu zaczynają się na wysokości galerii i siatki).
 - Każdy ekran to osobna sekcja (`#glowna`, `#listing`, `#produkt`) z paskiem podpisu u góry; panele „Stan: …” są pod stroną.
 
 ## Zawartość i odstępstwa od danych demo
@@ -49,7 +50,7 @@ Wartości są w pliku HTML jako zmienne CSS `:root` (te same ciągi `oklch(...)`
 
 ### Kontrasty (WCAG 2.2 AA)
 
-Stosunki policzone skryptem (OKLCH → sRGB → luminancja względna WCAG 2.x, zaokrąglone do 2 miejsc; pełny skrypt w sekcji „Jak policzono kontrasty”). Progi: tekst 4,5:1, duży tekst i elementy interfejsu 3:1. Wszystkie użyte pary w tym kierunku spełniają próg.
+Stosunki policzone skryptem (OKLCH → sRGB → luminancja względna WCAG 2.x, zaokrąglone do 2 miejsc; pełny skrypt w sekcji „Jak policzono kontrasty”). Progi: tekst 4,5:1, duży tekst i elementy interfejsu 3:1. Wszystkie użyte pary w tym kierunku spełniają próg. Kolor fokusu zależy od tła, na którym leży pierścień: `accent-deep` na jasnym tle i na białych powierzchniach, `accent` na ciemnych (stopka, powiększenie zdjęcia), `on-dark` na zdjęciu hero pod nakładką.
 
 | Tekst lub element | Tło | Gdzie | Rodzaj | Stosunek | Wymagany | Wynik |
 |---|---|---|---|---|---|---|
@@ -71,9 +72,10 @@ Stosunki policzone skryptem (OKLCH → sRGB → luminancja względna WCAG 2.x, z
 | `line` | `surface` | Obramowanie pól na białym | element interfejsu | 4,26:1 | 3,00:1 | spełnia |
 | `accent-deep` | `bg` | Pierścień fokusu na tle strony | element interfejsu | 5,87:1 | 3,00:1 | spełnia |
 | `accent-deep` | `surface` | Pierścień fokusu na białym | element interfejsu | 6,30:1 | 3,00:1 | spełnia |
-| `accent` | `dark` | Pierścień fokusu na ciemnym tle | element interfejsu | 7,79:1 | 3,00:1 | spełnia |
+| `accent` | `dark` | Pierścień fokusu na ciemnym tle (stopka, powiększenie zdjęcia) | element interfejsu | 7,79:1 | 3,00:1 | spełnia |
 | `ink` | `accent` | Ramka fokusu na przycisku głównym | element interfejsu | 7,38:1 | 3,00:1 | spełnia |
 | `on-dark` | `overlay` w 72% na zdjęciu (najjaśniejsze możliwe tło: biel `#ffffff`, po nakładce `#4e5053`) | Tekst hero na zdjęciu (nagłówek, akapit) | tekst | 7,21:1 | 4,50:1 | spełnia |
+| `on-dark` | to samo (`overlay` w 72% nad bielą, `#4e5053`) | Pierścień fokusu przycisku hero na zdjęciu | element interfejsu | 7,21:1 | 3,00:1 | spełnia |
 | `on-dark` | to samo, nagłówek hero 44 px i więcej (duży tekst) | Nagłówek hero | duży tekst | 7,21:1 | 3,00:1 | spełnia |
 
 ### Fonty
@@ -137,7 +139,7 @@ Wartości są w pliku HTML jako zmienne CSS `:root` (te same ciągi `oklch(...)`
 
 ### Kontrasty (WCAG 2.2 AA)
 
-Stosunki policzone skryptem (OKLCH → sRGB → luminancja względna WCAG 2.x, zaokrąglone do 2 miejsc; pełny skrypt w sekcji „Jak policzono kontrasty”). Progi: tekst 4,5:1, duży tekst i elementy interfejsu 3:1. Wszystkie użyte pary w tym kierunku spełniają próg.
+Stosunki policzone skryptem (OKLCH → sRGB → luminancja względna WCAG 2.x, zaokrąglone do 2 miejsc; pełny skrypt w sekcji „Jak policzono kontrasty”). Progi: tekst 4,5:1, duży tekst i elementy interfejsu 3:1. Wszystkie użyte pary w tym kierunku spełniają próg. Kolor fokusu zależy od tła, na którym leży pierścień: `ink` na jasnym tle, na białych kartach i na białych panelach w ciemnym nagłówku (mega menu, menu na telefonie), `accent` na ciemnych (nagłówek, pas hero, stopka, powiększenie zdjęcia).
 
 | Tekst lub element | Tło | Gdzie | Rodzaj | Stosunek | Wymagany | Wynik |
 |---|---|---|---|---|---|---|
@@ -157,8 +159,8 @@ Stosunki policzone skryptem (OKLCH → sRGB → luminancja względna WCAG 2.x, z
 | `line` | `surface` | Obramowanie pól w kartach | element interfejsu | 18,04:1 | 3,00:1 | spełnia |
 | `line-dark` | `dark` | Obramowanie pola wyszukiwarki w ciemnym nagłówku | element interfejsu | 3,71:1 | 3,00:1 | spełnia |
 | `ink` | `bg` | Pierścień fokusu na jasnym tle | element interfejsu | 15,88:1 | 3,00:1 | spełnia |
-| `ink` | `surface` | Pierścień fokusu na białej karcie | element interfejsu | 18,04:1 | 3,00:1 | spełnia |
-| `accent` | `dark` | Pierścień fokusu na ciemnym tle | element interfejsu | 13,98:1 | 3,00:1 | spełnia |
+| `ink` | `surface` | Pierścień fokusu na białej karcie, w panelu mega menu i w menu na telefonie (białe pola w ciemnym nagłówku) | element interfejsu | 18,04:1 | 3,00:1 | spełnia |
+| `accent` | `dark` | Pierścień fokusu na ciemnym tle (nagłówek, pas hero z przyciskiem, stopka, powiększenie zdjęcia) | element interfejsu | 13,98:1 | 3,00:1 | spełnia |
 | `ink` | `accent` | Ramka fokusu na przycisku głównym | element interfejsu | 13,98:1 | 3,00:1 | spełnia |
 
 ### Fonty
@@ -220,7 +222,7 @@ Wartości są w pliku HTML jako zmienne CSS `:root` (te same ciągi `oklch(...)`
 
 ### Kontrasty (WCAG 2.2 AA)
 
-Stosunki policzone skryptem (OKLCH → sRGB → luminancja względna WCAG 2.x, zaokrąglone do 2 miejsc; pełny skrypt w sekcji „Jak policzono kontrasty”). Progi: tekst 4,5:1, duży tekst i elementy interfejsu 3:1. Wszystkie użyte pary w tym kierunku spełniają próg.
+Stosunki policzone skryptem (OKLCH → sRGB → luminancja względna WCAG 2.x, zaokrąglone do 2 miejsc; pełny skrypt w sekcji „Jak policzono kontrasty”). Progi: tekst 4,5:1, duży tekst i elementy interfejsu 3:1. Wszystkie użyte pary w tym kierunku spełniają próg. Kolor fokusu zależy od tła, na którym leży pierścień: `accent` na jasnym tle i na powierzchniach, `on-dark` na ciemnych (stopka, powiększenie zdjęcia); pas działów ma pierścień wewnątrz własnego marginesu, na tle strony.
 
 | Tekst lub element | Tło | Gdzie | Rodzaj | Stosunek | Wymagany | Wynik |
 |---|---|---|---|---|---|---|
@@ -241,7 +243,7 @@ Stosunki policzone skryptem (OKLCH → sRGB → luminancja względna WCAG 2.x, z
 | `line` | `surface` | Obramowanie pól na powierzchni | element interfejsu | 4,40:1 | 3,00:1 | spełnia |
 | `accent` | `bg` | Pierścień fokusu na tle strony | element interfejsu | 5,61:1 | 3,00:1 | spełnia |
 | `accent` | `surface` | Pierścień fokusu na powierzchni | element interfejsu | 6,13:1 | 3,00:1 | spełnia |
-| `on-dark` | `dark` | Pierścień fokusu na ciemnym tle | element interfejsu | 14,42:1 | 3,00:1 | spełnia |
+| `on-dark` | `dark` | Pierścień fokusu na ciemnym tle (stopka, powiększenie zdjęcia) | element interfejsu | 14,42:1 | 3,00:1 | spełnia |
 
 ### Fonty
 
@@ -318,7 +320,7 @@ Zrzuty robi Playwright przez `make e2e-agent` z katalogiem roboczym poza repozyt
 - fonty kierunku: skrypt czeka na `document.fonts.ready`, ładuje każdą użytą rodzinę i wagę z tekstem „ąćęłńóśźż Worf”, a potem wymaga `document.fonts.check(...)` dla każdej z nich, wczytanej (`status === "loaded"`) rodziny w `document.fonts`, braku fontów w stanie `error` i tego, że każda rodzina i waga faktycznie użyta na stronie jest na liście sprawdzanych (zrzut nie może pokazać fontu zastępczego);
 - niezaładowane zdjęcie (`naturalWidth` równe 0);
 - poziome przewijanie (`document.documentElement.scrollWidth` większe od szerokości okna);
-- brak elementu stanu (mega menu, menu działów, aktywne filtry, kafelek „Niedostępny”, „Ostatnie sztuki”, wartość wariantu niedostępna, fokus, panel filtrów, powiększenie zdjęcia, miniatury i licznik).
+- brak widocznego elementu stanu w danej szerokości (mega menu tylko przy 1440 px, menu działów i panel filtrów na telefonie tylko przy 375 px; aktywne filtry, kafelek „Niedostępny”, „Ostatnie sztuki”, fokus, powiększenie zdjęcia, miniatury i licznik przy obu), a także brak kafelka z wartością wariantu niedostępną.
 
 Skrypt zapisuje się jako `$AGENT_DIR/tests/mockups.spec.ts` (katalog `tests` czyta `playwright.agent.config.ts`). Zrzuty trafiają do `$AGENT_DIR/shots/`, stamtąd do katalogu makiet. Konfiguracja agenta uruchamia projekt `desktop`; szerokość okna skrypt ustawia sam.
 
@@ -354,10 +356,16 @@ const DIRECTIONS = [
   { id: "b", families: { Archivo: [400, 500, 600, 700, 800] } },
   { id: "c", families: { Newsreader: [400, 500, 600], Inter: [400, 500, 600, 700] } },
 ];
-const SCREENS = [
-  { id: "glowna", states: [".state-mega", ".state-mobile-menu", ".dept", ".hero-h1", ".tile", ".ftr"] },
-  { id: "listing", states: [".crumbs", ".page-head h1", ".chips li", ".avail--out", ".avail--low", ".tile-price", ".pager", ".state-filters", ".select.is-focus", ".option-unavailable"] },
-  { id: "produkt", states: [".thumb", ".counter", ".opt.is-unavail", ".opt.is-chosen", ".btn--buy.is-focus", ".state-zoom"] },
+// Elements that must be visible, with the widths where they are shown (the mega menu only at 1440, the department menu only at 375).
+type Wanted = [selector: string, widths: number[]];
+const BOTH = [1440, 375];
+const SCREENS: { id: string; wanted: Wanted[] }[] = [
+  { id: "glowna", wanted: [[".state-mega", [1440]], [".state-mobile-menu", [375]], [".dept", BOTH], [".hero-h1", BOTH], [".tile", BOTH], [".ftr", BOTH]] },
+  {
+    id: "listing",
+    wanted: [[".crumbs", BOTH], [".page-head h1", BOTH], [".chips li", BOTH], [".avail--out", BOTH], [".avail--low", BOTH], [".tile-price", BOTH], [".pager", BOTH], [".panel.is-open", BOTH], [".state-filters", [375]], [".select.is-focus", BOTH]],
+  },
+  { id: "produkt", wanted: [[".thumb", BOTH], [".counter", BOTH], [".opt.is-unavail", BOTH], [".opt.is-chosen", BOTH], [".btn--buy.is-focus", BOTH], [".state-zoom", BOTH]] },
 ];
 const WIDTHS = [1440, 375];
 
@@ -441,14 +449,13 @@ for (const direction of DIRECTIONS) {
       for (const screen of SCREENS) {
         const section = page.locator(`#${screen.id}`);
         await expect(section).toHaveCount(1);
-        for (const selector of screen.states) {
-          if (selector === ".option-unavailable") {
-            const count = await section.locator("option[disabled]").filter({ hasText: "niedostępny" }).count();
-            if (count === 0) problems.push(`${screen.id}: no tile with an unavailable variant value`);
-            continue;
-          }
-          const count = await section.locator(selector).count();
-          if (count === 0) problems.push(`${screen.id}: missing element ${selector}`);
+        for (const [selector, widths] of screen.wanted) {
+          if (!widths.includes(width)) continue;
+          if ((await section.locator(`${selector} >> visible=true`).count()) === 0) problems.push(`${screen.id}: no visible element ${selector} at ${width} px`);
+        }
+        // A tile with an unavailable variant value: only an <option disabled>, which is never "visible" itself.
+        if (screen.id === "listing" && (await section.locator("option[disabled]").filter({ hasText: "niedostępny" }).count()) === 0) {
+          problems.push("listing: no tile with an unavailable variant value");
         }
         await section.screenshot({ path: `${SHOTS}/kierunek-${direction.id}-${screen.id}-${width}.png`, animations: "disabled", scale: "css" });
       }
