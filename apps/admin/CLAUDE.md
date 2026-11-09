@@ -171,7 +171,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (fokus zostaje na naciśniętym; ponowne naciśnięcie prosi o tę samą stronę), a przycisk wyłączony po przejściu
   (ostatnia albo pierwsza strona) oddaje fokus drugiemu; „Strona N” to `aria-live="polite"`. „Spróbuj ponownie” też nie jest wyłączany na czas
   ładowania (nieudane ponowienie zostawia fokus na nim; ponowne naciśnięcie pyta jeszcze raz), a po udanym fokus
-  (który spadłby na `body`) trafia na pierwszy kod listy albo, gdy strona nie ma kodów, na włączony przycisk pagera. Kolumny: kod, rabat (procent albo kwota), minimum, okres (czas polski,
+  (który spadłby na `body`) trafia na pierwszy kod listy albo, gdy strona nie ma kodów, na włączony przycisk pagera, a gdy nie ma też
+  drugiej strony (filtr lub wyszukiwanie bez wyników), na pole wyszukiwania. Kolumny: kod, rabat (procent albo kwota), minimum, okres (czas polski,
   „bez końca”), użycia (`activeUses` / limit albo „(bez limitu)”) i status; status, `activeUses` i kwoty pochodzą
   z API, panel niczego nie liczy (`format.ts`). Przycisk „Dodaj kod” i cała edycja: tylko `admin` i `marketing`
   (`permissions.ts`, role z `/me`; API sprawdza niezależnie); pozostali pracownicy widzą listę i formularz tylko do

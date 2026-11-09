@@ -52,7 +52,8 @@ async function movePage(move: () => Promise<void>): Promise<void> {
 
 // Same for the retry button: it stays on while the list loads (a repeated press asks again, the newest answer wins).
 // When the retry succeeds the error, and the button with it, disappears, so the focus goes to the list: to the first
-// code, or to the pager when the page has none. When it fails the button is still there and keeps the focus.
+// code, or to the pager when the page has none, or to the search field when there is no other page either (an active
+// filter or search found nothing, so the user will change it). When it fails the button is still there and keeps the focus.
 const rootElement = useTemplateRef<HTMLElement>("root");
 
 async function retryList(): Promise<void> {
@@ -63,7 +64,10 @@ async function retryList(): Promise<void> {
     return;
   }
   const firstCode = rootElement.value?.querySelector<HTMLElement>("[data-testid=code-link]");
-  const target = firstCode ?? pagerElement.value?.querySelector<HTMLButtonElement>("button:not(:disabled)");
+  const target =
+    firstCode ??
+    pagerElement.value?.querySelector<HTMLButtonElement>("button:not(:disabled)") ??
+    rootElement.value?.querySelector<HTMLElement>("[data-testid=search]");
   target?.focus();
 }
 

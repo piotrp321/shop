@@ -362,6 +362,18 @@ describe("DiscountCodesView", () => {
       expect(document.activeElement).toBe(wrapper.get("[data-testid=next-page]").element);
     });
 
+    it("moves the focus to the search field after a successful retry that finds no codes on the only page", async () => {
+      serve({}, 500);
+      wrapper = await mountView(["admin"], true);
+      serve({ "": { items: [], next: null } });
+
+      await press();
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid=code-link]").exists()).toBe(false);
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=search]").element);
+    });
+
     it("leaves the focus on the retry button when the retry fails", async () => {
       serve({}, 500);
       wrapper = await mountView(["admin"], true);
