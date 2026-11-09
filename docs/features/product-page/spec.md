@@ -360,7 +360,7 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
   Kolejność tabulatora jest kolejnością wizualną w każdej przeglądarce, bo kolejność w dokumencie jest kolejnością na
   ekranie (bez właściwości CSS zmieniających kolejność fokusu i bez `order`): lista miniatur jest w HTML dwa razy, kolumna po lewej od zdjęcia
   (`hidden lg:flex`) przed paskiem i rząd pod paskiem (`lg:hidden`) po nim; ukryta ma `display: none` (poza Tab i drzewem
-  dostępności, jej obrazy `lazy` się nie pobierają), obie są w HTML z serwera, mają tę samą etykietę „Miniatury zdjęć”
+  dostępności), jej obrazy mają `loading="lazy"` i te same adresy co obrazy widocznej listy, obie są w HTML z serwera, mają tę samą etykietę „Miniatury zdjęć”
   i ten sam stan `aria-current`. Od `lg` Tab idzie: miniatury, zdjęcia paska, strzałki; poniżej `lg`: zdjęcia paska,
   strzałki, miniatury.
 - **Testy:** Vitest (`ProductGallery.test.tsx`, `ProductGallery.server.test.tsx` na HTML serwera) i E2E

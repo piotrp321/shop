@@ -281,6 +281,25 @@ test.describe("the search of the header where the row has no room for the field 
     await expect(header.getByRole("searchbox", { name: "Szukaj produktów" })).toHaveValue("asfalt");
   });
 
+  test("hovering a department while the search panel is open closes the panel, so the department panel is not covered", async ({ page }) => {
+    await page.goto("/");
+    await waitForHeader(page);
+    const header = page.getByRole("banner");
+    const toggle = header.getByRole("button", { name: "Wyszukiwarka" });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const department = page.getByRole("navigation", { name: /Działy/ }).getByRole("button").first();
+    await department.hover();
+    await expect(department).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(header.getByRole("searchbox", { name: "Szukaj produktów" })).toBeHidden();
+    const link = page.getByRole("link", { name: /Wszystko z działu/ }).first();
+    await expect(link).toBeVisible();
+    const box = (await link.boundingBox())!;
+    const top = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("a")?.textContent ?? "", [box.x + 4, box.y + box.height / 2]);
+    expect(top).toContain("Wszystko z działu");
+  });
+
   test("without JavaScript the form is a row of the header under the first one, and the button is not shown", async ({ browser }) => {
     const context = await browser.newContext({ viewport: COMPACT, javaScriptEnabled: false, locale: "pl-PL" });
     const page = await context.newPage();

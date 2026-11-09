@@ -222,7 +222,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   dokumentu (nie dodawaj ich). Kolejność:
   znak „Worf”, działy (poniżej `lg` przycisk „Menu”), koszyk, konto, wyszukiwarka, a na końcu komunikat o koszyku, gdy
   jest. Od `lg` (1024 px) jeden wiersz (nazwane obszary `brand nav cart account search` stoją w kolejności
-  dokumentu), pasek działów bez zawijania (`text-ui`, cele 44 px, poziomy padding przycisku 8 px do `xl`, od `xl`
+  dokumentu), pasek działów (`flex-wrap`: dla działów demo jeden rząd, przy większej liczbie albo dłuższej nazwie zawija się zamiast
+  nachodzić na koszyk i konto; `text-ui`, cele 44 px, poziomy padding przycisku 8 px do `xl`, od `xl`
   12 px); panel działu rozciąga się na całą szerokość pod nagłówkiem (pozycjonowany względem `header`, w czterech
   kolumnach: kategoria poziomu 2 jako nagłówek i linki poziomu 3). Poniżej `lg` dwa rzędy: znak, przycisk „Menu”
   (`aria-expanded`), koszyk i konto, pod nimi pole na pełną szerokość; lista działów otwiera się jako panel pod
@@ -234,7 +235,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   wyszukiwarki (1024–1279 px, gdzie pole się nie mieści): `SearchBox` renderuje przycisk „Wyszukiwarka”
   (`aria-expanded`, `aria-controls`) i formularz; przycisk jest `display: none` poza tym zakresem, a formularz jest
   w nim panelem pod nagłówkiem (`data-state`, fokus w polu po otwarciu; Escape, wysłanie, kliknięcie poza panelem
-  i opuszczenie go fokusem zamykają go, Escape oddaje fokus przyciskowi). Bez JavaScriptu `noscript` ze stylem pokazuje
+  opuszczenie go fokusem i otwarcie panelu działu (zdarzenie `DEPARTMENT_PANEL_OPENED` z `header-panels.ts`, także przy
+  najechaniu myszą) zamykają go, Escape i wysłanie oddają fokus przyciskowi). Bez JavaScriptu `noscript` ze stylem pokazuje
   formularz jako drugi rząd nagłówka, a przycisk chowa. Od 1280 px pole stoi w wierszu (kolumna 14 rem) bez przycisku,
   poniżej 1024 px jest drugim rzędem. Zmieniając układ sprawdź wymiary na 1024 px po zalogowaniu (zapas paska działów
   to kilkanaście pikseli przy siedmiu działach demo). Brak poziomego przewijania przy 375 px sprawdza
@@ -300,8 +302,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   rozmiaru `product`) i licznik „1 / m”: działa bez JavaScriptu i jest taki sam przed hydratacją i po niej. Kolejność
   w dokumencie jest kolejnością wizualną (bez właściwości CSS zmieniających kolejność fokusu i bez `order`; nie dodawaj
   ich): lista miniatur (`Thumbnails`) jest w HTML dwa razy, kolumna po lewej od zdjęcia (`hidden lg:flex`) przed paskiem
-  i rząd pod nim (`lg:hidden`) po pasku; ukryta ma `display: none` (poza Tab i drzewem dostępności, jej obrazy `lazy` się
-  nie pobierają), obie mają ten sam `aria-current`. Testy Vitest w jsdom (bez CSS) widzą więc dwie listy; kolejność
+  i rząd pod nim (`lg:hidden`) po pasku; ukryta ma `display: none` (poza Tab i drzewem dostępności), jej obrazy mają `loading="lazy"` i te same adresy co
+  obrazy widocznej listy, obie mają ten sam `aria-current`. Testy Vitest w jsdom (bez CSS) widzą więc dwie listy; kolejność
   w dokumencie względem położenia i sekwencję Tab sprawdza `e2e/tests/product-gallery.spec.ts` (`e2e/support/focus-order.ts`). Po hydratacji
   (`useSyncExternalStore` z migawką serwera `false`: tego, co dodaje JavaScript, nie ma w pierwszym renderze) dochodzą
   `aria-current` miniatury, licznik podążający za paskiem (też za przesunięciem palcem, po 100 ms bez przewijania; `usePhotoStrip` czyta pozycję

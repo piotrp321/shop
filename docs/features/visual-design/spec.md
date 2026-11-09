@@ -217,12 +217,13 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
   `aria-expanded`, linki w HTML przy zamkniętym menu) bez zmian, z wyjątkiem układu na telefonie:
   - od 1024 px jeden wiersz (znak, działy, koszyk, konto, wyszukiwarka) o wysokości makiety (nie więcej niż 100 px),
     także po zalogowaniu, na 1024, 1280, 1366, 1440 i 1920 px, i panel mega menu na całą szerokość pod nagłówkiem.
-    Pasek działów się nie zawija (tekst działów zostaje 15 px, cele 44 px); koszyk i konto są ikonami z nazwą dla
+    Pasek działów w danych demo mieści się w jednym rzędzie (tekst działów zostaje 15 px, cele 44 px); przy większej liczbie
+    działów zawija się zamiast nachodzić na koszyk i konto; koszyk i konto są ikonami z nazwą dla
     czytników (`sr-only`, a ikony konta zalogowanego także `title`), a słowa „Koszyk” i „Zaloguj się” pojawiają się od
     1440 px (tam się mieszczą); „Zalogowany jako …” jest tylko dla czytników. Kompaktowy wariant wyszukiwarki
     (1024–1279 px, gdzie pole się nie mieści): przycisk „Wyszukiwarka” (`aria-expanded`) otwiera ten sam formularz jako
-    panel pod nagłówkiem, fokus trafia w pole, Escape, wysłanie, kliknięcie poza panelem i opuszczenie go fokusem
-    zamykają go, a Escape oddaje fokus przyciskowi; bez JavaScriptu formularz jest osobnym rzędem pod pierwszym.
+    panel pod nagłówkiem, fokus trafia w pole, Escape, wysłanie, kliknięcie poza panelem, opuszczenie go fokusem i
+    otwarcie panelu działu (także najechaniem myszą) zamykają go, a Escape i wysłanie oddają fokus przyciskowi; bez JavaScriptu formularz jest osobnym rzędem pod pierwszym.
     Od 1280 px pole stoi w wierszu bez przycisku. Formularz jest w HTML raz;
   - poniżej 1024 px dwa rzędy: w pierwszym znak „Worf”, przycisk „Menu”, koszyk i konto, pod nim wyszukiwarka na
     pełną szerokość (zamiast dzisiejszego wiersza wyszukiwarki pod 640 px); lista działów otwiera się jako panel
@@ -340,8 +341,8 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
   - klawiatura: Tab przechodzi przez miniatury, przyciski i zdjęcia, Enter i Spacja je uruchamiają. Kolejność
     w dokumencie jest kolejnością wizualną na każdej szerokości, bez właściwości CSS zmieniających kolejność fokusu
     i bez `order`: miniatury są w HTML dwa razy, kolumna po lewej od zdjęcia (widoczna od `lg`) przed paskiem i rząd pod
-    paskiem (widoczny poniżej `lg`) po nim; ukryta lista ma `display: none` (poza Tab i drzewem dostępności, jej obrazy
-    `lazy` się nie pobierają), obie są w HTML z serwera i mają ten sam stan `aria-current`;
+    paskiem (widoczny poniżej `lg`) po nim; ukryta lista ma `display: none` (poza Tab i drzewem dostępności), jej obrazy mają `loading="lazy"`
+    i te same adresy co obrazy widocznej listy, obie są w HTML z serwera i mają ten sam stan `aria-current`;
   - powiększenie: zdjęcie paska jest w przycisku z nazwą „Powiększ zdjęcie n z m: <alt>” (opis zdjęcia jest częścią
     nazwy, bo nazwa przycisku zastępuje `alt` zawartości); kliknięcie, dotknięcie albo Enter otwiera
     shadcn `dialog` (radix-ui, już w zależnościach) z nazwą produktu jako tytułem; w środku pasek zdjęć `zoomImages`

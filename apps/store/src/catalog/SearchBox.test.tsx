@@ -178,6 +178,26 @@ describe("SearchBox where the row of the header has no room for the field (1024 
     expect(toggle().getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("gives the focus to the button when the form is sent from the open panel, so it does not fall to the body", () => {
+    render(<SearchBox />);
+    fireEvent.click(toggle());
+    expect(document.activeElement).toBe(field());
+    fireEvent.submit(form());
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(toggle());
+  });
+
+  it("does not take the focus when it is sent while closed (the form is a row of the header)", () => {
+    render(<SearchBox />);
+    field().focus();
+    fireEvent.submit(form());
+    expect(document.activeElement).toBe(field());
+  });
+
+  it("has no background of its own without JavaScript, so the row under the header keeps its background", () => {
+    expect(renderToStaticMarkup(<SearchBox />)).toMatch(/<noscript><style>[^<]*#header-search-form \{[^}]*background: transparent !important/);
+  });
+
   it("works without JavaScript: the form is in the HTML and a noscript style shows it as a row of the header, the button hidden", () => {
     const html = renderToStaticMarkup(<SearchBox />);
     expect(html).toContain('action="/szukaj"');

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -61,5 +61,23 @@ describe("SiteHeader", () => {
     expect(screen.queryByRole("button", { name: "Menu" })).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Działy" })).toBeNull();
     expect(screen.getByRole("link", { name: STORE_NAME })).toBeTruthy();
+  });
+
+  it("closes the open compact search when the panel of a department opens, so the two panels are never open together", () => {
+    render(header());
+    const toggle = screen.getByRole("button", { name: "Wyszukiwarka" });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    // A hover opens the panel without a mousedown and without moving the focus.
+    fireEvent.pointerEnter(screen.getByRole("button", { name: TREE[0].name }), { pointerType: "mouse" });
+    expect(screen.getByRole("button", { name: TREE[0].name }).getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("search").getAttribute("data-state")).toBe("closed");
+  });
+
+  it("lets the bar of departments wrap instead of running over the cart and the account when it does not fit", () => {
+    render(header());
+    const list = screen.getByRole("button", { name: TREE[0].name }).closest("ul");
+    expect(list?.className).toMatch(/(^|\s)flex-wrap(\s|$)/);
   });
 });

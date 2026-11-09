@@ -6,6 +6,7 @@ import { SearchIcon } from "lucide-react";
 import { type FocusEvent, type KeyboardEvent, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DEPARTMENT_PANEL_OPENED } from "./header-panels";
 
 const FIELD_ID = "header-search";
 const FORM_ID = "header-search-form";
@@ -14,7 +15,7 @@ const TOGGLE_ID = "header-search-toggle";
 // 1024 to 1279 px: the row of the header has no room for the field (the departments, the cart and the account of a customer
 // take it), so the form is a panel under the header that a button opens. Without JavaScript the button cannot open it, so
 // the form is then a row of its own under the first one, as on a phone.
-const COMPACT_CSS = `@media (min-width: 1024px) and (max-width: 1279.98px) { #${FORM_ID} { display: flex !important; position: static !important; grid-area: 2 / 1 / 3 / -1 !important; padding: 0 !important; border: 0 !important; } #${TOGGLE_ID} { display: none !important; } }`;
+const COMPACT_CSS = `@media (min-width: 1024px) and (max-width: 1279.98px) { #${FORM_ID} { display: flex !important; position: static !important; grid-area: 2 / 1 / 3 / -1 !important; padding: 0 !important; border: 0 !important; background: transparent !important; } #${TOGGLE_ID} { display: none !important; } }`;
 
 /**
  * Puts the phrase of `/szukaj` into the field, which is otherwise uncontrolled. It renders nothing, so the field is one
@@ -69,6 +70,21 @@ export function SearchBox({ phrase }: { phrase?: string }) {
     return () => document.removeEventListener("mousedown", closeOutside);
   }, [open]);
 
+  // The panel of a department opens in the same place (by hover too, which moves neither the focus nor the mouse down).
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    document.addEventListener(DEPARTMENT_PANEL_OPENED, close);
+    return () => document.removeEventListener(DEPARTMENT_PANEL_OPENED, close);
+  }, [open]);
+
+  // A submit from the open panel hides the form with the focused field, so the focus goes to the button, as on Escape.
+  const submit = () => {
+    if (!open) return;
+    setOpen(false);
+    toggle.current?.focus();
+  };
+
   const closeOnEscape = (event: KeyboardEvent) => {
     if (event.key !== "Escape" || !open) return;
     setOpen(false);
@@ -112,7 +128,7 @@ export function SearchBox({ phrase }: { phrase?: string }) {
           "flex min-w-0 items-center gap-2 [grid-area:search] " +
           "lg:max-xl:absolute lg:max-xl:inset-x-0 lg:max-xl:top-full lg:max-xl:z-20 lg:max-xl:border-b lg:max-xl:border-border lg:max-xl:bg-card lg:max-xl:px-gutter lg:max-xl:py-3 lg:max-xl:data-[state=closed]:hidden"
         }
-        onSubmit={() => setOpen(false)}
+        onSubmit={submit}
         onKeyDown={closeOnEscape}
         onBlur={closeOnLeave}
       >

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { type FocusEvent, type PointerEvent, useEffect, useId, useRef, useState } from "react";
 import type { components } from "@/api/schema";
 import { categoryHref } from "./catalog-href";
+import { DEPARTMENT_PANEL_OPENED } from "./header-panels";
 
 type CategoryNode = components["schemas"]["CategoryNode"];
 
@@ -77,6 +78,11 @@ export function MegaMenu({ categories }: { categories: CategoryNode[] }) {
     setMenuOpen(false);
   };
 
+  // The compact search panel lies in the same place under the header: tell it to close.
+  useEffect(() => {
+    if (openId !== null) document.dispatchEvent(new Event(DEPARTMENT_PANEL_OPENED));
+  }, [openId]);
+
   useEffect(() => {
     if (!anythingOpen) return;
     const closeOutside = (event: MouseEvent) => {
@@ -133,7 +139,7 @@ export function MegaMenu({ categories }: { categories: CategoryNode[] }) {
       {/* From `lg`: the bar of departments; the panel of the open one spans the whole header (it is positioned
           against the `header`, so this `nav` is not positioned). */}
       <div className="hidden lg:block">
-        <ul className="flex">
+        <ul className="flex flex-wrap">
           {categories.map((department) => {
             const panelId = `${id}-panel-${department.id}`;
             const open = openId === department.id;
