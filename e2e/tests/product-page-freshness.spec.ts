@@ -33,7 +33,7 @@ const tilePrice = (page: Page) =>
   page
     .getByRole("main")
     .getByRole("listitem")
-    .filter({ has: page.getByRole("heading", { name: PRODUCT_NAME, exact: true }) })
+    .filter({ has: page.getByRole("heading", { level: 2, name: PRODUCT_NAME, exact: true }) })
     .getByTestId("price");
 
 test("after a price change the first fresh render of the product page and the first list visit show the new price", async ({ page, request }) => {

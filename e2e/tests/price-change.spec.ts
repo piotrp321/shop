@@ -19,7 +19,7 @@ const storeTile = (page: Page, name: string) =>
   page
     .getByRole("main")
     .getByRole("listitem")
-    .filter({ has: page.getByRole("heading", { name, exact: true }) });
+    .filter({ has: page.getByRole("heading", { level: 2, name, exact: true }) });
 
 test("a price changed in the panel shows up on the product page and on the store list", async ({ page, context }) => {
   test.setTimeout(STORE_PRICE_WAIT_MS + 90_000);

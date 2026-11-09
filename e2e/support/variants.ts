@@ -21,6 +21,6 @@ export async function chooseFirstVariant(tile: Locator): Promise<string> {
 
 /** The lines of the cart page of a product (by name) and, for a variant with a label, of that variant. */
 export function cartLineOf(page: Page, name: string, label: string): Locator {
-  const lines = page.getByRole("main").getByRole("listitem").filter({ has: page.getByRole("heading", { name, exact: true }) });
+  const lines = page.getByRole("main").getByRole("listitem").filter({ has: page.getByRole("heading", { level: 2, name, exact: true }) });
   return label === "" ? lines : lines.filter({ has: page.getByTestId("variant-label").getByText(label, { exact: true }) });
 }

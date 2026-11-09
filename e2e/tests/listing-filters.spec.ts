@@ -294,7 +294,7 @@ test("a price changed in the panel changes the result of the price filter within
   const priceFilter = (grosze: number) => `/c/fitness/trening?cena-od=${Math.floor(grosze / 100)}&cena-do=${Math.floor(grosze / 100) + 1}`;
 
   await store.goto("/c/fitness/trening");
-  const tile = gridTiles(store).filter({ has: store.getByRole("heading", { name: PRODUCT_NAME, exact: true }) });
+  const tile = gridTiles(store).filter({ has: store.getByRole("heading", { level: 2, name: PRODUCT_NAME, exact: true }) });
   const before = Number(normalize(await tile.getByTestId("price").innerText()).replace(/\D/g, ""));
   expect(await withProduct(priceFilter(before)), "the product is in the filter of its current price").toBe(true);
 
