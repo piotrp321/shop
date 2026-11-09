@@ -43,7 +43,6 @@ final class ImageSizeTest extends TestCase
         self::assertSame([1280, 1920, 2560], ImageSize::Zoom->widths());
         self::assertSame([ImageFormat::Webp], ImageSize::Zoom->formats());
         self::assertSame('fit', ImageSize::Zoom->resize());
-        self::assertSame('zoom', ImageSize::Zoom->value);
     }
 
     public function testOtherSizesKeepTheirFixedAspectRatio(): void

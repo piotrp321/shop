@@ -566,8 +566,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   max-age=60, s-maxage=3600`; szczegóły produktu `GET /api/v1/products/{slug}` (`ProductDetailsController`): 200 z `public,
   max-age=60, s-maxage=3600` i tagami `catalog` `product-<id>`, 404 „Produkt nie istnieje.” (szkic, nieznany slug,
   slug niezgodny z formatem `Slug`) z `public, max-age=60` i tagami `catalog` `product-slug-<slug>` (slug niezgodny
-  z formatem: tylko `catalog`), więc publikacja produktu usuwa zapamiętane 404 jego sluga. Zdjęcia szczegółów są w rozmiarze
-  `product` (`ImageSize`), a `GetProductBySlug` czyta wprost z tabel Catalog przez port `ProductDetailsSource`.
+  z formatem: tylko `catalog`), więc publikacja produktu usuwa zapamiętane 404 jego sluga. Zdjęcia szczegółów są w rozmiarach
+  `product` (`images`) i `zoom` (`zoomImages`: te same zdjęcia w tej samej kolejności i liczbie, z tych samych kluczy
+  i opisów z jednego odczytu), a `GetProductBySlug` czyta wprost z tabel Catalog przez port `ProductDetailsSource`.
 - Mapa strony produktów (Catalog, `query.bus`, odczyt DBAL przez port `SitemapProductSource`; spec:
   `docs/features/seo/spec.md`). `GET /api/v1/sitemap/product-chunks` (`SitemapProductChunksController`) daje `{chunks: [{key}]}`:
   porcje po N = 10 000 kolejnych `id` wszystkich produktów, szkice też (parametr kontenera `app.sitemap.chunk_size`).
@@ -673,7 +674,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   to 503 bez `detail`. Limity PHP nie działają w kernelu testów funkcjonalnych, więc testy symulują ich skutek (błąd
   uploadu, nagłówek), a prawdziwe limity sprawdza E2E na działającym stosie.
 - Rozmiary obrazów (`ImageSize`): `listing`, `product` i `thumbnail` (1:1, szerokości 96 i 192, WebP, `fill`; miniatury
-  list i podglądy formularza produktu w panelu). Nowy rozmiar dopisuje się tylko tam.
+  list i podglądy formularza produktu w panelu) oraz `zoom` (`fit`: całe zdjęcie bez przycinania, bez stałych proporcji,
+  `aspectRatio()` zwraca `null`, w adresie imgproxy `rs:fit:<szerokość>:0`, szerokości 1280, 1920, 2560, WebP, bez
+  powiększania ponad oryginał). Zdjęcie `zoom` ma osobny widok `ZoomImageView` (`alt`, `size`, `variants`, bez
+  `aspectRatio`; `SizedImage::zoomView`) i schemat OpenAPI `ZoomImage`; `ImageView` i `ProductImage` zostają dla
+  rozmiarów o stałych proporcjach. Nowy rozmiar dopisuje się tylko w `ImageSize`.
 - Produkty w panelu (`/api/v1/admin`, voter `ProductVoter`: `VIEW_PRODUCTS` każdy pracownik, `MANAGE_PRODUCTS` `admin`
   i `marketing`, Catalog UI): `GET /products` (`q`, `category`, `status`, `after`, `perPage`; zapytanie
   `ListBackofficeProducts` składa stronę z `SearchBackofficeProducts` i podsumowań z `BackofficeProductSource::summaries`),

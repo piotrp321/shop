@@ -651,6 +651,28 @@ export interface components {
                 }[];
             };
         };
+        /** @description A product image in the `zoom` size, the whole image without cropping (no fixed aspect ratio), with signed URLs of its variants grouped by output format. */
+        ZoomImage: {
+            /**
+             * @description Alternative text of the image.
+             * @example Biegaczka na leśnej ścieżce
+             */
+            alt: string;
+            /**
+             * @description Name of the image size.
+             * @example zoom
+             */
+            size: string;
+            /** @description Variants by output format (the key is the file extension, e.g. webp), widths ascending. The height follows the width and the proportions of the original; an original narrower than the width is not enlarged. */
+            variants: {
+                [key: string]: {
+                    /** @example 1280 */
+                    width: number;
+                    /** @example http://localhost:8081/signature/rs:fit:1280:0/g:sm/czM6Ly9idWNrZXQva2V5/plain.webp */
+                    url: string;
+                }[];
+            };
+        };
         ProductDetails: {
             /** Format: uuid */
             id: string;
@@ -663,6 +685,8 @@ export interface components {
             breadcrumb: components["schemas"]["BreadcrumbItem"][];
             /** @description All the images of the product in position order, the first is the main one (size `product`). */
             images: components["schemas"]["ProductImage"][];
+            /** @description The same images as `images`, in the same order and number, in the `zoom` size (the whole image for the enlargement). */
+            zoomImages: components["schemas"]["ZoomImage"][];
             /**
              * @description Names of the variant axes, in order; empty for a product with one default variant.
              * @example [

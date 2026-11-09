@@ -2736,6 +2736,51 @@
                 },
                 "type": "object"
             },
+            "ZoomImage": {
+                "description": "A product image in the `zoom` size, the whole image without cropping (no fixed aspect ratio), with signed URLs of its variants grouped by output format.",
+                "required": [
+                    "alt",
+                    "size",
+                    "variants"
+                ],
+                "properties": {
+                    "alt": {
+                        "description": "Alternative text of the image.",
+                        "type": "string",
+                        "example": "Biegaczka na le\u015bnej \u015bcie\u017cce"
+                    },
+                    "size": {
+                        "description": "Name of the image size.",
+                        "type": "string",
+                        "example": "zoom"
+                    },
+                    "variants": {
+                        "description": "Variants by output format (the key is the file extension, e.g. webp), widths ascending. The height follows the width and the proportions of the original; an original narrower than the width is not enlarged.",
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "array",
+                            "items": {
+                                "required": [
+                                    "width",
+                                    "url"
+                                ],
+                                "properties": {
+                                    "width": {
+                                        "type": "integer",
+                                        "example": 1280
+                                    },
+                                    "url": {
+                                        "type": "string",
+                                        "example": "http://localhost:8081/signature/rs:fit:1280:0/g:sm/czM6Ly9idWNrZXQva2V5/plain.webp"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "type": "object"
+            },
             "ProductDetails": {
                 "required": [
                     "id",
@@ -2744,6 +2789,7 @@
                     "shortDescription",
                     "breadcrumb",
                     "images",
+                    "zoomImages",
                     "variantAxes",
                     "variants"
                 ],
@@ -2775,6 +2821,13 @@
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/ProductImage"
+                        }
+                    },
+                    "zoomImages": {
+                        "description": "The same images as `images`, in the same order and number, in the `zoom` size (the whole image for the enlargement).",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ZoomImage"
                         }
                     },
                     "variantAxes": {

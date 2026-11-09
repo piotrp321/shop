@@ -118,6 +118,33 @@ final class GetProductBySlugTest extends KernelTestCase
         $this->saveProduct(['slug' => 'pasek', 'mainCategory' => $this->categories['other']]);
 
         self::assertSame([], $this->details('pasek')->images);
+        self::assertSame([], $this->details('pasek')->zoomImages);
+    }
+
+    public function testZoomImagesAreTheSameImagesInTheZoomSize(): void
+    {
+        $product = $this->saveProduct([
+            'slug' => 'buty',
+            'mainCategory' => $this->categories['road'],
+            'imageAlts' => ['Pierwsze', 'Drugie', 'Trzecie'],
+        ]);
+
+        $details = $this->details('buty');
+
+        self::assertSame(
+            array_map(static fn ($image): string => $image->alt, $details->images),
+            array_map(static fn ($image): string => $image->alt, $details->zoomImages),
+        );
+        $urls = self::getContainer()->get(ImageUrlGenerator::class);
+        self::assertInstanceOf(ImageUrlGenerator::class, $urls);
+        foreach ($details->zoomImages as $position => $image) {
+            self::assertSame('zoom', $image->size);
+            self::assertSame(['webp'], array_keys($image->variants));
+            self::assertSame([1280, 1920, 2560], array_column($image->variants['webp'], 'width'));
+            $key = $product->images()->toList()[$position]->key()->toString();
+            self::assertSame($urls->url($key, ImageSize::Zoom, 2560, ImageFormat::Webp), $image->variants['webp'][2]['url']);
+            self::assertStringContainsString('/rs:fit:2560:0/', $image->variants['webp'][2]['url']);
+        }
     }
 
     public function testVariantsInThePositionOrderWithLabelsAndValuesInTheAxisOrder(): void

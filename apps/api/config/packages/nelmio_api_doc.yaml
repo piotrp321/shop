@@ -185,11 +185,39 @@ nelmio_api_doc:
                                                 url:
                                                     type: string
                                                     example: http://localhost:8081/signature/rs:fill:256:256/g:sm/czM6Ly9idWNrZXQva2V5/plain.webp
+                        ZoomImage:
+                            type: object
+                            description: A product image in the `zoom` size, the whole image without cropping (no fixed aspect ratio), with signed URLs of its variants grouped by output format.
+                            required: [alt, size, variants]
+                            properties:
+                                alt:
+                                    type: string
+                                    description: Alternative text of the image.
+                                    example: Biegaczka na leśnej ścieżce
+                                size:
+                                    type: string
+                                    description: Name of the image size.
+                                    example: zoom
+                                variants:
+                                    type: object
+                                    description: Variants by output format (the key is the file extension, e.g. webp), widths ascending. The height follows the width and the proportions of the original; an original narrower than the width is not enlarged.
+                                    additionalProperties:
+                                        type: array
+                                        items:
+                                            type: object
+                                            required: [width, url]
+                                            properties:
+                                                width:
+                                                    type: integer
+                                                    example: 1280
+                                                url:
+                                                    type: string
+                                                    example: http://localhost:8081/signature/rs:fit:1280:0/g:sm/czM6Ly9idWNrZXQva2V5/plain.webp
                         # Response schema of the product page (Catalog\Application\Query\ProductDetails); checked against
                         # real responses by ProductDetailsEndpointTest.
                         ProductDetails:
                             type: object
-                            required: [id, slug, name, shortDescription, breadcrumb, images, variantAxes, variants]
+                            required: [id, slug, name, shortDescription, breadcrumb, images, zoomImages, variantAxes, variants]
                             properties:
                                 id:
                                     type: string
@@ -212,6 +240,11 @@ nelmio_api_doc:
                                     description: All the images of the product in position order, the first is the main one (size `product`).
                                     items:
                                         $ref: '#/components/schemas/ProductImage'
+                                zoomImages:
+                                    type: array
+                                    description: The same images as `images`, in the same order and number, in the `zoom` size (the whole image for the enlargement).
+                                    items:
+                                        $ref: '#/components/schemas/ZoomImage'
                                 variantAxes:
                                     type: array
                                     description: Names of the variant axes, in order; empty for a product with one default variant.

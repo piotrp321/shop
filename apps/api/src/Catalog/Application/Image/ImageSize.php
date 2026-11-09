@@ -6,7 +6,7 @@ namespace App\Catalog\Application\Image;
 
 /**
  * Closed list of image sizes. A new size is added here, never in a component. `fill` sizes crop to a fixed aspect
-ratio; `fit` sizes (zoom) keep the whole image and have no aspect ratio. imgproxy never enlarges beyond the original.
+ * ratio; `fit` sizes (zoom) keep the whole image and have no aspect ratio. imgproxy never enlarges beyond the original.
  */
 enum ImageSize: string
 {
