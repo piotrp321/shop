@@ -147,5 +147,5 @@ readinessProbe:
   "container" (include "shop.api.container" .)) }}
 ---
 {{ include "shop.deployment" (dict "root" . "name" "worker" "wave" "1" "image" (include "shop.appImage" (dict "root" . "app" "api"))
-  "initContainers" (print (include "shop.api.waitMigrations" .) "\n" (include "shop.wait" (dict "root" . "name" "rabbitmq" "check" "nc -z rabbitmq 5672")))
+  "initContainers" (print (include "shop.api.waitMigrations" .) "\n" (include "shop.wait" (dict "root" . "name" "rabbitmq" "check" "nc -z -w 2 rabbitmq 5672")))
   "container" (include "shop.worker.container" .)) }}

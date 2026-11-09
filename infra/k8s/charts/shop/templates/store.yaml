@@ -41,5 +41,5 @@ readinessProbe:
 {{ include "shop.service" (dict "root" . "name" "store" "ports" (list (dict "name" "http" "port" 3000))) }}
 ---
 {{ include "shop.deployment" (dict "root" . "name" "store" "wave" "1" "image" (include "shop.appImage" (dict "root" . "app" "store"))
-  "initContainers" (include "shop.wait" (dict "root" . "name" "redis" "check" "nc -z redis 6379"))
+  "initContainers" (include "shop.wait" (dict "root" . "name" "redis" "check" "nc -z -w 2 redis 6379"))
   "container" (include "shop.store.container" .)) }}

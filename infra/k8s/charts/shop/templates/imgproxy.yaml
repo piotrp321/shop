@@ -1,7 +1,7 @@
 {{- /* Waits until garage-init has created the buckets and given the key access to them. */ -}}
 {{- define "shop.imgproxy.checkBuckets" -}}
 for bucket in product-images product-images-test; do
-  wget -qO- --header "Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
+  wget -T 3 -qO- --header "Authorization: Bearer $GARAGE_ADMIN_TOKEN" \
     "http://garage:3903/v2/GetBucketInfo?globalAlias=$bucket" 2>/dev/null \
     | grep -q "\"accessKeyId\": \"$GARAGE_ACCESS_KEY_ID\"" || return 1
 done
