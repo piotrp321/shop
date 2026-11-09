@@ -150,8 +150,9 @@ limitów inny niż `ok` nie daje pomiaru tego okna. Epik zakończony bez `DONE` 
 
 ## Przegląd po merge'u
 
-Krok 12 planu: `/sweep` po merge'u epiku uruchamia sesja `/ao-run`, nie użytkownik. Skill `/sweep` się nie zmienia
-(spec: `docs/features/agent-tester-ux/spec.md`). Sesja czyta jego `.claude/skills/sweep/SKILL.md` i wykonuje kroki 1–6
+Krok 12 planu: `/sweep` po merge'u epiku uruchamia sesja `/ao-run`, nie użytkownik. Skill `/sweep` zmienia się tylko
+w nazwie katalogu przebiegu (`<data>-<sha7>-<epik>`, żeby dwa przeglądy na tym samym commicie się nie wykluczały;
+spec: `docs/features/agent-tester-ux/spec.md`). Sesja czyta jego `.claude/skills/sweep/SKILL.md` i wykonuje kroki 1–6
 z argumentem `<epik>` (flaga `disable-model-invocation` zostaje, więc model nie wywoła go narzędziem Skill sam z
 siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
 
@@ -160,9 +161,14 @@ siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
   `origin/main` z chwili swojego startu. Epik zamknięty bez merge'u nie ma przeglądu. Kolejka żyje w sesji: gdy
   sesja się kończy, nieuruchomione przeglądy przepadają, a push przy końcu sesji je wymienia (użytkownik może
   uruchomić `/sweep <epik>` sam).
-- **Przegląd i epik nie działają naraz.** Przegląd nie startuje, gdy działa proces AO tej sesji. Nowy epik („tak”
-  z punktu 7 albo pierwszy epik listy nocy) rusza dopiero po końcu kolejki przeglądów. Pytanie „Zacząć epik?” i lista
-  nocy nie czekają na przegląd.
+- **Przegląd i epik nie działają naraz.** Przegląd nie startuje, gdy działa proces AO tej sesji albo procedura
+  „Konflikt końcowego PR poza AO” (własny stos). Nowy epik („tak” z punktu 7, pierwszy i kolejny epik listy nocy),
+  ponowne `ao run` po decyzji użytkownika i ta procedura czekają na koniec trwającego przeglądu, a nowy epik także na
+  pustą kolejkę. Pytanie „Zacząć epik?” i lista nocy nie czekają na przegląd: po merge'u sesja najpierw dopisuje epik
+  do kolejki i wysyła pytanie z punktu 7 (przy nocy według jej reguły), dopiero potem zaczyna przegląd.
+- **Kiedy kolejka rusza.** Sesja sprawdza kolejkę po dopisaniu epiku, po końcu przeglądu i po końcu procesu AO tej
+  sesji (także gdy epik nocy kończy noc). Gdy nic nie trwa, zaczyna pierwszy przegląd z kolejki; przy pustej kolejce
+  zaczyna epik czekający na nią.
 - **Warunki przed każdym przeglądem**, sprawdzane tuż przed startem. Niespełniony warunek pomija ten przegląd
   (następny w kolejce sprawdza je od nowa), a sesja wysyła push „Przegląd `<epik>` pominięty: <powód>; ręcznie:
   `/sweep <epik>`” (do 200 znaków):
@@ -172,16 +178,18 @@ siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
     82%”, „stan limitów nieczytelny”);
   - warunki startu `/sweep` (krok 1 skilla: Docker, `gh`, spec epiku na `origin/main`, wolne porty od 19100, brak
     przebiegu tego commitu). Odmowa `/sweep` to powód pominięcia.
-- **Wynik.** `/sweep` wysyła swój push „Przegląd po merge'u <sha7>: N propozycji” i zostawia skrót w rozmowie.
+- **Wynik.** `/sweep` wysyła swój push „Przegląd po merge'u <sha7>: N propozycji” i zostawia skrót w rozmowie
+  z ID epiku. Gdy czeka triage kilku przeglądów, odpowiedź wskazuje epik („CART: załóż 1”); odpowiedź bez epiku przy
+  kilku otwartych triage sesja dopytuje.
   Błąd stosu kończy ten przegląd jak w `/sweep` (sprzątanie, push), kolejka idzie dalej. Bez odpowiedzi użytkownika
   sesja niczego nie zakłada.
 - **Pomiar.** Przed startem i po końcu przeglądu sesja wywołuje `get_usage`. Czas i przyrost procentu każdego okna
-  (bez okien odnowionych w trakcie) trafiają do sekcji „Zużycie” raportu przeglądu (`report.md`, poza repo) i do
+  (bez okien odnowionych w trakcie) trafiają do nowej sekcji `## Zużycie` raportu przeglądu (`report.md`, poza repo) i do
   skrótu w rozmowie. Przeglądy nie wchodzą do `measurements.jsonl` ani do szacunków nocy.
 
 `night_queue.py room --hours <h>` (Python 3.9+, bez zależności, kod w `night_queue.py`): stdin to obiekt `plan`
 z `get_usage`. Wypisuje jedną linię JSON `{"ok": true}` albo `{"ok": false, "reason": "..."}`, kod 0. Kod 1 przy
-błędnym argumencie. Reguła okna jak w `next` (sekcja „Noc”): okno z `resetsAt` w ciągu `h` godzin nie blokuje.
+braku albo złej wartości `--hours` (liczba godzin od 0 do roku). Reguła okna jak w `next` (sekcja „Noc”): okno z `resetsAt` w ciągu `h` godzin nie blokuje.
 
 ## Noc
 

@@ -6,7 +6,7 @@ reviewer w `/integration`. Zgłoszenia agentów trafiają do backlogu dopiero po
 
 ## Cel i kryteria sukcesu
 
-- Po merge'u epiku użytkownik uruchamia jedną komendę, `/sweep [epik]`, i dostaje raport z co najwyżej pięcioma
+- Po merge'u epiku `/sweep [epik]` (uruchomiony przez `/ao-run` albo ręcznie) daje raport z co najwyżej pięcioma
   propozycjami zgłoszeń. Triage zajmuje jedną odpowiedź w sesji.
 - Każda propozycja jest odtworzonym problemem z kompletem pól formularza `bug` albo `ux`, więc nigdy nie dostaje
   `needs-info`. Hipotez agenci nie zgłaszają jako błędów.
@@ -112,7 +112,8 @@ tylko krytyczne ścieżki, a UX ich ekrany.
 1. **Warunki startu:** działa Docker i `gh`, `git fetch origin main`, przy podanym epiku `docs/features/<epik>/spec.md`
    jest na `origin/main`. Niespełniony warunek: odmowa z powodem, nic nie startuje.
 2. **Stos:** osobny worktree `git worktree add --detach` z `origin/main` w katalogu przebiegu
-   `~/.local/state/shop-sweep/<data>-<sha7>/`, projekt Compose `sweep-<sha7>`, porty od `AO_PORT_BASE` (domyślnie
+   `~/.local/state/shop-sweep/<data>-<sha7>[-<epik>]/` (z epikiem, żeby przeglądy dwóch epików na tym samym commicie
+   się nie wykluczały), projekt Compose `sweep-<sha7>`, porty od `AO_PORT_BASE` (domyślnie
    19100), uruchomiony przez `.ao/setup` z worktree. Błąd setupu: raport z końcówką wyjścia, sprzątanie, koniec.
 3. **Agenci po kolei:** tester, potem UX (te same konta demo i kody TOTP, więc nie równolegle). Każdy dostaje adresy
    stosu, commit, ścieżkę specyfikacji epiku, swój `AGENT_DIR` w katalogu przebiegu, listę otwartych issues
@@ -182,7 +183,7 @@ Zmiana w `.claude/skills/integration/SKILL.md`, bez zmian w AO:
 7. Po merge'u końcowego PR epiku sesja `/ao-run` uruchamia `/sweep <epik>` bez polecenia użytkownika, wysyła push
    z liczbą propozycji i zostawia triage w rozmowie. Pokazane na pierwszym prawdziwym merge'u po wdrożeniu.
 8. „Tak” na „Zacząć epik?” w trakcie przeglądu uruchamia epik dopiero po końcu kolejki przeglądów; dwa merge'e
-   po nocy dają dwa przeglądy po kolei.
+   po nocy dają dwa przeglądy po kolei, także gdy oba startują na tym samym commicie `main`.
 9. Pominięcie z pushem i podpowiedzią `/sweep <epik>`: zasilanie z baterii, okno limitu ≥ 80% (`night_queue.py room`
    z testami) i odmowa `/sweep` (np. zajęty port). Sprawdzone testami `room` i ręcznie dla baterii albo portu.
 

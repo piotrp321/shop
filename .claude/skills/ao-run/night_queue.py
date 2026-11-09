@@ -42,13 +42,14 @@ end itself (`ended_at` and `reason` = its reason), so a later next refuses. An u
 room: is there room in the usage limits for work outside the night estimates (the review after an epic merge). Prints
 one JSON line {"ok": true} or {"ok": false, "reason": <str>}, exit 0: usage status other than `ok` (also unreadable
 input) or any window that does not reset within H hours at 80% or more gives the reason. H is a positive number of
-hours; anything else exits 1. Reads neither the board nor the state.
+hours up to a year; anything else, also a missing --hours, exits 1. Reads neither the board nor the state.
 
 ahead: reads the board and prints {"epics": [{dir, id, issue, title, tasks, minutes}], "minutes": <sum|null>,
 "full": <bool>}: prepared epics not in progress. `full` is true when the sum reaches the night (540 minutes), or, when
 nothing is measured, when there is at least one epic.
 
-Exit codes: 0 success; 1 a `git`/`gh` command failed or returned unexpected JSON; 2 usage and state errors.
+Exit codes: 0 success; 1 a `git`/`gh` command failed or returned unexpected JSON, or a bad --hours of room; 2 usage
+and state errors.
 """
 import argparse
 import json
@@ -538,13 +539,18 @@ def cmd_next(args, run, now, stdin):
     return finish(candidate, None)
 
 
+MAX_ROOM_HOURS = 24 * 365
+
+
 def cmd_room(args, now, stdin):
     try:
         hours = float(args.hours)
-    except ValueError:
-        hours = None
-    if hours is None or not hours > 0 or hours == float('inf'):
-        print('night_queue: --hours must be a positive number, got %r' % args.hours, file=sys.stderr)
+        horizon = now + timedelta(hours=hours) if 0 < hours <= MAX_ROOM_HOURS else None
+    except (TypeError, ValueError, OverflowError):
+        horizon = None
+    if horizon is None:
+        print('night_queue: --hours musi być liczbą godzin od 0 do %d, jest %r' % (MAX_ROOM_HOURS, args.hours),
+              file=sys.stderr)
         return 1
     usage_now = _read_usage(stdin)
     if usage_now['status'] != 'ok':
@@ -552,7 +558,6 @@ def cmd_room(args, now, stdin):
             'stan limitów: %s' % usage_now['status'])
         print(json.dumps({'ok': False, 'reason': reason}, ensure_ascii=False))
         return 0
-    horizon = now + timedelta(hours=hours)
     for w in usage_now['windows']:
         if parse_time(w['resetsAt']) <= horizon:
             continue
@@ -598,7 +603,7 @@ def main(argv=None, run=None, now=None, stdin=None):
     sub.add_parser('next', help='the next epic of the night list, or the reason there is none')
     sub.add_parser('ahead', help='prepared epics with time estimates')
     room_parser = sub.add_parser('room', help='room in the usage limits for a review after a merge')
-    room_parser.add_argument('--hours', required=True)
+    room_parser.add_argument('--hours')
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:

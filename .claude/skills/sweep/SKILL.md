@@ -18,14 +18,15 @@ wyczytasz.
 
 Bash nie zachowuje stanu między wywołaniami. Wklej poniższy blok dosłownie na początku **każdej** komendy Bash w tym
 skillu. W kroku 1 znasz tylko trzy pierwsze linie; `<data>` (`date +%F` przy starcie), `<sha7>`, `<port>` (port
-bazowy) i `<run-id>` (`uuidgen` raz, po kroku 1) uzupełnij po kroku 1 i nie zmieniaj ich do końca przebiegu, także po
+bazowy), `<-epik>` (`-<epik>` przy podanym epiku, inaczej puste) i `<run-id>` (`uuidgen` raz, po kroku 1)
+uzupełnij po kroku 1 i nie zmieniaj ich do końca przebiegu, także po
 północy.
 
 ```bash
 SKILL_ROOT="$(git rev-parse --show-toplevel)"
 SHOP="$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 SWEEP_HOME="$HOME/.local/state/shop-sweep"
-RUN="$SWEEP_HOME/<data>-<sha7>"
+RUN="$SWEEP_HOME/<data>-<sha7><-epik>"
 WT="$RUN/worktree"
 export AO_COMPOSE_PROJECT="sweep-<sha7>" AO_PORT_BASE="<port>"
 RUN_ID="<run-id>"
@@ -146,7 +147,7 @@ Z obu raportów:
 
 ## 5. Raport
 
-Zapisz `$RUN/report.md` (poza repo), po polsku. Pierwsze linie: `Przebieg: <data>-<sha7>`, `Commit: <sha>`,
+Zapisz `$RUN/report.md` (poza repo), po polsku. Pierwsze linie: `Przebieg: <data>-<sha7><-epik>`, `Commit: <sha>`,
 `Epik: <epik albo brak>`, `Stos: sweep-<sha7>, porty od <port>`, `Czas: <start>–<koniec>`. Dalej sekcje:
 
 - `## Zakres i wynik`: każda ścieżka i każde kryterium (OK, błąd, jeszcze nie ma) z raportu testera, ekrany i rozmiary
@@ -205,7 +206,7 @@ Odpowiedź niejednoznaczna (numer spoza 1–N, ten sam numer w obu grupach): zap
   ### Dowód
   <dowód tekstowy bez tokenów, nagłówków authorization, haseł i sekretów TOTP; zrzuty i trace lokalnie: <ścieżki w $RUN>>
   ### Źródło
-  Przebieg `/sweep` <data>-<sha7>, commit <sha>, agent <tester | ux-reviewer>, odtworzono: tak (2/2), waga <waga>.
+  Przebieg `/sweep` <data>-<sha7><-epik>, commit <sha>, agent <tester | ux-reviewer>, odtworzono: tak (2/2), waga <waga>.
   <dopisek „wcześniej odrzucone <data>: <powód>” i co się zmieniło, gdy dotyczy>
   ```
 

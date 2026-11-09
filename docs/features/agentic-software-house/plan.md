@@ -28,7 +28,7 @@ Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykiet�
 | 9 | Agent tester i agent UX | zrobione |
 | 10 | Przed publicznym demo: bezpieczeństwo i wydajność | specyfikacja na `main`, epik HARDENING czeka |
 | 11 | Po MVP: release i monitoring | do zrobienia |
-| 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione (sprawdzenie: pierwszy merge epiku) |
+| 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione (kryteria 7–9 sprawdza pierwszy merge epiku) |
 | 13 | Agent porządkujący backlog (`/groom`) | do zrobienia |
 | 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | do zrobienia |
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | do zrobienia |
@@ -238,7 +238,7 @@ flowchart TB
    - szacunki i liczba epików na noc wynikają z pomiaru każdego epiku prowadzonego przez `/ao-run`, nie z założenia.
    Mechanizm sprawdza pierwsza noc.
 9. **Agent tester i agent UX.** Gotowe: agent tester i agent UX (`.claude/agents/`), skill `/sweep` uruchamiany
-   przez użytkownika po merge'u epiku, agent UX jako trzeci reviewer w `/integration` dla epików z frontem,
+   po merge'u epiku (przez `/ao-run` od kroku 12), agent UX jako trzeci reviewer w `/integration` dla epików z frontem,
    etykieta `agent`, limit pięciu propozycji na przebieg i sprawdzanie duplikatów. Do czasu makiet z punktu 3
    „Zakresu MVP” agent UX ocenia tylko użyteczność i dostępność. Automatyczne uruchamianie: krok 12.
    Opis: `docs/features/agent-tester-ux/spec.md`.
