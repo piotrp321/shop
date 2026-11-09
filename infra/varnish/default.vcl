@@ -47,8 +47,10 @@ sub vcl_recv {
         return (synth(200, "Purged " + xkey.purge(req.http.xkey-purge)));
     }
 
-    # Only the public catalog reads are cached; anything else goes to the API as it is.
-    if (req.url !~ "^/api/v1/(products(/[^/?]+)?|categories|product-offers)(\?|$)") {
+    # Only the public catalog reads are cached; anything else goes to the API as it is. The chunk list of the sitemap
+    # is cached by its exact path (a query string would make a new object for every request); the chunks of products
+    # (/api/v1/sitemap/products?chunk=...) are not cached: they are large and the key is free text.
+    if (req.url !~ "^/api/v1/(products(/[^/?]+)?|categories|product-offers)(\?|$)" && req.url !~ "^/api/v1/sitemap/product-chunks$") {
         return (pass);
     }
 

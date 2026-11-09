@@ -40,6 +40,8 @@ security:
         - { path: ^/api/v1/admin(/|$), roles: ROLE_STAFF }
         - { path: ^/api/v1/(products|categories|product-offers)$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
         - { path: ^/api/v1/products/[^/]+$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
+        # The sitemap of the products (spec: docs/features/seo/spec.md).
+        - { path: ^/api/v1/sitemap/(product-chunks|products)$, methods: [GET, HEAD], roles: PUBLIC_ACCESS }
         # Guest carts need no token: the random cart id is the key to the cart (spec: docs/features/cart/spec.md).
         - { path: ^/api/v1/guest-carts(/|$), roles: PUBLIC_ACCESS }
         # A guest places an order of the guest cart named in the body (spec: docs/features/checkout/spec.md);

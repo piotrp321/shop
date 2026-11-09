@@ -1369,6 +1369,112 @@
                 }
             }
         },
+        "/api/v1/sitemap/product-chunks": {
+            "get": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Chunks of the product sitemap",
+                "description": "The chunks that the product sitemap is cut into, in the order of the product id. Every product, published or not, belongs to exactly one chunk; the first chunk reaches back to the lowest id and the last to the highest, so a product created after the chunks were cut is in one of them. The key of a chunk is opaque: pass it unchanged to `getSitemapProducts`. An empty catalogue has one chunk. The chunks are cut from the ids of all the products and the cut is kept for an hour, so a new product can move the cut only after that. The response is public, kept for 60 s by a browser and for an hour by a shared cache, and tagged for purging.",
+                "operationId": "listSitemapProductChunks",
+                "responses": {
+                    "200": {
+                        "description": "The chunks, at least one.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SitemapChunkList"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sitemap/products": {
+            "get": {
+                "tags": [
+                    "Catalog"
+                ],
+                "summary": "Products of one chunk of the product sitemap",
+                "description": "The published products of the chunk, in the order of the product id, with the slug and the time of the last change of the product (prices and stock levels do not change it). A chunk without published products has an empty list. The number of rows read from the range of the chunk is bounded, drafts included: past the limit the published ones among the rows read are returned, and the rest comes with the next cut of the chunks. The response is public and kept by a browser for 5 minutes; it is not tagged and the Varnish of the store does not keep it, so its freshness is the short `max-age`.",
+                "operationId": "getSitemapProducts",
+                "parameters": [
+                    {
+                        "name": "chunk",
+                        "in": "query",
+                        "description": "Key of the chunk, as the chunk list issued it.",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 200
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The published products of the chunk.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SitemapProductList"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "The `chunk` parameter is missing or is not a key that the chunk list issued (problem details with `violations`).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed.",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "A token was sent and the keys of its issuer cannot be fetched (problem details without detail).",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Problem"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/me": {
             "get": {
                 "tags": [
@@ -4306,6 +4412,62 @@
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/CategoryNode"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "SitemapChunk": {
+                "required": [
+                    "key"
+                ],
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "SitemapChunkList": {
+                "required": [
+                    "chunks"
+                ],
+                "properties": {
+                    "chunks": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SitemapChunk"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "SitemapProduct": {
+                "required": [
+                    "slug",
+                    "updatedAt"
+                ],
+                "properties": {
+                    "slug": {
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-11-20T23:00:00+00:00"
+                    }
+                },
+                "type": "object"
+            },
+            "SitemapProductList": {
+                "required": [
+                    "items"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SitemapProduct"
                         }
                     }
                 },

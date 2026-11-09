@@ -41,6 +41,11 @@ describe("the search page", () => {
     expect(markup).toContain('<span aria-current="page">Wyniki wyszukiwania</span>');
   });
 
+  it("has no structured data (the Organization and the WebSite belong to the home page only)", async () => {
+    expect(await html({ q: "kurtki" })).not.toContain("ld+json");
+    expect(await html()).not.toContain("ld+json");
+  });
+
   it("trims the phrase and cuts it to 100 characters, taking the first value of a repeated q", async () => {
     await html({ q: ["  kurtka  ", "x"] });
     expect(loadCatalog).toHaveBeenLastCalledWith({ q: "kurtka" });
