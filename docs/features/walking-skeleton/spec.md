@@ -755,8 +755,9 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
   - kolory w atrybucie `style`,
   - klasy nieznane Tailwindowi skonfigurowanemu z `tokens.css` (reguła `no-unregistered-classes` z
     `eslint-plugin-better-tailwindcss`), więc `bg-black` czy `text-red-500` nie przejdą.
-- Motyw w szkielecie jest tymczasowy i neutralny: odcienie szarości, jeden akcent, systemowy krój pisma.
-  Docelowy wygląd (kierunek w `docs/vision.md`, sekcja „Wygląd sklepu”) to osobny krok MVP.
+- Wygląd sklepu to kierunek „Granit” (paleta, krój Outfit, ostre kształty): opis, makieta i wymagania w
+  `docs/features/visual-design/spec.md`, tokeny w `src/styles/tokens.css`. `/` w stanie domyślnym ma nad listą hero
+  i kafelki działów (zdjęcia marketingowe to statyczne pliki sklepu, patrz tamże).
 - Komponenty i układy przenoszone później z vercel/shop podlegają zasadom z `apps/store/CLAUDE.md`
   (informacja o licencji MIT, dane tylko z naszego API, obrazy przez `ProductPhoto`).
 
@@ -781,6 +782,8 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
   atrybutem `sizes` zgodnym z siatką oraz `width`/`height` z proporcji rozmiaru. Nie ma `<picture>`, bo API
   zwraca jeden format.
 - Front niczego nie podpisuje ani nie dobiera rozmiarów spoza odpowiedzi API.
+- Wyjątek: zdjęcia marketingowe strony głównej (hero i kafelki działów) to statyczne pliki WebP sklepu renderowane
+  zwykłym `<picture>`/`<img srcset>` (opis: `docs/features/visual-design/spec.md`, „Zdjęcia strony głównej”).
 - Globalny loader obrazów Next.js (`images.loader: 'custom'`) rzuca błąd, więc użycie `<Image>` jest niemożliwe, a wbudowana optymalizacja nigdy nie przetwarza obrazów.
 
 ### Logowanie (BFF)
