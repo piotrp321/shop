@@ -19,9 +19,11 @@ Bash nie zachowuje stanu między wywołaniami. Wklej na początku każdej komend
 SKILL_ROOT="$(git rev-parse --show-toplevel)"
 SHOP="$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 GROOM_HOME="$HOME/.local/state/shop-groom"
-G="python3 $SKILL_ROOT/.claude/skills/groom/groom.py"
-NQ="python3 $SKILL_ROOT/.claude/skills/ao-run/night_queue.py"
+G="$SKILL_ROOT/.claude/skills/groom/groom.py"
+NQ="$SKILL_ROOT/.claude/skills/ao-run/night_queue.py"
 ```
+
+Skrypty wywołuj zawsze jako `python3 "$G" …` i `python3 "$NQ" …` (powłoka może nie dzielić zmiennej na słowa).
 
 Powiadomienie push to `PushNotification` (do 200 znaków). W sesji ręcznej zamiast pushu wystarczy komunikat
 w rozmowie.
@@ -32,18 +34,18 @@ Najpierw usuń worktree osierocone po przerwanych przebiegach: dla każdego `$GR
 `cd "$SHOP" && git worktree remove --force <ścieżka>`, potem `git worktree prune`.
 
 Najnowszy katalog przebiegu `$GROOM_HOME/<data>-<sha7>-<n>/` z `proposals.json` bez `decided_at`:
-- starszy niż 7 dni albo bez `input.json`: `$G expire <run_dir>` (zapisuje `decided_at` z wynikiem „wygasła”)
+- starszy niż 7 dni albo bez `input.json`: `python3 "$G" expire <run_dir>` (zapisuje `decided_at` z wynikiem „wygasła”)
   i dalej krok 2;
 - młodszy: nie twórz nowej listy. Zbierz bieżące dane i sprawdź listę na nich (`gh` i `git fetch` jak w kroku 2,
   punkt 3; limitu nie sprawdzasz, bo agent nie rusza):
 
   ```bash
   cd "$SHOP" && git fetch origin main && git worktree add --detach "<run_dir>/worktree" origin/main &&
-  $G collect <run_dir> --worktree "<run_dir>/worktree" --out "<run_dir>/input-now.json";
-  rc=$?; git worktree remove --force "<run_dir>/worktree"; [ $rc -eq 0 ] && $G validate <run_dir> --current "<run_dir>/input-now.json"
+  python3 "$G" collect <run_dir> --worktree "<run_dir>/worktree" --out "<run_dir>/input-now.json";
+  rc=$?; git worktree remove --force "<run_dir>/worktree"; [ $rc -eq 0 ] && python3 "$G" validate <run_dir> --current "<run_dir>/input-now.json"
   ```
 
-  - kod 3 (lista już niepoprawna, np. issue trafiło do nowego epiku): `$G fail <run_dir>`, powiedz które pozycje
+  - kod 3 (lista już niepoprawna, np. issue trafiło do nowego epiku): `python3 "$G" fail <run_dir>`, powiedz które pozycje
     i dlaczego, i dalej krok 2;
   - inny kod różny od 0: zakończ z pushem „Backlog: lista z <data> nieczytelna: <powód>” bez zmian;
   - 0: zbuduj listę od nowa z `proposals.json` (te same numery, kolizje z wyniku `validate`), nadpisz nią sekcję
@@ -59,7 +61,7 @@ Przy pierwszym niespełnionym zakończ bez zmian i bez worktree, z pushem „Bac
 2. Limit: wywołaj `mcp__ccd_session_mgmt__get_usage` i wklej obiekt `plan` dosłownie:
 
    ```bash
-   $NQ room --hours 2 <<'USAGE'
+   python3 "$NQ" room --hours 2 <<'USAGE'
    <obiekt plan z get_usage>
    USAGE
    ```
@@ -74,7 +76,7 @@ Przy pierwszym niespełnionym zakończ bez zmian i bez worktree, z pushem „Bac
 cd "$SHOP" && SHA7=$(git rev-parse --short=7 origin/main) && D=$(date +%F) && n=1 &&
 while [ -e "$GROOM_HOME/$D-$SHA7-$n" ]; do n=$((n+1)); done &&
 RUN="$GROOM_HOME/$D-$SHA7-$n" && mkdir -p "$RUN" && git worktree add --detach "$RUN/worktree" origin/main &&
-$G collect "$RUN" --worktree "$RUN/worktree" && echo "$RUN"
+python3 "$G" collect "$RUN" --worktree "$RUN/worktree" && echo "$RUN"
 ```
 
 Zapamiętaj `<run_dir>`. Od `git worktree add` każdy błąd kończy się usunięciem worktree (krok 5, sprzątanie).
@@ -86,9 +88,9 @@ Uruchom agenta `backlog-groomer` (narzędzie Agent, na pierwszym planie) ze zlec
 przebiegu (`input.json`, zapisz `proposals.json`). `<run_dir>/worktree`: checkout `origin/main` do czytania.”
 Bez własnych wniosków.
 
-Potem `$G validate <run_dir>`: wyjście `{ok, errors, collisions}`, kod 3 przy błędach listy, 2 przy błędzie stanu.
+Potem `python3 "$G" validate <run_dir>`: wyjście `{ok, errors, collisions}`, kod 3 przy błędach listy, 2 przy błędzie stanu.
 Przy poprawnej liście skrypt dopisuje kolizje do epiku poprawek. Błędy (kod różny od 0): odeślij agentowi listę błędów z prośbą o jedną poprawkę
-i uruchom `validate` ponownie. Drugi błąd: `$G fail <run_dir>` (zapisuje `decided_at` z wynikiem „błąd walidacji”),
+i uruchom `validate` ponownie. Drugi błąd: `python3 "$G" fail <run_dir>` (zapisuje `decided_at` z wynikiem „błąd walidacji”),
 sprzątnij, push „Backlog: błąd walidacji”, koniec.
 
 ## 5. Lista
@@ -102,7 +104,7 @@ z `validate`), hipotezy, nadmiar i sekcja `## Zużycie` (czas, przyrost procentu
 `resetsAt`: „odnowione w trakcie”).
 
 Pokaż listę w rozmowie z przykładem odpowiedzi („tak”, „tak bez 2”, „1, 3 i epik”, „odrzuć 4: powód”). Push
-„Backlog: N propozycji[, epik <ID>: k issues]”. Pusta lista: `$G fail <run_dir> --empty` (zapisuje `decided_at`
+„Backlog: N propozycji[, epik <ID>: k issues]”. Pusta lista: `python3 "$G" fail <run_dir> --empty` (zapisuje `decided_at`
 z wynikiem „brak propozycji”), push „Backlog: brak propozycji”, koniec.
 
 ## 6. Decyzja i wykonanie
@@ -112,7 +114,7 @@ decyzją. Bez odpowiedzi nic nie rób. Zamień odpowiedź na numery („epik” 
 zdaniem tylko, gdy odpowiedź jest niejednoznaczna. Potem:
 
 ```bash
-$G apply <run_dir> --approve <1,3,5|all|none> [--reject <nr>=<powód>]…
+python3 "$G" apply <run_dir> --approve <1,3,5|all|none> [--reject <nr>=<powód>]…
 ```
 
 Numery po przecinku; epik poprawek to numer `len(items)+1` albo słowo `epik`; same odrzucenia: `--approve none`.
