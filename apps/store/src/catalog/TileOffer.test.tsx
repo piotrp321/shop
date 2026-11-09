@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addCartItem } from "@/api/client";
 import { makeOffer, makeVariant } from "./fixtures";
@@ -132,6 +132,32 @@ describe("TileOffer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Do koszyka" }));
     await screen.findByText("Dodano do koszyka");
     expect(addCartItem).toHaveBeenCalledExactlyOnceWith(COLOUR_SIZES.variants[3].variantId, 1);
+  });
+
+  it("announces the expansion without an axis name when the product names no axes", () => {
+    renderOffer({ ...COLOURS, variantAxes: [] });
+
+    fireEvent.click(choose());
+
+    expect(live().textContent).toBe("Rozwinięto wybór wariantu. Dostępne warianty: 2 z 3.");
+  });
+
+  it("keeps „Do koszyka” blocked while a request runs, also after another variant is chosen, and shows no message for the other variant", async () => {
+    let finish: (value: Awaited<ReturnType<typeof addCartItem>>) => void = () => {};
+    vi.mocked(addCartItem).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    renderOffer(COLOURS);
+    fireEvent.click(choose());
+    fireEvent.click(radio("zielony"));
+    fireEvent.click(screen.getByRole("button", { name: "Do koszyka" }));
+    expect((screen.getByRole("button", { name: "Do koszyka" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(radio("niebieski"));
+
+    expect((screen.getByRole("button", { name: "Do koszyka" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => finish({ status: "ok", data: { id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 1 }, hasExcludedLines: false, discount: null } }));
+    expect((screen.getByRole("button", { name: "Do koszyka" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("Dodano do koszyka")).toBeNull();
+    expect(addCartItem).toHaveBeenCalledExactlyOnceWith(COLOURS.variants[1].variantId, 1);
   });
 
   it("has „Do koszyka” at once for a single variant, with no choice and no „Wybierz wariant”", () => {

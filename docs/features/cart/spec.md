@@ -514,11 +514,12 @@ zwracana.
 - Część kliencka kafelka (`TileOffer`, dostaje ofertę przez propsy): produkt z jednym wariantem ma od razu przycisk
   `AddToCartButton` („Do koszyka”), który dodaje ten wariant; produkt z ≥ 2 wariantami ma jedną aktywną akcję „Wybierz
   wariant”, bez listy rozwijanej i bez nieaktywnego „Do koszyka”. Po niej akcja znika, kafelek pokazuje warianty oferty
-  w jej kolejności (grupa radio opisana nazwami osi, np. „Kolor, Rozmiar”, bez wyboru domyślnego; jedna oś: przyciski
-  w rzędzie, dwie osie lub więcej: lista pełnych etykiet), a fokus przechodzi na pierwszy wariant możliwy do wybrania.
+  w jej kolejności (grupa radio opisana nazwami osi, np. „Kolor, Rozmiar”, bez wyboru domyślnego; jedna oś: przyciski,
+  na telefonie jeden pod drugim, od `lg` w rzędzie; dwie osie lub więcej: lista pełnych etykiet), a fokus przechodzi na pierwszy wariant możliwy do wybrania.
   Wariant z `purchasable = false` ma dopisek „niedostępny” i nie da się go wybrać. Rozwinięcie i wybór są ogłaszane
   w obszarze `aria-live`. Po wyborze (można go zmienić) kafelek pokazuje cenę i etykietę poziomu wybranego wariantu oraz
-  aktywny „Do koszyka”, który dodaje 1 sztukę wybranego wariantu. Na czas żądania przycisk jest zablokowany. HTML
+  aktywny „Do koszyka”, który dodaje 1 sztukę wybranego wariantu. Na czas żądania przycisk jest zablokowany, także gdy
+  wybór zmieni się w jego trakcie; komunikat „Dodano do koszyka” dotyczy tylko wariantu, dla którego powstał. HTML
   katalogu nie zależy od sesji.
 - `CartBadge` w nagłówku: link „Koszyk” z liczbą sztuk z `/api/cart/summary`; po każdej zmianie koszyka licznik
   aktualizuje się z `itemCount` odpowiedzi (zdarzenie w przeglądarce, `src/cart/events.ts`). Do czasu wczytania i przy

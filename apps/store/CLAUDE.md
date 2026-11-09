@@ -418,12 +418,13 @@ Klienta API generuje `make api-client` z katalogu głównego.
   znika, a kafelek pokazuje warianty z oferty w jej kolejności jako grupę radio (`fieldset` z nazwami osi albo „Wybierz
   wariant” w `legend`; jeden przystanek Tab, strzałki zmieniają wybór, wybór można zmienić) bez wyboru domyślnego;
   fokus przechodzi na pierwszy wariant możliwy do wybrania, a wariant `purchasable = false` ma dopisek „niedostępny”
-  i jest wyłączony. Jedna oś: etykiety jako przyciski w rzędzie (`data-form="buttons"`); dwie osie lub więcej: lista pełnych
+  i jest wyłączony. Jedna oś: etykiety jako przyciski (`data-form="buttons"`; na telefonie jeden pod drugim, od `lg` w rzędzie z zawijaniem); dwie osie lub więcej: lista pełnych
   etykiet jedna pod drugą (`data-form="list"`, mieści się w 375 px bez przewijania poziomego); oferta ma tylko złączoną
   etykietę, więc sklep nie rozbija jej na osie. Ukryty wizualnie obszar `role="status"` (`aria-live="polite"`, istnieje
   od pierwszego renderu) ogłasza rozwinięcie i każdy wybór (etykieta, cena, dostępność). Po wyborze kafelek pokazuje cenę, oznaczenie
   promocji (z `promotion` wariantu) i poziom wybranego wariantu oraz aktywny „Do koszyka”, który dodaje 1 sztukę wybranego wariantu
-  (bez wyboru przycisku „Do koszyka” nie ma). To samo na kafelkach strony głównej. `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
+  (bez wyboru przycisku „Do koszyka” nie ma; zmiana wyboru w trakcie żądania zostawia przycisk zablokowany, a komunikat
+  „Dodano do koszyka” dotyczy tylko wariantu, dla którego powstał). To samo na kafelkach strony głównej. `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
   (`CartPage`, Client Component ładujący `/api/cart`), linia z nazwą produktu i etykietą wariantu, pod podsumowaniem
   przycisk „Przejdź do kasy” (link do `/checkout`; przy `hasExcludedLines` nieaktywny z tekstem „Usuń albo popraw
   oznaczone pozycje, żeby złożyć zamówienie.”). Po każdej zmianie koszyka komponent ogłasza `itemCount` z

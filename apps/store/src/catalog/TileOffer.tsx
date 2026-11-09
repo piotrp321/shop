@@ -16,7 +16,7 @@ type ProductOffer = components["schemas"]["ProductOfferResponse"];
  * The interactive part of a tile of a product with a purchasable variant. With one variant only, „Do koszyka” adds it.
  * With more, the tile has one action, „Wybierz wariant”; it gives way to the variants of the offer in the order of the
  * offer, without a default choice (the first available one gets the focus; a variant that cannot be bought says
- * „niedostępny” and cannot be chosen). One axis shows them as buttons in a row, two or more as a list of whole labels
+ * „niedostępny” and cannot be chosen). One axis shows them as buttons (one under another on a phone, in a row from `lg`), two or more as a list of whole labels
  * one under another (the offer has the label only, so it is not split into axes). The choice is a group of radio
  * buttons: one stop of the Tab key, arrows move the choice, and it can be changed. Until a choice the tile shows `children`
  * (the price and the level of the product, rendered on the server); after it the price, the promotion notice (if any)
@@ -44,7 +44,8 @@ export function TileOffer({ offer, children }: { offer: ProductOffer; children: 
   if (single === undefined && chosen !== undefined && chosen.gross !== null) {
     announcement = `Wybrano wariant: ${chosen.label}. ${formatPrice(chosen.gross, offer.currency)}, ${availabilityText(chosen.level)}.`;
   } else if (expanded) {
-    announcement = `Rozwinięto wybór wariantu: ${axes}. Dostępne warianty: ${available} z ${offer.variants.length}.`;
+    const named = offer.variantAxes.length > 0 ? `: ${axes}` : "";
+    announcement = `Rozwinięto wybór wariantu${named}. Dostępne warianty: ${available} z ${offer.variants.length}.`;
   }
 
   return (
@@ -106,7 +107,7 @@ export function TileOffer({ offer, children }: { offer: ProductOffer; children: 
             </div>
           </fieldset>
         ) : null}
-        {chosen !== undefined ? <AddToCartButton key={chosen.variantId} variantId={chosen.variantId} className="w-full" /> : null}
+        {chosen !== undefined ? <AddToCartButton variantId={chosen.variantId} className="w-full" /> : null}
       </div>
     </>
   );

@@ -15,7 +15,7 @@ const variantRadio = (label: string | RegExp) => screen.getByRole("radio", { nam
 const expand = () => fireEvent.click(choose()!);
 const cartWith = (itemCount: number) => ({ id: "c", lines: [], totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN" as const, itemCount }, hasExcludedLines: false, discount: null });
 
-// Shoes in three sizes: 42 at 300\u00a0zł, 43 not purchasable, 44 at 320\u00a0zł with the last units.
+// Shoes in three sizes: 42 at 300 zł, 43 not purchasable, 44 at 320 zł with the last units.
 const SIZES_OFFER = makeOffer(1, {
   variantAxes: ["Kolor", "Rozmiar"],
   fromGross: 30000,
@@ -211,7 +211,7 @@ describe("ProductTile promotion", () => {
   const omnibus = () => screen.queryByTestId("omnibus");
   const PROMOTION = { endsAt: "2026-12-01T00:00:00+01:00", lowestPriorGross: 29900 };
 
-  // 300\u00a0zł regular for the first variant, promoted to 240\u00a0zł; the second is not promoted.
+  // 300 zł regular for the first variant, promoted to 240 zł; the second is not promoted.
   const PROMOTED = makeOffer(1, {
     variantAxes: ["Rozmiar"],
     fromGross: 24000,

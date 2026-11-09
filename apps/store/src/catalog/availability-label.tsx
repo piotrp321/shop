@@ -7,7 +7,7 @@ type Level = components["schemas"]["ProductOfferResponse"]["level"];
 // the marker has a shape of its own (disc, diamond, ring) and the text says the same.
 const AVAILABILITY_LABELS: Record<Level, { text: string; className: string; markerClassName: string }> = {
   in_stock: { text: "Dostępny", className: "text-success", markerClassName: "rounded-full bg-current" },
-  low_stock: { text: "Ostatnie sztuki", className: "text-warning", markerClassName: "rotate-45 rounded-[1px] bg-current" },
+  low_stock: { text: "Ostatnie sztuki", className: "text-warning", markerClassName: "rotate-45 rounded-sm bg-current" },
   out_of_stock: { text: "Niedostępny", className: "text-muted-foreground", markerClassName: "rounded-full border-2 border-current" },
 };
 
