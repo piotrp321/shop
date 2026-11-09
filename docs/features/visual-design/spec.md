@@ -103,18 +103,21 @@ Właściciel wybrał kierunek A „Granit” z czterema poprawkami i potwierdzi�
 `mockups/README.md` są wskazówkami wdrożenia. Wartości (kolory, rozmiary, odstępy) są wyłącznie w `tokens.css` po
 VISUAL-DESIGN-5; ta sekcja opisuje charakter i wymagania.
 
-**Dlaczego ten kierunek.** Właściciel wybrał go „za mocne zdjęcia, prostą typografię i czytelny układ”, chce wyglądu
-„na miarę 2026 roku” i „więcej własnego charakteru”. Sklep ma pokazywać „zdjęcia, które pokazują sprzęt i jego
-detale”, mieć „konsekwentne odstępy” i „pomarańczowy akcent, który od razu wskazuje najważniejszą akcję”. Na
-telefonie „klient powinien móc szybko znaleźć swoją dyscyplinę, porównać dwa modele i wybrać wariant”. W stopce
-chce „mniejsze logo, niższą stopkę i starannie ułożone linki”.
+**Dlaczego ten kierunek.** Wybór właściciela, w jego słowach: „Chcemy, żeby Worf miał design na miarę 2026 roku.
+Wybieramy kierunek A „Granit” za mocne zdjęcia, prostą typografię i czytelny układ. W kolejnej wersji nadaj mu więcej
+własnego charakteru. Zależy nam na zdjęciach, które pokazują sprzęt i jego detale, na konsekwentnych odstępach oraz na
+pomarańczowym akcencie, który od razu wskazuje najważniejszą akcję. Szczególnie dopracuj wersję mobilną. Klient
+powinien móc szybko znaleźć swoją dyscyplinę, porównać dwa modele i wybrać wariant. Zadbaj też o zakończenie strony:
+mniejsze logo, niższa stopka i starannie ułożone linki sprawią, że dół strony będzie równie lekki i dopracowany jak
+jej początek."
 
 **Charakter.**
 - Paleta: złamana biel tła, grafit tekstu i stopki, jeden pomarańczowy akcent wyłącznie na najważniejszej akcji
   (przycisk główny „Do koszyka”, link hero, plakietka koszyka, podkreślenie aktywnego działu); ciemniejszy odcień
   akcentu dla linków i pierścienia fokusu. Etykiety dostępności z osobnych tokenów semantycznych.
-- Typografia: Outfit jako jedyna rodzina OFL (nagłówki 600, tekst 400/500, znak słowny „Worf” 700).
-- Kanciaste elementy: promień 4 px wszędzie (zdjęcia, pola, przyciski, chipsy), bez cieni.
+- Typografia: Outfit jako jedyna rodzina OFL, w kilku wagach (pogrubione nagłówki i znak słowny, lżejszy tekst);
+  wagi i skala rozmiarów w `tokens.css` i `mockups/README.md`.
+- Kanciaste elementy: małe, ostre promienie (zdjęcia, pola, przyciski, chipsy), bez cieni; wartość w `tokens.css`.
 - Strona główna: hero na całą szerokość z tekstem prosto na zdjęciu pod nakładką (wędrowcy, nagłówek „Sprzęt na
   każdy szlak”), pod nim równy rząd kafelków działów, potem listing wszystkich produktów.
 - Kafelki produktów bez ramek i tła, zdjęcie 1:1, tekst do lewej, cena pod nazwą; siatka 4 kolumny na desktopie i
@@ -146,10 +149,16 @@ chce „mniejsze logo, niższą stopkę i starannie ułożone linki”.
   2.4.3). W makiecie DOM ma kolejność znak, „Menu”, wyszukiwarka, koszyk, konto, więc tego układu nie wolno
   przenieść do sklepu bez poprawki (np. inna kolejność w DOM i siatka z nazwanymi obszarami, bez zdublowanego
   formularza).
-- Fokus po „Wybierz wariant” (kafelek, także na stronie głównej): po rozwinięciu wyboru fokus przechodzi na pierwszą
-  dostępną wartość pierwszej osi (przycisk „Wybierz wariant” znika, więc fokus nie może na nim zostać); rozwinięcie
-  i zmiana etykiety dostępności po wyborze są ogłaszane w obszarze `aria-live`; wartość niedostępna ma tekst
-  „niedostępny”.
+- Fokus po „Wybierz wariant” (kafelek, także na stronie głównej): po rozwinięciu wyboru fokus przechodzi na pierwszy
+  dostępny (możliwy do wybrania) wariant (przycisk „Wybierz wariant” znika, więc fokus nie może na nim zostać);
+  rozwinięcie i zmiana etykiety dostępności po wyborze są ogłaszane w obszarze `aria-live`; wariant niedostępny ma
+  tekst „niedostępny”.
+- Zawartość wyboru wariantu na kafelku: po „Wybierz wariant” kafelek oferuje warianty oferty API w kolejności oferty
+  (etykieta; niedostępny oznaczony „niedostępny” i niewybieralny). Dla produktu z jedną osią są to wartości osi jako
+  przyciski, jak w makiecie (kajaki). Oferta nie ma wartości osi osobno, tylko złączoną etykietę, więc dla produktu
+  z dwiema osiami lub więcej postać listy wybiera VISUAL-DESIGN-7 (mieści się w 375 px bez poziomego przewijania,
+  np. dla 14 wariantów, działa z klawiatury) i zapisuje ją w „Decyzjach bez pytania” w PR; bez zmiany API i bez
+  rozbioru etykiety na osie (szczegóły: „Listing”).
 
 Tekst i układ ekranów pochodzą z makiety; implementer ich nie wymyśla. Szczegół, którego makieta nie pokazuje (np.
 stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje do „Decyzji bez pytania” w PR.
@@ -283,11 +292,14 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
   (`ProductOfferResponse.variants`: etykieta i `purchasable` każdego wariantu):
   - produkt z kilkoma wariantami ma jedną aktywną akcję „Wybierz wariant”, bez `<select>` i bez nieaktywnego „Do
     koszyka”;
-  - po jej użyciu kafelek pokazuje przyciski wariantów z oferty, w kolejności oferty, bez domyślnego wyboru (dla
-    produktu z jedną osią etykiety to wartości osi); wariant, którego nie można kupić, ma tekst „niedostępny”
-    i nie da się go wybrać;
+  - po jej użyciu kafelek pokazuje warianty z oferty (etykieta), w kolejności oferty, bez domyślnego wyboru; wariant,
+    którego nie można kupić, ma tekst „niedostępny” i nie da się go wybrać; dla produktu z jedną osią etykiety to
+    wartości osi jako przyciski, jak w makiecie; dla produktu z dwiema osiami lub więcej (np. Kolor × Rozmiar) postać
+    listy wybiera VISUAL-DESIGN-7 (mieści się w 375 px bez poziomego przewijania, np. dla 14 wariantów, działa
+    z klawiatury) i zapisuje ją w „Decyzjach bez pytania” w PR; oferta nie ma wartości osi osobno, więc bez zmiany API
+    i bez rozbioru etykiety na osie;
   - po wyborze kafelek pokazuje cenę i dostępność wybranego wariantu (jak dziś) oraz aktywny „Do koszyka”;
-  - fokus po rozwinięciu przechodzi na pierwszą dostępną wartość, a rozwinięcie i zmiana dostępności są ogłaszane
+  - fokus po rozwinięciu przechodzi na pierwszy dostępny (możliwy do wybrania) wariant, a rozwinięcie i zmiana dostępności są ogłaszane
     w obszarze `aria-live` (wymaganie z „Wybranego kierunku”);
   - produkt z jednym wariantem ma od razu aktywny „Do koszyka”.
 - Oznaczenie „Promocja” i linia Omnibus (PROMOTIONS), jeśli są na `main`: styl z tokenów, bez zmiany treści (D9).
@@ -328,8 +340,9 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
 
 ## Zdjęcia produktów w danych demo (VISUAL-DESIGN-11)
 
-Dziś produkt demo ma jedno zdjęcie z puli swojego szablonu (`pool[index % count(pool)]`), więc produkty jednego
-szablonu powtarzają dwa zdjęcia, a karta produktu ma jedno zdjęcie. Makieta pokazuje kategorię „Kajaki” z osobnym
+Przed tym zadaniem produkt demo ma jedno zdjęcie z puli swojego szablonu (`pool[index % count(pool)]`), więc produkty
+jednego szablonu powtarzają dwa zdjęcia, a karta produktu ma jedno zdjęcie; zadanie przepisuje ten akapit i punkt (2)
+odstępstw w `mockups/README.md` na stan po zmianie. Makieta pokazuje kategorię „Kajaki” z osobnym
 zdjęciem każdego modelu i kartę nart Stavro Grań 95 z galerią trzech zdjęć; to zadanie dodaje te dane demo i obsługę
 w ładowaniu. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 95.
 
@@ -376,9 +389,9 @@ w ładowaniu. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro G
 ## Kryteria akceptacji
 
 1. Makieta: w repo są `kierunek.html`, jego sześć zrzutów i `README.md` wybranego kierunku. Skrypt z `README.md`
-   (`make e2e-agent`) otwiera makietę z `file://` bez błędów konsoli i brakujących zasobów (także fontów:
-   `document.fonts.check` potwierdza font), odtwarza sześć zrzutów bajt w bajt, a przy brakującym zdjęciu albo foncie
-   kończy się błędem; tabela kontrastów: każda para tekst/tło spełnia AA.
+   (`make e2e-agent`) przechodzi swoje sprawdzenia (otwiera makietę z `file://` bez błędów konsoli i brakujących
+   zasobów, także fontów: `document.fonts.check` potwierdza font), zapisuje sześć zrzutów (bez wymogu identyczności bajtów: wersje Chromium
+   i Playwrighta mogą się zmienić), a przy brakującym zdjęciu albo foncie kończy się błędem; tabela kontrastów: każda para tekst/tło spełnia AA.
 2. Wybrany kierunek: wybór właściciela (kierunek A „Granit” z czterema poprawkami) jest zapisany w sekcji „Wybrany
    kierunek”; zadania 5–9 go wdrażają i nie zaczynają się przed integracją VISUAL-DESIGN-4.
 3. Nazwa: `git grep -n -w -i rytm -- ':!docs/features/visual-design'` nie zwraca wyników; tytuły stron sklepu kończą
@@ -437,6 +450,9 @@ w ładowaniu. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro G
     dłuższym boku i opisowe teksty alternatywne; `make seed` na świeżym stosie daje Stavro Grań 95 trzy `images`
     i trzy `zoomImages` w tej kolejności; `docs/features/walking-skeleton/spec.md` jest zaktualizowany;
     `make -C apps/api check`, `make -C apps/api test` i `make e2e` przechodzą.
+16. Wybór wariantu na kafelku (VISUAL-DESIGN-7): działa dla produktu z jedną osią i dla produktu z dwiema osiami
+    (np. demo z Kolor × Rozmiar), na 375 px bez poziomego przewijania; po „Wybierz wariant” fokus trafia na pierwszy
+    dostępny wariant, a rozwinięcie i zmiana dostępności są ogłaszane w `aria-live`.
 
 ## Zadania dokumentacji (razem z implementacją)
 
@@ -463,6 +479,9 @@ w ładowaniu. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro G
   z powiększeniem, odesłanie do tej specyfikacji (VISUAL-DESIGN-8).
 - `docs/features/walking-skeleton/spec.md` („Dane demo”): zdjęcia własne produktu i liczba plików zdjęć
   (VISUAL-DESIGN-11).
+- `docs/features/visual-design/spec.md` (pierwszy akapit sekcji „Zdjęcia produktów w danych demo”) i
+  `docs/features/visual-design/mockups/README.md` (odstępstwo 2): opis danych demo sprzed zadania zamieniony na stan
+  obecny (VISUAL-DESIGN-11).
 - `docs/features/agent-tester-ux/spec.md`, `.claude/agents/ux-reviewer.md` i `docs/features/agentic-software-house/plan.md`
   (krok 9): zakres oceny agenta UX z D8 (VISUAL-DESIGN-10).
 
@@ -470,7 +489,7 @@ w ładowaniu. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro G
 
 | # | Decyzja |
 |---|---|
-| D1 | Makiety kierunków powstały w pierwszej fali (VISUAL-DESIGN-1). Wyboru dokonał właściciel w VISUAL-DESIGN-4 (kierunek A „Granit” z czterema poprawkami, drugą iterację makiety potwierdził); zadania 5–9 wdrażają ten wybór. |
+| D1 | Kierunek wizualny wybiera wyłącznie właściciel. Wybrany jest kierunek A „Granit” z jego poprawkami, zapisany w „Wybranym kierunku”; zadania 5–9 wdrażają ten wybór. |
 | D2 | Makieta trafia do repo w `docs/features/visual-design/mockups/` przez PR zadań epiku; końcowy PR epiku merguje użytkownik. |
 | D3 | Makieta to statyczny HTML w `docs` ze zrzutami PNG wszystkich ekranów obu szerokości, nie strona w sklepie. |
 | D4 | Fonty na licencji OFL z polskimi znakami, lokalnie przez `next/font/local`, pliki WOFF2 w repo. |
