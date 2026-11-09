@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // The page renders client components (filters, sort) that need a router; the tests only read their markup.
 vi.mock("next/navigation", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/navigation")>()), useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/catalog/load-catalog", () => ({ loadCatalogForRequest: vi.fn() }));
-vi.mock("@/catalog/category-tree", () => ({ loadCategoryTreeForRequest: vi.fn() }));
+vi.mock("@/catalog/category-tree", () => ({ loadCategoryTreeForRequest: vi.fn(), loadMenuCategories: vi.fn() }));
 
-import { loadCategoryTreeForRequest as loadTree } from "@/catalog/category-tree";
+import { loadCategoryTreeForRequest as loadTree, loadMenuCategories as loadMenu } from "@/catalog/category-tree";
 import { EMPTY_FACETS, TREE, makeOffer, makeProduct } from "@/catalog/fixtures";
 import { loadCatalogForRequest as loadCatalog } from "@/catalog/load-catalog";
 import Home, { generateMetadata } from "./page";
@@ -23,6 +23,7 @@ const okPage = (page = 1, items = [makeProduct(1)]) => ({
 
 beforeEach(() => {
   vi.mocked(loadTree).mockReset().mockResolvedValue(TREE);
+  vi.mocked(loadMenu).mockReset().mockResolvedValue(TREE);
   vi.mocked(loadCatalog).mockReset().mockResolvedValue(okPage());
   vi.stubEnv("STORE_URL", "http://store.test");
 });
@@ -107,6 +108,83 @@ describe("Home page", () => {
         });
       }
       expect(await generateMetadata(metaProps({ page: "2", q: "x", kategoria: "y" }))).not.toHaveProperty("robots");
+    });
+  });
+
+  describe("the hero and the department tiles (the default state of the listing)", () => {
+    const DEFAULT_STATES: Query[] = [{}, { utm_source: "x" }, { page: "1" }, { page: ["1", "2"], utm_source: "x" }, { q: "kurtka", kategoria: "bieganie" }];
+    const OTHER_STATES: Query[] = [
+      { page: "2" },
+      { sort: "nazwa" },
+      { "cena-od": "100" },
+      { "cena-do": "250" },
+      { dostepne: "1" },
+      { o: "Kolor:czarne" },
+      { page: "2", utm_source: "x" },
+    ];
+    const headings = (markup: string, level: number) => [...markup.matchAll(new RegExp(`<h${level}[^>]*>(.*?)</h${level}>`, "g"))].map((match) => match[1]!.replace(/<[^>]*>/g, ""));
+    // Only the images (React also writes a `<link rel="preload">` for a photo with priority).
+    const priorityImages = (markup: string) => markup.match(/<img[^>]*fetchPriority="high"/gi)?.length ?? 0;
+
+    it.each(DEFAULT_STATES)("shows the hero and a tile of every root category for %j", async (query) => {
+      const markup = renderToStaticMarkup(await Home(props(query)));
+      expect(headings(markup, 1)).toEqual(["Sprzęt na każdy szlak"]);
+      expect(headings(markup, 2)).toEqual(["Bieganie", "Rower", "Wszystkie produkty"]);
+      expect(markup).toContain('href="/c/bieganie"');
+      expect(markup).toContain('href="/c/rower"');
+      expect(loadMenu).toHaveBeenCalled();
+    });
+
+    it("keeps the count next to „Wszystkie produkty” and names the products with h3", async () => {
+      const markup = renderToStaticMarkup(await Home(props()));
+      expect(markup).toMatch(/<h2[^>]*>Wszystkie produkty<\/h2><p[^>]*>1 produkt<\/p>/);
+      expect(headings(markup, 3)).toEqual(["Produkt 1"]);
+    });
+
+    it.each(OTHER_STATES)("is only the listing for %j: h1 „Wszystkie produkty”, products in h2, no hero and no tiles", async (query) => {
+      const markup = renderToStaticMarkup(await Home(props(query)));
+      expect(headings(markup, 1)).toEqual(["Wszystkie produkty"]);
+      expect(headings(markup, 2)).toEqual(["Produkt 1"]);
+      expect(headings(markup, 3)).toEqual([]);
+      expect(markup).not.toContain("Sprzęt na każdy szlak");
+      expect(markup).not.toContain("<picture");
+      expect(loadMenu).not.toHaveBeenCalled();
+    });
+
+    it("gives the loading priority only to the hero in the default state, and to the first tiles of the listing otherwise", async () => {
+      vi.mocked(loadCatalog).mockResolvedValue(okPage(1, [makeProduct(1), makeProduct(2)]));
+      expect(priorityImages(renderToStaticMarkup(await Home(props())))).toBe(1);
+      expect(priorityImages(renderToStaticMarkup(await Home(props({ page: "2" }))))).toBe(2);
+    });
+
+    it("has the hero without a link and no tiles when the tree cannot be read, and still the listing", async () => {
+      vi.mocked(loadMenu).mockResolvedValue(null);
+      const markup = renderToStaticMarkup(await Home(props()));
+      expect(headings(markup, 1)).toEqual(["Sprzęt na każdy szlak"]);
+      expect(markup).not.toContain("Zobacz Turystykę");
+      expect(markup).not.toContain('aria-label="Działy sklepu"');
+      expect(headings(markup, 2)).toEqual(["Wszystkie produkty"]);
+      expect(headings(markup, 3)).toEqual(["Produkt 1"]);
+    });
+
+    it("has the hero without a link when the tree has no Turystyka", async () => {
+      expect(renderToStaticMarkup(await Home(props()))).not.toContain("Zobacz Turystykę");
+    });
+
+    it("links the hero to Turystyka when the tree has it", async () => {
+      vi.mocked(loadMenu).mockResolvedValue([...TREE, { id: "turystyka", name: "Turystyka", slug: "turystyka", path: "turystyka", children: [] }]);
+      expect(renderToStaticMarkup(await Home(props()))).toContain('href="/c/turystyka"');
+    });
+
+    it("leaves the title, the description, the canonical address and robots as they were, with the hero and without it", async () => {
+      expect(await generateMetadata(metaProps())).toMatchObject({ title: "Wszystkie produkty | Worf", alternates: { canonical: "http://store.test/" } });
+      expect(await generateMetadata(metaProps())).not.toHaveProperty("robots");
+      expect(await generateMetadata(metaProps({ utm_source: "x", page: "1" }))).toMatchObject({ title: "Wszystkie produkty | Worf", alternates: { canonical: "http://store.test/" } });
+      expect(await generateMetadata(metaProps({ sort: "nazwa" }))).toMatchObject({ robots: { index: false, follow: true } });
+    });
+
+    it("has neither the hero nor the tiles on the invalid filter page", async () => {
+      expect(renderToStaticMarkup(await Home(props({ sort: "popularne" })))).not.toContain("Sprzęt na każdy szlak");
     });
   });
 
