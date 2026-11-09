@@ -192,7 +192,7 @@ describe("DiscountCodeFormView", () => {
       await fill(wrapper);
       mocks.post.mockResolvedValue({ data: code({ kind: "amount", value: 5000, version: 1 }), response: { status: 201 } });
 
-      wrapper.get("[data-testid=save]").element.focus();
+      (wrapper.get("[data-testid=save]").element as HTMLElement).focus();
       await click(wrapper, "save");
 
       expect(mounted!.router.currentRoute.value.name).toBe("discount-code");
@@ -318,7 +318,7 @@ describe("DiscountCodeFormView", () => {
       await wrapper.get("[data-testid=value-input]").setValue("15");
       mocks.put.mockResolvedValue({ data: code({ value: 15, version: 4 }), response: { status: 200 } });
 
-      wrapper.get("[data-testid=save]").element.focus();
+      (wrapper.get("[data-testid=save]").element as HTMLElement).focus();
       await click(wrapper, "save");
 
       const message = wrapper.get("[data-testid=success-message]");
