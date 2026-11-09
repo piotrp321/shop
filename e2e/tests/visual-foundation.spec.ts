@@ -65,7 +65,7 @@ test.describe("the font of the direction", () => {
     const report = await page.evaluate(async () => {
       await document.fonts.ready;
       // The first family of the computed `font-family` is the one the browser tries first.
-      const first = (element: Element): string => getComputedStyle(element).fontFamily.split(",")[0].trim().replaceAll('"', "");
+      const first = (element: Element): string => (getComputedStyle(element).fontFamily.split(",")[0] ?? "").trim().replaceAll('"', "");
       const faces = [...document.fonts].map((face) => ({
         family: face.family.replaceAll('"', ""),
         status: face.status,
@@ -224,10 +224,11 @@ test.describe("the footer", () => {
 });
 
 test.describe("the 404 page", () => {
-  for (const [what, path] of [
+  const cases: [string, string][] = [
     ["an unknown address", "/nie-ma-takiej-strony"],
     ["an unknown product", "/p/nie-ma-takiego-produktu"],
-  ]) {
+  ];
+  for (const [what, path] of cases) {
     test(`${what} shows the message, the way back, the header, the footer and noindex`, async ({ page }) => {
       const response = await page.goto(path);
       expect(response?.status()).toBe(404);
