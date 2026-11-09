@@ -342,9 +342,9 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
 
 Dane demo dają własne zdjęcia czterem kajakom z kategorii „Kajaki” i trzy zdjęcia Nartom skiturowym Stavro Grań 95:
 produkt z listą zdjęć własnych (`productImages` w definicji) ma je w kolejności pliku, a każdy inny produkt demo ma
-jedno zdjęcie z puli swojego szablonu (`pool[index % count(pool)]`) albo żadne, jak dotąd. Makieta pokazuje kategorię
-„Kajaki” z osobnym zdjęciem każdego modelu i kartę nart Stavro Grań 95 z galerią trzech zdjęć; dane demo i obsługa
-w ładowaniu to ten zakres. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 95.
+jedno zdjęcie z puli swojego szablonu (`pool[index % count(pool)]`) albo nie ma zdjęcia (reguła produktów bez zdjęć).
+Makieta pokazuje kategorię „Kajaki” z osobnym zdjęciem każdego modelu i kartę nart Stavro Grań 95 z galerią trzech
+zdjęć. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 95.
 
 - **Produkty ze zdjęciami własnymi:** cztery produkty szablonu `sporty-wodne/kajaki` (Kajak turystyczny Vilmar Rzeka 1,
   Vilmar Rzeka 2, Dravik Rzeka 1, Dravik Rzeka 2) i Narty skiturowe Stavro Grań 95. Zdjęcia są przypisane do produktu
@@ -482,8 +482,7 @@ w ładowaniu to ten zakres. Zakres: kategoria `sporty-wodne/kajaki` i Narty skit
 - `docs/features/walking-skeleton/spec.md` („Dane demo”): zdjęcia własne produktu i liczba plików zdjęć
   (VISUAL-DESIGN-11).
 - `docs/features/visual-design/spec.md` (pierwszy akapit sekcji „Zdjęcia produktów w danych demo”) i
-  `docs/features/visual-design/mockups/README.md` (odstępstwo 2): opis danych demo sprzed zadania zamieniony na stan
-  obecny (VISUAL-DESIGN-11).
+  `docs/features/visual-design/mockups/README.md` (odstępstwa 1 i 2): opis zdjęć w danych demo (VISUAL-DESIGN-11).
 - `docs/features/agent-tester-ux/spec.md`, `.claude/agents/ux-reviewer.md` i `docs/features/agentic-software-house/plan.md`
   (krok 9): zakres oceny agenta UX z D8 (VISUAL-DESIGN-10).
 
