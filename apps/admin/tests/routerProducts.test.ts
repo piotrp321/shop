@@ -120,3 +120,45 @@ describe("promotion routes", () => {
     expect(router.currentRoute.value.name).toBe("promotion-new");
   });
 });
+
+describe("discount code routes", () => {
+  beforeEach(() => mocks.get.mockReset());
+
+  it("serves the list at /discount-codes and the page of a code at /discount-codes/:id to every signed-in staff member", async () => {
+    const router = setup(["support"]);
+
+    await router.push("/discount-codes");
+    expect(router.currentRoute.value.name).toBe("discount-codes");
+
+    await router.push("/discount-codes/code-1");
+    expect(router.currentRoute.value.name).toBe("discount-code");
+    expect(router.currentRoute.value.params.id).toBe("code-1");
+  });
+
+  it.each([["admin"], ["marketing"]] as const)("lets %s open /discount-codes/new", async (role) => {
+    const router = setup([role]);
+
+    await router.push("/discount-codes/new");
+
+    expect(router.currentRoute.value.name).toBe("discount-code-new");
+  });
+
+  it.each([[["support"]], [["warehouse"]], [[]]] as [StaffMe["roles"]][])("sends %j from /discount-codes/new to the list", async (roles) => {
+    const router = setup(roles);
+
+    await router.push("/discount-codes/new");
+
+    expect(router.currentRoute.value.name).toBe("discount-codes");
+    expect(router.currentRoute.value.path).toBe("/discount-codes");
+  });
+
+  it("reads the roles from the API when the staff member is not loaded yet", async () => {
+    const router = setup(null);
+    mocks.get.mockResolvedValue({ data: { id: "u1", username: "anna", roles: ["marketing"] }, response: { status: 200 } });
+
+    await router.push("/discount-codes/new");
+
+    expect(mocks.get).toHaveBeenCalledWith("/api/v1/admin/me");
+    expect(router.currentRoute.value.name).toBe("discount-code-new");
+  });
+});

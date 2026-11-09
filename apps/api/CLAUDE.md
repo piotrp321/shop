@@ -17,16 +17,22 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - dane demo ładuje `make seed` z głównego `Makefile`, czyli `bin/seed-demo` (skrypt `sh`, `set -eu`; konsolę woła względem
   własnego katalogu, test: `tests/Unit/Bin/SeedDemoScriptTest.php`). Uruchamia po kolei: `catalog:seed-demo` (katalog), potem
   `pricing:seed-demo`, który w jednej transakcji czyści ceny z historią, promocje (`pricing_promotion`,
-  `pricing_promotion_variant`) i ich kolejkę (`DELETE FROM messenger_messages WHERE queue_name = 'promotions'`;
+  `pricing_promotion_variant`), kody rabatowe z użyciami (`pricing_discount_code`, `pricing_discount_code_usage`) i kolejkę promocji (`DELETE FROM messenger_messages WHERE queue_name = 'promotions'`;
   pozostałe kolejki zostają), potem ustawia cenę (źródło `seed`) każdemu wariantowi demo według
   wzorców kluczy wariantów z `fixtures/prices.yaml` (klucz z Catalog `ListVariantIdentities`:
   `<slug produktu>/<slug etykiety>`, wariant domyślny `<slug produktu>/standard`; `*` dopasowuje też `/`; pierwszy
-  pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych), a na końcu planuje
+  pasujący wzorzec w kolejności pliku; wariant bez wzorca kończy seed błędem bez zmian w danych), potem planuje
   promocje z `fixtures/promotions.yaml` (lista: `name`, `percentOff`, `days`, `variants` = wzorce kluczy w tej samej
   składni) komendą `PlanPromotion` bez aktora i ze źródłem `seed`, od chwili seeda na `days` dni (planuje tylko
   granicę końca na kolejce `promotions`, bez wiadomości startu: `make seed` kończy się reindeksacją i czyszczeniem
   cache sklepu; port `PromotionBoundaries` dostaje jawny `announceStart`); wariant należy do pierwszej promocji, która go dopasuje, żeby okresy się nie nakładały; plik promocji jest
   sprawdzany przed resetem, więc promocja bez wariantu (albo z ponad 1000) kończy seed błędem bez zmian w danych.
+  Na końcu tworzy kody rabatowe z `fixtures/discount-codes.yaml` (lista: `code`, jedno z `percentOff` i `amountOff`,
+  `minimumOrder`, `startsInDays` i opcjonalne `endsInDays` jako dni od chwili seeda, ujemne w przeszłości) komendą
+  `CreateDiscountCode` bez aktora, włączone i bez limitu użyć: `WITAJ10` (10%), `MINUS50` (50 zł od 300 zł) i wygasły
+  `LATO15` (15%, okres od 60 do 30 dni przed seedem). Plik kodów jest sprawdzany przed resetem tymi samymi value objectami
+  i agregatem co zapis kodu w panelu (zły format kodu, kod kwotowy bez minimum, koniec przed początkiem, powtórzony kod),
+  więc błąd kończy seed bez zmian w danych; testy E2E nie używają kodów demo, tworzą własne przez API panelu.
   Promocje demo omijają produkty E2E i kategorię Bieganie > Buty biegowe (pilnuje tego `RealDemoPromotionsTest`, lista
   wykluczeń w teście, razem z produktem `promotions.spec.ts`); potem
   `payment-simulator:seed-demo`, który w jednej transakcji opróżnia (`TRUNCATE`) tabelę transakcji symulatora płatności
@@ -113,19 +119,39 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   promocją „od teraz” jest przed jej startem (`startOfNow`: `now` ucięte do sekundy + 1 s), a cena wariantu w promocji
   aktywnej w chwili zapisu to 409 `PriceLockedByPromotion` przed sprawdzeniem wersji. `ReconcileTax` i przeliczenie
   po zmianie klasy (`reprice`, brutto bez zmian) blokady nie biorą.
+- Wyjątek: użycie kodu rabatowego (Pricing, decyzje A3, D7 w `docs/features/discount-codes/spec.md`).
+  `RedeemDiscountCode(codeId, orderId, subtotalGross)` (`command.bus`, wyłącznie zagnieżdżona w `PlaceOrder`) zapisuje
+  użycie przez rekord Doctrine (`DiscountCodeUsageRecord`), a nie przez DBAL jak Inventory: handler złożenia nigdy nie
+  łapie jej wyjątku, więc odrzucenie wycofuje całą transakcję i `UnitOfWork` nie zapisze wycofanych zmian. Rekord kodu
+  jest zawsze czytany od nowa (`DiscountCodeRepository::find` z odświeżeniem rekordu z identity map); kod z limitem
+  potem jeszcze raz pod blokadą wiersza (`lock`: `SELECT … FOR NO KEY UPDATE`, potem odczyt rekordu z odświeżeniem), kod bez limitu bez blokady.
+  Blokada kodu to `FOR NO KEY UPDATE`, nie `FOR UPDATE` z `PESSIMISTIC_WRITE`: klucz obcy użycia bierze
+  `FOR KEY SHARE` na wierszu kodu, z którym `FOR UPDATE` by się wykluczało, więc zmiana kodu bez limitu
+  (`ReviseDiscountCode`) czekałaby na złożenia z nim; `FOR NO KEY UPDATE` wyklucza tylko inną blokadę kodu i jego
+  `UPDATE`. Zegar i liczba aktywnych użyć po blokadzie, potem `rejectionFor` jeszcze raz; odrzucenie to
+  `DiscountCodeRejected(rejection)` (Pricing Application). `ReleaseDiscountCodeUsage(orderId)` (`command.bus`,
+  zagnieżdżona w `ExpireUnpaidOrder`) ustawia `releasedAt = now` aktywnemu użyciu zamówienia przez rekord (zmienia tylko
+  wiersz użycia, kodu nie blokuje); brak użycia albo już zwolnione: bez skutku.
 - Ordering składa zamówienie (`PlaceOrder`) w jednej transakcji `command.bus`: komendy Cart (`LockCartForOrder`,
-  `ClearCartAfterOrder`) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony
-  dispatch na tym samym połączeniu (savepoint), a ceny (Pricing `GetCurrentPrices`) i nazwy (Catalog
-  `GetVariantSummaries`) przez `query.bus`. Zasady:
+  `ClearCartAfterOrder`), Pricing (`RedeemDiscountCode`, port `DiscountCodeRedemptions`, tylko gdy wycena zastosowała
+  kod) i Inventory (`ReserveStock` z kluczem `orderId`) idą przez porty Ordering jako zagnieżdżony dispatch na tym samym
+  połączeniu (savepoint), a wycena (Pricing `QuoteBasket` z kodem z żądania, port `OrderPrices`; wartości linii, rabat
+  i kopie promocji pochodzą z niej) i nazwy (Catalog `GetVariantSummaries`) przez `query.bus`. Zasady:
   - handler nigdy nie łapie wyjątku zagnieżdżonej komendy, żeby pisać dalej: każdy błąd wycofuje całą transakcję
-    (koszyk, rezerwację, zamówienie, outbox). Adapter tłumaczy tylko niedobór Inventory (`InsufficientStock`) na
-    `InsufficientStockForOrder` i rzuca go dalej, inne wyjątki przekazuje bez zmian;
+    (koszyk, użycie kodu, rezerwację, zamówienie, outbox). Adaptery tłumaczą tylko niedobór Inventory
+    (`InsufficientStock`) na `InsufficientStockForOrder` i odrzucenie kodu Pricing (`DiscountCodeRejected` Pricing
+    Application) na `DiscountCodeRejected` Ordering (typ, `detail` i minimum z Pricing) i rzucają je dalej, inne wyjątki
+    przekazują bez zmian. Kod odrzucony już w wycenie to ten sam 409, przed porównaniem kwoty;
   - zamówienie zapisuje się na końcu (po rezerwacji), więc `flush` komend zagnieżdżonych nie zapisuje niczego
     z Ordering; Ordering zapisuje przez rekordy Doctrine według ogólnej zasady, a `OrderRepository::get` czyta
     zamówienie z bazy z odświeżeniem rekordu z identity map, więc kolejny odczyt w tej samej transakcji widzi zmiany
     zatwierdzone w międzyczasie;
-  - kolejność blokad: wiersz koszyka (`LockCartForOrder`), potem wiersze stanów (`lockMany` Inventory, rosnąco po
-    `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, więc nie ma cyklu;
+  - kolejność blokad: wiersz koszyka (`LockCartForOrder`), potem wiersz kodu rabatowego (tylko kod z limitem,
+    `RedeemDiscountCode` po nadaniu `orderId`, przed numerem), potem wiersze stanów (`lockMany` Inventory, rosnąco po
+    `variant_id`). Inne komendy Cart blokują tylko koszyki, Inventory tylko stany i rezerwacje, zmiana kodu
+    (`ReviseDiscountCode`) tylko wiersz kodu, a zwolnienie użycia nie blokuje kodu, więc nie ma cyklu;
+  - odcisk żądania obejmuje kod znormalizowany (`DiscountCodeText`), dopisany tylko, gdy jest, więc odcisk bez kodu
+    jest taki sam jak przed kodami rabatowymi; powtórzenie nie zapisuje drugiego użycia;
   - idempotencja: zamówienie z tym samym `Idempotency-Key` i tym samym odciskiem żądania (koszyk i treść) jest
     zwracane jako powtórzenie przed blokadą koszyka i jeszcze raz pod nią; inny odcisk to `IdempotencyKeyReused` (409),
     także z unikalnego indeksu `idempotency_key` przy równoległym złożeniu z innego koszyka;
@@ -150,7 +176,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - Anulowanie nieopłaconego: `PlaceOrder` w swojej transakcji wysyła `ExpireUnpaidOrder(orderId)` z `DelayStamp` na
     termin + 5 min (port `UnpaidOrderExpiry`; powtórzenie złożenia nic nie wysyła). Handler w transakcji `command.bus`
     zaczyna od blokady zamówienia (`OrderRepository::lock`, jak komendy pracownika), przy anulowaniu najpierw zwalnia rezerwację (port `StockReservations::release`, Inventory `ReleaseReservation`,
-    zagnieżdżony dispatch), potem zapisuje zamówienie z `OrderCancelled` w outboxie; wiadomość za wczesna (zegar,
+    zagnieżdżony dispatch), potem użycie kodu rabatowego (port `DiscountCodeRedemptions::release`, Pricing
+    `ReleaseDiscountCodeUsage`, także dla zamówienia bez kodu, bez skutku), potem zapisuje zamówienie z `OrderCancelled` w outboxie; wiadomość za wczesna (zegar,
     zaokrąglenie `available_at`) wraca na termin + 5 min + 1 s, opłacone albo anulowane zamówienie nic nie zmienia,
     nieznane (po `make seed`) to wpis w logu. Konflikt wersji i błędy Inventory (`ReservationNotFound`,
     `ReservationStateConflict`) idą dalej: ponowienia transportu, potem `failed` (zamówienie zostaje `new`).
@@ -482,17 +509,21 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Błędy w formacie RFC 9457 (problem details). `type` to domyślnie `about:blank`. Wyjątek projektu, którego przyczynę
   klient ma rozróżniać maszynowo, implementuje `App\Shared\Domain\Exception\TypedProblem` (`problemType()`) i trzyma
   wartość w stałej `TYPE`; subscriber wpisuje ją do odpowiedzi, a Shared nie zna contextów. Format wartości:
-  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je pięć 409 Ordering
-  sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`), dwa 409 komend pracownika Ordering
+  `tag:piotrp321.github.io,2026:shop/problems/<przyczyna>` (identyfikator, nie adres). Dziś mają je osiem 409 Ordering
+  sklepu (schemat OpenAPI `OrderConflictProblem` wylicza ich wartości w `enum`, także trzy typy odrzucenia kodu), dwa 409 komend pracownika Ordering
   (`order-transition-not-allowed`, `refund-not-pending`; schemat `BackofficeOrderConflictProblem` w obszarze `admin`) i cztery 409 Payment: `order-already-paid`,
   `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused` (schemat `PaymentConflictProblem`).
-  Trzy 409 Pricing w panelu: `price-locked-by-promotion`, `promotion-overlap`, `promotion-not-editable` (schemat
-  `PricingConflictProblem` w obszarze `admin`, razem z `about:blank` konfliktu wersji ceny i promocji).
+  Pięć 409 Pricing w panelu: `price-locked-by-promotion`, `promotion-overlap`, `promotion-not-editable`,
+  `discount-code-taken`, `discount-code-not-editable` (schemat `PricingConflictProblem` w obszarze `admin`, razem
+  z `about:blank` konfliktu wersji ceny, promocji i kodu rabatowego). Typy odrzucenia kodu (`discount-code-invalid`,
+  `discount-code-used-up`, `discount-code-below-minimum`) i ich polskie `detail` daje wyłącznie
+  `DiscountCodeRejection` (Pricing Domain); `DiscountCodeRejected` Ordering (409 złożenia) dostaje je od adapterów.
   Nowy typ dopisz do `enum` schematu swojego contextu.
 - Wyjątek, który niesie dane dla klienta (np. listę kolidujących wariantów), implementuje
   `App\Shared\Domain\Exception\ExtendedProblem` (`problemExtensions()`): subscriber dopisuje te pola do dokumentu
   problemu, nigdy w miejsce `type`, `title`, `status`, `detail`, `instance` ani `violations`, i nie przy 5xx. Dziś:
-  `PromotionOverlap` (`conflictingVariantIds`).
+  `PromotionOverlap` (`conflictingVariantIds`) i `DiscountCodeRejected` Ordering (`minimumOrderGross`, tylko przy
+  `discount-code-below-minimum`).
 - `detail` w błędzie ma tylko wyjątek projektu: implementuje znacznik z `App\Shared\Domain\Exception`
   (`NotFound` → 404, `Conflict` → 409, `InvalidInput` → 422, goły `ProblemException` → 422). Wyjątek: znacznik
   `Unavailable` (zależność nieosiągalna albo przegrany wyścig, który ponowienie rozwiązuje) to 503 bez `detail`, jak
@@ -660,6 +691,14 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   ze strefą, lista UUID), reguły promocji domena; `PromotionWriteFailures` zamienia `InvalidPromotion` na naruszenie
   przy jego polu, a `InvalidPromotionVariants` na naruszenia `variantIds[<indeks>]`. Odpowiedzi zapisu to `GetPromotion`
   odczytane po zapisie, `private, no-store`.
+- Kody rabatowe w panelu (`/api/v1/admin/discount-codes`, Pricing UI, `docs/features/pricing/spec.md`, „Kody
+  rabatowe”): `GET` lista (`status`, `q`, `after`, `perPage`) i szczegóły dla każdego pracownika, `POST` i `PUT /{id}`
+  dla `admin` i `marketing` (`DiscountCodeVoter`, `MANAGE_DISCOUNT_CODES`, przed treścią). Wyjątek od
+  `#[MapRequestPayload]`: treść czyta w kontrolerze `DiscountCodeBodyReader` (JSON, typy ścisłe, ta sama walidacja DTO),
+  bo `PUT` odpowiada 404 przed 422 treści, a brak klucza ma polski komunikat „To pole jest wymagane.” zamiast
+  angielskiego tekstu frameworka; `DiscountCodeWriteFailures` zamienia `InvalidDiscountCode` na naruszenie przy polu.
+  `ReviseDiscountCode` blokuje wiersz kodu (`DiscountCodeRepository::lock`: `SELECT … FOR NO KEY UPDATE`, potem odczyt rekordu z odświeżeniem)
+  i czyta liczbę aktywnych użyć pod blokadą. Odpowiedzi to `GetDiscountCode` odczytane po zapisie, `private, no-store`.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
 - Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.

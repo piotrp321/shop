@@ -7,7 +7,6 @@ namespace App\Ordering\UI\Http;
 use App\Ordering\Application\Query\CustomerOrderList;
 use App\Ordering\Application\Query\CustomerOrderListItem;
 use App\Ordering\Application\View\CustomerOrderView;
-use App\Ordering\Application\View\OrderLineView;
 
 /**
  * The bodies of the order history endpoints of the store, in the schemas of nelmio_api_doc.yaml (default area):
@@ -30,14 +29,8 @@ final class CustomerOrderJson
                 'city' => $order->shippingAddress->city,
                 'country' => $order->shippingAddress->country,
             ],
-            'lines' => array_map(static fn (OrderLineView $line): array => [
-                'variantId' => $line->variantId,
-                'productName' => $line->productName,
-                'variantLabel' => $line->variantLabel,
-                'quantity' => $line->quantity,
-                'unitGross' => $line->unitGross,
-                'lineGross' => $line->lineGross,
-            ], $order->lines),
+            'lines' => array_map(OrderLineJson::line(...), $order->lines),
+            'discount' => OrderLineJson::discount($order->discount),
             'totals' => [
                 'net' => $order->totals->net,
                 'vat' => $order->totals->vat,

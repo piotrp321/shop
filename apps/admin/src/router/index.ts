@@ -2,12 +2,15 @@ import type { UserManager } from "oidc-client-ts";
 import { createRouter, createWebHistory, type RouterHistory } from "vue-router";
 import { LOGIN_SERVER_MESSAGE, reportLoginProblem } from "@/auth/loginProblem";
 import { getUserManager } from "@/auth/userManager";
+import { canManageDiscountCodes } from "@/discount-codes/permissions";
 import AppLayout from "@/layout/AppLayout.vue";
 import { canManageProducts } from "@/products/permissions";
 import { canManagePromotions } from "@/promotions/permissions";
 import { useAuthStore } from "@/stores/auth";
 import AuthCallbackView from "@/views/AuthCallbackView.vue";
 import DashboardView from "@/views/DashboardView.vue";
+import DiscountCodeFormView from "@/views/DiscountCodeFormView.vue";
+import DiscountCodesView from "@/views/DiscountCodesView.vue";
 import InventoryView from "@/views/InventoryView.vue";
 import OrderDetailView from "@/views/OrderDetailView.vue";
 import OrdersView from "@/views/OrdersView.vue";
@@ -65,6 +68,27 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
                 },
               },
               { path: ":id", name: "promotion", component: PromotionFormView },
+            ],
+          },
+          {
+            // One path for the list and the pages, so the menu item of the discount codes stays active on a code.
+            path: "discount-codes",
+            children: [
+              { path: "", name: "discount-codes", component: DiscountCodesView },
+              {
+                path: "new",
+                name: "discount-code-new",
+                component: DiscountCodeFormView,
+                // Only the staff who may change discount codes create one; the roles come from /me, as for a new product.
+                beforeEnter: async () => {
+                  const auth = useAuthStore();
+                  if (auth.staff === null) {
+                    await auth.load();
+                  }
+                  return canManageDiscountCodes(auth.staff) ? true : { name: "discount-codes" };
+                },
+              },
+              { path: ":id", name: "discount-code", component: DiscountCodeFormView },
             ],
           },
           { path: "inventory", name: "inventory", component: InventoryView },

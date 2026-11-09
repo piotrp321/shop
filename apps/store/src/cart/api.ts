@@ -6,11 +6,12 @@ export type CartSummary = components["schemas"]["CartSummary"];
 export type MergeResult = components["schemas"]["MergeResult"];
 
 /** An answer of the API: its data, or the status (and the `detail` of its problem document) of a refusal. */
-export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; detail?: string };
+export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; detail?: string; violation?: string };
 
 /** The cart operations the BFF needs, the same for a guest cart and for the cart of the signed-in customer. */
 export type CartApi = {
-  get(): Promise<ApiResult<CartView>>;
+  /** `discountCode` is the code of the checkout preview; the API judges it and answers with it applied or rejected. */
+  get(discountCode?: string): Promise<ApiResult<CartView>>;
   summary(): Promise<ApiResult<CartSummary>>;
   add(variantId: string, quantity: number): Promise<ApiResult<CartView>>;
   change(variantId: string, quantity: number): Promise<ApiResult<CartView>>;
@@ -26,8 +27,14 @@ function result<T>({ data, error, response }: Answer<T>): ApiResult<T> {
   if (data !== undefined) {
     return { ok: true, data };
   }
-  const detail = typeof error === "object" && error !== null && "detail" in error ? error.detail : undefined;
-  return { ok: false, status: response.status, detail: typeof detail === "string" ? detail : undefined };
+  const problem = typeof error === "object" && error !== null ? (error as { detail?: unknown; violations?: unknown }) : {};
+  const first = Array.isArray(problem.violations) ? (problem.violations[0] as { title?: unknown } | undefined) : undefined;
+  return {
+    ok: false,
+    status: response.status,
+    detail: typeof problem.detail === "string" ? problem.detail : undefined,
+    violation: typeof first?.title === "string" ? first.title : undefined,
+  };
 }
 
 /** `POST /api/v1/guest-carts`: a new, empty cart. */
@@ -43,8 +50,8 @@ export async function mergeIntoCustomerCart(client: ApiClient, guestCartId: stri
 /** The cart of the customer whose access token the client carries. */
 export function customerCart(client: ApiClient): CartApi {
   return {
-    async get() {
-      return result(await client.GET("/api/v1/me/cart", init));
+    async get(discountCode) {
+      return result(await client.GET("/api/v1/me/cart", { ...init, params: { query: { discountCode } } }));
     },
     async summary() {
       return result(await client.GET("/api/v1/me/cart/summary", init));
@@ -67,8 +74,8 @@ export function customerCart(client: ApiClient): CartApi {
 export function guestCart(client: ApiClient, cartId: string): CartApi {
   const path = { cartId };
   return {
-    async get() {
-      return result(await client.GET("/api/v1/guest-carts/{cartId}", { ...init, params: { path } }));
+    async get(discountCode) {
+      return result(await client.GET("/api/v1/guest-carts/{cartId}", { ...init, params: { path, query: { discountCode } } }));
     },
     async summary() {
       return result(await client.GET("/api/v1/guest-carts/{cartId}/summary", { ...init, params: { path } }));

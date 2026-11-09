@@ -50,7 +50,7 @@ Decyzje użytkownika (z przygotowania PROMOTIONS #96, opis issue #225):
 
 | Q1 | Anulowanie opłaconego zamówienia przez pracownika i zwrot towaru nie zwracają użycia kodu (zwrot pieniędzy jest już po rabacie). |
 | Q2 | Minimum zamówienia porównywane z sumą brutto cen skutecznych (po promocjach, przed rabatem kodu). |
-| Q3 | Tekstu kodu nie da się zmienić, kodu nie da się usunąć (wyłączenie zastępuje usunięcie). Kod `planned` zmienia się w całości. Po starcie (`active`, `expired`, także wyłączony po starcie) zmieniają się tylko koniec, `enabled` i limit; limit tylko, gdy kod już go ma, i nie poniżej liczby aktywnych użyć (zdjęcie limitu dozwolone). Rodzaj, wartość, minimum i początek są po starcie stałe. |
+| Q3 | Tekstu kodu nie da się zmienić, kodu nie da się usunąć (wyłączenie zastępuje usunięcie). Kod przed startem (`planned`, także wyłączony przed startem) zmienia się w całości. Po starcie (`active`, `expired`, także wyłączony po starcie) zmieniają się tylko koniec, `enabled` i limit; limit tylko, gdy kod już go ma, i nie poniżej liczby aktywnych użyć (zdjęcie limitu dozwolone). Rodzaj, wartość, minimum i początek są po starcie stałe. |
 | Q4 | Kod: 3–32 znaki `[A-Z0-9-]`, bez rozróżniania wielkości liter, unikalny na zawsze. Kwota rabatu 1–10 000 zł, minimum do 1 000 000 zł, limit 1–1 000 000, koniec bez maksymalnej długości okresu, początek w przeszłości dozwolony przy tworzeniu. |
 | Q5 | Szczegóły zamówienia w koncie klienta i w panelu: wartości pozycji przed rabatem, linia „Kod X: −Y zł”, sumy po rabacie. Kopię promocji w pozycji pokazuje tylko panel. Panel kodów pokazuje liczbę aktywnych użyć, bez listy zamówień; widzi go każdy pracownik. |
 | Q6 | Kod odrzucony przy złożeniu: komunikat przy polu, kod zdjęty, podsumowanie wczytane bez kodu, nowy klucz żądania; klient klika ponownie. Sklep nigdy nie składa zamówienia sam na inną kwotę. |
@@ -163,14 +163,14 @@ Decyzje DDD i architektoniczne:
 ### Komendy
 
 - `CreateDiscountCode`, `ReviseDiscountCode(id, expectedVersion, …)` (wersja z widoku, 409
-  `DiscountCodeModifiedConcurrently`). Zmiana pod blokadą wiersza kodu (`PESSIMISTIC_WRITE` przez ORM z odświeżeniem
-  rekordu), liczba aktywnych użyć czytana pod blokadą. Złożenie blokuje tylko kod z limitem, dlatego dodanie limitu
-  kodowi bez limitu jest dozwolone wyłącznie, gdy kod jest `planned` (taki kod nie ma użyć i złożenie go odrzuca), a
+  `DiscountCodeModifiedConcurrently`). Zmiana pod blokadą wiersza kodu (`SELECT … FOR NO KEY UPDATE`, potem odczyt
+  rekordu z odświeżeniem), liczba aktywnych użyć czytana pod blokadą. Złożenie blokuje tylko kod z limitem, dlatego dodanie limitu
+  kodowi bez limitu jest dozwolone wyłącznie, gdy kod jeszcze nie wystartował (taki kod nie ma użyć i złożenie go odrzuca), a
   wartość i minimum są stałe po starcie (reguły edycji, Q3). Bez tych reguł edycja w trakcie złożeń mogłaby przekroczyć
   dodany limit albo zapisać w zamówieniu wartość sprzed zmiany.
 - `RedeemDiscountCode(codeId, orderId, subtotalGross)` (`command.bus`, tylko zagnieżdżona w `PlaceOrder`): rekord kodu
   jest zawsze czytany od nowa z bazy (odświeżenie rekordu z identity map); kod z limitem pod blokadą
-  (`PESSIMISTIC_WRITE` przez ORM, jak koszyk), kod bez limitu bez blokady. Na tym odczycie `rejectionFor(subtotal,
+  (ta sama blokada `FOR NO KEY UPDATE` co zmiana kodu), kod bez limitu bez blokady. Na tym odczycie `rejectionFor(subtotal,
   activeUses, now)` jeszcze raz (`now` z zegara w chwili komendy); odrzucenie: `DiscountCodeRejected(rejection)`
   (Pricing Application); inaczej zapis `DiscountCodeUsage` przez rekord Doctrine.
 - `ReleaseDiscountCodeUsage(orderId)` (`command.bus`, zagnieżdżona w `ExpireUnpaidOrder`): aktywne użycie zamówienia
@@ -200,9 +200,10 @@ zatwierdzenia wyłączenia:
 | między wyceną a `RedeemDiscountCode` (krok 5a) | odczyt od nowa w `Redeem` widzi wyłączony kod; `DiscountCodeRejected` wycofuje całą transakcję (koszyk, numer bez luki poza sekwencją, brak rezerwacji, brak zamówienia, brak użycia); 409 `discount-code-invalid` |
 | po odczycie w `Redeem` (albo jeszcze niezatwierdzone w chwili odczytu) | zamówienie powstaje z kodem: złożenie jest uszeregowane przed wyłączeniem, bo kod był ważny w chwili ostatniego sprawdzenia w tej transakcji |
 
-- Zapis użycia nie czeka na edycję kodu: klucz obcy `code_id` bierze `FOR KEY SHARE` na wierszu kodu, a `UPDATE` kodu
-  bez zmiany klucza bierze `FOR NO KEY UPDATE`; te blokady się nie wykluczają, więc nie ma zakleszczenia ani
-  oczekiwania między złożeniem a edycją.
+- Zapis użycia nie czeka na edycję kodu ani edycja na zapis użycia: klucz obcy `code_id` bierze `FOR KEY SHARE` na
+  wierszu kodu, a edycja blokuje wiersz `FOR NO KEY UPDATE` (nie `FOR UPDATE`) i `UPDATE` kodu bez zmiany klucza
+  bierze tę samą blokadę; te blokady się nie wykluczają, więc nie ma zakleszczenia ani oczekiwania między złożeniem
+  a edycją.
 - Gwarancje spójności:
   - użycie i zamówienie powstają w jednej transakcji: nie ma użycia bez zamówienia ani zamówienia z rabatem bez
     użycia;
@@ -299,7 +300,8 @@ Powtórzenie z tym samym kluczem i odciskiem zwraca istniejące zamówienie bez 
   `percent_off smallint NULL`, `amount_gross integer NULL`, `minimum_order_gross bigint NULL`, `starts_at`, `ends_at NULL`
   (`timestamptz`), `usage_limit integer NULL`, `enabled boolean`, `created_at`, `created_by_id`, `created_by_name`,
   `updated_at`, `updated_by_id`, `updated_by_name`, `version`; CHECK: rodzaj zgodny z wypełnioną wartością,
-  `percent_off BETWEEN 1 AND 90`, `minimum_order_gross > amount_gross` dla kwotowego, `starts_at < ends_at`; indeks
+  `percent_off BETWEEN 1 AND 90`, `minimum_order_gross > amount_gross` dla kwotowego, `starts_at < ends_at`, aktor
+  z obiema wartościami (id i nazwa) albo bez; indeks
   `(created_at DESC, id)`.
 - `pricing_discount_code_usage`: `id uuid` (PK), `code_id` (FK do kodu), `order_id uuid` (unikalny, bez FK do Ordering),
   `used_at`, `released_at NULL`; indeks częściowy `(code_id) WHERE released_at IS NULL`.
@@ -319,8 +321,8 @@ Sklep (`apps/api/openapi.json`):
 
 | Endpoint | Zmiana |
 |---|---|
-| `GET /api/v1/guest-carts/{cartId}?discountCode=`, `GET /api/v1/me/cart?discountCode=` | opcjonalny parametr (pusty = brak kodu); `totals {subtotalGross, discountGross, gross, currency, itemCount}`, `discount` jak w „Cart”; parametr > 64 znaki: 400 |
-| `POST /api/v1/orders`, `POST /api/v1/me/orders` | pole opcjonalne `discountCode: string | null` (brak, `null`, `""` i białe znaki = bez kodu); nie-string albo > 64 znaki: 422 z naruszeniem `discountCode` („Kod rabatowy może mieć najwyżej 64 znaki.”), w kolejności walidacji CHECKOUT; nowe 409: `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` (z rozszerzeniem `minimumOrderGross`), dopisane do schematu `OrderConflictProblem` |
+| `GET /api/v1/guest-carts/{cartId}?discountCode=`, `GET /api/v1/me/cart?discountCode=` | opcjonalny parametr (pusty = brak kodu); `totals {subtotalGross, discountGross, gross, currency, itemCount}`, `discount` jak w „Cart”; parametr, który nie jest tekstem, ma bajty spoza UTF-8 albo > 64 znaki: 400 |
+| `POST /api/v1/orders`, `POST /api/v1/me/orders` | pole opcjonalne `discountCode: string | null` (brak, `null`, `""` i białe znaki = bez kodu); nie-string: 422 z naruszeniem `discountCode` („Kod rabatowy musi być tekstem.”), > 64 znaki: 422 z naruszeniem `discountCode` („Kod rabatowy może mieć najwyżej 64 znaki.”), w kolejności walidacji CHECKOUT; nowe 409: `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` (z rozszerzeniem `minimumOrderGross`), dopisane do schematu `OrderConflictProblem` |
 | `OrderView` (odpowiedź złożenia), `GET /api/v1/me/orders/{id}` | linie `grossBeforeDiscount`, `discountGross`; `discount {code, kind, value, amountGross} | null` |
 
 Komunikaty (D6):
@@ -349,7 +351,7 @@ pozostali 403; odczyt: każdy pracownik):
 - Kolejność sprawdzeń: 401 (brak tokena albo token `shop`), 403 (rola), 400 (parametry listy), 404, 422 (treść), 409.
 - Komunikaty 422 (naruszenie przy polu): `code` „Kod ma 3–32 znaki: litery, cyfry i myślnik.”; `value` „Rabat
   procentowy to 1–90%.” albo „Kwota rabatu to 1–10 000 zł.”; `minimumOrderGross` „Kod kwotowy wymaga minimum
-  większego od kwoty rabatu.” albo „Minimum to 0,01–1 000 000 zł.”; `endsAt` „Koniec musi być po początku.”;
+  większego od kwoty rabatu.” albo „Minimum to 0,01–1 000 000 zł.”; `endsAt` „Koniec musi być po początku.” albo (tylko `PUT`, zmieniony koniec) „Koniec musi być w przyszłości.”;
   `usageLimit` „Limit to 1–1 000 000 użyć.” albo „Limit nie może być mniejszy od liczby użyć (N).”.
 - `DiscountCodeNotEditable` (409) ma `detail` „Tej zmiany nie można wprowadzić w kodzie, który już obowiązuje albo był
   użyty.”.
@@ -457,15 +459,3 @@ pozostali 403; odczyt: każdy pracownik):
 - Liczba aktywnych użyć jest liczona zapytaniem (indeks częściowy) przy każdej wycenie kodu z limitem.
 - Bez rate limitingu (T2) kody można zgadywać przez podgląd koszyka.
 - Zmiana netto linii bez kodu (D8) może różnić się o grosze od dotychczasowego „netto jednostkowe × ilość”.
-
-## Dokumentacja do aktualizacji razem z implementacją
-
-- `docs/features/pricing/spec.md`: kody rabatowe, użycia, `QuoteBasket` i rozkład rabatu; „Poza zakresem” bez kodów.
-- `docs/features/cart/spec.md`: widok koszyka z wyceny `QuoteBasket`, `discountCode`, nowe sumy.
-- `docs/features/checkout/spec.md`: kod w złożeniu, kroki 4–5a, nowe 409, wartości linii z wyceny, e-mail z kodem;
-  „Poza zakresem” bez kodów rabatowych.
-- `docs/features/order-management/spec.md`: wygaśnięcie zwalnia użycie kodu; szczegóły zamówienia z rabatem i promocją.
-- `apps/api/CLAUDE.md`: kolejność blokad koszyk → kod → stany, komendy `RedeemDiscountCode`
-  i `ReleaseDiscountCodeUsage`, nowe typy problemów, `pricing:seed-demo` z kodami.
-- `apps/store/CLAUDE.md` i `apps/admin/CLAUDE.md`: kod w kasie, widok kodów w panelu.
-

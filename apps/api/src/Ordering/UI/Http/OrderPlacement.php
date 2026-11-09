@@ -7,7 +7,6 @@ namespace App\Ordering\UI\Http;
 use App\Ordering\Application\CartReference;
 use App\Ordering\Application\Command\PlacedOrder;
 use App\Ordering\Application\Command\PlaceOrder;
-use App\Ordering\Application\View\OrderLineView;
 use App\Ordering\Application\View\OrderView;
 use App\Ordering\Domain\IdempotencyKey;
 use App\Ordering\Domain\InvalidOrderInput;
@@ -40,13 +39,14 @@ final readonly class OrderPlacement
      */
     public function place(Request $request, CartReference $cart, string $email, PlaceCustomerOrderRequest|PlaceGuestOrderRequest $details): JsonResponse
     {
-        // Validated by the payload mapping: strings and an integer.
+        // Validated by the payload mapping: strings, an integer and an optional string.
         \assert(\is_string($details->fullName) && \is_string($details->phone) && \is_string($details->street));
         \assert(\is_string($details->postalCode) && \is_string($details->city) && \is_int($details->expectedTotalGross));
+        \assert(null === $details->discountCode || \is_string($details->discountCode));
         $key = self::idempotencyKey($request);
 
         $placed = $this->commandBus
-            ->dispatch(new PlaceOrder($cart, $email, $details->fullName, $details->phone, $details->street, $details->postalCode, $details->city, $details->expectedTotalGross, $key))
+            ->dispatch(new PlaceOrder($cart, $email, $details->fullName, $details->phone, $details->street, $details->postalCode, $details->city, $details->expectedTotalGross, $key, $details->discountCode))
             ->last(HandledStamp::class)?->getResult();
         \assert($placed instanceof PlacedOrder);
 
@@ -97,14 +97,8 @@ final readonly class OrderPlacement
                 'city' => $order->shippingAddress->city,
                 'country' => $order->shippingAddress->country,
             ],
-            'lines' => array_map(static fn (OrderLineView $line): array => [
-                'variantId' => $line->variantId,
-                'productName' => $line->productName,
-                'variantLabel' => $line->variantLabel,
-                'quantity' => $line->quantity,
-                'unitGross' => $line->unitGross,
-                'lineGross' => $line->lineGross,
-            ], $order->lines),
+            'lines' => array_map(OrderLineJson::line(...), $order->lines),
+            'discount' => OrderLineJson::discount($order->discount),
             'totals' => [
                 'net' => $order->totals->net,
                 'vat' => $order->totals->vat,

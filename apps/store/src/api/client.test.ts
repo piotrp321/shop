@@ -104,6 +104,34 @@ describe("the cart calls", () => {
     expect(fetch).toHaveBeenCalledWith("/api/cart", { method: "GET", credentials: "same-origin", cache: "no-store" });
   });
 
+  it("loads the cart with the discount code of the checkout, encoded", async () => {
+    const fetch = stubFetch(async () => Response.json(cart));
+
+    expect(await loadCart("WITAJ 10&x=1")).toEqual({ status: "ok", data: cart });
+    expect(fetch).toHaveBeenCalledWith("/api/cart?discountCode=WITAJ%2010%26x%3D1", {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  });
+
+  it("does not throw on a code with a lone surrogate: the request goes with U+FFFD and the promise is kept", async () => {
+    const fetch = stubFetch(async () => Response.json(cart));
+
+    expect(await loadCart("AB\uD800")).toEqual({ status: "ok", data: cart });
+    expect(fetch).toHaveBeenCalledWith("/api/cart?discountCode=AB%EF%BF%BD", {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  });
+
+  it("maps the 400 of a code that is refused to invalid with the Polish detail", async () => {
+    stubFetch(async () => Response.json({ detail: "Kod rabatowy może mieć najwyżej 64 znaki." }, { status: 400 }));
+
+    expect(await loadCart("A".repeat(65))).toEqual({ status: "invalid", detail: "Kod rabatowy może mieć najwyżej 64 znaki." });
+  });
+
   it("loads the summary from /api/cart/summary", async () => {
     const fetch = stubFetch(async () => Response.json({ itemCount: 3, notice: null }));
 
@@ -420,6 +448,9 @@ describe("placeOrder", () => {
     [409, { type: `${PROBLEMS}insufficient-stock-for-order`, detail: "x" }, { status: "conflict", reason: "insufficient_stock", detail: "x" }],
     [409, { type: `${PROBLEMS}order-total-changed`, detail: "x" }, { status: "conflict", reason: "total_changed", detail: "x" }],
     [409, { type: `${PROBLEMS}idempotency-key-reused`, detail: "x" }, { status: "conflict", reason: "key_reused", detail: "x" }],
+    [409, { type: `${PROBLEMS}discount-code-invalid`, detail: "x" }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],
+    [409, { type: `${PROBLEMS}discount-code-used-up`, detail: "x" }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],
+    [409, { type: `${PROBLEMS}discount-code-below-minimum`, detail: "x", minimumOrderGross: 30000 }, { status: "conflict", reason: "discount_code_rejected", detail: "x" }],
     [409, { type: "about:blank", detail: "Koszyk jest pusty." }, { status: "conflict", reason: "unknown", detail: "Koszyk jest pusty." }],
     [409, { type: `${PROBLEMS}something-new`, detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],
     [409, { type: 42, detail: "x" }, { status: "conflict", reason: "unknown", detail: "x" }],

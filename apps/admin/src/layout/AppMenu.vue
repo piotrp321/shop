@@ -18,6 +18,7 @@ const allItems: MenuItem[] = [
   { label: "Produkty", icon: "pi pi-shopping-bag", to: { name: "products" } },
   { label: "Ceny", icon: "pi pi-tag", to: { name: "prices" } },
   { label: "Promocje", icon: "pi pi-percentage", to: { name: "promotions" } },
+  { label: "Kody rabatowe", icon: "pi pi-ticket", to: { name: "discount-codes" } },
   { label: "Stany magazynowe", icon: "pi pi-box", to: { name: "inventory" } },
   { label: "Zamówienia", icon: "pi pi-shopping-cart", to: { name: "orders" }, roles: ["admin", "support", "warehouse"] },
 ];

@@ -259,7 +259,7 @@ nelmio_api_doc:
                         CartView:
                             type: object
                             description: A cart with everything the store shows, computed by the API. The number of available units is never part of it.
-                            required: [id, lines, totals, hasExcludedLines]
+                            required: [id, lines, totals, hasExcludedLines, discount]
                             properties:
                                 id:
                                     type: string
@@ -275,7 +275,69 @@ nelmio_api_doc:
                                     $ref: '#/components/schemas/CartTotals'
                                 hasExcludedLines:
                                     type: boolean
-                                    description: Whether a line is not purchasable and so not part of `totals.gross`.
+                                    description: Whether a line is not purchasable and so not part of the totals.
+                                discount:
+                                    nullable: true
+                                    description: >-
+                                        The discount code of the read (`discountCode`), applied or rejected; null without a code,
+                                        for a blank one and for a cart without a purchasable line (no quote). Changes of the cart
+                                        answer without a code.
+                                    oneOf:
+                                        - $ref: '#/components/schemas/AppliedCartDiscount'
+                                        - $ref: '#/components/schemas/RejectedCartDiscount'
+                                    discriminator:
+                                        propertyName: status
+                                        mapping:
+                                            applied: '#/components/schemas/AppliedCartDiscount'
+                                            rejected: '#/components/schemas/RejectedCartDiscount'
+                        AppliedCartDiscount:
+                            type: object
+                            description: A code the quote applied to the purchasable lines.
+                            required: [status, code, amountGross, kind, value]
+                            properties:
+                                status:
+                                    type: string
+                                    enum: [applied]
+                                code:
+                                    type: string
+                                    description: The code in its normalised form (upper case).
+                                    example: WITAJ10
+                                amountGross:
+                                    type: integer
+                                    description: The discount in grosze, at least 1; `totals.gross` is `totals.subtotalGross` less it.
+                                    example: 4498
+                                kind:
+                                    type: string
+                                    enum: [percent, amount]
+                                value:
+                                    type: integer
+                                    description: The percent (1–90) of a `percent` code, the amount in grosze of an `amount` code.
+                                    example: 10
+                        RejectedCartDiscount:
+                            type: object
+                            description: A code the quote did not apply; the totals are without discount.
+                            required: [status, code, reason, detail, minimumOrderGross]
+                            properties:
+                                status:
+                                    type: string
+                                    enum: [rejected]
+                                code:
+                                    type: string
+                                    description: The code as read (trimmed, ASCII letters in upper case).
+                                    example: LATO15
+                                reason:
+                                    type: string
+                                    description: '`invalid`: unknown, disabled, not started or expired (also a text that is no code); `used_up`: the usage limit is reached; `below_minimum`: the subtotal is below the minimum of the code.'
+                                    enum: [invalid, used_up, below_minimum]
+                                detail:
+                                    type: string
+                                    description: The Polish message for the customer, the same as the `detail` of the 409 of an order with the code.
+                                    example: Ten kod jest nieprawidłowy albo nieaktywny.
+                                minimumOrderGross:
+                                    type: integer
+                                    nullable: true
+                                    description: The smallest subtotal in grosze the code works from, only for `below_minimum`.
+                                    example: 30000
                         CartLine:
                             type: object
                             required: [variantId, product, quantity, unitPrice, lineTotal, state]
@@ -295,12 +357,12 @@ nelmio_api_doc:
                                     maximum: 99
                                 unitPrice:
                                     nullable: true
-                                    description: The current gross price; null without a current price.
+                                    description: The current (effective) gross price, for a purchasable line from Pricing's quote; null without a current price.
                                     allOf:
                                         - $ref: '#/components/schemas/GrossAmount'
                                 lineTotal:
                                     nullable: true
-                                    description: Unit price × quantity, only for a `purchasable` line.
+                                    description: Unit price × quantity before the discount code, only for a `purchasable` line.
                                     allOf:
                                         - $ref: '#/components/schemas/GrossAmount'
                                 state:
@@ -341,12 +403,21 @@ nelmio_api_doc:
                                     enum: [PLN]
                         CartTotals:
                             type: object
-                            required: [gross, currency, itemCount]
+                            description: The totals of Pricing's quote of the purchasable lines; all 0 without a purchasable line.
+                            required: [subtotalGross, discountGross, gross, currency, itemCount]
                             properties:
+                                subtotalGross:
+                                    type: integer
+                                    description: Sum of the `lineTotal` of the purchasable lines in grosze, before the discount code.
+                                    example: 44988
+                                discountGross:
+                                    type: integer
+                                    description: The discount of the applied code in grosze, 0 without one.
+                                    example: 4498
                                 gross:
                                     type: integer
-                                    description: Sum of the purchasable lines in grosze, 0 for an empty cart.
-                                    example: 39998
+                                    description: The total to pay in grosze, `subtotalGross` − `discountGross`.
+                                    example: 40490
                                 currency:
                                     type: string
                                     enum: [PLN]
@@ -381,8 +452,8 @@ nelmio_api_doc:
                         # tests of the order endpoints.
                         OrderView:
                             type: object
-                            description: An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze.
-                            required: [orderId, number, status, email, fullName, phone, shippingAddress, lines, totals, placedAt, paymentDeadline, accessToken]
+                            description: An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze; the totals are after the discount of the code.
+                            required: [orderId, number, status, email, fullName, phone, shippingAddress, lines, discount, totals, placedAt, paymentDeadline, accessToken]
                             properties:
                                 orderId:
                                     type: string
@@ -411,6 +482,11 @@ nelmio_api_doc:
                                     description: The lines of the cart, in its order.
                                     items:
                                         $ref: '#/components/schemas/OrderLine'
+                                discount:
+                                    allOf:
+                                        - $ref: '#/components/schemas/OrderDiscount'
+                                    nullable: true
+                                    description: The discount code the order was placed with; null without one.
                                 totals:
                                     $ref: '#/components/schemas/OrderTotals'
                                 placedAt:
@@ -452,7 +528,7 @@ nelmio_api_doc:
                                     enum: [PL]
                         OrderLine:
                             type: object
-                            required: [variantId, productName, variantLabel, quantity, unitGross, lineGross]
+                            required: [variantId, productName, variantLabel, quantity, unitGross, grossBeforeDiscount, discountGross, lineGross]
                             properties:
                                 variantId:
                                     type: string
@@ -470,15 +546,44 @@ nelmio_api_doc:
                                     maximum: 99
                                 unitGross:
                                     type: integer
-                                    description: Gross price of one unit in grosze.
+                                    description: Gross price of one unit in grosze (the effective price, with a promotion if any).
                                     example: 19999
+                                grossBeforeDiscount:
+                                    type: integer
+                                    description: Unit gross price × quantity, in grosze, before the discount of the code.
+                                    example: 39998
+                                discountGross:
+                                    type: integer
+                                    minimum: 0
+                                    description: The share of the line in the discount of the code, in grosze; 0 without a code.
+                                    example: 4000
                                 lineGross:
                                     type: integer
-                                    description: Unit gross price × quantity, in grosze.
-                                    example: 39998
+                                    description: The value of the line after the discount (`grossBeforeDiscount` − `discountGross`), in grosze.
+                                    example: 35998
+                        OrderDiscount:
+                            type: object
+                            description: The copy of the discount code of an order, as it was when the order was placed.
+                            required: [code, kind, value, amountGross]
+                            properties:
+                                code:
+                                    type: string
+                                    description: The code in its normalised form (upper case).
+                                    example: WITAJ10
+                                kind:
+                                    type: string
+                                    enum: [percent, amount]
+                                value:
+                                    type: integer
+                                    description: The percent (1–90) of a `percent` code, the amount in grosze of an `amount` code.
+                                    example: 10
+                                amountGross:
+                                    type: integer
+                                    description: The discount of the order in grosze, the sum of `discountGross` of its lines.
+                                    example: 4000
                         OrderTotals:
                             type: object
-                            description: Sums of the lines; net + vat = gross.
+                            description: Sums of the lines after the discount of the code; net + vat = gross.
                             required: [net, vat, gross, currency]
                             properties:
                                 net:
@@ -555,7 +660,7 @@ nelmio_api_doc:
                             description: >-
                                 An order of the customer with copies of the names and prices of the placement. Amounts in grosze.
                                 No history of changes, notes, data of staff, refund or payment.
-                            required: [orderId, number, status, shippingAddress, lines, totals, placedAt, paymentDeadline, paymentDeadlinePassed, paidAt, shippedAt, deliveredAt, cancelledAt, returnedAt]
+                            required: [orderId, number, status, shippingAddress, lines, discount, totals, placedAt, paymentDeadline, paymentDeadlinePassed, paidAt, shippedAt, deliveredAt, cancelledAt, returnedAt]
                             properties:
                                 orderId:
                                     type: string
@@ -571,6 +676,11 @@ nelmio_api_doc:
                                     type: array
                                     items:
                                         $ref: '#/components/schemas/OrderLine'
+                                discount:
+                                    allOf:
+                                        - $ref: '#/components/schemas/OrderDiscount'
+                                    nullable: true
+                                    description: The discount code the order was placed with; null without one.
                                 totals:
                                     $ref: '#/components/schemas/OrderTotals'
                                 placedAt:
@@ -750,7 +860,11 @@ nelmio_api_doc:
                                 A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people
                                 and may change): the cart is empty (also without a cart or with an expired one), has a line that
                                 cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has
-                                a gross total other than `expectedTotalGross`, or the `Idempotency-Key` was used by another request.
+                                a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the
+                                discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`),
+                                its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum
+                                (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the
+                                rejected code in the cart.
                             required: [type, title, status, detail]
                             properties:
                                 type:
@@ -761,6 +875,9 @@ nelmio_api_doc:
                                         - 'tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/order-total-changed'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum'
                                 title:
                                     type: string
                                     example: Conflict
@@ -770,6 +887,10 @@ nelmio_api_doc:
                                 detail:
                                     type: string
                                     description: Polish text for the customer.
+                                minimumOrderGross:
+                                    type: integer
+                                    description: Only for `discount-code-below-minimum`, the smallest subtotal in grosze the code works from.
+                                    example: 30000
                     securitySchemes:
                         shop:
                             type: http
@@ -879,7 +1000,7 @@ nelmio_api_doc:
                             description: >-
                                 An order with everything the panel shows of it, copies of the names and prices of its placement included.
                                 Amounts in grosze; moments in RFC 3339 and UTC, null until the status they belong to.
-                            required: [orderId, number, status, version, email, fullName, phone, shippingAddress, lines, totals, placedAt, paymentDeadline, paidAt, paymentId, shippedAt, deliveredAt, cancelledAt, cancellationReason, returnedAt, history, refund, allowedTransitions, canCompleteRefund]
+                            required: [orderId, number, status, version, email, fullName, phone, shippingAddress, lines, discount, totals, placedAt, paymentDeadline, paidAt, paymentId, shippedAt, deliveredAt, cancelledAt, cancellationReason, returnedAt, history, refund, allowedTransitions, canCompleteRefund]
                             properties:
                                 orderId:
                                     type: string
@@ -910,6 +1031,11 @@ nelmio_api_doc:
                                     type: array
                                     items:
                                         $ref: '#/components/schemas/BackofficeOrderLine'
+                                discount:
+                                    allOf:
+                                        - $ref: '#/components/schemas/BackofficeOrderDiscount'
+                                    nullable: true
+                                    description: The discount code the order was placed with; null without one.
                                 totals:
                                     $ref: '#/components/schemas/BackofficeOrderTotals'
                                 placedAt:
@@ -989,7 +1115,7 @@ nelmio_api_doc:
                                     enum: [PL]
                         BackofficeOrderLine:
                             type: object
-                            required: [variantId, productName, variantLabel, quantity, unitGross, lineGross]
+                            required: [variantId, productName, variantLabel, quantity, unitGross, grossBeforeDiscount, discountGross, lineGross, promotion]
                             properties:
                                 variantId:
                                     type: string
@@ -1006,13 +1132,63 @@ nelmio_api_doc:
                                     example: 2
                                 unitGross:
                                     type: integer
+                                    description: Gross price of one unit in grosze (the effective price, with a promotion if any).
                                     example: 19999
+                                grossBeforeDiscount:
+                                    type: integer
+                                    description: Unit gross price × quantity, in grosze, before the discount of the code.
+                                    example: 39998
+                                discountGross:
+                                    type: integer
+                                    minimum: 0
+                                    description: The share of the line in the discount of the code, in grosze; 0 without a code.
+                                    example: 4000
                                 lineGross:
                                     type: integer
-                                    example: 39998
+                                    description: The value of the line after the discount (`grossBeforeDiscount` − `discountGross`), in grosze.
+                                    example: 35998
+                                promotion:
+                                    allOf:
+                                        - $ref: '#/components/schemas/BackofficeOrderLinePromotion'
+                                    nullable: true
+                                    description: The promotion that gave the unit price when the order was placed; null without one.
+                        BackofficeOrderLinePromotion:
+                            type: object
+                            description: The copy of a promotion in a line of an order.
+                            required: [name, percentOff, regularUnitGross]
+                            properties:
+                                name:
+                                    type: string
+                                    example: Jesienna wyprzedaż
+                                percentOff:
+                                    type: integer
+                                    example: 20
+                                regularUnitGross:
+                                    type: integer
+                                    description: The catalog gross price of one unit the percent was taken off, in grosze.
+                                    example: 24999
+                        BackofficeOrderDiscount:
+                            type: object
+                            description: The copy of the discount code of an order, as it was when the order was placed.
+                            required: [code, kind, value, amountGross]
+                            properties:
+                                code:
+                                    type: string
+                                    example: WITAJ10
+                                kind:
+                                    type: string
+                                    enum: [percent, amount]
+                                value:
+                                    type: integer
+                                    description: The percent (1–90) of a `percent` code, the amount in grosze of an `amount` code.
+                                    example: 10
+                                amountGross:
+                                    type: integer
+                                    description: The discount of the order in grosze, the sum of `discountGross` of its lines.
+                                    example: 4000
                         BackofficeOrderTotals:
                             type: object
-                            description: Sums of the lines; net + vat = gross.
+                            description: Sums of the lines after the discount of the code; net + vat = gross.
                             required: [net, vat, gross, currency]
                             properties:
                                 net:
@@ -1122,12 +1298,14 @@ nelmio_api_doc:
                         PricingConflictProblem:
                             type: object
                             description: >-
-                                A 409 of the prices and promotions of the panel. `type` names the cause (the `detail` is Polish
-                                text for people and may change): the price of a variant in an active promotion cannot change
-                                (end the promotion first), variants are in another promotion of an overlapping period (listed in
-                                `conflictingVariantIds`), the status of the promotion does not allow the change (after its start
-                                only the name and the end, an ended one not at all, only a planned one is deleted), or
-                                (`about:blank`) the price or the promotion changed since the `version` sent. Nothing is changed.
+                                A 409 of the prices, promotions and discount codes of the panel. `type` names the cause (the
+                                `detail` is Polish text for people and may change): the price of a variant in an active promotion
+                                cannot change (end the promotion first), variants are in another promotion of an overlapping
+                                period (listed in `conflictingVariantIds`), the status of the promotion does not allow the change
+                                (after its start only the name and the end, an ended one not at all, only a planned one is
+                                deleted), another discount code has the same text, the change of a started discount code is not
+                                allowed (only its end, `enabled` and an existing limit change), or (`about:blank`) the price, the
+                                promotion or the discount code changed since the `version` sent. Nothing is changed.
                             required: [type, title, status, detail]
                             properties:
                                 type:
@@ -1136,6 +1314,8 @@ nelmio_api_doc:
                                         - 'tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/promotion-overlap'
                                         - 'tag:piotrp321.github.io,2026:shop/problems/promotion-not-editable'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/discount-code-taken'
+                                        - 'tag:piotrp321.github.io,2026:shop/problems/discount-code-not-editable'
                                         - about:blank
                                 title:
                                     type: string

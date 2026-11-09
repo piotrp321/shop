@@ -78,11 +78,17 @@ Decyzje użytkownika:
 | Przejście | Z | Do | Kto | Skutek |
 |---|---|---|---|---|
 | opłacenie (`markPaid`) | `new` | `paid` | webhook płatności | — |
-| wygaśnięcie (`expireUnpaid`) | `new` | `cancelled` (`payment_timeout`) | system | zwolnienie rezerwacji |
+| wygaśnięcie (`expireUnpaid`) | `new` | `cancelled` (`payment_timeout`) | system | zwolnienie rezerwacji, potem zwolnienie użycia kodu rabatowego |
 | `ship` | `paid` | `shipped` | pracownik | zatwierdzenie rezerwacji (`CommitReservation`), `OrderShipped` |
 | `deliver` | `shipped` | `delivered` | pracownik | — |
-| `cancel` | `paid` | `cancelled` (`staff`) | pracownik | zwolnienie rezerwacji, zwrot pieniędzy do wykonania, `OrderCancelled` |
-| `return` | `shipped`, `delivered` | `returned` | pracownik | zwrot pieniędzy do wykonania, `OrderReturned` |
+| `cancel` | `paid` | `cancelled` (`staff`) | pracownik | zwolnienie rezerwacji, zwrot pieniędzy do wykonania, `OrderCancelled`; użycie kodu zostaje |
+| `return` | `shipped`, `delivered` | `returned` | pracownik | zwrot pieniędzy do wykonania, `OrderReturned`; użycie kodu zostaje |
+
+- Użycie kodu rabatowego (`docs/features/discount-codes/spec.md`, D4, Q1, A4) zwalnia tylko wygaśnięcie:
+  `ExpireUnpaidOrderHandler` po zwolnieniu rezerwacji woła port `DiscountCodeRedemptions::release(orderId)` (Pricing
+  `ReleaseDiscountCodeUsage`, zagnieżdżony dispatch, idempotentny), także dla zamówienia bez kodu (bez skutku), potem
+  zapisuje zamówienie. Anulowanie opłaconego zamówienia przez pracownika i zwrot towaru nie zwalniają użycia (zwrot
+  pieniędzy jest już po rabacie); `ChangeOrderStatusHandler` nie zna tego portu.
 
 - Enum `StaffTransition` (`ship`, `deliver`, `cancel`, `return`) i `OrderStatus::allowedStaffTransitions()` to jedyne
   miejsce reguły przejść. Przejście spoza tabeli: `OrderTransitionNotAllowed` (409, `TypedProblem`
@@ -125,7 +131,8 @@ Decyzje użytkownika:
   (jak korekta stanu). Blokada przed Inventory sprawia, że równoległe zmiany z tą samą wersją (np. `ship`
   i `cancel`) idą po kolei, a druga kończy się 409, nigdy `ReservationStateConflict` z Inventory.
 - Kolejność blokad: wiersz zamówienia, potem rezerwacja i stany (Inventory). `ExpireUnpaidOrderHandler` też zaczyna
-  od `lock`, więc wygaśnięcie i zmiana z panelu nie zakleszczają się. Webhook (`MarkOrderPaid`) nie
+  od `lock`, więc wygaśnięcie i zmiana z panelu nie zakleszczają się. Zwolnienie użycia kodu zmienia tylko wiersz
+  użycia (bez blokady kodu), więc wygaśnięcie nie tworzy cyklu ze złożeniem (koszyk → kod → stany). Webhook (`MarkOrderPaid`) nie
   dotyka Inventory i zostaje przy wersji.
 - Pracownik zmienia tylko zamówienia opłacone (`paid` i dalej), więc nie konkuruje z `markPaid` ani
   z `ExpireUnpaidOrder` (te zmieniają tylko `new`). Kolejny webhook dla wysłanego, dostarczonego, zwróconego albo
@@ -154,7 +161,9 @@ Decyzje użytkownika:
   - kursor keyset (base64url JSON pól sortowania), `perPage` 1–100 (domyślnie 25), zły kursor 400;
   - element: `orderId, number, placedAt, status, email, fullName, totalGross, currency, itemCount, refund:
     {amount, dueAt, completedAt, overdue} | null`.
-- `GetBackofficeOrder(orderId)` → `BackofficeOrderView`: kontakt, adres, pozycje, sumy, daty statusów,
+- `GetBackofficeOrder(orderId)` → `BackofficeOrderView`: kontakt, adres, pozycje (z `grossBeforeDiscount`,
+  `discountGross`, wartością po rabacie i kopią promocji `promotion {name, percentOff, regularUnitGross} | null`),
+  kopia kodu `discount {code, kind, value, amountGross} | null`, sumy po rabacie, daty statusów,
   `paymentDeadline`, `cancellationReason`, `paidAt`, `paymentId` (P13), `version`, `history` (od najstarszego), `refund` (kwota, termin,
   `overdue`, wykonanie: data, pracownik, notatka), `statusTransitions` (`allowedStaffTransitions()` statusu).
 - Reguła ról (P6) jest tylko w voterze `OrderVoter` (Ordering Infrastructure, wzorzec `StockVoter`). Kontrolery
@@ -165,7 +174,8 @@ Decyzje użytkownika:
   currency, itemCount, paymentDeadline, paymentDeadlinePassed`; sort `placed_at DESC, id DESC`, kursor jak wyżej,
   `perPage` 1–50 (domyślnie 10). `paymentDeadlinePassed` liczy API (zegar).
 - `GetCustomerOrder(orderId, customerId)` → `CustomerOrderView` albo null (nieznane, cudze, gościa, id spoza UUID:
-  jeden wynik). Bez historii, notatek, danych pracowników i zwrotu; daty: `placedAt`, `paidAt`, `shippedAt`,
+  jeden wynik). Pozycje z `grossBeforeDiscount`, `discountGross` i wartością po rabacie, `discount | null` jak w panelu,
+  sumy po rabacie; bez kopii promocji (Q5). Bez historii, notatek, danych pracowników i zwrotu; daty: `placedAt`, `paidAt`, `shippedAt`,
   `deliveredAt`, `cancelledAt`, `returnedAt`, oraz `paymentDeadline` i `paymentDeadlinePassed`.
 - `GetOrderForPayment`: pole `statusForPayment` (A3).
 

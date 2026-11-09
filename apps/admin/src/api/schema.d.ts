@@ -392,6 +392,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/discount-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discount code list
+         * @description A page of the discount codes, newest first (then by id), with the status at the time of the server and the number of active usages. Every staff member may read it. Page with the opaque `next` cursor as `after`, with the same filters; the total is not counted.
+         */
+        get: operations["listDiscountCodes"];
+        put?: never;
+        /**
+         * Create a discount code
+         * @description Creates a percent or an amount code with its period, minimum order and usage limit. Administrators and marketing only. The text is unique among all codes for ever, without regard to case. The code names the staff member of the token.
+         */
+        post: operations["createDiscountCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/discount-codes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A discount code
+         * @description A discount code with its status at the time of the server and the number of its active usages. Every staff member may read it.
+         */
+        get: operations["getDiscountCode"];
+        /**
+         * Change a discount code
+         * @description Sends the whole code as it should be (its text never changes), based on the `version` seen. Administrators and marketing only. Until its start a code changes everything. Once started (also disabled or expired) only its end, `enabled` and an existing limit change: another kind, value, minimum or start, or a limit for a code without one, is a 409 `discount-code-not-editable`. A limit is never below the active usages, and a changed end is after the time of the server (422; stopping a code at once is disabling it). An unknown code is a 404 before the body is read.
+         */
+        put: operations["reviseDiscountCode"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/variants/{variantId}/price-history": {
         parameters: {
             query?: never;
@@ -577,6 +625,8 @@ export interface components {
             phone: string;
             shippingAddress: components["schemas"]["BackofficeOrderAddress"];
             lines: components["schemas"]["BackofficeOrderLine"][];
+            /** @description The discount code the order was placed with; null without one. */
+            discount: components["schemas"]["BackofficeOrderDiscount"] | null;
             totals: components["schemas"]["BackofficeOrderTotals"];
             /**
              * Format: date-time
@@ -646,12 +696,59 @@ export interface components {
             variantLabel: string;
             /** @example 2 */
             quantity: number;
-            /** @example 19999 */
+            /**
+             * @description Gross price of one unit in grosze (the effective price, with a promotion if any).
+             * @example 19999
+             */
             unitGross: number;
-            /** @example 39998 */
+            /**
+             * @description Unit gross price × quantity, in grosze, before the discount of the code.
+             * @example 39998
+             */
+            grossBeforeDiscount: number;
+            /**
+             * @description The share of the line in the discount of the code, in grosze; 0 without a code.
+             * @example 4000
+             */
+            discountGross: number;
+            /**
+             * @description The value of the line after the discount (`grossBeforeDiscount` − `discountGross`), in grosze.
+             * @example 35998
+             */
             lineGross: number;
+            /** @description The promotion that gave the unit price when the order was placed; null without one. */
+            promotion: components["schemas"]["BackofficeOrderLinePromotion"] | null;
         };
-        /** @description Sums of the lines; net + vat = gross. */
+        /** @description The copy of a promotion in a line of an order. */
+        BackofficeOrderLinePromotion: {
+            /** @example Jesienna wyprzedaż */
+            name: string;
+            /** @example 20 */
+            percentOff: number;
+            /**
+             * @description The catalog gross price of one unit the percent was taken off, in grosze.
+             * @example 24999
+             */
+            regularUnitGross: number;
+        };
+        /** @description The copy of the discount code of an order, as it was when the order was placed. */
+        BackofficeOrderDiscount: {
+            /** @example WITAJ10 */
+            code: string;
+            /** @enum {string} */
+            kind: "percent" | "amount";
+            /**
+             * @description The percent (1–90) of a `percent` code, the amount in grosze of an `amount` code.
+             * @example 10
+             */
+            value: number;
+            /**
+             * @description The discount of the order in grosze, the sum of `discountGross` of its lines.
+             * @example 4000
+             */
+            amountGross: number;
+        };
+        /** @description Sums of the lines after the discount of the code; net + vat = gross. */
         BackofficeOrderTotals: {
             /** @example 32519 */
             net: number;
@@ -722,10 +819,10 @@ export interface components {
             /** @description Polish text for the staff member. */
             detail: string;
         };
-        /** @description A 409 of the prices and promotions of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the price of a variant in an active promotion cannot change (end the promotion first), variants are in another promotion of an overlapping period (listed in `conflictingVariantIds`), the status of the promotion does not allow the change (after its start only the name and the end, an ended one not at all, only a planned one is deleted), or (`about:blank`) the price or the promotion changed since the `version` sent. Nothing is changed. */
+        /** @description A 409 of the prices, promotions and discount codes of the panel. `type` names the cause (the `detail` is Polish text for people and may change): the price of a variant in an active promotion cannot change (end the promotion first), variants are in another promotion of an overlapping period (listed in `conflictingVariantIds`), the status of the promotion does not allow the change (after its start only the name and the end, an ended one not at all, only a planned one is deleted), another discount code has the same text, the change of a started discount code is not allowed (only its end, `enabled` and an existing limit change), or (`about:blank`) the price, the promotion or the discount code changed since the `version` sent. Nothing is changed. */
         PricingConflictProblem: {
             /** @enum {string} */
-            type: "tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion" | "tag:piotrp321.github.io,2026:shop/problems/promotion-overlap" | "tag:piotrp321.github.io,2026:shop/problems/promotion-not-editable" | "about:blank";
+            type: "tag:piotrp321.github.io,2026:shop/problems/price-locked-by-promotion" | "tag:piotrp321.github.io,2026:shop/problems/promotion-overlap" | "tag:piotrp321.github.io,2026:shop/problems/promotion-not-editable" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-taken" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-not-editable" | "about:blank";
             /** @example Conflict */
             title: string;
             /** @enum {integer} */
@@ -1029,6 +1126,19 @@ export interface components {
              * @example 1
              */
             version: number | null;
+        };
+        DiscountCodeListQuery: {
+            /**
+             * @default null
+             * @enum {string|null}
+             */
+            status: "disabled" | "planned" | "active" | "expired" | null;
+            /** @default null */
+            q: string | null;
+            /** @default null */
+            after: string | null;
+            /** @default 25 */
+            perPage: number;
         };
         PriceHistoryQuery: {
             /** @default null */
@@ -1646,6 +1756,159 @@ export interface components {
              * @example eyJuIjoiQmlkb24iLCJpIjoiMDE5MmYwYzQtN2MxYS03YzRlLTlhNmUtM2YxZDJiNGM1YTYwIn0
              */
             next: string | null;
+        };
+        /** @description A discount code. Times in UTC (RFC 3339), whole seconds; the code is valid in [startsAt, endsAt). */
+        DiscountCodeResponse: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Upper case.
+             * @example WITAJ10
+             */
+            code: string;
+            /**
+             * @example percent
+             * @enum {string}
+             */
+            kind: "percent" | "amount";
+            /**
+             * @description The percent (1 to 90) for `percent`, the amount in grosze (100 to 1 000 000) for `amount`.
+             * @example 10
+             */
+            value: number;
+            /**
+             * @description In grosze; null for none.
+             * @example null
+             */
+            minimumOrderGross: number | null;
+            /**
+             * Format: date-time
+             * @example 2026-11-10T23:00:00+00:00
+             */
+            startsAt: string;
+            /**
+             * Format: date-time
+             * @description Null: no end.
+             * @example null
+             */
+            endsAt: string | null;
+            /**
+             * @description Null: no limit.
+             * @example 100
+             */
+            usageLimit: number | null;
+            /**
+             * @description The usages of orders that are not cancelled unpaid.
+             * @example 3
+             */
+            activeUses: number;
+            /** @example true */
+            enabled: boolean;
+            /**
+             * @description From the time of the server: disabled (whatever the period), planned before the start, active until before the end, expired after.
+             * @enum {string}
+             */
+            status: "disabled" | "planned" | "active" | "expired";
+            /**
+             * @description Version of the code, for the optimistic locking of changes.
+             * @example 1
+             */
+            version: number;
+        };
+        /** @description A page of the discount codes, newest first. */
+        DiscountCodeListResponse: {
+            items: components["schemas"]["DiscountCodeResponse"][];
+            /** @description Opaque cursor of the next page (send it as `after`), null on the last page. */
+            next: string | null;
+        };
+        /** @description A new discount code. */
+        CreateDiscountCodeRequest: {
+            /**
+             * @description Once trimmed, 3 to 32 characters: letters A–Z, digits and the dash, in any case (stored in upper case). Unique among all codes for ever, without regard to case; it never changes.
+             * @example WITAJ10
+             */
+            code: string;
+            /**
+             * @description A percent of the order or an amount.
+             * @example percent
+             * @enum {string}
+             */
+            kind: "percent" | "amount";
+            /**
+             * @description The percent (1 to 90) for `percent`, the amount in grosze (100 to 1 000 000, 1 to 10 000 zł) for `amount`.
+             * @example 10
+             */
+            value: number;
+            /**
+             * @description The smallest order (gross of the effective prices, before the code, in grosze) the code works from; required and greater than the amount for `amount`.
+             * @example 30000
+             */
+            minimumOrderGross: number | null;
+            /**
+             * Format: date-time
+             * @description RFC 3339 with a time zone; a moment in the past makes the code active at once. A fraction of a second is cut.
+             * @example 2026-11-11T00:00:00+01:00
+             */
+            startsAt: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 with a time zone, after the start; the code is valid until before this moment. Null: no end. A fraction of a second is cut.
+             * @example 2026-12-01T00:00:00+01:00
+             */
+            endsAt: string | null;
+            /**
+             * @description How many orders in total may use the code (orders cancelled unpaid give their use back). Null: no limit.
+             * @example 100
+             */
+            usageLimit: number | null;
+            /**
+             * @description A disabled code gives no discount whatever its period.
+             * @example true
+             */
+            enabled: boolean;
+        };
+        /** @description A discount code as it should be. Once started only the end, `enabled` and an existing limit may differ from the stored values. */
+        ReviseDiscountCodeRequest: {
+            /**
+             * @description A percent of the order or an amount. Fixed once the code started.
+             * @example percent
+             * @enum {string}
+             */
+            kind: "percent" | "amount";
+            /**
+             * @description The percent (1 to 90) for `percent`, the amount in grosze (100 to 1 000 000) for `amount`. Fixed once the code started.
+             * @example 10
+             */
+            value: number;
+            /**
+             * @description In grosze; required and greater than the amount for `amount`. Fixed once the code started.
+             * @example 30000
+             */
+            minimumOrderGross: number | null;
+            /**
+             * Format: date-time
+             * @description RFC 3339 with a time zone. Fixed once the code started (send the stored one).
+             * @example 2026-11-11T00:00:00+01:00
+             */
+            startsAt: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 with a time zone, after the start; a changed end must be after the time of the server (stopping a code at once is disabling it). Null: no end.
+             * @example 2026-12-01T00:00:00+01:00
+             */
+            endsAt: string | null;
+            /**
+             * @description Not below the active usages. Once the code started a limit may change or be removed (null), but not be added.
+             * @example 100
+             */
+            usageLimit: number | null;
+            /** @example true */
+            enabled: boolean;
+            /**
+             * @description The `version` of the code the change is based on.
+             * @example 1
+             */
+            version: number;
         };
         /** @description One recorded price change: the price as it was set. Amounts are in grosze, the rate in basis points; all computed by the API. */
         PriceHistoryItemResponse: {
@@ -3348,6 +3611,298 @@ export interface operations {
                 };
             };
             /** @description The gross is out of range or a key is missing or of a wrong type (problem details with `violations`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listDiscountCodes: {
+        parameters: {
+            query?: {
+                /** @description Only the codes in this status now. */
+                status?: "disabled" | "planned" | "active" | "expired";
+                /** @description The beginning of the code, in any case; trimmed, 1 to 32 characters. One with a character no code has gives an empty page. */
+                q?: string;
+                /** @description The `next` cursor of the previous page. */
+                after?: string;
+                /** @description Page size. */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the list. Possibly an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountCodeListResponse"];
+                };
+            };
+            /** @description Invalid query parameters or paging cursor (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createDiscountCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDiscountCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The created code (`Location` names it). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountCodeResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change discount codes (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another code has the same text (`discount-code-taken`, see `PricingConflictProblem`). Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PricingConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type (problem details with `violations`, each at its field, with a Polish `title`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getDiscountCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Discount code id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The discount code. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountCodeResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such discount code, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reviseDiscountCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Discount code id (UUID). */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseDiscountCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The code as saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscountCodeResponse"];
+                };
+            };
+            /** @description The body is not valid JSON (problem details). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or invalid access token (problem details, `WWW-Authenticate: Bearer`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The staff member may not change discount codes (problem details). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such discount code, also an id that is not a UUID (problem details). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The code changed since the given version (`about:blank`) or the change is not allowed once the code started (`discount-code-not-editable`); see `PricingConflictProblem`. Nothing is changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["PricingConflictProblem"];
+                };
+            };
+            /** @description The body is not JSON (problem details). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A field is invalid, a key is missing or of a wrong type, the limit is below the active usages or a changed end is not after now (problem details with `violations`). */
             422: {
                 headers: {
                     [name: string]: unknown;

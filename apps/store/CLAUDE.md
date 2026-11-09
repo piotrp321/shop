@@ -315,6 +315,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
   "merge_truncated"` raz (z poprawnie podpisanego ciasteczka albo ze scalenia w tym samym żądaniu) i usuwa ciasteczko;
   inaczej `notice: null`. `CartBadge` pokazuje wtedy obok linku „Część produktów z koszyka gościa nie zmieściła się
   w koszyku”.
+- `GET /api/cart?discountCode=` (podgląd kodu w kasie) przekazuje parametr do API koszyka gościa i klienta; inne parametry
+  są pomijane. Koszyk bez `store_cart` i bez sesji (pusty) odpowiada bez API. 400 API (kod nie jest tekstem albo ma
+  ponad 64 znaki) wraca jako 400 z `{ detail }` (tekst naruszenia z API), tylko dla odczytu z kodem; każdy inny 400
+  to 503. `loadCart(discountCode?)` w `src/api/client.ts` zwraca wtedy `invalid` z `detail`.
 - Żądania zmieniające (`POST`, `PATCH`, `DELETE`) wymagają `Origin` równego `STORE_URL`, a `POST` i `PATCH` także
   `Content-Type: application/json`; inaczej 403 bez wywołania API.
 - `variantId` spoza UUID w `/api/cart/items/[variantId]` (PATCH i DELETE) dostaje 404 „Tej pozycji nie ma w koszyku.”
@@ -362,7 +366,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `store_cart` (`mergeGuestCart`), gość `POST /api/v1/orders` z `cartId` z `store_cart`. Bez `store_cart` (albo
   z niepoprawnym podpisem, wtedy ciasteczko jest usuwane) odpowiedź to 409 „Koszyk jest pusty.” bez API.
 - Do API trafiają tylko pola kontraktu (`pickFields` w `src/checkout/api.ts`: gość `email`, `fullName`, `phone`,
-  `street`, `postalCode`, `city`, `expectedTotalGross`, klient bez `email`), z wartościami, jakie przysłała przeglądarka:
+  `street`, `postalCode`, `city`, `expectedTotalGross`, `discountCode`, klient bez `email`), z wartościami, jakie przysłała przeglądarka:
   sprawdza je API. `cartId` pochodzi wyłącznie z ciasteczka; ceny, linie i inne pola przeglądarki są pomijane.
 - Sukces (201 albo 200 przy powtórzeniu z tym samym kluczem): ciasteczko `store_order_confirmation` z `{orderId,
   number, email, totalGross, currency, accessToken}` z `OrderView` (gość ma `accessToken`, klient `null`; JSON
@@ -402,6 +406,21 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `hasExcludedLines`: komunikat i link do koszyka zamiast formularza; przy pustym koszyku i poprawnym ciasteczku
   potwierdzenia także link „Opłać zamówienie R-…” na `/checkout/confirmation` (klient cofnął się ze strony dostawcy;
   sklep nie sprawdza przy tym statusu). `expectedTotalGross` to `totals.gross` ostatnio wczytanego podsumowania.
+- Kod rabatowy w kasie (`DiscountCode` w `CheckoutPage`): pole „Kod rabatowy” (`maxLength` 64) z przyciskiem „Zastosuj”
+  w osobnym formularzu pod podsumowaniem (Enter stosuje kod, nie składa zamówienia). Stan kodu jest tylko w komponencie
+  (nie w ciasteczku ani w storage), więc nie przeżywa przeładowania strony. „Zastosuj” czyta podsumowanie przez
+  `loadCart(kod)` (`loadPreview`): pusty kod to komunikat „Wpisz kod rabatowy.” bez żądania; zastosowany (`discount.status`
+  `applied`) pokazuje linię „Kod <KOD>: −X zł” przed „Do zapłaty (brutto)” (sumy z API), przycisk „Usuń kod” zamiast pola
+  i ogłoszenie w regionie `role="status"`; odrzucony (`rejected`) pokazuje `detail` z API przy polu (`role="alert"`,
+  `aria-describedby`) i podsumowanie bez rabatu; 400 (kod za długi) pokazuje tekst z BFF przy polu i czyta podsumowanie
+  bez kodu. „Usuń kod” czyta podsumowanie bez kodu. Fokus: na „Usuń kod” po zastosowaniu, na polu po odrzuceniu
+  i po usunięciu. Kontrolki kodu i przycisk zamówienia są zablokowane na czas podglądu. Złożenie wysyła `discountCode`
+  zastosowanego kodu (bez pola, gdy kodu nie ma) i `expectedTotalGross` = `totals.gross` podsumowania z rabatem. Nowy
+  `Idempotency-Key` po zastosowaniu i po usunięciu kodu (odrzucony kod nie zmienia żądania, więc klucza). 409 z typem
+  kodu (`discount-code-invalid`, `-used-up`, `-below-minimum`; powód `discount_code_rejected` w `problems.ts`): `detail`
+  przy polu, kod zdjęty, podsumowanie wczytane bez kodu, nowy klucz; zamówienie składa dopiero następne kliknięcie.
+  409 `OrderTotalChanged` (i pozostałe wczytujące podsumowanie) czyta je ponownie z tym samym kodem; kod, który API
+  odrzuci przy tym odczycie, pokazuje `detail` przy polu. Pusty koszyk albo linie wykluczone zastępują formularz razem z polem kodu.
 - `Idempotency-Key` (`crypto.randomUUID`, więc kasa wymaga bezpiecznego kontekstu: HTTPS albo `localhost`) to klucz
   jednej logicznej próby. Powstaje przy wejściu na stronę i wraca przy ponowieniu niepewnego wyniku (błąd sieci, 403,
   5xx) oraz po 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` i nieznanym; nowy klucz po zmianie
@@ -500,7 +519,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   zostawia wczytane pozycje, pokazuje „Nie udało się wczytać zamówień. Spróbuj ponownie.” z przyciskiem, który ponawia
   tę samą stronę; kliknięcie w trakcie ładowania nie wysyła drugiego żądania. Pusta lista: „Nie masz jeszcze
   zamówień.”; nieudana pierwsza strona: ten sam komunikat błędu z przyciskiem „Spróbuj ponownie”.
-- Szczegóły: pozycje (nazwa, etykieta wariantu, ilość × cena, wartość linii), netto, VAT i razem brutto z API, adres
+- Szczegóły: pozycje (nazwa, etykieta wariantu, ilość × cena, wartość linii przed rabatem `grossBeforeDiscount`), przy
+  zamówieniu z kodem linia „Kod <KOD>: −X zł” (`discount`), netto, VAT i razem brutto (po rabacie) z API, adres
   dostawy i daty kolejnych statusów (złożone, opłacone, wysłane, dostarczone, anulowane, zwrócone; tylko osiągnięte). Zamówienie `new`:
   „Czeka na płatność do 14:35” (`OrderPaymentNote`), po terminie wg `paymentDeadlinePassed` z API „Termin płatności
   minął”; płatności z historii nie ma. 404: „Nie znaleźliśmy zamówienia.” z linkiem „Wróć do zamówień”; inny błąd:

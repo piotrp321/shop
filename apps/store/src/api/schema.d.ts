@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * Cart of the customer
-         * @description The cart with its lines, their states and the totals, all computed by the API. A customer without a cart gets an empty one with `id: null`, and none is created; an expired cart (180 days after its last change) is empty.
+         * @description The cart with its lines, their states and the totals, all computed by the API (Pricing's quote of the purchasable lines), with the preview of a discount code when one is given. A customer without a cart gets an empty one with `id: null`, and none is created; an expired cart (180 days after its last change) is empty.
          */
         get: operations["getCustomerCart"];
         put?: never;
@@ -137,7 +137,7 @@ export interface paths {
         };
         /**
          * Guest cart
-         * @description The cart with its lines, their states and the totals, all computed by the API. Nothing is changed.
+         * @description The cart with its lines, their states and the totals, all computed by the API (Pricing's quote of the purchasable lines), with the preview of a discount code when one is given. Nothing is changed.
          */
         get: operations["getGuestCart"];
         put?: never;
@@ -367,7 +367,7 @@ export interface paths {
         put?: never;
         /**
          * Place an order of the cart of the customer
-         * @description Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the body carries no lines, quantities or prices, unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.
+         * @description Orders every line of the cart of the customer in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied. The email is the one of the token (an `email` key is ignored); the body carries no lines, quantities or prices, unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The `Idempotency-Key` identifies the request: sending it again with the same content answers 200 with the same order and changes nothing; the same key used by another customer, a guest or with other content is a 409 that tells nothing about the order.
          */
         post: operations["placeCustomerOrder"];
         delete?: never;
@@ -407,7 +407,7 @@ export interface paths {
         put?: never;
         /**
          * Place an order of a guest cart
-         * @description Orders every line of the guest cart in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied (it stays open). The body carries no lines, quantities or prices; unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The `Idempotency-Key` identifies the request: sending it again with the same cart and content answers 200 with the same order and changes nothing, also once the cart expired or was merged; the same key with another cart or other content is a 409 that tells nothing about the order. The order cannot be read later, so there is no `Location`.
+         * @description Orders every line of the guest cart in one transaction: the quantities come from the cart, the prices from Pricing and the names from Catalog at this moment, the units are reserved and the cart is emptied (it stays open). The body carries no lines, quantities or prices; unknown keys are ignored. `expectedTotalGross` is only compared with the computed gross total. The optional `discountCode` (the code of the checkout) discounts the order: its gross total is after the discount and the usage of the code is recorded with the order (once, also on a replay). The `Idempotency-Key` identifies the request: sending it again with the same cart and content answers 200 with the same order and changes nothing, also once the cart expired or was merged; the same key with another cart or other content is a 409 that tells nothing about the order. The order cannot be read later, so there is no `Location`.
          */
         post: operations["placeGuestOrder"];
         delete?: never;
@@ -712,8 +712,63 @@ export interface components {
             /** @description The lines in the order they were added. */
             lines: components["schemas"]["CartLine"][];
             totals: components["schemas"]["CartTotals"];
-            /** @description Whether a line is not purchasable and so not part of `totals.gross`. */
+            /** @description Whether a line is not purchasable and so not part of the totals. */
             hasExcludedLines: boolean;
+            /** @description The discount code of the read (`discountCode`), applied or rejected; null without a code, for a blank one and for a cart without a purchasable line (no quote). Changes of the cart answer without a code. */
+            discount: components["schemas"]["AppliedCartDiscount"] | components["schemas"]["RejectedCartDiscount"] | (never | null);
+        };
+        /** @description A code the quote applied to the purchasable lines. */
+        AppliedCartDiscount: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "applied";
+            /**
+             * @description The code in its normalised form (upper case).
+             * @example WITAJ10
+             */
+            code: string;
+            /**
+             * @description The discount in grosze, at least 1; `totals.gross` is `totals.subtotalGross` less it.
+             * @example 4498
+             */
+            amountGross: number;
+            /** @enum {string} */
+            kind: "percent" | "amount";
+            /**
+             * @description The percent (1–90) of a `percent` code, the amount in grosze of an `amount` code.
+             * @example 10
+             */
+            value: number;
+        };
+        /** @description A code the quote did not apply; the totals are without discount. */
+        RejectedCartDiscount: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "rejected";
+            /**
+             * @description The code as read (trimmed, ASCII letters in upper case).
+             * @example LATO15
+             */
+            code: string;
+            /**
+             * @description `invalid`: unknown, disabled, not started or expired (also a text that is no code); `used_up`: the usage limit is reached; `below_minimum`: the subtotal is below the minimum of the code.
+             * @enum {string}
+             */
+            reason: "invalid" | "used_up" | "below_minimum";
+            /**
+             * @description The Polish message for the customer, the same as the `detail` of the 409 of an order with the code.
+             * @example Ten kod jest nieprawidłowy albo nieaktywny.
+             */
+            detail: string;
+            /**
+             * @description The smallest subtotal in grosze the code works from, only for `below_minimum`.
+             * @example 30000
+             */
+            minimumOrderGross: number | null;
         };
         CartLine: {
             /**
@@ -724,9 +779,9 @@ export interface components {
             /** @description Null when Catalog no longer knows the variant (`unavailable_product`). */
             product: components["schemas"]["CartLineProduct"] | null;
             quantity: number;
-            /** @description The current gross price; null without a current price. */
+            /** @description The current (effective) gross price, for a purchasable line from Pricing's quote; null without a current price. */
             unitPrice: components["schemas"]["GrossAmount"] | null;
-            /** @description Unit price × quantity, only for a `purchasable` line. */
+            /** @description Unit price × quantity before the discount code, only for a `purchasable` line. */
             lineTotal: components["schemas"]["GrossAmount"] | null;
             /**
              * @description The first that applies: the variant is unknown to Catalog, has no current price, has no available unit, has fewer available units than the quantity; otherwise purchasable.
@@ -760,10 +815,21 @@ export interface components {
             /** @enum {string} */
             currency: "PLN";
         };
+        /** @description The totals of Pricing's quote of the purchasable lines; all 0 without a purchasable line. */
         CartTotals: {
             /**
-             * @description Sum of the purchasable lines in grosze, 0 for an empty cart.
-             * @example 39998
+             * @description Sum of the `lineTotal` of the purchasable lines in grosze, before the discount code.
+             * @example 44988
+             */
+            subtotalGross: number;
+            /**
+             * @description The discount of the applied code in grosze, 0 without one.
+             * @example 4498
+             */
+            discountGross: number;
+            /**
+             * @description The total to pay in grosze, `subtotalGross` − `discountGross`.
+             * @example 40490
              */
             gross: number;
             /** @enum {string} */
@@ -792,7 +858,7 @@ export interface components {
              */
             itemCount: number;
         };
-        /** @description An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze. */
+        /** @description An order as it was placed, with copies of the names and prices of that moment. Amounts in grosze; the totals are after the discount of the code. */
         OrderView: {
             /** Format: uuid */
             orderId: string;
@@ -817,6 +883,8 @@ export interface components {
             shippingAddress: components["schemas"]["OrderShippingAddress"];
             /** @description The lines of the cart, in its order. */
             lines: components["schemas"]["OrderLine"][];
+            /** @description The discount code the order was placed with; null without one. */
+            discount: components["schemas"]["OrderDiscount"] | null;
             totals: components["schemas"]["OrderTotals"];
             /**
              * Format: date-time
@@ -858,17 +926,47 @@ export interface components {
             variantLabel: string;
             quantity: number;
             /**
-             * @description Gross price of one unit in grosze.
+             * @description Gross price of one unit in grosze (the effective price, with a promotion if any).
              * @example 19999
              */
             unitGross: number;
             /**
-             * @description Unit gross price × quantity, in grosze.
+             * @description Unit gross price × quantity, in grosze, before the discount of the code.
              * @example 39998
+             */
+            grossBeforeDiscount: number;
+            /**
+             * @description The share of the line in the discount of the code, in grosze; 0 without a code.
+             * @example 4000
+             */
+            discountGross: number;
+            /**
+             * @description The value of the line after the discount (`grossBeforeDiscount` − `discountGross`), in grosze.
+             * @example 35998
              */
             lineGross: number;
         };
-        /** @description Sums of the lines; net + vat = gross. */
+        /** @description The copy of the discount code of an order, as it was when the order was placed. */
+        OrderDiscount: {
+            /**
+             * @description The code in its normalised form (upper case).
+             * @example WITAJ10
+             */
+            code: string;
+            /** @enum {string} */
+            kind: "percent" | "amount";
+            /**
+             * @description The percent (1–90) of a `percent` code, the amount in grosze of an `amount` code.
+             * @example 10
+             */
+            value: number;
+            /**
+             * @description The discount of the order in grosze, the sum of `discountGross` of its lines.
+             * @example 4000
+             */
+            amountGross: number;
+        };
+        /** @description Sums of the lines after the discount of the code; net + vat = gross. */
         OrderTotals: {
             /** @example 32519 */
             net: number;
@@ -933,6 +1031,8 @@ export interface components {
             status: components["schemas"]["CustomerOrderStatus"];
             shippingAddress: components["schemas"]["OrderShippingAddress"];
             lines: components["schemas"]["OrderLine"][];
+            /** @description The discount code the order was placed with; null without one. */
+            discount: components["schemas"]["OrderDiscount"] | null;
             totals: components["schemas"]["OrderTotals"];
             /**
              * Format: date-time
@@ -1058,16 +1158,25 @@ export interface components {
                 title: string;
             }[];
         };
-        /** @description A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, or the `Idempotency-Key` was used by another request. */
+        /** @description A 409 of the order endpoints. `type` names the cause (the `detail` is Polish text for people and may change): the cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), has fewer units in stock than ordered, has a gross total other than `expectedTotalGross`, the `Idempotency-Key` was used by another request, or the discount code gives no discount: unknown, disabled, not started or expired (`discount-code-invalid`), its usage limit reached (`discount-code-used-up`) or the subtotal before it below its minimum (`discount-code-below-minimum`, with `minimumOrderGross`). The `detail` of a code is the one of the rejected code in the cart. */
         OrderConflictProblem: {
             /** @enum {string} */
-            type: "tag:piotrp321.github.io,2026:shop/problems/cart-empty" | "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable" | "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order" | "tag:piotrp321.github.io,2026:shop/problems/order-total-changed" | "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused";
+            type: "tag:piotrp321.github.io,2026:shop/problems/cart-empty" | "tag:piotrp321.github.io,2026:shop/problems/cart-not-orderable" | "tag:piotrp321.github.io,2026:shop/problems/insufficient-stock-for-order" | "tag:piotrp321.github.io,2026:shop/problems/order-total-changed" | "tag:piotrp321.github.io,2026:shop/problems/idempotency-key-reused" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up" | "tag:piotrp321.github.io,2026:shop/problems/discount-code-below-minimum";
             /** @example Conflict */
             title: string;
             /** @enum {integer} */
             status: 409;
             /** @description Polish text for the customer. */
             detail: string;
+            /**
+             * @description Only for `discount-code-below-minimum`, the smallest subtotal in grosze the code works from.
+             * @example 30000
+             */
+            minimumOrderGross?: number;
+        };
+        CartQuery: {
+            /** @default null */
+            discountCode: string | null;
         };
         /** @description A variant of a product to add to the cart. */
         AddCartItemRequest: {
@@ -1122,7 +1231,7 @@ export interface components {
             /** @default 24 */
             perPage: number;
         };
-        /** @description The contact and the address of an order of the cart of the customer, and the total the customer saw. */
+        /** @description The contact and the address of an order of the cart of the customer, the total the customer saw and the discount code applied. */
         PlaceCustomerOrderRequest: {
             /**
              * @description Full name, 1 to 100 characters once trimmed.
@@ -1154,6 +1263,12 @@ export interface components {
              * @example 39998
              */
             expectedTotalGross: number;
+            /**
+             * @description The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.
+             * @default null
+             * @example WITAJ10
+             */
+            discountCode: string | null;
         };
         CustomerOrderListQuery: {
             /** @default null */
@@ -1161,7 +1276,7 @@ export interface components {
             /** @default 10 */
             perPage: number;
         };
-        /** @description The guest cart, the contact and the address of an order, and the total the guest saw. */
+        /** @description The guest cart, the contact and the address of an order, the total the guest saw and the discount code applied. */
         PlaceGuestOrderRequest: {
             /**
              * Format: uuid
@@ -1204,6 +1319,12 @@ export interface components {
              * @example 39998
              */
             expectedTotalGross: number;
+            /**
+             * @description The discount code the customer applied in the checkout, optional: a missing key, `null`, an empty text or one of white space only is no code. Compared without letter case. A code that gives no discount is a 409 with its own `type`; the order is not placed.
+             * @default null
+             * @example WITAJ10
+             */
+            discountCode: string | null;
         };
         /** @description The provider the customer chose. */
         StartPaymentRequest: {
@@ -1361,7 +1482,10 @@ export type $defs = Record<string, never>;
 export interface operations {
     getCustomerCart: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A discount code to preview (the checkout): the totals and `discount` show it applied or why not. Blank is no code; at most 64 characters. */
+                discountCode?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1375,6 +1499,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description The discount code is not text, is not UTF-8 or has more than 64 characters (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`). */
@@ -1773,7 +1906,10 @@ export interface operations {
     };
     getGuestCart: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A discount code to preview (the checkout): the totals and `discount` show it applied or why not. Blank is no code; at most 64 characters. */
+                discountCode?: string;
+            };
             header?: never;
             path: {
                 /** @description Cart id (UUID). */
@@ -1790,6 +1926,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CartView"];
+                };
+            };
+            /** @description The discount code is not text, is not UTF-8 or has more than 64 characters (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
@@ -2548,7 +2693,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
+            /** @description The cart is empty (also without a cart or with an expired one), has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2697,7 +2842,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross`, or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
+            /** @description The cart is empty, has a line that cannot be bought (no current price, unknown variant), more units than available (never told how many), a gross total other than `expectedTotalGross` (after the discount of the code), a discount code that gives no discount (invalid, used up, or the subtotal below its minimum), or the key was used by another request. Problem details with a stable `type` for each cause (see `OrderConflictProblem`) and a Polish `detail`. Nothing is ordered or reserved. */
             409: {
                 headers: {
                     [name: string]: unknown;

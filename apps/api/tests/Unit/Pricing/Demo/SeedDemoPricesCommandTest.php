@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Pricing\Demo;
 
+use App\Pricing\Application\Command\CreateDiscountCode;
 use App\Pricing\Application\Command\PlanPromotion;
 use App\Pricing\Application\Command\SetVariantPrice;
+use App\Pricing\Application\Demo\DemoDiscountCodeSeeder;
 use App\Pricing\Application\Demo\DemoPriceSeeder;
 use App\Pricing\Application\Demo\DemoPromotionSeeder;
+use App\Pricing\Infrastructure\Demo\YamlDemoDiscountCodeSource;
 use App\Pricing\Infrastructure\Demo\YamlDemoPriceSource;
 use App\Pricing\Infrastructure\Demo\YamlDemoPromotionSource;
 use App\Pricing\UI\Console\SeedDemoPricesCommand;
@@ -31,12 +34,15 @@ final class SeedDemoPricesCommandTest extends TestCase
     private SpyPricingReset $reset;
     private const string PROMOTIONS = "- name: Namioty\n  percentOff: 20\n  days: 30\n  variants: [\"namiot-*\"]\n";
 
+    private const string CODES = "- code: WITAJ10\n  percentOff: 10\n  startsInDays: 0\n";
+
     private ?string $file = null;
     private ?string $promotionsFile = null;
+    private ?string $codesFile = null;
 
     protected function tearDown(): void
     {
-        foreach ([$this->file, $this->promotionsFile] as $file) {
+        foreach ([$this->file, $this->promotionsFile, $this->codesFile] as $file) {
             if (null !== $file && is_file($file)) {
                 unlink($file);
             }
@@ -51,21 +57,36 @@ final class SeedDemoPricesCommandTest extends TestCase
 
         self::assertSame(Command::SUCCESS, $exitCode, $tester->getDisplay());
         self::assertSame(1, $this->reset->resets);
-        self::assertCount(3, $this->bus->dispatched);
+        self::assertCount(4, $this->bus->dispatched);
         self::assertStringContainsString('prices: 2', $tester->getDisplay());
         self::assertStringContainsString('promotions: 1', $tester->getDisplay());
+        self::assertStringContainsString('discount codes: 1', $tester->getDisplay());
     }
 
-    public function testThePromotionsAreSeededAfterAllThePrices(): void
+    public function testThePromotionsAndThenTheDiscountCodesAreSeededAfterAllThePrices(): void
     {
         $tester = $this->tester(self::PRICED);
 
         self::assertSame(Command::SUCCESS, $tester->execute([]), $tester->getDisplay());
 
         self::assertSame(
-            [SetVariantPrice::class, SetVariantPrice::class, PlanPromotion::class],
+            [SetVariantPrice::class, SetVariantPrice::class, PlanPromotion::class, CreateDiscountCode::class],
             array_map(static fn (object $command): string => $command::class, $this->bus->dispatched),
         );
+    }
+
+    public function testInvalidDiscountCodesFileFailsBeforeAnyChange(): void
+    {
+        $tester = $this->tester(self::PRICED, codes: "- code: MINUS50\n  amountOff: 5000\n  startsInDays: 0\n");
+
+        $exitCode = $tester->execute([]);
+
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        self::assertSame(Command::FAILURE, $exitCode);
+        self::assertStringContainsString('MINUS50', $display);
+        self::assertStringContainsString('Nothing was changed', $display);
+        self::assertSame(0, $this->reset->resets);
+        self::assertSame([], $this->bus->dispatched);
     }
 
     public function testAPromotionPatternWithoutAVariantFailsBeforeAnyChange(): void
@@ -155,18 +176,20 @@ final class SeedDemoPricesCommandTest extends TestCase
 
         self::assertSame(Command::SUCCESS, $tester->execute(['--force-reset' => true]), $tester->getDisplay());
         self::assertSame(1, $this->reset->resets);
-        self::assertCount(3, $this->bus->dispatched);
+        self::assertCount(4, $this->bus->dispatched);
     }
 
     /**
      * @param array<string, string> $variants variant id => key
      */
-    private function tester(array $variants, string $prices = "\"namiot-*\": 89900\n\"mapa-*\": 2490\n", string $environment = 'test', string $promotions = self::PROMOTIONS): CommandTester
+    private function tester(array $variants, string $prices = "\"namiot-*\": 89900\n\"mapa-*\": 2490\n", string $environment = 'test', string $promotions = self::PROMOTIONS, string $codes = self::CODES): CommandTester
     {
         $this->file = tempnam(sys_get_temp_dir(), 'prices');
         file_put_contents($this->file, $prices);
         $this->promotionsFile = tempnam(sys_get_temp_dir(), 'promotions');
         file_put_contents($this->promotionsFile, $promotions);
+        $this->codesFile = tempnam(sys_get_temp_dir(), 'codes');
+        file_put_contents($this->codesFile, $codes);
         $this->bus = new RecordingMessageBus();
         $this->reset = new SpyPricingReset();
         $application = new Application();
@@ -175,6 +198,8 @@ final class SeedDemoPricesCommandTest extends TestCase
             new DemoPriceSeeder(new InMemoryVariantsForPricing($variants), $this->bus),
             new YamlDemoPromotionSource($this->promotionsFile),
             new DemoPromotionSeeder(new InMemoryVariantsForPricing($variants), $this->bus, new FixedPricingClock('2026-11-10T12:00:00Z')),
+            new YamlDemoDiscountCodeSource($this->codesFile),
+            new DemoDiscountCodeSeeder($this->bus, new FixedPricingClock('2026-11-10T12:00:00Z')),
             $this->reset,
             $environment,
         ));

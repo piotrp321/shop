@@ -42,6 +42,7 @@ final class GetOrderForPaymentHandlerTest extends TestCase
             contact: $customerOrder->contact(),
             shippingAddress: $customerOrder->shippingAddress(),
             lines: $customerOrder->lines(),
+            discount: null,
             status: $customerOrder->status(),
             idempotencyKey: $customerOrder->idempotencyKey(),
             requestFingerprint: $customerOrder->requestFingerprint(),

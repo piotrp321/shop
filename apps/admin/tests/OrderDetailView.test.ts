@@ -26,9 +26,10 @@ function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
     phone: "+48600100200",
     shippingAddress: { street: "ul. Długa 5/3", postalCode: "00-950", city: "Warszawa", country: "PL" },
     lines: [
-      { variantId: "v-1", productName: "Buty szosowe Tarvik Asfalt 200", variantLabel: "czarne, 42", quantity: 2, unitGross: 19999, lineGross: 39998 },
-      { variantId: "v-2", productName: "Bidon", variantLabel: "", quantity: 1, unitGross: 2500, lineGross: 2500 },
+      { variantId: "v-1", productName: "Buty szosowe Tarvik Asfalt 200", variantLabel: "czarne, 42", quantity: 2, unitGross: 19999, grossBeforeDiscount: 39998, discountGross: 0, lineGross: 39998, promotion: null },
+      { variantId: "v-2", productName: "Bidon", variantLabel: "", quantity: 1, unitGross: 2500, grossBeforeDiscount: 2500, discountGross: 0, lineGross: 2500, promotion: null },
     ],
+    discount: null,
     totals: { net: 32519, vat: 7479, gross: 39998, currency: "PLN" },
     placedAt: "2026-11-05T12:30:00+00:00",
     paymentDeadline: "2026-11-05T13:00:00+00:00",
@@ -106,6 +107,96 @@ describe("OrderDetailView", () => {
       ["Czeka na płatność → Opłacone", "System", ""],
       ["Opłacone → Wysłane", "bartek", "Kurier DPD"],
     ]);
+  });
+
+  describe("the discount code and the promotion of the lines", () => {
+    // 2 × 199,99 and 25,00 with a code of 50,00 zł: the lines carry their share, the totals are after the discount.
+    function discounted(): BackofficeOrder {
+      return order({
+        lines: [
+          { variantId: "v-1", productName: "Buty szosowe Tarvik Asfalt 200", variantLabel: "czarne, 42", quantity: 2, unitGross: 19999, grossBeforeDiscount: 39998, discountGross: 4706, lineGross: 35292, promotion: { name: "Jesienna wyprzedaż", percentOff: 20, regularUnitGross: 24999 } },
+          { variantId: "v-2", productName: "Bidon", variantLabel: "", quantity: 1, unitGross: 2500, grossBeforeDiscount: 2500, discountGross: 294, lineGross: 2206, promotion: null },
+        ],
+        discount: { code: "MINUS50", kind: "amount", value: 5000, amountGross: 5000 },
+        totals: { net: 30486, vat: 7012, gross: 37498, currency: "PLN" },
+      });
+    }
+
+    const rows = () => wrapper!.findAll("[data-testid=line-row]");
+    const cell = (index: number, id: string) => rows()[index]!.get(`[data-testid=${id}]`).text().replace(/\s+/g, " ");
+
+    it("shows the value of each line before the discount, its share of the discount and the value after it", async () => {
+      serve(discounted());
+      wrapper = await mountView();
+
+      expect(cell(0, "line-gross-before-discount")).toBe("399,98 zł");
+      expect(cell(0, "line-discount")).toBe("−47,06 zł");
+      expect(cell(0, "line-gross")).toBe("352,92 zł");
+      expect(cell(1, "line-gross-before-discount")).toBe("25,00 zł");
+      expect(cell(1, "line-discount")).toBe("−2,94 zł");
+      expect(cell(1, "line-gross")).toBe("22,06 zł");
+      expect(wrapper.text()).toContain("Wartość przed rabatem");
+      expect(wrapper.text()).toContain("Wartość po rabacie");
+    });
+
+    it("shows the copy of the promotion at the line that has one, and nothing at the others", async () => {
+      serve(discounted());
+      wrapper = await mountView();
+
+      expect(cell(0, "line-promotion")).toBe("Promocja „Jesienna wyprzedaż”: −20% od ceny katalogowej 249,99 zł");
+      expect(rows()[1]!.find("[data-testid=line-promotion]").exists()).toBe(false);
+    });
+
+    it("shows the line of the code and the totals after the discount", async () => {
+      serve(discounted());
+      wrapper = await mountView();
+
+      expect(text("discount-line")).toBe("Kod MINUS50: −50,00 zł");
+      expect(text("totals")).toContain("304,86 zł");
+      expect(text("totals")).toContain("70,12 zł");
+      expect(text("total-gross")).toBe("374,98 zł");
+      expect(wrapper.get("[data-testid=totals]").text()).toContain("Brutto po rabacie");
+    });
+
+    it("shows the code of a percent code the same way", async () => {
+      serve(order({ discount: { code: "WITAJ10", kind: "percent", value: 10, amountGross: 4250 } }));
+      wrapper = await mountView();
+
+      expect(text("discount-line")).toBe("Kod WITAJ10: −42,50 zł");
+    });
+
+    it("shows a line without a discount share as a dash", async () => {
+      const data = discounted();
+      data.lines[1] = { ...data.lines[1]!, discountGross: 0, lineGross: 2500 };
+      serve(data);
+      wrapper = await mountView();
+
+      expect(cell(1, "line-discount")).toBe("—");
+    });
+
+    it("looks as before for an order without a code: one value per line, no discount line", async () => {
+      serve(order());
+      wrapper = await mountView();
+
+      expect(cell(0, "line-gross")).toBe("399,98 zł");
+      expect(rows()[0]!.find("[data-testid=line-gross-before-discount]").exists()).toBe(false);
+      expect(rows()[0]!.find("[data-testid=line-discount]").exists()).toBe(false);
+      expect(rows()[0]!.find("[data-testid=line-promotion]").exists()).toBe(false);
+      expect(wrapper.find("[data-testid=discount-line]").exists()).toBe(false);
+      expect(wrapper.text()).toContain("Wartość brutto");
+      expect(wrapper.text()).not.toContain("Wartość przed rabatem");
+      expect(text("totals")).toContain("Brutto");
+      expect(text("totals")).not.toContain("po rabacie");
+    });
+
+    it("shows the promotion copy of a line also when there is no code", async () => {
+      const data = order();
+      data.lines[0] = { ...data.lines[0]!, promotion: { name: "Wiosna", percentOff: 5, regularUnitGross: 21000 } };
+      serve(data);
+      wrapper = await mountView();
+
+      expect(cell(0, "line-promotion")).toBe("Promocja „Wiosna”: −5% od ceny katalogowej 210,00 zł");
+    });
   });
 
   it("shows the payment deadline only for an order that waits for the payment", async () => {

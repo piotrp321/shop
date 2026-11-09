@@ -25,6 +25,7 @@ function order(overrides: Partial<BackofficeOrder> = {}): BackofficeOrder {
     phone: "+48600100200",
     shippingAddress: { street: "ul. Długa 5/3", postalCode: "00-950", city: "Warszawa", country: "PL" },
     lines: [],
+    discount: null,
     totals: { net: 32519, vat: 7479, gross: 39998, currency: "PLN" },
     placedAt: "2026-11-05T12:30:00+00:00",
     paymentDeadline: "2026-11-05T13:00:00+00:00",

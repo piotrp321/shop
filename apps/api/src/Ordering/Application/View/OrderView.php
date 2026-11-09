@@ -8,8 +8,9 @@ use App\Ordering\Domain\Order;
 use App\Ordering\Domain\OrderLine;
 
 /**
- * An order as the customer gets it after placing it and in the emails about it. Amounts are in grosze. The access
- * token goes only to the guest who placed the order (null for a customer); the emails never show it.
+ * An order as the customer gets it after placing it and in the emails about it. Amounts are in grosze; the totals are
+ * after the discount of the code. The access token goes only to the guest who placed the order (null for a customer);
+ * the emails never show it.
  */
 final readonly class OrderView
 {
@@ -25,6 +26,7 @@ final readonly class OrderView
         public string $phone,
         public ShippingAddressView $shippingAddress,
         public array $lines,
+        public ?OrderDiscountView $discount,
         public OrderTotalsView $totals,
         public \DateTimeImmutable $placedAt,
         public \DateTimeImmutable $paymentDeadline,
@@ -37,6 +39,7 @@ final readonly class OrderView
         $contact = $order->contact();
         $address = $order->shippingAddress();
         $totals = $order->totals();
+        $discount = $order->discount();
 
         return new self(
             $order->id()->toString(),
@@ -53,10 +56,14 @@ final readonly class OrderView
                     $line->variantLabel(),
                     $line->quantity(),
                     $line->unitPrice()->gross()->amount(),
+                    $line->grossBeforeDiscount()->amount(),
+                    $line->discount()->amount(),
                     $line->lineGross()->amount(),
+                    null === $line->promotion() ? null : new OrderLinePromotionView($line->promotion()->name(), $line->promotion()->percentOff(), $line->promotion()->regularUnitGross()->amount()),
                 ),
                 $order->lines(),
             ),
+            null === $discount ? null : new OrderDiscountView($discount->code(), $discount->kind()->value, $discount->value(), $discount->amount()->amount()),
             new OrderTotalsView($totals->net()->amount(), $totals->vat()->amount(), $totals->gross()->amount(), $totals->currency()->value),
             $order->placedAt(),
             $order->paymentDeadline(),

@@ -279,3 +279,89 @@ describe("GET /api/cart with a session and a guest cart cookie", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 });
+
+describe("GET /api/cart with a discount code", () => {
+  const readWith = (query: string, cookie?: string) => GET(cartRequest("GET", `/api/cart${query}`, { cookie }));
+  const applied = {
+    status: "applied",
+    code: "WITAJ10",
+    amountGross: 100,
+    kind: "percent",
+    value: 10,
+  } as const;
+  const priced = () => ({
+    ...viewWithOneLine(GUEST_CART_ID, 1),
+    totals: { subtotalGross: 1000, discountGross: 100, gross: 900, currency: "PLN" as const, itemCount: 1 },
+    discount: applied,
+  });
+
+  it("passes the code to the guest cart of the API and returns the view as it came", async () => {
+    setup.answer("GET", `/api/v1/guest-carts/${GUEST_CART_ID}`, () => Response.json(priced()));
+    const response = await readWith("?discountCode=WITAJ10", signedCartCookie(GUEST_CART_ID));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(priced());
+    expect(setup.calls).toEqual([
+      { method: "GET", path: `/api/v1/guest-carts/${GUEST_CART_ID}`, search: "?discountCode=WITAJ10", authorization: null, body: undefined },
+    ]);
+  });
+
+  it("passes the code to the cart of the customer with the token", async () => {
+    const id = await setup.deps.sessions.create(sessionData({ accessToken: "access-9" }));
+    setup.answer("GET", "/api/v1/me/cart", () => Response.json(priced()));
+    const response = await readWith("?discountCode=witaj%2010", sessionCookie(id));
+
+    expect(response.status).toBe(200);
+    expect(setup.calls).toEqual([
+      { method: "GET", path: "/api/v1/me/cart", search: "?discountCode=witaj%2010", authorization: "Bearer access-9", body: undefined },
+    ]);
+  });
+
+  it("sends no query for a read without a code and drops every other parameter", async () => {
+    setup.answer("GET", `/api/v1/guest-carts/${GUEST_CART_ID}`, () => Response.json(viewWithOneLine(GUEST_CART_ID, 1)));
+    await readWith("?price=1&lines=2", signedCartCookie(GUEST_CART_ID));
+    await readWith("?discountCode=MINUS50&price=1&after=x", signedCartCookie(GUEST_CART_ID));
+
+    expect(setup.calls.map((call) => call.search)).toEqual([undefined, "?discountCode=MINUS50"]);
+  });
+
+  it("does not ask the API for the code of an empty cart", async () => {
+    const response = await readWith("?discountCode=WITAJ10");
+
+    expect(await response.json()).toEqual(emptyView());
+    expect(setup.calls).toEqual([]);
+  });
+
+  it("passes the 400 of a code that is too long with its Polish text, for a guest and for a customer", async () => {
+    const tooLong = () =>
+      Response.json(
+        {
+          type: "about:blank",
+          title: "Bad Request",
+          status: 400,
+          detail: "Nieprawidłowe zapytanie.",
+          violations: [{ propertyPath: "discountCode", title: "Kod rabatowy może mieć najwyżej 64 znaki." }],
+        },
+        { status: 400, headers: { "Content-Type": "application/problem+json" } },
+      );
+    setup.answer("GET", `/api/v1/guest-carts/${GUEST_CART_ID}`, tooLong);
+    setup.answer("GET", "/api/v1/me/cart", tooLong);
+    const guest = await readWith(`?discountCode=${"A".repeat(65)}`, signedCartCookie(GUEST_CART_ID));
+    const id = await setup.deps.sessions.create(sessionData());
+    const customer = await readWith(`?discountCode=${"A".repeat(65)}`, sessionCookie(id));
+
+    for (const response of [guest, customer]) {
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ detail: "Kod rabatowy może mieć najwyżej 64 znaki." });
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+    }
+    expect(setup.sessions.has(id)).toBe(true);
+  });
+
+  it("answers 503 for a 400 of the API to a read without a code", async () => {
+    setup.answer("GET", `/api/v1/guest-carts/${GUEST_CART_ID}`, () => problem(400));
+    const response = await read(signedCartCookie(GUEST_CART_ID));
+
+    expect(response.status).toBe(503);
+  });
+});

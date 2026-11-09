@@ -79,4 +79,27 @@ final class DbalPricingResetTest extends KernelTestCase
             'the other queues are left alone',
         );
     }
+
+    public function testRemovesAllDiscountCodesAndTheirUsages(): void
+    {
+        $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $connection = $entityManager->getConnection();
+        foreach (['WITAJ10', 'MINUS50'] as $text) {
+            $connection->executeStatement(
+                "INSERT INTO pricing_discount_code (id, code, kind, percent_off, starts_at, enabled, created_at, updated_at, version) VALUES (gen_random_uuid(), ?, 'percent', 10, NOW(), TRUE, NOW(), NOW(), 1)",
+                [$text],
+            );
+        }
+        $connection->executeStatement("INSERT INTO pricing_discount_code_usage (id, code_id, order_id, used_at) SELECT gen_random_uuid(), id, gen_random_uuid(), NOW() FROM pricing_discount_code WHERE code = 'WITAJ10'");
+        self::assertSame(2, $connection->fetchOne('SELECT COUNT(*) FROM pricing_discount_code'));
+        self::assertSame(1, $connection->fetchOne('SELECT COUNT(*) FROM pricing_discount_code_usage'));
+
+        $reset = new DbalPricingReset($connection);
+        $reset->reset();
+        $reset->reset();
+
+        self::assertSame(0, $connection->fetchOne('SELECT COUNT(*) FROM pricing_discount_code'));
+        self::assertSame(0, $connection->fetchOne('SELECT COUNT(*) FROM pricing_discount_code_usage'));
+    }
 }

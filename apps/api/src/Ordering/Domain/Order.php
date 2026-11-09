@@ -8,7 +8,9 @@ use App\Shared\Domain\Event\DomainEvent;
 
 /**
  * An order placed from a cart: copies of the lines (names, labels, unit prices), the contact and the shipping
- * address as they were at the moment of placement, never references. The totals are computed from the lines.
+ * address as they were at the moment of placement, never references. The totals are computed from the lines (after
+ * the discount). An order placed with a discount code keeps a copy of it (OrderDiscount); the discounts of its lines add
+ * up to the amount of that copy, and to 0 without a code.
  *
  * The Idempotency-Key and the fingerprint of the request tell a repeated placement (isReplayOf()) from another one.
  * The version is the stored version the state is based on (optimistic locking): paying and cancelling an order
@@ -45,6 +47,7 @@ final class Order
         private readonly Contact $contact,
         private readonly ShippingAddress $shippingAddress,
         private readonly array $lines,
+        private readonly ?OrderDiscount $discount,
         private readonly OrderTotals $totals,
         private OrderStatus $status,
         private readonly IdempotencyKey $idempotencyKey,
@@ -69,9 +72,10 @@ final class Order
      *
      * @param ?AccessToken    $accessToken of a guest order; a customer order has none
      * @param list<OrderLine> $lines       in the order of the cart
+     * @param ?OrderDiscount  $discount    the code the order was placed with, if any
      *
      * @throws InvalidOrder no line, more than MAX_LINES, a variant twice, a guest order without a token or
-     *                      a customer order with one
+     *                      a customer order with one, line discounts that do not add up to the discount
      */
     public static function place(
         OrderId $id,
@@ -81,23 +85,25 @@ final class Order
         Contact $contact,
         ShippingAddress $shippingAddress,
         array $lines,
+        ?OrderDiscount $discount,
         IdempotencyKey $idempotencyKey,
         RequestFingerprint $requestFingerprint,
         \DateTimeImmutable $now,
     ): self {
         self::assertLines($lines);
+        self::assertDiscount($lines, $discount);
         if ($owner->isGuest() !== (null !== $accessToken)) {
             throw new InvalidOrder('A guest order has an access token, a customer order has none.');
         }
         $history = [new OrderStatusChange(null, OrderStatus::New, $now, StatusActor::customer(), null)];
-        $order = new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, OrderTotals::of($lines), OrderStatus::New, $idempotencyKey, $requestFingerprint, $now, $now->modify(self::PAYMENT_TIME), null, null, null, null, null, null, null, null, $history, 1);
+        $order = new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, $discount, OrderTotals::of($lines), OrderStatus::New, $idempotencyKey, $requestFingerprint, $now, $now->modify(self::PAYMENT_TIME), null, null, null, null, null, null, null, null, $history, 1);
         $order->events[] = new OrderPlaced($id->toString(), $now);
 
         return $order;
     }
 
     /**
-     * The order as stored, without events.
+     * The order as stored, without events. The lines keep their stored values; nothing is computed anew.
      *
      * @param list<OrderLine>         $lines   in their positions
      * @param list<OrderStatusChange> $history oldest first
@@ -110,6 +116,7 @@ final class Order
         Contact $contact,
         ShippingAddress $shippingAddress,
         array $lines,
+        ?OrderDiscount $discount,
         OrderStatus $status,
         IdempotencyKey $idempotencyKey,
         RequestFingerprint $requestFingerprint,
@@ -126,7 +133,7 @@ final class Order
         array $history,
         int $version,
     ): self {
-        return new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, OrderTotals::of($lines), $status, $idempotencyKey, $requestFingerprint, $placedAt, $paymentDeadline, $paidAt, $paymentId, $cancelledAt, $cancellationReason, $shippedAt, $deliveredAt, $returnedAt, $refund, $history, $version);
+        return new self($id, $number, $owner, $accessToken, $contact, $shippingAddress, $lines, $discount, OrderTotals::of($lines), $status, $idempotencyKey, $requestFingerprint, $placedAt, $paymentDeadline, $paidAt, $paymentId, $cancelledAt, $cancellationReason, $shippedAt, $deliveredAt, $returnedAt, $refund, $history, $version);
     }
 
     /**
@@ -355,6 +362,11 @@ final class Order
         return $this->lines;
     }
 
+    public function discount(): ?OrderDiscount
+    {
+        return $this->discount;
+    }
+
     public function totals(): OrderTotals
     {
         return $this->totals;
@@ -452,6 +464,19 @@ final class Order
     {
         $this->history[] = new OrderStatusChange($this->status, $to, $now, $actor, $note);
         $this->status = $to;
+    }
+
+    /**
+     * @param list<OrderLine> $lines
+     *
+     * @throws InvalidOrder
+     */
+    private static function assertDiscount(array $lines, ?OrderDiscount $discount): void
+    {
+        $sum = array_sum(array_map(static fn (OrderLine $line): int => $line->discount()->amount(), $lines));
+        if ($sum !== ($discount?->amount()->amount() ?? 0)) {
+            throw new InvalidOrder('The discounts of the lines add up to the discount of the order.');
+        }
     }
 
     /**

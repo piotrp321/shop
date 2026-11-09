@@ -20,8 +20,9 @@ export const PRODUCT_ID = "00000000-0000-4000-8000-0000000000f1";
 export const emptyView = (id: string | null = null): CartView => ({
   id,
   lines: [],
-  totals: { gross: 0, currency: "PLN", itemCount: 0 },
+  totals: { subtotalGross: 0, discountGross: 0, gross: 0, currency: "PLN", itemCount: 0 },
   hasExcludedLines: false,
+  discount: null,
 });
 
 export const viewWithOneLine = (cartId: string | null, quantity = 1): CartView => ({
@@ -36,8 +37,9 @@ export const viewWithOneLine = (cartId: string | null, quantity = 1): CartView =
       state: "purchasable",
     },
   ],
-  totals: { gross: 1000 * quantity, currency: "PLN", itemCount: quantity },
+  totals: { subtotalGross: 1000 * quantity, discountGross: 0, gross: 1000 * quantity, currency: "PLN", itemCount: quantity },
   hasExcludedLines: false,
+  discount: null,
 });
 
 export const problem = (status: number, detail?: string) =>
@@ -50,6 +52,8 @@ export const problem = (status: number, detail?: string) =>
 export type ApiCall = {
   method: string;
   path: string;
+  /** The query string, only when the request has one. */
+  search?: string;
   authorization: string | null;
   body: unknown;
   idempotencyKey?: string;
@@ -75,6 +79,7 @@ export function cartTestDeps() {
           const call: ApiCall = {
             method: request.method,
             path: new URL(request.url).pathname,
+            search: new URL(request.url).search || undefined,
             authorization: request.headers.get("authorization"),
             body: text === "" ? undefined : JSON.parse(text),
             idempotencyKey: request.headers.get("idempotency-key") ?? undefined,

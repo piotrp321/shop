@@ -55,7 +55,7 @@ final class OrderPaymentTest extends TestCase
 
         foreach ([[$guest->owner(), null], [$customer->owner(), $guest->accessToken()]] as [$owner, $token]) {
             try {
-                Order::place($guest->id(), $guest->number(), $owner, $token, $guest->contact(), $guest->shippingAddress(), $guest->lines(), $guest->idempotencyKey(), $guest->requestFingerprint(), $guest->placedAt());
+                Order::place($guest->id(), $guest->number(), $owner, $token, $guest->contact(), $guest->shippingAddress(), $guest->lines(), null, $guest->idempotencyKey(), $guest->requestFingerprint(), $guest->placedAt());
                 self::fail('Expected InvalidOrder.');
             } catch (InvalidOrder) {
                 $this->addToAssertionCount(1);

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Pricing\UI\Console;
 
+use App\Pricing\Application\Demo\DemoDiscountCodeSeeder;
 use App\Pricing\Application\Demo\DemoPriceSeeder;
 use App\Pricing\Application\Demo\DemoPromotionSeeder;
+use App\Pricing\Application\Port\DemoDiscountCodeSource;
 use App\Pricing\Application\Port\DemoPriceSource;
 use App\Pricing\Application\Port\DemoPromotionSource;
 use App\Pricing\Application\Port\PricingReset;
@@ -16,12 +18,13 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
- * Removes all prices, their history and all promotions, then sets the demo price of every variant, matched by its key
- * (run after catalog:seed-demo), and plans the demo promotions on the variants their patterns match. Exit codes: 0
- * every variant has a price and the promotions are planned, 1 the guard refused, a file is invalid, a variant has no
- * matching price pattern or a promotion has no variant (nothing was changed).
+ * Removes all prices, their history, all promotions and all discount codes with their usages, then sets the demo price
+ * of every variant, matched by its key (run after catalog:seed-demo), plans the demo promotions on the variants their
+ * patterns match and creates the demo discount codes. Exit codes: 0 every variant has a price and the promotions and
+ * codes are in place, 1 the guard refused, a file is invalid, a variant has no matching price pattern or a promotion
+ * has no variant (nothing was changed).
  */
-#[AsCommand(name: 'pricing:seed-demo', description: 'Removes all prices and promotions, sets the demo prices of the catalog variants and plans the demo promotions.')]
+#[AsCommand(name: 'pricing:seed-demo', description: 'Removes all prices, promotions and discount codes, sets the demo prices of the catalog variants, plans the demo promotions and creates the demo discount codes.')]
 final readonly class SeedDemoPricesCommand
 {
     private const int LISTED_KEYS = 10;
@@ -31,6 +34,8 @@ final readonly class SeedDemoPricesCommand
         private DemoPriceSeeder $seeder,
         private DemoPromotionSource $promotionSource,
         private DemoPromotionSeeder $promotionSeeder,
+        private DemoDiscountCodeSource $codeSource,
+        private DemoDiscountCodeSeeder $codeSeeder,
         private PricingReset $reset,
         #[Autowire('%kernel.environment%')]
         private string $environment,
@@ -84,11 +89,20 @@ final readonly class SeedDemoPricesCommand
             return Command::FAILURE;
         }
 
+        try {
+            $codes = $this->codeSource->load();
+        } catch (\InvalidArgumentException $e) {
+            $io->error($e->getMessage().' Nothing was changed.');
+
+            return Command::FAILURE;
+        }
+
         $this->reset->reset();
         $count = $this->seeder->seed($prices);
         $planned = $this->promotionSeeder->seed($promotions);
+        $created = $this->codeSeeder->seed($codes);
 
-        $io->success(\sprintf('prices: %d, promotions: %d', $count, $planned));
+        $io->success(\sprintf('prices: %d, promotions: %d, discount codes: %d', $count, $planned, $created));
 
         return Command::SUCCESS;
     }

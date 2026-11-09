@@ -38,8 +38,8 @@ function stateOf(result: AccountResult<CustomerOrder>): State {
 }
 
 /**
- * One order of the signed-in customer: its lines, totals, address and the dates of its statuses, all as the API
- * gives them. Rendered in the browser from the store's `/api/account/orders/<id>`. A session that is missing or over
+ * One order of the signed-in customer: its lines (valued before the discount of the code, which has its own line),
+ * totals (after the discount), address and the dates of its statuses, all as the API gives them. Rendered in the browser from the store's `/api/account/orders/<id>`. A session that is missing or over
  * takes the customer to the login, which brings them back to this order.
  */
 export function OrderDetailPage({ orderId }: { orderId: string }) {
@@ -113,10 +113,16 @@ function OrderContent({ order }: { order: CustomerOrder }) {
                 {line.quantity} × <span data-testid="unit-price">{formatPrice(line.unitGross, order.totals.currency)}</span>
               </span>
             </div>
-            <span data-testid="line-total">{formatPrice(line.lineGross, order.totals.currency)}</span>
+            <span data-testid="line-total">{formatPrice(line.grossBeforeDiscount, order.totals.currency)}</span>
           </li>
         ))}
       </ul>
+
+      {order.discount === null ? null : (
+        <p data-testid="order-discount" className="flex justify-between gap-6 self-end text-sm">
+          Kod {order.discount.code}: −{formatPrice(order.discount.amountGross, order.totals.currency)}
+        </p>
+      )}
 
       <dl className="flex flex-col gap-1 self-end text-sm">
         <div className="flex justify-between gap-6">

@@ -14,8 +14,8 @@ zapytanie `GetVariantSummaries`, Pricing `GetCurrentPrices(variantIds)`, a Inven
 
 - Gość i zalogowany klient (realm `shop`) przechodzą z koszyka do kasy, podają dane kontaktowe i adres dostawy
   w Polsce i składają zamówienie z całego koszyka.
-- Złożenie zamówienia w jednej transakcji: odczyt i blokada koszyka, kopia cen z Pricing i nazw z Catalog w pozycjach
-  zamówienia, rezerwacja stanów w Inventory (bez sprzedaży ponad stan przy równoległych zakupach), zapis zamówienia
+- Złożenie zamówienia w jednej transakcji: odczyt i blokada koszyka, kopia wyceny z Pricing (ceny skuteczne, promocje,
+  rabat kodu rabatowego rozłożony na linie) i nazw z Catalog w pozycjach zamówienia, zapis użycia kodu, rezerwacja stanów w Inventory (bez sprzedaży ponad stan przy równoległych zakupach), zapis zamówienia
   w statusie `new` z terminem płatności (30 minut od złożenia), opróżnienie koszyka. Zamówienie gościa dostaje losowy
   token dostępu (`accessToken`), którym gość rozpoczyna płatność (`docs/features/payment/spec.md`).
 - `Idempotency-Key`: powtórzone żądanie (podwójne kliknięcie, ponowienie po błędzie sieci) nie tworzy drugiego
@@ -27,7 +27,6 @@ Poza zakresem:
 - płatność, statusy `paid` i `cancelled`, anulowanie nieopłaconych zamówień ze zwolnieniem rezerwacji (PAYMENT #91,
   `docs/features/payment/spec.md`);
 - statusy po opłaceniu, anulowanie z panelu, zamówienia w panelu, historia zamówień klienta (ORDER-MANAGEMENT #92);
-- kody rabatowe (DISCOUNT-CODES #225);
 - metody i koszty dostawy (decyzja P3, #120), adresy zapisane na koncie klienta (decyzja P5, #117), faktury i dane
   firmy, kraje inne niż Polska;
 - rate limiting składania zamówień (decyzja T2, #116);
@@ -62,7 +61,7 @@ Decyzje użytkownika:
 |---|---|
 | Ordering (nowy) | złożenie zamówienia, agregat `Order`, idempotencja, numer, e-mail z potwierdzeniem |
 | Cart | blokada i odczyt linii koszyka do zamówienia, opróżnienie koszyka po złożeniu |
-| Pricing | `GetCurrentPrices(variantIds)`: autorytatywna cena skuteczna (netto, VAT, brutto, stawka, klasa; w aktywnej promocji cena promocyjna) |
+| Pricing | `QuoteBasket(lines, discountCode)`: autorytatywna wycena (cena skuteczna: netto, VAT, brutto, stawka, klasa; w aktywnej promocji cena promocyjna z kopią promocji; rabat kodu rozłożony na linie, netto i VAT linii z brutto po rabacie); `RedeemDiscountCode` zapisuje użycie kodu |
 | Catalog | `GetVariantSummaries(variantIds)`: nazwa produktu, etykieta wariantu, `productId` |
 | Inventory | `ReserveStock(reservationKey, lines)`: rezerwacja „wszystko albo nic” |
 | Customer | `AuthenticatedCustomer` (`id`, `email`, `name` z tokena realmu `shop`) |
@@ -105,19 +104,31 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 - `ShippingAddress {street, postalCode, city, country}`: `street` 1–100, `city` 1–60 znaków po przycięciu, oba bez znaków sterujących,
   `postalCode` `NN-NNN`, `country` zawsze `PL`.
 - `Money`: nieujemne grosze (`int`) i `Currency` (tylko `PLN`).
-- `PriceCopy {net, vat, gross, vatRateBp, taxClass}`: cena jednostkowa skopiowana z Pricing; `net + vat = gross`. To
-  cena skuteczna z chwili złożenia: w aktywnej promocji cena promocyjna (netto i VAT ze stawki ceny katalogowej,
-  `docs/features/pricing/spec.md`, „Cena skuteczna i cena Omnibus”); pozycja nie kopiuje danych promocji.
-- `OrderLine {variantId, productId, productName, variantLabel, quantity, unitPrice: PriceCopy}`; `quantity` 1–99;
-  wartości linii: `lineNet = unit.net × quantity`, `lineVat = unit.vat × quantity`, `lineGross = unit.gross × quantity`.
-- `OrderTotals {net, vat, gross}`: sumy wartości linii; `net + vat = gross` co do grosza (suma linii, w których to
-  zachodzi). Jedyne miejsce obliczeń sum.
+- `PriceCopy {net, vat, gross, vatRateBp, taxClass}`: cena jednostkowa skopiowana z wyceny Pricing; `net + vat = gross`.
+  To cena skuteczna z chwili złożenia: w aktywnej promocji cena promocyjna (netto i VAT ze stawki ceny katalogowej,
+  `docs/features/pricing/spec.md`, „Cena skuteczna i cena Omnibus”).
+- `PromotionCopy {promotionId, name, percentOff, regularUnitGross}`: kopia promocji, która dała cenę jednostkową linii
+  (nazwa 1–100 znaków, cena katalogowa ≥ 1 gr), albo brak.
+- `LineAmounts {discount, net, vat, gross}`: wartości linii skopiowane z wyceny (`QuoteBasket`, decyzje A2 i D8
+  `docs/features/discount-codes/spec.md`): udział linii w rabacie kodu, netto i VAT liczone przez Pricing z brutto linii
+  po rabacie (`PriceBreakdown::ofLineGross`, także bez kodu), `net + vat = gross`.
+- `OrderLine {variantId, productId, productName, variantLabel, quantity, unitPrice: PriceCopy, amounts: LineAmounts,
+  promotion: PromotionCopy | null}`; `quantity` 1–99; `grossBeforeDiscount = unit.gross × quantity`; niezmiennik
+  `lineGross = grossBeforeDiscount − discount` (inaczej `InvalidOrder`). `lineNet`, `lineVat`, `lineGross` to wartości
+  z wyceny, nie mnożenie ceny jednostkowej.
+- `OrderDiscount {code, kind (percent | amount), value, amount}`: kopia kodu rabatowego, którym złożono zamówienie
+  (tekst 1–32 znaki, wartość ≥ 1, kwota ≥ 1 gr), albo brak.
+- `DiscountCodeText`: kod z żądania przed wyceną i odciskiem: poprawny UTF-8, przycięty z białych znaków Unicode
+  i niewidocznych znaków formatu, litery ASCII wielkie; pusty to brak kodu; ponad 64 znaki (przed przycięciem):
+  `InvalidOrderInput` „Kod rabatowy może mieć najwyżej 64 znaki.”.
+- `OrderTotals {net, vat, gross}`: sumy wartości linii (po rabacie); `net + vat = gross` co do grosza (suma linii,
+  w których to zachodzi). Jedyne miejsce obliczeń sum.
 
 ### Agregat `Order`
 
 Pola: `id`, `number`, `owner`, `accessToken` (gość: 32 losowe bajty w base64url, 43 znaki, generuje handler; klient:
-null), `contact`, `shippingAddress`, `lines` (1–50, w kolejności koszyka, bez powtórzonego wariantu), `totals`
-(liczone), `status` (`new`, `paid`, `shipped`, `delivered`, `cancelled`, `returned`; po złożeniu `new`; cykl po
+null), `contact`, `shippingAddress`, `lines` (1–50, w kolejności koszyka, bez powtórzonego wariantu), `discount`
+(`OrderDiscount` albo null; suma `discount` linii równa `discount.amount`, bez kodu 0), `totals` (liczone), `status` (`new`, `paid`, `shipped`, `delivered`, `cancelled`, `returned`; po złożeniu `new`; cykl po
 opłaceniu: `docs/features/order-management/spec.md`), `idempotencyKey`, `requestFingerprint`,
 `placedAt`, `paymentDeadline` (`placedAt` + 30 min), `version`. Pola cyklu płatności (`paidAt`, `paymentId`,
 `cancelledAt`, `cancellationReason`) opisuje `docs/features/payment/spec.md`. Znaczniki wysłanych e-maili nie są
@@ -125,10 +136,10 @@ w zamówieniu: są w tabeli powiadomień (`docs/features/order-management/spec.m
 
 | Metoda | Działanie | Błędy |
 |---|---|---|
-| `place(id, number, owner, accessToken, contact, address, lines, idempotencyKey, fingerprint, now)` | nowe zamówienie w statusie `new` z terminem płatności `now` + 30 min, zapisuje zdarzenie `OrderPlaced {orderId, occurredAt}` | 0 albo > 50 linii, powtórzony wariant, zamówienie gościa bez tokenu albo klienta z tokenem: `InvalidOrder` (błąd logiczny: handler buduje linie z koszyka, który pilnuje tych limitów); ilość linii poza 1–99 odrzuca już `OrderLine::of` (też `InvalidOrder`) |
+| `place(id, number, owner, accessToken, contact, address, lines, discount, idempotencyKey, fingerprint, now)` | nowe zamówienie w statusie `new` z terminem płatności `now` + 30 min, zapisuje zdarzenie `OrderPlaced {orderId, occurredAt}` | 0 albo > 50 linii, powtórzony wariant, zamówienie gościa bez tokenu albo klienta z tokenem, suma rabatów linii różna od kwoty rabatu: `InvalidOrder` (błąd logiczny: handler buduje linie z koszyka, który pilnuje tych limitów); ilość linii poza 1–99 odrzuca już `OrderLine::of` (też `InvalidOrder`) |
 | `isReplayOf(fingerprint)` | to samo żądanie (ten sam koszyk i ta sama treść) powtórzone z tym samym kluczem | |
 
-- `reconstitute()` odtwarza zamówienie bez zdarzeń.
+- `reconstitute()` odtwarza zamówienie bez zdarzeń, z zapisanymi wartościami linii (niczego nie przelicza).
 - `version` (optimistic locking): zapis podnosi ją przy każdej zmianie (opłacenie, anulowanie; wysłanie e-maila nie
   zmienia zamówienia;
   `apps/api/CLAUDE.md`, „Reguły modelu”), więc z równoległych zmian zapisuje się jedna.
@@ -157,7 +168,8 @@ serwowane.
 
 ## Złożenie zamówienia (`PlaceOrder`)
 
-Komenda `PlaceOrder(cartRef, contact, address, expectedTotalGross, idempotencyKey)` na `command.bus`, gdzie `cartRef`
+Komenda `PlaceOrder(cartRef, contact, address, expectedTotalGross, idempotencyKey, discountCode | null)` na
+`command.bus` (kod normalizuje `DiscountCodeText`; pusty albo biały to brak kodu), gdzie `cartRef`
 to `guest(cartId)` albo `customer(customerId)`; wynik `PlacedOrder {order: OrderView, replayed: bool}`. Jedna
 transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
 
@@ -175,16 +187,23 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
      zmiany (koszyk nie jest opróżniany, więc pozycje dodane po pierwszym złożeniu zostają);
    - zamówienie istnieje z innym odciskiem (inny koszyk, inny klient albo inna treść): `IdempotencyKeyReused` (409).
    Odcisk żądania (`requestFingerprint`): SHA-256 znormalizowanych `cartRef` (`guest:<cartId>` albo
-   `customer:<sub>`), danych kontaktowych, adresu i `expectedTotalGross` (po przycięciu i normalizacji telefonu).
+   `customer:<sub>`), danych kontaktowych, adresu i `expectedTotalGross` (po przycięciu i normalizacji telefonu) oraz
+   znormalizowanego kodu rabatowego, dopisanego tylko wtedy, gdy jest; odcisk żądania bez kodu jest taki sam jak przed
+   kodami rabatowymi.
    Koszyk jest częścią odcisku, więc dwa koszyki gości z tym samym kluczem i tymi samymi danymi dostają 409, a nie
    cudze zamówienie.
 3. Brak linii: `CartEmpty` (409).
-4. **Kopie danych.** Porty `OrderPrices::current(variantIds)` (Pricing `GetCurrentPrices` bez ceny Omnibus, ceny
-   skuteczne, tylko aktualne w PLN)
+4. **Kopie danych.** Porty `OrderPrices::quote(lines, discountCode)` (Pricing `QuoteBasket`: ceny skuteczne bez ceny
+   Omnibus, promocje, rabat kodu rozłożony na linie, netto i VAT linii z brutto po rabacie; tylko w PLN)
    i `OrderCatalog::variants(variantIds)` (Catalog `GetVariantSummaries`), po jednym wywołaniu. Wariant bez aktualnej
-   ceny albo nieznany Catalogowi: `CartNotOrderable` (409, decyzja P1).
-5. **Kwota.** Linie i sumy w domenie (`OrderLine`, `OrderTotals`). `totals.gross ≠ expectedTotalGross`:
-   `OrderTotalChanged` (409, decyzja P2), przed rezerwacją.
+   ceny albo nieznany Catalogowi: `CartNotOrderable` (409, decyzja P1). Kod odrzucony w wycenie:
+   `DiscountCodeRejected` (409 z typem i `detail` odrzucenia Pricing), przed porównaniem kwoty.
+5. **Kwota.** Linie z wartościami wyceny i sumy w domenie (`OrderLine`, `OrderTotals`). `totals.gross` (po rabacie)
+   `≠ expectedTotalGross`: `OrderTotalChanged` (409, decyzja P2), przed rezerwacją.
+5a. **Użycie kodu** (gdy wycena zastosowała kod). `orderId` (UUID v7) jest nadawany przed tym krokiem. Port
+   `DiscountCodeRedemptions::redeem(codeId, orderId, subtotalGross)` (Pricing `RedeemDiscountCode`, zagnieżdżony
+   dispatch): kod czytany od nowa, kod z limitem pod blokadą wiersza, reguły kodu jeszcze raz; odrzucenie adapter
+   tłumaczy na `DiscountCodeRejected` Ordering (409), cała transakcja wycofana (bez numeru z sekwencji).
 6. **Numer.** `OrderNumbers::next()`: `nextval('ordering_order_number_seq')` przez DBAL (sekwencja PostgreSQL nie jest
    częścią transakcji: wycofane złożenie zostawia lukę w numeracji, co jest dopuszczalne).
 7. **Opróżnienie koszyka.** Port `OrderCart::clearAfterOrder(cartRef)` (komenda Cart `ClearCartAfterOrder`): usuwa
@@ -201,14 +220,18 @@ transakcja `command.bus` (`doctrine_transaction`), kroki w tej kolejności:
 
 Zasady transakcji (zapisywane w `apps/api/CLAUDE.md`):
 - Handler nigdy nie łapie wyjątku z zagnieżdżonej komendy, żeby pisać dalej: każdy błąd wycofuje całą transakcję
-  (koszyk, rezerwację, zamówienie, outbox). Wyjątek Inventory jest tłumaczony na wyjątek Ordering i rzucany dalej.
+  (koszyk, użycie kodu, rezerwację, zamówienie, outbox). Wyjątki Inventory (niedobór) i Pricing (odrzucenie kodu) są
+  tłumaczone na wyjątki Ordering i rzucane dalej.
 - Rollback jest atomowy: niedobór choćby jednej pozycji z wielu (albo błąd dowolnego późniejszego zapisu) zostawia
   bazę jak przed żądaniem. Koszyk ma te same linie, `reserved` żadnego wariantu się nie zmienia (Inventory
   rezerwuje „wszystko albo nic”, a wycofanie transakcji cofa każdy zapis), nie ma zamówienia, linii ani wiersza
   outboxa. Jedyny ślad to luka w numeracji.
-- Kolejność blokad: wiersz koszyka, potem wiersze stanów (rosnąco po `variant_id`, `lockMany` Inventory). Inne komendy
-  Cart blokują tylko koszyki (scalenie: gość, potem klient), a Inventory tylko stany i rezerwacje, więc nie ma cyklu
-  blokad. Złożenie klienta blokuje tylko koszyk klienta.
+- Kolejność blokad: wiersz koszyka, potem wiersz kodu rabatowego (tylko kod z limitem, `RedeemDiscountCode`), potem
+  wiersze stanów (rosnąco po `variant_id`, `lockMany` Inventory). Inne komendy Cart blokują tylko koszyki (scalenie:
+  gość, potem klient), Inventory tylko stany i rezerwacje, a zwolnienie użycia przy wygaśnięciu nie blokuje kodu, więc
+  nie ma cyklu blokad. Złożenie klienta blokuje tylko koszyk klienta. Dwa złożenia z ostatnim wolnym użyciem kodu
+  z limitem szereguje blokada kodu: drugie dostaje 409 `discount-code-used-up`. Kod bez limitu nie jest blokowany;
+  jego wyłączenie w trakcie złożenia opisuje `docs/features/discount-codes/spec.md` („Współbieżność”).
 - Równoległe złożenia z tym samym kluczem i tym samym koszykiem szereguje blokada koszyka: drugie widzi zamówienie
   pierwszego (krok 2). Repozytoria zapisują przez `flush` (np. `DoctrineCartRepository`); zapis zamówienia jest
   ostatni, więc `flush` komend zagnieżdżonych nie zapisuje niczego z Ordering. Równoległe złożenia z tym samym kluczem z dwóch różnych koszyków: unikalny indeks
@@ -224,8 +247,9 @@ Idempotencja a dane innych klientów:
   działa bez koszyka, ale tylko z tym samym `cartId` i tą samą treścią.
 
 Ceny i kwoty liczy wyłącznie serwer:
-- Żądanie nie niesie cen, ilości ani pozycji. Linie i ilości pochodzą z zablokowanego koszyka, ceny z Pricing
-  w chwili złożenia (krok 4), a wartości linii i sumy liczy domena (`OrderLine`, `OrderTotals`).
+- Żądanie nie niesie cen, ilości ani pozycji (tylko opcjonalny tekst kodu). Linie i ilości pochodzą z zablokowanego
+  koszyka, ceny, rabat i wartości linii z wyceny Pricing w chwili złożenia (krok 4), a sumy liczy domena
+  (`OrderTotals`).
 - `expectedTotalGross` służy wyłącznie do porównania (P2) i nie trafia do zamówienia. Kwota niższa albo wyższa od
   sumy liczonej przez serwer daje 409 bez zamówienia.
 - Nieznane pola treści żądania są ignorowane (jak w koszyku, `MapRequestPayload`): pola typu `lines`, `totals`,
@@ -255,8 +279,14 @@ Ceny i kwoty liczy wyłącznie serwer:
 - `ordering_order_line`: `id uuid` (v7, PK), `order_id uuid` (FK → `ordering_order`, bez `ON DELETE CASCADE`:
   zamówienia są przechowywane na zawsze), `position int`, `variant_id uuid`, `product_id uuid`,
   `product_name varchar(255)`, `variant_label varchar(255)`, `quantity int` (`CHECK 1–99`), `unit_net`, `unit_vat`,
-  `unit_gross` (`int`), `vat_rate_bp int`, `tax_class varchar(50)`, `line_net`, `line_vat`, `line_gross` (`bigint`);
-  unikalne `(order_id, position)` i `(order_id, variant_id)`.
+  `unit_gross` (`int`), `vat_rate_bp int`, `tax_class varchar(50)`, `line_net`, `line_vat`, `line_gross` (`bigint`,
+  po rabacie), `discount_gross bigint NOT NULL DEFAULT 0` (`CHECK ≥ 0`), kopia promocji `promotion_id uuid`,
+  `promotion_name varchar(100)`, `promotion_percent_off smallint`, `regular_unit_gross int` (wszystkie `NULL`,
+  `CHECK`: razem albo żadne); unikalne `(order_id, position)` i `(order_id, variant_id)`.
+- Kopia kodu w `ordering_order`: `discount_code varchar(32)`, `discount_kind varchar(8)` (`percent`, `amount`),
+  `discount_value int`, `discount_gross bigint` (wszystkie `NULL`; `CHECK`: wszystkie cztery albo żadna, wartość
+  i kwota ≥ 1). Zamówienia sprzed kodów rabatowych zachowują zapisane kwoty: `discount_gross` linii 0, promocja i kod
+  `null` (migracja `Version…AddOrderDiscounts` niczego nie przelicza).
 - Sekwencja `ordering_order_number_seq` `START 100001`.
 - Bez kluczy obcych do tabel Cart, Catalog, Pricing i Inventory.
 - Rekordy Doctrine z atrybutami w `Ordering/Infrastructure/Persistence/Doctrine/Record`, mapowanie agregat ↔ rekord
@@ -265,7 +295,7 @@ Ceny i kwoty liczy wyłącznie serwer:
   z kolumnami źródłowymi.
 - `ordering_order_notification`: znaczniki e-maili zamówienia (`docs/features/order-management/spec.md`).
 - Migracje: `Version…CreateOrderingTables`, `Version…AddOrderPaymentCycle`, `Version…CreateOrderNotifications`,
-  `Version…MoveOrderEmailMarkers`.
+  `Version…MoveOrderEmailMarkers`, `Version…AddOrderDiscounts`.
 
 ## E-mail z potwierdzeniem
 
@@ -297,7 +327,8 @@ Ceny i kwoty liczy wyłącznie serwer:
   R-100001”. Treść składa jedna klasa w `Ordering_Application` (`OrderConfirmationText`), testowana jednostkowo.
 - Treść: powitanie z imieniem i nazwiskiem, numer, data i godzina złożenia w strefie `Europe/Warsaw`, pozycje
   (nazwa, etykieta wariantu po przecinku; wariant domyślny z pustą etykietą: sama nazwa, bez separatora; ilość,
-  wartość brutto linii), suma brutto, adres dostawy, telefon, zdanie „Zamówienie czeka na płatność do 14:35
+  wartość brutto linii przed rabatem kodu), przy kodzie linia „Kod <KOD>: −X zł” (kwota rabatu), suma brutto (po
+  rabacie), adres dostawy, telefon, zdanie „Zamówienie czeka na płatność do 14:35
   (dd.mm.rrrr). Bez płatności anulujemy je automatycznie.” (termin płatności w strefie `Europe/Warsaw`). Kwoty
   w formacie `1 234,56 zł`.
 
@@ -320,8 +351,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią | 400 brak lub zły klucz, zły JSON; 401 niepoprawny token; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422; 503 (token wysłany, klucze wystawcy niedostępne) |
-| `POST /api/v1/me/orders` (klient), nagłówek `Idempotency-Key`, body `{fullName, phone, street, postalCode, city, expectedTotalGross}` | jak wyżej; e-mail z tokena | 401 (bez tokena, token `backoffice`), 503 (klucze wystawcy niedostępne), pozostałe jak wyżej bez 404 |
+| `POST /api/v1/orders` (gość), nagłówek `Idempotency-Key`, body `{cartId, email, fullName, phone, street, postalCode, city, expectedTotalGross, discountCode?}` | 201 `OrderView`, nagłówek `Location` nieobecny (bez odczytu zamówienia); 200 powtórzenie z tym samym kluczem i treścią (bez drugiego użycia kodu) | 400 brak lub zły klucz, zły JSON; 401 niepoprawny token; 404 koszyk; 409 z `type` przyczyny (`CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder`, `OrderTotalChanged`, `IdempotencyKeyReused`, `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` z rozszerzeniem `minimumOrderGross`; schemat OpenAPI `OrderConflictProblem` z `enum` wartości `type`); 415; 422; 503 (token wysłany, klucze wystawcy niedostępne) |
+| `POST /api/v1/me/orders` (klient), nagłówek `Idempotency-Key`, body `{fullName, phone, street, postalCode, city, expectedTotalGross, discountCode?}` | jak wyżej; e-mail z tokena | 401 (bez tokena, token `backoffice`), 503 (klucze wystawcy niedostępne), pozostałe jak wyżej bez 404 |
 
 `OrderView`:
 
@@ -334,8 +365,10 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   fullName: string,
   phone: string,
   shippingAddress: { street, postalCode, city, country: "PL" },
-  lines: [{ variantId, productName, variantLabel, quantity, unitGross: int, lineGross: int }],
-  totals: { net: int, vat: int, gross: int, currency: "PLN" },
+  lines: [{ variantId, productName, variantLabel, quantity, unitGross: int, grossBeforeDiscount: int,
+           discountGross: int, lineGross: int (po rabacie) }],
+  discount: { code, kind: "percent" | "amount", value: int, amountGross: int } | null,
+  totals: { net: int, vat: int, gross: int (po rabacie), currency: "PLN" },
   placedAt: string (RFC 3339, UTC),
   paymentDeadline: string (RFC 3339, UTC; placedAt + 30 min),
   accessToken: string | null (gość: 43 znaki base64url; klient: null)
@@ -364,6 +397,9 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | `postalCode` | brak, pusty / zły format (także ze znakiem sterującym) | Kod pocztowy jest wymagany. / Podaj kod pocztowy w formacie 00-000. |
 | `city` | brak, pusty / > 60 / znak sterujący | Miejscowość jest wymagana. / Miejscowość może mieć najwyżej 60 znaków. / Miejscowość zawiera niedozwolone znaki. |
 | `expectedTotalGross` | brak, `null` / nie liczba całkowita / ujemna | Kwota zamówienia jest wymagana. / Kwota zamówienia musi być liczbą całkowitą. / Kwota zamówienia nie może być ujemna. |
+| `discountCode` | nie tekst (liczba, tablica, `true`) / > 64 znaki | Kod rabatowy musi być tekstem. / Kod rabatowy może mieć najwyżej 64 znaki. |
+
+- `discountCode` jest opcjonalny: brak klucza, `null`, `""` i same białe znaki to złożenie bez kodu.
 
 - Nagłówek `Idempotency-Key` brak albo zły format: 400 z naruszeniem nagłówka (jak przyjęcie magazynowe).
 - `cartId` wskazujący koszyk klienta: 404 (jak endpointy koszyka gościa).
@@ -381,6 +417,11 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 - Body niesie też `provider` (kod z `GET /api/v1/payment-providers`). Brak albo kod spoza listy: 422 z naruszeniem pola
   `provider` („Wybierz sposób płatności.”), lista niedostępna: 503, w obu przypadkach przed scaleniem koszyka i bez
   składania zamówienia.
+- Body może nieść `discountCode` (zastosowany kod; `CUSTOMER_ORDER_FIELDS` w `src/checkout/api.ts` przepuszcza go jak
+  pola formularza do API, które go waliduje i normalizuje: `docs/features/discount-codes/spec.md`).
+- `GET /api/cart` (BFF koszyka) przyjmuje jeden parametr, `discountCode` (podgląd kodu na kasie), i przekazuje go do
+  API; inne parametry pomija. 400 API na kod (za długi, nie tekst) trafia do przeglądarki jako 400 `{detail}` z tekstem
+  API; w innych odczytach 400 API to 503.
 - Sukces (201 i 200): ciasteczko `store_order_confirmation` z `{orderId, number, email, totalGross, currency,
   accessToken}` (`accessToken` z `OrderView`: gość token, klient `null`) podpisane jak `store_cart`, `HttpOnly`,
   `SameSite=Lax`, `Path=/`, `Max-Age` 1 godzina. Potem BFF rozpoczyna płatność tym samym `Idempotency-Key`
@@ -400,8 +441,10 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 - `src/api/client.ts`: `placeOrder(input, idempotencyKey)` (wynik `ok` z `number` i `redirectUrl`), `startPayment`
   i `getPaymentStatus` (jedyne miejsce `fetch`). Wynik 409 to `conflict` z `reason`
   wyznaczonym wyłącznie z `type` (`src/checkout/problems.ts`: mapa typów ze schematu OpenAPI `OrderConflictProblem`
-  na przyczyny, kompilator wymaga wpisu dla każdego typu schematu; inny albo brakujący `type` to `unknown`). `detail`
-  służy tylko do wyświetlenia.
+  na przyczyny, kompilator wymaga wpisu dla każdego typu schematu; inny albo brakujący `type` to `unknown`; trzy typy
+  kodu rabatowego to jedna przyczyna `discount_code_rejected`). `detail` służy tylko do wyświetlenia.
+- `loadCart(discountCode?)` w tym samym pliku wysyła kod w zapytaniu `/api/cart?discountCode=…` (kodowanie, które nie
+  rzuca na samotnym surogacie UTF-16: zamienia go na U+FFFD) i mapuje 400 na `invalid` z `detail`.
 
 ### UI
 
@@ -416,10 +459,23 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
   Pusty koszyk albo `hasExcludedLines`: zamiast formularza komunikat i link do koszyka; przy pustym koszyku
   i poprawnym `store_order_confirmation` także link „Opłać zamówienie R-…” na `/checkout/confirmation` (powrót ze
   strony dostawcy bez decyzji, `docs/features/payment/spec.md`, P7).
+- Kod rabatowy (`docs/features/discount-codes/spec.md`): pod podsumowaniem pole „Kod rabatowy” (`maxLength` 64,
+  etykieta) w osobnym formularzu, więc Enter zastosuje kod i nie złoży zamówienia, z przyciskiem „Zastosuj”. Zastosowanie
+  wczytuje podsumowanie z kodem (`/api/cart?discountCode=…`; kod przycięty z białych znaków). Zastosowany kod: linia
+  „Kod <KOD>: −X zł”, suma po rabacie (wartości linii przed rabatem, wszystko z API) i przycisk „Usuń kod” zamiast pola
+  (usunięcie wczytuje podsumowanie bez kodu; gdy się nie uda, kod zostaje i jest komunikat). Odrzucenie: `detail`
+  z podsumowania (`rejected`) albo 400 koszyka pokazane przy polu (`role="alert"`, `aria-invalid`,
+  `aria-describedby`), podsumowanie bez rabatu, fokus w polu; pole puste albo kod pusty po normalizacji w API:
+  „Wpisz kod rabatowy.”. Pole znika razem z formularzem (pusty koszyk, `hasExcludedLines`). Zastosowanie i usunięcie
+  ogłasza obszar `role="status"`. Złożenie wysyła `discountCode` zastosowanego kodu (bez kodu: bez klucza)
+  i `expectedTotalGross` z podsumowania po rabacie. Kod nie przeżywa przeładowania strony (stan tylko w pamięci
+  strony).
 - `Idempotency-Key`: UUID (`crypto.randomUUID`) tworzony przy wejściu na `/checkout` i używany ponownie przy
   ponowieniu niepewnego wyniku (błąd sieci, 403, 5xx, 503). Klucz należy do jednej logicznej próby: nowy powstaje
-  po zmianie danych formularza, po 409 `IdempotencyKeyReused` i po 409 `OrderTotalChanged` (żądanie niesie wtedy
-  inną kwotę, która należy do odcisku żądania, a nic nie zostało złożone). Po 409 `CartEmpty`, `CartNotOrderable`,
+  po zmianie danych formularza, po zastosowaniu i usunięciu kodu rabatowego (żądanie niesie inny kod i kwotę), po 409
+  `IdempotencyKeyReused`, po 409 `OrderTotalChanged` (żądanie niesie wtedy inną kwotę, która należy do odcisku
+  żądania, a nic nie zostało złożone) i po 409 kodu rabatowego. Odrzucony podgląd kodu klucza nie zmienia (żądanie
+  zostaje, jakie było). Po 409 `CartEmpty`, `CartNotOrderable`,
   `InsufficientStockForOrder` i po nieznanym 409 klucz zostaje: ponowienie tym samym kluczem po ewentualnym sukcesie
   da powtórzenie 200, nie drugie zamówienie. Strona niczego nie ponawia sama: każdy POST to kliknięcie klienta.
   Znany skutek reguły „zmiana danych = nowy klucz”: gdy wynik poprzedniej próby był niepewny (błąd sieci, 5xx, 503,
@@ -440,7 +496,8 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | Sytuacja | UI na `/checkout` |
 |---|---|
 | 422 | komunikaty przy polach (`violations`) |
-| 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania (nowa kwota), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
+| 409 `OrderTotalChanged` | `detail`, ponowne wczytanie podsumowania z tym samym kodem (nowa kwota), formularz zostaje, nowy klucz, bez linku do koszyka (pusty koszyk albo `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem) |
+| 409 `discount-code-invalid`, `discount-code-used-up`, `discount-code-below-minimum` (Q6) | `detail` przy polu kodu, kod zdjęty, podsumowanie wczytane bez kodu (nowa kwota), nowy klucz, nic nie składa się samo: zamówienie składa dopiero kolejne kliknięcie; gdy podsumowania nie da się wczytać, ekran zostaje taki jak był (kod zastosowany, „Usuń kod” z fokusem) z `detail` i komunikatem o odświeżeniu, a 401 pokazuje komunikat sesji |
 | 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` | `detail` i link „Wróć do koszyka”, ponowne wczytanie podsumowania, klucz zostaje; gdy przeładowane podsumowanie zastępuje formularz komunikatem z własnym linkiem, bez drugiego linku |
 | 409 `IdempotencyKeyReused` | `detail`, nowy klucz, formularz zostaje, bez linku do koszyka (kolejne kliknięcie składa zamówienie z nowym kluczem) |
 | 409 nieznany (inny `type` albo brak) | `detail` (bez niego „Nie udało się złożyć zamówienia. Spróbuj ponownie.”) i link „Wróć do koszyka”, klucz zostaje, bez automatycznego ponawiania |

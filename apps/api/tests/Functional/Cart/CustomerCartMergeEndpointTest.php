@@ -43,7 +43,7 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
         self::assertFalse($merged['truncated']);
         self::assertIsArray($merged['cart']);
         self::assertSame($this->connection->fetchOne('SELECT id FROM cart_cart WHERE customer_id = ?', [TestTokenFactory::CUSTOMER_ID]), $merged['cart']['id']);
-        self::assertSame(['gross' => 3 * 19_999 + 4_990, 'currency' => 'PLN', 'itemCount' => 4], $merged['cart']['totals']);
+        self::assertSame(['subtotalGross' => 3 * 19_999 + 4_990, 'discountGross' => 0, 'gross' => 3 * 19_999 + 4_990, 'currency' => 'PLN', 'itemCount' => 4], $merged['cart']['totals']);
         self::assertSame($merged['cart'], $this->request('GET', '/api/v1/me/cart', token: $token));
         self::assertSame(1, $this->connection->fetchOne("SELECT COUNT(*) FROM cart_cart WHERE id = ? AND status = 'merged' AND merged_into = ? AND merged_at IS NOT NULL", [$guest['id'], $merged['cart']['id']]));
         self::assertSame([], CartFixture::lines($this->connection, $guest['id']));
@@ -120,7 +120,7 @@ final class CustomerCartMergeEndpointTest extends WebTestCase
     {
         $token = TestTokenFactory::customer();
         $variant = $this->variant();
-        $empty = ['cart' => ['id' => null, 'lines' => [], 'totals' => ['gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false], 'result' => 'nothing_to_merge', 'truncated' => false];
+        $empty = ['cart' => ['id' => null, 'lines' => [], 'totals' => ['subtotalGross' => 0, 'discountGross' => 0, 'gross' => 0, 'currency' => 'PLN', 'itemCount' => 0], 'hasExcludedLines' => false, 'discount' => null], 'result' => 'nothing_to_merge', 'truncated' => false];
         $expired = CartFixture::cart($this->connection, expiresAt: '-1 second', lines: [[$variant, 1]]);
         $other = CartFixture::cart($this->connection, customerId: 'another-customer', lines: [[$variant, 1]]);
 

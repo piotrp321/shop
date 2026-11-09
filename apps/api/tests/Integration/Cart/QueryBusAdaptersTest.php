@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Cart;
 
 use App\Cart\Application\Port\CartPrice;
+use App\Cart\Application\Port\CartQuoteLine;
+use App\Cart\Application\Port\CartQuoteResult;
 use App\Cart\Application\Port\ProductVariants;
+use App\Cart\Application\Port\QuotedCartLine;
 use App\Cart\Application\Port\VariantAvailability;
 use App\Cart\Application\Port\VariantLabel;
 use App\Cart\Application\Port\VariantSummary;
+use App\Cart\Application\View\AppliedCartDiscount;
+use App\Cart\Application\View\RejectedCartDiscount;
 use App\Cart\Domain\Currency;
 use App\Cart\Domain\Money;
 use App\Cart\Domain\ProductId;
@@ -18,9 +23,13 @@ use App\Cart\Domain\VariantPromotion;
 use App\Cart\Infrastructure\Catalog\QueryBusProductCatalog;
 use App\Cart\Infrastructure\Inventory\QueryBusStockAvailability;
 use App\Cart\Infrastructure\Pricing\QueryBusCartPrices;
+use App\Cart\Infrastructure\Pricing\QueryBusCartQuote;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository;
 use App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineProductRepository;
+use App\Pricing\Domain\DiscountCode\DiscountKind;
+use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineDiscountCodeRepository;
 use App\Tests\Factory\CategoryFactory;
+use App\Tests\Factory\DiscountCodeFactory;
 use App\Tests\Factory\PriceHistoryRecordFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
@@ -124,6 +133,46 @@ final class QueryBusAdaptersTest extends KernelTestCase
         ], $withOmnibus);
         self::assertEquals(new VariantPromotion($endsAt, null), $without[0]->promotion);
         self::assertSame(9_000, $without[0]->gross->amount());
+    }
+
+    public function testPricingQuotesTheLinesWithTheCodeAppliedAndLeavesOutALineWithoutAPrice(): void
+    {
+        [, [$black, $red]] = $this->product([(string) Uuid::v7(), (string) Uuid::v7()]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $black, 'gross' => 19_999]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $red, 'gross' => 21_000]);
+        new DoctrineDiscountCodeRepository($this->entityManager)->save(DiscountCodeFactory::createOne(['code' => 'KOSZYK10', 'value' => 10]));
+        $unknown = (string) Uuid::v7();
+
+        $quote = new QueryBusCartQuote($this->queryBus)->quote(
+            [new CartQuoteLine(VariantId::fromString($red), 2), new CartQuoteLine(VariantId::fromString($unknown), 1), new CartQuoteLine(VariantId::fromString($black), 1)],
+            ' koszyk10 ',
+        );
+
+        // S = 61 999, D = floor(6199,9) = 6199.
+        self::assertEquals(new CartQuoteResult(
+            [
+                $red => new QuotedCartLine(Money::of(21_000, Currency::PLN), Money::of(42_000, Currency::PLN)),
+                $black => new QuotedCartLine(Money::of(19_999, Currency::PLN), Money::of(19_999, Currency::PLN)),
+            ],
+            Money::of(61_999, Currency::PLN),
+            Money::of(6_199, Currency::PLN),
+            Money::of(55_800, Currency::PLN),
+            new AppliedCartDiscount('KOSZYK10', 6_199, 'percent', 10),
+        ), $quote);
+    }
+
+    public function testPricingRejectsACodeWithItsReasonAndPolishDetail(): void
+    {
+        [, [$variant]] = $this->product([(string) Uuid::v7()]);
+        VariantPriceRecordFactory::store($this->entityManager, ['variantId' => $variant, 'gross' => 10_000]);
+        new DoctrineDiscountCodeRepository($this->entityManager)->save(DiscountCodeFactory::createOne(['code' => 'MINUS50K', 'kind' => DiscountKind::Amount, 'value' => 5_000, 'minimumOrderGross' => 30_000]));
+        $quote = new QueryBusCartQuote($this->queryBus);
+        $lines = [new CartQuoteLine(VariantId::fromString($variant), 1)];
+
+        self::assertEquals(new RejectedCartDiscount('MINUS50K', 'below_minimum', 'Ten kod działa przy zamówieniu od 300,00 zł.', 30_000), $quote->quote($lines, 'minus50k')->discount);
+        self::assertEquals(new RejectedCartDiscount('NIEMA', 'invalid', 'Ten kod jest nieprawidłowy albo nieaktywny.', null), $quote->quote($lines, 'niema')->discount);
+        self::assertNull($quote->quote($lines, '  ')->discount);
+        self::assertSame(10_000, $quote->quote($lines, 'minus50k')->gross->amount());
     }
 
     public function testInventoryGivesTheAvailableUnitsAndTheLevelOfEveryVariant(): void

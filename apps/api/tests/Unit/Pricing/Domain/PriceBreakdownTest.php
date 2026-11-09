@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Pricing\Domain;
 
+use App\Pricing\Domain\Money\Currency;
+use App\Pricing\Domain\Money\Money;
 use App\Pricing\Domain\Price\GrossPrice;
 use App\Pricing\Domain\Price\PriceBreakdown;
 use App\Pricing\Domain\Tax\PolishVatRates;
@@ -133,5 +135,69 @@ final class PriceBreakdownTest extends TestCase
         self::assertFalse($base->equals(PriceBreakdown::fromGross(GrossPrice::pln(10001), VatRate::fromBasisPoints(2300))));
         self::assertFalse($base->equals(PriceBreakdown::fromGross(GrossPrice::pln(10000), VatRate::fromBasisPoints(800))));
         self::assertFalse($base->equals(PriceBreakdown::restore(GrossPrice::pln(10000), 8131, 1869, VatRate::fromBasisPoints(2300))));
+    }
+
+    public function testALineGrossOfZeroGroszeHasNeitherNetNorVat(): void
+    {
+        $line = PriceBreakdown::ofLineGross(Money::of(0, Currency::PLN), VatRate::fromBasisPoints(2300));
+
+        self::assertTrue($line->gross()->equals(Money::of(0, Currency::PLN)));
+        self::assertTrue($line->net()->equals(Money::of(0, Currency::PLN)));
+        self::assertTrue($line->vat()->equals(Money::of(0, Currency::PLN)));
+        self::assertSame(2300, $line->rate()->basisPoints());
+    }
+
+    /**
+     * The largest line: 99 units at the largest gross price, beyond the range of GrossPrice and of 32 bits.
+     */
+    #[DataProvider('ratesInUse')]
+    public function testTheMaximumLineGrossIsSplitExactlyWithNetRoundedHalfUp(int $basisPoints): void
+    {
+        $gross = 99 * self::MAX_GROSS;
+
+        $line = PriceBreakdown::ofLineGross(Money::of($gross, Currency::PLN), VatRate::fromBasisPoints($basisPoints));
+
+        self::assertSame($gross, $line->gross()->amount());
+        self::assertSame(self::referenceNet($gross, $basisPoints), $line->net()->amount());
+        self::assertSame($gross, $line->net()->amount() + $line->vat()->amount());
+        self::assertGreaterThanOrEqual(0, $line->vat()->amount());
+    }
+
+    /**
+     * One formula: within the range of GrossPrice a line gross gives exactly the net and VAT of fromGross.
+     */
+    #[DataProvider('ratesInUse')]
+    public function testALineGrossGivesTheNetAndVatOfFromGrossWithinTheGrossPriceRange(int $basisPoints): void
+    {
+        $rate = VatRate::fromBasisPoints($basisPoints);
+        $mismatches = [];
+
+        foreach ([...range(1, 100_000), self::MAX_GROSS] as $gross) {
+            $price = PriceBreakdown::fromGross(GrossPrice::pln($gross), $rate);
+            $line = PriceBreakdown::ofLineGross(Money::of($gross, Currency::PLN), $rate);
+            if (!$line->net()->equals($price->net()) || !$line->vat()->equals($price->vat())) {
+                $mismatches[] = \sprintf('gross %d: line %d + %d, price %d + %d', $gross, $line->net()->amount(), $line->vat()->amount(), $price->net()->amount(), $price->vat()->amount());
+                if (\count($mismatches) >= 10) {
+                    break;
+                }
+            }
+        }
+
+        self::assertSame([], $mismatches);
+    }
+
+    /** @return iterable<string, array{int}> */
+    public static function linesOutOfRange(): iterable
+    {
+        yield 'negative' => [-1];
+        yield 'above 99 units at the maximum price' => [99 * self::MAX_GROSS + 1];
+    }
+
+    #[DataProvider('linesOutOfRange')]
+    public function testALineGrossOutOfItsRangeIsRefused(int $gross): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        PriceBreakdown::ofLineGross(Money::of($gross, Currency::PLN), VatRate::fromBasisPoints(2300));
     }
 }

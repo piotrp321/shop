@@ -11,8 +11,11 @@ use App\Ordering\Domain\Currency;
 use App\Ordering\Domain\EmailAddress;
 use App\Ordering\Domain\IdempotencyKey;
 use App\Ordering\Domain\IdempotencyKeyReused;
+use App\Ordering\Domain\LineAmounts;
 use App\Ordering\Domain\Money;
 use App\Ordering\Domain\Order;
+use App\Ordering\Domain\OrderDiscount;
+use App\Ordering\Domain\OrderDiscountKind;
 use App\Ordering\Domain\OrderId;
 use App\Ordering\Domain\OrderLine;
 use App\Ordering\Domain\OrderModifiedConcurrently;
@@ -25,6 +28,7 @@ use App\Ordering\Domain\OrderStatusChange;
 use App\Ordering\Domain\PaymentId;
 use App\Ordering\Domain\PriceCopy;
 use App\Ordering\Domain\ProductId;
+use App\Ordering\Domain\PromotionCopy;
 use App\Ordering\Domain\Refund;
 use App\Ordering\Domain\RequestFingerprint;
 use App\Ordering\Domain\ShippingAddress;
@@ -83,6 +87,12 @@ final readonly class DoctrineOrderRepository implements OrderRepository
             $lineRecord->lineNet = $line->lineNet()->amount();
             $lineRecord->lineVat = $line->lineVat()->amount();
             $lineRecord->lineGross = $line->lineGross()->amount();
+            $lineRecord->discountGross = $line->discount()->amount();
+            $promotion = $line->promotion();
+            $lineRecord->promotionId = $promotion?->promotionId();
+            $lineRecord->promotionName = $promotion?->name();
+            $lineRecord->promotionPercentOff = $promotion?->percentOff();
+            $lineRecord->regularUnitGross = $promotion?->regularUnitGross()->amount();
             $record->lines->add($lineRecord);
         }
         $this->entityManager->persist($record);
@@ -195,6 +205,11 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         $record->totalNet = $totals->net()->amount();
         $record->totalVat = $totals->vat()->amount();
         $record->totalGross = $totals->gross()->amount();
+        $discount = $order->discount();
+        $record->discountCode = $discount?->code();
+        $record->discountKind = $discount?->kind()->value;
+        $record->discountValue = $discount?->value();
+        $record->discountGross = $discount?->amount()->amount();
         $record->idempotencyKey = $order->idempotencyKey()->toString();
         $record->requestFingerprint = $order->requestFingerprint()->toString();
         $record->accessToken = $order->accessToken()?->toString();
@@ -257,6 +272,7 @@ final readonly class DoctrineOrderRepository implements OrderRepository
         $currency = Currency::from($record->currency);
         $lines = [];
         foreach ($record->lines as $line) {
+            // The stored values of the line, never computed anew (orders before discount codes keep theirs, D8).
             $lines[] = OrderLine::of(
                 VariantId::fromString($line->variantId),
                 ProductId::fromString($line->productId),
@@ -264,6 +280,8 @@ final readonly class DoctrineOrderRepository implements OrderRepository
                 $line->variantLabel,
                 $line->quantity,
                 PriceCopy::of($line->unitNet, $line->unitVat, $line->unitGross, $line->vatRateBp, $line->taxClass, $currency),
+                LineAmounts::of($line->discountGross, $line->lineNet, $line->lineVat, $line->lineGross, $currency),
+                null === $line->promotionId ? null : PromotionCopy::of($line->promotionId, $line->promotionName ?? '', $line->promotionPercentOff ?? 0, $line->regularUnitGross ?? 0),
             );
         }
 
@@ -275,6 +293,7 @@ final readonly class DoctrineOrderRepository implements OrderRepository
             contact: Contact::of(EmailAddress::fromString($record->email), $record->fullName, $record->phone),
             shippingAddress: ShippingAddress::inPoland($record->street, $record->postalCode, $record->city),
             lines: $lines,
+            discount: null === $record->discountCode ? null : OrderDiscount::of($record->discountCode, OrderDiscountKind::from($record->discountKind ?? ''), $record->discountValue ?? 0, Money::of($record->discountGross ?? 0, $currency)),
             status: OrderStatus::from($record->status),
             idempotencyKey: IdempotencyKey::fromString($record->idempotencyKey),
             requestFingerprint: RequestFingerprint::fromString($record->requestFingerprint),

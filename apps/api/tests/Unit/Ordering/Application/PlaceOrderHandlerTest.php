@@ -11,14 +11,18 @@ use App\Ordering\Application\Command\PlaceOrderHandler;
 use App\Ordering\Application\View\OrderLineView;
 use App\Ordering\Domain\CartEmpty;
 use App\Ordering\Domain\CartNotOrderable;
+use App\Ordering\Domain\DiscountCodeRejected;
 use App\Ordering\Domain\IdempotencyKeyReused;
 use App\Ordering\Domain\InsufficientStockForOrder;
 use App\Ordering\Domain\InvalidOrderInput;
 use App\Ordering\Domain\Order;
+use App\Ordering\Domain\OrderDiscountKind;
 use App\Ordering\Domain\OrderPlaced;
 use App\Ordering\Domain\OrderTotalChanged;
+use App\Ordering\Domain\PromotionCopy;
 use App\Tests\Unit\Ordering\CartGone;
 use App\Tests\Unit\Ordering\FixedOrderingClock;
+use App\Tests\Unit\Ordering\InMemoryDiscountCodeRedemptions;
 use App\Tests\Unit\Ordering\InMemoryOrderCart;
 use App\Tests\Unit\Ordering\InMemoryOrderCatalog;
 use App\Tests\Unit\Ordering\InMemoryOrderPrices;
@@ -47,10 +51,16 @@ final class PlaceOrderHandlerTest extends TestCase
     private const string MAP_PRODUCT = 'c0ffee00-7c1a-7c4e-9a6e-00000000000c';
     /** 2 × 36 900 + 1 × 2 000 */
     private const int TOTAL = 75_800;
+    private const string CODE_ID = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c6d00';
+    /** 10 % of TOTAL */
+    private const int DISCOUNT = 7_580;
+    private const string INVALID = 'tag:piotrp321.github.io,2026:shop/problems/discount-code-invalid';
+    private const string USED_UP = 'tag:piotrp321.github.io,2026:shop/problems/discount-code-used-up';
 
     private Journal $journal;
     private InMemoryOrderCart $carts;
     private InMemoryOrderPrices $prices;
+    private InMemoryDiscountCodeRedemptions $redemptions;
     private InMemoryOrderCatalog $catalog;
     private InMemoryStockReservations $stock;
     private InMemoryOrders $orders;
@@ -66,7 +76,10 @@ final class PlaceOrderHandlerTest extends TestCase
         $this->prices = new InMemoryOrderPrices($this->journal)
             ->price(self::SHOES, 30_000, 6_900)
             ->price(self::CAP, 1_852, 148, 800, 'reduced')
-            ->price(self::MAP, 1_000, 230);
+            ->price(self::MAP, 1_000, 230)
+            ->code('WITAJ10', self::CODE_ID, OrderDiscountKind::Percent, 10)
+            ->reject('LATO15', self::INVALID, 'Ten kod jest nieprawidłowy albo nieaktywny.');
+        $this->redemptions = new InMemoryDiscountCodeRedemptions($this->journal);
         $this->catalog = new InMemoryOrderCatalog($this->journal)
             ->variant(self::SHOES, self::SHOES_PRODUCT, 'Buty Asfalt', 'czarne, 42')
             ->variant(self::CAP, self::CAP_PRODUCT, 'Czapka Szczyt', '')
@@ -93,8 +106,8 @@ final class PlaceOrderHandlerTest extends TestCase
         self::assertSame('+48600100200', $view->phone);
         self::assertSame(['Długa 1', '00-950', 'Warszawa', 'PL'], [$view->shippingAddress->street, $view->shippingAddress->postalCode, $view->shippingAddress->city, $view->shippingAddress->country]);
         self::assertEquals([
-            new OrderLineView(self::SHOES, 'Buty Asfalt', 'czarne, 42', 2, 36_900, 73_800),
-            new OrderLineView(self::CAP, 'Czapka Szczyt', '', 1, 2_000, 2_000),
+            new OrderLineView(self::SHOES, 'Buty Asfalt', 'czarne, 42', 2, 36_900, 73_800, 0, 73_800, null),
+            new OrderLineView(self::CAP, 'Czapka Szczyt', '', 1, 2_000, 2_000, 0, 2_000, null),
         ], $view->lines);
         self::assertSame([61_852, 13_948, self::TOTAL, 'PLN'], [$view->totals->net, $view->totals->vat, $view->totals->gross, $view->totals->currency]);
         self::assertEquals($this->clock->now, $view->placedAt);
@@ -108,6 +121,10 @@ final class PlaceOrderHandlerTest extends TestCase
         self::assertSame([$view->orderId => [self::SHOES => 2, self::CAP => 1]], $this->stock->reservations, 'reserved with the order id as the key');
         self::assertEquals([new OrderPlaced($view->orderId, $this->clock->now)], $this->events->published);
         self::assertSame([[self::SHOES, self::CAP]], $this->prices->asked, 'one call for all the lines');
+        self::assertSame([null], $this->prices->askedCodes, 'quoted without a code');
+        self::assertNull($view->discount);
+        self::assertNull($order->discount());
+        self::assertSame([], $this->redemptions->redeemed, 'no usage without a code');
         self::assertSame([[self::SHOES, self::CAP]], $this->catalog->asked, 'one call for all the lines');
     }
 
@@ -177,6 +194,146 @@ final class PlaceOrderHandlerTest extends TestCase
         // Replay check, cart lock, replay check under the lock, copies, number, cart cleared, reservation, then the
         // order, its event and its expiry last.
         self::assertSame(['find', 'lock', 'find', 'prices', 'catalog', 'number', 'clear', 'reserve', 'add', 'publish', 'schedule'], $this->journal->calls);
+    }
+
+    public function testAnAppliedCodeGivesAnOrderWithTheCopyOfTheDiscountTheLineDiscountsOfTheQuoteAndAUsage(): void
+    {
+        $placed = $this->place(self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: ' witaj10 '));
+
+        self::assertSame(['WITAJ10'], $this->prices->askedCodes, 'the code is quoted trimmed and in upper case');
+        $order = $this->onlyOrder();
+        $discount = $order->discount();
+        self::assertNotNull($discount);
+        self::assertSame(['WITAJ10', OrderDiscountKind::Percent, 10, self::DISCOUNT], [$discount->code(), $discount->kind(), $discount->value(), $discount->amount()->amount()]);
+        $quote = $this->prices->lastQuote;
+        self::assertNotNull($quote);
+        foreach ($order->lines() as $line) {
+            $quoted = $quote->lines[$line->variantId()->toString()];
+            self::assertEquals($quoted->amounts->discount(), $line->discount(), 'the discount of the line is the one of the quote');
+            self::assertEquals($quoted->amounts->net(), $line->lineNet(), 'the net of the line is the one of the quote');
+            self::assertEquals($quoted->amounts->vat(), $line->lineVat());
+            self::assertEquals($quoted->amounts->gross(), $line->lineGross());
+        }
+        self::assertSame(self::DISCOUNT, $order->lines()[0]->discount()->amount() + $order->lines()[1]->discount()->amount());
+        self::assertSame(self::TOTAL - self::DISCOUNT, $order->totals()->gross()->amount());
+        self::assertSame([[self::CODE_ID, $order->id()->toString(), self::TOTAL]], $this->redemptions->redeemed, 'one usage of the order, with the subtotal before the code');
+
+        $view = $placed->order;
+        self::assertNotNull($view->discount);
+        self::assertSame(['WITAJ10', 'percent', 10, self::DISCOUNT], [$view->discount->code, $view->discount->kind, $view->discount->value, $view->discount->amountGross]);
+        self::assertSame([73_800, self::DISCOUNT, 73_800 - self::DISCOUNT], [$view->lines[0]->grossBeforeDiscount, $view->lines[0]->discountGross, $view->lines[0]->lineGross]);
+        self::assertSame(self::TOTAL - self::DISCOUNT, $view->totals->gross);
+    }
+
+    public function testTheUsageIsRecordedAfterTheTotalCheckAndBeforeTheNumberAndTheStock(): void
+    {
+        $this->place(self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: 'WITAJ10'));
+
+        // Cart, then code, then stock (decision D7); a rejected usage takes no number of the order.
+        self::assertSame(['find', 'lock', 'find', 'prices', 'catalog', 'redeem', 'number', 'clear', 'reserve', 'add', 'publish', 'schedule'], $this->journal->calls);
+    }
+
+    public function testALinePromotionIsCopiedToTheOrder(): void
+    {
+        $promotion = PromotionCopy::of('0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c6e00', 'Jesień -20%', 20, 46_125);
+        $this->prices->promotion(self::SHOES, $promotion);
+
+        $this->place(self::command());
+
+        self::assertSame($promotion, $this->onlyOrder()->lines()[0]->promotion());
+        self::assertNull($this->onlyOrder()->lines()[1]->promotion());
+    }
+
+    public function testACodeRejectedInTheQuoteIsRefusedWithItsTypeBeforeTheTotalIsCompared(): void
+    {
+        foreach ([self::TOTAL, 1] as $expected) {
+            $this->setUp();
+
+            try {
+                $this->place(self::command(expectedTotalGross: $expected, discountCode: 'lato15'));
+                self::fail('Expected DiscountCodeRejected.');
+            } catch (DiscountCodeRejected $rejected) {
+                self::assertSame(self::INVALID, $rejected->problemType());
+                self::assertSame('Ten kod jest nieprawidłowy albo nieaktywny.', $rejected->getMessage());
+            }
+            self::assertSame(['find', 'lock', 'find', 'prices', 'catalog'], $this->journal->calls, 'no usage, number, clear or reservation');
+            self::assertSame([], $this->orders->all());
+            self::assertSame([], $this->redemptions->redeemed);
+            self::assertSame([self::SHOES => 2, self::CAP => 1], $this->carts->lines(self::guest()));
+        }
+    }
+
+    public function testACodeRejectedWhenItsUsageIsRecordedRefusesTheWholePlacement(): void
+    {
+        $this->redemptions->redeemFailure = DiscountCodeRejected::of(self::USED_UP, 'Ten kod został już wykorzystany.', null);
+
+        $this->assertRefused(DiscountCodeRejected::class, 'Ten kod został już wykorzystany.', self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: 'WITAJ10'));
+        self::assertSame(['find', 'lock', 'find', 'prices', 'catalog', 'redeem'], $this->journal->calls, 'no number, clear or reservation');
+        self::assertSame([], $this->stock->reservations);
+        self::assertSame([], $this->events->published);
+        self::assertSame([], $this->expiry->scheduled);
+    }
+
+    public function testATotalOtherThanTheOneAfterTheDiscountIsRefused(): void
+    {
+        $this->assertRefused(OrderTotalChanged::class, 'Kwota zamówienia się zmieniła. Sprawdź podsumowanie.', self::command(discountCode: 'WITAJ10'));
+        self::assertSame([], $this->redemptions->redeemed);
+    }
+
+    public function testAReplayWithACodeGivesTheSameOrderWithoutASecondUsage(): void
+    {
+        $first = $this->place(self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: 'WITAJ10'));
+
+        $replayed = $this->place(self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: ' Witaj10'));
+
+        self::assertTrue($replayed->replayed);
+        self::assertEquals($first->order, $replayed->order);
+        self::assertCount(1, $this->redemptions->redeemed);
+    }
+
+    public function testTheSameKeyWithAnotherCodeOrWithoutTheCodeIsAnotherRequest(): void
+    {
+        $first = $this->place(self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: 'WITAJ10'));
+        $this->carts->put(self::guest(), [self::MAP => 1]);
+
+        foreach ([self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT), self::command(expectedTotalGross: self::TOTAL - self::DISCOUNT, discountCode: 'MINUS50')] as $other) {
+            $this->assertRefused(IdempotencyKeyReused::class, 'Ten klucz żądania był już użyty dla innego zamówienia.', $other, $first);
+        }
+        self::assertCount(1, $this->redemptions->redeemed);
+    }
+
+    public function testABlankCodeIsNoCode(): void
+    {
+        $first = $this->place(self::command(discountCode: " \u{00A0}\t"));
+
+        self::assertSame([null], $this->prices->askedCodes);
+        self::assertNull($this->onlyOrder()->discount());
+        self::assertSame([], $this->redemptions->redeemed);
+        self::assertTrue($this->place(self::command())->replayed, 'the same request as one without the key');
+        self::assertSame($first->order->orderId, $this->place(self::command(discountCode: ''))->order->orderId);
+    }
+
+    public function testTheFingerprintOfAPlacementWithoutACodeIsTheOneBeforeDiscountCodes(): void
+    {
+        $this->place(self::command());
+
+        // RequestFingerprint of this request as it was computed before discount codes existed.
+        self::assertSame('45d8891143adea4162fe12830184a04efb4efd464e110a5e175b9a4f7d60027f', $this->onlyOrder()->requestFingerprint()->toString());
+    }
+
+    public function testACodeLongerThan64CharactersIsRefusedBeforeAnyPort(): void
+    {
+        try {
+            $this->place(self::command(discountCode: str_repeat('A', 65)));
+            self::fail('Expected InvalidOrderInput.');
+        } catch (InvalidOrderInput $invalid) {
+            self::assertSame('Kod rabatowy może mieć najwyżej 64 znaki.', $invalid->getMessage());
+        }
+        self::assertSame([], $this->journal->calls);
+
+        $this->setUp();
+        $this->place(self::command(discountCode: ' '.str_repeat('Ą', 62).' '));
+        self::assertSame([str_repeat('Ą', 62)], $this->prices->askedCodes, '64 characters (not bytes) are allowed; only ASCII letters change their case');
     }
 
     public function testACustomerPlacesAnOrderFromTheCustomerCart(): void
@@ -395,7 +552,7 @@ final class PlaceOrderHandlerTest extends TestCase
 
     private function place(PlaceOrder $command): PlacedOrder
     {
-        $handler = new PlaceOrderHandler($this->orders, $this->carts, $this->prices, $this->catalog, $this->stock, $this->numbers, $this->expiry, $this->events, $this->clock);
+        $handler = new PlaceOrderHandler($this->orders, $this->carts, $this->prices, $this->redemptions, $this->catalog, $this->stock, $this->numbers, $this->expiry, $this->events, $this->clock);
 
         return $handler($command);
     }
@@ -412,7 +569,8 @@ final class PlaceOrderHandlerTest extends TestCase
         string $phone = '600 100 200',
         int $expectedTotalGross = self::TOTAL,
         string $key = 'key-1',
+        ?string $discountCode = null,
     ): PlaceOrder {
-        return new PlaceOrder($cart ?? self::guest(), $email, $fullName, $phone, 'Długa 1', '00-950', 'Warszawa', $expectedTotalGross, $key);
+        return new PlaceOrder($cart ?? self::guest(), $email, $fullName, $phone, 'Długa 1', '00-950', 'Warszawa', $expectedTotalGross, $key, $discountCode);
     }
 }

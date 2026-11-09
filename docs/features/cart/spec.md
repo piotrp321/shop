@@ -9,8 +9,11 @@ usuwa pozycje i widzi sumy policzone przez API. Koszyk przeżywa odświeżenie i
 gościa łączy się z koszykiem klienta, a klient widzi ten sam koszyk na każdym urządzeniu.
 
 Cena wariantu w koszyku i w ofercie listy to cena skuteczna z Pricing (w aktywnej promocji cena promocyjna,
-`docs/features/promotions/spec.md`); koszyk nie oznacza promocji. Poza zakresem: rezerwacja stanu (robi ją złożenie
-zamówienia w Ordering), płatności, kody rabatowe, koszty dostawy, strona produktu, panel administracyjny, rate limiting tworzenia koszyków.
+`docs/features/promotions/spec.md`); koszyk nie oznacza promocji. Ceny i sumy linii możliwych do kupienia pochodzą
+z jednej wyceny Pricing (`QuoteBasket`, ta sama co przy złożeniu zamówienia), a odczyt koszyka przyjmuje kod rabatowy
+do podglądu w kasie (`docs/features/discount-codes/spec.md`); kod nie jest zapisywany w koszyku. Poza zakresem:
+rezerwacja stanu (robi ją złożenie zamówienia w Ordering), płatności, koszty dostawy, strona produktu, panel
+administracyjny, rate limiting tworzenia koszyków.
 
 ## Decyzje biznesowe
 
@@ -23,7 +26,7 @@ zamówienia w Ordering), płatności, kody rabatowe, koszty dostawy, strona prod
 | 5 | Koszyk gościa wygasa po 30 dniach od ostatniej zmiany, koszyk klienta po 180 dniach. Wygasły koszyk zachowuje się jak pusty, fizycznie usuwa go `cart:purge-expired`. |
 | 6 | Pozycje nigdy nie znikają same. Pozycja bez ceny, niedostępna, z ilością większą niż dostępna albo z wariantem usuniętym z katalogu ma etykietę i przycisk „Usuń”. Suma obejmuje tylko pozycje możliwe do kupienia. |
 | 7 | Dostępność ogranicza ilość przy dodaniu i zwiększeniu ilości, bez rezerwacji i bez ujawniania liczby sztuk. Wiąże dopiero rezerwacja przy złożeniu zamówienia (Ordering). |
-| 8 | Sumy: wartość brutto i liczba sztuk, bez VAT. Licznik sztuk w nagłówku. |
+| 8 | Sumy: wartość brutto przed kodem, rabat kodu, brutto do zapłaty i liczba sztuk, bez VAT. Licznik sztuk w nagłówku. |
 | 9 | Koszyk pokazuje zawsze cenę aktualną, bez informacji o zmianie ceny. Cenę zamraża zamówienie. |
 | 10 | Po wylogowaniu przeglądarka pokazuje pusty koszyk gościa; koszyk klienta zostaje na koncie. |
 
@@ -33,7 +36,7 @@ zamówienia w Ordering), płatności, kody rabatowe, koszty dostawy, strona prod
 |---|---|
 | Cart | koszyki, pozycje, limity, scalanie, wygasanie, widok koszyka z sumami, oferta produktów listy (warianty możliwe do kupienia, cena „od”, poziom produktu) |
 | Catalog | `GetVariantSummaries` (produkt, nazwa produktu, etykieta wariantu i zdjęcie produktu dla linii koszyka), `ListProductVariants` (osie i warianty produktów listy dla oferty) |
-| Pricing | `GetCurrentPrices` (autorytatywna cena aktualna wariantu) |
+| Pricing | `GetCurrentPrices` (autorytatywna cena aktualna wariantu: kupowalność i oferta listy), `QuoteBasket` (wycena linii możliwych do kupienia z kodem rabatowym) |
 | Inventory | `GetStockLevels` (dostępna liczba sztuk wariantu i jej poziom, tylko w procesie API) |
 | Customer | `AuthenticatedCustomer::id()` (`sub` z tokena realmu `shop`) |
 | Ordering | składa zamówienie z koszyka: blokuje go i czyta jego linie (`LockCartForOrder`), po złożeniu opróżnia (`ClearCartAfterOrder`) |
@@ -144,14 +147,27 @@ Stan linii, w kolejności priorytetu:
 | `state` | Warunek |
 |---|---|
 | `unavailable_product` | wariant nieznany Catalogowi (np. po resecie danych demo, linia sprzed migracji, której produktu już nie ma, wariant usunięty w panelu) albo wariant szkicu (produkt nieopublikowany albo wycofany z publikacji: `GetVariantSummaries` pomija go jak nieznany) |
-| `no_price` | brak ceny w `GetCurrentPrices` (brak ceny, nieaktualna stawka VAT albo cena w walucie innej niż PLN; promocja tego nie zmienia) |
+| `no_price` | brak ceny w `GetCurrentPrices` (brak ceny, nieaktualna stawka VAT albo cena w walucie innej niż PLN; promocja tego nie zmienia), także linia możliwa do kupienia według `GetCurrentPrices`, której wycena nie wyceniła (cena usunięta między odczytami); gdy wycena pominie wszystkie takie linie, sumy są 0 i `discount = null` jak bez linii kupowalnych |
 | `out_of_stock` | `available = 0` (także produkt bez rekordu stanu) |
 | `insufficient_stock` | `quantity > available` |
 | `purchasable` | pozostałe |
 
-- `unitPrice` = cena brutto z Pricing (gdy jest), `lineTotal` = `unitPrice × quantity` tylko dla `purchasable`.
-- `totals.gross` = suma `lineTotal` linii `purchasable` (0 przy pustym koszyku), `totals.currency = PLN`.
+- Kupowalność (cena, potem stan) ustala `ProductOffer::purchasability()` z cenami z `CartPrices`. Linie `purchasable`
+  wycenia jedną wyceną port `CartQuote` (Pricing `QuoteBasket`, D9 w `docs/features/discount-codes/spec.md`) z kodem
+  odczytu: to dwa odczyty cen na widok (świadomie: kupowalność zależy od stanu, a rabat od zbioru linii kupowalnych);
+  na granicy promocji mogą się różnić, ale zamówienie bierze wycenę z chwili złożenia.
+- `unitPrice`: dla `purchasable` cena skuteczna jednostkowa z wyceny, dla pozostałych cena brutto z `CartPrices` (gdy
+  jest). `lineTotal` = wartość linii przed kodem z wyceny (`grossBeforeDiscount`, cena jednostkowa × ilość) tylko dla
+  `purchasable`; widok nie pokazuje rabatu linii, więc linie i wiersz kodu sumują się do `totals.gross`.
+- `totals` z wyceny: `subtotalGross` (suma `lineTotal`), `discountGross` (rabat kodu, 0 bez kodu), `gross` (do
+  zapłaty, `subtotalGross − discountGross`), `currency = PLN`. Bez linii `purchasable` (pusty koszyk albo same
+  wykluczone) nie ma wyceny: sumy 0 i `discount = null`, także gdy przyszedł kod. Koszyk z liniami wykluczonymi
+  i kupowalnymi dostaje wycenę kodu z linii kupowalnych.
 - `totals.itemCount` = suma ilości wszystkich linii (licznik w nagłówku).
+- `discount`: kod odczytu zastosowany `{status: applied, code, amountGross, kind, value}` albo odrzucony `{status:
+  rejected, code, reason, detail, minimumOrderGross | null}` (`reason`: `invalid`, `used_up`, `below_minimum`; `detail`
+  po polsku z Pricing, ten sam co w 409 złożenia), `null` bez kodu. Komendy (dodanie, zmiana, usunięcie, scalenie)
+  odpowiadają widokiem bez kodu.
 - `hasExcludedLines` = istnieje linia inna niż `purchasable`.
 - Kwoty w groszach; maksimum 50 × 99 × 99 999 999 mieści się w `int`.
 
@@ -300,8 +316,9 @@ Komendy (`command.bus`), każda zwraca `CartView`, chyba że opisano inaczej:
 - `PurgeExpiredCarts(batchSize)` → liczba koszyków usuniętych w jednej partii.
 
 Zapytania (`query.bus`):
-- `GetCart(cartRef)` → `CartView`. Klient bez rekordu koszyka: pusty widok z `id = null`; wygasły koszyk klienta: pusty
-  widok z `id` koszyka; nic nie jest zakładane. Koszyk gościa nieznany, wygasły albo `merged`: 404.
+- `GetCart(cartRef, discountCode | null)` → `CartView`. Klient bez rekordu koszyka: pusty widok z `id = null`; wygasły
+  koszyk klienta: pusty widok z `id` koszyka; nic nie jest zakładane. Koszyk gościa nieznany, wygasły albo `merged`: 404.
+  Kod (pusty albo biały to brak kodu) idzie do wyceny bez zmian; jego format i rodzaje odrzucenia ocenia Pricing.
 - `GetCartSummary(cartRef)` → `CartSummary {itemCount}`, jeden odczyt koszyka, bez portów. Te same reguły 404 i pustego koszyka.
 
 Porty (`Cart_Application/Port`) i adaptery (`Cart_Infrastructure`):
@@ -311,6 +328,7 @@ Porty (`Cart_Application/Port`) i adaptery (`Cart_Infrastructure`):
 | `ProductCatalog::summaries(variantIds)` → `VariantSummary {variantId, productId, name, label, image}` | `QueryBusProductCatalog` | Catalog `GetVariantSummaries` |
 | `ProductCatalog::variantsOf(productIds)` → `ProductVariants {productId, variantAxes, variants: [{variantId, label}]}` | `QueryBusProductCatalog` | Catalog `ListProductVariants` |
 | `CartPrices::current(variantIds, withLowestPriorPrice = false)` → `CartPrice {variantId, gross: Money, regularGross: Money, promotion: VariantPromotion {endsAt, lowestPriorGross: Money\|null}\|null}` | `QueryBusCartPrices` | Pricing `GetCurrentPrices` |
+| `CartQuote::quote(lines {variantId, quantity}, discountCode)` → `CartQuoteResult {lines: {unitGross, grossBeforeDiscount} po wariancie, subtotalGross, discountGross, gross, discount}` (1–50 linii `purchasable`) | `QueryBusCartQuote` | Pricing `QuoteBasket` |
 | `StockAvailability::of(variantIds)` → `VariantAvailability {variantId, available, level}` | `QueryBusStockAvailability` | Inventory `GetStockLevels` |
 | `CartReader::find(id)`, `findForCustomer(customerId)` | `DbalCartReader` | odczyt DBAL |
 | `ExpiredCarts::purgeBatch(now, limit)` | `DbalExpiredCarts` | usunięcie partii DBAL |
@@ -349,7 +367,7 @@ Gość (bez tokena; token wysłany mimo to i niepoprawny daje 401, a gdy nie da 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
 | `POST /api/v1/guest-carts` | 201 `CartView` (pusty), nagłówek `Location`; ciało nie jest czytane | |
-| `GET /api/v1/guest-carts/{cartId}` | 200 `CartView` | 404 |
+| `GET /api/v1/guest-carts/{cartId}?discountCode=` | 200 `CartView` (z podglądem kodu) | 400 (kod nie jest tekstem, nie jest UTF-8 albo ma ponad 64 znaki), 404 |
 | `GET /api/v1/guest-carts/{cartId}/summary` | 200 `{itemCount}` | 404 |
 | `POST /api/v1/guest-carts/{cartId}/items`, body `{variantId: uuid, quantity: int}` | 200 `CartView` | 400 treść nie jest poprawnym JSON-em; 404 koszyk albo wariant; 409 `CartLineQuantityLimit`, `CartLineLimit`, `ProductNotPurchasable`, `InsufficientStock`; 415 treść inna niż JSON; 422 (z `violations`, komunikaty w punkcie „Komunikaty 422” niżej) |
 | `PUT /api/v1/guest-carts/{cartId}/items/{variantId}`, body `{quantity: int}` | 200 `CartView` | jak wyżej oraz 404 `CartLineNotFound` |
@@ -360,7 +378,7 @@ wystawcy tokenu: 503):
 
 | Endpoint | Sukces | Błędy |
 |---|---|---|
-| `GET /api/v1/me/cart` | 200 `CartView` (bez koszyka: pusty, `id: null`) | 401 |
+| `GET /api/v1/me/cart?discountCode=` | 200 `CartView` (bez koszyka: pusty, `id: null`; z podglądem kodu) | 400 (jak wyżej), 401 |
 | `GET /api/v1/me/cart/summary` | 200 `{itemCount}` | 401 |
 | `POST /api/v1/me/cart/items` | 200 `CartView` | 401 oraz jak u gościa (404 tylko wariant) |
 | `PUT /api/v1/me/cart/items/{variantId}` | 200 `CartView` | 401 oraz jak u gościa (404 wariant albo linia) |
@@ -404,10 +422,20 @@ wystawcy tokenu: 503):
     lineTotal: { gross: int, currency: "PLN" } | null,
     state: "purchasable" | "no_price" | "out_of_stock" | "insufficient_stock" | "unavailable_product"
   }],
-  totals: { gross: int, currency: "PLN", itemCount: int },
-  hasExcludedLines: bool
+  totals: { subtotalGross: int, discountGross: int, gross: int, currency: "PLN", itemCount: int },
+  hasExcludedLines: bool,
+  discount: { status: "applied", code: string, amountGross: int, kind: "percent" | "amount", value: int }
+          | { status: "rejected", code: string, reason: "invalid" | "used_up" | "below_minimum", detail: string,
+              minimumOrderGross: int | null }
+          | null
 }
 ```
+
+Parametr `discountCode` (`CartQuery`, `#[MapQueryString]`, 400 z `violations` przy `discountCode`): nie-napis (np.
+`discountCode[]=`) „Kod rabatowy musi być tekstem.”, ponad 64 znaki „Kod rabatowy może mieć najwyżej 64 znaki.”, bajty
+spoza UTF-8 „Kod rabatowy zawiera niedozwolone znaki.”. Pusty albo z samych białych znaków to brak kodu; inny tekst
+(także znak sterujący albo spoza `[A-Za-z0-9-]`) to kod odrzucony jako `invalid` z `code` po przycięciu i zamianie liter
+ASCII na wielkie.
 
 Linie w kolejności `addedAt`. `product` jest `null` dla `unavailable_product`. Liczba dostępnych sztuk nigdy nie jest
 zwracana.
@@ -572,8 +600,11 @@ Każda linia z etykietą ma „Usuń”; zmniejszenie ilości jest zawsze możli
 - `mergeFrom`: suma, przycięcie do 99 (`truncated`), pominięcie linii ponad 50 (`truncated`), kolejność `addedAt`,
   pusty gość, gość już `merged` (`already_merged`), linie gościa usunięte i status `merged`; **wygasły koszyk klienta
   z pozycjami: po scaleniu zawiera wyłącznie pozycje gościa**.
-- `CartViewBuilder`: priorytet stanów, `lineTotal` i `totals.gross` tylko dla `purchasable`, `itemCount` ze wszystkich
-  linii, `hasExcludedLines`, pusty koszyk.
+- `CartViewBuilder` (z `FakeCartQuote`): priorytet stanów, `unitPrice`, `lineTotal` (wartość przed rabatem) i sumy
+  linii `purchasable` z wyceny (inne niż z `CartPrices`), wycena tylko linii `purchasable` w kolejności koszyka z kodem,
+  linie wykluczone z `lineTotal = null`, bez linii `purchasable` brak wyceny, sumy 0 i `discount = null` także z kodem,
+  linia pominięta przez wycenę jako `no_price` (wszystkie pominięte: sumy 0 i `discount = null` także z kodem), `itemCount` ze wszystkich linii, `hasExcludedLines`, pusty koszyk.
+- `GetCart` przekazuje kod do wyceny; komendy wyceniają bez kodu.
 - Handlery: 404 dla gościa nieznanego, wygasłego i scalonego; `ProductNotFound`; `nothing_to_merge` dla nieznanego,
   wygasłego i klienckiego `guestCartId`; `GetCart` klienta bez koszyka nic nie zakłada.
 - `Cart::clearAfterOrder` (`CartClearAfterOrderTest`) i komendy dla Ordering (`CartOrderCommandsTest`):
@@ -597,7 +628,8 @@ W `apps/api/tests/Integration`:
   `refresh` rekordu obecnego w identity map (także usuniętego w międzyczasie) i ponowienie po usunięciu koszyka przez
   czyszczenie.
 - `Cart/QueryBusAdaptersTest`: adaptery Catalog, Pricing (także cena skuteczna, cena katalogowa i promocja z ceną
-  Omnibus tylko z flagą) i Inventory na wariantach.
+  Omnibus tylko z flagą; wycena `QueryBusCartQuote` z kodem zastosowanym, odrzuconym i pustym, linia bez ceny pominięta)
+  i Inventory na wariantach.
 - `Cart/ProductOfferFactsTest`: fakty indeksu z ceną skuteczną wariantu w promocji, bez zapytań Omnibusa.
 - `Cart/GetProductOffersTest`: 48 produktów po 100 wariantów z wariantem w promocji to sześć zapytań (warianty, ceny,
   promocje aktywne, historia i promocje okna Omnibusa, stany).
@@ -639,6 +671,11 @@ niepoprawny UUID, forma `[]`), 401 przy złym tokenie, `public, max-age=60, s-ma
 warianty w promocji (`gross` promocyjne, `regularGross`, `promotion` z `endsAt` i ceną Omnibus, także `null` bez ceny
 przed startem, `fromPromotion`). `GuestCartEndpointTest`: linia wariantu w promocji ma cenę promocyjną bez oznaczenia
 promocji.
+`CartDiscountCodeEndpointTest`: koszyk gościa i klienta z kodem zastosowanym (procentowym i kwotowym na granicy
+minimum), każdy powód odrzucenia z `detail` i `minimumOrderGross` (nieznany, wyłączony, przed początkiem, wygasły, zły
+format, znak sterujący, 64 znaki, wykorzystany, poniżej minimum), kod pusty i z samych białych znaków jak brak kodu,
+400 z polskim naruszeniem (65 znaków, także polskich liter, tablica, bajty spoza UTF-8), koszyk bez linii możliwych do
+kupienia bez wyceny, odpowiedź komendy bez kodu. Pozostałe testy koszyka sprawdzają nowe pola sum i `discount: null`.
 
 ### Architektura
 
@@ -687,8 +724,9 @@ Zakazane (brak reguły, Deptrac zgłasza błąd): `Catalog_*`, `Pricing_*`, `Inv
 - Tworzenie koszyka gościa jest publiczne, bez rate limitu; tabelę można zaśmiecić pustymi koszykami do czasu ich
   wygaśnięcia.
 - Identyfikator koszyka gościa jest w ścieżce URL API, więc trafia do logów API. Koszyk nie zawiera danych osobowych.
-- Licznik w nagłówku to jedno zapytanie do PostgreSQL na odsłonę strony, widok koszyka to cztery zapytania (koszyk,
-  Catalog, Pricing, Inventory). Wydajność przy 60 tys. aktywnych użytkowników nie jest potwierdzona testami
+- Licznik w nagłówku to jedno zapytanie do PostgreSQL na odsłonę strony, widok koszyka z linią możliwą do kupienia to
+  koszyk, Catalog, Pricing (ceny i promocje), Inventory i wycena Pricing (ceny, promocje, kod i liczba użyć kodu
+  z limitem). Bez rate limitingu kody można zgadywać przez podgląd koszyka. Wydajność przy 60 tys. aktywnych użytkowników nie jest potwierdzona testami
   obciążeniowymi.
 - Dodanie powtórzone po zgubionej odpowiedzi może zwiększyć ilość dwa razy (bez `Idempotency-Key`), a zmiana ilości
   z nieaktualnej karty nadpisuje nowszą. Obie konsekwencje są świadome.

@@ -39,8 +39,8 @@ final class CustomerOrderEndpointTest extends WebTestCase
         self::assertSame(self::TOKEN_EMAIL, $order['email'], 'the email of the body is ignored');
         self::assertSame(self::CONTACT, array_intersect_key($order, self::CONTACT));
         self::assertSame([
-            ['variantId' => $shoes, 'productName' => 'Buty Puls', 'variantLabel' => '', 'quantity' => 1, 'unitGross' => 12_300, 'lineGross' => 12_300],
-            ['variantId' => $map, 'productName' => 'Mapa', 'variantLabel' => '', 'quantity' => 3, 'unitGross' => 1_230, 'lineGross' => 3_690],
+            ['variantId' => $shoes, 'productName' => 'Buty Puls', 'variantLabel' => '', 'quantity' => 1, 'unitGross' => 12_300, 'grossBeforeDiscount' => 12_300, 'discountGross' => 0, 'lineGross' => 12_300],
+            ['variantId' => $map, 'productName' => 'Mapa', 'variantLabel' => '', 'quantity' => 3, 'unitGross' => 1_230, 'grossBeforeDiscount' => 3_690, 'discountGross' => 0, 'lineGross' => 3_690],
         ], $order['lines']);
         self::assertSame(['net' => 13_000, 'vat' => 2_990, 'gross' => 15_990, 'currency' => 'PLN'], $order['totals']);
         self::assertNull($order['accessToken'], 'a customer reaches the order by the token of the session');
@@ -185,7 +185,7 @@ final class CustomerOrderEndpointTest extends WebTestCase
         ], token: TestTokenFactory::customer());
 
         self::assertResponseStatusCodeSame(201);
-        self::assertSame([['variantId' => $shoes, 'productName' => 'Buty Puls', 'variantLabel' => '', 'quantity' => 1, 'unitGross' => 12_300, 'lineGross' => 12_300]], $order['lines']);
+        self::assertSame([['variantId' => $shoes, 'productName' => 'Buty Puls', 'variantLabel' => '', 'quantity' => 1, 'unitGross' => 12_300, 'grossBeforeDiscount' => 12_300, 'discountGross' => 0, 'lineGross' => 12_300]], $order['lines']);
         self::assertSame(['net' => 10_000, 'vat' => 2_300, 'gross' => 12_300, 'currency' => 'PLN'], $order['totals']);
         self::assertIsString($order['orderId']);
         self::assertSame([$shoes => 1], OrderingFixture::reservation($this->connection, $order['orderId']));

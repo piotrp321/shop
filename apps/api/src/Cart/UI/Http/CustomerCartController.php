@@ -18,6 +18,7 @@ use OpenApi\Attributes as OA;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Attribute\MapQueryString;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
@@ -41,18 +42,23 @@ final readonly class CustomerCartController
     #[OA\Get(
         operationId: 'getCustomerCart',
         summary: 'Cart of the customer',
-        description: 'The cart with its lines, their states and the totals, all computed by the API. A customer without a cart gets an '
+        description: 'The cart with its lines, their states and the totals, all computed by the API (Pricing\'s quote of the purchasable lines), '
+            .'with the preview of a discount code when one is given. A customer without a cart gets an '
             .'empty one with `id: null`, and none is created; an expired cart (180 days after its last change) is empty.',
         tags: ['Cart'],
+        parameters: [new OA\Parameter(name: 'discountCode', in: 'query', required: false, description: 'A discount code to preview (the checkout): the totals and `discount` show it applied or why not. Blank is no code; at most 64 characters.', schema: new OA\Schema(type: 'string', maxLength: 64))],
         responses: [
             new OA\Response(response: 200, description: 'The cart.', content: new OA\JsonContent(ref: '#/components/schemas/CartView')),
+            new OA\Response(response: 400, description: 'The discount code is not text, is not UTF-8 or has more than 64 characters (problem details with `violations`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 401, description: 'Missing or invalid access token, also one of the `backoffice` realm (problem details, `WWW-Authenticate: Bearer`).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'The keys of the token issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]
-    public function get(#[CurrentUser] AuthenticatedCustomer $customer): JsonResponse
-    {
-        return new JsonResponse($this->dispatch($this->queryBus, new GetCart(CartRef::customer($customer->id()))));
+    public function get(
+        #[CurrentUser] AuthenticatedCustomer $customer,
+        #[MapQueryString(validationFailedStatusCode: Response::HTTP_BAD_REQUEST)] CartQuery $query = new CartQuery(),
+    ): JsonResponse {
+        return new JsonResponse($this->dispatch($this->queryBus, new GetCart(CartRef::customer($customer->id()), $query->code())));
     }
 
     #[Route('/api/v1/me/cart/summary', name: 'cart_customer_summary', methods: ['GET'])]

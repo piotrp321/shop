@@ -22,6 +22,7 @@ use App\Ordering\Domain\ProductId;
 use App\Ordering\Domain\RequestFingerprint;
 use App\Ordering\Domain\ShippingAddress;
 use App\Ordering\Domain\VariantId;
+use App\Tests\Unit\Ordering\OrderExamples;
 use PHPUnit\Framework\TestCase;
 
 final class OrderTest extends TestCase
@@ -110,6 +111,7 @@ final class OrderTest extends TestCase
             contact: self::contact(),
             shippingAddress: ShippingAddress::inPoland('Długa 1', '00-950', 'Warszawa'),
             lines: $lines,
+            discount: null,
             status: OrderStatus::New,
             idempotencyKey: IdempotencyKey::fromString('key-1'),
             requestFingerprint: self::fingerprint(),
@@ -148,6 +150,7 @@ final class OrderTest extends TestCase
             self::contact(),
             ShippingAddress::inPoland('Długa 1', '00-950', 'Warszawa'),
             $lines,
+            null,
             IdempotencyKey::fromString('key-1'),
             self::fingerprint(),
             $this->now,
@@ -173,6 +176,8 @@ final class OrderTest extends TestCase
             '',
             $quantity,
             PriceCopy::of($gross, 0, $gross, 0, 'zero', Currency::PLN),
+            OrderExamples::undiscounted(PriceCopy::of($gross, 0, $gross, 0, 'zero', Currency::PLN), $quantity),
+            null,
         );
     }
 }
