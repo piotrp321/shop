@@ -511,12 +511,15 @@ zwracana.
   strony). Produkt bez wariantu możliwego do kupienia (`fromGross = null`, także z ≥ 2 wariantami albo nieznany
   Catalogowi): „Niedostępny” bez ceny, listy i przycisku. Błąd wywołania ofert: kafelki z „Cena niedostępna”, bez etykiety,
   listy i przycisku, błąd w logu serwera. Zdjęcie nie zmienia się przy wyborze wariantu.
-- Część kliencka kafelka (`TileOffer`, dostaje ofertę przez propsy): produkt z jednym wariantem ma przycisk
-  `AddToCartButton` („Do koszyka”), który dodaje ten wariant; produkt z ≥ 2 wariantami ma listę (opisaną nazwami osi,
-  np. „Kolor, Rozmiar”) z opcją „Wybierz wariant” i wariantami w kolejności oferty, bez wyboru domyślnego; wariant
-  z `purchasable = false` ma dopisek „niedostępny” i nie da się go wybrać. Do wyboru przycisk jest wyłączony, po wyborze
-  kafelek pokazuje cenę i etykietę poziomu wybranego wariantu, a przycisk dodaje 1 sztukę wybranego wariantu. Na czas
-  żądania przycisk jest zablokowany. HTML katalogu nie zależy od sesji.
+- Część kliencka kafelka (`TileOffer`, dostaje ofertę przez propsy): produkt z jednym wariantem ma od razu przycisk
+  `AddToCartButton` („Do koszyka”), który dodaje ten wariant; produkt z ≥ 2 wariantami ma jedną aktywną akcję „Wybierz
+  wariant”, bez listy rozwijanej i bez nieaktywnego „Do koszyka”. Po niej akcja znika, kafelek pokazuje warianty oferty
+  w jej kolejności (grupa radio opisana nazwami osi, np. „Kolor, Rozmiar”, bez wyboru domyślnego; jedna oś: przyciski
+  w rzędzie, dwie osie lub więcej: lista pełnych etykiet), a fokus przechodzi na pierwszy wariant możliwy do wybrania.
+  Wariant z `purchasable = false` ma dopisek „niedostępny” i nie da się go wybrać. Rozwinięcie i wybór są ogłaszane
+  w obszarze `aria-live`. Po wyborze (można go zmienić) kafelek pokazuje cenę i etykietę poziomu wybranego wariantu oraz
+  aktywny „Do koszyka”, który dodaje 1 sztukę wybranego wariantu. Na czas żądania przycisk jest zablokowany. HTML
+  katalogu nie zależy od sesji.
 - `CartBadge` w nagłówku: link „Koszyk” z liczbą sztuk z `/api/cart/summary`; po każdej zmianie koszyka licznik
   aktualizuje się z `itemCount` odpowiedzi (zdarzenie w przeglądarce, `src/cart/events.ts`). Do czasu wczytania i przy
   błędzie licznik jest ukryty, link zostaje.

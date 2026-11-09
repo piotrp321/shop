@@ -8,15 +8,18 @@ const groszeOf = (text: string) => Number(text.replace(/\D/g, ""));
 test("a guest adds a product from the list, changes its quantity on the cart page and removes it", async ({ page }) => {
   await page.goto("/");
 
-  // The first product of the list that is plainly in stock: it has a price, the label "Dostępny" and the button.
-  const tile = page
+  // The first product of the list that is plainly in stock: it has a price, the label "Dostępny" and the button („Do koszyka”,
+  // or „Wybierz wariant” on a tile that offers a choice of variants).
+  const first = page
     .getByRole("main")
     .getByRole("listitem")
     .filter({ has: page.getByTestId("availability").getByText("Dostępny", { exact: true }) })
-    .filter({ has: page.getByRole("button", { name: "Do koszyka" }) })
+    .filter({ has: page.getByRole("button", { name: /^(Do koszyka|Wybierz wariant)$/ }) })
     .first();
-  await expect(tile).toBeVisible();
-  const name = (await tile.getByRole("heading").innerText()).trim();
+  await expect(first).toBeVisible();
+  const name = (await first.getByRole("heading").innerText()).trim();
+  // The tile is found again by its name: its buttons change while a variant is chosen.
+  const tile = page.getByRole("main").getByRole("listitem").filter({ has: page.getByRole("heading", { name, exact: true }) });
   // A tile with a choice of variants shows the price of the chosen one.
   const label = await chooseFirstVariant(tile);
   const unitGrosze = groszeOf(await tile.getByTestId("price").innerText());
@@ -72,14 +75,16 @@ test("two tabs of a guest without a cart add two products at the same time and b
       .getByRole("main")
       .getByRole("listitem")
       .filter({ has: page.getByTestId("availability").getByText("Dostępny", { exact: true }) })
-      .filter({ has: page.getByRole("button", { name: "Do koszyka" }) });
-  const tileA = inStock(first).nth(0);
-  const tileB = inStock(second).nth(1);
-  await expect(tileA).toBeVisible();
-  await expect(tileB).toBeVisible();
-  const nameA = (await tileA.getByRole("heading").innerText()).trim();
-  const nameB = (await tileB.getByRole("heading").innerText()).trim();
+      .filter({ has: page.getByRole("button", { name: /^(Do koszyka|Wybierz wariant)$/ }) });
+  await expect(inStock(first).nth(0)).toBeVisible();
+  await expect(inStock(second).nth(1)).toBeVisible();
+  const nameA = (await inStock(first).nth(0).getByRole("heading").innerText()).trim();
+  const nameB = (await inStock(second).nth(1).getByRole("heading").innerText()).trim();
   expect(nameA).not.toBe(nameB);
+  // Each tile is found again by its name: its buttons change while a variant is chosen.
+  const named = (page: typeof first, name: string) => page.getByRole("main").getByRole("listitem").filter({ has: page.getByRole("heading", { name, exact: true }) });
+  const tileA = named(first, nameA);
+  const tileB = named(second, nameB);
   const [labelA, labelB] = [await chooseFirstVariant(tileA), await chooseFirstVariant(tileB)];
 
   await Promise.all([
