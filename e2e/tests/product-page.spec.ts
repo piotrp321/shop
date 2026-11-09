@@ -17,7 +17,7 @@ test("from the list to the product page: the path, the photo and the structured 
 
   await expect(page).toHaveURL(new RegExp(`${PRODUCT_PATH}$`));
   await expect(page.getByRole("heading", { level: 1, name: PRODUCT_NAME })).toBeVisible();
-  await expect(page).toHaveTitle(`${PRODUCT_NAME} | Rytm`);
+  await expect(page).toHaveTitle(`${PRODUCT_NAME} | Worf`);
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", new RegExp(`${PRODUCT_PATH}$`));
 
   const path = page.getByRole("navigation", { name: "Ścieżka" });

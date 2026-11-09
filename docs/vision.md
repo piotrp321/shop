@@ -3,7 +3,7 @@
 ## Co budujemy
 
 Platformę e-commerce w monorepo: API w Symfony, sklep dla klientów i panel administracyjny.
-Branża: sport i outdoor, szeroki asortyment w kilku działach. Robocza nazwa sklepu: „Rytm”.
+Branża: sport i outdoor, szeroki asortyment w kilku działach. Nazwa sklepu: „Worf” (domena worf.pl).
 
 Projekt ma dwa cele:
 

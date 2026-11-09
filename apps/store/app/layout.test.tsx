@@ -36,7 +36,7 @@ describe("the root layout", () => {
     const html = await render("failing");
     expect(html).not.toContain("Działy");
     expect(html).not.toContain("/c/");
-    expect(html).toContain("Rytm");
+    expect(html).toContain("Worf");
     expect(html).toContain("Koszyk");
     expect(log).toHaveBeenCalledOnce();
     expect(String(log.mock.calls[0][0])).toContain("categories");

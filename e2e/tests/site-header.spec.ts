@@ -14,7 +14,7 @@ async function expectInsideScreen(locator: Locator): Promise<void> {
 
 async function expectHeaderFits(page: Page): Promise<void> {
   const header = page.getByRole("banner");
-  await expectInsideScreen(header.getByRole("link", { name: "Rytm" }));
+  await expectInsideScreen(header.getByRole("link", { name: "Worf" }));
   await expectInsideScreen(header.getByRole("searchbox", { name: "Szukaj produktów" }));
   await expectInsideScreen(header.getByRole("button", { name: "Szukaj" }));
   await expectInsideScreen(header.getByRole("link", { name: /Koszyk/ }));

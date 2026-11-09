@@ -149,7 +149,7 @@ Sitemap: <STORE_URL>/sitemap.xml
 Na `/` zawsze, gdy strona pokazuje listing (z wynikami albo pustą listą, także z parametrami filtrów i strony); nie na
 „Nieprawidłowym filtrze” (`noindex`), przy przekierowaniu `?category=` ani na 404. Nie na `/c/`, `/szukaj` ani `/p/`.
 
-Nazwa sklepu to jedna stała `STORE_NAME` (wartość „Rytm”) w `apps/store/src/site.ts`. Używają jej tytuły i opisy
+Nazwa sklepu to jedna stała `STORE_NAME` (wartość „Worf”) w `apps/store/src/site.ts`. Używają jej tytuły i opisy
 w `src/catalog/page-metadata.ts` i `src/catalog/product-metadata.ts`, `title` i `description` w `app/layout.tsx`,
 znak słowny w `src/catalog/SiteHeader.tsx` i JSON-LD strony głównej (`src/seo/home-json-ld.ts`).
 

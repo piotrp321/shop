@@ -5,7 +5,7 @@ Status: zaakceptowana do realizacji (task `CATALOG-PAGE-METADATA`). Ryzyko: FAST
 ## Problem
 
 Strony katalogu sklepu (`apps/store/app/page.tsx` i `apps/store/app/c/[...path]/page.tsx`) bez własnych metadanych
-miałyby te same dane z layoutu: tytuł „Rytm” i opis „Sklep internetowy Rytm”. Wyszukiwarka nie odróżniałaby kategorii
+miałyby te same dane z layoutu: tytuł „Worf” i opis „Sklep internetowy Worf”. Wyszukiwarka nie odróżniałaby kategorii
 po tytule, ten sam listing byłby dostępny pod wieloma adresami (`?page=1`, dodatkowe parametry), a strona
 „Nieprawidłowy filtr” mogłaby trafić do indeksu.
 
@@ -17,11 +17,11 @@ Tylko sklep (`apps/store`). Bez zmian w API, kliencie TS i panelu.
   wyszukiwania, osobna sekcja niżej). Stary adres `/?category=<id>` istniejącej kategorii przekierowuje trwale (308) na
   `/c/<ścieżka>`, z pozostałymi parametrami.
 - Tytuł strony (`<title>`):
-  - `/`: `Wszystkie produkty | Rytm`;
-  - `/c/<ścieżka>`: `<nazwa kategorii> | Rytm` (nazwa z drzewa kategorii);
-  - strona listy większa niż 1: przed ` | Rytm` dochodzi ` – strona <n>`, np. `Buty – strona 2 | Rytm`.
-- Opis (`description`): `/` `Wszystkie produkty w sklepie Rytm.`, `/c/` `Produkty z kategorii <nazwa kategorii> w
-  sklepie Rytm.`
+  - `/`: `Wszystkie produkty | Worf`;
+  - `/c/<ścieżka>`: `<nazwa kategorii> | Worf` (nazwa z drzewa kategorii);
+  - strona listy większa niż 1: przed ` | Worf` dochodzi ` – strona <n>`, np. `Buty – strona 2 | Worf`.
+- Opis (`description`): `/` `Wszystkie produkty w sklepie Worf.`, `/c/` `Produkty z kategorii <nazwa kategorii> w
+  sklepie Worf.`
 - Adres kanoniczny (`<link rel="canonical">`), bezwzględny, na bazie `STORE_URL` (zmienna już ustawiona dla sklepu
   w compose):
   - `/c/<ścieżka>`: `<STORE_URL>/c/<ścieżka>`, z `?page=<n>`, gdy `n` jest większe niż 1;
@@ -37,9 +37,9 @@ Tylko sklep (`apps/store`). Bez zmian w API, kliencie TS i panelu.
   `<STORE_URL>/c/<ścieżka>`), także na stronie dalszej niż pierwsza i przy pustym wyniku. Sam `page` (i pominięte `q`,
   `kategoria`) nie zmienia indeksowania. Pusty parametr (formularz bez JavaScriptu wysyła każde pole) liczy się jak brak.
 - `/szukaj`: zawsze `robots: noindex, follow` i bez adresu kanonicznego (także przy zbyt krótkiej frazie i po
-  nieprawidłowym filtrze, który ma sam `noindex`). Tytuł `Wyniki dla „<fraza>” | Rytm` (z ` – strona <n>` po stronie 1;
-  fraza przycięta i do 100 znaków), bez frazy albo przy frazie krótszej niż 2 znaki `Wyszukiwanie | Rytm`, przy
-  nieprawidłowym filtrze `Nieprawidłowy filtr | Rytm`. Opis `Wyniki wyszukiwania w sklepie Rytm.`
+  nieprawidłowym filtrze, który ma sam `noindex`). Tytuł `Wyniki dla „<fraza>” | Worf` (z ` – strona <n>` po stronie 1;
+  fraza przycięta i do 100 znaków), bez frazy albo przy frazie krótszej niż 2 znaki `Wyszukiwanie | Worf`, przy
+  nieprawidłowym filtrze `Nieprawidłowy filtr | Worf`. Opis `Wyniki wyszukiwania w sklepie Worf.`
 - Nieznana ścieżka `/c/…` i nieznana kategoria: 404 z Next.js (z `noindex`).
 - JSON-LD `BreadcrumbList` na `/c/<ścieżka>`: „Wszystkie produkty” i kategorie ścieżki z bezwzględnymi adresami
   `/c/…` (jak na stronie produktu).
@@ -48,8 +48,8 @@ Tylko sklep (`apps/store`). Bez zmian w API, kliencie TS i panelu.
 
 ## Kryteria akceptacji
 
-1. `/` ma tytuł `Wszystkie produkty | Rytm` i kanoniczny `<STORE_URL>/`.
-2. `/c/bieganie/buty?page=2&utm_source=x` ma tytuł `Buty biegowe – strona 2 | Rytm` i kanoniczny
+1. `/` ma tytuł `Wszystkie produkty | Worf` i kanoniczny `<STORE_URL>/`.
+2. `/c/bieganie/buty?page=2&utm_source=x` ma tytuł `Buty biegowe – strona 2 | Worf` i kanoniczny
    `<STORE_URL>/c/bieganie/buty?page=2`.
 3. `/c/bieganie/buty?page=1` ma kanoniczny `<STORE_URL>/c/bieganie/buty`.
 4. Nieprawidłowy filtr i pusta strona poza zakresem mają `noindex`.

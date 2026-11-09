@@ -314,13 +314,13 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 
 ### Metadane i SEO (S5)
 
-- `/c/<ścieżka>`: tytuł `<nazwa kategorii>[ – strona n] | Rytm`, opis „Produkty z kategorii <nazwa> w sklepie Rytm.”,
-  kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1). `/`: tytuł `Wszystkie produkty[ – strona n] | Rytm`,
+- `/c/<ścieżka>`: tytuł `<nazwa kategorii>[ – strona n] | Worf`, opis „Produkty z kategorii <nazwa> w sklepie Worf.”,
+  kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1). `/`: tytuł `Wszystkie produkty[ – strona n] | Worf`,
   kanoniczny `<STORE_URL>/` (`?page=n` przy n > 1).
 - Którykolwiek z parametrów `sort`, `cena-od`, `cena-do`, `dostepne`, `o` → `robots: noindex, follow` i kanoniczny
   listingu bez nich i bez `page`.
-- `/szukaj`: `noindex, follow`, bez adresu kanonicznego, tytuł `Wyniki dla „<fraza>”[ – strona n] | Rytm` (bez frazy
-  albo z za krótką `Wyszukiwanie | Rytm`). Wyjątek: „Nieprawidłowy filtr” ma samo `noindex`.
+- `/szukaj`: `noindex, follow`, bez adresu kanonicznego, tytuł `Wyniki dla „<fraza>”[ – strona n] | Worf` (bez frazy
+  albo z za krótką `Wyszukiwanie | Worf`). Wyjątek: „Nieprawidłowy filtr” ma samo `noindex`.
 - Pusta strona poza zakresem (`page` większe niż liczba stron): pusta lista z prawdziwym `total`,
   `noindex`. Niepoprawny numer strony (`0`, `abc`, ujemny): API 400 → „Nieprawidłowy filtr” z `noindex`.
 - JSON-LD `BreadcrumbList` na `/c/<ścieżka>` (bezwzględne adresy; `<` zakodowane jak na stronie produktu).

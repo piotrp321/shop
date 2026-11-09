@@ -66,7 +66,7 @@ test("a category page has the path, the number of products, its own canonical ad
   await expect(path.getByText("Buty trailowe", { exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Buty trailowe");
   await expect(page.getByRole("main").getByText(/^\d+ (produkt|produkty|produktów)$/)).toBeVisible();
-  await expect(page).toHaveTitle("Buty trailowe | Rytm");
+  await expect(page).toHaveTitle("Buty trailowe | Worf");
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/c\/bieganie\/buty\/trailowe$/);
 
   const scripts = await page.locator('script[type="application/ld+json"]').allTextContents();
@@ -83,7 +83,7 @@ test("the pages of a category are paginated under its address and the canonical 
   await page.getByRole("link", { name: "Przejdź do następnej strony" }).click();
   await expect(page).toHaveURL(/\/c\/bieganie\?page=2$/);
   await expect(pageIndicator(page)).toHaveText(/^Strona 2 z \d+$/);
-  await expect(page).toHaveTitle("Bieganie – strona 2 | Rytm");
+  await expect(page).toHaveTitle("Bieganie – strona 2 | Worf");
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/c\/bieganie\?page=2$/);
 });
 

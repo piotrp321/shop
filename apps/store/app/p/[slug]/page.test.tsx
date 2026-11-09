@@ -91,7 +91,7 @@ describe("generateMetadata", () => {
     const metadata = await route.generateMetadata(metadataProps("produkt-1"));
     expect(loadProduct).toHaveBeenCalledWith("produkt-1");
     expect(metadata).toMatchObject({
-      title: "Buty Asfalt | Rytm",
+      title: "Buty Asfalt | Worf",
       description: "Lekkie buty.",
       alternates: { canonical: "http://store.test/p/produkt-1" },
       openGraph: { images: [{ url: "http://imgproxy.test/a1-1600/plain.webp" }] },

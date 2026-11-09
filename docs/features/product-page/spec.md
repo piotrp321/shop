@@ -257,7 +257,7 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   - produkt bez wariantu możliwego do kupienia (`fromGross = null`): „Niedostępny”, bez ceny, wyboru i przycisku (P6);
   - wariant ze szczegółów, którego nie ma w ofercie, jest niemożliwy do kupienia.
   Front niczego nie liczy poza dopasowaniem wybranych wartości do wariantu: ceny, poziomy i `purchasable` z oferty.
-- Metadane (`generateMetadata`): tytuł `<nazwa> | Rytm`, opis = krótki opis, kanoniczny `<STORE_URL>/p/<slug>`,
+- Metadane (`generateMetadata`): tytuł `<nazwa> | Worf`, opis = krótki opis, kanoniczny `<STORE_URL>/p/<slug>`,
   Open Graph: tytuł, opis, obraz = pierwsze zdjęcie w największej szerokości (bez zdjęć: bez obrazu).
 - JSON-LD (`<script type="application/ld+json">`; każdy znak `<` w treści zakodowany jako ucieczka Unicode U+003C,
   jak w przewodniku JSON-LD Next.js):
