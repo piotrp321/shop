@@ -123,11 +123,18 @@ sesji) albo złe argumenty (np. `all` razem z `--reject`); pokaż komunikat i ni
 użytkownika. Lista z kroku 1 (z poprzedniego dnia): dodaj `--current "<run_dir>/input-now.json"`. Wyjście `results` ma status każdej pozycji
 (`done`, `skipped`, `error`, `rejected`) i `manual` przy epiku bez tablicy. Pokaż wynik każdej pozycji z linkami: wykonana, pominięta (powód, np. „zmienione od przeglądu”), błąd (komunikat;
 pozycja może wrócić). Dla `fix_epic` bez tablicy pokaż komendę ręczną z wyniku. Gdy epik powstał, przypomnij, że
-kolejność na tablicy ustala użytkownik, a następny krok to `/prepare-epic <nr>`.
+kolejność na tablicy ustala użytkownik, i przejdź do kroku 7.
+
+## 7. Przygotowanie epiku poprawek
+
+Tylko gdy `fix_epic` ma w wyniku `apply` status `done`. Przeczytaj `$SKILL_ROOT/.claude/skills/prepare-epic/SKILL.md`
+i wykonaj sekcję „Tryb po `/groom`” dla issue z adresu w `urls`. Jej warunki startu decydują, czy przygotowanie
+rusza; gdy nie rusza, push z tej sekcji podaje komendę `/prepare-epic <nr>`. Inny status `fix_epic`: koniec.
 
 ## Czego nie robisz
 
 - Nie zmieniasz niczego w GitHubie poza `groom.py apply` po decyzji użytkownika.
 - Nie zmieniasz treści, tytułów ani kolejności issues na tablicy i nie nadajesz etykiety `epic` istniejącym issues.
-- Nie przygotowujesz epiku (`/prepare-epic`) i nie zmieniasz repo.
+- Nie zmieniasz repo poza krokiem 7 (gałąź `prepare/<katalog>` w worktree `<run_dir>/prepare`); główny klon
+  zostaje na czystym `main`.
 - Nie zostawiasz worktree przebiegu po kroku 5.

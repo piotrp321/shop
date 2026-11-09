@@ -37,8 +37,9 @@ sprawdza propozycje i po „tak” użytkownika wykonuje dokładnie zatwierdzone
 - Pozycja `label` może też nieść `needs-info` (jedna pozycja na issue, patrz „Walidacja”).
 - **Limit:** najwyżej 10 pozycji na przebieg plus jeden epik poprawek. Pierwszeństwo: `obsolete`, `duplicate`,
   `needs-info`, `label`. Nadmiar trafia do raportu po jednej linii i może wrócić w następnym przebiegu.
-- **Poza zakresem:** zmiana treści, tytułu i wagi issues; kolejność na tablicy; przygotowanie epiku (`/prepare-epic`,
-  krok 14); issues `enhancement` i `epic`; issues w innych repozytoriach (np. AO).
+- **Poza zakresem:** zmiana treści, tytułu i wagi issues; kolejność na tablicy; issues `enhancement` i `epic`;
+  issues w innych repozytoriach (np. AO). Przygotowanie zatwierdzonego epiku poprawek opisuje
+  [`/prepare-epic`](../prepare-epic/spec.md), sekcja „Tryb po `/groom`” (krok 8 przebiegu).
 
 ## Epik poprawek
 
@@ -129,6 +130,10 @@ na `-FIXES` (ID i jego wzorzec jak w `next_epic.py`). Na raz istnieje jeden epik
    i odrzucone w `~/.local/state/shop-groom/rejected.jsonl` (`{kind, issues, updated_at: {nr: updatedAt}, reason,
    rejected_at}`). Drugie `apply` na tej samej liście: odmowa (kod 2). Wynik w rozmowie z linkami.
 7. **Zużycie:** `get_usage` przed krokiem 2 i po kroku 4; czas i przyrost okien w sekcji `## Zużycie` raportu.
+8. **Przygotowanie epiku poprawek.** Gdy `fix_epic` ma w wyniku `apply` status `done`, ta sama sesja prowadzi
+   `/prepare-epic` w trybie po `/groom` (warunki startu, bramka i wznowienie w specyfikacji `/prepare-epic`).
+   `groom.py origin <nr>` potwierdza pochodzenie issue ze stanu `/groom`, a `groom.py gate <run_dir>` liczy bramkę
+   akceptacji. Worktree przygotowania to `<run_dir>/prepare`; główny klon zostaje na czystym `main`.
 
 ## `proposals.json`
 
@@ -159,7 +164,7 @@ są ilustracją.
 - `.claude/skills/groom/SKILL.md`: instrukcja sesji (frontmatter: `disable-model-invocation: true`, `model: sonnet`
   dla przebiegu ręcznego).
 - `.claude/agents/backlog-groomer.md`: agent.
-- `.claude/skills/groom/groom.py` (Python 3.9+, bez zależności) i `test_groom.py`: `collect`, `validate`, `apply`.
+- `.claude/skills/groom/groom.py` (Python 3.9+, bez zależności) i `test_groom.py`: `collect`, `validate`, `apply` oraz `origin` i `gate` (tryb po `/groom` w `/prepare-epic`).
   Komendy `gh` i `git` przez wstrzykiwany runner `next_epic.make_runner`. `ci.yml` dostaje linię
   `python3 -m unittest discover -s .claude/skills/groom -p "test_*.py"`.
 - Stan poza repo: `~/.local/state/shop-groom/` (katalogi przebiegów, `rejected.jsonl`). Plik odrzuconych `/sweep`
