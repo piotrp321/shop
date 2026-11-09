@@ -50,6 +50,23 @@ async function movePage(move: () => Promise<void>): Promise<void> {
   }
 }
 
+// Same for the retry button: it stays on while the list loads (a repeated press asks again, the newest answer wins).
+// When the retry succeeds the error, and the button with it, disappears, so the focus goes to the list: to the first
+// code, or to the pager when the page has none. When it fails the button is still there and keeps the focus.
+const rootElement = useTemplateRef<HTMLElement>("root");
+
+async function retryList(): Promise<void> {
+  await retry();
+  await nextTick();
+  const focused = document.activeElement;
+  if (error.value !== null || (focused !== document.body && focused !== null && focused.isConnected)) {
+    return;
+  }
+  const firstCode = rootElement.value?.querySelector<HTMLElement>("[data-testid=code-link]");
+  const target = firstCode ?? pagerElement.value?.querySelector<HTMLButtonElement>("button:not(:disabled)");
+  target?.focus();
+}
+
 const statusFilter = ref<"all" | DiscountCodeStatus>("all");
 watch(statusFilter, (value) => selectStatus(value === "all" ? null : value));
 
@@ -59,7 +76,10 @@ const canAdd = computed(() => canManageDiscountCodes(auth.staff));
 </script>
 
 <template>
-  <div class="discount-codes">
+  <div
+    ref="root"
+    class="discount-codes"
+  >
     <div class="header">
       <h1>Kody rabatowe</h1>
       <RouterLink
@@ -124,8 +144,7 @@ const canAdd = computed(() => canManageDiscountCodes(auth.staff));
         icon="pi pi-refresh"
         severity="secondary"
         size="small"
-        :loading="loading"
-        @click="retry()"
+        @click="retryList()"
       />
     </Message>
 

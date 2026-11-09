@@ -315,6 +315,65 @@ describe("DiscountCodesView", () => {
     expect(wrapper.find("[data-testid=retry]").exists()).toBe(false);
   });
 
+  describe("retry with the keyboard", () => {
+    const retryButton = () => wrapper!.get("[data-testid=retry]");
+    const press = async () => {
+      (retryButton().element as HTMLElement).focus();
+      await retryButton().trigger("click");
+    };
+
+    it("keeps the retry button on while the list loads, so that it keeps the focus", async () => {
+      serve({}, 500);
+      wrapper = await mountView(["admin"], true);
+      let answer: () => void = () => undefined;
+      mocks.get.mockImplementationOnce(
+        () => new Promise((resolve) => (answer = () => resolve({ data: { items: [item("A")], next: null }, response: { status: 200 } }))),
+      );
+
+      await press();
+
+      expect(retryButton().attributes("disabled")).toBeUndefined();
+      expect(document.activeElement).toBe(retryButton().element);
+      answer();
+      await flushPromises();
+    });
+
+    it("moves the focus to the first code after a successful retry", async () => {
+      serve({}, 500);
+      wrapper = await mountView(["admin"], true);
+      serve({ "": { items: [item("A"), item("B")], next: null } });
+
+      await press();
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid=discount-codes-error]").exists()).toBe(false);
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=code-link]").element);
+    });
+
+    it("moves the focus to the pager after a successful retry that finds no codes", async () => {
+      serve({}, 500);
+      wrapper = await mountView(["admin"], true);
+      serve({ "": { items: [], next: "c1" } });
+
+      await press();
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid=code-link]").exists()).toBe(false);
+      expect(document.activeElement).toBe(wrapper.get("[data-testid=next-page]").element);
+    });
+
+    it("leaves the focus on the retry button when the retry fails", async () => {
+      serve({}, 500);
+      wrapper = await mountView(["admin"], true);
+
+      await press();
+      await flushPromises();
+
+      expect(wrapper.find("[data-testid=discount-codes-error]").exists()).toBe(true);
+      expect(document.activeElement).toBe(retryButton().element);
+    });
+  });
+
   it.each([[["admin"]], [["marketing"]], [["support", "marketing"]]] as StaffMe["roles"][][])(
     "offers adding a discount code to the roles %j",
     async (roles) => {
