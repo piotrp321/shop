@@ -150,6 +150,166 @@ Praca toczy się na gałęzi `prepare/<katalog>` od `origin/main`.
    - Raport: link do PR, merge albo powód jego braku, pozycje użytkownika z „Wymaganych przed startem”, następny
      krok `/ao-run <katalog>`.
 
+## Tryb po `/groom`
+
+Krok 14 planu [Agentic Software House](../agentic-software-house/plan.md). Epik poprawek, który użytkownik zatwierdził
+na liście [`/groom`](../groom/spec.md), sesja `/groom` przygotowuje dalej sama: kroki 1–3 i 5 przebiegają bez rozmowy,
+a kroki 4 i 6 idą jedną wiadomością z powiadomieniem push. Krok 7, zasady merge'u PR ze specyfikacją i AO się nie
+zmieniają. Nowej orkiestracji nie ma: sesja `/groom` czyta ten `SKILL.md` z dysku (jak dziś czyta `/brainstorm`
+i `/planner`) i prowadzi go narzędziem Agent. Ręczne `/prepare-epic` działa jak dotąd, z jednym wyjątkiem
+(„Wznowienie”).
+
+### Cel i kryteria sukcesu
+
+- Od „tak” dla epiku na liście `/groom` do pytań użytkownik nie robi nic: jedno powiadomienie z pytaniami
+  i akceptacją zamiast dwóch rozmów (krok 4 i krok 6).
+- Odpowiedź „tak” zastępuje dzisiejsze odpowiedzi na kroki 4 i 6 tylko wtedy, gdy przejdzie bramka (niżej).
+- Czas i zużycie limitu przygotowania są zmierzone (sekcja `## Zużycie`).
+
+### Start
+
+Sesja `/groom` po `groom.py apply` (krok 6 `/groom`), gdy wynik pozycji `fix_epic` ma status `done`. Inny status:
+tryb nie rusza, a raport `/groom` podaje komendę ręczną jak dziś.
+
+Warunki sprawdzane w tej kolejności. Pierwszy niespełniony kończy tryb bez worktree, bez gałęzi i bez zmian
+w GitHubie, a sesja wysyła push (do 200 znaków) `Epik <ID> #<nr>: przygotowanie nie ruszyło (<powód>). Ręcznie:
+/prepare-epic <nr>` i pokazuje to samo w rozmowie:
+
+1. **Pochodzenie.** `groom.py origin <nr>` zwraca kod 0 tylko wtedy, gdy w katalogu przebiegu
+   `~/.local/state/shop-groom/*/proposals.json` jest `fix_epic` z `result.status` równym `done` i adresem issue `<nr>`,
+   a issue jest otwarte, ma etykietę `epic`, nie ma `needs-info` i jego ID z tytułu jest równe `fix_epic.id` z sufiksem
+   `-FIXES`. Wypisuje jedną linię JSON `{run_dir, id, issues}`. Inaczej kod 1 z powodem. Pochodzenie potwierdza stan
+   `/groom`, nie treść issue.
+2. **Nic innego nie pracuje.** Nie działa `ao run` ani projekt Compose `sweep-*`: te same sprawdzenia co na starcie
+   `/groom`, wykonane od nowa.
+3. **Limit.** `night_queue.py room --hours 2` ze stanem z `get_usage` zwraca `ok`. Okno wypełnione w ≥ 80% albo brak
+   `get_usage`: powód w pushu.
+4. **Noc.** `night_queue.py ahead` zwraca `full: false`. Pełna noc: push zamiast pytania o potwierdzenie z „Wejścia”.
+5. **Warunki odmowy z „Wejścia”** (spec albo plan już na `origin/main`, istniejąca gałąź `prepare/<katalog>` i reszta).
+
+### Miejsce pracy i stan
+
+- Worktree `git worktree add -b prepare/<katalog> <run_dir>/prepare origin/main` w katalogu przebiegu `/groom`.
+  Główny klon zostaje na czystym `main`, bo tego wymaga następny przebieg `/groom` z harmonogramu.
+- Katalog stanu `<run_dir>/prepare-epic/`:
+  - `state.json`: `{issue, id, katalog, worktree, branch, base_commit, status, gate}`; `status` to `running`,
+    `awaiting`, `interactive`, `published` albo `failed`; `base_commit` to `origin/main` z chwili startu;
+  - raporty recenzentów, każdy w osobnym pliku (`review-<agent>-<runda>.md`), dosłownie;
+  - `acceptance.md`: wiadomość z kroku „Pytania i akceptacja”.
+- Gałąź, worktree i stan zostają do odpowiedzi użytkownika. Brak terminu i przypomnień. Worktree usuwa krok 7 po
+  merge'u albo użytkownik.
+
+### Przebieg
+
+Sesja `/groom` (Sonnet) tylko prowadzi: uruchamia podagentów, skrypty i push, przekazuje raporty recenzentów
+dosłownie, zapisuje stan. Treść `spec.md` i `plan.md` pisze wyłącznie podagent na Opusie.
+
+1. **Analityk.** Podagent `general-purpose` z `model: opus` i `effort: high` dostaje: numer issue, ścieżkę worktree,
+   ścieżkę tego `SKILL.md` i polecenie wykonania kroku 1 bez rozmowy. Pytania z punktu 8 `/brainstorm` zbiera
+   w raporcie, każde z rekomendacją. Do szkicu wpisuje rekomendowany wariant jako decyzję i oznacza go w raporcie
+   (lista decyzji do akceptacji). Nie wymyśla wymagań, których nie da się wyprowadzić z issue, kodu i dokumentacji:
+   takie wymaganie to pytanie.
+2. **Review.** Sesja uruchamia `spec-critic` i `architecture-reviewer` równolegle, jak w kroku 2 (oba na Opusie
+   z własnego frontmattera). Review kończy się poprawnie, gdy agent zwrócił raport, w którym każde znalezisko ma rodzaj
+   i wagę, albo raport „brak znalezisk”. Błąd, przerwanie albo raport bez wag: jedno ponowienie, potem review
+   niepoprawne.
+3. **Poprawki.** Analityk dostaje raporty (kontynuacja tego samego podagenta przez `SendMessage`; gdy kontynuacja jest
+   niedostępna, nowy podagent jak w kroku 1 ze ścieżką szkicu i raportami) i postępuje jak w kroku 3. Gdy któreś
+   znalezisko `Critical` zostało poprawione albo odrzucone, recenzent, który je zgłosił, sprawdza poprawiony szkic
+   jeszcze raz (runda 2, nowy agent, bez raportu z rundy 1). `Critical` zgłoszony w rundzie 2 zostaje otwarty, bez
+   rundy 3.
+4. **Planner.** Ten sam podagent wykonuje krok 5. Sesja uruchamia walidator manifestu i `night_queue.py scope`
+   i zapisuje ich kody wyjścia.
+5. **Pytania i akceptacja.** Jedna wiadomość w rozmowie, zapisana też w `acceptance.md`: treść kroku 6, przed nią
+   pytania z kroku 4 (każde z rekomendacją) i sekcja „Bramka”. `get_usage` przed krokiem 1 i tutaj; sekcja `## Zużycie`
+   (czas, przyrost każdego okna) na końcu `acceptance.md`. Push (do 200 znaków):
+   `Epik <ID>: <k> pytań, specyfikacja do akceptacji` albo, gdy bramka nie przechodzi,
+   `Epik <ID>: przygotowanie wymaga decyzji (<pierwszy powód>)`. `status` = `awaiting`.
+
+### Bramka
+
+Odpowiedź „tak” akceptuje rekomendacje, specyfikację, rozmiar końcowego PR i pozycje użytkownika z „Wymaganych przed
+startem” tylko wtedy, gdy w chwili odpowiedzi wszystkie warunki są spełnione:
+
+- oba review z kroku 2 i każda runda 2 zakończyły się poprawnie;
+- nie ma otwartego znaleziska `Critical`: poprawionego bez potwierdzenia w rundzie 2, zgłoszonego w rundzie 2 albo
+  wymagającego decyzji użytkownika (produktowego lub architektonicznego). Takie znalezisko jest osobnym pytaniem,
+  którego „tak” nie rozstrzyga;
+- walidator manifestu i `night_queue.py scope` przeszły na obecnych plikach (sesja uruchamia je jeszcze raz po
+  odpowiedzi);
+- od `base_commit` żaden commit na `origin/main` nie zmienił ścieżek z linii `Zakres:` ani `spec.md`/`plan.md`
+  epiku (`git log <base_commit>..origin/main -- <ścieżki>`), bo specyfikacja opisuje kod z chwili przygotowania.
+
+„Bramka” w wiadomości ma jedną linię na warunek z wynikiem i dowodem (pliki raportów, kody wyjścia, lista commitów).
+Bramka bez powodzenia: wiadomość nie proponuje „tak”, tylko wymienia, co blokuje i czego trzeba (odpowiedzi na pytanie
+`Critical`, decyzji o ponownym przygotowaniu przy zmienionym zakresie).
+
+### Odpowiedzi
+
+Akceptację daje wyłącznie użytkownik w rozmowie, jak w kroku 6.
+
+- **„tak” i bramka przechodzi:** krok 7 bez zmian (commit, PR, CI, merge według dzisiejszych warunków).
+  `status` = `published` albo `failed` z powodem z kroku 7.
+- **„tak” i bramka nie przechodzi** (także gdy przestała przechodzić od wysłania wiadomości): to nie jest akceptacja.
+  Sesja podaje powód i czeka dalej.
+- **Każda inna odpowiedź:** `status` = `interactive`. Odpowiedzi trafiają do specyfikacji (podagent jak w kroku 3),
+  przy zmianie projektu krok 2, potem walidator i zwykła akceptacja z kroku 6. Od tej chwili obowiązuje dzisiejszy
+  przebieg skilla, w tej samej sesji i tym samym worktree.
+
+### Wznowienie
+
+Gdy sesja `/groom` z czekającą akceptacją się zamknęła, ręczne `/prepare-epic <nr>` nie odmawia startu z powodu
+istniejącej gałęzi `prepare/<katalog>`, jeśli `<run_dir>/prepare-epic/state.json` dla tego issue ma `status`
+`awaiting` albo `interactive`, a worktree istnieje. Sesja pokazuje wtedy `acceptance.md` z bramką sprawdzoną od nowa
+i dalej działa według sekcji „Odpowiedzi”. Każdy inny stan gałęzi: odmowa jak dziś.
+
+### Pliki
+
+- `.claude/skills/prepare-epic/SKILL.md`: sekcja trybu po `/groom` i wznowienie.
+- `.claude/skills/groom/SKILL.md`: nowy krok po kroku 6, który przy `fix_epic` ze statusem `done` uruchamia ten tryb.
+  „Czego nie robisz” bez punktu o `/prepare-epic`.
+- `.claude/skills/groom/groom.py` i `test_groom.py`: komenda `origin <nr>`. Testy są już w CI.
+- Bez nowych agentów, skryptów i zmian w AO, `ci.yml` i regułach merge'u.
+
+### Wymagane przed startem
+
+- Narzędzia w sesji `/groom` z harmonogramu: Agent z parametrem `model`, `PushNotification`, `get_usage`; `SendMessage`
+  opcjonalnie (bez niego nowy podagent w kroku 3). Źródło: istnieją w sesjach aplikacji desktop (kryterium 4).
+- Uprawnienia sesji z harmonogramu do `git worktree`, `git push` i `gh pr create`/`merge` w trybie Auto: istnieją
+  dla `/groom` i `/prepare-epic`; pierwszy przebieg to potwierdzi.
+
+### Kryteria akceptacji
+
+1. Testy `groom.py origin`: `fix_epic` z `done` → kod 0 i JSON; `fix_epic` `skipped`, `error`, `rejected`, bez
+   decyzji albo `null` → kod 1; issue zamknięte, bez `epic`, z `needs-info` albo z innym ID → kod 1; brak katalogów
+   przebiegów → kod 1; błąd `gh` → kod 1.
+2. Ścieżka błędu startu: każdy z warunków 1–5 kończy tryb pushem z powodem, bez worktree i bez gałęzi. Pokazane na
+   atrapach (`ao run`, projekt `sweep-*`, okno ≥ 80%, `ahead` z `full: true`, istniejąca gałąź `prepare/*`).
+3. Bramka: na przygotowanym stanie (worktree z szkicem, raporty z `Critical` otwartym, walidator z błędem, commit
+   w `Zakres:` po `base_commit`) wiadomość nie proponuje „tak”, a „tak” nie uruchamia kroku 7. Pokazane.
+4. Prawdziwy przebieg: pierwszy epik poprawek zatwierdzony w `/groom` przechodzi do jednej wiadomości z pushem;
+   `acceptance.md` ma bramkę i `## Zużycie`. Dziś nie może nastąpić, bo otwarty jest QUALITY-FIXES (jeden epik
+   poprawek naraz); kryterium sprawdza pierwszy epik `-FIXES` po nim, jak kryteria 7–9 kroku 12.
+5. Wznowienie: `/prepare-epic <nr>` przy stanie `awaiting` pokazuje akceptację; przy gałęzi bez stanu odmawia.
+
+### Zmiany w dokumentacji (w PR implementacji)
+
+- `docs/features/groom/spec.md`: przebieg kończy się trybem po `/groom`, „Poza zakresem” bez przygotowania epiku.
+- `docs/features/agentic-software-house/plan.md`: status kroku 14, opis kroku 14 i punkt procesu (14) zgodnie z tą
+  sekcją.
+- `CLAUDE.md`: w opisie `/groom` zdanie, że zatwierdzony epik poprawek sesja przygotowuje sama aż do pytań i akceptacji.
+- `docs/adr/agentic-software-house.md`: przepływ `/groom` → `/prepare-epic` w tabeli komponentów.
+
+### Ryzyka i ograniczenia
+
+- Sesję prowadzi Sonnet. Bramkę liczy z plików raportów i kodów wyjścia, a „Bramka” w wiadomości pokazuje dowody,
+  ale ocena, czy raport ma wagi, nadal należy do modelu.
+- Przygotowanie zużywa limit w czasie, gdy `/ao-run` może chcieć wystartować epik; `/ao-run` na nie nie czeka (jak na
+  `/groom`). `room --hours 2` sprawdza limit tylko na starcie.
+- Akceptacja po wielu dniach: bramka odrzuca „tak”, gdy kod w zakresie się zmienił, ale nie wykryje zmiany poza
+  linią `Zakres:`, która wpływa na epik.
+- Sesja z harmonogramu działa tylko przy otwartej aplikacji Claude; zamknięta sesja wymaga wznowienia ręcznego.
+
 ## Czego skill nie robi
 
 Nie pisze kodu, nie zgłasza zadań do AO (`ao submit-plan`), nie merguje niczego poza PR z kroku 7, nie rozstrzyga
