@@ -5,7 +5,7 @@
 // Next.js installs. Everything is checked and encoded in memory first; only when nothing is wrong are the files written,
 // so a failed run changes nothing.
 // Exit codes: 0 done; 1 the list or the result is wrong (a width wider than the crop would enlarge the photo, a file
-// over its budget); 2 the environment is wrong (no `sharp`, no source directory or file).
+// over its budget, a photo that cannot be read); 2 the environment is wrong (no `sharp`, no source directory or file).
 // Variables for the tests: MARKETING_IMAGES_LIST (the list), MARKETING_IMAGES_SOURCE (the photos, default
 // /fixtures/images), MARKETING_IMAGES_OUT (where `images/` and `images.generated.ts` go, default src/home) and
 // MARKETING_IMAGES_SHARP (the module that stands for `sharp`).
@@ -61,7 +61,18 @@ for (const image of MARKETING_IMAGES) {
     note(ENVIRONMENT, `${image.id}: the source file ${image.source} is not in ${sourceDir}.`);
     continue;
   }
-  const meta = await sharp(sourcePath).metadata();
+  const cause = (error) => (error instanceof Error ? error.message : String(error));
+  let meta;
+  try {
+    meta = await sharp(sourcePath).metadata();
+  } catch (error) {
+    note(RESULT, `${image.source}: the photo cannot be read (${cause(error)}).`);
+    continue;
+  }
+  if (!meta.width || !meta.height) {
+    note(RESULT, `${image.source}: the photo cannot be read (no size).`);
+    continue;
+  }
   // EXIF orientation 5-8 turns the photo by a quarter, so the sides swap.
   const turned = (meta.orientation ?? 1) >= 5;
   const sourceWidth = turned ? meta.height : meta.width;
@@ -81,12 +92,18 @@ for (const image of MARKETING_IMAGES) {
         continue;
       }
       const height = marketingHeight(crop, width);
-      const data = await sharp(sourcePath)
-        .rotate()
-        .extract({ left, top, width: cropWidth, height: cropHeight })
-        .resize({ width, height, fit: "fill" })
-        .webp({ quality: crop.quality ?? WEBP_QUALITY, effort: 6 })
-        .toBuffer();
+      let data;
+      try {
+        data = await sharp(sourcePath)
+          .rotate()
+          .extract({ left, top, width: cropWidth, height: cropHeight })
+          .resize({ width, height, fit: "fill" })
+          .webp({ quality: crop.quality ?? WEBP_QUALITY, effort: 6 })
+          .toBuffer();
+      } catch (error) {
+        note(RESULT, `${name}: ${image.source} cannot be converted (${cause(error)}).`);
+        continue;
+      }
       const budgetKb = crop.budgetKb[width];
       if (budgetKb === undefined) {
         note(RESULT, `${name}: the list has no budget for the width ${width}.`);

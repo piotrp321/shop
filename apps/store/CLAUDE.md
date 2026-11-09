@@ -632,8 +632,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
   montowania odtwórz kontener `docker compose up -d store`). Używa `sharp`, który instaluje Next.js (bez zmiany
   `package.json`). Najpierw sprawdza i koduje wszystko w pamięci, dopiero potem zapisuje (kasuje też stare pliki `.webp`
   spoza listy). Kody wyjścia: 0 gotowe; 1 błędna lista albo wynik (szerokość ponad kadr, czyli powiększanie źródła;
-  plik ponad budżet; brak budżetu szerokości); 2 środowisko (brak `sharp`, katalogu źródeł lub pliku źródłowego); komunikat
-  na stderr, nic nie zapisane. Zmienne dla testów: `MARKETING_IMAGES_LIST`, `_SOURCE`, `_OUT`, `_SHARP`. Dodanie
+  plik ponad budżet; brak budżetu szerokości; plik źródłowy, którego `sharp` nie czyta albo nie przekonwertuje);
+  2 środowisko (brak `sharp`, katalogu źródeł lub pliku źródłowego). Komunikat z nazwą pliku i przyczyną idzie na stderr.
+  Błąd walidacji albo kodowania niczego nie zapisuje, bo zdarza się przed zapisem; błąd I/O podczas zapisu (np. pełny
+  dysk) może zostawić częściowy wynik, który cofa `git checkout`. Zmienne dla testów: `MARKETING_IMAGES_LIST`, `_SOURCE`, `_OUT`, `_SHARP`. Dodanie
   zdjęcia: wpis w liście, uruchomienie skryptu, commit listy, plików i `images.generated.ts`.
 - Vitest: import `.webp` daje napis zamiast `StaticImageData`, więc `vitest.config.ts` ma wspólny mock plików obrazów
   (wtyczka `imageFiles`: adres `/_next/static/media/<plik>` i szerokość z nazwy) dla testów modułu i strony głównej.

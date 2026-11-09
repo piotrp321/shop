@@ -121,6 +121,17 @@ describe("marketing-images.mjs on the error path", () => {
     expect(existsSync(out)).toBe(false);
   });
 
+  it("exits 1 with the file name and the cause, not a stack trace, when a source file is not an image, writing nothing", async () => {
+    await flatPhoto("good.jpg", 800, 600);
+    writeFileSync(join(source, "broken.jpg"), "this is not a JPEG");
+    const list = writeList([entry("good", "good.jpg", {}), entry("bad", "broken.jpg", {})]);
+    const { code, err } = run({ MARKETING_IMAGES_LIST: list });
+    expect(code).toBe(1);
+    expect(err).toMatch(/^marketing-images: problem, nothing was written:\n  - broken\.jpg: the photo cannot be read \(.+\)\./);
+    expect(err).not.toMatch(/\n\s+at /);
+    expect(existsSync(out)).toBe(false);
+  });
+
   it("exits 1 for a width without a budget", async () => {
     await flatPhoto("good.jpg", 800, 600);
     const list = writeList([entry("a", "good.jpg", { widths: [400], budgetKb: {} })]);
