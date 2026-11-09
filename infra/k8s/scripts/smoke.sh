@@ -193,8 +193,10 @@ break_image() {
 }
 
 import_images() {
+  tmark "import $1 start"
   # shellcheck disable=SC2046 # the names have no spaces
   k3d image import -c "$cluster" $(for app in $apps; do echo "$registry/$app:$1"; done) >/dev/null
+  tmark "import $1 end"
 }
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -281,6 +283,7 @@ wait_ready() {
     check_failures || return 1
     if all_ready; then
       echo "smoke: all jobs complete and all deployments ready ($1)"
+      timeline "$1"
       return 0
     fi
     if [ "$(date +%s)" -ge "$deadline" ]; then
@@ -298,12 +301,21 @@ wait_job_failed() {
   while [ "$(date +%s)" -lt "$deadline" ]; do
     name="$(kc get jobs -l "app.kubernetes.io/name=$1" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.conditions[?(@.type=="Failed")].status}{"\n"}{end}' \
       | awk '$2 == "True" {print $1; exit}')"
-    [ -z "$name" ] || { echo "$name"; return 0; }
+    [ -z "$name" ] || { timeline "failed $1"; echo "$name"; return 0; }
     sleep 5
   done
   echo "smoke: the job $1 did not fail in 300 s" >&2
   dump_state
   return 1
+}
+
+
+# TEMPORARY timing instrumentation (measurement branch, not for merge).
+tmark() { printf 'smoke-time: %s %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
+timeline() {
+  tmark "timeline after $1"
+  kc get jobs -o jsonpath='{range .items[*]}{"job "}{.metadata.name}{" start="}{.status.startTime}{" done="}{.status.completionTime}{" failed="}{.status.failed}{"\n"}{end}' >&2 || true
+  kc get pods -o jsonpath='{range .items[*]}{"pod "}{.metadata.name}{" created="}{.metadata.creationTimestamp}{" init="}{.status.conditions[?(@.type=="Initialized")].lastTransitionTime}{" ready="}{.status.conditions[?(@.type=="Ready")].lastTransitionTime}{" phase="}{.status.phase}{"\n"}{end}' >&2 || true
 }
 
 job_name() { kc get jobs -l "app.kubernetes.io/name=$1" -o jsonpath='{.items[0].metadata.name}'; }
@@ -327,6 +339,7 @@ esac
 # With SMOKE_VALUES the first install (r1) takes the revision and the digests from the images values file and pulls the
 # images from the registry of the chart (the profile ci would name the local registry and never pull: smoke_pull_args).
 install() {
+  tmark "helm $1 start"
   if [ -n "$SMOKE_VALUES" ] && [ "$1" = r1 ]; then
     # shellcheck disable=SC2046 # smoke_pull_args prints options
     helm_cluster upgrade --install shop "${2:-charts/shop}" --namespace "$namespace" --create-namespace \
@@ -335,6 +348,7 @@ install() {
     helm_cluster upgrade --install shop "${2:-charts/shop}" --namespace "$namespace" --create-namespace \
       -f environments/ci/values.yaml --set "image.tag=$1" --set "image.registry=$registry" >/dev/null
   fi
+  tmark "helm $1 end"
 }
 
 # The pods run the images of the registry by the digests of the images values file (the point of SMOKE_VALUES).
@@ -476,6 +490,7 @@ if [ "${SMOKE_REUSE:-}" = 1 ]; then
 else
   log "cluster $cluster ($K3S_IMAGE)"
   k3d cluster delete "$cluster" >/dev/null 2>&1 || true
+  tmark "cluster create start"
   registry_config=""
   [ ! -f "$k3d_dir/registries.yaml" ] || registry_config="--registry-config $k3d_dir/registries.yaml"
   # shellcheck disable=SC2086 # $registry_config is an option and its value
@@ -483,13 +498,16 @@ else
     -v "$k3d_dir/90-smoke-kubelet.conf:/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/90-smoke-kubelet.conf@server:*" \
     --k3s-arg '--disable=metrics-server@server:*' --k3s-arg '--disable=servicelb@server:*' >/dev/null
   k3d kubeconfig get "$cluster" | sed -E "s#server: https://[^:]+:[0-9]+#server: https://$node:6443#" > "$KUBE_DIR/config"
+  tmark "cluster create end"
   check_kubelet_policy
   start_sampler
   # With SMOKE_VALUES the first install pulls the images from the registry; nothing is imported for it.
   [ -n "$SMOKE_VALUES" ] || import_images r1
 
   log "install r1"
+  tmark "traefik wait start"
   wait_for_traefik
+  tmark "traefik wait end"
   install r1
   create_tools_pod
   wait_ready "install r1"
