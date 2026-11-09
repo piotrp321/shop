@@ -7,7 +7,7 @@ import Message from "primevue/message";
 import SelectButton from "primevue/selectbutton";
 import Skeleton from "primevue/skeleton";
 import Tag from "primevue/tag";
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import { RouterLink } from "vue-router";
 import { formatDiscount, formatPeriod, formatUses, STATUS_FILTER_OPTIONS, statusLabel, statusSeverity } from "@/discount-codes/format";
 import { canManageDiscountCodes } from "@/discount-codes/permissions";
@@ -34,12 +34,21 @@ const {
   retry,
 } = useDiscountCodeList();
 
-const statusFilter = ref<"all" | DiscountCodeStatus>("all");
-watch(statusFilter, (value) => selectStatus(value === "all" ? null : value));
+// The pager buttons stay on while a page loads (a repeated press asks for the same page again, the newest answer wins),
+// because a focused button that goes off drops the keyboard focus on the page. A button that is off after the move
+// (the last or the first page) hands the focus to the other one, which is on then.
+const pagerElement = useTemplateRef<HTMLElement>("pager");
 
-// Only hides the action: the API checks the permission. The roles come from /api/v1/admin/me.
-const auth = useAuthStore();
-const canAdd = computed(() => canManageDiscountCodes(auth.staff));
+async function movePage(move: () => Promise<void>): Promise<void> {
+  await move();
+  await nextTick();
+  const focused = document.activeElement;
+  const buttons = Array.from(pagerElement.value?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+  const lost = focused === document.body || buttons.some((button) => button === focused && button.disabled);
+  if (lost) {
+    buttons.find((button) => !button.disabled)?.focus();
+  }
+}
 </script>
 
 <template>
@@ -179,6 +188,7 @@ const canAdd = computed(() => canManageDiscountCodes(auth.staff));
 
     <div
       v-if="loaded"
+      ref="pager"
       class="pager"
     >
       <Button
@@ -186,12 +196,14 @@ const canAdd = computed(() => canManageDiscountCodes(auth.staff));
         label="Poprzednia"
         icon="pi pi-chevron-left"
         severity="secondary"
-        :disabled="!hasPrevious || loading"
-        @click="goPrevious()"
+        :disabled="!hasPrevious"
+        @click="movePage(goPrevious)"
       />
       <span
         data-testid="page-number"
         class="page-number"
+        aria-live="polite"
+        aria-atomic="true"
       >Strona {{ pageNumber }}</span>
       <Button
         data-testid="next-page"
@@ -199,8 +211,8 @@ const canAdd = computed(() => canManageDiscountCodes(auth.staff));
         icon="pi pi-chevron-right"
         icon-pos="right"
         severity="secondary"
-        :disabled="!hasNext || loading"
-        @click="goNext()"
+        :disabled="!hasNext"
+        @click="movePage(goNext)"
       />
     </div>
   </div>
