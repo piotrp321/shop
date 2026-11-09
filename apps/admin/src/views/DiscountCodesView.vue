@@ -49,6 +49,13 @@ async function movePage(move: () => Promise<void>): Promise<void> {
     buttons.find((button) => !button.disabled)?.focus();
   }
 }
+
+const statusFilter = ref<"all" | DiscountCodeStatus>("all");
+watch(statusFilter, (value) => selectStatus(value === "all" ? null : value));
+
+// Only hides the action: the API checks the permission. The roles come from /api/v1/admin/me.
+const auth = useAuthStore();
+const canAdd = computed(() => canManageDiscountCodes(auth.staff));
 </script>
 
 <template>
