@@ -167,7 +167,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   Wyłączone), wyszukiwanie po początku kodu (od 1 znaku, po przycięciu, z opóźnieniem; tekst dłuższy niż 32 znaki nie
   jest wysyłany i widok to mówi; wielkość liter normalizuje API) i stronicowanie po kursorach ze stosem kursorów
   w panelu, jak w `usePromotionList` (zmiana filtra albo wyszukiwania porzuca wiersze i kursory; błąd następnej strony
-  zostawia wyświetloną; 403 bez ponowienia). Kolumny: kod, rabat (procent albo kwota), minimum, okres (czas polski,
+  zostawia wyświetloną; 403 bez ponowienia). Przyciski „Poprzednia” i „Następna” nie są wyłączane na czas ładowania
+  (fokus zostaje na naciśniętym; ponowne naciśnięcie prosi o tę samą stronę), a przycisk wyłączony po przejściu
+  (ostatnia albo pierwsza strona) oddaje fokus drugiemu; „Strona N” to `aria-live="polite"`. Kolumny: kod, rabat (procent albo kwota), minimum, okres (czas polski,
   „bez końca”), użycia (`activeUses` / limit albo „(bez limitu)”) i status; status, `activeUses` i kwoty pochodzą
   z API, panel niczego nie liczy (`format.ts`). Przycisk „Dodaj kod” i cała edycja: tylko `admin` i `marketing`
   (`permissions.ts`, role z `/me`; API sprawdza niezależnie); pozostali pracownicy widzą listę i formularz tylko do
@@ -187,7 +189,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   wartość, której nie da się odczytać, jest błędem pola bez żądania; 422 bez `violations`, 403, 404, 503 i sieć to
   komunikat bez utraty formularza; 409 po `type`: `discount-code-taken` przy polu kodu (formularz zostaje), pozostałe
   (wersja `about:blank`, `discount-code-not-editable` i inne) pokazują `detail` z API i przeładowują kod. Po
-  nieudanym zapisie fokus trafia na pierwsze pole z błędem, a bez takiego na komunikat formularza. Odpowiedź żądania,
+  nieudanym zapisie fokus trafia na pierwsze pole z błędem, a bez takiego na komunikat formularza; po udanym (także
+  po utworzeniu kodu) na komunikat „Kod rabatowy zapisany.”. Odpowiedź żądania,
   które skończyło się po opuszczeniu formularza, jest ignorowana. Lista zamówień per kod jest poza panelem.
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
 

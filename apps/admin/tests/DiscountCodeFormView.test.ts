@@ -187,6 +187,20 @@ describe("DiscountCodeFormView", () => {
       expect(wrapper.get("[data-testid=success-message]").text()).toBe("Kod rabatowy zapisany.");
     });
 
+    it("moves the focus to the success message after the code is created, on the page of the created code", async () => {
+      const wrapper = await open("/discount-codes/new");
+      await fill(wrapper);
+      mocks.post.mockResolvedValue({ data: code({ kind: "amount", value: 5000, version: 1 }), response: { status: 201 } });
+
+      wrapper.get("[data-testid=save]").element.focus();
+      await click(wrapper, "save");
+
+      expect(mounted!.router.currentRoute.value.name).toBe("discount-code");
+      const message = wrapper.get("[data-testid=success-message]");
+      expect(message.attributes("tabindex")).toBe("-1");
+      expect(document.activeElement).toBe(message.element);
+    });
+
     it("puts a 409 discount-code-taken at the code field, keeps the form and moves the focus to the field", async () => {
       const wrapper = await open("/discount-codes/new");
       await fill(wrapper);
@@ -297,6 +311,19 @@ describe("DiscountCodeFormView", () => {
       });
       expect(wrapper.get("[data-testid=success-message]").text()).toBe("Kod rabatowy zapisany.");
       expect(disabled(wrapper, "save")).toBe(true);
+    });
+
+    it("moves the focus to the success message after a save, as the save button goes off", async () => {
+      const wrapper = await open();
+      await wrapper.get("[data-testid=value-input]").setValue("15");
+      mocks.put.mockResolvedValue({ data: code({ value: 15, version: 4 }), response: { status: 200 } });
+
+      wrapper.get("[data-testid=save]").element.focus();
+      await click(wrapper, "save");
+
+      const message = wrapper.get("[data-testid=success-message]");
+      expect(message.attributes("tabindex")).toBe("-1");
+      expect(document.activeElement).toBe(message.element);
     });
 
     it("disables the code by the switch", async () => {

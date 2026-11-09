@@ -52,10 +52,17 @@ const valueLabel = computed(() => (data.value.kind === "percent" ? "Rabat (%)" :
 
 const formElement = useTemplateRef<HTMLFormElement>("form");
 const errorElement = useTemplateRef<{ $el: HTMLElement }>("errorBox");
+const successElement = useTemplateRef<{ $el: HTMLElement }>("successBox");
 
-// A failed save moves the focus to what needs attention: the first field with an error, else the message.
+// A save moves the focus to what needs attention: the success message (the save button goes off, and a new code moves
+// to its own page with this same instance), or after a failure the first field with an error, else the message.
 async function submit(): Promise<void> {
   const result = await save();
+  if (result === "success") {
+    await nextTick();
+    successElement.value?.$el.focus();
+    return;
+  }
   if (result !== "failure") {
     return;
   }
@@ -113,8 +120,10 @@ async function submit(): Promise<void> {
       </Message>
       <Message
         v-if="message"
+        ref="successBox"
         data-testid="success-message"
         severity="success"
+        tabindex="-1"
       >
         {{ message }}
       </Message>
