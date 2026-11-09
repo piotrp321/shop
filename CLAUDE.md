@@ -256,6 +256,9 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   pominięcie na baterii, przy oknie limitu ≥ 80% albo przy odmowie `/sweep`), a użytkownik może go uruchomić ręcznie (`/sweep [epik]`):
   agenci `tester` i `ux-reviewer` przechodzą sklep na świeżym stosie z `main`. Wynik to propozycje zgłoszeń do triage
   użytkownika (etykiety `bug`/`ux` i `agent`), nie issues.
+- `/groom` (codziennie o 8:00 z zadania zaplanowanego w aplikacji Claude albo ręcznie): agent `backlog-groomer`
+  proponuje duplikaty, nieaktualne zgłoszenia, braki, etykiety i jeden epik poprawek (`-FIXES`), a `groom.py` sprawdza
+  listę i wykonuje w GitHubie tylko pozycje zatwierdzone przez użytkownika w rozmowie.
 - Orkiestrator sam rozstrzyga szczegóły implementacji (wpis `Ruling:` w ledgerze). Istotne decyzje DDD (agregaty,
   value objecty, granice modułów, persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury
   przedstawia użytkownikowi przed implementacją.
