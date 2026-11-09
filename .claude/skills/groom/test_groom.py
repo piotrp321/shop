@@ -162,6 +162,22 @@ class CollectTest(unittest.TestCase):
         assigned = {i['number']: i['assigned_epic'] for i in data['issues']}
         self.assertEqual({11: 'CART', 12: 'QUALITY-FIXES', 13: 'QUALITY-FIXES', 14: None, 99: None}, assigned)
 
+    def test_out_writes_the_given_file(self):
+        out_path = os.path.join(self.tmp.name, 'elsewhere', 'input-now.json')
+        code, out, err = call(['collect', self.run_dir, '--worktree', self.worktree, '--state', self.state,
+                               '--out', out_path], run=CollectRunner(issues=[gh_issue(1, ['bug'])]))
+        self.assertEqual((0, ''), (code, err))
+        self.assertEqual(COMMIT, read_json(out_path)['commit'])
+        self.assertEqual(out_path, json.loads(out)['input'])
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, 'input.json')))
+
+    def test_issue_of_an_epic_without_id_is_assigned_by_number(self):
+        runner = CollectRunner(issues=[gh_issue(12, ['bug'])], epics=[(25, 'Porządki bez prefiksu', 'Issues #12', ['epic'])])
+        self.collect(runner)
+        data = self.input()
+        self.assertEqual('#25', data['issues'][0]['assigned_epic'])
+        self.assertEqual([12], data['epics'][0]['issues'])
+
     def test_open_epic_not_on_the_board_is_listed(self):
         runner = CollectRunner(issues=[gh_issue(1, ['bug'])], epics=[(20, 'CATALOG-FIXES: x', '', ['epic', 'needs-info'])])
         self.collect(runner)
@@ -330,13 +346,17 @@ class RunDirCase(unittest.TestCase):
 
 
 class ValidateTest(RunDirCase):
-    def validate(self, props, data=None, rejected=()):
+    def validate(self, props, data=None, rejected=(), current=None):
         self.prepare(props, data, rejected)
-        code, out, err = call(['validate', self.run_dir, '--state', self.state])
+        argv = ['validate', self.run_dir, '--state', self.state]
+        if current is not None:
+            write_json(os.path.join(self.run_dir, 'input-now.json'), current)
+            argv += ['--current', os.path.join(self.run_dir, 'input-now.json')]
+        code, out, err = call(argv)
         return code, (json.loads(out) if out.strip() else None), err
 
-    def assertInvalid(self, props, fragment, data=None, rejected=()):
-        code, result, err = self.validate(props, data, rejected)
+    def assertInvalid(self, props, fragment, data=None, rejected=(), current=None):
+        code, result, err = self.validate(props, data, rejected, current)
         self.assertEqual(3, code, err)
         self.assertFalse(result['ok'])
         self.assertTrue(any(fragment in e for e in result['errors']), result['errors'])
@@ -485,6 +505,106 @@ class ValidateTest(RunDirCase):
         item = obsolete(1, [20], previously_rejected={'date': '2026-10-02', 'reason': 'nie'})
         self.assertInvalid(proposals([item]), 'odrzucon', rejected=[entry])
 
+    def test_previously_rejected_must_have_date_and_reason(self):
+        for value in ('x', {'date': '2026-10-02'}, {'reason': 'r'}, {'date': '', 'reason': 'r'},
+                      {'date': 'd', 'reason': ' '}, {'date': 1, 'reason': 'r'}, [], True):
+            with self.subTest(value=value):
+                self.assertInvalid(proposals([obsolete(1, [20], previously_rejected=value)]), 'previously_rejected')
+        entry = {'kind': 'obsolete', 'issues': [20], 'updated_at': {'20': '2026-10-01T00:00:00Z'}, 'reason': 'nie',
+                 'rejected_at': 'x'}
+        self.assertInvalid(proposals([obsolete(1, [20], previously_rejected={'date': 'd'})]), 'previously_rejected',
+                           rejected=[entry])
+
+    def test_keep_must_be_a_real_integer(self):
+        self.assertInvalid(proposals([duplicate(1, [1, 2], True)]), 'keep')
+
+    def test_fix_epic_rejected_unchanged_is_error(self):
+        entry = {'kind': 'fix_epic', 'issues': [3, 1, 2], 'updated_at': {'1': T0, '2': T0, '3': T0},
+                 'reason': 'nie', 'rejected_at': 'x'}
+        self.assertInvalid(self.valid_fix(), 'odrzucon', rejected=[entry])
+        self.assertInvalid(self.valid_fix(previously_rejected={'date': 'd', 'reason': 'r'}), 'odrzucon',
+                           rejected=[entry])
+
+    def test_fix_epic_rejected_and_changed_needs_previously_rejected(self):
+        entry = {'kind': 'fix_epic', 'issues': [1, 2, 3], 'updated_at': {'1': T0, '2': T0, '3': '2026-10-01T00:00:00Z'},
+                 'reason': 'nie', 'rejected_at': 'x'}
+        self.assertInvalid(self.valid_fix(), 'previously_rejected', rejected=[entry])
+        code, _, err = self.validate(self.valid_fix(previously_rejected={'date': 'd', 'reason': 'r'}),
+                                     rejected=[entry])
+        self.assertEqual(0, code, err)
+
+    def test_fix_epic_with_other_issue_set_is_not_rejected(self):
+        entry = {'kind': 'fix_epic', 'issues': [1, 2, 4], 'updated_at': {'1': T0, '2': T0, '4': T0},
+                 'reason': 'nie', 'rejected_at': 'x'}
+        code, _, err = self.validate(self.valid_fix(), rejected=[entry])
+        self.assertEqual(0, code, err)
+
+    def test_issue_assigned_to_an_epic_without_id_names_its_number(self):
+        data = base_input()
+        data['epics'].append({'id': None, 'number': 50, 'title': 'Bez prefiksu', 'dir': None, 'state': 'invalid',
+                              'issues': [20], 'scope': None})
+        self.assertInvalid(proposals([obsolete(1, [20])]), '#50', data)
+
+    # ---- --current (fresh data)
+
+    def now_data(self):
+        return base_input()
+
+    def test_current_is_optional_and_equal_data_changes_nothing(self):
+        code, _, err = self.validate(proposals([obsolete(1, [20])], fix_epic()), current=self.now_data())
+        self.assertEqual(0, code, err)
+
+    def test_current_issue_newly_assigned_to_an_epic(self):
+        current = self.now_data()
+        current['epics'][0]['issues'].append(20)
+        code, _, err = self.validate(proposals([obsolete(1, [20])]))
+        self.assertEqual(0, code, err)
+        self.assertInvalid(proposals([obsolete(1, [20])]), 'PRICING', current=current)
+
+    def test_current_new_open_fixes_epic(self):
+        current = self.now_data()
+        current['epics'].append(epic('CART-FIXES', 100, 'prepared', [], ['apps/api/src/Cart']))
+        self.assertInvalid(self.valid_fix(), '-FIXES', current=current)
+
+    def test_current_taken_id(self):
+        current = self.now_data()
+        current['taken_ids'].append('catalog-fixes')
+        self.assertInvalid(self.valid_fix(), 'CATALOG-FIXES-2', current=current)
+        code, _, err = self.validate(self.valid_fix(id='CATALOG-FIXES-2', title='CATALOG-FIXES-2: x'),
+                                     current=current)
+        self.assertEqual(0, code, err)
+
+    def test_current_kind_label_state(self):
+        current = self.now_data()
+        current['issues'] = [dict(i, labels=['bug']) if i['number'] == 20 else i for i in current['issues']]
+        self.assertInvalid(proposals([label(1, [20], 'ux')]), 'etykietę rodzaju', current=current)
+
+    def test_current_needs_info_label_state(self):
+        current = self.now_data()
+        current['issues'] = [dict(i, labels=['bug', 'needs-info']) if i['number'] == 2 else i
+                             for i in current['issues']]
+        self.assertInvalid(proposals([needs_info(1, [2])]), 'needs-info', current=current)
+
+    def test_current_collisions_use_current_epics(self):
+        current = self.now_data()
+        current['epics'].append(epic('NEW-ONE', 120, 'prepared', [], ['apps/api/src/Catalog']))
+        code, result, err = self.validate(self.valid_fix(), current=current)
+        self.assertEqual(0, code, err)
+        self.assertIn('NEW-ONE', [c['epic'] for c in result['collisions']])
+
+    def test_current_issue_closed_since_is_left_to_apply(self):
+        current = self.now_data()
+        current['issues'] = [i for i in current['issues'] if i['number'] != 20]
+        code, _, err = self.validate(proposals([obsolete(1, [20])]), current=current)
+        self.assertEqual(0, code, err)
+
+    def test_current_file_missing_is_exit_2(self):
+        self.prepare(proposals())
+        code, out, err = call(['validate', self.run_dir, '--state', self.state, '--current',
+                               os.path.join(self.run_dir, 'none.json')])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('none.json', err)
+
     def test_rejected_entry_missing_an_issue_counts_as_changed(self):
         entry = {'kind': 'duplicate', 'issues': [5, 6], 'updated_at': {'5': T0}, 'reason': 'nie', 'rejected_at': 'x'}
         item = duplicate(1, [5, 6], 5, previously_rejected={'date': 'd', 'reason': 'r'})
@@ -535,8 +655,10 @@ class ValidateTest(RunDirCase):
         self.assertInvalid(self.valid_fix(title='CATALOG-FIXES:  '), 'tytuł')
 
     def test_fix_epic_issue_count(self):
-        self.assertInvalid(self.valid_fix(issues=[1, 2]), '3')
-        self.assertInvalid(self.valid_fix(issues=list(range(1, 10))), '8')
+        self.assertInvalid(self.valid_fix(issues=[1, 2]), '3-8')
+        nine = base_input()
+        nine['issues'] = [issue(n) for n in range(1, 10)]
+        self.assertInvalid(self.valid_fix(issues=list(range(1, 10))), '3-8', nine)
         for count in (3, 8):
             data = base_input()
             data['issues'] = [issue(n) for n in range(1, 10)]
@@ -669,10 +791,13 @@ class ApplyRunner:
 
 
 class ApplyTest(RunDirCase):
-    def apply(self, props, approve, rejects=(), runner=None, data=None, rejected=(), now=NOW):
+    def apply(self, props, approve, rejects=(), runner=None, data=None, rejected=(), now=NOW, current=None):
         self.prepare(props, data, rejected)
         self.runner = runner or ApplyRunner()
         argv = ['apply', self.run_dir, '--approve', approve, '--state', self.state]
+        if current is not None:
+            write_json(os.path.join(self.run_dir, 'input-now.json'), current)
+            argv += ['--current', os.path.join(self.run_dir, 'input-now.json')]
         for r in rejects:
             argv += ['--reject', r]
         code, out, err = call(argv, run=self.runner, now=now)
@@ -767,6 +892,7 @@ class ApplyTest(RunDirCase):
         writes = self.runner.writes()
         self.assertEqual(['gh', 'issue', 'comment', '20', '--repo', REPO, '--body'], writes[0][:7])
         self.assertIn('docs/x.md:3 mówi inaczej', writes[0][7])
+        self.assertIn('Dowód (origin/main %s)' % COMMIT, writes[0][7])
         self.assertEqual(['gh', 'issue', 'close', '20', '--repo', REPO, '--reason', 'not planned'], writes[1])
         props, data = self.all_items()
         props['items'][2]['close_reason'] = 'completed'
@@ -813,13 +939,14 @@ class ApplyTest(RunDirCase):
         self.assertEqual('gh project item-edit --id ITEM1 --project-id PROJ1 --field-id F1 '
                          '--single-select-option-id O1', row['manual'])
 
-    def test_fix_epic_status_lookup_failure_gives_manual_command(self):
+    def test_fix_epic_status_lookup_failure_gives_manual_instruction(self):
         props, data = self.all_items()
         code, result, _ = self.apply(props, '6', data=data, runner=ApplyRunner(fail=[('gh', 'project', 'field-list')]))
         row = result['results'][0]
         self.assertEqual('done', row['status'])
-        self.assertIn('gh project item-add 1 --owner piotrp321 --url', row['manual'])
-        self.assertIn('Todo', row['detail'])
+        self.assertNotIn('manual', row)
+        self.assertIn('ustaw Status=Todo na tablicy ręcznie', row['detail'])
+        self.assertEqual(['https://github.com/piotrp321/shop/issues/400'], row['urls'])
 
     def test_fix_epic_create_failure_is_error_without_manual(self):
         props, data = self.all_items()
@@ -931,6 +1058,39 @@ class ApplyTest(RunDirCase):
         code, result, err = self.apply(props, '3', data=data)
         self.assertEqual(2, code)
         self.assertEqual([], self.runner.calls)
+
+    def test_decided_at_is_written_before_the_first_write(self):
+        props, data = self.all_items()
+        seen = []
+        path = self.proposals_path
+
+        class Spy(ApplyRunner):
+            def __call__(spy, args):
+                if args[:3] not in (['gh', 'issue', 'view'], ['gh', 'project', 'view'], ['gh', 'project', 'field-list']):
+                    seen.append(read_json(path).get('decided_at'))
+                return super().__call__(args)
+
+        self.apply(props, '3,2', data=data, runner=Spy())
+        self.assertTrue(seen)
+        self.assertEqual({NOW.isoformat()}, set(seen))
+
+    def test_current_data_can_refuse_the_list(self):
+        props, data = self.all_items()
+        current = copy.deepcopy(data)
+        current['epics'].append(epic('PRICING', 301, 'prepared', [20], ['apps/api/src/Pricing']))
+        code, _, err = self.apply(props, '3', data=data, current=current)
+        self.assertEqual(3, code)
+        self.assertIn('PRICING', err)
+        self.assertEqual([], self.runner.calls)
+        self.assertNotIn('decided_at', self.proposals())
+
+    def test_current_data_does_not_change_the_updated_at_guard(self):
+        props, data = self.all_items()
+        current = copy.deepcopy(data)
+        for i in current['issues']:
+            i['updatedAt'] = T1     # the guard compares gh with the original input.json (T0)
+        code, result, _ = self.apply(props, '3', data=data, current=current)
+        self.assertEqual((0, 'done'), (code, result['results'][0]['status']))
 
     def test_invalid_list_is_refused_with_code_3(self):
         props, data = self.all_items()

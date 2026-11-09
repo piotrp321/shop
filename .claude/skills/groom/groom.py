@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Backlog grooming for the /groom skill. Python 3.9+, standard library only.
 
-  groom.py collect <run_dir> --worktree <dir> [--state DIR]
-  groom.py validate <run_dir> [--state DIR]
-  groom.py apply <run_dir> --approve <1,3,5|all|none> [--reject N=reason]... [--state DIR]
+  groom.py collect <run_dir> --worktree <dir> [--out FILE] [--state DIR]
+  groom.py validate <run_dir> [--current FILE] [--state DIR]
+  groom.py apply <run_dir> --approve <1,3,5|all|none> [--reject N=reason]... [--current FILE] [--state DIR]
   groom.py expire <run_dir>
   groom.py fail <run_dir> [--empty]
 
@@ -11,13 +11,14 @@ State directory (--state, default ~/.local/state/shop-groom): `rejected.jsonl`.
 
 collect: reads the open issues of piotrp321/shop (`gh issue list --limit 500`; a result of exactly 500 is an error),
 the open epics (board state from next_epic.py, specs from the worktree on disk), the taken epic IDs and the rejected
-entries, and writes <run_dir>/input.json. Prints one JSON line {input, issues, epics, commit}. The commands run with
+entries, and writes <run_dir>/input.json (or --out FILE, e.g. input-now.json for a fresh look at a pending list). Prints one JSON line {input, issues, epics, commit}. The commands run with
 cwd = the worktree.
 
 validate: checks <run_dir>/proposals.json against input.json (schema, kinds, limits, the rejected entries, the fix
 epic rules), computes the scope collisions of the fix epic with the prepared and in-progress epics and writes them to
 `fix_epic.collisions` and to its `## Zależności` section. Prints one JSON line {ok, errors, collisions}; every error
-is also a line on stderr.
+is also a line on stderr. With --current FILE (a fresh `collect --out`) assignments to open epics, open -FIXES epics,
+taken IDs and labels are checked against that file; issue numbers and the earlier rejections stay with input.json.
 
 apply: executes only the approved items of a validated list, in the order label, needs-info, duplicate, obsolete,
 fix_epic. The fix epic is numbered after the last item (the word `epik` works too). Items neither approved nor
@@ -87,14 +88,6 @@ def weight_of(body):
     """The most severe `waga <Critical|Important|Minor>` in the text, or None."""
     found = [m.group(1).capitalize() for m in WEIGHT.finditer(body or '')]
     return max(found, key=WEIGHT_RANK.get) if found else None
-
-
-def _json(run, args):
-    out = run(args)
-    try:
-        return json.loads(out)
-    except ValueError:
-        raise next_epic.CommandError(args, 'output is not valid JSON')
 
 
 def _read_json(path, name):
@@ -192,7 +185,7 @@ def collect_input(run, worktree, rejected, now):
     commit = run(['git', 'rev-parse', 'HEAD']).strip()
     list_args = ['gh', 'issue', 'list', '--repo', REPOSITORY, '--state', 'open', '--limit', str(ISSUE_LIMIT),
                  '--json', 'number,title,body,labels,author,updatedAt']
-    raw = _json(run, list_args)
+    raw = next_epic._json(run, list_args)
     if not isinstance(raw, list):
         raise next_epic.CommandError(list_args, 'unexpected JSON shape')
     if len(raw) >= ISSUE_LIMIT:
@@ -201,7 +194,7 @@ def collect_input(run, worktree, rejected, now):
     board = {e['number']: e for e in next_epic.board_epics(run)}
     epic_args = ['gh', 'issue', 'list', '--repo', REPOSITORY, '--label', 'epic', '--state', 'open',
                  '--json', 'number,title,body', '--limit', '200']
-    open_epics = _json(run, epic_args)
+    open_epics = next_epic._json(run, epic_args)
     try:
         epics, order = [], list(board) + [int(i['number']) for i in open_epics if int(i['number']) not in board]
         by_number = {int(i['number']): i for i in open_epics}
@@ -228,7 +221,7 @@ def collect_input(run, worktree, rejected, now):
     assigned = {}
     for e in epics:
         for number in e['issues']:
-            assigned.setdefault(number, e['id'])
+            assigned.setdefault(number, e['id'] or '#%d' % e['number'])
     issues = []
     try:
         for i in raw:
@@ -264,11 +257,12 @@ def cmd_collect(args, run, now):
     rejected = read_rejected(args.state)
     data = collect_input(run or next_epic.make_runner(worktree), worktree, rejected, now)
     run_dir = os.path.expanduser(args.run_dir)
+    path = os.path.expanduser(args.out) if args.out else os.path.join(run_dir, INPUT_FILE)
     try:
         os.makedirs(run_dir, exist_ok=True)
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     except OSError as e:
         raise StateError('nie można utworzyć katalogu przebiegu: %s' % (e.strerror or e))
-    path = os.path.join(run_dir, INPUT_FILE)
     _write_json(path, data)
     print(json.dumps({'input': path, 'issues': len(data['issues']), 'epics': len(data['epics']),
                       'commit': data['commit']}, ensure_ascii=False))
@@ -290,7 +284,7 @@ def _expected_fix_id(scope_first, taken):
     return candidate
 
 
-def _check_item(errors, item, position, numbers, by_number, assigned, rejected):
+def _check_item(errors, item, position, original, by_number, assigned, rejected):
     def err(text):
         errors.append('pozycja %d: %s' % (position, text))
 
@@ -310,7 +304,7 @@ def _check_item(errors, item, position, numbers, by_number, assigned, rejected):
     if len(set(issues)) != len(issues):
         err('issues: numery się powtarzają')
     for number in issues:
-        if number not in numbers:
+        if number not in original:
             err('issue #%d nie jest w danych wejściowych' % number)
         if number in assigned:
             err('issue #%d jest przypisane do otwartego epiku %s' % (number, assigned[number]))
@@ -322,7 +316,7 @@ def _check_item(errors, item, position, numbers, by_number, assigned, rejected):
     if kind == 'duplicate':
         if len(issues) < 2:
             err('duplicate wymaga co najmniej dwóch issues')
-        if item.get('keep') not in issues:
+        if not _is_int(item.get('keep')) or item['keep'] not in issues:
             err('keep: oczekiwano numeru jednego z issues')
     elif kind == 'obsolete':
         if item.get('close_reason') not in CLOSE_REASONS:
@@ -346,10 +340,21 @@ def _check_item(errors, item, position, numbers, by_number, assigned, rejected):
         for issue in known:
             if 'needs-info' in issue['labels']:
                 err('issue #%d ma już etykietę needs-info' % issue['number'])
-    _check_rejected(err, item, kind, issues, by_number, rejected)
+    _check_previous_shape(err, item)
+    _check_rejected(err, item, kind, issues, original, rejected)
+
+
+def _valid_previous(value):
+    return isinstance(value, dict) and _text(value.get('date')) and _text(value.get('reason'))
+
+
+def _check_previous_shape(err, item):
+    if 'previously_rejected' in item and not _valid_previous(item['previously_rejected']):
+        err('previously_rejected: oczekiwano obiektu z niepustymi tekstami date i reason')
 
 
 def _check_rejected(err, item, kind, issues, by_number, rejected):
+    """by_number: the issues of the original input.json (the state the earlier rejection is compared with)."""
     matching = [e for e in rejected if e.get('kind') == kind and isinstance(e.get('issues'), list)
                 and set(e['issues']) == set(issues)]
     if not matching:
@@ -359,11 +364,12 @@ def _check_rejected(err, item, kind, issues, by_number, rejected):
     changed = any(n in by_number and saved.get(str(n)) != by_number[n]['updatedAt'] for n in issues)
     if not changed:
         err('odrzucona wcześniej (%s), zgłoszenia się nie zmieniły' % (entry.get('reason') or 'bez powodu'))
-    elif not item.get('previously_rejected'):
-        err('zgłoszenia zmieniły się po odrzuceniu: brak pola previously_rejected')
+    elif not _valid_previous(item.get('previously_rejected')):
+        err('zgłoszenia zmieniły się po odrzuceniu: brak poprawnego pola previously_rejected')
 
 
-def _check_fix_epic(errors, fix, data, by_number, assigned, in_items):
+def _check_fix_epic(errors, fix, data, original, by_number, assigned, in_items, rejected):
+    """data: the epics and taken IDs to check against; by_number: current issue state; original: input.json issues."""
     def err(text):
         errors.append('epik poprawek: %s' % text)
 
@@ -409,9 +415,11 @@ def _check_fix_epic(errors, fix, data, by_number, assigned, in_items):
         err('issues: numery się powtarzają')
     if not FIX_MIN <= len(set(issues)) <= FIX_MAX:
         err('wymagane %d-%d issues, podano %d' % (FIX_MIN, FIX_MAX, len(set(issues))))
+    _check_previous_shape(err, fix)
+    _check_rejected(err, fix, 'fix_epic', issues, original, rejected)
     for number in dict.fromkeys(issues):
         issue = by_number.get(number)
-        if issue is None:
+        if issue is None or number not in original:
             err('issue #%d nie jest w danych wejściowych' % number)
             continue
         problem = None
@@ -464,8 +472,11 @@ def body_with_collisions(body, collisions):
     return '\n'.join(source[:start] + section + ['', block] + tail) + '\n'
 
 
-def check(props, data, rejected):
-    """Returns (errors, collisions) of a parsed proposals.json against input.json."""
+def check(props, data, rejected, current=None):
+    """Returns (errors, collisions) of a parsed proposals.json against input.json (`data`).
+
+    With `current` (a fresh input file) the epics, taken IDs and labels are taken from it; issue numbers and the
+    `updatedAt` of earlier rejections stay with `data`, the state the agent saw."""
     if not isinstance(props, dict):
         return ['proposals.json: oczekiwano obiektu JSON'], []
     errors = []
@@ -476,11 +487,14 @@ def check(props, data, rejected):
     for name in ('overflow', 'hypotheses'):
         if name in props and not (isinstance(props[name], list) and all(isinstance(v, str) for v in props[name])):
             errors.append('%s: oczekiwano listy tekstów' % name)
-    by_number = {i['number']: i for i in data.get('issues', [])}
+    view = current if current is not None else data
+    original = {i['number']: i for i in data.get('issues', [])}
+    by_number = dict(original)
+    by_number.update({i['number']: i for i in view.get('issues', [])})
     assigned = {}
-    for e in data.get('epics', []):
+    for e in view.get('epics', []):
         for number in e.get('issues', []):
-            assigned.setdefault(number, e['id'])
+            assigned.setdefault(number, e.get('id') or '#%d' % e['number'])
     items = props.get('items')
     if not isinstance(items, list):
         errors.append('items: oczekiwano listy')
@@ -488,7 +502,7 @@ def check(props, data, rejected):
     if len(items) > ITEM_LIMIT:
         errors.append('items: za dużo pozycji (%d, limit %d)' % (len(items), ITEM_LIMIT))
     for position, item in enumerate(items, 1):
-        _check_item(errors, item, position, set(by_number), by_number, assigned, rejected)
+        _check_item(errors, item, position, original, by_number, assigned, rejected)
     in_items = {}
     for position, item in enumerate(items, 1):
         for number in dict.fromkeys(_used(item)):
@@ -502,9 +516,9 @@ def check(props, data, rejected):
     fix = props.get('fix_epic')
     collisions = []
     if 'fix_epic' in props and fix is not None:
-        _check_fix_epic(errors, fix, data, by_number, assigned, in_items)
+        _check_fix_epic(errors, fix, view, original, by_number, assigned, in_items, rejected)
         if not errors and fix.get('scope'):
-            collisions = find_collisions(fix, data)
+            collisions = find_collisions(fix, view)
     return errors, collisions
 
 
@@ -515,9 +529,17 @@ def _load_undecided(run_dir):
     return props
 
 
+def _read_current(args):
+    if not args.current:
+        return None
+    path = os.path.expanduser(args.current)
+    return _read_json(path, path)
+
+
 def cmd_validate(args):
     run_dir = os.path.expanduser(args.run_dir)
     data = _read_json(os.path.join(run_dir, INPUT_FILE), INPUT_FILE)
+    current = _read_current(args)
     try:
         props = _load_undecided(run_dir)
     except StateError as e:
@@ -525,7 +547,7 @@ def cmd_validate(args):
             return _report([PROPOSALS_FILE + ': nieprawidłowy JSON'], [])
         raise
     rejected = read_rejected(args.state)
-    errors, collisions = check(props, data, rejected)
+    errors, collisions = check(props, data, rejected, current)
     if errors:
         return _report(errors, [])
     fix = props.get('fix_epic')
@@ -606,13 +628,14 @@ def parse_approvals(approve, rejects, props):
 
 def _unchanged(run, numbers, by_number):
     for number in numbers:
-        view = _json(run, ['gh', 'issue', 'view', str(number), '--repo', REPOSITORY, '--json', 'state,updatedAt'])
+        view = next_epic._json(run, ['gh', 'issue', 'view', str(number), '--repo', REPOSITORY,
+                                     '--json', 'state,updatedAt'])
         if (str(view.get('state')).upper() != 'OPEN' or view.get('updatedAt') != by_number[number]['updatedAt']):
             return False
     return True
 
 
-def _run_item(run, item):
+def _run_item(run, item, commit):
     kind = item['kind']
     number = item['issues'][0]
     if kind == 'label':
@@ -632,8 +655,8 @@ def _run_item(run, item):
     elif kind == 'obsolete':
         why = ('kryterium akceptacji jest już spełnione' if item['close_reason'] == 'completed'
                else 'zgłoszenie jest sprzeczne z obecną specyfikacją')
-        body = 'Zamykam jako nieaktualne (%s).\n\n%s\n\nDowód:\n%s' % (
-            why, item['reason'], '\n'.join('- %s' % e for e in item['evidence']))
+        body = 'Zamykam jako nieaktualne (%s).\n\n%s\n\nDowód (origin/main %s):\n%s' % (
+            why, item['reason'], commit, '\n'.join('- %s' % e for e in item['evidence']))
         run(_gh('comment', number, '--body', body))
         run(_gh('close', number, '--reason', item['close_reason']))
     return {'urls': [issue_url(n) for n in item['issues']]}
@@ -647,17 +670,17 @@ def _run_fix_epic(run, fix):
     add = ['gh', 'project', 'item-add', '1', '--owner', OWNER, '--url', url]
     manual_add = shlex.join(add)
     try:
-        item_id = _json(run, add + ['--format', 'json'])['id']
+        item_id = next_epic._json(run, add + ['--format', 'json'])['id']
     except (next_epic.CommandError, KeyError, TypeError) as e:
         return dict(result, detail='nie dodano do tablicy: %s' % e, manual=manual_add)
     try:
-        project = _json(run, ['gh', 'project', 'view', '1', '--owner', OWNER, '--format', 'json'])['id']
-        fields = _json(run, ['gh', 'project', 'field-list', '1', '--owner', OWNER, '--format', 'json'])['fields']
+        project = next_epic._json(run, ['gh', 'project', 'view', '1', '--owner', OWNER, '--format', 'json'])['id']
+        fields = next_epic._json(run, ['gh', 'project', 'field-list', '1', '--owner', OWNER, '--format', 'json'])['fields']
         field = next(f for f in fields if f.get('name') == 'Status')
         option = next(o for o in field['options'] if o.get('name') == 'Todo')['id']
     except (next_epic.CommandError, KeyError, TypeError, StopIteration) as e:
-        return dict(result, detail='nie ustawiono statusu Todo: %s; ustaw go na tablicy' % (
-            e if isinstance(e, next_epic.CommandError) else 'brak pola Status albo opcji Todo'), manual=manual_add)
+        return dict(result, detail='nie ustawiono statusu: %s; ustaw Status=Todo na tablicy ręcznie' % (
+            e if isinstance(e, next_epic.CommandError) else 'brak pola Status albo opcji Todo'))
     edit = ['gh', 'project', 'item-edit', '--id', item_id, '--project-id', project, '--field-id', field['id'],
             '--single-select-option-id', option]
     try:
@@ -672,8 +695,9 @@ def cmd_apply(args, run, now):
     proposals_path = os.path.join(run_dir, PROPOSALS_FILE)
     props = _load_undecided(run_dir)
     data = _read_json(os.path.join(run_dir, INPUT_FILE), INPUT_FILE)
+    current = _read_current(args)
     rejected_before = read_rejected(args.state)
-    errors, _ = check(props, data, rejected_before)
+    errors, _ = check(props, data, rejected_before, current)
     if errors:
         raise ValidationFailed(errors)
     approved, rejections = parse_approvals(args.approve, args.reject, props)
@@ -708,7 +732,7 @@ def cmd_apply(args, run, now):
             if not _unchanged(run, issues, by_number):
                 row.update(status='skipped', detail='zmienione od przeglądu')
             else:
-                row.update(status='done', **(_run_fix_epic(run, item) if kind == 'fix_epic' else _run_item(run, item)))
+                row.update(status='done', **(_run_fix_epic(run, item) if kind == 'fix_epic' else _run_item(run, item, props['commit'])))
         except next_epic.CommandError as e:
             row.update(status='error', detail=str(e))
         results.append(row)
@@ -764,6 +788,7 @@ def build_parser():
     collect = sub.add_parser('collect', help='write input.json')
     collect.add_argument('run_dir')
     collect.add_argument('--worktree', required=True)
+    collect.add_argument('--out', help='output file (default <run_dir>/input.json)')
     validate = sub.add_parser('validate', help='check proposals.json')
     validate.add_argument('run_dir')
     apply = sub.add_parser('apply', help='execute the approved items')
@@ -772,6 +797,9 @@ def build_parser():
     apply.add_argument('--reject', action='append', default=[])
     for p in (collect, validate, apply):
         p.add_argument('--state', default=STATE_DEFAULT)
+    for p in (validate, apply):
+        p.add_argument('--current', help='fresh input file (collect --out): epics, taken IDs and labels are checked '
+                                         'against it')
     sub.add_parser('expire', help='mark the list as expired').add_argument('run_dir')
     fail = sub.add_parser('fail', help='mark the list as failed or empty')
     fail.add_argument('run_dir')
