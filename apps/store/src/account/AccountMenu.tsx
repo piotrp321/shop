@@ -46,23 +46,26 @@ export function AccountMenu() {
     return (
       <a href={`/auth/login?returnTo=${encodeURIComponent(returnTo)}`} className={accountLink}>
         <UserIcon aria-hidden className="size-5" />
-        <span className="sr-only xl:not-sr-only">Zaloguj się</span>
+        {/* The word is shown where the row has room for it (from 90rem); below it the link is the icon. */}
+        <span className="sr-only min-[90rem]:not-sr-only">Zaloguj się</span>
       </a>
     );
   }
 
-  // Below `xl` the controls are icons (the words stay for screen readers), so the header keeps its first row on 375 px.
+  // Icons at every width, with the words for screen readers and as the tooltip (`title`): the three controls of a
+  // customer (the name, the orders, logout) do not fit with their words into the one row of the header (the cart, the
+  // search and the departments are in it), and the 44 px targets stay.
   return (
     <div className="flex items-center">
-      <span className="sr-only xl:not-sr-only xl:mr-2 xl:text-sm xl:text-muted-foreground">Zalogowany jako {result.session.name}</span>
-      <Link href="/konto/zamowienia" className={accountLink}>
+      <span className="sr-only">Zalogowany jako {result.session.name}</span>
+      <Link href="/konto/zamowienia" title="Moje zamówienia" className={accountLink}>
         <PackageIcon aria-hidden className="size-5" />
-        <span className="sr-only xl:not-sr-only">Moje zamówienia</span>
+        <span className="sr-only">Moje zamówienia</span>
       </Link>
       <form method="post" action="/auth/logout">
-        <Button type="submit" variant="ghost" size="sm" className="h-11 min-w-11 px-2.5">
+        <Button type="submit" variant="ghost" size="sm" title="Wyloguj się" className="h-11 min-w-11 px-2.5">
           <LogOutIcon aria-hidden />
-          <span className="sr-only xl:not-sr-only">Wyloguj się</span>
+          <span className="sr-only">Wyloguj się</span>
         </Button>
       </form>
     </div>

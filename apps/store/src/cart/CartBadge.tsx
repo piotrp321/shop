@@ -14,9 +14,9 @@ import { MERGE_TRUNCATED } from "./messages";
  * into the customer's at the login once; the badge shows it as a row of the header under the others (full width, in
  * the flow, so it never covers the page).
  *
- * Renders two direct children of the header grid: the `utils` cell (the link and `children`, the account box that the
- * header puts next to it) and, when there is a notice, the row of the notice. They are the grid's own children because
- * `reading-flow: grid-rows` of the header orders only those.
+ * Renders the link of the cart, then `children` (what the header puts after the cart in the row: the account and the
+ * search), then, when there is a notice, the row of the notice, so the notice is the last element of the header in the
+ * document, as it is the last row on the screen. They are all children of the header grid.
  */
 export function CartBadge({ children }: { children?: ReactNode }) {
   const [itemCount, setItemCount] = useState<number | null>(null);
@@ -43,25 +43,23 @@ export function CartBadge({ children }: { children?: ReactNode }) {
 
   return (
     <>
-      <div className="flex items-center [grid-area:utils]">
-        <Link
-          href="/cart"
-          className="relative inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-2.5 text-ui underline-offset-4 hover:underline"
-        >
-          <ShoppingCartIcon aria-hidden className="size-5" />
-          {/* The word is shown from `xl`; below it the cart is the icon (and the count over it). */}
-          <span className="sr-only xl:not-sr-only">Koszyk</span>
-          {itemCount === null ? null : (
-            <span
-              data-testid="cart-count"
-              className="absolute top-0.5 right-0 inline-grid h-5.5 min-w-5.5 place-items-center rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground xl:static"
-            >
-              {itemCount}
-            </span>
-          )}
-        </Link>
-        {children}
-      </div>
+      <Link
+        href="/cart"
+        className="relative inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-2.5 text-ui underline-offset-4 [grid-area:cart] hover:underline"
+      >
+        <ShoppingCartIcon aria-hidden className="size-5" />
+        {/* The word is shown where the row has room for it (from 90rem); below it the cart is the icon (and the count over it). */}
+        <span className="sr-only min-[90rem]:not-sr-only">Koszyk</span>
+        {itemCount === null ? null : (
+          <span
+            data-testid="cart-count"
+            className="absolute top-0.5 right-0 inline-grid h-5.5 min-w-5.5 place-items-center rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground min-[90rem]:static"
+          >
+            {itemCount}
+          </span>
+        )}
+      </Link>
+      {children}
       {notice === "merge_truncated" ? (
         // The row under the others (the third on a phone, the second on a wide screen), over the whole width.
         <p role="status" className="col-span-full row-start-3 border border-input bg-card px-3.5 py-2 text-sm text-foreground lg:row-start-2">

@@ -23,7 +23,7 @@ const tabOrder = () =>
   });
 
 describe("SiteHeader", () => {
-  it("has the wordmark, the Menu button, the cart and then the search in the document (tab) order, so it follows the two rows of a phone", () => {
+  it("has the wordmark, the Menu button, the cart and then the search in the document (tab) order, which is the visual order of a phone and of a wide screen", () => {
     render(header());
     const order = tabOrder();
     const position = (name: string | RegExp) => order.findIndex((entry) => (typeof name === "string" ? entry === name : name.test(entry)));
@@ -32,6 +32,10 @@ describe("SiteHeader", () => {
     expect(position(/Koszyk/)).toBeGreaterThan(position("Menu"));
     expect(position("search field")).toBeGreaterThan(position(/Koszyk/));
     expect(position("search button")).toBeGreaterThan(position("search field"));
+  });
+
+  it("does not reorder anything with CSS: no `order` utilities in the header", () => {
+    expect(renderToStaticMarkup(header())).not.toMatch(/(^|[\s"])(sm:|md:|lg:|xl:)?order-/);
   });
 
   it("puts the Menu button, closed, with aria-expanded in the header", () => {

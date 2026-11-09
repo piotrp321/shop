@@ -3,11 +3,18 @@
 import Form from "next/form";
 import { usePathname, useSearchParams } from "next/navigation";
 import { SearchIcon } from "lucide-react";
-import { Suspense, useEffect, useRef } from "react";
+import { type FocusEvent, type KeyboardEvent, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const FIELD_ID = "header-search";
+const FORM_ID = "header-search-form";
+const TOGGLE_ID = "header-search-toggle";
+
+// 1024 to 1279 px: the row of the header has no room for the field (the departments, the cart and the account of a customer
+// take it), so the form is a panel under the header that a button opens. Without JavaScript the button cannot open it, so
+// the form is then a row of its own under the first one, as on a phone.
+const COMPACT_CSS = `@media (min-width: 1024px) and (max-width: 1279.98px) { #${FORM_ID} { display: flex !important; position: static !important; grid-area: 2 / 1 / 3 / -1 !important; padding: 0 !important; border: 0 !important; } #${TOGGLE_ID} { display: none !important; } }`;
 
 /**
  * Puts the phrase of `/szukaj` into the field, which is otherwise uncontrolled. It renders nothing, so the field is one
@@ -34,21 +41,96 @@ function CurrentPhrase() {
  * `@search` slot of the root layout); elsewhere the HTML is the same for everybody (product pages are ISR) and the field
  * is empty. After that the browser keeps the field in step with the address. The form and the field are outside
  * `Suspense`, which only holds the part that reads the address.
+ *
+ * Renders two children of the header grid, in the order they have on the screen: a button (`aria-expanded`) and the form.
+ * The button is only there from 1024 to 1279 px, where the form is the panel it opens (focus goes to the field; Escape, a
+ * submit, a click outside or the focus leaving close it, and Escape gives the focus back to the button). Below 1024 px the
+ * form is the second row of the header and from 1280 px the last cell of the one row; the button is then `display: none`.
+ * The form is in the HTML once, so there is no second copy to skip.
  */
 export function SearchBox({ phrase }: { phrase?: string }) {
+  const [open, setOpen] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const form = useRef<HTMLFormElement>(null);
+  const focusField = useRef(false);
+
+  useEffect(() => {
+    if (open && focusField.current) document.getElementById(FIELD_ID)?.focus();
+    focusField.current = false;
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!form.current?.contains(target) && !toggle.current?.contains(target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOutside);
+    return () => document.removeEventListener("mousedown", closeOutside);
+  }, [open]);
+
+  const closeOnEscape = (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || !open) return;
+    setOpen(false);
+    toggle.current?.focus();
+  };
+
+  // Only a move of the focus to an element outside the button and the form closes the panel.
+  const closeOnLeave = (event: FocusEvent) => {
+    const next = event.relatedTarget;
+    if (next instanceof Node && !form.current?.contains(next) && !toggle.current?.contains(next)) setOpen(false);
+  };
+
   return (
-    <Form action="/szukaj" role="search" className="flex items-center gap-2">
-      <label htmlFor={FIELD_ID} className="sr-only">
-        Szukaj produktów
-      </label>
-      <Input id={FIELD_ID} type="search" name="q" defaultValue={phrase} placeholder="Szukaj produktów" className="flex-1" />
-      <Button type="submit" variant="outline" size="icon">
+    <>
+      <Button
+        ref={toggle}
+        id={TOGGLE_ID}
+        type="button"
+        variant="outline"
+        size="icon"
+        aria-expanded={open}
+        aria-controls={FORM_ID}
+        className="hidden [grid-area:search] lg:max-xl:ml-2 lg:max-xl:inline-flex"
+        onClick={() => {
+          focusField.current = !open;
+          setOpen(!open);
+        }}
+        onKeyDown={closeOnEscape}
+        onBlur={closeOnLeave}
+      >
         <SearchIcon aria-hidden />
-        <span className="sr-only">Szukaj</span>
+        <span className="sr-only">Wyszukiwarka</span>
       </Button>
-      <Suspense>
-        <CurrentPhrase />
-      </Suspense>
-    </Form>
+      <Form
+        ref={form}
+        id={FORM_ID}
+        action="/szukaj"
+        role="search"
+        data-state={open ? "open" : "closed"}
+        className={
+          "flex min-w-0 items-center gap-2 [grid-area:search] " +
+          "lg:max-xl:absolute lg:max-xl:inset-x-0 lg:max-xl:top-full lg:max-xl:z-20 lg:max-xl:border-b lg:max-xl:border-border lg:max-xl:bg-card lg:max-xl:px-gutter lg:max-xl:py-3 lg:max-xl:data-[state=closed]:hidden"
+        }
+        onSubmit={() => setOpen(false)}
+        onKeyDown={closeOnEscape}
+        onBlur={closeOnLeave}
+      >
+        <label htmlFor={FIELD_ID} className="sr-only">
+          Szukaj produktów
+        </label>
+        <Input id={FIELD_ID} type="search" name="q" defaultValue={phrase} placeholder="Szukaj produktów" className="flex-1" />
+        <Button type="submit" variant="outline" size="icon">
+          <SearchIcon aria-hidden />
+          <span className="sr-only">Szukaj</span>
+        </Button>
+        <noscript>
+          <style>{COMPACT_CSS}</style>
+        </noscript>
+        <Suspense>
+          <CurrentPhrase />
+        </Suspense>
+      </Form>
+    </>
   );
 }

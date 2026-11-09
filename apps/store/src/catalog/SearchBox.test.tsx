@@ -116,3 +116,72 @@ describe("SearchBox", () => {
     expect(field().value).toBe("");
   });
 });
+
+describe("SearchBox where the row of the header has no room for the field (1024 to 1279 px)", () => {
+  const toggle = () => screen.getByRole("button", { name: "Wyszukiwarka" });
+  const form = () => screen.getByRole("search") as HTMLFormElement;
+
+  it("has one form and a closed button that controls it; the button is the one that comes first in the document", () => {
+    render(<SearchBox />);
+    expect(screen.getAllByRole("search")).toHaveLength(1);
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(toggle().getAttribute("aria-controls")).toBe(form().id);
+    expect(form().getAttribute("data-state")).toBe("closed");
+    expect(toggle().compareDocumentPosition(form()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("opens the form with the button and moves the focus to the field", () => {
+    render(<SearchBox />);
+    fireEvent.click(toggle());
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(form().getAttribute("data-state")).toBe("open");
+    expect(document.activeElement).toBe(field());
+    fireEvent.click(toggle());
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("closes with Escape from the field and gives the focus back to the button", () => {
+    render(<SearchBox />);
+    fireEvent.click(toggle());
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(form().getAttribute("data-state")).toBe("closed");
+    expect(document.activeElement).toBe(toggle());
+  });
+
+  it("leaves Escape alone while it is closed", () => {
+    render(<SearchBox />);
+    toggle().focus();
+    fireEvent.keyDown(toggle(), { key: "Escape" });
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("closes when the form is sent, when the focus leaves for the page, and when the page is clicked; not when the focus moves inside", () => {
+    render(
+      <>
+        <SearchBox />
+        <a href="/inne">Inny link</a>
+      </>,
+    );
+    fireEvent.click(toggle());
+    fireEvent.blur(field(), { relatedTarget: screen.getByRole("button", { name: "Szukaj" }) });
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    fireEvent.blur(field(), { relatedTarget: screen.getByRole("link", { name: "Inny link" }) });
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(toggle());
+    fireEvent.mouseDown(document.body);
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(toggle());
+    fireEvent.submit(form());
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("works without JavaScript: the form is in the HTML and a noscript style shows it as a row of the header, the button hidden", () => {
+    const html = renderToStaticMarkup(<SearchBox />);
+    expect(html).toContain('action="/szukaj"');
+    expect(html).toMatch(/<noscript><style>[^<]*#header-search-form[^<]*display: flex !important[^<]*#header-search-toggle[^<]*display: none !important/);
+  });
+});
+

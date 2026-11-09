@@ -129,11 +129,11 @@ export function MegaMenu({ categories }: { categories: CategoryNode[] }) {
   };
 
   return (
-    <nav ref={navRef} aria-label="Działy" onBlur={onBlur} className="min-w-0 [grid-area:nav]">
+    <nav ref={navRef} aria-label="Działy" onBlur={onBlur} className="mr-3 min-w-0 [grid-area:nav] lg:mr-4 xl:mr-6">
       {/* From `lg`: the bar of departments; the panel of the open one spans the whole header (it is positioned
           against the `header`, so this `nav` is not positioned). */}
       <div className="hidden lg:block">
-        <ul className="flex flex-wrap">
+        <ul className="flex">
           {categories.map((department) => {
             const panelId = `${id}-panel-${department.id}`;
             const open = openId === department.id;
@@ -151,7 +151,7 @@ export function MegaMenu({ categories }: { categories: CategoryNode[] }) {
                   aria-controls={panelId}
                   onClick={() => clickDepartment(department.id)}
                   onPointerEnter={(event) => hoverDepartment(event, department.id)}
-                  className="relative h-11 rounded-md px-3 text-ui font-medium whitespace-nowrap hover:bg-muted aria-expanded:bg-card aria-expanded:after:absolute aria-expanded:after:inset-x-3 aria-expanded:after:bottom-0.5 aria-expanded:after:h-[3px] aria-expanded:after:bg-primary"
+                  className="relative h-11 rounded-md px-2 text-ui font-medium whitespace-nowrap hover:bg-muted aria-expanded:bg-card aria-expanded:after:absolute aria-expanded:after:inset-x-2 xl:px-3 xl:aria-expanded:after:inset-x-3 aria-expanded:after:bottom-0.5 aria-expanded:after:h-[3px] aria-expanded:after:bg-primary"
                 >
                   {department.name}
                 </button>
