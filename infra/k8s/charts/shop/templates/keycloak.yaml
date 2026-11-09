@@ -49,5 +49,5 @@ readinessProbe:
 {{ include "shop.service" (dict "root" . "name" "keycloak" "ports" (list (dict "name" "http" "port" 8080) (dict "name" "management" "port" 9000))) }}
 ---
 {{ include "shop.deployment" (dict "root" . "name" "keycloak" "wave" "-1" "image" .Values.images.keycloak
-  "initContainers" (include "shop.wait" (dict "root" . "name" "postgres" "check" "nc -z postgres 5432"))
+  "initContainers" (include "shop.wait" (dict "root" . "name" "postgres" "check" "nc -z -w 2 postgres 5432"))
   "container" (include "shop.keycloak.container" .)) }}

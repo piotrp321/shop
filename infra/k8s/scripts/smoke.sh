@@ -315,7 +315,15 @@ tmark() { printf 'smoke-time: %s %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 timeline() {
   tmark "timeline after $1"
   kc get jobs -o jsonpath='{range .items[*]}{"job "}{.metadata.name}{" start="}{.status.startTime}{" done="}{.status.completionTime}{" failed="}{.status.failed}{"\n"}{end}' >&2 || true
-  kc get pods -o jsonpath='{range .items[*]}{"pod "}{.metadata.name}{" created="}{.metadata.creationTimestamp}{" init="}{.status.conditions[?(@.type=="Initialized")].lastTransitionTime}{" ready="}{.status.conditions[?(@.type=="Ready")].lastTransitionTime}{" phase="}{.status.phase}{"\n"}{end}' >&2 || true
+  kc get pods -o jsonpath='{range .items[*]}{"pod "}{.metadata.name}{" created="}{.metadata.creationTimestamp}{" init="}{.status.conditions[?(@.type=="Initialized")].lastTransitionTime}{" ready="}{.status.conditions[?(@.type=="Ready")].lastTransitionTime}{" phase="}{.status.phase}{range .status.initContainerStatuses[*]}{" | "}{.name}{" "}{.state.terminated.startedAt}{".."}{.state.terminated.finishedAt}{end}{"\n"}{end}' >&2 || true
+  for pod in $(kc get pods -o name); do
+    for c in $(kc get "$pod" -o jsonpath='{.spec.initContainers[*].name}'); do
+      n="$(kc logs "$pod" -c "$c" --timestamps 2>/dev/null | grep -c . || true)"
+      printf 'initlog %s %s lines=%s first=%s last=%s\n' "${pod#pod/}" "$c" "$n" \
+        "$(kc logs "$pod" -c "$c" --timestamps 2>/dev/null | head -n 1 | cut -c1-80)" \
+        "$(kc logs "$pod" -c "$c" --timestamps 2>/dev/null | tail -n 1 | cut -c1-80)" >&2
+    done
+  done
 }
 
 job_name() { kc get jobs -l "app.kubernetes.io/name=$1" -o jsonpath='{.items[0].metadata.name}'; }

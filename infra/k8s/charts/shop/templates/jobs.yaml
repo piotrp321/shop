@@ -21,7 +21,7 @@ spec:
   enableServiceLinks: false
   automountServiceAccountToken: false
   initContainers:
-    {{- include "shop.wait" (dict "root" .root "name" "garage" "check" "nc -z garage 3903") | nindent 4 }}
+    {{- include "shop.wait" (dict "root" .root "name" "garage" "check" "nc -z -w 2 garage 3903") | nindent 4 }}
     # The image of Garage has only the binary: it is mounted from the image (a volume of type image) and the script of
     # the compose file runs with it on the path.
   containers:
@@ -62,8 +62,8 @@ spec:
   enableServiceLinks: false
   automountServiceAccountToken: false
   initContainers:
-    {{- include "shop.wait" (dict "root" .root "name" "postgres" "check" "nc -z postgres 5432") | nindent 4 }}
-    {{- include "shop.wait" (dict "root" .root "name" "elasticsearch" "check" "wget -qO /dev/null 'http://elasticsearch:9200/_cluster/health?wait_for_status=yellow&timeout=2s'") | nindent 4 }}
+    {{- include "shop.wait" (dict "root" .root "name" "postgres" "check" "nc -z -w 2 postgres 5432") | nindent 4 }}
+    {{- include "shop.wait" (dict "root" .root "name" "elasticsearch" "check" "wget -T 3 -qO /dev/null 'http://elasticsearch:9200/_cluster/health?wait_for_status=yellow&timeout=2s'") | nindent 4 }}
   containers:
     - name: migrate
       image: {{ include "shop.appImage" (dict "root" .root "app" "api") }}
@@ -91,7 +91,7 @@ spec:
   enableServiceLinks: false
   automountServiceAccountToken: false
   initContainers:
-    {{- include "shop.wait" (dict "root" .root "name" "keycloak" "check" "wget -qO /dev/null http://keycloak:9000/health/ready") | nindent 4 }}
+    {{- include "shop.wait" (dict "root" .root "name" "keycloak" "check" "wget -T 3 -qO /dev/null http://keycloak:9000/health/ready") | nindent 4 }}
   containers:
     - name: keycloak-config
       image: {{ .root.Values.images.keycloak }}
