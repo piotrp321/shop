@@ -269,7 +269,7 @@ services:
       # Order emails: SMTP of Mailpit (not secrets) and the sender address. `timeout` (seconds, every socket operation,
       # SmtpTimeoutTransportFactory) keeps a sending well within the 5 minute lease of its claim.
       MAILER_DSN: smtp://mailpit:1025?timeout=10
-      MAILER_FROM: Rytm <zamowienia@rytm.localhost>
+      MAILER_FROM: Worf <zamowienia@worf.localhost>
       # The caches of the store invalidated after a price or stock change (StorefrontCache): PURGE to Varnish with
       # VARNISH_PURGE_SECRET, then POST /api/revalidate to the store server with STORE_REVALIDATE_SECRET (.env.local).
       VARNISH_URL: http://varnish

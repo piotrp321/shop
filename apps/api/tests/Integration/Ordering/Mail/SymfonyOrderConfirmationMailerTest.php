@@ -22,7 +22,7 @@ use Symfony\Component\Mailer\Transport;
  */
 final class SymfonyOrderConfirmationMailerTest extends KernelTestCase
 {
-    private const string FROM = 'Rytm <zamowienia@rytm.localhost>';
+    private const string FROM = 'Worf <zamowienia@worf.localhost>';
 
     private MailpitInbox $inbox;
 
