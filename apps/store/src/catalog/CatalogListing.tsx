@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import { ActiveFilters } from "./ActiveFilters";
 import { type BreadcrumbItem, Breadcrumbs } from "./Breadcrumbs";
 import { EmptyResults } from "./EmptyResults";
@@ -42,20 +43,22 @@ export function CatalogListing({
   const Title = intro === undefined ? "h1" : "h2";
   const body = (
     <>
-      {crumbs && <Breadcrumbs items={crumbs} />}
-      <div className="flex flex-wrap items-baseline gap-x-3">
-        <Title className="text-2xl font-semibold">{title}</Title>
-        <p className="text-base text-muted-foreground">{formatProductCount(products.total)}</p>
+      <div className={cn("flex flex-col gap-1.5", intro === undefined ? "mb-5 lg:mb-9" : "mb-6")}>
+        {crumbs && <Breadcrumbs items={crumbs} />}
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <Title className={cn("font-semibold tracking-tight", intro === undefined ? "text-4xl lg:text-6xl" : "text-2xl lg:text-4xl")}>{title}</Title>
+          <p className="text-lg text-muted-foreground">{formatProductCount(products.total)}</p>
+        </div>
       </div>
       <ListingProvider basePath={basePath} state={state}>
-        <div className="flex flex-col gap-6 lg:flex-row">
-          <aside className="lg:w-64 lg:shrink-0">
+        <div className="lg:grid lg:grid-cols-[16.25rem_minmax(0,1fr)] lg:items-start lg:gap-14">
+          <aside>
             <ListingFilters mode={mode} facets={products.facets} />
           </aside>
-          <div className="flex min-w-0 flex-1 flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
               <ActiveFilters basePath={basePath} state={state} categoryName={categoryName} />
-              <div className="ml-auto">
+              <div className="lg:ml-auto">
                 <SortSelect />
               </div>
             </div>
@@ -71,7 +74,8 @@ export function CatalogListing({
       </ListingProvider>
     </>
   );
-  const wrapper = "mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6";
+  // The default home page has the hero and the tiles above; the listing is then a section with more air around it.
+  const wrapper = cn("mx-auto max-w-content px-gutter", intro === undefined ? "pt-4 pb-14 lg:pt-6 lg:pb-24" : "pt-12 pb-18 lg:pt-18 lg:pb-28");
   if (intro === undefined) return <main className={wrapper}>{body}</main>;
   return (
     <main>

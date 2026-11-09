@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "./format-price";
 
 /**
@@ -10,10 +12,8 @@ export function PromotionNotice({ lowestPriorGross, currency, className }: { low
     return null;
   }
   return (
-    <div className={`flex flex-col items-start gap-1 ${className ?? ""}`}>
-      <span data-testid="promotion-badge" className="rounded-sm bg-primary px-1.5 py-0.5 text-xs font-semibold text-primary-foreground">
-        Promocja
-      </span>
+    <div className={cn("flex flex-col items-start gap-1", className)}>
+      <Badge data-testid="promotion-badge">Promocja</Badge>
       <p data-testid="omnibus" className="text-xs text-muted-foreground">
         Najniższa cena z 30 dni przed obniżką: {formatPrice(lowestPriorGross, currency)}
       </p>

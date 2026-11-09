@@ -65,9 +65,9 @@ export function TileOffer({ offer, children }: { offer: ProductOffer; children: 
       </p>
       <div className="mt-auto flex flex-col gap-2 pt-1.5">
         {single === undefined && !expanded ? (
-          <Button type="button" variant="outline" className="w-full" onClick={() => setExpanded(true)}>
+          <Button type="button" variant="outline" className="w-full gap-1.5 px-3" onClick={() => setExpanded(true)}>
             Wybierz wariant
-            <ChevronDown aria-hidden="true" />
+            <ChevronDown aria-hidden="true" className="size-4" />
           </Button>
         ) : null}
         {single === undefined && expanded ? (
@@ -83,7 +83,7 @@ export function TileOffer({ offer, children }: { offer: ProductOffer; children: 
                 <label
                   key={variant.variantId}
                   className={cn(
-                    "relative flex min-h-11 min-w-0 flex-1 cursor-pointer flex-col justify-center rounded-md border border-input bg-card px-3 py-1 text-center text-ui leading-tight",
+                    "relative flex min-h-11 min-w-0 flex-auto cursor-pointer flex-col justify-center rounded-md border border-input bg-card px-3 py-1 text-center text-ui leading-tight",
                     offer.variantAxes.length > 1 && "lg:flex-none",
                     "has-checked:border-inverse has-checked:bg-inverse has-checked:text-inverse-foreground",
                     "has-disabled:cursor-not-allowed has-disabled:border-dashed has-disabled:bg-transparent has-disabled:text-muted-foreground",
@@ -97,7 +97,7 @@ export function TileOffer({ offer, children }: { offer: ProductOffer; children: 
                     checked={chosenId === variant.variantId}
                     disabled={!variant.purchasable}
                     onChange={() => setChosenId(variant.variantId)}
-                    className="absolute inset-0 size-full cursor-[inherit] appearance-none opacity-0 outline-none"
+                    className="absolute inset-0 size-full cursor-[inherit] appearance-none opacity-0"
                   />
                   <span className="break-words">{variant.label}</span>
                   {variant.purchasable ? null : <span className="block text-xs">niedostępny</span>}

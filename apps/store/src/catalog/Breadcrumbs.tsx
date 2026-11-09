@@ -6,10 +6,10 @@ export type BreadcrumbItem = { name: string; href?: string };
 export function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
   return (
     <nav aria-label="Ścieżka">
-      <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+      <ol className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground [&_a]:underline">
         {items.map((item, index) => (
-          <li key={`${index}-${item.name}`} className="flex items-center gap-x-2">
-            {index > 0 && <span aria-hidden="true">›</span>}
+          <li key={`${index}-${item.name}`} className="flex items-center gap-x-2 py-1.25">
+            {index > 0 && <span aria-hidden="true">/</span>}
             {item.href === undefined ? (
               <span aria-current="page">{item.name}</span>
             ) : (

@@ -137,7 +137,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `CatalogListing`: breadcrumby „Wszystkie produkty” › kategorie ścieżki (linki `/c/<ścieżka>`, ostatni element bez
   linku, tylko na `/c/` i `/szukaj`), `h1` z nazwą, obok liczba produktów (`formatProductCount`: „1 produkt”,
   „2–4 produkty”, 22–24 itd., reszta „produktów”, także 12–14), panel filtrów (po lewej od `lg`), nad siatką aktywne
-  filtry i lista „Sortuj”, siatka i paginacja. Wszystkie adresy strony (paginacja, linki kategorii, chipy) buduje
+  filtry i lista „Sortuj”, siatka i paginacja. Wygląd według makiety „Granit”: kafelki bez ramki (zdjęcie na całą szerokość
+  kafelka, tekst pod nim; zdjęcie produktu niedostępnego jest wyszarzone), 2 kolumny na telefonie, od `sm` 3, od `lg` 4;
+  ścieżka z separatorem „/”; od `lg` kolumna filtrów 260 px po lewej bez ramki, grupy rozdzielone liniami (panel nie jest
+  wysuwany: makieta pokazuje go zawsze). Wszystkie adresy strony (paginacja, linki kategorii, chipy) buduje
   `listingHref(basePath, state, patch)` z adresu listingu bez parametrów (`basePath`) i jego parametrów (`state`).
 - SEO: tytuł `/c/` to `<nazwa>[ – strona n] | Worf`, kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1);
   pusta strona poza zakresem i niepoprawny `page` mają `noindex`. `/c/` ma JSON-LD `BreadcrumbList` (bezwzględne
@@ -191,7 +194,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   przycinana i idzie bez przeliczania, pusta usuwa filtr. Każda zmiana filtra lub sortowania usuwa `page` (`listingHref`).
 - Bez JavaScriptu panel jest formularzem `GET` (`id="listing-filters"`, ukryte pola `q` i `kategoria`; `select` „Sortuj”
   należy do niego przez atrybut `form`) z przyciskiem „Pokaż wyniki” w `noscript`; `noscript` pokazuje też panel
-  na wąskim ekranie. Na wąskim ekranie panel rozwija przycisk „Filtry” (`aria-expanded`).
+  na wąskim ekranie. Na wąskim ekranie panel (w ramce) rozwija przycisk „Filtry” (`aria-expanded`); od `lg` przycisk jest
+  ukryty, a panel zawsze widoczny.
 - Aktywne filtry (`ActiveFilters`, zwykłe linki, więc działają bez JavaScriptu): link usuwający jeden filtr (osie, cena
   od, cena do, „Tylko dostępne”, kategoria wyszukiwania) i „Wyczyść filtry” (zostają fraza i sortowanie). Brak wyników:
   „Nie znaleźliśmy produktów.”, przy filtrach przycisk „Wyczyść filtry”, przy frazie link „Zobacz wszystkie produkty”.
