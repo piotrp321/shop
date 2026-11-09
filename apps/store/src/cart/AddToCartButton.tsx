@@ -3,17 +3,18 @@
 import { useState } from "react";
 import { addCartItem, type CartFailure } from "@/api/client";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { announceCartChange } from "./events";
 import { PRODUCT_GONE, SAVE_FAILED, SessionExpired } from "./messages";
 
 type Feedback = { kind: "added" } | { kind: "error"; failure: CartFailure; returnTo: string };
 
 /**
- * Adds one unit of the variant to the cart; without a variant (none chosen yet) the button is disabled. The API decides
+ * Adds one unit of the variant to the cart (`size="lg"` is the full-width button of the product page); without a variant (none chosen yet) the button is disabled. The API decides
  * whether it can be added (limits, price, availability); its answer is shown here and the header counter gets the
  * number of units from it.
  */
-export function AddToCartButton({ variantId }: { variantId: string | null }) {
+export function AddToCartButton({ variantId, size = "sm", className }: { variantId: string | null; size?: "sm" | "lg"; className?: string }) {
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
@@ -34,8 +35,8 @@ export function AddToCartButton({ variantId }: { variantId: string | null }) {
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <Button type="button" size="sm" disabled={pending || variantId === null} onClick={() => void add()}>
+    <div className={cn("flex flex-col gap-1", className)}>
+      <Button type="button" size={size} disabled={pending || variantId === null} onClick={() => void add()}>
         Do koszyka
       </Button>
       {feedback?.kind === "added" ? (

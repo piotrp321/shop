@@ -103,7 +103,16 @@ export function makeProductPhoto(overrides: Partial<ProductImage> = {}): Product
   };
 }
 
-/** The details of product n: two photos, the path Bieganie > Buty and one default variant (the id of makeVariant(n, 1)). */
+export const ZOOM_WIDTHS = [1280, 1920, 2560] as const;
+
+type ZoomImage = components["schemas"]["ZoomImage"];
+
+/** A photo of the enlargement: the `zoom` size (1280 to 2560 px), no aspect ratio. */
+export function makeZoomPhoto(alt: string, key: string): ZoomImage {
+  return { alt, size: "zoom", variants: { webp: ZOOM_WIDTHS.map((width) => ({ width, url: `http://imgproxy.test/z${key}-${width}/plain.webp` })) } };
+}
+
+/** The details of product n: two photos (and their `zoom` twins), the path Bieganie > Buty and one default variant (the id of makeVariant(n, 1)). */
 export function makeDetails(n: number, overrides: Partial<ProductDetails> = {}): ProductDetails {
   return {
     id: makeProduct(n).id,
@@ -118,7 +127,7 @@ export function makeDetails(n: number, overrides: Partial<ProductDetails> = {}):
       makeProductPhoto({ alt: `Zdjęcie ${n}, pierwsze`, variants: { webp: PRODUCT_WIDTHS.map((width) => ({ width, url: `http://imgproxy.test/a${n}-${width}/plain.webp` })) } }),
       makeProductPhoto({ alt: `Zdjęcie ${n}, drugie`, variants: { webp: PRODUCT_WIDTHS.map((width) => ({ width, url: `http://imgproxy.test/b${n}-${width}/plain.webp` })) } }),
     ],
-    zoomImages: [],
+    zoomImages: [makeZoomPhoto(`Zdjęcie ${n}, pierwsze`, `a${n}`), makeZoomPhoto(`Zdjęcie ${n}, drugie`, `b${n}`)],
     variantAxes: [],
     variants: [{ variantId: variantId(n, 1), label: "", values: [] }],
     ...overrides,

@@ -3,33 +3,32 @@ import { AvailabilityLabel } from "./availability-label";
 import { crumbsOf } from "./breadcrumb";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { formatPrice } from "./format-price";
-import { ProductPhoto } from "./ProductPhoto";
-import { PromotionNotice } from "./PromotionNotice";
+import { ProductGallery } from "./ProductGallery";
+import { ProductPrice } from "./ProductPrice";
 import { VariantChoice } from "./VariantChoice";
 
 type ProductDetails = components["schemas"]["ProductDetails"];
 type ProductOffer = components["schemas"]["ProductOfferResponse"];
 
-// One column of photos from `md` (768px) up, half of the content width of at most 72rem; the whole width below.
-const PHOTO_SIZES = "(min-width: 1152px) 560px, (min-width: 768px) 50vw, 100vw";
-
 /**
- * The product page: the path, the name, the photos one under the other (the first is the main one), the short
- * description, and the price and level of the product as the API computed them („od X zł” when the purchasable
- * variants cost differently). Below them `VariantChoice` (a Client Component) takes the choice of the variant and the
- * „Do koszyka” button and replaces the price and level with those of the chosen variant. A product without a purchasable
- * variant (`fromGross = null`) is „Niedostępny” without a price, a choice and a button. Nothing here depends on the
- * session, so the server can keep the HTML in the ISR cache.
+ * The product page: the path, then the gallery (`ProductGallery`: a strip of photos with thumbnails, a counter and the
+ * enlargement) beside the data on a desktop and above it on a phone. The data: the name, the short description, and the
+ * price and level of the product as the API computed them („od X zł” when the purchasable variants cost differently).
+ * Below them `VariantChoice` (a Client Component) takes the choice of the variant and the „Do koszyka” button and
+ * replaces the price and level with those of the chosen variant. A product without a purchasable variant
+ * (`fromGross = null`) is „Niedostępny” without a price, a choice and a button. Nothing here depends on the session, so
+ * the server can keep the HTML in the ISR cache.
  */
 export function ProductDetailsView({ details, offer }: { details: ProductDetails; offer: ProductOffer }) {
   return (
-    <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
+    <main className="mx-auto flex w-full max-w-content flex-col gap-4 px-gutter pt-4 pb-16 lg:gap-7 lg:pt-7 lg:pb-28">
       <Breadcrumbs items={crumbsOf(details.breadcrumb)} />
-      <div className="grid gap-8 md:grid-cols-2">
-        <div className="flex flex-col gap-4 md:col-start-2 md:row-start-1">
-          <h1 className="text-2xl font-semibold">{details.name}</h1>
+      <div className="flex flex-col gap-7 lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-start lg:gap-18">
+        <ProductGallery name={details.name} images={details.images} zoomImages={details.zoomImages} />
+        <div className="flex min-w-0 flex-col gap-5">
+          <h1 className="text-3xl font-semibold tracking-tight lg:max-w-[14ch] lg:text-5xl">{details.name}</h1>
           {details.shortDescription !== "" && (
-            <p data-testid="description" className="text-muted-foreground">
+            <p data-testid="description" className="max-w-[44ch] text-lg text-muted-foreground">
               {details.shortDescription}
             </p>
           )}
@@ -37,24 +36,13 @@ export function ProductDetailsView({ details, offer }: { details: ProductDetails
             <AvailabilityLabel level="out_of_stock" />
           ) : (
             <VariantChoice details={details} offer={offer}>
-              <div className="flex flex-col gap-1">
-                <p data-testid="price" className="text-xl font-semibold">
-                  {offer.hasPriceRange ? `od ${formatPrice(offer.fromGross, offer.currency)}` : formatPrice(offer.fromGross, offer.currency)}
-                </p>
-                <PromotionNotice lowestPriorGross={offer.fromPromotion?.lowestPriorGross} currency={offer.currency} />
-                <AvailabilityLabel level={offer.level} />
-              </div>
+              <ProductPrice
+                price={offer.hasPriceRange ? `od ${formatPrice(offer.fromGross, offer.currency)}` : formatPrice(offer.fromGross, offer.currency)}
+                lowestPriorGross={offer.fromPromotion?.lowestPriorGross}
+                currency={offer.currency}
+                level={offer.level}
+              />
             </VariantChoice>
-          )}
-        </div>
-        <div className="flex flex-col gap-4 md:col-start-1 md:row-start-1">
-          {details.images.length === 0 ? (
-            <ProductPhoto image={null} sizes={PHOTO_SIZES} />
-          ) : (
-            details.images.map((image, index) => (
-              // The photos have no ids and never reorder in the page, so the position is the key.
-              <ProductPhoto key={index} image={image} sizes={PHOTO_SIZES} priority={index === 0} />
-            ))
           )}
         </div>
       </div>
