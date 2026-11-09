@@ -37,13 +37,27 @@ final readonly class ImgproxyUrlGenerator implements ImageUrlGenerator
             throw new \InvalidArgumentException('Format is not defined for the image size.');
         }
 
-        [$ratioWidth, $ratioHeight] = array_map('intval', explode(':', $size->aspectRatio()));
-        $height = intdiv($width * $ratioHeight, $ratioWidth);
+        $height = self::height($size, $width);
 
         $source = self::base64Url(\sprintf('s3://%s/%s', $this->bucket, $imageKey));
         $path = \sprintf('/rs:%s:%d:%d/g:%s/%s.%s', $size->resize(), $width, $height, $size->gravity(), $source, $format->value);
 
         return $this->publicUrl.'/'.$this->sign($path).$path;
+    }
+
+    /**
+     * 0 lets imgproxy derive the height from the width and the proportions of the original.
+     */
+    private static function height(ImageSize $size, int $width): int
+    {
+        $aspectRatio = $size->aspectRatio();
+        if (null === $aspectRatio) {
+            return 0;
+        }
+
+        [$ratioWidth, $ratioHeight] = array_map('intval', explode(':', $aspectRatio));
+
+        return intdiv($width * $ratioHeight, $ratioWidth);
     }
 
     /**
