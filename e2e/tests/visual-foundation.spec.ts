@@ -8,12 +8,37 @@ import { logInAsJan } from "../support/shop";
 const LISTING_PATH = "/c/bieganie/buty/szosowe";
 const PRODUCT_PATH = "/p/buty-szosowe-tarvik-asfalt-200";
 const DEPARTMENTS = ["Bieganie", "Fitness", "Rower", "Sporty drużynowe", "Sporty wodne", "Sporty zimowe", "Turystyka"];
-const POLISH = "ąćęłńóśźż";
 
 const PHONE = { width: 375, height: 812 };
 const DESKTOP = { width: 1440, height: 900 };
 
 const scrollWidth = (page: Page): Promise<number> => page.evaluate(() => document.documentElement.scrollWidth);
+
+/** The label of the focused element: the search controls by role, the rest by their text. */
+const focusedLabel = (page: Page): Promise<string> =>
+  page.evaluate(() => {
+    const element = document.activeElement as HTMLElement;
+    if (element.matches("input[type=search]")) return "search field";
+    if (element.matches("button[type=submit]")) return "search button";
+    return (element.innerText || element.getAttribute("aria-label") || "").trim().replace(/\s+/g, " ");
+  });
+
+/** Presses Tab `steps` times from the top of the page and returns what had the focus after each press. */
+async function tabOrder(page: Page, steps: number): Promise<string[]> {
+  const order: string[] = [];
+  await page.locator("body").press("Tab");
+  for (let step = 0; step < steps; step++) {
+    order.push(await focusedLabel(page));
+    await page.keyboard.press("Tab");
+  }
+  return order;
+}
+
+/** Lets the header settle: the cart count and the account link are loaded in the browser. */
+async function waitForHeader(page: Page): Promise<void> {
+  await expect(page.getByRole("banner").getByRole("link", { name: "Zaloguj się" })).toBeVisible();
+  await expect(page.getByTestId("cart-count")).toBeVisible();
+}
 
 test.describe("no request leaves the stack", () => {
   for (const path of ["/", LISTING_PATH, PRODUCT_PATH]) {
@@ -33,27 +58,37 @@ test.describe("no request leaves the stack", () => {
 });
 
 test.describe("the font of the direction", () => {
-  test("the Polish letters are drawn in Outfit from the files of the store", async ({ page }) => {
-    await page.goto("/");
-    const report = await page.evaluate(async (polish) => {
-      await document.fonts.load('600 16px "Outfit"', polish);
-      await document.fonts.load('400 16px "Outfit"', polish);
+  test("the page is drawn in Outfit from the files of the store, the Polish letters from the latin-ext file", async ({ page }) => {
+    // The category name carries Polish letters, so the page needs the `latin-ext` file.
+    await page.goto("/c/sporty-druzynowe");
+    await expect(page.getByRole("heading", { level: 1, name: "Sporty drużynowe" })).toBeVisible();
+    const report = await page.evaluate(async () => {
       await document.fonts.ready;
-      const faces = [...document.fonts].filter((face) => face.family.replaceAll('"', "") === "Outfit");
+      // The first family of the computed `font-family` is the one the browser tries first.
+      const first = (element: Element): string => getComputedStyle(element).fontFamily.split(",")[0].trim().replaceAll('"', "");
+      const faces = [...document.fonts].map((face) => ({
+        family: face.family.replaceAll('"', ""),
+        status: face.status,
+        unicodeRange: face.unicodeRange,
+      }));
       return {
-        checked: document.fonts.check('600 16px "Outfit"', polish) && document.fonts.check('400 16px "Outfit"', polish),
-        loaded: faces.filter((face) => face.status === "loaded").length,
-        errors: faces.filter((face) => face.status === "error").length,
-        family: getComputedStyle(document.body).fontFamily,
-        heading: getComputedStyle(document.querySelector("header a")!).fontFamily,
+        body: first(document.body),
+        heading: first(document.querySelector("h1")!),
+        faces,
       };
-    }, POLISH);
-    expect(report.family).toMatch(/Outfit/);
-    expect(report.heading).toMatch(/Outfit/);
-    expect(report.errors).toBe(0);
-    // `latin` (ó, Latin text) and `latin-ext` (ąćęłńśźż) of the page text.
-    expect(report.loaded).toBeGreaterThanOrEqual(2);
-    expect(report.checked).toBe(true);
+    });
+    expect(report.body).not.toBe("");
+    expect(report.heading).toBe(report.body);
+    expect(report.body).toMatch(/Outfit/);
+    // The family the page asks for is a face of the document that finished loading (not the fallback of next/font).
+    const own = report.faces.filter((face) => face.family === report.body);
+    expect(own.length).toBeGreaterThan(0);
+    expect(own.filter((face) => face.status === "error")).toEqual([]);
+    expect(own.some((face) => face.status === "loaded")).toBe(true);
+    // The Polish letters (U+0104 and on) are in the `latin-ext` file, which the page text made the browser load.
+    const latinExt = own.filter((face) => /U\+0*100-/i.test(face.unicodeRange));
+    expect(latinExt.length).toBeGreaterThan(0);
+    expect(latinExt.every((face) => face.status === "loaded")).toBe(true);
   });
 });
 
@@ -62,22 +97,8 @@ test.describe("the header on a phone", () => {
 
   test("the tab order is the wordmark, Menu, cart, account, then the search; no horizontal scroll", async ({ page }) => {
     await page.goto("/");
-    // The account link appears after the session is read in the browser.
-    await expect(page.getByRole("banner").getByRole("link", { name: "Zaloguj się" })).toBeVisible();
-    await expect(page.getByTestId("cart-count")).toBeVisible();
-    const focused = async (): Promise<string> =>
-      page.evaluate(() => {
-        const element = document.activeElement as HTMLElement;
-        if (element.matches("input[type=search]")) return "search field";
-        if (element.matches("button[type=submit]")) return "search button";
-        return (element.innerText || element.getAttribute("aria-label") || "").trim().replace(/\s+/g, " ");
-      });
-    const order: string[] = [];
-    await page.locator("body").press("Tab");
-    for (let step = 0; step < 6; step++) {
-      order.push(await focused());
-      await page.keyboard.press("Tab");
-    }
+    await waitForHeader(page);
+    const order = await tabOrder(page, 6);
     expect(order).toEqual(["Worf", "Menu", expect.stringMatching(/^Koszyk/), "Zaloguj się", "search field", "search button"]);
     expect(await scrollWidth(page)).toBeLessThanOrEqual(PHONE.width);
   });
@@ -131,6 +152,13 @@ test.describe("the header on a phone", () => {
 test.describe("the header on a desktop", () => {
   test.use({ viewport: DESKTOP });
 
+  test("the tab order is the visual order: the wordmark, the departments, the search, the cart, the account", async ({ page }) => {
+    await page.goto("/");
+    await waitForHeader(page);
+    const order = await tabOrder(page, 1 + DEPARTMENTS.length + 4);
+    expect(order).toEqual(["Worf", ...DEPARTMENTS, "search field", "search button", expect.stringMatching(/^Koszyk/), "Zaloguj się"]);
+  });
+
   test("one row: wordmark, departments, search, cart, account; the panel spans the full width in four columns", async ({ page }) => {
     await page.goto("/");
     const header = page.getByRole("banner");
@@ -164,6 +192,7 @@ test.describe("the footer", () => {
     await expect(footer.getByRole("navigation", { name: "Linki w stopce" }).getByRole("link")).toHaveText(DEPARTMENTS);
     const brand = (await footer.getByRole("link", { name: "Worf" }).boundingBox())!;
     const links = await footer.getByRole("navigation").getByRole("link").evaluateAll((items) => items.map((item) => item.getBoundingClientRect()));
+    expect(await footer.getByRole("link", { name: "Worf" }).evaluate((link) => getComputedStyle(link).fontSize)).toBe("28px");
     expect(brand.x).toBeLessThan(DESKTOP.width / 4);
     expect(Math.min(...links.map((rect) => rect.x))).toBeGreaterThan(DESKTOP.width / 2);
     expect(new Set(links.map((rect) => Math.round(rect.x))).size).toBe(2);
@@ -178,6 +207,7 @@ test.describe("the footer", () => {
     await expect(footer.getByRole("navigation", { name: "Linki w stopce" }).getByRole("link")).toHaveText(DEPARTMENTS);
     const brand = (await footer.getByRole("link", { name: "Worf" }).boundingBox())!;
     const links = await footer.getByRole("navigation").getByRole("link").evaluateAll((items) => items.map((item) => item.getBoundingClientRect()));
+    expect(await footer.getByRole("link", { name: "Worf" }).evaluate((link) => getComputedStyle(link).fontSize)).toBe("24px");
     expect(brand.y + brand.height).toBeLessThanOrEqual(Math.min(...links.map((rect) => rect.y)));
     expect(new Set(links.map((rect) => Math.round(rect.x))).size).toBe(2);
     for (const rect of links) expect(rect.height).toBeGreaterThanOrEqual(44);
@@ -223,6 +253,34 @@ test.describe("the 404 page", () => {
       const serious = results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
       expect(serious.map((violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`)).toEqual([]);
       expect(await scrollWidth(page)).toBeLessThanOrEqual(viewport.width);
+    });
+  }
+});
+
+test.describe("the notice of a guest cart that did not fit into the customer's", () => {
+  const NOTICE = "Część produktów z koszyka gościa nie zmieściła się w koszyku";
+
+  for (const viewport of [PHONE, DESKTOP]) {
+    test(`at ${viewport.width} px it is in the flow of the header: above the page, not over it, no horizontal scroll`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.route("**/api/cart/summary", (route) => route.fulfill({ json: { itemCount: 3, notice: "merge_truncated" } }));
+      await page.goto("/");
+      const notice = page.getByRole("banner").getByRole("status");
+      await expect(notice).toHaveText(NOTICE);
+      const box = (await notice.boundingBox())!;
+      const main = (await page.getByRole("main").boundingBox())!;
+      const header = (await page.getByRole("banner").boundingBox())!;
+      // The notice is the last row of the header and the page starts under it.
+      expect(box.y + box.height).toBeLessThanOrEqual(main.y + 0.5);
+      expect(box.y + box.height).toBeLessThanOrEqual(header.y + header.height + 0.5);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+      expect(await scrollWidth(page)).toBeLessThanOrEqual(viewport.width);
+      // The first row keeps its place: the wordmark and the cart stay on one line.
+      const brand = (await page.getByRole("banner").getByRole("link", { name: "Worf" }).boundingBox())!;
+      const cart = (await page.getByRole("banner").getByRole("link", { name: /Koszyk/ }).boundingBox())!;
+      expect(Math.abs(cart.y + cart.height / 2 - (brand.y + brand.height / 2))).toBeLessThan(40);
+      expect(box.y).toBeGreaterThanOrEqual(Math.max(brand.y + brand.height, cart.y + cart.height));
     });
   }
 });

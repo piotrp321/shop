@@ -540,7 +540,7 @@ zwracana.
 | 401 (sesja wygasła), także przy wczytaniu `/cart` | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem „Zaloguj się” (`/auth/login?returnTo=…`) |
 | błąd wczytania koszyka | „Nie udało się wczytać koszyka” i przycisk „Spróbuj ponownie” |
 | `hasExcludedLines` | przy sumie: „Część produktów nie jest wliczona”; „Przejdź do kasy” nieaktywny z tekstem „Usuń albo popraw oznaczone pozycje, żeby złożyć zamówienie.” |
-| `notice: merge_truncated` | „Część produktów z koszyka gościa nie zmieściła się w koszyku” (`CartBadge`, obok linku „Koszyk”) |
+| `notice: merge_truncated` | „Część produktów z koszyka gościa nie zmieściła się w koszyku” (`CartBadge`: osobny wiersz nagłówka pod pozostałymi, na pełną szerokość, w przepływie strony) |
 | `no_price` | „Cena niedostępna” |
 | `out_of_stock` | „Niedostępny” |
 | `insufficient_stock` | „Dostępna ilość jest mniejsza niż w koszyku” |

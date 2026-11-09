@@ -90,7 +90,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/components/ui/` – komponenty shadcn/ui.
 - `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu; `src/styles/fonts.ts` (`next/font/local`) i
   `src/styles/fonts/` – pliki WOFF2 fontu Outfit (`latin`, `latin-ext`); `THIRD_PARTY_NOTICES.md` – licencja OFL
-  fontu i lista plików (oraz MIT dla plików przeniesionych z vercel/shop).
+  fontu i lista plików (przy przeniesieniu plików z vercel/shop także pełny tekst MIT).
 
 ## Dane i API
 
@@ -195,10 +195,15 @@ Klienta API generuje `make api-client` z katalogu głównego.
   3). Poniżej `lg` dwa rzędy: znak, przycisk „Menu” (`aria-expanded`), koszyk i konto, pod nimi pole na pełną
   szerokość; lista działów otwiera się jako panel pod nagłówkiem. Koszyk i konto są ikonami poniżej `xl` (1280 px; nazwa zostaje w `sr-only`), żeby pierwszy rząd mieścił się w
   375 px także po zalogowaniu, a lista działów miała miejsce od 1024 px (może zawinąć się do drugiej linii). Kolejność w DOM to kolejność telefonu
-  (znak, „Menu”, koszyk, konto, pole z przyciskiem), więc kolejność tabulatora zgadza się z rzędami; siatka ustawia na
-  szerokim ekranie pole przed koszykiem (tam „Menu” jest ukryte, a tabulator idzie: znak, działy, koszyk, konto, pole).
-  Nie przenoś układu makiety (`kierunek.html`) bez tej poprawki: jej DOM ma pole przed koszykiem. Brak poziomego
-  przewijania przy 375 px sprawdza `e2e/tests/site-header.spec.ts`, kolejność tabulatora i układ
+  (znak, „Menu”, koszyk, konto, pole z przyciskiem), a siatka ustawia na szerokim ekranie pole przed koszykiem. Kolejność
+  tabulatora ma być kolejnością wizualną (WCAG 2.4.3), więc kontener siatki ma `reading-flow: grid-rows`
+  (`[reading-flow:grid-rows]`): od `lg` tabulator idzie: znak, działy, pole, „Szukaj”, koszyk, konto (poniżej `lg`: znak,
+  „Menu”, koszyk, konto, pole, „Szukaj”). `reading-flow` porządkuje tylko bezpośrednie dzieci siatki, więc `CartBadge`
+  renderuje dwa z nich (komórkę `utils` z linkiem koszyka i kontem jako `children` oraz wiersz komunikatu), a konta nie
+  wolno wyjmować z tej komórki. Przeglądarki bez `reading-flow` (dziś Firefox i Safari) idą na szerokim ekranie
+  w kolejności DOM (pole po koncie). Nie przenoś układu makiety (`kierunek.html`) bez tej poprawki: jej DOM ma pole
+  przed koszykiem, bez `reading-flow`. Brak poziomego przewijania
+  przy 375 px sprawdza `e2e/tests/site-header.spec.ts`, kolejność tabulatora i układ
   `e2e/tests/visual-foundation.spec.ts`.
 - Layout czyta drzewo przez `loadMenuCategories` (to samo `React.cache` co listing) i renderuje `SiteHeader` z menu
   działów (`MegaMenu`, `nav` „Działy”, Client Component). Na stronie produktu (ISR) odczyt drzewa ma tag `catalog`
@@ -337,8 +342,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `truncated` scalenia ustawia `store_cart_notice`: znacznik `merge_truncated` podpisany jak `store_cart`, `HttpOnly`,
   `SameSite=Lax`, `Path=/`, `Max-Age` 5 minut. `GET /api/cart/summary` z odpowiedzią 200 zwraca `notice:
   "merge_truncated"` raz (z poprawnie podpisanego ciasteczka albo ze scalenia w tym samym żądaniu) i usuwa ciasteczko;
-  inaczej `notice: null`. `CartBadge` pokazuje wtedy obok linku „Część produktów z koszyka gościa nie zmieściła się
-  w koszyku”.
+  inaczej `notice: null`. `CartBadge` pokazuje wtedy „Część produktów z koszyka gościa nie zmieściła się
+  w koszyku” (`role="status"`) jako osobny wiersz nagłówka pod pozostałymi, na pełną szerokość i w przepływie
+  dokumentu (nie zasłania treści; trzeci wiersz siatki na telefonie, drugi od `lg`); układ sprawdza
+  `e2e/tests/visual-foundation.spec.ts`.
 - `GET /api/cart?discountCode=` (podgląd kodu w kasie) przekazuje parametr do API koszyka gościa i klienta; inne parametry
   są pomijane. Koszyk bez `store_cart` i bez sesji (pusty) odpowiada bez API. 400 API (kod nie jest tekstem albo ma
   ponad 64 znaki) wraca jako 400 z `{ detail }` (tekst naruszenia z API), tylko dla odczytu z kodem; każdy inny 400
@@ -590,7 +597,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - Z github.com/vercel/shop (licencja MIT, „Copyright (c) 2025 Vercel, Inc.”) wolno przenosić komponenty i układy.
 - Każdy przeniesiony plik ma w nagłówku komentarz `// Adapted from vercel/shop (MIT): <ścieżka w repo źródłowym>`.
-  `THIRD_PARTY_NOTICES.md` w tym katalogu zawiera pełny tekst licencji MIT i listę przeniesionych plików.
+  Przy pierwszym przeniesionym pliku dopisz do `THIRD_PARTY_NOTICES.md` w tym katalogu wpis z pełnym tekstem licencji
+  MIT i plikiem na liście przeniesionych.
 - Przy przenoszeniu: dane tylko z naszego API przez wygenerowanego klienta, bez kodu, typów i zapytań Shopify;
   obrazy przez `ProductPhoto` zamiast `next/image` z CDN Shopify; kolory i odstępy przepisane na nasze tokeny.
 

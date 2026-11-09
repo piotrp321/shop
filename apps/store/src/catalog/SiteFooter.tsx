@@ -16,7 +16,7 @@ export function SiteFooter({ categories }: { categories: CategoryNode[] | null }
   return (
     <footer data-surface="inverse" className="bg-inverse pt-7 pb-4 text-inverse-foreground lg:pt-9 lg:pb-4.5">
       <div className="mx-auto flex max-w-content flex-col gap-2 px-gutter pb-4 lg:flex-row lg:items-start lg:justify-between lg:pb-5">
-        <Link href="/" className="inline-block self-start text-2xl leading-none font-bold tracking-brand lg:text-[1.75rem]">
+        <Link href="/" className="inline-block self-start text-brand-sm leading-none font-bold tracking-brand lg:text-2xl">
           {STORE_NAME}
         </Link>
         {categories !== null && categories.length > 0 && (
