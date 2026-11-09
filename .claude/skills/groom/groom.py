@@ -894,11 +894,13 @@ def cmd_gate(args, run):
     if not os.path.isfile(plan):
         check_('plan', ['brak pliku %s' % epic_files[1]])
     else:
+        command = [sys.executable, PLAN_MANIFEST, 'validate', plan]
         try:
-            run([sys.executable, PLAN_MANIFEST, 'validate', plan])
+            run(command)
             check_('plan', [])
         except next_epic.CommandError as e:
-            check_('plan', ['walidator: %s' % e])
+            prefix = ' '.join(command) + ': '
+            check_('plan', ['walidator: %s' % str(e)[len(prefix):] if str(e).startswith(prefix) else str(e)])
     scope = []
     try:
         with open(os.path.join(feature, 'spec.md'), encoding='utf-8') as f:
