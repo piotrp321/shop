@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import type { components } from "@/api/schema";
+import { STORE_NAME } from "@/site";
 import { largestVariant } from "./image-props";
 
 type ProductDetails = components["schemas"]["ProductDetails"];
-
-const SITE = "Rytm";
 
 /** The canonical address of the product page: `<STORE_URL>/p/<slug>`. */
 export function productUrl(slug: string, storeUrl: string): string {
@@ -17,7 +16,7 @@ export function productUrl(slug: string, storeUrl: string): string {
  */
 export function buildProductMetadata(details: ProductDetails, storeUrl: string): Metadata {
   const url = productUrl(details.slug, storeUrl);
-  const title = `${details.name} | ${SITE}`;
+  const title = `${details.name} | ${STORE_NAME}`;
   const description = details.shortDescription === "" ? undefined : details.shortDescription;
   const first = details.images[0];
   const image = first === undefined ? null : largestVariant(first);

@@ -292,6 +292,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sitemap/product-chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chunks of the product sitemap
+         * @description The chunks that the product sitemap is cut into, in the order of the product id. Every product, published or not, belongs to exactly one chunk; the first chunk reaches back to the lowest id and the last to the highest, so a product created after the chunks were cut is in one of them. The key of a chunk is opaque: pass it unchanged to `getSitemapProducts`. An empty catalogue has one chunk. The chunks are cut from the ids of all the products and the cut is kept for an hour, so a new product can move the cut only after that. The response is public, kept for 60 s by a browser and for an hour by a shared cache, and tagged for purging.
+         */
+        get: operations["listSitemapProductChunks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sitemap/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Products of one chunk of the product sitemap
+         * @description The published products of the chunk, in the order of the product id, with the slug and the time of the last change of the product (prices and stock levels do not change it). A chunk without published products has an empty list. The number of rows read from the range of the chunk is bounded, drafts included: past the limit the published ones among the rows read are returned, and the rest comes with the next cut of the chunks. The response is public and kept by a browser for 5 minutes; it is not tagged and the Varnish of the store does not keep it, so its freshness is the short `max-age`.
+         */
+        get: operations["getSitemapProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -1278,6 +1318,23 @@ export interface components {
             path: string;
             children: components["schemas"]["CategoryNode"][];
         };
+        SitemapChunk: {
+            key: string;
+        };
+        SitemapChunkList: {
+            chunks: components["schemas"]["SitemapChunk"][];
+        };
+        SitemapProduct: {
+            slug: string;
+            /**
+             * Format: date-time
+             * @example 2026-11-20T23:00:00+00:00
+             */
+            updatedAt: string;
+        };
+        SitemapProductList: {
+            items: components["schemas"]["SitemapProduct"][];
+        };
         /** @description The customer identified by the access token. */
         MeResponse: {
             /**
@@ -2251,6 +2308,94 @@ export interface operations {
                 };
             };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without technical details). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listSitemapProductChunks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The chunks, at least one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SitemapChunkList"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getSitemapProducts: {
+        parameters: {
+            query: {
+                /** @description Key of the chunk, as the chunk list issued it. */
+                chunk: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The published products of the chunk. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SitemapProductList"];
+                };
+            };
+            /** @description The `chunk` parameter is missing or is not a key that the chunk list issued (problem details with `violations`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An access token was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). No token is needed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
                     [name: string]: unknown;

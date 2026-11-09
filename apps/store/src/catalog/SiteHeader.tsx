@@ -3,6 +3,7 @@ import { type ReactNode, Suspense } from "react";
 import { AccountMenu } from "@/account/AccountMenu";
 import type { components } from "@/api/schema";
 import { CartBadge } from "@/cart/CartBadge";
+import { STORE_NAME } from "@/site";
 import { MegaMenu } from "./MegaMenu";
 
 type CategoryNode = components["schemas"]["CategoryNode"];
@@ -18,7 +19,7 @@ export function SiteHeader({ categories, search }: { categories: CategoryNode[] 
       {/* Below `sm` the search box takes a row of its own under the logo, the cart and the account. */}
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-3 px-4 py-4">
         <Link href="/" className="text-xl font-semibold">
-          Rytm
+          {STORE_NAME}
         </Link>
         <div className="order-last w-full sm:order-none sm:ml-auto sm:w-auto">
           {search}

@@ -7,6 +7,9 @@ import { InvalidFilter } from "@/catalog/InvalidFilter";
 import { invalidFilterExit, isRefined, type ListingState, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
 import { type CatalogResult, loadCatalogForRequest } from "@/catalog/load-catalog";
 import { buildCatalogMetadata } from "@/catalog/page-metadata";
+import { serializeJsonLd } from "@/catalog/product-json-ld";
+import { buildHomeJsonLd } from "@/seo/home-json-ld";
+import { readStoreUrl } from "@/seo/store-url";
 
 // A repeated parameter (?page=1&page=2) counts as its first value.
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
@@ -59,11 +62,7 @@ export async function generateMetadata({ searchParams }: PageProps<"/">): Promis
   if (home.kind === "unknown-category" || home.kind === "redirect") {
     return {}; // The page answers 404 or redirects.
   }
-  const storeUrl = process.env.STORE_URL;
-  if (!storeUrl) {
-    throw new Error("STORE_URL is not set.");
-  }
-  return buildCatalogMetadata(home.kind === "ok" ? home.listing : home, { category: first(query.category), page: first(query.page), refined: isRefined(home.state) }, storeUrl);
+  return buildCatalogMetadata(home.kind === "ok" ? home.listing : home, { category: first(query.category), page: first(query.page), refined: isRefined(home.state) }, readStoreUrl());
 }
 
 export default async function Home({ searchParams }: PageProps<"/">) {
@@ -78,5 +77,14 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   if (home.kind === "invalid-filter") {
     return <InvalidFilter exit={invalidFilterExit("/", home.state)} />;
   }
-  return <CatalogListing title="Wszystkie produkty" basePath="/" state={home.state} mode="list" listing={home.listing} />;
+  // The structured data of the store belongs to the listing the home page shows (with results or an empty one), not to the error pages above.
+  const storeUrl = readStoreUrl();
+  return (
+    <>
+      <CatalogListing title="Wszystkie produkty" basePath="/" state={home.state} mode="list" listing={home.listing} />
+      {buildHomeJsonLd(storeUrl).map((data) => (
+        <script key={data["@type"]} type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(data) }} />
+      ))}
+    </>
+  );
 }

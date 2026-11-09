@@ -113,6 +113,11 @@ Trzy warstwy cache, każda z jasną rolą:
 - Varnish nigdy nie cache'uje: koszyka, checkoutu, konta klienta, panelu admina ani żadnego żądania
   z nagłówkiem `Authorization` lub ciasteczkiem sesji.
 - Odpowiedzi publiczne mają jawne nagłówki `Cache-Control` ustawiane w API, a nie domyślne zachowanie Varnisha.
+- Wyjątek: mapa strony produktów. Porcje (`/api/v1/sitemap/products?chunk=…`, do 10 000 produktów, rząd MB) nie mają
+  tagów obiektów ani nie przechodzą przez cache Varnisha: 10 000 tagów nie mieści się w nagłówku, a odpowiedzi
+  przy dowolnych kluczach wypychałyby z Varnisha katalog. Świeżość daje krótki `max-age` (5 min), a koszt odczytu jest
+  ograniczony (limit wierszy zakresu). Lista porcji (`/api/v1/sitemap/product-chunks`) ma tag `catalog` i jest
+  cache'owana jak reszta katalogu; granice porcji liczy API najwyżej raz na godzinę na instancję (pula cache API).
 
 ## Kontrakt API między aplikacjami
 
@@ -141,8 +146,14 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - **Koszyk, checkout, konto klienta**: renderowane po stronie klienta, `noindex`.
 - **Metadane**: tytuł, opis, Open Graph (z obrazem z imgproxy), `canonical` generowane per strona
   (Metadata API w Next.js).
-- **Dane strukturalne**: JSON-LD `Product` (cena, dostępność, zdjęcia), `BreadcrumbList`, `Organization`.
-- **Mapa strony i robots**: `sitemap.xml` generowana z katalogu, `robots.txt`.
+- **Dane strukturalne**: JSON-LD `Product` (cena, dostępność, zdjęcia), `BreadcrumbList` oraz `Organization` i `WebSite` na stronie głównej.
+- **Mapa strony i robots**: `/sitemap.xml` to indeks map: mapa listingu (`/sitemaps/listing.xml`: `/` i każda kategoria
+  `/c/<ścieżka>`) i po jednej pozycji na porcję produktów z API (`/sitemaps/products/<klucz>.xml`: `/p/<slug>`
+  z `lastmod` równym czasowi ostatniej zmiany produktu). Porcje wyznacza API (kolejne `id` produktów, nieprzezroczysty
+  klucz), więc sklep nie ładuje katalogu do pamięci. Trasy są renderowane przy każdym żądaniu, bez data cache Next.js;
+  błąd API daje 503 bez cache, nigdy pustą ani częściową mapę. `robots.txt` blokuje `/cart`, `/checkout`, `/konto`,
+  `/auth/` i `/api/`, nie blokuje stron z `noindex, follow` (listing z filtrami, `/szukaj`), żeby robot widział ich
+  dyrektywę, i wskazuje indeks map; jest taki sam w każdym środowisku.
 - **Przyjazne adresy**: `/p/<slug>`, `/c/<ścieżka slugów kategorii>` (np. `/c/turystyka/biwak/namioty`),
   przekierowania 301 przy zmianie sluga. Slug produktu jest stały od pierwszej publikacji (także po wycofaniu
   z publikacji); zmienia się tylko w szkicu, który nie był nigdy opublikowany, więc w MVP adres produktu nie wymaga

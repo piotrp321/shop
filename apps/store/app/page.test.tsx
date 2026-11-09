@@ -110,6 +110,49 @@ describe("Home page", () => {
     });
   });
 
+  describe("structured data", () => {
+    const jsonLdOf = (markup: string) =>
+      [...markup.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map((match) => JSON.parse(match[1]!) as { "@type": string; name: string; url: string });
+    const EXPECTED = [
+      { "@context": "https://schema.org", "@type": "Organization", name: "Rytm", url: "http://store.test/" },
+      { "@context": "https://schema.org", "@type": "WebSite", name: "Rytm", url: "http://store.test/" },
+    ];
+
+    it("has the Organization and the WebSite for a list with results", async () => {
+      expect(jsonLdOf(renderToStaticMarkup(await Home(props())))).toEqual(EXPECTED);
+    });
+
+    it("has them for an empty list too", async () => {
+      vi.mocked(loadCatalog).mockResolvedValue(okPage(1, []));
+      const markup = renderToStaticMarkup(await Home(props()));
+      expect(markup).toContain("application/ld+json");
+      expect(jsonLdOf(markup)).toEqual(EXPECTED);
+    });
+
+    it("has them with a page, a sort and filters in the address (a page, a sort, filters, unknown parameters)", async () => {
+      const queries: Query[] = [{ page: "2" }, { sort: "nazwa", dostepne: "1", o: "Kolor:czarne" }, { page: "9", utm_source: "x" }];
+      for (const query of queries) {
+        expect(jsonLdOf(renderToStaticMarkup(await Home(props(query))))).toEqual(EXPECTED);
+      }
+    });
+
+    it("builds the address on STORE_URL without a trailing slash", async () => {
+      vi.stubEnv("STORE_URL", "http://store.test/");
+      expect(jsonLdOf(renderToStaticMarkup(await Home(props())))).toEqual(EXPECTED);
+    });
+
+    it("is not on the invalid filter page", async () => {
+      vi.mocked(loadCatalog).mockResolvedValue({ kind: "invalid-filter" });
+      expect(renderToStaticMarkup(await Home(props({ "cena-od": "12,5" })))).not.toContain("ld+json");
+      expect(renderToStaticMarkup(await Home(props({ sort: "popularne" })))).not.toContain("ld+json");
+    });
+
+    it("fails loudly without STORE_URL", async () => {
+      vi.stubEnv("STORE_URL", "");
+      await expect(Home(props())).rejects.toThrow("STORE_URL");
+    });
+  });
+
   describe("/?category=<id>", () => {
     const redirectOf = async (query: Query) => {
       const failure = (await Home(props(query)).catch((error: unknown) => error)) as { digest?: string };

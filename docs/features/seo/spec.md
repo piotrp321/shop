@@ -1,17 +1,14 @@
 # SEO: mapa strony, robots i dane organizacji
 
-Punkt 4 „Zakresu MVP” (SEO sklepu) i sekcja „Sklep: renderowanie i SEO” w `docs/vision.md`. Epik domyka elementy SEO,
-które PRODUCT-PAGE (#93) i SEARCH (#94) zostawiły poza zakresem: mapę strony z katalogu, `robots.txt`, dane
-strukturalne organizacji na stronie głównej. Pomiar Core Web Vitals przez Lighthouse w CI, który issue #266 też
-obejmuje, jest wydzielony do LIGHTHOUSE (#289), bo progi ustalamy na wyglądzie z VISUAL-DESIGN.
+Punkt 4 „Zakresu MVP” (SEO sklepu) i sekcja „Sklep: renderowanie i SEO” w `docs/vision.md`. Funkcja obejmuje mapę strony
+z katalogu, `robots.txt` i dane strukturalne organizacji na stronie głównej. Pomiar Core Web Vitals przez Lighthouse
+w CI, który issue #266 też obejmuje, jest poza zakresem (LIGHTHOUSE, #289).
 
 Issues: #266
-Zakres: `apps/api/src/Catalog`, `apps/api/tests/Functional/Catalog`, `apps/api/tests/Integration/Catalog`, `apps/api/tests/Unit/Catalog`, `apps/api/config`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `infra/varnish/default.vcl`, `apps/store/src/seo`, `apps/store/src/catalog`, `apps/store/app/page.tsx`, `apps/store/app/page.test.tsx`, `apps/store/app/layout.tsx`, `apps/store/Makefile`, `.github/workflows/ci.yml`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `docs/vision.md`
+Zakres: `apps/api/src/Catalog`, `apps/api/tests/Functional/Catalog`, `apps/api/tests/Integration/Catalog`, `apps/api/tests/Unit/Catalog`, `apps/api/config`, `apps/api/openapi.json`, `apps/store/src/api/schema.d.ts`, `infra/varnish`, `apps/store/src/seo`, `apps/store/src/site.ts`, `apps/store/src/site.test.ts`, `apps/store/src/catalog`, `apps/store/app/page.tsx`, `apps/store/app/page.test.tsx`, `apps/store/app/szukaj/page.test.tsx`, `apps/store/app/layout.tsx`, `apps/store/app/robots.ts`, `apps/store/app/robots.test.ts`, `apps/store/app/sitemap.xml`, `apps/store/app/sitemaps`, `apps/store/scripts/check-dynamic-routes.mjs`, `apps/store/tests/check-dynamic-routes.test.ts`, `apps/store/Makefile`, `.github/workflows/ci.yml`, `e2e/tests/seo.spec.ts`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `docs/vision.md`
 
-**Zależności.** PRODUCT-PAGE (#93), SEARCH (#94) i CATALOG-ADMIN (publikacja i wycofanie produktów) są na `main`.
-Epik nie zależy od wyglądu. VISUAL-DESIGN (#97) zmienia te same pliki sklepu (`apps/store/app/page.tsx`,
-`apps/store/app/layout.tsx`, `apps/store/src/catalog`), więc oba epiki nie idą w jednej nocy (linia `Zakres:`);
-kolejność ustala tablica. Po SEO zmiana nazwy sklepu z VISUAL-DESIGN-2 dotyczy stałej `STORE_NAME`.
+**Zależności.** Funkcja opiera się na katalogu z PRODUCT-PAGE (#93) i SEARCH (#94) oraz na publikacji i wycofaniu
+produktów z CATALOG-ADMIN. Nie zależy od wyglądu sklepu.
 
 ## Cel i zakres
 
@@ -27,10 +24,10 @@ Poza zakresem:
 - wiele języków i `hreflang`, przekierowania po zmianie sluga kategorii, pozycjonowanie treści marketingowych (issue);
 - JSON-LD `ItemList` listingu (D4);
 - zdjęcia w mapie strony (rozszerzenie `image:`), kolejne strony listingu (`?page=n`) i `/szukaj` w mapie;
-- logo graficzne w `Organization` (marka to znak słowny, VISUAL-DESIGN; D3);
+- logo graficzne w `Organization` (marka to znak słowny; D3);
 - przełącznik indeksowania środowiska demo (D6): decyzja o indeksowaniu publicznego demo należy do wdrożenia;
-- Lighthouse w CI: LIGHTHOUSE (#289, po VISUAL-DESIGN), z ustaleniami z przygotowania tego epiku (`@lhci/cli`,
-  mediana z 3 przebiegów, blokuje tylko wynik SEO); decyzja o blokujących LCP i CLS: #290.
+- Lighthouse w CI (`@lhci/cli`, mediana z 3 przebiegów, blokuje tylko wynik SEO): LIGHTHOUSE (#289); decyzja
+  o blokujących LCP i CLS: #290.
 
 ## Decyzje
 
@@ -50,24 +47,27 @@ Poza zakresem:
 ### API (Catalog)
 
 Dwa publiczne endpointy w `apps/api/openapi.json` (kontekst Catalog, zapytania na `query.bus`, odczyt przez DBAL
-jak `DbalProductDetailsSource`):
+jak `DbalProductDetailsSource`; kontrolery `SitemapProductChunksController` i `SitemapProductsController`, źródło
+`DbalSitemapProductSource`):
 
 - `GET /api/v1/sitemap/product-chunks` → `{ chunks: [{ key }] }`: porcje w kolejności `id`. Granice to `id` produktów
   na pozycjach N+1, 2N+1, … (od 1) w kolejności `id` wszystkich produktów (`row_number()` po kluczu głównym). Porcja
   `i` obejmuje `id` od granicy `i` włącznie (pierwsza: od początku) do granicy `i + 1` wyłącznie (ostatnia: do końca).
   Przykład: N = 3 i 7 produktów → porcje z produktami 1–3, 4–6 i 7; dokładnie N produktów → jedna porcja. `key` koduje
-  oba końce (base64url bez dopełnienia z JSON `{"f": id|null, "t": id|null}`, wzorzec `ProductCursor`). Pusty katalog
-  → jedna porcja z obu końcami otwartymi (pusta porcja jest poprawną, pustą mapą).
+  oba końce (`SitemapChunkKey`: base64url bez dopełnienia z JSON `{"f": id|null, "t": id|null}`, wzorzec
+  `ProductCursor`). Pusty katalog → jedna porcja z obu końcami otwartymi (pusta porcja jest poprawną, pustą mapą).
 - `GET /api/v1/sitemap/products?chunk=<key>` → `{ items: [{ slug, updatedAt }] }`: opublikowane produkty z zakresu
   porcji, rosnąco po `id`: najpierw najwyżej 50 001 produktów zakresu (`id ≥ f`, `id < t`, `ORDER BY id LIMIT`), potem
-  filtr `status = 'published'` (D8; porcja ma zwykle około 10 000 wierszy). `updatedAt` w ISO 8601 z przesunięciem. Brak `chunk` albo niepoprawny klucz (format, nie-UUID,
-  `f ≥ t`, zbyt długi napis) → 400 z problem details. Zakres bez opublikowanych → `items: []`.
+  filtr `status = 'published'` (D8; porcja ma zwykle około 10 000 wierszy). `updatedAt` w ISO 8601 z przesunięciem.
+  Brak `chunk`, `chunk` podany jako tablica (`chunk[]=…`) albo niepoprawny klucz (format, nie-UUID, `f ≥ t`, napis
+  dłuższy niż 200 znaków) → 400 z problem details. Zakres bez opublikowanych → `items: []`.
 
-Rozmiar porcji N (10 000) i limit wierszy (50 000) to parametry kontenera w `apps/api/config` (testy ustawiają małe).
-Zapytanie granic to skan klucza głównego (bez tabeli); jego wynik trzyma nowa pula `cache.sitemap` (jak `cache.oidc`
-w `config/packages/framework.yaml`, w testach `cache.adapter.array`) z TTL 1 h przez dekorator portu w Infrastructure
-(`CacheInterface::get`, z ochroną przed równoczesnym przeliczaniem), więc skan wykonuje się najwyżej raz na godzinę na
-instancję API. `make seed` nie czyści puli: nieaktualne granice dają poprawne porcje (otwarte końce), najwyżej
+Rozmiar porcji N (10 000) i limit wierszy (50 000) to parametry kontenera `app.sitemap.chunk_size` i
+`app.sitemap.row_limit` w `apps/api/config/services.yaml` (testy ustawiają 3 i 10). Zapytanie granic to skan klucza
+głównego (bez tabeli); jego wynik trzyma pula `cache.sitemap` (jak `cache.oidc` w `config/packages/framework.yaml`,
+w testach `cache.adapter.array`) z TTL 1 h przez dekorator portu `SitemapProductSource` w Infrastructure
+(`CachingSitemapProductSource`, `CacheInterface::get`, z ochroną przed równoczesnym przeliczaniem), więc skan wykonuje
+się najwyżej raz na godzinę na instancję API. `make seed` nie czyści puli: nieaktualne granice dają poprawne porcje (otwarte końce), najwyżej
 o nierównych rozmiarach do wygaśnięcia. Zapytanie porcji to zakres klucza głównego z limitem.
 
 Dostęp: oba endpointy bez tokena, reguła `PUBLIC_ACCESS` (`GET`, `HEAD`) dla `^/api/v1/sitemap/(product-chunks|products)$`
@@ -76,9 +76,9 @@ w innych publicznych odczytach katalogu.
 
 Odpowiedzi 200:
 - `product-chunks`: `Cache-Control: public, max-age=60, s-maxage=3600`, tag `catalog` (`CacheTagger`); Varnish je
-  cache'uje (reguła ścieżek w `infra/varnish/default.vcl` obejmuje `^/api/v1/sitemap/product-chunks$`, nowy test
-  `varnishtest` w `infra/varnish/tests/`).
-- `products`: `Cache-Control: public, max-age=300`, bez tagów; ścieżka nie należy do reguły Varnisha (`pass`, nowy test
+  cache'uje (reguła ścieżek w `infra/varnish/default.vcl` obejmuje `^/api/v1/sitemap/product-chunks$`, test
+  `varnishtest` w `infra/varnish/tests/sitemap.vtc`).
+- `products`: `Cache-Control: public, max-age=300`, bez tagów; ścieżka nie należy do reguły Varnisha (`pass`, ten sam test
   `varnishtest`). Wyjątek od zasady z `docs/vision.md`, że odpowiedzi katalogu mają tagi obiektów: porcja nie ma tagów
   produktów (10 000 tagów nie mieści się w nagłówku), a świeżość daje krótki `max-age`.
 
@@ -88,30 +88,34 @@ Kategorie: istniejący `GET /api/v1/categories` (całe drzewo, przez Varnish), b
 
 ### Sklep
 
-Nowy moduł `apps/store/src/seo/` (budowanie XML, reguły `robots.txt`, JSON-LD strony głównej) i trasy
+Moduł `apps/store/src/seo/` (budowanie XML w `xml.ts`, odpowiedzi tras mapy w `sitemap.ts`, reguły `robots.txt`
+w `robots-rules.ts`, `STORE_URL` w `store-url.ts`, JSON-LD strony głównej w `home-json-ld.ts`) i trasy
 w `apps/store/app/`:
 
 - `/sitemap.xml` – `sitemapindex`: najpierw `<STORE_URL>/sitemaps/listing.xml`, potem po jednej pozycji na porcję
-  z `product-chunks` w kolejności API: `<STORE_URL>/sitemaps/products/<key>.xml`. Bez `lastmod`.
+  z `product-chunks` w kolejności API: `<STORE_URL>/sitemaps/products/<key>.xml` (klucz przez `encodeURIComponent`).
+  Bez `lastmod`.
 - `/sitemaps/listing.xml` – `urlset`: `<STORE_URL>/` i `<STORE_URL>/c/<path>` każdej kategorii drzewa (wszystkie
-  poziomy, kolejność drzewa w głąb), bez `lastmod`.
-- `/sitemaps/products/<key>.xml` – `urlset`: `<STORE_URL>/p/<slug>` z `lastmod` = `updatedAt` produktu; `items: []`
-  → 200 z pustym `urlset`. Klucz idzie do API bez zmian (sklep go nie dekoduje); 400 API → 404 sklepu. Adres bez
-  końcówki `.xml` → 404.
+  poziomy, kolejność drzewa w głąb; segmenty ścieżki kodowane przez `encodeURIComponent`), bez `lastmod`.
+- `/sitemaps/products/<key>.xml` – `urlset`: `<STORE_URL>/p/<slug>` (slug przez `encodeURIComponent`) z `lastmod` =
+  `updatedAt` produktu; `items: []` → 200 z pustym `urlset`. Klucz idzie do API bez zmian (sklep go nie dekoduje); 400 API → 404 sklepu. Adres
+  bez końcówki `.xml` → 404. Odpowiedź 404 ma `Cache-Control: no-store`.
 - Własne route handlery (konwencja `sitemap.ts` z `generateSitemaps` nie tworzy `sitemapindex` ani 404 dla złego
   klucza). Odpowiedź 200: `Content-Type: application/xml; charset=utf-8`, `Cache-Control: public, max-age=300`,
   XML z ucieczką znaków (`&`, `<`, `>`, `"`, `'`).
 - Renderowane przy każdym żądaniu bez data cache Next (cache to Varnish i pula API, jak przy listingu), odczyty przez
-  `API_CATALOG_URL`. Błąd API (inny niż 400 porcji), sieć albo nieoczekiwana treść → 503 z `Cache-Control: no-store`
+  `API_CATALOG_URL` (brak zmiennej to błąd konfiguracji, wyjątek, jak brak `STORE_URL`). Błąd API (inny niż 400
+  porcji), sieć albo nieoczekiwana treść → 503 z `Cache-Control: no-store`
   i wpis w logu serwera; sklep nigdy nie wysyła pustej ani częściowej mapy zamiast błędu.
 - `STORE_URL` czytany przy żądaniu (nie przy buildzie), także w buildzie produkcyjnym; brak zmiennej to błąd
-  konfiguracji (wyjątek, 500), jak dziś na `/` i `/p/`.
+  konfiguracji (wyjątek, 500), jak na `/` i `/p/`.
 
 ## `robots.txt`
 
 `app/robots.ts` (konwencja metadanych Next, `MetadataRoute.Robots`) z wymuszonym renderowaniem przy żądaniu
-(`connection()` albo `dynamic = "force-dynamic"`, według dokumentacji tej wersji Next), bo trasa metadanych jest
-domyślnie statyczna i utrwaliłaby `STORE_URL` z builda; reguły z `src/seo/`. Wynik:
+(`export const dynamic = "force-dynamic"`, tak samo trzy route handlery mapy: `app/sitemap.xml/route.ts`,
+`app/sitemaps/listing.xml/route.ts` i `app/sitemaps/products/[file]/route.ts`), bo trasa metadanych jest domyślnie
+statyczna i utrwaliłaby `STORE_URL` z builda; reguły w `src/seo/robots-rules.ts`. Wynik:
 
 ```
 User-Agent: *
@@ -133,8 +137,7 @@ Sitemap: <STORE_URL>/sitemap.xml
   `.next/prerender-manifest.json`) kończy się kodem 1, gdy `/robots.txt`, `/sitemap.xml` albo trasa
   `/sitemaps/…` jest prerenderowana, i kodem 2 bez manifestu albo gdy `STORE_MODE` kontenera nie jest `production`
   (manifest po wcześniejszym buildzie zostaje na bind moucie także w trybie `dev`). CI uruchamia go w jobie
-  `e2e` po starcie stosu (`STORE_MODE=production`). Ścieżki błędu (prerenderowana trasa, brak manifestu, tryb `dev`) pokazuje
-  raport zadania.
+  `e2e` po starcie stosu (`STORE_MODE=production`). Testy skryptu: `apps/store/tests/check-dynamic-routes.test.ts`.
 
 ## Dane strukturalne strony głównej
 
@@ -146,10 +149,9 @@ Sitemap: <STORE_URL>/sitemap.xml
 Na `/` zawsze, gdy strona pokazuje listing (z wynikami albo pustą listą, także z parametrami filtrów i strony); nie na
 „Nieprawidłowym filtrze” (`noindex`), przy przekierowaniu `?category=` ani na 404. Nie na `/c/`, `/szukaj` ani `/p/`.
 
-Nazwa sklepu: dziś jest w kilku miejscach (`SITE` w `src/catalog/page-metadata.ts` i `src/catalog/product-metadata.ts`,
-`title` i `description` w `app/layout.tsx`, znak słowny w `src/catalog/SiteHeader.tsx`; VISUAL-DESIGN zmienia napis
-na „Worf”, przed albo po tym epiku). Epik wydziela jedną stałą `STORE_NAME` w `apps/store/src/site.ts` i używa jej w tych miejscach oraz w JSON-LD.
-Wartość bez zmian względem `main` w chwili startu epiku.
+Nazwa sklepu to jedna stała `STORE_NAME` (wartość „Rytm”) w `apps/store/src/site.ts`. Używają jej tytuły i opisy
+w `src/catalog/page-metadata.ts` i `src/catalog/product-metadata.ts`, `title` i `description` w `app/layout.tsx`,
+znak słowny w `src/catalog/SiteHeader.tsx` i JSON-LD strony głównej (`src/seo/home-json-ld.ts`).
 
 ## Scenariusze błędów
 
@@ -190,21 +192,22 @@ Wartość bez zmian względem `main` w chwili startu epiku.
 ## Testy
 
 - **API, jednostkowe**: kodowanie i dekodowanie klucza porcji (poprawny z oboma końcami i z otwartymi, zły base64, zły
-  JSON, nie-UUID, `f ≥ t`, zbyt długi napis).
+  JSON, nie-UUID, `f ≥ t`, zbyt długi napis); dekorator puli granic (drugie wywołanie bez zapytania, wygaśnięcie po
+  godzinie, porcja zawsze ze źródła).
 - **API, integracyjne** (Postgres): granice na danych powyżej progu (małe N), rozłączność i pokrycie, otwarte końce,
   pomijanie szkiców, kolejność `id`, `updatedAt`, pusty katalog, limit wierszy porcji (mały limit z konfiguracji)
   z ostrzeżeniem w logu, przyrost ostatniej porcji po wyliczeniu granic.
 - **API, funkcjonalne**: oba endpointy (200 bez tokena, 400 z brakiem i złym kluczem, pusty wynik, nagłówki cache
-  i `xkey`, 401 z niepoprawnym tokenem), zgodność z `openapi.json`; dekorator puli granic (drugie wywołanie bez
-  zapytania).
-- **Varnish**: `varnishtest` – `/api/v1/sitemap/product-chunks` jest cache'owana, `/api/v1/sitemap/products?chunk=…`
-  nie.
+  i `xkey`, 401 z niepoprawnym tokenem), zgodność z `openapi.json`.
+- **Varnish**: `varnishtest` (`infra/varnish/tests/sitemap.vtc`) – `/api/v1/sitemap/product-chunks` jest cache'owana,
+  `/api/v1/sitemap/products?chunk=…` nie.
 - **Sklep (Vitest)**: budowanie XML (ucieczki, kolejność, adresy bezwzględne), trasy mapy na dublerze API (200, pusty
   `urlset`, 404 porcji, 503 przy błędzie), reguły `robots.txt`, JSON-LD `Organization` i `WebSite` na `/`.
 - **E2E**: `/robots.txt`, `/sitemap.xml` → mapa listingu i porcja produktów po `make seed` (adres produktu demo jest
   w porcji i otwiera stronę 200), JSON-LD na `/`.
-- **Build produkcyjny**: `check-dynamic-routes` w CI; ścieżki błędu (prerenderowana trasa, brak manifestu) pokazane
-  w raporcie zadania.
+- **Build produkcyjny**: `check-dynamic-routes` w CI (krok w jobie `e2e`); testy skryptu pokrywają kod 0, kod 1
+  (każda z tras, trasa z parametrami pod `/sitemaps/`, lista wszystkich) oraz kod 2 bez manifestu, przy manifeście bez
+  JSON albo bez `routes` i przy `STORE_MODE` innym niż `production`.
 
 ## Ryzyka i ograniczenia
 
@@ -221,18 +224,3 @@ Wartość bez zmian względem `main` w chwili startu epiku.
 - `lastmod` nie odzwierciedla zmian cen i stanów (D7); stronę produktu odświeża i tak ISR.
 - Nowy produkt pojawia się w mapie z opóźnieniem do około 10 min (`max-age` API i sklepu), bez unieważniania po
   publikacji.
-
-## Wymagane przed startem
-
-Brak. Epik zmienia tylko API, Varnish i sklep w repo i nie potrzebuje sekretów, kont, usług zewnętrznych ani uprawnień
-spoza tego, co CI już ma.
-
-## Dokumentacja do aktualizacji razem z implementacją
-
-- `docs/vision.md`: „Mapa strony i robots” – indeks map z porcjami z API, `robots.txt` (reguły D5); „Dane
-  strukturalne” – `Organization` i `WebSite` na `/`.
-- `docs/vision.md`, „Cache HTTP i unieważnianie”: wyjątek dla mapy strony (porcje bez tagów i bez Varnisha, krótki
-  `max-age`; granice z tagiem `catalog`).
-- `apps/api/CLAUDE.md`: endpointy mapy strony (porcje, klucz, limit, pula `cache.sitemap`, cache HTTP).
-- `apps/store/CLAUDE.md`: moduł `src/seo/`, `src/site.ts` (`STORE_NAME`), trasy mapy i `robots.ts`, JSON-LD `/`,
-  zasada „bez data cache Next”, `make -C apps/store check-dynamic-routes`.
