@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { type AccountResult, type CustomerOrderList, type CustomerOrderListItem, loadCustomerOrders } from "@/api/client";
 import { formatPrice } from "@/catalog/format-price";
+import { ScreenMain, ScreenTitle } from "@/components/ScreenLayout";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { navigateTo } from "@/checkout/navigate";
 import { HISTORY_PATH, formatOrderMoment, LOAD_FAILED, loginHref, ORDER_STATUS_LABELS } from "./order-format";
 import { OrderPaymentNote } from "./OrderPaymentNote";
@@ -77,52 +81,56 @@ export function OrdersPage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
-      <h1 className="text-2xl font-semibold">Moje zamówienia</h1>
+    <ScreenMain>
+      <ScreenTitle>Moje zamówienia</ScreenTitle>
       {state.phase === "loading" && !state.signedOut ? <p className="text-muted-foreground">Wczytywanie…</p> : null}
       {state.signedOut ? <SignedOut returnTo={HISTORY_PATH} /> : null}
       {state.phase === "failed" && !state.signedOut ? (
-        <div role="alert" className="flex flex-col items-start gap-2">
-          <p>{LOAD_FAILED}</p>
+        <Alert variant="destructive" className="justify-items-start gap-3">
+          <AlertDescription>{LOAD_FAILED}</AlertDescription>
           <Button type="button" variant="outline" onClick={retryFirst}>
             Spróbuj ponownie
           </Button>
-        </div>
+        </Alert>
       ) : null}
-      {state.phase === "ready" && state.items.length === 0 ? <p>Nie masz jeszcze zamówień.</p> : null}
+      {state.phase === "ready" && state.items.length === 0 ? <p className="text-lg">Nie masz jeszcze zamówień.</p> : null}
       {state.items.length > 0 ? (
         <ul className="flex flex-col gap-3">
           {state.items.map((order) => (
-            <li key={order.orderId} className="flex flex-col gap-1 rounded-md border p-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <Link href={`${HISTORY_PATH}/${encodeURIComponent(order.orderId)}`} className="font-medium underline underline-offset-4">
-                  {order.number}
-                </Link>
-                <span>{ORDER_STATUS_LABELS[order.status]}</span>
-              </div>
-              <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm text-muted-foreground">
-                <span>{formatOrderMoment(order.placedAt)}</span>
-                <span>{order.itemCount} szt.</span>
-                <span className="text-foreground">{formatPrice(order.totalGross, order.currency)}</span>
-              </div>
-              <OrderPaymentNote status={order.status} paymentDeadline={order.paymentDeadline} paymentDeadlinePassed={order.paymentDeadlinePassed} />
+            <li key={order.orderId}>
+              <Card>
+                <CardContent className="flex flex-col gap-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Link href={`${HISTORY_PATH}/${encodeURIComponent(order.orderId)}`} className="font-semibold text-link underline underline-offset-4">
+                      {order.number}
+                    </Link>
+                    <Badge variant="outline">{ORDER_STATUS_LABELS[order.status]}</Badge>
+                  </div>
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm text-muted-foreground">
+                    <span>{formatOrderMoment(order.placedAt)}</span>
+                    <span>{order.itemCount} szt.</span>
+                    <span className="font-semibold text-foreground">{formatPrice(order.totalGross, order.currency)}</span>
+                  </div>
+                  <OrderPaymentNote status={order.status} paymentDeadline={order.paymentDeadline} paymentDeadlinePassed={order.paymentDeadlinePassed} />
+                </CardContent>
+              </Card>
             </li>
           ))}
         </ul>
       ) : null}
       {state.phase === "ready" && state.more === "failed" ? (
-        <div role="alert" className="flex flex-col items-start gap-2">
-          <p>{LOAD_FAILED}</p>
+        <Alert variant="destructive" className="justify-items-start gap-3">
+          <AlertDescription>{LOAD_FAILED}</AlertDescription>
           <Button type="button" variant="outline" onClick={() => void showMore(state.nextCursor ?? "")}>
             Spróbuj ponownie
           </Button>
-        </div>
+        </Alert>
       ) : null}
       {state.phase === "ready" && state.nextCursor !== null && state.more !== "failed" ? (
-        <Button type="button" variant="outline" disabled={state.more === "loading"} onClick={() => void showMore(state.nextCursor ?? "")}>
+        <Button type="button" variant="outline" className="self-start" disabled={state.more === "loading"} onClick={() => void showMore(state.nextCursor ?? "")}>
           Pokaż więcej
         </Button>
       ) : null}
-    </main>
+    </ScreenMain>
   );
 }
