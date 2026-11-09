@@ -45,7 +45,7 @@ function queries(): Record<string, unknown>[] {
   return mocks.get.mock.calls.map(([, options]) => (options as { params: { query: Record<string, unknown> } }).params.query);
 }
 
-async function mountView(roles: StaffMe["roles"] = ["admin"]) {
+async function mountView(roles: StaffMe["roles"] = ["admin"], attach = false) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().staff = { id: "u1", username: "anna", roles };
@@ -59,7 +59,10 @@ async function mountView(roles: StaffMe["roles"] = ["admin"]) {
     ],
   });
   await router.push("/discount-codes");
-  const wrapper = mount(DiscountCodesView, { global: { plugins: [pinia, router, [PrimeVue, primeVueOptions]] as never[] } });
+  const wrapper = mount(DiscountCodesView, {
+    attachTo: attach ? document.body : undefined,
+    global: { plugins: [pinia, router, [PrimeVue, primeVueOptions]] as never[] },
+  });
   await flushPromises();
   return wrapper;
 }
@@ -190,6 +193,97 @@ describe("DiscountCodesView", () => {
     await flushPromises();
     expect(wrapper.get("[data-testid=code-link]").text()).toBe("A");
     expect(queries()).toEqual([{}, { after: "c1" }, {}]);
+  });
+
+  describe("paging with the keyboard", () => {
+    const THREE_PAGES = { "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: "c2" }, c2: { items: [item("C")], next: null } };
+    const pager = (testid: string) => wrapper!.get(`[data-testid=${testid}]`);
+    const press = async (testid: string) => {
+      (pager(testid).element as HTMLElement).focus();
+      await pager(testid).trigger("click");
+    };
+    /** The next request stays open until the returned function answers it. */
+    const holdNextRequest = (page: CodeList) => {
+      let answer: () => void = () => undefined;
+      mocks.get.mockImplementationOnce(() => new Promise((resolve) => (answer = () => resolve({ data: page, response: { status: 200 } }))));
+      return () => answer();
+    };
+
+    it("keeps the pager buttons on while a page loads, so that the focused one keeps the focus", async () => {
+      serve(THREE_PAGES);
+      wrapper = await mountView(["admin"], true);
+      const answer = holdNextRequest(THREE_PAGES.c1);
+
+      await press("next-page");
+
+      expect(pager("next-page").attributes("disabled")).toBeUndefined();
+      answer();
+      await flushPromises();
+      expect(pager("page-number").text()).toBe("Strona 2");
+    });
+
+    it("leaves the focus on the button that was pressed while it stays available", async () => {
+      serve(THREE_PAGES);
+      wrapper = await mountView(["admin"], true);
+
+      await press("next-page");
+      await flushPromises();
+
+      expect(pager("page-number").text()).toBe("Strona 2");
+      expect(document.activeElement).toBe(pager("next-page").element);
+    });
+
+    it("moves the focus to the other button when the pressed one goes off at the end of the list", async () => {
+      serve({ "": { items: [item("A")], next: "c1" }, c1: { items: [item("B")], next: null } });
+      wrapper = await mountView(["admin"], true);
+
+      await press("next-page");
+      await flushPromises();
+
+      expect(pager("next-page").attributes("disabled")).toBeDefined();
+      expect(document.activeElement).toBe(pager("previous-page").element);
+
+      await press("previous-page");
+      await flushPromises();
+
+      expect(pager("page-number").text()).toBe("Strona 1");
+      expect(pager("previous-page").attributes("disabled")).toBeDefined();
+      expect(document.activeElement).toBe(pager("next-page").element);
+    });
+
+    it("does not move the focus when the page cannot be loaded", async () => {
+      serve({ "": { items: [item("A")], next: "c1" } });
+      wrapper = await mountView(["admin"], true);
+      mocks.get.mockResolvedValueOnce({ data: undefined, response: { status: 500 } });
+
+      await press("next-page");
+      await flushPromises();
+
+      expect(pager("page-number").text()).toBe("Strona 1");
+      expect(document.activeElement).toBe(pager("next-page").element);
+    });
+
+    it("announces the page number to a screen reader", async () => {
+      serve({ "": { items: [item("A")], next: null } });
+      wrapper = await mountView();
+
+      expect(pager("page-number").attributes("aria-live")).toBe("polite");
+    });
+
+    it("does not skip a page when the button is pressed twice before the page arrives", async () => {
+      serve(THREE_PAGES);
+      wrapper = await mountView(["admin"], true);
+      const answer = holdNextRequest(THREE_PAGES.c1);
+
+      await press("next-page");
+      await press("next-page");
+      answer();
+      await flushPromises();
+
+      expect(pager("page-number").text()).toBe("Strona 2");
+      expect(wrapper.get("[data-testid=code-link]").text()).toBe("B");
+      expect(queries().filter((query) => query.after === "c2")).toEqual([]);
+    });
   });
 
   it("says the list is empty, and that nothing matches a filter", async () => {
