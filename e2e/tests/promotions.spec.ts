@@ -37,7 +37,7 @@ const productPageNotice = async (store: Page) => {
 
 const listNotice = async (store: Page) => {
   await store.reload();
-  return noticeOf(gridTiles(store).filter({ has: store.getByRole("heading", { level: 2, name: PRODUCT_NAME, exact: true }) }));
+  return noticeOf(gridTiles(store).filter({ has: store.getByRole("heading", { name: PRODUCT_NAME, exact: true }) }));
 };
 
 test("a promotion created in the panel shows on the product page and on the list with the Omnibus price", async ({ page, context, request }) => {

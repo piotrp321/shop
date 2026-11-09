@@ -13,7 +13,7 @@ test("a guest chooses two sizes of one product on the tile and the cart has two 
   const tile = page
     .getByRole("main")
     .getByRole("listitem")
-    .filter({ has: page.getByRole("heading", { level: 2, name: PRODUCT_NAME, exact: true }) });
+    .filter({ has: page.getByRole("heading", { name: PRODUCT_NAME, exact: true }) });
   await expect(tile).toHaveCount(1);
   // Without a choice the tile cannot add anything.
   await expect(tile.getByRole("button", { name: "Do koszyka" })).toBeDisabled();

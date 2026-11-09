@@ -16,7 +16,7 @@ test("a guest adds a product from the list, changes its quantity on the cart pag
     .filter({ has: page.getByRole("button", { name: "Do koszyka" }) })
     .first();
   await expect(tile).toBeVisible();
-  const name = (await tile.getByRole("heading", { level: 2 }).innerText()).trim();
+  const name = (await tile.getByRole("heading").innerText()).trim();
   // A tile with a choice of variants shows the price of the chosen one.
   const label = await chooseFirstVariant(tile);
   const unitGrosze = groszeOf(await tile.getByTestId("price").innerText());
@@ -77,8 +77,8 @@ test("two tabs of a guest without a cart add two products at the same time and b
   const tileB = inStock(second).nth(1);
   await expect(tileA).toBeVisible();
   await expect(tileB).toBeVisible();
-  const nameA = (await tileA.getByRole("heading", { level: 2 }).innerText()).trim();
-  const nameB = (await tileB.getByRole("heading", { level: 2 }).innerText()).trim();
+  const nameA = (await tileA.getByRole("heading").innerText()).trim();
+  const nameB = (await tileB.getByRole("heading").innerText()).trim();
   expect(nameA).not.toBe(nameB);
   const [labelA, labelB] = [await chooseFirstVariant(tileA), await chooseFirstVariant(tileB)];
 
