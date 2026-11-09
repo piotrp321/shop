@@ -53,4 +53,26 @@ describe("ProductGrid", () => {
     render(<ProductGrid products={[]} offers={{}} />);
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
   });
+
+  it("marks the grid for the tests that count tiles, whatever the level of the names", () => {
+    const { container } = render(<ProductGrid products={[makeProduct(1)]} offers={{}} />);
+    expect(container.querySelector("ul")!.getAttribute("data-testid")).toBe("product-grid");
+  });
+
+  it("names the products with h2 and loads the first four photos with priority", () => {
+    const products = [1, 2, 3, 4, 5].map((n) => makeProduct(n));
+    const { container } = render(<ProductGrid products={products} offers={{}} />);
+    expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(5);
+    expect([...container.querySelectorAll("img")].map((image) => image.getAttribute("fetchpriority"))).toEqual(["high", "high", "high", "high", null]);
+  });
+
+  it("on the home page names the products with h3 and gives no photo priority (the hero has it)", () => {
+    const { container } = render(<ProductGrid home products={[makeProduct(1), makeProduct(2)]} offers={{}} />);
+    expect(screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(["Produkt 1", "Produkt 2"]);
+    expect(screen.queryAllByRole("heading", { level: 2 })).toHaveLength(0);
+    expect([...container.querySelectorAll("img")].map((image) => [image.getAttribute("fetchpriority"), image.getAttribute("loading")])).toEqual([
+      [null, "lazy"],
+      [null, "lazy"],
+    ]);
+  });
 });

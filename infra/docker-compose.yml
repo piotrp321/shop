@@ -411,6 +411,9 @@ services:
       - store-node-modules:/app/node_modules
       # Only the store's own API specification, read-only: `make api-client` generates src/api/schema.d.ts from it.
       - ./apps/api/openapi.json:/contract/openapi.json:ro
+      # The demo photos, read-only: the source of the marketing photos of the home page (`scripts/marketing-images.mjs`).
+      # Development only; the production image carries the generated WebP files committed in `src/home/images/`.
+      - ./apps/api/fixtures/images:/fixtures/images:ro
     ports:
       - "127.0.0.1:${STORE_PORT:-3000}:3000"
     healthcheck:

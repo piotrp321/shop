@@ -40,6 +40,16 @@ describe("CatalogListing", () => {
     expect(screen.getByText("60 produktów")).toBeTruthy();
   });
 
+  it("with an intro (the home page) puts it first, makes „Wszystkie produkty” an h2 and the names of the products h3, with no h1 of its own", () => {
+    render(<CatalogListing title="Wszystkie produkty" basePath="/" state={NO_FILTERS} mode="list" listing={listing(60)} intro={<h1>Hero</h1>} />);
+    expect(screen.getAllByRole("heading", { level: 1 }).map((item) => item.textContent)).toEqual(["Hero"]);
+    expect(screen.getByRole("heading", { level: 2, name: "Wszystkie produkty" })).toBeTruthy();
+    expect(screen.getByText("60 produktów")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3, name: "Produkt 1" })).toBeTruthy();
+    const main = screen.getByRole("main");
+    expect(main.firstElementChild!.textContent).toBe("Hero");
+  });
+
   it("shows the products as tiles", () => {
     render(<CatalogListing title="Buty" basePath="/c/bieganie/buty" state={NO_FILTERS} mode="list" listing={listing(1)} />);
     expect(screen.getAllByRole("link", { name: "Produkt 1" }).length).toBeGreaterThan(0);

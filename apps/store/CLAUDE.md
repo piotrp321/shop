@@ -72,6 +72,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `product-metadata.ts` i `product-json-ld.ts`.
 - `app/page.tsx` (`/`), `app/c/[...path]/` (kategoria) i `app/szukaj/` (wyszukiwanie) – listing (SSR przy każdym
   żądaniu); `app/p/[slug]/` – strona produktu (ISR).
+- `src/home/` – strona główna w stanie domyślnym listingu (patrz „Strona główna `/`”): `HomeIntro` (`Hero`
+  i `DepartmentTiles`), `home-content.ts` (tekst hero i przypisanie zdjęć do działów po slugu kategorii głównej),
+  `departments.ts`, `home-images.ts`, `marketing-images.ts` (lista zdjęć marketingowych: jedyne miejsce ich rozmiarów),
+  `images.generated.ts` i `images/*.webp` (wynik skryptu, commitowany; nie edytuj ręcznie).
+- `scripts/marketing-images.mjs` – generuje z listy pliki WebP i `images.generated.ts` (patrz „Obrazy”).
 - `src/seo/` – mapa strony i `robots.txt`: `xml.ts` (budowanie `sitemapindex` i `urlset` z ucieczką `& < > " '`),
   `sitemap.ts` (odpowiedzi tras mapy), `robots-rules.ts` (reguły `robots.txt`), `store-url.ts` (`STORE_URL` czytany przy
   żądaniu) i `home-json-ld.ts` (JSON-LD strony głównej).
@@ -126,7 +131,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `resolveCategoryPath`); brak w drzewie albo `unknown-category` z listy → `notFound()`. Kolejność odczytów: drzewo
   (jeden odczyt na żądanie, `React.cache`, wspólny dla layoutu, `generateMetadata` i strony), potem lista z id
   kategorii z drzewa, potem oferty. Błąd drzewa na tej stronie to wyjątek, czyli `app/error.tsx`.
-- `/`: lista wszystkich produktów, bez breadcrumbów. `/?category=<id>` czyta drzewo i listę razem; kategoria z drzewa →
+- `/`: lista wszystkich produktów, bez breadcrumbów; w stanie domyślnym z hero i kafelkami działów nad listą (patrz „Strona główna `/`”). `/?category=<id>` czyta drzewo i listę razem; kategoria z drzewa →
   `permanentRedirect` (308) na `/c/<ścieżka>` z pozostałymi parametrami (bez `category`); nieznana → 404, niepoprawna
   (`400` API) → „Nieprawidłowy filtr”.
 - `CatalogListing`: breadcrumby „Wszystkie produkty” › kategorie ścieżki (linki `/c/<ścieżka>`, ostatni element bez
@@ -137,6 +142,24 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - SEO: tytuł `/c/` to `<nazwa>[ – strona n] | Worf`, kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1);
   pusta strona poza zakresem i niepoprawny `page` mają `noindex`. `/c/` ma JSON-LD `BreadcrumbList` (bezwzględne
   adresy, ten sam `serializeJsonLd` co strona produktu).
+
+## Strona główna `/`
+
+- Stan domyślny listingu: bez filtrów, bez sortowania innego niż domyślne (`sort` brak albo `nazwa`, czyli `defaultSort`
+  `/`; formularz filtrów bez JavaScriptu zawsze wysyła `sort=nazwa`) i z `page` brak albo `1` (parametry spoza listingu,
+  np. `utm_*`, nie liczą się; `isDefaultState` w `app/page.tsx`; `isRefined`, od którego zależą `noindex` i canonical,
+  liczy każdy `sort` i się nie zmienia, więc `/?sort=nazwa` ma hero, ale zostaje `noindex`). Tylko w nim `/` ma nad listą `HomeIntro` (`CatalogListing` dostaje
+  `intro`): hero (zdjęcie na całą szerokość, `h1`, krótki tekst, link do działu Turystyka) i kafelki każdej kategorii
+  głównej z drzewa (zdjęcie, nazwa jako `h2` będąca linkiem do `/c/<ścieżka>`). W innym stanie (`?page=2`, inny sort, filtr)
+  `/` jest samym listingiem z `h1` „Wszystkie produkty” i nazwami produktów w `h2`.
+- Nagłówki w stanie domyślnym: `h1` to nagłówek hero, `h2` nazwy działów i „Wszystkie produkty” nad listą, `h3` nazwy
+  produktów (`ProductGrid home`, `ProductTile headingLevel`). Priorytet ładowania ma tylko zdjęcie hero, kafelki
+  produktów w tym stanie nie mają `priority`. Siatka produktów ma `data-testid="product-grid"`: testy E2E (`gridTiles`
+  w `e2e/support/listing.ts`) znajdują kafelki po nim, nie po poziomie nagłówka.
+- Drzewo to `loadMenuCategories` (to samo `React.cache` co nagłówek i stopka, bez dodatkowego żądania). Błąd drzewa:
+  hero bez linku i bez kafelków, lista jak zwykle. Link hero do działu, którego nie ma w drzewie, jest pomijany;
+  kategoria główna bez zdjęcia w `home-content.ts` ma kafelek bez zdjęcia.
+- Tytuł, opis, kanoniczny, `noindex` i JSON-LD `/` bez zmian.
 
 ## Wyszukiwanie `/szukaj` i parametry URL
 
@@ -592,6 +615,35 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Zdjęcia wyłącznie z wariantów zwróconych przez API (`image.variants`), przez komponent `ProductPhoto`.
   Sklep nie podpisuje adresów i nie dodaje rozmiarów. Nowy rozmiar dopisuje się do listy w API.
 - `<Image>` z `next/image` bez loadera wariantów nie zadziała: globalny loader celowo rzuca błąd.
+- Wyjątek: zdjęcia marketingowe strony głównej (hero i kafelki działów, nie produktów) to statyczne pliki WebP sklepu
+  w `src/home/images/`, importowane statycznie (`src/home/images.generated.ts`, adresy `/_next/static/media/...`
+  z hashem) i renderowane zwykłym `<picture>`/`<img srcset>`. Każdy `<img>` ma `srcset`, `sizes`, `width`, `height`; hero
+  `fetchpriority="high"`, kafelki `loading="lazy"` i `decoding="async"`; kafelek ma `alt=""` (nazwa działu jest tekstem
+  linku), hero `alt` z listy.
+- Lista `src/home/marketing-images.ts` (czyste dane, bez importów plików) to jedyne miejsce ich rozmiarów: plik źródłowy
+  z `apps/api/fixtures/images/`, kadr (proporcje i punkt), szerokości, budżet każdego pliku w KB i opcjonalna jakość
+  WebP (domyślnie `WEBP_QUALITY` 75; hero ma niższą, bo jest bogaty w szczegóły i inaczej nie mieści się w budżecie).
+  Hero: kadr telefonu (`media="(max-width: 767px)"`, 4:5, 480, 640, 828) i szerokiego ekranu (16:9, 1280, 1600);
+  kafelki 3:4 w 320, 480, 768. Budżety: hero 1600 ≤ 250 KB, hero 828 ≤ 120 KB, kafelek 768 ≤ 80 KB.
+- `scripts/marketing-images.mjs` czyta listę (Node usuwa typy z `.ts`), a z niej generuje pliki i moduł. Uruchamia się
+  w kontenerze `store`: `make -C apps/store shell`, potem `node scripts/marketing-images.mjs`. Źródła są pod
+  `/fixtures/images` z montowania tylko do odczytu `./apps/api/fixtures/images:/fixtures/images:ro` usługi `store`
+  (`infra/docker-compose.yml`, tylko środowisko deweloperskie: obraz produkcyjny ma commitowane pliki WebP; po dodaniu
+  montowania odtwórz kontener `docker compose up -d store`). Używa `sharp`, który instaluje Next.js (bez zmiany
+  `package.json`). Najpierw sprawdza i koduje wszystko w pamięci, dopiero potem zapisuje (kasuje też stare pliki `.webp`
+  spoza listy). Kody wyjścia: 0 gotowe; 1 błędna lista albo wynik (szerokość ponad kadr, czyli powiększanie źródła;
+  plik ponad budżet; brak budżetu szerokości; plik źródłowy, którego `sharp` nie czyta albo nie przekonwertuje);
+  2 środowisko (brak `sharp`, katalogu źródeł lub pliku źródłowego). Komunikat z nazwą pliku i przyczyną idzie na stderr.
+  Błąd walidacji albo kodowania niczego nie zapisuje, bo zdarza się przed zapisem; błąd I/O podczas zapisu (np. pełny
+  dysk) może zostawić częściowy wynik, który cofa `git checkout`. Zmienne dla testów: `MARKETING_IMAGES_LIST`, `_SOURCE`, `_OUT`, `_SHARP`. Dodanie
+  zdjęcia: wpis w liście, uruchomienie skryptu, commit listy, plików i `images.generated.ts`.
+- Vitest: import `.webp` daje napis zamiast `StaticImageData`, więc `vitest.config.ts` ma wspólny mock plików obrazów
+  (wtyczka `imageFiles`: adres `/_next/static/media/<plik>` i szerokość z nazwy) dla testów modułu i strony głównej.
+  `src/home/images.generated.test.ts` pilnuje, że moduł wygenerowany odpowiada liście (nazwy plików, szerokości,
+  wysokości) i że pliki mieszczą się w budżetach; testy skryptu w `tests/marketing-images.test.ts` (potrzebują
+  montowania `/fixtures/images`).
+- Przeglądarka z emulacją urządzenia mobilnego (`isMobile` w Playwright) pobiera przy `<picture>` także plik szerokiego
+  ekranu (skaner ładowania ocenia `media` przy szerszym oknie); test E2E na 375 px używa więc wąskiego okna bez `isMobile`.
 
 ## Komponenty i układy z vercel/shop
 
@@ -609,6 +661,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   zegarów Vitest (`vi.useFakeTimers`); wywołanie `window.location.assign` jest za `navigateTo`, które testy podmieniają.
 - Vitest i Testing Library. `*.test.ts(x)` to testy jednostkowe bez usług, `*.integration.test.ts` działają
   na usługach stosu (Redis).
+- Strona główna (`src/home/`) i jej stan domyślny w `app/page.test.tsx`; liczba żądań w `app/page.requests.test.tsx`.
 - Logika w komponentach (np. budowa `srcset`, mega menu, panel filtrów i sortowanie), `listing-query.ts` (mapowanie
   parametrów URL na zapytanie API i adresy), strony listingów (`app/page.test.tsx`, `app/c/`, `app/szukaj/`, liczba
   żądań w `app/page.requests.test.tsx`), cały `src/auth/`, cały `src/cart/` (BFF, przyciski,

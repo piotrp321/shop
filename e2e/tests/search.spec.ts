@@ -64,7 +64,8 @@ test("two words, one of which matches nothing, find nothing and offer a way out"
   await expect(gridTiles(page)).toHaveCount(0);
   await page.getByRole("link", { name: "Zobacz wszystkie produkty" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Wszystkie produkty" })).toBeVisible();
+  // The default state of the home page: „Wszystkie produkty” is the h2 under the hero's h1.
+  await expect(page.getByRole("heading", { level: 2, name: "Wszystkie produkty" })).toBeVisible();
 });
 
 test("a phrase shorter than 2 characters shows the message instead of results", async ({ page }) => {

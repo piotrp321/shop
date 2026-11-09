@@ -1,5 +1,12 @@
 # Third-party notices (apps/store)
 
+## Marketing photos of the home page
+
+The WebP files in `src/home/images/` (the hero and the department tiles) are crops of the demo photos in
+`apps/api/fixtures/images/`, made by `scripts/marketing-images.mjs`. The photos come from Unsplash (Unsplash License);
+the source of each file, its author and its licence are in `apps/api/fixtures/images/CREDITS.md`. The sources used are
+listed in `src/home/marketing-images.ts`.
+
 ## Outfit (font)
 
 The store serves the Outfit variable font from files in the repository (`src/styles/fonts/`, loaded by

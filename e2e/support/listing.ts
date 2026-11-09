@@ -1,9 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
-/** The tiles of the product grid of a listing (the active filters and the categories are lists too, but without h2). */
-export const gridTiles = (page: Page): Locator => page.getByRole("main").locator("ul:has(h2)").getByRole("listitem");
+/** The tiles of the product grid of a listing, found by the grid's own test id, whatever the level of the names (h3 on the default home page). */
+export const gridTiles = (page: Page): Locator => page.getByTestId("product-grid").getByRole("listitem");
 
-export const tileNames = (page: Page): Promise<string[]> => gridTiles(page).getByRole("heading", { level: 2 }).allInnerTexts();
+export const tileNames = (page: Page): Promise<string[]> => gridTiles(page).getByRole("heading").allInnerTexts();
 
 /** The number next to the title: „12 produktów”. */
 export async function shownCount(page: Page): Promise<number> {

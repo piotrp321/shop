@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ActiveFilters } from "./ActiveFilters";
 import { type BreadcrumbItem, Breadcrumbs } from "./Breadcrumbs";
 import { EmptyResults } from "./EmptyResults";
@@ -14,7 +15,9 @@ import { SortSelect } from "./SortSelect";
  * One page of a listing (`/`, `/c/<path>` or `/szukaj`): the path, the title with the number of products, the filter
  * panel, the active filters and the sort, the tiles and the pagination. `basePath` is the address of the listing without
  * parameters and `state` its parameters; every link of the page is built from them. `categoryName` is the name of the
- * category of a search (`state.category`).
+ * category of a search (`state.category`). `intro` is what the home page puts above the listing (the hero and the
+ * department tiles): the listing is then a section of the page, so its title is an h2 and the names of the products h3
+ * (the hero has the h1), and no photo of the grid loads with priority.
  */
 export function CatalogListing({
   title,
@@ -24,6 +27,7 @@ export function CatalogListing({
   mode,
   categoryName,
   listing,
+  intro,
 }: {
   title: string;
   crumbs?: BreadcrumbItem[];
@@ -32,13 +36,15 @@ export function CatalogListing({
   mode: ListingMode;
   categoryName?: string;
   listing: Extract<CatalogResult, { kind: "ok" }>;
+  intro?: ReactNode;
 }) {
   const { products, offers } = listing;
-  return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6">
+  const Title = intro === undefined ? "h1" : "h2";
+  const body = (
+    <>
       {crumbs && <Breadcrumbs items={crumbs} />}
       <div className="flex flex-wrap items-baseline gap-x-3">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <Title className="text-2xl font-semibold">{title}</Title>
         <p className="text-base text-muted-foreground">{formatProductCount(products.total)}</p>
       </div>
       <ListingProvider basePath={basePath} state={state}>
@@ -53,7 +59,7 @@ export function CatalogListing({
                 <SortSelect />
               </div>
             </div>
-            {products.items.length === 0 ? <EmptyResults basePath={basePath} state={state} /> : <ProductGrid products={products.items} offers={offers} />}
+            {products.items.length === 0 ? <EmptyResults basePath={basePath} state={state} /> : <ProductGrid products={products.items} offers={offers} home={intro !== undefined} />}
             <CatalogPagination
               page={products.page}
               perPage={products.perPage}
@@ -63,6 +69,14 @@ export function CatalogListing({
           </div>
         </div>
       </ListingProvider>
+    </>
+  );
+  const wrapper = "mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6";
+  if (intro === undefined) return <main className={wrapper}>{body}</main>;
+  return (
+    <main>
+      {intro}
+      <div className={wrapper}>{body}</div>
     </main>
   );
 }

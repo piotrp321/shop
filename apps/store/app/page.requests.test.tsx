@@ -20,6 +20,9 @@ const memo = vi.hoisted(() => {
 });
 vi.mock("react", async (importOriginal) => ({ ...(await importOriginal<typeof import("react")>()), cache: memo.cache }));
 
+// The page renders client components (filters, sort) that need a router; the test only reads their markup.
+vi.mock("next/navigation", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/navigation")>()), useRouter: () => ({ push: vi.fn() }) }));
+
 import { loadMenuCategories } from "@/catalog/category-tree";
 import { EMPTY_FACETS, TREE, makeOffer, makeProduct } from "@/catalog/fixtures";
 import CategoryPage, { generateMetadata as categoryMetadata } from "./c/[...path]/page";
@@ -65,6 +68,15 @@ describe("catalogue page requests", () => {
     const request = props({ page: "2" });
     await Promise.all([loadMenuCategories(), generateMetadata(request), Home(request)]);
     expect(requested.sort()).toEqual(["/api/v1/categories", "/api/v1/product-offers", "/api/v1/products"]);
+  });
+
+  it("makes the same three requests for the default state, which shows the hero and the tiles from the tree the layout reads", async () => {
+    const request = props({});
+    const [, , page] = await Promise.all([loadMenuCategories(), generateMetadata(request), Home(request)]);
+    expect(requested.sort()).toEqual(["/api/v1/categories", "/api/v1/product-offers", "/api/v1/products"]);
+    const markup = renderToStaticMarkup(page);
+    expect(markup).toContain("Sprzęt na każdy szlak");
+    expect(markup).toContain('href="/c/bieganie"');
   });
 
   it("makes one request per endpoint for a category page too", async () => {

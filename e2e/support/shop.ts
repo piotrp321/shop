@@ -4,7 +4,7 @@ import { chooseFirstVariant } from "./variants";
 
 /** The tile of a product of the first page of the list, by its exact name. */
 export const tileNamed = (page: Page, name: string): Locator =>
-  page.getByRole("main").getByRole("listitem").filter({ has: page.getByRole("heading", { level: 2, name, exact: true }) });
+  page.getByRole("main").getByRole("listitem").filter({ has: page.getByRole("heading", { name, exact: true }) });
 
 const cartLines = (page: Page) => page.getByRole("main").getByRole("listitem");
 

@@ -17,7 +17,20 @@ type ProductOffer = components["schemas"]["ProductOfferResponse"];
  * Without an offer (the call failed) the tile has no price, level, choice or button; a product without a purchasable
  * variant is „Niedostępny” without a price, a choice or a button.
  */
-export function ProductTile({ product, offer, sizes, priority }: { product: ProductListItem; offer?: ProductOffer; sizes: string; priority?: boolean }) {
+export function ProductTile({
+  product,
+  offer,
+  sizes,
+  priority,
+  headingLevel: Heading = "h2",
+}: {
+  product: ProductListItem;
+  offer?: ProductOffer;
+  sizes: string;
+  priority?: boolean;
+  /** `h3` under the „Wszystkie produkty” h2 of the home page, `h2` under the h1 of every other listing. */
+  headingLevel?: "h2" | "h3";
+}) {
   const href = `/p/${encodeURIComponent(product.slug)}`;
   return (
     <Card className="h-full pt-0">
@@ -26,11 +39,11 @@ export function ProductTile({ product, offer, sizes, priority }: { product: Prod
         <ProductPhoto image={product.image} sizes={sizes} priority={priority} />
       </Link>
       <CardContent className="flex flex-col gap-1">
-        <h2 className="text-sm leading-snug font-medium">
+        <Heading className="text-sm leading-snug font-medium">
           <Link href={href} className="underline-offset-4 hover:underline">
             {product.name}
           </Link>
-        </h2>
+        </Heading>
         {offer === undefined ? (
           <p data-testid="price" className="text-sm text-muted-foreground">
             Cena niedostępna

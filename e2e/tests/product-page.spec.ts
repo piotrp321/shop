@@ -13,7 +13,7 @@ test("from the list to the product page: the path, the photo and the structured 
   await expect(page).toHaveURL(/\/c\/bieganie\/buty\/szosowe$/);
   await expect(page.getByRole("heading", { level: 1, name: "Buty szosowe" })).toBeVisible();
 
-  await page.getByRole("main").getByRole("heading", { level: 2, name: PRODUCT_NAME, exact: true }).getByRole("link").click();
+  await page.getByRole("main").getByRole("heading", { name: PRODUCT_NAME, exact: true }).getByRole("link").click();
 
   await expect(page).toHaveURL(new RegExp(`${PRODUCT_PATH}$`));
   await expect(page.getByRole("heading", { level: 1, name: PRODUCT_NAME })).toBeVisible();
