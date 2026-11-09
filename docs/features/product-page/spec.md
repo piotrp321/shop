@@ -95,13 +95,18 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
 
 - Zapytanie `GetProductBySlug(slug)` (`query.bus`, DBAL, odczyt z PostgreSQL, nie z Elasticsearch) → `ProductDetails`
   albo `null`:
-  `{id, slug, name, shortDescription, breadcrumb: [{id, name, path}], images: [ImageView], variantAxes: [string],
+  `{id, slug, name, shortDescription, breadcrumb: [{id, name, path}], images: [ImageView], zoomImages: [ZoomImageView], variantAxes: [string],
   variants: [{variantId, label, values: [string]}]}`.
   - `breadcrumb`: ścieżka od korzenia do kategorii głównej produktu (`ProductCategories::main`), z `CategoryPath`;
     `path` elementu to slugi kategorii od korzenia do niego połączone `/` (jak `path` w drzewie kategorii).
   - `images`: wszystkie zdjęcia produktu w kolejności pozycji (0–10), w rozmiarze `product`.
+  - `zoomImages`: te same zdjęcia w tej samej kolejności i liczbie (produkt bez zdjęć: pusta lista), w rozmiarze `zoom`,
+    zbudowane z tych samych kluczy i opisów, bez dodatkowego odczytu. `ZoomImageView` to `{alt, size, variants}` bez
+    `aspectRatio` (schemat OpenAPI `ZoomImage`).
   - `variants` w kolejności pozycji; `label` z `ProductVariant::label()`, `values` w kolejności osi.
 - Rozmiar `product` (karta produktu) w `ImageSize`: 1:1, szerokości 640, 960, 1280, 1600, WebP, `fill`, `sm`.
+- Rozmiar `zoom` (powiększenie): całe zdjęcie bez przycinania (`fit`), bez stałych proporcji (wysokość wynika z
+  szerokości, w adresie imgproxy `rs:fit:<szerokość>:0`), szerokości 1280, 1920, 2560, WebP, bez powiększania ponad oryginał.
 - `GET /api/v1/products/{slug}` (`Catalog_UI`, `PUBLIC_ACCESS`): 200 `ProductDetails` opublikowanego produktu;
   szkic, nieznany slug albo slug niezgodny z formatem `Slug`: ta sama odpowiedź 404 „Produkt nie istnieje.” (problem
   details). Nagłówki z tabeli wyżej: 200 ma tagi `catalog` `product-<id>` (slug zmienia się tylko w szkicu, który nie
@@ -343,7 +348,7 @@ Koszyk i checkout idą do API bezpośrednio (`API_INTERNAL_URL`, A1), nigdy prze
   zmiany, zatwierdzenie); konsumenci z dublerem `StorefrontCache` (kolejność, wariant nieznany, źródło `seed` bez
   unieważnienia, błąd).
 - Integracyjne zdarzeń: `ReconcileTax` z odrzuconym zapisem (konflikt) nie zostawia zdarzenia w outboxie.
-- Integracyjne: `GetProductBySlug` (ścieżka kategorii, zdjęcia w kolejności, warianty i wartości, nieznany slug);
+- Integracyjne: `GetProductBySlug` (ścieżka kategorii, zdjęcia w kolejności i w rozmiarze `zoom`, warianty i wartości, nieznany slug);
   zdarzenia trafiają do outboxu w transakcji i znikają przy rollbacku (także savepoint w Inventory); `StorefrontCache`
   wobec dublera HTTP (nagłówki, kolejność, błąd purge zatrzymuje rewalidację, błąd rewalidacji to wyjątek).
 - Funkcjonalne API: `GET /api/v1/products/{slug}` (200, 404, zły format, 401 przy złym tokenie, nagłówki

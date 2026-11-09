@@ -56,7 +56,9 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
   rozmiar i rozdzielczość i zapisuje w Garage pod kluczem wyliczonym z treści pliku, więc adres obrazu o danej
   treści nigdy się nie zmienia. Oryginał nie jest nigdy serwowany bezpośrednio.
 - Zestaw rozmiarów jest zamknięty i zdefiniowany w jednym miejscu w API (miniatura, lista, karta produktu, zoom),
-  każdy w kilku szerokościach dla `srcset`.
+  każdy w kilku szerokościach dla `srcset`. Miniatura, lista i karta produktu mają stałe proporcje (przycięcie);
+  `zoom` pokazuje całe zdjęcie bez przycinania (proporcje oryginału, szerokości 1280, 1920 i 2560, bez powiększania
+  ponad oryginał) i służy do powiększenia na karcie produktu.
 - API w odpowiedziach zwraca gotowe, podpisane adresy imgproxy dla każdego rozmiaru, szerokości i formatu.
   Podpisuje jeden serwis po stronie API, klucz podpisu nigdy nie trafia do frontów.
 - Zdjęcia wychodzą w WebP. AVIF nie jest generowany, bo jego kodowanie na żądanie mocno obciąża CPU małego
