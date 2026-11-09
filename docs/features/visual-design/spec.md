@@ -125,8 +125,10 @@ jej początek."
 - Listing: filtry w lewej kolumnie na desktopie (bez ramki, grupy rozdzielone liniami), na telefonie przycisk
   „Filtry” z dzisiejszym zachowaniem panelu (`aria-expanded`, sekcja w treści strony, nie okno modalne, działa bez
   JavaScriptu).
-- Nagłówek na desktopie: jeden wiersz (znak, działy, wyszukiwarka, koszyk, konto) i panel mega menu na całą szerokość
-  w czterech kolumnach.
+- Nagłówek na desktopie: jeden wiersz (znak, działy, koszyk, konto, wyszukiwarka) i panel mega menu na całą szerokość
+  w czterech kolumnach. Wyszukiwarka stoi za kontem (decyzja właściciela), bo kolejność w dokumencie ma być kolejnością
+  wizualną bez żadnej właściwości CSS zmieniającej kolejność fokusu (kolejność fokusu nie może zależeć od przeglądarki);
+  makieta ma ten sam układ w dokumencie i na ekranie.
 - Karta produktu: miniatury w pionowym pasie po lewej od zdjęcia, galeria szersza od kolumny danych, licznik na
   zdjęciu, dane bez ramki.
 - Gęstość: jedna siatka odstępów, jeden margines boczny dla telefonu i jeden dla desktopu, szerokość treści
@@ -144,11 +146,12 @@ jej początek."
    (szczegóły: „Tokeny i fundament”).
 
 **Wymagania dla wdrożenia, których makieta nie pokazuje** (statyczna, bez klawiatury):
-- Kolejność tabulatora w nagłówku na telefonie (VISUAL-DESIGN-5): fokus przechodzi po rzędach (znak, „Menu”, koszyk,
-  konto, dopiero potem wyszukiwarka z przyciskiem) i zgadza się z kolejnością wizualną na każdej szerokości (WCAG
-  2.4.3). W makiecie DOM ma kolejność znak, „Menu”, wyszukiwarka, koszyk, konto, więc tego układu nie wolno
-  przenieść do sklepu bez poprawki (np. inna kolejność w DOM i siatka z nazwanymi obszarami, bez zdublowanego
-  formularza).
+- Kolejność tabulatora w nagłówku (VISUAL-DESIGN-5, VISUAL-DESIGN-FIX-1): kolejność elementów w dokumencie jest
+  kolejnością wizualną na każdej szerokości (WCAG 2.4.3), więc fokus idzie tak samo we wszystkich przeglądarkach, bez
+  właściwości CSS zmieniających kolejność fokusu, bez `order` i bez obszarów siatki przestawiających elementy
+  względem dokumentu. Na telefonie: znak, „Menu”, koszyk, konto, dopiero potem wyszukiwarka z przyciskiem; od 1024 px:
+  znak, działy, koszyk, konto, wyszukiwarka (wyszukiwarka za kontem to decyzja właściciela; makieta ma ten sam układ w
+  dokumencie i na ekranie). Ten sam wymóg dotyczy galerii (miniatury: patrz „Galeria”).
 - Fokus po „Wybierz wariant” (kafelek, także na stronie głównej): po rozwinięciu wyboru fokus przechodzi na pierwszy
   dostępny (możliwy do wybrania) wariant (przycisk „Wybierz wariant” znika, więc fokus nie może na nim zostać);
   rozwinięcie i zmiana etykiety dostępności po wyborze są ogłaszane w obszarze `aria-live`; wariant niedostępny ma
@@ -212,12 +215,21 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
 - Nagłówek (`SiteHeader`, `MegaMenu`, `SearchBox`, `CartBadge`, `AccountMenu`) według makiety: znak słowny „Worf”
   (link do `/`), wyszukiwarka, koszyk, konto, mega menu działów. Zachowanie (otwieranie, zamykanie, klawiatura,
   `aria-expanded`, linki w HTML przy zamkniętym menu) bez zmian, z wyjątkiem układu na telefonie:
-  - od 1024 px jeden wiersz (znak, działy, wyszukiwarka, koszyk, konto) i panel mega menu na całą szerokość;
+  - od 1024 px jeden wiersz (znak, działy, koszyk, konto, wyszukiwarka) o wysokości makiety (nie więcej niż 100 px),
+    także po zalogowaniu, na 1024, 1280, 1366, 1440 i 1920 px, i panel mega menu na całą szerokość pod nagłówkiem.
+    Pasek działów się nie zawija (tekst działów zostaje 15 px, cele 44 px); koszyk i konto są ikonami z nazwą dla
+    czytników (`sr-only`, a ikony konta zalogowanego także `title`), a słowa „Koszyk” i „Zaloguj się” pojawiają się od
+    1440 px (tam się mieszczą); „Zalogowany jako …” jest tylko dla czytników. Kompaktowy wariant wyszukiwarki
+    (1024–1279 px, gdzie pole się nie mieści): przycisk „Wyszukiwarka” (`aria-expanded`) otwiera ten sam formularz jako
+    panel pod nagłówkiem, fokus trafia w pole, Escape, wysłanie, kliknięcie poza panelem i opuszczenie go fokusem
+    zamykają go, a Escape oddaje fokus przyciskowi; bez JavaScriptu formularz jest osobnym rzędem pod pierwszym.
+    Od 1280 px pole stoi w wierszu bez przycisku. Formularz jest w HTML raz;
   - poniżej 1024 px dwa rzędy: w pierwszym znak „Worf”, przycisk „Menu”, koszyk i konto, pod nim wyszukiwarka na
     pełną szerokość (zamiast dzisiejszego wiersza wyszukiwarki pod 640 px); lista działów otwiera się jako panel
     pod nagłówkiem (przycisk „Menu” z `aria-expanded`, linki działów w HTML także przy zamkniętym panelu);
   - kolejność fokusu zgadza się z rzędami (znak, „Menu”, koszyk, konto, wyszukiwarka; wymaganie z „Wybranego
-    kierunku”), bez zdublowanego formularza wyszukiwania.
+    kierunku”), bez zdublowanego formularza wyszukiwania; od 1024 px kolejność w dokumencie i na ekranie jest ta sama
+    (znak, działy, koszyk, konto, wyszukiwarka).
 - Nowa stopka (`SiteFooter`, Server Component w layoucie), według makiety: grafitowe tło, mały znak słowny „Worf”,
   linki działów (kategorie główne z tego samego odczytu drzewa co nagłówek, bez dodatkowego żądania; błąd drzewa:
   stopka bez linków) w dwóch zwartych kolumnach; na desktopie znak po lewej, linki po prawej, na telefonie znak nad
@@ -325,7 +337,11 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
     `#zdjecie-n` do adresu;
   - dotyk: przesunięcie palcem w pasku i w powiększeniu zmienia zdjęcie (natywne przewijanie z `scroll-snap`, bez
     własnej obsługi gestów); cele dotyku miniatur i przycisków co najmniej 44×44 px na telefonie;
-  - klawiatura: Tab przechodzi przez miniatury, przyciski i zdjęcia, Enter i Spacja je uruchamiają;
+  - klawiatura: Tab przechodzi przez miniatury, przyciski i zdjęcia, Enter i Spacja je uruchamiają. Kolejność
+    w dokumencie jest kolejnością wizualną na każdej szerokości, bez właściwości CSS zmieniających kolejność fokusu
+    i bez `order`: miniatury są w HTML dwa razy, kolumna po lewej od zdjęcia (widoczna od `lg`) przed paskiem i rząd pod
+    paskiem (widoczny poniżej `lg`) po nim; ukryta lista ma `display: none` (poza Tab i drzewem dostępności, jej obrazy
+    `lazy` się nie pobierają), obie są w HTML z serwera i mają ten sam stan `aria-current`;
   - powiększenie: zdjęcie paska jest w przycisku z nazwą „Powiększ zdjęcie n z m: <alt>” (opis zdjęcia jest częścią
     nazwy, bo nazwa przycisku zastępuje `alt` zawartości); kliknięcie, dotknięcie albo Enter otwiera
     shadcn `dialog` (radix-ui, już w zależnościach) z nazwą produktu jako tytułem; w środku pasek zdjęć `zoomImages`
@@ -437,7 +453,9 @@ zdjęć. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 
 10. Galeria: miniatury, przyciski i powiększenie działają myszą, klawiaturą (Tab, Enter, Spacja, ← →, Escape, powrót
     fokusu) i dotykiem (przesunięcie w pasku i w powiększeniu zmienia zdjęcie; E2E z emulacją urządzenia dotykowego
     375 px, gest przez CDP `Input.synthesizeScrollGesture`); kliknięcie miniatury z JavaScriptem nie zmienia adresu; każde zdjęcie ma `alt` z API, a przycisk powiększenia ma go w nazwie; miniatury `alt=""` w linku z nazwą; bez JavaScriptu wszystkie zdjęcia
-    i miniatury są w HTML i działają; pozycja `h1` i przycisku „Do koszyka” jest taka sama przed hydratacją i po niej;
+    i miniatury są w HTML i działają; kolejność elementów galerii w dokumencie jest ich kolejnością na ekranie na 1440
+    i 375 px (miniatury przed paskiem od `lg`, pasek przed miniaturami poniżej), a `aria-current` widocznej listy
+    zmienia się ze strzałką i miniaturą; pozycja `h1` i przycisku „Do koszyka” jest taka sama przed hydratacją i po niej;
     powiększenie na 375 px nie pobiera pliku 2560 px; testy komponentu (Vitest) i E2E na produkcie demo z kilkoma
     zdjęciami.
 11. Strona 404: nieznany adres i nieznany produkt pokazują „Nie znaleźliśmy tej strony.” z linkiem do `/`, nagłówkiem

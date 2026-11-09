@@ -216,22 +216,31 @@ Klienta API generuje `make api-client` z katalogu głównego.
   się nie wymienia przy hydratacji i wpisany wcześniej tekst zostaje): przy pierwszym uruchomieniu pisze tylko do
   pustego pola, potem nadpisuje je przy zmianie frazy (nowe wyszukiwanie, wyjście z `/szukaj`, które czyści pole
   pozostawionego slotu), nie przy zmianie innych parametrów.
-- Układ (CSS grid z nazwanymi obszarami, jedno `SiteHeader` bez zdublowanego formularza): od `lg` (1024 px) jeden
-  wiersz: znak „Worf”, działy, pole wyszukiwania, koszyk i konto; panel działu rozciąga się na całą szerokość pod
-  nagłówkiem (pozycjonowany względem `header`, w czterech kolumnach: kategoria poziomu 2 jako nagłówek i linki poziomu
-  3). Poniżej `lg` dwa rzędy: znak, przycisk „Menu” (`aria-expanded`), koszyk i konto, pod nimi pole na pełną
-  szerokość; lista działów otwiera się jako panel pod nagłówkiem. Koszyk i konto są ikonami poniżej `xl` (1280 px; nazwa zostaje w `sr-only`), żeby pierwszy rząd mieścił się w
-  375 px także po zalogowaniu, a lista działów miała miejsce od 1024 px (może zawinąć się do drugiej linii). Kolejność w DOM to kolejność telefonu
-  (znak, „Menu”, koszyk, konto, pole z przyciskiem), a siatka ustawia na szerokim ekranie pole przed koszykiem. Kolejność
-  tabulatora ma być kolejnością wizualną (WCAG 2.4.3), więc kontener siatki ma `reading-flow: grid-rows`
-  (`[reading-flow:grid-rows]`): od `lg` tabulator idzie: znak, działy, pole, „Szukaj”, koszyk, konto (poniżej `lg`: znak,
-  „Menu”, koszyk, konto, pole, „Szukaj”). `reading-flow` porządkuje tylko bezpośrednie dzieci siatki, więc `CartBadge`
-  renderuje dwa z nich (komórkę `utils` z linkiem koszyka i kontem jako `children` oraz wiersz komunikatu), a konta nie
-  wolno wyjmować z tej komórki. Przeglądarki bez `reading-flow` (dziś Firefox i Safari) idą na szerokim ekranie
-  w kolejności DOM (pole po koncie). Nie przenoś układu makiety (`kierunek.html`) bez tej poprawki: jej DOM ma pole
-  przed koszykiem, bez `reading-flow`. Brak poziomego przewijania
-  przy 375 px sprawdza `e2e/tests/site-header.spec.ts`, kolejność tabulatora i układ
-  `e2e/tests/visual-foundation.spec.ts`.
+- Układ (CSS grid, jedno `SiteHeader` bez zdublowanego formularza): kolejność elementów w dokumencie jest kolejnością
+  wizualną na każdej szerokości (WCAG 2.4.3), więc tabulator idzie tak samo w każdej przeglądarce, bez żadnej
+  właściwości CSS zmieniającej kolejność fokusu, bez `order` i bez obszarów siatki przestawiających elementy względem
+  dokumentu (nie dodawaj ich). Kolejność:
+  znak „Worf”, działy (poniżej `lg` przycisk „Menu”), koszyk, konto, wyszukiwarka, a na końcu komunikat o koszyku, gdy
+  jest. Od `lg` (1024 px) jeden wiersz (nazwane obszary `brand nav cart account search` stoją w kolejności
+  dokumentu), pasek działów bez zawijania (`text-ui`, cele 44 px, poziomy padding przycisku 8 px do `xl`, od `xl`
+  12 px); panel działu rozciąga się na całą szerokość pod nagłówkiem (pozycjonowany względem `header`, w czterech
+  kolumnach: kategoria poziomu 2 jako nagłówek i linki poziomu 3). Poniżej `lg` dwa rzędy: znak, przycisk „Menu”
+  (`aria-expanded`), koszyk i konto, pod nimi pole na pełną szerokość; lista działów otwiera się jako panel pod
+  nagłówkiem. `CartBadge` renderuje link koszyka, potem swoje `children` (komórkę konta i wyszukiwarkę, które
+  `SiteHeader` wstawia po koszyku) i na końcu komunikat, wszystko jako dzieci siatki.
+- Koszyk i konto są ikonami z nazwą w `sr-only` na każdej szerokości (ikony konta zalogowanego mają też `title`;
+  „Zalogowany jako …” jest tylko dla czytników), bo z tekstem wiersz klienta nie mieści się w jednym wierszu; słowa
+  „Koszyk” i „Zaloguj się” (gość) pokazuje dopiero `min-[90rem]` (1440 px), gdzie się mieszczą. Kompaktowy wariant
+  wyszukiwarki (1024–1279 px, gdzie pole się nie mieści): `SearchBox` renderuje przycisk „Wyszukiwarka”
+  (`aria-expanded`, `aria-controls`) i formularz; przycisk jest `display: none` poza tym zakresem, a formularz jest
+  w nim panelem pod nagłówkiem (`data-state`, fokus w polu po otwarciu; Escape, wysłanie, kliknięcie poza panelem
+  i opuszczenie go fokusem zamykają go, Escape oddaje fokus przyciskowi). Bez JavaScriptu `noscript` ze stylem pokazuje
+  formularz jako drugi rząd nagłówka, a przycisk chowa. Od 1280 px pole stoi w wierszu (kolumna 14 rem) bez przycisku,
+  poniżej 1024 px jest drugim rzędem. Zmieniając układ sprawdź wymiary na 1024 px po zalogowaniu (zapas paska działów
+  to kilkanaście pikseli przy siedmiu działach demo). Brak poziomego przewijania przy 375 px sprawdza
+  `e2e/tests/site-header.spec.ts`; kolejność w dokumencie względem położenia, sekwencję tabulatora, jeden wiersz
+  i wysokość poniżej 100 px na 1024–1920 px (gość i `jan`) oraz kompaktową wyszukiwarkę
+  `e2e/tests/visual-foundation.spec.ts` (pomocnik `e2e/support/focus-order.ts`).
 - Layout czyta drzewo przez `loadMenuCategories` (to samo `React.cache` co listing) i renderuje `SiteHeader` z menu
   działów (`MegaMenu`, `nav` „Działy”, Client Component). Na stronie produktu (ISR) odczyt drzewa ma tag `catalog`
   (`loadCategoryTree`), więc strona rewaliduje się razem z katalogiem; odczyt nie ustawia trybu cache.
@@ -288,7 +297,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Galeria (`ProductGallery`, Client Component renderowany też na serwerze, z `usePhotoStrip` w `use-photo-strip.ts`; pełny
   opis i testy: `docs/features/product-page/spec.md`, „Galeria i powiększenie”). HTML z serwera ma cały pasek zdjęć
   (CSS `scroll-snap`, `id="zdjecie-n"`, `alt` z API), miniatury jako linki `#zdjecie-n` (`alt=""`, najmniejsza szerokość
-  rozmiaru `product`) i licznik „1 / m”: działa bez JavaScriptu i jest taki sam przed hydratacją i po niej. Po hydratacji
+  rozmiaru `product`) i licznik „1 / m”: działa bez JavaScriptu i jest taki sam przed hydratacją i po niej. Kolejność
+  w dokumencie jest kolejnością wizualną (bez właściwości CSS zmieniających kolejność fokusu i bez `order`; nie dodawaj
+  ich): lista miniatur (`Thumbnails`) jest w HTML dwa razy, kolumna po lewej od zdjęcia (`hidden lg:flex`) przed paskiem
+  i rząd pod nim (`lg:hidden`) po pasku; ukryta ma `display: none` (poza Tab i drzewem dostępności, jej obrazy `lazy` się
+  nie pobierają), obie mają ten sam `aria-current`. Testy Vitest w jsdom (bez CSS) widzą więc dwie listy; kolejność
+  w dokumencie względem położenia i sekwencję Tab sprawdza `e2e/tests/product-gallery.spec.ts` (`e2e/support/focus-order.ts`). Po hydratacji
   (`useSyncExternalStore` z migawką serwera `false`: tego, co dodaje JavaScript, nie ma w pierwszym renderze) dochodzą
   `aria-current` miniatury, licznik podążający za paskiem (też za przesunięciem palcem, po 100 ms bez przewijania; `usePhotoStrip` czyta pozycję
   paska także raz, gdy element się pojawia, więc pasek przewinięty przed hydratacją i okno otwarte na zdjęciu 2 są zgodne
@@ -388,7 +402,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   "merge_truncated"` raz (z poprawnie podpisanego ciasteczka albo ze scalenia w tym samym żądaniu) i usuwa ciasteczko;
   inaczej `notice: null`. `CartBadge` pokazuje wtedy „Część produktów z koszyka gościa nie zmieściła się
   w koszyku” (`role="status"`) jako osobny wiersz nagłówka pod pozostałymi, na pełną szerokość i w przepływie
-  dokumentu (nie zasłania treści; trzeci wiersz siatki na telefonie, drugi od `lg`); układ sprawdza
+  dokumentu (nie zasłania treści; trzeci wiersz siatki na telefonie, drugi od `lg`; w dokumencie ostatni element nagłówka, po wyszukiwarce); układ sprawdza
   `e2e/tests/visual-foundation.spec.ts`.
 - `GET /api/cart?discountCode=` (podgląd kodu w kasie) przekazuje parametr do API koszyka gościa i klienta; inne parametry
   są pomijane. Koszyk bez `store_cart` i bez sesji (pusty) odpowiada bez API. 400 API (kod nie jest tekstem albo ma
