@@ -65,7 +65,7 @@ w [planie](../features/agentic-software-house/plan.md).
 | `/integration` | Integracja i weryfikacja całej funkcjonalności |
 | Merge/Release | Merge zatwierdzonych zmian i wdrożenie z możliwością rollbacku |
 | Monitoring | Zamiana alertów i incydentów w nowe zgłoszenia w intake |
-| Agent tester | Test całego sklepu po merge'u epiku (`/sweep`), propozycje zgłoszeń `bug` do triage człowieka |
+| Agent tester | Test całego sklepu po merge'u epiku (`/sweep`, uruchamiany przez `/ao-run`), propozycje zgłoszeń `bug` do triage człowieka |
 | Agent UX | Przegląd ekranów, wersji mobilnej i dostępności po merge'u epiku (`/sweep`) oraz w `/integration` przy zmianach frontów, propozycje zgłoszeń `ux` do triage człowieka |
 | Skrzynka decyzji | Jedno miejsce na decyzje człowieka, z rekomendacją agenta i powiadomieniem |
 | Budżet i limity | Limity subskrypcji, budżet na funkcję, priorytety kolejki |

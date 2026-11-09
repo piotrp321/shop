@@ -9,6 +9,7 @@
   night_queue.py [--repo DIR] [--state DIR] close [--reason TEXT]
   night_queue.py [--repo DIR] [--state DIR] next          (stdin: the `plan` object of get_usage)
   night_queue.py [--repo DIR] [--state DIR] ahead
+  night_queue.py room --hours H                           (stdin: the `plan` object of get_usage)
 
 scope: reads the `Zakres:` line from the header of an epic spec (the lines before the first `## ` heading) and prints
 one JSON line `{"scope": [path, ...]}`, exit 0. A missing, doubled or unreadable line, or an unreadable file, prints
@@ -37,6 +38,11 @@ it. No night.json: exit 2. A night that already ended keeps its first `ended_at`
 approve writes a fresh night.json without `ended_at`. next refuses a night with `ended_at` (`noc zakończona: <reason>`,
 checked right after the missing list, without reading the board); every other `epic: null` result of next records the
 end itself (`ended_at` and `reason` = its reason), so a later next refuses. An unreadable night.json is never written.
+
+room: is there room in the usage limits for work outside the night estimates (the review after an epic merge). Prints
+one JSON line {"ok": true} or {"ok": false, "reason": <str>}, exit 0: usage status other than `ok` (also unreadable
+input) or any window that does not reset within H hours at 80% or more gives the reason. H is a positive number of
+hours; anything else exits 1. Reads neither the board nor the state.
 
 ahead: reads the board and prints {"epics": [{dir, id, issue, title, tasks, minutes}], "minutes": <sum|null>,
 "full": <bool>}: prepared epics not in progress. `full` is true when the sum reaches the night (540 minutes), or, when
@@ -532,6 +538,32 @@ def cmd_next(args, run, now, stdin):
     return finish(candidate, None)
 
 
+def cmd_room(args, now, stdin):
+    try:
+        hours = float(args.hours)
+    except ValueError:
+        hours = None
+    if hours is None or not hours > 0 or hours == float('inf'):
+        print('night_queue: --hours must be a positive number, got %r' % args.hours, file=sys.stderr)
+        return 1
+    usage_now = _read_usage(stdin)
+    if usage_now['status'] != 'ok':
+        reason = 'stan limitów nieczytelny' if usage_now['status'] == 'unreadable' else (
+            'stan limitów: %s' % usage_now['status'])
+        print(json.dumps({'ok': False, 'reason': reason}, ensure_ascii=False))
+        return 0
+    horizon = now + timedelta(hours=hours)
+    for w in usage_now['windows']:
+        if parse_time(w['resetsAt']) <= horizon:
+            continue
+        if w['percentUsed'] >= 80:
+            print(json.dumps({'ok': False, 'reason': 'okno %s: %s%% >= 80%%' % (w['label'], _percent(w['percentUsed']))},
+                             ensure_ascii=False))
+            return 0
+    print(json.dumps({'ok': True}))
+    return 0
+
+
 def cmd_ahead(args, run, now, stdin):
     measured = measurements(read_events(args.state))
     epics = []
@@ -565,14 +597,18 @@ def main(argv=None, run=None, now=None, stdin=None):
     close_parser.add_argument('--reason', default='zamknięta')
     sub.add_parser('next', help='the next epic of the night list, or the reason there is none')
     sub.add_parser('ahead', help='prepared epics with time estimates')
+    room_parser = sub.add_parser('room', help='room in the usage limits for a review after a merge')
+    room_parser.add_argument('--hours', required=True)
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:
         return 2 if e.code else 0
     if args.command == 'scope':
         return cmd_scope(args)
-    run = run or next_epic.make_runner(args.repo)
     now = now or datetime.now().astimezone()
+    if args.command == 'room':
+        return cmd_room(args, now, stdin)
+    run = run or next_epic.make_runner(args.repo)
     try:
         return {'start': cmd_start, 'done': cmd_done, 'propose': cmd_propose, 'approve': cmd_approve,
                 'close': cmd_close, 'next': cmd_next, 'ahead': cmd_ahead}[args.command](args, run, now, stdin)

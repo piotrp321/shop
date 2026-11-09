@@ -252,8 +252,10 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   i bramki `make check`, `make test`, `make e2e` na całym diffie `origin/main...HEAD`); przy zmianach w `apps/store`
   lub `apps/admin` dochodzi agent UX (`ux-reviewer`). Skill niczego nie commituje, a jego wynik waliduje
   `.claude/skills/integration/integration_result.py`.
-- Po merge'u epiku użytkownik uruchamia `/sweep [epik]`: agenci `tester` i `ux-reviewer` przechodzą sklep na świeżym
-  stosie z `main`. Wynik to propozycje zgłoszeń do triage (etykiety `bug`/`ux` i `agent`), nie issues.
+- Po merge'u epiku sesja `/ao-run` sama uruchamia `/sweep <epik>` (kolejka przeglądów, nigdy równolegle z epikiem;
+  pominięcie na baterii albo przy oknie limitu ≥ 80%), a użytkownik może go uruchomić ręcznie (`/sweep [epik]`):
+  agenci `tester` i `ux-reviewer` przechodzą sklep na świeżym stosie z `main`. Wynik to propozycje zgłoszeń do triage
+  użytkownika (etykiety `bug`/`ux` i `agent`), nie issues.
 - Orkiestrator sam rozstrzyga szczegóły implementacji (wpis `Ruling:` w ledgerze). Istotne decyzje DDD (agregaty,
   value objecty, granice modułów, persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury
   przedstawia użytkownikowi przed implementacją.

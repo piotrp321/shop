@@ -28,7 +28,7 @@ Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykiet�
 | 9 | Agent tester i agent UX | zrobione |
 | 10 | Przed publicznym demo: bezpieczeństwo i wydajność | specyfikacja na `main`, epik HARDENING czeka |
 | 11 | Po MVP: release i monitoring | do zrobienia |
-| 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | do zrobienia |
+| 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione (sprawdzenie: pierwszy merge epiku) |
 | 13 | Agent porządkujący backlog (`/groom`) | do zrobienia |
 | 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | do zrobienia |
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | do zrobienia |
@@ -51,7 +51,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | Wytwarzanie | Developer: zadanie z TDD | `developer` w `/delivery` | działa |
 | | Code review zadania | `code-reviewer` w `/delivery` | działa |
 | Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
-| | Tester całego sklepu | `tester` w `/sweep` | działa, uruchamiany ręcznie do kroku 12 |
+| | Tester całego sklepu | `tester` w `/sweep`, uruchamiany przez `/ao-run` po merge'u | działa |
 | | Bezpieczeństwo i wydajność | ustalane w kroku 10 | krok 10 |
 | Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` | krok 13 |
 | | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` | krok 15 |
@@ -186,9 +186,9 @@ flowchart TB
    - Po każdym epiku trzy liczby w komentarzu do issue epiku: liczba interwencji (z `ao report`), czas czekania na
      decyzje użytkownika (z `events.jsonl`, `ao_events.py summary`) i liczba ręcznych poprawek. Minut pracy
      użytkownika nie szacujemy.
-6. **Po merge'u (`/sweep [epik]`).** Użytkownik uruchamia komendę po merge'u epiku; (12) sesja `/ao-run` uruchamia
-   ją sama po merge'u końcowego PR, gdy następny epik nie startuje (sweep i epik nie dzielą stosu ani limitu w tym
-   samym czasie).
+6. **Po merge'u (`/sweep [epik]`).** Sesja `/ao-run` uruchamia przegląd sama po merge'u końcowego PR: kolejka
+   przeglądów, jeden naraz, nigdy równolegle z epikiem (następny epik rusza po kolejce), pominięcie na baterii albo
+   przy oknie limitu ≥ 80% (`docs/features/ao-run/spec.md`). Użytkownik może go też uruchomić ręcznie.
    Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne ścieżki z sekcji „Testy”
    w `docs/vision.md` i nową funkcję ze specyfikacji, jako klient i jako pracownik. Przed zaproponowaniem zgłoszenia
    sprawdzają otwarte issues, żeby nie dublować. Propozycje trafiają do triage (punkt 1).
@@ -254,8 +254,8 @@ równolegle z przebiegiem AO, a jego czas i zużycie limitu są mierzone jak prz
 
 12. **`/sweep` po merge'u epiku.** Trzy ręczne przebiegi (2026-11-04, 2026-11-07, 2026-11-09) dały 6 przyjętych
    zgłoszeń i 1 odrzucone, więc warunek z kroku 9 jest spełniony. `/ao-run` uruchamia `/sweep <epik>` po merge'u
-   końcowego PR, gdy nie startuje następny epik, i wysyła push z liczbą propozycji. Triage zostaje u użytkownika.
-   Zmiana: `docs/features/ao-run/spec.md`, `docs/features/agent-tester-ux/spec.md`.
+   końcowego PR (kolejka przeglądów, następny epik rusza po niej) i wysyła push z liczbą propozycji. Triage zostaje
+   u użytkownika. Opis: sekcja „Przegląd po merge'u” w `docs/features/ao-run/spec.md`.
 13. **`/groom`.** Nowy skill (agent na tańszym modelu), uruchamiany raz na dobę z sesji z Remote Control albo
    ręcznie. Wejście: otwarte issues `bug`, `ux`, `tech-debt` i kod na `origin/main`. Wynik: plik propozycji poza
    repo i jeden push. Propozycje:
