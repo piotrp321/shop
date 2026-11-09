@@ -36,4 +36,19 @@ final class ImageSizeTest extends TestCase
         self::assertSame('fill', ImageSize::Thumbnail->resize());
         self::assertSame('sm', ImageSize::Thumbnail->gravity());
     }
+
+    public function testZoomDefinitionHasNoFixedAspectRatioAndFitsTheWholeImage(): void
+    {
+        self::assertNull(ImageSize::Zoom->aspectRatio());
+        self::assertSame([1280, 1920, 2560], ImageSize::Zoom->widths());
+        self::assertSame([ImageFormat::Webp], ImageSize::Zoom->formats());
+        self::assertSame('fit', ImageSize::Zoom->resize());
+    }
+
+    public function testOtherSizesKeepTheirFixedAspectRatio(): void
+    {
+        foreach ([ImageSize::Listing, ImageSize::Product, ImageSize::Thumbnail] as $size) {
+            self::assertSame('1:1', $size->aspectRatio());
+        }
+    }
 }

@@ -12,6 +12,7 @@ final readonly class ProductDetails
     /**
      * @param list<BreadcrumbItem>        $breadcrumb  categories from the root to the main category of the product
      * @param list<ImageView>             $images      all the images in position order, in the `product` size
+     * @param list<ZoomImageView>         $zoomImages  the same images in the same order, in the `zoom` size
      * @param list<string>                $variantAxes names of the axes, in order
      * @param list<ProductDetailsVariant> $variants    in position order
      */
@@ -22,6 +23,7 @@ final readonly class ProductDetails
         public string $shortDescription,
         public array $breadcrumb,
         public array $images,
+        public array $zoomImages,
         public array $variantAxes,
         public array $variants,
     ) {

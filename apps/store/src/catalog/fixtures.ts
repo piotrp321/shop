@@ -118,6 +118,7 @@ export function makeDetails(n: number, overrides: Partial<ProductDetails> = {}):
       makeProductPhoto({ alt: `Zdjęcie ${n}, pierwsze`, variants: { webp: PRODUCT_WIDTHS.map((width) => ({ width, url: `http://imgproxy.test/a${n}-${width}/plain.webp` })) } }),
       makeProductPhoto({ alt: `Zdjęcie ${n}, drugie`, variants: { webp: PRODUCT_WIDTHS.map((width) => ({ width, url: `http://imgproxy.test/b${n}-${width}/plain.webp` })) } }),
     ],
+    zoomImages: [],
     variantAxes: [],
     variants: [{ variantId: variantId(n, 1), label: "", values: [] }],
     ...overrides,

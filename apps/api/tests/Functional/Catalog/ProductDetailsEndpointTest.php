@@ -65,7 +65,7 @@ final class ProductDetailsEndpointTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertStringStartsWith('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
-        self::assertSame(['id', 'slug', 'name', 'shortDescription', 'breadcrumb', 'images', 'variantAxes', 'variants'], array_keys($body));
+        self::assertSame(['id', 'slug', 'name', 'shortDescription', 'breadcrumb', 'images', 'zoomImages', 'variantAxes', 'variants'], array_keys($body));
         self::assertSame(self::PRODUCT_ID, $body['id']);
         self::assertSame('buty-szosowe-asfalt', $body['slug']);
         self::assertSame('Buty szosowe Asfalt', $body['name']);
@@ -92,10 +92,57 @@ final class ProductDetailsEndpointTest extends WebTestCase
         self::assertIsArray($first['variants']['webp']);
         self::assertSame([640, 960, 1280, 1600], array_column($first['variants']['webp'], 'width'));
 
+        self::assertIsArray($body['zoomImages']);
+        self::assertSame(['Pierwsze', 'Drugie'], array_column($body['zoomImages'], 'alt'));
+        $firstZoom = $body['zoomImages'][0];
+        self::assertIsArray($firstZoom);
+        self::assertSame(['alt', 'size', 'variants'], array_keys($firstZoom));
+        self::assertSame('zoom', $firstZoom['size']);
+        self::assertIsArray($firstZoom['variants']);
+        self::assertIsArray($firstZoom['variants']['webp']);
+        self::assertSame([1280, 1920, 2560], array_column($firstZoom['variants']['webp'], 'width'));
+        self::assertIsArray($firstZoom['variants']['webp'][1]);
+        self::assertIsString($firstZoom['variants']['webp'][1]['url']);
+        self::assertStringContainsString('/rs:fit:1920:0/', $firstZoom['variants']['webp'][1]['url']);
+
         $this->assertKeysMatchSchema($body, 'ProductDetails');
         $this->assertKeysMatchSchema($body['breadcrumb'][0], 'BreadcrumbItem');
         $this->assertKeysMatchSchema($body['variants'][0], 'ProductDetailsVariant');
         $this->assertKeysMatchSchema($first, 'ProductImage');
+        $this->assertKeysMatchSchema($firstZoom, 'ZoomImage');
+    }
+
+    public function testAProductWithoutImagesHasEmptyImagesAndZoomImages(): void
+    {
+        $entityManager = self::getContainer()->get('doctrine.orm.entity_manager');
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $category = CategoryFactory::createOne();
+        new DoctrineCategoryRepository($entityManager)->save($category);
+        $product = ProductFactory::createOne(['slug' => 'pasek', 'mainCategory' => $category]);
+        new DoctrineProductRepository($entityManager)->save($product, null, null, new \DateTimeImmutable());
+
+        $body = $this->get('/api/v1/products/pasek');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([], $body['images']);
+        self::assertSame([], $body['zoomImages']);
+    }
+
+    public function testTheSharedProductImageSchemaStillRequiresTheAspectRatio(): void
+    {
+        $components = $this->spec()['components'];
+        self::assertIsArray($components);
+        $schemas = $components['schemas'];
+        self::assertIsArray($schemas);
+        $productImage = $schemas['ProductImage'];
+        $zoomImage = $schemas['ZoomImage'];
+        self::assertIsArray($productImage);
+        self::assertIsArray($zoomImage);
+        self::assertIsArray($zoomImage['properties']);
+
+        self::assertSame(['alt', 'size', 'aspectRatio', 'variants'], $productImage['required']);
+        self::assertSame(['alt', 'size', 'variants'], $zoomImage['required']);
+        self::assertArrayNotHasKey('aspectRatio', $zoomImage['properties']);
     }
 
     public function testTheOkResponseIsCachedByTheBrowserAndByVarnishAndTagged(): void
