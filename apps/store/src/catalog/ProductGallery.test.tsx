@@ -48,6 +48,10 @@ afterEach(() => {
 
 const renderGallery = (images = IMAGES, zoomImages = ZOOM_IMAGES) => render(<ProductGallery name="Narty skiturowe Stavro Grań 95" images={images} zoomImages={zoomImages} />);
 const strip = () => screen.getByRole("group", { name: "Zdjęcia produktu" });
+// The thumbnails are in the HTML twice (one list is shown from `lg`, the other below it; CSS decides, and jsdom has none),
+// both with the same state.
+const thumbLists = () => screen.getAllByRole("list", { name: "Miniatury zdjęć" });
+const currentMarks = () => thumbLists().map((list) => within(list).getAllByRole("link").map((link) => link.getAttribute("aria-current")));
 
 /** What a swipe does to the strip: the browser scrolls it, `scroll` events follow, then the strip settles. */
 function scrollStripTo(element: HTMLElement, left: number) {
@@ -87,33 +91,48 @@ describe("the strip of photos", () => {
 describe("thumbnails and counter", () => {
   it("links each thumbnail to its photo by an anchor, with a name from the link and an empty alt text on the image", () => {
     renderGallery();
-    const thumbs = within(screen.getByRole("list", { name: "Miniatury zdjęć" })).getAllByRole("link");
-    expect(thumbs.map((link) => [link.getAttribute("href"), link.getAttribute("aria-label")])).toEqual([
-      ["#zdjecie-1", "Pokaż zdjęcie 1 z 3"],
-      ["#zdjecie-2", "Pokaż zdjęcie 2 z 3"],
-      ["#zdjecie-3", "Pokaż zdjęcie 3 z 3"],
-    ]);
-    const images = thumbs.map((link) => link.querySelector("img") as HTMLImageElement);
-    expect(images.map((img) => img.getAttribute("alt"))).toEqual(["", "", ""]);
-    expect(images.map((img) => img.getAttribute("loading"))).toEqual(["lazy", "lazy", "lazy"]);
-    // The smallest width of the `product` size, no srcset.
-    expect(images.map((img) => img.getAttribute("src"))).toEqual(["http://imgproxy.test/p1-640/plain.webp", "http://imgproxy.test/p2-640/plain.webp", "http://imgproxy.test/p3-640/plain.webp"]);
-    expect(images[0].hasAttribute("srcset")).toBe(false);
+    for (const list of thumbLists()) {
+      const thumbs = within(list).getAllByRole("link");
+      expect(thumbs.map((link) => [link.getAttribute("href"), link.getAttribute("aria-label")])).toEqual([
+        ["#zdjecie-1", "Pokaż zdjęcie 1 z 3"],
+        ["#zdjecie-2", "Pokaż zdjęcie 2 z 3"],
+        ["#zdjecie-3", "Pokaż zdjęcie 3 z 3"],
+      ]);
+      const images = thumbs.map((link) => link.querySelector("img") as HTMLImageElement);
+      expect(images.map((img) => img.getAttribute("alt"))).toEqual(["", "", ""]);
+      expect(images.map((img) => img.getAttribute("loading"))).toEqual(["lazy", "lazy", "lazy"]);
+      // The smallest width of the `product` size, no srcset.
+      expect(images.map((img) => img.getAttribute("src"))).toEqual(["http://imgproxy.test/p1-640/plain.webp", "http://imgproxy.test/p2-640/plain.webp", "http://imgproxy.test/p3-640/plain.webp"]);
+      expect(images[0].hasAttribute("srcset")).toBe(false);
+    }
+  });
+
+  it("has two lists of the thumbnails, so that the document order is the visual order: the one shown from `lg` before the strip, the one shown below it after the strip", () => {
+    renderGallery();
+    const [beforeStrip, afterStrip] = thumbLists();
+    expect(thumbLists()).toHaveLength(2);
+    expect(beforeStrip.compareDocumentPosition(strip()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(afterStrip.compareDocumentPosition(strip()) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    // CSS shows one and hides the other (`display: none`), never reorders.
+    expect(beforeStrip.className).toMatch(/\bhidden\b/);
+    expect(beforeStrip.className).toMatch(/\blg:flex\b/);
+    expect(afterStrip.className).toMatch(/\blg:hidden\b/);
+    for (const list of [beforeStrip, afterStrip]) expect(list.className).not.toMatch(/\border-/);
+    expect(strip().parentElement?.parentElement?.className).not.toMatch(/\border-/);
   });
 
   it("shows the counter as a polite live region and marks the first thumbnail as current", () => {
     renderGallery();
     const counter = screen.getByText("1 / 3");
     expect(counter.getAttribute("aria-live")).toBe("polite");
-    const thumbs = screen.getAllByRole("link", { name: /^Pokaż zdjęcie/ });
-    expect(thumbs.map((link) => link.getAttribute("aria-current"))).toEqual(["true", null, null]);
+    expect(currentMarks()).toEqual([["true", null, null], ["true", null, null]]);
   });
 
   it("follows the strip when it is scrolled (a swipe): the counter and the current thumbnail change", () => {
     renderGallery();
     scrollStripTo(strip(), STRIP_WIDTH * 2);
     expect(screen.getByText("3 / 3")).toBeTruthy();
-    expect(screen.getAllByRole("link", { name: /^Pokaż zdjęcie/ }).map((link) => link.getAttribute("aria-current"))).toEqual([null, null, "true"]);
+    expect(currentMarks()).toEqual([[null, null, "true"], [null, null, "true"]]);
   });
 
   it("waits for the strip to settle before it changes the counter", () => {
@@ -129,17 +148,20 @@ describe("thumbnails and counter", () => {
 
   it("scrolls the strip smoothly to the photo on a click and does not follow the link (no address change, no history entry)", () => {
     renderGallery();
-    const link = screen.getByRole("link", { name: "Pokaż zdjęcie 3 z 3" });
-    const notCancelled = fireEvent.click(link);
-    expect(notCancelled).toBe(false);
-    expect(scrollTo).toHaveBeenCalledWith({ left: STRIP_WIDTH * 2, behavior: "smooth" });
+    // The link of each of the two lists does it.
+    for (const link of screen.getAllByRole("link", { name: "Pokaż zdjęcie 3 z 3" })) {
+      scrollTo.mockClear();
+      const notCancelled = fireEvent.click(link);
+      expect(notCancelled).toBe(false);
+      expect(scrollTo).toHaveBeenCalledWith({ left: STRIP_WIDTH * 2, behavior: "smooth" });
+    }
     expect(window.location.hash).toBe("");
   });
 
   it("scrolls without animation when the visitor asks for reduced motion", () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query }));
     renderGallery();
-    fireEvent.click(screen.getByRole("link", { name: "Pokaż zdjęcie 2 z 3" }));
+    fireEvent.click(screen.getAllByRole("link", { name: "Pokaż zdjęcie 2 z 3" })[0]);
     expect(scrollTo).toHaveBeenCalledWith({ left: STRIP_WIDTH, behavior: "auto" });
     vi.unstubAllGlobals();
   });
@@ -179,7 +201,7 @@ describe("a strip scrolled before the page was hydrated", () => {
     browserScroll = STRIP_WIDTH;
     renderGallery();
     expect(screen.getByText("2 / 3")).toBeTruthy();
-    expect(screen.getAllByRole("link", { name: /^Pokaż zdjęcie/ }).map((link) => link.getAttribute("aria-current"))).toEqual([null, "true", null]);
+    expect(currentMarks()).toEqual([[null, "true", null], [null, "true", null]]);
 
     fireEvent.click(screen.getByRole("button", { name: "Następne zdjęcie" }));
     expect(scrollTo).toHaveBeenLastCalledWith({ left: STRIP_WIDTH * 2, behavior: "smooth" });
@@ -213,7 +235,7 @@ describe("one photo and none", () => {
   it("one photo has the enlargement but no thumbnails, counter or arrows", () => {
     renderGallery([IMAGES[0]], [ZOOM_IMAGES[0]]);
     expect(screen.getByRole("button", { name: "Powiększ zdjęcie 1 z 1: Cała para nart" })).toBeTruthy();
-    expect(screen.queryByRole("list", { name: "Miniatury zdjęć" })).toBeNull();
+    expect(screen.queryAllByRole("list", { name: "Miniatury zdjęć" })).toHaveLength(0);
     expect(screen.queryByText("1 / 1")).toBeNull();
     expect(screen.queryByRole("button", { name: "Następne zdjęcie" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Poprzednie zdjęcie" })).toBeNull();

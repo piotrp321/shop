@@ -63,7 +63,8 @@ describe("ProductDetailsView", () => {
       expect(photos[1].getAttribute("fetchpriority")).toBeNull();
       expect(photos[0].srcset).toContain("http://imgproxy.test/a1-640/plain.webp 640w");
       expect(photos[0].srcset).toContain("http://imgproxy.test/a1-1600/plain.webp 1600w");
-      expect(screen.getAllByRole("link", { name: /^Pokaż zdjęcie/ })).toHaveLength(2);
+      // Two links per photo: the thumbnails are in the HTML twice (CSS shows one list; jsdom has no CSS).
+      expect(screen.getAllByRole("link", { name: /^Pokaż zdjęcie/ })).toHaveLength(4);
       expect(screen.getAllByRole("button", { name: /^Powiększ zdjęcie/ })).toHaveLength(2);
     });
 
