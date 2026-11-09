@@ -5,7 +5,10 @@ import { type ReactNode, useEffect, useState } from "react";
 import { type CartResult, type CartView, changeCartItemQuantity, loadCart, removeCartItem } from "@/api/client";
 import { formatPrice } from "@/catalog/format-price";
 import { ProductPhoto } from "@/catalog/ProductPhoto";
+import { ScreenMain, ScreenTitle } from "@/components/ScreenLayout";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { announceCartChange } from "./events";
 import { SAVE_FAILED, SessionExpired } from "./messages";
@@ -103,35 +106,43 @@ export function CartPage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
-      <h1 className="text-2xl font-semibold">Koszyk</h1>
+    <ScreenMain>
+      <ScreenTitle>Koszyk</ScreenTitle>
       {loaded.status === "loading" ? <p className="text-muted-foreground">Wczytywanie koszyka…</p> : null}
       {loaded.status === "unauthorized" ? (
-        <p role="alert">
-          <SessionExpired returnTo="/cart" />
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>
+            <SessionExpired returnTo="/cart" />
+          </AlertDescription>
+        </Alert>
       ) : null}
       {loaded.status === "error" ? (
-        <div role="alert" className="flex flex-col items-start gap-2">
-          <p>Nie udało się wczytać koszyka</p>
+        <Alert variant="destructive" className="justify-items-start gap-3">
+          <AlertDescription>Nie udało się wczytać koszyka</AlertDescription>
           <Button type="button" variant="outline" onClick={retry}>
             Spróbuj ponownie
           </Button>
-        </div>
+        </Alert>
       ) : null}
       {sessionExpired ? (
-        <p role="alert" className="text-destructive">
-          <SessionExpired returnTo="/cart" />
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>
+            <SessionExpired returnTo="/cart" />
+          </AlertDescription>
+        </Alert>
       ) : null}
-      {notice ? <p role="status">{notice}</p> : null}
+      {notice ? (
+        <Alert role="status">
+          <AlertDescription>{notice}</AlertDescription>
+        </Alert>
+      ) : null}
       {loaded.status === "ready" ? (
         loaded.cart.lines.length === 0 ? (
-          <div className="flex flex-col items-start gap-2">
-            <p>Twój koszyk jest pusty</p>
-            <Link href="/" className="text-sm underline underline-offset-4">
-              Zobacz produkty
-            </Link>
+          <div className="flex flex-col items-start gap-1">
+            <p className="text-lg">Twój koszyk jest pusty</p>
+            <Button asChild variant="link" className="px-0 underline">
+              <Link href="/">Zobacz produkty</Link>
+            </Button>
           </div>
         ) : (
           <>
@@ -153,7 +164,7 @@ export function CartPage() {
           </>
         )
       ) : null}
-    </main>
+    </ScreenMain>
   );
 }
 
@@ -164,16 +175,20 @@ function toLoaded(result: CartResult<CartView>): Loaded {
 
 function CartSummary({ cart }: { cart: CartView }) {
   return (
-    <section aria-label="Podsumowanie" className="flex flex-col gap-1 border-t border-border pt-4">
-      <p className="flex justify-between font-semibold">
-        <span>Wartość brutto</span>
-        <span data-testid="cart-total">{formatPrice(cart.totals.gross, cart.totals.currency)}</span>
-      </p>
-      <p className="flex justify-between text-sm text-muted-foreground">
-        <span>Liczba sztuk</span>
-        <span data-testid="cart-item-count">{cart.totals.itemCount}</span>
-      </p>
-      {cart.hasExcludedLines ? <p className="text-sm text-destructive">Część produktów nie jest wliczona</p> : null}
+    <section aria-label="Podsumowanie">
+      <Card>
+        <CardContent className="flex flex-col gap-1">
+          <p className="flex justify-between text-lg font-semibold">
+            <span>Wartość brutto</span>
+            <span data-testid="cart-total">{formatPrice(cart.totals.gross, cart.totals.currency)}</span>
+          </p>
+          <p className="flex justify-between text-sm text-muted-foreground">
+            <span>Liczba sztuk</span>
+            <span data-testid="cart-item-count">{cart.totals.itemCount}</span>
+          </p>
+          {cart.hasExcludedLines ? <p className="text-sm text-destructive">Część produktów nie jest wliczona</p> : null}
+        </CardContent>
+      </Card>
     </section>
   );
 }
@@ -190,7 +205,7 @@ function CheckoutButton({ cart }: { cart: CartView }) {
     );
   }
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-end gap-2">
       <Button type="button" disabled aria-describedby="checkout-blocked">
         Przejdź do kasy
       </Button>
@@ -227,7 +242,7 @@ function CartLineRow({
           </div>
         ) : null}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          {name ? <h2 className="text-sm font-medium">{name}</h2> : null}
+          {name ? <h2 className="text-base font-semibold">{name}</h2> : null}
           {variantLabel ? (
             <p data-testid="variant-label" className="text-sm text-muted-foreground">
               {variantLabel}
@@ -249,7 +264,7 @@ function CartLineRow({
             onCommit={onChangeQuantity}
           />
           {line.lineTotal ? (
-            <p data-testid="line-total" className="text-sm font-semibold">
+            <p data-testid="line-total" className="text-base font-semibold">
               {formatPrice(line.lineTotal.gross, line.lineTotal.currency)}
             </p>
           ) : null}
@@ -259,9 +274,9 @@ function CartLineRow({
         </div>
       </div>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
     </li>
   );
