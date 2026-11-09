@@ -13,6 +13,7 @@ use App\Catalog\Infrastructure\Demo\DemoCatalogExpander;
 use App\Catalog\Infrastructure\Demo\YamlDemoCatalogSource;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Guards the real definition (apps/api/fixtures/catalog.yaml) against edits that break the demo data.
@@ -164,7 +165,7 @@ final class RealDemoCatalogTest extends TestCase
         self::assertCount(\count(self::$catalog->products), $catalog->products);
     }
 
-    public function testEveryPooledImageFileExists(): void
+    public function testEveryImageFileExists(): void
     {
         $files = [];
         foreach (self::$catalog->products as $product) {
@@ -177,6 +178,107 @@ final class RealDemoCatalogTest extends TestCase
         foreach (array_keys($files) as $file) {
             self::assertFileExists(self::FIXTURES.'/images/'.$file);
         }
+    }
+
+    /**
+     * @return array<string, list<array{file: string, alt: string}>> the products with photos of their own, by name
+     */
+    private static function ownImages(): array
+    {
+        return [
+            'Kajak turystyczny Vilmar Rzeka 1' => [['file' => 'kayak-green-single-mountain-lake.jpg', 'alt' => 'Jaskrawozielony jednoosobowy kajak na górskim jeziorze']],
+            'Kajak turystyczny Dravik Rzeka 1' => [['file' => 'kayak-green-single-autumn-lake.jpg', 'alt' => 'Kajakarz w jasnozielonym jednoosobowym kajaku na jeziorze']],
+            'Kajak turystyczny Vilmar Rzeka 2' => [['file' => 'kayak-green-tandem-river.jpg', 'alt' => 'Dwie osoby w zielonym dwuosobowym kajaku na rzece']],
+            'Kajak turystyczny Dravik Rzeka 2' => [['file' => 'kayak-green-tandem-river-close.jpg', 'alt' => 'Zielony dwuosobowy kajak z dwiema osobami, ujęcie z bliska']],
+            'Narty skiturowe Stavro Grań 95' => [
+                ['file' => 'skis-blue-touring-stone-wall.jpg', 'alt' => 'Para niebieskich nart skiturowych z fokami oparta o kamienny mur'],
+                ['file' => 'skis-blue-tips-snow.jpg', 'alt' => 'Końcówki niebieskich nart w śniegu'],
+                ['file' => 'skier-carrying-blue-skis-ascent.jpg', 'alt' => 'Narciarz niesie niebieskie narty na ramieniu na podejściu'],
+            ],
+        ];
+    }
+
+    public function testTheFiveProductsHaveTheirOwnPhotosInOrder(): void
+    {
+        $byName = [];
+        foreach (self::$catalog->products as $product) {
+            $byName[$product->name] = $product;
+        }
+
+        foreach (self::ownImages() as $name => $images) {
+            self::assertArrayHasKey($name, $byName);
+            self::assertSame($images, $byName[$name]->images, $name);
+        }
+    }
+
+    public function testEveryOtherProductKeepsThePoolPhotoAndTheImagelessRuleOfTheDefinition(): void
+    {
+        // The rule of the definition before own photos existed, written out here: templates in file order, then
+        // brands, then models; imageless when (index + 1) % imagelessEvery == 0, otherwise pool[index % count(pool)].
+        $data = Yaml::parseFile(self::FIXTURES.'/catalog.yaml');
+        self::assertIsArray($data);
+        $every = $data['imagelessEvery'];
+        self::assertIsInt($every);
+        $templates = $data['templates'];
+        self::assertIsArray($templates);
+
+        $expected = [];
+        $index = 0;
+        foreach ($templates as $template) {
+            self::assertIsArray($template);
+            $productType = $template['productType'] ?? null;
+            $brands = $template['brands'] ?? null;
+            $models = $template['models'] ?? null;
+            $pool = $template['images'] ?? null;
+            self::assertIsString($productType);
+            self::assertIsArray($brands);
+            self::assertIsArray($models);
+            self::assertIsArray($pool);
+            $pool = array_values($pool);
+            foreach ($brands as $brand) {
+                foreach ($models as $model) {
+                    self::assertIsString($brand);
+                    self::assertIsArray($model);
+                    $modelName = $model['name'] ?? null;
+                    self::assertIsString($modelName);
+                    $picked = $pool[$index % \count($pool)];
+                    self::assertIsArray($picked);
+                    $expected[$productType.' '.$brand.' '.$modelName] = 0 === ($index + 1) % $every ? [] : [$picked];
+                    ++$index;
+                }
+            }
+        }
+
+        self::assertCount(\count($expected), self::$catalog->products);
+        $checked = 0;
+        foreach (self::$catalog->products as $product) {
+            if (isset(self::ownImages()[$product->name])) {
+                continue;
+            }
+            self::assertSame($expected[$product->name], $product->images, $product->name);
+            ++$checked;
+        }
+        self::assertSame(\count($expected) - 5, $checked);
+
+        $imageless = array_keys(array_filter(self::$catalog->products, static fn (DemoProduct $p): bool => [] === $p->images));
+        $imagelessBefore = array_keys(array_filter($expected, static fn (array $images): bool => [] === $images));
+        self::assertSame(
+            array_values(array_diff($imagelessBefore, array_keys(self::ownImages()))),
+            array_map(static fn (int $i): string => self::$catalog->products[$i]->name, $imageless),
+        );
+    }
+
+    public function testVilmarGran95KeepsItsPoolPhotos(): void
+    {
+        foreach (self::$catalog->products as $product) {
+            if ('Narty skiturowe Vilmar Grań 95' === $product->name) {
+                self::assertCount(1, $product->images);
+                self::assertStringNotContainsString('skis-blue', $product->images[0]['file']);
+
+                return;
+            }
+        }
+        self::fail('No product "Narty skiturowe Vilmar Grań 95".');
     }
 
     /** @return iterable<string, array{TaxClassCode}> */
