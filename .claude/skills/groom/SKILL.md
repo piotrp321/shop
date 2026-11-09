@@ -26,20 +26,36 @@ NQ="python3 $SKILL_ROOT/.claude/skills/ao-run/night_queue.py"
 Powiadomienie push to `PushNotification` (do 200 znaków). W sesji ręcznej zamiast pushu wystarczy komunikat
 w rozmowie.
 
-## 1. Nierozstrzygnięta lista
+## 1. Porządki i nierozstrzygnięta lista
+
+Najpierw usuń worktree osierocone po przerwanych przebiegach: dla każdego `$GROOM_HOME/*/worktree`
+`cd "$SHOP" && git worktree remove --force <ścieżka>`, potem `git worktree prune`.
 
 Najnowszy katalog przebiegu `$GROOM_HOME/<data>-<sha7>-<n>/` z `proposals.json` bez `decided_at`:
-- młodszy niż 7 dni: nie twórz nowej listy. Uruchom `$G validate <run_dir>` (bieżące odrzucenia; zmiany samych
-  issues sprawdzi `apply`). Kod 3 (lista już niepoprawna): `$G fail <run_dir>` i dalej krok 2. Inaczej pokaż listę
-  z `report.md` z tymi samymi numerami, push „Backlog: lista z <data> czeka na decyzję” i przejdź do kroku 6;
-- starszy: `$G expire <run_dir>` (zapisuje `decided_at` z wynikiem „wygasła”) i dalej krok 2.
+- starszy niż 7 dni albo bez `input.json`: `$G expire <run_dir>` (zapisuje `decided_at` z wynikiem „wygasła”)
+  i dalej krok 2;
+- młodszy: nie twórz nowej listy. Zbierz bieżące dane i sprawdź listę na nich (`gh` i `git fetch` jak w kroku 2,
+  punkt 3; limitu nie sprawdzasz, bo agent nie rusza):
+
+  ```bash
+  cd "$SHOP" && git fetch origin main && git worktree add --detach "<run_dir>/worktree" origin/main &&
+  $G collect <run_dir> --worktree "<run_dir>/worktree" --out "<run_dir>/input-now.json";
+  rc=$?; git worktree remove --force "<run_dir>/worktree"; [ $rc -eq 0 ] && $G validate <run_dir> --current "<run_dir>/input-now.json"
+  ```
+
+  - kod 3 (lista już niepoprawna, np. issue trafiło do nowego epiku): `$G fail <run_dir>`, powiedz które pozycje
+    i dlaczego, i dalej krok 2;
+  - inny kod różny od 0: zakończ z pushem „Backlog: lista z <data> nieczytelna: <powód>” bez zmian;
+  - 0: zbuduj listę od nowa z `proposals.json` (te same numery, kolizje z wyniku `validate`), nadpisz nią sekcję
+    listy w `report.md`, pokaż ją, push „Backlog: lista z <data> czeka na decyzję” i przejdź do kroku 6 z
+    `--current "<run_dir>/input-now.json"` w `apply`.
 
 ## 2. Warunki startu
 
 Przy pierwszym niespełnionym zakończ bez zmian i bez worktree, z pushem „Backlog: pominięty: <powód>”:
 
-1. Nie działa AO ani przegląd po merge'u: `pgrep -f 'ao run'` nic nie zwraca i `docker compose ls -a` nie ma
-   projektu `sweep-*` (błąd `docker` też jest powodem).
+1. Nie działa AO ani przegląd po merge'u: `pgrep -f 'ao run'` nic nie zwraca i `docker compose ls` (działające
+   projekty) nie ma projektu `sweep-*` (błąd `docker` też jest powodem).
 2. Limit: wywołaj `mcp__ccd_session_mgmt__get_usage` i wklej obiekt `plan` dosłownie:
 
    ```bash
@@ -100,7 +116,9 @@ $G apply <run_dir> --approve <1,3,5|all|none> [--reject <nr>=<powód>]…
 ```
 
 Numery po przecinku; epik poprawek to numer `len(items)+1` albo słowo `epik`; same odrzucenia: `--approve none`.
-`apply` sprawdza listę jeszcze raz (kod 3: nic nie zmienia, pokaż błędy). Wyjście `results` ma status każdej pozycji
+`apply` sprawdza listę jeszcze raz (kod 3: nic nie zmienia, pokaż błędy). Kod 2: lista już rozstrzygnięta (np. w innej
+sesji) albo złe argumenty (np. `all` razem z `--reject`); pokaż komunikat i nic nie ponawiaj bez nowej odpowiedzi
+użytkownika. Lista z kroku 1 (z poprzedniego dnia): dodaj `--current "<run_dir>/input-now.json"`. Wyjście `results` ma status każdej pozycji
 (`done`, `skipped`, `error`, `rejected`) i `manual` przy epiku bez tablicy. Pokaż wynik każdej pozycji z linkami: wykonana, pominięta (powód, np. „zmienione od przeglądu”), błąd (komunikat;
 pozycja może wrócić). Dla `fix_epic` bez tablicy pokaż komendę ręczną z wyniku. Gdy epik powstał, przypomnij, że
 kolejność na tablicy ustala użytkownik, a następny krok to `/prepare-epic <nr>`.

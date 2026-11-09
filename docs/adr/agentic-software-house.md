@@ -66,8 +66,8 @@ w [planie](../features/agentic-software-house/plan.md).
 | Merge/Release | Merge zatwierdzonych zmian i wdrożenie z możliwością rollbacku |
 | Monitoring | Zamiana alertów i incydentów w nowe zgłoszenia w intake |
 | Agent tester | Test całego sklepu po merge'u epiku (`/sweep`, uruchamiany przez `/ao-run`), propozycje zgłoszeń `bug` do triage człowieka |
-| `/groom` | Codzienne propozycje porządków w backlogu (duplikaty, nieaktualne, braki, etykiety, epik poprawek), wykonywane dopiero po decyzji człowieka |
 | Agent UX | Przegląd ekranów, wersji mobilnej i dostępności po merge'u epiku (`/sweep`, uruchamiany przez `/ao-run`) oraz w `/integration` przy zmianach frontów, propozycje zgłoszeń `ux` do triage człowieka |
+| `/groom` | Codzienne propozycje porządków w backlogu (duplikaty, nieaktualne, braki, etykiety, epik poprawek), wykonywane dopiero po decyzji człowieka |
 | Skrzynka decyzji | Jedno miejsce na decyzje człowieka, z rekomendacją agenta i powiadomieniem |
 | Budżet i limity | Limity subskrypcji, budżet na funkcję, priorytety kolejki |
 | Pula środowisk | Worktree i stos Docker na zadanie, wolne porty, sprzątanie |

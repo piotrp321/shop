@@ -40,9 +40,10 @@ Nadmiar opisz po jednej linii w `overflow`.
   albo kryterium akceptacji, i tylko gdy braku nie da się uzupełnić z kodu. `missing`: lista braków.
 - **`label`:** issue bez żadnej etykiety rodzaju (`bug`, `ux`, `tech-debt`, `epic`, `enhancement`); jedna z `bug`,
   `ux`, `tech-debt`, `enhancement`. Nigdy `epic`.
-- **Odrzucone wcześniej** (wpisy odrzuceń w `input.json`): tej samej pozycji (rodzaj i zbiór issues) nie proponuj,
-  chyba że któreś issue ma inny `updatedAt` niż zapisany we wpisie. Wtedy dodaj `previously_rejected` z datą
-  i powodem oraz zdanie w `reason`, co się zmieniło.
+- **Odrzucone wcześniej** (wpisy odrzuceń w `input.json`, także `kind: "fix_epic"` dla epiku poprawek): tej samej
+  pozycji (rodzaj i zbiór issues) nie proponuj,
+  chyba że któreś issue ma inny `updatedAt` niż zapisany we wpisie. Wtedy dodaj `previously_rejected`
+  (`{"date": "<rejected_at>", "reason": "<powód>"}`) i zdanie w `reason`, co się zmieniło.
 
 ## Epik poprawek (`fix_epic`)
 
