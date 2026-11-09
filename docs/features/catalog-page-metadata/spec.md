@@ -40,7 +40,9 @@ Tylko sklep (`apps/store`). Bez zmian w API, kliencie TS i panelu.
   nieprawidłowym filtrze, który ma sam `noindex`). Tytuł `Wyniki dla „<fraza>” | Worf` (z ` – strona <n>` po stronie 1;
   fraza przycięta i do 100 znaków), bez frazy albo przy frazie krótszej niż 2 znaki `Wyszukiwanie | Worf`, przy
   nieprawidłowym filtrze `Nieprawidłowy filtr | Worf`. Opis `Wyniki wyszukiwania w sklepie Worf.`
-- Nieznana ścieżka `/c/…` i nieznana kategoria: 404 z Next.js (z `noindex`).
+- Nieznana ścieżka `/c/…`, nieznana kategoria, nieznany produkt i każdy inny nieznany adres: strona 404 sklepu
+  (`app/not-found.tsx`: „Nie znaleźliśmy tej strony.” i link „Wróć do sklepu” do `/`, w layoucie z nagłówkiem
+  i stopką), z kodem 404 i `noindex` (dodaje go Next.js).
 - JSON-LD `BreadcrumbList` na `/c/<ścieżka>`: „Wszystkie produkty” i kategorie ścieżki z bezwzględnymi adresami
   `/c/…` (jak na stronie produktu).
 - Metadane nie dokładają żądań do API: jedno wejście na stronę wykonuje po jednym żądaniu na endpoint (drzewo

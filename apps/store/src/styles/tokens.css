@@ -1,52 +1,95 @@
 /*
- * The only place where appearance is defined. Two layers:
+ * The only place where appearance is defined: the direction „Granit” of the store (docs/features/visual-design/spec.md).
+ * Three layers:
  * 1. The raw palette in @theme under `--palette-*`, a namespace that Tailwind does not turn into utilities, so
  *    classes like bg-gray-500 do not exist. `--color-*: initial` removes the default Tailwind palette.
- * 2. The semantic layer: shadcn/ui theme variables that point at the palette. Components use only these.
- * This file is also the entry point of the Tailwind class check in ESLint, so it imports Tailwind itself.
- * The current theme is temporary and neutral: shades of grey, one accent, the system font.
+ * 2. The semantic layer: shadcn/ui theme variables and the tokens of the screens (availability, footer, hero) that
+ *    point at the palette. Components use only these.
+ * 3. Shape and type: radius, no shadows, the type scale, the font (Outfit, loaded by `src/styles/fonts.ts`) and the
+ *    page gutter.
+ * Contrast of every pair (WCAG 2.2 AA) is listed in docs/features/visual-design/mockups/README.md. This file is also
+ * the entry point of the Tailwind class check in ESLint, so it imports Tailwind itself.
  */
 
 @import "tailwindcss";
+@import "tw-animate-css";
 
 @theme static {
   --color-*: initial;
 
+  /* Surfaces and text. */
+  --palette-paper: oklch(0.975 0.004 95);
   --palette-white: oklch(1 0 0);
-  --palette-gray-50: oklch(0.985 0 0);
-  --palette-gray-100: oklch(0.97 0 0);
-  --palette-gray-200: oklch(0.922 0 0);
-  --palette-gray-300: oklch(0.87 0 0);
-  --palette-gray-400: oklch(0.708 0 0);
-  --palette-gray-500: oklch(0.556 0 0);
-  --palette-gray-900: oklch(0.205 0 0);
-  --palette-gray-950: oklch(0.145 0 0);
-  --palette-brand-600: oklch(0.55 0.2 260);
-  --palette-brand-50: oklch(0.97 0.02 260);
-  --palette-danger-600: oklch(0.577 0.245 27);
+  --palette-ink: oklch(0.21 0.008 260);
+  --palette-muted: oklch(0.46 0.012 260);
+  /* Borders of fields and buttons (3:1 on the surfaces); `hair` is only for separators that carry no information. */
+  --palette-line: oklch(0.58 0.012 260);
+  --palette-hair: oklch(0.9 0.005 95);
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* The one accent: the main action, the cart badge, the underline of the open department. `deep` is the accent for
+     text and the focus ring. */
+  --palette-accent: oklch(0.74 0.16 55);
+  --palette-on-accent: oklch(0.2 0.008 260);
+  --palette-accent-deep: oklch(0.5 0.125 50);
+
+  /* Graphite: the footer and the other dark surfaces. */
+  --palette-dark: oklch(0.18 0.008 260);
+  --palette-on-dark: oklch(0.96 0.004 95);
+  --palette-on-dark-muted: oklch(0.78 0.01 260);
+  --palette-dark-line: oklch(0.32 0.01 260);
+
+  /* Availability labels. */
+  --palette-ok: oklch(0.44 0.09 155);
+  --palette-low: oklch(0.5 0.16 38);
+
+  /* The overlay under the text on the hero photo (72% where the text is, then clear). */
+  --palette-overlay: oklch(0.15 0.01 260 / 0.72);
+  --palette-overlay-clear: oklch(0.15 0.01 260 / 0);
 }
 
 :root {
-  --background: var(--palette-white);
-  --foreground: var(--palette-gray-950);
+  /* shadcn/ui. */
+  --background: var(--palette-paper);
+  --foreground: var(--palette-ink);
   --card: var(--palette-white);
-  --card-foreground: var(--palette-gray-950);
-  --primary: var(--palette-brand-600);
-  --primary-foreground: var(--palette-brand-50);
-  --secondary: var(--palette-gray-100);
-  --secondary-foreground: var(--palette-gray-900);
-  --muted: var(--palette-gray-100);
-  --muted-foreground: var(--palette-gray-500);
-  --accent: var(--palette-gray-100);
-  --accent-foreground: var(--palette-gray-900);
-  --destructive: var(--palette-danger-600);
-  --border: var(--palette-gray-200);
-  --input: var(--palette-gray-200);
-  --ring: var(--palette-gray-400);
-  --radius: 0.625rem;
+  --card-foreground: var(--palette-ink);
+  --popover: var(--palette-white);
+  --popover-foreground: var(--palette-ink);
+  --primary: var(--palette-accent);
+  --primary-foreground: var(--palette-on-accent);
+  --secondary: var(--palette-hair);
+  --secondary-foreground: var(--palette-ink);
+  --muted: var(--palette-hair);
+  --muted-foreground: var(--palette-muted);
+  --accent: var(--palette-hair);
+  --accent-foreground: var(--palette-ink);
+  /* Errors reuse the warm red of the direction (6:1 on the page), so the palette has no colour for them alone. */
+  --destructive: var(--palette-low);
+  --border: var(--palette-hair);
+  --input: var(--palette-line);
+  --ring: var(--palette-accent-deep);
+
+  /* Added by the direction. */
+  --link: var(--palette-accent-deep);
+  --success: var(--palette-ok);
+  --warning: var(--palette-low);
+  --inverse: var(--palette-dark);
+  --inverse-foreground: var(--palette-on-dark);
+  --inverse-muted: var(--palette-on-dark-muted);
+  --inverse-border: var(--palette-dark-line);
+  --ring-inverse: var(--palette-accent);
+  --hero-overlay: var(--palette-overlay);
+  --hero-overlay-clear: var(--palette-overlay-clear);
+
+  --radius: 0.25rem;
+  /* One margin at the sides of the page and one maximum width of the content (the mockup: 16 px, 48 px, 1440 px). */
+  --gutter: 1rem;
+}
+
+@media (min-width: 64rem) {
+  :root {
+    --gutter: 3rem;
+  }
 }
 
 @theme inline {
@@ -54,6 +97,8 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -66,12 +111,74 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-inverse: var(--inverse);
+  --color-inverse-foreground: var(--inverse-foreground);
+  --color-inverse-muted: var(--inverse-muted);
+  --color-inverse-border: var(--inverse-border);
+  --color-ring-inverse: var(--ring-inverse);
+  --color-hero-overlay: var(--hero-overlay);
+  --color-hero-overlay-clear: var(--hero-overlay-clear);
 
+  /* Sharp, not round: 4 px everywhere, a little less for small marks such as a checkbox. */
   --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+
+  --spacing-gutter: var(--gutter);
+  --container-content: 90rem;
+
+  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+}
+
+@theme static {
+  /* No shadows in this direction: the utilities stay (components from shadcn use them) and draw nothing. */
+  --shadow-*: initial;
+  --shadow-2xs: 0 0 transparent;
+  --shadow-xs: 0 0 transparent;
+  --shadow-sm: 0 0 transparent;
+  --shadow-md: 0 0 transparent;
+  --shadow-lg: 0 0 transparent;
+  --shadow-xl: 0 0 transparent;
+  --shadow-2xl: 0 0 transparent;
+
+  /* The type scale of the mockup (sizes in rem, 1 rem = 16 px; line height in the pair). */
+  --text-*: initial;
+  --text-xs: 0.8125rem; /* 13: availability labels, field labels, the line under the footer */
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.875rem; /* 14: breadcrumbs, secondary text */
+  --text-sm--line-height: 1.5;
+  --text-ui: 0.9375rem; /* 15: buttons, fields, links of the menus */
+  --text-ui--line-height: 1.5;
+  --text-base: 1rem; /* 16: body */
+  --text-base--line-height: 1.5;
+  --text-lg: 1.125rem; /* 18: hero paragraph on a phone, the count of products */
+  --text-lg--line-height: 1.5;
+  --text-xl: 1.375rem; /* 22: hero paragraph on a desktop */
+  --text-xl--line-height: 1.4;
+  --text-brand-sm: 1.5rem; /* 24: the wordmark of the footer on a phone (28 from `lg`: text-2xl) */
+  --text-brand-sm--line-height: 1.1;
+  --text-2xl: 1.75rem; /* 28: wordmark, price on the product page (phone), h2 (phone) */
+  --text-2xl--line-height: 1.1;
+  --text-3xl: 2rem; /* 32: product name (phone) */
+  --text-3xl--line-height: 1.1;
+  --text-4xl: 2.25rem; /* 36: h1 of a listing (phone), h2 (desktop) */
+  --text-4xl--line-height: 1.1;
+  --text-5xl: 2.75rem; /* 44: hero h1 (phone), product name (desktop) */
+  --text-5xl--line-height: 1.02;
+  --text-6xl: 3rem; /* 48: h1 of a listing (desktop) */
+  --text-6xl--line-height: 1.1;
+  --text-7xl: 5.25rem; /* 84: hero h1 (desktop) */
+  --text-7xl--line-height: 1.02;
+
+  --tracking-*: initial;
+  --tracking-tight: -0.025em; /* headings */
+  --tracking-hero: -0.04em;
+  --tracking-brand: -0.045em; /* the wordmark */
 }
 
 @layer base {
@@ -80,5 +187,14 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
+  }
+  /* A visible focus ring on every interactive element: 3 px, the deep accent (3:1 on the page and on white). */
+  :focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 3px;
+  }
+  /* On a dark surface (the footer) the ring is the accent (7.8:1 on graphite). */
+  [data-surface="inverse"] :focus-visible {
+    outline-color: var(--ring-inverse);
   }
 }

@@ -85,8 +85,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i `BreadcrumbList`, `/szukaj` nie ma JSON-LD.
 - `app/sitemap.xml/`, `app/sitemaps/listing.xml/`, `app/sitemaps/products/[file]/` (route handlery mapy strony)
   i `app/robots.ts` – patrz „Mapa strony i `robots.txt`”.
+- `app/not-found.tsx` – polska strona 404 (nieznany adres i `notFound()`), w layoucie sklepu.
+- `src/catalog/SiteFooter.tsx` – stopka (Server Component w `app/layout.tsx`), obok `SiteHeader`.
 - `src/components/ui/` – komponenty shadcn/ui.
-- `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu.
+- `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu; `src/styles/fonts.ts` (`next/font/local`) i
+  `src/styles/fonts/` – pliki WOFF2 fontu Outfit (`latin`, `latin-ext`); `THIRD_PARTY_NOTICES.md` – licencja OFL
+  fontu i lista plików (przy przeniesieniu plików z vercel/shop także pełny tekst MIT).
 
 ## Dane i API
 
@@ -185,17 +189,30 @@ Klienta API generuje `make api-client` z katalogu głównego.
   się nie wymienia przy hydratacji i wpisany wcześniej tekst zostaje): przy pierwszym uruchomieniu pisze tylko do
   pustego pola, potem nadpisuje je przy zmianie frazy (nowe wyszukiwanie, wyjście z `/szukaj`, które czyści pole
   pozostawionego slotu), nie przy zmianie innych parametrów.
-- Układ: od `sm` logo, pole, koszyk i konto w jednym wierszu; poniżej `sm` pole wyszukiwania ma własny wiersz na pełną
-  szerokość pod logo, koszykiem i kontem (nagłówek ma `flex-wrap`), żeby strona nie przewijała się w poziomie przy 375 px
-  (`e2e/tests/site-header.spec.ts`).
+- Układ (CSS grid z nazwanymi obszarami, jedno `SiteHeader` bez zdublowanego formularza): od `lg` (1024 px) jeden
+  wiersz: znak „Worf”, działy, pole wyszukiwania, koszyk i konto; panel działu rozciąga się na całą szerokość pod
+  nagłówkiem (pozycjonowany względem `header`, w czterech kolumnach: kategoria poziomu 2 jako nagłówek i linki poziomu
+  3). Poniżej `lg` dwa rzędy: znak, przycisk „Menu” (`aria-expanded`), koszyk i konto, pod nimi pole na pełną
+  szerokość; lista działów otwiera się jako panel pod nagłówkiem. Koszyk i konto są ikonami poniżej `xl` (1280 px; nazwa zostaje w `sr-only`), żeby pierwszy rząd mieścił się w
+  375 px także po zalogowaniu, a lista działów miała miejsce od 1024 px (może zawinąć się do drugiej linii). Kolejność w DOM to kolejność telefonu
+  (znak, „Menu”, koszyk, konto, pole z przyciskiem), a siatka ustawia na szerokim ekranie pole przed koszykiem. Kolejność
+  tabulatora ma być kolejnością wizualną (WCAG 2.4.3), więc kontener siatki ma `reading-flow: grid-rows`
+  (`[reading-flow:grid-rows]`): od `lg` tabulator idzie: znak, działy, pole, „Szukaj”, koszyk, konto (poniżej `lg`: znak,
+  „Menu”, koszyk, konto, pole, „Szukaj”). `reading-flow` porządkuje tylko bezpośrednie dzieci siatki, więc `CartBadge`
+  renderuje dwa z nich (komórkę `utils` z linkiem koszyka i kontem jako `children` oraz wiersz komunikatu), a konta nie
+  wolno wyjmować z tej komórki. Przeglądarki bez `reading-flow` (dziś Firefox i Safari) idą na szerokim ekranie
+  w kolejności DOM (pole po koncie). Nie przenoś układu makiety (`kierunek.html`) bez tej poprawki: jej DOM ma pole
+  przed koszykiem, bez `reading-flow`. Brak poziomego przewijania
+  przy 375 px sprawdza `e2e/tests/site-header.spec.ts`, kolejność tabulatora i układ
+  `e2e/tests/visual-foundation.spec.ts`.
 - Layout czyta drzewo przez `loadMenuCategories` (to samo `React.cache` co listing) i renderuje `SiteHeader` z menu
   działów (`MegaMenu`, `nav` „Działy”, Client Component). Na stronie produktu (ISR) odczyt drzewa ma tag `catalog`
   (`loadCategoryTree`), więc strona rewaliduje się razem z katalogiem; odczyt nie ustawia trybu cache.
-- Szeroki ekran: przyciski działów (kategorie główne); panel działu (poziomy 2–3 i „Wszystko z działu”) otwiera się
+- Od `lg`: przyciski działów (kategorie główne); panel działu (poziomy 2–3 i „Wszystko z działu”) otwiera się
   kliknięciem, Enter, Spacją i najechaniem myszą, zamyka Escape, kliknięciem poza menu, przejściem fokusu poza menu,
   kliknięciem linku i przejściem na inny dział; przyciski mają `aria-expanded`. Escape zamyka menu przy dowolnym
   fokusie (pomija zdarzenie z `defaultPrevented`), a fokus wraca na przycisk tylko wtedy, gdy był w menu albo nigdzie
-  (`body`); fokus w polu poza menu zostaje tam, gdzie był. Wąski ekran: przycisk „Menu” z listą trzech poziomów.
+  (`body`); fokus w polu poza menu zostaje tam, gdzie był. Poniżej `lg`: przycisk „Menu” z listą trzech poziomów.
   Głębsze poziomy są na stronie kategorii.
 - Wszystkie linki są w HTML także przy zamkniętym menu (panele mają atrybut `hidden`), JavaScript tylko je otwiera.
 - Błąd odczytu drzewa w layoucie: `console.error` na serwerze, nagłówek bez menu, strona renderuje się dalej (koszyk
@@ -204,6 +221,18 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i tag `catalog`: mają menu z ostatniego renderu (z builda albo z rewalidacji tagu `catalog`, np. po `make seed`).
   Build bez dostępnego drzewa daje te strony bez menu aż do następnej rewalidacji tagu. Strony dynamiczne (`/`,
   `/c/...`, `/checkout/confirmation`) czytają drzewo przy każdym żądaniu.
+
+## Stopka i strona 404
+
+- `SiteFooter` (Server Component w `app/layout.tsx`, `<footer>`) dostaje to samo drzewo co nagłówek (`loadMenuCategories`,
+  jeden odczyt na żądanie, bez własnego żądania; testuje to `app/page.requests.test.tsx`). Grafitowe tło, mały znak
+  „Worf” (link do `/`), linki kategorii głównych w dwóch kolumnach (`nav` „Linki w stopce”, nazwa nie zawiera „Działy”,
+  bo e2e szuka nawigacji „Działy” po części nazwy) i pod cienką linią jeden wiersz „© <bieżący rok> Worf · Zdjęcia:
+  Unsplash” (nazwa ze `STORE_NAME`). Od `lg` znak po lewej i linki po prawej, na telefonie znak nad linkami o wysokości
+  44 px. Błąd drzewa albo puste drzewo: stopka bez `nav`. Bez linków do stron, których nie ma.
+- `app/not-found.tsx`: „Nie znaleźliśmy tej strony.” (`h1`) i przycisk „Wróć do sklepu” (`/`), w layoucie sklepu
+  (nagłówek i stopka), kod 404, `noindex` dodaje Next.js. Dotyczy nieznanego adresu i `notFound()` (nieznany produkt,
+  kategoria).
 
 ## Strona produktu `/p/[slug]`
 
@@ -313,8 +342,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `truncated` scalenia ustawia `store_cart_notice`: znacznik `merge_truncated` podpisany jak `store_cart`, `HttpOnly`,
   `SameSite=Lax`, `Path=/`, `Max-Age` 5 minut. `GET /api/cart/summary` z odpowiedzią 200 zwraca `notice:
   "merge_truncated"` raz (z poprawnie podpisanego ciasteczka albo ze scalenia w tym samym żądaniu) i usuwa ciasteczko;
-  inaczej `notice: null`. `CartBadge` pokazuje wtedy obok linku „Część produktów z koszyka gościa nie zmieściła się
-  w koszyku”.
+  inaczej `notice: null`. `CartBadge` pokazuje wtedy „Część produktów z koszyka gościa nie zmieściła się
+  w koszyku” (`role="status"`) jako osobny wiersz nagłówka pod pozostałymi, na pełną szerokość i w przepływie
+  dokumentu (nie zasłania treści; trzeci wiersz siatki na telefonie, drugi od `lg`); układ sprawdza
+  `e2e/tests/visual-foundation.spec.ts`.
 - `GET /api/cart?discountCode=` (podgląd kodu w kasie) przekazuje parametr do API koszyka gościa i klienta; inne parametry
   są pomijane. Koszyk bez `store_cart` i bez sesji (pusty) odpowiada bez API. 400 API (kod nie jest tekstem albo ma
   ponad 64 znaki) wraca jako 400 z `{ detail }` (tekst naruszenia z API), tylko dla odczytu z kodem; każdy inny 400
@@ -529,14 +560,32 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Wygląd
 
+- Wybrany kierunek: „Granit” (opis i wymagania: `docs/features/visual-design/spec.md`, makieta wskazówką wdrożenia:
+  `docs/features/visual-design/mockups/`). Jasne tło, grafit, jeden pomarańczowy akcent (przycisk główny, plakietka
+  koszyka, podkreślenie działu; ciemniejszy odcień dla linków i pierścienia fokusu), ostre kształty (promień 4 px) bez
+  cieni, kontrast WCAG 2.2 AA i widoczny fokus.
 - Komponenty na shadcn/ui. Nowy komponent dodawaj CLI shadcn w kontenerze (`make -C apps/store shell`,
-  potem `npx shadcn@latest add <komponent>`) i od razu dopasuj go do tokenów.
+  potem `npx shadcn@latest add <komponent>`) i od razu dopasuj go do tokenów. CLI wpisuje w nowych plikach import
+  `cn` z pakietu `cn` (i dopisuje go do `package.json`): popraw na `@/lib/utils` i cofnij zmianę w `package.json` i
+  `package-lock.json`. Klasy `data-open:` i `dark:` z szablonów nie działają (Radix ustawia `data-state`, ciemnego
+  motywu nie ma).
 - Kolory, typografia, promienie i cienie wyłącznie z tokenów w `src/styles/tokens.css`. Żadnych kolorów
   „na sztywno”: bez wartości arbitralnych (`bg-[#…]`, `text-[rgb(…)]`), bez kolorów w `style` i bez klas spoza
   tokenów (`bg-black`, `text-red-500`). Domyślna paleta Tailwinda jest wyłączona, a ESLint to pilnuje.
+- Paletę (`--palette-*`) i istniejące tokeny zmienia tylko VISUAL-DESIGN-5; kolejne zadania wyglądu mogą dopisać nowy
+  token semantyczny wskazujący istniejącą paletę.
 - Komponenty używają warstwy semantycznej (zmienne motywu shadcn/ui: `background`, `foreground`, `primary`,
-  `muted`, `border` i pozostałe), nigdy palety bezpośrednio.
-- Obecny motyw jest tymczasowy i neutralny. Docelowy wygląd powstaje w kroku „Projekt wizualny sklepu”.
+  `muted`, `border` i pozostałe, oraz tokeny kierunku: `link`, `success` („Dostępny”), `warning` („Ostatnie sztuki”),
+  `inverse*` (stopka), `hero-overlay`), nigdy palety bezpośrednio. Błędy pól i komunikaty używają `destructive` (to ten
+  sam odcień co `warning`: paleta nie ma osobnego koloru błędu).
+- Skala typografii to `text-*` z tokenów (`text-ui` = 15 px dla przycisków i pól), odstępy z siatki Tailwinda 4 px.
+  Margines boczny strony to `px-gutter` (16 px, od `lg` 48 px), szerokość treści `max-w-content` (1440 px).
+- Font: Outfit (SIL OFL), plik zmienny w dwóch podzbiorach (`latin`, `latin-ext` z polskimi znakami) z repozytorium przez
+  `next/font/local` (`src/styles/fonts.ts`, zmienna `--font-outfit` w `--font-sans`). Bez żądań do hostów fontów,
+  także w buildzie; `e2e/tests/visual-foundation.spec.ts` sprawdza, że przeglądarka pyta tylko o hosty stosu.
+  Vitest podmienia `next/font/local` atrapą (`tests/stubs/next-font-local.ts`), bo to transformacja kompilatora.
+- Focus: globalna reguła `:focus-visible` w `tokens.css` (3 px, `--ring`); komponenty jej nie wyłączają
+  (bez `outline-none`). Na ciemnym tle (`data-surface="inverse"`, np. stopka) pierścień ma kolor `--ring-inverse`.
 
 ## Obrazy
 
@@ -548,7 +597,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 - Z github.com/vercel/shop (licencja MIT, „Copyright (c) 2025 Vercel, Inc.”) wolno przenosić komponenty i układy.
 - Każdy przeniesiony plik ma w nagłówku komentarz `// Adapted from vercel/shop (MIT): <ścieżka w repo źródłowym>`.
-  `THIRD_PARTY_NOTICES.md` w tym katalogu zawiera pełny tekst licencji MIT i listę przeniesionych plików.
+  Przy pierwszym przeniesionym pliku dopisz do `THIRD_PARTY_NOTICES.md` w tym katalogu wpis z pełnym tekstem licencji
+  MIT i plikiem na liście przeniesionych.
 - Przy przenoszeniu: dane tylko z naszego API przez wygenerowanego klienta, bez kodu, typów i zapytań Shopify;
   obrazy przez `ProductPhoto` zamiast `next/image` z CDN Shopify; kolory i odstępy przepisane na nasze tokeny.
 

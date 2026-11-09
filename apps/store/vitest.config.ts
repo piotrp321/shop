@@ -4,7 +4,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { "@": new URL("./src", import.meta.url).pathname },
+    alias: {
+      "@": new URL("./src", import.meta.url).pathname,
+      "next/font/local": new URL("./tests/stubs/next-font-local.ts", import.meta.url).pathname,
+    },
   },
   test: {
     environment: "node",

@@ -39,7 +39,7 @@ export function AddToCartButton({ variantId }: { variantId: string | null }) {
         Do koszyka
       </Button>
       {feedback?.kind === "added" ? (
-        <p role="status" className="text-xs text-primary">
+        <p role="status" className="text-xs text-success">
           Dodano do koszyka
         </p>
       ) : null}

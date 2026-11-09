@@ -12,7 +12,7 @@ import { FILTER_FORM_ID } from "./SortSelect";
 // Prices are in PLN: the facet has the amounts in grosze and no currency.
 const CURRENCY = "PLN";
 
-const checkboxClass = "size-4 accent-primary";
+const checkboxClass = "size-4 accent-foreground";
 
 /** The filter panel built from the facets of the API: categories, the values of every axis, the price and availability. */
 export function ListingFilters({ mode, facets }: { mode: ListingMode; facets: ProductFacets }) {

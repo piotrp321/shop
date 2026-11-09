@@ -175,8 +175,8 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - Baza układów: github.com/vercel/shop (MIT). Przenosimy komponenty i układy z zachowaniem informacji o licencji,
   ale dane pochodzą wyłącznie z naszego API przez wygenerowanego klienta, bez Shopify.
 - Nie korzystamy z gotowych szablonów komercyjnych (np. z ThemeForest).
-- Kolejność prac: najpierw pełne makiety strony głównej, listingu i karty produktu ze zdjęciami, dopiero potem
-  docelowe tokeny. Do tego czasu sklep ma tymczasowy, neutralny motyw na tych samych tokenach.
+- Wybrany kierunek: „Granit” (jasne tło, grafit, jeden pomarańczowy akcent na najważniejszej akcji, ostre kształty
+  bez cieni, krój Outfit z plików sklepu); opis, makieta i wymagania są w `docs/features/visual-design/spec.md`.
 
 ## Bounded contexty (api)
 

@@ -95,4 +95,26 @@ describe("CartBadge", () => {
     await screen.findByText("2");
     expect(screen.queryByText(/nie zmieściła się/)).toBeNull();
   });
+
+  it("puts the notice in the flow of the header grid as a full-width row, not over the page", async () => {
+    vi.mocked(loadCartSummary).mockResolvedValue({ status: "ok", data: { itemCount: 1, notice: "merge_truncated" } });
+    render(<CartBadge />);
+
+    const notice = await screen.findByRole("status");
+    expect(notice.className).toContain("col-span-full");
+    expect(notice.className).not.toMatch(/\b(absolute|fixed)\b/);
+  });
+
+  it("renders its children in the cell of the cart link, so the header grid has them as one item", async () => {
+    vi.mocked(loadCartSummary).mockResolvedValue({ status: "ok", data: { itemCount: 1, notice: null } });
+    render(
+      <CartBadge>
+        <a href="/auth/login">Zaloguj się</a>
+      </CartBadge>,
+    );
+    await act(async () => {});
+
+    const cell = screen.getByRole("link", { name: /Koszyk/ }).parentElement!;
+    expect(cell.contains(screen.getByRole("link", { name: "Zaloguj się" }))).toBe(true);
+  });
 });
