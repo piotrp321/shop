@@ -46,23 +46,23 @@ export function AccountMenu() {
     return (
       <a href={`/auth/login?returnTo=${encodeURIComponent(returnTo)}`} className={accountLink}>
         <UserIcon aria-hidden className="size-5" />
-        <span className="sr-only lg:not-sr-only">Zaloguj się</span>
+        <span className="sr-only xl:not-sr-only">Zaloguj się</span>
       </a>
     );
   }
 
-  // Below `lg` the controls are icons (the words stay for screen readers), so the header keeps its first row on 375 px.
+  // Below `xl` the controls are icons (the words stay for screen readers), so the header keeps its first row on 375 px.
   return (
     <div className="flex items-center">
-      <span className="sr-only lg:not-sr-only lg:mr-2 lg:text-sm lg:text-muted-foreground">Zalogowany jako {result.session.name}</span>
+      <span className="sr-only xl:not-sr-only xl:mr-2 xl:text-sm xl:text-muted-foreground">Zalogowany jako {result.session.name}</span>
       <Link href="/konto/zamowienia" className={accountLink}>
         <PackageIcon aria-hidden className="size-5" />
-        <span className="sr-only lg:not-sr-only">Moje zamówienia</span>
+        <span className="sr-only xl:not-sr-only">Moje zamówienia</span>
       </Link>
       <form method="post" action="/auth/logout">
         <Button type="submit" variant="ghost" size="sm" className="h-11 min-w-11 px-2.5">
           <LogOutIcon aria-hidden />
-          <span className="sr-only lg:not-sr-only">Wyloguj się</span>
+          <span className="sr-only xl:not-sr-only">Wyloguj się</span>
         </Button>
       </form>
     </div>

@@ -191,4 +191,8 @@
     outline: 3px solid var(--ring);
     outline-offset: 3px;
   }
+  /* On a dark surface (the footer) the ring is the accent (7.8:1 on graphite). */
+  [data-surface="inverse"] :focus-visible {
+    outline-color: var(--ring-inverse);
+  }
 }

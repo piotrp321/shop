@@ -26,7 +26,7 @@ export function SiteHeader({ categories, search }: { categories: CategoryNode[] 
         className={
           "mx-auto grid max-w-content grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2.5 px-gutter py-3 " +
           "[grid-template-areas:'brand_nav_utils''search_search_search'] " +
-          "lg:grid-cols-[auto_minmax(0,1fr)_16rem_auto] lg:gap-x-6 lg:py-4.5 lg:[grid-template-areas:'brand_nav_search_utils']"
+          "lg:grid-cols-[auto_minmax(0,1fr)_12rem_auto] xl:grid-cols-[auto_minmax(0,1fr)_16rem_auto] lg:gap-x-6 lg:py-4.5 lg:[grid-template-areas:'brand_nav_search_utils']"
         }
       >
         <Link href="/" className="[grid-area:brand] text-2xl leading-none font-bold tracking-brand">

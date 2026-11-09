@@ -49,12 +49,12 @@ export function CartBadge() {
         className="relative inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-2.5 text-ui underline-offset-4 hover:underline"
       >
         <ShoppingCartIcon aria-hidden className="size-5" />
-        {/* The word is shown from `lg`; below it the cart is the icon (and the count above it). */}
-        <span className="sr-only lg:not-sr-only">Koszyk</span>
+        {/* The word is shown from `xl`; below it the cart is the icon (and the count over it). */}
+        <span className="sr-only xl:not-sr-only">Koszyk</span>
         {itemCount === null ? null : (
           <span
             data-testid="cart-count"
-            className="absolute top-0.5 right-0 inline-grid h-5.5 min-w-5.5 place-items-center rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground lg:static"
+            className="absolute top-0.5 right-0 inline-grid h-5.5 min-w-5.5 place-items-center rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground xl:static"
           >
             {itemCount}
           </span>

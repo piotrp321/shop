@@ -121,7 +121,8 @@ test("the menu opens with the mouse and the keyboard and closes with Escape", as
   await expect(bieganie).toHaveAttribute("aria-expanded", "false");
 
   await bieganie.click();
-  await page.getByRole("main").click({ position: { x: 1, y: 1 } });
+  // The panel spans the whole width under the header, so the click outside the menu is lower on the page.
+  await page.getByRole("main").click({ position: { x: 1, y: 500 } });
   await expect(bieganie).toHaveAttribute("aria-expanded", "false");
 });
 
