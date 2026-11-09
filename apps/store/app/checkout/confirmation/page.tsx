@@ -9,6 +9,8 @@ import { CONFIRMATION_COOKIE, type OrderConfirmation, readOrderConfirmation } fr
 import { listPaymentProviders, type PaymentProvider } from "@/checkout/payment-api";
 import { readPaymentStatus } from "@/checkout/payment-bff";
 import { PaymentConfirmation, type StatusView } from "@/checkout/PaymentConfirmation";
+import { ScreenMain } from "@/components/ScreenLayout";
+import { Button } from "@/components/ui/button";
 
 // A personal page: nothing in it belongs in a search index.
 export const metadata: Metadata = {
@@ -55,12 +57,12 @@ export default async function OrderConfirmationPage() {
 
   if (confirmation === null) {
     return (
-      <main className="mx-auto flex max-w-3xl flex-col items-start gap-4 px-4 py-6">
-        <p>Nie znaleźliśmy informacji o zamówieniu.</p>
-        <Link href="/" className="text-sm underline underline-offset-4">
-          Wróć do sklepu
-        </Link>
-      </main>
+      <ScreenMain className="items-start gap-4">
+        <p className="text-lg">Nie znaleźliśmy informacji o zamówieniu.</p>
+        <Button asChild variant="link" className="px-0 underline">
+          <Link href="/">Wróć do sklepu</Link>
+        </Button>
+      </ScreenMain>
     );
   }
 
