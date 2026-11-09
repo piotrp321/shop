@@ -1,3 +1,4 @@
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // React's `cache` memoises only inside a server render, and this test runs outside one. This stand-in memoises by
@@ -22,6 +23,7 @@ vi.mock("react", async (importOriginal) => ({ ...(await importOriginal<typeof im
 import { loadMenuCategories } from "@/catalog/category-tree";
 import { EMPTY_FACETS, TREE, makeOffer, makeProduct } from "@/catalog/fixtures";
 import CategoryPage, { generateMetadata as categoryMetadata } from "./c/[...path]/page";
+import RootLayout from "./layout";
 import Home, { generateMetadata } from "./page";
 import SearchPage, { generateMetadata as searchMetadata } from "./szukaj/page";
 
@@ -100,6 +102,17 @@ describe("catalogue page requests", () => {
     await Promise.all([loadMenuCategories(), generateMetadata(request), Home(request).catch(() => undefined)]);
     expect(requested.filter((path) => path === "/api/v1/categories")).toHaveLength(1);
     expect(requested.filter((path) => path === "/api/v1/products")).toHaveLength(1);
+  });
+
+  it("makes no categories request of its own for the footer: layout (header and footer) and page share one", async () => {
+    const request = props({ page: "2" });
+    const [layout] = await Promise.all([
+      RootLayout({ children: null } as unknown as Parameters<typeof RootLayout>[0]),
+      generateMetadata(request),
+      Home(request),
+    ]);
+    expect(renderToStaticMarkup(layout)).toMatch(/<footer[\s\S]*href="\/c\/bieganie"[\s\S]*<\/footer>/);
+    expect(requested.filter((path) => path === "/api/v1/categories")).toHaveLength(1);
   });
 
   it("asks again on the next request", async () => {
