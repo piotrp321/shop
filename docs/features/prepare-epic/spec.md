@@ -178,7 +178,8 @@ w GitHubie, a sesja wysyła push (do 200 znaków) `Epik <ID> #<nr>: przygotowani
 1. **Pochodzenie.** `groom.py origin <nr>` zwraca kod 0 tylko wtedy, gdy w katalogu przebiegu
    `~/.local/state/shop-groom/*/proposals.json` jest `fix_epic` z `result.status` równym `done` i adresem issue `<nr>`,
    a issue jest otwarte, ma etykietę `epic`, nie ma `needs-info` i jego ID z tytułu jest równe `fix_epic.id` z sufiksem
-   `-FIXES`. Wypisuje jedną linię JSON `{run_dir, id, issues}`. Inaczej kod 1 z powodem. Pochodzenie potwierdza stan
+   `-FIXES`. Wypisuje jedną linię JSON `{run_dir, id, issues, prepare}`; `prepare` to `state.json` przygotowania tego
+   epiku albo `null`. Inaczej kod 1 z powodem. Pochodzenie potwierdza stan
    `/groom`, nie treść issue.
 2. **Nic innego nie pracuje.** Nie działa `ao run` ani projekt Compose `sweep-*`: te same sprawdzenia co na starcie
    `/groom`, wykonane od nowa.
@@ -192,8 +193,12 @@ w GitHubie, a sesja wysyła push (do 200 znaków) `Epik <ID> #<nr>: przygotowani
 - Worktree `git worktree add -b prepare/<katalog> <run_dir>/prepare origin/main` w katalogu przebiegu `/groom`.
   Główny klon zostaje na czystym `main`, bo tego wymaga następny przebieg `/groom` z harmonogramu.
 - Katalog stanu `<run_dir>/prepare-epic/`:
-  - `state.json`: `{issue, id, katalog, worktree, branch, base_commit, status, gate}`; `status` to `running`,
-    `awaiting`, `interactive`, `published` albo `failed`; `base_commit` to `origin/main` z chwili startu;
+  - `state.json`: `{issue, id, katalog, worktree, branch, base_commit, status, stages, reviews, gate}`; `status` to
+    `running`, `awaiting`, `interactive`, `published` albo `failed`; `base_commit` to `origin/main` z chwili startu;
+    `stages` to ukończone etapy w kolejności (`analyst`, `review`, `fixes`, `review2`, `planner`, `acceptance`),
+    dopisywane zaraz po ukończeniu etapu; `reviews` to lista `{agent, round, file, ok, critical_resolved,
+    critical_open}` (ocena raportu przez sesję: liczba znalezisk `Critical` poprawionych albo odrzuconych i liczba
+    otwartych, z tymi, które wymagają decyzji użytkownika); `gate` to ostatni wynik `groom.py gate`;
   - raporty recenzentów, każdy w osobnym pliku (`review-<agent>-<runda>.md`), dosłownie;
   - `acceptance.md`: wiadomość z kroku „Pytania i akceptacja”.
 - Gałąź, worktree i stan zostają do odpowiedzi użytkownika. Brak terminu i przypomnień. Worktree usuwa krok 7 po
@@ -228,13 +233,19 @@ dosłownie, zapisuje stan. Treść `spec.md` i `plan.md` pisze wyłącznie podag
 
 ### Bramka
 
+Bramkę liczy `groom.py gate <run_dir>`, nie model. Kod 0: przechodzi, kod 3: nie przechodzi, kod 1: błąd `git` albo
+walidatora, kod 2: brak albo zły `state.json`. Wypisuje jedną linię JSON `{ok, checks: [{name, ok, detail}]}`
+i zapisuje ją w `state.json` jako `gate`. Sesja uruchamia ją przed wysłaniem wiadomości i po każdej odpowiedzi „tak”,
+także po wznowieniu, niezależnie od wcześniejszego wyniku.
+
 Odpowiedź „tak” akceptuje rekomendacje, specyfikację, rozmiar końcowego PR i pozycje użytkownika z „Wymaganych przed
 startem” tylko wtedy, gdy w chwili odpowiedzi wszystkie warunki są spełnione:
 
-- oba review z kroku 2 i każda runda 2 zakończyły się poprawnie;
-- nie ma otwartego znaleziska `Critical`: poprawionego bez potwierdzenia w rundzie 2, zgłoszonego w rundzie 2 albo
-  wymagającego decyzji użytkownika (produktowego lub architektonicznego). Takie znalezisko jest osobnym pytaniem,
-  którego „tak” nie rozstrzyga;
+- oba review z kroku 2 i każda runda 2 zakończyły się poprawnie (`reviews`: runda 1 obu agentów z `ok`, runda 2
+  z `ok` dla każdego agenta z `critical_resolved` > 0 w rundzie 1, plik raportu istnieje);
+- nie ma otwartego znaleziska `Critical` (`critical_open` = 0 w ostatniej rundzie każdego agenta): poprawionego bez
+  potwierdzenia w rundzie 2, zgłoszonego w rundzie 2 albo wymagającego decyzji użytkownika (produktowego lub
+  architektonicznego). Takie znalezisko jest osobnym pytaniem, którego „tak” nie rozstrzyga;
 - walidator manifestu i `night_queue.py scope` przeszły na obecnych plikach (sesja uruchamia je jeszcze raz po
   odpowiedzi);
 - od `base_commit` żaden commit na `origin/main` nie zmienił ścieżek z linii `Zakres:` ani `spec.md`/`plan.md`
@@ -258,18 +269,27 @@ Akceptację daje wyłącznie użytkownik w rozmowie, jak w kroku 6.
 
 ### Wznowienie
 
-Gdy sesja `/groom` z czekającą akceptacją się zamknęła, ręczne `/prepare-epic <nr>` nie odmawia startu z powodu
-istniejącej gałęzi `prepare/<katalog>`, jeśli `<run_dir>/prepare-epic/state.json` dla tego issue ma `status`
-`awaiting` albo `interactive`, a worktree istnieje. Sesja pokazuje wtedy `acceptance.md` z bramką sprawdzoną od nowa
-i dalej działa według sekcji „Odpowiedzi”. Każdy inny stan gałęzi: odmowa jak dziś.
+Gdy sesja `/groom` się zamknęła w trakcie przygotowania albo przy czekającej akceptacji, ręczne `/prepare-epic <nr>`
+nie odmawia startu z powodu istniejącej gałęzi `prepare/<katalog>`, jeśli `groom.py origin <nr>` zwraca stan
+przygotowania (`prepare`) ze `status` `running`, `awaiting` albo `interactive`, a worktree istnieje. Wtedy:
+
+- Etapy z `stages` nie są powtarzane: bez nowych agentów i bez ponownego review dla ukończonych etapów. Sesja zaczyna
+  od pierwszego nieukończonego etapu na plikach z worktree i raportach z katalogu stanu. Etap przerwany w połowie
+  zaczyna się od nowa. Przy `awaiting` jedynym krokiem jest bramka i pokazanie `acceptance.md`.
+- Bramka jest liczona od nowa (`groom.py gate`) przed pokazaniem akceptacji i po „tak”, bez względu na zapisany
+  `gate`.
+- Sesja działa dalej według „Odpowiedzi”; przy `interactive` według dzisiejszego przebiegu.
+
+Każdy inny stan gałęzi (bez stanu, `published`, `failed`, brak worktree): odmowa jak dziś.
 
 ### Pliki
 
 - `.claude/skills/prepare-epic/SKILL.md`: sekcja trybu po `/groom` i wznowienie.
 - `.claude/skills/groom/SKILL.md`: nowy krok po kroku 6, który przy `fix_epic` ze statusem `done` uruchamia ten tryb.
   „Czego nie robisz” bez punktu o `/prepare-epic`.
-- `.claude/skills/groom/groom.py` i `test_groom.py`: komenda `origin <nr>`. Testy są już w CI.
-- Bez nowych agentów, skryptów i zmian w AO, `ci.yml` i regułach merge'u.
+- `.claude/skills/groom/groom.py` i `test_groom.py`: komendy `origin <nr>` (pochodzenie i stan przygotowania)
+  i `gate <run_dir>` (bramka). Testy są już w CI.
+- Bez nowych agentów, plików skryptów i zmian w AO, `ci.yml` i regułach merge'u.
 
 ### Wymagane przed startem
 
@@ -280,17 +300,25 @@ i dalej działa według sekcji „Odpowiedzi”. Każdy inny stan gałęzi: odmo
 
 ### Kryteria akceptacji
 
-1. Testy `groom.py origin`: `fix_epic` z `done` → kod 0 i JSON; `fix_epic` `skipped`, `error`, `rejected`, bez
-   decyzji albo `null` → kod 1; issue zamknięte, bez `epic`, z `needs-info` albo z innym ID → kod 1; brak katalogów
-   przebiegów → kod 1; błąd `gh` → kod 1.
+1. Testy `groom.py origin`: `fix_epic` z `done` → kod 0 i JSON, z `prepare` przy istniejącym `state.json`;
+   `fix_epic` `skipped`, `error`, `rejected`, bez decyzji albo `null` → kod 1; issue zamknięte, bez `epic`,
+   z `needs-info` albo z innym ID → kod 1; brak katalogów przebiegów → kod 1; błąd `gh` → kod 1.
+   Testy `groom.py gate`: wszystko spełnione → kod 0; brak rundy 1 agenta, review bez `ok`, brak pliku raportu,
+   `critical_resolved` bez rundy 2, `critical_open` > 0 w ostatniej rundzie, błąd walidatora, linia `Zakres:` nie do
+   odczytania, commit w zakresie albo w plikach epiku po `base_commit` → kod 3 z nazwą warunku; błąd `git` → kod 1;
+   brak `state.json` → kod 2; wynik zapisany w `state.json`.
 2. Ścieżka błędu startu: każdy z warunków 1–5 kończy tryb pushem z powodem, bez worktree i bez gałęzi. Pokazane na
    atrapach (`ao run`, projekt `sweep-*`, okno ≥ 80%, `ahead` z `full: true`, istniejąca gałąź `prepare/*`).
-3. Bramka: na przygotowanym stanie (worktree z szkicem, raporty z `Critical` otwartym, walidator z błędem, commit
-   w `Zakres:` po `base_commit`) wiadomość nie proponuje „tak”, a „tak” nie uruchamia kroku 7. Pokazane.
+3. Bramka na prawdziwym repo: `groom.py gate` na przygotowanym stanie (worktree ze szkicem, `Critical` otwarty,
+   walidator z błędem, commit w `Zakres:` po `base_commit`) kończy się kodem 3 z każdym z tych warunków, a po ich
+   usunięciu kodem 0. Pokazane.
 4. Prawdziwy przebieg: pierwszy epik poprawek zatwierdzony w `/groom` przechodzi do jednej wiadomości z pushem;
    `acceptance.md` ma bramkę i `## Zużycie`. Dziś nie może nastąpić, bo otwarty jest QUALITY-FIXES (jeden epik
    poprawek naraz); kryterium sprawdza pierwszy epik `-FIXES` po nim, jak kryteria 7–9 kroku 12.
-5. Wznowienie: `/prepare-epic <nr>` przy stanie `awaiting` pokazuje akceptację; przy gałęzi bez stanu odmawia.
+5. Wznowienie: sprawdza je pierwszy epik poprawek, gdy sesja zostanie zamknięta przed odpowiedzią; do tego czasu
+   regułę wznowienia pokrywają testy `origin` (stan przygotowania) i `gate`.
+
+Do przebiegu z kryterium 4 krok 14 ma w planie status „zrobione, niezweryfikowane na prawdziwym epiku”.
 
 ### Zmiany w dokumentacji (w PR implementacji)
 
