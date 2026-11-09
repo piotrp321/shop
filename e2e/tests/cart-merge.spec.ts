@@ -3,16 +3,18 @@ import { emptyCart, logInAsJan } from "../support/shop";
 import { urls } from "../support/urls";
 import { cartLineOf, chooseFirstVariant } from "../support/variants";
 
-// Products of the list that are plainly in stock: a price, the label "Dostępny" and the button.
+// Products of the list that are plainly in stock: a price, the label "Dostępny" and the button („Do koszyka”, or „Wybierz
+// wariant” on a tile that offers a choice of variants).
 const inStockTiles = (page: Page) =>
   page
     .getByRole("main")
     .getByRole("listitem")
     .filter({ has: page.getByTestId("availability").getByText("Dostępny", { exact: true }) })
-    .filter({ has: page.getByRole("button", { name: "Do koszyka" }) });
+    .filter({ has: page.getByRole("button", { name: /^(Do koszyka|Wybierz wariant)$/ }) });
 
+// Found by the name only: the buttons of a tile with a choice change while a variant is chosen.
 const tileNamed = (page: Page, name: string) =>
-  inStockTiles(page).filter({ has: page.getByRole("heading", { name, exact: true }) });
+  page.getByRole("main").getByRole("listitem").filter({ has: page.getByRole("heading", { name, exact: true }) });
 
 const cartLines = (page: Page) => page.getByRole("main").getByRole("listitem");
 

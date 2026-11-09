@@ -25,22 +25,22 @@ export function ActiveFilters({ basePath, state, categoryName }: { basePath: str
 
   if (chips.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
       <ul aria-label="Aktywne filtry" className="flex flex-wrap items-center gap-2">
         {chips.map((chip) => (
           <li key={chip.label}>
             <Link
               href={chip.href}
               aria-label={`Usuń filtr: ${chip.label}`}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1 text-sm hover:bg-accent"
+              className="inline-flex min-h-9 items-center gap-2 rounded-md border border-input bg-card px-3 text-sm hover:bg-muted"
             >
               {chip.label}
-              <X aria-hidden="true" className="size-3" />
+              <X aria-hidden="true" className="size-3.5" />
             </Link>
           </li>
         ))}
       </ul>
-      <Link href={listingHref(basePath, clearedFilters(state))} className="text-sm underline underline-offset-4">
+      <Link href={listingHref(basePath, clearedFilters(state))} className="inline-block py-1.5 text-sm underline underline-offset-4">
         Wyczyść filtry
       </Link>
     </div>

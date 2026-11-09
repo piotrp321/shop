@@ -137,7 +137,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `CatalogListing`: breadcrumby „Wszystkie produkty” › kategorie ścieżki (linki `/c/<ścieżka>`, ostatni element bez
   linku, tylko na `/c/` i `/szukaj`), `h1` z nazwą, obok liczba produktów (`formatProductCount`: „1 produkt”,
   „2–4 produkty”, 22–24 itd., reszta „produktów”, także 12–14), panel filtrów (po lewej od `lg`), nad siatką aktywne
-  filtry i lista „Sortuj”, siatka i paginacja. Wszystkie adresy strony (paginacja, linki kategorii, chipy) buduje
+  filtry i lista „Sortuj”, siatka i paginacja. Wygląd według makiety „Granit”: kafelki bez ramki (zdjęcie na całą szerokość
+  kafelka, tekst pod nim; zdjęcie produktu niedostępnego jest wyszarzone), 2 kolumny na telefonie, od `sm` 3, od `lg` 4;
+  ścieżka z separatorem „/”; od `lg` kolumna filtrów 260 px po lewej bez ramki, grupy rozdzielone liniami (panel nie jest
+  wysuwany: makieta pokazuje go zawsze). Wszystkie adresy strony (paginacja, linki kategorii, chipy) buduje
   `listingHref(basePath, state, patch)` z adresu listingu bez parametrów (`basePath`) i jego parametrów (`state`).
 - SEO: tytuł `/c/` to `<nazwa>[ – strona n] | Worf`, kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1);
   pusta strona poza zakresem i niepoprawny `page` mają `noindex`. `/c/` ma JSON-LD `BreadcrumbList` (bezwzględne
@@ -191,7 +194,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   przycinana i idzie bez przeliczania, pusta usuwa filtr. Każda zmiana filtra lub sortowania usuwa `page` (`listingHref`).
 - Bez JavaScriptu panel jest formularzem `GET` (`id="listing-filters"`, ukryte pola `q` i `kategoria`; `select` „Sortuj”
   należy do niego przez atrybut `form`) z przyciskiem „Pokaż wyniki” w `noscript`; `noscript` pokazuje też panel
-  na wąskim ekranie. Na wąskim ekranie panel rozwija przycisk „Filtry” (`aria-expanded`).
+  na wąskim ekranie. Na wąskim ekranie panel (w ramce) rozwija przycisk „Filtry” (`aria-expanded`); od `lg` przycisk jest
+  ukryty, a panel zawsze widoczny.
 - Aktywne filtry (`ActiveFilters`, zwykłe linki, więc działają bez JavaScriptu): link usuwający jeden filtr (osie, cena
   od, cena do, „Tylko dostępne”, kategoria wyszukiwania) i „Wyczyść filtry” (zostają fraza i sortowanie). Brak wyników:
   „Nie znaleźliśmy produktów.”, przy filtrach przycisk „Wyczyść filtry”, przy frazie link „Zobacz wszystkie produkty”.
@@ -409,10 +413,18 @@ Klienta API generuje `make api-client` z katalogu głównego.
   ani na blokadę. Testy ustawiają `navigator` przez `vi.stubGlobal` (Node ma własne `navigator.locks`).
 - UI: `ProductTile` (Server Component: nazwa, zdjęcie, cena „od X zł” przy `hasPriceRange` z oznaczeniem promocji i linią Omnibus z `fromPromotion`, poziom produktu; produkt
   bez wariantu możliwego do kupienia, `fromGross = null`: „Niedostępny” bez ceny, listy i przycisku) z częścią kliencką
-  `TileOffer`: produkt z jednym wariantem ma przycisk `AddToCartButton` dodający ten wariant, produkt z ≥ 2 wariantami
-  listę wariantów (etykieta: nazwy osi) bez wyboru domyślnego, z wariantami `purchasable = false` opisanymi
-  „niedostępny” i wyłączonymi; po wyborze kafelek pokazuje cenę, oznaczenie promocji (z `promotion` wariantu) i poziom wybranego wariantu, a przycisk (wyłączony do
-  wyboru) dodaje 1 sztukę wybranego wariantu. `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
+  `TileOffer`: produkt z jednym wariantem ma od razu przycisk `AddToCartButton` dodający ten wariant; produkt z ≥ 2
+  wariantami ma jedną aktywną akcję „Wybierz wariant” (bez `<select>` i bez nieaktywnego „Do koszyka”). Po niej akcja
+  znika, a kafelek pokazuje warianty z oferty w jej kolejności jako grupę radio (`fieldset` z nazwami osi albo „Wybierz
+  wariant” w `legend`; jeden przystanek Tab, strzałki zmieniają wybór, wybór można zmienić) bez wyboru domyślnego;
+  fokus przechodzi na pierwszy wariant możliwy do wybrania, a wariant `purchasable = false` ma dopisek „niedostępny”
+  i jest wyłączony. Jedna oś: etykiety jako przyciski (`data-form="buttons"`; na telefonie jeden pod drugim, od `lg` w rzędzie z zawijaniem); dwie osie lub więcej: lista pełnych
+  etykiet jedna pod drugą (`data-form="list"`, mieści się w 375 px bez przewijania poziomego); oferta ma tylko złączoną
+  etykietę, więc sklep nie rozbija jej na osie. Ukryty wizualnie obszar `role="status"` (`aria-live="polite"`, istnieje
+  od pierwszego renderu) ogłasza rozwinięcie i każdy wybór (etykieta, cena, dostępność). Po wyborze kafelek pokazuje cenę, oznaczenie
+  promocji (z `promotion` wariantu) i poziom wybranego wariantu oraz aktywny „Do koszyka”, który dodaje 1 sztukę wybranego wariantu
+  (bez wyboru przycisku „Do koszyka” nie ma; zmiana wyboru w trakcie żądania zostawia przycisk zablokowany, a komunikat
+  „Dodano do koszyka” dotyczy tylko wariantu, dla którego powstał). To samo na kafelkach strony głównej. `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
   (`CartPage`, Client Component ładujący `/api/cart`), linia z nazwą produktu i etykietą wariantu, pod podsumowaniem
   przycisk „Przejdź do kasy” (link do `/checkout`; przy `hasExcludedLines` nieaktywny z tekstem „Usuń albo popraw
   oznaczone pozycje, żeby złożyć zamówienie.”). Po każdej zmianie koszyka komponent ogłasza `itemCount` z

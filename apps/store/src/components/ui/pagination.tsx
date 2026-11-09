@@ -35,19 +35,20 @@ function PaginationItem({ ...props }: React.ComponentProps<"li">) {
 
 type PaginationLinkProps = {
   isActive?: boolean
-} & Pick<React.ComponentProps<typeof Button>, "size"> &
+} & Pick<React.ComponentProps<typeof Button>, "size" | "variant"> &
   React.ComponentProps<"a">
 
 function PaginationLink({
   className,
   isActive,
   size = "icon",
+  variant = isActive ? "outline" : "ghost",
   ...props
 }: PaginationLinkProps) {
   return (
     <Button
       asChild
-      variant={isActive ? "outline" : "ghost"}
+      variant={variant}
       size={size}
       className={cn(className)}
     >
@@ -71,11 +72,12 @@ function PaginationPrevious({
       // The name starts with the visible text: a name that does not contain it fails WCAG 2.5.3 (label in name).
       aria-label={`${text} – przejdź do poprzedniej strony`}
       size="default"
-      className={cn("pl-1.5!", className)}
+      variant="outline"
+      className={cn("pl-3.5!", className)}
       {...props}
     >
       <ChevronLeftIcon data-icon="inline-start" />
-      <span className="hidden sm:block">{text}</span>
+      <span>{text}</span>
     </PaginationLink>
   )
 }
@@ -89,10 +91,11 @@ function PaginationNext({
     <PaginationLink
       aria-label={`${text} – przejdź do następnej strony`}
       size="default"
-      className={cn("pr-1.5!", className)}
+      variant="outline"
+      className={cn("pr-3.5!", className)}
       {...props}
     >
-      <span className="hidden sm:block">{text}</span>
+      <span>{text}</span>
       <ChevronRightIcon data-icon="inline-end" />
     </PaginationLink>
   )

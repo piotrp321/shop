@@ -10,12 +10,20 @@ export function CatalogPagination({ page, perPage, total, hrefFor }: { page: num
 
   return (
     <Pagination>
-      <PaginationContent>
-        <PaginationItem>{page > 1 && <PaginationPrevious href={hrefFor(Math.min(page - 1, pageCount))} />}</PaginationItem>
-        <PaginationItem className="px-2 text-sm text-muted-foreground">
+      <PaginationContent className="flex-wrap justify-center gap-x-3.5 gap-y-3 lg:gap-x-5">
+        {page > 1 && (
+          <PaginationItem>
+            <PaginationPrevious href={hrefFor(Math.min(page - 1, pageCount))} />
+          </PaginationItem>
+        )}
+        <PaginationItem className="order-first basis-full text-center text-sm text-muted-foreground sm:order-none sm:basis-auto">
           Strona {page} z {pageCount}
         </PaginationItem>
-        <PaginationItem>{page < pageCount && <PaginationNext href={hrefFor(page + 1)} />}</PaginationItem>
+        {page < pageCount && (
+          <PaginationItem>
+            <PaginationNext href={hrefFor(page + 1)} />
+          </PaginationItem>
+        )}
       </PaginationContent>
     </Pagination>
   );
