@@ -26,6 +26,13 @@ describe("the gallery in the HTML of the server", () => {
     expect(html).not.toContain("aria-current");
   });
 
+  it("sizes the photos of the strip for the layout: a thumbnail column beside them only with several photos", () => {
+    const one = renderToStaticMarkup(<ProductGallery name={details.name} images={details.images.slice(0, 1)} zoomImages={details.zoomImages.slice(0, 1)} />);
+    expect(html).toContain("- 6.25rem");
+    expect(one).not.toContain("- 6.25rem");
+    expect(one).not.toContain("642px");
+  });
+
   it("has no enlargement dialog before the visitor opens it", () => {
     expect(html).not.toContain("role=\"dialog\"");
     expect(html).not.toContain("z" + "a1-1280");

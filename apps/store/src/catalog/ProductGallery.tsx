@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, XIcon } from "lucide-react";
-import { useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { components } from "@/api/schema";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -14,9 +14,11 @@ type ProductImage = components["schemas"]["ProductImage"];
 type ZoomImage = components["schemas"]["ZoomImage"];
 type Photo = { image: ProductImage; zoom: ZoomImage | undefined };
 
-// The stage is the whole width of the page below `lg`; from `lg` the page is two columns (7:5, a gap of 72 px, the
-// thumbnails 84 px and a gap of 16 px on the left of the stage) in a content of at most 90rem with a margin of 3rem.
-const STAGE_SIZES = "(min-width: 1440px) 642px, (min-width: 1024px) calc((100vw - 10.5rem) * 7 / 12 - 6.25rem), calc(100vw - 2rem)";
+// The stage is the whole width of the page below `lg`; from `lg` the page is two columns (7:5, a gap of 72 px) in a content
+// of at most 90rem with a margin of 3rem. With several photos the thumbnails (84 px and a gap of 16 px) take a column on
+// the left of the stage; with one photo there are none.
+const STAGE_SIZES_SEVERAL = "(min-width: 1440px) 642px, (min-width: 1024px) calc((100vw - 10.5rem) * 7 / 12 - 6.25rem), calc(100vw - 2rem)";
+const STAGE_SIZES_ONE = "(min-width: 1440px) 742px, (min-width: 1024px) calc((100vw - 10.5rem) * 7 / 12), calc(100vw - 2rem)";
 
 // Every photo of the enlargement is as wide as the window, so the browser picks the file for the screen: a phone never
 // asks for the 2560 px one.
@@ -55,7 +57,7 @@ export function ProductGallery({ name, images, zoomImages }: { name: string; ima
   // The photos with a usable variant, each with its twin of the `zoom` size (the API gives them in the same order).
   const photos: Photo[] = images.map((image, position) => ({ image, zoom: zoomImages[position] })).filter(({ image }) => image.variants.webp?.length);
   const count = photos.length;
-  const { ref: stripRef, index, goTo, onScroll, neighbour, arrowTarget } = usePhotoStrip(count);
+  const { ref: stripRef, index, goTo, onScroll, current, neighbour, arrowTarget } = usePhotoStrip(count);
   const [zoomStart, setZoomStart] = useState<number | null>(null);
   const opener = useRef<HTMLElement | null>(null);
 
@@ -81,7 +83,7 @@ export function ProductGallery({ name, images, zoomImages }: { name: string; ima
         {/* The arrow keys of the photo buttons inside bubble up to the strip. */}
         <div ref={stripRef} role="group" aria-label="Zdjęcia produktu" className={stripClasses} onScroll={onScroll} onKeyDown={onKeyDown}>
           {photos.map(({ image }, position) => {
-            const photo = <ProductPhoto image={image} sizes={STAGE_SIZES} priority={position === 0} className="h-full rounded-md" />;
+            const photo = <ProductPhoto image={image} sizes={several ? STAGE_SIZES_SEVERAL : STAGE_SIZES_ONE} priority={position === 0} className="h-full rounded-md" />;
             return (
               <div key={position} id={`zdjecie-${position + 1}`} data-photo={position} className="aspect-square w-full shrink-0 snap-center">
                 {zoomable ? (
@@ -118,8 +120,8 @@ export function ProductGallery({ name, images, zoomImages }: { name: string; ima
         )}
         {several && hydrated && (
           <>
-            <Arrow direction="previous" className="left-2.5" onClick={() => goTo(neighbour(index, -1))} />
-            <Arrow direction="next" className="right-2.5" onClick={() => goTo(neighbour(index, 1))} />
+            <Arrow direction="previous" className="left-2.5" onClick={() => goTo(neighbour(current(), -1))} />
+            <Arrow direction="next" className="right-2.5" onClick={() => goTo(neighbour(current(), 1))} />
           </>
         )}
       </div>
@@ -168,12 +170,7 @@ export function ProductGallery({ name, images, zoomImages }: { name: string; ima
 function ZoomView({ name, zooms, start, onCloseAutoFocus }: { name: string; zooms: ZoomImage[]; start: number; onCloseAutoFocus: (event: Event) => void }) {
   const count = zooms.length;
   const several = count > 1;
-  const { ref, index, goTo, onScroll, neighbour, arrowTarget } = usePhotoStrip(count, start);
-
-  // The strip opens on the photo that was visible, without an animation.
-  useLayoutEffect(() => {
-    if (ref.current) ref.current.scrollLeft = start * ref.current.clientWidth;
-  }, [ref, start]);
+  const { ref, index, goTo, onScroll, current, neighbour, arrowTarget } = usePhotoStrip(count, start);
 
   return (
     <DialogContent
@@ -184,7 +181,7 @@ function ZoomView({ name, zooms, start, onCloseAutoFocus }: { name: string; zoom
       onCloseAutoFocus={onCloseAutoFocus}
       onKeyDown={(event) => {
         // The arrow keys work wherever the focus is in the window.
-        const target = arrowTarget(event, index);
+        const target = arrowTarget(event, current());
         if (target === null) return;
         event.preventDefault();
         goTo(target);
@@ -217,8 +214,8 @@ function ZoomView({ name, zooms, start, onCloseAutoFocus }: { name: string; zoom
         </div>
         {several && (
           <>
-            <Arrow direction="previous" className="left-3.5" onClick={() => goTo(neighbour(index, -1))} />
-            <Arrow direction="next" className="right-3.5" onClick={() => goTo(neighbour(index, 1))} />
+            <Arrow direction="previous" className="left-3.5" onClick={() => goTo(neighbour(current(), -1))} />
+            <Arrow direction="next" className="right-3.5" onClick={() => goTo(neighbour(current(), 1))} />
           </>
         )}
       </div>

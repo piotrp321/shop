@@ -118,7 +118,8 @@ describe("ProductDetailsView", () => {
       render(<ProductDetailsView details={makeDetails(1)} offer={offer} />);
       // The gallery has buttons of its own: the arrows and the enlarge buttons.
       expect(screen.queryByRole("button", { name: "Do koszyka" })).toBeNull();
-      expect(screen.queryByRole("group", { name: "Kolor" })).toBeNull();
+      // No choice of the variant: the only group is the gallery.
+      expect(screen.getAllByRole("group").map((group) => group.getAttribute("aria-label"))).toEqual(["Zdjęcia produktu"]);
       expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
         "Powiększ zdjęcie 1 z 2: Zdjęcie 1, pierwsze",
         "Powiększ zdjęcie 2 z 2: Zdjęcie 1, drugie",

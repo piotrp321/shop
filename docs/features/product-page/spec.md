@@ -340,8 +340,9 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
   tego, co dodaje JavaScript), więc nazwa, cena i „Do koszyka” nie przesuwają się przy hydratacji.
 - **Po hydratacji** (JavaScript): `aria-current="true"` przy miniaturze widocznego zdjęcia; licznik podąża za paskiem
   (także za przesunięciem palcem; pozycja liczy się, gdy pasek przestanie się przewijać na 100 ms, żeby czytnik nie
-  ogłaszał zdjęć mijanych w trakcie przewijania); przyciski „Poprzednie zdjęcie” i „Następne zdjęcie” (ułożone
-  bezwzględnie nad paskiem, więc bez przesunięcia układu; przechodzą w kółko); kliknięcie miniatury przewija pasek
+  ogłaszał zdjęć mijanych w trakcie przewijania; pozycję czyta też raz po hydratacji, więc pasek przewinięty przed nią pokazuje właściwe zdjęcie); przyciski „Poprzednie zdjęcie” i „Następne zdjęcie” (ułożone
+  bezwzględnie nad paskiem, więc bez przesunięcia układu; przechodzą w kółko od aktualnej pozycji paska albo od celu trwającego
+  przewijania, więc dwa szybkie kliknięcia przesuwają o dwa zdjęcia); kliknięcie miniatury przewija pasek
   płynnie (bez animacji przy `prefers-reduced-motion: reduce`), z `preventDefault`, więc bez zmiany adresu i bez wpisu
   w historii; ← → w pasku (fokus na zdjęciu) przechodzą do sąsiedniego zdjęcia i przenoszą na nie fokus.
 - **Powiększenie:** zdjęcie paska jest w przycisku z nazwą „Powiększ zdjęcie n z m: <alt>” (z napisem „Powiększ”
@@ -350,13 +351,15 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
   „Poprzednie zdjęcie” i „Następne zdjęcie”, `alt` zdjęcia pod nim. Obrazy mają `srcset` ze wszystkich szerokości
   rozmiaru `zoom` (1280, 1920, 2560) i `sizes="100vw"`, więc telefon nie pobiera pliku 2560 px; widoczne zdjęcie jest
   `eager`, pozostałe `lazy`; okno nie istnieje w DOM, dopóki nie zostanie otwarte. Okno otwiera się na zdjęciu, z którego
-  je otwarto. Escape i „Zamknij” zamykają, fokus wraca na przycisk, który otworzył okno (też w Safari, które nie fokusuje
+  je otwarto (pasek jest przewijany do niego przy pojawieniu się elementu). Escape i „Zamknij” zamykają, fokus wraca na przycisk, który otworzył okno (też w Safari, które nie fokusuje
   przycisku przy kliknięciu), ← → i przyciski zmieniają zdjęcie (w kółko), przesunięcie palcem zmienia je natywnie.
 - **Jedno zdjęcie:** bez miniatur, licznika i strzałek, z powiększeniem (bez licznika i strzałek w oknie). Bez zdjęć:
   `PhotoPlaceholder` bez powiększenia. Gdy `zoomImages` nie ma odpowiednika każdego zdjęcia, zdjęcia są w pasku bez
   przycisków powiększenia.
 - **Cele dotyku** miniatur, strzałek i przycisków co najmniej 44×44 px; miniatura ma 72 px (telefon) albo 84 px (desktop).
-  Kolejność tabulatora zgadza się z wizualną (`reading-flow: flex-visual`).
+  Kolejność tabulatora zgadza się z wizualną dzięki `reading-flow: flex-visual` (miniatury po lewej od zdjęcia od `lg`,
+  w DOM po pasku); przeglądarki bez `reading-flow` (dziś Firefox i Safari) idą w kolejności DOM: pasek, licznik, strzałki,
+  miniatury.
 - **Testy:** Vitest (`ProductGallery.test.tsx`, `ProductGallery.server.test.tsx` na HTML serwera) i E2E
   (`e2e/tests/product-gallery.spec.ts`, produkt demo „Narty skiturowe Stavro Grań 95” z trzema zdjęciami): mysz,
   klawiatura, dotyk na 375 px (rzeczywiste zdarzenia dotyku z `Input.dispatchTouchEvent`), brak zmiany adresu po

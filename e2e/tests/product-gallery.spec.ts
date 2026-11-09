@@ -140,6 +140,14 @@ test.describe("on a desktop", () => {
     await expect(dialog(page)).toBeVisible();
     // Opens on the visible photo, the counter and the alt text of the photo in the enlargement.
     await expect(dialog(page).getByText("2 / 3", { exact: true })).toBeVisible();
+    // The strip of the enlargement really is on the second photo (not only the counter says so), and "Poprzednie" goes to the first.
+    const zoomStrip = dialog(page).getByRole("group", { name: "Powiększone zdjęcia" });
+    expect(await zoomStrip.evaluate((element) => Math.round(element.scrollLeft / element.clientWidth))).toBe(1);
+    await dialog(page).getByRole("button", { name: "Poprzednie zdjęcie" }).click();
+    await expect(dialog(page).getByText("1 / 3", { exact: true })).toBeVisible();
+    await expect.poll(() => zoomStrip.evaluate((element) => Math.round(element.scrollLeft / element.clientWidth))).toBe(0);
+    await dialog(page).getByRole("button", { name: "Następne zdjęcie" }).click();
+    await expect(dialog(page).getByText("2 / 3", { exact: true })).toBeVisible();
     const zoomPhotos = dialog(page).locator("img");
     await expect(zoomPhotos).toHaveCount(3);
     expect(await zoomPhotos.evaluateAll((list) => list.map((img) => (img as HTMLImageElement).alt))).toEqual(zoomImages);
@@ -203,6 +211,28 @@ test.describe("on a desktop", () => {
       expect(Math.abs(after[key]!.height - before[key]!.height), `${key} height`).toBeLessThan(1);
     }
     expect(errors.filter((text) => /hydrat/i.test(text))).toEqual([]);
+  });
+
+  test("a strip scrolled before the page was hydrated shows its photo after hydration, and „Następne” goes on from it", async ({ page }) => {
+    // Hold the scripts of the page back, scroll the strip like a finger would, then let the page hydrate.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route(/\/_next\/static\/.*\.js/, async (route) => {
+      await gate;
+      await route.continue();
+    });
+    await page.goto(SKIS.path, { waitUntil: "commit" });
+    await expect(strip(page)).toBeAttached();
+    await expect(page.getByRole("button", { name: "Następne zdjęcie" })).toHaveCount(0);
+    await strip(page).evaluate((element) => element.scrollTo({ left: element.clientWidth }));
+    await expect.poll(() => strip(page).evaluate((element) => Math.round(element.scrollLeft / element.clientWidth))).toBe(1);
+    release();
+
+    await waitForHydration(page);
+    await expect(page.getByText("2 / 3", { exact: true })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Miniatury zdjęć" }).getByRole("link").nth(1)).toHaveAttribute("aria-current", "true");
+    await page.getByRole("button", { name: "Następne zdjęcie" }).click();
+    await expect(page.getByText("3 / 3", { exact: true })).toBeVisible();
   });
 
   test("without JavaScript all the photos and thumbnails are in the HTML and a thumbnail scrolls the strip", async ({ browser }) => {

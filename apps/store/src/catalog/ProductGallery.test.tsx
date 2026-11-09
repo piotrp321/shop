@@ -13,6 +13,11 @@ const STRIP_WIDTH = 400;
 
 const scrollTo = vi.fn();
 
+// jsdom does not keep `scrollLeft`: each element remembers what was assigned to it, and the strip of the page starts
+// where `browserScroll` says (the browser can restore or the visitor can make a position before the page is hydrated).
+const assignedScroll = new WeakMap<Element, number>();
+let browserScroll = 0;
+
 /** Radix gives the focus back in a timer of its own. */
 const flushTimers = () =>
   act(() => {
@@ -24,6 +29,16 @@ beforeEach(() => {
   scrollTo.mockReset();
   Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value: scrollTo });
   Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => STRIP_WIDTH });
+  browserScroll = 0;
+  Object.defineProperty(HTMLElement.prototype, "scrollLeft", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return assignedScroll.get(this) ?? (this.getAttribute("aria-label") === "Zdjęcia produktu" ? browserScroll : 0);
+    },
+    set(this: HTMLElement, value: number) {
+      assignedScroll.set(this, value);
+    },
+  });
 });
 
 afterEach(() => {
@@ -136,13 +151,36 @@ describe("previous and next buttons", () => {
     fireEvent.click(screen.getByRole("button", { name: "Następne zdjęcie" }));
     expect(scrollTo).toHaveBeenLastCalledWith({ left: STRIP_WIDTH, behavior: "smooth" });
 
+    // The mocked scroll does not move the strip: once it would have settled, the position is the first photo again.
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     fireEvent.click(screen.getByRole("button", { name: "Poprzednie zdjęcie" }));
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: STRIP_WIDTH * 2, behavior: "smooth" });
+  });
+
+  it("two quick clicks move two photos, not one twice", () => {
+    renderGallery();
+    fireEvent.click(screen.getByRole("button", { name: "Następne zdjęcie" }));
+    fireEvent.click(screen.getByRole("button", { name: "Następne zdjęcie" }));
     expect(scrollTo).toHaveBeenLastCalledWith({ left: STRIP_WIDTH * 2, behavior: "smooth" });
   });
 
   it("go on from the photo the strip shows", () => {
     renderGallery();
     scrollStripTo(strip(), STRIP_WIDTH);
+    fireEvent.click(screen.getByRole("button", { name: "Następne zdjęcie" }));
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: STRIP_WIDTH * 2, behavior: "smooth" });
+  });
+});
+
+describe("a strip scrolled before the page was hydrated", () => {
+  it("shows the photo it is on: the counter, the current thumbnail, and the next button goes on from there", () => {
+    browserScroll = STRIP_WIDTH;
+    renderGallery();
+    expect(screen.getByText("2 / 3")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: /^Pokaż zdjęcie/ }).map((link) => link.getAttribute("aria-current"))).toEqual([null, "true", null]);
+
     fireEvent.click(screen.getByRole("button", { name: "Następne zdjęcie" }));
     expect(scrollTo).toHaveBeenLastCalledWith({ left: STRIP_WIDTH * 2, behavior: "smooth" });
   });
@@ -220,6 +258,12 @@ describe("the enlargement", () => {
     expect(slides.map((img) => img.alt)).toEqual(ALTS);
   });
 
+  it("really scrolls the strip of the enlargement to the photo it opens on", () => {
+    renderGallery();
+    openOn(2);
+    expect(within(dialog()).getByRole("group", { name: "Powiększone zdjęcia" }).scrollLeft).toBe(STRIP_WIDTH);
+  });
+
   it("shows the zoom size: a srcset of 1280, 1920 and 2560 px for the whole width, the visible photo eager, the rest lazy", () => {
     renderGallery();
     openOn(2);
@@ -234,15 +278,24 @@ describe("the enlargement", () => {
     renderGallery();
     openOn(1);
     scrollTo.mockClear();
+    // The mocked scroll does not move the strip: once a scroll would have settled, the strip is on the first photo again.
+    const settle = () =>
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
 
     fireEvent.click(within(dialog()).getByRole("button", { name: "Poprzednie zdjęcie" }));
     expect(scrollTo).toHaveBeenLastCalledWith({ left: STRIP_WIDTH * 2, behavior: "smooth" });
+    settle();
 
     fireEvent.click(within(dialog()).getByRole("button", { name: "Następne zdjęcie" }));
     expect(scrollTo).toHaveBeenLastCalledWith({ left: STRIP_WIDTH, behavior: "smooth" });
+    settle();
 
     fireEvent.keyDown(dialog(), { key: "ArrowRight" });
     expect(scrollTo).toHaveBeenLastCalledWith({ left: STRIP_WIDTH, behavior: "smooth" });
+    fireEvent.keyDown(dialog(), { key: "ArrowRight" });
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: STRIP_WIDTH * 2, behavior: "smooth" });
   });
 
   it("follows a swipe: the counter shows the photo the strip of the enlargement settled on", () => {

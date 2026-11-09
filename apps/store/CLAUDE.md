@@ -286,14 +286,16 @@ Klienta API generuje `make api-client` z katalogu głównego.
   (CSS `scroll-snap`, `id="zdjecie-n"`, `alt` z API), miniatury jako linki `#zdjecie-n` (`alt=""`, najmniejsza szerokość
   rozmiaru `product`) i licznik „1 / m”: działa bez JavaScriptu i jest taki sam przed hydratacją i po niej. Po hydratacji
   (`useSyncExternalStore` z migawką serwera `false`: tego, co dodaje JavaScript, nie ma w pierwszym renderze) dochodzą
-  `aria-current` miniatury, licznik podążający za paskiem (też za przesunięciem palcem, po 100 ms bez przewijania),
+  `aria-current` miniatury, licznik podążający za paskiem (też za przesunięciem palcem, po 100 ms bez przewijania; `usePhotoStrip` czyta pozycję
+  paska także raz, gdy element się pojawia, więc pasek przewinięty przed hydratacją i okno otwarte na zdjęciu 2 są zgodne
+  z licznikiem),
   przyciski „Poprzednie zdjęcie” i „Następne zdjęcie” (ułożone bezwzględnie, bez przesunięcia układu), płynne przewijanie
   z miniatur bez zmiany adresu (`preventDefault`) i ← →. Zdjęcie paska jest w przycisku „Powiększ zdjęcie n z m: <alt>”,
   który otwiera shadcn `dialog` na całe okno z paskiem `zoomImages` (`sizes="100vw"`, `object-fit: contain`, widoczne
   `eager`, reszta `lazy`); fokus wraca na przycisk otwierający przez `onCloseAutoFocus`. Jedno zdjęcie: bez miniatur,
   licznika i strzałek, z powiększeniem; bez zdjęć: `PhotoPlaceholder`. Rozmiary obrazów pochodzą tylko z API
-  (`buildImageProps`, `buildZoomImageProps`, `smallestVariant` w `image-props.ts`); `STAGE_SIZES` opisuje tylko szerokość
-  sceny galerii w układzie strony. Test E2E dotyku używa `Input.dispatchTouchEvent`: `Input.synthesizeScrollGesture`
+  (`buildImageProps`, `buildZoomImageProps`, `smallestVariant` w `image-props.ts`); `STAGE_SIZES_SEVERAL` i `STAGE_SIZES_ONE` opisują tylko
+  szerokość sceny galerii w układzie strony (z kolumną miniatur i bez niej). Test E2E dotyku używa `Input.dispatchTouchEvent`: `Input.synthesizeScrollGesture`
   z `gestureSourceType: "touch"` niczego nie przewija w tym Chromium.
 - Wybór wariantu (`VariantChoice`, Client Component osadzony w `ProductDetailsView`; reguły w czystych funkcjach
   `variant-choice.ts`, z testami): jedna grupa przycisków (`fieldset`, `aria-pressed`) na oś z `variantAxes`, wartości
