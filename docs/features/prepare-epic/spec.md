@@ -233,8 +233,8 @@ dosłownie, zapisuje stan. Treść `spec.md` i `plan.md` pisze wyłącznie podag
 
 ### Bramka
 
-Bramkę liczy `groom.py gate <run_dir>`, nie model. Kod 0: przechodzi, kod 3: nie przechodzi, kod 1: błąd `git` albo
-walidatora, kod 2: brak albo zły `state.json`. Wypisuje jedną linię JSON `{ok, checks: [{name, ok, detail}]}`
+Bramkę liczy `groom.py gate <run_dir>`, nie model. Kod 0: przechodzi, kod 3: nie przechodzi (także błąd walidatora
+manifestu), kod 1: błąd `git`, kod 2: brak albo zły `state.json`. Wypisuje jedną linię JSON `{ok, checks: [{name, ok, detail}]}`
 i zapisuje ją w `state.json` jako `gate`. Sesja uruchamia ją przed wysłaniem wiadomości i po każdej odpowiedzi „tak”,
 także po wznowieniu, niezależnie od wcześniejszego wyniku.
 

@@ -1203,9 +1203,287 @@ class CloseCommandsTest(RunDirCase):
         self.assertEqual(2, code)
 
 
+# ---------------------------------------------------------------- origin
+
+ISSUE_400 = 'https://github.com/piotrp321/shop/issues/400'
+
+
+class OriginRunner:
+    def __init__(self, state='OPEN', labels=('epic',), title='CATALOG-FIXES: poprawki katalogu', fail=False):
+        self.view = {'state': state, 'labels': [{'name': l} for l in labels], 'title': title}
+        self.fail = fail
+        self.calls = []
+
+    def __call__(self, args):
+        self.calls.append(list(args))
+        if self.fail:
+            raise CommandError(args, 'boom')
+        return json.dumps(self.view)
+
+
+class OriginTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state = self.tmp.name
+
+    def run_dir(self, name='2026-11-10-abc1234-1', status='done', url=ISSUE_400, fix_id='CATALOG-FIXES', fix=True):
+        path = os.path.join(self.state, name)
+        os.makedirs(path)
+        result = {'status': status, 'urls': [url]} if status else None
+        fix_epic = {'id': fix_id, 'title': fix_id + ': x', 'issues': [197, 248, 336], 'scope': ['apps/api/src/Catalog']}
+        if result:
+            fix_epic['result'] = result
+        write_json(os.path.join(path, 'proposals.json'),
+                   {'schema': 1, 'decided_at': 'x', 'items': [], 'fix_epic': fix_epic if fix else None})
+        return path
+
+    def origin(self, runner=None, number='400'):
+        runner = runner or OriginRunner()
+        code, out, err = call(['origin', number, '--state', self.state], run=runner)
+        return code, (json.loads(out) if out else None), err, runner
+
+    def test_done_fix_epic_is_the_origin(self):
+        path = self.run_dir()
+        self.run_dir('2026-11-09-abc1234-1', url='https://github.com/piotrp321/shop/issues/399')
+        code, out, err, runner = self.origin()
+        self.assertEqual(0, code, err)
+        self.assertEqual({'run_dir': path, 'id': 'CATALOG-FIXES', 'issues': [197, 248, 336], 'prepare': None}, out)
+        self.assertEqual([['gh', 'issue', 'view', '400', '--repo', REPO, '--json', 'state,labels,title']], runner.calls)
+
+    def test_prepare_state_is_returned(self):
+        path = self.run_dir()
+        os.makedirs(os.path.join(path, 'prepare-epic'))
+        state = {'issue': 400, 'status': 'awaiting', 'stages': ['analyst', 'review'], 'worktree': '/w',
+                 'branch': 'prepare/catalog-fixes'}
+        write_json(os.path.join(path, 'prepare-epic', 'state.json'), state)
+        code, out, err, _ = self.origin()
+        self.assertEqual(0, code, err)
+        self.assertEqual(state, out['prepare'])
+
+    def test_fix_epic_not_done_is_refused(self):
+        for status in ('skipped', 'error', 'rejected', 'no_decision', None):
+            with self.subTest(status=status):
+                with tempfile.TemporaryDirectory() as state:
+                    self.state = state
+                    self.run_dir(status=status)
+                    code, out, err, runner = self.origin()
+                    self.assertEqual((1, None), (code, out))
+                    self.assertIn('#400', err)
+                    self.assertEqual([], runner.calls)
+
+    def test_no_fix_epic_or_other_issue_is_refused(self):
+        self.run_dir(fix=False)
+        self.run_dir('2026-11-10-abc1234-2', url='https://github.com/piotrp321/shop/issues/4000')
+        code, out, err, _ = self.origin()
+        self.assertEqual((1, None), (code, out))
+
+    def test_no_run_dirs_is_refused(self):
+        code, out, err, _ = self.origin()
+        self.assertEqual((1, None), (code, out))
+        code, out, err = call(['origin', '400', '--state', os.path.join(self.state, 'none')], run=OriginRunner())
+        self.assertEqual((1, ''), (code, out))
+
+    def test_issue_state_labels_and_id_are_checked(self):
+        self.run_dir()
+        cases = {
+            'zamknięte': OriginRunner(state='CLOSED'),
+            'epic': OriginRunner(labels=('bug',)),
+            'needs-info': OriginRunner(labels=('epic', 'needs-info')),
+            'CATALOG-FIXES': OriginRunner(title='CART-FIXES: inne'),
+        }
+        for fragment, runner in cases.items():
+            with self.subTest(fragment=fragment):
+                code, out, err, _ = self.origin(runner)
+                self.assertEqual((1, None), (code, out))
+                self.assertIn(fragment, err)
+
+    def test_id_without_fixes_suffix_is_refused(self):
+        self.run_dir(fix_id='CATALOG')
+        code, out, err, _ = self.origin(OriginRunner(title='CATALOG: x'))
+        self.assertEqual((1, None), (code, out))
+
+    def test_gh_failure_is_exit_1(self):
+        self.run_dir()
+        code, out, err, _ = self.origin(OriginRunner(fail=True))
+        self.assertEqual((1, None), (code, out))
+        self.assertIn('boom', err)
+
+    def test_bad_number_is_exit_2(self):
+        code, out, err = call(['origin', 'x', '--state', self.state], run=OriginRunner())
+        self.assertEqual((2, ''), (code, out))
+
+
+# ---------------------------------------------------------------- gate
+
+BASE = 'b' * 40
+SPEC = '# Spec\n\nIssues: #400\nZakres: `apps/api/src/Catalog`, `apps/store/src/catalog`\n\n## Cel\n'
+
+
+class GateRunner:
+    def __init__(self, log='', validator_fails=False, git_fails=False):
+        self.log = log
+        self.validator_fails = validator_fails
+        self.git_fails = git_fails
+        self.calls = []
+
+    def __call__(self, args):
+        args = list(args)
+        self.calls.append(args)
+        if args[0] == 'git':
+            if self.git_fails:
+                raise CommandError(args, 'git boom')
+            return self.log if 'log' in args else ''
+        if self.validator_fails:
+            raise CommandError(args, 'manifest: zła fala')
+        return '{}'
+
+
+def review(agent, round_=1, ok=True, resolved=0, open_=0, file=None):
+    return {'agent': agent, 'round': round_, 'file': file or 'review-%s-%d.md' % (agent, round_), 'ok': ok,
+            'critical_resolved': resolved, 'critical_open': open_}
+
+
+class GateTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.run_dir = self.tmp.name
+        self.state_dir = os.path.join(self.run_dir, 'prepare-epic')
+        self.worktree = os.path.join(self.run_dir, 'prepare')
+        self.feature = os.path.join(self.worktree, 'docs', 'features', 'catalog-fixes')
+        os.makedirs(self.state_dir)
+        os.makedirs(self.feature)
+        with open(os.path.join(self.feature, 'spec.md'), 'w') as f:
+            f.write(SPEC)
+        with open(os.path.join(self.feature, 'plan.md'), 'w') as f:
+            f.write(MANIFEST)
+
+    def write_state(self, reviews=None, **extra):
+        reviews = [review('spec-critic'), review('architecture-reviewer')] if reviews is None else reviews
+        for r in reviews:
+            with open(os.path.join(self.state_dir, r['file']), 'w') as f:
+                f.write('raport')
+        state = {'issue': 400, 'id': 'CATALOG-FIXES', 'katalog': 'catalog-fixes', 'worktree': self.worktree,
+                 'branch': 'prepare/catalog-fixes', 'base_commit': BASE, 'status': 'awaiting',
+                 'stages': ['analyst', 'review', 'fixes', 'planner'], 'reviews': reviews, 'gate': None}
+        state.update(extra)
+        write_json(os.path.join(self.state_dir, 'state.json'), state)
+
+    def gate(self, runner=None):
+        runner = runner or GateRunner()
+        code, out, err = call(['gate', self.run_dir], run=runner)
+        return code, (json.loads(out) if out else None), err, runner
+
+    def failed(self, out):
+        return {c['name'] for c in out['checks'] if not c['ok']}
+
+    def test_all_conditions_pass(self):
+        self.write_state()
+        code, out, err, runner = self.gate()
+        self.assertEqual(0, code, err)
+        self.assertTrue(out['ok'])
+        self.assertEqual(set(), self.failed(out))
+        self.assertEqual(out, read_json(os.path.join(self.state_dir, 'state.json'))['gate'])
+        plan = os.path.join(self.feature, 'plan.md')
+        self.assertIn([groom.sys.executable, groom.PLAN_MANIFEST, 'validate', plan], runner.calls)
+        self.assertIn(['git', '-C', self.worktree, 'fetch', 'origin', 'main'], runner.calls)
+        self.assertIn(['git', '-C', self.worktree, 'log', '--format=%h %s', BASE + '..origin/main', '--',
+                       'apps/api/src/Catalog', 'apps/store/src/catalog', 'docs/features/catalog-fixes/spec.md',
+                       'docs/features/catalog-fixes/plan.md'], runner.calls)
+
+    def assertGateFails(self, name, runner=None, fragment=None):
+        code, out, err, _ = self.gate(runner)
+        self.assertEqual(3, code, out)
+        self.assertFalse(out['ok'])
+        self.assertIn(name, self.failed(out))
+        if fragment:
+            detail = next(c['detail'] for c in out['checks'] if c['name'] == name)
+            self.assertIn(fragment, detail)
+        self.assertEqual(out, read_json(os.path.join(self.state_dir, 'state.json'))['gate'])
+
+    def test_missing_first_round_of_an_agent(self):
+        self.write_state([review('spec-critic')])
+        self.assertGateFails('review', fragment='architecture-reviewer: runda 1')
+
+    def test_review_not_ok(self):
+        self.write_state([review('spec-critic', ok=False), review('architecture-reviewer')])
+        self.assertGateFails('review', fragment='spec-critic')
+
+    def test_missing_report_file(self):
+        self.write_state()
+        os.remove(os.path.join(self.state_dir, 'review-architecture-reviewer-1.md'))
+        self.assertGateFails('review', fragment='review-architecture-reviewer-1.md')
+
+    def test_resolved_critical_needs_second_round(self):
+        self.write_state([review('spec-critic', resolved=1), review('architecture-reviewer')])
+        self.assertGateFails('review', fragment='runda 2')
+
+    def test_second_round_confirms_resolved_critical(self):
+        self.write_state([review('spec-critic', resolved=1), review('architecture-reviewer'),
+                          review('spec-critic', 2)])
+        code, out, err, _ = self.gate()
+        self.assertEqual(0, code, out)
+
+    def test_open_critical_in_the_last_round(self):
+        self.write_state([review('spec-critic', resolved=1), review('architecture-reviewer'),
+                          review('spec-critic', 2, open_=1)])
+        self.assertGateFails('critical', fragment='spec-critic')
+        self.write_state([review('spec-critic'), review('architecture-reviewer', open_=2)])
+        self.assertGateFails('critical', fragment='architecture-reviewer: 2 otwartych')
+
+    def test_open_critical_of_round_one_is_settled_by_round_two(self):
+        self.write_state([review('spec-critic', resolved=1, open_=1), review('architecture-reviewer'),
+                          review('spec-critic', 2)])
+        code, out, err, _ = self.gate()
+        self.assertEqual(0, code, out)
+
+    def test_validator_failure(self):
+        self.write_state()
+        self.assertGateFails('plan', GateRunner(validator_fails=True), fragment='zła fala')
+
+    def test_unreadable_scope_line(self):
+        self.write_state()
+        with open(os.path.join(self.feature, 'spec.md'), 'w') as f:
+            f.write('# Spec\n')
+        code, out, err, runner = self.gate()
+        self.assertEqual(3, code)
+        self.assertIn('scope', self.failed(out))
+        log = next(c for c in runner.calls if 'log' in c)
+        self.assertEqual(['docs/features/catalog-fixes/spec.md', 'docs/features/catalog-fixes/plan.md'],
+                         log[log.index('--') + 1:])
+
+    def test_missing_spec_or_plan(self):
+        self.write_state()
+        os.remove(os.path.join(self.feature, 'plan.md'))
+        self.assertGateFails('plan', fragment='plan.md')
+
+    def test_commits_in_scope_after_base(self):
+        self.write_state()
+        self.assertGateFails('main', GateRunner(log='abc1234 feat(catalog): x\n'), fragment='abc1234')
+
+    def test_git_failure_is_exit_1(self):
+        self.write_state()
+        code, out, err, _ = self.gate(GateRunner(git_fails=True))
+        self.assertEqual((1, None), (code, out))
+        self.assertIn('git boom', err)
+
+    def test_missing_or_bad_state_is_exit_2(self):
+        code, out, err, _ = self.gate()
+        self.assertEqual((2, None), (code, out))
+        write_json(os.path.join(self.state_dir, 'state.json'), {'issue': 400})
+        code, out, err, _ = self.gate()
+        self.assertEqual((2, None), (code, out))
+
+    def test_earlier_gate_result_is_ignored(self):
+        self.write_state([review('spec-critic', open_=1), review('architecture-reviewer')],
+                         gate={'ok': True, 'checks': []})
+        self.assertGateFails('critical')
+
+
 class CliTest(unittest.TestCase):
     def test_usage_errors_are_exit_2(self):
-        for argv in ([], ['bogus'], ['collect'], ['apply', 'x']):
+        for argv in ([], ['bogus'], ['collect'], ['apply', 'x'], ['origin'], ['gate']):
             with self.subTest(argv=argv):
                 code, out, _ = call(argv)
                 self.assertEqual((2, ''), (code, out))
