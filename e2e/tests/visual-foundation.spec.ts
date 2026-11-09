@@ -296,7 +296,7 @@ test.describe("the search of the header where the row has no room for the field 
     const link = page.getByRole("link", { name: /Wszystko z działu/ }).first();
     await expect(link).toBeVisible();
     const box = (await link.boundingBox())!;
-    const top = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("a")?.textContent ?? "", [box.x + 4, box.y + box.height / 2]);
+    const top = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("a")?.textContent ?? "", { x: box.x + 4, y: box.y + box.height / 2 });
     expect(top).toContain("Wszystko z działu");
   });
 
