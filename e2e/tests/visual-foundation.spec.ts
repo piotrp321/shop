@@ -281,6 +281,46 @@ test.describe("the search of the header where the row has no room for the field 
     await expect(header.getByRole("searchbox", { name: "Szukaj produktów" })).toHaveValue("asfalt");
   });
 
+  test("after a submit that remounts the box (from any page to /szukaj) the focus is on the button", async ({ page }) => {
+    await page.goto("/");
+    await waitForHeader(page);
+    const header = page.getByRole("banner");
+    const toggle = header.getByRole("button", { name: "Wyszukiwarka" });
+    await toggle.click();
+    await header.getByRole("searchbox", { name: "Szukaj produktów" }).fill("kajak");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/szukaj\?q=kajak/);
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toBeFocused();
+  });
+
+  test("a second search sent from /szukaj gives the focus to the button too, and the focus is not taken again by a later box", async ({ page }) => {
+    await page.goto("/");
+    await waitForHeader(page);
+    const header = page.getByRole("banner");
+    const toggle = header.getByRole("button", { name: "Wyszukiwarka" });
+    const field = header.getByRole("searchbox", { name: "Szukaj produktów" });
+    await toggle.click();
+    await field.fill("kajak");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/szukaj\?q=kajak/);
+
+    // The box stays (the same page of the slot), so the new search only has the focus to give.
+    await toggle.click();
+    await field.fill("asfalt");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/szukaj\?q=asfalt/);
+    await expect(toggle).toBeFocused();
+
+    // Nothing may be left over for a box that a later navigation mounts: going back to the page before /szukaj must not
+    // move the focus to the button.
+    await page.goBack();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/$/);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => document.activeElement?.id)).not.toBe("header-search-toggle");
+  });
+
   test("hovering a department while the search panel is open closes the panel, so the department panel is not covered", async ({ page }) => {
     await page.goto("/");
     await waitForHeader(page);
