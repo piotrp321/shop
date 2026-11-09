@@ -29,7 +29,7 @@ Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykiet�
 | 10 | Przed publicznym demo: bezpieczeństwo i wydajność | specyfikacja na `main`, epik HARDENING czeka |
 | 11 | Po MVP: release i monitoring | do zrobienia |
 | 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione (kryteria 7–9 sprawdza pierwszy merge epiku) |
-| 13 | Agent porządkujący backlog (`/groom`) | w repo; pierwszy prawdziwy przebieg i zadanie zaplanowane do pokazania |
+| 13 | Agent porządkujący backlog (`/groom`) | zrobione (pierwszy przebieg 2026-11-09; zadanie zaplanowane o 8:00 w aplikacji Claude) |
 | 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | do zrobienia |
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | do zrobienia |
 
@@ -53,7 +53,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
 | | Tester całego sklepu | `tester` w `/sweep`, uruchamiany przez `/ao-run` po merge'u | działa |
 | | Bezpieczeństwo i wydajność | ustalane w kroku 10 | krok 10 |
-| Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | krok 13: do pokazania na prawdziwym przebiegu |
+| Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | działa |
 | | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` | krok 15 |
 | Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 11 |
 | | Monitoring → issues | Sentry i Grafana Cloud z `docs/vision.md` | krok 11 |
