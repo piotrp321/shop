@@ -148,7 +148,9 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   `AO_COMPOSE_PROJECT` i `AO_PORT_BASE`, `AO_SETUP_READY_TIMEOUT` opcjonalnie). `setup` zapisuje `.env` (nazwa projektu
   i 7 kolejnych portów od `AO_PORT_BASE`), sprawdza, że porty są wolne, uruchamia `make up`, czyści pulę `cache.oidc` API (cache w `apps/api/var/cache`
   leży na bind mouncie worktree i przeżywa `teardown`, a nowy Keycloak ma nowe klucze), uruchamia `make seed`, po
-  czym czeka na `/health` API. `teardown` jest idempotentny: `docker compose -p "$AO_COMPOSE_PROJECT" down -v --remove-orphans`.
+  czym czeka na `/health` API. Nieudany `make up` ponawia raz. Każdy błąd po starcie stosu zapisuje `docker compose ps -a`
+  i logi usług do `AO_SETUP_DIAG_DIR` (domyślnie `~/.local/state/ao-setup`, poza worktree), bo AO zaraz po nieudanym
+  `setup` sprząta stos. `teardown` jest idempotentny: `docker compose -p "$AO_COMPOSE_PROJECT" down -v --remove-orphans`.
   Oba odmawiają pracy bez zmiennych albo bez Dockera. Testy: `python3 -m unittest discover -s .ao -p 'test_*.py'`.
 
 ## Kontrakt API

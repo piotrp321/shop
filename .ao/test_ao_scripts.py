@@ -18,11 +18,17 @@ echo "docker $*" >> "$FAKE_LOG"
 [ "$1" = info ] && [ -n "$FAKE_DOCKER_INFO_FAIL" ] && exit 1
 case " $* " in *" down "*) [ -n "$FAKE_DOCKER_DOWN_FAIL" ] && exit 1;; esac
 case " $* " in *" cache:pool:clear "*) [ -n "$FAKE_DOCKER_POOL_CLEAR_FAIL" ] && exit 1;; esac
+case " $* " in *" ps -a "*) echo "FAKE-PS-OUTPUT";; esac
+case " $* " in *" logs "*) [ -n "$FAKE_DOCKER_LOGS_FAIL" ] && exit 1; echo "FAKE-LOGS-OUTPUT";; esac
 exit 0
 ''',
     'make': '''#!/bin/sh
 echo "make $* project=$COMPOSE_PROJECT_NAME" >> "$FAKE_LOG"
 [ "$1" = "$FAKE_MAKE_FAIL" ] && exit 2
+if [ "$1" = up ] && [ -n "$FAKE_MAKE_UP_FAILS" ]; then
+  n=$(cat "$FAKE_LOG.up" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$FAKE_LOG.up"
+  [ "$n" -le "$FAKE_MAKE_UP_FAILS" ] && exit 2
+fi
 exit 0
 ''',
     'curl': '''#!/bin/sh
@@ -175,6 +181,64 @@ class AoScriptsTest(unittest.TestCase):
         self.assertNotEqual(0, r.returncode)
         self.assertIn('make up', r.stderr)
         self.assertNotIn('make seed project=ao-t1-a1', self.calls())
+
+    def test_setup_retries_make_up_once(self):
+        # A transient start failure (e.g. a busy Docker) must not stop the whole AO queue.
+        r = self.setup(FAKE_MAKE_UP_FAILS='1')
+        self.assertEqual(0, r.returncode, r.stderr)
+        self.assertEqual(2, self.calls().count('make up project=ao-t1-a1'))
+        self.assertIn('make seed project=ao-t1-a1', self.calls())
+        # The first failure is still recorded, so its cause can be found later.
+        self.assertEqual(1, len(self.diagnostics()))
+
+    def test_setup_gives_up_after_the_second_make_up(self):
+        r = self.setup(FAKE_MAKE_UP_FAILS='5')
+        self.assertNotEqual(0, r.returncode)
+        self.assertEqual(2, self.calls().count('make up project=ao-t1-a1'))
+        self.assertIn('make up', r.stderr)
+        self.assertEqual(2, len(self.diagnostics()))
+
+    def diagnostics(self):
+        """Diagnostic files saved by setup (default directory under HOME, outside the worktree)."""
+        d = os.path.join(self.tmp.name, '.local', 'state', 'ao-setup')
+        if not os.path.isdir(d):
+            return []
+        return sorted(os.path.join(d, f) for f in os.listdir(d))
+
+    def test_setup_saves_stack_state_and_logs_when_the_stack_fails(self):
+        # AO tears the stack down right after a failed setup, so the logs must be saved before that.
+        for case in ({'FAKE_MAKE_FAIL': 'up'}, {'FAKE_MAKE_FAIL': 'seed'}, {'FAKE_DOCKER_POOL_CLEAR_FAIL': '1'},
+                     {'FAKE_CURL_FAIL': '1', 'AO_SETUP_READY_TIMEOUT': '1'}):
+            with self.subTest(**case):
+                shutil.rmtree(os.path.join(self.tmp.name, '.local'), ignore_errors=True)
+                open(self.log, 'w').close()
+                r = self.setup(**case)
+                self.assertNotEqual(0, r.returncode)
+                files = self.diagnostics()
+                self.assertTrue(files, r.stderr)
+                with open(files[-1]) as f:
+                    body = f.read()
+                self.assertIn('FAKE-PS-OUTPUT', body)
+                self.assertIn('FAKE-LOGS-OUTPUT', body)
+                self.assertIn(files[-1], r.stderr)
+                self.assertIn('docker compose -p ao-t1-a1 ps -a', self.calls())
+
+    def test_setup_diagnostics_go_to_the_configured_directory(self):
+        d = os.path.join(self.tmp.name, 'diag')
+        r = self.setup(FAKE_MAKE_FAIL='seed', AO_SETUP_DIAG_DIR=d)
+        self.assertNotEqual(0, r.returncode)
+        self.assertEqual(1, len(os.listdir(d)))
+
+    def test_a_failing_log_dump_does_not_hide_the_original_error(self):
+        r = self.setup(FAKE_MAKE_FAIL='seed', FAKE_DOCKER_LOGS_FAIL='1')
+        self.assertEqual(1, r.returncode)
+        self.assertIn('make seed failed', r.stderr)
+
+    def test_setup_saves_no_diagnostics_on_success_or_before_the_stack_starts(self):
+        self.assertEqual(0, self.setup().returncode)
+        self.assertEqual([], self.diagnostics())
+        self.assertNotEqual(0, self.setup(FAKE_DOCKER_INFO_FAIL='1').returncode)
+        self.assertEqual([], self.diagnostics())
 
     def test_setup_propagates_a_failing_make_seed(self):
         r = self.setup(FAKE_MAKE_FAIL='seed')

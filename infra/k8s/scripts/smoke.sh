@@ -74,20 +74,29 @@ KUBE_NETWORK="k3d-$cluster"
 mkdir -p "$TOOLS_CACHE"
 KUBE_DIR="$(mktemp -d "$TOOLS_CACHE/kube-XXXXXX")"
 work="$KUBE_DIR"
-registry_dir=""
+# The files k3d gives to the node of the cluster, in a private directory (mktemp -d) outside the cache of the tools (which
+# every tool container mounts) that only the k3d container mounts, at the same path, since k3d looks for the source of
+# a volume there; removed on exit.
+k3d_dir="$(mktemp -d "${TMPDIR:-/tmp}/shop-smoke-k3d-XXXXXX")"
+K3D_MOUNT="$k3d_dir:$k3d_dir:ro"
+export K3D_MOUNT
+# The kubelet runs every image of the node for any pod. By default (KubeletEnsureSecretPulledImages, on since Kubernetes
+# 1.35) an image ID the kubelet pulled itself may be used only under the repository it was pulled from: on main it pulls
+# ghcr.io/piotrp321/shop/<app> for r1, and the same image ID imported as <registry>/<app>:r2 is then refused with
+# ErrImageNeverPull. The test only runs images loaded into the node (pullPolicy Never) or pulled for r1; prod imports nothing.
+cat > "$k3d_dir/90-smoke-kubelet.conf" <<'CONF'
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+imagePullCredentialsVerificationPolicy: NeverVerify
+CONF
 chart_registry="$(sed -n 's/^  registry: //p' "$here/../charts/shop/values.yaml" | head -n 1)"
 if [ -n "$SMOKE_VALUES" ]; then
   # In the directory that the helm and k3d containers mount as /kube.
   cp "$SMOKE_VALUES" "$KUBE_DIR/values-images.yaml"
   if [ -n "${SMOKE_GHCR_TOKEN:-}" ]; then
-    # A file for k3d (registries.yaml of the nodes) with the credentials for ghcr.io, alone in a private directory (mktemp -d)
-    # outside the cache of the tools (which every tool container mounts) that only the k3d container mounts and that is
-    # removed on exit. Nothing here prints the token.
-    registry_dir="$(mktemp -d "${TMPDIR:-/tmp}/shop-smoke-registry-XXXXXX")"
+    # A file for k3d (registries.yaml of the nodes) with the credentials for ghcr.io. Nothing here prints the token.
     (umask 077 && printf 'configs:\n  ghcr.io:\n    auth:\n      username: %s\n      password: %s\n' \
-      "${SMOKE_GHCR_USER:-token}" "$SMOKE_GHCR_TOKEN" > "$registry_dir/registries.yaml")
-    K3D_MOUNT="$registry_dir:/registry:ro"
-    export K3D_MOUNT
+      "${SMOKE_GHCR_USER:-token}" "$SMOKE_GHCR_TOKEN" > "$k3d_dir/registries.yaml")
   fi
 fi
 unset SMOKE_GHCR_TOKEN
@@ -116,7 +125,7 @@ cleanup() {
     for app in $apps; do docker rmi -f "$registry/$app:$tag" >/dev/null 2>&1 || true; done
   done
   rm -rf "$KUBE_DIR"
-  [ -z "$registry_dir" ] || rm -rf "$registry_dir"
+  rm -rf "$k3d_dir"
   if [ "$status" -eq 0 ]; then echo "smoke: ok"; else echo "smoke: FAILED (exit $status)" >&2; fi
   exit "$status"
 }
@@ -434,6 +443,12 @@ wait_for_traefik() {
   kubectl wait --for=condition=established crd/middlewares.traefik.io --timeout=120s >/dev/null
 }
 
+# The kubelet of the node took the configuration of the test (90-smoke-kubelet.conf).
+check_kubelet_policy() {
+  kubectl get --raw "/api/v1/nodes/$node/proxy/configz" | grep -q '"imagePullCredentialsVerificationPolicy":"NeverVerify"' \
+    || { echo "smoke: the kubelet of $node did not take 90-smoke-kubelet.conf (imagePullCredentialsVerificationPolicy)" >&2; return 1; }
+}
+
 # The pod the checks run in: python with the standard library only.
 create_tools_pod() {
   kc apply -f - >/dev/null <<'YAML'
@@ -462,11 +477,13 @@ else
   log "cluster $cluster ($K3S_IMAGE)"
   k3d cluster delete "$cluster" >/dev/null 2>&1 || true
   registry_config=""
-  [ -z "$registry_dir" ] || registry_config="--registry-config /registry/registries.yaml"
+  [ ! -f "$k3d_dir/registries.yaml" ] || registry_config="--registry-config $k3d_dir/registries.yaml"
   # shellcheck disable=SC2086 # $registry_config is an option and its value
   k3d cluster create "$cluster" --no-lb --image "$K3S_IMAGE" --wait --timeout 300s $registry_config \
+    -v "$k3d_dir/90-smoke-kubelet.conf:/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/90-smoke-kubelet.conf@server:*" \
     --k3s-arg '--disable=metrics-server@server:*' --k3s-arg '--disable=servicelb@server:*' >/dev/null
   k3d kubeconfig get "$cluster" | sed -E "s#server: https://[^:]+:[0-9]+#server: https://$node:6443#" > "$KUBE_DIR/config"
+  check_kubelet_policy
   start_sampler
   # With SMOKE_VALUES the first install pulls the images from the registry; nothing is imported for it.
   [ -n "$SMOKE_VALUES" ] || import_images r1

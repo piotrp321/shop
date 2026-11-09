@@ -551,7 +551,8 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 ## Infrastruktura
 
 - Varnish (`infra/varnish/default.vcl`) stoi tylko przed publicznymi odczytami `GET` katalogu: `/api/v1/products`,
-  `/api/v1/products/*`, `/api/v1/categories`, `/api/v1/product-offers`. Czyta przez niego wyłącznie serwer sklepu
+  `/api/v1/products/*`, `/api/v1/categories`, `/api/v1/product-offers` i dokładna ścieżka `/api/v1/sitemap/product-chunks`
+  (bez query stringu; porcje map `/api/v1/sitemap/products` przechodzą bez cache). Czyta przez niego wyłącznie serwer sklepu
   (`API_CATALOG_URL`); inne ścieżki, żądania z `Authorization` albo `Cookie` i metody inne niż `GET`/`HEAD` Varnish
   przepuszcza do API bez cache. TTL bierze tylko z `Cache-Control` odpowiedzi; bez nagłówka, z `private` albo
   `no-store` nic nie trzyma. Endpointy z autoryzacją, koszyk i checkout zawsze `private, no-store`.
@@ -567,6 +568,25 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   slug niezgodny z formatem `Slug`) z `public, max-age=60` i tagami `catalog` `product-slug-<slug>` (slug niezgodny
   z formatem: tylko `catalog`), więc publikacja produktu usuwa zapamiętane 404 jego sluga. Zdjęcia szczegółów są w rozmiarze
   `product` (`ImageSize`), a `GetProductBySlug` czyta wprost z tabel Catalog przez port `ProductDetailsSource`.
+- Mapa strony produktów (Catalog, `query.bus`, odczyt DBAL przez port `SitemapProductSource`; spec:
+  `docs/features/seo/spec.md`). `GET /api/v1/sitemap/product-chunks` (`SitemapProductChunksController`) daje `{chunks: [{key}]}`:
+  porcje po N = 10 000 kolejnych `id` wszystkich produktów, szkice też (parametr kontenera `app.sitemap.chunk_size`).
+  Granice to `id` na pozycjach N+1, 2N+1, … po kluczu głównym `catalog_product` (`row_number()`, skan klucza bez tabeli);
+  pierwsza porcja ma otwarty początek, ostatnia otwarty koniec, więc produkt utworzony po wyliczeniu granic zawsze
+  należy do jakiejś porcji; pusty katalog to jedna porcja z obu końcami otwartymi. Wynik granic trzyma pula `cache.sitemap`
+  (`framework.yaml`, w testach `cache.adapter.array`) z TTL 1 h przez dekorator portu `CachingSitemapProductSource`
+  (`CacheInterface::get`, klucz zawiera N), więc skan wykonuje się najwyżej raz na godzinę na instancję. `key` porcji
+  jest nieprzezroczysty (`SitemapChunkKey`: base64url bez dopełnienia z JSON `{"f": id|null, "t": id|null}`, `f` włącznie,
+  `t` wyłącznie; niepoprawny napis, nie-UUID, `f` ≥ `t` albo napis dłuższy niż 200 znaków to `InvalidSitemapChunk`).
+  `GET /api/v1/sitemap/products?chunk=<key>` (`SitemapProductsController`) daje `{items: [{slug, updatedAt}]}`:
+  opublikowane produkty zakresu rosnąco po `id`, `updatedAt` w ISO 8601 (UTC z przesunięciem). Odczyt bierze najwyżej
+  limit + 1 wierszy zakresu (`ORDER BY id LIMIT`, parametr `app.sitemap.row_limit` = 50 000, szkice się liczą), dopiero
+  potem zostają produkty ze statusem `published`; zakres ponad limit zwraca opublikowane spośród pierwszych `limit`
+  wierszy i zapisuje w logu `warning`. Brak `chunk` albo niepoprawny klucz to 400 z naruszeniem `chunk` (po polsku).
+  Cache HTTP: lista porcji `public, max-age=60, s-maxage=3600` z tagiem `catalog` (Varnish ją trzyma); porcja
+  `public, max-age=300` bez tagów i bez Varnisha (wyjątek od zasady tagów obiektów: 10 000 tagów nie mieści się
+  w nagłówku, świeżość daje krótki `max-age`). Oba endpointy są bez tokena (`PUBLIC_ACCESS`, `GET` i `HEAD`), 400, 401 i 503
+  przez `PublicReadErrorCacheSubscriber`. Testy ustawiają N = 3 i limit 10 (`when@test` w `services.yaml`).
 - Trasa publicznego odczytu ma domyślną wartość `PublicReadErrorCacheSubscriber::ROUTE_DEFAULT`
   (`defaults: [... => true]` w `#[Route]`): jej 400, 401 (także z firewalla) i 503 dostają `private, no-store` bez tagów.
 - Unieważnianie: `StorefrontCache` (`Shared\Infrastructure\Http\Cache`, implementacja `HttpStorefrontCache` na

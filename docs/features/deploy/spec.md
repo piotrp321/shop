@@ -371,7 +371,10 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   pliku zamiast obrazów lokalnych: k3d pobiera `ghcr.io/piotrp321/shop/<app>:<sha>@<digest>` z GHCR (uwierzytelnienie
   tokenem runu z prawem `packages: read` w prywatnym pliku `registries.yaml`, którego token nigdy nie jest wypisany), a
   test sprawdza imageID podów; dalsze fazy (nowe rewizje, zepsuta migracja) idą na obrazach lokalnych jak dotąd. Ścieżkę
-  GHCR sprawdza dopiero run na `main`.
+  GHCR sprawdza dopiero run na `main`. Kubelet klastra smoke testu ma `imagePullCredentialsVerificationPolicy:
+  NeverVerify` (plik w `kubelet.conf.d` węzła, sprawdzany po utworzeniu klastra): domyślnie kubelet pozwala użyć
+  pobranego przez siebie obrazu tylko pod nazwą repozytorium, z którego go pobrał, więc ten sam obraz zaimportowany jako
+  `shop-smoke-<klaster>/<app>:r2` kończyłby się `ErrImageNeverPull`.
 - CI (`deploy.yml`): `smoke` na `ubuntu-latest` dla PR zmieniających `infra/**`, `apps/*/Dockerfile`,
   `apps/api/config/**`, `apps/api/bin/**`, `apps/api/composer.lock`, `apps/store/package-lock.json`,
   `apps/admin/package-lock.json`, `apps/store/next.config.ts` oraz sam workflow i `deploy-ref.sh` (obrazy z cache GHA)

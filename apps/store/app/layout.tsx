@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { loadMenuCategories } from "@/catalog/category-tree";
 import { SearchBox } from "@/catalog/SearchBox";
 import { SiteHeader } from "@/catalog/SiteHeader";
+import { STORE_NAME } from "@/site";
 import { DemoNotice, SiteSwitchesProvider } from "@/components/SiteSwitches";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Rytm",
-  description: "Sklep internetowy Rytm",
+  title: STORE_NAME,
+  description: `Sklep internetowy ${STORE_NAME}`,
 };
 
 /**
