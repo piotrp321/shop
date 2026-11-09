@@ -549,7 +549,7 @@ def cmd_room(args, now, stdin):
     except (TypeError, ValueError, OverflowError):
         horizon = None
     if horizon is None:
-        print('night_queue: --hours musi być liczbą godzin od 0 do %d, jest %r' % (MAX_ROOM_HOURS, args.hours),
+        print('night_queue: --hours musi być liczbą godzin większą od 0 i najwyżej %d, jest %r' % (MAX_ROOM_HOURS, args.hours),
               file=sys.stderr)
         return 1
     usage_now = _read_usage(stdin)

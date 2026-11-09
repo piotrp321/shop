@@ -439,8 +439,10 @@ USAGE
 
 Wyjście: `epic` (`dir`, `id`, `issue`, `title`, `tasks`, `minutes`) albo `null` z `reason`, oraz `started` i `left`.
 
-- **`epic` jest:** wykonaj sekcje 1–6 dla `<epik>` = `epic.dir`, bez pytania „Zacząć epik?”. Gdy trwa przegląd albo
-  kolejka przeglądów nie jest pusta (sekcja 7a), zacznij go dopiero po niej.
+- **`epic` jest:** wykonaj sekcje 1–6 dla `<epik>` = `epic.dir`, bez pytania „Zacząć epik?”.
+
+Gdy trwa przegląd albo kolejka przeglądów nie jest pusta (sekcja 7a), `next` wywołaj dopiero po jej końcu, ze świeżym
+`get_usage`: prognoza czasu i limitu ma dotyczyć chwili startu. `next` zwracający epik niczego nie zapisuje.
 - **Koniec nocy:** `epic` jest `null`, sekcja 1 odmawia (epikowi nocy), `next` kończy się kodem różnym od 0, epik
   nocy kończy się bez `DONE` albo `start` lub `done` tego epiku zakończył się kodem różnym od 0 (wtedy nie
   uruchamiaj `next`). Bloker zadania czekający na odpowiedź użytkownika nie kończy nocy (sekcja 5: czekasz na

@@ -112,8 +112,8 @@ tylko krytyczne ścieżki, a UX ich ekrany.
 1. **Warunki startu:** działa Docker i `gh`, `git fetch origin main`, przy podanym epiku `docs/features/<epik>/spec.md`
    jest na `origin/main`. Niespełniony warunek: odmowa z powodem, nic nie startuje.
 2. **Stos:** osobny worktree `git worktree add --detach` z `origin/main` w katalogu przebiegu
-   `~/.local/state/shop-sweep/<data>-<sha7>[-<epik>]/` (z epikiem, żeby przeglądy dwóch epików na tym samym commicie
-   się nie wykluczały), projekt Compose `sweep-<sha7>`, porty od `AO_PORT_BASE` (domyślnie
+   `~/.local/state/shop-sweep/<data>-<sha7>[-<epik>]/` i projekt Compose `sweep-<sha7>[-<epik>]` (z epikiem, żeby przeglądy dwóch epików na
+   tym samym commicie się nie wykluczały), porty od `AO_PORT_BASE` (domyślnie
    19100), uruchomiony przez `.ao/setup` z worktree. Błąd setupu: raport z końcówką wyjścia, sprzątanie, koniec.
 3. **Agenci po kolei:** tester, potem UX (te same konta demo i kody TOTP, więc nie równolegle). Każdy dostaje adresy
    stosu, commit, ścieżkę specyfikacji epiku, swój `AGENT_DIR` w katalogu przebiegu, listę otwartych issues
@@ -123,7 +123,7 @@ tylko krytyczne ścieżki, a UX ich ekrany.
    jednej linii.
 5. **Raport** w katalogu przebiegu (`report.md`, poza repo): commit, zakres, wynik każdej ścieżki i kryterium
    (OK, błąd, jeszcze nie ma), propozycje z pełnymi polami, hipotezy, nadmiar ponad limit, duplikaty, ścieżki dowodów.
-   Skrót w rozmowie i powiadomienie push „Przegląd po merge'u <sha7>: N propozycji”.
+   Skrót w rozmowie i powiadomienie push „Przegląd po merge'u <sha7><-epik>: N propozycji”.
 6. **Sprzątanie, zawsze, także po błędzie:** `.ao/teardown` z tym samym projektem i `git worktree remove`. Raport
    i dowody zostają.
 7. **Triage:** użytkownik odpowiada w sesji, np. „załóż 1 i 3, odrzuć 2: celowe”. Skill zakłada wybrane przez

@@ -151,7 +151,7 @@ limitów inny niż `ok` nie daje pomiaru tego okna. Epik zakończony bez `DONE` 
 ## Przegląd po merge'u
 
 Krok 12 planu: `/sweep` po merge'u epiku uruchamia sesja `/ao-run`, nie użytkownik. Skill `/sweep` zmienia się tylko
-w nazwie katalogu przebiegu (`<data>-<sha7>-<epik>`, żeby dwa przeglądy na tym samym commicie się nie wykluczały;
+w nazwie katalogu przebiegu i projektu Compose (`<data>-<sha7>-<epik>`, `sweep-<sha7>-<epik>`, żeby dwa przeglądy na tym samym commicie się nie wykluczały;
 spec: `docs/features/agent-tester-ux/spec.md`). Sesja czyta jego `.claude/skills/sweep/SKILL.md` i wykonuje kroki 1–6
 z argumentem `<epik>` (flaga `disable-model-invocation` zostaje, więc model nie wywoła go narzędziem Skill sam z
 siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
@@ -163,7 +163,8 @@ siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
   uruchomić `/sweep <epik>` sam).
 - **Przegląd i epik nie działają naraz.** Przegląd nie startuje, gdy działa proces AO tej sesji albo procedura
   „Konflikt końcowego PR poza AO” (własny stos). Nowy epik („tak” z punktu 7, pierwszy i kolejny epik listy nocy),
-  ponowne `ao run` po decyzji użytkownika i ta procedura czekają na koniec trwającego przeglądu, a nowy epik także na
+  ponowne `ao run` po decyzji użytkownika i ta procedura czekają na koniec trwającego przeglądu (przy nocy sesja
+  wywołuje `next` dopiero po kolejce, żeby prognoza dotyczyła chwili startu), a nowy epik także na
   pustą kolejkę. Pytanie „Zacząć epik?” i lista nocy nie czekają na przegląd: po merge'u sesja najpierw dopisuje epik
   do kolejki i wysyła pytanie z punktu 7 (przy nocy według jej reguły), dopiero potem zaczyna przegląd.
 - **Kiedy kolejka rusza.** Sesja sprawdza kolejkę po dopisaniu epiku, po końcu przeglądu i po końcu procesu AO tej
@@ -177,8 +178,8 @@ siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
     i każde okno, które nie odnowi się w ciągu 2 h, poniżej 80%. Inaczej powód z wyjścia (np. „Weekly · all models
     82%”, „stan limitów nieczytelny”);
   - warunki startu `/sweep` (krok 1 skilla: Docker, `gh`, spec epiku na `origin/main`, wolne porty od 19100, brak
-    przebiegu tego commitu). Odmowa `/sweep` to powód pominięcia.
-- **Wynik.** `/sweep` wysyła swój push „Przegląd po merge'u <sha7>: N propozycji” i zostawia skrót w rozmowie
+    przebiegu tego commitu i epiku). Odmowa `/sweep` to powód pominięcia.
+- **Wynik.** `/sweep` wysyła swój push „Przegląd po merge'u <sha7><-epik>: N propozycji” i zostawia skrót w rozmowie
   z ID epiku. Gdy czeka triage kilku przeglądów, odpowiedź wskazuje epik („CART: załóż 1”); odpowiedź bez epiku przy
   kilku otwartych triage sesja dopytuje.
   Błąd stosu kończy ten przegląd jak w `/sweep` (sprzątanie, push), kolejka idzie dalej. Bez odpowiedzi użytkownika
