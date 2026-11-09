@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -23,7 +23,7 @@ const tabOrder = () =>
   });
 
 describe("SiteHeader", () => {
-  it("has the wordmark, the Menu button, the cart and then the search in the document (tab) order, so it follows the two rows of a phone", () => {
+  it("has the wordmark, the Menu button, the cart and then the search in the document (tab) order, which is the visual order of a phone and of a wide screen", () => {
     render(header());
     const order = tabOrder();
     const position = (name: string | RegExp) => order.findIndex((entry) => (typeof name === "string" ? entry === name : name.test(entry)));
@@ -32,6 +32,10 @@ describe("SiteHeader", () => {
     expect(position(/Koszyk/)).toBeGreaterThan(position("Menu"));
     expect(position("search field")).toBeGreaterThan(position(/Koszyk/));
     expect(position("search button")).toBeGreaterThan(position("search field"));
+  });
+
+  it("does not reorder anything with CSS: no `order` utilities in the header", () => {
+    expect(renderToStaticMarkup(header())).not.toMatch(/(^|[\s"])(sm:|md:|lg:|xl:)?order-/);
   });
 
   it("puts the Menu button, closed, with aria-expanded in the header", () => {
@@ -57,5 +61,23 @@ describe("SiteHeader", () => {
     expect(screen.queryByRole("button", { name: "Menu" })).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Działy" })).toBeNull();
     expect(screen.getByRole("link", { name: STORE_NAME })).toBeTruthy();
+  });
+
+  it("closes the open compact search when the panel of a department opens, so the two panels are never open together", () => {
+    render(header());
+    const toggle = screen.getByRole("button", { name: "Wyszukiwarka" });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    // A hover opens the panel without a mousedown and without moving the focus.
+    fireEvent.pointerEnter(screen.getByRole("button", { name: TREE[0].name }), { pointerType: "mouse" });
+    expect(screen.getByRole("button", { name: TREE[0].name }).getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("search").getAttribute("data-state")).toBe("closed");
+  });
+
+  it("lets the bar of departments wrap instead of running over the cart and the account when it does not fit", () => {
+    render(header());
+    const list = screen.getByRole("button", { name: TREE[0].name }).closest("ul");
+    expect(list?.className).toMatch(/(^|\s)flex-wrap(\s|$)/);
   });
 });

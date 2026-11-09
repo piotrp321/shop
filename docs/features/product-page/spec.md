@@ -357,14 +357,18 @@ zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze 
   `PhotoPlaceholder` bez powiększenia. Gdy `zoomImages` nie ma odpowiednika każdego zdjęcia, zdjęcia są w pasku bez
   przycisków powiększenia.
 - **Cele dotyku** miniatur, strzałek i przycisków co najmniej 44×44 px; miniatura ma 72 px (telefon) albo 84 px (desktop).
-  Kolejność tabulatora zgadza się z wizualną dzięki `reading-flow: flex-visual` (miniatury po lewej od zdjęcia od `lg`,
-  w DOM po pasku); przeglądarki bez `reading-flow` (dziś Firefox i Safari) idą w kolejności DOM: pasek, licznik, strzałki,
-  miniatury.
+  Kolejność tabulatora jest kolejnością wizualną w każdej przeglądarce, bo kolejność w dokumencie jest kolejnością na
+  ekranie (bez właściwości CSS zmieniających kolejność fokusu i bez `order`): lista miniatur jest w HTML dwa razy, kolumna po lewej od zdjęcia
+  (`hidden lg:flex`) przed paskiem i rząd pod paskiem (`lg:hidden`) po nim; ukryta ma `display: none` (poza Tab i drzewem
+  dostępności), jej obrazy mają `loading="lazy"` i te same adresy co obrazy widocznej listy, obie są w HTML z serwera, mają tę samą etykietę „Miniatury zdjęć”
+  i ten sam stan `aria-current`. Od `lg` Tab idzie: miniatury, zdjęcia paska, strzałki; poniżej `lg`: zdjęcia paska,
+  strzałki, miniatury.
 - **Testy:** Vitest (`ProductGallery.test.tsx`, `ProductGallery.server.test.tsx` na HTML serwera) i E2E
   (`e2e/tests/product-gallery.spec.ts`, produkt demo „Narty skiturowe Stavro Grań 95” z trzema zdjęciami): mysz,
   klawiatura, dotyk na 375 px (rzeczywiste zdarzenia dotyku z `Input.dispatchTouchEvent`), brak zmiany adresu po
   miniaturze, ta sama pozycja nazwy i „Do koszyka” z JavaScriptem i bez, brak pobrania pliku 2560 px, axe (także z
-  otwartym powiększeniem) na 1440 i 375 px.
+  otwartym powiększeniem) na 1440 i 375 px; kolejność elementów galerii w dokumencie równa ich położeniu i sekwencja
+  Tab na 1440 i 375 px.
 
 ## Kryteria akceptacji
 

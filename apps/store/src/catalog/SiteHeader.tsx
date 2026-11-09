@@ -9,42 +9,46 @@ import { MegaMenu } from "./MegaMenu";
 type CategoryNode = components["schemas"]["CategoryNode"];
 
 /**
- * The header of every page: the wordmark, the department menu, the search box, the cart and the account. `categories`
+ * The header of every page: the wordmark, the department menu, the cart, the account and the search box. `categories`
  * is `null` when the tree could not be read, and the header then has no menu. `search` is the search box
  * (`SearchBox`), the `@search` slot of the root layout, so that `/szukaj` can put its phrase in. Nothing here depends
  * on the session.
  *
- * One row from `lg` (wordmark, departments, search, cart, account); below it two rows: the wordmark, „Menu”, the cart
- * and the account, then the search box on the full width. The notice of the cart (`CartBadge`) is one more row under
- * them, in the flow, only when there is one. The document order is the one of the phone (wordmark, menu, cart and
- * account, search); on a wide screen the grid areas put the search box before the cart and `reading-flow: grid-rows`
- * makes the tab order (and the order of assistive technology) follow the grid, so it is the visual order (WCAG 2.4.3).
- * The children of the grid are the direct children of the container, which `reading-flow` needs (`CartBadge` renders
- * two of them, the account is its child). A browser without `reading-flow` keeps the document order on a wide screen.
- * The search form is in the HTML once.
+ * The document order is the visual order at every width (WCAG 2.4.3), so the tab order needs no CSS that reorders it and
+ * is the same in every browser: the wordmark, the departments („Menu” below `lg`), the cart, the account, the search. From
+ * `lg` (1024 px) it is one row in that order; below it the first row is the wordmark, „Menu”, the cart and the account and
+ * the search box has a row of its own under it, on the full width. The notice of the cart (`CartBadge`) is the last child,
+ * one more row in the flow under the others, only when there is one. There are no `order` utilities and no grid areas that
+ * move an element away from its place in the document. The search form is in the HTML once; where the row has no room for
+ * it (1024 to 1279 px) `SearchBox` is a button that opens it as a panel under the header.
  */
 export function SiteHeader({ categories, search }: { categories: CategoryNode[] | null; search: ReactNode }) {
   return (
     <header className="relative z-30 border-b border-border bg-background">
       <div
         className={
-          "mx-auto grid [reading-flow:grid-rows] max-w-content grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2.5 px-gutter py-3 " +
-          "[grid-template-areas:'brand_nav_utils''search_search_search'] " +
-          "lg:grid-cols-[auto_minmax(0,1fr)_12rem_auto] xl:grid-cols-[auto_minmax(0,1fr)_16rem_auto] lg:gap-x-6 lg:py-4.5 lg:[grid-template-areas:'brand_nav_search_utils']"
+          "mx-auto grid max-w-content grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-y-2.5 px-gutter py-3 " +
+          "[grid-template-areas:'brand_nav_cart_account''search_search_search_search'] " +
+          "lg:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] lg:py-4.5 lg:[grid-template-areas:'brand_nav_cart_account_search'] " +
+          "xl:grid-cols-[auto_minmax(0,1fr)_auto_auto_14rem]"
         }
       >
-        <Link href="/" className="[grid-area:brand] text-2xl leading-none font-bold tracking-brand">
+        <Link href="/" className="mr-3 [grid-area:brand] text-2xl leading-none font-bold tracking-brand lg:mr-4 xl:mr-6">
           {STORE_NAME}
         </Link>
         {categories !== null && categories.length > 0 && <MegaMenu categories={categories} />}
-        {/* The counter loads in the browser, so the HTML is the same for everybody. The account box (it reads the URL for
-            returnTo and loads the session in the browser) sits in the same cell. */}
+        {/* The counter loads in the browser, so the HTML is the same for everybody. `CartBadge` renders its link first, then
+            what follows it in the row (the account and the search), and last the notice of the cart, so the notice is the
+            last row of the header in the document too. The account box reads the URL for returnTo and loads the session
+            in the browser. */}
         <CartBadge>
-          <Suspense fallback={null}>
-            <AccountMenu />
-          </Suspense>
+          <div className="flex [grid-area:account]">
+            <Suspense fallback={null}>
+              <AccountMenu />
+            </Suspense>
+          </div>
+          {search}
         </CartBadge>
-        <div className="min-w-0 [grid-area:search]">{search}</div>
       </div>
     </header>
   );

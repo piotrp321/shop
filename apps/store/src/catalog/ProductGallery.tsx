@@ -45,6 +45,43 @@ function Arrow({ direction, onClick, className }: { direction: "previous" | "nex
 const stripClasses = "flex overflow-x-auto overscroll-x-contain snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
 /**
+ * One of the two lists of the thumbnails (links to the photos of the strip). The gallery renders both: the `beside` one
+ * (a column on the left of the strip, shown from `lg`) before the strip and the `after` one (a row under the strip, shown
+ * below `lg`) after it, and CSS shows one of them (the other is `display: none`: out of the Tab order and the accessibility
+ * tree, and its lazy images are not loaded). So the document order is the visual order at every width, with no CSS that
+ * reorders. Both are in the HTML of the server and have the same current thumbnail.
+ */
+function Thumbnails({ photos, current, goTo, layout }: { photos: Photo[]; current: number | null; goTo: (position: number) => void; layout: "beside" | "after" }) {
+  const beside = layout === "beside";
+  return (
+    <ul aria-label="Miniatury zdjęć" className={beside ? "hidden gap-2.5 p-1 lg:flex lg:flex-col" : "flex gap-2.5 overflow-x-auto p-1 lg:hidden"}>
+      {photos.map(({ image }, position) => {
+        const thumb = smallestVariant(image)!;
+        return (
+          <li key={position} className="shrink-0">
+            <a
+              href={`#zdjecie-${position + 1}`}
+              aria-label={`Pokaż zdjęcie ${position + 1} z ${photos.length}`}
+              aria-current={position === current ? "true" : undefined}
+              className={cn(
+                "block overflow-hidden rounded-md border border-input focus-visible:outline-3 focus-visible:outline-offset-3 aria-[current=true]:outline-2 aria-[current=true]:outline-offset-2 aria-[current=true]:outline-foreground",
+                beside ? "size-21" : "size-18",
+              )}
+              onClick={(event) => {
+                event.preventDefault();
+                goTo(position);
+              }}
+            >
+              <img src={thumb.url} alt="" width={thumb.width} height={thumb.height} loading="lazy" decoding="async" className="size-full object-cover" />
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
  * The gallery of the product page. The HTML of the server holds all of it and works without JavaScript: a strip of the
  * photos (CSS scroll-snap, so a finger swipes it), a counter and thumbnails that are links to the photos in the strip.
  * After hydration JavaScript adds what only it can do: the current thumbnail (`aria-current`), the counter following the
@@ -78,8 +115,9 @@ export function ProductGallery({ name, images, zoomImages }: { name: string; ima
   }
 
   return (
-    <div className="flex flex-col gap-3 [reading-flow:flex-visual] lg:flex-row lg:gap-4">
-      <div className="relative min-w-0 lg:order-2 lg:flex-1">
+    <div className="flex flex-col gap-3 lg:flex-row lg:gap-4">
+      {several && <Thumbnails photos={photos} current={hydrated ? index : null} goTo={goTo} layout="beside" />}
+      <div className="relative min-w-0 lg:flex-1">
         {/* The arrow keys of the photo buttons inside bubble up to the strip. */}
         <div ref={stripRef} role="group" aria-label="Zdjęcia produktu" className={stripClasses} onScroll={onScroll} onKeyDown={onKeyDown}>
           {photos.map(({ image }, position) => {
@@ -125,29 +163,7 @@ export function ProductGallery({ name, images, zoomImages }: { name: string; ima
           </>
         )}
       </div>
-      {several && (
-        <ul aria-label="Miniatury zdjęć" className="flex gap-2.5 overflow-x-auto p-1 lg:order-1 lg:flex-col lg:overflow-visible">
-          {photos.map(({ image }, position) => {
-            const thumb = smallestVariant(image)!;
-            return (
-              <li key={position} className="shrink-0">
-                <a
-                  href={`#zdjecie-${position + 1}`}
-                  aria-label={`Pokaż zdjęcie ${position + 1} z ${count}`}
-                  aria-current={hydrated && position === index ? "true" : undefined}
-                  className="block size-18 overflow-hidden rounded-md border border-input focus-visible:outline-3 focus-visible:outline-offset-3 aria-[current=true]:outline-2 aria-[current=true]:outline-offset-2 aria-[current=true]:outline-foreground lg:size-21"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    goTo(position);
-                  }}
-                >
-                  <img src={thumb.url} alt="" width={thumb.width} height={thumb.height} loading="lazy" decoding="async" className="size-full object-cover" />
-                </a>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      {several && <Thumbnails photos={photos} current={hydrated ? index : null} goTo={goTo} layout="after" />}
       {zoomable && zoomStart !== null && (
         <Dialog open onOpenChange={(open) => !open && setZoomStart(null)}>
           <ZoomView

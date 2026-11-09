@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { expectTabOrderIsVisualOrder, focusablesInDomOrder, rowCount } from "../support/focus-order";
 import { logInAsJan } from "../support/shop";
 
 // Fonts, header, footer and the 404 page of the visual direction (VISUAL-DESIGN-5).
@@ -152,14 +153,14 @@ test.describe("the header on a phone", () => {
 test.describe("the header on a desktop", () => {
   test.use({ viewport: DESKTOP });
 
-  test("the tab order is the visual order: the wordmark, the departments, the search, the cart, the account", async ({ page }) => {
+  test("the tab order is the visual order: the wordmark, the departments, the cart, the account, the search", async ({ page }) => {
     await page.goto("/");
     await waitForHeader(page);
     const order = await tabOrder(page, 1 + DEPARTMENTS.length + 4);
-    expect(order).toEqual(["Worf", ...DEPARTMENTS, "search field", "search button", expect.stringMatching(/^Koszyk/), "Zaloguj się"]);
+    expect(order).toEqual(["Worf", ...DEPARTMENTS, expect.stringMatching(/^Koszyk/), "Zaloguj się", "search field", "search button"]);
   });
 
-  test("one row: wordmark, departments, search, cart, account; the panel spans the full width in four columns", async ({ page }) => {
+  test("one row: wordmark, departments, cart, account, search; the panel spans the full width in four columns", async ({ page }) => {
     await page.goto("/");
     const header = page.getByRole("banner");
     await expect(header.getByRole("link", { name: "Zaloguj się" })).toBeVisible();
@@ -169,8 +170,8 @@ test.describe("the header on a desktop", () => {
     const cart = await box(header.getByRole("link", { name: /Koszyk/ }));
     const account = await box(header.getByRole("link", { name: "Zaloguj się" }));
     for (const part of [search, cart, account]) expect(Math.abs(part.y + part.height / 2 - (brand.y + brand.height / 2))).toBeLessThan(40);
-    expect(search.x).toBeLessThan(cart.x);
     expect(cart.x).toBeLessThan(account.x);
+    expect(account.x).toBeLessThan(search.x);
     await expect(header.getByRole("button", { name: "Menu" })).toBeHidden();
 
     await header.getByRole("button", { name: "Turystyka", exact: true }).click();
@@ -181,6 +182,145 @@ test.describe("the header on a desktop", () => {
     expect(panelBox.width).toBeGreaterThanOrEqual(DESKTOP.width - 2);
     const columns = await panel.locator(":scope > div > ul > li").evaluateAll((items) => new Set(items.map((item) => Math.round(item.getBoundingClientRect().left))).size);
     expect(columns).toBe(4);
+  });
+});
+
+// The order of the document is the order on the screen at every width (WCAG 2.4.3), without a CSS feature that reorders
+// the focus: Chromium has such a feature, so the Tab key alone would not tell, the document order against the position does.
+const ORDER_WIDTHS = [375, 1024, 1440];
+// The row of the header from 1024 px: the widths of laptops and desktops.
+const ROW_WIDTHS = [1024, 1280, 1366, 1440, 1920];
+const ROW_HEIGHT_LIMIT = 100;
+
+async function settleHeader(page: Page, who: "guest" | "jan"): Promise<void> {
+  await page.goto("/");
+  if (who === "jan") {
+    await logInAsJan(page);
+    await expect(page.getByRole("banner").getByRole("button", { name: "Wyloguj się" })).toBeVisible();
+  } else {
+    await waitForHeader(page);
+  }
+  await page.evaluate(() => document.fonts.ready);
+}
+
+for (const who of ["guest", "jan"] as const) {
+  test.describe(`the header as ${who}`, () => {
+    test(`the document order and the Tab key follow the visual order at ${ORDER_WIDTHS.join(", ")} px`, async ({ page }) => {
+      await settleHeader(page, who);
+      for (const width of ORDER_WIDTHS) {
+        await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
+        const labels = await expectTabOrderIsVisualOrder(page, page.getByRole("banner"));
+        // The search is the last of the row on a wide screen (at 1024 px its button) and the last of the header on a phone.
+        expect(labels.at(-1) ?? "", `${width} px`).toMatch(/^button:(Szukaj|Wyszukiwarka)$/);
+      }
+    });
+
+    test(`one row of the header at ${ROW_WIDTHS.join(", ")} px: every control on one line, below ${ROW_HEIGHT_LIMIT} px, no horizontal scroll`, async ({ page }) => {
+      await settleHeader(page, who);
+      const header = page.getByRole("banner");
+      for (const width of ROW_WIDTHS) {
+        await page.setViewportSize({ width, height: 900 });
+        const height = Math.round((await header.boundingBox())!.height);
+        const tops = await header.getByRole("navigation", { name: "Działy" }).getByRole("button").evaluateAll((buttons) =>
+          buttons.filter((button) => button.checkVisibility()).map((button) => Math.round(button.getBoundingClientRect().top)),
+        );
+        expect(tops, `${width} px: every department button is visible`).toHaveLength(DEPARTMENTS.length);
+        expect(new Set(tops).size, `${width} px: the departments are in one row`).toBe(1);
+        const controls = await focusablesInDomOrder(header);
+        expect(rowCount(controls), `${width} px: ${controls.map((control) => control.label).join(" | ")}`).toBe(1);
+        expect(height, `${width} px: the height of the header`).toBeLessThan(ROW_HEIGHT_LIMIT);
+        expect(await scrollWidth(page), `${width} px: horizontal scroll`).toBeLessThanOrEqual(width);
+        for (const item of controls) expect(item.x, `${width} px: ${item.label} is on the screen`).toBeGreaterThanOrEqual(0);
+      }
+    });
+  });
+}
+
+test.describe("the search of the header where the row has no room for the field (1024 to 1279 px)", () => {
+  const COMPACT = { width: 1024, height: 800 };
+  test.use({ viewport: COMPACT });
+
+  test("a button opens the same form under the header, the field gets the focus, Escape closes it and gives the focus back", async ({ page }) => {
+    await page.goto("/");
+    await waitForHeader(page);
+    const header = page.getByRole("banner");
+    const toggle = header.getByRole("button", { name: "Wyszukiwarka" });
+    const field = header.getByRole("searchbox", { name: "Szukaj produktów" });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(field).toBeHidden();
+    // The form is in the HTML once (here it is closed, so not in the accessibility tree).
+    await expect(header.locator("form[role=search]")).toHaveCount(1);
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(field).toBeFocused();
+    const panel = (await header.getByRole("search").boundingBox())!;
+    const bar = (await header.boundingBox())!;
+    expect(panel.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
+    expect(panel.width).toBeGreaterThanOrEqual(COMPACT.width - 2);
+    // It does not push the page down: the main content is where it was.
+    expect((await page.getByRole("main").boundingBox())!.y).toBeLessThan(panel.y + panel.height);
+
+    await page.keyboard.press("Escape");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(field).toBeHidden();
+    await expect(toggle).toBeFocused();
+  });
+
+  test("a phrase sent from the panel opens the results, closes the panel and is in the field of /szukaj", async ({ page }) => {
+    await page.goto("/");
+    await waitForHeader(page);
+    const header = page.getByRole("banner");
+    await header.getByRole("button", { name: "Wyszukiwarka" }).click();
+    await header.getByRole("searchbox", { name: "Szukaj produktów" }).fill("asfalt");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/szukaj\?q=asfalt/);
+    await expect(header.getByRole("button", { name: "Wyszukiwarka" })).toHaveAttribute("aria-expanded", "false");
+    await expect(header.getByRole("searchbox", { name: "Szukaj produktów" })).toBeHidden();
+    await header.getByRole("button", { name: "Wyszukiwarka" }).click();
+    await expect(header.getByRole("searchbox", { name: "Szukaj produktów" })).toHaveValue("asfalt");
+  });
+
+  test("hovering a department while the search panel is open closes the panel, so the department panel is not covered", async ({ page }) => {
+    await page.goto("/");
+    await waitForHeader(page);
+    const header = page.getByRole("banner");
+    const toggle = header.getByRole("button", { name: "Wyszukiwarka" });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const department = page.getByRole("navigation", { name: /Działy/ }).getByRole("button").first();
+    await department.hover();
+    await expect(department).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(header.getByRole("searchbox", { name: "Szukaj produktów" })).toBeHidden();
+    const link = page.getByRole("link", { name: /Wszystko z działu/ }).first();
+    await expect(link).toBeVisible();
+    const box = (await link.boundingBox())!;
+    const top = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("a")?.textContent ?? "", { x: box.x + 4, y: box.y + box.height / 2 });
+    expect(top).toContain("Wszystko z działu");
+  });
+
+  test("without JavaScript the form is a row of the header under the first one, and the button is not shown", async ({ browser }) => {
+    const context = await browser.newContext({ viewport: COMPACT, javaScriptEnabled: false, locale: "pl-PL" });
+    const page = await context.newPage();
+    await page.goto("/");
+    const header = page.getByRole("banner");
+    await expect(header.getByRole("button", { name: "Wyszukiwarka" })).toBeHidden();
+    await expect(header.getByRole("searchbox", { name: "Szukaj produktów" })).toBeVisible();
+    const form = (await header.getByRole("search").boundingBox())!;
+    const brand = (await header.getByRole("link", { name: "Worf" }).boundingBox())!;
+    const main = (await page.getByRole("main").boundingBox())!;
+    expect(form.y).toBeGreaterThanOrEqual(brand.y + brand.height);
+    expect(form.y + form.height).toBeLessThanOrEqual(main.y + 1);
+    await context.close();
+  });
+
+  test("from 1280 px the field is in the row and there is no button", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/");
+    const header = page.getByRole("banner");
+    await expect(header.getByRole("searchbox", { name: "Szukaj produktów" })).toBeVisible();
+    await expect(header.getByRole("button", { name: "Wyszukiwarka" })).toBeHidden();
   });
 });
 

@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expectTabOrderIsVisualOrder, focusablesInDomOrder } from "../support/focus-order";
 import { urls } from "../support/urls";
 
 // The gallery and the enlargement of the product page (VISUAL-DESIGN-8). Demo data (apps/api/fixtures): the skis have
@@ -52,6 +53,65 @@ async function swipe(page: Page, target: Locator, direction: "next" | "previous"
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await cdp.detach();
 }
+
+/** The gallery: the grandparent of the strip (the strip is in the stage, the stage is next to the thumbnails). */
+const gallery = (page: Page): Locator => strip(page).locator("xpath=../..");
+
+test.describe("the order of the gallery is the same in the document and on the screen", () => {
+  for (const [name, viewport, thumbnailsFirst] of [["desktop", DESKTOP, true], ["phone", PHONE, false]] as const) {
+    test(`at ${viewport.width} px the ${thumbnailsFirst ? "thumbnails come before the strip" : "strip comes before the thumbnails"} in the document and on the screen, and Tab follows`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await openProduct(page);
+      await waitForHydration(page);
+      const labels = await expectTabOrderIsVisualOrder(page, gallery(page));
+      const thumbs = labels.filter((label) => label.startsWith("a:Pokaż zdjęcie"));
+      expect(thumbs, `${name}: only the visible list of the thumbnails is focusable`).toHaveLength(3);
+      const firstThumb = labels.findIndex((label) => label.startsWith("a:Pokaż zdjęcie"));
+      const firstPhoto = labels.findIndex((label) => label.startsWith("button:Powiększ"));
+      expect(firstThumb < firstPhoto).toBe(thumbnailsFirst);
+
+      // Where they are: the thumbnails left of the strip from `lg`, under it below `lg`.
+      const thumbBox = (await page.getByRole("list", { name: "Miniatury zdjęć" }).boundingBox())!;
+      const stripBox = (await strip(page).boundingBox())!;
+      if (thumbnailsFirst) expect(thumbBox.x + thumbBox.width).toBeLessThanOrEqual(stripBox.x + 1);
+      else expect(thumbBox.y).toBeGreaterThanOrEqual(stripBox.y + stripBox.height - 1);
+      expect(await focusablesInDomOrder(gallery(page))).toHaveLength(labels.length);
+    });
+
+    test(`at ${viewport.width} px the visible list of the thumbnails marks the current photo; the other list is not on the page`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await openProduct(page);
+      await waitForHydration(page);
+      await expect(page.getByRole("list", { name: "Miniatury zdjęć" })).toHaveCount(1);
+      const thumbs = page.getByRole("list", { name: "Miniatury zdjęć" }).getByRole("link");
+      await expect(thumbs.nth(0)).toHaveAttribute("aria-current", "true");
+      await page.getByRole("button", { name: "Następne zdjęcie" }).click();
+      await expect(thumbs.nth(1)).toHaveAttribute("aria-current", "true");
+      await expect(thumbs.nth(0)).not.toHaveAttribute("aria-current", "true");
+      await thumbs.nth(2).click();
+      await expect(thumbs.nth(2)).toHaveAttribute("aria-current", "true");
+      await page.getByRole("button", { name: "Następne zdjęcie" }).click();
+      await expect(thumbs.nth(0)).toHaveAttribute("aria-current", "true");
+    });
+  }
+
+  test("both lists of the thumbnails are in the HTML, the one that is not shown is display: none (out of Tab and of the accessibility tree) and its images are lazy", async ({ page }) => {
+    await page.setViewportSize(DESKTOP);
+    await openProduct(page);
+    const lists = await page.locator('[aria-label="Miniatury zdjęć"]').evaluateAll((items) =>
+      items.map((list) => ({
+        shown: list.checkVisibility(),
+        display: getComputedStyle(list).display,
+        links: list.querySelectorAll("a[href]").length,
+        lazy: [...list.querySelectorAll("img")].every((img) => img.loading === "lazy"),
+      })),
+    );
+    expect(lists).toHaveLength(2);
+    expect(lists.filter((list) => list.shown)).toHaveLength(1);
+    expect(lists.find((list) => !list.shown)?.display).toBe("none");
+    expect(lists.every((list) => list.links === 3 && list.lazy)).toBe(true);
+  });
+});
 
 test.describe("on a desktop", () => {
   test.use({ viewport: DESKTOP });

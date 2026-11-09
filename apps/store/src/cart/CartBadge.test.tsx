@@ -105,16 +105,16 @@ describe("CartBadge", () => {
     expect(notice.className).not.toMatch(/\b(absolute|fixed)\b/);
   });
 
-  it("renders its children in the cell of the cart link, so the header grid has them as one item", async () => {
-    vi.mocked(loadCartSummary).mockResolvedValue({ status: "ok", data: { itemCount: 1, notice: null } });
-    render(
+  it("renders the link, then its children, then the notice, as siblings, so the notice is the last element of the header in the document", async () => {
+    vi.mocked(loadCartSummary).mockResolvedValue({ status: "ok", data: { itemCount: 1, notice: "merge_truncated" } });
+    const { container } = render(
       <CartBadge>
         <a href="/auth/login">Zaloguj się</a>
+        <form role="search" />
       </CartBadge>,
     );
-    await act(async () => {});
+    await screen.findByRole("status");
 
-    const cell = screen.getByRole("link", { name: /Koszyk/ }).parentElement!;
-    expect(cell.contains(screen.getByRole("link", { name: "Zaloguj się" }))).toBe(true);
+    expect([...container.children].map((element) => element.getAttribute("role") ?? element.getAttribute("href"))).toEqual(["/cart", "/auth/login", "search", "status"]);
   });
 });

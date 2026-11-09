@@ -19,6 +19,19 @@ describe("the gallery in the HTML of the server", () => {
     expect(html).toContain('alt="Zdjęcie 1, drugie"');
   });
 
+  it("has both lists of the thumbnails (the one shown from `lg` before the strip, the other after it) with no CSS that reorders", () => {
+    const first = html.indexOf('aria-label="Miniatury zdjęć"');
+    const strip = html.indexOf('aria-label="Zdjęcia produktu"');
+    const second = html.indexOf('aria-label="Miniatury zdjęć"', first + 1);
+    expect(first).toBeGreaterThan(-1);
+    expect(first).toBeLessThan(strip);
+    expect(second).toBeGreaterThan(strip);
+    expect(html.indexOf('aria-label="Miniatury zdjęć"', second + 1)).toBe(-1);
+    // Every thumbnail is a link in both lists, so the page works without JavaScript at any width.
+    expect(html.match(/href="#zdjecie-1"/g)).toHaveLength(2);
+    expect(html).not.toMatch(/(^|[\s"])(lg:)?order-/);
+  });
+
   it("has the counter and nothing the JavaScript adds: no arrows, no current thumbnail", () => {
     expect(html).toContain("1 / 2");
     expect(html).not.toContain("Następne zdjęcie");
