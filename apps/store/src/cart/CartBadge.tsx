@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ShoppingCartIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type CartSummaryBody, loadCartSummary } from "@/api/client";
 import { subscribeToCartChanges } from "./events";
@@ -36,16 +37,25 @@ export function CartBadge() {
   }, []);
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center">
       {notice === "merge_truncated" ? (
-        <p role="status" className="text-sm text-muted-foreground">
+        // A bar under the header, so the long text does not push the icons of the header around.
+        <p role="status" className="absolute inset-x-gutter top-full z-40 border border-input bg-card px-3.5 py-2 text-sm text-foreground">
           {MERGE_TRUNCATED}
         </p>
       ) : null}
-      <Link href="/cart" className="flex items-center gap-2 text-sm underline-offset-4 hover:underline">
-        Koszyk
+      <Link
+        href="/cart"
+        className="relative inline-flex min-h-11 min-w-11 items-center justify-center gap-2 px-2.5 text-ui underline-offset-4 hover:underline"
+      >
+        <ShoppingCartIcon aria-hidden className="size-5" />
+        {/* The word is shown from `lg`; below it the cart is the icon (and the count above it). */}
+        <span className="sr-only lg:not-sr-only">Koszyk</span>
         {itemCount === null ? null : (
-          <span data-testid="cart-count" className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
+          <span
+            data-testid="cart-count"
+            className="absolute top-0.5 right-0 inline-grid h-5.5 min-w-5.5 place-items-center rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground lg:static"
+          >
             {itemCount}
           </span>
         )}

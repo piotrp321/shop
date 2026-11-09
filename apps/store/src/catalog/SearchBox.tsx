@@ -2,6 +2,7 @@
 
 import Form from "next/form";
 import { usePathname, useSearchParams } from "next/navigation";
+import { SearchIcon } from "lucide-react";
 import { Suspense, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,9 +41,10 @@ export function SearchBox({ phrase }: { phrase?: string }) {
       <label htmlFor={FIELD_ID} className="sr-only">
         Szukaj produktów
       </label>
-      <Input id={FIELD_ID} type="search" name="q" defaultValue={phrase} placeholder="Szukaj produktów" className="flex-1 sm:w-64 sm:flex-none" />
-      <Button type="submit" variant="outline" size="sm">
-        Szukaj
+      <Input id={FIELD_ID} type="search" name="q" defaultValue={phrase} placeholder="Szukaj produktów" className="flex-1" />
+      <Button type="submit" variant="outline" size="icon">
+        <SearchIcon aria-hidden />
+        <span className="sr-only">Szukaj</span>
       </Button>
       <Suspense>
         <CurrentPhrase />
