@@ -5,6 +5,9 @@
 # services to be healthy and creates .env.local with generated secrets), clears the OIDC key cache of the API, seeds
 # demo data and waits for the API.
 # Exit 0 = the stack is ready. Set AO_SETUP_READY_TIMEOUT (seconds, default 120) to change the API wait.
+# A failed `make up` is retried once. Every failure after the stack started saves `docker compose ps -a` and the
+# logs of all services to AO_SETUP_DIAG_DIR (default ~/.local/state/ao-setup, outside the worktree), because AO tears
+# the stack down right after a failed setup.
 set -eu
 # Name and number checks below must not depend on the locale (ranges like a-z).
 export LC_ALL=C
@@ -64,14 +67,34 @@ trap 'rm -f "$tmp"; exit 1' INT TERM
 mv "$tmp" .env
 trap - EXIT INT TERM
 
+# Best effort: a failing dump must not hide the original error.
+save_diagnostics() {
+  dir="${AO_SETUP_DIAG_DIR:-$HOME/.local/state/ao-setup}"
+  file="$dir/$AO_COMPOSE_PROJECT-$(date +%Y%m%d-%H%M%S)-$$-$1.log"
+  mkdir -p "$dir" 2>/dev/null || return 0
+  {
+    echo "== $1"
+    echo "== docker compose ps -a"
+    docker compose -p "$AO_COMPOSE_PROJECT" ps -a 2>&1
+    echo "== docker compose logs"
+    docker compose -p "$AO_COMPOSE_PROJECT" logs --no-color --timestamps --tail 500 2>&1
+  } > "$file" 2>&1 || true
+  echo "ao setup: stack state and logs saved to $file" >&2
+}
+fail_stack() { save_diagnostics "$2"; fail "$1"; }
+
 export COMPOSE_PROJECT_NAME="$AO_COMPOSE_PROJECT"
-make up || fail "make up failed"
+if ! make up; then
+  save_diagnostics up-attempt-1
+  echo "ao setup: make up failed, retrying once" >&2
+  make up || fail_stack "make up failed" up-attempt-2
+fi
 # The API cache (apps/api/var/cache) is on the bind mount of the worktree, so it survives teardown. Its OIDC pool
 # would still hold the signing keys (kid) of the previous Keycloak, and the API would reject valid tokens (401).
 # Cleared inside the container: no host paths or file ownership involved.
 docker compose -p "$AO_COMPOSE_PROJECT" exec -T api bin/console cache:pool:clear cache.oidc \
-  || fail "clearing the API cache pool cache.oidc failed"
-make seed || fail "make seed failed"
+  || fail_stack "clearing the API cache pool cache.oidc failed" cache-clear
+make seed || fail_stack "make seed failed" seed
 
 api_port=$((AO_PORT_BASE + 2))
 timeout="${AO_SETUP_READY_TIMEOUT:-120}"
@@ -80,7 +103,7 @@ case "$timeout" in
 esac
 waited=0
 until curl -fs --max-time 5 "http://127.0.0.1:$api_port/health" >/dev/null 2>&1; do
-  [ "$waited" -lt "$timeout" ] || fail "the API did not become ready within ${timeout}s (http://127.0.0.1:$api_port/health)"
+  [ "$waited" -lt "$timeout" ] || fail_stack "the API did not become ready within ${timeout}s (http://127.0.0.1:$api_port/health)" api-ready
   sleep 1
   waited=$((waited + 1))
 done
