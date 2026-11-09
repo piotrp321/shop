@@ -1,12 +1,64 @@
 # Makiety kierunków wizualnych sklepu Worf
 
-Trzy kierunki wizualne sklepu (VISUAL-DESIGN-1): `kierunek-a.html`, `kierunek-b.html`, `kierunek-c.html`. Każdy plik to samodzielny, statyczny dokument (CSS w pliku, bez JavaScriptu, bez żądań sieciowych) z trzema ekranami: stroną główną, listingiem kategorii i kartą produktu. Ekrany działają w 1440 i 375 px (responsywny CSS, bez poziomego przewijania) i mają podpisy; stany interfejsu są pokazane w podpisanych panelach „Stan: …” na dole ekranu. Zrzuty pełnej wysokości ekranów są obok plików HTML (`kierunek-{a,b,c}-{glowna,listing,produkt}-{1440,375}.png`, 18 plików).
+Wybrany kierunek (`kierunek.html`, VISUAL-DESIGN-4) i trzy kierunki pierwszej rundy (VISUAL-DESIGN-1): `kierunek-a.html`, `kierunek-b.html`, `kierunek-c.html`. Każdy plik to samodzielny, statyczny dokument (CSS w pliku, bez JavaScriptu, bez żądań sieciowych) z trzema ekranami: stroną główną, listingiem kategorii i kartą produktu. Ekrany działają w 1440 i 375 px (responsywny CSS, bez poziomego przewijania) i mają podpisy; stany interfejsu są pokazane w podpisanych panelach „Stan: …” na dole ekranu. Zrzuty pełnej wysokości ekranów są obok plików HTML (`kierunek-{a,b,c}-{glowna,listing,produkt}-{1440,375}.png`, 18 plików).
 
-Wyboru kierunku dokonuje właściciel (VISUAL-DESIGN-4). Makiety są ilustracją; źródłem prawdy po wyborze będzie specyfikacja `docs/features/visual-design/spec.md` i `tokens.css` sklepu.
+Wyboru kierunku dokonał właściciel (VISUAL-DESIGN-4): `kierunek.html`, opisany w następnej sekcji. Makiety są ilustracją; źródłem prawdy po wyborze będzie specyfikacja `docs/features/visual-design/spec.md` i `tokens.css` sklepu.
+
+## Wybrany kierunek: `kierunek.html`
+
+Właściciel wybrał kierunek A „Granit” z czterema poprawkami, które zmieniają kompozycję ekranów. Poprawki są naniesione na nowy plik `kierunek.html` (kopia `kierunek-a.html` z poprawkami), a jego zrzuty to `kierunek-{glowna,listing,produkt}-{1440,375}.png` (6 plików, obok pliku HTML). Paleta, font Outfit, promienie, akcent, hero i kafelki działów zostają jak w A (sekcja „Kierunek A »Granit«” niżej opisuje je dalej). Pliki `kierunek-a.html`, `kierunek-b.html`, `kierunek-c.html` i ich 18 zrzutów zostają do potwierdzenia wyboru przez właściciela.
+
+### Poprawki właściciela i ich skutki w makiecie
+
+1. **Różnice między produktami.** Listing to dopracowany przykład kategorii „Kajaki” (Sporty wodne › Kajaki, 4 produkty), w którym każdy model ma własne zdjęcie. Karta produktu (Narty skiturowe Stavro Grań 95) ma galerię trzech zdjęć w kolejności: cały sprzęt, istotny detal (końcówki nart), zdjęcie w użyciu; licznik „1 / 3”, trzy miniatury, powiększenie pokazuje pierwsze zdjęcie.
+2. **Nagłówek na telefonie (< 1024 px).** Dwa rzędy zamiast trzech: znak „Worf”, przycisk „Menu” (lista działów otwiera się jako panel pod nagłówkiem), koszyk i konto w pierwszym rzędzie, a pod nimi wyszukiwarka na pełną szerokość. Nagłówek ma 123 px wysokości zamiast 177 px. Desktop bez zmian (81 px). Hero (wędrowcy, „Sprzęt na każdy szlak”) i kafelki działów bez zmian.
+3. **Wybór wariantu na kafelku.** Produkt z wariantami ma jedną aktywną akcję „Wybierz wariant” (bez listy `<select>` i bez nieaktywnego „Do koszyka”). Po jej użyciu w miejscu przycisku pojawia się wybór wartości osi (przyciski jak na karcie produktu; wartość niedostępna ma przerywaną ramkę i tekst „niedostępny”), a po wyborze etykieta dostępności wariantu i aktywny „Do koszyka”. Produkt bez wariantów ma od razu aktywny „Do koszyka”. Ta sama reguła dotyczy kafelków na stronie głównej.
+4. **Stopka.** Grafitowe tło zostaje. Znak „Worf” ma 24 px (telefon) i 28 px (desktop) zamiast 48 i 96 px, pionowe odstępy są krótsze. Desktop: logo po lewej, linki działów po prawej w dwóch kolumnach (stopka ma 243 px wysokości zamiast 302 px). Telefon: małe logo nad linkami w dwóch kolumnach, linki mają 44 px wysokości (stopka ma 304 px zamiast 378 px). Pod cienką linią jeden dyskretny wiersz: „© 2026 Worf · Zdjęcia: Unsplash”.
+
+### Różnice względem `kierunek-a.html` (zmiany kompozycji)
+
+| Obszar | `kierunek-a.html` | `kierunek.html` |
+|---|---|---|
+| Nagłówek na telefonie | trzy rzędy: znak z koszykiem i kontem, wyszukiwarka, przycisk „Menu” | dwa rzędy: znak, „Menu”, koszyk i konto; wyszukiwarka na pełną szerokość pod nimi; lista działów to panel pod nagłówkiem (w DOM „Menu” stoi zaraz po znaku, a wyszukiwarka przed koszykiem, jak na desktopie, więc kolejność tabulatora na telefonie nie odpowiada rzędom: do rozwiązania we wdrożeniu, np. układem siatki) |
+| Kafelek produktu z wariantami | etykieta osi, `<select>` „Wybierz wariant” i nieaktywny „Do koszyka” | jedna akcja „Wybierz wariant”; po niej przyciski wartości osi, cena i dostępność wariantu, „Do koszyka”; przyciski wartości zajmują całą szerokość kafelka na telefonie |
+| Kafelek produktu bez wariantów | nie występował | aktywny „Do koszyka” od razu |
+| Listing | „Sporty wodne”, 10 produktów, kafelki powtarzają dwa zdjęcia, paginacja pod siatką | „Kajaki”, 4 produkty, osobne zdjęcie każdego modelu, sortowanie „Nazwa A–Z”, paginacja tylko w panelu stanu |
+| Galeria karty produktu | 2 zdjęcia („1 / 2”), pierwsze to zdjęcie w użyciu | 3 zdjęcia („1 / 3”): cały sprzęt, detal, w użyciu; pierwsze to cały sprzęt |
+| Stopka | znak 48/96 px, długie odstępy, linki w 2 (telefon) lub 3 (desktop) kolumnach, osobne napisy w dwóch narożnikach | znak 24/28 px, krótkie odstępy, linki w 2 kolumnach (desktop: po prawej), jeden wiersz pod cienką linią |
+| Stany pod stroną | menu na telefonie, mega menu, filtry na telefonie, powiększenie zdjęcia | te same oraz: kafelek po wyborze wariantu („Ostatnie sztuki”, rozwinięty bez wyboru), produkt bez wariantów, paginacja |
+
+### Zawartość listingu i karty produktu
+
+Nazwy, ceny i stany pochodzą z `apps/api/fixtures` (`catalog.yaml`, `prices.yaml`, `stock.yaml`), teksty interfejsu z kodu `apps/store/src` jak w pierwszej rundzie.
+
+- **Listing „Kajaki”**: aktywne filtry „Cena od 1000 zł” i „Cena do 4000 zł” obejmują wszystkie 4 produkty; sortowanie „Nazwa A–Z”. Kafelki: Kajak turystyczny Dravik Rzeka 1 (2499,00 zł, „Dostępny”, „Wybierz wariant”), Dravik Rzeka 2 (3499,00 zł, rozwinięty: „pomarańczowy niedostępny”, „zielony” wybrany, „Dostępny”, „Do koszyka”), Vilmar Rzeka 1 (2499,00 zł, „Wybierz wariant”), Vilmar Rzeka 2 („Niedostępny”, wszystkie warianty bez stanu, zdjęcie wyszarzone, bez przycisku). Kolejność wynika z sortowania po nazwie.
+- **Panele stanów listingu**: (a) kafelek Dravik Rzeka 1 po wybraniu „zielony” (stan 3, więc „Ostatnie sztuki”) obok kafelka Vilmar Rzeka 1 rozwiniętego bez wyboru (bez ceny wariantu i bez „Do koszyka”); (b) „produkt bez wariantów”: Hantle regulowane Lumora Para 10 (399,00 zł) i Hantle regulowane Dravik Para 24 (899,00 zł), szablon `Hantle regulowane` w `catalog.yaml` nie ma `variantAxes`; (c) paginacja „Poprzednia”, „Strona 2 z 3”, „Następna”; (d) panel filtrów na telefonie jak w pierwszej rundzie.
+- **Karta produktu**: Narty skiturowe Stavro Grań 95 jak w pierwszej rundzie (wartość „pomarańczowe” niedostępna, „niebieskie” i „172 cm” wybrane, fokus klawiatury na „Do koszyka”), z galerią trzech zdjęć.
+- **Odstępstwa od danych demo**: (1) zdjęcia kajaków i nart (pierwsze dwa w galerii) pochodzą z `mockups/images/` (źródła i licencje: `images/CREDITS.md`), bo w danych demo produkty jednego szablonu mają wspólne zdjęcia (dwa na cały szablon); trzecie zdjęcie galerii to zdjęcie szablonu z `apps/api/fixtures/images`; (2) demo ma jedno zdjęcie na produkt, a makieta pokazuje galerię trzech; (3) w sklepie 4 produkty to jedna strona i paginacji nie ma, dlatego jej styl pokazuje panel stanu; (4) hantle w panelu „produkt bez wariantów” mają zdjęcia szablonu (zajęcia jogi), bo to jedyne zdjęcia tego szablonu w danych demo; (5) tytuły i teksty hero oraz podpisy ekranów to propozycje na potrzeby makiety.
+
+### Nowe pary kontrastów (WCAG 2.2 AA)
+
+Pary policzone jak w sekcji „Jak policzono kontrasty”; wszystkie kolory są tokenami kierunku A, więc nowe są tylko użycia. Pozostałe pary kierunku A (tabela niżej) obowiązują bez zmian.
+
+| Tekst lub element | Tło | Gdzie | Rodzaj | Stosunek | Wymagany | Wynik |
+|---|---|---|---|---|---|---|
+| `ink` | `bg` | Napis „Wybierz wariant” na kafelku | tekst | 16,56:1 | 4,50:1 | spełnia |
+| `ink` | `bg` | Obramowanie przycisku „Wybierz wariant” | element interfejsu | 16,56:1 | 3,00:1 | spełnia |
+| `ink` | `surface` | Napis na przyciskach wartości osi na kafelku | tekst | 17,77:1 | 4,50:1 | spełnia |
+| `line` | `bg` | Obramowanie przycisków wartości osi (w tym wartości niedostępnej, przerywane) | element interfejsu | 3,97:1 | 3,00:1 | spełnia |
+| `muted` | `bg` | Etykieta osi „Kolor” i napis „niedostępny” na kafelku | tekst | 6,66:1 | 4,50:1 | spełnia |
+| `on-dark` | `dark` | Wybrana wartość osi na kafelku | tekst | 16,73:1 | 4,50:1 | spełnia |
+| `on-accent` | `accent` | „Do koszyka” na kafelku | tekst | 7,52:1 | 4,50:1 | spełnia |
+| `low` | `bg` | „Ostatnie sztuki” na kafelku po wyborze wariantu | tekst | 6,04:1 | 4,50:1 | spełnia |
+| `on-dark` | `dark` | Znak „Worf” i linki działów w stopce | tekst | 16,73:1 | 4,50:1 | spełnia |
+| `on-dark-muted` | `dark` | Wiersz „© 2026 Worf · Zdjęcia: Unsplash” pod linią w stopce | tekst | 9,42:1 | 4,50:1 | spełnia |
+| `ink` | `bg` | „Menu” w pierwszym rzędzie nagłówka na telefonie (napis i obramowanie przycisku) | tekst i element interfejsu | 16,56:1 | 4,50:1 (tekst), 3,00:1 | spełnia |
+
+Cienka linia nad wierszem praw autorskich w stopce (`oklch(0.32 0.01 260)` na `dark`, 1,48:1) jest dekoracyjnym separatorem i nie niesie informacji (jak `--hair` w A).
 
 ## Jak obejrzeć makiety
 
-- Otwórz wybrany plik `kierunek-*.html` w przeglądarce (z dysku, `file://`); fonty i zdjęcia są pobierane ze ścieżek względnych (`fonts/`, `../../../../apps/api/fixtures/images/`), więc plik trzeba otwierać z jego miejsca w repozytorium. Chromium otwiera makiety bez dodatkowych ustawień.
+- Otwórz wybrany plik `kierunek-*.html` w przeglądarce (z dysku, `file://`); fonty i zdjęcia są pobierane ze ścieżek względnych (`fonts/`, `images/`, `../../../../apps/api/fixtures/images/`), więc plik trzeba otwierać z jego miejsca w repozytorium. Chromium otwiera makiety bez dodatkowych ustawień.
 - Wersja 375 px: narzędzia deweloperskie przeglądarki, tryb responsywny (np. Chrome: `Ctrl/Cmd + Shift + M`, szerokość 375). Poniżej 1024 px działa układ telefonu, od 1024 px układ desktopu.
 - Makiety nie używają `position: sticky` ani żadnego innego położenia zależnego od przewijania, więc zrzut pełnej wysokości pokazuje układ tak, jak widać go po przewinięciu strony od góry do dołu (filtry i dane produktu zaczynają się na wysokości galerii i siatki).
 - Każdy ekran to osobna sekcja (`#glowna`, `#listing`, `#produkt`) z paskiem podpisu u góry; panele „Stan: …” są pod stroną.
@@ -313,18 +365,19 @@ Wszystkie fonty są na licencji SIL Open Font License 1.1 (OFL), z polskimi znak
 
 ## Zrzuty ekranu
 
-Zrzuty robi Playwright przez `make e2e-agent` z katalogiem roboczym poza repozytorium. Skrypt otwiera każdą makietę z `file://` w dwóch szerokościach (1440 i 375 px, `deviceScaleFactor` 1) i zapisuje zrzut każdej z trzech sekcji w pełnej wysokości (`locator(...).screenshot`). Test kończy się błędem, gdy wystąpi którekolwiek z poniższych:
+Zrzuty robi Playwright przez `make e2e-agent` z katalogiem roboczym poza repozytorium. Skrypt otwiera każdą makietę z `file://` w dwóch szerokościach (1440 i 375 px, `deviceScaleFactor` 1) i zapisuje zrzut każdej z trzech sekcji w pełnej wysokości (`locator(...).screenshot`). Skrypt obsługuje wybrany kierunek (testy „chosen kierunek”, pliki `kierunek-<ekran>-<szerokość>.png`) i trzy kierunki pierwszej rundy (testy „kierunek-a/b/c”, pliki `kierunek-<a|b|c>-<ekran>-<szerokość>.png`); filtr `--grep` wybiera zestaw. Test kończy się błędem, gdy wystąpi którekolwiek z poniższych:
 
 - błąd konsoli (`console` typu `error`), `pageerror`, `requestfailed` albo odpowiedź ≥ 400;
 - każde żądanie poza `file://` (makieta niczego nie pobiera z sieci);
 - fonty kierunku: skrypt czeka na `document.fonts.ready`, ładuje każdą użytą rodzinę i wagę z tekstem „ąćęłńóśźż Worf”, a potem wymaga `document.fonts.check(...)` dla każdej z nich, wczytanej (`status === "loaded"`) rodziny w `document.fonts`, braku fontów w stanie `error` i tego, że każda rodzina i waga faktycznie użyta na stronie jest na liście sprawdzanych (zrzut nie może pokazać fontu zastępczego);
 - niezaładowane zdjęcie (`naturalWidth` równe 0);
 - poziome przewijanie (`document.documentElement.scrollWidth` większe od szerokości okna);
-- brak widocznego elementu stanu w danej szerokości (mega menu tylko przy 1440 px, menu działów i panel filtrów na telefonie tylko przy 375 px; aktywne filtry, kafelek „Niedostępny”, „Ostatnie sztuki”, fokus, powiększenie zdjęcia, miniatury i licznik przy obu), a także brak kafelka z wartością wariantu niedostępną.
+- brak widocznego elementu stanu w danej szerokości. Pierwsza runda: mega menu tylko przy 1440 px, menu działów i panel filtrów na telefonie tylko przy 375 px; aktywne filtry, kafelek „Niedostępny”, „Ostatnie sztuki”, fokus, powiększenie zdjęcia, miniatury i licznik przy obu, a także kafelek z wartością wariantu niedostępną (`option[disabled]`). Wybrany kierunek: te same stany oraz przycisk „Wybierz wariant” na kafelkach (także na stronie głównej), rozwinięty wybór osi z wartością niedostępną i wybraną, aktywny „Do koszyka” na kafelku, panele „kafelek po wyborze wariantu”, „produkt bez wariantów” i „paginacja” oraz wiersz praw autorskich w stopce;
+- dla wybranego kierunku dodatkowo pomiary wyrenderowanej strony: kafelek ma jedną akcję (nie ma w nim `<select>` ani nieaktywnego „Do koszyka”, „Wybierz wariant” nie stoi obok rozwiniętego wyboru) i nic nie wystaje poza kafelek (ramki paneli stanów ucinają nadmiar, więc ten pomiar łapie to, czego nie widać na zrzucie); cele dotyku głównych kontrolek mają co najmniej 44 px (linki stopki na desktopie 24 px); nagłówek na telefonie ma dwa rzędy (znak, „Menu” i koszyk w jednym rzędzie, wyszukiwarka pod nimi na pełną szerokość, wysokość nagłówka najwyżej 140 px); stopka ma jeden wiersz praw autorskich, linki w dwóch kolumnach, logo po lewej i linki po prawej na desktopie, logo nad linkami na telefonie i nie przekracza 260 px (desktop) ani 400 px (telefon) wysokości.
 
 Skrypt zapisuje się jako `$AGENT_DIR/tests/mockups.spec.ts` (katalog `tests` czyta `playwright.agent.config.ts`). Zrzuty trafiają do `$AGENT_DIR/shots/`, stamtąd do katalogu makiet. Konfiguracja agenta uruchamia projekt `desktop`; szerokość okna skrypt ustawia sam.
 
-Komendy (z katalogu głównego repozytorium; `AGENT_DIR` musi istnieć i być ścieżką bezwzględną):
+Komendy (z katalogu głównego repozytorium; `AGENT_DIR` musi istnieć i być ścieżką bezwzględną). Poniżej odtworzenie zrzutów wybranego kierunku; dla trzech kierunków pierwszej rundy zamień `--grep 'chosen kierunek'` na `--grep 'kierunek-[abc]'` i skopiuj `kierunek-[abc]-*.png`:
 
 ```sh
 AGENT_DIR="$HOME/.local/state/worf-mockups"   # poza repozytorium
@@ -333,8 +386,8 @@ rm -rf "$AGENT_DIR/docs/features/visual-design/mockups" "$AGENT_DIR/apps/api/fix
 cp -R docs/features/visual-design/mockups "$AGENT_DIR/docs/features/visual-design/mockups"
 cp -R apps/api/fixtures/images "$AGENT_DIR/apps/api/fixtures/images"
 # zapisz skrypt z bloku poniżej jako "$AGENT_DIR/tests/mockups.spec.ts", potem:
-make e2e-agent AGENT_DIR="$AGENT_DIR" E2E_ARGS="--project=desktop mockups.spec.ts"
-cp "$AGENT_DIR"/shots/kierunek-*.png docs/features/visual-design/mockups/
+make e2e-agent AGENT_DIR="$AGENT_DIR" E2E_ARGS="--project=desktop --grep 'chosen kierunek' mockups.spec.ts"
+cp "$AGENT_DIR"/shots/kierunek-{glowna,listing,produkt}-{1440,375}.png docs/features/visual-design/mockups/
 ```
 
 Stos (`make up`) musi działać, bo kontener `e2e` sprawdza jego usługi przed uruchomieniem testów, choć sama makieta z niego nie korzysta.
@@ -344,22 +397,23 @@ Skrypt `mockups.spec.ts`:
 ```ts
 import { expect, test } from "@playwright/test";
 
-// Screenshots of the three visual direction mockups (VISUAL-DESIGN-1), opened from file://.
+// Screenshots of the visual direction mockups, opened from file://: the chosen direction `kierunek.html` (VISUAL-DESIGN-4)
+// and the three first-round directions (VISUAL-DESIGN-1). Run one set with --grep ("chosen kierunek" or "kierunek-a").
 // Fails on: console errors, page errors, failed requests, responses >= 400, any request outside file://,
-// fonts of the direction that document.fonts does not confirm (also for the Polish letters), horizontal scroll at 375 px.
+// fonts of the direction that document.fonts does not confirm (also for the Polish letters), horizontal scroll at 375 px,
+// images that did not load, missing state elements, and (chosen direction) layout rules checked by measuring the page.
 const ROOT = "file:///app/agent/docs/features/visual-design/mockups";
 const SHOTS = "/app/agent/shots";
 const POLISH = "ąćęłńóśźż";
 
-const DIRECTIONS = [
-  { id: "a", families: { Outfit: [400, 500, 600, 700] } },
-  { id: "b", families: { Archivo: [400, 500, 600, 700, 800] } },
-  { id: "c", families: { Newsreader: [400, 500, 600], Inter: [400, 500, 600, 700] } },
-];
-// Elements that must be visible, with the widths where they are shown (the mega menu only at 1440, the department menu only at 375).
 type Wanted = [selector: string, widths: number[]];
 const BOTH = [1440, 375];
-const SCREENS: { id: string; wanted: Wanted[] }[] = [
+const WIDTHS = [1440, 375];
+type Screen = { id: string; wanted: Wanted[] };
+type Direction = { id: string; file: string; title: string; families: Record<string, number[]>; screens: Screen[]; chosen?: boolean };
+
+// First round: elements that must be visible, with the widths where they are shown (the mega menu only at 1440, the department menu only at 375).
+const FIRST_ROUND: Screen[] = [
   { id: "glowna", wanted: [[".state-mega", [1440]], [".state-mobile-menu", [375]], [".dept", BOTH], [".hero-h1", BOTH], [".tile", BOTH], [".ftr", BOTH]] },
   {
     id: "listing",
@@ -367,14 +421,36 @@ const SCREENS: { id: string; wanted: Wanted[] }[] = [
   },
   { id: "produkt", wanted: [[".thumb", BOTH], [".counter", BOTH], [".opt.is-unavail", BOTH], [".opt.is-chosen", BOTH], [".btn--buy.is-focus", BOTH], [".state-zoom", BOTH]] },
 ];
-const WIDTHS = [1440, 375];
+// Chosen direction: the owner's corrections (one action on a tile, a category with its own photo of every model, a gallery of three photos, a compact footer).
+const CHOSEN: Screen[] = [
+  {
+    id: "glowna",
+    wanted: [[".state-mega", [1440]], [".state-mobile-menu", [375]], [".dept", BOTH], [".hero-h1", BOTH], [".tile .btn--variant", BOTH], [".ftr .ftr-bottom", BOTH]],
+  },
+  {
+    id: "listing",
+    wanted: [
+      [".crumbs", BOTH], [".page-head h1", BOTH], [".chips li", BOTH], [".select.is-focus", BOTH], [".panel.is-open", BOTH], [".state-filters", [375]],
+      [".tile .btn--variant", BOTH], [".tile .tile-axis .opt.is-unavail", BOTH], [".tile .tile-axis .opt.is-chosen", BOTH], [".tile .btn--primary", BOTH],
+      [".avail--out", BOTH], [".avail--low", BOTH], [".tile-price", BOTH], [".state-variant-open", BOTH], [".state-no-variants", BOTH], [".state-pager .pager", BOTH], [".ftr .ftr-bottom", BOTH],
+    ],
+  },
+  { id: "produkt", wanted: [[".thumb", BOTH], [".counter", BOTH], [".opt.is-unavail", BOTH], [".opt.is-chosen", BOTH], [".btn--buy.is-focus", BOTH], [".state-zoom", BOTH], [".ftr .ftr-bottom", BOTH]] },
+];
+
+const DIRECTIONS: Direction[] = [
+  { id: "chosen", file: "kierunek.html", title: "chosen kierunek", families: { Outfit: [400, 500, 600, 700] }, screens: CHOSEN, chosen: true },
+  { id: "a", file: "kierunek-a.html", title: "kierunek-a", families: { Outfit: [400, 500, 600, 700] }, screens: FIRST_ROUND },
+  { id: "b", file: "kierunek-b.html", title: "kierunek-b", families: { Archivo: [400, 500, 600, 700, 800] }, screens: FIRST_ROUND },
+  { id: "c", file: "kierunek-c.html", title: "kierunek-c", families: { Newsreader: [400, 500, 600], Inter: [400, 500, 600, 700] }, screens: FIRST_ROUND },
+];
 
 test.use({ trace: "off", screenshot: "off" });
 test.describe.configure({ mode: "serial" });
 
 for (const direction of DIRECTIONS) {
   for (const width of WIDTHS) {
-    test(`kierunek-${direction.id} at ${width} px`, async ({ page }) => {
+    test(`${direction.title} at ${width} px`, async ({ page }) => {
       const problems: string[] = [];
       page.on("console", (message) => {
         if (message.type() === "error") problems.push(`console error: ${message.text()}`);
@@ -389,7 +465,7 @@ for (const direction of DIRECTIONS) {
       });
 
       await page.setViewportSize({ width, height: width === 1440 ? 900 : 812 });
-      await page.goto(`${ROOT}/kierunek-${direction.id}.html`, { waitUntil: "load" });
+      await page.goto(`${ROOT}/${direction.file}`, { waitUntil: "load" });
 
       // Wait for the fonts, then make sure each used family and weight really loaded (check() alone is true for an unknown family).
       const fontReport = await page.evaluate(
@@ -446,18 +522,78 @@ for (const direction of DIRECTIONS) {
       const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
       if (scrollWidth > width) problems.push(`horizontal scroll: scrollWidth ${scrollWidth} > ${width}`);
 
-      for (const screen of SCREENS) {
+      for (const screen of direction.screens) {
         const section = page.locator(`#${screen.id}`);
         await expect(section).toHaveCount(1);
         for (const [selector, widths] of screen.wanted) {
           if (!widths.includes(width)) continue;
           if ((await section.locator(`${selector} >> visible=true`).count()) === 0) problems.push(`${screen.id}: no visible element ${selector} at ${width} px`);
         }
-        // A tile with an unavailable variant value: only an <option disabled>, which is never "visible" itself.
-        if (screen.id === "listing" && (await section.locator("option[disabled]").filter({ hasText: "niedostępny" }).count()) === 0) {
+        if (direction.chosen) {
+          // Layout rules of the chosen direction, measured on the rendered page (the frames of the states hide overflow, so tiles are measured too).
+          const measured = await section.evaluate((root, viewport) => {
+            const found: string[] = [];
+            const box = (element: Element) => element.getBoundingClientRect();
+            const visible = (element: Element) => (element as HTMLElement).offsetParent !== null;
+            // A tile has one action: a variant button, an axis (values, then "Do koszyka" once one is chosen), or "Do koszyka"; never a <select> or a disabled "Do koszyka".
+            for (const tile of root.querySelectorAll(".tile")) {
+              if (!visible(tile)) continue;
+              const name = tile.querySelector(".tile-name")?.textContent ?? "?";
+              if (tile.querySelector("select, .btn--tile:disabled")) found.push(`tile "${name}": a select or a disabled button`);
+              const actions = ["btn--variant", "tile-axis", "btn--primary"].filter((cls) => tile.querySelector(`.${cls}`));
+              if (!tile.classList.contains("tile--out") && actions.length === 0) found.push(`tile "${name}": no action`);
+              if (tile.querySelector(".btn--variant") && tile.querySelector(".btn--primary, .tile-axis")) found.push(`tile "${name}": "Wybierz wariant" next to the expanded choice`);
+              const tileBox = box(tile);
+              for (const inner of tile.querySelectorAll("*:not(.sr-only)")) {
+                const innerBox = box(inner);
+                if (innerBox.width > 0 && (innerBox.right > tileBox.right + 1 || innerBox.left < tileBox.left - 1)) found.push(`tile "${name}": ${inner.className || inner.tagName} sticks out of the tile`);
+              }
+            }
+            // Touch targets: 44 px for the main controls.
+            for (const control of root.querySelectorAll(".menu-btn, .util, .btn--variant, .tile .opt, .tile .btn--primary, .btn--pager, .ftr-links a")) {
+              if (!visible(control)) continue;
+              // Footer links on desktop only need the WCAG 2.5.8 minimum of 24 px (a pointer, a compact block).
+              const minimum = control.matches(".ftr-links a") && viewport >= 1024 ? 24 : 43.5;
+              if (box(control).height < minimum) found.push(`target below 44 px: ${control.className || control.tagName} ${control.textContent?.trim().slice(0, 20)} (${Math.round(box(control).height)} px)`);
+            }
+            // Header on a phone: two rows (wordmark, menu, cart and account; below them the search at full width).
+            const header = root.querySelector(".hdr");
+            if (header && visible(header) && viewport < 1024) {
+              const brand = box(header.querySelector(".brand")!);
+              const menu = box(header.querySelector(".menu-btn")!);
+              const utils = box(header.querySelector(".utils")!);
+              const search = box(header.querySelector(".search")!);
+              const centre = (b: DOMRect) => b.top + b.height / 2;
+              if (Math.abs(centre(brand) - centre(menu)) > 4 || Math.abs(centre(menu) - centre(utils)) > 4) found.push("header: wordmark, menu and cart are not in one row");
+              if (search.top < Math.max(brand.bottom, menu.bottom, utils.bottom) - 1) found.push("header: the search is not under the first row");
+              if (search.width < viewport - 2 * 16 - 2) found.push(`header: the search is narrower than the content (${Math.round(search.width)} px)`);
+              if (box(header).height > 140) found.push(`header: taller than two rows (${Math.round(box(header).height)} px)`);
+            }
+            // Footer: compact, one discreet bottom row, links in two columns (right side on desktop).
+            const footer = root.querySelector(".ftr");
+            if (footer && visible(footer)) {
+              const bottom = footer.querySelector(".ftr-bottom") as HTMLElement;
+              const lineHeight = parseFloat(getComputedStyle(bottom).lineHeight);
+              const paddingTop = parseFloat(getComputedStyle(bottom).paddingTop);
+              if (box(bottom).height - paddingTop - 1 > lineHeight * 1.2) found.push("footer: the copyright row is not one line");
+              const lefts = new Set([...footer.querySelectorAll(".ftr-links a")].map((link) => Math.round(box(link).left)));
+              if (lefts.size !== 2) found.push(`footer: links are in ${lefts.size} columns, expected 2`);
+              const brandBox = box(footer.querySelector(".brand")!);
+              const linksBox = box(footer.querySelector(".ftr-links")!);
+              if (viewport >= 1024 && !(brandBox.right < linksBox.left && linksBox.right > viewport - 100)) found.push("footer: logo is not on the left and the links on the right");
+              if (viewport < 1024 && !(brandBox.bottom <= linksBox.top + 1)) found.push("footer: logo is not above the links");
+              if (viewport < 1024 && box(footer).height > 400) found.push(`footer: too tall (${Math.round(box(footer).height)} px)`);
+              if (viewport >= 1024 && box(footer).height > 260) found.push(`footer: too tall (${Math.round(box(footer).height)} px)`);
+            }
+            return found;
+          }, width);
+          for (const issue of measured) problems.push(`${screen.id}: ${issue}`);
+        }
+        // First round: a tile with an unavailable variant value is only an <option disabled>, which is never "visible" itself.
+        if (!direction.chosen && screen.id === "listing" && (await section.locator("option[disabled]").filter({ hasText: "niedostępny" }).count()) === 0) {
           problems.push("listing: no tile with an unavailable variant value");
         }
-        await section.screenshot({ path: `${SHOTS}/kierunek-${direction.id}-${screen.id}-${width}.png`, animations: "disabled", scale: "css" });
+        await section.screenshot({ path: `${SHOTS}/kierunek${direction.chosen ? "" : `-${direction.id}`}-${screen.id}-${width}.png`, animations: "disabled", scale: "css" });
       }
 
       expect(problems, problems.join("\n")).toEqual([]);
