@@ -9,7 +9,7 @@ dokumentem roboczym: po ukończeniu epica usuń go.
 |---|---|---|
 | 1 | VISUAL-DESIGN-1, VISUAL-DESIGN-2, VISUAL-DESIGN-3, VISUAL-DESIGN-10 | |
 | 2 | VISUAL-DESIGN-4 (pytanie blokujące do właściciela) | |
-| 3 | VISUAL-DESIGN-5 | |
+| 3 | VISUAL-DESIGN-5, VISUAL-DESIGN-11 | |
 | 4 | VISUAL-DESIGN-6, VISUAL-DESIGN-8, VISUAL-DESIGN-9 | |
 | 5 | VISUAL-DESIGN-7 | |
 
@@ -81,12 +81,12 @@ integracji zadań fali.
     {
       "id": "VISUAL-DESIGN-5",
       "title": "Tokens, fonts, components, header, footer and 404 of the chosen direction",
-      "scope": "apps/store: src/styles/tokens.css with the chosen palette, semantic layer (including success, warning, hero overlay), radius, shadows and type scale; local WOFF2 fonts (latin-ext) through next/font/local in src/styles/fonts/; apps/store/THIRD_PARTY_NOTICES.md (OFL text and font files, MIT for vercel/shop files if any are adapted); src/components/ui restyled and every shadcn component the epic needs added through the shadcn CLI (including dialog for the gallery); SiteHeader, MegaMenu, SearchBox, CartBadge, AccountMenu per the mockup with unchanged behaviour; new SiteFooter in the layout (department links from the same tree read, no extra request); app/not-found.tsx „Nie znaleźliśmy tej strony.” with „Wróć do sklepu”; docs. Spec sections „Tokeny i fundament (VISUAL-DESIGN-5)”, „Kierunek”, decisions D4, D10. Not included: home page content (VISUAL-DESIGN-6), listing (VISUAL-DESIGN-7), product page and gallery (VISUAL-DESIGN-8), other screens (VISUAL-DESIGN-9).",
+      "scope": "apps/store: src/styles/tokens.css with the chosen palette, semantic layer (including success, warning, hero overlay), radius, shadows and type scale; local WOFF2 fonts (latin-ext) through next/font/local in src/styles/fonts/; apps/store/THIRD_PARTY_NOTICES.md (OFL text and font files, MIT for vercel/shop files if any are adapted); src/components/ui restyled and every shadcn component the epic needs added through the shadcn CLI (including dialog for the gallery); SiteHeader, MegaMenu, SearchBox, CartBadge, AccountMenu per the mockup with unchanged behaviour (below 1024 px two rows: wordmark, „Menu”, cart and account, then the full-width search; focus order follows the rows); new compact SiteFooter in the layout (small wordmark, department links in two columns, one „© <year> Worf · Zdjęcia: Unsplash” line; department links from the same tree read, no extra request); app/not-found.tsx „Nie znaleźliśmy tej strony.” with „Wróć do sklepu”; docs. Spec sections „Tokeny i fundament (VISUAL-DESIGN-5)”, „Kierunek”, decisions D4, D10. Not included: home page content (VISUAL-DESIGN-6), listing (VISUAL-DESIGN-7), product page and gallery (VISUAL-DESIGN-8), other screens (VISUAL-DESIGN-9).",
       "acceptance_criteria": [
         "tokens.css contains only the chosen direction's palette and the semantic layer the mockup needs; its comment no longer says temporary; make -C apps/store check passes without disabled rules and bg-[#000], text-red-500 and a colour in style still fail ESLint",
         "An E2E test collects browser requests on the home page, listing and product page and every one goes to a stack host; the CI production build passes with fonts from files in the repo; Polish characters render in the direction font; THIRD_PARTY_NOTICES.md has the OFL licence",
-        "Header and mega menu match the mockup at 1440 and 375 px; existing header, mega menu and search tests pass unchanged except header assertions the epic changes; no horizontal scroll at 375 px",
-        "The footer shows department links from the tree without an extra API request (page.requests test), and no links when the tree fails",
+        "Header and mega menu match the mockup at 1440 and 375 px (two rows on a phone); at 375 px the tab order is wordmark, „Menu”, cart, account, then the search (E2E); existing header, mega menu and search tests pass unchanged except header assertions the epic changes; no horizontal scroll at 375 px",
+        "The footer matches the mockup at 1440 and 375 px, shows department links from the tree without an extra API request (page.requests test), and no links when the tree fails",
         "An unknown address and an unknown product show „Nie znaleźliśmy tej strony.” with a link to /, the store header and footer and noindex (E2E)",
         "axe has no serious or critical violations on the 404 page at 1440 and 375 px",
         "apps/store/CLAUDE.md („Wygląd”, structure), docs/vision.md („Wygląd sklepu”) and docs/features/catalog-page-metadata/spec.md (404) describe the current state",
@@ -114,16 +114,19 @@ integracji zadań fali.
     {
       "id": "VISUAL-DESIGN-7",
       "title": "Listing in the chosen direction",
-      "scope": "apps/store src/catalog: CatalogListing, Breadcrumbs, ListingFilters (on desktop an expandable section behind „Filtry” only when the mockup shows it, with today's mobile behaviour), ActiveFilters, SortSelect, ProductGrid, ProductTile, TileOffer, Pagination, EmptyResults, InvalidFilter per the mockup; promotion badge and Omnibus line styled with tokens if PROMOTIONS is on main; e2e/support filter helper only if the filters panel needs opening on desktop. Spec section „Listing (VISUAL-DESIGN-7)”, decision D9. Not included: behaviour, texts, URLs, the no-JavaScript form and the number of API requests (unchanged), palette changes.",
+      "scope": "apps/store src/catalog: CatalogListing, Breadcrumbs, ListingFilters (on desktop an expandable section behind „Filtry” only when the mockup shows it, with today's mobile behaviour), ActiveFilters, SortSelect, ProductGrid, ProductTile, TileOffer, Pagination, EmptyResults, InvalidFilter per the mockup, including the tile variant choice (one active „Wybierz wariant”, then the variants of the offer (ProductOfferResponse.variants: label and purchasable) in offer order, an unpurchasable one marked „niedostępny” and not choosable; for a single-axis product they are the axis values as buttons like in the mockup, for a product with two or more axes the form of the list is decided by this task (it fits 375 px without horizontal scroll for e.g. 14 variants and is keyboard accessible) and recorded in the PR section „Decyzje bez pytania”, with no parsing of the label into axes; then the chosen variant's price and availability and an active „Do koszyka”; a product with one variant has „Do koszyka” directly; same on home page tiles; no API change); promotion badge and Omnibus line styled with tokens if PROMOTIONS is on main; e2e/support filter helper only if the filters panel needs opening on desktop; e2e/tests/cart-variants.spec.ts, e2e/support/variants.ts and the Vitest tests of TileOffer and ProductTile adjusted to the tile variant choice. Spec section „Listing (VISUAL-DESIGN-7)”, decision D9. Not included: behaviour other than the tile variant choice, texts, URLs, the no-JavaScript form and the number of API requests (unchanged), palette changes.",
       "acceptance_criteria": [
         "Listing, category and search pages match kierunek.html at 1440 and 375 px; store screenshots made with make e2e-agent stay outside the repo and the PR lists their paths",
-        "Existing Vitest and E2E listing tests pass; only assertions allowed by criterion 9 of the spec change, each with a reason in the PR",
+        "A tile of a product with several variants has one active „Wybierz wariant”; after it the variants of the offer appear in offer order (an unpurchasable one says „niedostępny” and cannot be chosen), after a choice the chosen variant's price and availability and an active „Do koszyka”; a product with one variant has „Do koszyka” directly; the same on home page tiles; no API change (tests)",
+        "After „Wybierz wariant” the focus moves to the first available (choosable) variant and the expansion and the availability change are announced in aria-live (Vitest and E2E)",
+        "The tile choice works for a single-axis product and for a product with two axes (e.g. a demo product with Kolor × Rozmiar), at 375 px without horizontal scroll (Vitest and E2E)",
+        "Existing Vitest and E2E listing tests pass; only assertions allowed by criterion 9 of the spec change (including the tile variant choice), each with a reason in the PR",
         "No classes outside tokens; availability labels use semantic tokens",
         "axe has no serious or critical violations on a category page and on /szukaj at 1440 and 375 px and there is no horizontal scroll at 375 px",
         "make -C apps/store check, make -C apps/store test and make e2e pass"
       ],
       "risk": "STANDARD",
-      "depends_on": ["VISUAL-DESIGN-6"]
+      "depends_on": ["VISUAL-DESIGN-6", "VISUAL-DESIGN-11"]
     },
     {
       "id": "VISUAL-DESIGN-8",
@@ -134,13 +137,13 @@ integracji zadań fali.
         "Every photo has the alt text from the API and the enlarge button has it in its name; thumbnails have alt=\"\" inside a named link; without JavaScript all photos and thumbnails are in the HTML and work",
         "The position of h1 and „Do koszyka” is the same before and after hydration; the ISR HTML does not depend on the session or gallery state; no hydration error",
         "The enlargement at 375 px does not download the 2560 px file; one photo: no thumbnails, counter or arrows, with enlargement; no photos: PhotoPlaceholder without enlargement",
-        "Component tests (Vitest) and E2E on a demo product with several photos; existing product page tests pass with only the gallery assertions changed",
+        "Component tests (Vitest) and E2E on the demo product with several photos, Narty skiturowe Stavro Grań 95 (three photos from VISUAL-DESIGN-11); existing product page tests pass with only the gallery assertions changed",
         "axe has no serious or critical violations on the product page, also with the enlargement open, at 1440 and 375 px; no horizontal scroll at 375 px; the page matches kierunek.html (screenshot paths in the PR)",
         "apps/store/CLAUDE.md and docs/features/product-page/spec.md describe the gallery and enlargement",
         "make -C apps/store check, make -C apps/store test and make e2e pass"
       ],
       "risk": "STANDARD",
-      "depends_on": ["VISUAL-DESIGN-5", "VISUAL-DESIGN-3"]
+      "depends_on": ["VISUAL-DESIGN-5", "VISUAL-DESIGN-3", "VISUAL-DESIGN-11"]
     },
     {
       "id": "VISUAL-DESIGN-9",
@@ -165,6 +168,22 @@ integracji zadań fali.
       ],
       "risk": "FAST",
       "depends_on": []
+    },
+    {
+      "id": "VISUAL-DESIGN-11",
+      "title": "Demo product photos for Kajaki and Stavro Grań 95",
+      "scope": "apps/api: own photos of a demo product in apps/api/fixtures/catalog.yaml (assigned to a product = brand + model of a template, not to the whole template or model, so Vilmar Grań 95 keeps its photos) for the four products of sporty-wodne/kajaki (Kajak turystyczny Vilmar Rzeka 1, Vilmar Rzeka 2, Dravik Rzeka 1, Dravik Rzeka 2) and Narty skiturowe Stavro Grań 95; new JPEG files from Unsplash (Unsplash License, about 1600 px on the longer side) in apps/api/fixtures/images with rows in its CREDITS.md and alt texts describing what the photo shows; the loader in apps/api/src/Catalog/Infrastructure/Demo (definition, YamlDemoCatalogSource, DemoCatalogExpander) takes a product's own photos in file order while every other product keeps pool[index % count(pool)] and the imageless rule unchanged, with unit tests in apps/api/tests/Unit/Catalog/Demo; docs/features/walking-skeleton/spec.md („Dane demo”); in docs/features/visual-design the first paragraph of the spec section „Zdjęcia produktów w danych demo (VISUAL-DESIGN-11)” and deviation (2) in mockups/README.md, which describe the demo data before this task, are rewritten to the current state. Spec section „Zdjęcia produktów w danych demo (VISUAL-DESIGN-11)”, decision D13. Not included: variant images (a photo depending on the chosen variant: it would change the Catalog model and the API), other categories and products, any change in the Catalog model, the database schema, the API or apps/store. If no licensed photo meets a requirement the task returns BLOCKED instead of a weaker photo.",
+      "acceptance_criteria": [
+        "In the category Kajaki each of the four models has its own photo, different from the others, showing a green kayak; with the filter „Kolor: zielony” the tile photo shows the green variant, and the photo of the two-person kayak (Rzeka 2) shows one kayak with two seats (Rzeka 1: one kayak with one seat)",
+        "On the product page of Narty skiturowe Stavro Grań 95 the gallery shows, in this order, the whole pair of skis in the chosen blue variant, a detail of this model and the gear in use; make seed on a fresh stack gives the product three images and three zoomImages in that order",
+        "Every other product keeps the same photos and the set of imageless products is unchanged (unit test on the real catalog.yaml); Narty skiturowe Vilmar Grań 95 keeps its photos",
+        "A reference to an unknown product (brand or model outside the template) and an empty own-photo list end with an error with a message (unit tests)",
+        "The new files are JPEG of about 1600 px on the longer side with rows in apps/api/fixtures/images/CREDITS.md (file, page, author, Unsplash License) and with alt texts that describe what the photo shows",
+        "docs/features/walking-skeleton/spec.md describes the own photos of a product and the number of photo files; the first paragraph of the VISUAL-DESIGN-11 section in docs/features/visual-design/spec.md and deviation (2) in mockups/README.md describe the current demo data, not the data before the task",
+        "make -C apps/api check, make -C apps/api test and make e2e pass"
+      ],
+      "risk": "STANDARD",
+      "depends_on": ["VISUAL-DESIGN-4"]
     }
   ]
 }
