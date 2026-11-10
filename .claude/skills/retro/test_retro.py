@@ -1769,5 +1769,290 @@ class ValidateTest(RegistersCase):
         self.assertValid(proposals_of(fix()))   # no status item: the plan does not matter
 
 
+
+class RunDirCase(RegistersCase):
+    """A run directory with proposals.json (as the agent wrote it) for observe, issues."""
+
+    def setUp(self):
+        super().setUp()
+        self.run_dir = os.path.join(self.tmp, 'run')
+
+    def write_proposals(self, *items, **extra):
+        value = proposals_of(*items, **extra)
+        retro.write_json(self.run_dir, 'proposals.json', value)
+        return value
+
+
+class ObserveTest(RunDirCase):
+    def test_observations_and_the_key_and_incidents_of_fix_and_issue_items_are_appended(self):
+        self.write_proposals(fix(1, key='fx', evidence=[F2, F3]), issue_item(2, key='is', evidence=[F1, F2]),
+                             {'n': 3, 'kind': 'status', 'target': 'krok 12', 'change': 'x', 'evidence': [F3]},
+                             observations=[{'key': 'ob', 'title': 'Obs', 'incidents': [F3]}])
+        code, out, err = self.cli('observe', self.run_dir)
+        self.assertEqual(code, 0, err)
+        rows = self.rows('observations')
+        self.assertEqual([(r['key'], r['incidents'], r['epic']) for r in rows],
+                         [('ob', [F3], 'e3'), ('fx', [F2, F3], 'e3'), ('is', [F1, F2], 'e3')])
+        self.assertEqual([r['title'] for r in rows], ['Obs', 'Title', 'Title'])
+        for row in rows:
+            self.assertAlmostEqual(row['at'], time.time(), delta=5)
+        self.assertEqual(json.loads(out)['observations'], 3)
+
+    def test_a_run_with_nothing_still_succeeds_and_appends_nothing(self):
+        self.write_proposals()
+        self.assertEqual(self.cli('observe', self.run_dir)[0], 0)
+        self.assertEqual(self.rows('observations'), [])
+
+    def test_the_file_grows_over_runs_and_an_identical_row_is_not_repeated(self):
+        self.write_proposals(fix(1, key='fx'))
+        self.cli('observe', self.run_dir)
+        self.cli('observe', self.run_dir)
+        self.assertEqual(len(self.rows('observations')), 1)
+        self.write_proposals(fix(1, key='fx', evidence=[F1, F2]), epic='e3')
+        self.cli('observe', self.run_dir)
+        self.assertEqual(len(self.rows('observations')), 2)
+
+    def test_with_a_pr_the_fix_items_become_the_items_of_the_pr_in_state_json(self):
+        self.write_proposals(fix(1, key='fx'), issue_item(2, key='is'),
+                             observations=[{'key': 'ob', 'title': 'Obs', 'incidents': [F3]}])
+        code, _, err = self.cli('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3')
+        self.assertEqual(code, 0, err)
+        state = self.state('e3')
+        self.assertEqual((state['pr']['number'], state['pr']['branch']), (11, 'retro/e3'))
+        self.assertEqual(state['pr']['items'], [{'n': 1, 'kind': 'fix', 'key': 'fx', 'title': 'Title',
+                                                 'incidents': [F2, F3], 'epic': 'e3'}])
+        self.assertEqual(state['decisions_open'], [{'n': 2, 'kind': 'issue', 'key': 'is', 'title': 'Title',
+                                                    'repo': 'ao', 'incidents': [F2, F3], 'existing_issue': None,
+                                                    'epic': 'e3'}])
+
+    def test_without_a_pr_only_the_issue_decisions_are_recorded_and_other_fields_stay(self):
+        self.write_state('e3', {'state': 'running', 'deferrals': [{'at': 1, 'reason': 'x'}]})
+        self.write_proposals(issue_item(1, key='is'))
+        self.cli('observe', self.run_dir)
+        state = self.state('e3')
+        self.assertNotIn('pr', state)
+        self.assertEqual((state['state'], len(state['deferrals']), len(state['decisions_open'])), ('running', 1, 1))
+
+    def test_observing_again_replaces_the_items_of_the_same_pr(self):
+        self.write_proposals(fix(1, key='fx'), fix(2, key='gx'))
+        self.cli('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3')
+        self.write_proposals(fix(1, key='fx'))
+        self.cli('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3')
+        self.assertEqual([i['key'] for i in self.state('e3')['pr']['items']], ['fx'])
+
+    def test_fixes_put_into_a_pr_leave_the_carried_register(self):
+        self.write_rows('carried', [{'key': 'fx', 'incidents': [F1], 'pr': 4}, {'key': 'other', 'incidents': [F1]}])
+        self.write_proposals(fix(1, key='fx'))
+        self.cli('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3')
+        self.assertEqual([r['key'] for r in self.rows('carried')], ['other'])
+
+    def test_bad_proposals_and_arguments_are_exit_code_2_and_write_nothing(self):
+        self.assertEqual(self.cli('observe', self.run_dir)[0], 2)   # no proposals.json
+        os.makedirs(self.run_dir)
+        for raw in ('{not json', '[]', json.dumps(proposals_of(epic='Bad Epic')),
+                    json.dumps(proposals_of(fix(1, key=None)))):
+            with open(os.path.join(self.run_dir, 'proposals.json'), 'w') as f:
+                f.write(raw)
+            self.assertEqual(self.cli('observe', self.run_dir)[0], 2, raw)
+        self.write_proposals(fix(1))
+        self.assertEqual(self.cli('observe', self.run_dir, '--pr', '11')[0], 2)   # branch missing
+        self.assertEqual(self.cli('observe', self.run_dir, '--pr', 'x', '--branch', 'b')[0], 2)
+        self.assertFalse(os.path.exists(self.retro_home))
+
+    def test_unwritable_retro_home_is_exit_code_1(self):
+        self.write_proposals(fix(1))
+        blocker = os.path.join(self.tmp, 'file')
+        with open(blocker, 'w') as f:
+            f.write('x')
+        self.retro_home = os.path.join(blocker, 'sub')
+        self.assertEqual(self.cli('observe', self.run_dir)[0], 1)
+
+
+def pr_state(number, items, branch='retro/e1', **extra):
+    return dict({'pr': {'number': number, 'branch': branch, 'items': items}}, **extra)
+
+
+def pr_item(n, key, incidents, epic):
+    return {'n': n, 'kind': 'fix', 'key': key, 'title': 'T', 'incidents': incidents, 'epic': epic}
+
+
+class RejectTest(RegistersCase):
+    def setUp(self):
+        super().setUp()
+        self.write_state('e1', dict(pr_state(11, [pr_item(1, 'a', [F1], 'e1'), pr_item(2, 'b', [F2], 'e1')]),
+                                    state='done', decisions_open=[
+                                        {'n': 3, 'kind': 'issue', 'key': 'c', 'incidents': [W1], 'epic': 'e1'}]))
+        self.write_state('e2', pr_state(11, [pr_item(1, 'd', [F3], 'e2')], state='done'))
+
+    def test_rejecting_a_pr_item_records_it_with_the_pr_and_takes_it_out_of_the_pr(self):
+        code, out, err = self.cli('reject', '--key', 'b', '--reason', 'za szeroka zmiana')
+        self.assertEqual(code, 0, err)
+        rows = self.rows('rejected')
+        self.assertEqual([(r['key'], r['incidents'], r['reason'], r['pr']) for r in rows],
+                         [('b', [F2], 'za szeroka zmiana', 11)])
+        self.assertAlmostEqual(rows[0]['rejected_at'], time.time(), delta=5)
+        self.assertEqual([i['key'] for i in self.state('e1')['pr']['items']], ['a'])
+        self.assertEqual(self.state('e1')['state'], 'done')
+
+    def test_rejecting_an_issue_decision_has_no_pr(self):
+        self.assertEqual(self.cli('reject', '--key', 'c', '--reason', 'to nie problem')[0], 0)
+        self.assertEqual([(r['key'], r['pr']) for r in self.rows('rejected')], [('c', None)])
+        self.assertEqual(self.state('e1')['decisions_open'], [])
+
+    def test_an_item_of_another_epic_is_found_by_its_key_and_epic_limits_the_search(self):
+        self.assertEqual(self.cli('reject', '--key', 'd', '--reason', 'x', '--epic', 'e1')[0], 2)
+        self.assertEqual(self.rows('rejected'), [])
+        self.assertEqual(self.cli('reject', '--key', 'd', '--reason', 'x', '--epic', 'e2')[0], 0)
+        self.assertEqual(self.state('e2')['pr']['items'], [])
+
+    def test_reject_all_takes_every_open_item(self):
+        self.assertEqual(self.cli('reject', '--all', '--reason', 'odrzuć wszystko')[0], 0)
+        self.assertEqual(sorted(r['key'] for r in self.rows('rejected')), ['a', 'b', 'c', 'd'])
+        self.assertEqual(self.state('e1')['pr']['items'], [])
+        self.assertEqual(self.state('e2')['pr']['items'], [])
+        self.assertEqual(self.state('e1')['decisions_open'], [])
+
+    def test_items_of_a_resolved_pr_are_not_rejected(self):
+        state = self.state('e2')
+        state['pr']['outcome'] = 'merged'
+        self.write_state('e2', state)
+        self.assertEqual(self.cli('reject', '--key', 'd', '--reason', 'x')[0], 2)
+        self.cli('reject', '--all', '--reason', 'x')
+        self.assertNotIn('d', [r['key'] for r in self.rows('rejected')])
+        self.assertEqual(len(self.state('e2')['pr']['items']), 1)
+
+    def test_an_unknown_key_missing_reason_and_both_or_neither_selector_are_refused(self):
+        for args in (('--key', 'nothing', '--reason', 'x'), ('--key', 'a'), ('--key', 'a', '--reason', ' '),
+                     ('--reason', 'x'), ('--key', 'a', '--all', '--reason', 'x')):
+            self.assertEqual(self.cli('reject', *args)[0], 2, args)
+        self.assertEqual(self.rows('rejected'), [])
+        self.assertEqual(len(self.state('e1')['pr']['items']), 2)
+
+    def test_a_rejection_removes_the_carried_row_of_the_key(self):
+        self.write_rows('carried', [{'key': 'a', 'incidents': [F1]}, {'key': 'z', 'incidents': [F1]}])
+        self.cli('reject', '--key', 'a', '--reason', 'x')
+        self.assertEqual([r['key'] for r in self.rows('carried')], ['z'])
+
+    def test_a_key_in_two_states_is_one_rejection_with_the_incidents_of_both(self):
+        self.write_state('e2', pr_state(11, [pr_item(1, 'a', [F3], 'e2')], state='done'))
+        self.cli('reject', '--key', 'a', '--reason', 'x')
+        self.assertEqual([(r['key'], r['incidents']) for r in self.rows('rejected')], [('a', [F1, F3])])
+
+
+class SyncTest(RegistersCase):
+    def setUp(self):
+        super().setUp()
+        self.runner.prs.update({11: {'state': 'MERGED', 'mergedAt': '2026-11-11T10:00:00Z'},
+                                12: {'state': 'CLOSED', 'mergedAt': None},
+                                13: {'state': 'OPEN', 'mergedAt': None}})
+
+    def views(self):
+        return [c[3] for c in self.runner.calls if c[:3] == ['gh', 'pr', 'view']]
+
+    def sync(self, runner=None):
+        code, out, err = self.cli('sync', runner=runner)
+        self.assertEqual(code, 0, err)
+        return json.loads(out)
+
+    def test_a_merged_pr_applies_its_items_and_a_reverted_item_is_not_applied(self):
+        self.write_state('e1', pr_state(11, [pr_item(1, 'a', [F1], 'e1'), pr_item(2, 'b', [F2], 'e1')], state='done'))
+        self.write_state('e2', pr_state(11, [pr_item(1, 'd', [F3, W1], 'e2')], state='done'))
+        self.assertEqual(self.cli('reject', '--key', 'b', '--reason', 'za szeroka zmiana')[0], 0)
+        self.sync()
+        rows = self.rows('applied')
+        self.assertEqual([(r['key'], r['incidents'], r['pr']) for r in rows],
+                         [('a', [F1], 11), ('d', [F3, W1], 11)])
+        self.assertEqual(rows[0]['merged_at'], 1794391200)   # 2026-11-11T10:00:00Z
+        self.assertEqual([r['key'] for r in self.rows('rejected')], ['b'])
+        self.assertEqual(self.rows('carried'), [])
+        self.assertEqual(self.views(), ['11'])   # one call for the PR of two states
+
+    def test_a_merged_pr_without_a_reverted_commit_applies_all_items(self):
+        self.write_state('e1', pr_state(11, [pr_item(1, 'a', [F1], 'e1'), pr_item(2, 'b', [F2], 'e1')], state='done'))
+        self.sync()
+        self.assertEqual([r['key'] for r in self.rows('applied')], ['a', 'b'])
+        self.assertEqual(self.rows('rejected'), [])
+
+    def test_a_pr_closed_without_a_merge_carries_the_items_that_were_not_rejected_consciously(self):
+        self.write_state('e1', pr_state(12, [pr_item(1, 'a', [F1], 'e1'), pr_item(2, 'b', [F2], 'e1')], state='done'))
+        self.assertEqual(self.cli('reject', '--key', 'b', '--reason', 'celowo')[0], 0)
+        self.sync()
+        self.assertEqual([(r['key'], r['incidents'], r['pr']) for r in self.rows('carried')], [('a', [F1], 12)])
+        self.assertEqual([r['key'] for r in self.rows('rejected')], ['b'])   # only the item of `reject`
+        self.assertEqual(self.rows('applied'), [])
+
+    def test_reject_all_before_the_close_leaves_nothing_to_carry(self):
+        self.write_state('e1', pr_state(12, [pr_item(1, 'a', [F1], 'e1')], state='done'))
+        self.cli('reject', '--all', '--reason', 'odrzuć wszystko')
+        self.sync()
+        self.assertEqual(self.rows('carried'), [])
+        self.assertEqual([r['key'] for r in self.rows('rejected')], ['a'])
+
+    def test_an_open_pr_changes_nothing(self):
+        self.write_state('e1', pr_state(13, [pr_item(1, 'a', [F1], 'e1')], state='done'))
+        before = self.state('e1')
+        self.sync()
+        self.assertEqual(self.state('e1'), before)
+        for name in ('applied', 'carried', 'rejected'):
+            self.assertEqual(self.rows(name), [])
+
+    def test_a_second_sync_does_not_ask_github_again_or_repeat_rows(self):
+        self.write_state('e1', pr_state(11, [pr_item(1, 'a', [F1], 'e1')], state='done'))
+        self.write_state('e2', pr_state(12, [pr_item(1, 'b', [F2], 'e2')], state='done'))
+        self.sync()
+        self.runner.calls.clear()
+        self.sync()
+        self.assertEqual(self.views(), [])
+        self.assertEqual(len(self.rows('applied')), 1)
+        self.assertEqual(len(self.rows('carried')), 1)
+        self.assertEqual(self.state('e1')['pr']['outcome'], 'merged')
+        self.assertEqual(self.state('e2')['pr']['outcome'], 'closed')
+
+    def test_a_crash_between_the_register_and_the_state_does_not_duplicate_the_row(self):
+        self.write_state('e1', pr_state(11, [pr_item(1, 'a', [F1], 'e1')], state='done'))
+        self.write_rows('applied', [{'key': 'a', 'incidents': [F1], 'pr': 11, 'merged_at': 1794391200}])
+        self.sync()
+        self.assertEqual(len(self.rows('applied')), 1)
+
+    def test_a_merge_removes_the_carried_row_of_the_same_key_and_a_new_close_replaces_it(self):
+        self.write_rows('carried', [{'key': 'a', 'incidents': [F1], 'pr': 4}, {'key': 'z', 'incidents': [F1], 'pr': 4}])
+        self.write_state('e1', pr_state(11, [pr_item(1, 'a', [F1], 'e1')], state='done'))
+        self.write_state('e2', pr_state(12, [pr_item(1, 'z', [F2], 'e2')], state='done'))
+        self.sync()
+        self.assertEqual([(r['key'], r['pr']) for r in self.rows('carried')], [('z', 12)])
+
+    def test_the_same_key_in_two_states_of_one_pr_is_one_applied_row_with_all_incidents(self):
+        self.write_state('e1', pr_state(11, [pr_item(1, 'a', [F1], 'e1')], state='done'))
+        self.write_state('e2', pr_state(11, [pr_item(1, 'a', [F2], 'e2')], state='done'))
+        self.sync()
+        self.assertEqual([(r['key'], r['incidents']) for r in self.rows('applied')], [('a', [F1, F2])])
+
+    def test_states_without_a_pr_and_without_items_are_fine(self):
+        self.write_state('e1', {'state': 'done'})
+        self.write_state('e2', pr_state(11, [], state='done'))
+        self.sync()
+        self.assertEqual(self.rows('applied'), [])
+        self.assertEqual(self.state('e2')['pr']['outcome'], 'merged')
+
+    def test_nothing_registered_is_an_empty_result_without_gh_calls(self):
+        self.assertEqual(self.sync()['prs'], [])
+        self.assertEqual(self.runner.calls, [])
+
+    def test_a_failing_gh_is_exit_code_1_and_writes_nothing(self):
+        self.write_state('e1', pr_state(11, [pr_item(1, 'a', [F1], 'e1')], state='done'))
+        for runner in (FakeRunner(fail='gh pr view'), FakeRunner(bad_json='gh pr view')):
+            code, _, err = self.cli('sync', runner=runner)
+            self.assertEqual(code, 1)
+            self.assertIn('retro:', err)
+        self.assertEqual(self.rows('applied'), [])
+        self.assertNotIn('outcome', self.state('e1')['pr'])
+
+    def test_a_merged_pr_without_a_merge_date_is_exit_code_1(self):
+        self.write_state('e1', pr_state(11, [pr_item(1, 'a', [F1], 'e1')], state='done'))
+        self.runner.prs[11] = {'state': 'MERGED', 'mergedAt': None}
+        self.assertEqual(self.cli('sync')[0], 1)
+        self.assertEqual(self.rows('applied'), [])
+
+
 if __name__ == '__main__':
     unittest.main()
