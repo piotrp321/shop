@@ -19,18 +19,17 @@ dymny na k3d (`smoke.sh`). Funkcja nie zależy od wyglądu sklepu.
   dostawców; w sklepie rozpoczęcie logowania (`/auth/login`). Odpowiedź 429 z `Retry-After` i komunikat w sklepie.
 - **Correlation ID**: nadawany na wejściu HTTP API, zwracany w nagłówku odpowiedzi, przekazywany w stemplu wiadomości
   Messengera (outbox, RabbitMQ, transporty Doctrine) i dopisywany do każdego wpisu logu JSON API i workera.
-- **Nagłówki bezpieczeństwa** sklepu, panelu i API (D9).
-- **Przegląd bezpieczeństwa** sklepu, API i panelu według listy kontrolnej, z raportem (D10).
+- **Nagłówki bezpieczeństwa** sklepu, panelu i API (D10).
+- **Przegląd bezpieczeństwa** sklepu, API i panelu według listy kontrolnej, z raportem (D12).
 - **Testy obciążeniowe** katalogu, strony produktu, wyszukiwarki, koszyka i checkoutu na obrazach produkcyjnych,
-  z raportem (D12–D15).
+  z raportem (D13–D15, D18).
 
 ## Poza zakresem
 
 - Obciążenie na skalę docelową (10 mln produktów, 60 tys. użytkowników) i testy na serwerze demo przez Cloudflare.
 - Sentry i trace'y (#180), tryb publicznego demo (#179), monitoring i kopie zapasowe (DEPLOY-OPS, #178).
 - Pozostałe punkty #181: blokowanie stanów fikcyjnymi zamówieniami poza samym limitem liczby zamówień (D16), polityka
-  prywatności, włączenie rejestracji (`customerAccounts`) i wysyłki przez Brevo (`orderMail`). Issue #181 zostaje
-  otwarte.
+  prywatności, włączenie rejestracji (`customerAccounts`) i wysyłki przez Brevo (`orderMail`).
 - RODO i anonimizacja zamówień (#119) oraz limit rezerwowanego towaru na zamówienie gościa (D11, D16): blokery trybu publicznego demo (D19).
 - Limity na koszyku gościa (zakładanie koszyków, dodawanie linii) i na pozostałych publicznych endpointach: przegląd
   bezpieczeństwa ocenia ich ryzyko i ewentualnie proponuje zgłoszenie.
@@ -42,7 +41,7 @@ dymny na k3d (`smoke.sh`). Funkcja nie zależy od wyglądu sklepu.
 
 | ID | Decyzja |
 |---|---|
-| D1 | Limity liczy Symfony RateLimiter (`symfony/rate-limiter`, nowa zależność, zgoda użytkownika) na puli cache `cache.rate_limiter` w Redisie (`REDIS_HOST`, rozszerzenie `redis` jest już w obrazie; DSN z limitami czasu połączenia i odczytu 1 s). Bez `symfony/lock` (`lock_factory: null`): przy równoległych żądaniach limit może zostać przekroczony o liczbę żądań w locie, co wystarcza do ochrony przed nadużyciem. |
+| D1 | Limity liczy Symfony RateLimiter (`symfony/rate-limiter`) na puli cache `cache.rate_limiter` w Redisie (`REDIS_HOST`, rozszerzenie `redis` jest już w obrazie; DSN z limitami czasu połączenia i odczytu 1 s). Bez `symfony/lock` (`lock_factory: null`): przy równoległych żądaniach limit może zostać przekroczony o liczbę żądań w locie, co wystarcza do ochrony przed nadużyciem. |
 | D2 | Adres IP klienta (`ClientIp`, `Shared\Infrastructure\Http`): gdy zmienna `CLIENT_IP_HEADER` jest ustawiona, adres z tego nagłówka, jeśli jest jednym poprawnym adresem IP; inaczej `Request::getClientIp()` (adres połączenia, bez `trusted_proxies`). W profilu `prod` nagłówek to `CF-Connecting-IP`: Cloudflare zawsze go nadpisuje, a ingress przyjmuje ruch tylko z adresów Cloudflare (`ipAllowList`), więc z zewnątrz nie da się go podrobić. Sklep kopiuje ten sam nagłówek z żądania przeglądarki do wywołań API. Ufamy wywołującym wewnątrz klastra. Bez wspólnego sekretu sklep–API (decyzja użytkownika). Odporność na podrobienie sprawdzają testy renderu (D3), testy API i przegląd (punkt 1); próbę ominięcia Cloudflare na serwerze opisuje runbook i jest blokerem trybu publicznego demo (D19). |
 | D3 | Chart: wartość `clientIpHeader` (domyślnie pusta) trafia jako `CLIENT_IP_HEADER` do `api` i `store`. Render kończy się błędem, gdy `clientIpHeader` jest ustawione przy `ipAllowList.enabled: false`, chyba że profil jawnie ustawia `clientIpHeaderWithoutAllowList: true` (tylko profil pomiaru `load`). `clientIpHeaderWithoutAllowList: true` razem z `image.requireDigests: true` (obrazy wdrożenia) też kończy render błędem, więc w produkcji nie jest dopuszczalne. Testy renderu: `prod` ma `CF-Connecting-IP` i `ipAllowList` na każdym ingressie (także `api` i `auth`), `ci` nie ma nagłówka, `prod` z `clientIpHeaderWithoutAllowList: true` się nie renderuje. |
 | D4 | Klucz limitu: adres IPv4 albo prefiks /64 adresu IPv6 (gość, webhook, logowanie w sklepie); `sub` z tokena dla endpointów klienta (`/api/v1/me/...`). Osobne przestrzenie kluczy limitera (`guest:`, `customer:`). |
@@ -50,22 +49,23 @@ dymny na k3d (`smoke.sh`). Funkcja nie zależy od wyglądu sklepu.
 | D6 | Każde żądanie limitowanego endpointu zużywa limit, także powtórzenie z tym samym `Idempotency-Key` i żądanie odrzucone walidacją. Limit jest sprawdzany przed kontrolerem, po firewallu. 429 przy złożeniu zamówienia nie zakłada zamówienia, więc przeglądarka zachowuje swój `Idempotency-Key` do ponowienia. |
 | D7 | Redis niedostępny: żądanie przechodzi bez limitu (fail open; decyzja użytkownika), ale awaria nie jest cicha. Fail open daje adapter cache Symfony: przy błędzie Redisa zwraca brak wpisu i zapisuje `warning` w kanale Monologa `cache`. Monolog w `prod` ma dla kanału `cache` osobny handler JSON na stderr od poziomu `warning`, poza `fingers_crossed`, więc każdy błąd puli limitera trafia do logu także przy udanym żądaniu. Health check API (`RedisProbe`) zgłasza Redisa jako niedostępnego; alerty z logów i health checku należą do monitoringu (DEPLOY-OPS, #178). |
 | D8 | 429: problem details (`type` `about:blank`, `title` „Too Many Requests”, `detail` „Zbyt wiele prób. Spróbuj ponownie za kilka minut.”), nagłówek `Retry-After` w sekundach, `Cache-Control: private, no-store`. OpenAPI opisuje 429 na limitowanych endpointach. |
-| D9 | Correlation ID: API zawsze nadaje własny (UUIDv7) i ignoruje nagłówek z żądania. Odpowiedź ma `X-Correlation-ID`; Varnish usuwa go z odpowiedzi, które zapisuje w cache, żeby trafienie nie zwracało cudzego identyfikatora. Komenda konsoli ma jeden identyfikator na uruchomienie, wiadomość Messengera niesie `CorrelationIdStamp`, a obsługa wiadomości ustawia identyfikator ze stempla (wiadomość bez stempla: nowy). Jedno wejście HTTP to jeden identyfikator: złożenie zamówienia, płatność i webhook mają różne. Wizja dostaje brzmienie „jedno żądanie da się prześledzić przez wszystkie procesy, które uruchomiło” (decyzja użytkownika). |
+| D9 | Correlation ID: API zawsze nadaje własny (UUIDv7) i ignoruje nagłówek z żądania. Odpowiedź ma `X-Correlation-ID`; Varnish usuwa go z odpowiedzi, które zapisuje w cache, żeby trafienie nie zwracało cudzego identyfikatora. Komenda konsoli ma jeden identyfikator na uruchomienie, wiadomość Messengera niesie `CorrelationIdStamp`, a obsługa wiadomości ustawia identyfikator ze stempla (wiadomość bez stempla: nowy). Jedno wejście HTTP to jeden identyfikator: złożenie zamówienia, płatność i webhook mają różne. Cel w wizji: „jedno żądanie da się prześledzić przez wszystkie procesy, które uruchomiło” (decyzja użytkownika). |
 | D10 | Nagłówki bezpieczeństwa (w zakresie, decyzja użytkownika): sklep i panel `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, CSP `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`; panel dodatkowo `script-src 'self'`. Sklep bez ograniczenia `script-src`: CSP z nonce wymusza renderowanie dynamiczne, co wyłączyłoby ISR stron produktów. API: `X-Content-Type-Options: nosniff` na każdej odpowiedzi. HSTS (`max-age=31536000`, bez `includeSubDomains` i `preload`) w middleware Traefika tylko przy `ingress.tls`. |
-| D11 | RODO (#119) poza epikiem. Checkout gościa zbiera prawdziwe dane osobowe niezależnie od rejestracji, więc #119 jest blokerem trybu publicznego demo (D19). |
-| D12 | Przegląd bezpieczeństwa (decyzja użytkownika): zadanie w ostatniej fali sprawdza listę kontrolną i zapisuje raport. Przegląd niczego nie naprawia: raport zawiera propozycje zgłoszeń (`bug`/`tech-debt` z `agent`), które użytkownik zakłada po odbiorze epiku. Znalezisko `Critical` albo `High` nie blokuje odbioru epiku, ale jego zgłoszenie jest blokerem trybu publicznego demo (#179, D19) do czasu poprawki; raport wymienia je w osobnej sekcji „Blokery publicznego demo”. |
+| D11 | RODO (#119) jest poza zakresem tej funkcji. Checkout gościa zbiera prawdziwe dane osobowe niezależnie od rejestracji, więc #119 jest blokerem trybu publicznego demo (D19). |
+| D12 | Przegląd bezpieczeństwa (decyzja użytkownika): lista kontrolna („Przegląd bezpieczeństwa”) i raport. Przegląd niczego nie naprawia: raport zawiera propozycje zgłoszeń (`bug`/`tech-debt` z `agent`), które zakłada użytkownik. Znalezisko `Critical` albo `High` nie blokuje odbioru funkcji, ale jego zgłoszenie jest blokerem trybu publicznego demo (#179, D19) do czasu poprawki; raport wymienia je w osobnej sekcji „Blokery publicznego demo”. Raport: `docs/reports/security-review-2026-11-10.md`. |
 | D13 | Raporty (przeglądu i pomiaru) są przypięte do rewizji jak w `docs/experiments/`: nagłówek z datą i SHA, po zapisaniu się nie zmieniają; kolejny pomiar to nowy plik. Miejsce: `docs/reports/` z `README.md` jak w `docs/experiments/` (decyzja użytkownika). |
-| D14 | Testy obciążeniowe: k6 (obraz `grafana/k6` przypięty tagiem i digestem, uruchamiany w kontenerze, bez instalacji na hoście ani w zależnościach aplikacji; nowa zależność, zgoda użytkownika). Skrypty w `load/`. |
-| D15 | Środowisko pomiaru (decyzja użytkownika): klaster k3d jak w teście dymnym, z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `environments/load` (`ci` plus zasoby podów z `prod`, `clientIpHeader: CF-Connecting-IP`, `clientIpHeaderWithoutAllowList: true`); `make -C infra/k8s load`. Stos deweloperski (`APP_ENV=dev`) nie nadaje się do pomiaru. Pomiar wykonuje zadanie AO w ostatniej fali; przed pomiarem zatrzymuje stos compose swojego worktree, a raport zapisuje obciążenie hosta (inne kontenery, średnie obciążenie). Użytkownik może powtórzyć pomiar tą samą komendą (nowy raport, D13). |
-| D16 | Blokowanie stanów fikcyjnymi zamówieniami: epik ogranicza tylko liczbę zamówień (D5). Jedno zamówienie gościa może zarezerwować do 50 linii po 99 sztuk (`Cart::MAX_LINES`, `MAX_QUANTITY`) na 35 min. Limit sztuk albo linii na zamówienie gościa zmienia reguły Cart i Ordering, więc jest osobnym zgłoszeniem, założonym przy publikacji tej specyfikacji i będącym blokerem trybu publicznego demo (D19): publiczne demo nie może pozwalać na masowe blokowanie stanów. |
-| D17 | Logowanie hasłem odbywa się w Keycloaku. Oba realmy mają `bruteForceProtected: true` z wartościami domyślnymi Keycloaka (blokada konta po 30 nieudanych próbach, czas rosnący do 15 min). Epik ich nie zmienia (decyzja użytkownika); `docs/features/deploy/spec.md` („Keycloak i konta”) to odnotowuje. |
+| D14 | Testy obciążeniowe: k6 (obraz `grafana/k6` przypięty tagiem i digestem, uruchamiany w kontenerze, bez instalacji na hoście ani w zależnościach aplikacji). Skrypty w `load/`. |
+| D15 | Środowisko pomiaru (decyzja użytkownika): klaster k3d jak w teście dymnym, z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `environments/load` (`ci` plus zasoby podów z `prod`, sterty JVM Elasticsearcha i Keycloaka jak w `prod`, `clientIpHeader: CF-Connecting-IP`, `clientIpHeaderWithoutAllowList: true`); `make -C infra/k8s load`. Stos deweloperski (`APP_ENV=dev`) nie nadaje się do pomiaru. Inne stosy na tej samej maszynie zaszumiają wynik, więc przed pomiarem stos compose jest zatrzymany, a pomiar zapisuje obciążenie hosta (inne kontenery, średnie obciążenie; `environment.txt`). Pomiar można powtórzyć tą samą komendą (nowy raport, D13). Raport: `docs/reports/load-test-2026-11-10.md`. |
+| D16 | Blokowanie stanów fikcyjnymi zamówieniami: limity (D5) ograniczają tylko liczbę zamówień. Jedno zamówienie gościa może zarezerwować do 50 linii po 99 sztuk (`Order::MAX_LINES`, `OrderLine::MAX_QUANTITY`) na 35 min. Limit sztuk albo linii na zamówienie gościa zmienia reguły Cart i Ordering, więc jest osobnym zgłoszeniem (#332), będącym blokerem trybu publicznego demo (D19): publiczne demo nie może pozwalać na masowe blokowanie stanów. |
+| D17 | Logowanie hasłem odbywa się w Keycloaku. Oba realmy mają `bruteForceProtected: true` z wartościami domyślnymi Keycloaka (blokada konta po 30 nieudanych próbach, czas rosnący do 15 min). Funkcja ich nie zmienia (decyzja użytkownika); `docs/features/deploy/spec.md` („Keycloak i konta”) to odnotowuje. |
 | D18 | Checkout w teście obciążeniowym przechodzi przez `POST /api/checkout` sklepu, czyli złożenie zamówienia i rozpoczęcie płatności w symulatorze, który działa w kontenerze API (ryzyko samoblokady wątków FrankenPHP). Scenariusz checkoutu ma równoległość ograniczoną poniżej połowy wątków API, a raport to opisuje (decyzja użytkownika). Wynik checkoutu przy tej równoległości nie jest benchmarkiem checkoutu ani przepustowości systemu (sekcja „Testy obciążeniowe”). |
-| D19 | Blokery trybu publicznego demo (#179), dopisane do issue przy publikacji tej specyfikacji: RODO dla danych gości (#119); limit rezerwowanego towaru na zamówienie gościa (nowe issue, D16); weryfikacja na serwerze, że origin odrzuca ruch z pominięciem Cloudflare (runbook `infra/k8s/README.md`); zgłoszenia znalezisk `Critical` i `High` z raportu przeglądu (dopisuje użytkownik po odbiorze epiku). Epik niczego z tej listy nie implementuje. |
+| D19 | Blokery trybu publicznego demo (#179): RODO dla danych gości (#119); limit rezerwowanego towaru na zamówienie gościa (#332, D16); weryfikacja na serwerze, że origin odrzuca ruch z pominięciem Cloudflare (runbook `infra/k8s/README.md`); zgłoszenia znalezisk `Critical` i `High` z raportu przeglądu (sekcja „Blokery publicznego demo”; zgłoszenia zakłada użytkownik). Funkcja niczego z tej listy nie implementuje. |
 
 ## Adres IP klienta
 
 - API: serwis `ClientIp::of(Request): string` (D2, D4) używany wyłącznie przez rate limiting. Wartość nagłówka
-  z wieloma adresami, pusta albo niepoprawna jest ignorowana (adres połączenia).
+  z wieloma adresami, pusta albo niepoprawna jest ignorowana (adres połączenia). Adres IPv4-mapped IPv6 liczy się jak
+  jego IPv4, a żądanie bez żadnego adresu ma wspólny klucz `unknown`.
 - Zmienna `CLIENT_IP_HEADER`: compose jej nie ustawia, chart według D3. Domyślna wartość w API przez
   `%env(default::CLIENT_IP_HEADER)%`.
 - Sklep: wywołania API z BFF kasy i płatności (`src/checkout/`) dostają nagłówek `CLIENT_IP_HEADER` skopiowany
@@ -131,10 +131,11 @@ dotychczasowe zachowanie trasy (503).
 
 ## Weryfikacja originu na serwerze
 
-Runbook `infra/k8s/README.md` dostaje krok „zgoda użytkownika” po pierwszym wdrożeniu: żądanie HTTPS na adres IP
-serwera z nagłówkiem `Host` domeny sklepu, API i panelu z pominięciem Cloudflare kończy się odmową (403 Traefika albo
-odrzucone połączenie), a żądanie przez Cloudflare z własnym `CF-Connecting-IP` przechodzi bez zmiany limitu innego
-adresu. Wykonanie tego kroku jest blokerem #179 (D19), nie częścią epiku.
+Runbook `infra/k8s/README.md` ma krok „zgoda użytkownika” po pierwszym wdrożeniu: żądanie HTTPS na adres IP serwera
+z nagłówkiem `Host` domeny sklepu, API, panelu, Keycloaka i imgproxy z pominięciem Cloudflare kończy się odmową (403
+Traefika albo odrzucone połączenie), a 11 żądań złożenia zamówienia przez Cloudflare, każde z innym własnym
+`CF-Connecting-IP`, daje dziesięć odpowiedzi 422, a 11. to 429 (Cloudflare nadpisuje nagłówek, więc limit liczy się na adres
+nadawcy). Wykonanie tego kroku jest blokerem #179 (D19), nie częścią funkcji.
 
 ## Nagłówki bezpieczeństwa
 
@@ -146,13 +147,13 @@ panelu w przeglądarce bez błędów CSP w konsoli (strona logowania Keycloaka p
 
 ## Przegląd bezpieczeństwa
 
-Zadanie w ostatniej fali (po limitach i nagłówkach) sprawdza kod i działający stos według listy i zapisuje raport
-`docs/reports/security-review-<data>.md` (D12, D13):
+Przegląd sprawdza kod i działający stos według listy i zapisuje raport `docs/reports/security-review-<data>.md`
+(D12, D13); obecny to `docs/reports/security-review-2026-11-10.md`:
 
 1. Rate limiting: endpointy z wizji, klucz i odporność adresu IP na podrobienie: próba z własnym `CF-Connecting-IP`
    bez konfiguracji nagłówka, render `prod` (lista adresów Cloudflare na każdym ingressie, brak
    `clientIpHeaderWithoutAllowList`), próba wyrenderowania `prod` z tym przełącznikiem. Próba bezpośredniego dostępu do
-   originu na serwerze jest poza zasięgiem epiku: raport zapisuje ją jako niezweryfikowaną i bloker D19.
+   originu na serwerze jest poza zasięgiem funkcji: raport zapisuje ją jako niezweryfikowaną i bloker D19.
 2. Walidacja wejścia na granicy API: każdy endpoint zapisu ma DTO z walidacją albo jawny powód (webhooki).
 3. CORS: tylko `ADMIN_URL`, próba z innego originu.
 4. Uprawnienia panelu: każdy endpoint `/api/v1/admin` ma voter; token klienta i token bez roli dostają 401/403.
@@ -185,8 +186,10 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
 - `make -C infra/k8s load` (D15): klaster, dane demo, podniesienie stanów, rozgrzanie, przebieg stopniowo
   rosnącego obciążenia do nasycenia (p95 powyżej 2 s albo błędy 5xx i sieci powyżej 1%) i przebieg stały na 70%
   nasycenia, zbiór wyników do katalogu poza repo (`LOAD_OUT`, wymagany), usunięcie klastra przy każdym wyjściu. Kod
-  wyjścia: 0 – pomiar wykonany (bez progów zaliczenia), 2 – błąd środowiska (brak `LOAD_OUT`, za mało zasobów, pody
-  niegotowe), z komunikatem.
+  wyjścia: 0 – pomiar wykonany (bez progów zaliczenia), 2 – błąd środowiska z komunikatem (brak `LOAD_OUT`, za mało
+  zasobów VM Dockera, pody niegotowe, dane demo albo stany niegotowe, nieudane rozgrzanie), 1 – inny błąd (nieudany
+  przebieg k6, budowa obrazów). VM Dockera ma mieć co najmniej 10 vCPU i 20 GiB RAM (`LOAD_MIN_CPUS`,
+  `LOAD_MIN_MEM_GIB`; pody `prod` żądają około 5 vCPU i 8,5 GiB).
 - Przebieg rosnący do nasycenia obejmuje scenariusze odczytu i koszyka, bez checkoutu: to jest maksymalna zmierzona
   przepustowość systemu. Checkout biegnie osobno, ze stałą, ograniczoną równoległością (D18), równolegle do ruchu
   odczytu na 70% nasycenia.
@@ -199,29 +202,8 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
   obciążenie hosta w chwili pomiaru i sekcja „Czego z tego nie wnioskujemy” (skala docelowa, sprzęt serwera,
   Cloudflare, katalog 10 mln).
 - CI: zadanie `e2e` po Playwrighcie uruchamia skrypty k6 na stosie compose z jednym użytkownikiem i jedną iteracją
-  każdego scenariusza (`make load-smoke`, do 30 s), żeby skrypty nie przestały działać. Bez pomiaru i progów
+  każdego scenariusza (`make load-smoke`, scenariusz ma limit 30 s), żeby skrypty nie przestały działać. Bez pomiaru i progów
   wydajności. Checkout kupuje 1 sztukę, a uruchomienie po Playwrighcie nie zabiera stanów testom E2E.
-
-## Zmiany dokumentacji (razem z implementacją)
-
-- `docs/vision.md`: „Bezpieczeństwo” – limity także na rozpoczęciu płatności i logowaniu w sklepie, adres klienta
-  z `CF-Connecting-IP`; „Obserwowalność” – brzmienie correlation ID (D9); testy obciążeniowe k6 i raporty w `docs/reports/`.
-- `CLAUDE.md`: `make load-smoke`, `make -C infra/k8s load`, katalog `load/`, `docs/reports/`, `clientIpHeader` w chartcie.
-- `apps/api/CLAUDE.md`: limity, `ClientIp`, correlation ID, 429; zachowanie symulatora przy 429.
-- `apps/store/CLAUDE.md`: nagłówek adresu klienta w BFF, limit `/auth/login`, nagłówki bezpieczeństwa.
-- `docs/features/checkout/spec.md`: decyzja T2 i ryzyko braku limitów zastąpione odwołaniem do tej specyfikacji.
-- `docs/features/payment/spec.md`: 429 webhooka i ponowienie symulatora.
-- `docs/features/deploy/spec.md`: `clientIpHeader`, HSTS, ochrona przed zgadywaniem haseł w Keycloaku (D17).
-- `infra/k8s/README.md`: krok weryfikacji originu (sekcja „Weryfikacja originu na serwerze”).
-
-## Wymagane przed startem
-
-- Zgoda na zależności `symfony/rate-limiter` i obraz `grafana/k6` – D1, D14 – istnieje: decyzja użytkownika w przygotowaniu epiku.
-- Redis dla API – istnieje: usługa `redis` w compose i chartcie, `REDIS_HOST` w API.
-- Cloudflare przed ingressem i `ipAllowList` w `prod` – istnieje: `infra/k8s/environments/prod/values.yaml`.
-- Sekrety: brak nowych (D2 bez wspólnego sekretu).
-- Zasoby Dockera na maszynie z AO do pomiaru (D15): VM Dockera co najmniej 10 vCPU i 20 GiB RAM (zasoby `prod` około
-  5 vCPU i 8,5 GiB plus stosy compose innych zadań) – użytkownik: ustawienia Docker Desktop.
 
 ## Scenariusze błędów
 
@@ -237,7 +219,7 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
 | Wiadomość bez stempla (sprzed wdrożenia) | obsługa z nowym identyfikatorem |
 | `/auth/login` ponad limit | 429, bez stanu w Redisie |
 | `clientIpHeader` bez `ipAllowList` i bez potwierdzenia | render chartu kończy się błędem |
-| `make -C infra/k8s load` bez `LOAD_OUT` albo z podami w `Pending` | kod 2, klaster usunięty |
+| `make -C infra/k8s load` bez `LOAD_OUT` albo z podami w `Pending` | kod 2 z komunikatem, klaster usunięty |
 
 ## Kryteria akceptacji
 
@@ -259,7 +241,7 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
 
 ## Testy
 
-- API funkcjonalne: limity każdego limitera (`when@test`: małe limity, pula `cache.adapter.array`), klucz gościa
+- API funkcjonalne: limity każdego limitera (`when@test`: małe limity, magazyn `InMemoryStorage` trzymany przez życie jądra jednego testu), klucz gościa
   i klienta, `CF-Connecting-IP` z `CLIENT_IP_HEADER` i bez, 429 i jego nagłówki.
 - API integracyjne: fail open przy rzeczywistej awarii Redisa: prawdziwy adapter Redis wskazujący adres, na którym
   Redis nie działa (żądanie przechodzi, czas odpowiedzi w granicy limitów czasu DSN, wpis `warning` kanału `cache`);
@@ -289,4 +271,3 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
 - Pomiar na komputerze dewelopera nie mówi o wydajności serwera demo ani o skali docelowej; dane demo to ~200 produktów
   i ~1000 wariantów, a inne stosy na tej samej maszynie zaszumiają wynik.
 - CSP sklepu bez `script-src` nie chroni przed XSS skryptami inline.
-- Epik ma trzy niezależne ścieżki (limity i nagłówki, correlation ID, pomiar i przegląd), co zwiększa końcowy PR.
