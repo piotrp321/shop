@@ -56,8 +56,9 @@ final readonly class VariantValues
     }
 
     /**
-     * What makes two combinations the same: the values without regard to case. mb_strtolower agrees with the
-     * lower() of PostgreSQL that computes the unique index of the table, also for Polish letters.
+     * What makes two combinations the same: the values without regard to case (mb_strtolower, also for Polish
+     * letters). The unique index of the variants table is built from this key too, not from lower() of PostgreSQL,
+     * which treats some letters differently (e.g. "İ" and a final "Σ").
      *
      * @return list<string>
      */

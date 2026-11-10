@@ -173,6 +173,52 @@ final class WriteProductEndpointsTest extends WebTestCase
         ], $this->violations());
     }
 
+    /**
+     * Pairs that lower() of PostgreSQL maps to the same text, but the comparison of the domain does not.
+     *
+     * @return iterable<string, array{string, string}>
+     */
+    public static function valuesTheDomainTellsApart(): iterable
+    {
+        yield 'capital I with dot above and i' => ['İ', 'i'];
+        yield 'capital sigma at the end of a word and small sigma' => ['ΑΣ', 'ασ'];
+    }
+
+    #[DataProvider('valuesTheDomainTellsApart')]
+    public function testCombinationsTheDomainTellsApartAreCreated(string $first, string $second): void
+    {
+        $view = $this->createProduct(['variants' => [['variantId' => null, 'values' => [$first]], ['variantId' => null, 'values' => [$second]]]]);
+
+        self::assertSame([[$first], [$second]], array_column(self::list($view['variants']), 'values'));
+    }
+
+    #[DataProvider('valuesTheDomainTellsApart')]
+    public function testCombinationsTheDomainTellsApartAreSavedByAnEdit(string $first, string $second): void
+    {
+        $created = $this->createProduct(['variants' => [['variantId' => null, 'values' => [$second]]]]);
+        $variants = self::list($created['variants']);
+
+        $view = $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $this->editBody($created, [
+            'variants' => [['variantId' => $variants[0]['variantId'], 'values' => [$second]], ['variantId' => null, 'values' => [$first]]],
+        ]));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([[$second], [$first]], array_column(self::list($view['variants']), 'values'));
+    }
+
+    public function testAnEditWithACombinationThatDiffersOnlyInAsciiCaseIsADuplicate(): void
+    {
+        $created = $this->createProduct();
+        $variants = self::list($created['variants']);
+
+        $this->api('PUT', self::PRODUCTS.'/'.self::string($created['id']), $this->editBody($created, [
+            'variants' => [...$variants, ['variantId' => null, 'values' => ['l']]],
+        ]));
+
+        self::assertSame([['propertyPath' => 'variants[2].values', 'title' => 'Taki wariant już istnieje.']], $this->violations());
+        self::assertSame(1, $this->connection->fetchOne('SELECT version FROM catalog_product WHERE id = ?', [$created['id']]));
+    }
+
     public function testAnEmptyBodyListsEveryRequiredField(): void
     {
         $this->api('POST', self::PRODUCTS, []);

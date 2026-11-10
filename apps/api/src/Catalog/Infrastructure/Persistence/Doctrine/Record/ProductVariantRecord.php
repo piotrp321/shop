@@ -10,9 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 /**
  * Persistence model of a ProductVariant. Only DoctrineProductRepository maps it to and from the domain.
  *
- * values_key is computed by PostgreSQL from option_values (lower case of the canonical jsonb text), so the unique
- * index on (product_id, values_key) rejects a repeated combination also when the domain is bypassed. It is never
- * written from PHP.
+ * values_key is the comparison key of the domain (VariantValues::comparisonKey() as JSON), written by
+ * DoctrineProductRepository with every variant, so the unique index on (product_id, values_key) agrees with the domain.
+ * It is NULL in a row written without it (by the previous version of the code during a deployment, or by direct SQL),
+ * which the index does not check.
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'catalog_product_variant')]
@@ -27,14 +28,8 @@ class ProductVariantRecord
     #[ORM\Column(type: Types::JSONB)]
     public array $optionValues;
 
-    #[ORM\Column(
-        type: Types::TEXT,
-        insertable: false,
-        updatable: false,
-        columnDefinition: 'TEXT GENERATED ALWAYS AS (lower(option_values::text)) STORED',
-        generated: 'ALWAYS',
-    )]
-    public string $valuesKey;
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    public ?string $valuesKey = null;
 
     public function __construct(
         #[ORM\Id]
