@@ -616,6 +616,36 @@ class UnaskedTest(unittest.TestCase):
         incidents = retro.unasked_incidents('e', [{'number': 9, 'body': body}])
         self.assertEqual([i['key'] for i in incidents], ['pr9#1', 'pr9#2'])
 
+    def test_nested_sub_items_are_part_of_the_decision_not_decisions(self):
+        # real: PR #355 and #363 of VISUAL-DESIGN have indented "- Odrzucone:" lines under numbered decisions
+        body = ('## Decyzje bez pytania\n\n1. **Pierwsza.**\n   - Odrzucone: coś.\n   - Odwracalne: tak.\n'
+                '2. **Druga.**\n   1. zagnieżdżona numerowana\n   * zagnieżdżony punktor\n3. **Trzecia.**\n')
+        incidents = retro.unasked_incidents('e', [{'number': 7, 'body': body}])
+        self.assertEqual([i['key'] for i in incidents], ['pr7#1', 'pr7#2', 'pr7#3'])
+        self.assertIn('Odrzucone: coś.', incidents[0]['data']['text'])
+        self.assertIn('zagnieżdżony punktor', incidents[1]['data']['text'])
+
+    def test_mixed_list_numbers_bullets_by_order_among_top_level_items(self):
+        body = '## Decyzje bez pytania\n1. pierwsza\n- punktor\n3. trzecia\n- drugi punktor\n'
+        incidents = retro.unasked_incidents('e', [{'number': 7, 'body': body}])
+        self.assertEqual([i['key'] for i in incidents], ['pr7#1', 'pr7#2', 'pr7#3', 'pr7#4'])
+        self.assertEqual([i['data']['position'] for i in incidents], [1, 2, 3, 4])
+
+    def test_a_repeated_number_falls_back_to_the_order_so_ids_stay_unique(self):
+        body = '## Decyzje bez pytania\n1. a\n2. b\n2. c\n1. d\n7. e\n'
+        incidents = retro.unasked_incidents('e', [{'number': 7, 'body': body}])
+        keys = [i['key'] for i in incidents]
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertEqual(keys[:2], ['pr7#1', 'pr7#2'])
+        self.assertEqual(len(keys), 5)
+
+    def test_ids_are_unique_in_a_pr_with_a_real_shaped_description(self):
+        body = ('## Decyzje bez pytania\n\n' + ''.join(
+            '%d. **Decyzja %d.**\n   - Odrzucone: x.\n   - Odwracalne: y.\n' % (n, n) for n in range(1, 8)))
+        keys = [i['id'] for i in retro.unasked_incidents('e', [{'number': 355, 'body': body}])]
+        self.assertEqual(len(keys), 7)
+        self.assertEqual(len(set(keys)), 7)
+
     def test_heading_level_and_case_do_not_matter(self):
         body = '### decyzje bez pytania\n1. jedyna\n'
         self.assertEqual([i['key'] for i in retro.unasked_incidents('e', [{'number': 9, 'body': body}])], ['pr9#1'])

@@ -583,25 +583,31 @@ def sweep_incidents(epic_id, merged_at, text):
 # ------------------------------------------------------------------------------ "Decyzje bez pytania" of task PRs
 
 def unasked_decisions(body):
-    """[(position, text)] of the section `Decyzje bez pytania` of a PR description: numbered or bulleted items."""
+    """[(position, text)] of the section `Decyzje bez pytania` of a PR description. A decision is an item of the top
+    level list (no indentation, numbered or bulleted); indented lines, also indented bullets, continue the current
+    item. A numbered item keeps its number, a bullet takes the next ordinal among the items; a number that was
+    already used (also by a bullet) is replaced by the ordinal, so the positions of one description are unique."""
     lines = (body or '').splitlines()
     start = next((i for i, l in enumerate(lines) if re.match(r'^#{1,6}\s*decyzje bez pytania\s*$', l, re.I)), None)
     if start is None:
         return []
-    items, current, blank = [], None, False
+    items, used, current, blank = [], set(), None, False
     for line in lines[start + 1:]:
         if re.match(r'^#{1,6}\s', line):
             break
         if not line.strip():
             blank = True
             continue
-        numbered = re.match(r'^\s{0,3}(\d+)[.)]\s+(.*\S)\s*$', line)
-        bullet = re.match(r'^\s{0,3}[-*]\s+(.*\S)\s*$', line)
-        if numbered:
-            current = [int(numbered.group(1)), numbered.group(2)]
-            items.append(current)
-        elif bullet:
-            current = [len(items) + 1, bullet.group(1)]
+        numbered = re.match(r'^(\d+)[.)]\s+(.*\S)\s*$', line)
+        bullet = re.match(r'^[-*]\s+(.*\S)\s*$', line)
+        if numbered or bullet:
+            position = int(numbered.group(1)) if numbered else len(items) + 1
+            while position in used:
+                position = len(items) + 1
+                while position in used:
+                    position += 1
+            used.add(position)
+            current = [position, (numbered or bullet).group(2 if numbered else 1)]
             items.append(current)
         elif current is not None and (line[0] in ' \t' or not blank):
             current[1] += ' ' + line.strip()
