@@ -36,7 +36,7 @@ Skrypty wywołuj zawsze jako `python3 "$R" …` i `python3 "$NQ" …`. `SHOP` to
 komendy `retro.py` dostają `--repo "$SHOP"` (wyjątek: `validate`, sekcja „Przebieg”, krok 4). Przed wyborem epiku
 (bez argumentu) użyj tylko pierwszych pięciu linii.
 
-Powiadomienie push to `PushNotification` (do 200 znaków). Zasilanie, limit i procesy sprawdzasz na komputerze sesji.
+Powiadomienie push to `PushNotification` (do 200 znaków). Limit i procesy sprawdzasz na komputerze sesji.
 
 ## Uruchamianie
 
