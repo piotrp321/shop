@@ -6,7 +6,7 @@ namespace App\Catalog\Domain\Product;
 
 final readonly class ProductImages
 {
-    private const int MAX_IMAGES = 10;
+    public const int MAX_IMAGES = 10;
 
     /**
      * @param list<ProductImage> $images

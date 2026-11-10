@@ -6,8 +6,8 @@ namespace App\Catalog\Domain\Product;
 
 /**
  * The names of the axes a product varies along, in presentation order (e.g. Kolor, Rozmiar). Up to two, each
- * 1 to 30 characters after trimming, without a colon (it separates the axis from the value in an axis filter),
- * different without regard to case.
+ * 1 to 30 characters after trimming Unicode whitespace, without control characters (see ProductText), without a colon
+ * (it separates the axis from the value in an axis filter), different without regard to case.
  */
 final readonly class VariantAxes
 {
@@ -35,7 +35,10 @@ final readonly class VariantAxes
         $trimmed = [];
         $seen = [];
         foreach ($names as $name) {
-            $name = trim($name);
+            if (ProductText::hasForbiddenCharacters($name)) {
+                throw InvalidVariantAxes::nameWithForbiddenCharacters();
+            }
+            $name = ProductText::trim($name);
             $length = mb_strlen($name);
             if ($length < 1 || $length > self::MAX_NAME_LENGTH) {
                 throw InvalidVariantAxes::nameLengthOutOfRange();

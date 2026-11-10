@@ -214,6 +214,18 @@ Wszystkie pod `/api/v1/admin`, `Cache-Control: private, no-store`, firewall `bac
   Walidacja DTO z limitami domeny (nazwa 1–200, slug ≤ 200 i format, opis ≤ 500, do 10 kategorii dodatkowych,
   do 10 zdjęć, alt 1–200, 0–2 osie po 1–30 znaków bez `:`, wartości 1–40, 1–100 wariantów); 422 z `violations`
   ze ścieżkami pól (`variants[3].values[1]`).
+- Reguły tekstu (jedna klasa `ProductText` w `Catalog\Domain\Product`, używają jej value objecty `ProductName`,
+  `ShortDescription`, `ProductImage`, `VariantAxes`, `VariantValues` i walidator DTO): znaki sterujące C0 i DEL
+  (U+0000–U+001F, U+007F) oraz U+0085, U+2028 i U+2029 są niedozwolone, a tekst, który nie jest poprawnym UTF-8, też.
+  Jedynym wyjątkiem jest LF w krótkim opisie (pozostałe teksty są jednoliniowe). Znaki niedozwolone są szukane
+  w wartości przed przycięciem (przycięcie ucięłoby np. końcowy NUL po cichu). Naruszenie to 422 przy polu
+  (`name`, `shortDescription`, `images[i].alt`, `variantAxes[i]`, `variants[i].values[j]`): „Nazwa produktu zawiera
+  niedozwolone znaki.”, „Krótki opis …”, „Tekst alternatywny …”, „Nazwa osi …”, „Wartość wariantu …”. Końce tekstu są
+  przycinane z białych znaków Unicode (`\s` i `\p{Z}`, także NBSP), a długość liczy się po przycięciu. Nazwa, tekst
+  alternatywny, nazwa osi i wartość wariantu z samych białych znaków to jak puste pole (422 „wymagane” przy tym polu,
+  nie przy `slug`); krótki opis z samych białych znaków jest zapisany jako pusty. Zapisywane są teksty przycięte.
+  Niepoprawny UTF-8 w treści JSON nie dociera do walidatora: dekoder odpowiada 400 (bajt poza UTF-8 albo samotny
+  surogat `\udc80` w ucieczce).
 - DTO sprawdza też reguły domeny, które bez tego dałyby 500 albo 422 bez ścieżki pola: format klucza zdjęcia
   (`images[i].key`), powtórzony klucz zdjęcia (`images[i].key`, „To zdjęcie już jest w produkcie.”), kategoria
   główna powtórzona w dodatkowych albo powtórzona dodatkowa (`additionalCategoryIds[i]`), powtórzona nazwa osi

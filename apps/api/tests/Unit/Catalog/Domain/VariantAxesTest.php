@@ -29,7 +29,7 @@ final class VariantAxesTest extends TestCase
 
     public function testNamesAreTrimmed(): void
     {
-        self::assertSame(['Kolor', 'Rozmiar'], VariantAxes::fromList(['  Kolor ', "\tRozmiar\n"])->names());
+        self::assertSame(['Kolor', 'Rozmiar'], VariantAxes::fromList(['  Kolor ', "\u{00A0}Rozmiar\u{3000}"])->names());
     }
 
     public function testNameOf30CharactersIsAcceptedAndOf31IsRejected(): void

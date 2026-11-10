@@ -6,14 +6,26 @@ namespace App\Catalog\Domain\Product;
 
 final readonly class ProductImage
 {
-    public function __construct(private ImageKey $key, private string $alt, private int $position)
+    public const int MAX_ALT_LENGTH = 200;
+
+    private string $alt;
+
+    public function __construct(private ImageKey $key, string $alt, private int $position)
     {
-        if ('' === trim($alt)) {
+        if (ProductText::hasForbiddenCharacters($alt)) {
+            throw new \InvalidArgumentException('Image alt text must not contain forbidden characters.');
+        }
+        $alt = ProductText::trim($alt);
+        if ('' === $alt) {
             throw new \InvalidArgumentException('Image alt text must not be empty.');
+        }
+        if (mb_strlen($alt) > self::MAX_ALT_LENGTH) {
+            throw new \InvalidArgumentException('Image alt text must have at most '.self::MAX_ALT_LENGTH.' characters.');
         }
         if ($position < 0) {
             throw new \InvalidArgumentException('Image position must not be negative.');
         }
+        $this->alt = $alt;
     }
 
     public function key(): ImageKey

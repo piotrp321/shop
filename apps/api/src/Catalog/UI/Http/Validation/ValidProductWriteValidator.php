@@ -6,7 +6,13 @@ namespace App\Catalog\UI\Http\Validation;
 
 use App\Catalog\Domain\Category\CategoryId;
 use App\Catalog\Domain\Product\ImageKey;
+use App\Catalog\Domain\Product\ProductCategories;
+use App\Catalog\Domain\Product\ProductImage;
+use App\Catalog\Domain\Product\ProductImages;
+use App\Catalog\Domain\Product\ProductName;
+use App\Catalog\Domain\Product\ProductText;
 use App\Catalog\Domain\Product\ProductVariants;
+use App\Catalog\Domain\Product\ShortDescription;
 use App\Catalog\Domain\Product\Slug;
 use App\Catalog\Domain\Product\TaxClassCode;
 use App\Catalog\Domain\Product\VariantAxes;
@@ -19,13 +25,6 @@ use Symfony\Component\Validator\Exception\UnexpectedTypeException;
 
 final class ValidProductWriteValidator extends ConstraintValidator
 {
-    private const int MAX_NAME_LENGTH = 200;
-    private const int MAX_SLUG_LENGTH = 200;
-    private const int MAX_SHORT_DESCRIPTION_LENGTH = 500;
-    private const int MAX_ADDITIONAL_CATEGORIES = 10;
-    private const int MAX_IMAGES = 10;
-    private const int MAX_ALT_LENGTH = 200;
-
     public function validate(mixed $value, Constraint $constraint): void
     {
         if (!$constraint instanceof ValidProductWrite) {
@@ -58,10 +57,14 @@ final class ValidProductWriteValidator extends ConstraintValidator
 
     private function name(ExecutionContextInterface $context, mixed $name): void
     {
-        if (!\is_string($name) || '' === trim($name)) {
+        if (!\is_string($name)) {
             self::add($context, 'name', 'Podaj nazwę produktu.');
-        } elseif (mb_strlen($name) > self::MAX_NAME_LENGTH) {
-            self::add($context, 'name', 'Nazwa może mieć najwyżej 200 znaków.');
+        } elseif (ProductText::hasForbiddenCharacters($name)) {
+            self::add($context, 'name', 'Nazwa produktu zawiera niedozwolone znaki.');
+        } elseif ('' === ProductText::trim($name)) {
+            self::add($context, 'name', 'Podaj nazwę produktu.');
+        } elseif (ProductText::length($name) > ProductName::MAX_LENGTH) {
+            self::add($context, 'name', \sprintf('Nazwa może mieć najwyżej %d znaków.', ProductName::MAX_LENGTH));
         }
     }
 
@@ -69,8 +72,8 @@ final class ValidProductWriteValidator extends ConstraintValidator
     {
         if (!\is_string($slug)) {
             self::add($context, 'slug', 'Slug musi być tekstem.');
-        } elseif (mb_strlen($slug) > self::MAX_SLUG_LENGTH) {
-            self::add($context, 'slug', 'Slug może mieć najwyżej 200 znaków.');
+        } elseif (mb_strlen($slug) > Slug::MAX_LENGTH) {
+            self::add($context, 'slug', \sprintf('Slug może mieć najwyżej %d znaków.', Slug::MAX_LENGTH));
         } elseif ('' !== $slug && !self::isSlug($slug)) {
             self::add($context, 'slug', 'Slug może zawierać tylko małe litery bez polskich znaków, cyfry i pojedyncze myślniki.');
         }
@@ -80,8 +83,10 @@ final class ValidProductWriteValidator extends ConstraintValidator
     {
         if (!\is_string($description)) {
             self::add($context, 'shortDescription', 'Krótki opis musi być tekstem.');
-        } elseif (mb_strlen($description) > self::MAX_SHORT_DESCRIPTION_LENGTH) {
-            self::add($context, 'shortDescription', 'Krótki opis może mieć najwyżej 500 znaków.');
+        } elseif (ProductText::hasForbiddenCharacters($description, allowLineFeed: true)) {
+            self::add($context, 'shortDescription', 'Krótki opis zawiera niedozwolone znaki.');
+        } elseif (ProductText::length($description) > ShortDescription::MAX_LENGTH) {
+            self::add($context, 'shortDescription', \sprintf('Krótki opis może mieć najwyżej %d znaków.', ShortDescription::MAX_LENGTH));
         }
     }
 
@@ -97,8 +102,8 @@ final class ValidProductWriteValidator extends ConstraintValidator
 
             return;
         }
-        if (\count($additional) > self::MAX_ADDITIONAL_CATEGORIES) {
-            self::add($context, 'additionalCategoryIds', 'Produkt może mieć najwyżej 10 kategorii dodatkowych.');
+        if (\count($additional) > ProductCategories::MAX_ADDITIONAL) {
+            self::add($context, 'additionalCategoryIds', \sprintf('Produkt może mieć najwyżej %d kategorii dodatkowych.', ProductCategories::MAX_ADDITIONAL));
 
             return;
         }
@@ -125,8 +130,8 @@ final class ValidProductWriteValidator extends ConstraintValidator
 
             return;
         }
-        if (\count($images) > self::MAX_IMAGES) {
-            self::add($context, 'images', 'Produkt może mieć najwyżej 10 zdjęć.');
+        if (\count($images) > ProductImages::MAX_IMAGES) {
+            self::add($context, 'images', \sprintf('Produkt może mieć najwyżej %d zdjęć.', ProductImages::MAX_IMAGES));
 
             return;
         }
@@ -147,10 +152,15 @@ final class ValidProductWriteValidator extends ConstraintValidator
             }
 
             $alt = $image['alt'] ?? null;
-            if (!\is_string($alt) || '' === trim($alt)) {
-                self::add($context, \sprintf('images[%d].alt', $index), 'Podaj tekst alternatywny zdjęcia.');
-            } elseif (mb_strlen($alt) > self::MAX_ALT_LENGTH) {
-                self::add($context, \sprintf('images[%d].alt', $index), 'Tekst alternatywny może mieć najwyżej 200 znaków.');
+            $altPath = \sprintf('images[%d].alt', $index);
+            if (!\is_string($alt)) {
+                self::add($context, $altPath, 'Podaj tekst alternatywny zdjęcia.');
+            } elseif (ProductText::hasForbiddenCharacters($alt)) {
+                self::add($context, $altPath, 'Tekst alternatywny zawiera niedozwolone znaki.');
+            } elseif ('' === ProductText::trim($alt)) {
+                self::add($context, $altPath, 'Podaj tekst alternatywny zdjęcia.');
+            } elseif (ProductText::length($alt) > ProductImage::MAX_ALT_LENGTH) {
+                self::add($context, $altPath, \sprintf('Tekst alternatywny może mieć najwyżej %d znaków.', ProductImage::MAX_ALT_LENGTH));
             }
         }
     }
@@ -167,7 +177,7 @@ final class ValidProductWriteValidator extends ConstraintValidator
             return null;
         }
         if (\count($axes) > VariantAxes::MAX_AXES) {
-            self::add($context, 'variantAxes', 'Produkt może mieć najwyżej 2 osie wariantów.');
+            self::add($context, 'variantAxes', \sprintf('Produkt może mieć najwyżej %d osie wariantów.', VariantAxes::MAX_AXES));
 
             return null;
         }
@@ -175,9 +185,15 @@ final class ValidProductWriteValidator extends ConstraintValidator
         $seen = [];
         foreach ($axes as $index => $name) {
             $path = \sprintf('variantAxes[%d]', $index);
-            $trimmed = \is_string($name) ? trim($name) : null;
+            if (\is_string($name) && ProductText::hasForbiddenCharacters($name)) {
+                self::add($context, $path, 'Nazwa osi zawiera niedozwolone znaki.');
+                $valid = false;
+
+                continue;
+            }
+            $trimmed = \is_string($name) ? ProductText::trim($name) : null;
             if (null === $trimmed || '' === $trimmed || mb_strlen($trimmed) > VariantAxes::MAX_NAME_LENGTH) {
-                self::add($context, $path, 'Nazwa osi musi mieć od 1 do 30 znaków.');
+                self::add($context, $path, \sprintf('Nazwa osi musi mieć od 1 do %d znaków.', VariantAxes::MAX_NAME_LENGTH));
                 $valid = false;
             } elseif (str_contains($trimmed, ':')) {
                 self::add($context, $path, 'Nazwa osi nie może zawierać dwukropka.');
@@ -201,7 +217,7 @@ final class ValidProductWriteValidator extends ConstraintValidator
             return;
         }
         if (\count($variants) < 1 || \count($variants) > ProductVariants::MAX_VARIANTS) {
-            self::add($context, 'variants', 'Produkt musi mieć od 1 do 100 wariantów.');
+            self::add($context, 'variants', \sprintf('Produkt musi mieć od 1 do %d wariantów.', ProductVariants::MAX_VARIANTS));
 
             return;
         }
@@ -256,9 +272,16 @@ final class ValidProductWriteValidator extends ConstraintValidator
 
         $valid = true;
         foreach ($values as $position => $value) {
-            $trimmed = \is_string($value) ? trim($value) : null;
+            $valuePath = \sprintf('%s[%d]', $path, $position);
+            if (\is_string($value) && ProductText::hasForbiddenCharacters($value)) {
+                self::add($context, $valuePath, 'Wartość wariantu zawiera niedozwolone znaki.');
+                $valid = false;
+
+                continue;
+            }
+            $trimmed = \is_string($value) ? ProductText::trim($value) : null;
             if (null === $trimmed || '' === $trimmed || mb_strlen($trimmed) > VariantValues::MAX_VALUE_LENGTH) {
-                self::add($context, \sprintf('%s[%d]', $path, $position), 'Wartość musi mieć od 1 do 40 znaków.');
+                self::add($context, $valuePath, \sprintf('Wartość musi mieć od 1 do %d znaków.', VariantValues::MAX_VALUE_LENGTH));
                 $valid = false;
             }
         }
