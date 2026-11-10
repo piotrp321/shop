@@ -28,10 +28,12 @@ trap 'rm -rf "$work"' EXIT
 step() { printf '\n== %s\n' "$1"; }
 
 do_lint() {
-  step "helm lint (prod, ci)"
+  step "helm lint (prod, ci, load)"
   # shellcheck disable=SC2086 # $digests is a list of arguments
   helm lint charts/shop --strict --kube-version "$KUBERNETES_VERSION" -f environments/prod/values.yaml --set image.tag=$rev $digests
   helm lint charts/shop --strict --kube-version "$KUBERNETES_VERSION" -f environments/ci/values.yaml --set image.tag=$rev
+  helm lint charts/shop --strict --kube-version "$KUBERNETES_VERSION" -f environments/ci/values.yaml -f environments/load/values.yaml \
+    --set image.tag=$rev
 }
 
 do_render() {
@@ -147,7 +149,7 @@ do_images() {
 
 do_kubeconform() {
   step "kubeconform (Kubernetes $KUBERNETES_VERSION)"
-  for case_name in prod ci argocd; do
+  for case_name in prod ci load argocd; do
     # The CRDs of Traefik (Middleware), of Argo CD (Application) and of the Helm controller of k3s (HelmChart) are validated against the schemas of the CRDs catalog, pinned to a commit.
     if ! output="$(kubeconform -strict -summary -kubernetes-version "$KUBERNETES_VERSION" \
       -schema-location default \
@@ -164,7 +166,7 @@ do_shellcheck() {
   step "shellcheck"
   # shellcheck disable=SC2046 # the file names have no spaces
   shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh tests/bootstrap/*.sh) \
-    ../../.github/scripts/deploy-ref.sh
+    ../../.github/scripts/deploy-ref.sh ../../load/k6.sh ../../load/smoke.sh
 }
 
 # The workflows of the repository (deploy.yml among them), with shellcheck on their run: scripts.

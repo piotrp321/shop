@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke rerun create-admin seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
+.PHONY: check selftest smoke load rerun create-admin seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). Needs Docker, and git for that last step.
@@ -20,6 +20,15 @@ selftest:
 # the images of the services). SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
 smoke:
 	sh scripts/smoke.sh
+
+# The load measurement on a throwaway k3d cluster with the production images built here and the profile `load`: the demo
+# data, the stocks raised, a warm-up, the ramp to saturation and the steady run with a checkout (the k6 scripts of
+# ../../load; tens of minutes). make -C infra/k8s load LOAD_OUT=<an existing directory outside the repository> (required).
+# Exit code 0: measured; 2: the environment is not fit (no LOAD_OUT, too few CPUs or too little memory in the Docker VM,
+# pods not ready), with a message. The cluster is deleted on every exit. Needs only Docker; see scripts/load.sh for the
+# settings (a short run: RAMP_STEPS=2 RAMP_STEP_SECONDS=10 STEADY_SECONDS=20 WARMUP_SECONDS=10 LOAD_COOLDOWN=5).
+load:
+	sh scripts/load.sh
 
 # Runs a job of a version again under its name (a finished or failed one): make -C infra/k8s rerun JOB=<name>.
 # KUBE_DIR is the directory with the kubeconfig of the cluster (required), KUBE_NETWORK the Docker network of kubectl.
