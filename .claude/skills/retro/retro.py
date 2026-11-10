@@ -109,8 +109,8 @@ AO_REPOSITORY = 'piotrp321/agentic-orchestrator'
 # Step 12 of the plan (/sweep named after the epic) reached main in fc208156 at 2026-11-09 13:51:12 CET: older epics
 # had no per-epic review, so `escaped` and `no_sweep` exist only for epics merged after it.
 STEP_12_AT = datetime.datetime.fromisoformat('2026-11-09T13:51:12+01:00').timestamp()
-# `pending` takes epics merged after this date: the merge of the pull request that implements step 15. The epic is
-# not merged yet, so this is the start of the day it is expected on; set it to the real merge time with that PR.
+# `pending` takes epics merged after this date: a fixed, deliberate date (2026-11-10 00:00 UTC), unrelated to the
+# time of any pull request. The first epics under the automatic retro include VISUAL-DESIGN, LIGHTHOUSE and HARDENING.
 RETRO_SINCE = '2026-11-10T00:00:00+00:00'
 # A failed attempt that ended at most this long before a block is the cause of that block.
 ATTEMPT_GAP_S = 600

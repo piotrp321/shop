@@ -74,8 +74,8 @@ Zakres: .claude/skills/retro, .claude/agents/retro-analyst.md, .claude/skills/ao
   nierozstrzygnięte decyzje poprzednich przebiegów (krok 7), potem bierze najstarszy epik z `retro.py pending`.
   Z argumentem działa dla każdego zmergowanego epiku, także sprzed wdrożenia (pierwszy przebieg: `visual-design`).
 - **Do zrobienia (`retro.py pending`)** to lista wyliczana z danych, nie zapisywana kolejka: epiki (sekcja
-  „Źródła”) z końcowym PR `MERGED` po dacie `RETRO_SINCE` (stała w `retro.py`: data merge'u PR implementacji
-  kroku 15) i bez stanu `done` albo `skipped` w `~/.local/state/shop-retro/<epik>/state.json`, od najstarszego
+  „Źródła”) z końcowym PR `MERGED` po dacie `RETRO_SINCE` (stała w `retro.py`: 2026-11-10 00:00 UTC, świadomie ustalona
+  data; od niej automatyczne retro obejmuje m.in. VISUAL-DESIGN, LIGHTHOUSE i HARDENING) i bez stanu `done` albo `skipped` w `~/.local/state/shop-retro/<epik>/state.json`, od najstarszego
   merge'u. Wpisu nie da się zgubić, bo nie ma czego zgubić.
 - **Warunki przed startem**, po kolei:
   1. Odmowa bez zapisu (komunikat w rozmowie): nazwa epiku nie pasuje do `^[a-z0-9][a-z0-9-]*$`; retro tego epiku ma
