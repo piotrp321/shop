@@ -224,7 +224,7 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
   nie uruchamiamy lokalnie ani w środowisku demo.
 - Testy obciążeniowe (k6, skrypty w `load/`) mierzą krytyczne ścieżki: katalog, stronę produktu, wyszukiwarkę, koszyk
   i checkout gościa, przez sklep, na klastrze k3d z obrazami produkcyjnymi (`make -C infra/k8s load`). Wynik opisuje
-  tę maszynę i to demo (kilkaset produktów), nie skalę docelową. `make load-smoke` uruchamia skrypty z jednym użytkownikiem w CI, żeby nie przestały działać.
+  tę maszynę i to demo (mały katalog), nie skalę docelową. Raport pomiaru jest w `docs/reports/`. `make load-smoke` uruchamia skrypty z jednym użytkownikiem w CI, żeby nie przestały działać.
 
 **Spójność i współbieżność**
 - Optimistic locking (wersja) dla edycji z widoku: zmiana agregatu edytowanego równolegle (zamówienie, cena, korekta
