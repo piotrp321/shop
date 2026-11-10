@@ -9,11 +9,13 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 7), nie 
 
 ## Status
 
-W toku: VISUAL-DESIGN (#97) przez `/ao-run`. Krok 10: specyfikacja i plan HARDENING (#267) są na `main`, epik
-czeka na VISUAL-DESIGN. Kolejność epików jest na tablicy „Backlog sklepu”. Blokery: brak. Krok 7: CART-FIXES (#88)
+W toku przez `/ao-run`, równolegle: HARDENING (#267, krok 10) i LIGHTHOUSE (#289). Ich zakresy mają wspólne pliki
+(`infra/docker-compose.yml`, `Makefile`, `.github/workflows/ci.yml`, `CLAUDE.md`), więc końcowy PR epiku zmergowanego
+jako drugi może mieć konflikt z `main`. Przygotowane na `main`: QUALITY-FIXES (#342, po HARDENING) i DEPLOY-OPS (#178).
+Kolejność epików jest na tablicy „Backlog sklepu”. Blokery: brak. Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
-Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 52, zamkniętych 17.
+Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 63, zamkniętych 17.
 
 | Krok | Zakres | Status |
 |---|---|---|
@@ -26,10 +28,10 @@ Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykiet�
 | 7 | Pierwszy epik przez cały proces | zrobione |
 | 8 | Nocna kolejka kilku epików | zrobione (sprawdzenie: pierwsza noc) |
 | 9 | Agent tester i agent UX | zrobione |
-| 10 | Przed publicznym demo: bezpieczeństwo i wydajność | specyfikacja na `main`, epik HARDENING czeka |
+| 10 | Przed publicznym demo: bezpieczeństwo i wydajność | epik HARDENING w toku |
 | 11 | Po MVP: release i monitoring | do zrobienia |
-| 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione (kryteria 7–9 sprawdza pierwszy merge epiku) |
-| 13 | Agent porządkujący backlog (`/groom`) | zrobione (pierwszy przebieg 2026-11-09; zadanie zaplanowane o 8:00 w aplikacji Claude) |
+| 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione, niezweryfikowane (VISUAL-DESIGN szedł w sesji sprzed tego kroku; kryteria 7–9 sprawdza merge HARDENING albo LIGHTHOUSE) |
+| 13 | Agent porządkujący backlog (`/groom`) | zrobione (zadanie zaplanowane o 8:00 w aplikacji Claude; pierwsza lista z 2026-11-09 wykonana po decyzji użytkownika) |
 | 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy epik `-FIXES` po QUALITY-FIXES) |
 | 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | do zrobienia |
 
