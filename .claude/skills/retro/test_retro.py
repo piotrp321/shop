@@ -507,9 +507,37 @@ class FindingIncidentsTest(unittest.TestCase):
         self.assertEqual(one, two)
         self.assertNotEqual(one, retro.fingerprint('Critical', 'foo bar baz', ['a', 'b']))
         self.assertNotEqual(one, retro.fingerprint('Important', 'foo bar baz', ['a']))
-        # without backticks it is the fingerprint of integration_result.py
-        self.assertEqual(retro.fingerprint_parts('Important', 'Foo  Bar', ['b', 'a']),
-                         ('Important', ' '.join('Foo  Bar'.lower().split()), ('a', 'b')))
+
+    def shares_fingerprint_in_integration_result(self, first, second):
+        """True when integration_result.check_findings reports the two findings as one fingerprint."""
+        path = os.path.join(HERE, '..', 'integration', 'integration_result.py')
+        spec_ = importlib.util.spec_from_file_location('integration_result', path)
+        module = importlib.util.module_from_spec(spec_)
+        spec_.loader.exec_module(module)
+        findings = [{'id': 'F%d' % n, 'severity': severity, 'title': title, 'detail': 'd', 'evidence': 'e',
+                     'files': files, 'task_id': None} for n, (severity, title, files) in enumerate((first, second), 1)]
+        problems = []
+        module.check_findings(problems, findings)
+        return any('share the fingerprint' in problem for problem in problems)
+
+    def test_fingerprint_agrees_with_integration_result_where_it_does_not_differ(self):
+        # the same fingerprint for retro.fingerprint and for integration_result's duplicate check, and the reverse;
+        # a change of the recipe in integration_result.py makes this test fail
+        cases = [
+            (('Important', 'Foo  Bar', ['b', 'a']), ('Important', 'foo bar', ['a', 'b']), True),
+            (('Important', 'Foo Bar', ['a']), ('Critical', 'Foo Bar', ['a']), False),
+            (('Important', 'Foo Bar', ['a']), ('Important', 'Foo Baz', ['a']), False),
+            (('Important', 'Foo Bar', ['a']), ('Important', 'Foo Bar', ['a', 'b']), False),
+        ]
+        for first, second, same in cases:
+            with self.subTest(first=first, second=second):
+                self.assertEqual(retro.fingerprint(*first) == retro.fingerprint(*second), same)
+                self.assertEqual(self.shares_fingerprint_in_integration_result(first, second), same)
+
+    def test_backticks_are_the_one_difference_from_integration_result(self):
+        first, second = ('Important', 'Foo `Bar`', ['a']), ('Important', 'Foo Bar', ['a'])
+        self.assertEqual(retro.fingerprint(*first), retro.fingerprint(*second))
+        self.assertFalse(self.shares_fingerprint_in_integration_result(first, second))
 
     def test_title_with_parentheses_and_finding_without_task(self):
         report = ('Znaleziska Critical i Important rundy 1:\n'
