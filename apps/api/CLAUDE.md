@@ -737,7 +737,38 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   i czyta liczbę aktywnych użyć pod blokadą. Odpowiedzi to `GetDiscountCode` odczytane po zapisie, `private, no-store`.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
-- Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
+- Logi przez Monolog w JSON. Correlation ID (`docs/features/hardening/spec.md`, D9; `Shared\Infrastructure\Observability`):
+  - `CorrelationId` trzyma bieżący identyfikator procesu i implementuje `ResetInterface` (`kernel.reset`), więc worker
+    FrankenPHP ani `messenger:consume` nie przenoszą go między żądaniami i wiadomościami.
+  - Nadaje go `CorrelationIdSubscriber`: `kernel.request` (priorytet 256, przed firewallem i limiterem) dla głównego
+    żądania tworzy nowy UUIDv7 i ignoruje nagłówek `X-Correlation-ID` z żądania, `kernel.response` ustawia ten nagłówek
+    na każdej odpowiedzi (także 4xx, 429 i błędach), a `ConsoleEvents::COMMAND` daje komendzie jeden identyfikator na
+    uruchomienie, poza `messenger:consume`. Jedno wejście HTTP to jeden identyfikator.
+  - Wiadomość niesie `CorrelationIdStamp` (`final readonly`, jedno pole `id`; przechodzi przez serializer PHP
+    transportów Doctrine i przez Symfony Serializer w nagłówkach AMQP transportu `events`). `CorrelationIdMiddleware`
+    stoi pierwszy wśród naszych middleware na `command.bus`, `query.bus` i `event.bus`: wysyłka bez stempla dodaje
+    stempel z bieżącym identyfikatorem (brak: nowy), obsługa wiadomości odebranej z transportu (`ReceivedStamp`) ustawia
+    identyfikator ze stempla na czas obsługi (bez stempla: nowy) i przywraca poprzedni także przy wyjątku. W workerze
+    (`messenger:consume`, `messenger:failed:retry`) robi to wcześniej i dłużej `CorrelationIdWorkerSubscriber`:
+    `WorkerMessageReceivedEvent` (priorytet 256, przed listenerami Messengera) ustawia identyfikator ze stempla (wiadomość
+    bez stempla dostaje nowy identyfikator i stempel, który zachowają ponowienie i kolejka `failed`), a `WorkerRunningEvent`
+    (worker wysyła go po zakończeniu wiadomości, po listenerach ponowienia i `failed` oraz wpisie „handled successfully”)
+    przywraca poprzedni. Samo middleware przywracałoby go przed `WorkerMessageFailedEvent`, a wpisy błędów („Sending for
+    retry”, „Removing from transport”) powstają dopiero tam i bez tego nie miałyby identyfikatora. Przekaźnik
+    outboxa wysyła samo zdarzenie, więc zdarzenie w RabbitMQ dostaje identyfikator wiadomości outboxa. Komunikat
+    wysłany z `DispatchAfterCurrentBusStamp` dostałby stempel dopiero po obsłudze bieżącej wiadomości (middleware stoi
+    za domyślnymi); nikt go dziś nie używa.
+  - `CorrelationIdProcessor` (`#[AsMonologProcessor]`) dopisuje `extra.correlation_id` do każdego wpisu, gdy
+    identyfikator jest ustawiony. W `prod` Monolog zapisuje bufor żądania tylko przy błędzie (`fingers_crossed`), więc
+    identyfikator łączy wpisy błędów, a nie udanych żądań.
+  - Varnish usuwa `X-Correlation-ID` z odpowiedzi zapisywanej w cache (`vcl_backend_response` najpierw wywołuje
+    wbudowane reguły, a usuwa nagłówek dopiero po nich), więc trafienie nie zwraca cudzego identyfikatora (pierwsza
+    odpowiedź zapisana w cache też go nie ma). Odpowiedź, której wbudowany VCL nie zapisuje (`pass`, a na ścieżkach
+    katalogu hit-for-miss: `private`/`no-store`/`no-cache`, `Set-Cookie`, ttl ≤ 0, `Vary: *`, np. 503), zachowuje własny
+    identyfikator. Test: `infra/varnish/tests/correlation_id.vtc`.
+  - Testy: jednostkowe `tests/Unit/Shared/Observability`, funkcjonalny nagłówek
+    `tests/Functional/Shared/CorrelationIdTest.php`, integracyjny przez outbox, RabbitMQ i konsumenta
+    `EventFlowTest` (kernel `test_messaging`).
 - Transport Messengera `scheduled` (Doctrine,
   `doctrine://default?queue_name=scheduled&auto_setup=false&redeliver_timeout=300`, `use_notify: false`, ta sama tabela `messenger_messages` i to samo połączenie co `outbox`) trzyma komendy opóźnione
   `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
@@ -802,7 +833,9 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka może je jeszcze
   mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Pola dodawaj jako opcjonalne
   z wartością domyślną, nie usuwaj i nie zmieniaj znaczenia pól w jednej wersji, nie zmieniaj nazw klas wiadomości
-  i nazw transportów.
+  i nazw transportów. Poprzednia wersja nie zdekoduje wiadomości ze stemplem nieznanej jej klasy: nową klasę stempla
+  dodaj w jednej wersji, a nadawaj ją dopiero w kolejnej. Wyjątek: `CorrelationIdStamp` jest nadawany od wersji, która
+  go wprowadza, bo przed nią nie było wdrożenia (patrz „Ryzyka i ograniczenia” w `docs/features/hardening/spec.md`).
 
 ## Testy
 

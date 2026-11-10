@@ -231,6 +231,9 @@ when@test: &test
         test.product_images.storage:
             alias: product_images.storage
             public: true
+        # Public, so a test can set the identifier like the request subscriber does and read it back.
+        App\Shared\Infrastructure\Observability\CorrelationId:
+            public: true
         # Public (and so never inlined), so a functional test can replace the image storage with a stub that is down.
         App\Catalog\Infrastructure\Image\FlysystemProductImageStorage:
             public: true

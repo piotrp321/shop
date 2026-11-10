@@ -119,7 +119,9 @@ dotychczasowe zachowanie trasy (503).
 - Konsola: `ConsoleEvents::COMMAND` nadaje identyfikator, chyba że to `messenger:consume` (identyfikator per wiadomość).
 - Messenger: middleware na `command.bus`, `query.bus` i `event.bus`. Wysyłka bez stempla dodaje `CorrelationIdStamp`
   z bieżącym identyfikatorem (brak bieżącego: nowy). Obsługa wiadomości odebranej z transportu (`ReceivedStamp`)
-  ustawia bieżący identyfikator ze stempla na czas obsługi i przywraca poprzedni. Przekaźnik outboxa
+  ustawia bieżący identyfikator ze stempla na czas obsługi i przywraca poprzedni. Worker (`messenger:consume`,
+  `messenger:failed:retry`) ustawia go już przy odebraniu wiadomości (`WorkerMessageReceivedEvent`) i przywraca poprzedni
+  dopiero po jej obsłudze (`WorkerRunningEvent`), więc wpisy listenerów ponowienia i kolejki `failed` też go mają. Przekaźnik outboxa
   (`RelayDomainEventToBroker`) wysyła samo zdarzenie, więc zdarzenie w RabbitMQ dostaje identyfikator bieżący, czyli
   ten z wiadomości outboxa. Stempel przechodzi przez serializer transportu `events` (`symfony_serializer`, nagłówki
   AMQP) i transporty Doctrine.
@@ -280,6 +282,10 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
 - Fail open (D7) wyłącza limity na czas awarii Redisa; widać to w logu i health checku, alert należy do #178.
 - Limit liczby zamówień nie chroni przed rezerwacją dużych ilości jednym zamówieniem (D16).
 - W `prod` logi udanych żądań nie są zapisywane, więc correlation ID pomaga tylko przy błędach.
+- `CorrelationIdStamp` jest nadawany od wersji, która go wprowadza, wbrew zasadzie „Zgodność wersji”
+  w `apps/api/CLAUDE.md`, bo przed tą wersją nie było wdrożenia. Gdyby przy wymianie podów działał worker bez tej klasy,
+  nie zdekoduje on nowych wiadomości: wracają przez ponowienia transportu, a te z kolejki `failed` wznawia
+  `messenger:failed:retry`.
 - Pomiar na komputerze dewelopera nie mówi o wydajności serwera demo ani o skali docelowej; dane demo to ~200 produktów
   i ~1000 wariantów, a inne stosy na tej samej maszynie zaszumiają wynik.
 - CSP sklepu bez `script-src` nie chroni przed XSS skryptami inline.
