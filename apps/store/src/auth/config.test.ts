@@ -21,7 +21,22 @@ describe("readAuthConfig", () => {
       keycloakInternalUrl: "http://keycloak:8080",
       clientSecret: "client-secret-value",
       sessionSecret: "s".repeat(64),
+      loginRateLimit: 30,
     });
+  });
+
+  it("reads the limit of the login starts from STORE_LOGIN_RATE_LIMIT", () => {
+    expect(readAuthConfig({ ...env, STORE_LOGIN_RATE_LIMIT: "100000" }).loginRateLimit).toBe(100000);
+  });
+
+  it.each(["0", "-5", "1.5", "abc", "10 000", "1e3", " "])("rejects the login limit %j and names the variable", (value) => {
+    expect(() => readAuthConfig({ ...env, STORE_LOGIN_RATE_LIMIT: value })).toThrow(
+      "STORE_LOGIN_RATE_LIMIT must be a positive integer.",
+    );
+  });
+
+  it("uses the default limit for an empty STORE_LOGIN_RATE_LIMIT", () => {
+    expect(readAuthConfig({ ...env, STORE_LOGIN_RATE_LIMIT: "" }).loginRateLimit).toBe(30);
   });
 
   it("names every missing variable without printing any value", () => {
