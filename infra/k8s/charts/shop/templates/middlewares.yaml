@@ -28,3 +28,19 @@ spec:
     customResponseHeaders:
       X-Robots-Tag: "noindex, nofollow"
 {{- end }}
+{{- if .Values.ingress.tls }}
+---
+# HSTS (spec: docs/features/hardening/spec.md, D10): only where the ingress presents a certificate, for a year, for the host
+# alone (no includeSubDomains, no preload).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: hsts
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "hsts") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+spec:
+  headers:
+    stsSeconds: 31536000
+{{- end }}
