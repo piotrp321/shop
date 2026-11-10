@@ -24,6 +24,7 @@ Monorepo e-commerce. Przed planowaniem jakiejkolwiek funkcji przeczytaj `docs/vi
   `make load-smoke` (jeden użytkownik, jedna iteracja każdego scenariusza, na stosie compose; CI uruchamia go po E2E)
   i pomiar `make -C infra/k8s load`. Obraz k6 jest przypięty tagiem i digestem w `load/k6.sh` i działa w kontenerze.
 - `docs` – wizja, ADR-y (`docs/adr/`), specyfikacje i plany funkcji (`docs/features/`).
+  Raporty pomiarów i przeglądów, przypięte do rewizji i niezmienne po zapisaniu, są w `docs/reports/`.
 
 Każda aplikacja ma własny `CLAUDE.md` z zasadami tylko dla niej. Przeczytaj go przed pracą w tej aplikacji.
 Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm create vite`) zachowaj istniejący
