@@ -134,7 +134,7 @@ dotychczasowe zachowanie trasy (503).
 Runbook `infra/k8s/README.md` ma krok „zgoda użytkownika” po pierwszym wdrożeniu: żądanie HTTPS na adres IP serwera
 z nagłówkiem `Host` domeny sklepu, API, panelu, Keycloaka i imgproxy z pominięciem Cloudflare kończy się odmową (403
 Traefika albo odrzucone połączenie), a 11 żądań złożenia zamówienia przez Cloudflare, każde z innym własnym
-`CF-Connecting-IP`, daje dziesięć odpowiedzi 422 i 429 (Cloudflare nadpisuje nagłówek, więc limit liczy się na adres
+`CF-Connecting-IP`, daje dziesięć odpowiedzi 422, a 11. to 429 (Cloudflare nadpisuje nagłówek, więc limit liczy się na adres
 nadawcy). Wykonanie tego kroku jest blokerem #179 (D19), nie częścią funkcji.
 
 ## Nagłówki bezpieczeństwa
