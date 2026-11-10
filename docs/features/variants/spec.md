@@ -125,12 +125,21 @@ produktu zachowuje go, wiersz bez identyfikatora dostaje nowy UUIDv7, identyfika
 - `catalog_product.variant_axes jsonb NOT NULL` (lista nazw osi).
 - `catalog_product_variant`: `id uuid` (PK), `product_id uuid` (FK → `catalog_product` `ON DELETE CASCADE`),
   `position int`, `option_values jsonb NOT NULL` (lista napisów, zapisanych po przycięciu przez domenę),
-  `values_key text GENERATED ALWAYS AS (lower(option_values::text)) STORED`; unikalne `(product_id, position)`
-  i `(product_id, values_key)`. Kolumnę `values_key` liczy PostgreSQL, więc baza odrzuca powtórzoną kombinację także
-  przy zapisie z pominięciem domeny (kanoniczny tekst `jsonb` nie wymaga separatora). Rekord mapuje kolumnę jako
-  generowaną (bez zapisu z PHP); zgodność schematu z mapowaniem sprawdza `CatalogSchemaTest`. Test
-  integracyjny sprawdza, że `lower()` PostgreSQL i porównanie w domenie zgadzają się dla polskich liter
-  („Żółty” i „żółty”).
+  `values_key text` (dopuszcza `NULL`); unikalne `(product_id, position)` i `(product_id, values_key)`. Klucz
+  porównania liczy domena: `DoctrineProductRepository` zapisuje przy każdym wariancie
+  `json_encode(VariantValues::comparisonKey(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)` (wartości po
+  `mb_strtolower`, np. `["żółty","xl"]`), więc indeks odrzuca tylko to, co domena uznaje za tę samą kombinację.
+  `lower()` PostgreSQL nie jest używany, bo dla niektórych liter różni się od `mb_strtolower` („İ” i „i”, końcowe „Σ”
+  i „σ”): kombinacje różne w domenie dawały naruszenie indeksu i 500. Wiersz bez `values_key` (`NULL`, np. wstawiony
+  bezpośrednim SQL) indeks pomija, więc bezpośredni SQL z pominięciem domeny nie jest sprawdzany. Zgodność schematu
+  z mapowaniem sprawdza `CatalogSchemaTest`.
+- Zgodność wersji (`apps/api/CLAUDE.md`): migracja `Version20261110090000StopGeneratingVariantValuesKey` zdejmuje
+  z kolumny wyrażenie (`DROP EXPRESSION`, wartości zostają, tabela nie jest przepisywana) i `NOT NULL`. W oknie
+  wdrożenia poprzednia wersja kodu nie zapisuje kolumny, więc jej warianty mają `NULL`, którego indeks nie pilnuje;
+  unikalność kombinacji i tak sprawdza domena pod wersją agregatu produktu. Wiersze sprzed migracji mają klucz
+  w formacie PostgreSQL (`["żółty", "xl"]`, ze spacją) do najbliższego zapisu produktu, który przepisuje jego
+  warianty (repozytorium przepisuje wtedy wszystkie warianty produktu, więc w jednym produkcie formaty się nie
+  mieszają). `NOT NULL` i uzupełnienie wartości to osobna, późniejsza zmiana.
 - Rekord `ProductVariantRecord` z relacją do `ProductRecord`, mapowanie w `DoctrineProductRepository`.
 - Reset katalogu (`DbalCatalogReset`) czyści też warianty.
 - Zdjęcia są na poziomie produktu (decyzja E2): wariant nie ma zdjęć, a wybór wariantu nie zmienia zdjęcia.
@@ -357,7 +366,7 @@ Nieznany wariant: 404.
 | Dodanie do koszyka nieznanego wariantu | 404 `ProductNotFound` |
 | Wariant bez ceny albo niedostępny | 409 `ProductNotPurchasable`; w sklepie opcja „niedostępny” bez wyboru |
 | Produkt bez wariantu możliwego do kupienia | kafelek „Niedostępny” bez ceny i bez przycisku |
-| Powtórzona kombinacja wartości w produkcie | `DuplicateVariantValues`; zapis z pominięciem domeny odrzuca unikalny indeks |
+| Powtórzona kombinacja wartości w produkcie | 422 `DuplicateVariantValues`; kombinacje różne w domenie (np. „İ” i „i”) zapisują się |
 | Błąd `GET /api/v1/product-offers` w sklepie | lista bez cen, etykiet, wyboru i przycisków |
 | Dwa rozmiary tego samego produktu w koszyku | dwie linie; limit 99 dotyczy każdej osobno |
 | Zmiana ceny lub przyjęcie dla nieznanego wariantu | 404 |
@@ -379,8 +388,8 @@ Nieznany wariant: 404.
    domyślnym (Hantle regulowane).
 7. Kryteria współbieżności C1–C6 (Inventory) i K1–K8 (Cart) obowiązują na wariantach.
 8. Catalog nie zależy od Pricing, Inventory ani Cart (Deptrac).
-9. Kombinacja wartości osi jest unikalna w produkcie: domena i unikalny indeks `(product_id, values_key)` na kolumnie
-   generowanej przez PostgreSQL.
+9. Kombinacja wartości osi jest unikalna w produkcie: domena i unikalny indeks `(product_id, values_key)` na kluczu
+   porównania liczonym przez domenę.
 
 ## Testy
 
@@ -388,8 +397,10 @@ Nieznany wariant: 404.
   przycięciu i przy innej wielkości liter, 1–100, wariant domyślny), etykieta, `key`; `ProductOfferSummary`
   (pominięcie wariantów bez ceny, z ceną nieaktualną i z `available = 0`, równe i różne ceny, brak wariantów możliwych
   do kupienia, najlepszy poziom); Cart z kluczem wariantu (limity, scalanie dwóch wariantów jednego produktu).
-- Integracyjne: mapowanie wariantów i kaskada; unikalny indeks `(product_id, values_key)` odrzuca bezpośredni SQL
-  z kombinacją różniącą się tylko wielkością liter (także polskich); `VariantAlreadyExists` z naruszenia klucza
+- Integracyjne: mapowanie wariantów i kaskada; `values_key` to klucz porównania domeny, kombinacje różne w domenie,
+  a równe dla `lower()` PostgreSQL („İ”/„i”, „ΑΣ”/„ασ”) zapisują się, powtórzony klucz odrzuca indeks, a wiersze
+  bez klucza nie; migracja klucza (wartości zostają, bez przepisania tabeli, `down()` przywraca kolumnę
+  generowaną); `VariantAlreadyExists` z naruszenia klucza
   głównego; `GetCurrentPrices` i `GetStockLevels` dla 4800 id jednym zapytaniem; `GetProductOffers` (jedno wywołanie
   każdego portu); zapytania Catalog (jedno zapytanie na wywołanie, 100 id); listy panelu z wariantami na wielu
   stronach; migracje na danych sprzed migracji (cena, historia, stan, rezerwacja, linia koszyka wskazują wariant
