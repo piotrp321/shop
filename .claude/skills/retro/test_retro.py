@@ -356,5 +356,245 @@ class AoIncidentsTest(TempDirCase):
         self.assertEqual(len([i for i in incidents if i['kind'] == 'wait']), 7)
 
 
+
+class FindingIncidentsTest(unittest.TestCase):
+    def test_real_visual_design_report_has_four_important_findings(self):
+        incidents = retro.finding_incidents('visual-design', fixture('visual-design.report.md'))
+        self.assertEqual(len(incidents), 4)   # F1, F7, F8, F9; the Minor ones are not incidents
+        first = incidents[0]
+        self.assertTrue(first['id'].startswith('visual-design/finding/'))
+        self.assertEqual(first['kind'], 'finding')
+        self.assertEqual(first['data']['severity'], 'Important')
+        self.assertEqual(first['data']['rounds'], [1])
+        self.assertEqual(first['data']['task'], 'VISUAL-DESIGN-5')
+        self.assertEqual(first['data']['finding_ids'], ['F1'])
+        self.assertEqual(first['data']['files'], ['apps/store/src/account/AccountMenu.tsx',
+                                                  'apps/store/src/catalog/MegaMenu.tsx',
+                                                  'apps/store/src/catalog/SiteHeader.tsx'])
+        self.assertIn('nagłówek desktopowy', first['data']['title'])
+        last = incidents[-1]
+        self.assertEqual(last['data']['rounds'], [2])
+        self.assertEqual(last['data']['finding_ids'], ['F9'])
+
+    def test_real_discount_codes_report_has_three_findings_in_two_rounds(self):
+        incidents = retro.finding_incidents('discount-codes', fixture('discount-codes.report.md'))
+        self.assertEqual([i['data']['finding_ids'] for i in incidents], [['F1'], ['F2'], ['U1']])
+        self.assertEqual([i['data']['rounds'] for i in incidents], [[1], [1], [2]])
+
+    def test_same_fingerprint_in_several_rounds_is_one_incident_even_with_other_backticks(self):
+        report = (
+            'Znaleziska Critical i Important rundy 1:\n'
+            '- F1 [Important] Fokus ginie po zapisie `formularza` (b.vue, a.vue), zadanie T-5\n'
+            '- F2 [Critical] Fokus ginie po zapisie formularza (b.vue, a.vue), zadanie T-5\n'
+            '\n'
+            'Znaleziska Critical i Important rundy 3:\n'
+            '- F4 [Important] fokus  ginie po zapisie formularza (a.vue, b.vue), zadanie T-5\n'
+            '- F5 [Important] Fokus ginie po zapisie formularza (a.vue), zadanie T-5\n')
+        incidents = retro.finding_incidents('epic', report)
+        self.assertEqual(len(incidents), 3)   # same title and files in rounds 1 and 3 count once
+        merged = [i for i in incidents if i['data']['finding_ids'] == ['F1', 'F4']]
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]['data']['rounds'], [1, 3])
+        self.assertEqual(len(merged[0]['facts']), 2)
+        self.assertEqual(len({i['id'] for i in incidents}), 3)
+
+    def test_fingerprint_is_severity_title_without_backticks_and_sorted_files(self):
+        one = retro.fingerprint('Important', 'Foo `Bar`   baz', ['b', 'a'])
+        two = retro.fingerprint('Important', 'foo bar baz', ['a', 'b'])
+        self.assertEqual(one, two)
+        self.assertNotEqual(one, retro.fingerprint('Critical', 'foo bar baz', ['a', 'b']))
+        self.assertNotEqual(one, retro.fingerprint('Important', 'foo bar baz', ['a']))
+        # without backticks it is the fingerprint of integration_result.py
+        self.assertEqual(retro.fingerprint_parts('Important', 'Foo  Bar', ['b', 'a']),
+                         ('Important', ' '.join('Foo  Bar'.lower().split()), ('a', 'b')))
+
+    def test_title_with_parentheses_and_finding_without_task(self):
+        report = ('Znaleziska Critical i Important rundy 1:\n'
+                  '- F1 [Important] Błąd (zwany też X) w koszyku (apps/a.ts, apps/b.ts)\n')
+        incident = retro.finding_incidents('e', report)[0]
+        self.assertEqual(incident['data']['title'], 'Błąd (zwany też X) w koszyku')
+        self.assertEqual(incident['data']['files'], ['apps/a.ts', 'apps/b.ts'])
+        self.assertIsNone(incident['data']['task'])
+
+    def test_report_without_findings_has_none(self):
+        self.assertEqual(retro.finding_incidents('cart', fixture('cart.report.md')), [])
+        self.assertEqual(retro.finding_incidents('x', ''), [])
+
+    def test_ids_are_stable(self):
+        text = fixture('visual-design.report.md')
+        self.assertEqual([i['id'] for i in retro.finding_incidents('visual-design', text)],
+                         [i['id'] for i in retro.finding_incidents('visual-design', text)])
+
+
+class ManualFixTest(unittest.TestCase):
+    def incidents(self, body, epic='e'):
+        measurement = retro.parse_measurement(body)
+        return retro.manual_incidents(epic, measurement), measurement
+
+    def test_old_format_with_a_pr_in_parentheses(self):
+        (incidents, facts), measurement = self.incidents(fixture('visual-design.measurement.md'), 'visual-design')
+        self.assertEqual([i['id'] for i in incidents], ['visual-design/manual_fix/pr357'])
+        self.assertEqual(facts, [])
+        self.assertIn('VISUAL-DESIGN-11', incidents[0]['facts'][0]['text'])
+        self.assertEqual(incidents[0]['data']['pr'], 357)
+        self.assertTrue(incidents[0]['data']['can_be_corrective'])
+        self.assertEqual((measurement['interventions'], measurement['waits'], measurement['wait_min'],
+                          measurement['manual_count']), (7, 7, 109, 1))
+
+    def test_old_format_with_one_pr_and_one_without(self):
+        (incidents, facts), measurement = self.incidents(fixture('discount-codes.measurement.md'), 'discount-codes')
+        self.assertEqual([i['id'] for i in incidents],
+                         ['discount-codes/manual_fix/other', 'discount-codes/manual_fix/pr330'])
+        self.assertEqual(facts, [])
+        self.assertEqual((measurement['interventions'], measurement['waits'], measurement['wait_min']), (2, 2, 371))
+
+    def test_zero_manual_fixes_is_no_incident(self):
+        (incidents, facts), measurement = self.incidents(fixture('seo.measurement.md'), 'seo')
+        self.assertEqual((incidents, facts), ([], []))
+        self.assertEqual((measurement['interventions'], measurement['waits'], measurement['wait_min'],
+                          measurement['manual_count']), (0, 0, 0, 0))
+
+    def test_new_format_lines_with_and_without_a_pr(self):
+        body = ('Pomiar przebiegu AO:\n\n- Interwencje człowieka: 1\n- Ręczne poprawki: 3\n'
+                '  - PR #12: synchronizacja z main\n  - PR #13: poprawka joba\n  - ponowienie joba E2E\n'
+                '- Praca użytkownika: 5 min\n')
+        (incidents, facts), measurement = self.incidents(body)
+        self.assertEqual(sorted(i['id'] for i in incidents), ['e/manual_fix/other', 'e/manual_fix/pr12',
+                                                              'e/manual_fix/pr13'])
+        self.assertEqual(facts, [])
+        other = [i for i in incidents if i['key'] == 'other'][0]
+        self.assertIn('ponowienie joba E2E', other['facts'][0]['text'])
+        self.assertEqual(measurement['manual_count'], 3)
+
+    def test_new_format_unindented_lines_stop_at_the_next_measurement_label(self):
+        body = ('- Ręczne poprawki: 2\n- PR #5: pierwsza\n- druga bez PR\n- Praca użytkownika: 5 min\n'
+                '- Przebieg: 1 h\n')
+        (incidents, facts), _ = self.incidents(body)
+        self.assertEqual(sorted(i['key'] for i in incidents), ['other', 'pr5'])
+        self.assertEqual(facts, [])
+
+    def test_count_that_differs_from_the_items_is_a_fact_not_an_error(self):
+        body = '- Ręczne poprawki: 2\n  - PR #5: pierwsza\n  - PR #6: druga\n  - trzecia\n'
+        (incidents, facts), _ = self.incidents(body)
+        self.assertEqual(len(incidents), 3)
+        self.assertEqual([f['id'] for f in facts], ['e/mismatch/manual_fix'])
+        self.assertIn('niezgodna liczba', facts[0]['text'])
+
+    def test_count_without_any_item_is_a_mismatch(self):
+        (incidents, facts), _ = self.incidents('- Ręczne poprawki: 2\n- Praca użytkownika: 5 min\n')
+        self.assertEqual(incidents, [])
+        self.assertEqual([f['id'] for f in facts], ['e/mismatch/manual_fix'])
+
+    def test_items_with_a_zero_count_is_a_mismatch(self):
+        (incidents, facts), _ = self.incidents('- Ręczne poprawki: 0\n  - PR #5: x\n')
+        self.assertEqual([i['key'] for i in incidents], ['pr5'])
+        self.assertEqual([f['id'] for f in facts], ['e/mismatch/manual_fix'])
+
+    def test_old_format_with_more_prs_than_the_count_is_a_mismatch(self):
+        (incidents, facts), _ = self.incidents('- Ręczne poprawki: 1 (PR #5 i PR #6, dwie sprawy)\n')
+        self.assertEqual(sorted(i['key'] for i in incidents), ['pr5', 'pr6'])
+        self.assertEqual([f['id'] for f in facts], ['e/mismatch/manual_fix'])
+
+    def test_comment_without_the_line_is_no_measurement(self):
+        self.assertIsNone(retro.pick_measurement(['Zgłoszenia: #1', 'inny komentarz']))
+        self.assertIsNone(retro.pick_measurement([]))
+
+    def test_the_last_comment_with_the_line_wins(self):
+        picked = retro.pick_measurement(['- Ręczne poprawki: 1 (PR #1)', 'x', '- Ręczne poprawki: 0'])
+        self.assertEqual(picked['manual_count'], 0)
+
+
+class SweepTest(unittest.TestCase):
+    MERGED_AFTER = retro.STEP_12_AT + 3600
+    MERGED_BEFORE = retro.STEP_12_AT - 3600
+
+    def test_each_proposal_of_the_sweep_is_an_escaped_incident(self):
+        incidents, facts = retro.sweep_incidents('lighthouse', self.MERGED_AFTER, fixture('lighthouse.sweep.md'))
+        self.assertEqual([i['id'] for i in incidents], ['lighthouse/escaped/1', 'lighthouse/escaped/2',
+                                                        'lighthouse/escaped/3', 'lighthouse/escaped/4'])
+        self.assertEqual(facts, [])
+        first = incidents[0]
+        self.assertIn('Do koszyka', first['data']['title'])
+        self.assertEqual(first['data']['severity'], 'Important')
+        self.assertEqual(first['data']['triage'], 'założone #390')
+        self.assertEqual(incidents[3]['data']['severity'], 'Minor')
+        self.assertEqual(incidents[3]['data']['triage'], 'założone #393')
+
+    def test_triage_rejected_and_undecided(self):
+        text = ('## Propozycje\n### 1. Pierwsza\n- Rodzaj: bug\n- Waga: Important\n### 2. Druga\n- Waga: Minor\n'
+                '### 3. Trzecia\n- Waga: Minor\n\n## Triage\n- Założone: 1 → #7 (etykiety `bug`).\n'
+                '- Odrzucone: 2 (celowe).\n- Bez decyzji: 3.\n')
+        incidents, _ = retro.sweep_incidents('e', self.MERGED_AFTER, text)
+        self.assertEqual([i['data']['triage'] for i in incidents], ['założone #7', 'odrzucone', 'bez decyzji'])
+
+    def test_sweep_without_a_triage_section_has_no_triage_result(self):
+        incidents, _ = retro.sweep_incidents('e', self.MERGED_AFTER, '## Propozycje\n### 1. Jedyna\n- Waga: Minor\n')
+        self.assertIsNone(incidents[0]['data']['triage'])
+
+    def test_no_sweep_after_step_12_is_an_incident_and_a_fact(self):
+        incidents, facts = retro.sweep_incidents('visual-design', self.MERGED_AFTER, None)
+        self.assertEqual([i['id'] for i in incidents], ['visual-design/no_sweep/sweep'])
+        self.assertEqual(incidents[0]['data']['merged_at'], int(self.MERGED_AFTER))
+        self.assertEqual([f['id'] for f in facts], ['visual-design/missing/sweep'])
+
+    def test_epic_merged_before_step_12_has_only_the_fact(self):
+        incidents, facts = retro.sweep_incidents('cart', self.MERGED_BEFORE, None)
+        self.assertEqual(incidents, [])
+        self.assertEqual([f['id'] for f in facts], ['cart/missing/sweep'])
+
+    def test_sweep_of_an_epic_merged_before_step_12_gives_no_escaped(self):
+        incidents, facts = retro.sweep_incidents('cart', self.MERGED_BEFORE, fixture('lighthouse.sweep.md'))
+        self.assertEqual((incidents, facts), ([], []))
+
+    def test_epic_not_merged_has_neither_incident_nor_escaped(self):
+        incidents, facts = retro.sweep_incidents('x', None, None)
+        self.assertEqual(incidents, [])
+        self.assertEqual([f['id'] for f in facts], ['x/missing/sweep'])
+
+    def test_sweep_report_is_found_by_the_epic_name_in_the_directory(self):
+        home = tempfile.mkdtemp(prefix='retro-sweep-')
+        self.addCleanup(shutil.rmtree, home, True)
+        for name, text in (('2026-11-09-015c52b', 'no epic'), ('2026-11-10-3c06149-lighthouse', 'light'),
+                           ('2026-11-08-aaaaaaa-lighthouse', 'older'), ('2026-11-10-3c06149-lighthouse-2', 'other')):
+            os.makedirs(os.path.join(home, name))
+            with open(os.path.join(home, name, 'report.md'), 'w') as f:
+                f.write(text)
+        os.makedirs(os.path.join(home, '2026-11-10-bbbbbbb-seo'))   # a directory without a report
+        self.assertEqual(retro.find_sweep_report(home, 'lighthouse'), 'light')
+        self.assertIsNone(retro.find_sweep_report(home, 'visual-design'))
+        self.assertIsNone(retro.find_sweep_report(home, 'seo'))
+        self.assertIsNone(retro.find_sweep_report(os.path.join(home, 'missing'), 'seo'))
+
+
+class UnaskedTest(unittest.TestCase):
+    BODY = ('## Zakres\n\nCoś.\n\n## Decyzje bez pytania\n\n'
+            '1. **Kolejność Tab: DOM w kolejności telefonu** (ruling). Odrzucone: zdublowany formularz.\n'
+            '   Druga linia pierwszej decyzji.\n'
+            '2. **Koszyk i konto jako ikony** poniżej 1280 px.\n\n## Uwagi dla integracji\n\n- coś\n')
+
+    def test_numbered_decisions_are_incidents_keyed_by_pr_and_position(self):
+        incidents = retro.unasked_incidents('visual-design', [{'number': 356, 'title': 'VD-5', 'body': self.BODY}])
+        self.assertEqual([i['id'] for i in incidents], ['visual-design/unasked/pr356#1',
+                                                        'visual-design/unasked/pr356#2'])
+        self.assertEqual(incidents[0]['data']['pr'], 356)
+        self.assertEqual(incidents[0]['data']['position'], 1)
+        self.assertIn('Kolejność Tab', incidents[0]['data']['text'])
+        self.assertIn('Druga linia', incidents[0]['data']['text'])
+        self.assertNotIn('Koszyk i konto', incidents[0]['data']['text'])
+
+    def test_none_and_missing_sections_give_no_incident(self):
+        prs = [{'number': 1, 'body': '## Decyzje bez pytania\n\nBrak.\n'},
+               {'number': 2, 'body': '## Zakres\n\nCoś.'}, {'number': 3, 'body': None}, {'number': 4}]
+        self.assertEqual(retro.unasked_incidents('e', prs), [])
+
+    def test_bullet_decisions_are_numbered_by_order(self):
+        body = '## Decyzje bez pytania\n- pierwsza\n- druga\n'
+        incidents = retro.unasked_incidents('e', [{'number': 9, 'body': body}])
+        self.assertEqual([i['key'] for i in incidents], ['pr9#1', 'pr9#2'])
+
+    def test_heading_level_and_case_do_not_matter(self):
+        body = '### decyzje bez pytania\n1. jedyna\n'
+        self.assertEqual([i['key'] for i in retro.unasked_incidents('e', [{'number': 9, 'body': body}])], ['pr9#1'])
+
 if __name__ == '__main__':
     unittest.main()

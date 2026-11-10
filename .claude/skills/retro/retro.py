@@ -313,3 +313,300 @@ def ao_incidents(epic):
               'text': 'zadanie %s (%s), PR %s, poprawek PR: %s' % (task['task_id'], task.get('kind'),
                                                                    task.get('pr_number'), fix_count)}]))
     return incidents, facts
+
+
+# ---------------------------------------------------------------------------------------- findings of /integration
+
+FINDING_HEADER = re.compile(r'^Znaleziska Critical i Important rundy (\d+):\s*$')
+FINDING_LINE = re.compile(r'^-\s+(?P<id>\S+)\s+\[(?P<severity>Critical|Important)\]\s+(?P<title>.+?)'
+                          r'\s+\((?P<files>[^()]*)\)(?:,\s*zadanie\s+(?P<task>\S+))?\s*$')
+FINDING_LINE_NO_FILES = re.compile(r'^-\s+(?P<id>\S+)\s+\[(?P<severity>Critical|Important)\]\s+(?P<title>.+?)'
+                                   r'(?:,\s*zadanie\s+(?P<task>\S+))?\s*$')
+
+
+def fingerprint_parts(severity, title, files):
+    """severity, the title in lower case without backticks and with collapsed white space, the sorted files: the
+    fingerprint of a finding in .claude/skills/integration/integration_result.py (check_findings) plus the removal of
+    backticks, which the AO report writes differently from round to round. That function builds its tuple inline and
+    cannot be imported, so the recipe is repeated here."""
+    return severity, ' '.join(title.replace('`', '').lower().split()), tuple(sorted(files))
+
+
+def fingerprint(severity, title, files):
+    return hashlib.sha256(json.dumps(fingerprint_parts(severity, title, files), ensure_ascii=False)
+                          .encode('utf-8')).hexdigest()[:12]
+
+
+def parse_findings(text):
+    """[{round, id, severity, title, files, task}] from the sections `Znaleziska Critical i Important rundy N:` of
+    an AO report; the Minor findings are not read."""
+    findings, current = [], None
+    for line in text.splitlines():
+        header = FINDING_HEADER.match(line)
+        if header:
+            current = int(header.group(1))
+            continue
+        if current is None:
+            continue
+        if not line.startswith('-'):
+            current = None
+            continue
+        match = FINDING_LINE.match(line)
+        files = None
+        if match:
+            files = [f.strip() for f in match.group('files').split(',') if f.strip()]
+        else:
+            match = FINDING_LINE_NO_FILES.match(line)
+            files = []
+        if match:
+            findings.append({'round': current, 'id': match.group('id'), 'severity': match.group('severity'),
+                             'title': match.group('title'), 'files': files, 'task': match.group('task')})
+    return findings
+
+
+def finding_incidents(epic_id, text):
+    """One `finding` incident per fingerprint, whatever the number of rounds it appeared in."""
+    groups = {}
+    for finding in parse_findings(text or ''):
+        key = fingerprint(finding['severity'], finding['title'], finding['files'])
+        groups.setdefault(key, []).append(finding)
+    incidents = []
+    for key, items in groups.items():
+        first = items[0]
+        facts = [{'source': 'report.md',
+                  'text': 'runda %d: %s [%s] %s (%s)%s' % (f['round'], f['id'], f['severity'], f['title'],
+                                                          ', '.join(f['files']),
+                                                          ', zadanie %s' % f['task'] if f['task'] else '')}
+                 for f in items]
+        data = {'severity': first['severity'], 'title': first['title'], 'files': sorted(first['files']),
+                'task': next((f['task'] for f in items if f['task']), None),
+                'rounds': sorted({f['round'] for f in items}), 'finding_ids': [f['id'] for f in items],
+                'can_be_corrective': False}
+        incidents.append(_incident(epic_id, 'finding', key, None, data, facts))
+    return incidents
+
+
+# ----------------------------------------------------------------------------------- measurement comment (manual fixes)
+
+MEASUREMENT_LABELS = ('Interwencje człowieka', 'Czekanie na użytkownika', 'Ręczne poprawki', 'Praca użytkownika',
+                      'Przebieg', 'Zgłoszenia', 'Follow-up', 'Pomiar')
+MANUAL_LINE = re.compile(r'Ręczne poprawki:\s*(\d+)(.*)$', re.IGNORECASE)
+PR_ITEM = re.compile(r'^PR\s*#(\d+)\s*[:\-–—]?\s*(.*)$')
+
+
+def _bullet(line):
+    match = re.match(r'^(\s*)[-*]\s+(.*\S)\s*$', line)
+    return (match.group(1), match.group(2)) if match else None
+
+
+def parse_measurement(body):
+    """The numbers of a measurement comment in an epic issue (section 7 of /ao-run): interventions, waits (count and
+    minutes) and the manual fixes: `manual_count` (N of `Ręczne poprawki: N`, None without that line) and
+    `manual_items` [{pr, text}]. The items are the lines `- PR #<nr>: <text>` or `- <text>` after the line (new
+    format) or, when there are none, the text in parentheses after N with the PR numbers named in it (old format)."""
+    result = {'interventions': None, 'waits': None, 'wait_min': None, 'manual_count': None, 'manual_items': [],
+              'format': None}
+    match = re.search(r'Interwencje człowieka:\s*(\d+)', body)
+    if match:
+        result['interventions'] = int(match.group(1))
+    match = re.search(r'(\d+)\s+czeka\w*,\s*(?:razem\s+)?(\d+)\s*min', body)
+    if match:
+        result['waits'], result['wait_min'] = int(match.group(1)), int(match.group(2))
+    lines = body.splitlines()
+    for index, line in enumerate(lines):
+        manual = MANUAL_LINE.search(line)
+        if not manual:
+            continue
+        result['manual_count'] = int(manual.group(1))
+        items = []
+        for follow in lines[index + 1:]:
+            bullet = _bullet(follow)
+            if bullet is None:
+                break
+            indent, text = bullet
+            labelled = any(text.startswith(label) for label in MEASUREMENT_LABELS)
+            if not indent and labelled:
+                break
+            pr = PR_ITEM.match(text)
+            if pr:
+                items.append({'pr': int(pr.group(1)), 'text': pr.group(2) or text})
+            else:
+                items.append({'pr': None, 'text': text})
+        if items:
+            result['format'], result['manual_items'] = 'new', items
+        else:
+            paren = re.search(r'\((.*)\)', manual.group(2))
+            text = paren.group(1).strip() if paren else ''
+            result['format'] = 'old'
+            if text:
+                numbers = []
+                for number in re.findall(r'#(\d+)', text):
+                    if int(number) not in numbers:
+                        numbers.append(int(number))
+                result['manual_items'] = [{'pr': n, 'text': text} for n in numbers]
+                remaining = result['manual_count'] - len(numbers)
+                if remaining > 0:
+                    result['manual_items'].append({'pr': None, 'text': text})
+        break
+    return result
+
+
+def pick_measurement(comments):
+    """The parsed last comment with a `Ręczne poprawki: N` line, or None."""
+    for body in reversed([c for c in comments if isinstance(c, str)]):
+        parsed = parse_measurement(body)
+        if parsed['manual_count'] is not None:
+            return parsed
+    return None
+
+
+def manual_incidents(epic_id, measurement):
+    """(incidents, facts) for the manual fixes of a parsed measurement: one incident per PR number
+    (`pr<number>`), the items without a PR together as `other`; a count that differs from the items is the fact
+    `<epic>/mismatch/manual_fix` (niezgodna liczba), not an error."""
+    if measurement is None:
+        return [], [{'id': '%s/missing/measurement' % epic_id,
+                     'text': 'brak komentarza z pomiarem (Ręczne poprawki) w issue epiku'}]
+    by_key = {}
+    for item in measurement['manual_items']:
+        key = 'pr%d' % item['pr'] if item['pr'] is not None else 'other'
+        by_key.setdefault(key, []).append(item)
+    incidents = []
+    for key in sorted(by_key):
+        items = by_key[key]
+        texts = [i['text'] for i in items]
+        incidents.append(_incident(epic_id, 'manual_fix', key, None,
+                                   {'pr': items[0]['pr'], 'items': texts, 'can_be_corrective': True},
+                                   [{'source': 'issue comment', 'text': cut(t)} for t in texts]))
+    facts = []
+    count = measurement['manual_count']
+    listed = len(measurement['manual_items'])
+    if measurement['format'] == 'old':
+        # the old format has one sentence for all fixes: it names PRs, the rest is one fix per missing count
+        mismatch = (count < listed) or (count > 0 and listed == 0)
+    else:
+        mismatch = count != listed
+    if mismatch:
+        facts.append({'id': '%s/mismatch/manual_fix' % epic_id,
+                      'text': 'niezgodna liczba: komentarz z pomiarem podaje %d ręcznych poprawek, a opisuje %d'
+                              % (count, listed)})
+    return incidents, facts
+
+
+# ------------------------------------------------------------------------------------------------ /sweep reports
+
+def find_sweep_report(sweep_home, epic_id):
+    """The text of the newest `<date>-<sha7>-<epic>/report.md` in sweep_home, or None."""
+    pattern = re.compile(r'^\d{4}-\d{2}-\d{2}-[0-9a-f]{7}-%s$' % re.escape(epic_id))
+    try:
+        names = sorted(n for n in os.listdir(sweep_home) if pattern.match(n))
+    except OSError:
+        return None
+    for name in reversed(names):
+        try:
+            with open(os.path.join(sweep_home, name, 'report.md'), encoding='utf-8', errors='replace') as f:
+                return f.read()
+        except OSError:
+            continue
+    return None
+
+
+def parse_sweep(text):
+    """[{number, title, severity, triage}] from the sections `## Propozycje` and `## Triage` of a /sweep report."""
+    proposals, triage, section, current = [], {}, None, None
+    for line in text.splitlines():
+        if line.startswith('## '):
+            section, current = line[3:].strip().lower(), None
+            continue
+        if section == 'propozycje':
+            heading = re.match(r'^###\s+(\d+)\.\s+(.*\S)\s*$', line)
+            if heading:
+                current = {'number': int(heading.group(1)), 'title': heading.group(2), 'severity': None,
+                           'triage': None}
+                proposals.append(current)
+                continue
+            field = re.match(r'^-\s*Waga:\s*(\S.*?)\s*$', line)
+            if field and current is not None:
+                current['severity'] = field.group(1)
+        elif section == 'triage':
+            match = re.match(r'^-?\s*(Założone|Odrzucone|Bez decyzji):\s*(.*)$', line)
+            if not match:
+                continue
+            label, rest = match.group(1), match.group(2)
+            if label == 'Założone':
+                for number, issue in re.findall(r'(?:propozycja\s+)?(\d+)\s*→\s*#(\d+)', rest):
+                    triage[int(number)] = 'założone #%s' % issue
+            else:
+                names = 'odrzucone' if label == 'Odrzucone' else 'bez decyzji'
+                for number in re.findall(r'(?<![#\d])(\d+)(?!\d)', re.sub(r'\([^)]*\)', '', rest)):
+                    triage[int(number)] = names
+    for proposal in proposals:
+        proposal['triage'] = triage.get(proposal['number'])
+    return proposals
+
+
+def sweep_incidents(epic_id, merged_at, text):
+    """(incidents, facts) of the /sweep review of an epic: `escaped` per proposal of its report, `no_sweep` when
+    there is no report; both only for an epic merged after step 12 (STEP_12_AT)."""
+    facts = []
+    if text is None:
+        facts.append({'id': '%s/missing/sweep' % epic_id, 'text': 'brak raportu /sweep z nazwą epiku'})
+    if merged_at is None or merged_at <= STEP_12_AT:
+        return [], facts
+    if text is None:
+        incident = _incident(epic_id, 'no_sweep', 'sweep', None, {'merged_at': int(merged_at)},
+                             [{'source': 'sweep-home', 'text': 'brak raportu /sweep; merge epiku %s'
+                                                              % datetime.datetime.fromtimestamp(merged_at).isoformat()}])
+        return [incident], facts
+    incidents = []
+    for proposal in parse_sweep(text):
+        incidents.append(_incident(
+            epic_id, 'escaped', str(proposal['number']), None,
+            {'title': proposal['title'], 'severity': proposal['severity'], 'triage': proposal['triage']},
+            [{'source': 'sweep report', 'text': '%d. %s (waga %s, triage: %s)'
+                                               % (proposal['number'], proposal['title'], proposal['severity'],
+                                                  proposal['triage'] or 'brak')}]))
+    return incidents, facts
+
+
+# ------------------------------------------------------------------------------ "Decyzje bez pytania" of task PRs
+
+def unasked_decisions(body):
+    """[(position, text)] of the section `Decyzje bez pytania` of a PR description: numbered or bulleted items."""
+    lines = (body or '').splitlines()
+    start = next((i for i, l in enumerate(lines) if re.match(r'^#{1,6}\s*decyzje bez pytania\s*$', l, re.I)), None)
+    if start is None:
+        return []
+    items, current, blank = [], None, False
+    for line in lines[start + 1:]:
+        if re.match(r'^#{1,6}\s', line):
+            break
+        if not line.strip():
+            blank = True
+            continue
+        numbered = re.match(r'^\s{0,3}(\d+)[.)]\s+(.*\S)\s*$', line)
+        bullet = re.match(r'^\s{0,3}[-*]\s+(.*\S)\s*$', line)
+        if numbered:
+            current = [int(numbered.group(1)), numbered.group(2)]
+            items.append(current)
+        elif bullet:
+            current = [len(items) + 1, bullet.group(1)]
+            items.append(current)
+        elif current is not None and (line[0] in ' \t' or not blank):
+            current[1] += ' ' + line.strip()
+        else:
+            current = None
+        blank = False
+    return [(position, text) for position, text in items]
+
+
+def unasked_incidents(epic_id, prs):
+    incidents = []
+    for pr in prs:
+        number = pr.get('number')
+        for position, text in unasked_decisions(pr.get('body')):
+            incidents.append(_incident(
+                epic_id, 'unasked', 'pr%s#%d' % (number, position), None,
+                {'pr': number, 'position': position, 'text': cut(text, 500), 'title': pr.get('title')},
+                [{'source': 'pr %s' % number, 'text': cut(text, 500)}]))
+    return incidents
