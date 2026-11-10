@@ -830,7 +830,9 @@ chwilę poprzednia wersja kodu działa na nowym schemacie, a nowa i poprzednia w
   strony między kolejnymi wersjami: nowa wersja czyta wiadomości zapisane przez poprzednią (kolejka może je jeszcze
   mieć) i poprzednia czyta wiadomości nowej (stary worker działa do końca wymiany). Pola dodawaj jako opcjonalne
   z wartością domyślną, nie usuwaj i nie zmieniaj znaczenia pól w jednej wersji, nie zmieniaj nazw klas wiadomości
-  i nazw transportów.
+  i nazw transportów. Poprzednia wersja nie zdekoduje wiadomości ze stemplem nieznanej jej klasy: nową klasę stempla
+  dodaj w jednej wersji, a nadawaj ją dopiero w kolejnej. Wyjątek: `CorrelationIdStamp` jest nadawany od wersji, która
+  go wprowadza, bo przed nią nie było wdrożenia (patrz „Ryzyka i ograniczenia” w `docs/features/hardening/spec.md`).
 
 ## Testy
 
