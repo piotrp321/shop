@@ -5,6 +5,7 @@
 #   helm, kubeconform, shellcheck, actionlint, yq, py, kubeseal: tools working on files of the repository (cwd = /repo/infra/k8s)
 #   k3d, kubectl: tools talking to Docker (k3d) and to a k3d cluster over its Docker network (kubectl)
 #   browser_dom: the DOM of a page after its scripts ran, in headless Chromium on the Docker network of a cluster
+#   browser_console: the console messages of the same page load (the CSP violations among them)
 
 TOOLS_REPO="${REPO_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 
@@ -95,4 +96,14 @@ browser_dom() {
     chrome="$(ls /ms-playwright/chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell | head -n 1)"
     exec "$chrome" --no-sandbox --disable-gpu --proxy-server="$1" --proxy-bypass-list="<-loopback>" \
       --virtual-time-budget=30000 --dump-dom "$2" 2>/dev/null' browser "$@"
+}
+# browser_console <proxy> <url>: loads the page like browser_dom and prints its console messages, one per line, with the
+# prefix of Chromium (`[pid:tid:time:INFO:CONSOLE:line] "message", source: url`): errors, warnings and the violations of
+# the Content Security Policy ("Refused to ..." and "Executing inline script violates ...").
+browser_console() {
+  # shellcheck disable=SC2016 # expanded by the shell of the container
+  docker run --rm --network "$KUBE_NETWORK" "$PLAYWRIGHT_IMAGE" sh -c '
+    chrome="$(ls /ms-playwright/chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell | head -n 1)"
+    "$chrome" --no-sandbox --disable-gpu --proxy-server="$1" --proxy-bypass-list="<-loopback>" --enable-logging=stderr --v=0 \
+      --virtual-time-budget=30000 --dump-dom "$2" 2>&1 >/dev/null | grep ":CONSOLE" || true' browser "$@"
 }

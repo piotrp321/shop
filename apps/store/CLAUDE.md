@@ -14,6 +14,16 @@ w zamontowanym katalogu źródeł, więc przeżywa kontener, a serwer uruchomion
 (nowy stos po zmianie gałęzi, jak między rundami `/integration`) wysyła w pętli komunikat HMR `restart`. Nie usuwaj
 tej opcji.
 
+## Nagłówki bezpieczeństwa
+
+- `next.config.ts` (`headers()`, źródło `/:path*`, czyli każda trasa, także handlery API sklepu i `/_next/`) dodaje
+  do każdej odpowiedzi: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  `X-Frame-Options: DENY`, `Permissions-Policy: camera=(), microphone=(), geolocation=()` i `Content-Security-Policy:
+  frame-ancestors 'none'; object-src 'none'; base-uri 'self'`. CSP nie ma `script-src` (ani `default-src`): CSP z nonce
+  wymusza renderowanie dynamiczne, co wyłączyłoby ISR stron produktów. Nie dodawaj dyrektywy skryptów ani nonce.
+  Nagłówki nie zmieniają `Cache-Control` ani tagów cache. HSTS ustawia ingress (middleware Traefika przy `ingress.tls`),
+  nie sklep. Test: `tests/security-headers.test.ts`.
+
 ## Komendy
 
 Uruchamiaj z katalogu głównego przez `make -C apps/store <cel>`:
