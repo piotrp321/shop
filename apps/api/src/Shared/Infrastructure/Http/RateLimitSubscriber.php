@@ -64,9 +64,11 @@ final readonly class RateLimitSubscriber implements EventSubscriberInterface
     private function key(Request $request): string
     {
         $kind = $request->attributes->get(RateLimit::KEY_ROUTE_DEFAULT);
-        $customer = (string) $this->tokens->getToken()?->getUserIdentifier();
-        if (RateLimit::BY_CUSTOMER === $kind && '' !== $customer) {
-            return 'customer:'.$customer;
+        if (RateLimit::BY_CUSTOMER === $kind) {
+            $customer = (string) $this->tokens->getToken()?->getUserIdentifier();
+            if ('' !== $customer) {
+                return 'customer:'.$customer;
+            }
         }
         if (RateLimit::BY_PROVIDER === $kind) {
             return $request->attributes->getString('provider').':'.$this->clientIp->of($request);
