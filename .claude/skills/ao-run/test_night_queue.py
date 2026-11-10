@@ -1243,6 +1243,23 @@ class RoomCliTest(unittest.TestCase):
         self.assertEqual((1, None), (code, result))
         self.assertIn('night_queue: --hours', err)
 
+    def test_max_percent_raises_the_threshold(self):
+        plan = usage(94.9)
+        self.assertEqual({'ok': True}, self.room(plan, argv=['room', '--hours', '2', '--max-percent', '95'])[1])
+        self.assertEqual({'ok': False, 'reason': 'okno Weekly · all models: 95.0% >= 95%'},
+                         self.room(usage(95), argv=['room', '--hours', '2', '--max-percent', '95'])[1])
+
+    def test_max_percent_defaults_to_80(self):
+        self.assertFalse(self.room(usage(80), argv=['room', '--hours', '2'])[1]['ok'])
+
+    def test_bad_max_percent_exits_1(self):
+        for value in ['x', '0', '-5', '100.1', 'nan', 'inf']:
+            with self.subTest(value=value):
+                code, result, err = self.room(usage(10), argv=['room', '--hours', '2', '--max-percent=%s' % value])
+                self.assertEqual((1, None), (code, result))
+                self.assertIn('night_queue: --max-percent', err)
+                self.assertNotIn('Traceback', err)
+
     def test_reads_no_board(self):
         # no_commands raises on any command: room must not call gh or git.
         self.assertEqual(0, self.room(usage(10))[0])

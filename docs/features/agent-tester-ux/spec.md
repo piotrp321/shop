@@ -197,8 +197,9 @@ Zmiana w `.claude/skills/integration/SKILL.md`, bez zmian w AO:
    z liczbą propozycji i zostawia triage w rozmowie. Pokazane na pierwszym prawdziwym merge'u po wdrożeniu.
 8. „Tak” na „Zacząć epik?” w trakcie przeglądu uruchamia epik dopiero po końcu kolejki przeglądów; dwa merge'e
    po nocy dają dwa przeglądy po kolei, także gdy oba startują na tym samym commicie `main`.
-9. Pominięcie z pushem i podpowiedzią `/sweep <epik>`: zasilanie z baterii, okno limitu ≥ 80% (`night_queue.py room`
-   z testami) i odmowa `/sweep` (np. zajęty port). Sprawdzone testami `room` i ręcznie dla baterii albo portu.
+9. Pominięcie z pushem i podpowiedzią `/sweep <epik>`: okno limitu ≥ 95% (`night_queue.py room --max-percent 95`
+   z testami) i odmowa `/sweep` (np. zajęty port). Zasilania sesja nie sprawdza. Sprawdzone testami `room` i ręcznie
+   dla portu.
 
 ## Ryzyka i ograniczenia
 
@@ -208,4 +209,4 @@ Zmiana w `.claude/skills/integration/SKILL.md`, bez zmian w AO:
 - Agent UX wydłuża nocne `/integration` epików z frontem (działa po QA).
 - Zrzutów ekranu nie ma w issue; zostają lokalnie w katalogu przebiegu.
 - Przegląd uruchamiany po każdym merge'u zużywa limit (ostatnie przebiegi: 250–540 tys. tokenów Sonnet, 15–60 min)
-  i opóźnia start następnego epiku o czas przeglądu. Pominięcie przy limicie ≥ 80% chroni limit na następny epik.
+  i opóźnia start następnego epiku o czas przeglądu. Pominięcie przy limicie ≥ 95% chroni tylko resztkę limitu: przegląd ma pierwszeństwo przed zapasem na następny epik.

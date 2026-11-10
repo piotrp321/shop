@@ -153,7 +153,7 @@ flowchart TB
      czekania na merge, tylko gdy jego szacunek mieści się do rana i w limitach subskrypcji. Inaczej noc się kończy.
    - Bez zgody sesja niczego nie uruchamia. Na raz trwa jeden epik z jednej sesji. Gdy działa epik innej sesji,
      `/ao-run` przed startem opisuje pliki wspólne obu epików (CI, `CLAUDE.md`, kontrakt OpenAPI, klienci TS, menu
-     panelu) jako ryzyko konfliktu, bez blokowania startu. Na zasilaniu z baterii sesja pyta, zanim uruchomi epik.
+     panelu) jako ryzyko konfliktu, bez blokowania startu. Zasilania sesja nie sprawdza: decyduje o nim użytkownik.
    - Sesja z `/ao-run <epik>` uruchamia `ao epic start` i `ao run --until-idle`. AO prowadzi zadania przez
      `/delivery` po jednym naraz, squash-merguje je do `epic/<epik>`, uruchamia `/integration` i otwiera końcowy
      PR `epic/<epik>` → `main` z raportem `ao report`. Czerwone CI gałęzi epiku i konflikt końcowego PR z `main`
@@ -192,8 +192,8 @@ flowchart TB
      decyzje użytkownika (z `events.jsonl`, `ao_events.py summary`) i liczba ręcznych poprawek. Minut pracy
      użytkownika nie szacujemy.
 6. **Po merge'u (`/sweep [epik]`).** Sesja `/ao-run` uruchamia przegląd sama po merge'u końcowego PR: kolejka
-   przeglądów, jeden naraz, nigdy równolegle z epikiem (następny epik rusza po kolejce), pominięcie na baterii albo
-   przy oknie limitu ≥ 80% (`docs/features/ao-run/spec.md`). Użytkownik może go też uruchomić ręcznie.
+   przeglądów, jeden naraz, nigdy równolegle z epikiem (następny epik rusza po kolejce), pominięcie przy oknie limitu
+   ≥ 95% (`docs/features/ao-run/spec.md`). Użytkownik może go też uruchomić ręcznie.
    Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne ścieżki z sekcji „Testy”
    w `docs/vision.md` i nową funkcję ze specyfikacji, jako klient i jako pracownik. Przed zaproponowaniem zgłoszenia
    sprawdzają otwarte issues, żeby nie dublować. Propozycje trafiają do triage (punkt 1).
@@ -316,8 +316,9 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
   a `plan.md` przechodzi walidator manifestu.
 - **Start epiku:** AO rusza z epikiem dopiero po „tak” użytkownika na pytanie „Zacząć epik X?” albo na listę nocy.
   Kolejny epik listy rusza bez pytania tylko przy spełnionych warunkach sekcji „Noc” z `docs/features/ao-run/spec.md`.
-- **Merge do `main`:** końcowy PR epiku merguje wyłącznie użytkownik. Wyjątek: PR ze `spec.md` i `plan.md`
-  z `/prepare-epic`, który skill merguje po akceptacji użytkownika i zielonym CI. Każde rozszerzenie
+- **Merge do `main`:** końcowy PR epiku merguje użytkownik albo sesja `/ao-run` na jego polecenie w rozmowie (także
+  z telefonu), po zielonym CI. Wyjątek bez osobnego polecenia: PR ze `spec.md` i `plan.md` z `/prepare-epic`, który
+  skill merguje po akceptacji użytkownika i zielonym CI. Każde rozszerzenie
   autonomii wymaga jego jawnej zgody.
 - **Zmiana AO:** tylko przy zablokowanym prawdziwym przebiegu, za zgodą użytkownika.
 - **Krok 4:** issues epików powstają dopiero po akceptacji listy.
