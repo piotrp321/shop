@@ -256,8 +256,16 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   i bramki `make check`, `make test`, `make e2e` na całym diffie `origin/main...HEAD`); przy zmianach w `apps/store`
   lub `apps/admin` dochodzi agent UX (`ux-reviewer`). Skill niczego nie commituje, a jego wynik waliduje
   `.claude/skills/integration/integration_result.py`.
-- Po merge'u epiku użytkownik uruchamia `/sweep [epik]`: agenci `tester` i `ux-reviewer` przechodzą sklep na świeżym
-  stosie z `main`. Wynik to propozycje zgłoszeń do triage (etykiety `bug`/`ux` i `agent`), nie issues.
+- Po merge'u epiku sesja `/ao-run` sama uruchamia `/sweep <epik>` (kolejka przeglądów, nigdy równolegle z epikiem;
+  pominięcie na baterii, przy oknie limitu ≥ 80% albo przy odmowie `/sweep`), a użytkownik może go uruchomić ręcznie (`/sweep [epik]`):
+  agenci `tester` i `ux-reviewer` przechodzą sklep na świeżym stosie z `main`. Wynik to propozycje zgłoszeń do triage
+  użytkownika (etykiety `bug`/`ux` i `agent`), nie issues.
+- `/groom` (codziennie o 8:00 z zadania zaplanowanego w aplikacji Claude albo ręcznie): agent `backlog-groomer`
+  proponuje duplikaty, nieaktualne zgłoszenia, braki, etykiety i jeden epik poprawek (`-FIXES`), a `groom.py` sprawdza
+  listę i wykonuje w GitHubie tylko pozycje zatwierdzone przez użytkownika w rozmowie. Zatwierdzony epik poprawek ta
+  sama sesja przygotowuje według `/prepare-epic` bez użytkownika aż do jednej wiadomości z pytaniami i akceptacją;
+  samo „tak” akceptuje tylko przy spełnionej bramce `groom.py gate`, a przerwane przygotowanie wznawia
+  `/prepare-epic <nr>`.
 - Orkiestrator sam rozstrzyga szczegóły implementacji (wpis `Ruling:` w ledgerze). Istotne decyzje DDD (agregaty,
   value objecty, granice modułów, persystencja) oraz zmiany zasad, zależności, specyfikacji i architektury
   przedstawia użytkownikowi przed implementacją.

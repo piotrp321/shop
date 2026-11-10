@@ -9,10 +9,11 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 7), nie 
 
 ## Status
 
-W toku: DEPLOY (#175) przez `/ao-run`. Następne epiki „Zakresu MVP”: PROMOTIONS (#96), DISCOUNT-CODES (#225)
-i VISUAL-DESIGN (#97), kolejność na tablicy „Backlog sklepu”. Blokery: brak. Krok 7: CART-FIXES (#88) przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy
-PR #112): 30 minut użytkownika (szacunek użytkownika, nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD
-według Claude CLI.
+W toku: VISUAL-DESIGN (#97) przez `/ao-run`. Krok 10: specyfikacja i plan HARDENING (#267) są na `main`, epik
+czeka na VISUAL-DESIGN. Kolejność epików jest na tablicy „Backlog sklepu”. Blokery: brak. Krok 7: CART-FIXES (#88)
+przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
+nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
+Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 52, zamkniętych 17.
 
 | Krok | Zakres | Status |
 |---|---|---|
@@ -25,8 +26,12 @@ według Claude CLI.
 | 7 | Pierwszy epik przez cały proces | zrobione |
 | 8 | Nocna kolejka kilku epików | zrobione (sprawdzenie: pierwsza noc) |
 | 9 | Agent tester i agent UX | zrobione |
-| 10 | Przed publicznym demo: bezpieczeństwo i wydajność | do zrobienia |
+| 10 | Przed publicznym demo: bezpieczeństwo i wydajność | specyfikacja na `main`, epik HARDENING czeka |
 | 11 | Po MVP: release i monitoring | do zrobienia |
+| 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione (kryteria 7–9 sprawdza pierwszy merge epiku) |
+| 13 | Agent porządkujący backlog (`/groom`) | zrobione (pierwszy przebieg 2026-11-09; zadanie zaplanowane o 8:00 w aplikacji Claude) |
+| 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy epik `-FIXES` po QUALITY-FIXES) |
+| 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | do zrobienia |
 
 ## Role
 
@@ -46,8 +51,10 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | Wytwarzanie | Developer: zadanie z TDD | `developer` w `/delivery` | działa |
 | | Code review zadania | `code-reviewer` w `/delivery` | działa |
 | Jakość | QA epiku | `qa-adversarial` w `/integration` | działa |
-| | Tester całego sklepu | `tester` w `/sweep` | działa |
+| | Tester całego sklepu | `tester` w `/sweep`, uruchamiany przez `/ao-run` po merge'u | działa |
 | | Bezpieczeństwo i wydajność | ustalane w kroku 10 | krok 10 |
+| Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | działa |
+| | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` | krok 15 |
 | Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 11 |
 | | Monitoring → issues | Sentry i Grafana Cloud z `docs/vision.md` | krok 11 |
 
@@ -69,9 +76,13 @@ flowchart TB
     blocker[Bloker: push w aplikacji Claude i ao answer]
     review{Odbiór według ryzyka<br/>użytkownik}
     merge[Merge i zamknięcie issue]
-    sweep[Agent tester i agent UX<br/>cały sklep na main]
+    sweep["Agent tester i agent UX<br/>cały sklep na main (12: po merge'u sam)"]
+    groom["/groom codziennie<br/>duplikaty, nieaktualne, propozycja epiku poprawek"]
+    retro["/retro (15)<br/>PR z poprawkami procesu i Statusem"]
 
+    issues --> groom --> triage
     issues --> triage --> prep --> accept
+    merge --> retro
     accept -- za duży, podział --> prep
     accept -- tak --> onmain --> start
     start -- tak --> delivery
@@ -96,6 +107,10 @@ flowchart TB
      `needs-info` i nie idzie do przygotowania.
    - Kolejność ustala użytkownik na tablicy GitHub Projects
      [„Backlog sklepu”](https://github.com/users/piotrp321/projects/1): epik na górze idzie pierwszy.
+   - `/groom` codziennie o 8:00 (zadanie zaplanowane w aplikacji Claude) albo ręcznie przegląda otwarte zgłoszenia
+     i daje użytkownikowi jedną listę propozycji: duplikaty, zgłoszenia nieaktualne wobec kodu na `main` (z dowodem),
+     braki, etykiety i jeden epik poprawek. Zmiany w GitHubie wykonuje dopiero po „tak” użytkownika
+     (`docs/features/groom/spec.md`).
 2. **Przygotowanie (użytkownik, w dzień).**
    - Issue z góry listy → `/prepare-epic` → `spec.md` i `plan.md`.
    - `/prepare-epic` prowadzi kolejno:
@@ -120,6 +135,11 @@ flowchart TB
      będą przed `/ao-run`, żeby taki bloker nie wyszedł dopiero w trakcie zadania.
    - Zgłoszenie `ux` zawsze idzie przez `/prepare-epic`. Drobne zgłoszenia `bug`
      i `tech-debt` trafiają razem do jednego epiku poprawek: krótka specyfikacja, jedno zadanie na issue.
+   - Epik poprawek zatwierdzony z listy `/groom` sesja `/groom` przygotowuje bez użytkownika aż do pytań: analityk
+     i planner (podagent na Opusie), krytyk i architekt. Użytkownik dostaje jedno powiadomienie push z pytaniami
+     (każde z rekomendacją) i akceptacją. „Tak” akceptuje rekomendacje i specyfikację tylko przy spełnionej bramce
+     `groom.py gate` (review poprawne, bez otwartego `Critical`, walidator, bez zmian na `main` w zakresie epiku);
+     zasady merge'u PR ze specyfikacją się nie zmieniają.
    - Zaakceptowane `spec.md` i `plan.md` trafiają do `main` przez PR, który `/prepare-epic` merguje po zielonym CI.
 3. **Wykonanie (AO, w nocy).**
    - Start epiku: sesja z Remote Control bierze następny epik z tablicy, który ma zaakceptowane `spec.md`
@@ -169,10 +189,19 @@ flowchart TB
    - Po każdym epiku trzy liczby w komentarzu do issue epiku: liczba interwencji (z `ao report`), czas czekania na
      decyzje użytkownika (z `events.jsonl`, `ao_events.py summary`) i liczba ręcznych poprawek. Minut pracy
      użytkownika nie szacujemy.
-6. **Po merge'u (`/sweep [epik]`).** Użytkownik uruchamia komendę po merge'u epiku.
+6. **Po merge'u (`/sweep [epik]`).** Sesja `/ao-run` uruchamia przegląd sama po merge'u końcowego PR: kolejka
+   przeglądów, jeden naraz, nigdy równolegle z epikiem (następny epik rusza po kolejce), pominięcie na baterii albo
+   przy oknie limitu ≥ 80% (`docs/features/ao-run/spec.md`). Użytkownik może go też uruchomić ręcznie.
    Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne ścieżki z sekcji „Testy”
    w `docs/vision.md` i nową funkcję ze specyfikacji, jako klient i jako pracownik. Przed zaproponowaniem zgłoszenia
    sprawdzają otwarte issues, żeby nie dublować. Propozycje trafiają do triage (punkt 1).
+7. **Retrospektywa (15, `/retro [epik]`).** Po merge'u epiku agent czyta `ao report`, `events.jsonl`, interwencje,
+   rundy `/integration` i ręczne poprawki. Wynik to jeden PR do `main` (merguje użytkownik):
+   - poprawki procesu w `shop` (`CLAUDE.md`, skille, prompty agentów), każda z dowodem: epik, zdarzenie i powód,
+     tylko dla problemu, który wystąpił co najmniej dwa razy albo kosztował interwencję;
+   - aktualna sekcja „Status” tego planu i planów funkcji w toku.
+
+   Problem w AO staje się issue w `piotrp321/agentic-orchestrator`, a nie zmianą AO (AO jest zamrożone).
 
 ## Kroki wdrożenia
 
@@ -212,16 +241,38 @@ flowchart TB
    - szacunki i liczba epików na noc wynikają z pomiaru każdego epiku prowadzonego przez `/ao-run`, nie z założenia.
    Mechanizm sprawdza pierwsza noc.
 9. **Agent tester i agent UX.** Gotowe: agent tester i agent UX (`.claude/agents/`), skill `/sweep` uruchamiany
-   przez użytkownika po merge'u epiku, agent UX jako trzeci reviewer w `/integration` dla epików z frontem,
+   po merge'u epiku (przez `/ao-run` od kroku 12), agent UX jako trzeci reviewer w `/integration` dla epików z frontem,
    etykieta `agent`, limit pięciu propozycji na przebieg i sprawdzanie duplikatów. Agent UX ocenia w sklepie
    użyteczność, dostępność, responsywność (375, 768 i 1440 px), spójność komponentów i jakość wizualną (zgodność z
-   wybranym kierunkiem i tokenami, gdy kierunek jest w repo). Automatyczne uruchamianie dopiero wtedy, gdy
-   zgłoszenia okażą się warte czasu triage. Opis: `docs/features/agent-tester-ux/spec.md`.
+   wybranym kierunkiem i tokenami, gdy kierunek jest w repo). Automatyczne uruchamianie: krok 12.
+   Opis: `docs/features/agent-tester-ux/spec.md`.
 10. **Przed publicznym demo: bezpieczeństwo i wydajność.** Przegląd bezpieczeństwa całego sklepu i testy
    obciążeniowe względem „Wymagań niefunkcjonalnych” z `docs/vision.md`. Zakres i narzędzia ustala specyfikacja
    przed demo.
 11. **Po MVP: release i monitoring.** Publiczne demo zgodnie z `docs/vision.md` (k3s, Argo CD, rollback). Błędy
    z Sentry i alerty z Grafana Cloud stają się issues `bug` z etykietą `agent` i przechodzą triage.
+
+Kroki 12–15 domykają pętlę „zgłoszenia agentów → poprawki” i poprawiają proces z danych przebiegów. Wszystkie są
+skillami w `shop`, bez zmian w AO. Każdy zużywa limit subskrypcji, więc działa po epiku albo raz na dobę, nigdy
+równolegle z przebiegiem AO, a jego czas i zużycie limitu są mierzone jak przebieg epiku (format ustala specyfikacja kroku).
+
+12. **`/sweep` po merge'u epiku.** Trzy ręczne przebiegi (2026-11-04, 2026-11-07, 2026-11-09) dały 6 przyjętych
+   zgłoszeń i 1 odrzucone, więc warunek z kroku 9 jest spełniony. `/ao-run` uruchamia `/sweep <epik>` po merge'u
+   końcowego PR (kolejka przeglądów, następny epik rusza po niej) i wysyła push z liczbą propozycji. Triage zostaje
+   u użytkownika. Opis: sekcja „Przegląd po merge'u” w `docs/features/ao-run/spec.md`.
+13. **`/groom`.** Skill `/groom`, agent `backlog-groomer` (Sonnet) i skrypt `groom.py`: codziennie o 8:00 z zadania
+   zaplanowanego w aplikacji Claude albo ręcznie. Agent proponuje, skrypt sprawdza listę i po „tak” użytkownika
+   wykonuje tylko zatwierdzone pozycje. Jeden epik poprawek naraz, do 8 issues; issues otwartych epików bez
+   propozycji. Opis: `docs/features/groom/spec.md`.
+14. **Epik poprawek bez użytkownika aż do pytań.** Sesja `/groom` po utworzeniu zatwierdzonego epiku poprawek
+   prowadzi `/prepare-epic` w trybie po `/groom`: kroki 1–3 i 5 bez rozmowy, kroki 4 i 6 jedną wiadomością z pushem.
+   „Tak” akceptuje rekomendacje i specyfikację tylko przy spełnionej bramce `groom.py gate`; inna odpowiedź wraca do
+   zwykłego przebiegu. Ręczne `/prepare-epic <nr>` wznawia przerwane przygotowanie bez powtarzania ukończonych
+   etapów. Opis: sekcja „Tryb po `/groom`” w `docs/features/prepare-epic/spec.md`. Prawdziwy przebieg sprawdza
+   pierwszy epik `-FIXES` po QUALITY-FIXES.
+15. **`/retro` i „Status”.** Nowy skill uruchamiany po merge'u epiku (po `/sweep`, punkt 7 procesu). Zastępuje
+   ręczne aktualizowanie sekcji „Status” i ręczne zbieranie wniosków z przebiegów. Nowa specyfikacja:
+   `docs/features/retro/spec.md`.
 
 Proces i kontrakt trafiają do ADR, gdy krok 7 potwierdzi, że działają. Plan usuwamy po ostatnim kroku.
 
@@ -268,5 +319,6 @@ Styk backlog → `/planner` → AO → `/delivery`. Format manifestu i jego wali
   autonomii wymaga jego jawnej zgody.
 - **Zmiana AO:** tylko przy zablokowanym prawdziwym przebiegu, za zgodą użytkownika.
 - **Krok 4:** issues epików powstają dopiero po akceptacji listy.
-- **Kroki 8–11:** specyfikacja każdego kroku zaakceptowana przed implementacją.
+- **Kroki 8–15:** specyfikacja każdego kroku zaakceptowana przed implementacją.
+- **`/groom`:** zamknięcie issue, nowe issue epiku i zmiana tablicy dopiero po „tak” użytkownika na listę propozycji.
 - **Zgłoszenia agentów:** trafiają do backlogu dopiero po triage użytkownika.

@@ -18,16 +18,17 @@ wyczytasz.
 
 Bash nie zachowuje stanu między wywołaniami. Wklej poniższy blok dosłownie na początku **każdej** komendy Bash w tym
 skillu. W kroku 1 znasz tylko trzy pierwsze linie; `<data>` (`date +%F` przy starcie), `<sha7>`, `<port>` (port
-bazowy) i `<run-id>` (`uuidgen` raz, po kroku 1) uzupełnij po kroku 1 i nie zmieniaj ich do końca przebiegu, także po
+bazowy), `<-epik>` (`-<epik>` przy podanym epiku, inaczej puste) i `<run-id>` (`uuidgen` raz, po kroku 1)
+uzupełnij po kroku 1 i nie zmieniaj ich do końca przebiegu, także po
 północy.
 
 ```bash
 SKILL_ROOT="$(git rev-parse --show-toplevel)"
 SHOP="$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 SWEEP_HOME="$HOME/.local/state/shop-sweep"
-RUN="$SWEEP_HOME/<data>-<sha7>"
+RUN="$SWEEP_HOME/<data>-<sha7><-epik>"
 WT="$RUN/worktree"
-export AO_COMPOSE_PROJECT="sweep-<sha7>" AO_PORT_BASE="<port>"
+export AO_COMPOSE_PROJECT="sweep-<sha7><-epik>" AO_PORT_BASE="<port>"
 RUN_ID="<run-id>"
 owned() { [ "$(cat "$RUN/owner" 2>/dev/null)" = "$RUN_ID" ]; }
 ```
@@ -65,10 +66,10 @@ przebiegu, worktree i stosu. **Odmowa kończy skill:** nie wykonujesz kroków 2�
 
   Niepuste wyjście: odmowa z listą zajętych portów i podpowiedzią „podaj inny port bazowy:
   `/sweep [epik] --port-base <n>` (7 kolejnych wolnych portów)”.
-- Projektu `sweep-<sha7>` nie ma w `docker compose ls -a` i katalog `$RUN` nie istnieje. Inaczej odmowa: działa inny
+- Projektu `sweep-<sha7><-epik>` nie ma w `docker compose ls -a` i katalog `$RUN` nie istnieje. Inaczej odmowa: działa inny
   przebieg tego commitu albo został po przerwanym, a raport z tego samego dnia trzeba najpierw przenieść. Cudzego
   przebiegu nie sprzątasz: podaj użytkownikowi komendy (`.ao/teardown` z jego worktree z
-  `AO_COMPOSE_PROJECT=sweep-<sha7>`, potem `git worktree remove`) do uruchomienia, gdy sprawdzi, że nic nie działa.
+  `AO_COMPOSE_PROJECT=sweep-<sha7><-epik>`, potem `git worktree remove`) do uruchomienia, gdy sprawdzi, że nic nie działa.
 
 ## 2. Stos
 
@@ -90,7 +91,7 @@ cd "$WT" && .ao/setup > "$RUN/setup.log" 2>&1; echo "setup exit $?"
 ```
 
 - Kod różny od zera: zapisz `$RUN/report.md` z commitem, powodem i `tail -n 40 "$RUN/setup.log"`, wykonaj krok 6,
-  wyślij `PushNotification` „Przegląd po merge'u <sha7>: błąd stosu” i zakończ.
+  wyślij `PushNotification` „Przegląd po merge'u <sha7><-epik>: błąd stosu” i zakończ.
 - Kod 0: porty z `$WT/.env` (`STORE_PORT`, `ADMIN_PORT`, `API_PORT`, `KEYCLOAK_PORT`). Sprawdź
   `curl -fs --max-time 5 http://127.0.0.1:<API_PORT>/health`; brak odpowiedzi traktuj jak błąd setupu.
 
@@ -146,8 +147,8 @@ Z obu raportów:
 
 ## 5. Raport
 
-Zapisz `$RUN/report.md` (poza repo), po polsku. Pierwsze linie: `Przebieg: <data>-<sha7>`, `Commit: <sha>`,
-`Epik: <epik albo brak>`, `Stos: sweep-<sha7>, porty od <port>`, `Czas: <start>–<koniec>`. Dalej sekcje:
+Zapisz `$RUN/report.md` (poza repo), po polsku. Pierwsze linie: `Przebieg: <data>-<sha7><-epik>`, `Commit: <sha>`,
+`Epik: <epik albo brak>`, `Stos: sweep-<sha7><-epik>, porty od <port>`, `Czas: <start>–<koniec>`. Dalej sekcje:
 
 - `## Zakres i wynik`: każda ścieżka i każde kryterium (OK, błąd, jeszcze nie ma) z raportu testera, ekrany i rozmiary
   z raportu UX. Wiersz UX bez obejrzanego zrzutu nie jest OK: trafia do „Uwag” jako odstępstwo od zasad agenta.
@@ -160,7 +161,7 @@ Zapisz `$RUN/report.md` (poza repo), po polsku. Pierwsze linie: `Przebieg: <data
 
 W rozmowie zostaw skrót: tabela propozycji (nr, tytuł, rodzaj, waga, agent), liczba hipotez i duplikatów, ścieżka
 raportu i przykład odpowiedzi do triage („załóż 1 i 3, odrzuć 2: celowe”). Wyślij `PushNotification`
-„Przegląd po merge'u <sha7>: N propozycji”.
+„Przegląd po merge'u <sha7><-epik>: N propozycji”.
 
 ## 6. Sprzątanie (zawsze, także po błędzie)
 
@@ -181,7 +182,7 @@ z komendą do ponowienia. Po udanym:
 ```bash
 owned && { git -C "$SHOP" worktree remove "$WT" || git -C "$SHOP" worktree remove --force "$WT"; }
 git -C "$SHOP" worktree prune
-docker compose ls -a | grep "sweep-<sha7>"; git -C "$SHOP" worktree list | grep "$WT"
+docker compose ls -a | grep "sweep-<sha7><-epik>"; git -C "$SHOP" worktree list | grep "$WT"
 ```
 
 `--force` tylko dla plików wygenerowanych przez stos (`.env`, `.env.local`, cache); worktree jest jednorazowy.
@@ -205,7 +206,7 @@ Odpowiedź niejednoznaczna (numer spoza 1–N, ten sam numer w obu grupach): zap
   ### Dowód
   <dowód tekstowy bez tokenów, nagłówków authorization, haseł i sekretów TOTP; zrzuty i trace lokalnie: <ścieżki w $RUN>>
   ### Źródło
-  Przebieg `/sweep` <data>-<sha7>, commit <sha>, agent <tester | ux-reviewer>, odtworzono: tak (2/2), waga <waga>.
+  Przebieg `/sweep` <data>-<sha7><-epik>, commit <sha>, agent <tester | ux-reviewer>, odtworzono: tak (2/2), waga <waga>.
   <dopisek „wcześniej odrzucone <data>: <powód>” i co się zmieniło, gdy dotyczy>
   ```
 
@@ -243,5 +244,5 @@ linki do założonych issues.
   etykietujesz istniejących.
 - Nie przekraczasz pięciu propozycji na przebieg i nie zgłaszasz hipotez.
 - Nie uruchamiasz agentów równolegle ani bez stosu.
-- Nie dotykasz kontenerów, worktree ani portów spoza projektu `sweep-<sha7>`.
+- Nie dotykasz kontenerów, worktree ani portów spoza projektu `sweep-<sha7><-epik>`.
 - Nie naprawiasz znalezionych problemów i nie uruchamiasz `/prepare-epic`, `/delivery` ani AO.

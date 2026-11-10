@@ -4,7 +4,9 @@ Krok 5 planu [Agentic Software House](../agentic-software-house/plan.md). Skill 
 przez AO z sesji Claude Code w aplikacji: uruchamia AO, przekazuje zdarzenia jako powiadomienia push do aplikacji Claude,
 przyjmuje odpowiedzi na blokery i kończy raportem odbioru. Po merge'u końcowego PR proponuje następny przygotowany epik
 z tablicy backlogu (kolejka epików). Krok 8 planu dodaje noc: listę kilku epików zatwierdzoną jednym „tak”, które
-ruszają po kolei, każdy po `epic_done` poprzedniego, bez czekania na merge (sekcja „Noc”). Kod AO się nie zmienia.
+ruszają po kolei, każdy po `epic_done` poprzedniego, bez czekania na merge (sekcja „Noc”). Krok 12 planu dodaje
+przegląd po merge'u: sesja sama uruchamia `/sweep <epik>` po merge'u końcowego PR (sekcja „Przegląd po merge'u”).
+Kod AO się nie zmienia.
 
 ## Wejście i warunki startu
 
@@ -117,11 +119,15 @@ Remote Control skill nie sprawdza.
    sesja pokazuje komentarz do issue epiku i po zgodzie go dopisuje: liczba interwencji z `ao report`, czekanie na
    użytkownika z `ao_events.py summary` (liczba czekań, suma, czekania otwarte osobno, przy błędzie „brak danych”),
    liczba ręcznych poprawek. Minut pracy użytkownika sesja nie pyta i nie szacuje. PR zamknięty bez merge'u: sesja mówi o tym i nie przechodzi do punktu 7.
+   Po merge'u, przed punktem 7, sesja dopisuje epik do kolejki przeglądów (sekcja „Przegląd po merge'u”). Pytanie
+   z punktu 7 nie czeka na przegląd.
 7. **Następny epik.** Po merge'u końcowego PR albo na prośbę użytkownika (`/ao-run` bez argumentu) sesja uruchamia
    `next_epic.py`:
    - `epic` jest: push „Zacząć epik `<ID>` (#`<nr>`)?”, a w rozmowie także pozycje `skipped` (np. epik wyżej na
      tablicy bez planu). Start dopiero po „tak” użytkownika w sesji: przebieg od punktu 1 dla nowego `<epik>`, z
-     wszystkimi warunkami startu. Inna odpowiedź albo brak odpowiedzi: sesja niczego nie uruchamia.
+     wszystkimi warunkami startu. Gdy kolejka przeglądów nie jest pusta, „tak” czeka na jej koniec, a sesja mówi to
+     w rozmowie i w pushu („Epik X ruszy po przeglądzie Y”). Inna odpowiedź albo brak odpowiedzi: sesja niczego nie
+     uruchamia.
    - `epic` jest `null`: push (krótszy niż 200 znaków) z powodem: pierwsza pozycja `in_progress` albo pierwsza
      `skipped` z liczbą pozostałych, np. „Brak przygotowanego epiku: VARIANTS (#89) bez spec.md i plan.md na main,
      następny krok `/prepare-epic` (+2 inne)”; pełna lista w rozmowie. Jeśli `in_progress` to epik właśnie
@@ -141,6 +147,50 @@ Pomiar epiku (każdy przebieg, także poza nocą): zaraz po udanym `ao epic star
 z narzędzia aplikacji `get_usage` (obiekt `plan`). Pomiar zapisuje liczbę zadań z manifestu, czas od startu do
 `epic_done` i przyrost procentu każdego okna limitu. Okno, które odnowiło się w trakcie (inne `resetsAt`), albo stan
 limitów inny niż `ok` nie daje pomiaru tego okna. Epik zakończony bez `DONE` nie ma pomiaru.
+
+## Przegląd po merge'u
+
+Krok 12 planu: `/sweep` po merge'u epiku uruchamia sesja `/ao-run`, nie użytkownik. Skill `/sweep` zmienia się tylko
+w nazwie katalogu przebiegu i projektu Compose (`<data>-<sha7>-<epik>`, `sweep-<sha7>-<epik>`, żeby dwa przeglądy na tym samym commicie się nie wykluczały;
+spec: `docs/features/agent-tester-ux/spec.md`). Sesja czyta jego `.claude/skills/sweep/SKILL.md` i wykonuje kroki 1–6
+z argumentem `<epik>` (flaga `disable-model-invocation` zostaje, więc model nie wywoła go narzędziem Skill sam z
+siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
+
+- **Kolejka.** Każdy końcowy PR, który sesja zobaczy jako `MERGED` (punkt 6, także każdy epik nocy osobno), dopisuje
+  swój epik na koniec kolejki przeglądów. Przeglądy idą po kolei, jeden naraz, w kolejności merge'ów, każdy na
+  `origin/main` z chwili swojego startu. Epik zamknięty bez merge'u nie ma przeglądu. Kolejka żyje w sesji: gdy
+  sesja się kończy, nieuruchomione przeglądy przepadają, a push przy końcu sesji je wymienia (użytkownik może
+  uruchomić `/sweep <epik>` sam).
+- **Przegląd i epik nie działają naraz.** Przegląd nie startuje, gdy działa proces AO tej sesji albo procedura
+  „Konflikt końcowego PR poza AO” (własny stos). Nowy epik („tak” z punktu 7, pierwszy i kolejny epik listy nocy),
+  ponowne `ao run` po decyzji użytkownika i ta procedura czekają na koniec trwającego przeglądu (przy nocy sesja
+  wywołuje `next` dopiero po kolejce, żeby prognoza dotyczyła chwili startu), a nowy epik także na
+  pustą kolejkę. Pytanie „Zacząć epik?” i lista nocy nie czekają na przegląd: po merge'u sesja najpierw dopisuje epik
+  do kolejki i wysyła pytanie z punktu 7 (przy nocy według jej reguły), dopiero potem zaczyna przegląd.
+- **Kiedy kolejka rusza.** Sesja sprawdza kolejkę po dopisaniu epiku, po końcu przeglądu i po końcu procesu AO tej
+  sesji (także gdy epik nocy kończy noc). Gdy nic nie trwa, zaczyna pierwszy przegląd z kolejki; przy pustej kolejce
+  zaczyna epik czekający na nią.
+- **Warunki przed każdym przeglądem**, sprawdzane tuż przed startem. Niespełniony warunek pomija ten przegląd
+  (następny w kolejce sprawdza je od nowa), a sesja wysyła push „Przegląd `<epik>` pominięty: <powód>; ręcznie:
+  `/sweep <epik>`” (do 200 znaków):
+  - zasilanie sieciowe (`pmset -g batt` z `'AC Power'`); bez pytania o baterię, w przeciwieństwie do epiku;
+  - limit: `night_queue.py room --hours 2` (stdin: obiekt `plan` z `get_usage`) zwraca `ok`: stan limitów `ok`
+    i każde okno, które nie odnowi się w ciągu 2 h, poniżej 80%. Inaczej powód z wyjścia (np. „Weekly · all models
+    82%”, „stan limitów nieczytelny”);
+  - warunki startu `/sweep` (krok 1 skilla: Docker, `gh`, spec epiku na `origin/main`, wolne porty od 19100, brak
+    przebiegu tego commitu i epiku). Odmowa `/sweep` to powód pominięcia.
+- **Wynik.** `/sweep` wysyła swój push „Przegląd po merge'u <sha7><-epik>: N propozycji” i zostawia skrót w rozmowie
+  z ID epiku. Gdy czeka triage kilku przeglądów, odpowiedź wskazuje epik („CART: załóż 1”); odpowiedź bez epiku przy
+  kilku otwartych triage sesja dopytuje.
+  Błąd stosu kończy ten przegląd jak w `/sweep` (sprzątanie, push), kolejka idzie dalej. Bez odpowiedzi użytkownika
+  sesja niczego nie zakłada.
+- **Pomiar.** Przed startem i po końcu przeglądu sesja wywołuje `get_usage`. Czas i przyrost procentu każdego okna
+  (bez okien odnowionych w trakcie) trafiają do nowej sekcji `## Zużycie` raportu przeglądu (`report.md`, poza repo) i do
+  skrótu w rozmowie. Przeglądy nie wchodzą do `measurements.jsonl` ani do szacunków nocy.
+
+`night_queue.py room --hours <h>` (Python 3.9+, bez zależności, kod w `night_queue.py`): stdin to obiekt `plan`
+z `get_usage`. Wypisuje jedną linię JSON `{"ok": true}` albo `{"ok": false, "reason": "..."}`, kod 0. Kod 1 przy
+braku albo złej wartości `--hours` (liczba godzin od 0 do roku). Reguła okna jak w `next` (sekcja „Noc”): okno z `resetsAt` w ciągu `h` godzin nie blokuje.
 
 ## Noc
 
@@ -208,8 +258,9 @@ przestaje obowiązywać (następna noc to nowa lista). Epik nocy, który kończy
 też kończy noc: następny nie rusza. Sesja zapisuje koniec nocy przez `night_queue.py close`, a `next` zapisuje go sam,
 gdy zwraca `null`, więc późniejszy `next` odmawia.
 
-Rano użytkownik odbiera każdy epik osobno (punkt 5 i 6). Punkt 7 („Następny epik”) sesja wykonuje dopiero wtedy,
-gdy końcowy PR każdego epiku nocy jest zamknięty albo zmergowany.
+Rano użytkownik odbiera każdy epik osobno (punkt 5 i 6). Każdy merge dopisuje epik do kolejki przeglądów, więc
+przegląd pierwszego zmergowanego epiku może działać, gdy użytkownik odbiera następny. Punkt 7 („Następny epik”) sesja
+wykonuje dopiero wtedy, gdy końcowy PR każdego epiku nocy jest zamknięty albo zmergowany.
 
 ### Dla `/prepare-epic`
 
@@ -232,7 +283,8 @@ gdy końcowy PR każdego epiku nocy jest zamknięty albo zmergowany.
 ## Czego skill nie robi
 
 Nie zmienia kodu ani konfiguracji AO, nie merguje do `main` (jedyny merge to PR `sync/<epik>-main` do `epic/<epik>`
-merge commitem, po zgodzie użytkownika), nie odpowiada na blokery sam, nie uruchamia kilku epików
+merge commitem, po zgodzie użytkownika), nie zakłada issues z przeglądu bez triage użytkownika, nie uruchamia
+przeglądu równolegle z epikiem, nie odpowiada na blokery sam, nie uruchamia kilku epików
 naraz (epiki nocy idą jeden po drugim), nie zaczyna epiku bez „tak” użytkownika (na pytanie „Zacząć epik?” albo na
 listę nocy), nie przygotowuje epiku (`/prepare-epic`) i nie zmienia tablicy.
 
@@ -255,11 +307,17 @@ w toku, zależność od otwartego epiku, wspólny zakres, epik bez zakresu tylko
 limit czasu z pomiarem i bez; `approve`: zgodna i niezgodna lista; `start` i `done`: liczba zadań, czas, okno
 odnowione w trakcie, stan limitów inny niż `ok`, `done` bez `start`; `next`: brak listy, poprzedni epik bez `done`,
 epik już nie przygotowany albo w toku, brak pomiaru, przekroczone `until`, okno powyżej 80%, okno bez pomiaru, okno
-odnawiane przed końcem; `close`: ustawienie końca nocy, drugie wywołanie bez zmiany, brak listy, odmowa `next` po
+odnawiane przed końcem; `room`: brak okien, okno poniżej i od 80%, okno odnawiane w ciągu podanych godzin,
+stan limitów inny niż `ok`, pusty i niepoprawny JSON, zły argument → kod 1; `close`: ustawienie końca nocy, drugie wywołanie bez zmiany, brak listy, odmowa `next` po
 `close`, zapis końca przez `next` zwracające `null`, nowa noc po `approve`; `ahead` z pomiarem i bez; błąd `gh` albo `git` → kod 1). CI uruchamia testy skilli tak jak dla
 `delivery` i `integration`. Sam przebieg sprawdza krok 7 planu (CART-FIXES), a nocną kolejkę pierwsza noc po kroku 8.
 
 ## Zmiana w planie
+
+Krok 12 (w PR implementacji przeglądu po merge'u): status kroku 12, punkt 6 procesu i stan roli „Tester całego
+sklepu” bez „uruchamiany ręcznie”; `CLAUDE.md` (sekcja o `/sweep`: uruchamia go `/ao-run` po merge'u, ręcznie dalej
+można); ADR (`docs/adr/agentic-software-house.md`): `/sweep` uruchamiany przez `/ao-run` w tabeli komponentów.
+Sprawdzenie: pierwszy merge epiku po wdrożeniu (kryteria w `docs/features/agent-tester-ux/spec.md`).
 
 `docs/features/agentic-software-house/plan.md`: krok 5 wskazuje `/ao-run`, kolejka epików jest w punkcie 7
 przebiegu, status kroku 5 i rola „Kolejka epików” bez „do zrobienia”, sprawdzenie w kroku 7. Odbiór (punkt 5 procesu) to przeczytanie
