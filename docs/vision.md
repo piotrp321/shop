@@ -240,7 +240,7 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 **Obserwowalność**
 - Logi strukturalne (JSON) z Monologa.
 - Correlation ID nadawany na wejściu (HTTP) i przekazywany przez RabbitMQ do konsumentów,
-  więc jedno zamówienie da się prześledzić przez wszystkie procesy.
+  więc jedno żądanie da się prześledzić przez wszystkie procesy, które uruchomiło.
 - Health checki dla API i wszystkich usług w docker-compose.
 - Profilowanie PHP lokalnie przez SPX (php-spx): rozszerzenie tylko w obrazie deweloperskim API,
   włączane na żądanie, z podglądem flame graph w przeglądarce. W środowisku demo wydajność śledzimy

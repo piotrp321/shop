@@ -734,7 +734,30 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   i czyta liczbę aktywnych użyć pod blokadą. Odpowiedzi to `GetDiscountCode` odczytane po zapisie, `private, no-store`.
 - Adresy obrazów: jeden serwis buduje podpisane (HMAC) adresy imgproxy dla zamkniętej listy rozmiarów.
   Odpowiedzi API zwracają gotowe adresy, fronty niczego nie podpisują.
-- Logi przez Monolog w JSON. Correlation ID z nagłówka HTTP przekazywany w stemplu Messengera do konsumentów.
+- Logi przez Monolog w JSON. Correlation ID (`docs/features/hardening/spec.md`, D9; `Shared\Infrastructure\Observability`):
+  - `CorrelationId` trzyma bieżący identyfikator procesu i implementuje `ResetInterface` (`kernel.reset`), więc worker
+    FrankenPHP ani `messenger:consume` nie przenoszą go między żądaniami i wiadomościami.
+  - Nadaje go `CorrelationIdSubscriber`: `kernel.request` (priorytet 256, przed firewallem i limiterem) dla głównego
+    żądania tworzy nowy UUIDv7 i ignoruje nagłówek `X-Correlation-ID` z żądania, `kernel.response` ustawia ten nagłówek
+    na każdej odpowiedzi (także 4xx, 429 i błędach), a `ConsoleEvents::COMMAND` daje komendzie jeden identyfikator na
+    uruchomienie, poza `messenger:consume`. Jedno wejście HTTP to jeden identyfikator.
+  - Wiadomość niesie `CorrelationIdStamp` (`final readonly`, jedno pole `id`; przechodzi przez serializer PHP
+    transportów Doctrine i przez Symfony Serializer w nagłówkach AMQP transportu `events`). `CorrelationIdMiddleware`
+    stoi pierwszy wśród naszych middleware na `command.bus`, `query.bus` i `event.bus`: wysyłka bez stempla dodaje
+    stempel z bieżącym identyfikatorem (brak: nowy), obsługa wiadomości odebranej z transportu (`ReceivedStamp`) ustawia
+    identyfikator ze stempla na czas obsługi (bez stempla: nowy) i przywraca poprzedni także przy wyjątku. Przekaźnik
+    outboxa wysyła samo zdarzenie, więc zdarzenie w RabbitMQ dostaje identyfikator wiadomości outboxa. Komunikat
+    wysłany z `DispatchAfterCurrentBusStamp` dostałby stempel dopiero po obsłudze bieżącej wiadomości (middleware stoi
+    za domyślnymi); nikt go dziś nie używa.
+  - `CorrelationIdProcessor` (`#[AsMonologProcessor]`) dopisuje `extra.correlation_id` do każdego wpisu, gdy
+    identyfikator jest ustawiony. W `prod` Monolog zapisuje bufor żądania tylko przy błędzie (`fingers_crossed`), więc
+    identyfikator łączy wpisy błędów, a nie udanych żądań.
+  - Varnish usuwa `X-Correlation-ID` z odpowiedzi zapisywanej w cache (`vcl_backend_response`, tylko gdy odpowiedź
+    jest cache'owalna), więc trafienie nie zwraca cudzego identyfikatora (pierwsza odpowiedź zapisana w cache też go nie
+    ma); odpowiedź `pass` zachowuje własny identyfikator. Test: `infra/varnish/tests/correlation_id.vtc`.
+  - Testy: jednostkowe `tests/Unit/Shared/Observability`, funkcjonalny nagłówek
+    `tests/Functional/Shared/CorrelationIdTest.php`, integracyjny przez outbox, RabbitMQ i konsumenta
+    `EventFlowTest` (kernel `test_messaging`).
 - Transport Messengera `scheduled` (Doctrine,
   `doctrine://default?queue_name=scheduled&auto_setup=false&redeliver_timeout=300`, `use_notify: false`, ta sama tabela `messenger_messages` i to samo połączenie co `outbox`) trzyma komendy opóźnione
   `DelayStamp` (`available_at`, z dokładnością do sekundy, porównywane z czasem systemowym): dziś `ExpireUnpaidOrder`.
