@@ -752,9 +752,11 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   - `CorrelationIdProcessor` (`#[AsMonologProcessor]`) dopisuje `extra.correlation_id` do każdego wpisu, gdy
     identyfikator jest ustawiony. W `prod` Monolog zapisuje bufor żądania tylko przy błędzie (`fingers_crossed`), więc
     identyfikator łączy wpisy błędów, a nie udanych żądań.
-  - Varnish usuwa `X-Correlation-ID` z odpowiedzi zapisywanej w cache (`vcl_backend_response`, tylko gdy odpowiedź
-    jest cache'owalna), więc trafienie nie zwraca cudzego identyfikatora (pierwsza odpowiedź zapisana w cache też go nie
-    ma); odpowiedź `pass` zachowuje własny identyfikator. Test: `infra/varnish/tests/correlation_id.vtc`.
+  - Varnish usuwa `X-Correlation-ID` z odpowiedzi zapisywanej w cache (`vcl_backend_response` najpierw wywołuje
+    wbudowane reguły, a usuwa nagłówek dopiero po nich), więc trafienie nie zwraca cudzego identyfikatora (pierwsza
+    odpowiedź zapisana w cache też go nie ma). Odpowiedź, której wbudowany VCL nie zapisuje (`pass`, a na ścieżkach
+    katalogu hit-for-miss: `private`/`no-store`/`no-cache`, `Set-Cookie`, ttl ≤ 0, `Vary: *`, np. 503), zachowuje własny
+    identyfikator. Test: `infra/varnish/tests/correlation_id.vtc`.
   - Testy: jednostkowe `tests/Unit/Shared/Observability`, funkcjonalny nagłówek
     `tests/Functional/Shared/CorrelationIdTest.php`, integracyjny przez outbox, RabbitMQ i konsumenta
     `EventFlowTest` (kernel `test_messaging`).
