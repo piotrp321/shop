@@ -99,11 +99,16 @@ browser_dom() {
 }
 # browser_console <proxy> <url>: loads the page like browser_dom and prints its console messages, one per line, with the
 # prefix of Chromium (`[pid:tid:time:INFO:CONSOLE:line] "message", source: url`): errors, warnings and the violations of
-# the Content Security Policy ("Refused to ..." and "Executing inline script violates ...").
+# the Content Security Policy ("Refused to ..." and "Executing inline script violates ..."). No messages is success with
+# no output; a failure of docker or of Chromium is its non-zero status (the end of the Chromium log goes to stderr).
 browser_console() {
   # shellcheck disable=SC2016 # expanded by the shell of the container
   docker run --rm --network "$KUBE_NETWORK" "$PLAYWRIGHT_IMAGE" sh -c '
     chrome="$(ls /ms-playwright/chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell | head -n 1)"
+    log="$(mktemp)"
     "$chrome" --no-sandbox --disable-gpu --proxy-server="$1" --proxy-bypass-list="<-loopback>" --enable-logging=stderr --v=0 \
-      --virtual-time-budget=30000 --dump-dom "$2" 2>&1 >/dev/null | grep ":CONSOLE" || true' browser "$@"
+      --virtual-time-budget=30000 --dump-dom "$2" 2>"$log" >/dev/null
+    status=$?
+    if [ "$status" -ne 0 ]; then tail -n 5 "$log" >&2; exit "$status"; fi
+    grep ":CONSOLE" "$log" || true' browser "$@"
 }

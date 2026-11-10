@@ -397,7 +397,10 @@ check_admin_in_browser() {
     sleep 5
   done
   echo "ok: the panel in the browser redirects to the login page of Keycloak"
-  messages="$(browser_console "http://$node:$port" "http://admin.localhost/" || true)"
+  messages="$(browser_console "http://$node:$port" "http://admin.localhost/")" || {
+    echo "smoke: the browser failed to load the panel for the console check" >&2
+    return 1
+  }
   if printf '%s\n' "$messages" | grep -qiE 'content[ -]security[ -]policy|violates|refused to'; then
     echo "smoke: the panel in the browser reports a Content Security Policy violation:" >&2
     printf '%s\n' "$messages" >&2
