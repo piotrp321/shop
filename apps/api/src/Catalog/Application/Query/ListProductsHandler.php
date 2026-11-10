@@ -33,16 +33,19 @@ final readonly class ListProductsHandler
      */
     public function __invoke(ListProducts $query): ProductPage
     {
-        if (null !== $query->categoryId) {
+        // The canonical (lower case) form is the only one used below: the tree and the index hold ids that way.
+        $category = null === $query->categoryId ? null : CategoryId::fromString($query->categoryId);
+        $categoryId = $category?->toString();
+        if (null !== $category) {
             // The database decides whether the category exists; the search index is only a read model.
-            $this->categories->get(CategoryId::fromString($query->categoryId));
+            $this->categories->get($category);
         }
-        $facetCategories = $this->facetCategories($query->categoryId);
+        $facetCategories = $this->facetCategories($categoryId);
 
         $result = $this->search->search(new ProductSearchCriteria(
             $query->page,
             $query->perPage,
-            $query->categoryId,
+            $categoryId,
             $query->phrase,
             $query->options,
             $query->priceMin,

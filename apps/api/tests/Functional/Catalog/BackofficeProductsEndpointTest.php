@@ -160,6 +160,18 @@ final class BackofficeProductsEndpointTest extends WebTestCase
         self::assertSame(['Bidon obcy'], array_column(self::list($byBoth['items']), 'name'));
     }
 
+    public function testTheListFiltersByCategoryGivenInUpperCase(): void
+    {
+        $other = CategoryFactory::createOne();
+        new \App\Catalog\Infrastructure\Persistence\Doctrine\DoctrineCategoryRepository($this->entityManager)->save($other);
+        $this->createProduct(['name' => 'Bidon 1', 'slug' => 'bidon-1']);
+        $this->createProduct(['name' => 'Bidon obcy', 'slug' => 'bidon-obcy', 'mainCategoryId' => $other->id()->toString()]);
+
+        $upper = $this->api('GET', '/api/v1/admin/products?category='.strtoupper($other->id()->toString()));
+
+        self::assertSame(['Bidon obcy'], array_column(self::list($upper['items']), 'name'));
+    }
+
     /**
      * @return iterable<string, array{string}>
      */
