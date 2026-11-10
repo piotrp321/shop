@@ -130,10 +130,16 @@ innego nie pomija retro trwale (brak przebiegu AO w katalogu `ao-<epik>` to odmo
 
 **3. Odroczenie:** `python3 "$R" defer <epik> --reason "<powód>" --repo "$SHOP"` (powód do 200 znaków: próba i
 powód zapisują się w state.json, epik zostaje w `pending`) i push „Retro `<epik>` odroczone: <powód>”. Powody:
-- zasilanie: `pmset -g batt` nie zawiera `'AC Power'` (powód „bateria”; błąd `pmset` też jest powodem);
-- limit: wywołaj `mcp__ccd_session_mgmt__get_usage` i wklej obiekt `plan` dosłownie:
+- limit (zasilania nie sprawdzasz): wywołaj `mcp__ccd_session_mgmt__get_usage` i wklej obiekt `plan` dosłownie.
+  Próg zależy od wejścia: z `/ao-run` (kolejka przeglądów, jedne zasady z `/sweep`) 95%, przy przebiegu ręcznym
+  (`/retro` wywołane przez użytkownika) 80%, czyli domyślny próg `room`:
 
   ```bash
+  # z /ao-run
+  python3 "$NQ" room --hours 2 --max-percent 95 <<'USAGE'
+  <obiekt plan z get_usage>
+  USAGE
+  # przebieg ręczny
   python3 "$NQ" room --hours 2 <<'USAGE'
   <obiekt plan z get_usage>
   USAGE

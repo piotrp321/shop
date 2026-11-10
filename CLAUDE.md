@@ -293,7 +293,8 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   z przebiegów AO, agent `retro-analyst` szuka ich przyczyn w instrukcjach procesu. Wynik to PR do `main` z poprawkami
   procesu i sekcją „Status” planu Agentic Software House, który merguje użytkownik (PR powstaje tylko przy
   poprawkach albo zmianie „Statusu”, inaczej wynik to „bez zmian”); issues i komentarze powstają dopiero po „tak”
-  użytkownika.
+  użytkownika. Zasilania nie sprawdza; z kolejki odracza przy oknie limitu ≥ 95%, ręcznie przy ≥ 80%, a odroczone
+  zostaje w `pending`.
 - `/groom` (codziennie o 8:00 z zadania zaplanowanego w aplikacji Claude albo ręcznie): agent `backlog-groomer`
   proponuje duplikaty, nieaktualne zgłoszenia, braki, etykiety i jeden epik poprawek (`-FIXES`), a `groom.py` sprawdza
   listę i wykonuje w GitHubie tylko pozycje zatwierdzone przez użytkownika w rozmowie. Zatwierdzony epik poprawek ta

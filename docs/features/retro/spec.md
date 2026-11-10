@@ -87,9 +87,9 @@ Zakres: .claude/skills/retro, .claude/agents/retro-analyst.md, .claude/skills/ao
      („pomiń retro X: <powód>”). Nic innego nie pomija retro trwale.
   3. Odroczenie (`retro.py defer <epik> --reason …`: próba i powód w `state.json`, push „Retro `<epik>` odroczone:
      <powód>”, do 200 znaków; epik zostaje w `pending`):
-     - zasilanie sieciowe (`pmset -g batt` z `'AC Power'`; błąd `pmset` też jest powodem);
-     - limit: `night_queue.py room --hours 2` (stdin: obiekt `plan` z `get_usage`) zwraca `ok`; brak narzędzia
-       `get_usage` to powód „brak stanu limitów”;
+     - limit (zasilania nie sprawdza): `night_queue.py room --hours 2` (stdin: obiekt `plan` z `get_usage`) zwraca
+       `ok`; brak narzędzia `get_usage` to powód „brak stanu limitów”. Próg zależy od wejścia: z kolejki `/ao-run`
+       `--max-percent 95`, jak dla przeglądu po merge'u, przy przebiegu ręcznym 80% (domyślny próg `room`);
      - przebieg ręczny: nie działa żaden proces AO, `pgrep -f -- '-m orchestrator --home [^ ]+ run( |$)'` nic nie
        zwraca (wzorzec trafia w `python3 -m orchestrator --home … run` i jego wrappery, a nie w monitory `watch`
        sesji `/ao-run`);
@@ -335,7 +335,7 @@ Klucze i ID w przykładzie są ilustracją.
    - `ao_events.waits()`: okna jak w dotychczasowych testach `summary`, `summary` bez zmiany wyniku.
 
    CI uruchamia testy `retro` nową linią w `ci.yml`.
-2. Warunki startu na ścieżce błędu: bateria, limit ≥ 80% i działający AO przy przebiegu ręcznym odraczają (epik
+2. Warunki startu na ścieżce błędu: limit (≥ 95% z `/ao-run`, ≥ 80% ręcznie) i działający AO przy przebiegu ręcznym odraczają (epik
    w `pending`); wzorzec `pgrep` sprawdzony na prawdziwym procesie `ao run` i monitorze `watch`; PR `CLOSED` pomija
    trwale z przyczyną; PR `OPEN` i zły argument odmawiają bez zapisu; cudza blokada odracza. Żadna ścieżka nie
    zmienia niczego w GitHubie. Pokazane.

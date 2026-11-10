@@ -214,7 +214,7 @@ flowchart TB
      incydentu.
 
    Retro do zrobienia to lista wyliczana z danych (`retro.py pending`: zmergowane epiki bez stanu `done` albo
-   `skipped`), więc odroczone (bateria, limit, brak `gh`) wraca przy następnym merge'u, po końcu procesu AO i na
+   `skipped`), więc odroczone (limit, brak `gh`) wraca przy następnym merge'u, po końcu procesu AO i na
    starcie `/ao-run`. Opis: `docs/features/retro/spec.md`.
 
 ## Kroki wdrożenia

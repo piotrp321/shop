@@ -392,11 +392,12 @@ przegląd nie pomija retro: retro ma własne warunki startu (niżej).
      obiekt `plan` i czas (`date -Iseconds`) jako stan na starcie przeglądu.
   2. Warunki startu `/sweep` (krok 1 jego skilla). Jego odmowa to powód pominięcia.
 - **Retro.** Przeczytaj `.claude/skills/retro/SKILL.md` i wykonaj go od „Warunków przed startem” z argumentem
-  `<epik>`, z jego blokiem startowym (`RETRO_RUN_ID` raz na przebieg). Jego warunki zastępują powyższe trzy: bateria,
-  limit, `gh`, `git` i cudza blokada odraczają przez `retro.py defer` (push „Retro `<epik>` odroczone: <powód>”, epik
-  zostaje w `pending`); odmowę bez zapisu i trwałe pominięcie `retro.py skip` rozróżnia jego „Warunki przed startem”
-  (punkty 1 i 2: np. brak katalogu `ao-<epik>` albo epik w toku to odmowa, baza bez wiersza epiku albo końcowy PR
-  `CLOSED` to `skip`), a po odmowie pozycja wypada z kolejki. Proces AO tej sesji nie działa (zasada „jeden naraz”), więc kontrola `pgrep` z tego skilla nie dotyczy.
+  `<epik>`, z jego blokiem startowym (`RETRO_RUN_ID` raz na przebieg). Jego warunki zastępują powyższe dwa, bez
+  sprawdzania zasilania: limit (z tej kolejki `room --hours 2 --max-percent 95`, jak dla przeglądu), `gh`, `git`
+  i cudza blokada odraczają przez `retro.py defer` (push „Retro `<epik>` odroczone: <powód>”, epik zostaje w
+  `pending`); odmowę bez zapisu i trwałe pominięcie `retro.py skip` rozróżnia jego „Warunki przed startem”
+  (punkty 1 i 2: brak katalogu `ao-<epik>`, brak wiersza epiku w bazie albo epik w toku to odmowa, a `skip` to tylko
+  końcowy PR `CLOSED` i decyzja użytkownika), a po odmowie pozycja wypada z kolejki. Proces AO tej sesji nie działa (zasada „jeden naraz”), więc kontrola `pgrep` z tego skilla nie dotyczy.
   Zużycie mierzy sam `/retro` (`## Zużycie` jego raportu); retro nie wchodzi do `night_queue.py` (`start`, `done`).
   Decyzje użytkownika po retro (krok 7 jego skilla) przyjmujesz w tej rozmowie, bez blokowania kolejki.
 - **Przebieg przeglądu.** Przeczytaj `.claude/skills/sweep/SKILL.md` i wykonaj jego kroki 1–6 z argumentem `<epik>` (bez

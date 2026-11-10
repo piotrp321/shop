@@ -182,7 +182,7 @@ siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
   przebiegu bez argumentu po pushu z punktu 7, z `--noc` po pokazaniu listy, przed `approve`), po końcu przeglądu
   albo retro (wynik, pominięcie, odroczenie, odmowa) i po końcu procesu AO tej sesji (także gdy epik nocy kończy noc). Gdy nic nie trwa, zaczyna
   pierwszą pozycję z kolejki; przy pustej kolejce zaczyna epik czekający na nią.
-- **Ponowienie odroczonych retro.** Retro odroczone (`retro.py defer`: zasilanie, limit, `gh`, `git`, cudza
+- **Ponowienie odroczonych retro.** Retro odroczone (`retro.py defer`: limit, `gh`, `git`, cudza
   blokada) wraca z `retro.py pending`, listy wyliczanej z danych, a nie z kolejki. Sesja wykonuje `pending` przy
   kolejnym merge'u epiku (po dopisaniu jego pozycji), po końcu procesu AO tej sesji i na starcie każdego przebiegu
   `/ao-run` (także w nowej sesji) i dopisuje na koniec kolejki jako `/retro <epik>` każdy epik z listy, którego nie
@@ -205,11 +205,12 @@ siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
   Błąd stosu kończy ten przegląd jak w `/sweep` (sprzątanie, push), kolejka idzie dalej. Bez odpowiedzi użytkownika
   sesja niczego nie zakłada.
 - **Retro.** Sesja czyta `.claude/skills/retro/SKILL.md` i wykonuje go od „Warunków przed startem” z argumentem
-  `<epik>`. Jego warunki zastępują trzy powyższe: bateria, limit, `gh`, `git` i cudza blokada odraczają przez
-  `retro.py defer` (push „Retro `<epik>` odroczone: <powód>”), odmowę bez zapisu i trwałe
-  pominięcie `retro.py skip` rozróżniają „Warunki przed startem” `/retro` (punkty 1 i 2: np. brak katalogu `ao-<epik>`
-  albo epik w toku to odmowa, baza bez wiersza epiku albo końcowy PR `CLOSED` to `skip`), a po odmowie pozycja wypada
-  z kolejki. Kontrola procesu AO (`pgrep`) pomijana, bo sesja pilnuje go sama.
+  `<epik>`. Jego warunki zastępują dwa powyższe, bez sprawdzania zasilania: limit (z kolejki
+  `room --hours 2 --max-percent 95`, jak dla przeglądu), `gh`, `git` i cudza blokada odraczają przez
+  `retro.py defer` (push „Retro `<epik>` odroczone: <powód>”, epik zostaje w `pending`), odmowę bez zapisu i trwałe
+  pominięcie `retro.py skip` rozróżniają „Warunki przed startem” `/retro` (punkty 1 i 2: brak katalogu `ao-<epik>`,
+  brak wiersza epiku w bazie albo epik w toku to odmowa, a `skip` to tylko końcowy PR `CLOSED` i decyzja użytkownika),
+  a po odmowie pozycja wypada z kolejki. Kontrola procesu AO (`pgrep`) pomijana, bo sesja pilnuje go sama.
   Zużycie (`## Zużycie` raportu retro) mierzy `/retro`. Decyzje użytkownika po retro (issues, poprawki w PR) sesja
   przyjmuje w rozmowie, bez blokowania kolejki; PR retro merguje użytkownik.
 - **Pomiar przeglądu.** Przed startem i po końcu przeglądu sesja wywołuje `get_usage`. Czas i przyrost procentu każdego okna
