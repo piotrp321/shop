@@ -502,6 +502,9 @@ class ManualFixTest(unittest.TestCase):
         (incidents, facts), _ = self.incidents('- Ręczne poprawki: 1 (merge main po #239 i nowy PR #255, bo ruleset)\n')
         self.assertEqual([i['key'] for i in incidents], ['other'])
         self.assertIn('#255', incidents[0]['facts'][0]['text'])
+        self.assertIn('niezgodna liczba', facts[0]['text'])
+        self.assertNotIn('opisuje 1', facts[0]['text'])   # not "1, a opisuje 1"
+        self.assertIn('numerów PR', facts[0]['text'])
         self.assertEqual([f['id'] for f in facts], ['e/mismatch/manual_fix'])
 
     def test_a_following_measurement_line_is_not_a_manual_fix(self):

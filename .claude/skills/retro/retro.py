@@ -496,9 +496,11 @@ def manual_incidents(epic_id, measurement):
     else:
         mismatch = count != listed
     if mismatch:
+        what = ('wymienia więcej numerów PR niż poprawek' if measurement.get('ambiguous')
+                else 'opisuje %d' % listed)
         facts.append({'id': '%s/mismatch/manual_fix' % epic_id,
-                      'text': 'niezgodna liczba: komentarz z pomiarem podaje %d ręcznych poprawek, a opisuje %d'
-                              % (count, listed)})
+                      'text': 'niezgodna liczba: komentarz z pomiarem podaje %d ręcznych poprawek, a %s'
+                              % (count, what)})
     return incidents, facts
 
 
