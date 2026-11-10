@@ -1,0 +1,71 @@
+varnishtest "X-Correlation-ID is not stored in the cache; a response that is not cached keeps it"
+
+server s1 -listen 127.0.0.1:80 {
+	rxreq
+	expect req.url == "/api/v1/products"
+	txresp -hdr "Cache-Control: max-age=60, public" -hdr "X-Correlation-ID: 0198a1f0-0000-7000-8000-0000000000a1" -body "cached"
+
+	rxreq
+	expect req.url == "/api/v1/guest-carts/0192f0c4-7c1a-7c4e-9a6e-000000000001"
+	txresp -hdr "Cache-Control: private, no-store" -hdr "X-Correlation-ID: 0198a1f0-0000-7000-8000-0000000000b2" -body "passed"
+
+	rxreq
+	expect req.url == "/api/v1/guest-carts/0192f0c4-7c1a-7c4e-9a6e-000000000001"
+	txresp -hdr "Cache-Control: private, no-store" -hdr "X-Correlation-ID: 0198a1f0-0000-7000-8000-0000000000b3" -body "passed again"
+
+	# A catalog path, but the built-in VCL does not cache the response (private, no-store: hit-for-miss).
+	rxreq
+	expect req.url == "/api/v1/products/unavailable"
+	txresp -status 503 -hdr "Cache-Control: private, no-store" -hdr "X-Correlation-ID: 0198a1f0-0000-7000-8000-0000000000c4" -body "down"
+
+	rxreq
+	expect req.url == "/api/v1/products/unavailable"
+	txresp -status 503 -hdr "Cache-Control: private, no-store" -hdr "X-Correlation-ID: 0198a1f0-0000-7000-8000-0000000000c5" -body "down again"
+} -start
+
+setenv VARNISH_PURGE_SECRET "s3cret"
+varnish v1 -arg "-t 0" -cliok "vcl.load main /etc/varnish/default.vcl" -cliok "vcl.use main" -start
+
+client c1 {
+	# The response that is stored (the first one, fetched from the API, too) has no identifier: a hit must not
+	# hand out the one of the request that filled the cache.
+	txreq -url "/api/v1/products"
+	rxresp
+	expect resp.body == "cached"
+	expect resp.http.X-Cache == "MISS"
+	expect resp.http.X-Correlation-ID == <undef>
+
+	txreq -url "/api/v1/products"
+	rxresp
+	expect resp.body == "cached"
+	expect resp.http.X-Cache == "HIT"
+	expect resp.http.X-Correlation-ID == <undef>
+
+	# A response that goes straight to the client keeps the identifier of its own request.
+	txreq -url "/api/v1/guest-carts/0192f0c4-7c1a-7c4e-9a6e-000000000001"
+	rxresp
+	expect resp.body == "passed"
+	expect resp.http.X-Correlation-ID == "0198a1f0-0000-7000-8000-0000000000b2"
+
+	txreq -url "/api/v1/guest-carts/0192f0c4-7c1a-7c4e-9a6e-000000000001"
+	rxresp
+	expect resp.body == "passed again"
+	expect resp.http.X-Correlation-ID == "0198a1f0-0000-7000-8000-0000000000b3"
+
+	# A response of a catalog path that is not stored (hit-for-miss) also keeps the identifier of its own request, and
+	# the next request goes to the API.
+	txreq -url "/api/v1/products/unavailable"
+	rxresp
+	expect resp.status == 503
+	expect resp.body == "down"
+	expect resp.http.X-Correlation-ID == "0198a1f0-0000-7000-8000-0000000000c4"
+
+	txreq -url "/api/v1/products/unavailable"
+	rxresp
+	expect resp.status == 503
+	expect resp.body == "down again"
+	expect resp.http.X-Correlation-ID == "0198a1f0-0000-7000-8000-0000000000c5"
+} -run
+
+varnish v1 -expect cache_hit == 1
+varnish v1 -expect backend_req == 5

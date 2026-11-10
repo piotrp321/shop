@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LOGIN_COOKIE, readSignedValue } from "@/auth/cookies";
 import { getAuthDeps } from "@/auth/deps";
-import { testConfig, testDeps } from "@/auth/test-support";
+import { memoryLoginRateLimiter, testConfig, testDeps } from "@/auth/test-support";
 import { GET } from "./route";
 
 vi.mock("@/auth/deps", () => ({ getAuthDeps: vi.fn() }));
@@ -14,7 +14,8 @@ beforeEach(() => {
   vi.mocked(getAuthDeps).mockResolvedValue(setup.deps);
 });
 
-const login = (query = "") => GET(new NextRequest(`http://0.0.0.0:3000/auth/login${query}`));
+const login = (query = "", headers: Record<string, string> = {}) =>
+  GET(new NextRequest(`http://0.0.0.0:3000/auth/login${query}`, { headers }));
 
 describe("GET /auth/login", () => {
   it("redirects to the Keycloak authorization endpoint at its public URL with PKCE S256, state and nonce", async () => {
@@ -92,5 +93,101 @@ describe("GET /auth/login", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(setup.transactions.size).toBe(0);
+  });
+
+  describe("rate limit", () => {
+    const LIMIT = 3;
+    const message = "Zbyt wiele prób logowania. Spróbuj ponownie za kilka minut.";
+
+    beforeEach(() => {
+      setup.deps.config = { ...testConfig, loginRateLimit: LIMIT };
+      setup.deps.loginRateLimiter = memoryLoginRateLimiter(437).limiter;
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    const exhaust = async (headers: Record<string, string> = {}) => {
+      for (let i = 0; i < LIMIT; i++) {
+        expect((await login("", headers)).status).toBe(303);
+      }
+    };
+
+    it("lets exactly the limit of logins through and answers the next one with 429", async () => {
+      await exhaust();
+      const response = await login();
+
+      expect(response.status).toBe(429);
+      expect(response.headers.get("retry-after")).toBe("437");
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+      expect(await response.text()).toBe(message);
+    });
+
+    it("saves no login state and sets no cookie when the limit is exceeded", async () => {
+      await exhaust();
+      const created = setup.transactions.size;
+      const response = await login("?returnTo=%2Fkonto");
+
+      expect(response.status).toBe(429);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(response.headers.get("location")).toBeNull();
+      expect(setup.transactions.size).toBe(created);
+      expect(setup.deps.oidc).toHaveBeenCalledTimes(LIMIT);
+    });
+
+    it("counts by the address in CLIENT_IP_HEADER, each address on its own", async () => {
+      vi.stubEnv("CLIENT_IP_HEADER", "CF-Connecting-IP");
+      await exhaust({ "CF-Connecting-IP": "203.0.113.7" });
+
+      expect((await login("", { "CF-Connecting-IP": "203.0.113.7" })).status).toBe(429);
+      expect((await login("", { "CF-Connecting-IP": "203.0.113.8" })).status).toBe(303);
+    });
+
+    it("counts an IPv6 address by its /64 prefix", async () => {
+      vi.stubEnv("CLIENT_IP_HEADER", "CF-Connecting-IP");
+      await exhaust({ "CF-Connecting-IP": "2001:db8:1:2:aaaa::1" });
+
+      expect((await login("", { "CF-Connecting-IP": "2001:db8:1:2:bbbb::2" })).status).toBe(429);
+      expect((await login("", { "CF-Connecting-IP": "2001:db8:1:3::1" })).status).toBe(303);
+    });
+
+    it("shares one key when CLIENT_IP_HEADER is not set, whatever the headers say", async () => {
+      await exhaust({ "CF-Connecting-IP": "203.0.113.7" });
+
+      expect((await login("", { "CF-Connecting-IP": "203.0.113.8" })).status).toBe(429);
+      expect((await login()).status).toBe(429);
+    });
+
+    it("shares one key when the header is missing", async () => {
+      vi.stubEnv("CLIENT_IP_HEADER", "CF-Connecting-IP");
+      await exhaust();
+
+      expect((await login()).status).toBe(429);
+    });
+
+    it.each([["203.0.113.7, 198.51.100.1"], ["not-an-ip"], ["203.0.113.7:443"]])(
+      "does not trust the invalid address %s: it shares the key of requests without one",
+      async (value) => {
+        vi.stubEnv("CLIENT_IP_HEADER", "CF-Connecting-IP");
+        await exhaust();
+
+        expect((await login("", { "CF-Connecting-IP": value })).status).toBe(429);
+      },
+    );
+
+    it("answers 503 without a transaction when the counter fails, like for any other Redis failure", async () => {
+      setup.deps.loginRateLimiter = {
+        hit: vi.fn().mockRejectedValue(new Error("The client is closed")),
+      };
+      const response = await login();
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(setup.transactions.size).toBe(0);
+      expect(setup.deps.oidc).not.toHaveBeenCalled();
+    });
   });
 });

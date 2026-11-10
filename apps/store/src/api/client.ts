@@ -232,6 +232,8 @@ export type PlaceOrderResult =
   | { status: "conflict"; reason: OrderConflictReason; detail?: string }
   | { status: "not_found"; detail?: string }
   | { status: "unauthorized" }
+  /** 429: the rate limit of the order placement; nothing was placed, so a retry goes with the same key. */
+  | { status: "rate_limited" }
   | { status: "failed" };
 
 /**
@@ -270,6 +272,8 @@ export async function placeOrder(input: PlaceOrderInput, idempotencyKey: string)
         return { status: "conflict", reason: conflictReason(body?.type), detail };
       case 422:
         return { status: "invalid", detail, violations: Array.isArray(body?.violations) ? (body.violations as OrderViolation[]) : [] };
+      case 429:
+        return { status: "rate_limited" };
       default:
         return { status: "failed" };
     }
@@ -288,6 +292,8 @@ export type StartPaymentResult =
   | { status: "invalid"; detail?: string; violations: OrderViolation[] }
   | { status: "not_found"; detail?: string }
   | { status: "unauthorized" }
+  /** 429: the rate limit of the payment starts; nothing was started, so a retry goes with the same key. */
+  | { status: "rate_limited" }
   | { status: "failed" };
 
 /**
@@ -318,6 +324,8 @@ export async function startPayment(provider: string, idempotencyKey: string): Pr
         return { status: "conflict", reason: paymentConflictReason(body?.type), detail };
       case 422:
         return { status: "invalid", detail, violations: Array.isArray(body?.violations) ? (body.violations as OrderViolation[]) : [] };
+      case 429:
+        return { status: "rate_limited" };
       default:
         return { status: "failed" };
     }

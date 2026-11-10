@@ -194,16 +194,25 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   initContainery. Pozostałe pody i kontenery nie montują tokenu (`automountServiceAccountToken: false`). Deploymenty
   mają `progressDeadlineSeconds` nie krótszy niż czas oczekiwania Jobów (1500 s).
 - Middleware Traefika: `ipAllowList` (D6) na wszystkich ingressach; `X-Robots-Tag: noindex` na wszystkich hostach,
-  gdy `noindex: true`.
+  gdy `noindex: true`; `hsts` (`Strict-Transport-Security: max-age=31536000`, bez `includeSubDomains` i `preload`)
+  na wszystkich hostach, tylko gdy `ingress.tls` (`prod`; profil `ci` jest bez TLS i bez HSTS). Pozostałe nagłówki
+  bezpieczeństwa wysyłają aplikacje (`docs/features/hardening/spec.md`, D10).
+- `clientIpHeader` (domyślnie puste) trafia jako `CLIENT_IP_HEADER` do `api` i `store`: nagłówek z adresem klienta,
+  po którym liczą się limity API (`docs/features/hardening/spec.md`, D2 i D3). `prod` ma `CF-Connecting-IP`, który
+  Cloudflare zawsze nadpisuje, a `ipAllowList` nie wpuszcza nikogo poza Cloudflare na żaden host (także `api.`
+  i `auth.`). `clientIpHeader` przy `ipAllowList.enabled: false` kończy render błędem, chyba że profil potwierdza to
+  wartością `clientIpHeaderWithoutAllowList: true` (tylko pomiar na lokalnym klastrze); to potwierdzenie razem
+  z `image.requireDigests: true` (obrazy wydania) też kończy render błędem.
 - CronJob `cart:purge-expired` (co godzinę, `concurrencyPolicy: Forbid`, strefa `Europe/Warsaw`).
 - `rabbitmq-init` (vhost testów) nie istnieje.
 - Profile wartości:
   - `values.yaml` – wspólne; wymagane wartości walidowane schematem (`values.schema.json`), więc brak np. sekretu SMTP
     przy `orderMail: brevo` kończy render (i synchronizację Argo) błędem z nazwą wartości;
-  - `environments/prod/values.yaml` – domena, przełączniki D10, zasoby na serwer docelowy (8 vCore, 24 GB RAM): suma
-    requestów CPU do 7 vCPU (limity CPU mogą je przekraczać), suma limitów pamięci do 20 GB;
+  - `environments/prod/values.yaml` – domena, przełączniki D10, `clientIpHeader: CF-Connecting-IP`, zasoby na serwer
+    docelowy (8 vCore, 24 GB RAM): suma requestów CPU do 7 vCPU (limity CPU mogą je przekraczać), suma limitów pamięci
+    do 20 GB;
   - `environments/ci/values.yaml` – odchudzony profil smoke testu: hosty `*.localhost`, zwykłe sekrety, bez
-    `ipAllowList`, minimalne requesty, sterta ES 512 MB, mniejsza sterta Keycloaka, poczta do Mailpita; mieści się na `ubuntu-latest` (16 GB RAM, 4 vCPU, 14 GB SSD).
+    `ipAllowList` i bez `clientIpHeader`, minimalne requesty, sterta ES 512 MB, mniejsza sterta Keycloaka, poczta do Mailpita; mieści się na `ubuntu-latest` (16 GB RAM, 4 vCPU, 14 GB SSD).
 
 ## Wdrożenie nowej wersji
 
@@ -258,6 +267,9 @@ w chartcie w tym samym PR.
   e-mail: błąd (kod 3) bez zmian; błąd po założeniu użytkownika usuwa go, więc polecenie można powtórzyć.
 - Konta klientów: `customerAccounts: false` w `prod` wyłącza rejestrację w realmie `shop` i ukrywa link „Zaloguj się”
   w sklepie (przełącznik z `/api/site`). `verifyEmail` włączone; e-mail weryfikacyjny i reset hasła idą przez Brevo.
+- Ochrona przed zgadywaniem haseł: oba realmy mają `bruteForceProtected: true` z wartościami domyślnymi Keycloaka
+  (blokada konta po 30 nieudanych próbach, czas blokady rosnący do 15 min); wdrożenie ich nie zmienia
+  (`docs/features/hardening/spec.md`, D17).
 
 ## Poczta
 
@@ -337,7 +349,7 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   z oryginałami przez symlinki, sekrety (każdy klucz `init-env.sh` w szablonie, SealedSecrety), przełączniki D10,
   utwardzenie (tokeny API tylko w initContainerach `kubectl`, `progressDeadlineSeconds`), zasoby `prod` na serwer,
   workflow `deploy.yml`, generator pliku digestów, skrypty `keycloak-config`, `initialize`, `create-admin`,
-  `seal-secrets`, `cloudflare-ips` i skrypty serwera na atrapach, CronJoby, ścieżki ingressu `auth`, middleware, fale (każdy Job i Deployment ma zależności we
+  `seal-secrets`, `cloudflare-ips` i skrypty serwera na atrapach, CronJoby, ścieżki ingressu `auth`, middleware (w tym HSTS tylko przy TLS), fale (każdy Job i Deployment ma zależności we
   wcześniejszych falach), nazwy Jobów D11, obrazy (własne z rejestru, z digestem w `prod`; pozostałe z tagiem jak
   w compose i digestem; Elasticsearch z `infra/elasticsearch/Dockerfile`, bez `elasticsearch-plugin` w kontenerach).
   Render (z wersją Kubernetes klastra smoke testu, `--kube-version`), który musi się nie udać: `prod` bez digestów,

@@ -109,6 +109,8 @@ The secrets come with envFrom (the .env.local of the compose file).
 imagePullPolicy: {{ .Values.image.pullPolicy }}
 env:
   {{- include "shop.apiEnv" . | nindent 2 }}
+  # The rate limits count by the address of this header (docs/features/hardening/spec.md, D2).
+  {{- include "shop.clientIpHeaderEnv" . | nindent 2 }}
 {{ include "shop.envFromSecret" . }}
 ports:
   - name: http

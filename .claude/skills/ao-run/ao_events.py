@@ -37,7 +37,7 @@ keys of the notifiable events (AO origin/main):
   usage_warning   window, utilization (0..1), resets_at, threshold (core.py:997)
   attempt_stalled idle_s (core.py:210, 219)
   cooldown_set    from, until, reason (core.py:907, 1010)
-  host_on_battery percent, low (only when true), percent is 0..100 (notify.py:151, 162)
+AO also sends host_on_battery (percent, low); it is recorded but never pushed: the user decides about power.
 """
 import argparse
 import json
@@ -89,10 +89,6 @@ def _message(event):
         return 'zadanie %s bez postępu od %s s' % (task, round(idle) if isinstance(idle, (int, float)) else '?')
     if kind == 'cooldown_set':
         return 'przerwa do odnowienia limitu (%s)' % data.get('reason')
-    if kind == 'host_on_battery':
-        percent = data.get('percent')
-        level = '%d%%' % percent if isinstance(percent, (int, float)) else '?'
-        return 'komputer na baterii: %s%s' % (level, ', niski poziom' if data.get('low') else '')
     if kind == 'invalid_event':
         return 'niepoprawne zdarzenie AO'
     return None

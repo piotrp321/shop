@@ -1,4 +1,4 @@
-.PHONY: up down logs ps seed check test init-env-test varnish-test e2e e2e-check e2e-agent lighthouse api-client keycloak-reset
+.PHONY: up down logs ps seed check test init-env-test varnish-test e2e e2e-check e2e-agent lighthouse load-smoke api-client keycloak-reset
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -101,6 +101,13 @@ e2e-agent:
 	if [ ! -d "$(AGENT_DIR)" ]; then echo "e2e-agent: AGENT_DIR '$(AGENT_DIR)' is not an existing directory" >&2; exit 2; fi
 	mkdir -p "$(AGENT_DIR)/results"
 	docker compose --profile e2e run --rm $(E2E_BUILD) $(E2E_FLAGS) -v "$(AGENT_DIR):/app/agent" e2e --config playwright.agent.config.ts $(E2E_ARGS)
+
+# The k6 scripts of load/ against the running stack (`make up` and `make seed` first): one user, one iteration of every
+# scenario, a guest checkout of one unit included, in a container on the network of the stack. Keeps the scripts working;
+# measures nothing and has no limits of speed, but any scenario that fails is a non-zero exit code. The measurement is
+# `make -C infra/k8s load`.
+load-smoke:
+	sh load/smoke.sh
 
 # Generates the TypeScript API client types of the store and of the admin panel from the committed OpenAPI files.
 api-client:

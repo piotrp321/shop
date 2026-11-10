@@ -25,7 +25,7 @@ use Symfony\Component\Messenger\Transport\Receiver\ListableReceiverInterface;
  * The delivery of the webhooks through the Doctrine transport `payment_simulator` (the `test_messaging` kernel, rolled
  * back after each test) to the shop, which is a client of constant responses here (the forwarding client is tested
  * by ForwardingHttpClientTest): the signature as the shared vector fixes it, the end of the delivery on 2xx and 4xx,
- * the retries on 5xx and a network error with the same event and a fresh timestamp.
+ * the retries on 5xx, 429 (the rate limit of the shop) and a network error with the same event and a fresh timestamp.
  */
 final class DeliveryTest extends MessagingKernelTestCase
 {
@@ -121,11 +121,12 @@ final class DeliveryTest extends MessagingKernelTestCase
     {
         yield '500' => [new MockResponse('', ['http_code' => 500])];
         yield '503 (the order is busy)' => [new MockResponse('', ['http_code' => 503])];
+        yield '429 (the rate limit of the webhooks)' => [new MockResponse('', ['http_code' => 429, 'response_headers' => ['Retry-After' => '60']])];
         yield 'a network error' => [new MockResponse('', ['error' => 'Connection refused'])];
     }
 
     #[DataProvider('failingAnswers')]
-    public function testA5xxOrANetworkErrorIsRetriedWithTheSameEventAndAFreshTimestampUntilTheShopAnswers(MockResponse $failure): void
+    public function testA5xx429OrANetworkErrorIsRetriedWithTheSameEventAndAFreshTimestampUntilTheShopAnswers(MockResponse $failure): void
     {
         $this->answers = [$failure, new MockResponse('', ['http_code' => 204])];
         $this->decided(Provider::DemoCard, Vector::EXECUTED_AT, Vector::CARD_TIMESTAMP);

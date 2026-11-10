@@ -6,7 +6,18 @@ import { invalidBody, readJsonObject, refuseForeignWrite } from "@/cart/bff";
 import { CART_COOKIE, clearCartCookie, readCartId } from "@/cart/cookies";
 import type { CartDeps } from "@/cart/deps";
 import { applyGuestCartMerge, type GuestCartMerge, mergeGuestCart } from "@/cart/merge";
-import { CUSTOMER_ORDER_FIELDS, GUEST_ORDER_FIELDS, type OrderResult, type OrderView, pickFields, placeCustomerOrder, placeGuestOrder } from "./api";
+import {
+  CUSTOMER_ORDER_FIELDS,
+  GUEST_ORDER_FIELDS,
+  type OrderResult,
+  type OrderView,
+  pickFields,
+  placeCustomerOrder,
+  placeGuestOrder,
+  rateLimited,
+  withRetryAfter,
+} from "./api";
+import { forwardingClientIp } from "./client-ip";
 import { setOrderConfirmation } from "./cookies";
 import { listPaymentProviders, startCustomerPayment, startGuestPayment } from "./payment-api";
 import { CART_EMPTY_TYPE } from "./problems";
@@ -14,7 +25,7 @@ import { CART_EMPTY_TYPE } from "./problems";
 const CART_EMPTY = "Koszyk jest pusty.";
 const CHOOSE_PROVIDER = "Wybierz sposób płatności.";
 
-type Outcome = { status: number; body: unknown };
+type Outcome = { status: number; body: unknown; retryAfter?: string };
 /** What the answer does to the browser's cookies, as in the cart BFF, plus the confirmation of a placed order. */
 type Effects = { clearCart?: boolean; merge?: GuestCartMerge; endedSession?: boolean; order?: OrderView };
 
@@ -29,10 +40,13 @@ type Choice = { provider: string };
  * `Idempotency-Key` and sends it again on a retry; the payment start carries the same key. Answers 201/200
  * `{ number, redirectUrl }` with the signed confirmation cookie (`redirectUrl` is null when the payment could not be
  * started: the order stands and the confirmation page offers the payment again), 404, 409 and 422 of the API with
- * their `detail` and `violations` (and the `type` of a 409, which names its cause), 401 when the session ended and 503
- * for the rest. Nothing here computes a price or a total: the API takes lines and prices from the cart and Pricing.
+ * their `detail` and `violations` (and the `type` of a 409, which names its cause), 429 of the rate limit of the API
+ * with its `detail` and `Retry-After` (nothing is placed, so the browser retries with its key), 401 when the session
+ * ended and 503 for the rest. Every call of the API carries the address of the client (`forwardingClientIp`). Nothing
+ * here computes a price or a total: the API takes lines and prices from the cart and Pricing.
  */
-export async function runCheckout(request: NextRequest, deps: CartDeps): Promise<Response> {
+export async function runCheckout(request: NextRequest, cartDeps: CartDeps): Promise<Response> {
+  const deps: CartDeps = { ...cartDeps, api: (accessToken) => forwardingClientIp(cartDeps.api(accessToken), request) };
   const refused = refuseForeignWrite(request, deps.config.storeUrl, true);
   if (refused) {
     return refused;
@@ -67,8 +81,8 @@ export async function runCheckout(request: NextRequest, deps: CartDeps): Promise
   return finish(outcome, effects, deps);
 }
 
-function finish({ status, body }: Outcome, effects: Effects, { config }: CartDeps): Response {
-  const response = json(body, status);
+function finish({ status, body, retryAfter }: Outcome, effects: Effects, { config }: CartDeps): Response {
+  const response = withRetryAfter(json(body, status), retryAfter);
   if (effects.clearCart) {
     clearCartCookie(response, config.storeUrl);
   }
@@ -98,6 +112,9 @@ async function toOutcome(result: OrderResult, effects: Effects, api: ApiClient, 
   if (result.status === 404 || result.status === 422) {
     return { status: result.status, body: { detail: result.detail, violations: result.violations } };
   }
+  if (result.status === 429) {
+    return rateLimited(result);
+  }
   // Includes a 400 or 415 of the API (a bug of this BFF, nothing the browser can fix) and a 401 of the guest endpoint.
   console.error(`The API answered ${result.status} to an order.`);
   return { status: 503, body: {} };
@@ -106,7 +123,8 @@ async function toOutcome(result: OrderResult, effects: Effects, api: ApiClient, 
 /**
  * Starts the payment of the order just placed (or placed by the same request before) with the key of the placement and
  * answers the address of the provider. Any failure leaves the order as it is and answers null: the customer pays from
- * the confirmation page, and this includes the 409 of the same key meeting another provider. The log names the status
+ * the confirmation page, and this includes the 409 of the same key meeting another provider and the 429 of the rate
+ * limit of the payment starts. The log names the status
  * only, never the access token.
  */
 async function startPayment(api: ApiClient, order: OrderView, idempotencyKey: string, provider: string): Promise<string | null> {
