@@ -68,10 +68,15 @@ Klienta API generuje `make api-client` z katalogu głównego.
   slugów → kategorie), `CatalogListing`, `Breadcrumbs` z `breadcrumb.ts`, `SiteHeader`, `MegaMenu` i `SearchBox`,
   `listing-query.ts` (parametry URL ↔ zapytanie API, adresy listingu), `listing-context.tsx`, `ListingFilters`, `ActiveFilters`, `SortSelect`
   i `EmptyResults` (panel filtrów i sortowanie),
-  `load-product.ts` (odczyty strony produktu), `ProductDetailsView`, `VariantChoice` z `variant-choice.ts` (wybór wariantu),
+  `load-product.ts` (odczyty strony produktu), `ProductDetailsView`, `ProductGallery` (galeria i powiększenie), `ProductPrice`, `VariantChoice` z `variant-choice.ts` (wybór wariantu),
   `product-metadata.ts` i `product-json-ld.ts`.
 - `app/page.tsx` (`/`), `app/c/[...path]/` (kategoria) i `app/szukaj/` (wyszukiwanie) – listing (SSR przy każdym
   żądaniu); `app/p/[slug]/` – strona produktu (ISR).
+- `src/home/` – strona główna w stanie domyślnym listingu (patrz „Strona główna `/`”): `HomeIntro` (`Hero`
+  i `DepartmentTiles`), `home-content.ts` (tekst hero i przypisanie zdjęć do działów po slugu kategorii głównej),
+  `departments.ts`, `home-images.ts`, `marketing-images.ts` (lista zdjęć marketingowych: jedyne miejsce ich rozmiarów),
+  `images.generated.ts` i `images/*.webp` (wynik skryptu, commitowany; nie edytuj ręcznie).
+- `scripts/marketing-images.mjs` – generuje z listy pliki WebP i `images.generated.ts` (patrz „Obrazy”).
 - `src/seo/` – mapa strony i `robots.txt`: `xml.ts` (budowanie `sitemapindex` i `urlset` z ucieczką `& < > " '`),
   `sitemap.ts` (odpowiedzi tras mapy), `robots-rules.ts` (reguły `robots.txt`), `store-url.ts` (`STORE_URL` czytany przy
   żądaniu) i `home-json-ld.ts` (JSON-LD strony głównej).
@@ -85,8 +90,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i `BreadcrumbList`, `/szukaj` nie ma JSON-LD.
 - `app/sitemap.xml/`, `app/sitemaps/listing.xml/`, `app/sitemaps/products/[file]/` (route handlery mapy strony)
   i `app/robots.ts` – patrz „Mapa strony i `robots.txt`”.
+- `app/not-found.tsx` – polska strona 404 (nieznany adres i `notFound()`), w layoucie sklepu.
+- `src/catalog/SiteFooter.tsx` – stopka (Server Component w `app/layout.tsx`), obok `SiteHeader`.
 - `src/components/ui/` – komponenty shadcn/ui.
-- `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu.
+- `src/styles/tokens.css` – jedyne miejsce tokenów wyglądu; `src/styles/fonts.ts` (`next/font/local`) i
+  `src/styles/fonts/` – pliki WOFF2 fontu Outfit (`latin`, `latin-ext`); `THIRD_PARTY_NOTICES.md` – licencja OFL
+  fontu i lista plików (przy przeniesieniu plików z vercel/shop także pełny tekst MIT).
 
 ## Dane i API
 
@@ -122,17 +131,38 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `resolveCategoryPath`); brak w drzewie albo `unknown-category` z listy → `notFound()`. Kolejność odczytów: drzewo
   (jeden odczyt na żądanie, `React.cache`, wspólny dla layoutu, `generateMetadata` i strony), potem lista z id
   kategorii z drzewa, potem oferty. Błąd drzewa na tej stronie to wyjątek, czyli `app/error.tsx`.
-- `/`: lista wszystkich produktów, bez breadcrumbów. `/?category=<id>` czyta drzewo i listę razem; kategoria z drzewa →
+- `/`: lista wszystkich produktów, bez breadcrumbów; w stanie domyślnym z hero i kafelkami działów nad listą (patrz „Strona główna `/`”). `/?category=<id>` czyta drzewo i listę razem; kategoria z drzewa →
   `permanentRedirect` (308) na `/c/<ścieżka>` z pozostałymi parametrami (bez `category`); nieznana → 404, niepoprawna
   (`400` API) → „Nieprawidłowy filtr”.
 - `CatalogListing`: breadcrumby „Wszystkie produkty” › kategorie ścieżki (linki `/c/<ścieżka>`, ostatni element bez
   linku, tylko na `/c/` i `/szukaj`), `h1` z nazwą, obok liczba produktów (`formatProductCount`: „1 produkt”,
   „2–4 produkty”, 22–24 itd., reszta „produktów”, także 12–14), panel filtrów (po lewej od `lg`), nad siatką aktywne
-  filtry i lista „Sortuj”, siatka i paginacja. Wszystkie adresy strony (paginacja, linki kategorii, chipy) buduje
+  filtry i lista „Sortuj”, siatka i paginacja. Wygląd według makiety „Granit”: kafelki bez ramki (zdjęcie na całą szerokość
+  kafelka, tekst pod nim; zdjęcie produktu niedostępnego jest wyszarzone), 2 kolumny na telefonie, od `sm` 3, od `lg` 4;
+  ścieżka z separatorem „/”; od `lg` kolumna filtrów 260 px po lewej bez ramki, grupy rozdzielone liniami (panel nie jest
+  wysuwany: makieta pokazuje go zawsze). Wszystkie adresy strony (paginacja, linki kategorii, chipy) buduje
   `listingHref(basePath, state, patch)` z adresu listingu bez parametrów (`basePath`) i jego parametrów (`state`).
-- SEO: tytuł `/c/` to `<nazwa>[ – strona n] | Rytm`, kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1);
+- SEO: tytuł `/c/` to `<nazwa>[ – strona n] | Worf`, kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1);
   pusta strona poza zakresem i niepoprawny `page` mają `noindex`. `/c/` ma JSON-LD `BreadcrumbList` (bezwzględne
   adresy, ten sam `serializeJsonLd` co strona produktu).
+
+## Strona główna `/`
+
+- Stan domyślny listingu: bez filtrów, bez sortowania innego niż domyślne (`sort` brak albo `nazwa`, czyli `defaultSort`
+  `/`; formularz filtrów bez JavaScriptu zawsze wysyła `sort=nazwa`) i z `page` brak albo `1` (parametry spoza listingu,
+  np. `utm_*`, nie liczą się; `isDefaultState` w `app/page.tsx`; `isRefined`, od którego zależą `noindex` i canonical,
+  liczy każdy `sort` i się nie zmienia, więc `/?sort=nazwa` ma hero, ale zostaje `noindex`). Tylko w nim `/` ma nad listą `HomeIntro` (`CatalogListing` dostaje
+  `intro`): hero (zdjęcie na całą szerokość, `h1`, krótki tekst, link do działu Turystyka) i kafelki każdej kategorii
+  głównej z drzewa (zdjęcie, nazwa jako `h2` będąca linkiem do `/c/<ścieżka>`). W innym stanie (`?page=2`, inny sort, filtr)
+  `/` jest samym listingiem z `h1` „Wszystkie produkty” i nazwami produktów w `h2`.
+- Nagłówki w stanie domyślnym: `h1` to nagłówek hero, `h2` nazwy działów i „Wszystkie produkty” nad listą, `h3` nazwy
+  produktów (`ProductGrid home`, `ProductTile headingLevel`). Priorytet ładowania ma tylko zdjęcie hero, kafelki
+  produktów w tym stanie nie mają `priority`. Siatka produktów ma `data-testid="product-grid"`: testy E2E (`gridTiles`
+  w `e2e/support/listing.ts`) znajdują kafelki po nim, nie po poziomie nagłówka.
+- Drzewo to `loadMenuCategories` (to samo `React.cache` co nagłówek i stopka, bez dodatkowego żądania). Błąd drzewa:
+  hero bez linku i bez kafelków, lista jak zwykle. Link hero do działu, którego nie ma w drzewie, jest pomijany;
+  kategoria główna bez zdjęcia w `home-content.ts` ma kafelek bez zdjęcia.
+- Tytuł, opis, kanoniczny, `noindex` i JSON-LD `/` bez zmian.
 
 ## Wyszukiwanie `/szukaj` i parametry URL
 
@@ -164,7 +194,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   przycinana i idzie bez przeliczania, pusta usuwa filtr. Każda zmiana filtra lub sortowania usuwa `page` (`listingHref`).
 - Bez JavaScriptu panel jest formularzem `GET` (`id="listing-filters"`, ukryte pola `q` i `kategoria`; `select` „Sortuj”
   należy do niego przez atrybut `form`) z przyciskiem „Pokaż wyniki” w `noscript`; `noscript` pokazuje też panel
-  na wąskim ekranie. Na wąskim ekranie panel rozwija przycisk „Filtry” (`aria-expanded`).
+  na wąskim ekranie. Na wąskim ekranie panel (w ramce) rozwija przycisk „Filtry” (`aria-expanded`); od `lg` przycisk jest
+  ukryty, a panel zawsze widoczny.
 - Aktywne filtry (`ActiveFilters`, zwykłe linki, więc działają bez JavaScriptu): link usuwający jeden filtr (osie, cena
   od, cena do, „Tylko dostępne”, kategoria wyszukiwania) i „Wyczyść filtry” (zostają fraza i sortowanie). Brak wyników:
   „Nie znaleźliśmy produktów.”, przy filtrach przycisk „Wyczyść filtry”, przy frazie link „Zobacz wszystkie produkty”.
@@ -185,17 +216,41 @@ Klienta API generuje `make api-client` z katalogu głównego.
   się nie wymienia przy hydratacji i wpisany wcześniej tekst zostaje): przy pierwszym uruchomieniu pisze tylko do
   pustego pola, potem nadpisuje je przy zmianie frazy (nowe wyszukiwanie, wyjście z `/szukaj`, które czyści pole
   pozostawionego slotu), nie przy zmianie innych parametrów.
-- Układ: od `sm` logo, pole, koszyk i konto w jednym wierszu; poniżej `sm` pole wyszukiwania ma własny wiersz na pełną
-  szerokość pod logo, koszykiem i kontem (nagłówek ma `flex-wrap`), żeby strona nie przewijała się w poziomie przy 375 px
-  (`e2e/tests/site-header.spec.ts`).
+- Układ (CSS grid, jedno `SiteHeader` bez zdublowanego formularza): kolejność elementów w dokumencie jest kolejnością
+  wizualną na każdej szerokości (WCAG 2.4.3), więc tabulator idzie tak samo w każdej przeglądarce, bez żadnej
+  właściwości CSS zmieniającej kolejność fokusu, bez `order` i bez obszarów siatki przestawiających elementy względem
+  dokumentu (nie dodawaj ich). Kolejność:
+  znak „Worf”, działy (poniżej `lg` przycisk „Menu”), koszyk, konto, wyszukiwarka, a na końcu komunikat o koszyku, gdy
+  jest. Od `lg` (1024 px) jeden wiersz (nazwane obszary `brand nav cart account search` stoją w kolejności
+  dokumentu), pasek działów (`flex-wrap`: dla działów demo jeden rząd, przy większej liczbie albo dłuższej nazwie zawija się zamiast
+  nachodzić na koszyk i konto; `text-ui`, cele 44 px, poziomy padding przycisku 8 px do `xl`, od `xl`
+  12 px); panel działu rozciąga się na całą szerokość pod nagłówkiem (pozycjonowany względem `header`, w czterech
+  kolumnach: kategoria poziomu 2 jako nagłówek i linki poziomu 3). Poniżej `lg` dwa rzędy: znak, przycisk „Menu”
+  (`aria-expanded`), koszyk i konto, pod nimi pole na pełną szerokość; lista działów otwiera się jako panel pod
+  nagłówkiem. `CartBadge` renderuje link koszyka, potem swoje `children` (komórkę konta i wyszukiwarkę, które
+  `SiteHeader` wstawia po koszyku) i na końcu komunikat, wszystko jako dzieci siatki.
+- Koszyk i konto są ikonami z nazwą w `sr-only` na każdej szerokości (ikony konta zalogowanego mają też `title`;
+  „Zalogowany jako …” jest tylko dla czytników), bo z tekstem wiersz klienta nie mieści się w jednym wierszu; słowa
+  „Koszyk” i „Zaloguj się” (gość) pokazuje dopiero `min-[90rem]` (1440 px), gdzie się mieszczą. Kompaktowy wariant
+  wyszukiwarki (1024–1279 px, gdzie pole się nie mieści): `SearchBox` renderuje przycisk „Wyszukiwarka”
+  (`aria-expanded`, `aria-controls`) i formularz; przycisk jest `display: none` poza tym zakresem, a formularz jest
+  w nim panelem pod nagłówkiem (`data-state`, fokus w polu po otwarciu; Escape, wysłanie, kliknięcie poza panelem
+  opuszczenie go fokusem i otwarcie panelu działu (zdarzenie `DEPARTMENT_PANEL_OPENED` z `header-panels.ts`, także przy
+  najechaniu myszą) zamykają go, Escape i wysłanie oddają fokus przyciskowi). Bez JavaScriptu `noscript` ze stylem pokazuje
+  formularz jako drugi rząd nagłówka, a przycisk chowa. Od 1280 px pole stoi w wierszu (kolumna 14 rem) bez przycisku,
+  poniżej 1024 px jest drugim rzędem. Zmieniając układ sprawdź wymiary na 1024 px po zalogowaniu (zapas paska działów
+  to kilkanaście pikseli przy siedmiu działach demo). Brak poziomego przewijania przy 375 px sprawdza
+  `e2e/tests/site-header.spec.ts`; kolejność w dokumencie względem położenia, sekwencję tabulatora, jeden wiersz
+  i wysokość poniżej 100 px na 1024–1920 px (gość i `jan`) oraz kompaktową wyszukiwarkę
+  `e2e/tests/visual-foundation.spec.ts` (pomocnik `e2e/support/focus-order.ts`).
 - Layout czyta drzewo przez `loadMenuCategories` (to samo `React.cache` co listing) i renderuje `SiteHeader` z menu
   działów (`MegaMenu`, `nav` „Działy”, Client Component). Na stronie produktu (ISR) odczyt drzewa ma tag `catalog`
   (`loadCategoryTree`), więc strona rewaliduje się razem z katalogiem; odczyt nie ustawia trybu cache.
-- Szeroki ekran: przyciski działów (kategorie główne); panel działu (poziomy 2–3 i „Wszystko z działu”) otwiera się
+- Od `lg`: przyciski działów (kategorie główne); panel działu (poziomy 2–3 i „Wszystko z działu”) otwiera się
   kliknięciem, Enter, Spacją i najechaniem myszą, zamyka Escape, kliknięciem poza menu, przejściem fokusu poza menu,
   kliknięciem linku i przejściem na inny dział; przyciski mają `aria-expanded`. Escape zamyka menu przy dowolnym
   fokusie (pomija zdarzenie z `defaultPrevented`), a fokus wraca na przycisk tylko wtedy, gdy był w menu albo nigdzie
-  (`body`); fokus w polu poza menu zostaje tam, gdzie był. Wąski ekran: przycisk „Menu” z listą trzech poziomów.
+  (`body`); fokus w polu poza menu zostaje tam, gdzie był. Poniżej `lg`: przycisk „Menu” z listą trzech poziomów.
   Głębsze poziomy są na stronie kategorii.
 - Wszystkie linki są w HTML także przy zamkniętym menu (panele mają atrybut `hidden`), JavaScript tylko je otwiera.
 - Błąd odczytu drzewa w layoucie: `console.error` na serwerze, nagłówek bez menu, strona renderuje się dalej (koszyk
@@ -204,6 +259,18 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i tag `catalog`: mają menu z ostatniego renderu (z builda albo z rewalidacji tagu `catalog`, np. po `make seed`).
   Build bez dostępnego drzewa daje te strony bez menu aż do następnej rewalidacji tagu. Strony dynamiczne (`/`,
   `/c/...`, `/checkout/confirmation`) czytają drzewo przy każdym żądaniu.
+
+## Stopka i strona 404
+
+- `SiteFooter` (Server Component w `app/layout.tsx`, `<footer>`) dostaje to samo drzewo co nagłówek (`loadMenuCategories`,
+  jeden odczyt na żądanie, bez własnego żądania; testuje to `app/page.requests.test.tsx`). Grafitowe tło, mały znak
+  „Worf” (link do `/`), linki kategorii głównych w dwóch kolumnach (`nav` „Linki w stopce”, nazwa nie zawiera „Działy”,
+  bo e2e szuka nawigacji „Działy” po części nazwy) i pod cienką linią jeden wiersz „© <bieżący rok> Worf · Zdjęcia:
+  Unsplash” (nazwa ze `STORE_NAME`). Od `lg` znak po lewej i linki po prawej, na telefonie znak nad linkami o wysokości
+  44 px. Błąd drzewa albo puste drzewo: stopka bez `nav`. Bez linków do stron, których nie ma.
+- `app/not-found.tsx`: „Nie znaleźliśmy tej strony.” (`h1`) i przycisk „Wróć do sklepu” (`/`), w layoucie sklepu
+  (nagłówek i stopka), kod 404, `noindex` dodaje Next.js. Dotyczy nieznanego adresu i `notFound()` (nieznany produkt,
+  kategoria).
 
 ## Strona produktu `/p/[slug]`
 
@@ -220,14 +287,36 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - 404 szczegółów → `notFound()` (strona 404 z `noindex`; `generateMetadata` zwraca wtedy `{}`). Każdy inny błąd
   szczegółów albo oferty (status, sieć, nieoczekiwana treść, brak oferty produktu) to wyjątek, czyli `app/error.tsx`,
   którego ISR nie cache'uje; strona bez ceny nigdy nie powstaje.
-- `ProductDetailsView` (Server Component): ścieżka „Wszystkie produkty” › kategorie (linki `/c/<ścieżka>`, `Breadcrumbs`), `h1`,
-  zdjęcia jedno pod drugim przez `ProductPhoto` (pierwsze `priority`, bez zdjęć `PhotoPlaceholder`), krótki opis,
+- `ProductDetailsView` (Server Component): ścieżka „Wszystkie produkty” › kategorie (linki `/c/<ścieżka>`, `Breadcrumbs`), od `lg`
+  galeria (`ProductGallery`) po lewej i dane po prawej (kolumny 7:5), na telefonie galeria nad danymi; dane: `h1`, krótki
+  opis,
   cena „od X zł” (gdy `hasPriceRange`) albo „X zł” i etykieta `level` produktu; produkt bez wariantu możliwego do kupienia
   (`fromGross = null`): „Niedostępny” bez ceny, wyboru i przycisku. Wartości pochodzą z oferty, front niczego nie liczy.
   Cena to zawsze cena skuteczna z API (bez przekreślonej ceny katalogowej). `PromotionNotice` pokazuje oznaczenie
   „Promocja” zawsze razem z linią „Najniższa cena z 30 dni przed obniżką: X zł” (Omnibus, `lowestPriorGross` przez
   `formatPrice`); `lowestPriorGross = null` albo brak promocji to żadne z dwóch. Przed wyborem wariantu bierze je
   z `fromPromotion` oferty, po wyborze z `promotion` wybranego wariantu (to samo na kafelku w `TileOffer`).
+- Galeria (`ProductGallery`, Client Component renderowany też na serwerze, z `usePhotoStrip` w `use-photo-strip.ts`; pełny
+  opis i testy: `docs/features/product-page/spec.md`, „Galeria i powiększenie”). HTML z serwera ma cały pasek zdjęć
+  (CSS `scroll-snap`, `id="zdjecie-n"`, `alt` z API), miniatury jako linki `#zdjecie-n` (`alt=""`, najmniejsza szerokość
+  rozmiaru `product`) i licznik „1 / m”: działa bez JavaScriptu i jest taki sam przed hydratacją i po niej. Kolejność
+  w dokumencie jest kolejnością wizualną (bez właściwości CSS zmieniających kolejność fokusu i bez `order`; nie dodawaj
+  ich): lista miniatur (`Thumbnails`) jest w HTML dwa razy, kolumna po lewej od zdjęcia (`hidden lg:flex`) przed paskiem
+  i rząd pod nim (`lg:hidden`) po pasku; ukryta ma `display: none` (poza Tab i drzewem dostępności), jej obrazy mają `loading="lazy"` i te same adresy co
+  obrazy widocznej listy, obie mają ten sam `aria-current`. Testy Vitest w jsdom (bez CSS) widzą więc dwie listy; kolejność
+  w dokumencie względem położenia i sekwencję Tab sprawdza `e2e/tests/product-gallery.spec.ts` (`e2e/support/focus-order.ts`). Po hydratacji
+  (`useSyncExternalStore` z migawką serwera `false`: tego, co dodaje JavaScript, nie ma w pierwszym renderze) dochodzą
+  `aria-current` miniatury, licznik podążający za paskiem (też za przesunięciem palcem, po 100 ms bez przewijania; `usePhotoStrip` czyta pozycję
+  paska także raz, gdy element się pojawia, więc pasek przewinięty przed hydratacją i okno otwarte na zdjęciu 2 są zgodne
+  z licznikiem),
+  przyciski „Poprzednie zdjęcie” i „Następne zdjęcie” (ułożone bezwzględnie, bez przesunięcia układu), płynne przewijanie
+  z miniatur bez zmiany adresu (`preventDefault`) i ← →. Zdjęcie paska jest w przycisku „Powiększ zdjęcie n z m: <alt>”,
+  który otwiera shadcn `dialog` na całe okno z paskiem `zoomImages` (`sizes="100vw"`, `object-fit: contain`, widoczne
+  `eager`, reszta `lazy`); fokus wraca na przycisk otwierający przez `onCloseAutoFocus`. Jedno zdjęcie: bez miniatur,
+  licznika i strzałek, z powiększeniem; bez zdjęć: `PhotoPlaceholder`. Rozmiary obrazów pochodzą tylko z API
+  (`buildImageProps`, `buildZoomImageProps`, `smallestVariant` w `image-props.ts`); `STAGE_SIZES_SEVERAL` i `STAGE_SIZES_ONE` opisują tylko
+  szerokość sceny galerii w układzie strony (z kolumną miniatur i bez niej). Test E2E dotyku używa `Input.dispatchTouchEvent`: `Input.synthesizeScrollGesture`
+  z `gestureSourceType: "touch"` niczego nie przewija w tym Chromium.
 - Wybór wariantu (`VariantChoice`, Client Component osadzony w `ProductDetailsView`; reguły w czystych funkcjach
   `variant-choice.ts`, z testami): jedna grupa przycisków (`fieldset`, `aria-pressed`) na oś z `variantAxes`, wartości
   w kolejności pierwszego wystąpienia w `variants` szczegółów. Wariant ze szczegółów jest możliwy do kupienia tylko, gdy
@@ -242,7 +331,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   wartości osi jako tekst („Kolor: czarne”), bez wyboru. Do pełnego wyboru strona pokazuje cenę, oznaczenie promocji
   i poziom produktu (`children` z serwera), po nim cenę, oznaczenie promocji i poziom wybranego wariantu. `AddToCartButton` jest wyłączony do pełnego wyboru
   i dodaje 1 sztukę wybranego wariantu (ilość zmienia się w koszyku). Wariantu nie ma w URL.
-- Metadane (`buildProductMetadata`): tytuł `<nazwa> | Rytm`, opis = krótki opis (bez opisu: brak), kanoniczny
+- Metadane (`buildProductMetadata`): tytuł `<nazwa> | Worf`, opis = krótki opis (bez opisu: brak), kanoniczny
   `<STORE_URL>/p/<slug>`, Open Graph (tytuł, opis, adres, obraz = pierwsze zdjęcie w największej szerokości; bez zdjęć
   bez obrazu).
 - JSON-LD (`product-json-ld.ts`, dwa `<script type="application/ld+json">`): `Product` z `Offer` tylko dla wariantów
@@ -313,8 +402,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `truncated` scalenia ustawia `store_cart_notice`: znacznik `merge_truncated` podpisany jak `store_cart`, `HttpOnly`,
   `SameSite=Lax`, `Path=/`, `Max-Age` 5 minut. `GET /api/cart/summary` z odpowiedzią 200 zwraca `notice:
   "merge_truncated"` raz (z poprawnie podpisanego ciasteczka albo ze scalenia w tym samym żądaniu) i usuwa ciasteczko;
-  inaczej `notice: null`. `CartBadge` pokazuje wtedy obok linku „Część produktów z koszyka gościa nie zmieściła się
-  w koszyku”.
+  inaczej `notice: null`. `CartBadge` pokazuje wtedy „Część produktów z koszyka gościa nie zmieściła się
+  w koszyku” (`role="status"`) jako osobny wiersz nagłówka pod pozostałymi, na pełną szerokość i w przepływie
+  dokumentu (nie zasłania treści; trzeci wiersz siatki na telefonie, drugi od `lg`; w dokumencie ostatni element nagłówka, po wyszukiwarce); układ sprawdza
+  `e2e/tests/visual-foundation.spec.ts`.
 - `GET /api/cart?discountCode=` (podgląd kodu w kasie) przekazuje parametr do API koszyka gościa i klienta; inne parametry
   są pomijane. Koszyk bez `store_cart` i bez sesji (pusty) odpowiada bez API. 400 API (kod nie jest tekstem albo ma
   ponad 64 znaki) wraca jako 400 z `{ detail }` (tekst naruszenia z API), tylko dla odczytu z kodem; każdy inny 400
@@ -338,10 +429,18 @@ Klienta API generuje `make api-client` z katalogu głównego.
   ani na blokadę. Testy ustawiają `navigator` przez `vi.stubGlobal` (Node ma własne `navigator.locks`).
 - UI: `ProductTile` (Server Component: nazwa, zdjęcie, cena „od X zł” przy `hasPriceRange` z oznaczeniem promocji i linią Omnibus z `fromPromotion`, poziom produktu; produkt
   bez wariantu możliwego do kupienia, `fromGross = null`: „Niedostępny” bez ceny, listy i przycisku) z częścią kliencką
-  `TileOffer`: produkt z jednym wariantem ma przycisk `AddToCartButton` dodający ten wariant, produkt z ≥ 2 wariantami
-  listę wariantów (etykieta: nazwy osi) bez wyboru domyślnego, z wariantami `purchasable = false` opisanymi
-  „niedostępny” i wyłączonymi; po wyborze kafelek pokazuje cenę, oznaczenie promocji (z `promotion` wariantu) i poziom wybranego wariantu, a przycisk (wyłączony do
-  wyboru) dodaje 1 sztukę wybranego wariantu. `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
+  `TileOffer`: produkt z jednym wariantem ma od razu przycisk `AddToCartButton` dodający ten wariant; produkt z ≥ 2
+  wariantami ma jedną aktywną akcję „Wybierz wariant” (bez `<select>` i bez nieaktywnego „Do koszyka”). Po niej akcja
+  znika, a kafelek pokazuje warianty z oferty w jej kolejności jako grupę radio (`fieldset` z nazwami osi albo „Wybierz
+  wariant” w `legend`; jeden przystanek Tab, strzałki zmieniają wybór, wybór można zmienić) bez wyboru domyślnego;
+  fokus przechodzi na pierwszy wariant możliwy do wybrania, a wariant `purchasable = false` ma dopisek „niedostępny”
+  i jest wyłączony. Jedna oś: etykiety jako przyciski (`data-form="buttons"`; na telefonie jeden pod drugim, od `lg` w rzędzie z zawijaniem); dwie osie lub więcej: lista pełnych
+  etykiet jedna pod drugą (`data-form="list"`, mieści się w 375 px bez przewijania poziomego); oferta ma tylko złączoną
+  etykietę, więc sklep nie rozbija jej na osie. Ukryty wizualnie obszar `role="status"` (`aria-live="polite"`, istnieje
+  od pierwszego renderu) ogłasza rozwinięcie i każdy wybór (etykieta, cena, dostępność). Po wyborze kafelek pokazuje cenę, oznaczenie
+  promocji (z `promotion` wariantu) i poziom wybranego wariantu oraz aktywny „Do koszyka”, który dodaje 1 sztukę wybranego wariantu
+  (bez wyboru przycisku „Do koszyka” nie ma; zmiana wyboru w trakcie żądania zostawia przycisk zablokowany, a komunikat
+  „Dodano do koszyka” dotyczy tylko wariantu, dla którego powstał). To samo na kafelkach strony głównej. `CartBadge` w nagłówku (licznik z `/api/cart/summary`) i strona `/cart` z `noindex`
   (`CartPage`, Client Component ładujący `/api/cart`), linia z nazwą produktu i etykietą wariantu, pod podsumowaniem
   przycisk „Przejdź do kasy” (link do `/checkout`; przy `hasExcludedLines` nieaktywny z tekstem „Usuń albo popraw
   oznaczone pozycje, żeby złożyć zamówienie.”). Po każdej zmianie koszyka komponent ogłasza `itemCount` z
@@ -529,26 +628,80 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Wygląd
 
+- Wybrany kierunek: „Granit” (opis i wymagania: `docs/features/visual-design/spec.md`, makieta wskazówką wdrożenia:
+  `docs/features/visual-design/mockups/`). Jasne tło, grafit, jeden pomarańczowy akcent (przycisk główny, plakietka
+  koszyka, podkreślenie działu; ciemniejszy odcień dla linków i pierścienia fokusu), ostre kształty (promień 4 px) bez
+  cieni, kontrast WCAG 2.2 AA i widoczny fokus.
 - Komponenty na shadcn/ui. Nowy komponent dodawaj CLI shadcn w kontenerze (`make -C apps/store shell`,
-  potem `npx shadcn@latest add <komponent>`) i od razu dopasuj go do tokenów.
+  potem `npx shadcn@latest add <komponent>`) i od razu dopasuj go do tokenów. CLI wpisuje w nowych plikach import
+  `cn` z pakietu `cn` (i dopisuje go do `package.json`): popraw na `@/lib/utils` i cofnij zmianę w `package.json` i
+  `package-lock.json`. Klasy `data-open:` i `dark:` z szablonów nie działają (Radix ustawia `data-state`, ciemnego
+  motywu nie ma).
 - Kolory, typografia, promienie i cienie wyłącznie z tokenów w `src/styles/tokens.css`. Żadnych kolorów
   „na sztywno”: bez wartości arbitralnych (`bg-[#…]`, `text-[rgb(…)]`), bez kolorów w `style` i bez klas spoza
   tokenów (`bg-black`, `text-red-500`). Domyślna paleta Tailwinda jest wyłączona, a ESLint to pilnuje.
+- Paletę (`--palette-*`) i istniejące tokeny zmienia tylko VISUAL-DESIGN-5; kolejne zadania wyglądu mogą dopisać nowy
+  token semantyczny wskazujący istniejącą paletę.
 - Komponenty używają warstwy semantycznej (zmienne motywu shadcn/ui: `background`, `foreground`, `primary`,
-  `muted`, `border` i pozostałe), nigdy palety bezpośrednio.
-- Obecny motyw jest tymczasowy i neutralny. Docelowy wygląd powstaje w kroku „Projekt wizualny sklepu”.
+  `muted`, `border` i pozostałe, oraz tokeny kierunku: `link`, `success` („Dostępny”), `warning` („Ostatnie sztuki”),
+  `inverse*` (stopka), `hero-overlay`), nigdy palety bezpośrednio. Błędy pól i komunikaty używają `destructive` (to ten
+  sam odcień co `warning`: paleta nie ma osobnego koloru błędu).
+- Skala typografii to `text-*` z tokenów (`text-ui` = 15 px dla przycisków i pól), odstępy z siatki Tailwinda 4 px.
+  Margines boczny strony to `px-gutter` (16 px, od `lg` 48 px), szerokość treści `max-w-content` (1440 px).
+- Font: Outfit (SIL OFL), plik zmienny w dwóch podzbiorach (`latin`, `latin-ext` z polskimi znakami) z repozytorium przez
+  `next/font/local` (`src/styles/fonts.ts`, zmienna `--font-outfit` w `--font-sans`). Bez żądań do hostów fontów,
+  także w buildzie; `e2e/tests/visual-foundation.spec.ts` sprawdza, że przeglądarka pyta tylko o hosty stosu.
+  Vitest podmienia `next/font/local` atrapą (`tests/stubs/next-font-local.ts`), bo to transformacja kompilatora.
+- Koszyk, kasa, potwierdzenie i konto (`/konto/zamowienia`) mają wspólną ramę `ScreenMain` i `ScreenTitle`
+  (`src/components/ScreenLayout.tsx`: margines `px-gutter`, szerokość `max-w-content`, wąska kolumna robocza `max-w-3xl`
+  przy lewej krawędzi tytułu). Komunikaty `role="alert"` to `Alert`, pozycje list zamówień i podsumowania to `Card`,
+  status zamówienia to `Badge`, etykiety pól to `Label`. Wybór płatności zostaje natywnym `<input type="radio">`
+  (testy czytają `radio.checked` i `radio.labels`), stylowanym tokenami. Strona błędu (`app/error.tsx`) ma ramę 404.
+- Focus: globalna reguła `:focus-visible` w `tokens.css` (3 px, `--ring`); komponenty jej nie wyłączają
+  (bez `outline-none`). Na ciemnym tle (`data-surface="inverse"`, np. stopka) pierścień ma kolor `--ring-inverse`.
 
 ## Obrazy
 
-- Zdjęcia wyłącznie z wariantów zwróconych przez API (`image.variants`), przez komponent `ProductPhoto`.
+- Zdjęcia wyłącznie z wariantów zwróconych przez API (`image.variants`), przez komponent `ProductPhoto` (powiększenie w galerii
+  strony produktu: `<img>` z `buildZoomImageProps` z wariantów rozmiaru `zoom`).
   Sklep nie podpisuje adresów i nie dodaje rozmiarów. Nowy rozmiar dopisuje się do listy w API.
 - `<Image>` z `next/image` bez loadera wariantów nie zadziała: globalny loader celowo rzuca błąd.
+- Wyjątek: zdjęcia marketingowe strony głównej (hero i kafelki działów, nie produktów) to statyczne pliki WebP sklepu
+  w `src/home/images/`, importowane statycznie (`src/home/images.generated.ts`, adresy `/_next/static/media/...`
+  z hashem) i renderowane zwykłym `<picture>`/`<img srcset>`. Każdy `<img>` ma `srcset`, `sizes`, `width`, `height`; hero
+  `fetchpriority="high"`, kafelki `loading="lazy"` i `decoding="async"`; kafelek ma `alt=""` (nazwa działu jest tekstem
+  linku), hero `alt` z listy.
+- Lista `src/home/marketing-images.ts` (czyste dane, bez importów plików) to jedyne miejsce ich rozmiarów: plik źródłowy
+  z `apps/api/fixtures/images/`, kadr (proporcje i punkt), szerokości, budżet każdego pliku w KB i opcjonalna jakość
+  WebP (domyślnie `WEBP_QUALITY` 75; hero ma niższą, bo jest bogaty w szczegóły i inaczej nie mieści się w budżecie).
+  Hero: kadr telefonu (`media="(max-width: 767px)"`, 4:5, 480, 640, 828) i szerokiego ekranu (16:9, 1280, 1600);
+  kafelki 3:4 w 320, 480, 768. Budżety: hero 1600 ≤ 250 KB, hero 828 ≤ 120 KB, kafelek 768 ≤ 80 KB.
+- `scripts/marketing-images.mjs` czyta listę (Node usuwa typy z `.ts`), a z niej generuje pliki i moduł. Uruchamia się
+  w kontenerze `store`: `make -C apps/store shell`, potem `node scripts/marketing-images.mjs`. Źródła są pod
+  `/fixtures/images` z montowania tylko do odczytu `./apps/api/fixtures/images:/fixtures/images:ro` usługi `store`
+  (`infra/docker-compose.yml`, tylko środowisko deweloperskie: obraz produkcyjny ma commitowane pliki WebP; po dodaniu
+  montowania odtwórz kontener `docker compose up -d store`). Używa `sharp`, który instaluje Next.js (bez zmiany
+  `package.json`). Najpierw sprawdza i koduje wszystko w pamięci, dopiero potem zapisuje (kasuje też stare pliki `.webp`
+  spoza listy). Kody wyjścia: 0 gotowe; 1 błędna lista albo wynik (szerokość ponad kadr, czyli powiększanie źródła;
+  plik ponad budżet; brak budżetu szerokości; plik źródłowy, którego `sharp` nie czyta albo nie przekonwertuje);
+  2 środowisko (brak `sharp`, katalogu źródeł lub pliku źródłowego). Komunikat z nazwą pliku i przyczyną idzie na stderr.
+  Błąd walidacji albo kodowania niczego nie zapisuje, bo zdarza się przed zapisem; błąd I/O podczas zapisu (np. pełny
+  dysk) może zostawić częściowy wynik, który cofa `git checkout`. Zmienne dla testów: `MARKETING_IMAGES_LIST`, `_SOURCE`, `_OUT`, `_SHARP`. Dodanie
+  zdjęcia: wpis w liście, uruchomienie skryptu, commit listy, plików i `images.generated.ts`.
+- Vitest: import `.webp` daje napis zamiast `StaticImageData`, więc `vitest.config.ts` ma wspólny mock plików obrazów
+  (wtyczka `imageFiles`: adres `/_next/static/media/<plik>` i szerokość z nazwy) dla testów modułu i strony głównej.
+  `src/home/images.generated.test.ts` pilnuje, że moduł wygenerowany odpowiada liście (nazwy plików, szerokości,
+  wysokości) i że pliki mieszczą się w budżetach; testy skryptu w `tests/marketing-images.test.ts` (potrzebują
+  montowania `/fixtures/images`).
+- Przeglądarka z emulacją urządzenia mobilnego (`isMobile` w Playwright) pobiera przy `<picture>` także plik szerokiego
+  ekranu (skaner ładowania ocenia `media` przy szerszym oknie); test E2E na 375 px używa więc wąskiego okna bez `isMobile`.
 
 ## Komponenty i układy z vercel/shop
 
 - Z github.com/vercel/shop (licencja MIT, „Copyright (c) 2025 Vercel, Inc.”) wolno przenosić komponenty i układy.
 - Każdy przeniesiony plik ma w nagłówku komentarz `// Adapted from vercel/shop (MIT): <ścieżka w repo źródłowym>`.
-  `THIRD_PARTY_NOTICES.md` w tym katalogu zawiera pełny tekst licencji MIT i listę przeniesionych plików.
+  Przy pierwszym przeniesionym pliku dopisz do `THIRD_PARTY_NOTICES.md` w tym katalogu wpis z pełnym tekstem licencji
+  MIT i plikiem na liście przeniesionych.
 - Przy przenoszeniu: dane tylko z naszego API przez wygenerowanego klienta, bez kodu, typów i zapytań Shopify;
   obrazy przez `ProductPhoto` zamiast `next/image` z CDN Shopify; kolory i odstępy przepisane na nasze tokeny.
 
@@ -559,6 +712,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   zegarów Vitest (`vi.useFakeTimers`); wywołanie `window.location.assign` jest za `navigateTo`, które testy podmieniają.
 - Vitest i Testing Library. `*.test.ts(x)` to testy jednostkowe bez usług, `*.integration.test.ts` działają
   na usługach stosu (Redis).
+- Strona główna (`src/home/`) i jej stan domyślny w `app/page.test.tsx`; liczba żądań w `app/page.requests.test.tsx`.
 - Logika w komponentach (np. budowa `srcset`, mega menu, panel filtrów i sortowanie), `listing-query.ts` (mapowanie
   parametrów URL na zapytanie API i adresy), strony listingów (`app/page.test.tsx`, `app/c/`, `app/szukaj/`, liczba
   żądań w `app/page.requests.test.tsx`), cały `src/auth/`, cały `src/cart/` (BFF, przyciski,

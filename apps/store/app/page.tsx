@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
-import { loadCategoryTreeForRequest } from "@/catalog/category-tree";
+import { loadCategoryTreeForRequest, loadMenuCategories } from "@/catalog/category-tree";
 import { findCategoryPath } from "@/catalog/category-path";
 import { CatalogListing } from "@/catalog/CatalogListing";
 import { InvalidFilter } from "@/catalog/InvalidFilter";
-import { invalidFilterExit, isRefined, type ListingState, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
+import { defaultSort, invalidFilterExit, isRefined, type ListingState, readListingState, type SearchParams, toApiQuery } from "@/catalog/listing-query";
 import { type CatalogResult, loadCatalogForRequest } from "@/catalog/load-catalog";
 import { buildCatalogMetadata } from "@/catalog/page-metadata";
 import { serializeJsonLd } from "@/catalog/product-json-ld";
+import { HomeIntro } from "@/home/HomeIntro";
 import { buildHomeJsonLd } from "@/seo/home-json-ld";
 import { readStoreUrl } from "@/seo/store-url";
 
@@ -55,6 +56,17 @@ function categoryRedirectUrl(path: string, query: SearchParams): string {
   return search ? `/c/${path}?${search}` : `/c/${path}`;
 }
 
+/**
+ * The default state of the listing, the one that gets the hero and the department tiles: no filter, the default sort
+ * (`sort` absent or the one `/` has without it, `nazwa`; a filter form without JavaScript always sends it) and the
+ * first page (`page` absent or 1). Parameters that are not the listing's own (`utm_*`, the phrase of the search) do not
+ * count, as in `readListingState`. `isRefined` (noindex, canonical) is not used as it is: it counts every `sort`.
+ */
+function isDefaultState(state: ListingState): boolean {
+  const withoutDefaultSort = { ...state, sort: state.sort === defaultSort(state) ? undefined : state.sort };
+  return !isRefined(withoutDefaultSort) && (state.page === undefined || state.page === "1");
+}
+
 export async function generateMetadata({ searchParams }: PageProps<"/">): Promise<Metadata> {
   const query: SearchParams = await searchParams;
   // Shares the reads with the page through the cached loaders, so the metadata adds no API calls.
@@ -79,9 +91,11 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   }
   // The structured data of the store belongs to the listing the home page shows (with results or an empty one), not to the error pages above.
   const storeUrl = readStoreUrl();
+  // The tree is the header's (one read per request); a failure gives the hero without a link and no tiles.
+  const intro = isDefaultState(home.state) ? <HomeIntro categories={await loadMenuCategories()} /> : undefined;
   return (
     <>
-      <CatalogListing title="Wszystkie produkty" basePath="/" state={home.state} mode="list" listing={home.listing} />
+      <CatalogListing title="Wszystkie produkty" basePath="/" state={home.state} mode="list" listing={home.listing} intro={intro} />
       {buildHomeJsonLd(storeUrl).map((data) => (
         <script key={data["@type"]} type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(data) }} />
       ))}

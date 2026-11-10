@@ -3,7 +3,7 @@
 ## Co budujemy
 
 Platformę e-commerce w monorepo: API w Symfony, sklep dla klientów i panel administracyjny.
-Branża: sport i outdoor, szeroki asortyment w kilku działach. Robocza nazwa sklepu: „Rytm”.
+Branża: sport i outdoor, szeroki asortyment w kilku działach. Nazwa sklepu: „Worf” (domena worf.pl).
 
 Projekt ma dwa cele:
 
@@ -56,9 +56,14 @@ Wszystko działa w Dockerze. Na komputerze nie jest potrzebny ani PHP, ani Node.
   rozmiar i rozdzielczość i zapisuje w Garage pod kluczem wyliczonym z treści pliku, więc adres obrazu o danej
   treści nigdy się nie zmienia. Oryginał nie jest nigdy serwowany bezpośrednio.
 - Zestaw rozmiarów jest zamknięty i zdefiniowany w jednym miejscu w API (miniatura, lista, karta produktu, zoom),
-  każdy w kilku szerokościach dla `srcset`.
+  każdy w kilku szerokościach dla `srcset`. Miniatura, lista i karta produktu mają stałe proporcje (przycięcie);
+  `zoom` pokazuje całe zdjęcie bez przycinania (proporcje oryginału, szerokości 1280, 1920 i 2560, bez powiększania
+  ponad oryginał) i służy do powiększenia na karcie produktu.
 - API w odpowiedziach zwraca gotowe, podpisane adresy imgproxy dla każdego rozmiaru, szerokości i formatu.
   Podpisuje jeden serwis po stronie API, klucz podpisu nigdy nie trafia do frontów.
+- Wyjątek od imgproxy: zdjęcia marketingowe strony głównej (hero i kafelki działów) to statyczne, zoptymalizowane
+  pliki WebP w repozytorium sklepu, responsywne (osobny kadr i szerokości dla telefonu, budżet rozmiaru na plik,
+  telefon nie pobiera pliku szerokiego ekranu); generuje je skrypt sklepu z jednej listy rozmiarów, nie panel ani API.
 - Zdjęcia wychodzą w WebP. AVIF nie jest generowany, bo jego kodowanie na żądanie mocno obciąża CPU małego
   serwera; można go dodać później jako kolejny format w liście rozmiarów.
 - Format jest częścią podpisanego adresu. imgproxy nie wybiera go po nagłówku `Accept`, bo przed
@@ -173,8 +178,10 @@ Sklep ma być w pełni przyjazny wyszukiwarkom. Next.js z App Router, domyślnie
 - Baza układów: github.com/vercel/shop (MIT). Przenosimy komponenty i układy z zachowaniem informacji o licencji,
   ale dane pochodzą wyłącznie z naszego API przez wygenerowanego klienta, bez Shopify.
 - Nie korzystamy z gotowych szablonów komercyjnych (np. z ThemeForest).
-- Kolejność prac: najpierw pełne makiety strony głównej, listingu i karty produktu ze zdjęciami, dopiero potem
-  docelowe tokeny. Do tego czasu sklep ma tymczasowy, neutralny motyw na tych samych tokenach.
+- Strona główna: hero na całą szerokość (zdjęcie z hasłem „Sprzęt na każdy szlak” i linkiem do działu), pod nim
+  kafelki działów (kategorie główne) i listing wszystkich produktów; opis w `docs/features/visual-design/spec.md`.
+- Wybrany kierunek: „Granit” (jasne tło, grafit, jeden pomarańczowy akcent na najważniejszej akcji, ostre kształty
+  bez cieni, krój Outfit z plików sklepu); opis, makieta i wymagania są w `docs/features/visual-design/spec.md`.
 
 ## Bounded contexty (api)
 

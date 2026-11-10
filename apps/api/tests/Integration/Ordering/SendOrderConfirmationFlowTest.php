@@ -38,7 +38,7 @@ use Symfony\Component\Messenger\Stamp\HandledStamp;
  */
 final class SendOrderConfirmationFlowTest extends MessagingKernelTestCase
 {
-    private const string FROM = 'Rytm <zamowienia@rytm.localhost>';
+    private const string FROM = 'Worf <zamowienia@worf.localhost>';
 
     private MailpitInbox $inbox;
 

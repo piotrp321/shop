@@ -1,3 +1,4 @@
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // React's `cache` memoises only inside a server render, and this test runs outside one. This stand-in memoises by
@@ -19,9 +20,13 @@ const memo = vi.hoisted(() => {
 });
 vi.mock("react", async (importOriginal) => ({ ...(await importOriginal<typeof import("react")>()), cache: memo.cache }));
 
+// The page renders client components (filters, sort) that need a router; the test only reads their markup.
+vi.mock("next/navigation", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/navigation")>()), useRouter: () => ({ push: vi.fn() }) }));
+
 import { loadMenuCategories } from "@/catalog/category-tree";
 import { EMPTY_FACETS, TREE, makeOffer, makeProduct } from "@/catalog/fixtures";
 import CategoryPage, { generateMetadata as categoryMetadata } from "./c/[...path]/page";
+import RootLayout from "./layout";
 import Home, { generateMetadata } from "./page";
 import SearchPage, { generateMetadata as searchMetadata } from "./szukaj/page";
 
@@ -65,6 +70,15 @@ describe("catalogue page requests", () => {
     expect(requested.sort()).toEqual(["/api/v1/categories", "/api/v1/product-offers", "/api/v1/products"]);
   });
 
+  it("makes the same three requests for the default state, which shows the hero and the tiles from the tree the layout reads", async () => {
+    const request = props({});
+    const [, , page] = await Promise.all([loadMenuCategories(), generateMetadata(request), Home(request)]);
+    expect(requested.sort()).toEqual(["/api/v1/categories", "/api/v1/product-offers", "/api/v1/products"]);
+    const markup = renderToStaticMarkup(page);
+    expect(markup).toContain("Sprzęt na każdy szlak");
+    expect(markup).toContain('href="/c/bieganie"');
+  });
+
   it("makes one request per endpoint for a category page too", async () => {
     const request = categoryProps(["bieganie", "buty"], { page: "2" });
     await Promise.all([loadMenuCategories(), categoryMetadata(request as never), CategoryPage(request)]);
@@ -100,6 +114,17 @@ describe("catalogue page requests", () => {
     await Promise.all([loadMenuCategories(), generateMetadata(request), Home(request).catch(() => undefined)]);
     expect(requested.filter((path) => path === "/api/v1/categories")).toHaveLength(1);
     expect(requested.filter((path) => path === "/api/v1/products")).toHaveLength(1);
+  });
+
+  it("makes no categories request of its own for the footer: layout (header and footer) and page share one", async () => {
+    const request = props({ page: "2" });
+    const [layout] = await Promise.all([
+      RootLayout({ children: null } as unknown as Parameters<typeof RootLayout>[0]),
+      generateMetadata(request),
+      Home(request),
+    ]);
+    expect(renderToStaticMarkup(layout)).toMatch(/<footer[\s\S]*href="\/c\/bieganie"[\s\S]*<\/footer>/);
+    expect(requested.filter((path) => path === "/api/v1/categories")).toHaveLength(1);
   });
 
   it("asks again on the next request", async () => {

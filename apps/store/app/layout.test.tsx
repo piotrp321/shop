@@ -36,7 +36,7 @@ describe("the root layout", () => {
     const html = await render("failing");
     expect(html).not.toContain("Działy");
     expect(html).not.toContain("/c/");
-    expect(html).toContain("Rytm");
+    expect(html).toContain("Worf");
     expect(html).toContain("Koszyk");
     expect(log).toHaveBeenCalledOnce();
     expect(String(log.mock.calls[0][0])).toContain("categories");
@@ -62,5 +62,24 @@ describe("the root layout", () => {
     vi.stubGlobal("fetch", vi.fn(async () => json([])));
     const html = renderToStaticMarkup(await RootLayout({ children: null } as unknown as Parameters<typeof RootLayout>[0]));
     expect(html).not.toContain("Działy");
+  });
+
+  it("renders the footer after the page, with the departments from the same tree", async () => {
+    const html = await render("ok");
+    const footer = html.match(/<footer[\s\S]*<\/footer>/)?.[0];
+    expect(footer).toBeDefined();
+    expect(html.indexOf("<footer")).toBeGreaterThan(html.indexOf("</header>"));
+    expect(footer).toContain('href="/c/bieganie"');
+    expect(footer).toContain('href="/c/rower"');
+    expect(footer).not.toContain("/c/bieganie/buty");
+  });
+
+  it("renders the footer without department links when the tree fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const html = await render("failing");
+    const footer = html.match(/<footer[\s\S]*<\/footer>/)?.[0];
+    expect(footer).toBeDefined();
+    expect(footer).not.toContain("/c/");
+    expect(footer).toContain("Zdjęcia: Unsplash");
   });
 });

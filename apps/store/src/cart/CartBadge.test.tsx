@@ -95,4 +95,26 @@ describe("CartBadge", () => {
     await screen.findByText("2");
     expect(screen.queryByText(/nie zmieściła się/)).toBeNull();
   });
+
+  it("puts the notice in the flow of the header grid as a full-width row, not over the page", async () => {
+    vi.mocked(loadCartSummary).mockResolvedValue({ status: "ok", data: { itemCount: 1, notice: "merge_truncated" } });
+    render(<CartBadge />);
+
+    const notice = await screen.findByRole("status");
+    expect(notice.className).toContain("col-span-full");
+    expect(notice.className).not.toMatch(/\b(absolute|fixed)\b/);
+  });
+
+  it("renders the link, then its children, then the notice, as siblings, so the notice is the last element of the header in the document", async () => {
+    vi.mocked(loadCartSummary).mockResolvedValue({ status: "ok", data: { itemCount: 1, notice: "merge_truncated" } });
+    const { container } = render(
+      <CartBadge>
+        <a href="/auth/login">Zaloguj się</a>
+        <form role="search" />
+      </CartBadge>,
+    );
+    await screen.findByRole("status");
+
+    expect([...container.children].map((element) => element.getAttribute("role") ?? element.getAttribute("href"))).toEqual(["/cart", "/auth/login", "search", "status"]);
+  });
 });

@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { type AccountResult, type CustomerOrder, loadCustomerOrder } from "@/api/client";
 import { formatPrice } from "@/catalog/format-price";
+import { ScreenMain, ScreenTitle } from "@/components/ScreenLayout";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { navigateTo } from "@/checkout/navigate";
 import { HISTORY_PATH, formatOrderMoment, LOAD_FAILED, loginHref, ORDER_STATUS_LABELS } from "./order-format";
 import { OrderPaymentNote } from "./OrderPaymentNote";
@@ -70,26 +74,30 @@ export function OrderDetailPage({ orderId }: { orderId: string }) {
   const order = state.kind === "ready" ? state.order : null;
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
-      <h1 className="text-2xl font-semibold">{order ? `Zamówienie ${order.number}` : "Zamówienie"}</h1>
+    <ScreenMain>
+      <ScreenTitle>{order ? `Zamówienie ${order.number}` : "Zamówienie"}</ScreenTitle>
       {state.kind === "loading" ? <p className="text-muted-foreground">Wczytywanie…</p> : null}
       {state.kind === "signed_out" ? <SignedOut returnTo={here} /> : null}
-      {state.kind === "not_found" ? <p role="alert">{NOT_FOUND}</p> : null}
+      {state.kind === "not_found" ? (
+        <Alert variant="destructive">
+          <AlertDescription>{NOT_FOUND}</AlertDescription>
+        </Alert>
+      ) : null}
       {state.kind === "failed" ? (
-        <div role="alert" className="flex flex-col items-start gap-2">
-          <p>{LOAD_FAILED}</p>
+        <Alert variant="destructive" className="justify-items-start gap-3">
+          <AlertDescription>{LOAD_FAILED}</AlertDescription>
           <Button type="button" variant="outline" onClick={retry}>
             Spróbuj ponownie
           </Button>
-        </div>
+        </Alert>
       ) : null}
       {order ? <OrderContent order={order} /> : null}
       {state.kind !== "loading" && state.kind !== "signed_out" ? (
-        <Link href={HISTORY_PATH} className="text-sm underline underline-offset-4">
-          Wróć do zamówień
-        </Link>
+        <Button asChild variant="link" className="self-start px-0 underline">
+          <Link href={HISTORY_PATH}>Wróć do zamówień</Link>
+        </Button>
       ) : null}
-    </main>
+    </ScreenMain>
   );
 }
 
@@ -105,15 +113,21 @@ function OrderContent({ order }: { order: CustomerOrder }) {
 
       <ul aria-label="Pozycje zamówienia" className="flex flex-col gap-3">
         {order.lines.map((line) => (
-          <li key={line.variantId} className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border p-4">
-            <div className="flex flex-col">
-              <span className="font-medium">{line.productName}</span>
-              {line.variantLabel === "" ? null : <span className="text-sm text-muted-foreground">{line.variantLabel}</span>}
-              <span className="text-sm text-muted-foreground">
-                {line.quantity} × <span data-testid="unit-price">{formatPrice(line.unitGross, order.totals.currency)}</span>
-              </span>
-            </div>
-            <span data-testid="line-total">{formatPrice(line.grossBeforeDiscount, order.totals.currency)}</span>
+          <li key={line.variantId}>
+            <Card>
+              <CardContent className="flex flex-wrap items-baseline justify-between gap-2">
+                <div className="flex flex-col">
+                  <span className="font-semibold">{line.productName}</span>
+                  {line.variantLabel === "" ? null : <span className="text-sm text-muted-foreground">{line.variantLabel}</span>}
+                  <span className="text-sm text-muted-foreground">
+                    {line.quantity} × <span data-testid="unit-price">{formatPrice(line.unitGross, order.totals.currency)}</span>
+                  </span>
+                </div>
+                <span data-testid="line-total" className="font-semibold">
+                  {formatPrice(line.grossBeforeDiscount, order.totals.currency)}
+                </span>
+              </CardContent>
+            </Card>
           </li>
         ))}
       </ul>
@@ -139,8 +153,10 @@ function OrderContent({ order }: { order: CustomerOrder }) {
         </div>
       </dl>
 
+      <Separator />
+
       <div role="group" aria-label="Adres dostawy" className="flex flex-col gap-1">
-        <h2 className="font-medium">Adres dostawy</h2>
+        <h2 className="text-lg font-semibold">Adres dostawy</h2>
         <address className="not-italic">
           <div>{order.shippingAddress.street}</div>
           <div>

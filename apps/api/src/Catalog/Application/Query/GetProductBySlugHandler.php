@@ -47,6 +47,7 @@ final readonly class GetProductBySlugHandler
             $row['shortDescription'],
             self::breadcrumb($row['breadcrumb']),
             array_map(fn (array $image): ImageView => SizedImage::view($this->imageUrls, ImageSize::Product, $image['key'], $image['alt']), $row['images']),
+            array_map(fn (array $image): ZoomImageView => SizedImage::zoomView($this->imageUrls, $image['key'], $image['alt']), $row['images']),
             $row['axes'],
             array_map(static function (array $variant): ProductDetailsVariant {
                 $id = VariantId::fromString($variant['id']);

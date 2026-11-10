@@ -54,7 +54,7 @@ envFrom:
 
 {{/* MAILER_FROM. */}}
 {{- define "shop.mailerFrom" -}}
-{{- if .Values.mailer.from }}{{ .Values.mailer.from }}{{ else }}Rytm <zamowienia@{{ .Values.global.domain }}>{{ end -}}
+{{- if .Values.mailer.from }}{{ .Values.mailer.from }}{{ else }}Worf <zamowienia@{{ .Values.global.domain }}>{{ end -}}
 {{- end }}
 
 {{/*

@@ -22,14 +22,14 @@ i `StockLevelChanged`, Varnishu przed odczytami katalogu (`API_CATALOG_URL`), ta
   i `noindex` dla kombinacji filtrów.
 
 Poza zakresem:
-- docelowy wygląd listingu i menu (VISUAL-DESIGN #97);
+- docelowy wygląd listingu i menu (wygląd sklepu: `docs/features/visual-design/spec.md`);
 - podpowiedzi przy wpisywaniu (autocomplete), „czy chodziło ci o”, historia wyszukiwań, wyszukiwanie po kodach;
 - marka jako osobne pole i filtr marki (Catalog nie ma pola marki; marka jest w nazwie produktu i działa w wyszukiwaniu);
 - sortowanie po popularności i nowościach (brak danych);
 - `sitemap.xml`, `robots.txt`, JSON-LD `ItemList` listingu;
 - ISR stron listingu (lista renderuje się przy każdym żądaniu i czyta API przez Varnisha, S4);
 - edycja kategorii i przekierowania po zmianie sluga kategorii (kategorie powstają tylko w danych demo; CATALOG-ADMIN #95);
-- strona główna z treścią marketingową (VISUAL-DESIGN #97).
+- treść marketingowa strony głównej poza hero i kafelkami działów (hero i kafelki działów w stanie domyślnym `/`: `docs/features/visual-design/spec.md`, „Strona główna”).
 
 ## Decyzje
 
@@ -274,13 +274,15 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
   sortowanie i fraza zostają). W każdym innym przypadku „Pokaż wyniki bez filtrów” prowadzi do listingu bez filtrów
   i sortowania (na `/szukaj` z frazą); na `/` tego linku nie ma, bo jest nim „Zobacz cały katalog”.
 
-### Widok listingu (tymczasowy motyw, komponenty shadcn/ui)
+### Widok listingu (komponenty shadcn/ui; wygląd: `docs/features/visual-design/spec.md`)
 
 - Breadcrumby: „Wszystkie produkty” › kategorie ścieżki (linki `/c/<ścieżka>`; ostatni element bez linku); na
   `/szukaj`: „Wszystkie produkty” › „Wyniki wyszukiwania” (z `kategoria` ten element jest linkiem, po nim ścieżka
   kategorii). Na `/` breadcrumbów nie ma.
 - `h1`: nazwa kategorii, „Wszystkie produkty” albo `Wyniki dla „<fraza>”`; obok liczba produktów z odmianą
-  („1 produkt”, „2–4 produkty” i 22–24 itd., pozostałe „produktów”).
+  („1 produkt”, „2–4 produkty” i 22–24 itd., pozostałe „produktów”). Wyjątek: `/` w stanie domyślnym (bez filtrów,
+  z domyślnym sortowaniem, `sort` brak albo `nazwa`, i `page` brak albo 1) ma nad listą hero z `h1` i kafelki działów; „Wszystkie produkty” jest wtedy `h2`,
+  a nazwy produktów `h3` (`docs/features/visual-design/spec.md`, „Strona główna”).
 - Panel filtrów (po lewej na szerokim ekranie, rozwijany przyciskiem „Filtry” na wąskim): „Kategorie” (faseta
   `categories` jako linki z liczbą, zachowujące filtry: na `/` i `/c/` do `/c/<ścieżka>`, na `/szukaj` z `kategoria`),
   każda oś z `options` (pola wyboru z liczbą), „Cena (zł)” (pola „Cena od” i „Cena do” z klawiaturą numeryczną,
@@ -314,13 +316,13 @@ funkcjonalny składa adres w formacie tego klienta (powtarzany `option`).
 
 ### Metadane i SEO (S5)
 
-- `/c/<ścieżka>`: tytuł `<nazwa kategorii>[ – strona n] | Rytm`, opis „Produkty z kategorii <nazwa> w sklepie Rytm.”,
-  kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1). `/`: tytuł `Wszystkie produkty[ – strona n] | Rytm`,
+- `/c/<ścieżka>`: tytuł `<nazwa kategorii>[ – strona n] | Worf`, opis „Produkty z kategorii <nazwa> w sklepie Worf.”,
+  kanoniczny `<STORE_URL>/c/<ścieżka>` (`?page=n` przy n > 1). `/`: tytuł `Wszystkie produkty[ – strona n] | Worf`,
   kanoniczny `<STORE_URL>/` (`?page=n` przy n > 1).
 - Którykolwiek z parametrów `sort`, `cena-od`, `cena-do`, `dostepne`, `o` → `robots: noindex, follow` i kanoniczny
   listingu bez nich i bez `page`.
-- `/szukaj`: `noindex, follow`, bez adresu kanonicznego, tytuł `Wyniki dla „<fraza>”[ – strona n] | Rytm` (bez frazy
-  albo z za krótką `Wyszukiwanie | Rytm`). Wyjątek: „Nieprawidłowy filtr” ma samo `noindex`.
+- `/szukaj`: `noindex, follow`, bez adresu kanonicznego, tytuł `Wyniki dla „<fraza>”[ – strona n] | Worf` (bez frazy
+  albo z za krótką `Wyszukiwanie | Worf`). Wyjątek: „Nieprawidłowy filtr” ma samo `noindex`.
 - Pusta strona poza zakresem (`page` większe niż liczba stron): pusta lista z prawdziwym `total`,
   `noindex`. Niepoprawny numer strony (`0`, `abc`, ujemny): API 400 → „Nieprawidłowy filtr” z `noindex`.
 - JSON-LD `BreadcrumbList` na `/c/<ścieżka>` (bezwzględne adresy; `<` zakodowane jak na stronie produktu).

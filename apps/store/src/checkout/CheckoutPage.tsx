@@ -15,8 +15,13 @@ import {
 import { announceCartChange } from "@/cart/events";
 import { SessionExpired } from "@/cart/messages";
 import { formatPrice } from "@/catalog/format-price";
+import { ScreenMain, ScreenTitle } from "@/components/ScreenLayout";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { navigateTo } from "./navigate";
 import type { PaymentProvider } from "./payment-api";
 
@@ -321,21 +326,23 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   const showsForm = loaded.status === "ready" && loaded.cart.lines.length > 0 && !loaded.cart.hasExcludedLines;
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
-      <h1 className="text-2xl font-semibold">Kasa</h1>
+    <ScreenMain>
+      <ScreenTitle>Kasa</ScreenTitle>
       {loaded.status === "loading" ? <p className="text-muted-foreground">Wczytywanie…</p> : null}
       {loaded.status === "unauthorized" ? (
-        <p role="alert">
-          <SessionExpired returnTo="/checkout" />
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>
+            <SessionExpired returnTo="/checkout" />
+          </AlertDescription>
+        </Alert>
       ) : null}
       {loaded.status === "error" ? (
-        <div role="alert" className="flex flex-col items-start gap-2">
-          <p>Nie udało się wczytać kasy</p>
+        <Alert variant="destructive" className="justify-items-start gap-3">
+          <AlertDescription>Nie udało się wczytać kasy</AlertDescription>
           <Button type="button" variant="outline" onClick={retry}>
             Spróbuj ponownie
           </Button>
-        </div>
+        </Alert>
       ) : null}
       {failure ? <FailureMessage failure={failure} cartLinkShown={showsForm} /> : null}
       {loaded.status === "ready" ? (
@@ -364,7 +371,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
           onSubmit={(event) => void submit(event)}
         />
       ) : null}
-    </main>
+    </ScreenMain>
   );
 }
 
@@ -404,28 +411,30 @@ function prefilled(session: AccountSession): Form {
 
 function FailureMessage({ failure, cartLinkShown }: { failure: Failure; cartLinkShown: boolean }) {
   return (
-    <div id={FAILURE_ID} role="alert" tabIndex={-1} className="flex flex-col items-start gap-1 text-destructive">
-      {failure.kind === "unauthorized" ? (
-        <p>
-          <SessionExpired returnTo="/checkout" />
-        </p>
-      ) : failure.kind === "message" ? (
-        <p>{failure.text}</p>
-      ) : (
-        <>
-          <p>{failure.kind === "conflict" ? failure.detail : CART_GONE}</p>
-          {failure.kind === "not_found" ? (
-            <Link href="/" className="text-sm text-foreground underline underline-offset-4">
-              Wróć do sklepu
-            </Link>
-          ) : failure.offersCart && cartLinkShown ? (
-            <Link href="/cart" className="text-sm text-foreground underline underline-offset-4">
-              Wróć do koszyka
-            </Link>
-          ) : null}
-        </>
-      )}
-    </div>
+    <Alert id={FAILURE_ID} variant="destructive" tabIndex={-1}>
+      <AlertDescription>
+        {failure.kind === "unauthorized" ? (
+          <p>
+            <SessionExpired returnTo="/checkout" />
+          </p>
+        ) : failure.kind === "message" ? (
+          <p>{failure.text}</p>
+        ) : (
+          <>
+            <p>{failure.kind === "conflict" ? failure.detail : CART_GONE}</p>
+            {failure.kind === "not_found" ? (
+              <p>
+                <Link href="/">Wróć do sklepu</Link>
+              </p>
+            ) : failure.offersCart && cartLinkShown ? (
+              <p>
+                <Link href="/cart">Wróć do koszyka</Link>
+              </p>
+            ) : null}
+          </>
+        )}
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -466,19 +475,19 @@ function CheckoutContent({
 }) {
   if (cart.lines.length === 0 || cart.hasExcludedLines) {
     return (
-      <div className="flex flex-col items-start gap-2">
-        <p>
+      <div className="flex flex-col items-start gap-1">
+        <p className="text-lg">
           {cart.lines.length === 0
             ? "Twój koszyk jest pusty."
             : "Część pozycji w koszyku nie może zostać kupiona. Usuń albo popraw oznaczone pozycje."}
         </p>
-        <Link href="/cart" className="text-sm underline underline-offset-4">
-          Przejdź do koszyka
-        </Link>
+        <Button asChild variant="link" className="px-0 underline">
+          <Link href="/cart">Przejdź do koszyka</Link>
+        </Button>
         {cart.lines.length === 0 && pendingOrderNumber !== null ? (
-          <Link href="/checkout/confirmation" className="text-sm underline underline-offset-4">
-            Opłać zamówienie {pendingOrderNumber}
-          </Link>
+          <Button asChild variant="link" className="px-0 underline">
+            <Link href="/checkout/confirmation">Opłać zamówienie {pendingOrderNumber}</Link>
+          </Button>
         ) : null}
       </div>
     );
@@ -494,11 +503,11 @@ function CheckoutContent({
         onApply={onApplyCode}
         onRemove={onRemoveCode}
       />
-      <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
+      <form noValidate onSubmit={onSubmit} className="flex flex-col gap-5">
         {session === null ? (
           <p className="text-sm text-muted-foreground">
             Masz konto?{" "}
-            <a href={LOGIN_HREF} className="text-foreground underline underline-offset-4">
+            <a href={LOGIN_HREF} className="text-link underline underline-offset-4">
               Zaloguj się
             </a>
           </p>
@@ -511,9 +520,9 @@ function CheckoutContent({
           <FormField key={field.name} {...field} value={form[field.name]} error={fieldErrors[field.name]} onChange={onChange} />
         ))}
         {providers === null || providers.length === 0 ? (
-          <p role="status" className="text-sm text-muted-foreground">
-            Płatności są chwilowo niedostępne. Spróbuj za chwilę.
-          </p>
+          <Alert role="status">
+            <AlertDescription>Płatności są chwilowo niedostępne. Spróbuj za chwilę.</AlertDescription>
+          </Alert>
         ) : (
           <>
             <ProviderChoice providers={providers} value={provider} error={providerError} onChange={onProviderChange} />
@@ -545,13 +554,13 @@ function ProviderChoice({
       aria-required="true"
       aria-invalid={error ? true : undefined}
       aria-describedby={error ? PROVIDER_ERROR_ID : undefined}
-      className="flex flex-col gap-2"
+      className="flex flex-col gap-1"
     >
-      <span id="checkout-provider-label" className="text-sm font-medium">
+      <span id="checkout-provider-label" className="mb-1 text-ui font-semibold">
         Sposób płatności
       </span>
       {providers.map(({ code, name }) => (
-        <label key={code} htmlFor={`${PROVIDER_ID_PREFIX}${code}`} className="flex items-center gap-2 text-sm">
+        <Label key={code} htmlFor={`${PROVIDER_ID_PREFIX}${code}`} className="min-h-11 gap-3 text-ui font-normal">
           <input
             id={`${PROVIDER_ID_PREFIX}${code}`}
             type="radio"
@@ -559,10 +568,10 @@ function ProviderChoice({
             value={code}
             checked={value === code}
             onChange={() => onChange(code)}
-            className="accent-primary"
+            className="size-5 accent-foreground"
           />
           {name}
-        </label>
+        </Label>
       ))}
       {error ? (
         <p id={PROVIDER_ERROR_ID} className="text-sm text-destructive">
@@ -593,10 +602,8 @@ function FormField({
   const id = `${FIELD_ID_PREFIX}${name}`;
   const errorId = `${id}-error`;
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
         name={name}
@@ -647,10 +654,8 @@ function DiscountCode({
           Usuń kod
         </Button>
       ) : (
-        <form noValidate onSubmit={onApply} className="flex flex-col gap-1">
-          <label htmlFor={CODE_INPUT_ID} className="text-sm font-medium">
-            Kod rabatowy
-          </label>
+        <form noValidate onSubmit={onApply} className="flex flex-col gap-1.5">
+          <Label htmlFor={CODE_INPUT_ID}>Kod rabatowy</Label>
           <div className="flex gap-2">
             <Input
               id={CODE_INPUT_ID}
@@ -671,9 +676,9 @@ function DiscountCode({
         </form>
       )}
       {state.error ? (
-        <p id={CODE_ERROR_ID} role="alert" className="text-sm text-destructive">
-          {state.error}
-        </p>
+        <Alert id={CODE_ERROR_ID} variant="destructive">
+          <AlertDescription>{state.error}</AlertDescription>
+        </Alert>
       ) : null}
     </div>
   );
@@ -682,38 +687,43 @@ function DiscountCode({
 /** Lines and total exactly as the API gave them; nothing is computed here. */
 function OrderSummary({ cart }: { cart: CartView }) {
   return (
-    <section aria-label="Podsumowanie zamówienia" className="flex flex-col gap-2">
-      <ul className="flex flex-col divide-y divide-border">
-        {cart.lines.map((line) => (
-          <li key={line.variantId} className="flex justify-between gap-4 py-2">
-            <div className="flex flex-col">
-              <span className="text-sm font-medium">{line.product?.name}</span>
-              {line.product?.variantLabel ? (
-                <span data-testid="checkout-line-variant" className="text-sm text-muted-foreground">
-                  {line.product.variantLabel}
-                </span>
-              ) : null}
-              <span data-testid="checkout-line-quantity" className="text-sm text-muted-foreground">
-                {line.quantity} szt.
-              </span>
-            </div>
-            {line.lineTotal ? (
-              <span data-testid="checkout-line-total" className="text-sm font-semibold">
-                {formatPrice(line.lineTotal.gross, line.lineTotal.currency)}
-              </span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      {cart.discount?.status === "applied" ? (
-        <p data-testid="checkout-discount" className="flex justify-between text-sm">
-          Kod {cart.discount.code}: −{formatPrice(cart.discount.amountGross, cart.totals.currency)}
-        </p>
-      ) : null}
-      <p className="flex justify-between border-t border-border pt-2 font-semibold">
-        <span>Do zapłaty (brutto)</span>
-        <span data-testid="checkout-total">{formatPrice(cart.totals.gross, cart.totals.currency)}</span>
-      </p>
+    <section aria-label="Podsumowanie zamówienia">
+      <Card>
+        <CardContent className="flex flex-col gap-3">
+          <ul className="flex flex-col divide-y divide-border">
+            {cart.lines.map((line) => (
+              <li key={line.variantId} className="flex justify-between gap-4 py-2 first:pt-0">
+                <div className="flex flex-col">
+                  <span className="font-semibold">{line.product?.name}</span>
+                  {line.product?.variantLabel ? (
+                    <span data-testid="checkout-line-variant" className="text-sm text-muted-foreground">
+                      {line.product.variantLabel}
+                    </span>
+                  ) : null}
+                  <span data-testid="checkout-line-quantity" className="text-sm text-muted-foreground">
+                    {line.quantity} szt.
+                  </span>
+                </div>
+                {line.lineTotal ? (
+                  <span data-testid="checkout-line-total" className="font-semibold">
+                    {formatPrice(line.lineTotal.gross, line.lineTotal.currency)}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {cart.discount?.status === "applied" ? (
+            <p data-testid="checkout-discount" className="flex justify-between text-sm">
+              Kod {cart.discount.code}: −{formatPrice(cart.discount.amountGross, cart.totals.currency)}
+            </p>
+          ) : null}
+          <Separator />
+          <p className="flex justify-between text-lg font-semibold">
+            <span>Do zapłaty (brutto)</span>
+            <span data-testid="checkout-total">{formatPrice(cart.totals.gross, cart.totals.currency)}</span>
+          </p>
+        </CardContent>
+      </Card>
     </section>
   );
 }

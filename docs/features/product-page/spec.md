@@ -25,7 +25,7 @@ Funkcja opiera się na wariantach produktu w Catalog i na ofercie produktów `GE
 - `make seed` kończy się pełnym unieważnieniem (Varnish i ISR).
 
 Poza zakresem:
-- docelowy wygląd strony, galeria z powiększeniem, karuzela (VISUAL-DESIGN #97);
+- biblioteka karuzeli, lupa i powiększenie gestem szczypnięcia (galeria z powiększeniem jest zrobiona, patrz „Galeria”);
 - wyszukiwarka i filtry (SEARCH #94);
 - przekierowania 301 po zmianie sluga: slug jest stały od pierwszej publikacji produktu (CATALOG-ADMIN #95);
 - tagi i unieważnianie po zmianie kategorii: kategorie powstają tylko w danych demo (`make seed` z pełnym
@@ -42,7 +42,7 @@ Poza zakresem:
 | P1 | Wybór wariantu na stronie: osobny wybór wartości dla każdej osi (np. „Kolor”, potem „Rozmiar”); dostępność wartości liczona hierarchicznie w kolejności osi (oś liczy się względem wyborów na osiach wcześniejszych, zmiana wcześniejszej osi czyści niezgodne wybory późniejszych); wybranej wartości nie da się odznaczyć, można wybrać inną. |
 | P2 | Bez wyboru domyślnego (jak D8 VARIANTS), z wyjątkiem: produkt, który ma dokładnie jeden wariant możliwy do kupienia, ma go wybranego od razu (także gdy ma więcej wariantów). |
 | P3 | „Do koszyka” dodaje 1 sztukę wybranego wariantu (jak kafelek); ilość zmienia się w koszyku. |
-| P4 | Wszystkie zdjęcia produktu w kolejności, jedno pod drugim; pierwsze jest główne (`priority`). |
+| P4 | Wszystkie zdjęcia produktu w kolejności z API w galerii (pasek przewijany poziomo, miniatury, powiększenie); pierwsze jest główne (`priority`). Szczegóły: „Galeria”. |
 | P5 | Po rewalidacji pierwszy odwiedzający dostaje już nową stronę (rewalidacja blokująca, `expire: 0`); sprawdza to E2E na buildzie produkcyjnym. |
 | P6 | Produkt bez wariantu możliwego do kupienia: „Niedostępny”, bez ceny, wyboru i przycisku (jak E3). |
 | P7 | Błąd oferty na stronie produktu to błąd strony (nie jest cache'owany przez ISR), nie strona bez ceny. |
@@ -95,13 +95,18 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
 
 - Zapytanie `GetProductBySlug(slug)` (`query.bus`, DBAL, odczyt z PostgreSQL, nie z Elasticsearch) → `ProductDetails`
   albo `null`:
-  `{id, slug, name, shortDescription, breadcrumb: [{id, name, path}], images: [ImageView], variantAxes: [string],
+  `{id, slug, name, shortDescription, breadcrumb: [{id, name, path}], images: [ImageView], zoomImages: [ZoomImageView], variantAxes: [string],
   variants: [{variantId, label, values: [string]}]}`.
   - `breadcrumb`: ścieżka od korzenia do kategorii głównej produktu (`ProductCategories::main`), z `CategoryPath`;
     `path` elementu to slugi kategorii od korzenia do niego połączone `/` (jak `path` w drzewie kategorii).
   - `images`: wszystkie zdjęcia produktu w kolejności pozycji (0–10), w rozmiarze `product`.
+  - `zoomImages`: te same zdjęcia w tej samej kolejności i liczbie (produkt bez zdjęć: pusta lista), w rozmiarze `zoom`,
+    zbudowane z tych samych kluczy i opisów, bez dodatkowego odczytu. `ZoomImageView` to `{alt, size, variants}` bez
+    `aspectRatio` (schemat OpenAPI `ZoomImage`).
   - `variants` w kolejności pozycji; `label` z `ProductVariant::label()`, `values` w kolejności osi.
 - Rozmiar `product` (karta produktu) w `ImageSize`: 1:1, szerokości 640, 960, 1280, 1600, WebP, `fill`, `sm`.
+- Rozmiar `zoom` (powiększenie): całe zdjęcie bez przycinania (`fit`), bez stałych proporcji (wysokość wynika z
+  szerokości, w adresie imgproxy `rs:fit:<szerokość>:0`), szerokości 1280, 1920, 2560, WebP, bez powiększania ponad oryginał.
 - `GET /api/v1/products/{slug}` (`Catalog_UI`, `PUBLIC_ACCESS`): 200 `ProductDetails` opublikowanego produktu;
   szkic, nieznany slug albo slug niezgodny z formatem `Slug`: ta sama odpowiedź 404 „Produkt nie istnieje.” (problem
   details). Nagłówki z tabeli wyżej: 200 ma tagi `catalog` `product-<id>` (slug zmienia się tylko w szkicu, który nie
@@ -225,10 +230,10 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   treść) → wyjątek, `app/error.tsx` (P7), a wynik nie trafia do cache ISR. Po rewalidacji na żądanie (`expire: 0`,
   P5) wpis jest wygaszony, więc błąd daje stronę błędu, a następne wejście renderuje stronę od nowa. Przy
   wygaśnięciu czasowym (`revalidate = 3600`, odświeżenie w tle) błąd zostawia poprzednią wersję.
-- Treść (tymczasowy, neutralny motyw na tokenach, komponenty shadcn/ui):
+- Treść (tokeny i komponenty shadcn/ui wybranego kierunku wyglądu, `docs/features/visual-design/spec.md`; na desktopie galeria obok danych, na telefonie nad danymi):
   - ścieżka: „Wszystkie produkty” › kategorie z `breadcrumb`, linki `/c/<ścieżka>` (`path` elementu);
-  - `h1` z nazwą, zdjęcia przez `ProductPhoto` (P4; produkt bez zdjęć: `PhotoPlaceholder` jak na kafelku), krótki
-    opis;
+  - `h1` z nazwą, galeria zdjęć (`ProductGallery`, P4; patrz „Galeria”; produkt bez zdjęć: `PhotoPlaceholder` jak na
+    kafelku, bez powiększenia), krótki opis;
   - cena i dostępność: bez wyboru „od X zł” (gdy `hasPriceRange`) albo „X zł” i etykieta `level` produktu; po
     wyborze wariantu jego cena i etykieta `level`;
   - cena promocyjna i Omnibus (`docs/features/promotions/spec.md`, Q11): cena jest zawsze skuteczną ceną z API
@@ -257,7 +262,7 @@ panel → API: edycja / publikacja / wycofanie produktu (ProductChanged) → out
   - produkt bez wariantu możliwego do kupienia (`fromGross = null`): „Niedostępny”, bez ceny, wyboru i przycisku (P6);
   - wariant ze szczegółów, którego nie ma w ofercie, jest niemożliwy do kupienia.
   Front niczego nie liczy poza dopasowaniem wybranych wartości do wariantu: ceny, poziomy i `purchasable` z oferty.
-- Metadane (`generateMetadata`): tytuł `<nazwa> | Rytm`, opis = krótki opis, kanoniczny `<STORE_URL>/p/<slug>`,
+- Metadane (`generateMetadata`): tytuł `<nazwa> | Worf`, opis = krótki opis, kanoniczny `<STORE_URL>/p/<slug>`,
   Open Graph: tytuł, opis, obraz = pierwsze zdjęcie w największej szerokości (bez zdjęć: bez obrazu).
 - JSON-LD (`<script type="application/ld+json">`; każdy znak `<` w treści zakodowany jako ucieczka Unicode U+003C,
   jak w przewodniku JSON-LD Next.js):
@@ -319,9 +324,55 @@ Cache nie wpływa na koszyk ani checkout. Backend weryfikuje cenę i dostępnoś
   409 `InsufficientStockForOrder`).
 Koszyk i checkout idą do API bezpośrednio (`API_INTERNAL_URL`, A1), nigdy przez Varnish ani ISR.
 
+## Galeria i powiększenie
+
+Wygląd i układ: `docs/features/visual-design/spec.md` („Karta produktu `/p/[slug]`”, decyzja D6) i makieta
+`docs/features/visual-design/mockups/kierunek.html`. Komponent `ProductGallery` (`apps/store/src/catalog/`, Client
+Component renderowany też na serwerze) dostaje `images` (rozmiar `product`) i `zoomImages` (rozmiar `zoom`) z API,
+zdjęcia w kolejności z API; zdjęcie bez wariantu WebP jest pomijane razem ze swoim odpowiednikiem `zoom`.
+
+- **HTML z serwera i ISR** zawiera całą galerię: pasek zdjęć z przewijaniem poziomym i przyciąganiem (CSS
+  `scroll-snap`, każde zdjęcie z `id="zdjecie-n"`, `alt` z API, pierwsze `priority`, reszta `loading="lazy"`), miniatury
+  jako linki `#zdjecie-n` z nazwą „Pokaż zdjęcie n z m” (obraz z `alt=""`, najmniejsza szerokość rozmiaru `product`,
+  `loading="lazy"`) i licznik „1 / m” (`aria-live="polite"`). Bez JavaScriptu zdjęcia przewija się palcem, miniatury
+  przewijają pasek kotwicą (przeglądarka może dopisać `#zdjecie-n` do adresu). HTML nie zależy od sesji ani stanu galerii;
+  pierwszy render w przeglądarce jest taki sam jak na serwerze (`useSyncExternalStore` z migawką serwera `false` dla
+  tego, co dodaje JavaScript), więc nazwa, cena i „Do koszyka” nie przesuwają się przy hydratacji.
+- **Po hydratacji** (JavaScript): `aria-current="true"` przy miniaturze widocznego zdjęcia; licznik podąża za paskiem
+  (także za przesunięciem palcem; pozycja liczy się, gdy pasek przestanie się przewijać na 100 ms, żeby czytnik nie
+  ogłaszał zdjęć mijanych w trakcie przewijania; pozycję czyta też raz po hydratacji, więc pasek przewinięty przed nią pokazuje właściwe zdjęcie); przyciski „Poprzednie zdjęcie” i „Następne zdjęcie” (ułożone
+  bezwzględnie nad paskiem, więc bez przesunięcia układu; przechodzą w kółko od aktualnej pozycji paska albo od celu trwającego
+  przewijania, więc dwa szybkie kliknięcia przesuwają o dwa zdjęcia); kliknięcie miniatury przewija pasek
+  płynnie (bez animacji przy `prefers-reduced-motion: reduce`), z `preventDefault`, więc bez zmiany adresu i bez wpisu
+  w historii; ← → w pasku (fokus na zdjęciu) przechodzą do sąsiedniego zdjęcia i przenoszą na nie fokus.
+- **Powiększenie:** zdjęcie paska jest w przycisku z nazwą „Powiększ zdjęcie n z m: <alt>” (z napisem „Powiększ”
+  w rogu). Przycisk otwiera shadcn `dialog` na całe okno (nazwa produktu jako tytuł, ciemne tło): licznik „n / m”
+  i „Zamknij” u góry, pasek zdjęć `zoomImages` z `scroll-snap` (całe zdjęcie, `object-fit: contain`), przyciski
+  „Poprzednie zdjęcie” i „Następne zdjęcie”, `alt` zdjęcia pod nim. Obrazy mają `srcset` ze wszystkich szerokości
+  rozmiaru `zoom` (1280, 1920, 2560) i `sizes="100vw"`, więc telefon nie pobiera pliku 2560 px; widoczne zdjęcie jest
+  `eager`, pozostałe `lazy`; okno nie istnieje w DOM, dopóki nie zostanie otwarte. Okno otwiera się na zdjęciu, z którego
+  je otwarto (pasek jest przewijany do niego przy pojawieniu się elementu). Escape i „Zamknij” zamykają, fokus wraca na przycisk, który otworzył okno (też w Safari, które nie fokusuje
+  przycisku przy kliknięciu), ← → i przyciski zmieniają zdjęcie (w kółko), przesunięcie palcem zmienia je natywnie.
+- **Jedno zdjęcie:** bez miniatur, licznika i strzałek, z powiększeniem (bez licznika i strzałek w oknie). Bez zdjęć:
+  `PhotoPlaceholder` bez powiększenia. Gdy `zoomImages` nie ma odpowiednika każdego zdjęcia, zdjęcia są w pasku bez
+  przycisków powiększenia.
+- **Cele dotyku** miniatur, strzałek i przycisków co najmniej 44×44 px; miniatura ma 72 px (telefon) albo 84 px (desktop).
+  Kolejność tabulatora jest kolejnością wizualną w każdej przeglądarce, bo kolejność w dokumencie jest kolejnością na
+  ekranie (bez właściwości CSS zmieniających kolejność fokusu i bez `order`): lista miniatur jest w HTML dwa razy, kolumna po lewej od zdjęcia
+  (`hidden lg:flex`) przed paskiem i rząd pod paskiem (`lg:hidden`) po nim; ukryta ma `display: none` (poza Tab i drzewem
+  dostępności), jej obrazy mają `loading="lazy"` i te same adresy co obrazy widocznej listy, obie są w HTML z serwera, mają tę samą etykietę „Miniatury zdjęć”
+  i ten sam stan `aria-current`. Od `lg` Tab idzie: miniatury, zdjęcia paska, strzałki; poniżej `lg`: zdjęcia paska,
+  strzałki, miniatury.
+- **Testy:** Vitest (`ProductGallery.test.tsx`, `ProductGallery.server.test.tsx` na HTML serwera) i E2E
+  (`e2e/tests/product-gallery.spec.ts`, produkt demo „Narty skiturowe Stavro Grań 95” z trzema zdjęciami): mysz,
+  klawiatura, dotyk na 375 px (rzeczywiste zdarzenia dotyku z `Input.dispatchTouchEvent`), brak zmiany adresu po
+  miniaturze, ta sama pozycja nazwy i „Do koszyka” z JavaScriptem i bez, brak pobrania pliku 2560 px, axe (także z
+  otwartym powiększeniem) na 1440 i 375 px; kolejność elementów galerii w dokumencie równa ich położeniu i sekwencja
+  Tab na 1440 i 375 px.
+
 ## Kryteria akceptacji
 
-1. `/p/<slug>` pokazuje nazwę, ścieżkę kategorii, zdjęcia, krótki opis, cenę, dostępność i wybór wariantu; gość
+1. `/p/<slug>` pokazuje nazwę, ścieżkę kategorii, galerię zdjęć z powiększeniem, krótki opis, cenę, dostępność i wybór wariantu; gość
    i klient dodają wybrany wariant do koszyka.
 2. Strona ma tytuł, opis, kanoniczny adres, Open Graph i JSON-LD `Product` (oferty wariantów z ceną) oraz
    `BreadcrumbList`; nieznany slug daje 404.
@@ -343,7 +394,7 @@ Koszyk i checkout idą do API bezpośrednio (`API_INTERNAL_URL`, A1), nigdy prze
   zmiany, zatwierdzenie); konsumenci z dublerem `StorefrontCache` (kolejność, wariant nieznany, źródło `seed` bez
   unieważnienia, błąd).
 - Integracyjne zdarzeń: `ReconcileTax` z odrzuconym zapisem (konflikt) nie zostawia zdarzenia w outboxie.
-- Integracyjne: `GetProductBySlug` (ścieżka kategorii, zdjęcia w kolejności, warianty i wartości, nieznany slug);
+- Integracyjne: `GetProductBySlug` (ścieżka kategorii, zdjęcia w kolejności i w rozmiarze `zoom`, warianty i wartości, nieznany slug);
   zdarzenia trafiają do outboxu w transakcji i znikają przy rollbacku (także savepoint w Inventory); `StorefrontCache`
   wobec dublera HTTP (nagłówki, kolejność, błąd purge zatrzymuje rewalidację, błąd rewalidacji to wyjątek).
 - Funkcjonalne API: `GET /api/v1/products/{slug}` (200, 404, zły format, 401 przy złym tokenie, nagłówki
@@ -359,10 +410,11 @@ Koszyk i checkout idą do API bezpośrednio (`API_INTERNAL_URL`, A1), nigdy prze
 - Funkcjonalne/integracyjne `StorefrontCache` i `purge-all`: sklep odpowiadający po kilku sekundach (mieści się
   w limicie), ponowienia `purge-all` i kod 2 po ostatniej próbie.
 - E2E (`make e2e`; w CI na buildzie produkcyjnym):
-  - `product-page.spec.ts`: z listy do strony „Buty szosowe Tarvik Asfalt 200”, ścieżka, zdjęcia, JSON-LD, wybór
+  - `product-page.spec.ts`: z listy do strony „Buty szosowe Tarvik Asfalt 200”, ścieżka, zdjęcie, JSON-LD, wybór
     „czarne” i „42”, cena i poziom wariantu, dodanie do koszyka jako gość, linia z etykietą; to samo jako zalogowany
     klient; nieznany slug → 404; drugie wejście
     na stronę z `x-nextjs-cache: HIT` (tylko przy `STORE_MODE=production`);
+  - `product-gallery.spec.ts`: galeria i powiększenie (patrz „Galeria i powiększenie”);
   - `price-change.spec.ts`: nowa cena widoczna na stronie produktu i na liście w ciągu 20 s;
   - `stock-receipt.spec.ts`: po przyjęciu strona produktu pokazuje „Dostępny” w ciągu 20 s;
   - `product-page-freshness.spec.ts` (tylko `STORE_MODE=production`, czyli w CI; w trybie dev pominięty z adnotacją)

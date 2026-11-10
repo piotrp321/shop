@@ -15,12 +15,14 @@ test("a guest chooses two sizes of one product on the tile and the cart has two 
     .getByRole("listitem")
     .filter({ has: page.getByRole("heading", { level: 2, name: PRODUCT_NAME, exact: true }) });
   await expect(tile).toHaveCount(1);
-  // Without a choice the tile cannot add anything.
-  await expect(tile.getByRole("button", { name: "Do koszyka" })).toBeDisabled();
+  // Without a choice the tile has one action, „Wybierz wariant”, and no „Do koszyka” until a variant is chosen.
+  await expect(tile.getByRole("button", { name: "Do koszyka" })).toHaveCount(0);
+  await tile.getByRole("button", { name: "Wybierz wariant" }).click();
+  await expect(tile.getByRole("button", { name: "Do koszyka" })).toHaveCount(0);
 
   await expect(page.getByTestId("cart-count")).toHaveText("0");
   for (const [index, label] of VARIANT_LABELS.entries()) {
-    await tile.getByRole("combobox").selectOption({ label });
+    await tile.getByRole("radio", { name: label, exact: true }).check();
     await expect(tile.getByTestId("price")).toBeVisible();
     await tile.getByRole("button", { name: "Do koszyka" }).click();
     await expect(page.getByTestId("cart-count")).toHaveText(String(index + 1));

@@ -7,7 +7,7 @@ const STORE = "http://store.test";
 describe("buildProductMetadata", () => {
   it("has the title with the shop name, the short description and the canonical address of the product", () => {
     const metadata = buildProductMetadata(makeDetails(1, { name: "Buty Asfalt", shortDescription: "Lekkie buty." }), STORE);
-    expect(metadata.title).toBe("Buty Asfalt | Rytm");
+    expect(metadata.title).toBe("Buty Asfalt | Worf");
     expect(metadata.description).toBe("Lekkie buty.");
     expect(metadata.alternates).toEqual({ canonical: "http://store.test/p/produkt-1" });
   });
@@ -19,7 +19,7 @@ describe("buildProductMetadata", () => {
   it("puts the first photo in its largest width in Open Graph, with the title, the description and the address", () => {
     const metadata = buildProductMetadata(makeDetails(1, { name: "Buty Asfalt", shortDescription: "Lekkie buty." }), STORE);
     expect(metadata.openGraph).toMatchObject({
-      title: "Buty Asfalt | Rytm",
+      title: "Buty Asfalt | Worf",
       description: "Lekkie buty.",
       url: "http://store.test/p/produkt-1",
       images: [{ url: "http://imgproxy.test/a1-1600/plain.webp", width: 1600, height: 1600, alt: "Zdjęcie 1, pierwsze" }],

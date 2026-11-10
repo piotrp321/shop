@@ -549,6 +549,16 @@ templates:
         alt: "Dwie osoby na skiturach na stromym śnieżnym stoku"
       - file: "ski-hikers-snowy-trail.jpg"
         alt: "Turyści idący zaśnieżonym szlakiem w słońcu"
+    productImages:
+      - brand: "Stavro"
+        model: "Grań 95"
+        images:
+          - file: "skis-blue-touring-stone-wall.jpg"
+            alt: "Para niebieskich nart skiturowych z fokami oparta o kamienny mur"
+          - file: "skis-blue-tips-snow.jpg"
+            alt: "Końcówki niebieskich nart w śniegu"
+          - file: "skier-carrying-blue-skis-ascent.jpg"
+            alt: "Narciarz niesie niebieskie narty na ramieniu na podejściu"
   - category: "sporty-zimowe/kaski"
     additionalCategories:
       - "rower/kaski-i-ochraniacze"
@@ -751,6 +761,27 @@ templates:
         alt: "Dwie osoby w kajaku na spokojnym jeziorze wśród gór"
       - file: "paddleboards-lake-wanaka.jpg"
         alt: "Dwie osoby na deskach SUP na górskim jeziorze"
+    productImages:
+      - brand: "Vilmar"
+        model: "Rzeka 1"
+        images:
+          - file: "kayak-green-single-mountain-lake.jpg"
+            alt: "Jaskrawozielony jednoosobowy kajak na górskim jeziorze"
+      - brand: "Dravik"
+        model: "Rzeka 1"
+        images:
+          - file: "kayak-green-single-autumn-lake.jpg"
+            alt: "Kajakarz w jasnozielonym jednoosobowym kajaku na jeziorze"
+      - brand: "Vilmar"
+        model: "Rzeka 2"
+        images:
+          - file: "kayak-green-tandem-river.jpg"
+            alt: "Dwie osoby w zielonym dwuosobowym kajaku na rzece"
+      - brand: "Dravik"
+        model: "Rzeka 2"
+        images:
+          - file: "kayak-green-tandem-river-close.jpg"
+            alt: "Zielony dwuosobowy kajak z dwiema osobami, ujęcie z bliska"
   - category: "sporty-wodne/plywanie/okulary"
     productType: "Okulary pływackie"
     taxClass: standard

@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import { useListing } from "./listing-context";
 import { defaultSort } from "./listing-query";
 
@@ -23,22 +24,25 @@ export function SortSelect() {
   const selected = state.sort ?? defaultSort(state);
   const choose = (value: string) => go({ ...state, sort: value === defaultSort(state) ? undefined : value, page: undefined });
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div className="flex items-center gap-2.5 text-sm">
       <label htmlFor="listing-sort">Sortuj</label>
-      <select
-        id="listing-sort"
-        name="sort"
-        form={FILTER_FORM_ID}
-        value={selected}
-        onChange={(event) => choose(event.target.value)}
-        className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
-      >
-        {SORTS.filter((sort) => sort.value !== "trafnosc" || state.q !== undefined).map((sort) => (
-          <option key={sort.value} value={sort.value}>
-            {sort.label}
-          </option>
-        ))}
-      </select>
+      <div className="relative min-w-47.5">
+        <select
+          id="listing-sort"
+          name="sort"
+          form={FILTER_FORM_ID}
+          value={selected}
+          onChange={(event) => choose(event.target.value)}
+          className="h-11 w-full appearance-none rounded-md border border-input bg-card pr-10 pl-3.5 text-ui text-foreground hover:border-foreground"
+        >
+          {SORTS.filter((sort) => sort.value !== "trafnosc" || state.q !== undefined).map((sort) => (
+            <option key={sort.value} value={sort.value}>
+              {sort.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3.5 size-5 -translate-y-1/2" />
+      </div>
     </div>
   );
 }

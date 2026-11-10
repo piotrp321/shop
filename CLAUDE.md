@@ -167,6 +167,10 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 - Oryginały zdjęć są w Garage (prywatny bucket), serwowane wyłącznie przez imgproxy.
 - Podpisane adresy imgproxy buduje API. Klucz podpisu nigdy nie trafia do frontów.
 - Rozmiary obrazów są zdefiniowane w jednym miejscu. Nie dodawaj nowego rozmiaru w komponencie, dopisz go do listy.
+- Wyjątek: zdjęcia marketingowe strony głównej sklepu (hero i kafelki działów) to statyczne pliki WebP w repo
+  (`apps/store/src/home/images/`), nie zdjęcia produktów, więc nie idą przez Garage ani imgproxy. Ich jedyna lista
+  rozmiarów (kadry, szerokości, budżety) to `apps/store/src/home/marketing-images.ts`; pliki generuje
+  `apps/store/scripts/marketing-images.mjs`. Nie dodawaj rozmiaru zdjęcia marketingowego w komponencie.
 
 ## Docelowa skala
 

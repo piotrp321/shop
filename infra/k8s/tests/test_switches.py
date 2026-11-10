@@ -92,14 +92,14 @@ class OrderMailTest(unittest.TestCase):
     def test_the_sender_is_from_the_domain(self):
         for case in SWITCHES:
             env = env_of(containers(by_logical(case, "Deployment")["api"])[0])
-            self.assertEqual(f"Rytm <zamowienia@{DOMAIN[profile(case)]}>", env["MAILER_FROM"], case)
+            self.assertEqual(f"Worf <zamowienia@{DOMAIN[profile(case)]}>", env["MAILER_FROM"], case)
 
 
 class RealmSettingsTest(unittest.TestCase):
     """The values the job keycloak-config sets on every run, rendered next to the realm files."""
 
     def expected_smtp(self, case, keycloak_mail):
-        common = {"from": f"konto@{DOMAIN[profile(case)]}", "fromDisplayName": "Rytm", "ssl": "false"}
+        common = {"from": f"konto@{DOMAIN[profile(case)]}", "fromDisplayName": "Worf", "ssl": "false"}
         if keycloak_mail == "mailpit":
             return common | {"host": "mailpit", "port": "1025", "auth": "false", "starttls": "false", "user": "", "password": ""}
         return common | {

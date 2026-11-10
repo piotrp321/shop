@@ -3,16 +3,18 @@ import { emptyCart, logInAsJan } from "../support/shop";
 import { urls } from "../support/urls";
 import { cartLineOf, chooseFirstVariant } from "../support/variants";
 
-// Products of the list that are plainly in stock: a price, the label "Dostępny" and the button.
+// Products of the list that are plainly in stock: a price, the label "Dostępny" and the button („Do koszyka”, or „Wybierz
+// wariant” on a tile that offers a choice of variants).
 const inStockTiles = (page: Page) =>
   page
     .getByRole("main")
     .getByRole("listitem")
     .filter({ has: page.getByTestId("availability").getByText("Dostępny", { exact: true }) })
-    .filter({ has: page.getByRole("button", { name: "Do koszyka" }) });
+    .filter({ has: page.getByRole("button", { name: /^(Do koszyka|Wybierz wariant)$/ }) });
 
+// Found by the name only: the buttons of a tile with a choice change while a variant is chosen.
 const tileNamed = (page: Page, name: string) =>
-  inStockTiles(page).filter({ has: page.getByRole("heading", { level: 2, name, exact: true }) });
+  page.getByRole("main").getByRole("listitem").filter({ has: page.getByRole("heading", { name, exact: true }) });
 
 const cartLines = (page: Page) => page.getByRole("main").getByRole("listitem");
 
@@ -39,8 +41,8 @@ test("a guest cart is merged into the customer cart at login and the customer se
   await page.goto("/");
   const tiles = inStockTiles(page);
   await expect(tiles.nth(1)).toBeVisible();
-  const productA = (await tiles.nth(0).getByRole("heading", { level: 2 }).innerText()).trim();
-  const productB = (await tiles.nth(1).getByRole("heading", { level: 2 }).innerText()).trim();
+  const productA = (await tiles.nth(0).getByRole("heading").innerText()).trim();
+  const productB = (await tiles.nth(1).getByRole("heading").innerText()).trim();
 
   // Jan starts from a cart with B only.
   await logInAsJan(page);

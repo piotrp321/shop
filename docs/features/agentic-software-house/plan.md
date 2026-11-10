@@ -242,8 +242,9 @@ flowchart TB
    Mechanizm sprawdza pierwsza noc.
 9. **Agent tester i agent UX.** Gotowe: agent tester i agent UX (`.claude/agents/`), skill `/sweep` uruchamiany
    po merge'u epiku (przez `/ao-run` od kroku 12), agent UX jako trzeci reviewer w `/integration` dla epików z frontem,
-   etykieta `agent`, limit pięciu propozycji na przebieg i sprawdzanie duplikatów. Do czasu makiet z punktu 3
-   „Zakresu MVP” agent UX ocenia tylko użyteczność i dostępność. Automatyczne uruchamianie: krok 12.
+   etykieta `agent`, limit pięciu propozycji na przebieg i sprawdzanie duplikatów. Agent UX ocenia w sklepie
+   użyteczność, dostępność, responsywność (375, 768 i 1440 px), spójność komponentów i jakość wizualną (zgodność z
+   wybranym kierunkiem i tokenami, gdy kierunek jest w repo). Automatyczne uruchamianie: krok 12.
    Opis: `docs/features/agent-tester-ux/spec.md`.
 10. **Przed publicznym demo: bezpieczeństwo i wydajność.** Przegląd bezpieczeństwa całego sklepu i testy
    obciążeniowe względem „Wymagań niefunkcjonalnych” z `docs/vision.md`. Zakres i narzędzia ustala specyfikacja

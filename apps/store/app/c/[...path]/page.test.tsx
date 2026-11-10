@@ -192,8 +192,8 @@ describe("generateMetadata of the category page", () => {
   it("titles the page with the category name and makes the category address canonical, with the page above 1", async () => {
     vi.mocked(loadCatalog).mockResolvedValue(okPage(2, 60));
     expect(await generateMetadata(metaProps(["bieganie", "buty"], { page: ["2", "3"], utm_source: "x" }))).toMatchObject({
-      title: "Buty – strona 2 | Rytm",
-      description: "Produkty z kategorii Buty w sklepie Rytm.",
+      title: "Buty – strona 2 | Worf",
+      description: "Produkty z kategorii Buty w sklepie Worf.",
       alternates: { canonical: "http://store.test/c/bieganie/buty?page=2" },
     });
     expect(loadCatalog).toHaveBeenCalledWith({ category: "buty", page: "2" });
@@ -201,7 +201,7 @@ describe("generateMetadata of the category page", () => {
 
   it("has the plain category address as canonical on the first page", async () => {
     expect(await generateMetadata(metaProps(["bieganie", "buty"]))).toMatchObject({
-      title: "Buty | Rytm",
+      title: "Buty | Worf",
       alternates: { canonical: "http://store.test/c/bieganie/buty" },
     });
   });

@@ -5,7 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { getPaymentStatus, type PaymentStatusReadResult, type PaymentStatusView, startPayment } from "@/api/client";
 import { SessionExpired } from "@/cart/messages";
 import { formatPrice } from "@/catalog/format-price";
+import { ScreenMain, ScreenTitle } from "@/components/ScreenLayout";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { formatDeadlineTime } from "./format-time";
 import { navigateTo } from "./navigate";
 import type { PaymentProvider } from "./payment-api";
@@ -232,8 +235,10 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
   );
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col items-start gap-4 px-4 py-6">
-      <h1 id={HEADING_ID} tabIndex={-1} className="text-2xl font-semibold">{closed ? "Zamówienie" : "Dziękujemy za zamówienie"}</h1>
+    <ScreenMain className="items-start gap-4">
+      <ScreenTitle id={HEADING_ID} tabIndex={-1}>
+        {closed ? "Zamówienie" : "Dziękujemy za zamówienie"}
+      </ScreenTitle>
       {showsFacts ? (
         <>
           <p>
@@ -245,26 +250,28 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
         </>
       ) : null}
       {message ? (
-        <p id={MESSAGE_ID} role="alert" tabIndex={-1} className="text-destructive">
-          {message}
-        </p>
+        <Alert id={MESSAGE_ID} variant="destructive" tabIndex={-1}>
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
       ) : null}
 
       {view.kind === "failed" ? (
-        <div className="flex flex-col items-start gap-2">
+        <div className="flex flex-col items-start gap-3">
           <p>{READ_FAILED}</p>
           {checkButton}
         </div>
       ) : null}
       {view.kind === "unauthorized" ? (
-        <p id={MESSAGE_ID} role="alert" tabIndex={-1}>
-          <SessionExpired returnTo={CONFIRMATION_PATH} />
-        </p>
+        <Alert id={MESSAGE_ID} variant="destructive" tabIndex={-1}>
+          <AlertDescription>
+            <SessionExpired returnTo={CONFIRMATION_PATH} />
+          </AlertDescription>
+        </Alert>
       ) : null}
       {view.kind === "not_found" ? (
-        <p id={MESSAGE_ID} role="alert" tabIndex={-1}>
-          {NOT_FOUND}
-        </p>
+        <Alert id={MESSAGE_ID} variant="destructive" tabIndex={-1}>
+          <AlertDescription>{NOT_FOUND}</AlertDescription>
+        </Alert>
       ) : null}
 
       {status && phase === "paid" ? <p>Płatność przyjęta. Potwierdzenie wysłaliśmy na adres {order.email}.</p> : null}
@@ -274,9 +281,9 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
           <p>Opłać do {formatDeadlineTime(status.paymentDeadline)}</p>
           <p>Czekamy na potwierdzenie płatności…</p>
           {status.latestPayment?.resumeUrl ? (
-            <a href={status.latestPayment.resumeUrl} className="text-sm underline underline-offset-4">
-              Wróć do płatności
-            </a>
+            <Button asChild variant="link" className="px-0 underline">
+              <a href={status.latestPayment.resumeUrl}>Wróć do płatności</a>
+            </Button>
           ) : null}
           {windowOpen ? null : (
             <div className="flex flex-col items-start gap-3">
@@ -301,10 +308,10 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
         </>
       ) : null}
 
-      <Link href="/" className="text-sm underline underline-offset-4">
-        Wróć do sklepu
-      </Link>
-    </main>
+      <Button asChild variant="link" className="px-0 underline">
+        <Link href="/">Wróć do sklepu</Link>
+      </Button>
+    </ScreenMain>
   );
 }
 
@@ -327,9 +334,9 @@ function PayForm({
 }) {
   if (providers === null || providers.length === 0) {
     return (
-      <p role="status" className="text-sm text-muted-foreground">
-        Płatności są chwilowo niedostępne. Spróbuj za chwilę.
-      </p>
+      <Alert role="status">
+        <AlertDescription>Płatności są chwilowo niedostępne. Spróbuj za chwilę.</AlertDescription>
+      </Alert>
     );
   }
   return (
@@ -340,13 +347,13 @@ function PayForm({
         aria-required="true"
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? PROVIDER_ERROR_ID : undefined}
-        className="flex flex-col gap-2"
+        className="flex flex-col gap-1"
       >
-        <span id="payment-provider-label" className="text-sm font-medium">
+        <span id="payment-provider-label" className="mb-1 text-ui font-semibold">
           Sposób płatności
         </span>
         {providers.map(({ code, name }) => (
-          <label key={code} htmlFor={`${PROVIDER_PREFIX}${code}`} className="flex items-center gap-2 text-sm">
+          <Label key={code} htmlFor={`${PROVIDER_PREFIX}${code}`} className="min-h-11 gap-3 text-ui font-normal">
             <input
               id={`${PROVIDER_PREFIX}${code}`}
               type="radio"
@@ -354,10 +361,10 @@ function PayForm({
               value={code}
               checked={value === code}
               onChange={() => onChange(code)}
-              className="accent-primary"
+              className="size-5 accent-foreground"
             />
             {name}
-          </label>
+          </Label>
         ))}
         {error ? (
           <p id={PROVIDER_ERROR_ID} className="text-sm text-destructive">

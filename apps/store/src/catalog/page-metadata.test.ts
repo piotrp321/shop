@@ -11,22 +11,22 @@ const BUTY = { ...node("buty", "Buty"), path: "bieganie/buty" };
 describe("buildCatalogMetadata (the whole catalogue)", () => {
   it("describes the whole catalogue", () => {
     expect(buildCatalogMetadata(ok(), {}, STORE)).toEqual({
-      title: "Wszystkie produkty | Rytm",
-      description: "Wszystkie produkty w sklepie Rytm.",
+      title: "Wszystkie produkty | Worf",
+      description: "Wszystkie produkty w sklepie Worf.",
       alternates: { canonical: "http://store.test/" },
     });
   });
 
   it("adds the page to the title and the canonical address after page 1", () => {
     expect(buildCatalogMetadata(ok(3), { page: "3", utm_source: "x" } as never, STORE)).toMatchObject({
-      title: "Wszystkie produkty – strona 3 | Rytm",
+      title: "Wszystkie produkty – strona 3 | Worf",
       alternates: { canonical: "http://store.test/?page=3" },
     });
   });
 
   it("leaves page 1 out of the title and the canonical address", () => {
     expect(buildCatalogMetadata(ok(1), { page: "1" }, STORE)).toMatchObject({
-      title: "Wszystkie produkty | Rytm",
+      title: "Wszystkie produkty | Worf",
       alternates: { canonical: "http://store.test/" },
     });
   });
@@ -60,7 +60,7 @@ describe("buildCatalogMetadata (the whole catalogue)", () => {
   it("sets noindex for an invalid filter and keeps the invalid value out of the title", () => {
     const metadata = buildCatalogMetadata({ kind: "invalid-filter" }, { category: "<script>", page: "abc" }, STORE);
     expect(metadata).toMatchObject({
-      title: "Nieprawidłowy filtr | Rytm",
+      title: "Nieprawidłowy filtr | Worf",
       robots: { index: false },
       alternates: { canonical: "http://store.test/?category=%3Cscript%3E" },
     });
@@ -77,22 +77,22 @@ describe("buildCatalogMetadata (the whole catalogue)", () => {
 describe("buildCategoryMetadata (a category page)", () => {
   it("names the category and makes its own address canonical", () => {
     expect(buildCategoryMetadata(ok(), BUTY, undefined, STORE)).toEqual({
-      title: "Buty | Rytm",
-      description: "Produkty z kategorii Buty w sklepie Rytm.",
+      title: "Buty | Worf",
+      description: "Produkty z kategorii Buty w sklepie Worf.",
       alternates: { canonical: "http://store.test/c/bieganie/buty" },
     });
   });
 
   it("adds the page to the title and the canonical address after page 1", () => {
     expect(buildCategoryMetadata(ok(2), BUTY, "2", STORE)).toMatchObject({
-      title: "Buty – strona 2 | Rytm",
+      title: "Buty – strona 2 | Worf",
       alternates: { canonical: "http://store.test/c/bieganie/buty?page=2" },
     });
   });
 
   it("leaves page 1 out of the title and the canonical address and normalises a zero-padded page", () => {
     expect(buildCategoryMetadata(ok(1), BUTY, "1", STORE)).toMatchObject({
-      title: "Buty | Rytm",
+      title: "Buty | Worf",
       alternates: { canonical: "http://store.test/c/bieganie/buty" },
     });
     expect(buildCategoryMetadata(ok(2), BUTY, "02", STORE).alternates?.canonical).toBe("http://store.test/c/bieganie/buty?page=2");
@@ -118,7 +118,7 @@ describe("buildCategoryMetadata (a category page)", () => {
   it("sets noindex for an invalid page and points the canonical address at the category", () => {
     const metadata = buildCategoryMetadata({ kind: "invalid-filter" }, BUTY, "abc", STORE);
     expect(metadata).toMatchObject({
-      title: "Nieprawidłowy filtr | Rytm",
+      title: "Nieprawidłowy filtr | Worf",
       robots: { index: false },
       alternates: { canonical: "http://store.test/c/bieganie/buty" },
     });
@@ -131,7 +131,7 @@ describe("a refined listing (a sort or a filter in the address)", () => {
 
   it("is noindex, follow with the plain catalogue address as canonical, without the page", () => {
     expect(buildCatalogMetadata(ok(3), { page: "3", refined: true }, STORE)).toMatchObject({
-      title: "Wszystkie produkty – strona 3 | Rytm",
+      title: "Wszystkie produkty – strona 3 | Worf",
       robots: NOINDEX_FOLLOW,
       alternates: { canonical: "http://store.test/" },
     });
@@ -155,7 +155,7 @@ describe("a refined listing (a sort or a filter in the address)", () => {
 
   it("is noindex for an invalid filter, as before", () => {
     expect(buildCategoryMetadata({ kind: "invalid-filter" }, BUTY, undefined, STORE, true)).toMatchObject({
-      title: "Nieprawidłowy filtr | Rytm",
+      title: "Nieprawidłowy filtr | Worf",
       robots: { index: false },
     });
   });
@@ -164,24 +164,24 @@ describe("a refined listing (a sort or a filter in the address)", () => {
 describe("buildSearchMetadata (/szukaj)", () => {
   it("titles the page with the phrase, is noindex, follow and has no canonical address", () => {
     const metadata = buildSearchMetadata(ok(), "kurtki");
-    expect(metadata).toMatchObject({ title: "Wyniki dla „kurtki” | Rytm", robots: { index: false, follow: true } });
+    expect(metadata).toMatchObject({ title: "Wyniki dla „kurtki” | Worf", robots: { index: false, follow: true } });
     expect(metadata).not.toHaveProperty("alternates");
   });
 
   it("is noindex, follow also for an empty result and a later page", () => {
     expect(buildSearchMetadata(ok(1, []), "xyz")).toMatchObject({ robots: { index: false, follow: true } });
-    expect(buildSearchMetadata(ok(2), "kurtki")).toMatchObject({ title: "Wyniki dla „kurtki” – strona 2 | Rytm" });
+    expect(buildSearchMetadata(ok(2), "kurtki")).toMatchObject({ title: "Wyniki dla „kurtki” – strona 2 | Worf" });
   });
 
   it("has a title without a phrase when the phrase is too short to search", () => {
     const metadata = buildSearchMetadata({ kind: "short-phrase" }, undefined);
-    expect(metadata).toMatchObject({ title: "Wyszukiwanie | Rytm", robots: { index: false, follow: true } });
+    expect(metadata).toMatchObject({ title: "Wyszukiwanie | Worf", robots: { index: false, follow: true } });
     expect(metadata).not.toHaveProperty("alternates");
   });
 
   it("is noindex for an invalid filter and keeps the phrase out of the title", () => {
     const metadata = buildSearchMetadata({ kind: "invalid-filter" }, "<script>");
-    expect(metadata).toMatchObject({ title: "Nieprawidłowy filtr | Rytm", robots: { index: false } });
+    expect(metadata).toMatchObject({ title: "Nieprawidłowy filtr | Worf", robots: { index: false } });
     expect(metadata).not.toHaveProperty("alternates");
   });
 });

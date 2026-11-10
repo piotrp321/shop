@@ -47,4 +47,16 @@ describe("CatalogPagination", () => {
     render(<CatalogPagination page={2} perPage={24} total={60} hrefFor={hrefFor} />);
     expect(screen.getByText("Strona 2 z 3")).toBeTruthy();
   });
+
+  it("names the links so that the name contains the text they show (WCAG 2.5.3), and still says where they lead", () => {
+    render(<CatalogPagination page={2} perPage={24} total={72} hrefFor={hrefFor} />);
+    for (const [name, visible] of [[/poprzedniej strony/i, "Poprzednia"], [/następnej strony/i, "Następna"]] as const) {
+      const link = screen.getByRole("link", { name });
+      expect(link.textContent!.trim()).toBe(visible);
+      expect(link.getAttribute("aria-label")!.toLowerCase()).toContain(visible.toLowerCase());
+    }
+    // The E2E tests find the links by these words (a substring match, any case).
+    expect(screen.getByRole("link", { name: /przejdź do następnej strony/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /przejdź do poprzedniej strony/i })).toBeTruthy();
+  });
 });

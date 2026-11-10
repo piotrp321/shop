@@ -4,27 +4,36 @@ import { ProductTile } from "./ProductTile";
 type ProductListItem = components["schemas"]["ProductListItem"];
 type ProductOffer = components["schemas"]["ProductOfferResponse"];
 
-// Matches the grid below: 4 columns from `lg` (1024px), 3 from `sm` (640px), otherwise 2.
+// The columns of the grid below: 4 from `lg` (1024px), 3 from `sm` (640px), otherwise 2. From `lg` the filter column makes
+// the real width smaller than 25vw, so the browser picks a file that is a little larger than needed, never smaller.
 const TILE_SIZES = "(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw";
 // The first row is above the fold on large screens.
 const EAGER_TILES = 4;
 
+/**
+ * The tiles of a listing. On the home page (`home`) the names are h3 under the h2 „Wszystkie produkty” and no photo
+ * loads with priority (the hero does); elsewhere the names are h2 and the first row does. `data-testid` lets the tests find
+ * the grid whatever the level of the names.
+ */
 export function ProductGrid({
   products,
   offers,
+  home = false,
 }: {
   products: ProductListItem[];
   offers: Record<string, ProductOffer>;
+  home?: boolean;
 }) {
   return (
-    <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+    <ul data-testid="product-grid" className="mb-10 grid grid-cols-2 gap-x-3.5 gap-y-8 sm:grid-cols-3 lg:mb-14 lg:grid-cols-4 lg:gap-x-5 lg:gap-y-12">
       {products.map((product, index) => (
         <li key={product.id}>
           <ProductTile
             product={product}
             offer={offers[product.id]}
             sizes={TILE_SIZES}
-            priority={index < EAGER_TILES}
+            priority={!home && index < EAGER_TILES}
+            headingLevel={home ? "h3" : "h2"}
           />
         </li>
       ))}

@@ -70,17 +70,30 @@ Model Sonnet, wysiłek wysoki, narzędzia: Read, Grep, Glob, Bash, Write (tylko 
 
 ## Agent UX (`.claude/agents/ux-reviewer.md`)
 
-Model Sonnet, wysiłek wysoki, narzędzia jak tester. Do czasu makiet z punktu 3 „Zakresu MVP” ocenia wyłącznie
-użyteczność i dostępność, nie zgodność z projektem wizualnym, paletą ani typografią.
+Model Sonnet, wysiłek wysoki, narzędzia jak tester. W sklepie ocenia, oprócz użyteczności i dostępności, responsywność,
+spójność komponentów i jakość wizualną (sekcja „Pozostałe ekrany (VISUAL-DESIGN-9) i agent UX (VISUAL-DESIGN-10)”
+w `docs/features/visual-design/spec.md`); panel ocenia pod względem użyteczności i dostępności.
 
 - **Ekrany:** w `/sweep` ekrany ścieżek i nowej funkcji z zakresu testera, w `/integration` ekrany i stany, które
-  zmienia diff epiku (także stany błędu, pusty stan i ładowanie). Sklep na desktopie i na telefonie, panel tylko na
-  desktopie.
+  zmienia diff epiku (także stany błędu, pusty stan i ładowanie). Sklep na 375, 768 i 1440 px, panel tylko na
+  desktopie. Konfiguracja agenta (`e2e/playwright.agent.config.ts`) ma projekty `desktop` (1280 × 720) i `mobile`
+  (375 × 812); 768 i 1440 px agent ustawia we własnym skrypcie na projekcie `desktop` (`test.use({ viewport })` albo
+  `page.setViewportSize` przed `page.goto`), bez zmiany konfiguracji.
 - **Obowiązkowo ogląda zrzuty ekranu** z `snap` (czyta pliki PNG) dla każdego ekranu i każdego rozmiaru. Drzewo
   dostępności (`ariaSnapshot`) i axe uzupełniają tę ocenę, nie zastępują jej.
 - **Sprawdza:** czy zadanie da się wykonać i czy ekran nie myli (etykiety, komunikaty błędów, potwierdzenia, stan
-  ładowania), obsługę klawiaturą i widoczny fokus, nazwy dostępne i role, kontrast, układ na telefonie (nic nie wystaje,
-  cele dotyku nie są za małe, brak poziomego przewijania strony), wynik axe.
+  ładowania), obsługę klawiaturą i widoczny fokus, nazwy dostępne i role, `alt` zdjęć, kontrast, wynik axe oraz w sklepie:
+  - **responsywność** na 375, 768 i 1440 px: układ się nie łamie, nic nie wystaje, brak poziomego przewijania strony,
+    cele dotyku nie są za małe, obrazy mają rozmiar dobrany do ekranu;
+  - **spójność komponentów:** te same przyciski, pola, karty i komunikaty na wszystkich ekranach, tylko tokeny;
+  - **jakość wizualną:** zgodność z sekcją „Wybrany kierunek” i tokenami z `docs/features/visual-design/spec.md`
+    (`apps/store/src/styles/tokens.css`), hierarchia, odstępy, wyrównanie, kadrowanie zdjęć. Makieta `kierunek.html`
+    (`docs/features/visual-design/mockups/`) jest ilustracją, nie wzorcem pikselowym; w `/integration` epiku
+    `visual-design` agent porównuje ekrany sklepu ze zrzutami makiety. Gdy sekcji „Wybrany kierunek”, tokenów
+    kierunku albo makiety jeszcze nie ma, ocenia spójność i jakość wizualną bez zgodności z kierunkiem i nie zgłasza
+    braku kierunku jako problemu.
+- **Problem wizualny** wymaga takiego samego odtworzenia jak pozostałe, testem z mierzalnym oczekiwaniem (rozmiar,
+  położenie, odstęp, kolor ze stylu obliczonego, proporcje obrazu); samo wrażenie to uwaga albo hipoteza.
 - **Ocena dostępności według rzeczywistego wpływu:** naruszenie axe jest dowodem, nie wyrokiem. Agent potwierdza wpływ
   (np. elementu nie da się obsłużyć klawiaturą, czytnik ekranu nie dostaje nazwy przycisku, tekst potrzebny do zadania
   jest nieczytelny) albo opisuje go jako niski.

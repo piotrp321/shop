@@ -10,7 +10,7 @@ imgproxy), a fronty rozmawiają z API wyłącznie przez klientów TS wygenerowan
 Na czystym klonie repozytorium, z zainstalowanym tylko Dockerem:
 
 1. `make up` stawia cały stos i kończy się dopiero, gdy wszystkie usługi są zdrowe.
-2. `make seed` ładuje dane demo (191 produktów sport/outdoor z 1012 wariantami w drzewie kategorii, 20–30 zdjęć)
+2. `make seed` ładuje dane demo (191 produktów sport/outdoor z 1012 wariantami w drzewie kategorii, 37 zdjęć)
    i kończy się, gdy indeks w Elasticsearch jest zgodny z Postgresem. Kolejno: `catalog:seed-demo`,
    `pricing:seed-demo`, `ordering:seed-demo`, `inventory:seed-demo`, `catalog:reindex` (indeks z cenami
    i dostępnością; zdarzenia cen i stanów ze źródła `seed` nie reindeksują produktów) i `storefront:cache:purge-all`.
@@ -733,7 +733,7 @@ w tej kolejności:
 ## Sklep (`apps/store`)
 
 Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Components. Robocza nazwa sklepu:
-„Rytm”.
+„Worf”.
 
 ### Wygląd
 
@@ -755,8 +755,9 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
   - kolory w atrybucie `style`,
   - klasy nieznane Tailwindowi skonfigurowanemu z `tokens.css` (reguła `no-unregistered-classes` z
     `eslint-plugin-better-tailwindcss`), więc `bg-black` czy `text-red-500` nie przejdą.
-- Motyw w szkielecie jest tymczasowy i neutralny: odcienie szarości, jeden akcent, systemowy krój pisma.
-  Docelowy wygląd (kierunek w `docs/vision.md`, sekcja „Wygląd sklepu”) to osobny krok MVP.
+- Wygląd sklepu to kierunek „Granit” (paleta, krój Outfit, ostre kształty): opis, makieta i wymagania w
+  `docs/features/visual-design/spec.md`, tokeny w `src/styles/tokens.css`. `/` w stanie domyślnym ma nad listą hero
+  i kafelki działów (zdjęcia marketingowe to statyczne pliki sklepu, patrz tamże).
 - Komponenty i układy przenoszone później z vercel/shop podlegają zasadom z `apps/store/CLAUDE.md`
   (informacja o licencji MIT, dane tylko z naszego API, obrazy przez `ProductPhoto`).
 
@@ -781,6 +782,8 @@ Next.js 16 (App Router), React, TypeScript w trybie strict, domyślnie Server Co
   atrybutem `sizes` zgodnym z siatką oraz `width`/`height` z proporcji rozmiaru. Nie ma `<picture>`, bo API
   zwraca jeden format.
 - Front niczego nie podpisuje ani nie dobiera rozmiarów spoza odpowiedzi API.
+- Wyjątek: zdjęcia marketingowe strony głównej (hero i kafelki działów) to statyczne pliki WebP sklepu renderowane
+  zwykłym `<picture>`/`<img srcset>` (opis: `docs/features/visual-design/spec.md`, „Zdjęcia strony głównej”).
 - Globalny loader obrazów Next.js (`images.loader: 'custom'`) rzuca błąd, więc użycie `<Image>` jest niemożliwe, a wbudowana optymalizacja nigdy nie przetwarza obrazów.
 
 ### Logowanie (BFF)
@@ -866,9 +869,15 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 z prese
   przewodniki i mapy (`printed_publication`).
 - `catalog:seed-demo` rozwija szablony deterministycznie (iloczyn kombinacji w ustalonej kolejności, bez losowości)
   do 191 produktów i 1012 wariantów: warianty produktu to iloczyn wartości jego osi w kolejności pliku (pierwsza oś
-  zmienia się najwolniej), a produkt bez osi (Hantle regulowane) ma jeden wariant domyślny. Zdjęcie produktu jest wybierane z puli kategorii według pozycji produktu
+  zmienia się najwolniej), a produkt bez osi (Hantle regulowane) ma jeden wariant domyślny. Zdjęcie produktu jest wybierane z puli szablonu według pozycji produktu
   w kolejności rozwijania. Reguła zapisana w pliku pozostawia kilka produktów bez zdjęć.
-- Zdjęcia: 20–30 prawdziwych zdjęć „w terenie” (ludzie w górach, na szlaku, na rowerze) w spójnej tonacji,
+- Zdjęcia własne produktu: szablon może mieć opcjonalną listę `productImages`, w której wpis wskazuje produkt (marka
+  i model z tego szablonu) i jego listę zdjęć (`file`, `alt`). Taki produkt ma wszystkie te zdjęcia w kolejności pliku
+  (galeria karty produktu ma kilka zdjęć) zamiast zdjęcia z puli, także tam, gdzie reguła produktów bez zdjęć
+  zostawiłaby go bez zdjęcia; każdy inny produkt zachowuje zdjęcie z puli i regułę bez zmian. Marka albo model spoza
+  szablonu, pusta lista zdjęć i powtórzony produkt (ta sama marka i model) kończą seed błędem z komunikatem. Dane demo
+  używają tego dla czterech kajaków z kategorii „Kajaki” i Nart skiturowych Stavro Grań 95 (trzy zdjęcia).
+- Zdjęcia: 37 prawdziwych zdjęć „w terenie” (ludzie w górach, na szlaku, na rowerze, na wodzie) w spójnej tonacji,
   z Unsplash lub Pexels, przeskalowanych do około 1600 px na dłuższym boku, w `apps/api/fixtures/images/`.
   `apps/api/fixtures/images/CREDITS.md` podaje dla każdego pliku źródło, autora i licencję.
 - Seed nadaje kategoriom, produktom i wariantom UUID v5 wyliczane ze sluga (wariant: z klucza

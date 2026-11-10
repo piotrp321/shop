@@ -2,8 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { departmentMenu, openCategoryFromMenu, openDepartment } from "../support/menu";
 import { urls } from "../support/urls";
 
-const grid = (page: Page) => page.getByRole("main").locator("ul:has(h2)");
-const productNames = (page: Page) => grid(page).getByRole("heading", { level: 2 }).allInnerTexts();
+const grid = (page: Page) => page.getByTestId("product-grid");
+const productNames = (page: Page) => grid(page).getByRole("heading").allInnerTexts();
 const pageIndicator = (page: Page) => page.getByText(/^Strona \d+ z \d+$/);
 
 /** Product names of every page of the current listing, following "next page" until it disappears. */
@@ -21,7 +21,9 @@ async function allProductNames(page: Page): Promise<string[]> {
 
 test("home page shows products with loaded photos", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "Wszystkie produkty" })).toBeVisible();
+  // The default state of the home page: the h1 is the hero's and „Wszystkie produkty” is the h2 above the list.
+  await expect(page.getByRole("heading", { level: 1, name: "Sprzęt na każdy szlak" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Wszystkie produkty" })).toBeVisible();
 
   const tiles = grid(page).getByRole("listitem");
   await expect(tiles.first()).toBeVisible();
@@ -66,7 +68,7 @@ test("a category page has the path, the number of products, its own canonical ad
   await expect(path.getByText("Buty trailowe", { exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Buty trailowe");
   await expect(page.getByRole("main").getByText(/^\d+ (produkt|produkty|produktów)$/)).toBeVisible();
-  await expect(page).toHaveTitle("Buty trailowe | Rytm");
+  await expect(page).toHaveTitle("Buty trailowe | Worf");
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/c\/bieganie\/buty\/trailowe$/);
 
   const scripts = await page.locator('script[type="application/ld+json"]').allTextContents();
@@ -83,7 +85,7 @@ test("the pages of a category are paginated under its address and the canonical 
   await page.getByRole("link", { name: "Przejdź do następnej strony" }).click();
   await expect(page).toHaveURL(/\/c\/bieganie\?page=2$/);
   await expect(pageIndicator(page)).toHaveText(/^Strona 2 z \d+$/);
-  await expect(page).toHaveTitle("Bieganie – strona 2 | Rytm");
+  await expect(page).toHaveTitle("Bieganie – strona 2 | Worf");
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/c\/bieganie\?page=2$/);
 });
 
@@ -121,7 +123,8 @@ test("the menu opens with the mouse and the keyboard and closes with Escape", as
   await expect(bieganie).toHaveAttribute("aria-expanded", "false");
 
   await bieganie.click();
-  await page.getByRole("main").click({ position: { x: 1, y: 1 } });
+  // The panel spans the whole width under the header, so the click outside the menu is lower on the page.
+  await page.getByRole("main").click({ position: { x: 1, y: 500 } });
   await expect(bieganie).toHaveAttribute("aria-expanded", "false");
 });
 

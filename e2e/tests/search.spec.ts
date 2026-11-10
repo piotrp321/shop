@@ -18,7 +18,7 @@ test("a phrase from the header leads to the results, the product page and the ca
 
   await expect(page).toHaveURL(/\/szukaj\?q=asfalt$/);
   await expect(page.getByRole("heading", { level: 1, name: "Wyniki dla „asfalt”" })).toBeVisible();
-  await expect(page).toHaveTitle("Wyniki dla „asfalt” | Rytm");
+  await expect(page).toHaveTitle("Wyniki dla „asfalt” | Worf");
   await expect(headerSearch(page)).toHaveValue("asfalt");
   await expect(page.getByRole("navigation", { name: "Ścieżka" }).getByRole("link")).toHaveText(["Wszystkie produkty"]);
   expect(await tileNames(page)).toContain(PRODUCT_NAME);
@@ -64,7 +64,8 @@ test("two words, one of which matches nothing, find nothing and offer a way out"
   await expect(gridTiles(page)).toHaveCount(0);
   await page.getByRole("link", { name: "Zobacz wszystkie produkty" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Wszystkie produkty" })).toBeVisible();
+  // The default state of the home page: „Wszystkie produkty” is the h2 under the hero's h1.
+  await expect(page.getByRole("heading", { level: 2, name: "Wszystkie produkty" })).toBeVisible();
 });
 
 test("a phrase shorter than 2 characters shows the message instead of results", async ({ page }) => {
@@ -73,7 +74,7 @@ test("a phrase shorter than 2 characters shows the message instead of results", 
   await expect(page).toHaveURL(/\/szukaj\?q=k$/);
   await expect(page.getByText("Wpisz co najmniej 2 znaki.")).toBeVisible();
   await expect(gridTiles(page)).toHaveCount(0);
-  await expect(page).toHaveTitle("Wyszukiwanie | Rytm");
+  await expect(page).toHaveTitle("Wyszukiwanie | Worf");
 
   await page.goto("/szukaj");
   await expect(page.getByText("Wpisz co najmniej 2 znaki.")).toBeVisible();

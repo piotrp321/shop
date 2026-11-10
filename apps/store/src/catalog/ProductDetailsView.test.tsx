@@ -54,7 +54,7 @@ describe("ProductDetailsView", () => {
   });
 
   describe("photos", () => {
-    it("shows all the photos in order, one under the other, and only the first one with priority", () => {
+    it("shows the gallery: the photos in order in one strip, only the first one with priority, and a thumbnail link for each", () => {
       render(<ProductDetailsView details={makeDetails(1)} offer={makeOffer(1)} />);
       const photos = screen.getAllByRole("img") as HTMLImageElement[];
       expect(photos.map((photo) => photo.alt)).toEqual(["Zdjęcie 1, pierwsze", "Zdjęcie 1, drugie"]);
@@ -63,6 +63,16 @@ describe("ProductDetailsView", () => {
       expect(photos[1].getAttribute("fetchpriority")).toBeNull();
       expect(photos[0].srcset).toContain("http://imgproxy.test/a1-640/plain.webp 640w");
       expect(photos[0].srcset).toContain("http://imgproxy.test/a1-1600/plain.webp 1600w");
+      // Two links per photo: the thumbnails are in the HTML twice (CSS shows one list; jsdom has no CSS).
+      expect(screen.getAllByRole("link", { name: /^Pokaż zdjęcie/ })).toHaveLength(4);
+      expect(screen.getAllByRole("button", { name: /^Powiększ zdjęcie/ })).toHaveLength(2);
+    });
+
+    it("puts the gallery before the data of the product", () => {
+      render(<ProductDetailsView details={makeDetails(1)} offer={makeOffer(1)} />);
+      const gallery = screen.getByRole("group", { name: "Zdjęcia produktu" });
+      const heading = screen.getByRole("heading", { level: 1 });
+      expect(gallery.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it("shows the placeholder of the tile for a product without photos", () => {
@@ -98,7 +108,8 @@ describe("ProductDetailsView", () => {
   describe("variant choice and add to cart", () => {
     it("offers a choice per axis and a disabled 'Do koszyka' button for a product with several variants", () => {
       render(<ProductDetailsView details={SHOES_DETAILS} offer={SHOES} />);
-      expect(screen.getAllByRole("group").map((group) => group.querySelector("legend")?.textContent)).toEqual(["Kolor", "Rozmiar"]);
+      // The gallery is a group too; the choices are the groups with a legend.
+      expect(screen.getAllByRole("group").flatMap((group) => group.querySelector("legend")?.textContent ?? [])).toEqual(["Kolor", "Rozmiar"]);
       expect((screen.getByRole("button", { name: "Do koszyka" }) as HTMLButtonElement).disabled).toBe(true);
       expect(screen.getByTestId("price").textContent).toBe("od 300,00\u00a0zł");
     });
@@ -106,8 +117,16 @@ describe("ProductDetailsView", () => {
     it("offers no choice and no button for a product without a purchasable variant", () => {
       const offer = makeOffer(1, { fromGross: null, level: "out_of_stock", variants: [makeVariant(1, 1, { gross: 12300, level: "out_of_stock", purchasable: false })] });
       render(<ProductDetailsView details={makeDetails(1)} offer={offer} />);
-      expect(screen.queryByRole("button")).toBeNull();
-      expect(screen.queryByRole("group")).toBeNull();
+      // The gallery has buttons of its own: the arrows and the enlarge buttons.
+      expect(screen.queryByRole("button", { name: "Do koszyka" })).toBeNull();
+      // No choice of the variant: the only group is the gallery.
+      expect(screen.getAllByRole("group").map((group) => group.getAttribute("aria-label"))).toEqual(["Zdjęcia produktu"]);
+      expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+        "Powiększ zdjęcie 1 z 2: Zdjęcie 1, pierwsze",
+        "Powiększ zdjęcie 2 z 2: Zdjęcie 1, drugie",
+        "Poprzednie zdjęcie",
+        "Następne zdjęcie",
+      ]);
     });
   });
 });

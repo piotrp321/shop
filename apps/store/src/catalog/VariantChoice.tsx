@@ -4,9 +4,9 @@ import { useState, type ReactNode } from "react";
 import type { components } from "@/api/schema";
 import { AddToCartButton } from "@/cart/AddToCartButton";
 import { Button } from "@/components/ui/button";
-import { AvailabilityLabel } from "./availability-label";
+import { cn } from "@/lib/utils";
 import { formatPrice } from "./format-price";
-import { PromotionNotice } from "./PromotionNotice";
+import { ProductPrice } from "./ProductPrice";
 import { axisValues, buildChoiceVariants, chosenVariant, initialSelection, selectValue, valueState, type Selection } from "./variant-choice";
 
 type ProductDetails = components["schemas"]["ProductDetails"];
@@ -30,18 +30,12 @@ export function VariantChoice({ details, offer, children }: { details: ProductDe
   return (
     <>
       {chosen !== undefined && chosen.gross !== null ? (
-        <div className="flex flex-col gap-1">
-          <p data-testid="price" className="text-xl font-semibold">
-            {formatPrice(chosen.gross, offer.currency)}
-          </p>
-          <PromotionNotice lowestPriorGross={chosen.lowestPriorGross} currency={offer.currency} />
-          <AvailabilityLabel level={chosen.level} />
-        </div>
+        <ProductPrice price={formatPrice(chosen.gross, offer.currency)} lowestPriorGross={chosen.lowestPriorGross} currency={offer.currency} level={chosen.level} />
       ) : (
         children
       )}
       {single ? (
-        <ul className="flex flex-col gap-1 text-sm">
+        <ul className="flex flex-col gap-1 text-base">
           {axes.map((axis, index) => (
             <li key={axis}>
               {axis}: {variants[0].values[index]}
@@ -51,8 +45,8 @@ export function VariantChoice({ details, offer, children }: { details: ProductDe
       ) : (
         axes.map((axis, index) => (
           <fieldset key={axis} className="flex flex-col gap-2">
-            <legend className="mb-1 text-sm font-medium">{axis}</legend>
-            <div className="flex flex-wrap gap-2">
+            <legend className="mb-2 text-ui font-semibold">{axis}</legend>
+            <div className="flex flex-wrap gap-2.5">
               {axisValues(variants, index).map((value) => {
                 const state = valueState(variants, selection, index, value);
                 const isChosen = selection[index] === value;
@@ -60,11 +54,15 @@ export function VariantChoice({ details, offer, children }: { details: ProductDe
                   <Button
                     key={value}
                     type="button"
-                    size="sm"
-                    variant={isChosen ? "default" : "outline"}
+                    variant="outline"
                     aria-pressed={isChosen}
                     disabled={state !== "enabled"}
                     onClick={() => setSelection(selectValue(variants, selection, index, value))}
+                    className={cn(
+                      "min-w-11 border-input bg-card px-4 font-normal",
+                      isChosen && "border-inverse bg-inverse text-inverse-foreground hover:bg-inverse disabled:border-inverse disabled:bg-inverse disabled:text-inverse-foreground",
+                      state === "unavailable" && "border-dashed",
+                    )}
                   >
                     {value}
                     {state === "unavailable" ? (
@@ -80,7 +78,7 @@ export function VariantChoice({ details, offer, children }: { details: ProductDe
           </fieldset>
         ))
       )}
-      <AddToCartButton key={chosen?.variantId ?? ""} variantId={chosen?.variantId ?? null} />
+      <AddToCartButton key={chosen?.variantId ?? ""} variantId={chosen?.variantId ?? null} size="lg" className="mt-2" />
     </>
   );
 }

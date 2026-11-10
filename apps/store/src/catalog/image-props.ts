@@ -35,3 +35,25 @@ export function largestVariant(image: components["schemas"]["ProductImage"]): { 
   const { src, width, height } = buildImageProps(image, "");
   return { url: src, width, height };
 }
+
+type ZoomImage = components["schemas"]["ZoomImage"];
+
+/** Attributes of an `<img srcset>` for the enlargement, from the WebP variants of the `zoom` size (no aspect ratio, so no width and height). */
+export function buildZoomImageProps(image: ZoomImage, sizes: string): { src: string; srcSet: string; sizes: string; alt: string } | null {
+  const variants = [...(image.variants.webp ?? [])].sort((a, b) => a.width - b.width);
+  const largest = variants.at(-1);
+  if (!largest) {
+    return null;
+  }
+  return { src: largest.url, srcSet: variants.map((variant) => `${variant.url} ${variant.width}w`).join(", "), sizes, alt: image.alt };
+}
+
+/** The narrowest WebP variant of the image (for a thumbnail), or null when the image has none. */
+export function smallestVariant(image: components["schemas"]["ProductImage"]): { url: string; width: number; height: number } | null {
+  const [narrowest] = [...(image.variants.webp ?? [])].sort((a, b) => a.width - b.width);
+  if (!narrowest) {
+    return null;
+  }
+  const { width, height } = buildImageProps(image, "");
+  return { url: narrowest.url, width: narrowest.width, height: Math.round((narrowest.width * height) / width) };
+}
