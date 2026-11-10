@@ -19,7 +19,8 @@ Monorepo e-commerce. Przed planowaniem jakiejkolwiek funkcji przeczytaj `docs/vi
   (`environments/prod`, `environments/ci`), app-of-apps Argo CD (`argocd`), zaszyfrowane sekrety
   (`environments/prod/secrets`), skrypty serwera i sprawdzeń oraz runbook (`README.md`). Narzędzia (helm, kubeconform, shellcheck, k3d, kubectl)
   działają w kontenerach z przypiętymi wersjami, bez instalacji na hoście.
-- `e2e` – testy end-to-end (Playwright) na pełnym stosie, uruchamiane przez `make e2e`.
+- `e2e` – testy end-to-end (Playwright) na pełnym stosie, uruchamiane przez `make e2e`, i pomiar Lighthouse
+  (`e2e/lighthouse`), uruchamiany przez `make lighthouse`.
 - `docs` – wizja, ADR-y (`docs/adr/`), specyfikacje i plany funkcji (`docs/features/`).
 
 Każda aplikacja ma własny `CLAUDE.md` z zasadami tylko dla niej. Przeczytaj go przed pracą w tej aplikacji.
@@ -33,6 +34,12 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - Główny `Makefile` zarządza stosem i uruchamia wszystkie aplikacje:
     `make up` / `make down` / `make logs`, `make seed`, `make check`, `make test`, `make e2e`,
     `make e2e-agent AGENT_DIR=<katalog> [E2E_ARGS=...]` (skrypty agentów tester i UX, wyniki poza repo).
+    `make lighthouse` (pomiar Lighthouse trzech stron sklepu: `/`, `/c/turystyka/biwak/namioty`
+    i `/p/namiot-turystyczny-norvane-biwak-2`, po 3 przebiegi w profilu mobilnym, w kontenerze `e2e`; wymaga stosu
+    ze sklepem w trybie produkcyjnym, `STORE_MODE=production make up` i `make seed`, a w innym trybie albo przy
+    zatrzymanym sklepie kończy się komunikatem, bez pomiaru; raporty, `manifest.json` i `medians.md` z medianami
+    SEO, Performance, LCP, CLS i TBT są w `e2e/lighthouse-results/`; blokuje tylko wynik SEO < 0,9 mediany adresu,
+    pozostałe progi ostrzegają; `make e2e-check` uruchamia też testy skryptu median).
     `make test` uruchamia też `make varnish-test`: testy VCL (`infra/varnish/tests/*.vtc`, `varnishtest` z obrazu
     usługi `varnish`, bez stosu).
   - Każda aplikacja ma własny `Makefile` z tymi samymi podstawowymi celami (`check`, `test`)
@@ -204,7 +211,10 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   (np. `gh pr merge <nr> --squash --delete-branch`). Jedyny wyjątek to PR do `epic/*` z zadania REPAIR i PR
   `sync/<epik>-main`: merge commit (`--merge`).
 - CI (`.github/workflows/ci.yml`) uruchamia `make check`, testy wszystkich aplikacji i E2E przy każdym PR i każdym
-  pushu na `main` i `epic/**`. Wyjątki dotyczą tylko PR (`.github/scripts/scope.sh`): PR zmieniający wyłącznie
+  pushu na `main` i `epic/**`. Job `e2e` po `make e2e` i testach `init-env.sh` uruchamia `make lighthouse`
+  (sklep w trybie produkcyjnym), wysyła `e2e/lighthouse-results` jako artefakt `lighthouse-results` także po błędzie
+  i dopisuje `medians.md` do podsumowania kroku (bez nowego joba i checka: niespełniony wynik SEO albo błąd pomiaru
+  robi czerwony job `e2e`). Wyjątki dotyczą tylko PR (`.github/scripts/scope.sh`): PR zmieniający wyłącznie
   dokumentację niczego nie uruchamia, a PR zmieniający wyłącznie narzędzia repo (`.claude/**`, `.ao/**`, `tools/**`,
   ewentualnie z dokumentacją) uruchamia tylko testy skryptów. Testy na usługach stosu trafiają do CI w tym samym PR
   co kod, razem z uruchomieniem usług, których potrzebują.
