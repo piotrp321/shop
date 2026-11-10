@@ -745,7 +745,13 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     transportów Doctrine i przez Symfony Serializer w nagłówkach AMQP transportu `events`). `CorrelationIdMiddleware`
     stoi pierwszy wśród naszych middleware na `command.bus`, `query.bus` i `event.bus`: wysyłka bez stempla dodaje
     stempel z bieżącym identyfikatorem (brak: nowy), obsługa wiadomości odebranej z transportu (`ReceivedStamp`) ustawia
-    identyfikator ze stempla na czas obsługi (bez stempla: nowy) i przywraca poprzedni także przy wyjątku. Przekaźnik
+    identyfikator ze stempla na czas obsługi (bez stempla: nowy) i przywraca poprzedni także przy wyjątku. W workerze
+    (`messenger:consume`, `messenger:failed:retry`) robi to wcześniej i dłużej `CorrelationIdWorkerSubscriber`:
+    `WorkerMessageReceivedEvent` (priorytet 256, przed listenerami Messengera) ustawia identyfikator ze stempla (wiadomość
+    bez stempla dostaje nowy identyfikator i stempel, który zachowają ponowienie i kolejka `failed`), a `WorkerRunningEvent`
+    (worker wysyła go po zakończeniu wiadomości, po listenerach ponowienia i `failed` oraz wpisie „handled successfully”)
+    przywraca poprzedni. Samo middleware przywracałoby go przed `WorkerMessageFailedEvent`, a wpisy błędów („Sending for
+    retry”, „Removing from transport”) powstają dopiero tam i bez tego nie miałyby identyfikatora. Przekaźnik
     outboxa wysyła samo zdarzenie, więc zdarzenie w RabbitMQ dostaje identyfikator wiadomości outboxa. Komunikat
     wysłany z `DispatchAfterCurrentBusStamp` dostałby stempel dopiero po obsłudze bieżącej wiadomości (middleware stoi
     za domyślnymi); nikt go dziś nie używa.

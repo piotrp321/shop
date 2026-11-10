@@ -119,7 +119,9 @@ dotychczasowe zachowanie trasy (503).
 - Konsola: `ConsoleEvents::COMMAND` nadaje identyfikator, chyba że to `messenger:consume` (identyfikator per wiadomość).
 - Messenger: middleware na `command.bus`, `query.bus` i `event.bus`. Wysyłka bez stempla dodaje `CorrelationIdStamp`
   z bieżącym identyfikatorem (brak bieżącego: nowy). Obsługa wiadomości odebranej z transportu (`ReceivedStamp`)
-  ustawia bieżący identyfikator ze stempla na czas obsługi i przywraca poprzedni. Przekaźnik outboxa
+  ustawia bieżący identyfikator ze stempla na czas obsługi i przywraca poprzedni. Worker (`messenger:consume`,
+  `messenger:failed:retry`) ustawia go już przy odebraniu wiadomości (`WorkerMessageReceivedEvent`) i przywraca poprzedni
+  dopiero po jej obsłudze (`WorkerRunningEvent`), więc wpisy listenerów ponowienia i kolejki `failed` też go mają. Przekaźnik outboxa
   (`RelayDomainEventToBroker`) wysyła samo zdarzenie, więc zdarzenie w RabbitMQ dostaje identyfikator bieżący, czyli
   ten z wiadomości outboxa. Stempel przechodzi przez serializer transportu `events` (`symfony_serializer`, nagłówki
   AMQP) i transporty Doctrine.

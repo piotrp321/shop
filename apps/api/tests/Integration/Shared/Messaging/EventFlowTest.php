@@ -10,6 +10,7 @@ use App\Catalog\Application\Command\CreateProductHandler;
 use App\Catalog\Application\EventHandler\IndexProduct;
 use App\Catalog\Domain\Product\ProductCreated;
 use App\Catalog\Domain\Product\ProductStatus;
+use App\Catalog\Infrastructure\Search\ElasticsearchClientFactory;
 use App\Catalog\Infrastructure\Search\ElasticsearchProductIndexer;
 use App\Shared\Infrastructure\Messaging\RelayDomainEventToBroker;
 use App\Shared\Infrastructure\Observability\CorrelationId;
@@ -138,6 +139,47 @@ final class EventFlowTest extends MessagingKernelTestCase
             ],
             'the correlation_id of the log entries; handled: '.implode(', ', array_keys($handled)),
         );
+        self::assertNull($correlationId->current(), 'the worker is left without an identifier');
+    }
+
+    /**
+     * The entries that matter most in production are the ones of a failure (the log of `prod` keeps the buffer of a
+     * request only on an error): the listeners of the worker that retry a message and move it to `failed` log after the
+     * handler is done, and they must still know the identifier of the message.
+     */
+    public function testTheLogEntriesOfAFailedMessageHaveTheIdentifierOfTheRequest(): void
+    {
+        // A new kernel: setUp has already put the working indexer into the container, and a service cannot be replaced twice.
+        self::bootMessagingKernel();
+        self::getContainer()->set(
+            ElasticsearchProductIndexer::class,
+            // Nothing listens on this port: the handler of the event fails with a transient error and is retried.
+            new ElasticsearchProductIndexer((new ElasticsearchClientFactory('http://127.0.0.1:1', 1.0))->create(1.0), $this->alias()),
+        );
+        $correlationId = self::getContainer()->get(CorrelationId::class);
+        self::assertInstanceOf(CorrelationId::class, $correlationId);
+        $logger = self::getContainer()->get('monolog.logger.messenger');
+        self::assertInstanceOf(Logger::class, $logger);
+        $logs = new TestHandler();
+        $logger->pushHandler($logs);
+
+        $requestId = $correlationId->start();
+        $this->createProduct();
+        $correlationId->reset();
+        $this->consumeOutboxAndEvents();
+
+        $byMessage = [];
+        foreach ($logs->getRecords() as $record) {
+            $byMessage[$record->message] = $record->extra['correlation_id'] ?? null;
+        }
+        $retry = array_values(array_filter(
+            array_keys($byMessage),
+            static fn (string $message): bool => str_contains($message, 'Sending for retry'),
+        ));
+        self::assertCount(1, $retry, 'the entry of the retry; entries: '.implode(' | ', array_keys($byMessage)));
+        self::assertSame($requestId, $byMessage[$retry[0]], 'the identifier of the retry entry');
+        // The entry of the worker after the acknowledgement of a message that succeeded (the one of the outbox).
+        self::assertSame($requestId, $byMessage['{class} was handled successfully (acknowledging to transport).'] ?? null, 'the identifier of the entry of the worker');
         self::assertNull($correlationId->current(), 'the worker is left without an identifier');
     }
 

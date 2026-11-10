@@ -15,6 +15,9 @@ use Symfony\Component\Uid\Uuid;
  * transport stores it with the message. Receiving (ReceivedStamp, the worker): the message is handled under the
  * identifier of its stamp (a new one when it has none) and the previous identifier is restored afterwards, also when
  * the handler throws. The bus runs it before the validation and the transaction, so their log entries have it too.
+ * In the worker CorrelationIdWorkerSubscriber has set the identifier already (and keeps it until the worker is done
+ * with the message), so what is restored here is that identifier: the entries of the retry and failure listeners,
+ * which come after the bus, still have it.
  */
 final readonly class CorrelationIdMiddleware implements MiddlewareInterface
 {
