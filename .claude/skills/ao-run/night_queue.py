@@ -9,7 +9,7 @@
   night_queue.py [--repo DIR] [--state DIR] close [--reason TEXT]
   night_queue.py [--repo DIR] [--state DIR] next          (stdin: the `plan` object of get_usage)
   night_queue.py [--repo DIR] [--state DIR] ahead
-  night_queue.py room --hours H                           (stdin: the `plan` object of get_usage)
+  night_queue.py room --hours H [--max-percent P]         (stdin: the `plan` object of get_usage)
 
 scope: reads the `Zakres:` line from the header of an epic spec (the lines before the first `## ` heading) and prints
 one JSON line `{"scope": [path, ...]}`, exit 0. A missing, doubled or unreadable line, or an unreadable file, prints
@@ -41,8 +41,9 @@ end itself (`ended_at` and `reason` = its reason), so a later next refuses. An u
 
 room: is there room in the usage limits for work outside the night estimates (the review after an epic merge). Prints
 one JSON line {"ok": true} or {"ok": false, "reason": <str>}, exit 0: usage status other than `ok` (also unreadable
-input) or any window that does not reset within H hours at 80% or more gives the reason. H is a positive number of
-hours up to a year; anything else, also a missing --hours, exits 1. Reads neither the board nor the state.
+input) or any window that does not reset within H hours at P% or more (default 80) gives the reason. H is a positive
+number of hours up to a year, P a number above 0 and up to 100; anything else, also a missing --hours, exits 1. Reads
+neither the board nor the state.
 
 ahead: reads the board and prints {"epics": [{dir, id, issue, title, tasks, minutes}], "minutes": <sum|null>,
 "full": <bool>}: prepared epics not in progress. `full` is true when the sum reaches the night (540 minutes), or, when
@@ -552,6 +553,14 @@ def cmd_room(args, now, stdin):
         print('night_queue: --hours musi być liczbą godzin większą od 0 i najwyżej %d, jest %r' % (MAX_ROOM_HOURS, args.hours),
               file=sys.stderr)
         return 1
+    try:
+        max_percent = float(args.max_percent)
+    except (TypeError, ValueError):
+        max_percent = None
+    if max_percent is None or not 0 < max_percent <= 100:
+        print('night_queue: --max-percent musi być liczbą większą od 0 i najwyżej 100, jest %r' % args.max_percent,
+              file=sys.stderr)
+        return 1
     usage_now = _read_usage(stdin)
     if usage_now['status'] != 'ok':
         reason = 'stan limitów nieczytelny' if usage_now['status'] == 'unreadable' else (
@@ -561,9 +570,9 @@ def cmd_room(args, now, stdin):
     for w in usage_now['windows']:
         if parse_time(w['resetsAt']) <= horizon:
             continue
-        if w['percentUsed'] >= 80:
-            print(json.dumps({'ok': False, 'reason': 'okno %s: %s%% >= 80%%' % (w['label'], _percent(w['percentUsed']))},
-                             ensure_ascii=False))
+        if w['percentUsed'] >= max_percent:
+            print(json.dumps({'ok': False, 'reason': 'okno %s: %s%% >= %g%%' % (
+                w['label'], _percent(w['percentUsed']), max_percent)}, ensure_ascii=False))
             return 0
     print(json.dumps({'ok': True}))
     return 0
@@ -604,6 +613,7 @@ def main(argv=None, run=None, now=None, stdin=None):
     sub.add_parser('ahead', help='prepared epics with time estimates')
     room_parser = sub.add_parser('room', help='room in the usage limits for a review after a merge')
     room_parser.add_argument('--hours')
+    room_parser.add_argument('--max-percent', default='80')
     try:
         args = parser.parse_args(argv)
     except SystemExit as e:
