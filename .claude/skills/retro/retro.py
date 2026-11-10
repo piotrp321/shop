@@ -187,19 +187,29 @@ def _incident(epic_id, kind, key, at, data, facts):
             'data': data, 'facts': facts}
 
 
-def _window_facts(window):
-    start, data = window['start'], window['data']
-    facts = []
-    if window['type'] == 'status_changed':
-        text = '%s %s (powód: %s)' % (window['task_id'], data.get('to'), data.get('reason'))
-    elif window['type'] == 'epic_blocked':
+def _start_facts(kind, task_id, data, at, prefix=''):
+    """The facts of one start of a wait: the event with its reason and the questions or reasons of the block."""
+    if kind == 'status_changed':
+        text = '%s %s (powód: %s)' % (task_id, data.get('to'), data.get('reason'))
+    elif kind == 'epic_blocked':
         text = 'epik zablokowany (powód: %s)' % data.get('reason')
     else:
         text = 'kolejka wstrzymana (rodzaj: %s)' % data.get('kind')
-    facts.append({'source': 'events.jsonl', 'at': int(start), 'text': text})
-    if window['action']:
-        facts.append({'source': 'events.jsonl', 'at': int(window['end']), 'text': 'human_action %s' % window['action']})
+    facts = [{'source': 'events.jsonl', 'at': at, 'text': prefix + text}]
+    for question in _text_list(data.get('blockers')):
+        facts.append({'source': 'events.jsonl', 'at': at, 'text': 'pytanie blokera: ' + question})
+    for reason in _text_list(data.get('reasons')):
+        facts.append({'source': 'events.jsonl', 'at': at, 'text': 'powód wstrzymania: ' + reason})
     return facts
+
+
+def _points_at(window, task):
+    """True when the data of an epic-level window name the task (its reason, questions, reasons or task_id)."""
+    data = window['data']
+    if data.get('task_id') == task or window.get('task_id') == task:
+        return True
+    texts = [str(data.get('reason') or '')] + _text_list(data.get('blockers')) + _text_list(data.get('reasons'))
+    return any(task in text for text in texts)
 
 
 def _text_list(value):
@@ -243,45 +253,102 @@ def ao_incidents(epic):
     for attempt in attempts:
         if attempt.get('outcome') not in (None, KNOWN_ATTEMPT_OK) and attempt.get('ended_at') is not None:
             failed[(attempt['task_id'], attempt['number'])] = attempt
-    attached, taken = set(), set()
+    taken = set()
+
+    def take_failed_attempt(incident, task, at):
+        """The last attempt of the task that ended just before `at`, if it failed, is a fact of the wait."""
+        before = [a for a in attempts if a['task_id'] == task and a.get('ended_at') is not None
+                  and a['ended_at'] <= at + 1]
+        if not before:
+            return
+        last = max(before, key=lambda a: (a['ended_at'], a['number']))
+        token = (last['task_id'], last['number'])
+        if token in failed and token not in taken and at - last['ended_at'] <= ATTEMPT_GAP_S:
+            taken.add(token)
+            incident['facts'].append({
+                'source': 'orchestrator.db', 'at': int(last['ended_at']),
+                'text': 'nieudana próba %s#%s tuż przed blokadą: outcome %s, exit_code %s'
+                        % (last['task_id'], last['number'], last['outcome'], last['exit_code'])})
+            incident['data']['failed_attempts'].append({'task_id': last['task_id'], 'number': last['number'],
+                                                        'outcome': last['outcome'], 'exit_code': last['exit_code']})
+
+    # one incident per window; every window carries the span used to place the night decisions
+    wait_incidents = []
     for window in windows:
         key_owner = window['key'] or epic_id
         start = int(window['start'])
         end = int(window['end']) if window['end'] is not None else None
         data = window['data']
-        facts_w = _window_facts(window)
-        blockers = _text_list(data.get('blockers'))
-        reasons = _text_list(data.get('reasons'))
-        for text in blockers:
-            facts_w.append({'source': 'events.jsonl', 'at': start, 'text': 'pytanie blokera: ' + text})
         wait_data = {
             'event': window['type'], 'task_id': window['key'] or data.get('task_id') or None,
-            'reason': data.get('reason') or data.get('kind'), 'blockers': blockers, 'reasons': reasons,
-            'start': start, 'end': end, 'open': end is None, 'action': window['action'],
+            'reason': data.get('reason') or data.get('kind'), 'blockers': _text_list(data.get('blockers')),
+            'reasons': _text_list(data.get('reasons')), 'start': start, 'end': end, 'open': end is None,
+            'action': window['action'], 'also_actions': [], 'absorbed': [], 'failed_attempts': [],
             'human_action': window['action'] is not None, 'can_be_corrective': window['action'] is not None,
         }
-        # the last attempt of the task that ended just before the block, if it did not succeed, is part of it
+        facts_w = _start_facts(window['type'], window['task_id'], data, start)
+        if window['action']:
+            facts_w.append({'source': 'events.jsonl', 'at': end, 'text': 'human_action %s' % window['action']})
+        incident = _incident(epic_id, 'wait', '%s@%d' % (key_owner, start), start, wait_data, facts_w)
+        wait_incidents.append((window, incident))
         if window['key']:
-            before = [a for a in attempts if a['task_id'] == window['key'] and a.get('ended_at') is not None
-                      and a['ended_at'] <= window['start'] + 1]
-            if before:
-                last = max(before, key=lambda a: (a['ended_at'], a['number']))
-                token = (last['task_id'], last['number'])
-                if token in failed and token not in taken and window['start'] - last['ended_at'] <= ATTEMPT_GAP_S:
-                    taken.add(token)
-                    attached.add(token)
-                    facts_w.append({'source': 'orchestrator.db', 'at': int(last['ended_at']),
-                                    'text': 'nieudana próba %s#%s tuż przed blokadą: outcome %s, exit_code %s'
-                                            % (last['task_id'], last['number'], last['outcome'], last['exit_code'])})
-                    wait_data['failed_attempt'] = {'task_id': last['task_id'], 'number': last['number'],
-                                                   'outcome': last['outcome'], 'exit_code': last['exit_code']}
-        incidents.append(_incident(epic_id, 'wait', '%s@%d' % (key_owner, start), start, wait_data, facts_w))
+            take_failed_attempt(incident, window['key'], window['start'])
+
+    # a start that did not open a window fell into an open one of the same key: a fact of that wait
+    opened = {(w['key'], w['start'], w['type']) for w in windows}
+    for event in events:
+        if not ao_events._valid_time(event):
+            continue
+        starts, key = ao_events._wait_key(event)
+        if not starts or (key, float(event['at']), event.get('type')) in opened:
+            continue
+        host = next(((w, i) for w, i in wait_incidents if w['key'] == key and w['start'] <= event['at']
+                     and (w['end'] is None or event['at'] <= w['end'])), None)
+        if host is None:
+            continue
+        data = event['data'] if isinstance(event.get('data'), dict) else {}
+        at = int(event['at'])
+        host[1]['facts'] += _start_facts(event.get('type'), event.get('task_id'), data, at,
+                                         'kolejny początek czekania w otwartym oknie: ')
+        host[1]['data']['absorbed'].append({'event': event.get('type'), 'at': at,
+                                            'reason': data.get('reason') or data.get('kind')})
+        if key:
+            take_failed_attempt(host[1], key, event['at'])
+
+    # an epic-level block of the same second that names a task is part of that task's wait
+    merged, spans = set(), {}
+    for window, incident in wait_incidents:
+        spans[id(incident)] = [window['start'], window['end']]
+    for window, incident in wait_incidents:
+        if window['key'] is not None:
+            continue
+        for other, host in wait_incidents:
+            if other['key'] is None or abs(other['start'] - window['start']) > 1 \
+                    or not _points_at(window, other['key']):
+                continue
+            host['facts'] += incident['facts']
+            host['data']['also_actions'] += [window['action']] if window['action'] else []
+            host['data']['absorbed'] += incident['data']['absorbed']
+            host['data']['failed_attempts'] += incident['data']['failed_attempts']
+            host['data']['human_action'] = host['data']['human_action'] or incident['data']['human_action']
+            host['data']['can_be_corrective'] = host['data']['can_be_corrective'] or incident['data']['can_be_corrective']
+            span, mine = spans[id(host)], spans[id(incident)]
+            span[0] = min(span[0], mine[0])
+            span[1] = None if span[1] is None or mine[1] is None else max(span[1], mine[1])
+            host['data']['start'] = int(span[0])
+            host['data']['end'] = int(span[1]) if span[1] is not None else None
+            host['data']['open'] = span[1] is None
+            merged.add(id(incident))
+            break
+    incidents = [i for _, i in wait_incidents if id(i) not in merged]
+    for incident in incidents:
+        incident['facts'].sort(key=lambda f: f.get('at') or 0)
+
     # night decisions: into the tightest wait closed on both sides that contains the time
     leftovers = []
-    closed = [(w, i) for w, i in zip(windows, incidents) if w['end'] is not None]
+    closed = [(spans[id(i)], i) for i in incidents if spans[id(i)][1] is not None]
     for moment, text in decisions:
-        inside = [(w['end'] - w['start'], n, i) for n, (w, i) in enumerate(closed)
-                  if int(w['start']) <= moment <= w['end']]
+        inside = [(span[1] - span[0], n, i) for n, (span, i) in enumerate(closed) if int(span[0]) <= moment <= span[1]]
         if inside:
             _, _, incident = min(inside, key=lambda t: (t[0], t[1]))
             incident['facts'].append({'source': 'night-decisions.log', 'at': moment, 'text': text})
@@ -291,7 +358,7 @@ def ao_incidents(epic):
         facts.append({'id': '%s/night/%d' % (epic_id, moment), 'text': 'decyzja nocna poza oknem czekania: ' + text})
 
     for (task, number), attempt in sorted(failed.items()):
-        if (task, number) in attached:
+        if (task, number) in taken:
             continue
         at = int(attempt['ended_at'])
         incidents.append(_incident(

@@ -205,15 +205,14 @@ class AoIncidentsTest(TempDirCase):
     def incidents(self, name):
         return retro.ao_incidents(self.epic(self.real_home(), name))
 
-    def test_visual_design_has_seven_waits_with_epoch_second_keys(self):
+    def test_visual_design_has_six_waits_with_epoch_second_keys(self):
         incidents, _ = self.incidents('visual-design')
         waits = [i for i in incidents if i['kind'] == 'wait']
         self.assertEqual(sorted(i['id'] for i in waits), sorted([
             'visual-design/wait/VISUAL-DESIGN-4@1794229662',
             'visual-design/wait/VISUAL-DESIGN-4@1794236083',
             'visual-design/wait/VISUAL-DESIGN-5@1794242091',
-            'visual-design/wait/VISUAL-DESIGN-INTEGRATION-1@1794260001',
-            'visual-design/wait/visual-design@1794260001',
+            'visual-design/wait/VISUAL-DESIGN-INTEGRATION-1@1794260001',   # with the epic block of that second
             'visual-design/wait/visual-design@1794272499',
             'visual-design/wait/visual-design@1794276256',
         ]))
@@ -248,7 +247,7 @@ class AoIncidentsTest(TempDirCase):
         self.assertIn('REPAIR-1', nights2[0]['text'])
         # one decision, one incident: nothing left over for the epic and no incident of its own
         self.assertFalse([f for f in facts if f['id'].startswith('visual-design/night/')])
-        self.assertEqual(len([i for i in incidents if i['kind'] == 'wait']), 7)
+        self.assertEqual(len([i for i in incidents if i['kind'] == 'wait']), 6)
         self.assertEqual({i['kind'] for i in incidents}, {'wait', 'repair'})
 
     def test_failed_attempt_ending_just_before_the_block_belongs_to_the_wait(self):
@@ -352,6 +351,70 @@ class AoIncidentsTest(TempDirCase):
         first = {i['id']: i for i in incidents}['visual-design/wait/visual-design@1794272499']
         self.assertEqual(first['data']['end'], 1794272521)
 
+    def test_epic_block_naming_the_task_in_the_same_second_joins_the_task_wait(self):
+        # real: VISUAL-DESIGN-INTEGRATION-1 BLOCKED and epic_blocked "integration_blocked: B1 (...-INTEGRATION-1)"
+        incidents, _ = self.incidents('visual-design')
+        by_id = {i['id']: i for i in incidents}
+        self.assertNotIn('visual-design/wait/visual-design@1794260001', by_id)
+        wait = by_id['visual-design/wait/VISUAL-DESIGN-INTEGRATION-1@1794260001']
+        texts = [f['text'] for f in wait['facts']]
+        self.assertTrue([t for t in texts if 'integration_blocked: B1' in t], texts)
+        self.assertIn('human_action answer', texts)
+        self.assertIn('human_action epic-resume', texts)
+        self.assertEqual(wait['data']['action'], 'answer')
+        self.assertEqual(wait['data']['also_actions'], ['epic-resume'])
+        self.assertEqual((wait['data']['start'], wait['data']['end']), (1794260001, 1794261013))
+
+    def test_night_decision_between_the_ends_of_the_two_windows_joins_the_merged_incident(self):
+        home = self.real_home()
+        path = os.path.join(home, 'ao-visual-design', 'night-decisions.log')
+        stamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(1794261000))   # after the task window, before the epic's
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(stamp + ' epic resume: decyzja po B1\n')
+        incidents, facts = retro.ao_incidents(self.epic(home, 'visual-design'))
+        wait = {i['id']: i for i in incidents}['visual-design/wait/VISUAL-DESIGN-INTEGRATION-1@1794260001']
+        self.assertEqual([f['text'] for f in wait['facts'] if f['source'] == 'night-decisions.log'],
+                         ['epic resume: decyzja po B1'])
+        self.assertFalse([f for f in facts if '/night/' in f['id']])
+
+    def test_epic_block_in_the_same_second_that_does_not_name_the_task_stays_separate(self):
+        events = [
+            {'type': 'status_changed', 'task_id': 'T-1', 'epic_id': 'sep', 'at': 1794000000.2,
+             'data': {'to': 'BLOCKED', 'reason': 'executor', 'blockers': ['Q?']}},
+            {'type': 'epic_blocked', 'task_id': None, 'epic_id': 'sep', 'at': 1794000000.9,
+             'data': {'reason': 'max_qa_rounds: rundy: 3'}},
+            {'type': 'human_action', 'task_id': 'T-1', 'epic_id': None, 'at': 1794000100.0,
+             'data': {'action': 'answer'}},
+            {'type': 'human_action', 'task_id': None, 'epic_id': None, 'at': 1794000200.0,
+             'data': {'action': 'epic-resume'}}]
+        build_run(self.ao_home, 'sep', 'cart.sql', '\n'.join(json.dumps(e) for e in events) + '\n',
+                  extra_sql="UPDATE epics SET epic_id='sep';")
+        incidents, _ = retro.ao_incidents(self.epic(self.ao_home, 'sep'))
+        self.assertEqual(sorted(i['id'] for i in incidents if i['kind'] == 'wait'),
+                         ['sep/wait/T-1@1794000000', 'sep/wait/sep@1794000000'])
+
+    def test_a_start_inside_an_open_window_of_the_same_key_is_a_fact_of_that_wait(self):
+        events = [
+            {'type': 'status_changed', 'task_id': 'T-1', 'epic_id': 'abs', 'at': 100.0,
+             'data': {'to': 'BLOCKED', 'reason': 'executor', 'blockers': ['Pierwsze pytanie?']}},
+            {'type': 'status_changed', 'task_id': 'T-1', 'epic_id': 'abs', 'at': 200.0,
+             'data': {'to': 'BLOCKED', 'reason': 'policy', 'blockers': ['Drugie pytanie?']}},
+            {'type': 'human_action', 'task_id': 'T-1', 'epic_id': None, 'at': 300.0, 'data': {'action': 'answer'}},
+            {'type': 'status_changed', 'task_id': 'T-1', 'epic_id': 'abs', 'at': 400.0,
+             'data': {'to': 'FAILED', 'reason': 'executor_reported'}}]
+        build_run(self.ao_home, 'abs', 'cart.sql', '\n'.join(json.dumps(e) for e in events) + '\n',
+                  extra_sql="UPDATE epics SET epic_id='abs';")
+        incidents, _ = retro.ao_incidents(self.epic(self.ao_home, 'abs'))
+        waits = {i['id']: i for i in incidents if i['kind'] == 'wait'}
+        self.assertEqual(sorted(waits), ['abs/wait/T-1@100', 'abs/wait/T-1@400'])   # the start at 400 follows the answer
+        first = waits['abs/wait/T-1@100']
+        texts = [f['text'] for f in first['facts']]
+        self.assertTrue([t for t in texts if 'Drugie pytanie?' in t], texts)
+        self.assertTrue([t for t in texts if 'policy' in t], texts)
+        self.assertEqual(first['data']['reason'], 'executor')   # the window keeps its own start
+        self.assertEqual([(a['at'], a['reason']) for a in first['data']['absorbed']], [(200, 'policy')])
+        self.assertEqual(waits['abs/wait/T-1@400']['data']['absorbed'], [])
+
     def test_garbage_lines_in_events_and_night_log_are_skipped(self):
         home = self.real_home()
         path = os.path.join(home, 'ao-visual-design', 'events.jsonl')
@@ -360,8 +423,41 @@ class AoIncidentsTest(TempDirCase):
         with open(os.path.join(home, 'ao-visual-design', 'night-decisions.log'), 'a', encoding='utf-8') as f:
             f.write('garbage line\n2026-13-45 99:99:99 not a time\n')
         incidents, facts = retro.ao_incidents(self.epic(home, 'visual-design'))
-        self.assertEqual(len([i for i in incidents if i['kind'] == 'wait']), 7)
+        self.assertEqual(len([i for i in incidents if i['kind'] == 'wait']), 6)
 
+
+
+class AbsorbedStartsTest(TempDirCase):
+    """Real events of PROMOTIONS: no human_action was recorded, so every wait stays open and later starts of the same
+    key (epic_blocked max_qa_rounds, a second BLOCKED of PROMOTIONS-REPAIR-1, queue_held) fall into open windows."""
+
+    def incidents(self):
+        build_run(self.ao_home, 'promotions', 'promotions.sql', fixture('promotions.events.jsonl'))
+        epic = [e for e in retro.discover_epics(self.ao_home) if e['id'] == 'promotions'][0]
+        return retro.ao_incidents(epic)[0]
+
+    def test_waits_stay_two_open_windows_and_keep_their_own_starts(self):
+        waits = [i for i in self.incidents() if i['kind'] == 'wait']
+        self.assertEqual(sorted(i['id'] for i in waits), ['promotions/wait/PROMOTIONS-REPAIR-1@1794129534',
+                                                          'promotions/wait/promotions@1794090349'])
+        self.assertTrue(all(i['data']['open'] for i in waits))
+
+    def test_max_qa_rounds_block_inside_the_open_epic_window_is_a_fact(self):
+        wait = {i['id']: i for i in self.incidents()}['promotions/wait/promotions@1794090349']
+        texts = [f['text'] for f in wait['facts']]
+        self.assertTrue([t for t in texts if 'max_qa_rounds' in t], texts)
+        self.assertEqual(sorted(a['event'] for a in wait['data']['absorbed']), ['epic_blocked', 'queue_held'])
+        self.assertEqual(sorted(a['at'] for a in wait['data']['absorbed']), [1794136278, 1794158928])
+
+    def test_second_block_of_the_task_is_a_fact_with_the_failed_attempt_just_before_it(self):
+        incidents = self.incidents()
+        wait = {i['id']: i for i in incidents}['promotions/wait/PROMOTIONS-REPAIR-1@1794129534']
+        self.assertEqual([(a['at'], a['reason']) for a in wait['data']['absorbed']], [(1794133282, 'repeated_failure')])
+        attempts = [f['text'] for f in wait['facts'] if f['source'] == 'orchestrator.db']
+        self.assertEqual(len(attempts), 1)
+        self.assertIn('PROMOTIONS-REPAIR-1#3', attempts[0])
+        failed = [i['id'] for i in incidents if i['kind'] == 'failed_attempt']
+        self.assertEqual(failed, ['promotions/failed_attempt/PROMOTIONS-REPAIR-1#2'])   # #3 belongs to the wait
 
 
 class FindingIncidentsTest(unittest.TestCase):
@@ -772,7 +868,7 @@ class CollectTest(TempDirCase):
         self.assertEqual(self.collect(), 0)
         data = self.load()
         self.assertEqual((data['schema'], data['epic'], data['commit']), (1, 'visual-design', 'c0ffee1234567890'))
-        self.assertEqual(self.kinds(data, 'visual-design'), {'wait': 7, 'repair': 1, 'finding': 4, 'manual_fix': 1,
+        self.assertEqual(self.kinds(data, 'visual-design'), {'wait': 6, 'repair': 1, 'finding': 4, 'manual_fix': 1,
                                                              'no_sweep': 1, 'unasked': 2})
         self.assertEqual(self.kinds(data, 'discount-codes'), {'wait': 2, 'failed_attempt': 1, 'finding': 3,
                                                               'manual_fix': 2})
