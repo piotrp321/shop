@@ -315,7 +315,8 @@ o minuty pracy użytkownika i nie podawaj szacunku. Po jego zgodzie dopisz komen
 (`cd "$SHOP" && gh issue comment <nr>`). Bez zgody niczego nie komentuj.
 
 Ręczne poprawki podaj w komentarzu jako linię `Ręczne poprawki: N` i pod nią po jednej linii na poprawkę:
-`- PR #<nr>: <opis>` albo, gdy poprawka nie ma PR, `- <opis>` (`N` równa się liczbie linii; przy `0` bez linii).
+`- PR #<nr>: <opis>` albo, gdy poprawka nie ma PR, `- <opis>` (`N` równa się liczbie linii; przy `0` bez linii). Opis poprawki bez PR zaczyna się małą literą
+i nie zawiera dwukropka (parser czyta „Wielka litera…: ” jako następną etykietę komentarza).
 Ten format czyta `retro.py collect`, więc nie zmieniaj etykiet ani znaków przed numerem PR. Przykład:
 
 ```text
@@ -345,24 +346,27 @@ przegląd nie pomija retro: retro ma własne warunki startu (niżej).
 
 - **Jeden naraz, nigdy z epikiem.** Przegląd albo retro zaczynasz tylko wtedy, gdy nie trwa inny przegląd ani retro,
   proces AO tej sesji (`ao run`) ani procedura z sekcji 6a (własny stos). Nowy epik (sekcje 1–6 po „tak” z sekcji 8,
-  po `approve` listy nocy i kolejny epik nocy z `next`) zaczynasz dopiero przy pustej kolejce (pozycje z `pending` się
-  nie liczą, niżej) i bez trwającego przeglądu albo retro. Ponowne `ao run` (sekcja 5) i procedurę z sekcji 6a
+  po `approve` listy nocy i kolejny epik nocy z `next`) zaczynasz dopiero przy pustej kolejce
+  i bez trwającego przeglądu albo retro. Ponowne `ao run` (sekcja 5) i procedurę z sekcji 6a
   zaczynasz dopiero po końcu trwającego przeglądu albo retro.
-- **Kiedy sprawdzasz kolejkę:** po dopisaniu epiku (sekcja 7, po pushu z sekcji 8), po końcu przeglądu albo retro
-  (wynik, pominięcie albo odroczenie) i po zakończeniu procesu AO tej sesji (zadanie tła z sekcji 4, także gdy epik
-  kończy noc). Gdy nic z powyższego nie trwa: niepusta kolejka → zacznij pierwszą pozycję; pusta kolejka i czekający
+- **Kiedy sprawdzasz kolejkę:** po dopisaniu pozycji (sekcja 7, po pushu z sekcji 8), po dopisaniu pozycji z `pending`
+  (niżej; na starcie przebiegu bez argumentu po pushu z sekcji 8, z `--noc` po pokazaniu listy, przed `approve`), po
+  końcu przeglądu albo retro (wynik, pominięcie, odroczenie albo odmowa) i po zakończeniu procesu AO tej sesji
+  (zadanie tła z sekcji 4, także gdy epik kończy noc). Gdy nic z powyższego nie trwa: niepusta kolejka → zacznij pierwszą pozycję; pusta kolejka i czekający
   epik (po „tak” albo z listy nocy) → zacznij ten epik.
 - **Ponowienie odroczonych retro.** Retro odroczone (`retro.py defer`) wraca z `retro.py pending`, nie z kolejki:
   `python3 "$SKILL_ROOT/.claude/skills/retro/retro.py" pending --repo "$SHOP"` (lista JSON z polem `epic`, od
   najstarszego merge'u) wykonaj przy kolejnym merge'u epiku (po dopisaniu pozycji z sekcji 7), po zakończeniu procesu
   AO tej sesji i na starcie każdego przebiegu `/ao-run` (także w nowej sesji, sekcja 1). Każdy epik z listy, którego
-  nie ma w kolejce i którego retro nie trwa, dopisz na jej koniec jako `/retro <epik>`. Taka pozycja nie wstrzymuje
-  czekającego epiku: epik rusza, a retro idzie po końcu jego procesu AO. Odroczone retro nie czeka więc w kolejce
-  i nie blokuje startu epiku; po kolejnym odroczeniu pozycja wypada z kolejki do następnego z powyższych zdarzeń. Błąd `pending` (kod różny od 0) opisz w rozmowie
+  nie ma w kolejce i którego retro nie trwa, dopisz na jej koniec jako `/retro <epik>`. Taka pozycja jest zwykłą
+  pozycją kolejki: czekający epik (po „tak”, po `approve`, z `next`) czeka na nią jak na każdą inną. Odroczone retro nie
+  blokuje startu epiku, bo między tymi zdarzeniami nie ma go w kolejce, a ponowne odroczenie usuwa pozycję z kolejki
+  do następnego z nich. Start z argumentem `<epik>` (sekcja 1) nie czeka na kolejkę: retro dopisane na jego starcie
+  idzie po końcu procesu AO (zasada „nigdy z procesem AO”). Błąd `pending` (kod różny od 0) opisz w rozmowie
   i prowadź dalej: retro zostaje w `pending`.
 - **Warunki tuż przed startem każdego przeglądu**, po kolei. Pierwszy niespełniony pomija ten przegląd: wyślij
   `PushNotification` „Przegląd `<epik>` pominięty: <powód>; ręcznie: /sweep `<epik>`” (do 200 znaków), powiedz to
-  w rozmowie i weź następny epik z kolejki.
+  w rozmowie i weź następną pozycję z kolejki.
   1. Zasilanie: `pmset -g batt` zawiera `'AC Power'`. Inaczej powód „bateria” (bez pytania, w przeciwieństwie do
      epiku; błąd `pmset` też jest powodem).
   2. Limit (świeże wywołanie `mcp__ccd_session_mgmt__get_usage`, obiekt `plan` dosłownie; bez tego narzędzia `{}`):
@@ -379,8 +383,9 @@ przegląd nie pomija retro: retro ma własne warunki startu (niżej).
 - **Retro.** Przeczytaj `.claude/skills/retro/SKILL.md` i wykonaj go od „Warunków przed startem” z argumentem
   `<epik>`, z jego blokiem startowym (`RETRO_RUN_ID` raz na przebieg). Jego warunki zastępują powyższe trzy: bateria,
   limit, `gh`, `git` i cudza blokada odraczają przez `retro.py defer` (push „Retro `<epik>` odroczone: <powód>”, epik
-  zostaje w `pending`), a epik, który nie jest przebiegiem AO albo ma końcowy PR `CLOSED`, pomija trwale `retro.py
-  skip`. Proces AO tej sesji nie działa (zasada „jeden naraz”), więc kontrola `pgrep` z tego skilla nie dotyczy.
+  zostaje w `pending`); odmowę bez zapisu i trwałe pominięcie `retro.py skip` rozróżnia jego „Warunki przed startem”
+  (punkty 1 i 2: np. brak katalogu `ao-<epik>` albo epik w toku to odmowa, baza bez wiersza epiku albo końcowy PR
+  `CLOSED` to `skip`), a po odmowie pozycja wypada z kolejki. Proces AO tej sesji nie działa (zasada „jeden naraz”), więc kontrola `pgrep` z tego skilla nie dotyczy.
   Zużycie mierzy sam `/retro` (`## Zużycie` jego raportu); retro nie wchodzi do `night_queue.py` (`start`, `done`).
   Decyzje użytkownika po retro (krok 7 jego skilla) przyjmujesz w tej rozmowie, bez blokowania kolejki.
 - **Przebieg przeglądu.** Przeczytaj `.claude/skills/sweep/SKILL.md` i wykonaj jego kroki 1–6 z argumentem `<epik>` (bez
@@ -413,7 +418,7 @@ Wyjście to jedna linia JSON: `epic` (`dir`, `id`, `issue`, `title`) albo `null`
 - **`epic` jest:** wyślij `PushNotification` „Zacząć epik <ID> (#<nr>)?”, a pozycje `skipped` opisz w rozmowie. Start
   tylko po „tak” użytkownika w sesji: wykonaj cały skill od sekcji 1 z `<epik>` = `epic.dir`. Gdy trwa przegląd albo retro
   albo kolejka przeglądów (sekcja 7a) nie jest pusta, „tak” czeka na jej koniec: powiedz to w rozmowie i pushem („Epik
-  <ID> ruszy po przeglądzie <epik>”; pozycje z `pending` nie czekają, sekcja 7a). Inna odpowiedź albo brak odpowiedzi: nic nie uruchamiaj.
+  <ID> ruszy po kolejce przeglądów”). Inna odpowiedź albo brak odpowiedzi: nic nie uruchamiaj.
 - **`epic` null:** wyślij push z powodem, krótszy niż 200 znaków: pierwsza pozycja `in_progress` albo, gdy jej brak,
   pierwsza pozycja `skipped` i liczba pozostałych, np. „Brak przygotowanego epiku: VARIANTS (#89) bez spec.md i
   plan.md na main, następny krok /prepare-epic (+2 inne)”. Pełną listę podaj w rozmowie. Gdy

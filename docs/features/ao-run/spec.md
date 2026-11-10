@@ -129,8 +129,8 @@ Remote Control skill nie sprawdza.
    - `epic` jest: push „Zacząć epik `<ID>` (#`<nr>`)?”, a w rozmowie także pozycje `skipped` (np. epik wyżej na
      tablicy bez planu). Start dopiero po „tak” użytkownika w sesji: przebieg od punktu 1 dla nowego `<epik>`, z
      wszystkimi warunkami startu. Gdy trwa przegląd albo retro albo kolejka przeglądów nie jest pusta, „tak” czeka na jej
-     koniec (pozycje z `retro.py pending` nie czekają, sekcja „Przegląd po merge'u”), a sesja mówi to w rozmowie
-     i w pushu („Epik X ruszy po przeglądzie Y”). Inna odpowiedź albo brak odpowiedzi: sesja niczego nie uruchamia.
+     koniec, a sesja mówi to w rozmowie
+     i w pushu („Epik X ruszy po kolejce przeglądów”). Inna odpowiedź albo brak odpowiedzi: sesja niczego nie uruchamia.
    - `epic` jest `null`: push (krótszy niż 200 znaków) z powodem: pierwsza pozycja `in_progress` albo pierwsza
      `skipped` z liczbą pozostałych, np. „Brak przygotowanego epiku: VARIANTS (#89) bez spec.md i plan.md na main,
      następny krok `/prepare-epic` (+2 inne)”; pełna lista w rozmowie. Jeśli `in_progress` to epik właśnie
@@ -172,22 +172,24 @@ siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
   procedura „Konflikt końcowego PR poza AO” (własny stos) albo inna pozycja kolejki. Nowy epik („tak” z punktu 7,
   pierwszy i kolejny epik listy nocy), ponowne `ao run` po decyzji użytkownika i ta procedura czekają na koniec
   trwającego przeglądu albo retro (przy nocy sesja wywołuje `next` dopiero po kolejce, żeby prognoza dotyczyła chwili
-  startu), a nowy epik także na pustą kolejkę (bez pozycji z `pending`, niżej). Pytanie „Zacząć epik?” i lista nocy
+  startu), a nowy epik także na pustą kolejkę. Pytanie „Zacząć epik?” i lista nocy
   nie czekają na przegląd ani na retro: po merge'u sesja najpierw dopisuje pozycje do kolejki i wysyła pytanie
   z punktu 7 (przy nocy według jej reguły), dopiero potem zaczyna przegląd.
-- **Kiedy kolejka rusza.** Sesja sprawdza kolejkę po dopisaniu pozycji, po końcu przeglądu albo retro (wynik,
-  pominięcie, odroczenie) i po końcu procesu AO tej sesji (także gdy epik nocy kończy noc). Gdy nic nie trwa, zaczyna
+- **Kiedy kolejka rusza.** Sesja sprawdza kolejkę po dopisaniu pozycji, po dopisaniu pozycji z `pending` (na starcie
+  przebiegu bez argumentu po pushu z punktu 7, z `--noc` po pokazaniu listy, przed `approve`), po końcu przeglądu
+  albo retro (wynik, pominięcie, odroczenie, odmowa) i po końcu procesu AO tej sesji (także gdy epik nocy kończy noc). Gdy nic nie trwa, zaczyna
   pierwszą pozycję z kolejki; przy pustej kolejce zaczyna epik czekający na nią.
 - **Ponowienie odroczonych retro.** Retro odroczone (`retro.py defer`: zasilanie, limit, `gh`, `git`, cudza
   blokada) wraca z `retro.py pending`, listy wyliczanej z danych, a nie z kolejki. Sesja wykonuje `pending` przy
   kolejnym merge'u epiku (po dopisaniu jego pozycji), po końcu procesu AO tej sesji i na starcie każdego przebiegu
   `/ao-run` (także w nowej sesji) i dopisuje na koniec kolejki jako `/retro <epik>` każdy epik z listy, którego nie
-  ma w kolejce i którego retro nie trwa. Taka pozycja nie wstrzymuje czekającego epiku: epik rusza, a retro idzie po
-  końcu jego procesu AO. Odroczone retro nie czeka w kolejce, więc nie blokuje startu epiku (nowy epik czeka tylko
-  na pozycje w kolejce); po kolejnym odroczeniu wypada z niej do następnego z tych zdarzeń. Błąd `pending` sesja
+  ma w kolejce i którego retro nie trwa. Taka pozycja jest zwykłą pozycją kolejki, więc czekający epik czeka na nią jak na
+  każdą inną. Odroczone retro nie czeka w kolejce między tymi zdarzeniami, więc nie blokuje startu epiku (nowy epik
+  czeka tylko na pozycje w kolejce); po kolejnym odroczeniu wypada z niej do następnego z nich. Start z argumentem
+  `<epik>` (punkt 1) nie czeka na kolejkę: retro dopisane na jego starcie idzie po końcu procesu AO. Błąd `pending` sesja
   opisuje w rozmowie i prowadzi dalej: retro zostaje na liście.
 - **Warunki przed każdym przeglądem**, sprawdzane tuż przed startem. Niespełniony warunek pomija ten przegląd
-  (następny w kolejce sprawdza je od nowa), a sesja wysyła push „Przegląd `<epik>` pominięty: <powód>; ręcznie:
+  (następna pozycja w kolejce sprawdza je od nowa), a sesja wysyła push „Przegląd `<epik>` pominięty: <powód>; ręcznie:
   `/sweep <epik>`” (do 200 znaków):
   - zasilanie sieciowe (`pmset -g batt` z `'AC Power'`); bez pytania o baterię, w przeciwieństwie do epiku;
   - limit: `night_queue.py room --hours 2` (stdin: obiekt `plan` z `get_usage`) zwraca `ok`: stan limitów `ok`
@@ -202,8 +204,10 @@ siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
   sesja niczego nie zakłada.
 - **Retro.** Sesja czyta `.claude/skills/retro/SKILL.md` i wykonuje go od „Warunków przed startem” z argumentem
   `<epik>`. Jego warunki zastępują trzy powyższe: bateria, limit, `gh`, `git` i cudza blokada odraczają przez
-  `retro.py defer` (push „Retro `<epik>` odroczone: <powód>”), a epik, który nie jest przebiegiem AO albo ma końcowy
-  PR `CLOSED`, pomija trwale `retro.py skip`. Kontrola procesu AO (`pgrep`) pomijana, bo sesja pilnuje go sama.
+  `retro.py defer` (push „Retro `<epik>` odroczone: <powód>”), odmowę bez zapisu i trwałe
+  pominięcie `retro.py skip` rozróżniają „Warunki przed startem” `/retro` (punkty 1 i 2: np. brak katalogu `ao-<epik>`
+  albo epik w toku to odmowa, baza bez wiersza epiku albo końcowy PR `CLOSED` to `skip`), a po odmowie pozycja wypada
+  z kolejki. Kontrola procesu AO (`pgrep`) pomijana, bo sesja pilnuje go sama.
   Zużycie (`## Zużycie` raportu retro) mierzy `/retro`. Decyzje użytkownika po retro (issues, poprawki w PR) sesja
   przyjmuje w rozmowie, bez blokowania kolejki; PR retro merguje użytkownik.
 - **Pomiar przeglądu.** Przed startem i po końcu przeglądu sesja wywołuje `get_usage`. Czas i przyrost procentu każdego okna
