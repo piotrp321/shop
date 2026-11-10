@@ -1,0 +1,10 @@
+{"type": "host_on_battery", "task_id": null, "epic_id": null, "data": {"percent": 100}, "at": 1794165798.869934}
+{"type": "host_on_battery", "task_id": null, "epic_id": null, "data": {"percent": 16, "low": true}, "at": 1794175406.281701}
+{"type": "queue_held", "task_id": "DISCOUNT-CODES-INTEGRATION-3", "epic_id": "discount-codes", "data": {"kind": "environment", "task_id": "DISCOUNT-CODES-INTEGRATION-3", "reasons": ["EnvironmentFailure: setup of DISCOUNT-CODES-INTEGRATION-3 failed: setup exited 1: n-3-8acffe-1-garage-init-1 Exited | Container ao-9c6483-discount-codes-integration-3-8acffe-1-imgproxy-1 Healthy | Container ao-9c6483-discount-codes-integration-3-8acffe-1-elasticsearch-1 Healthy | Container ao-9c6483-discount-codes-integration-3-8acffe-1-keycloak-1 Healthy | container ao-9c6483-discount-codes-integration-3-8acffe-1-api-1 exited (1) | make: *** [up] Error 1 | ao setup: make up failed"], "at": 1794190226.505911}, "at": 1794190226.506104}
+{"type": "human_action", "task_id": null, "epic_id": null, "data": {"action": "release"}, "at": 1794209856.666364}
+{"type": "host_on_battery", "task_id": null, "epic_id": null, "data": {"percent": 100}, "at": 1794209869.396798}
+{"type": "epic_blocked", "task_id": null, "epic_id": "discount-codes", "data": {"epic_id": "discount-codes", "from": "ACTIVE", "reason": "max_qa_rounds: rundy: 3"}, "at": 1794210958.2357278}
+{"type": "human_action", "task_id": null, "epic_id": null, "data": {"action": "epic-resume"}, "at": 1794213615.5648692}
+{"type": "host_on_battery", "task_id": null, "epic_id": null, "data": {"percent": 95}, "at": 1794213623.596122}
+{"type": "final_pr_created", "task_id": null, "epic_id": "discount-codes", "data": {"epic_id": "discount-codes", "pr_number": 329, "url": "https://github.com/piotrp321/shop/pull/329", "head_sha": "23bc58c7830249e52d0f926c1cfcb5fb13ca3820"}, "at": 1794214139.405108}
+{"type": "epic_done", "task_id": null, "epic_id": "discount-codes", "data": {"epic_id": "discount-codes", "why": "CI of the final PR is green"}, "at": 1794215218.440226}

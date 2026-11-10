@@ -23,6 +23,9 @@
       the current time). `interventions` counts the decisions recorded by /ao-run; `ao report` counts AO's own. Lines that are not JSON objects are skipped. A missing or unreadable FILE is exit code 1 with a message on
       stderr and nothing on stdout: no data is not zero.
 
+The module function waits(events) returns the windows of waiting for the user that `summary` is computed from (used by
+/retro).
+
 An AO event is {"type", "task_id", "epic_id", "data", "at"} (orchestrator/notify.py, Notifier._payload). The `data`
 keys of the notifiable events (AO origin/main):
   status_changed  to (BLOCKED | FAILED), from, reason; for BLOCKED also blockers: up to 5 question texts
@@ -160,30 +163,51 @@ def _union_s(intervals):
     return total
 
 
-def summarize(events, now):
-    """Interventions and waits for the user in a list of AO events (see `summary` in the module docstring)."""
-    interventions, waits, closed, opened, done = 0, 0, [], {}, []
+def _valid_time(event):
+    return isinstance(event, dict) and isinstance(event.get('at'), (int, float)) and not isinstance(event['at'], bool)
+
+
+def waits(events):
+    """The windows of waiting for the user in a list of AO events, in the order they start.
+
+    A window starts at a task's status_changed to BLOCKED or FAILED (key: the task) or at epic_blocked / queue_held
+    (key: None) and ends at the next human_action with the same key; a repeated start before the end belongs to the
+    first window. Each window: {key, type (the starting event), task_id (of that event), data (of that event), start,
+    end, action}; end and action are None while the window is open. Events without a numeric `at` are skipped.
+    """
+    windows, opened = [], {}
     for event in events:
-        if not isinstance(event, dict) or isinstance(event.get('at'), bool) \
-                or not isinstance(event.get('at'), (int, float)):
+        if not _valid_time(event):
             continue
-        if event.get('type') == 'epic_done':
-            done.append(float(event['at']))
         if event.get('type') == 'human_action':
-            interventions += 1
-            since = opened.pop(event.get('task_id'), None)
-            if since is not None:
-                closed.append((since, max(since, float(event['at']))))
+            window = opened.pop(event.get('task_id'), None)
+            if window is not None:
+                window['end'] = max(window['start'], float(event['at']))
+                data = event.get('data')
+                window['action'] = data.get('action') if isinstance(data, dict) else None
             continue
         starts, key = _wait_key(event)
         if starts and key not in opened:
-            opened[key] = float(event['at'])
-            waits += 1
+            window = {'key': key, 'type': event.get('type'), 'task_id': event.get('task_id'),
+                      'data': event['data'] if isinstance(event.get('data'), dict) else {},
+                      'start': float(event['at']), 'end': None, 'action': None}
+            opened[key] = window
+            windows.append(window)
+    return windows
+
+
+def summarize(events, now):
+    """Interventions and waits for the user in a list of AO events (see `summary` in the module docstring)."""
+    windows = waits(events)
+    interventions = sum(1 for e in events if _valid_time(e) and e.get('type') == 'human_action')
+    done = [float(e['at']) for e in events if _valid_time(e) and e.get('type') == 'epic_done']
+    closed = [(w['start'], w['end']) for w in windows if w['end'] is not None]
     still = []
-    for key, since in opened.items():
-        end = max([at for at in done if at >= since], default=now)
-        still.append({'task_id': key, 'since': since, 'wait_s': max(0.0, end - since)})
-    return {'interventions': interventions, 'waits': waits, 'wait_s': _union_s(closed), 'open': still}
+    for window in windows:
+        if window['end'] is None:
+            end = max([at for at in done if at >= window['start']], default=now)
+            still.append({'task_id': window['key'], 'since': window['start'], 'wait_s': max(0.0, end - window['start'])})
+    return {'interventions': interventions, 'waits': len(windows), 'wait_s': _union_s(closed), 'open': still}
 
 
 def summary(path, now):
