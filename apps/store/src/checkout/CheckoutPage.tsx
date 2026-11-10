@@ -54,6 +54,7 @@ const CHOOSE_PROVIDER = "Wybierz sposób płatności.";
 const PROVIDER_ID_PREFIX = "checkout-provider-";
 const PROVIDER_ERROR_ID = "checkout-provider-error";
 const SUBMIT_FAILED = "Nie udało się złożyć zamówienia. Spróbuj ponownie.";
+const RATE_LIMITED = "Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.";
 const CART_GONE = "Koszyk nie jest już dostępny.";
 const FIELD_ID_PREFIX = "checkout-";
 const FAILURE_ID = "checkout-failure";
@@ -110,7 +111,7 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
   // Where the focus goes after a refusal: the button was locked during the request, so the focus would be on the body.
   const [attention, setAttention] = useState<{ id: string; seq: number } | null>(null);
   // The key of one logical attempt. Made on entry and kept for a retry of an uncertain result (a network error, 403,
-  // 5xx) and after a 409 that leaves the request as it was. A new one for a new attempt: after every change of the
+  // 5xx), after a 429 of the rate limit and after a 409 that leaves the request as it was. A new one for a new attempt: after every change of the
   // form, after `IdempotencyKeyReused` and after `OrderTotalChanged` (the request now carries another total), and
   // when a code is applied or removed or refused (the request carries another code and total).
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
@@ -315,6 +316,10 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
         return FAILURE_ID;
       case "unauthorized":
         setFailure({ kind: "unauthorized" });
+        return FAILURE_ID;
+      case "rate_limited":
+        // Nothing was placed: the form stays, and so does the key for the retry in a few minutes.
+        setFailure({ kind: "message", text: RATE_LIMITED });
         return FAILURE_ID;
       case "failed":
         setFailure({ kind: "message", text: SUBMIT_FAILED });

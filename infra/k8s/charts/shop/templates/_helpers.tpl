@@ -292,3 +292,14 @@ spec:
   template:
     {{- .template | nindent 4 }}
 {{- end }}
+
+{{- /*
+CLIENT_IP_HEADER of the api and the store: the header with the address of the client (values clientIpHeader), nothing
+when it is empty.
+*/ -}}
+{{- define "shop.clientIpHeaderEnv" -}}
+{{- if .Values.clientIpHeader }}
+- name: CLIENT_IP_HEADER
+  value: {{ .Values.clientIpHeader | quote }}
+{{- end }}
+{{- end }}

@@ -152,6 +152,28 @@ Wszystko **użytkownik**.
    przeglądarce.
 4. **użytkownik** – włącza automatyczny backup VPS-a w panelu OVH. To jedyna kopia do czasu DEPLOY-OPS (#178); prawdziwe dane i
    publiczny sklep dopiero po nim.
+5. **zgoda użytkownika** – weryfikacja originu (`docs/features/hardening/spec.md`, „Weryfikacja originu na serwerze”):
+   limity API liczą się po `CF-Connecting-IP`, któremu można ufać tylko wtedy, gdy nic poza Cloudflare nie dociera do
+   originu. Agent opisuje żądania i po zgodzie wysyła je z komputera spoza Cloudflare (`<IP>` – adres serwera):
+
+   ```sh
+   # Z pominięciem Cloudflare każdy host odmawia (403 z ipAllowList albo odrzucone połączenie, kod 000).
+   for url in <domena>/ api.<domena>/health admin.<domena>/ auth.<domena>/realms/shop/ img.<domena>/; do
+     host="${url%%/*}"
+     curl -sk -o /dev/null -w "$url %{http_code}\n" --resolve "$host:443:<IP>" "https://$url"
+   done
+   # Przez Cloudflare z własnym CF-Connecting-IP, za każdym razem innym: Cloudflare go nadpisuje, więc limit
+   # złożenia zamówienia (10 na 15 min) liczy się na adres nadawcy i 11. żądanie to 429, a nie kolejne 422.
+   for n in $(seq 1 11); do
+     curl -s -o /dev/null -w "%{http_code}\n" -X POST -H 'Content-Type: application/json' \
+       -H "Idempotency-Key: origin-check-$n" -H "CF-Connecting-IP: 203.0.113.$n" -d '{}' "https://api.<domena>/api/v1/orders"
+   done
+   ```
+
+   Oczekiwane: pierwsza pętla tylko `403` albo `000`; druga dziesięć razy `422`, potem `429`. Inny wynik
+   (origin odpowiada z pominięciem Cloudflare albo 11. żądanie przechodzi) to błąd do naprawy przed publicznym demo:
+   do tego czasu ten krok jest blokerem trybu publicznego demo (#179). Wynik zapisz w komentarzu do #179. Po teście adres
+   nadawcy ma wyczerpany limit zamówień na 15 minut.
 
 ## 6. Sprawdzenia po uruchomieniu
 

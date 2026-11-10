@@ -457,7 +457,13 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `Idempotency-Key` wybiera przeglądarka; jego brak albo treść, która nie jest obiektem JSON, daje 422
   „Nieprawidłowe dane.” bez API. BFF przekazuje klucz do API bez zmian, także do rozpoczęcia płatności. Przeglądarka
   woła BFF przez `placeOrder(input, idempotencyKey)` w `src/api/client.ts` (wynik: `ok` z numerem i `redirectUrl`,
-  `invalid` z `violations`, `conflict`, `not_found`, `unauthorized`, `failed`; funkcja nigdy nie odrzuca obietnicy).
+  `invalid` z `violations`, `conflict`, `not_found`, `unauthorized`, `rate_limited`, `failed`; funkcja nigdy nie
+  odrzuca obietnicy).
+- Adres klienta: BFF kasy i płatności (`runCheckout`, `runPaymentStart`, `runPaymentStatus`) owijają klienta API
+  w `forwardingClientIp` (`src/checkout/client-ip.ts`), który do każdego wywołania API kopiuje nagłówek nazwany
+  w `CLIENT_IP_HEADER` z żądania przeglądarki (w `prod` `CF-Connecting-IP` od Cloudflare). Bez zmiennej (compose,
+  testy) albo bez nagłówka w żądaniu nic nie jest dodawane, a API liczy limity po adresie serwera sklepu. Wartość idzie
+  bez zmian: API bierze ją tylko jako jeden poprawny adres IP (`docs/features/hardening/spec.md`, D2).
 - Dostawca płatności (`provider` w treści) jest sprawdzany jako pierwszy, przed scaleniem koszyka i złożeniem, z listą
   `GET /api/v1/payment-providers` (`listPaymentProviders` w `src/checkout/payment-api.ts`): brak albo kod spoza listy
   to 422 z naruszeniem pola `provider` („Wybierz sposób płatności.”), lista niedostępna to 503.
@@ -476,10 +482,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `redirectUrl: null` i wpis w logu bez tokenu: zamówienie stoi, a klient płaci ze strony potwierdzenia. `store_cart`
   zostaje (koszyk jest pusty). `POST /auth/logout` usuwa to ciasteczko razem z sesją (zawiera e-mail zamówienia
   i token dostępu).
-- Błędy: 404, 409 i 422 API z `{ detail, violations }`, 409 także z `type` bez zmian; własne 409 bez `store_cart` ma
-  `type` `CartEmpty` (`src/checkout/problems.ts`); 404 gościa (koszyk zniknął) usuwa `store_cart`; 401 sesji
-  kończy sesję jak w koszyku; 400, 415, 401 gościa, 5xx i niedostępne API dają 503. Wszystkie odpowiedzi
-  z `private, no-store`.
+- Błędy: 404, 409 i 422 API z `{ detail, violations }`, 409 także z `type` bez zmian; 429 (limit złożenia zamówienia
+  w API) z `{ detail }` i nagłówkiem `Retry-After` API, bez zmiany ciasteczek (nic nie zostało złożone); własne 409 bez
+  `store_cart` ma `type` `CartEmpty` (`src/checkout/problems.ts`); 404 gościa (koszyk zniknął) usuwa `store_cart`;
+  401 sesji kończy sesję jak w koszyku; 400, 415, 401 gościa, 5xx i niedostępne API dają 503. 429 rozpoczęcia
+  płatności po złożeniu to jak każdy błąd rozpoczęcia `redirectUrl: null`. Wszystkie odpowiedzi z `private, no-store`.
 - `POST` i `GET /api/checkout/payment` (`runPaymentStart` i `runPaymentStatus` w `src/checkout/payment-bff.ts`, ten
   sam `withCartDeps`): płatność zamówienia z `store_order_confirmation` (brak ciasteczka, zły podpis albo ciasteczko
   bez `orderId`: 404 „Nie znaleźliśmy zamówienia.” bez API). Endpoint wybiera ciasteczko, nie sesja: `accessToken`
@@ -487,12 +494,13 @@ Klienta API generuje `make api-client` z katalogu głównego.
   `accessToken: null` → `/me/...` z tokenem sesji (bez sesji 401 bez API; sesja, której tokenu nie da się
   odświeżyć, kończy się z 401). `POST` ma te same zabezpieczenia i `Idempotency-Key` co kasa, treść
   `{ provider }` (inne pola są pomijane, brak `provider` przekazuje API, które nazywa pole), odpowiedź `{ redirectUrl }`;
-  404, 409 (z `type`) i 422 API przechodzą z `detail` i `violations`, 401 klienta (sesja) kończy sesję, reszta (także 400,
-  415 i 401 endpointu gościa) to 503. `GET` odpowiada `PaymentStatusView` API: 404 bez ciasteczka i przy 404 API, 401 dla
+  404, 409 (z `type`) i 422 API przechodzą z `detail` i `violations`, 429 z `detail` i `Retry-After`, 401 klienta
+  (sesja) kończy sesję, reszta (także 400, 415 i 401 endpointu gościa) to 503.
+  `GET` odpowiada `PaymentStatusView` API: 404 bez ciasteczka i przy 404 API, 401 dla
   zamówienia klienta bez sesji (401 API kończy sesję), 503 przy każdym innym błędzie albo treści, która nie jest
   statusem. Strona potwierdzenia czyta status tą samą funkcją (`readPaymentStatus`). Przeglądarka woła je przez
-  `startPayment(provider, idempotencyKey)` i `getPaymentStatus()`; wynik 409 to `conflict` z `reason` z `type`
-  (`paymentConflictReason` w `src/checkout/problems.ts`, mapa sprawdzana kompilatorem względem
+  `startPayment(provider, idempotencyKey)` i `getPaymentStatus()`; wynik 429 to `rate_limited`, 409 to `conflict`
+  z `reason` z `type` (`paymentConflictReason` w `src/checkout/problems.ts`, mapa sprawdzana kompilatorem względem
   `PaymentConflictProblem`).
 - `/checkout` (`noindex, nofollow`, `CheckoutPage` jako Client Component z danymi serwera: `app/checkout/page.tsx`
   czyta listę dostawców API i numer zamówienia z `store_order_confirmation`, więc strona jest dynamiczna):
@@ -522,8 +530,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   odrzuci przy tym odczycie, pokazuje `detail` przy polu. Pusty koszyk albo linie wykluczone zastępują formularz razem z polem kodu.
 - `Idempotency-Key` (`crypto.randomUUID`, więc kasa wymaga bezpiecznego kontekstu: HTTPS albo `localhost`) to klucz
   jednej logicznej próby. Powstaje przy wejściu na stronę i wraca przy ponowieniu niepewnego wyniku (błąd sieci, 403,
-  5xx) oraz po 409 `CartEmpty`, `CartNotOrderable`, `InsufficientStockForOrder` i nieznanym; nowy klucz po zmianie
-  pola formularza, po 409 `IdempotencyKeyReused` i po 409 `OrderTotalChanged` (inna kwota w żądaniu, nic nie zostało
+  5xx), po 429 (limit złożenia zamówienia: nic nie zostało złożone) oraz po 409 `CartEmpty`, `CartNotOrderable`,
+  `InsufficientStockForOrder` i nieznanym; nowy klucz po zmianie pola formularza,
+  po 409 `IdempotencyKeyReused` i po 409 `OrderTotalChanged` (inna kwota w żądaniu, nic nie zostało
   złożone). Zmiana dostawcy nie zmienia klucza (dostawca nie należy do odcisku zamówienia). Znany skutek: gdy wynik
   poprzedniej próby był niepewny (sieć, 5xx, 503, 403), a zamówienie jednak powstało, zmiana pola i ponowne
   kliknięcie dają 409 `CartEmpty` (pusty koszyk), a nie potwierdzenie; drugiego zamówienia nie ma, bo koszyk jest
@@ -540,7 +549,8 @@ Klienta API generuje `make api-client` z katalogu głównego.
   i też wczytują podsumowanie; `IdempotencyKeyReused` pokazuje `detail` bez linku i bez wczytywania. Pusty koszyk albo
   `hasExcludedLines` po przeładowaniu zastępuje formularz komunikatem z własnym linkiem, wtedy komunikat błędu nie ma
   drugiego. Żadne odrzucenie nie ponawia zamówienia samo. 404: „Koszyk nie jest już dostępny.” z linkiem do sklepu;
-  401: „Twoja sesja wygasła. Zaloguj się ponownie.” z `returnTo=/checkout`; 403, 503, 5xx i błąd sieci: „Nie udało
+  401: „Twoja sesja wygasła. Zaloguj się ponownie.” z `returnTo=/checkout`; 429: „Zbyt wiele prób złożenia
+  zamówienia. Spróbuj ponownie za kilka minut.” (formularz i klucz zostają); 403, 503, 5xx i błąd sieci: „Nie udało
   się złożyć zamówienia. Spróbuj ponownie.”. Po każdym odrzuceniu fokus idzie na komunikat (`role="alert"`,
   `tabIndex={-1}`, bo przycisk jest zablokowany na czas żądania), a po 422 z błędami pól na pierwsze błędne pole.
 - `/checkout/confirmation` (`noindex, nofollow`, Server Component): czyta `store_order_confirmation` (`cookies()`
@@ -557,10 +567,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
   Oczekiwanie odświeża status co 2 s przez 30 s (nieudane odświeżenie zostawia widok, 401 i 404 go zastępują); potem
   „Nie mamy jeszcze potwierdzenia płatności.”, „Sprawdź ponownie” (jedno odczytanie) i „Zapłać innym sposobem”.
   „Zapłać”: klucz nowy przy każdej próbie i po zmianie dostawcy, ten sam przy ponowieniu niepewnego wyniku (błąd
-  sieci, 5xx, 503, nieznany 409) z tym samym dostawcą. Wyniki: `redirectUrl` → strona dostawcy, 409 `PaymentInProgress`
-  → `detail`, odczyt statusu i ponowne 30 s odświeżania, 409 `OrderAlreadyPaid` i `PaymentDeadlinePassed` → odczyt statusu
+  sieci, 5xx, 503, nieznany 409) i po 429 z tym samym dostawcą. Wyniki: `redirectUrl` → strona dostawcy,
+  409 `PaymentInProgress` → `detail`, odczyt statusu i ponowne 30 s odświeżania,
+  409 `OrderAlreadyPaid` i `PaymentDeadlinePassed` → odczyt statusu
   (komunikat tylko, gdy zamówienie nie jest opłacone ani anulowane), 409 `PaymentIdempotencyKeyReused` → `detail` i nowy
-  klucz, 404 → „Nie znaleźliśmy zamówienia.”, 422 → komunikat przy grupie, 401 → link do logowania, reszta →
+  klucz, 404 → „Nie znaleźliśmy zamówienia.”, 422 → komunikat przy grupie, 401 → link do logowania, 429 → „Zbyt wiele
+  prób płatności. Spróbuj ponownie za kilka minut.”, reszta →
   „Nie udało się rozpocząć płatności. Spróbuj ponownie.”. Po odrzuceniu fokus idzie na komunikat (`role="alert"`).
 
 ## Logowanie

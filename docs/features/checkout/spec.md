@@ -29,7 +29,6 @@ Poza zakresem:
 - statusy po opłaceniu, anulowanie z panelu, zamówienia w panelu, historia zamówień klienta (ORDER-MANAGEMENT #92);
 - metody i koszty dostawy (decyzja P3, #120), adresy zapisane na koncie klienta (decyzja P5, #117), faktury i dane
   firmy, kraje inne niż Polska;
-- rate limiting składania zamówień (decyzja T2, #116);
 - powiązanie zamówienia gościa z kontem o tym samym adresie e-mail (#118), anonimizacja danych zamówień (RODO, #119).
 
 ## Decyzje
@@ -53,7 +52,7 @@ Decyzje użytkownika:
 | A3 | Koszyk, rezerwacja i zamówienie w jednej transakcji bazy (zagnieżdżony dispatch, kontrakt z `docs/features/inventory/spec.md`), bez sagi i zdarzeń między nimi. |
 | A4 | E-mail przez zdarzenie `OrderPlaced` w outboxie → RabbitMQ → komenda Ordering, Symfony Mailer (nowa zależność `symfony/mailer`) przez SMTP do Mailpit. |
 | T1 | Nowa zależność `symfony/mailer`. |
-| T2 | Rate limiting składania zamówień odłożony do kroku 10 planu `docs/features/agentic-software-house/plan.md` (bezpieczeństwo przed publicznym demo): limit na klienta wymaga adresu IP klienta przekazywanego przez sklep i brzeg sieci. |
+| T2 | Złożenie zamówienia ma limit liczby prób na adres gościa albo konto klienta (`docs/features/hardening/spec.md`, „Rate limiting”): przekroczenie to 429 przed kontrolerem, a kasa pokazuje komunikat, zachowuje formularz i `Idempotency-Key`. |
 
 ## Bounded contexty i zależności
 
@@ -657,10 +656,9 @@ i `*_Infrastructure` innych contextów, `Ordering_UI` → `Customer_Infrastructu
 
 ## Ryzyka i ograniczenia
 
-- Nieopłacone zamówienie trzyma rezerwację do 35 minut (termin płatności i 5 minut na webhooki), a złośliwy gość może
-  w tym czasie zarezerwować cały stan (brak rate limitingu, decyzja T2).
-- Składanie zamówień nie ma rate limitingu (T2) wbrew zasadzie z `apps/api/CLAUDE.md` i `docs/vision.md` do kroku 10
-  planu `docs/features/agentic-software-house/plan.md`.
+- Nieopłacone zamówienie trzyma rezerwację do 35 minut (termin płatności i 5 minut na webhooki). Limit liczby zamówień
+  (T2, `docs/features/hardening/spec.md`) nie ogranicza ilości w jednym zamówieniu, więc złośliwy gość może w tym czasie
+  zarezerwować dużą część stanu (D16 tamtej specyfikacji).
 - Jedna transakcja obejmuje koszyk, rezerwację i zamówienie: popularny wariant szereguje złożenia na wierszu stanu,
   a transakcja jest dłuższa niż sama rezerwacja. Wydajność przy docelowej skali nie jest potwierdzona testami
   obciążeniowymi.

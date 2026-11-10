@@ -58,6 +58,8 @@ export type ApiCall = {
   body: unknown;
   idempotencyKey?: string;
   orderAccessToken?: string;
+  /** `CF-Connecting-IP`, the header of the client address that the tests name in CLIENT_IP_HEADER. */
+  clientIp?: string;
 };
 
 /** The API client of the BFF on a fake network: every request is recorded and answered by `respond`. */
@@ -84,6 +86,7 @@ export function cartTestDeps() {
             body: text === "" ? undefined : JSON.parse(text),
             idempotencyKey: request.headers.get("idempotency-key") ?? undefined,
             orderAccessToken: request.headers.get("order-access-token") ?? undefined,
+            clientIp: request.headers.get("cf-connecting-ip") ?? undefined,
           };
           calls.push(call);
           for (const handler of handlers) {

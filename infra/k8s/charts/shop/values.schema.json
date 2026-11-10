@@ -12,6 +12,8 @@
     "customerAccounts",
     "orderMail",
     "ipAllowList",
+    "clientIpHeader",
+    "clientIpHeaderWithoutAllowList",
     "secrets",
     "mailer",
     "brevo",
@@ -229,6 +231,15 @@
           }
         }
       }
+    },
+    "clientIpHeader": {
+      "type": "string",
+      "pattern": "^([A-Za-z0-9-]+)?$",
+      "description": "The header with the address of the client (CLIENT_IP_HEADER of the api and the store); empty: none. Needs ipAllowList, or clientIpHeaderWithoutAllowList."
+    },
+    "clientIpHeaderWithoutAllowList": {
+      "type": "boolean",
+      "description": "Confirms clientIpHeader without ipAllowList (the measurement on a local cluster); never with image.requireDigests."
     },
     "secrets": {
       "type": "object",
@@ -754,6 +765,67 @@
                 "minLength": 1
               }
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "clientIpHeader",
+          "ipAllowList"
+        ],
+        "properties": {
+          "clientIpHeader": {
+            "minLength": 1
+          },
+          "ipAllowList": {
+            "required": [
+              "enabled"
+            ],
+            "properties": {
+              "enabled": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "clientIpHeaderWithoutAllowList"
+        ],
+        "properties": {
+          "clientIpHeaderWithoutAllowList": {
+            "const": true,
+            "description": "clientIpHeader without ipAllowList: anybody could set the address of the client."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "image"
+        ],
+        "properties": {
+          "image": {
+            "required": [
+              "requireDigests"
+            ],
+            "properties": {
+              "requireDigests": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "clientIpHeaderWithoutAllowList": {
+            "const": false,
+            "description": "Never with the images of a release (image.requireDigests)."
           }
         }
       }

@@ -22,18 +22,34 @@ export function pickFields(body: Record<string, unknown>, fields: readonly strin
 // An order is personal: never served from a fetch cache.
 const init = { cache: "no-store" } as const;
 
-export type Refusal = { ok: false; status: number; type?: string; detail?: string; violations?: Violation[] };
+/** `retryAfter` is the `Retry-After` of a 429 (the rate limit of the API), in seconds as the API sent it. */
+export type Refusal = { ok: false; status: number; type?: string; detail?: string; violations?: Violation[]; retryAfter?: string };
 
 /** A refusal of the API as the BFF passes it on: the status and the parts of the problem the browser may see. */
 export function refusalOf(error: unknown, response: Response): Refusal {
   const problem = typeof error === "object" && error !== null ? (error as { type?: unknown; detail?: unknown; violations?: unknown }) : {};
+  const retryAfter = response.status === 429 ? response.headers.get("retry-after") : null;
   return {
     ok: false,
     status: response.status,
     type: typeof problem.type === "string" ? problem.type : undefined,
     detail: typeof problem.detail === "string" ? problem.detail : undefined,
     violations: Array.isArray(problem.violations) ? (problem.violations as Violation[]) : undefined,
+    ...(retryAfter === null ? {} : { retryAfter }),
   };
+}
+
+/** The answer of the BFF to a 429 of the API: its `detail` and its `Retry-After`. */
+export function rateLimited(refusal: Refusal): { status: 429; body: { detail?: string }; retryAfter?: string } {
+  return { status: 429, body: { detail: refusal.detail }, retryAfter: refusal.retryAfter };
+}
+
+/** Sets the `Retry-After` of a 429 on the answer of the BFF. */
+export function withRetryAfter<R extends Response>(response: R, retryAfter: string | undefined): R {
+  if (retryAfter !== undefined) {
+    response.headers.set("Retry-After", retryAfter);
+  }
+  return response;
 }
 
 type Answer = { data?: OrderView; error?: unknown; response: Response };

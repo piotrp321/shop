@@ -57,6 +57,8 @@ render ci-images-file ci -f "/cache/${out##*/}/values-images.yaml" $(smoke_pull_
 render ci-rev2 ci --set image.tag=$rev2
 render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true
 render ci-keycloak-brevo ci --set image.tag=$rev1 --set keycloak.mail=brevo --set brevo.secretName=smoke-brevo
+# The header of the client address without the allow list, confirmed (the profile of the measurement, tests/test_client_ip.py).
+render ci-client-ip ci --set image.tag=$rev1 --set clientIpHeader=CF-Connecting-IP --set clientIpHeaderWithoutAllowList=true
 # The Argo CD manifests (argocd/): the root, the applications it creates and what bootstrap installs. argocd.yaml is the
 # whole set for kubeconform, the .ndjson files are one JSON document per line for tests/test_argocd.py.
 : > "$out/argocd.yaml"

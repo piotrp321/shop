@@ -6,6 +6,7 @@ namespace App\Payment\UI\Http;
 
 use App\Customer\Application\Security\AuthenticatedCustomer;
 use App\Payment\Application\PaymentAccess;
+use App\Shared\Infrastructure\Http\RateLimit;
 use Nelmio\ApiDocBundle\Attribute\Security;
 use OpenApi\Attributes as OA;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -26,7 +27,7 @@ final readonly class CustomerPaymentController
     {
     }
 
-    #[Route('/api/v1/me/orders/{orderId}/payments', name: 'payment_customer_start', methods: ['POST'])]
+    #[Route('/api/v1/me/orders/{orderId}/payments', name: 'payment_customer_start', methods: ['POST'], defaults: [RateLimit::ROUTE_DEFAULT => RateLimit::PAYMENT_START, RateLimit::KEY_ROUTE_DEFAULT => RateLimit::BY_CUSTOMER])]
     #[OA\Post(
         operationId: 'startCustomerPayment',
         summary: 'Start a payment of an order of the customer',
@@ -45,6 +46,7 @@ final readonly class CustomerPaymentController
             new OA\Response(response: 409, description: 'The order is paid, cancelled or past its deadline, another payment is in progress, or the key was used by another request. Problem details with a stable `type` (see `PaymentConflictProblem`) and a Polish `detail`.', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/PaymentConflictProblem'))),
             new OA\Response(response: 415, description: 'The body is not JSON (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 422, description: '`provider` is missing, empty or not one of the providers (problem details with a Polish violation).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 429, description: 'Too many payment starts of the customer (by the account, whatever the address): the rate limit of the payment start. Nothing is started, so a retry with the same `Idempotency-Key` is safe. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait.', headers: [new OA\Header(header: 'Retry-After', description: 'Seconds to wait before the next attempt.', schema: new OA\Schema(type: 'integer', minimum: 1))], content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'The provider did not answer properly in 5 s, nothing changed; or the keys of the token issuer cannot be fetched (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]

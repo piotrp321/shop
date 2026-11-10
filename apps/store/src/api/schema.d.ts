@@ -2744,6 +2744,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too many orders of the customer (by the account, whatever the address): the rate limit of the order placement. Nothing is ordered or reserved, so a retry with the same `Idempotency-Key` is safe. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description The keys of the token issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
@@ -2893,6 +2904,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too many orders from the address of the client: the rate limit of the order placement (spec: docs/features/hardening/spec.md). Nothing is ordered or reserved, so a retry with the same `Idempotency-Key` is safe. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description A token was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
@@ -2989,6 +3011,17 @@ export interface operations {
             /** @description `provider` is missing, empty or not one of the providers (problem details with a Polish violation). */
             422: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many payment starts of the customer (by the account, whatever the address): the rate limit of the payment start. Nothing is started, so a retry with the same `Idempotency-Key` is safe. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3149,6 +3182,17 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too many payment starts from the address of the client: the rate limit of the payment start. Nothing is started, so a retry with the same `Idempotency-Key` is safe. Problem details with a Polish `detail`; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description The provider did not answer properly in 5 s, nothing changed; or a token of a session was sent and the keys of its issuer cannot be fetched (problem details without detail). */
             503: {
                 headers: {
@@ -3292,6 +3336,17 @@ export interface operations {
             /** @description The amount is not the amount of the payment; nothing changed (problem details). */
             422: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many webhooks of this provider from this address: the rate limit of the webhooks, before the signature is verified. Nothing is handled; the provider retries later. Problem details; `Retry-After` tells the seconds to wait. */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before the next attempt. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {

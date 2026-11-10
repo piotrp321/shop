@@ -460,6 +460,8 @@ describe("placeOrder", () => {
     [404, { detail: "Koszyk nie jest już dostępny." }, { status: "not_found", detail: "Koszyk nie jest już dostępny." }],
     [401, {}, { status: "unauthorized" }],
     [403, {}, { status: "failed" }],
+    [429, { detail: "Zbyt wiele prób. Spróbuj ponownie za kilka minut." }, { status: "rate_limited" }],
+    [429, {}, { status: "rate_limited" }],
     [500, {}, { status: "failed" }],
     [503, {}, { status: "failed" }],
   ])("maps a %s with %j to %j", async (status, body, expected) => {
@@ -525,6 +527,8 @@ describe("startPayment", () => {
     [404, { detail: "Nie znaleźliśmy zamówienia." }, { status: "not_found", detail: "Nie znaleźliśmy zamówienia." }],
     [401, {}, { status: "unauthorized" }],
     [403, {}, { status: "failed" }],
+    [429, { detail: "Zbyt wiele prób. Spróbuj ponownie za kilka minut." }, { status: "rate_limited" }],
+    [429, {}, { status: "rate_limited" }],
     [500, {}, { status: "failed" }],
     [503, {}, { status: "failed" }],
   ])("maps a %s with %j to %j", async (status, body, expected) => {

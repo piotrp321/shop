@@ -44,7 +44,10 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
     renderu (fale, ścieżki ingressu `auth`, middleware, klucze sekretu, nazwy Jobów,
     CronJob, obrazy: własne z rejestru po digeście, pozostałe `tag@digest` z tagiem jak w compose, bez `latest`;
     przełączniki `demoNotice`, `customerAccounts`, `orderMail` i poczta Keycloaka w środowisku sklepu, api, workera i Jobów
-    oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem) oraz testy
+    oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem; `clientIpHeader`
+    jako `CLIENT_IP_HEADER` tylko w api i sklepie, w `prod` `CF-Connecting-IP` przy `ipAllowList` na każdym ingressie,
+    w `ci` brak; `clientIpHeader` bez `ipAllowList` i bez `clientIpHeaderWithoutAllowList: true` oraz to potwierdzenie
+    razem z `image.requireDigests` kończą render błędem) oraz testy
     skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker`. Sprawdza też: render `prod` z plikiem
     digestów jak z `deploy-images` (bez `--set`; plik bez digestu albo z `latest` nie renderuje się), manifesty Argo CD
     (`kubeconform`; testy: jedno źródło `shop` na gałęzi `deploy-images`, kolejność fal `sealed-secrets`, `secrets`, `shop`),
