@@ -1,12 +1,51 @@
 #!/usr/bin/env python3
-"""Facts for the /retro skill (retrospective after an epic). Python 3.9+, standard library only.
+"""Facts and registers for the /retro skill (retrospective after an epic). Python 3.9+, standard library only.
 
-  retro.py collect EPIC [--out DIR] [--repo DIR] [--ao-home DIR] [--retro-home DIR] [--sweep-home DIR]
+Every command takes `--repo DIR` (where `gh` and `git` run, default: the current directory), `--ao-home`,
+`--retro-home` and `--sweep-home` (paths below). Results are printed as one JSON document on stdout (`collect`
+prints the path of the file) and diagnostics as `retro: ...` on stderr. Exit codes: 0 success; 1 a `gh` or `git`
+command failed or a file could not be written (nothing is half-written: files are replaced atomically); 2 invalid
+arguments or a refusal (a bad epic name, a retro in the state `done` or `skipped`, another run's fresh lock, an item
+that does not exist) and, for `validate`, proposals that do not pass.
+
+  retro.py collect EPIC [--out DIR]
       Writes DIR/input.json (default DIR: <retro-home>/EPIC) and prints its path. input.json has the incidents of the
       whole history of AO runs (docs/features/retro/spec.md, "Incydenty"), the facts of the plan "Status"
       (`status/in-progress`, `status/last-epic`, `status/agent-issues`, `status/pending-retro`), the registers, the
-      items of the open retro PR and the open issues to check duplicates against. Exit code 0 when the file was
-      written, 1 (message on stderr, nothing written) when a `gh` or `git` command failed, 2 for invalid arguments.
+      items of the open retro PR and the open issues to check duplicates against.
+  retro.py validate DIR
+      Checks DIR/proposals.json against DIR/input.json ("Walidacja"; the plan without a manifest for `status` items
+      is looked up in `--repo`). Prints {"ok": bool, "errors": [{"item": n|null, "code", "message"}]}; exit 0 when
+      ok, 2 otherwise. Codes: proposals, schema, limit, field, file, unknown_incident, class, threshold, open_pr,
+      rejected, applied, existing_issue, status. A missing input.json is exit 2 with a message on stderr.
+  retro.py observe DIR [--pr N --branch B]
+      Appends to observations.jsonl the observations of DIR/proposals.json and the key and incidents of every `fix`
+      and `issue` item (no row twice). Records in <retro-home>/<epic>/state.json the `issue` items as
+      `decisions_open` and, with --pr, the `fix` items as `pr` {number, branch, items} (the retro PR of this run).
+  retro.py reject (--key KEY | --all) --reason TEXT [--epic EPIC]
+      A conscious rejection: the undecided item leaves the state (an item of an unresolved retro PR or a
+      `decisions_open` entry) and is written to rejected.jsonl. The only command that writes that register.
+  retro.py sync
+      Settles every retro PR of the states: MERGED -> its items to applied.jsonl; CLOSED without a merge -> its
+      items to carried.jsonl (never to rejected.jsonl); OPEN -> nothing. The state gets `pr.outcome`.
+  retro.py issues DIR --approve (all | N[,N...])
+      Creates the approved `issue` items of DIR/proposals.json (`gh issue create`; `tech-debt` and `agent` labels
+      for repo shop) or, for an `existing_issue`, comments on it. DIR/issues.json keeps what was done, so a second
+      run repeats nothing; a failing item does not stop the others (exit 1 at the end).
+  retro.py pending
+      [{"epic", "merged_at", "attempts", "reason"}] of the epics whose final PR was merged after RETRO_SINCE and
+      whose retro is neither `done` nor `skipped`, from the oldest merge; attempts and reason are the deferrals.
+  retro.py defer EPIC --reason TEXT     records an attempt and a reason (to 200 characters); the epic stays pending
+  retro.py skip EPIC --reason TEXT      state `skipped`: the epic leaves `pending` for good
+  retro.py lock EPIC [--run-id ID]      takes <retro-home>/lock {run_id, epic, at} and marks the epic `running`. The
+      run id is --run-id, else $RETRO_RUN_ID, else generated; it is printed ({run_id, epic, at, warning}). Another
+      run's lock younger than 6 h is exit 2; an older (or unreadable) one is taken over, with a `warning`.
+  retro.py unlock [--run-id ID] [--done]  removes the lock of that run (exit 2 for another run's lock, which stays);
+      --done marks the epic of the lock `done`, otherwise its `running` state is cleared.
+
+`defer`, `skip` and `lock` are refused (exit 2) for an epic whose retro is `done` or `skipped`. They write only the
+state of the epic and keep its other fields. `night_queue` is not used here: the session runs `night_queue.py room`
+itself and passes the outcome as the reason of `defer`.
 
 The data of AO runs (`<ao-home>/ao-<epic>/`) is only read: `orchestrator.db` is opened read-only (SQLite URI
 `mode=ro`), the other files are read as text, and `ao` is never run (`ao report` rewrites `report.md`, and every `ao`
@@ -18,10 +57,16 @@ Paths (defaults as in the specification, each can be overridden by an option or 
   SHOP_RETRO_HOME   ~/.local/state/shop-retro registers and per-epic state.json
   SHOP_SWEEP_HOME   ~/.local/state/shop-sweep <date>-<sha7>-<epic>/report.md of /sweep
 
-Contracts of the files in SHOP_RETRO_HOME that other commands of this script share (docs/features/retro/spec.md,
-"Rejestry"): `<epic>/state.json` has `state` (running, done, skipped) and `pr`: {number, branch, items: [...]} of the
-retro PR the run worked on; `observations.jsonl`, `rejected.jsonl`, `applied.jsonl` and `carried.jsonl` have one JSON
-object per line.
+Files in SHOP_RETRO_HOME (docs/features/retro/spec.md, "Rejestry"); times are epoch seconds:
+  <epic>/state.json   `state` (running, done, skipped; absent for a deferred or not started retro), `deferrals`
+                      [{at, reason}], `pr` {number, branch, items: [{n, kind, key, title, incidents, epic}], outcome},
+                      `decisions_open` [{n, kind, key, title, repo, incidents, existing_issue, epic}], `started_at`,
+                      `done_at`, `skipped_at`, `reason`
+  observations.jsonl  {key, title, incidents, epic, at}
+  rejected.jsonl      {key, incidents, reason, rejected_at, pr}
+  applied.jsonl       {key, incidents, pr, merged_at}
+  carried.jsonl       {key, title, incidents, pr, closed_at}
+  lock                {run_id, epic, at}
 """
 import argparse
 import datetime
@@ -1303,6 +1348,107 @@ def cmd_sync(args, run):
     return {'prs': results}
 
 
+# ------------------------------------------------------------------------------------------------------- issues
+
+ISSUE_REPOSITORIES = {'ao': AO_REPOSITORY, 'shop': SHOP}
+SHOP_ISSUE_LABELS = ('tech-debt', 'agent')
+
+
+def issue_text(epic_id, item):
+    """The comment on an existing issue (the new incidents of the problem) or the body of a new one."""
+    incidents = '\n'.join('- `%s`' % i for i in item['evidence'])
+    if item.get('existing_issue') is not None:
+        return ('Retrospektywa epiku `%s`: nowe incydenty tego problemu.\n\n%s\n\nIncydenty:\n%s\n\n'
+                'Przyczyna źródłowa: %s\n\nJak sprawdzimy, że działa: %s\n'
+                % (epic_id, item['title'], incidents, item['cause'], item['verify']))
+    return ('%s\n\n---\nZgłoszone przez `/retro` po epiku `%s`.\n\nIncydenty:\n%s\n\nPrzyczyna źródłowa: %s\n\n'
+            'Jak sprawdzimy, że działa: %s\n' % (item['body'].strip(), epic_id, incidents, item['cause'],
+                                                  item['verify']))
+
+
+def approved_numbers(tokens, issue_items):
+    """The numbers named by `--approve` ("all" or a list such as `1, 3`), each of an issue item of the proposals."""
+    names = [t for token in tokens for t in re.split(r'[\s,]+', token) if t]
+    if names == ['all']:
+        if not issue_items:
+            raise Refusal('proposals.json has no issue items to approve')
+        return sorted(issue_items)
+    numbers = []
+    for name in names:
+        if not re.fullmatch(r'[0-9]+', name) or int(name) not in issue_items:
+            raise Refusal('%r is not the number of an issue item of proposals.json (issues: %s)'
+                          % (name, ', '.join(str(n) for n in sorted(issue_items)) or 'none'))
+        if int(name) not in numbers:
+            numbers.append(int(name))
+    if not numbers:
+        raise Refusal('--approve names no issue (use "all" or numbers such as 1,3)')
+    return numbers
+
+
+def cmd_issues(args, run):
+    """Creates the approved issues (the labels `tech-debt` and `agent` for `shop`) and comments on the
+    `existing_issue` of the approved comment items. The result of each item is kept in `<directory>/issues.json`, so
+    a second run does not repeat an item that was done; the failure of one item (`gh`) does not stop the others and
+    ends with exit code 1."""
+    proposals = load_proposals(args.directory)
+    epic_id = proposals['epic']
+    issue_items = {}
+    for item in proposals['items']:
+        if isinstance(item, dict) and item.get('kind') == 'issue' and isinstance(item.get('n'), int):
+            issue_items[item['n']] = item
+    numbers = approved_numbers(args.approve, issue_items)
+    for n in numbers:
+        item = issue_items[n]
+        needed = ('title', 'cause', 'verify') + (() if item.get('existing_issue') is not None else ('body',))
+        if item.get('repo') not in ISSUE_REPOSITORIES or id_list(item.get('evidence')) is None \
+                or not all(filled(item.get(field)) for field in needed):
+            raise Refusal('item %d is not a complete issue proposal (run validate)' % n)
+    ledger_path = os.path.join(args.directory, 'issues.json')
+    try:
+        with open(ledger_path, encoding='utf-8') as f:
+            ledger = json.load(f)
+    except (OSError, ValueError):
+        ledger = {}
+    results, failed = [], 0
+    for n in numbers:
+        item = issue_items[n]
+        if str(n) in ledger:
+            results.append(dict(ledger[str(n)], n=n, status='already_done'))
+            continue
+        repository = ISSUE_REPOSITORIES[item['repo']]
+        text = issue_text(epic_id, item)
+        if item.get('existing_issue') is not None:
+            command = ['gh', 'issue', 'comment', str(item['existing_issue']), '--repo', repository, '--body', text]
+            status = 'commented'
+        else:
+            command = ['gh', 'issue', 'create', '--repo', repository, '--title', item['title'], '--body', text]
+            if item['repo'] == 'shop':
+                for label in SHOP_ISSUE_LABELS:
+                    command += ['--label', label]
+            status = 'created'
+        try:
+            url = run(command).strip().splitlines()
+        except next_epic.CommandError as e:
+            failed += 1
+            results.append({'n': n, 'status': 'failed', 'error': str(e)})
+            continue
+        done = {'status': status, 'repo': repository, 'url': url[-1] if url else None}
+        ledger[str(n)] = done
+        write_json(args.directory, 'issues.json', ledger)
+        results.append(dict(done, n=n))
+        state = read_state(args.retro_home, epic_id)
+        if isinstance(state.get('decisions_open'), list):
+            state['decisions_open'] = [d for d in state['decisions_open']
+                                       if not (isinstance(d, dict) and d.get('key') == item.get('key'))]
+            save_state(args.retro_home, epic_id, state)
+    print_json({'results': results})
+    if failed:
+        print('retro: %d of %d approved items failed (`gh`); run the command again to finish them'
+              % (failed, len(numbers)), file=sys.stderr)
+        return 1
+    return 0
+
+
 # -------------------------------------------------------------------------------------------------------- validate
 
 PLAN_PATH = 'docs/features/agentic-software-house/plan.md'
@@ -1643,6 +1789,10 @@ def build_parser():
     rejecting.add_argument('--epic', default='', help='only items of the state of this epic')
     rejecting.add_argument('--reason', default='', help='why')
     commands.add_parser('sync', parents=[common], help='settle the registers from the state of the retro PRs')
+    issuing = commands.add_parser('issues', parents=[common], help='create the approved issues and comments')
+    issuing.add_argument('directory')
+    issuing.add_argument('--approve', nargs='+', required=True, metavar='N',
+                         help='numbers of the approved issue items ("1,3") or "all"')
     validating = commands.add_parser('validate', parents=[common], help='check proposals.json of a run directory')
     validating.add_argument('directory')
     return parser
@@ -1676,6 +1826,8 @@ def main(argv=None, run=None):
             print_json(cmd_reject(args))
         elif args.command == 'sync':
             print_json(cmd_sync(args, run or next_epic.make_runner(args.repo)))
+        elif args.command == 'issues':
+            return cmd_issues(args, run or next_epic.make_runner(args.repo))
         elif args.command == 'validate':
             return cmd_validate(args)
     except (Refusal, ValueError) as e:

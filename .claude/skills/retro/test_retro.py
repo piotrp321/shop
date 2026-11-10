@@ -780,6 +780,7 @@ class FakeRunner:
 
     def __init__(self, fail=None, bad_json=None):
         self.calls = []
+        self.created = 0
         self.fail = fail
         self.bad_json = bad_json
         self.prs = {
@@ -843,6 +844,11 @@ class FakeRunner:
                 return json.dumps(self.shop_issues)
             if 'agent' in args:
                 return json.dumps(self.agent_issues)
+        if args[:3] == ['gh', 'issue', 'create']:
+            self.created += 1
+            return 'https://github.com/%s/issues/%d\n' % (args[args.index('--repo') + 1], 500 + self.created)
+        if args[:3] == ['gh', 'issue', 'comment']:
+            return 'https://github.com/%s/issues/%s#issuecomment-1\n' % (args[args.index('--repo') + 1], args[3])
         if args[:3] == ['gh', 'pr', 'view']:
             return json.dumps(self.prs[int(args[3])])
         if args[:3] == ['gh', 'pr', 'list']:
@@ -2052,6 +2058,182 @@ class SyncTest(RegistersCase):
         self.runner.prs[11] = {'state': 'MERGED', 'mergedAt': None}
         self.assertEqual(self.cli('sync')[0], 1)
         self.assertEqual(self.rows('applied'), [])
+
+
+
+class IssuesTest(RunDirCase):
+    def setUp(self):
+        super().setUp()
+        self.items = [issue_item(1, key='ao-new', repo='ao', title='Nowy problem AO', body='Opis AO'),
+                      issue_item(2, key='shop-new', repo='shop', title='Nowy problem sklepu', body='Opis sklepu'),
+                      issue_item(3, key='ao-old', repo='ao', title='Znany problem', existing_issue=46, body=None,
+                                 cause='Przyczyna', verify='Sprawdzimy'),
+                      fix(4, key='a-fix')]
+        self.write_proposals(*self.items)
+        self.write_state('e3', {'state': 'running', 'decisions_open': [
+            {'n': 1, 'kind': 'issue', 'key': 'ao-new'}, {'n': 2, 'kind': 'issue', 'key': 'shop-new'},
+            {'n': 3, 'kind': 'issue', 'key': 'ao-old'}]})
+
+    def issues(self, *approve, runner=None, expect=0):
+        code, out, err = self.cli('issues', self.run_dir, '--approve', *approve, runner=runner or self.runner)
+        self.assertEqual(code, expect, err)
+        return json.loads(out) if out.strip() else None
+
+    def gh(self, runner=None, verb=None):
+        return [c for c in (runner or self.runner).calls if c[:2] == ['gh', 'issue'] and c[2] in ((verb,) if verb
+                                                                                                else ('create', 'comment'))]
+
+    def test_only_the_approved_numbers_are_created(self):
+        result = self.issues('1,2')
+        creates = self.gh(verb='create')
+        self.assertEqual([c[c.index('--title') + 1] for c in creates], ['Nowy problem AO', 'Nowy problem sklepu'])
+        self.assertEqual(self.gh(verb='comment'), [])
+        self.assertEqual([(r['n'], r['status']) for r in result['results']], [(1, 'created'), (2, 'created')])
+        self.assertEqual(result['results'][0]['url'], 'https://github.com/piotrp321/agentic-orchestrator/issues/501')
+
+    def test_a_single_number_and_a_list_with_spaces_are_accepted(self):
+        self.issues('2')
+        self.assertEqual(len(self.gh(verb='create')), 1)
+        self.runner.calls.clear()
+        self.issues('1,', ' 3')
+        self.assertEqual(len(self.gh()), 2)
+
+    def test_all_approves_every_issue_item_and_nothing_else(self):
+        self.issues('all')
+        self.assertEqual(len(self.gh(verb='create')), 2)
+        self.assertEqual(len(self.gh(verb='comment')), 1)
+
+    def test_shop_issues_get_the_tech_debt_and_agent_labels_and_ao_issues_none(self):
+        self.issues('1,2')
+        ao, shop = self.gh(verb='create')
+        self.assertEqual(ao[ao.index('--repo') + 1], 'piotrp321/agentic-orchestrator')
+        self.assertNotIn('--label', ao)
+        self.assertEqual(shop[shop.index('--repo') + 1], 'piotrp321/shop')
+        labels = [shop[i + 1] for i, a in enumerate(shop) if a == '--label']
+        self.assertEqual(sorted(labels), ['agent', 'tech-debt'])
+
+    def test_the_body_of_a_new_issue_has_the_text_and_the_incidents(self):
+        self.issues('2')
+        body = self.gh(verb='create')[0]
+        body = body[body.index('--body') + 1]
+        self.assertIn('Opis sklepu', body)
+        self.assertIn(F2, body)
+        self.assertIn('e3', body)
+
+    def test_an_existing_issue_gets_a_comment_with_the_new_incidents_and_no_new_issue(self):
+        result = self.issues('3')
+        self.assertEqual(self.gh(verb='create'), [])
+        comment = self.gh(verb='comment')[0]
+        self.assertEqual(comment[:7], ['gh', 'issue', 'comment', '46', '--repo', 'piotrp321/agentic-orchestrator',
+                                       '--body'])
+        for text in (F2, F3, 'Przyczyna', 'Sprawdzimy'):
+            self.assertIn(text, comment[7])
+        self.assertEqual(result['results'][0]['status'], 'commented')
+
+    def test_a_failure_of_one_item_does_not_stop_the_rest_and_the_exit_code_is_1(self):
+        runner = FakeRunner(fail='Nowy problem AO')
+        code, out, err = self.cli('issues', self.run_dir, '--approve', 'all', runner=runner)
+        self.assertEqual(code, 1)
+        self.assertIn('retro:', err)
+        results = json.loads(out)['results']
+        self.assertEqual([(r['n'], r['status']) for r in results], [(1, 'failed'), (2, 'created'), (3, 'commented')])
+        self.assertIn('simulated failure', results[0]['error'])
+
+    def test_a_second_run_does_not_repeat_what_was_done_and_finishes_what_failed(self):
+        self.cli('issues', self.run_dir, '--approve', 'all', runner=FakeRunner(fail='Nowy problem AO'))
+        healthy = FakeRunner()
+        result = self.issues('all', runner=healthy)
+        self.assertEqual([c[c.index('--title') + 1] for c in self.gh(healthy, 'create')], ['Nowy problem AO'])
+        self.assertEqual(self.gh(healthy, 'comment'), [])
+        self.assertEqual([(r['n'], r['status']) for r in result['results']],
+                         [(1, 'created'), (2, 'already_done'), (3, 'already_done')])
+        again = FakeRunner()
+        self.issues('all', runner=again)
+        self.assertEqual(self.gh(again), [])
+
+    def test_done_items_leave_the_open_decisions_and_failed_ones_stay(self):
+        self.cli('issues', self.run_dir, '--approve', 'all', runner=FakeRunner(fail='Nowy problem AO'))
+        self.assertEqual([d['key'] for d in self.state('e3')['decisions_open']], ['ao-new'])
+        self.assertEqual(self.state('e3')['state'], 'running')
+
+    def test_unapproved_unknown_and_non_issue_numbers_are_refused_before_any_command(self):
+        for approve in (['9'], ['4'], ['1,9'], ['x'], ['0'], [','], ['²'], ['١']):
+            runner = FakeRunner()
+            code, _, err = self.cli('issues', self.run_dir, '--approve', *approve, runner=runner)
+            self.assertEqual(code, 2, approve)
+            self.assertEqual(runner.calls, [], approve)
+        self.assertEqual(self.cli('issues', self.run_dir)[0], 2)   # --approve is required
+
+    def test_missing_proposals_are_exit_code_2(self):
+        self.assertEqual(self.cli('issues', os.path.join(self.tmp, 'nothing'), '--approve', 'all')[0], 2)
+
+    def test_no_issue_items_means_nothing_to_approve(self):
+        self.write_proposals(fix(1))
+        self.assertEqual(self.cli('issues', self.run_dir, '--approve', 'all')[0], 2)
+
+    def test_a_missing_gh_is_exit_code_1_for_every_item(self):
+        def run(args):
+            raise next_epic_module().CommandError(args, 'No such file or directory')
+        code, out, _ = self.cli('issues', self.run_dir, '--approve', 'all', runner=run)
+        self.assertEqual(code, 1)
+        self.assertEqual({r['status'] for r in json.loads(out)['results']}, {'failed'})
+
+
+
+class ProcessErrorPathsTest(TempDirCase):
+    """The commands as processes, with the real runner and a `gh` or `git` that fails."""
+
+    def run_cli(self, *args, bin_dir=None):
+        env = dict(os.environ, PATH=bin_dir if bin_dir is not None else os.path.dirname(shutil.which('git')))
+        return subprocess.run([sys.executable, '-I', os.path.join(HERE, 'retro.py'), *args, '--retro-home',
+                               os.path.join(self.tmp, 'r'), '--ao-home', self.ao_home, '--repo', self.tmp],
+                              capture_output=True, text=True, env=env)
+
+    def fake_bin(self, gh_body):
+        bin_dir = os.path.join(self.tmp, 'bin')
+        os.makedirs(bin_dir, exist_ok=True)
+        path = os.path.join(bin_dir, 'gh')
+        with open(path, 'w') as f:
+            f.write('#!/bin/sh\n' + gh_body)
+        os.chmod(path, 0o755)
+        return bin_dir
+
+    def test_pending_with_a_failing_or_missing_gh_is_exit_code_1(self):
+        build_run(self.ao_home, 'cart', 'cart.sql')
+        failing = self.run_cli('pending', bin_dir=self.fake_bin('echo "gh: not logged in" >&2\nexit 4\n'))
+        self.assertEqual(failing.returncode, 1, failing.stderr)
+        self.assertIn('not logged in', failing.stderr)
+        self.assertEqual(failing.stdout, '')
+        missing = self.run_cli('pending', bin_dir=os.path.join(self.tmp, 'empty-bin'))
+        self.assertEqual(missing.returncode, 1, missing.stderr)
+
+    def test_sync_with_a_failing_gh_is_exit_code_1_and_keeps_the_state(self):
+        os.makedirs(os.path.join(self.tmp, 'r', 'e1'))
+        state = os.path.join(self.tmp, 'r', 'e1', 'state.json')
+        with open(state, 'w') as f:
+            json.dump(pr_state(11, [pr_item(1, 'a', [F1], 'e1')]), f)
+        result = self.run_cli('sync', bin_dir=self.fake_bin('exit 1\n'))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        with open(state) as f:
+            self.assertNotIn('outcome', json.load(f)['pr'])
+
+    def test_issues_with_a_failing_gh_is_exit_code_1_and_reports_the_item(self):
+        run_dir = os.path.join(self.tmp, 'run')
+        retro.write_json(run_dir, 'proposals.json', proposals_of(issue_item(1)))
+        result = self.run_cli('issues', run_dir, '--approve', 'all', bin_dir=self.fake_bin('echo broken >&2\nexit 1\n'))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['results'][0]['status'], 'failed')
+        self.assertIn('broken', result.stdout)
+
+    def test_arguments_errors_are_exit_code_2_and_a_successful_lock_cycle_is_0(self):
+        self.assertEqual(self.run_cli('lock', 'Bad Name').returncode, 2)
+        self.assertEqual(self.run_cli('reject', '--reason', 'x').returncode, 2)
+        self.assertEqual(self.run_cli('issues', os.path.join(self.tmp, 'run')).returncode, 2)
+        locked = self.run_cli('lock', 'cart', '--run-id', 'p1')
+        self.assertEqual(locked.returncode, 0, locked.stderr)
+        self.assertEqual(self.run_cli('lock', 'discount-codes', '--run-id', 'p2').returncode, 2)
+        self.assertEqual(self.run_cli('unlock', '--run-id', 'p1', '--done').returncode, 0)
+        self.assertEqual(self.run_cli('lock', 'cart', '--run-id', 'p3').returncode, 2)   # cart is done
 
 
 if __name__ == '__main__':
