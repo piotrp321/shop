@@ -3,7 +3,7 @@
 import Form from "next/form";
 import { usePathname, useSearchParams } from "next/navigation";
 import { SearchIcon } from "lucide-react";
-import { type FocusEvent, type KeyboardEvent, Suspense, useEffect, useRef, useState } from "react";
+import { type FocusEvent, type FormEvent, type KeyboardEvent, Suspense, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEPARTMENT_PANEL_OPENED } from "./header-panels";
@@ -17,12 +17,19 @@ const TOGGLE_ID = "header-search-toggle";
 // the form is then a row of its own under the first one, as on a phone.
 const COMPACT_CSS = `@media (min-width: 1024px) and (max-width: 1279.98px) { #${FORM_ID} { display: flex !important; position: static !important; grid-area: 2 / 1 / 3 / -1 !important; padding: 0 !important; border: 0 !important; background: transparent !important; } #${TOGGLE_ID} { display: none !important; } }`;
 
-// A submit from the open panel that goes to `/szukaj` from another page replaces the page of the `@search` slot, so the box
-// is mounted again and the focus that `submit` gave the button is lost with the old button. The marker outlives the old box:
-// the new one takes it on mounting and gives the focus to its own button. A submit that mounts no new box (a search from
-// `/szukaj` to `/szukaj` keeps it) leaves the marker set, so the box drops it at the next change of the address: a box that
-// is mounted by a later navigation (e.g. back to a page before `/szukaj`) must not take the focus.
-let focusToggleOnMount = false;
+// A submit from the open panel to `/szukaj` from another page replaces the page of the `@search` slot, so the box is mounted
+// again and the focus that `submit` gave the button is lost with the old button. The marker outlives the old box: it holds
+// the address the submit goes to, and the box that is mounted takes it (every mount does, so nothing is left for a later
+// one) and gives the focus to its own button only when the page is at that address. A submit that mounts no box (a search
+// from `/szukaj` keeps it) leaves the marker, which the next mount drops: it happens at another address, since a box is
+// mounted again only by a move between the slot pages. A submit to the address the page is at changes nothing, so it sets none.
+let submittedTo: string | null = null;
+
+/** An address as the router writes it: the path and the query with the parameters encoded by `URLSearchParams`. */
+function normalizeAddress(pathname: string, search: string) {
+  const query = new URLSearchParams(search).toString();
+  return query === "" ? pathname : `${pathname}?${query}`;
+}
 
 /**
  * Puts the phrase of `/szukaj` into the field, which is otherwise uncontrolled. It renders nothing, so the field is one
@@ -33,13 +40,6 @@ function CurrentPhrase() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const phrase = pathname === "/szukaj" ? (searchParams.get("q") ?? "") : "";
-  const address = `${pathname}?${searchParams.toString()}`;
-  // A box that stays across the next change of the address is not the one the marker waits for. `null` until the first run.
-  const firstAddress = useRef<string | null>(null);
-  useEffect(() => {
-    if (firstAddress.current !== null && firstAddress.current !== address) focusToggleOnMount = false;
-    firstAddress.current = address;
-  }, [address]);
   // `null` until the first run.
   const applied = useRef<string | null>(null);
   useEffect(() => {
@@ -72,9 +72,9 @@ export function SearchBox({ phrase }: { phrase?: string }) {
 
   // The box was mounted by the submit of the one before it: its button gets the focus.
   useEffect(() => {
-    if (!focusToggleOnMount) return;
-    focusToggleOnMount = false;
-    toggle.current?.focus();
+    const target = submittedTo;
+    submittedTo = null;
+    if (target !== null && target === normalizeAddress(location.pathname, location.search)) toggle.current?.focus();
   }, []);
 
   useEffect(() => {
@@ -101,12 +101,14 @@ export function SearchBox({ phrase }: { phrase?: string }) {
   }, [open]);
 
   // A submit from the open panel hides the form with the focused field, so the focus goes to the button, as on Escape. When
-  // the navigation mounts the box again, the new box does it (see `focusToggleOnMount`).
-  const submit = () => {
+  // the navigation mounts the box again, the new box does it (see `submittedTo`).
+  const submit = (event: FormEvent<HTMLFormElement>) => {
     if (!open) return;
     setOpen(false);
     toggle.current?.focus();
-    focusToggleOnMount = true;
+    const target = normalizeAddress("/szukaj", new URLSearchParams({ q: String(new FormData(event.currentTarget).get("q") ?? "") }).toString());
+    const here = normalizeAddress(location.pathname, location.search);
+    submittedTo = target === here ? null : target;
   };
 
   const closeOnEscape = (event: KeyboardEvent) => {

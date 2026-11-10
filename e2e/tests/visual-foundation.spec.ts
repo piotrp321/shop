@@ -317,8 +317,35 @@ test.describe("the search of the header where the row has no room for the field 
     await page.goBack();
     await page.goBack();
     await expect(page).toHaveURL(/\/$/);
-    await page.waitForTimeout(300);
-    expect(await page.evaluate(() => document.activeElement?.id)).not.toBe("header-search-toggle");
+    await expect(header.getByRole("link", { name: "Worf" })).toBeVisible();
+    await expect(toggle).not.toBeFocused();
+  });
+
+  test("the same phrase sent again from /szukaj changes no address, and a box mounted by going back later does not take the focus", async ({ page }) => {
+    await page.goto("/");
+    await waitForHeader(page);
+    const header = page.getByRole("banner");
+    const toggle = header.getByRole("button", { name: "Wyszukiwarka" });
+    const field = header.getByRole("searchbox", { name: "Szukaj produktów" });
+    await toggle.click();
+    await field.fill("kajak");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/szukaj\?q=kajak/);
+    await expect(toggle).toBeFocused();
+
+    await toggle.click();
+    await expect(field).toHaveValue("kajak");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/szukaj\?q=kajak$/);
+    await expect(toggle).toBeFocused();
+
+    // Going back is a navigation that mounts the box again (the old button leaves the document).
+    const oldToggle = await toggle.elementHandle();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/$/);
+    await expect.poll(() => oldToggle!.evaluate((node) => node.isConnected)).toBe(false);
+    await expect(header.getByRole("link", { name: "Worf" })).toBeVisible();
+    await expect(toggle).not.toBeFocused();
   });
 
   test("hovering a department while the search panel is open closes the panel, so the department panel is not covered", async ({ page }) => {
