@@ -22,16 +22,21 @@ that does not exist) and, for `validate`, proposals that do not pass.
       Appends to observations.jsonl the observations of DIR/proposals.json and the key and incidents of every `fix`
       and `issue` item (no row twice). Records in <retro-home>/<epic>/state.json the `issue` items as
       `decisions_open` and, with --pr, the `fix` items as `pr` {number, branch, items} (the retro PR of this run).
-  retro.py reject (--key KEY | --all) --reason TEXT [--epic EPIC]
-      A conscious rejection: the undecided item leaves the state (an item of an unresolved retro PR or a
-      `decisions_open` entry) and is written to rejected.jsonl. The only command that writes that register.
+  retro.py reject (--key KEY | --all | --pr N) --reason TEXT [--epic EPIC]
+      A conscious rejection, written to rejected.jsonl (the only command that writes it): `--key` takes the undecided
+      item with the key (an item of an unresolved retro PR or an issue proposal in `decisions_open`); `--all` takes
+      every item of the unresolved retro PRs and `--pr N` every item of that PR, never `decisions_open`. The item
+      leaves the state.
   retro.py sync
       Settles every retro PR of the states: MERGED -> its items to applied.jsonl; CLOSED without a merge -> its
-      items to carried.jsonl (never to rejected.jsonl); OPEN -> nothing. The state gets `pr.outcome`.
+      items to carried.jsonl (never to rejected.jsonl); OPEN -> nothing. The state gets `pr.outcome`. A state.json
+      that cannot be read is skipped with a message in `warnings` of the result.
   retro.py issues DIR --approve (all | N[,N...])
       Creates the approved `issue` items of DIR/proposals.json (`gh issue create`; `tech-debt` and `agent` labels
-      for repo shop) or, for an `existing_issue`, comments on it. DIR/issues.json keeps what was done, so a second
-      run repeats nothing; a failing item does not stop the others (exit 1 at the end).
+      for repo shop) or, for an `existing_issue`, comments on it. `all` is every item not rejected with `reject`
+      (it left `decisions_open` undone); the number of a rejected item is a refusal. DIR/issues.json keeps what was
+      done by the `key` of the item, so a second run repeats nothing; a failing item (also a NUL in its text) does
+      not stop the others (exit 1 at the end).
   retro.py pending
       [{"epic", "merged_at", "attempts", "reason"}] of the epics whose final PR was merged after RETRO_SINCE and
       whose retro is neither `done` nor `skipped`, from the oldest merge; attempts and reason are the deferrals.
@@ -39,12 +44,14 @@ that does not exist) and, for `validate`, proposals that do not pass.
   retro.py skip EPIC --reason TEXT      state `skipped`: the epic leaves `pending` for good
   retro.py lock EPIC [--run-id ID]      takes <retro-home>/lock {run_id, epic, at} and marks the epic `running`. The
       run id is --run-id, else $RETRO_RUN_ID, else generated; it is printed ({run_id, epic, at, warning}). Another
-      run's lock younger than 6 h is exit 2; an older (or unreadable) one is taken over, with a `warning`.
+      run's lock younger than 6 h is exit 2; an older one is taken over, with a `warning`. A lock that cannot be read
+      (empty, half-written) counts by the mtime of the file.
   retro.py unlock [--run-id ID] [--done]  removes the lock of that run (exit 2 for another run's lock, which stays);
       --done marks the epic of the lock `done`, otherwise its `running` state is cleared.
 
 `defer`, `skip` and `lock` are refused (exit 2) for an epic whose retro is `done` or `skipped`. They write only the
-state of the epic and keep its other fields. `night_queue` is not used here: the session runs `night_queue.py room`
+state of the epic and keep its other fields. A state.json that cannot be read makes every command that writes it
+refuse (exit 2) instead of replacing it; `collect` still reads it as empty. `night_queue` is not used here: the session runs `night_queue.py room`
 itself and passes the outcome as the reason of `defer`.
 
 The data of AO runs (`<ao-home>/ao-<epic>/`) is only read: `orchestrator.db` is opened read-only (SQLite URI
@@ -78,6 +85,7 @@ import re
 import sqlite3
 import sys
 import time
+import unicodedata
 import urllib.request
 import uuid
 
@@ -1009,6 +1017,22 @@ def check_epic_name(name):
     return name
 
 
+def read_state_strict(retro_home, epic_id):
+    """Like `read_state`, but a state.json that exists and cannot be read as a JSON object is a refusal: a command
+    that writes the state must not replace it with one that has lost `pr` and `decisions_open`."""
+    path = os.path.join(retro_home, epic_id, 'state.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            state = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except ValueError as e:
+        raise Refusal('state.json of %s is unreadable (%s); repair or remove %s' % (epic_id, e, path))
+    if not isinstance(state, dict):
+        raise Refusal('state.json of %s is not a JSON object; repair or remove %s' % (epic_id, path))
+    return state
+
+
 def state_dir(retro_home, epic_id):
     return os.path.join(retro_home, epic_id)
 
@@ -1020,7 +1044,7 @@ def save_state(retro_home, epic_id, state):
 def open_epic_state(retro_home, epic_id, command):
     """The state.json of an epic for a command that changes it; a finished retro (`done`, `skipped`) is refused."""
     check_epic_name(epic_id)
-    state = read_state(retro_home, epic_id)
+    state = read_state_strict(retro_home, epic_id)
     if state.get('state') in FINISHED_STATES:
         raise Refusal('retro of %s is %s: `%s` refused' % (epic_id, state['state'], command))
     return state
@@ -1125,14 +1149,21 @@ def cmd_lock(args):
             other = read_lock(args.retro_home)
             if other is None:
                 continue   # removed between the two calls
-            age = now() - other['at'] if isinstance(other.get('at'), (int, float)) else None
-            if other.get('run_id') != run_id:
-                if age is not None and age < LOCK_MAX_AGE_S:
-                    raise Refusal('the lock of run %s (epic %s) is %d min old, younger than 6 h'
-                                  % (other.get('run_id'), other.get('epic'), age // 60))
-                warning = ('took over the lock of run %s (epic %s), %s'
-                           % (other.get('run_id'), other.get('epic'),
-                              'older than 6 h' if age is not None else 'unreadable'))
+            readable = isinstance(other.get('run_id'), str) and isinstance(other.get('at'), (int, float)) \
+                and not isinstance(other.get('at'), bool)
+            if readable:
+                age, what = now() - other['at'], 'the lock of run %s (epic %s)' % (other['run_id'], other.get('epic'))
+            else:
+                # empty or half-written (the moment between O_EXCL and the write of another process): by its mtime
+                try:
+                    age = now() - os.path.getmtime(lock_path(args.retro_home))
+                except FileNotFoundError:
+                    continue
+                what = 'an unreadable lock'
+            if not readable or other['run_id'] != run_id:
+                if age < LOCK_MAX_AGE_S:
+                    raise Refusal('%s is %d min old, younger than 6 h' % (what, age // 60))
+                warning = 'took over %s, older than 6 h' % what
             write_json(args.retro_home, 'lock', lock)
             break
         else:
@@ -1162,7 +1193,7 @@ def cmd_unlock(args):
         raise Refusal('the lock belongs to run %s, not %s' % (lock.get('run_id'), run_id))
     epic_id = lock.get('epic')
     if isinstance(epic_id, str) and EPIC_NAME.match(epic_id):
-        state = read_state(args.retro_home, epic_id)
+        state = read_state_strict(args.retro_home, epic_id)
         if args.done:
             state.update({'state': 'done', 'done_at': now()})
             save_state(args.retro_home, epic_id, state)
@@ -1175,15 +1206,24 @@ def cmd_unlock(args):
 
 # ------------------------------------------------------------------------- observe, reject, sync (registers)
 
-def epic_states(retro_home):
-    """[(epic, state)] of every `<retro-home>/<epic>/state.json` that can be read, by epic name."""
+def epic_states(retro_home, warnings=None):
+    """[(epic, state)] of every `<retro-home>/<epic>/state.json`, by epic name. An unreadable one is a refusal,
+    or, when a `warnings` list is given, a warning in it and the state is left out."""
     try:
         names = sorted(os.listdir(retro_home))
     except OSError:
         return []
     found = []
     for name in names:
-        state = read_state(retro_home, name)
+        if not os.path.isfile(os.path.join(retro_home, name, 'state.json')):
+            continue
+        try:
+            state = read_state_strict(retro_home, name)
+        except Refusal as e:
+            if warnings is None:
+                raise
+            warnings.append(str(e))
+            continue
         if state:
             found.append((name, state))
     return found
@@ -1218,6 +1258,7 @@ def cmd_observe(args):
         raise Refusal('--pr needs --branch')
     proposals = load_proposals(args.directory)
     epic_id, moment = proposals['epic'], now()
+    state = read_state_strict(args.retro_home, epic_id)   # before anything is written
     rows, fixes, issues = [], [], []
     for observation in proposals.get('observations') or []:
         if not (isinstance(observation, dict) and filled(observation.get('key'))
@@ -1247,7 +1288,6 @@ def cmd_observe(args):
             seen.add(token)
             added.append(dict(row, epic=epic_id, at=moment))
     append_jsonl(path, added)
-    state = read_state(args.retro_home, epic_id)
     state['decisions_open'] = issues
     if args.pr is not None:
         state['pr'] = {'number': args.pr, 'branch': args.branch, 'items': fixes}
@@ -1258,11 +1298,13 @@ def cmd_observe(args):
 
 
 def cmd_reject(args):
-    """A conscious rejection (`bez N`, `odrzuć N`, `odrzuć wszystko`): the undecided item with the key (or all of them)
-    leaves the state of its epic (a PR item of an unresolved PR or a `decisions_open` entry) and is written to
-    rejected.jsonl as {key, incidents, reason, rejected_at, pr}. The only command that writes that register."""
-    if bool(args.key) == bool(args.all):
-        raise Refusal('give --key or --all')
+    """A conscious rejection of PR items (`bez N`: `--key`; `odrzuć wszystko`: `--all`, or `--pr N` for one PR) or of
+    an issue proposal (`odrzuć N`: only `--key`). The undecided item leaves the state of its epic (an item of an
+    unresolved retro PR or a `decisions_open` entry) and is written to rejected.jsonl as {key, incidents, reason,
+    rejected_at, pr}. `--all` and `--pr` take only the items of unresolved retro PRs, never `decisions_open`. The only
+    command that writes that register."""
+    if sum(bool(selector) for selector in (args.key, args.all, args.pr is not None)) != 1:
+        raise Refusal('give --key, --all or --pr (exactly one)')
     reason = clean_reason(args.reason)
     if args.epic:
         check_epic_name(args.epic)
@@ -1274,17 +1316,17 @@ def cmd_reject(args):
         pr = state.get('pr')
         number = pr.get('number') if isinstance(pr, dict) and not pr.get('outcome') else None
         sources = []
-        if number is not None and isinstance(pr.get('items'), list):
+        if number is not None and isinstance(pr.get('items'), list) and (args.pr is None or args.pr == number):
             sources.append((pr, 'items', number))
-        if isinstance(state.get('decisions_open'), list):
+        if args.key and isinstance(state.get('decisions_open'), list):
             sources.append((state, 'decisions_open', None))
         for holder, field, pr_number in sources:
             kept = []
             for item in holder[field]:
-                if isinstance(item, dict) and (args.all or item.get('key') == args.key):
-                    found.setdefault((item.get('key'), pr_number), [])
-                    found[(item.get('key'), pr_number)] += [i for i in item.get('incidents') or []
-                                                            if i not in found[(item.get('key'), pr_number)]]
+                if isinstance(item, dict) and (not args.key or item.get('key') == args.key):
+                    token = (item.get('key'), pr_number)
+                    found.setdefault(token, [])
+                    found[token] += [i for i in item.get('incidents') or [] if i not in found[token]]
                     touched = True
                 else:
                     kept.append(item)
@@ -1292,7 +1334,9 @@ def cmd_reject(args):
         if touched:
             changed.append((epic_id, state))
     if not found:
-        raise Refusal('no undecided item %s' % ('with key %r' % args.key if args.key else 'to reject'))
+        raise Refusal('no undecided item %s' % ('with key %r' % args.key if args.key
+                                                else 'of PR #%d' % args.pr if args.pr is not None
+                                                else 'to reject'))
     moment = now()
     append_jsonl(register_path(args.retro_home, 'rejected'),
                  [{'key': key, 'incidents': incidents, 'reason': reason, 'rejected_at': moment, 'pr': number}
@@ -1309,8 +1353,8 @@ def cmd_sync(args, run):
     technical close: they are reported again) and never to rejected.jsonl, whose rows come only from `reject` (an
     item rejected earlier has left the state, so it is in neither). The state of the PR gets `outcome`, so a second
     `sync` asks GitHub about nothing that is settled."""
-    groups = {}
-    for epic_id, state in epic_states(args.retro_home):
+    groups, warnings = {}, []
+    for epic_id, state in epic_states(args.retro_home, warnings):
         pr = state.get('pr')
         if isinstance(pr, dict) and isinstance(pr.get('number'), int) and not pr.get('outcome'):
             groups.setdefault(pr['number'], []).append((epic_id, state))
@@ -1345,7 +1389,7 @@ def cmd_sync(args, run):
         merged = outcome == 'MERGED'
         results.append({'pr': number, 'state': outcome, 'applied': list(items) if merged else [],
                         'carried': [] if merged else list(items)})
-    return {'prs': results}
+    return {'prs': results, 'warnings': warnings}
 
 
 # ------------------------------------------------------------------------------------------------------- issues
@@ -1366,18 +1410,24 @@ def issue_text(epic_id, item):
                                                   item['verify']))
 
 
-def approved_numbers(tokens, issue_items):
-    """The numbers named by `--approve` ("all" or a list such as `1, 3`), each of an issue item of the proposals."""
+def approved_numbers(tokens, issue_items, rejected=()):
+    """The numbers named by `--approve` ("all" or a list such as `1, 3`), each of an issue item of the proposals that
+    was not rejected; "all" is every issue item that was not."""
     names = [t for token in tokens for t in re.split(r'[\s,]+', token) if t]
     if names == ['all']:
         if not issue_items:
             raise Refusal('proposals.json has no issue items to approve')
-        return sorted(issue_items)
+        left = sorted(n for n in issue_items if n not in rejected)
+        if not left:
+            raise Refusal('every issue item of proposals.json was rejected')
+        return left
     numbers = []
     for name in names:
         if not re.fullmatch(r'[0-9]+', name) or int(name) not in issue_items:
             raise Refusal('%r is not the number of an issue item of proposals.json (issues: %s)'
                           % (name, ', '.join(str(n) for n in sorted(issue_items)) or 'none'))
+        if int(name) in rejected:
+            raise Refusal('issue item %s (%r) was rejected' % (name, issue_items[int(name)].get('key')))
         if int(name) not in numbers:
             numbers.append(int(name))
     if not numbers:
@@ -1387,7 +1437,8 @@ def approved_numbers(tokens, issue_items):
 
 def cmd_issues(args, run):
     """Creates the approved issues (the labels `tech-debt` and `agent` for `shop`) and comments on the
-    `existing_issue` of the approved comment items. The result of each item is kept in `<directory>/issues.json`, so
+    `existing_issue` of the approved comment items. The result of each item is kept in `<directory>/issues.json`
+    (by the `key` of the item, `n` only informs), so
     a second run does not repeat an item that was done; the failure of one item (`gh`) does not stop the others and
     ends with exit code 1."""
     proposals = load_proposals(args.directory)
@@ -1396,24 +1447,32 @@ def cmd_issues(args, run):
     for item in proposals['items']:
         if isinstance(item, dict) and item.get('kind') == 'issue' and isinstance(item.get('n'), int):
             issue_items[item['n']] = item
-    numbers = approved_numbers(args.approve, issue_items)
-    for n in numbers:
-        item = issue_items[n]
-        needed = ('title', 'cause', 'verify') + (() if item.get('existing_issue') is not None else ('body',))
-        if item.get('repo') not in ISSUE_REPOSITORIES or id_list(item.get('evidence')) is None \
-                or not all(filled(item.get(field)) for field in needed):
-            raise Refusal('item %d is not a complete issue proposal (run validate)' % n)
+    state = read_state_strict(args.retro_home, epic_id)   # before any `gh` call
     ledger_path = os.path.join(args.directory, 'issues.json')
     try:
         with open(ledger_path, encoding='utf-8') as f:
             ledger = json.load(f)
     except (OSError, ValueError):
         ledger = {}
+    if not isinstance(ledger, dict):
+        ledger = {}
+    # an item that left `decisions_open` without being done was rejected (`reject --key`)
+    undecided = {d.get('key') for d in state['decisions_open'] if isinstance(d, dict)} \
+        if isinstance(state.get('decisions_open'), list) else None
+    rejected = {n for n, item in issue_items.items()
+                if undecided is not None and item.get('key') not in undecided and item.get('key') not in ledger}
+    numbers = approved_numbers(args.approve, issue_items, rejected)
+    for n in numbers:
+        item = issue_items[n]
+        needed = ('title', 'cause', 'verify') + (() if item.get('existing_issue') is not None else ('body',))
+        if item.get('repo') not in ISSUE_REPOSITORIES or id_list(item.get('evidence')) is None \
+                or not all(filled(item.get(field)) for field in needed):
+            raise Refusal('item %d is not a complete issue proposal (run validate)' % n)
     results, failed = [], 0
     for n in numbers:
         item = issue_items[n]
-        if str(n) in ledger:
-            results.append(dict(ledger[str(n)], n=n, status='already_done'))
+        if item['key'] in ledger:
+            results.append(dict(ledger[item['key']], n=n, status='already_done'))
             continue
         repository = ISSUE_REPOSITORIES[item['repo']]
         text = issue_text(epic_id, item)
@@ -1428,15 +1487,14 @@ def cmd_issues(args, run):
             status = 'created'
         try:
             url = run(command).strip().splitlines()
-        except next_epic.CommandError as e:
+        except (next_epic.CommandError, ValueError) as e:   # ValueError: a NUL in the text cannot be an argument
             failed += 1
             results.append({'n': n, 'status': 'failed', 'error': str(e)})
             continue
-        done = {'status': status, 'repo': repository, 'url': url[-1] if url else None}
-        ledger[str(n)] = done
+        done = {'n': n, 'status': status, 'repo': repository, 'url': url[-1] if url else None}
+        ledger[item['key']] = done
         write_json(args.directory, 'issues.json', ledger)
         results.append(dict(done, n=n))
-        state = read_state(args.retro_home, epic_id)
         if isinstance(state.get('decisions_open'), list):
             state['decisions_open'] = [d for d in state['decisions_open']
                                        if not (isinstance(d, dict) and d.get('key') == item.get('key'))]
@@ -1471,6 +1529,23 @@ def allowed_file(path):
 
 def filled(value):
     return isinstance(value, str) and bool(value.strip())
+
+
+def control_path(value, path):
+    """The path of the first text in the value with a control character (other than a newline or a tab) or a line or
+    paragraph separator, else None: such characters break commit messages, issues and `gh` arguments (a NUL)."""
+    if isinstance(value, str):
+        return path if any(c not in '\n\t' and unicodedata.category(c) in ('Cc', 'Zl', 'Zp') for c in value) else None
+    children = []
+    if isinstance(value, dict):
+        children = [('%s.%s' % (path, k), v) for k, v in value.items()]
+    elif isinstance(value, list):
+        children = [('%s[%d]' % (path, n), v) for n, v in enumerate(value)]
+    for child_path, child in children:
+        found = control_path(child, child_path)
+        if found:
+            return found
+    return None
 
 
 def id_list(value):
@@ -1528,6 +1603,8 @@ class Validation:
             if not (isinstance(observation, dict) and filled(observation.get('key'))
                     and isinstance(observation.get('incidents'), list)):
                 self.add(None, 'schema', 'an observation needs a key and a list of incidents: %r' % (observation,))
+            elif control_path(observation, 'observation'):
+                self.add(None, 'field', '%s contains a control character' % control_path(observation, 'observation'))
         items = proposals.get('items')
         if not isinstance(items, list):
             self.add(None, 'schema', 'items must be a list')
@@ -1547,6 +1624,9 @@ class Validation:
                 self.add(n, 'schema', 'item %s: kind must be one of %s (got %r)' % (n, ', '.join(ITEM_KINDS), kind))
                 continue
             counts[kind] += 1
+            bad = control_path({k: v for k, v in item.items() if k != 'files'}, 'item %s' % n)
+            if bad:
+                self.add(n, 'field', '%s contains a control character (only newline and tab are allowed)' % bad)
             if kind == 'status':
                 self.check_status(item)
                 continue
@@ -1785,7 +1865,8 @@ def build_parser():
     observing.add_argument('--branch', default='', help='branch of that PR')
     rejecting = commands.add_parser('reject', parents=[common], help='record a conscious rejection')
     rejecting.add_argument('--key', default='', help='key of the item')
-    rejecting.add_argument('--all', action='store_true', help='every undecided item (odrzuć wszystko)')
+    rejecting.add_argument('--all', action='store_true', help='every item of the unresolved retro PRs (odrzuć wszystko)')
+    rejecting.add_argument('--pr', type=int, help='every item of this retro PR')
     rejecting.add_argument('--epic', default='', help='only items of the state of this epic')
     rejecting.add_argument('--reason', default='', help='why')
     commands.add_parser('sync', parents=[common], help='settle the registers from the state of the retro PRs')

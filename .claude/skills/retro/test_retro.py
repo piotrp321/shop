@@ -1183,6 +1183,33 @@ class RegistersCase(TempDirCase):
                 code = e.code
         return code, out.getvalue(), err.getvalue()
 
+    def refused(self, *args, text, runner=None, repo=None):
+        """The command ran and refused (exit 2, `retro: <text>` on stderr, nothing on stdout): argparse would
+        answer an unknown command or a bad option with `usage:` instead."""
+        code, out, err = self.cli(*args, runner=runner, repo=repo)
+        self.assertEqual(code, 2, err)
+        self.assertTrue(err.startswith('retro: '), err)
+        self.assertIn(text, err)
+        self.assertEqual(out, '')
+
+    def usage_error(self, *args, text):
+        """An error of the option parser of that very command (exit 2, the message names the option)."""
+        code, out, err = self.cli(*args)
+        self.assertEqual(code, 2, err)
+        self.assertIn('error: ', err)
+        self.assertIn(text, err)
+        self.assertNotIn('invalid choice', err)
+
+    def tree(self):
+        """{relative path: bytes} of the retro home, to see that a refused command wrote nothing."""
+        found = {}
+        for root, _, files in os.walk(self.retro_home):
+            for name in files:
+                full = os.path.join(root, name)
+                with open(full, 'rb') as f:
+                    found[os.path.relpath(full, self.retro_home)] = f.read()
+        return found
+
     def state(self, epic):
         with open(os.path.join(self.retro_home, epic, 'state.json'), encoding='utf-8') as f:
             return json.load(f)
@@ -1254,7 +1281,9 @@ class LockTest(RegistersCase):
 
     def test_a_lock_just_under_six_hours_is_still_fresh(self):
         self.write_lock('other', 'x', 6 * 3600 - 60)
-        self.assertEqual(self.cli('lock', 'cart', '--run-id', 'mine')[0], 2)
+        before = self.tree()
+        self.refused('lock', 'cart', '--run-id', 'mine', text='younger than 6 h')
+        self.assertEqual(self.tree(), before)
 
     def test_the_same_run_may_lock_again_without_a_warning(self):
         self.cli('lock', 'cart', '--run-id', 'mine')
@@ -1262,23 +1291,41 @@ class LockTest(RegistersCase):
         self.assertEqual(code, 0)
         self.assertIsNone(json.loads(out).get('warning'))
 
-    def test_an_unreadable_lock_is_taken_over_with_a_warning(self):
-        os.makedirs(self.retro_home)
+    def write_unreadable_lock(self, text, age_s):
+        os.makedirs(self.retro_home, exist_ok=True)
         with open(self.lock_path(), 'w') as f:
-            f.write('not json')
-        code, out, _ = self.cli('lock', 'cart', '--run-id', 'mine')
-        self.assertEqual(code, 0)
-        self.assertTrue(json.loads(out)['warning'])
+            f.write(text)
+        moment = time.time() - age_s
+        os.utime(self.lock_path(), (moment, moment))
+
+    def test_an_unreadable_fresh_lock_is_refused_by_its_mtime_and_stays(self):
+        # the moment between O_EXCL and the write of another process: the file is empty
+        for text in ('', 'not json', '[]', '{"run_id": "x"}'):
+            self.write_unreadable_lock(text, 60)
+            before = self.tree()
+            self.refused('lock', 'cart', '--run-id', 'mine', text='unreadable')
+            self.assertEqual(self.tree(), before, text)
+
+    def test_an_unreadable_lock_older_than_six_hours_is_taken_over_with_a_warning(self):
+        for text in ('', 'not json', '{"run_id": "x"}'):
+            self.write_unreadable_lock(text, 6 * 3600 + 60)
+            code, out, err = self.cli('lock', 'cart', '--run-id', 'mine')
+            self.assertEqual(code, 0, err)
+            self.assertIn('unreadable', json.loads(out)['warning'])
+            with open(self.lock_path()) as f:
+                self.assertEqual(json.load(f)['run_id'], 'mine')
+            os.remove(self.lock_path())
 
     def test_lock_refuses_a_bad_epic_name_and_a_finished_retro_without_writing(self):
         for name in ('Bad', 'a b', '../x'):
-            self.assertEqual(self.cli('lock', name)[0], 2, name)
+            self.refused('lock', name, text='invalid epic name')
         self.write_state('cart', {'state': 'done'})
         self.write_state('seo', {'state': 'skipped', 'reason': 'x'})
-        for name in ('cart', 'seo'):
-            self.assertEqual(self.cli('lock', name)[0], 2, name)
+        before = self.tree()
+        for name, word in (('cart', 'done'), ('seo', 'skipped')):
+            self.refused('lock', name, text='retro of %s is %s' % (name, word))
         self.assertFalse(os.path.exists(self.lock_path()))
-        self.assertEqual(self.state('cart')['state'], 'done')
+        self.assertEqual(self.tree(), before)
 
     def test_lock_keeps_the_other_fields_of_the_state(self):
         self.write_state('cart', {'deferrals': [{'at': 1, 'reason': 'bateria'}], 'pr': {'number': 5}})
@@ -1301,7 +1348,7 @@ class LockTest(RegistersCase):
 
     def test_unlock_needs_a_run_id(self):
         self.cli('lock', 'cart', '--run-id', 'mine')
-        self.assertEqual(self.cli('unlock')[0], 2)
+        self.refused('unlock', text='--run-id')
         self.assertTrue(os.path.exists(self.lock_path()))
 
     def test_unlock_done_marks_the_epic_done_and_without_it_a_running_state_is_cleared(self):
@@ -1317,8 +1364,9 @@ class LockTest(RegistersCase):
 
     def test_unlock_done_of_a_foreign_lock_changes_nothing(self):
         self.write_lock('other', 'cart', 60)
-        self.assertEqual(self.cli('unlock', '--run-id', 'mine', '--done')[0], 2)
-        self.assertFalse(os.path.exists(os.path.join(self.retro_home, 'cart', 'state.json')))
+        before = self.tree()
+        self.refused('unlock', '--run-id', 'mine', '--done', text='belongs to run other')
+        self.assertEqual(self.tree(), before)
 
     def test_unwritable_retro_home_is_exit_code_1(self):
         blocker = os.path.join(self.tmp, 'file')
@@ -1347,9 +1395,9 @@ class DeferSkipTest(RegistersCase):
 
     def test_defer_and_skip_need_a_reason(self):
         for command in ('defer', 'skip'):
-            self.assertEqual(self.cli(command, 'cart')[0], 2)
-            self.assertEqual(self.cli(command, 'cart', '--reason', '   ')[0], 2)
-        self.assertFalse(os.path.exists(os.path.join(self.retro_home, 'cart')))
+            self.refused(command, 'cart', text='non-empty --reason')
+            self.refused(command, 'cart', '--reason', '   ', text='non-empty --reason')
+        self.assertFalse(os.path.exists(self.retro_home))
 
     def test_skip_marks_the_epic_skipped_with_the_reason(self):
         self.write_state('cart', {'deferrals': [{'at': 1, 'reason': 'bateria'}]})
@@ -1366,16 +1414,13 @@ class DeferSkipTest(RegistersCase):
         for epic in ('a', 'b'):
             for command in ('defer', 'skip'):
                 before = self.state(epic)
-                code, _, err = self.cli(command, epic, '--reason', 'powód')
-                self.assertEqual(code, 2, (epic, command))
-                self.assertIn(epic, err)
+                self.refused(command, epic, '--reason', 'powód', text='retro of %s is' % epic)
                 self.assertEqual(self.state(epic), before)
 
     def test_bad_epic_names_are_refused_without_writing(self):
         for command in ('defer', 'skip'):
-            for name in ('Bad', '-x', 'a b', '../x'):
-                code = self.cli(command, name, '--reason', 'powód')[0]
-                self.assertEqual(code, 2, (command, name))
+            for name in ('Bad', 'a b', '../x', '.hidden'):
+                self.refused(command, name, '--reason', 'powód', text='invalid epic name')
         self.assertFalse(os.path.exists(self.retro_home))
 
 
@@ -1684,6 +1729,21 @@ class ValidateTest(RegistersCase):
         self.assertEqual((code, out), (2, ''))
         self.assertIn('input.json', err)
 
+    def test_control_characters_in_text_fields_are_errors_but_newline_and_tab_are_fine(self):
+        for field in ('title', 'cause', 'why_prevents', 'verify', 'change', 'key'):
+            for bad in ('a\u0000b', 'a\u2028b', 'a\x1bb', 'a\rb'):
+                self.assertError(proposals_of(fix(**{field: bad})), 'field', field)
+        self.assertError(proposals_of(issue_item(body='x\u0000y')), 'field', 'body')
+        self.assertError(proposals_of(fix(evidence=[F2, 'e3/finding/e\u0000ee'])), 'field', 'evidence')
+        self.assertError(proposals_of(fix(evidence=[W1], classes={W1: {'class': 'corrective',
+                                                                        'corrective_reason': 'a\u0000b'}})),
+                         'field', 'corrective_reason')
+        self.assertError(proposals_of({'n': 1, 'kind': 'status', 'target': 'krok\u0000 12', 'change': 'x',
+                                       'evidence': ['e3/no_sweep/sweep']}), 'field', 'target')
+        self.assertError(proposals_of(observations=[{'key': 'o', 'title': 'T\u0000', 'incidents': [F2]}]),
+                         'field', 'title')
+        self.assertValid(proposals_of(fix(change='line 1\n\tline 2', title='Zażółć gęślą jaźń')))
+
     # open retro PR
     def test_a_key_from_the_open_pr_needs_updates_with_the_number_of_that_item(self):
         self.assertError(proposals_of(fix(key='open')), 'open_pr', 'updates')
@@ -1853,16 +1913,17 @@ class ObserveTest(RunDirCase):
         self.assertEqual([r['key'] for r in self.rows('carried')], ['other'])
 
     def test_bad_proposals_and_arguments_are_exit_code_2_and_write_nothing(self):
-        self.assertEqual(self.cli('observe', self.run_dir)[0], 2)   # no proposals.json
+        self.refused('observe', self.run_dir, text='cannot read proposals.json')   # no proposals.json
         os.makedirs(self.run_dir)
-        for raw in ('{not json', '[]', json.dumps(proposals_of(epic='Bad Epic')),
-                    json.dumps(proposals_of(fix(1, key=None)))):
+        for raw, text in (('{not json', 'cannot read proposals.json'), ('[]', 'no list of items'),
+                          (json.dumps(proposals_of(epic='Bad Epic')), 'invalid epic name'),
+                          (json.dumps(proposals_of(fix(1, key=None))), 'needs a key and evidence')):
             with open(os.path.join(self.run_dir, 'proposals.json'), 'w') as f:
                 f.write(raw)
-            self.assertEqual(self.cli('observe', self.run_dir)[0], 2, raw)
+            self.refused('observe', self.run_dir, text=text)
         self.write_proposals(fix(1))
-        self.assertEqual(self.cli('observe', self.run_dir, '--pr', '11')[0], 2)   # branch missing
-        self.assertEqual(self.cli('observe', self.run_dir, '--pr', 'x', '--branch', 'b')[0], 2)
+        self.refused('observe', self.run_dir, '--pr', '11', text='--pr needs --branch')
+        self.usage_error('observe', self.run_dir, '--pr', 'x', '--branch', 'b', text='invalid int value')
         self.assertFalse(os.path.exists(self.retro_home))
 
     def test_unwritable_retro_home_is_exit_code_1(self):
@@ -1906,33 +1967,65 @@ class RejectTest(RegistersCase):
         self.assertEqual(self.state('e1')['decisions_open'], [])
 
     def test_an_item_of_another_epic_is_found_by_its_key_and_epic_limits_the_search(self):
-        self.assertEqual(self.cli('reject', '--key', 'd', '--reason', 'x', '--epic', 'e1')[0], 2)
+        self.refused('reject', '--key', 'd', '--reason', 'x', '--epic', 'e1', text="no undecided item with key 'd'")
         self.assertEqual(self.rows('rejected'), [])
         self.assertEqual(self.cli('reject', '--key', 'd', '--reason', 'x', '--epic', 'e2')[0], 0)
         self.assertEqual(self.state('e2')['pr']['items'], [])
 
-    def test_reject_all_takes_every_open_item(self):
+    def test_reject_all_takes_every_item_of_the_open_pr_and_never_the_issue_decisions(self):
         self.assertEqual(self.cli('reject', '--all', '--reason', 'odrzuć wszystko')[0], 0)
-        self.assertEqual(sorted(r['key'] for r in self.rows('rejected')), ['a', 'b', 'c', 'd'])
+        self.assertEqual(sorted((r['key'], r['pr']) for r in self.rows('rejected')),
+                         [('a', 11), ('b', 11), ('d', 11)])
         self.assertEqual(self.state('e1')['pr']['items'], [])
         self.assertEqual(self.state('e2')['pr']['items'], [])
-        self.assertEqual(self.state('e1')['decisions_open'], [])
+        self.assertEqual([d['key'] for d in self.state('e1')['decisions_open']], ['c'])
+
+    def test_reject_all_leaves_the_decisions_of_every_epic_and_a_settled_pr_alone(self):
+        self.write_state('e4', {'state': 'done', 'decisions_open': [{'n': 1, 'kind': 'issue', 'key': 'q',
+                                                                    'incidents': [F3], 'epic': 'e4'}]})
+        self.write_state('e5', pr_state(20, [pr_item(1, 'old', [F1], 'e5')], state='done'))
+        settled = self.state('e5')
+        settled['pr']['outcome'] = 'merged'
+        self.write_state('e5', settled)
+        self.cli('reject', '--all', '--reason', 'x')
+        self.assertEqual([d['key'] for d in self.state('e4')['decisions_open']], ['q'])
+        self.assertEqual([d['key'] for d in self.state('e1')['decisions_open']], ['c'])
+        self.assertEqual(self.state('e5'), settled)
+        self.assertNotIn('c', [r['key'] for r in self.rows('rejected')])
+        self.assertNotIn('old', [r['key'] for r in self.rows('rejected')])
+
+    def test_reject_all_with_only_issue_decisions_left_is_refused(self):
+        self.cli('reject', '--all', '--reason', 'x')
+        before = self.tree()
+        self.refused('reject', '--all', '--reason', 'x', text='no undecided item to reject')
+        self.assertEqual(self.tree(), before)
+
+    def test_reject_pr_takes_the_items_of_that_pr_only(self):
+        self.write_state('e6', pr_state(12, [pr_item(1, 'other-pr', [F3], 'e6')], state='done'))
+        self.assertEqual(self.cli('reject', '--pr', '11', '--reason', 'x')[0], 0)
+        self.assertEqual(sorted(r['key'] for r in self.rows('rejected')), ['a', 'b', 'd'])
+        self.assertEqual([i['key'] for i in self.state('e6')['pr']['items']], ['other-pr'])
+        self.assertEqual([d['key'] for d in self.state('e1')['decisions_open']], ['c'])
+        self.refused('reject', '--pr', '99', '--reason', 'x', text='no undecided item')
 
     def test_items_of_a_resolved_pr_are_not_rejected(self):
         state = self.state('e2')
         state['pr']['outcome'] = 'merged'
         self.write_state('e2', state)
-        self.assertEqual(self.cli('reject', '--key', 'd', '--reason', 'x')[0], 2)
+        self.refused('reject', '--key', 'd', '--reason', 'x', text="no undecided item with key 'd'")
         self.cli('reject', '--all', '--reason', 'x')
         self.assertNotIn('d', [r['key'] for r in self.rows('rejected')])
         self.assertEqual(len(self.state('e2')['pr']['items']), 1)
 
     def test_an_unknown_key_missing_reason_and_both_or_neither_selector_are_refused(self):
-        for args in (('--key', 'nothing', '--reason', 'x'), ('--key', 'a'), ('--key', 'a', '--reason', ' '),
-                     ('--reason', 'x'), ('--key', 'a', '--all', '--reason', 'x')):
-            self.assertEqual(self.cli('reject', *args)[0], 2, args)
-        self.assertEqual(self.rows('rejected'), [])
-        self.assertEqual(len(self.state('e1')['pr']['items']), 2)
+        before = self.tree()
+        for args, text in ((('--key', 'nothing', '--reason', 'x'), 'no undecided item with key'),
+                           (('--key', 'a'), 'non-empty --reason'), (('--key', 'a', '--reason', ' '), 'non-empty --reason'),
+                           (('--reason', 'x'), 'give --key, --all or --pr'),
+                           (('--key', 'a', '--all', '--reason', 'x'), 'give --key, --all or --pr'),
+                           (('--all', '--pr', '11', '--reason', 'x'), 'give --key, --all or --pr')):
+            self.refused('reject', *args, text=text)
+        self.assertEqual(self.tree(), before)
 
     def test_a_rejection_removes_the_carried_row_of_the_key(self):
         self.write_rows('carried', [{'key': 'a', 'incidents': [F1]}, {'key': 'z', 'incidents': [F1]}])
@@ -2157,19 +2250,56 @@ class IssuesTest(RunDirCase):
         self.assertEqual(self.state('e3')['state'], 'running')
 
     def test_unapproved_unknown_and_non_issue_numbers_are_refused_before_any_command(self):
-        for approve in (['9'], ['4'], ['1,9'], ['x'], ['0'], [','], ['²'], ['١']):
+        before = self.tree()
+        for approve, text in ((['9'], 'is not the number of an issue item'), (['4'], 'is not the number of an issue item'),
+                              (['1,9'], "'9' is not the number"), (['x'], "'x' is not the number"),
+                              (['0'], "'0' is not the number"), ([','], 'names no issue'),
+                              (['²'], 'is not the number'), (['١'], 'is not the number')):
             runner = FakeRunner()
-            code, _, err = self.cli('issues', self.run_dir, '--approve', *approve, runner=runner)
-            self.assertEqual(code, 2, approve)
+            self.refused('issues', self.run_dir, '--approve', *approve, text=text, runner=runner)
             self.assertEqual(runner.calls, [], approve)
-        self.assertEqual(self.cli('issues', self.run_dir)[0], 2)   # --approve is required
+        self.assertEqual(self.tree(), before)
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, 'issues.json')))
+        self.usage_error('issues', self.run_dir, text='--approve')
+
+    def test_all_leaves_out_an_item_rejected_with_reject_and_an_explicit_number_of_it_is_refused(self):
+        self.assertEqual(self.cli('reject', '--key', 'shop-new', '--reason', 'to nie problem')[0], 0)
+        result = self.issues('all')
+        self.assertEqual([(r['n'], r['status']) for r in result['results']], [(1, 'created'), (3, 'commented')])
+        runner = FakeRunner()
+        self.refused('issues', self.run_dir, '--approve', '2', text='rejected', runner=runner)
+        self.refused('issues', self.run_dir, '--approve', '1,2', text='rejected', runner=runner)
+        self.assertEqual(runner.calls, [])
+
+    def test_all_still_reports_the_items_done_in_an_earlier_run(self):
+        self.issues('1')
+        result = self.issues('all')
+        self.assertEqual([(r['n'], r['status']) for r in result['results']],
+                         [(1, 'already_done'), (2, 'created'), (3, 'commented')])
+
+    def test_the_ledger_is_keyed_by_the_key_not_by_the_number(self):
+        self.issues('1')
+        with open(os.path.join(self.run_dir, 'issues.json')) as f:
+            self.assertEqual(list(json.load(f)), ['ao-new'])
+        # a new proposals.json that reuses number 1 for another problem is not "already done"
+        self.write_proposals(issue_item(1, key='another', repo='ao', title='Inny problem', body='Inny opis'))
+        self.write_state('e3', {'state': 'running', 'decisions_open': [{'n': 1, 'kind': 'issue', 'key': 'another'}]})
+        runner = FakeRunner()
+        result = self.issues('1', runner=runner)
+        self.assertEqual([c[c.index('--title') + 1] for c in self.gh(runner, 'create')], ['Inny problem'])
+        self.assertEqual(result['results'][0]['status'], 'created')
+        again = FakeRunner()
+        self.assertEqual(self.issues('1', runner=again)['results'][0]['status'], 'already_done')
+        self.assertEqual(self.gh(again), [])
 
     def test_missing_proposals_are_exit_code_2(self):
-        self.assertEqual(self.cli('issues', os.path.join(self.tmp, 'nothing'), '--approve', 'all')[0], 2)
+        self.refused('issues', os.path.join(self.tmp, 'nothing'), '--approve', 'all', text='cannot read proposals.json')
 
     def test_no_issue_items_means_nothing_to_approve(self):
         self.write_proposals(fix(1))
-        self.assertEqual(self.cli('issues', self.run_dir, '--approve', 'all')[0], 2)
+        runner = FakeRunner()
+        self.refused('issues', self.run_dir, '--approve', 'all', text='no issue items to approve', runner=runner)
+        self.assertEqual(runner.calls, [])
 
     def test_a_missing_gh_is_exit_code_1_for_every_item(self):
         def run(args):
@@ -2225,6 +2355,17 @@ class ProcessErrorPathsTest(TempDirCase):
         self.assertEqual(json.loads(result.stdout)['results'][0]['status'], 'failed')
         self.assertIn('broken', result.stdout)
 
+    def test_a_nul_in_one_item_fails_that_item_only(self):
+        run_dir = os.path.join(self.tmp, 'run')
+        retro.write_json(run_dir, 'proposals.json', proposals_of(
+            issue_item(1, key='nul', title='Zły\u0000tytuł'), issue_item(2, key='fine', title='Dobry')))
+        result = self.run_cli('issues', run_dir, '--approve', 'all',
+                              bin_dir=self.fake_bin('echo https://github.com/x/y/issues/9\n'))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        results = json.loads(result.stdout)['results']
+        self.assertEqual([(r['n'], r['status']) for r in results], [(1, 'failed'), (2, 'created')])
+        self.assertIn('retro:', result.stderr)
+
     def test_arguments_errors_are_exit_code_2_and_a_successful_lock_cycle_is_0(self):
         self.assertEqual(self.run_cli('lock', 'Bad Name').returncode, 2)
         self.assertEqual(self.run_cli('reject', '--reason', 'x').returncode, 2)
@@ -2234,6 +2375,53 @@ class ProcessErrorPathsTest(TempDirCase):
         self.assertEqual(self.run_cli('lock', 'discount-codes', '--run-id', 'p2').returncode, 2)
         self.assertEqual(self.run_cli('unlock', '--run-id', 'p1', '--done').returncode, 0)
         self.assertEqual(self.run_cli('lock', 'cart', '--run-id', 'p3').returncode, 2)   # cart is done
+
+
+
+class CorruptStateTest(RunDirCase):
+    """A state.json that cannot be read is never overwritten with a state without `pr` and `decisions_open`."""
+
+    def corrupt(self, epic='e3', text='{"pr": '):
+        os.makedirs(os.path.join(self.retro_home, epic), exist_ok=True)
+        with open(os.path.join(self.retro_home, epic, 'state.json'), 'w') as f:
+            f.write(text)
+
+    def test_commands_that_write_the_state_refuse_and_leave_the_file_alone(self):
+        self.write_proposals(fix(1, key='fx'), issue_item(2, key='is'))
+        for text in ('{"pr": ', '[]', '"x"'):
+            self.corrupt(text=text)
+            before = self.tree()
+            for args in (('defer', 'e3', '--reason', 'x'), ('skip', 'e3', '--reason', 'x'), ('lock', 'e3'),
+                         ('observe', self.run_dir, '--pr', '11', '--branch', 'retro/e3'),
+                         ('observe', self.run_dir), ('reject', '--key', 'fx', '--reason', 'x'),
+                         ('reject', '--all', '--reason', 'x'),
+                         ('issues', self.run_dir, '--approve', 'all')):
+                runner = FakeRunner()
+                self.refused(*args, text='state.json', runner=runner)
+                self.assertEqual(runner.calls, [], args)
+                self.assertEqual(self.tree(), before, (text, args))
+
+    def test_unlock_done_refuses_when_the_state_of_the_lock_is_unreadable(self):
+        self.write_lock('mine', 'e3', 60)
+        self.corrupt()
+        before = self.tree()
+        self.refused('unlock', '--run-id', 'mine', '--done', text='state.json')
+        self.assertEqual(self.tree(), before)
+
+    def test_a_missing_state_is_not_corrupt_and_sync_skips_an_unreadable_one_with_a_warning(self):
+        self.write_state('e1', pr_state(11, [pr_item(1, 'a', [F1], 'e1')], state='done'))
+        self.corrupt('e2')
+        self.runner.prs[11] = {'state': 'MERGED', 'mergedAt': '2026-11-11T10:00:00Z'}
+        code, out, err = self.cli('sync')
+        self.assertEqual(code, 0, err)
+        result = json.loads(out)
+        self.assertEqual([r['key'] for r in self.rows('applied')], ['a'])
+        self.assertEqual([w for w in result['warnings'] if 'e2' in w and 'state.json' in w].__len__(), 1)
+        self.assertEqual(self.cli('defer', 'fresh', '--reason', 'x')[0], 0)
+
+    def test_collect_still_reads_an_unreadable_state_as_empty(self):
+        self.corrupt('visual-design')
+        self.assertEqual(retro.read_state(self.retro_home, 'visual-design'), {})
 
 
 if __name__ == '__main__':
