@@ -57,6 +57,14 @@ sub vcl_recv {
     # No return here: the built-in VCL still passes Authorization, Cookie and methods other than GET and HEAD.
 }
 
+sub vcl_backend_response {
+    # The identifier belongs to the request that filled the cache (docs/features/hardening/spec.md, D9); a hit must not
+    # hand it to another client. A response that goes straight to the client (a pass) keeps its own.
+    if (!bereq.uncacheable) {
+        unset beresp.http.X-Correlation-ID;
+    }
+}
+
 sub vcl_deliver {
     # Tags are for Varnish only.
     unset resp.http.xkey;
