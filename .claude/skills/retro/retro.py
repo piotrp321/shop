@@ -391,6 +391,7 @@ def finding_incidents(epic_id, text):
 MEASUREMENT_LABELS = ('Interwencje człowieka', 'Czekanie na użytkownika', 'Ręczne poprawki', 'Praca użytkownika',
                       'Przebieg', 'Zgłoszenia', 'Follow-up', 'Pomiar')
 MANUAL_LINE = re.compile(r'Ręczne poprawki:\s*(\d+)(.*)$', re.IGNORECASE)
+LABEL_LIKE = re.compile(r'^[A-ZŁŚŻŹĆĄĘÓŃ][^:.,]{0,30}:\s')
 PR_ITEM = re.compile(r'^PR\s*#(\d+)\s*[:\-–—]?\s*(.*)$')
 
 
@@ -405,7 +406,7 @@ def parse_measurement(body):
     `manual_items` [{pr, text}]. The items are the lines `- PR #<nr>: <text>` or `- <text>` after the line (new
     format) or, when there are none, the text in parentheses after N with the PR numbers named in it (old format)."""
     result = {'interventions': None, 'waits': None, 'wait_min': None, 'manual_count': None, 'manual_items': [],
-              'format': None}
+              'format': None, 'ambiguous': False}
     match = re.search(r'Interwencje człowieka:\s*(\d+)', body)
     if match:
         result['interventions'] = int(match.group(1))
@@ -418,20 +419,24 @@ def parse_measurement(body):
         if not manual:
             continue
         result['manual_count'] = int(manual.group(1))
-        items = []
+        items, loose = [], 0
         for follow in lines[index + 1:]:
             bullet = _bullet(follow)
             if bullet is None:
                 break
             indent, text = bullet
-            labelled = any(text.startswith(label) for label in MEASUREMENT_LABELS)
-            if not indent and labelled:
-                break
             pr = PR_ITEM.match(text)
             if pr:
                 items.append({'pr': int(pr.group(1)), 'text': pr.group(2) or text})
-            else:
+            elif indent:
                 items.append({'pr': None, 'text': text})
+            elif LABEL_LIKE.match(text) or any(text.startswith(label) for label in MEASUREMENT_LABELS):
+                break   # the next line of the measurement comment
+            elif loose < result['manual_count']:
+                loose += 1
+                items.append({'pr': None, 'text': text})
+            else:
+                break
         if items:
             result['format'], result['manual_items'] = 'new', items
         else:
@@ -443,10 +448,14 @@ def parse_measurement(body):
                 for number in re.findall(r'#(\d+)', text):
                     if int(number) not in numbers:
                         numbers.append(int(number))
-                result['manual_items'] = [{'pr': n, 'text': text} for n in numbers]
-                remaining = result['manual_count'] - len(numbers)
-                if remaining > 0:
-                    result['manual_items'].append({'pr': None, 'text': text})
+                if len(numbers) > result['manual_count']:
+                    # the PRs are mentions: which of them is a manual fix cannot be told
+                    result['manual_items'] = [{'pr': None, 'text': text}]
+                    result['ambiguous'] = True
+                else:
+                    result['manual_items'] = [{'pr': n, 'text': text} for n in numbers]
+                    if result['manual_count'] > len(numbers):
+                        result['manual_items'].append({'pr': None, 'text': text})
         break
     return result
 
@@ -483,7 +492,7 @@ def manual_incidents(epic_id, measurement):
     listed = len(measurement['manual_items'])
     if measurement['format'] == 'old':
         # the old format has one sentence for all fixes: it names PRs, the rest is one fix per missing count
-        mismatch = (count < listed) or (count > 0 and listed == 0)
+        mismatch = measurement.get('ambiguous') or (count < listed) or (count > 0 and listed == 0)
     else:
         mismatch = count != listed
     if mismatch:

@@ -497,10 +497,24 @@ class ManualFixTest(unittest.TestCase):
         self.assertEqual([i['key'] for i in incidents], ['pr5'])
         self.assertEqual([f['id'] for f in facts], ['e/mismatch/manual_fix'])
 
-    def test_old_format_with_more_prs_than_the_count_is_a_mismatch(self):
-        (incidents, facts), _ = self.incidents('- Ręczne poprawki: 1 (PR #5 i PR #6, dwie sprawy)\n')
-        self.assertEqual(sorted(i['key'] for i in incidents), ['pr5', 'pr6'])
+    def test_old_format_with_more_prs_than_the_count_is_one_unattributed_fix_and_a_mismatch(self):
+        # real: "1 (merge main po #239 i nowy końcowy PR #255 ...)": the PRs are mentions, the count says one fix
+        (incidents, facts), _ = self.incidents('- Ręczne poprawki: 1 (merge main po #239 i nowy PR #255, bo ruleset)\n')
+        self.assertEqual([i['key'] for i in incidents], ['other'])
+        self.assertIn('#255', incidents[0]['facts'][0]['text'])
         self.assertEqual([f['id'] for f in facts], ['e/mismatch/manual_fix'])
+
+    def test_a_following_measurement_line_is_not_a_manual_fix(self):
+        # real: "Ręczne poprawki: 0" followed by "Czas AO: ..." (a label the list of labels does not know)
+        (incidents, facts), _ = self.incidents('- Ręczne poprawki: 0\n- Czas AO: 8 h 33 min, 14 prób (1 nieudana)\n')
+        self.assertEqual((incidents, facts), ([], []))
+
+    def test_unindented_lines_without_a_pr_are_limited_by_the_count(self):
+        body = '- Ręczne poprawki: 1\n- ponowienie joba E2E\n- Zgłoszenia po epiku: #1\n- jeszcze jedno zdanie\n'
+        (incidents, facts), _ = self.incidents(body)
+        self.assertEqual([i['key'] for i in incidents], ['other'])
+        self.assertEqual(incidents[0]['data']['items'], ['ponowienie joba E2E'])
+        self.assertEqual(facts, [])
 
     def test_comment_without_the_line_is_no_measurement(self):
         self.assertIsNone(retro.pick_measurement(['Zgłoszenia: #1', 'inny komentarz']))
