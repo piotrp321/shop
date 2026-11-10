@@ -181,6 +181,10 @@ final class EventFlowTest extends MessagingKernelTestCase
         // The entry of the worker after the acknowledgement of a message that succeeded (the one of the outbox).
         self::assertSame($requestId, $byMessage['{class} was handled successfully (acknowledging to transport).'] ?? null, 'the identifier of the entry of the worker');
         self::assertNull($correlationId->current(), 'the worker is left without an identifier');
+
+        // The retry comes back to the queue after its delay (1 s ±10 %); it must not reach a later test.
+        usleep(1_500_000);
+        self::assertCount(1, $this->drainEvents());
     }
 
     private function createProduct(): void
