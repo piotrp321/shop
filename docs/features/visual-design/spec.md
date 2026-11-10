@@ -11,22 +11,20 @@ bez zmiany API), a metadane zmieniają tylko nazwę sklepu.
 Issues: #97
 Zakres: `apps/store/src/styles`, `apps/store/src/components`, `apps/store/src/catalog`, `apps/store/src/cart`, `apps/store/src/checkout`, `apps/store/src/account`, `apps/store/src/home`, `apps/store/src/api/schema.d.ts`, `apps/store/app`, `apps/store/scripts`, `apps/store/tests`, `apps/store/CLAUDE.md`, `apps/api/src/Catalog`, `apps/api/config/packages/nelmio_api_doc.yaml`, `apps/api/tests/Unit/Catalog`, `apps/api/tests/Functional/Catalog`, `apps/api/tests/Integration/Catalog`, `apps/api/tests/Integration/Ordering`, `apps/api/openapi.json`, `apps/api/fixtures`, `apps/api/phpunit.dist.xml`, `apps/api/CLAUDE.md`, `infra/docker-compose.yml`, `CLAUDE.md`, `README.md`, `docs/vision.md`, `docs/features/agent-tester-ux/spec.md`, `docs/features/agentic-software-house/plan.md`, `docs/features/product-page/spec.md`, `docs/features/search/spec.md`, `docs/features/walking-skeleton/spec.md`, `docs/features/catalog-page-metadata/spec.md`, `docs/features/checkout/spec.md`, `.claude/agents/ux-reviewer.md`, `e2e/tests`, `e2e/support`
 
-**Zależności.** PRODUCT-PAGE (#93) i SEARCH (#94) są na `main`. Epik obejmuje ekrany sklepu, które są na `main`
-w chwili startu epiku (gałąź `epic/visual-design` powstaje z `main`); ekrany ORDER-MANAGEMENT (#92: `/konto/zamowienia`)
-i PROMOTIONS (#96: oznaczenie „Promocja” i linia Omnibus) wchodzą w zakres, jeśli są wtedy na `main` (D9). Zakres
-pokrywa się z nimi i z CATALOG-ADMIN (#95, `apps/api/src/Catalog`), więc VISUAL-DESIGN rusza po nich, nie tej samej
-nocy.
+**Zależności.** PRODUCT-PAGE (#93), SEARCH (#94), ORDER-MANAGEMENT (#92: `/konto/zamowienia`), PROMOTIONS (#96:
+oznaczenie „Promocja” i linia Omnibus) i CATALOG-ADMIN (#95, `apps/api/src/Catalog`) są na `main`; wygląd obejmuje
+wszystkie ich ekrany sklepu (D9).
 
 ## Cel i zakres
 
 - **Nazwa sklepu** „Worf” zamiast dotychczasowej w całym repo (VISUAL-DESIGN-2).
 - **Rozmiar zdjęć `zoom`** w API: całe zdjęcie bez przycinania, do powiększenia na karcie produktu (VISUAL-DESIGN-3).
 - **Makieta wybranego kierunku** (VISUAL-DESIGN-1 i VISUAL-DESIGN-4): właściciel wybrał kierunek A „Granit” z czterema
-  poprawkami i potwierdził go. W repo zostaje `kierunek.html` ze sześcioma zrzutami (strona główna, listing i karta
+  poprawkami i potwierdził go. W repo jest `kierunek.html` ze sześcioma zrzutami (strona główna, listing i karta
   produktu na desktopie 1440 px i telefonie 375 px) i `README.md`; sekcje „Wybrany kierunek” i „Makieta” opisują
   wynik.
 - **Tokeny i fundament** (VISUAL-DESIGN-5): paleta i warstwa semantyczna wybranego kierunku w `src/styles/tokens.css`,
-  fonty, promienie, cienie, komponenty shadcn/ui, nagłówek z mega menu, nowa stopka, polska strona 404.
+  fonty, promienie, cienie, komponenty shadcn/ui, nagłówek z mega menu, stopka, polska strona 404.
 - **Strona główna** (VISUAL-DESIGN-6): hero i kafelki działów nad listingiem wszystkich produktów, responsywne zdjęcia.
 - **Listing** (VISUAL-DESIGN-7) i **karta produktu z galerią** (VISUAL-DESIGN-8) według makiety.
 - **Zdjęcia produktów w danych demo** (VISUAL-DESIGN-11): własne zdjęcia czterech kajaków z kategorii „Kajaki”
@@ -38,7 +36,7 @@ nocy.
 Poza zakresem:
 - kopiowanie identyfikacji Arc'teryx i Decathlona (logotypy, nazwy, charakterystyczne elementy), szablony komercyjne;
 - logo graficzne (marka to znak słowny „Worf” złożony fontem kierunku); sprawdzenie nazwy „Worf” w bazach znaków
-  towarowych (UPRP, EUIPO) przed publicznym demo, jak dziś w `docs/vision.md`;
+  towarowych (UPRP, EUIPO) przed publicznym demo, jak w `docs/vision.md`;
 - adres worf.pl w środowisku demo (DEPLOY #175); lokalnie adresy zostają `*.localhost`;
 - tryb ciemny; panel administracyjny (`apps/admin`; zmienia się tylko wygenerowany klient, jeśli zmieni się schemat);
 - rozmiar miniatury (`thumbnail`) w API: miniatury galerii używają najmniejszej szerokości rozmiaru `product`;
@@ -57,8 +55,7 @@ Poza zakresem:
   sprawdzają, `README.md`, `docs/vision.md` („Nazwa sklepu: „Worf” (domena worf.pl)”), `CLAUDE.md` aplikacji
   i specyfikacje funkcji.
 - Sprawdzenie: `git grep -n -w -i rytm -- ':!docs/features/visual-design'` nie zwraca wyników (całe słowo, więc
-  „algorytm” się nie liczy; ta specyfikacja i plan epiku wymieniają starą nazwę).
-- Zmiana nie dotyka wyglądu (zostaje tymczasowy motyw do VISUAL-DESIGN-5), więc idzie w pierwszej fali obok makiet.
+  „algorytm” się nie liczy; ta specyfikacja wymienia starą nazwę tylko w tej komendzie).
 
 ## Rozmiar zdjęć `zoom` (VISUAL-DESIGN-3)
 
@@ -73,11 +70,10 @@ Poza zakresem:
 - `GET /api/v1/products/{slug}` (`ProductDetails`) dostaje pole `zoomImages` (lista `ZoomImage`): te same zdjęcia co
   `images`, w tej samej kolejności i liczbie, w rozmiarze `zoom` (zbudowane z tych samych kluczy i opisów, bez dodatkowego odczytu bazy).
   Nagłówki odpowiedzi (`Cache-Control`, `xkey`) bez zmian.
-- Eksport `make -C apps/api openapi` i `make api-client` w tym samym zadaniu; testy jednostkowe adresów `zoom`
-  (ścieżka imgproxy `rs:fit:<szerokość>:0`), testy funkcjonalne szczegółów produktu (`zoomImages` w kolejności
-  `images`, produkt bez zdjęć: pusta lista).
-- Sklep w tym zadaniu dostaje tylko nowy wygenerowany typ, bez zmian kodu i wyglądu; powiększenie dodaje
-  VISUAL-DESIGN-8. Schemat panelu (`openapi-admin.json`) się nie zmienia.
+- `openapi.json` i klient TS sklepu są wyeksportowane i wygenerowane z tego schematu (`make -C apps/api openapi`,
+  `make api-client`); testy jednostkowe adresów `zoom` (ścieżka imgproxy `rs:fit:<szerokość>:0`) i testy funkcjonalne
+  szczegółów produktu (`zoomImages` w kolejności `images`, produkt bez zdjęć: pusta lista). Powiększenie na karcie
+  produktu używa `zoomImages` (patrz „Karta produktu”). Schemat panelu (`openapi-admin.json`) się nie zmienia.
 
 ## Kierunek
 
@@ -99,9 +95,9 @@ Wymagania wybranego kierunku:
 ## Wybrany kierunek
 
 Właściciel wybrał kierunek A „Granit” z czterema poprawkami i potwierdził drugą iterację makiety
-(`mockups/kierunek.html`): etap iteracji wizualnych jest zamknięty. Sklep wdrażają zadania 5–9; makieta i teksty
-`mockups/README.md` są wskazówkami wdrożenia. Wartości (kolory, rozmiary, odstępy) są wyłącznie w `tokens.css` po
-VISUAL-DESIGN-5; ta sekcja opisuje charakter i wymagania.
+(`mockups/kierunek.html`): etap iteracji wizualnych jest zamknięty. Sklep wdraża ten wybór; makieta i teksty
+`mockups/README.md` ilustrują go. Wartości (kolory, rozmiary, odstępy) są wyłącznie w `tokens.css`; ta sekcja opisuje
+charakter i wymagania.
 
 **Dlaczego ten kierunek.** Wybór właściciela, w jego słowach: „Chcemy, żeby Worf miał design na miarę 2026 roku.
 Wybieramy kierunek A „Granit” za mocne zdjęcia, prostą typografię i czytelny układ. W kolejnej wersji nadaj mu więcej
@@ -123,8 +119,7 @@ jej początek."
 - Kafelki produktów bez ramek i tła, zdjęcie 1:1, tekst do lewej, cena pod nazwą; siatka 4 kolumny na desktopie i
   2 na telefonie.
 - Listing: filtry w lewej kolumnie na desktopie (bez ramki, grupy rozdzielone liniami), na telefonie przycisk
-  „Filtry” z dzisiejszym zachowaniem panelu (`aria-expanded`, sekcja w treści strony, nie okno modalne, działa bez
-  JavaScriptu).
+  „Filtry” rozwijający panel (`aria-expanded`, sekcja w treści strony, nie okno modalne, działa bez JavaScriptu).
 - Nagłówek na desktopie: jeden wiersz (znak, działy, koszyk, konto, wyszukiwarka) i panel mega menu na całą szerokość
   w czterech kolumnach. Wyszukiwarka stoi za kontem (decyzja właściciela), bo kolejność w dokumencie ma być kolejnością
   wizualną bez żadnej właściwości CSS zmieniającej kolejność fokusu (kolejność fokusu nie może zależeć od przeglądarki);
@@ -134,7 +129,7 @@ jej początek."
 - Gęstość: jedna siatka odstępów, jeden margines boczny dla telefonu i jeden dla desktopu, szerokość treści
   ograniczona; odstępy tych samych elementów są takie same na wszystkich ekranach (wartości w `tokens.css`).
 
-**Poprawki właściciela (wymagania dla zadań 5–9).**
+**Poprawki właściciela.**
 1. Różnice między produktami: każdy produkt ma własne zdjęcie, a karta produktu galerię „cały sprzęt, detal, w użyciu”.
    Sklep pokazuje takie zdjęcia dla kajaków i nart Stavro Grań 95 dzięki danym demo (VISUAL-DESIGN-11); galeria
    i kafelki wyświetlają zdjęcia w kolejności z API.
@@ -145,13 +140,14 @@ jej początek."
 4. Stopka jest niska: małe logo, linki działów w dwóch kolumnach, jeden dyskretny wiersz pod cienką linią
    (szczegóły: „Tokeny i fundament”).
 
-**Wymagania dla wdrożenia, których makieta nie pokazuje** (statyczna, bez klawiatury):
+**Wymagania, których makieta nie pokazuje** (statyczna, bez klawiatury):
 - Kolejność tabulatora w nagłówku (VISUAL-DESIGN-5, VISUAL-DESIGN-FIX-1): kolejność elementów w dokumencie jest
   kolejnością wizualną na każdej szerokości (WCAG 2.4.3), więc fokus idzie tak samo we wszystkich przeglądarkach, bez
   właściwości CSS zmieniających kolejność fokusu, bez `order` i bez obszarów siatki przestawiających elementy
   względem dokumentu. Na telefonie: znak, „Menu”, koszyk, konto, dopiero potem wyszukiwarka z przyciskiem; od 1024 px:
   znak, działy, koszyk, konto, wyszukiwarka (wyszukiwarka za kontem to decyzja właściciela; makieta ma ten sam układ w
-  dokumencie i na ekranie). Ten sam wymóg dotyczy galerii (miniatury: patrz „Galeria”).
+  dokumencie i na ekranie; w zakresie 1024–1279 px wyszukiwarka jest przyciskiem otwierającym formularz, patrz
+  „Tokeny i fundament”). Ten sam wymóg dotyczy galerii (miniatury: patrz „Karta produktu”).
 - Fokus po „Wybierz wariant” (kafelek, także na stronie głównej): po rozwinięciu wyboru fokus przechodzi na pierwszy
   dostępny (możliwy do wybrania) wariant (przycisk „Wybierz wariant” znika, więc fokus nie może na nim zostać);
   rozwinięcie i zmiana etykiety dostępności po wyborze są ogłaszane w obszarze `aria-live`; wariant niedostępny ma
@@ -159,12 +155,12 @@ jej początek."
 - Zawartość wyboru wariantu na kafelku: po „Wybierz wariant” kafelek oferuje warianty oferty API w kolejności oferty
   (etykieta; niedostępny oznaczony „niedostępny” i niewybieralny). Dla produktu z jedną osią są to wartości osi jako
   przyciski, jak w makiecie (kajaki). Oferta nie ma wartości osi osobno, tylko złączoną etykietę, więc dla produktu
-  z dwiema osiami lub więcej postać listy wybiera VISUAL-DESIGN-7 (mieści się w 375 px bez poziomego przewijania,
-  np. dla 14 wariantów, działa z klawiatury) i zapisuje ją w „Decyzjach bez pytania” w PR; bez zmiany API i bez
-  rozbioru etykiety na osie (szczegóły: „Listing”).
+  z dwiema osiami lub więcej wybór ma postać listy pełnych etykiet jedna pod drugą (mieści się w 375 px bez
+  poziomego przewijania, np. dla 14 wariantów, działa z klawiatury); bez zmiany API i bez rozbioru etykiety na osie
+  (szczegóły: „Listing”).
 
-Tekst i układ ekranów pochodzą z makiety; implementer ich nie wymyśla. Szczegół, którego makieta nie pokazuje (np.
-stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje do „Decyzji bez pytania” w PR.
+Tekst i układ ekranów pochodzą z makiety. Szczegół, którego makieta nie pokazuje (np. stan ładowania kasy), wynika
+z tokenów i wspólnych komponentów.
 
 ## Makieta
 
@@ -194,27 +190,27 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
   Pełny skrypt i komendy są w `mockups/README.md`, więc zrzuty da się powtórzyć.
 - Makieta to ilustracja z chwili wyboru (D11): zdjęcia z `mockups/images/` nie pasują dokładnie do danych (czarne
   narty zamiast niebieskich, dwa osobne kajaki zamiast jednego dwuosobowego, czerwone kajaki pod filtrem „zielony”),
-  a późniejsze zmiany wyglądu jej nie aktualizują. Źródłem prawdy są ta specyfikacja i `tokens.css`; sklep pokazuje
-  zdjęcia z VISUAL-DESIGN-11.
+  a późniejsze zmiany wyglądu jej nie aktualizują (kolejność elementów nagłówka w `kierunek.html` i na zrzutach
+  1440 px jest jak w sklepie). Źródłem prawdy są ta specyfikacja i `tokens.css`; sklep pokazuje zdjęcia z danych
+  demo (VISUAL-DESIGN-11).
 
 ## Tokeny i fundament (VISUAL-DESIGN-5)
 
-- `src/styles/tokens.css` zostaje jedynym miejscem wyglądu (komentarz pliku bez „tymczasowy”): paleta `--palette-*`
-  wybranego kierunku zamiast tymczasowej, warstwa semantyczna shadcn/ui, `--radius`, cienie i skala typografii.
-  Wszystkie tokeny potrzebne makiecie definiuje to zadanie, także nowe semantyczne (np. `success` dla „Dostępny”,
-  `warning` dla „Ostatnie sztuki”, nakładka hero). Zadania 6–9 nie zmieniają palety ani istniejących tokenów; mogą
-  dopisać nowy token semantyczny wskazujący istniejącą paletę, z uzasadnieniem w PR. Domyślna paleta Tailwinda dalej wyłączona, reguła ESLint przeciw kolorom „na sztywno” bez zmian
-  i bez wyjątków.
-- Fonty: pliki WOFF2 z zakresem `latin-ext` w `apps/store/src/styles/fonts/` ładowane przez `next/font/local` (bez
-  żądań do zewnętrznych hostów w przeglądarce i w buildzie), zmienna CSS fontu w tokenach. Tekst licencji OFL i lista
-  plików fontów w `apps/store/THIRD_PARTY_NOTICES.md` (nowy plik; D4).
-- Komponenty `src/components/ui/` (obecne: `button`, `card`, `input`, `pagination`; nowe tylko przez CLI shadcn,
-  według `apps/store/CLAUDE.md`) dopasowane do kierunku. Wszystkie komponenty shadcn potrzebne epikowi, także `dialog`
-  galerii, dodaje to zadanie (CLI shadcn dopisuje do `tokens.css`). Stany: `hover`, `focus-visible`, `disabled`, błąd pola.
-  Ekrany używają tych komponentów zamiast własnych odpowiedników (spójność komponentów).
+- `src/styles/tokens.css` jest jedynym miejscem wyglądu: paleta `--palette-*` wybranego kierunku, warstwa semantyczna
+  shadcn/ui, `--radius`, cienie (wyzerowane: kierunek ich nie ma) i skala typografii. Tokeny semantyczne makiety to
+  m.in. `success` dla „Dostępny”, `warning` dla „Ostatnie sztuki” i nakładka hero. Paletę i istniejące tokeny zmienia
+  tylko ten fundament; nowy token semantyczny może wskazywać istniejącą paletę. Domyślna paleta Tailwinda jest
+  wyłączona, reguła ESLint przeciw kolorom „na sztywno” działa bez wyjątków.
+- Fonty: pliki WOFF2 (`latin` i `latin-ext`) w `apps/store/src/styles/fonts/` ładowane przez `next/font/local`
+  (`src/styles/fonts.ts`; bez żądań do zewnętrznych hostów w przeglądarce i w buildzie), zmienna CSS fontu w tokenach.
+  Tekst licencji OFL i lista plików fontów są w `apps/store/THIRD_PARTY_NOTICES.md` (D4).
+- Komponenty `src/components/ui/` (`alert`, `badge`, `button`, `card`, `checkbox`, `dialog`, `input`, `label`,
+  `pagination`, `separator`; nowe tylko przez CLI shadcn, według `apps/store/CLAUDE.md`) dopasowane do kierunku.
+  Stany: `hover`, `focus-visible`, `disabled`, błąd pola. Ekrany używają tych komponentów zamiast własnych
+  odpowiedników (spójność komponentów).
 - Nagłówek (`SiteHeader`, `MegaMenu`, `SearchBox`, `CartBadge`, `AccountMenu`) według makiety: znak słowny „Worf”
   (link do `/`), wyszukiwarka, koszyk, konto, mega menu działów. Zachowanie (otwieranie, zamykanie, klawiatura,
-  `aria-expanded`, linki w HTML przy zamkniętym menu) bez zmian, z wyjątkiem układu na telefonie:
+  `aria-expanded`, linki w HTML przy zamkniętym menu) jest opisane w `apps/store/CLAUDE.md`; układ:
   - od 1024 px jeden wiersz (znak, działy, koszyk, konto, wyszukiwarka) o wysokości makiety (nie więcej niż 100 px),
     także po zalogowaniu, na 1024, 1280, 1366, 1440 i 1920 px, i panel mega menu na całą szerokość pod nagłówkiem.
     Pasek działów w danych demo mieści się w jednym rzędzie (tekst działów zostaje 15 px, cele 44 px); przy większej liczbie
@@ -223,21 +219,22 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
     1440 px (tam się mieszczą); „Zalogowany jako …” jest tylko dla czytników. Kompaktowy wariant wyszukiwarki
     (1024–1279 px, gdzie pole się nie mieści): przycisk „Wyszukiwarka” (`aria-expanded`) otwiera ten sam formularz jako
     panel pod nagłówkiem, fokus trafia w pole, Escape, wysłanie, kliknięcie poza panelem, opuszczenie go fokusem i
-    otwarcie panelu działu (także najechaniem myszą) zamykają go, a Escape i wysłanie oddają fokus przyciskowi; bez JavaScriptu formularz jest osobnym rzędem pod pierwszym.
+    otwarcie panelu działu (także najechaniem myszą) zamykają go, a Escape i wysłanie oddają fokus przyciskowi (także gdy wysłanie z innej strony podmienia stronę slotu `@search`, więc
+    pole jest montowane od nowa); bez JavaScriptu formularz jest osobnym rzędem pod pierwszym.
     Od 1280 px pole stoi w wierszu bez przycisku. Formularz jest w HTML raz;
   - poniżej 1024 px dwa rzędy: w pierwszym znak „Worf”, przycisk „Menu”, koszyk i konto, pod nim wyszukiwarka na
-    pełną szerokość (zamiast dzisiejszego wiersza wyszukiwarki pod 640 px); lista działów otwiera się jako panel
+    pełną szerokość; lista działów otwiera się jako panel
     pod nagłówkiem (przycisk „Menu” z `aria-expanded`, linki działów w HTML także przy zamkniętym panelu);
   - kolejność fokusu zgadza się z rzędami (znak, „Menu”, koszyk, konto, wyszukiwarka; wymaganie z „Wybranego
     kierunku”), bez zdublowanego formularza wyszukiwania; od 1024 px kolejność w dokumencie i na ekranie jest ta sama
     (znak, działy, koszyk, konto, wyszukiwarka).
-- Nowa stopka (`SiteFooter`, Server Component w layoucie), według makiety: grafitowe tło, mały znak słowny „Worf”,
+- Stopka (`SiteFooter`, Server Component w layoucie), według makiety: grafitowe tło, mały znak słowny „Worf”,
   linki działów (kategorie główne z tego samego odczytu drzewa co nagłówek, bez dodatkowego żądania; błąd drzewa:
   stopka bez linków) w dwóch zwartych kolumnach; na desktopie znak po lewej, linki po prawej, na telefonie znak nad
   linkami, a linki mają cel dotyku wygodny dla palca (44 px). Pod cienką linią jeden dyskretny wiersz „© <rok>
   Worf · Zdjęcia: Unsplash” (rok bieżący, nazwa sklepu). Bez linków do stron, których nie ma.
-- Strona 404 (`app/not-found.tsx`, dziś domyślna angielska strona Next.js; D10): „Nie znaleźliśmy tej strony.” i link
-  „Wróć do sklepu” (`/`), w layoucie sklepu, z `noindex` jak dziś.
+- Strona 404 (`app/not-found.tsx`; D10): „Nie znaleźliśmy tej strony.” i przycisk „Wróć do sklepu” (`/`), w layoucie
+  sklepu, z `noindex` (dodaje Next.js).
 - Pliki przeniesione z vercel/shop: komentarz nagłówkowy i wpis w `apps/store/THIRD_PARTY_NOTICES.md` (pełny tekst
   licencji MIT), jak w `apps/store/CLAUDE.md`.
 
@@ -246,17 +243,17 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
 - `/` w stanie domyślnym listingu (bez filtrów, bez sortowania innego niż domyślne, `page` brak albo 1; parametry
   spoza listingu, np. `utm_*`, się nie liczą): nad listingiem hero (zdjęcie na całą szerokość, nagłówek, krótki
   tekst, link do działu) i kafelki działów (każda kategoria główna z drzewa: zdjęcie, nazwa, link `/c/<slug>`).
-  W innym stanie `/` to sam listing, jak dziś.
+  W innym stanie `/` to sam listing.
 - Treść hero (tekst z makiety, dział linku) i przypisanie zdjęcia do działu po slugu kategorii głównej są w kodzie
   sklepu (`src/home/`), bo nie ma CMS. Drzewo pochodzi z `loadMenuCategories` (to samo `React.cache` co nagłówek, bez
   dodatkowego żądania; `app/page.requests.test.tsx` to potwierdza). Kategoria główna bez przypisanego zdjęcia ma
   kafelek bez zdjęcia (tło z tokenu). Link hero do działu, którego nie ma w drzewie, i każdy link hero przy błędzie
   drzewa są pomijane (hero bez linku); błąd drzewa daje stronę bez kafelków, jak menu.
 - Nagłówki na `/` w stanie domyślnym: `h1` to nagłówek hero, nazwy działów w kafelkach i „Wszystkie produkty” nad
-  listingiem to `h2`, nazwy produktów w kafelkach `h3`. W innym stanie `h1` „Wszystkie produkty” i `h2` nazw produktów
-  jak dziś. Tytuł, opis, kanoniczny i `noindex` `/` bez zmian (poza nazwą sklepu).
+  listingiem to `h2`, nazwy produktów w kafelkach `h3`. W innym stanie `h1` „Wszystkie produkty” i `h2` nazw produktów.
+  Tytuł, opis, kanoniczny i `noindex` `/` nie zależą od hero (zawierają nazwę sklepu).
 - Priorytet ładowania w stanie domyślnym ma tylko zdjęcie hero; kafelki produktów pod nim nie dostają `priority`
-  (dziś pierwsze kafelki listingu mają `fetchpriority="high"`). W innym stanie jak dziś.
+  (w innym stanie pierwsze kafelki listingu mają `fetchpriority="high"`).
 
 ### Zdjęcia strony głównej (D5)
 
@@ -270,8 +267,8 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
 - Skrypt uruchamia się w kontenerze `store` (`make -C apps/store shell`, potem `node scripts/marketing-images.mjs`).
   Źródła są w kontenerze pod `/fixtures/images` z montowania tylko do odczytu
   `./apps/api/fixtures/images:/fixtures/images:ro` w usłudze `store` (`infra/docker-compose.yml`); ścieżki na liście
-  są względne do tego katalogu. Skrypt używa `sharp`, które instaluje Next.js (sprawdzone 2026-11-07 w kontenerze `store`: `sharp` 0.35.5, libvips
-  8.18.7, zapis WebP działa), bez zmiany `package.json`. Najpierw sprawdza wszystko (jest `sharp`, są pliki źródłowe,
+  są względne do tego katalogu. Skrypt używa `sharp`, które instaluje Next.js (w kontenerze `store`: `sharp` 0.35.5, libvips 8.18.7, zapis WebP
+  działa), bez zmiany `package.json`. Najpierw sprawdza wszystko (jest `sharp`, są pliki źródłowe,
   kadr w źródle jest co najmniej tak szeroki jak każda szerokość: bez powiększania), dopiero potem zapisuje pliki.
   Brak `sharp`, brak pliku źródłowego, szerokość ponad kadr albo plik ponad budżet: komunikat na stderr i kod wyjścia
   różny od 0 (częściowy wynik cofa `git checkout`). Ścieżki błędu mają testy w `apps/store/tests` (kod wyjścia
@@ -295,27 +292,27 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
 
 ## Listing `/`, `/c/[...path]`, `/szukaj` (VISUAL-DESIGN-7)
 
-- `CatalogListing`, `Breadcrumbs`, `ListingFilters` (na telefonie i, jeśli makieta tak pokazuje, na desktopie panel
-  wysuwany przyciskiem „Filtry” z dzisiejszym zachowaniem), `ActiveFilters`, `SortSelect`, `ProductGrid`,
-  `ProductTile`, `TileOffer`, `Pagination`, `EmptyResults`, `InvalidFilter` według makiety. Etykiety dostępności
-  z tokenów semantycznych. Zachowanie, teksty, adresy, formularz bez JavaScriptu i liczba żądań do API bez zmian,
-  z wyjątkiem wyboru wariantu na kafelku (poprawka 3 właściciela, niżej).
-- Wybór wariantu na kafelku (`TileOffer`, dziś jeden `<select>` z etykietami wariantów i nieaktywny „Do koszyka”
-  do czasu wyboru), także na kafelkach strony głównej; bez zmiany API, wszystko z oferty
+- `CatalogListing`, `Breadcrumbs`, `ListingFilters` (na telefonie panel rozwijany przyciskiem „Filtry”, od `lg` stale
+  widoczna kolumna po lewej, bez wysuwania), `ActiveFilters`, `SortSelect`, `ProductGrid`, `ProductTile`, `TileOffer`,
+  `Pagination`, `EmptyResults`, `InvalidFilter` według makiety. Etykiety dostępności z tokenów semantycznych.
+  Zachowanie, teksty, adresy, formularz bez JavaScriptu i liczba żądań do API pochodzą z SEARCH
+  (`docs/features/search/spec.md`); epik zmienia wygląd i wybór wariantu na kafelku (poprawka 3 właściciela, niżej).
+- Wybór wariantu na kafelku (`TileOffer`), także na kafelkach strony głównej; bez zmiany API, wszystko z oferty
   (`ProductOfferResponse.variants`: etykieta i `purchasable` każdego wariantu):
   - produkt z kilkoma wariantami ma jedną aktywną akcję „Wybierz wariant”, bez `<select>` i bez nieaktywnego „Do
     koszyka”;
   - po jej użyciu kafelek pokazuje warianty z oferty (etykieta), w kolejności oferty, bez domyślnego wyboru; wariant,
     którego nie można kupić, ma tekst „niedostępny” i nie da się go wybrać; dla produktu z jedną osią etykiety to
-    wartości osi jako przyciski, jak w makiecie; dla produktu z dwiema osiami lub więcej (np. Kolor × Rozmiar) postać
-    listy wybiera VISUAL-DESIGN-7 (mieści się w 375 px bez poziomego przewijania, np. dla 14 wariantów, działa
-    z klawiatury) i zapisuje ją w „Decyzjach bez pytania” w PR; oferta nie ma wartości osi osobno, więc bez zmiany API
-    i bez rozbioru etykiety na osie;
-  - po wyborze kafelek pokazuje cenę i dostępność wybranego wariantu (jak dziś) oraz aktywny „Do koszyka”;
+    wartości osi jako przyciski, jak w makiecie (jeden pod drugim na telefonie, w rzędzie od `lg`); dla produktu
+    z dwiema osiami lub więcej (np. Kolor × Rozmiar) to lista pełnych etykiet jedna pod drugą (mieści się w 375 px bez
+    poziomego przewijania, np. dla 14 wariantów); oferta nie ma wartości osi osobno, więc bez zmiany API i bez rozbioru
+    etykiety na osie. Warianty są grupą pól `radio` (jeden przystanek Tab, strzałki zmieniają wybór, wybór można
+    zmienić);
+  - po wyborze kafelek pokazuje cenę i dostępność wybranego wariantu oraz aktywny „Do koszyka”;
   - fokus po rozwinięciu przechodzi na pierwszy dostępny (możliwy do wybrania) wariant, a rozwinięcie i zmiana dostępności są ogłaszane
     w obszarze `aria-live` (wymaganie z „Wybranego kierunku”);
   - produkt z jednym wariantem ma od razu aktywny „Do koszyka”.
-- Oznaczenie „Promocja” i linia Omnibus (PROMOTIONS), jeśli są na `main`: styl z tokenów, bez zmiany treści (D9).
+- Oznaczenie „Promocja” i linia Omnibus (PROMOTIONS, `PromotionNotice`): styl z tokenów, bez zmiany treści (D9).
 
 ## Karta produktu `/p/[slug]` (VISUAL-DESIGN-8)
 
@@ -353,7 +350,7 @@ stan ładowania kasy), wyprowadza z tokenów i wspólnych komponentów i wpisuje
   - teksty alternatywne: każde zdjęcie w pasku i w powiększeniu ma `alt` z API (`image.alt`); miniatury są
     dekoracyjne (`alt=""`), bo nazwę ma link;
   - jedno zdjęcie: bez miniatur, licznika i strzałek, z powiększeniem; bez zdjęć: `PhotoPlaceholder` bez powiększenia.
-- Promocja i Omnibus (PROMOTIONS), jeśli są na `main`: styl z tokenów, bez zmiany treści (D9).
+- Promocja i Omnibus (PROMOTIONS, `PromotionNotice`): styl z tokenów, bez zmiany treści (D9).
 
 ## Zdjęcia produktów w danych demo (VISUAL-DESIGN-11)
 
@@ -383,33 +380,32 @@ zdjęć. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 
 - **Ładowanie (`apps/api/src/Catalog/Infrastructure/Demo`: definicja, źródło YAML, `DemoCatalogExpander`):**
   definicja pozwala przypisać produktowi (marka + model szablonu) własną listę zdjęć. Produkt z listą bierze
   zdjęcia w kolejności pliku; każdy inny produkt zachowuje `pool[index % count(pool)]` i regułę produktów bez
-  zdjęć bez zmian (te same zdjęcia i ten sam zbiór produktów bez zdjęć co dziś). Odwołanie do nieznanego produktu
+  zdjęć bez zmian (pula zdjęć i zbiór produktów bez zdjęć nie zależą od zdjęć własnych). Odwołanie do nieznanego produktu
   (marki albo modelu spoza szablonu) i pusta lista zdjęć własnych to błąd z komunikatem. Testy jednostkowe w
   `apps/api/tests/Unit/Catalog/Demo`: reguła na przykładzie, błędy oraz test na prawdziwym `catalog.yaml` (zdjęcia
   i zbiór produktów bez zdjęć poza pięcioma produktami niezmienione).
 - **Dokumentacja:** `docs/features/walking-skeleton/spec.md` („Dane demo”) opisuje zdjęcia własne produktu i liczbę
   plików w `apps/api/fixtures/images/`.
 - **Poza zakresem:** zdjęcia zależne od wariantu (zmiana modelu Catalog i API), zdjęcia innych kategorii i produktów,
-  każda zmiana w `apps/store`, w modelu Catalog, schemacie bazy i API. Gdy żadne licencjonowane zdjęcie nie spełnia
-  wymagania, zadanie kończy się `BLOCKED` zamiast słabszego zdjęcia.
+  każda zmiana w `apps/store`, w modelu Catalog, schemacie bazy i API.
 
 ## Pozostałe ekrany (VISUAL-DESIGN-9) i agent UX (VISUAL-DESIGN-10)
 
 - `/cart` (`CartPage`), `/checkout` (`CheckoutPage`), `/checkout/confirmation` (`PaymentConfirmation`), konto
-  (`/konto/zamowienia` i szczegóły, ORDER-MANAGEMENT, jeśli są na `main`), `app/error.tsx`: tokeny, typografia
-  i wspólne komponenty (przyciski, pola, karty, komunikaty `role="alert"`), bez zmiany treści i zachowania.
+  (`/konto/zamowienia` i szczegóły, ORDER-MANAGEMENT), `app/error.tsx`: tokeny, typografia i wspólne komponenty
+  (przyciski, pola, karty, komunikaty `role="alert"`), bez zmiany treści i zachowania.
 - Rama ekranów koszyka, kasy, potwierdzenia i konta: `ScreenMain` i `ScreenTitle` (`src/components/ScreenLayout.tsx`),
   czyli ten sam margines `px-gutter` i szerokość `max-w-content` co pozostałe ekrany, a robocza kolumna (`max-w-3xl`)
   przy lewej krawędzi tytułu. Wspólne komponenty: `Alert` (komunikaty `role="alert"` i `role="status"`), `Card`
   (podsumowania, pozycje zamówień), `Badge` (status zamówienia), `Label`, `Separator`, `Button` (także jako link
   `variant="link"`). Wybór płatności zostaje natywnym polem `radio` (stylowanym tokenami), bo zachowanie i testy
   opierają się na jego `checked` i `labels`. `app/error.tsx` ma ramę strony 404.
-- Agent UX (D8; VISUAL-DESIGN-10, osobne zadanie narzędzi repo bez zależności od wyglądu) ocenia, w `/sweep` i w `/integration` epików z frontem sklepu, oprócz użyteczności i dostępności także:
+- Agent UX (D8; VISUAL-DESIGN-10, narzędzia repo) ocenia, w `/sweep` i w `/integration` epików z frontem sklepu, oprócz użyteczności i dostępności także:
   responsywność (375, 768 i 1440 px: układ, brak poziomego przewijania, cele dotyku, obrazy w rozmiarze ekranu),
   dostępność (klawiatura, fokus, nazwy, `alt`, kontrast, axe), spójność komponentów (te same przyciski, pola, karty
   i komunikaty na wszystkich ekranach, tylko tokeny) i jakość wizualną (zgodność z „Wybranym kierunkiem” i tokenami,
   hierarchia, odstępy, wyrównanie, kadrowanie zdjęć). Makieta `kierunek.html` jest dla niego ilustracją, nie wzorcem
-  pikselowym. W `/integration` tego epiku porównuje ekrany sklepu ze zrzutami makiety.
+  pikselowym. W `/integration` epików z frontem porównuje ekrany sklepu ze zrzutami makiety.
 
 ## Kryteria akceptacji
 
@@ -418,13 +414,13 @@ zdjęć. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 
    zasobów, także fontów: `document.fonts.check` potwierdza font), zapisuje sześć zrzutów (bez wymogu identyczności bajtów: wersje Chromium
    i Playwrighta mogą się zmienić), a przy brakującym zdjęciu albo foncie kończy się błędem; tabela kontrastów: każda para tekst/tło spełnia AA.
 2. Wybrany kierunek: wybór właściciela (kierunek A „Granit” z czterema poprawkami) jest zapisany w sekcji „Wybrany
-   kierunek”; zadania 5–9 go wdrażają i nie zaczynają się przed integracją VISUAL-DESIGN-4.
+   kierunek”, a sklep go wdraża.
 3. Nazwa: `git grep -n -w -i rytm -- ':!docs/features/visual-design'` nie zwraca wyników; tytuły stron sklepu kończą
    się „| Worf”; e-mail potwierdzenia w Mailpit ma nadawcę „Worf <zamowienia@worf.localhost>”; testy API, sklepu
    i E2E przechodzą.
 4. Rozmiar `zoom`: `GET /api/v1/products/{slug}` zwraca `zoomImages` w kolejności i liczbie `images`, z adresami
    `rs:fit:<szerokość>:0` w szerokościach 1280, 1920, 2560 (schemat `ZoomImage`); schemat `ProductImage`, rozmiary
-   `listing` i `product` oraz koszyk bez zmian; `openapi.json` i klient TS sklepu zaktualizowani w tym samym zadaniu; `make -C apps/api check` i testy API przechodzą.
+   `listing` i `product` oraz koszyk bez zmian; `openapi.json` i klient TS sklepu zaktualizowani; `make -C apps/api check` i testy API przechodzą.
 5. Tokeny: `tokens.css` zawiera wyłącznie paletę wybranego kierunku; `make -C apps/store check` przechodzi bez
    wyłączania reguł; `bg-[#000]`, `text-red-500` i kolor w `style` nadal kończą się błędem ESLint.
 6. Fonty: test E2E zbiera żądania przeglądarki na stronie głównej, listingu i karcie produktu, a każde idzie do hosta
@@ -440,20 +436,14 @@ zdjęć. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 
    `sharp`, bez pliku źródłowego (także bez montowania `/fixtures/images`), przy szerokości ponad kadr i ponad budżet
    skrypt kończy się kodem różnym od 0 z komunikatem (testy).
 9. Wygląd: ekrany sklepu odpowiadają makiecie `kierunek.html` na 1440 i 375 px; zrzuty ekranu sklepu robione
-   `make e2e-agent` zostają w katalogu wyników poza repo, a PR podaje ich ścieżki; zgodność ocenia agent UX
-   w `/integration` (D8). Istniejące testy Vitest i E2E przechodzą; zmienić wolno tylko asercje elementów, które epik
-   zmienia: nazwa sklepu, nagłówki na `/` w stanie domyślnym (`e2e/tests/catalog.spec.ts`, `e2e/tests/search.spec.ts`,
-   `apps/store/app/page.test.tsx` i testy, które szukają kafelków produktów na `/` po poziomie nagłówka:
-   `e2e/support/listing.ts`, `cart-guest.spec.ts`, `listing-filters.spec.ts`, `checkout-guest.spec.ts`,
-   `checkout-customer.spec.ts`; pomocnik siatki przestaje zależeć od poziomu nagłówka, np. `data-testid` siatki),
-   otwarcie panelu filtrów przyciskiem na desktopie (tylko gdy makieta tak pokazuje, w pomocniku E2E), priorytet
-   kafelków na `/`, zdjęcia strony produktu (galeria), nagłówek (w tym układ dwóch rzędów na telefonie) i stopka,
-   wybór wariantu na kafelku (`e2e/tests/cart-variants.spec.ts`, `e2e/support/variants.ts`, testy Vitest `TileOffer`
-   i `ProductTile`: jedna akcja „Wybierz wariant”, przyciski wariantów zamiast `<select>`); każda zmiana
-   z uzasadnieniem w PR.
+   `make e2e-agent` zostają w katalogu wyników poza repo; zgodność ocenia agent UX w `/integration` (D8). Pomocnik
+   siatki produktów w E2E (`e2e/support/listing.ts`) znajduje kafelki po `data-testid="product-grid"`, nie po poziomie
+   nagłówka (na `/` w stanie domyślnym nazwy produktów to `h3`); testy wyboru wariantu na kafelku
+   (`e2e/tests/cart-variants.spec.ts`, `e2e/tests/listing-tile-variants.spec.ts`, `e2e/support/variants.ts`, testy
+   Vitest `TileOffer` i `ProductTile`) opisują jedną akcję „Wybierz wariant” i przyciski wariantów zamiast `<select>`.
 10. Galeria: miniatury, przyciski i powiększenie działają myszą, klawiaturą (Tab, Enter, Spacja, ← →, Escape, powrót
     fokusu) i dotykiem (przesunięcie w pasku i w powiększeniu zmienia zdjęcie; E2E z emulacją urządzenia dotykowego
-    375 px, gest przez CDP `Input.synthesizeScrollGesture`); kliknięcie miniatury z JavaScriptem nie zmienia adresu; każde zdjęcie ma `alt` z API, a przycisk powiększenia ma go w nazwie; miniatury `alt=""` w linku z nazwą; bez JavaScriptu wszystkie zdjęcia
+    375 px, gest przez CDP `Input.dispatchTouchEvent`); kliknięcie miniatury z JavaScriptem nie zmienia adresu; każde zdjęcie ma `alt` z API, a przycisk powiększenia ma go w nazwie; miniatury `alt=""` w linku z nazwą; bez JavaScriptu wszystkie zdjęcia
     i miniatury są w HTML i działają; kolejność elementów galerii w dokumencie jest ich kolejnością na ekranie na 1440
     i 375 px (miniatury przed paskiem od `lg`, pasek przed miniaturami poniżej), a `aria-current` widocznej listy
     zmienia się ze strzałką i miniaturą; pozycja `h1` i przycisku „Do koszyka” jest taka sama przed hydratacją i po niej;
@@ -481,33 +471,19 @@ zdjęć. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 
     (np. demo z Kolor × Rozmiar), na 375 px bez poziomego przewijania; po „Wybierz wariant” fokus trafia na pierwszy
     dostępny wariant, a rozwinięcie i zmiana dostępności są ogłaszane w `aria-live`.
 
-## Zadania dokumentacji (razem z implementacją)
+## Dokumenty opisujące funkcję
 
-- Nazwa „Worf” (VISUAL-DESIGN-2): `docs/vision.md`, `README.md`, `apps/store/CLAUDE.md`, `apps/api/CLAUDE.md`
-  (`MAILER_FROM`), `docs/features/catalog-page-metadata/spec.md`, `docs/features/search/spec.md`,
-  `docs/features/product-page/spec.md`, `docs/features/checkout/spec.md`, `docs/features/walking-skeleton/spec.md`.
-- Rozmiar `zoom` (VISUAL-DESIGN-3): `docs/vision.md` („Zdjęcia produktów”: rozmiar `zoom` bez przycinania),
-  `apps/api/CLAUDE.md` (zdjęcia szczegółów w rozmiarach `product` i `zoom`), `docs/features/product-page/spec.md`
-  (`zoomImages` w odczycie strony).
-- `docs/vision.md` („Wygląd sklepu”): bez zdania o tymczasowym motywie; wybrany kierunek jednym zdaniem z odesłaniem
-  do tej specyfikacji (VISUAL-DESIGN-5); strona główna z hero i kafelkami działów; zdjęcia marketingowe strony głównej
-  jako statyczne, responsywne pliki sklepu, wyjątek od zdjęć przez imgproxy (D5), w „Zdjęcia produktów”
-  (VISUAL-DESIGN-6).
-- Główny `CLAUDE.md` („Obrazy”): wyjątek dla zdjęć marketingowych strony głównej i ich jedna lista rozmiarów w sklepie
-  (D5) (VISUAL-DESIGN-6).
-- `apps/store/CLAUDE.md`: „Wygląd” (wybrany kierunek, fonty lokalne, paleta tylko z VISUAL-DESIGN-5, stopka, 404),
-  struktura (`SiteFooter`, `not-found.tsx`) (VISUAL-DESIGN-5); „Obrazy” i struktura (`src/home/`, skrypt, lista
-  zdjęć marketingowych, montowanie `/fixtures/images` w kontenerze `store`) (VISUAL-DESIGN-6); galeria i powiększenie w „Strona produktu” (VISUAL-DESIGN-8).
-- `docs/features/catalog-page-metadata/spec.md` (strona 404 z Next.js) (VISUAL-DESIGN-5).
-- `docs/features/search/spec.md` (nagłówek, nagłówki na `/`, tymczasowy motyw, pozycje „Poza zakresem” z VISUAL-DESIGN)
-  i `docs/features/walking-skeleton/spec.md` (tymczasowy motyw): stan obecny z odesłaniem do tej specyfikacji
-  (VISUAL-DESIGN-6).
-- `docs/features/product-page/spec.md` (zdjęcia strony i pozycja „Poza zakresem” z VISUAL-DESIGN): galeria
-  z powiększeniem, odesłanie do tej specyfikacji (VISUAL-DESIGN-8).
-- `docs/features/walking-skeleton/spec.md` („Dane demo”): zdjęcia własne produktu i liczba plików zdjęć
-  (VISUAL-DESIGN-11).
-- `docs/features/visual-design/spec.md` (pierwszy akapit sekcji „Zdjęcia produktów w danych demo”) i
-  `docs/features/visual-design/mockups/README.md` (odstępstwa 1 i 2): opis zdjęć w danych demo (VISUAL-DESIGN-11).
+- `docs/vision.md` („Wygląd sklepu”, „Zdjęcia produktów”): nazwa „Worf”, wybrany kierunek jednym zdaniem z odesłaniem
+  do tej specyfikacji, strona główna z hero i kafelkami działów, zdjęcia marketingowe jako statyczne, responsywne pliki
+  sklepu (wyjątek od imgproxy, D5), rozmiar `zoom` bez przycinania.
+- `CLAUDE.md` („Obrazy”): wyjątek dla zdjęć marketingowych strony głównej i ich jedna lista rozmiarów w sklepie (D5).
+- `apps/store/CLAUDE.md`: „Wygląd” (wybrany kierunek, fonty lokalne, paleta, stopka, 404), struktura (`SiteFooter`,
+  `not-found.tsx`, `src/home/`, skrypt i lista zdjęć marketingowych, montowanie `/fixtures/images` w kontenerze
+  `store`), nagłówek, galeria i powiększenie w „Strona produktu”.
+- `apps/api/CLAUDE.md`: zdjęcia szczegółów w rozmiarach `product` i `zoom`, `MAILER_FROM`.
+- `README.md` i specyfikacje funkcji (`catalog-page-metadata`, `search`, `product-page`, `checkout`, `walking-skeleton`,
+  w tym „Dane demo”: zdjęcia własne produktu i liczba plików zdjęć): nazwa „Worf” i odesłania do tej specyfikacji.
+- `docs/features/visual-design/mockups/README.md`: wskazówki makiety, odstępstwa od danych demo, skrypt zrzutów.
 - `docs/features/agent-tester-ux/spec.md`, `.claude/agents/ux-reviewer.md` i `docs/features/agentic-software-house/plan.md`
   (krok 9): zakres oceny agenta UX z D8 (VISUAL-DESIGN-10).
 
@@ -515,35 +491,30 @@ zdjęć. Zakres: kategoria `sporty-wodne/kajaki` i Narty skiturowe Stavro Grań 
 
 | # | Decyzja |
 |---|---|
-| D1 | Kierunek wizualny wybiera wyłącznie właściciel. Wybrany jest kierunek A „Granit” z jego poprawkami, zapisany w „Wybranym kierunku”; zadania 5–9 wdrażają ten wybór. |
-| D2 | Makieta trafia do repo w `docs/features/visual-design/mockups/` przez PR zadań epiku; końcowy PR epiku merguje użytkownik. |
+| D1 | Kierunek wizualny wybiera wyłącznie właściciel. Wybrany jest kierunek A „Granit” z jego poprawkami, zapisany w „Wybranym kierunku”; sklep go wdraża. |
+| D2 | Makieta jest w repo w `docs/features/visual-design/mockups/`. |
 | D3 | Makieta to statyczny HTML w `docs` ze zrzutami PNG wszystkich ekranów obu szerokości, nie strona w sklepie. |
 | D4 | Fonty na licencji OFL z polskimi znakami, lokalnie przez `next/font/local`, pliki WOFF2 w repo. |
 | D5 | Zdjęcia strony głównej to statyczne pliki WebP sklepu (wyjątek od imgproxy), zoptymalizowane i responsywne: osobny kadr i szerokości dla telefonu, budżet rozmiaru, telefon nie pobiera pliku szerokiego ekranu. Generuje je skrypt na `sharp` z Next.js (sprawdzone w kontenerze). |
 | D6 | Galeria: pasek `scroll-snap`, miniatury i licznik w HTML z serwera, przyciski, powiększenie w shadcn `dialog` na nowym rozmiarze `zoom` z API (całe zdjęcie bez przycinania); dotyk, klawiatura, teksty alternatywne z API; bez lupy i biblioteki karuzeli. |
 | D8 | Agent UX ocenia responsywność, dostępność, spójność komponentów i jakość wizualną względem „Wybranego kierunku” i tokenów; makieta jest ilustracją. |
-| D9 | Ekrany ORDER-MANAGEMENT i PROMOTIONS są w zakresie, jeśli są na `main` przy starcie; VISUAL-DESIGN rusza po tych epikach. |
+| D9 | Ekrany ORDER-MANAGEMENT i PROMOTIONS są w zakresie wyglądu (konto, oznaczenie „Promocja”, linia Omnibus). |
 | D10 | Własna polska strona 404 w layoucie sklepu. |
 | D11 | Makieta wybranego kierunku i jej sześć zrzutów zostają w repo jako ilustracja z chwili wyboru; źródłem prawdy są ta specyfikacja i `tokens.css`. |
-| D12 | Nazwa sklepu „Worf” (domena worf.pl) w całym repo, w pierwszej fali. |
+| D12 | Nazwa sklepu „Worf” (domena worf.pl) w całym repo. |
 | D13 | Zdjęcia produktów w danych demo (VISUAL-DESIGN-11): jeden dopracowany przykład (kajaki i narty Stavro Grań 95), zdjęcia przypisane do produktu, nie wariantu (bez zmiany modelu Catalog i API), z istniejącą pulą zdjęć dla pozostałych produktów. |
 
 ## Ryzyka
 
-- Zadania 6, 8 i 9 idą równolegle (7 po 6, bo oba zmieniają `CatalogListing` i siatkę) na wspólnych plikach sklepu (np. `CLAUDE.md` sklepu, layout): możliwe konflikty merge'a
-  w gałęzi epiku; `tokens.css` zmienia tylko VISUAL-DESIGN-5.
 - `sharp` jest zależnością Next.js, nie sklepu: aktualizacja Next.js może go zmienić albo usunąć. Skrypt kończy się
   wtedy jasnym błędem; commitowane pliki działają dalej.
 - Miniatury galerii pobierają najmniejszą szerokość rozmiaru `product` (640 px) zamiast miniatury; osobny rozmiar
   `thumbnail` w API to późniejsze issue.
-- Licencjonowane zdjęcia dla VISUAL-DESIGN-11 mogą nie istnieć: zielony kajak jednoosobowy i dwuosobowy
-  w czterech różnych ujęciach, niebieskie narty skiturowe w trzech ujęciach (cała para, detal, w użyciu) muszą
-  spełniać wymagania z Unsplash. Brak zdjęcia kończy zadanie `BLOCKED`, bez słabszego zastępnika.
 - Zdjęcie jest zdjęciem produktu, nie wariantu: kafelek i karta pokazują zielonego kajaka także po wyborze wariantu
   pomarańczowego, a na karcie nart zdjęcia pokazują wariant niebieski także po wyborze pomarańczowego. Zdjęcia zależne
   od wariantu wymagałyby zmiany modelu Catalog i API (poza zakresem).
-- Wybór wariantu na kafelku (jedna akcja, przyciski zamiast `<select>`) zmienia testy Vitest i E2E tego fragmentu
-  (kryterium 9) i wymaga zadbania o fokus i `aria-live` (wymagania z „Wybranego kierunku”).
+- Wybór wariantu na kafelku (jedna akcja, przyciski zamiast `<select>`) wymaga zadbania o fokus i `aria-live`
+  (wymagania z „Wybranego kierunku”); pilnują tego testy Vitest i E2E tego fragmentu (kryterium 9).
 - Pomiar Lighthouse w CI z `docs/vision.md` („Wydajność”) zostaje poza epikiem; bez niego nie twierdzimy, że strony
   spełniają Core Web Vitals.
 - Nazwa „Worf” to też imię postaci ze znanej franczyzy filmowej; przed publicznym demo trzeba ją sprawdzić w bazach
