@@ -56,7 +56,7 @@ są przypięte w pliku compose, a wersja Elasticsearch w `infra/elasticsearch/Do
 | `worker` | obraz z tego samego Dockerfile i targetu co `api`, własny katalog cache (`APP_CACHE_DIR=/tmp/cache`) | `messenger:consume outbox events scheduled` | proces konsumenta działa |
 | `store` | Node 24, `next dev` | sklep | `GET /` |
 | `admin` | Node 24, `vite dev` | panel | `GET /` |
-| `e2e` | obraz Playwright, profil `e2e` | testy E2E, uruchamiany tylko przez `make e2e` | — |
+| `e2e` | obraz Playwright, profil `e2e` | testy E2E i pomiar Lighthouse, uruchamiany tylko przez `make e2e` i `make lighthouse` | — |
 
 Aplikacje zależą od usług przez `depends_on: condition: service_healthy`. `make up` używa `docker compose up -d --wait` dla wszystkich usług poza `rabbitmq-init` i `worker`. Potem uruchamia `rabbitmq-init` przez `docker compose run --rm` (`up --wait` traktuje zakończoną usługę jednorazową, na którą nic nie czeka, jako błąd), krok inicjalizacji (niżej) i dopiero na końcu `worker`, bo bez migracji nie ma tabel transportu `outbox`. `worker` jest tworzony od nowa przy każdym `make up` (`--force-recreate`), więc działa na kodzie i konfiguracji skompilowanych przez `init`. Ma własny katalog cache poza bind mountem: gdy `api` przebudowuje kontener DI we wspólnym `var/cache` (po zmianie kodu), usuwa pliki, które długo działający worker wczytuje leniwie, a worker kończy się błędem na pierwszej wiadomości, której nie przetworzy przed `redeliver_timeout` (300 s).
 
@@ -131,7 +131,7 @@ całego stosu.
 
 | Makefile | Cele |
 |---|---|
-| główny | `up`, `down`, `logs`, `ps`, `seed`, `check`, `test`, `e2e`, `e2e-check`, `api-client`, `keycloak-reset` |
+| główny | `up`, `down`, `logs`, `ps`, `seed`, `check`, `test`, `e2e`, `e2e-check`, `lighthouse`, `api-client`, `keycloak-reset` |
 | `apps/api` | `check` (`phpstan`, `deptrac`, `cs-check`), `cs-fix`, `test`, `test-unit`, `init`, `init-test`, `migrate`, `migration`, `openapi`, `shell` |
 | `apps/store` | `check` (`lint`, `typecheck`), `test`, `test-unit`, `shell` |
 | `apps/admin` | `check` (`lint`, `typecheck`), `test`, `shell` |
@@ -140,9 +140,16 @@ całego stosu.
 - `test` uruchamia wszystkie testy aplikacji, także te, które potrzebują usług stosu. `test-unit` nie wymaga żadnej
   usługi.
 - `e2e` wymaga wcześniejszego `make up` i `make seed`.
-- `e2e-check` sprawdza typy pakietu `e2e` (`tsc --noEmit` w obrazie `e2e`, bez usług stosu). Nie wchodzi w `check`, bo wymaga
-  obrazu Playwright; uruchamia go job `e2e` w CI.
-- `e2e` i `e2e-check` przyjmują dodatkowe flagi `docker compose run` w zmiennej `E2E_FLAGS` (CI przekazuje `-T`, bo nie ma terminala).
+- `e2e-check` sprawdza typy pakietu `e2e` (`tsc --noEmit` w obrazie `e2e`, bez usług stosu) i uruchamia testy `node --test`
+  skryptu median Lighthouse (`e2e/lighthouse/summary.test.mjs`). Nie wchodzi w `check`, bo wymaga obrazu Playwright;
+  uruchamia go job `e2e` w CI.
+- `lighthouse` mierzy Lighthouse'em trzy strony sklepu (`/`, `/c/turystyka/biwak/namioty`, `/p/namiot-turystyczny-norvane-biwak-2`),
+  po 3 przebiegi w profilu mobilnym, w kontenerze `e2e` (`e2e/lighthouse`). Wymaga stosu ze sklepem w trybie produkcyjnym
+  (`STORE_MODE=production make up` i `make seed`): tryb czyta z działającego kontenera `store`, a w innym trybie albo przy
+  zatrzymanym sklepie kończy się komunikatem, bez pomiaru. Raporty, `manifest.json` i `medians.md` (mediany SEO, Performance,
+  LCP, CLS i TBT) są w `e2e/lighthouse-results/` (poza gitem). Blokuje tylko wynik SEO (mediana każdego adresu ≥ 0,9);
+  progi Performance, LCP, CLS i TBT ostrzegają. Opis: `docs/features/lighthouse/spec.md`.
+- `e2e`, `e2e-check` i `lighthouse` przyjmują dodatkowe flagi `docker compose run` w zmiennej `E2E_FLAGS` (CI przekazuje `-T`, bo nie ma terminala).
 - `keycloak-reset` usuwa bazę `keycloak` i restartuje Keycloak, który importuje realmy od nowa.
 
 ## Keycloak
@@ -982,8 +989,10 @@ PR (albo refu) przerywa poprzednie. Działa bez całego stosu: kontenery aplikac
 5. Aktualność kontraktu: `make -C apps/api openapi` i `make api-client`, potem `git diff --exit-code` na
    `apps/api/openapi.json`, `apps/api/openapi-admin.json` i obu `schema.d.ts`.
 
-Osobny job `e2e` najpierw sprawdza typy testów (`make e2e-check`), potem uruchamia pełny stos (`make up`, `make seed`)
-i `make e2e`. Przy porażce wypisuje logi usług
+Osobny job `e2e` najpierw sprawdza typy testów i uruchamia testy skryptu median (`make e2e-check`), potem uruchamia pełny
+stos (`make up`, `make seed`) i `make e2e`. Po `make e2e` i testach `init-env.sh` uruchamia `make lighthouse` (sklep
+w trybie produkcyjnym), dopisuje `e2e/lighthouse-results/medians.md` do podsumowania kroku i wysyła `e2e/lighthouse-results`
+jako artefakt `lighthouse-results`, także po błędzie pomiaru. Przy porażce wypisuje logi usług
 i zapisuje ślady Playwrighta (`e2e/test-results`) jako artefakt.
 
 ## Zależności
@@ -996,7 +1005,7 @@ Akceptacja tej specyfikacji jest zgodą na poniższą listę. Każda inna zależ
 | api (rozszerzenia PHP) | `pdo_pgsql`, `amqp`, `redis`, `intl`, `opcache`, `pcntl` | `spx` |
 | store (npm) | `next`, `react`, `react-dom`, `openid-client`, `redis`, `openapi-fetch`, `radix-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react` | `typescript`, `@types/node`, `@types/react`, `@types/react-dom`, `tailwindcss`, `@tailwindcss/postcss`, `tw-animate-css`, `eslint`, `eslint-config-next`, `eslint-plugin-better-tailwindcss`, `openapi-typescript`, `vitest`, `@vitejs/plugin-react`, `@testing-library/react`, `jsdom` |
 | admin (npm) | `vue`, `vue-router`, `pinia`, `primevue`, `@primeuix/themes`, `primeicons`, `oidc-client-ts`, `openapi-fetch` | `vite`, `@vitejs/plugin-vue`, `typescript`, `vue-tsc`, `eslint`, `typescript-eslint`, `eslint-plugin-vue`, `openapi-typescript`, `vitest`, `@vue/test-utils`, `jsdom` |
-| e2e (npm) | — | `@playwright/test`, `otpauth`, `typescript` |
+| e2e (npm) | — | `@lhci/cli`, `@playwright/test`, `otpauth`, `typescript` |
 | obrazy | — | `socat` w obrazie `e2e` |
 
 CLI `shadcn` jest uruchamiane w kontenerze `store` (`npx shadcn@latest`) tylko do dodawania komponentów i nie jest

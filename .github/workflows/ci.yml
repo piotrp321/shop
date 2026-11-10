@@ -477,6 +477,28 @@ jobs:
         if: env.FULL_CI == 'true'
         run: make init-env-test
 
+      # Lighthouse measurement of three store pages on the production build (e2e/lighthouse, docs/features/lighthouse/spec.md).
+      # Only the SEO score fails the step; the medians are in the step summary and the reports in the artifact below.
+      - name: make lighthouse
+        if: env.FULL_CI == 'true'
+        run: make lighthouse E2E_FLAGS=-T E2E_BUILD=
+
+      # Also after a failed assertion (always), so that the medians and the reports are never lost.
+      - name: Lighthouse medians in the step summary
+        if: always() && env.FULL_CI == 'true'
+        run: |
+          if [ -f e2e/lighthouse-results/medians.md ]; then
+            cat e2e/lighthouse-results/medians.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload Lighthouse results
+        if: always() && env.FULL_CI == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lighthouse-results
+          path: e2e/lighthouse-results
+          if-no-files-found: ignore
+
       - name: Service logs
         if: failure()
         run: docker compose logs --tail=200
