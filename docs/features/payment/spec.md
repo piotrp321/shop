@@ -29,8 +29,7 @@ Poza zakresem:
 - statusy po opłaceniu (wysłane, dostarczone), anulowanie i zwrot z panelu, zatwierdzenie rezerwacji
   (`CommitReservation`) przy wysyłce, historia zamówień (ORDER-MANAGEMENT #92);
 - płatność z historii zamówień albo z linku w e-mailu: gość płaci w sesji kasy (ciasteczko potwierdzenia),
-  potem zamówienie wygasa;
-- rate limiting webhooków (D9).
+  potem zamówienie wygasa.
 
 ## Decyzje
 
@@ -52,7 +51,7 @@ Decyzje użytkownika:
 | A5 | Gość ma dostęp do swojego zamówienia (rozpoczęcie płatności, odczyt statusu) przez losowy token dostępu zwracany przy złożeniu (`accessToken`), jak id koszyka gościa; klient zalogowany przez `sub` z tokena. Regułę dostępu sprawdza Ordering (`GetOrderForPayment` z danymi dostępu zwraca `null` przy braku dostępu); token nie opuszcza Ordering. |
 | A6 | Przejścia statusu zamówienia (`new → paid`, `new → cancelled` i przejścia pracownika z ORDER-MANAGEMENT) jako metody agregatu `Order` z tabelą dozwolonych przejść w czystym PHP, bez Symfony Workflow (`docs/features/order-management/spec.md`, A1). |
 | T1 | Sekrety dostawców (klucze API i sekrety podpisu webhooków, po dwa na dostawcę) w `.env.local` z `infra/scripts/init-env.sh`, który dopisuje brakujące klucze z listy „dopisywanych” do istniejącego pliku (brak każdego innego klucza kończy się błędem i wymaga odtworzenia stosu). |
-| D9 | Rate limiting webhooków odłożony do kroku 10 planu `docs/features/agentic-software-house/plan.md`, jak rate limiting składania zamówień (CHECKOUT T2). |
+| D9 | Rozpoczęcie płatności (na adres gościa albo konto klienta) i webhooki (na parę dostawca i adres) mają limity liczby żądań (`docs/features/hardening/spec.md`, „Rate limiting”). Przekroczenie to 429 z `Retry-After` przed kontrolerem, więc webhook ponad limitem nie dochodzi do sprawdzenia podpisu. Symulator ponawia dostawę po 429 jak po 5xx. |
 
 ## Bounded contexty i zależności
 
@@ -359,7 +358,8 @@ przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`Star
   przekierowanie), `decided_at`, wiadomość `DeliverSimulatedWebhook` na transport `payment_simulator` w tej samej
   transakcji, przekierowanie 303 na `returnUrl` (`demo-card`: `successUrl` albo `cancelUrl`).
 - `DeliverSimulatedWebhook`: podpisany `POST` na `PAYMENT_WEBHOOK_BASE_URL` + ścieżka webhooka dostawcy; 2xx i 4xx
-  kończą dostawę (4xx z logiem), 5xx i błąd sieci → wyjątek i ponowienie według strategii transportu. Identyfikator
+  poza 429 kończą dostawę (4xx z logiem), 429 (limit webhooków sklepu, D9), 5xx i błąd sieci → wyjątek i ponowienie
+  według strategii transportu (po pięciu ponowieniach `failed`). Identyfikator
   zdarzenia stały dla transakcji, więc ponowienie trafia na deduplikację. Podpis `demo-card` liczony przy każdej
   próbie (świeży `t`).
 - Symulator działa także w środowisku demo (płatności udawane, `docs/vision.md`).
@@ -407,11 +407,11 @@ Błędy RFC 9457. Odpowiedzi `Cache-Control: private, no-store`. `security.yaml`
 | Endpoint | Sukces | Błędy |
 |---|---|---|
 | `GET /api/v1/payment-providers` | 200 `[{code, name}]` | — |
-| `POST /api/v1/orders/{orderId}/payments` (gość), nagłówki `Idempotency-Key`, `Order-Access-Token`, body `{provider}` | 201 `PaymentView {paymentId, provider, status, redirectUrl}`; 200 powtórzenie | 400 klucz, zły JSON; 401 wysłany niepoprawny token sesji; 404 zamówienie (także brak lub zły token, zamówienie klienta, id spoza UUID); 409 `OrderAlreadyPaid`, `PaymentDeadlinePassed`, `PaymentInProgress`, `PaymentIdempotencyKeyReused` (schemat `PaymentConflictProblem` z `enum` typów); 415; 422 (`provider` brak, nieznany); 503 dostawca albo (token sesji wysłany) klucze wystawcy niedostępne |
+| `POST /api/v1/orders/{orderId}/payments` (gość), nagłówki `Idempotency-Key`, `Order-Access-Token`, body `{provider}` | 201 `PaymentView {paymentId, provider, status, redirectUrl}`; 200 powtórzenie | 400 klucz, zły JSON; 401 wysłany niepoprawny token sesji; 404 zamówienie (także brak lub zły token, zamówienie klienta, id spoza UUID); 409 `OrderAlreadyPaid`, `PaymentDeadlinePassed`, `PaymentInProgress`, `PaymentIdempotencyKeyReused` (schemat `PaymentConflictProblem` z `enum` typów); 415; 422 (`provider` brak, nieznany); 429 limit rozpoczęć płatności (D9, `Retry-After`); 503 dostawca albo (token sesji wysłany) klucze wystawcy niedostępne |
 | `POST /api/v1/me/orders/{orderId}/payments` (klient) | jak wyżej | 401, 503 klucze wystawcy; pozostałe jak wyżej |
 | `GET /api/v1/orders/{orderId}/payment` (gość, `Order-Access-Token`) | 200 `PaymentStatusView` | 401 wysłany niepoprawny token sesji; 404; 503 (token sesji wysłany) klucze wystawcy niedostępne |
 | `GET /api/v1/me/orders/{orderId}/payment` (klient) | 200 `PaymentStatusView` | 401, 404, 503 klucze wystawcy |
-| `POST /api/v1/payments/webhooks/{provider}` | 204 | 400 (podpis, treść), 401 wysłany niepoprawny token sesji, 404 (dostawca, płatność), 422 kwota, 503 `OrderBusy` |
+| `POST /api/v1/payments/webhooks/{provider}` | 204 | 400 (podpis, treść), 401 wysłany niepoprawny token sesji, 404 (dostawca, płatność), 422 kwota, 429 limit webhooków przed sprawdzeniem podpisu (D9, `Retry-After`), 503 `OrderBusy` |
 
 `type` problemów płatności (prefiks `tag:piotrp321.github.io,2026:shop/problems/`): `order-already-paid`,
 `payment-deadline-passed`, `payment-in-progress`, `payment-idempotency-key-reused`.
@@ -474,7 +474,7 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | brak ciasteczka | jak w CHECKOUT |
 
 - „Zapłać”: `Idempotency-Key` nowy przy każdej próbie i po zmianie dostawcy, ten sam przy ponowieniu niepewnego
-  wyniku (błąd sieci, 5xx, 503) z tym samym dostawcą. Wyniki:
+  wyniku (błąd sieci, 5xx, 503) i po 429 z tym samym dostawcą. Wyniki:
 
 | Wynik | UI |
 |---|---|
@@ -485,6 +485,7 @@ zamówienia.”. 422 pola `provider`: „Wybierz sposób płatności.” (brak, 
 | 404 | „Nie znaleźliśmy zamówienia.” i link do sklepu |
 | 422 | komunikat przy grupie dostawców |
 | 401 | „Twoja sesja wygasła. Zaloguj się ponownie.” z linkiem (`returnTo=/checkout/confirmation`) |
+| 429 (limit rozpoczęć płatności, D9) | „Zbyt wiele prób płatności. Spróbuj ponownie za kilka minut.” (ponowienie z tym samym kluczem) |
 | 503, 5xx, błąd sieci | „Nie udało się rozpocząć płatności. Spróbuj ponownie.” (ponowienie z tym samym kluczem) |
 
 - Fokus po odrzuceniu na komunikacie (`role="alert"`), jak w kasie.
@@ -629,7 +630,8 @@ przekierowanie, link „Opłać zamówienie” przy pustym koszyku i ciasteczku)
 - Czas wykonania płatności pochodzi od dostawcy (podpisana treść webhooka); API mu ufa.
 - Wywołanie HTTP dostawcy w transakcji rozpoczęcia płatności (limit 5 s); przy symulatorze w tym samym API jedno
   rozpoczęcie zajmuje dwa wątki FrankenPHP. Przy prawdziwym dostawcy do przeniesienia poza transakcję.
-- Webhooki bez rate limitingu (D9).
+- Limit webhooków liczy się na adres nadawcy (D9): prawdziwy dostawca wysyłający z wielu adresów ma kilka limitów,
+  a symulator ponawia dostawę po 429 najwyżej pięć razy (około 2 minut), potem wiadomość trafia do `failed`.
 - Symulator działa w tym samym kontenerze co API, a `StartPayment` woła go przez HTTP z transakcji: gdy równoległych
   rozpoczęć płatności jest tyle, ile wątków FrankenPHP, wszystkie czekają na wolny wątek symulatora, kończą się po 5 s
   odpowiedzią 503 i przez ten czas trzymają połączenia z bazą. Lokalnie i w demo bez znaczenia; przed testami

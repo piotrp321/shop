@@ -5,6 +5,7 @@ import { createApiClient } from "@/api/client";
 import type { AuthConfig } from "./config";
 import { SESSION_COOKIE, signValue } from "./cookies";
 import type { AuthDeps, MeResult } from "./deps";
+import type { LoginRateLimiter } from "./login-rate-limit";
 import { createOidcClient } from "./oidc";
 import { createRedisClient, type RedisClient } from "./redis";
 import type { LoginTransaction, LoginTransactionStore, SessionData, SessionStore } from "./session-store";
@@ -17,6 +18,7 @@ export const testConfig: AuthConfig = {
   keycloakInternalUrl: "http://keycloak:8080",
   clientSecret: "test-client-secret",
   sessionSecret: "t".repeat(64),
+  loginRateLimit: 30,
 };
 
 export function memorySessionStore() {
@@ -59,6 +61,19 @@ export function memoryTransactionStore() {
   return { store, transactions };
 }
 
+/** Counts hits per key without a window: enough for the route tests, which only compare the count with the limit. */
+export function memoryLoginRateLimiter(retryAfterSeconds = 600) {
+  const counts = new Map<string, number>();
+  const limiter: LoginRateLimiter = {
+    async hit(key) {
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      return { count, retryAfterSeconds };
+    },
+  };
+  return { limiter, counts };
+}
+
 /** A real openid-client configuration with Keycloak's metadata, so URLs are built by the library itself. */
 export function testOidcConfiguration(config: AuthConfig = testConfig): Configuration {
   const realm = `${config.keycloakPublicUrl}/realms/shop`;
@@ -92,11 +107,13 @@ export const sessionData = (overrides: Partial<SessionData> = {}): SessionData =
 export function testDeps() {
   const sessions = memorySessionStore();
   const transactions = memoryTransactionStore();
+  const loginRateLimiter = memoryLoginRateLimiter();
   const oidc = createOidcClient(testOidcConfiguration(), testConfig);
   const deps = {
     config: testConfig,
     sessions: sessions.store,
     transactions: transactions.store,
+    loginRateLimiter: loginRateLimiter.limiter,
     oidc: vi.fn(async () => oidc),
     freshAccessToken: vi.fn(async (id: string) => (await sessions.store.get(id))?.accessToken ?? null),
     fetchMe: vi.fn(async (): Promise<MeResult> => ({ kind: "ok", name: "Jan", email: "jan.kowalski@example.com" })),
@@ -110,7 +127,7 @@ export function testDeps() {
         },
       }),
   } satisfies AuthDeps;
-  return { deps, oidc, sessions: sessions.sessions, transactions: transactions.transactions };
+  return { deps, oidc, sessions: sessions.sessions, transactions: transactions.transactions, loginRateLimits: loginRateLimiter.counts };
 }
 
 export const signedSessionCookie = (id: string) => `${SESSION_COOKIE}=${signValue(id, testConfig.sessionSecret)}`;

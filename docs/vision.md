@@ -222,6 +222,9 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 - Do 60 tysięcy jednocześnie aktywnych użytkowników.
 - To cele, do których architektura ma być przygotowana, a nie deklaracja obecnej wydajności. Takiego obciążenia
   nie uruchamiamy lokalnie ani w środowisku demo.
+- Testy obciążeniowe (k6, skrypty w `load/`) mierzą krytyczne ścieżki: katalog, stronę produktu, wyszukiwarkę, koszyk
+  i checkout gościa, przez sklep, na klastrze k3d z obrazami produkcyjnymi (`make -C infra/k8s load`). Wynik opisuje
+  tę maszynę i to demo (mały katalog), nie skalę docelową. Raport pomiaru jest w `docs/reports/`. `make load-smoke` uruchamia skrypty z jednym użytkownikiem w CI, żeby nie przestały działać.
 
 **Spójność i współbieżność**
 - Optimistic locking (wersja) dla edycji z widoku: zmiana agregatu edytowanego równolegle (zamówienie, cena, korekta
@@ -240,14 +243,20 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 **Obserwowalność**
 - Logi strukturalne (JSON) z Monologa.
 - Correlation ID nadawany na wejściu (HTTP) i przekazywany przez RabbitMQ do konsumentów,
-  więc jedno zamówienie da się prześledzić przez wszystkie procesy.
+  więc jedno żądanie da się prześledzić przez wszystkie procesy, które uruchomiło.
 - Health checki dla API i wszystkich usług w docker-compose.
 - Profilowanie PHP lokalnie przez SPX (php-spx): rozszerzenie tylko w obrazie deweloperskim API,
   włączane na żądanie, z podglądem flame graph w przeglądarce. W środowisku demo wydajność śledzimy
   przez trace'y (Grafana Cloud) i Sentry Performance.
 
 **Bezpieczeństwo**
-- Rate limiting (Symfony RateLimiter, Redis) na logowaniu, checkout i webhookach.
+- Rate limiting (Symfony RateLimiter, Redis) na składaniu zamówień, rozpoczęciu płatności i webhookach dostawców;
+  rozpoczęcie logowania w sklepie (`/auth/login`) ma licznik w Redisie sklepu (30 na 10 min na adres). Za Cloudflare
+  adres klienta pochodzi z nagłówka `CF-Connecting-IP`, którego nie da się podrobić, bo origin przyjmuje ruch tylko
+  z adresów Cloudflare (`docs/features/hardening/spec.md`).
+- Nagłówki bezpieczeństwa: sklep, panel i API wysyłają `X-Content-Type-Options: nosniff` (sklep i panel także
+  `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy` i CSP; CSP panelu ogranicza skrypty do własnego origin),
+  HSTS dodaje ingress przy TLS (`docs/features/hardening/spec.md`).
 - Walidacja wejścia na granicy API (DTO + Symfony Validator). Domena dodatkowo pilnuje swoich niezmienników.
 - CORS tylko dla domeny panelu (`admin`). Sklep woła API wyłącznie z serwera, więc nie potrzebuje CORS.
 - Uprawnienia w panelu sprawdzane w API (votery), nie tylko ukrywane w UI.

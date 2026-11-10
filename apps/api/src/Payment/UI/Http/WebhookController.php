@@ -9,6 +9,7 @@ use App\Payment\Application\InvalidWebhook;
 use App\Payment\Application\PaymentProviders;
 use App\Payment\Application\Port\Clock;
 use App\Payment\Domain\ProviderCode;
+use App\Shared\Infrastructure\Http\RateLimit;
 use OpenApi\Attributes as OA;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -36,7 +37,7 @@ final readonly class WebhookController
     ) {
     }
 
-    #[Route('/api/v1/payments/webhooks/{provider}', name: 'payment_webhook', methods: ['POST'])]
+    #[Route('/api/v1/payments/webhooks/{provider}', name: 'payment_webhook', methods: ['POST'], defaults: [RateLimit::ROUTE_DEFAULT => RateLimit::PAYMENT_WEBHOOK, RateLimit::KEY_ROUTE_DEFAULT => RateLimit::BY_PROVIDER])]
     #[OA\Post(
         operationId: 'receivePaymentWebhook',
         summary: 'Webhook of a payment provider',
@@ -65,6 +66,7 @@ final readonly class WebhookController
             new OA\Response(response: 401, description: 'An access token of a session was sent and is invalid (problem details, `WWW-Authenticate: Bearer`). None is needed.', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 404, description: 'Unknown provider, or no payment of the session at this provider (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 422, description: 'The amount is not the amount of the payment; nothing changed (problem details).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
+            new OA\Response(response: 429, description: 'Too many webhooks of this provider from this address: the rate limit of the webhooks, before the signature is verified. Nothing is handled; the provider retries later. Problem details; `Retry-After` tells the seconds to wait.', headers: [new OA\Header(header: 'Retry-After', description: 'Seconds to wait before the next attempt.', schema: new OA\Schema(type: 'integer', minimum: 1))], content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
             new OA\Response(response: 503, description: 'The order changed concurrently; nothing changed and the provider retries (problem details without detail).', content: new OA\MediaType(mediaType: 'application/problem+json', schema: new OA\Schema(ref: '#/components/schemas/Problem'))),
         ],
     )]

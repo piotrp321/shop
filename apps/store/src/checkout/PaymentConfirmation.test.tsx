@@ -402,6 +402,25 @@ describe("paying", () => {
     ]);
   });
 
+  it("on 429 says there were too many attempts, moves the focus to the message and tries again with the same key", async () => {
+    vi.mocked(startPayment).mockResolvedValueOnce({ status: "rate_limited" }).mockResolvedValueOnce({ status: "ok", redirectUrl: NEW_URL });
+    showRetry();
+    choose("Szybki przelew (demo)");
+    await click("Zapłać");
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Zbyt wiele prób płatności. Spróbuj ponownie za kilka minut.");
+    expect(document.activeElement).toBe(alert);
+    expect(navigateTo).not.toHaveBeenCalled();
+
+    await click("Zapłać");
+    expect(vi.mocked(startPayment).mock.calls).toEqual([
+      ["demo-transfer", key(1)],
+      ["demo-transfer", key(1)],
+    ]);
+    expect(navigateTo).toHaveBeenCalledWith(NEW_URL);
+  });
+
   it("answers an uncertain result with a message and keeps the page", async () => {
     vi.mocked(startPayment).mockResolvedValue({ status: "failed" });
     showRetry();

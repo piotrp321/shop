@@ -17,7 +17,7 @@
 #   SMOKE_REUSE=1 smoke.sh         go on with the later phases on the cluster that SMOKE_KEEP=1 left (a debugging aid)
 #   SMOKE_TIMEOUT=900              seconds to wait for the cluster to settle after each install or upgrade
 #
-# Phases: install and checks (also the store in a browser and create-admin); upgrade with a new revision (initialize
+# Phases: install and checks (also the store and the panel in a browser, and create-admin); upgrade with a new revision (initialize
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
 # the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
@@ -378,6 +378,37 @@ check_store_in_browser() {
   done
 }
 
+# The panel of the image built without flags, in a real browser: an unauthenticated visit redirects to the login page of
+# Keycloak (realm backoffice), so the scripts of the panel ran (index.html, /config.js, the bundle) under the CSP with
+# script-src 'self' and the console has no CSP violation. Chromium reaches Traefik on the node port of its service.
+check_admin_in_browser() {
+  port="$(kubectl -n kube-system get service traefik -o jsonpath='{.spec.ports[?(@.name=="web")].nodePort}')"
+  [ -n "$port" ] || { echo "smoke: the service of Traefik has no node port for the browser" >&2; return 1; }
+  attempt=1
+  while :; do
+    dom="$(browser_dom "http://$node:$port" "http://admin.localhost/" || true)"
+    case "$dom" in *'id="kc-form-login"'*) break ;; esac
+    if [ "$attempt" -ge 3 ]; then
+      echo "smoke: the panel in the browser did not reach the login page of Keycloak; the end of its DOM:" >&2
+      printf '%s\n' "$dom" | tail -c 3000 >&2
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 5
+  done
+  echo "ok: the panel in the browser redirects to the login page of Keycloak"
+  messages="$(browser_console "http://$node:$port" "http://admin.localhost/")" || {
+    echo "smoke: the browser failed to load the panel for the console check" >&2
+    return 1
+  }
+  if printf '%s\n' "$messages" | grep -qiE 'content[ -]security[ -]policy|violates|refused to'; then
+    echo "smoke: the panel in the browser reports a Content Security Policy violation:" >&2
+    printf '%s\n' "$messages" >&2
+    return 1
+  fi
+  echo "ok: the console of the panel in the browser has no CSP violation"
+}
+
 # create_admin <answer> <name of the log>: make -C infra/k8s create-admin with the answer on the standard input.
 create_admin() {
   printf '%s\n' "$1" | KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" \
@@ -505,6 +536,9 @@ else
 
   log "the store in a browser"
   check_store_in_browser
+
+  log "the panel in a browser"
+  check_admin_in_browser
 
   log "create-admin"
   check_create_admin

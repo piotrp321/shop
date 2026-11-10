@@ -1,0 +1,58 @@
+# Rate limits of the order placement, the payment start and the webhooks (spec: docs/features/hardening/spec.md,
+# D1, D4–D7). RateLimitSubscriber (src/Shared/Infrastructure/Http) applies the limiter that a route names in its
+# RateLimit::ROUTE_DEFAULT, before the controller. Sliding windows; the defaults are the production values.
+#
+# The state is in Redis (pool cache.rate_limiter). The connection is lazy and bounded by the timeouts of the DSN
+# (1 s to connect, 1 s to read): a Redis that is down fails the calls of the pool, which the pool turns into a miss
+# and a `warning` of the `cache` channel (monolog.yaml), so the request passes without a limit (fail open, D7).
+# No lock (lock_factory: null): concurrent requests may pass the limit by the number of requests in flight.
+framework:
+    cache:
+        default_redis_provider: 'redis://%env(REDIS_HOST)%:6379?timeout=1&read_timeout=1'
+        pools:
+            cache.rate_limiter:
+                adapter: cache.adapter.redis
+    rate_limiter:
+        # Per guest address or customer account (guest:<address>, customer:<sub>).
+        order_placement:
+            policy: sliding_window
+            limit: 10
+            interval: '15 minutes'
+            lock_factory: null
+        # Per guest address or customer account, as above.
+        payment_start:
+            policy: sliding_window
+            limit: 20
+            interval: '15 minutes'
+            lock_factory: null
+        # Per provider and address (<provider>:<address>).
+        payment_webhook:
+            policy: sliding_window
+            limit: 300
+            interval: '1 minute'
+            lock_factory: null
+
+# The compose stack and the E2E tests: every request of the store comes from the one address of its container.
+when@dev:
+    framework:
+        rate_limiter:
+            order_placement: { policy: sliding_window, limit: 10000, interval: '15 minutes', lock_factory: null }
+            payment_start: { policy: sliding_window, limit: 10000, interval: '15 minutes', lock_factory: null }
+            payment_webhook: { policy: sliding_window, limit: 10000, interval: '1 minute', lock_factory: null }
+
+# Small limits for the tests of the limits, above the requests of a kind that any other test makes (7 at most). Their
+# state is in memory, kept as long as the kernel of one test (an array pool would not do: the kernel resets it after
+# every request). tests/Integration/Shared/RateLimit puts it back on the Redis pool of production.
+when@test: &test
+    framework:
+        rate_limiter:
+            order_placement: { policy: sliding_window, limit: 10, interval: '15 minutes', lock_factory: null, storage_service: rate_limiter.test_storage }
+            payment_start: { policy: sliding_window, limit: 10, interval: '15 minutes', lock_factory: null, storage_service: rate_limiter.test_storage }
+            payment_webhook: { policy: sliding_window, limit: 10, interval: '1 minute', lock_factory: null, storage_service: rate_limiter.test_storage }
+    services:
+        rate_limiter.test_storage:
+            class: Symfony\Component\RateLimiter\Storage\InMemoryStorage
+
+when@test_messaging: *test
+
+when@test_oidc: *test

@@ -1,0 +1,37 @@
+# The load measurement (make -C infra/k8s load, docs/features/hardening/spec.md D15): an overlay on the profile ci
+# (helm ... -f environments/ci/values.yaml -f environments/load/values.yaml). The cluster is a throwaway k3d cluster with
+# the production images built here, so what ci sets stays: local images, plain HTTP on *.localhost, no IP policy,
+# throwaway secrets. What this file changes is what the measurement is about: the pods have the resources of prod
+# (tests/test_load_profile.py compares the render with prod), and the API and the store take the address of the client from
+# the header the load scripts send (a new address per iteration, so that no rate limit counts the whole test as one client).
+#
+# clientIpHeaderWithoutAllowList: the header is trusted without the allow list of Cloudflare. That is safe only in a
+# cluster nobody else can reach; the chart refuses the combination with image.requireDigests (the images of a deployment),
+# so this profile can never be rendered for the server.
+
+clientIpHeader: CF-Connecting-IP
+clientIpHeaderWithoutAllowList: true
+
+# The heaps of the prod profile (they size the pods together with the resources below).
+elasticsearch:
+  javaOpts: -Xms2g -Xmx2g
+
+keycloak:
+  javaHeap: -Xms512m -Xmx1g
+
+# The resources of prod (requests and limits), copied: a profile cannot include another one.
+resources:
+  postgres: { requests: { cpu: 500m, memory: 1Gi }, limits: { memory: 2Gi } }
+  redis: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 512Mi } }
+  elasticsearch: { requests: { cpu: "1", memory: 3Gi }, limits: { memory: 4Gi } }
+  rabbitmq: { requests: { cpu: 250m, memory: 512Mi }, limits: { memory: 1Gi } }
+  garage: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
+  keycloak: { requests: { cpu: 500m, memory: 1536Mi }, limits: { memory: 2Gi } }
+  mailpit: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 256Mi } }
+  api: { requests: { cpu: "1", memory: 512Mi }, limits: { memory: 2Gi } }
+  worker: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 1Gi } }
+  store: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 1536Mi } }
+  admin: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 128Mi } }
+  imgproxy: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
+  varnish: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
+  job: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }

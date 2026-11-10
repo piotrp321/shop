@@ -16,12 +16,16 @@ Monorepo e-commerce. Przed planowaniem jakiejkolwiek funkcji przeczytaj `docs/vi
 - `infra` – Docker Compose i konfiguracja usług
   (Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Varnish, Mailpit).
 - `infra/k8s` – chart Helm całego stosu (`charts/shop`, te same usługi i wersje obrazów co compose), profile wartości
-  (`environments/prod`, `environments/ci`), app-of-apps Argo CD (`argocd`), zaszyfrowane sekrety
+  (`environments/prod`, `environments/ci`, `environments/load`: nakładka na `ci` dla pomiaru obciążenia), app-of-apps Argo CD (`argocd`), zaszyfrowane sekrety
   (`environments/prod/secrets`), skrypty serwera i sprawdzeń oraz runbook (`README.md`). Narzędzia (helm, kubeconform, shellcheck, k3d, kubectl)
   działają w kontenerach z przypiętymi wersjami, bez instalacji na hoście.
 - `e2e` – testy end-to-end (Playwright) na pełnym stosie, uruchamiane przez `make e2e`, i pomiar Lighthouse
   (`e2e/lighthouse`), uruchamiany przez `make lighthouse`.
+- `load` – skrypty k6 testów obciążeniowych (katalog, strona produktu, wyszukiwarka, koszyk, checkout gościa przez sklep):
+  `make load-smoke` (jeden użytkownik, jedna iteracja każdego scenariusza, na stosie compose; CI uruchamia go po E2E)
+  i pomiar `make -C infra/k8s load`. Obraz k6 jest przypięty tagiem i digestem w `load/k6.sh` i działa w kontenerze.
 - `docs` – wizja, ADR-y (`docs/adr/`), specyfikacje i plany funkcji (`docs/features/`).
+  Raporty pomiarów i przeglądów, przypięte do rewizji i niezmienne po zapisaniu, są w `docs/reports/`.
 
 Każda aplikacja ma własny `CLAUDE.md` z zasadami tylko dla niej. Przeczytaj go przed pracą w tej aplikacji.
 Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm create vite`) zachowaj istniejący
@@ -33,25 +37,32 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
 - Komendy uruchamiaj przez Makefile, który opakowuje `docker compose exec`:
   - Główny `Makefile` zarządza stosem i uruchamia wszystkie aplikacje:
     `make up` / `make down` / `make logs`, `make seed`, `make check`, `make test`, `make e2e`,
-    `make e2e-agent AGENT_DIR=<katalog> [E2E_ARGS=...]` (skrypty agentów tester i UX, wyniki poza repo).
+    `make e2e-agent AGENT_DIR=<katalog> [E2E_ARGS=...]` (skrypty agentów tester i UX, wyniki poza repo),
     `make lighthouse` (pomiar Lighthouse trzech stron sklepu: `/`, `/c/turystyka/biwak/namioty`
     i `/p/namiot-turystyczny-norvane-biwak-2`, po 3 przebiegi w profilu mobilnym, w kontenerze `e2e`; wymaga stosu
     ze sklepem w trybie produkcyjnym, `STORE_MODE=production make up` i `make seed`, a w innym trybie albo przy
     zatrzymanym sklepie kończy się komunikatem, bez pomiaru; raporty, `manifest.json` i `medians.md` z medianami
     SEO, Performance, LCP, CLS i TBT są w `e2e/lighthouse-results/`; blokuje tylko wynik SEO < 0,9 mediany adresu,
-    pozostałe progi ostrzegają; `make e2e-check` uruchamia też testy skryptu median).
+    pozostałe progi ostrzegają; `make e2e-check` uruchamia też testy skryptu median),
+    `make load-smoke` (skrypty k6 z `load/` na działającym stosie: jeden użytkownik, jedna iteracja każdego scenariusza,
+    checkout kupuje 1 sztukę; bez progów wydajności, ale scenariusz, który się nie powiedzie, kończy się kodem
+    niezerowym; k6 w kontenerze w sieci stosu).
     `make test` uruchamia też `make varnish-test`: testy VCL (`infra/varnish/tests/*.vtc`, `varnishtest` z obrazu
     usługi `varnish`, bez stosu).
   - Każda aplikacja ma własny `Makefile` z tymi samymi podstawowymi celami (`check`, `test`)
     oraz swoimi (np. `make migrate` w api). Pracując w jednej aplikacji, używaj jej Makefile:
     `make -C apps/api check`.
   - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc). Główny
-    `make check` woła też `make -C infra/k8s check`: `helm lint`, render chartu dla `prod` i `ci`, schemat wartości,
+    `make check` woła też `make -C infra/k8s check`: `helm lint`, render chartu dla `prod`, `ci` i `load` (nakładka z zasobami podów jak `prod` i nagłówkiem adresu klienta;
+    test porównuje zasoby z `prod`), schemat wartości,
     `kubeconform`, `shellcheck`, `actionlint` (workflowy z `.github/workflows` razem ze skryptami ich kroków) i testy
-    renderu (fale, ścieżki ingressu `auth`, middleware, klucze sekretu, nazwy Jobów,
+    renderu (fale, ścieżki ingressu `auth`, middleware (`ipAllowList`, `noindex`, HSTS tylko przy `ingress.tls`), klucze sekretu, nazwy Jobów,
     CronJob, obrazy: własne z rejestru po digeście, pozostałe `tag@digest` z tagiem jak w compose, bez `latest`;
     przełączniki `demoNotice`, `customerAccounts`, `orderMail` i poczta Keycloaka w środowisku sklepu, api, workera i Jobów
-    oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem) oraz testy
+    oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem; `clientIpHeader`
+    jako `CLIENT_IP_HEADER` tylko w api i sklepie, w `prod` `CF-Connecting-IP` przy `ipAllowList` na każdym ingressie,
+    w `ci` brak; `clientIpHeader` bez `ipAllowList` i bez `clientIpHeaderWithoutAllowList: true` oraz to potwierdzenie
+    razem z `image.requireDigests` kończą render błędem) oraz testy
     skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker`. Sprawdza też: render `prod` z plikiem
     digestów jak z `deploy-images` (bez `--set`; plik bez digestu albo z `latest` nie renderuje się), manifesty Argo CD
     (`kubeconform`; testy: jedno źródło `shop` na gałęzi `deploy-images`, kolejność fal `sealed-secrets`, `secrets`, `shop`),
@@ -62,7 +73,13 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
     nie ignoruje certyfikatu `environments/prod/sealed-secrets.pem` (`git check-ignore` na hoście).
   - `infra/k8s` ma własny `Makefile` (potrzebuje Dockera, a `check` także gita): `make -C infra/k8s check`; `make -C infra/k8s smoke`
     (test dymny: chart z profilem `ci` na pustym klastrze k3d z obrazami produkcyjnymi zbudowanymi lokalnie, kilka minut;
-    `SMOKE_BREAK=migration|image` psuje go celowo); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
+    sprawdza m.in. nagłówki bezpieczeństwa panelu i jego załadowanie w przeglądarce bez naruszeń CSP;
+    `SMOKE_BREAK=migration|image` psuje go celowo); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
+    obciążenia: klaster k3d z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `load`, dane demo, stany
+    podniesione o 100 000 bezpośrednim SQL, rozgrzanie, przebieg rosnący do nasycenia z k6 (odczyt i koszyk) i przebieg
+    stały na 70% nasycenia z checkoutem o ograniczonej równoległości, wyniki do `LOAD_OUT`; kilkadziesiąt minut, VM
+    Dockera co najmniej 10 vCPU i 20 GiB; kod 0 – pomiar wykonany, bez progów, 2 – błąd środowiska: brak `LOAD_OUT`,
+    za mało zasobów, pody niegotowe, dane demo albo stany niegotowe, nieudane rozgrzanie; 1 – inny błąd (nieudany przebieg k6, build); klaster jest usuwany przy każdym wyjściu); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
     samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje);
     `make -C infra/k8s create-admin LOGIN=<login> EMAIL=<e-mail>` (pierwszy administrator panelu: wypisuje, co zrobi,
     i działa dopiero po słowie `tak`; zakłada użytkownika w realmie `backoffice` z rolą `admin` bez hasła i wysyła mu

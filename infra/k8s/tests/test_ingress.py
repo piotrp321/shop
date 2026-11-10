@@ -82,6 +82,23 @@ class IngressTest(unittest.TestCase):
             self.assertNotIn("shop-noindex@kubernetescrd", middlewares_of(ingress), name(ingress))
             self.assertIn("shop-ipallowlist@kubernetescrd", middlewares_of(ingress), name(ingress))
 
+    def test_hsts_on_every_host_only_with_tls(self):
+        """D10: HSTS for a year, without includeSubDomains and preload, and only where the ingress presents a certificate."""
+        for case in ("prod", "prod-indexable", "prod-domain"):
+            policy = [m for m in of_kind(case, "Middleware") if name(m) == "hsts"]
+            self.assertEqual(1, len(policy), case)
+            headers = policy[0]["spec"]["headers"]
+            self.assertEqual(31536000, headers["stsSeconds"], case)
+            self.assertFalse(headers.get("stsIncludeSubdomains", False), case)
+            self.assertFalse(headers.get("stsPreload", False), case)
+            ingresses = of_kind(case, "Ingress")
+            self.assertEqual(5, len(ingresses), case)
+            for ingress in ingresses:
+                self.assertIn("shop-hsts@kubernetescrd", middlewares_of(ingress), f"{case} {name(ingress)}")
+        self.assertEqual([], [m for m in of_kind("ci", "Middleware") if name(m) == "hsts"])
+        for ingress in of_kind("ci", "Ingress"):
+            self.assertNotIn("shop-hsts@kubernetescrd", middlewares_of(ingress), name(ingress))
+
     def test_entrypoints(self):
         for ingress in of_kind("prod", "Ingress"):
             annotations = ingress["metadata"]["annotations"]

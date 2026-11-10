@@ -68,6 +68,14 @@ ipAllowList:
   enabled: true
   sourceRange: []
 
+# The header with the address of the client (CLIENT_IP_HEADER of the api and the store; empty: none), which the rate
+# limits of the API count by (docs/features/hardening/spec.md, D2 and D3): CF-Connecting-IP in prod, where Cloudflare
+# always sets it and ipAllowList lets nothing but Cloudflare reach any host. Without ipAllowList anybody could send the
+# header, so the render fails unless clientIpHeaderWithoutAllowList confirms it (the measurement on a local cluster
+# only); that confirmation together with image.requireDigests (the images of a release) fails the render too.
+clientIpHeader: ""
+clientIpHeaderWithoutAllowList: false
+
 secrets:
   # true: the chart renders the Secret from `values` (the ci profile). false: the Secret `name` is created outside the
   # chart (a SealedSecret in prod).

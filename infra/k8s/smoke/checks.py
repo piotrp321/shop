@@ -3,7 +3,7 @@
 The pod reaches the services by their names and the ingresses through Traefik with the Host header, so no port of
 the host is involved. Usage: python - <command> [argument]
 
-  basic         the checks of a new installation (search analysis, API, store, switches, panel, realms, store login,
+  basic         the checks of a new installation (search analysis, API, store, switches, panel and its security headers, realms, store login,
                 image, order e-mail)
   snapshot      prints a JSON snapshot of what an upgrade must not change (products, realms)
   compare       compares the snapshot given as the argument with the current state
@@ -22,6 +22,7 @@ import html
 import http.client
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -155,6 +156,44 @@ def check_admin_config():
     expect("no-cache" in headers.get("Cache-Control", ""), "/config.js is not cached")
     status, _, text = through_ingress("/auth/callback", "admin")
     expect(status == 200 and "<div id=" in text, "the panel serves index.html for /auth/callback")
+
+
+ADMIN_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Content-Security-Policy": "script-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+}
+
+
+def check_admin_security_headers():
+    """D10: every location of the nginx of the panel sends the security headers, on 200 and on 404 alike. The ingress of
+    the profile ci has no TLS, so no HSTS here (tests of the render)."""
+    _, _, index = through_ingress("/", "admin")
+    scripts = [path for path in re.findall(r'<script[^>]*\ssrc="([^"]+)"', index) if path.startswith("/assets/")]
+    expect(len(scripts) == 1, f"index.html of the panel loads one bundle from /assets/ ({scripts})")
+    expect(re.search(r"<script(?![^>]*\ssrc=)", index) is None, "index.html of the panel has no inline script")
+    for path, status_expected in (("/", 200), ("/config.js", 200), ("/auth/callback", 200), (scripts[0], 200), ("/assets/missing.js", 404)):
+        status, headers, _ = through_ingress(path, "admin")
+        expect(status == status_expected, f"the panel answers {path} with {status_expected} (got {status})")
+        for key, value in ADMIN_SECURITY_HEADERS.items():
+            expect(headers.get(key) == value, f"the panel sends {key}: {value} on {path} (got {headers.get(key)})")
+        expect(headers.get("Strict-Transport-Security") is None, f"the profile ci sends no HSTS on {path}")
+    status, headers, _ = through_ingress(scripts[0], "admin")
+    expect("immutable" in headers.get("Cache-Control", ""), "the bundle keeps its long Cache-Control")
+
+
+def check_store_and_api_security_headers():
+    """D10 on the production images: the store sends the headers of the panel except script-src, the API nosniff."""
+    store = {**ADMIN_SECURITY_HEADERS, "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"}
+    status, headers, _ = through_ingress("/")
+    expect(status == 200, f"the store answers / (got {status})")
+    for key, value in store.items():
+        expect(headers.get(key) == value, f"the store sends {key}: {value} (got {headers.get(key)})")
+    for path in ("/health", "/does-not-exist"):
+        _, headers, _ = through_ingress(path, "api")
+        expect(headers.get("X-Content-Type-Options") == "nosniff", f"the API sends X-Content-Type-Options: nosniff on {path}")
 
 
 def check_realms():
@@ -511,6 +550,8 @@ def main():
         check_api_and_store()
         check_store_switches()
         check_admin_config()
+        check_admin_security_headers()
+        check_store_and_api_security_headers()
         check_realms()
         check_store_login()
         check_image()

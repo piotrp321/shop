@@ -214,6 +214,15 @@ Klienta API generuje `make api-client` z katalogu głównego.
   zmiennej. Przy katalogu głównym tylko do odczytu `/tmp` musi być zapisywalny (`emptyDir`).
 - `docker/nginx.conf`: `/config.js` z zapisanego pliku, fallback SPA na `index.html` (np. `/auth/callback`),
   `Cache-Control: no-cache` dla `index.html` i `/config.js`, długi cache tylko dla haszowanych `/assets/`.
+- Nagłówki bezpieczeństwa: `docker/security-headers.conf` (kopiowany do `/etc/nginx/security-headers.conf`) jest
+  dołączany (`include`) w każdej lokalizacji `nginx.conf`, bo `add_header` w `location` zastępuje nagłówki serwera.
+  Wszystkie z `always` (także 404): `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+  strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, `Permissions-Policy: camera=(), microphone=(),
+  geolocation=()` i `Content-Security-Policy: script-src 'self'; frame-ancestors 'none'; object-src 'none';
+  base-uri 'self'`. `style-src` nie jest ograniczony (PrimeVue ustawia style inline). `index.html` nie może mieć
+  skryptów inline ani zewnętrznych: skrypt spoza własnego origin (poza `/config.js` i bundlem) zablokuje CSP.
+  Nowa lokalizacja w `nginx.conf` musi dołączać ten plik. Obraz deweloperski (Vite) nagłówków nie ma; nagłówki
+  i załadowanie panelu bez naruszeń CSP sprawdza test dymny chartu (`make -C infra/k8s smoke`, obraz produkcyjny).
 
 ## Dane i API
 
