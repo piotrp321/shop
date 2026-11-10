@@ -4,6 +4,7 @@ static resources: the realm master and the administration console are not reacha
 */ -}}
 {{- $middlewares := list }}
 {{- if .Values.ipAllowList.enabled }}{{- $middlewares = append $middlewares (printf "%s-ipallowlist@kubernetescrd" .Release.Namespace) }}{{- end }}
+{{- if .Values.ingress.tls }}{{- $middlewares = append $middlewares (printf "%s-hsts@kubernetescrd" .Release.Namespace) }}{{- end }}
 {{- if .Values.noindex }}{{- $middlewares = append $middlewares (printf "%s-noindex@kubernetescrd" .Release.Namespace) }}{{- end }}
 {{- $hosts := list
   (dict "name" "store" "sub" "" "service" "store" "port" 3000 "paths" (list "/"))

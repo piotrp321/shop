@@ -41,7 +41,7 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc). Główny
     `make check` woła też `make -C infra/k8s check`: `helm lint`, render chartu dla `prod` i `ci`, schemat wartości,
     `kubeconform`, `shellcheck`, `actionlint` (workflowy z `.github/workflows` razem ze skryptami ich kroków) i testy
-    renderu (fale, ścieżki ingressu `auth`, middleware, klucze sekretu, nazwy Jobów,
+    renderu (fale, ścieżki ingressu `auth`, middleware (`ipAllowList`, `noindex`, HSTS tylko przy `ingress.tls`), klucze sekretu, nazwy Jobów,
     CronJob, obrazy: własne z rejestru po digeście, pozostałe `tag@digest` z tagiem jak w compose, bez `latest`;
     przełączniki `demoNotice`, `customerAccounts`, `orderMail` i poczta Keycloaka w środowisku sklepu, api, workera i Jobów
     oraz w ustawieniach realmów; wartość wybierająca Brevo bez `brevo.secretName` kończy render błędem; `clientIpHeader`
@@ -58,6 +58,7 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
     nie ignoruje certyfikatu `environments/prod/sealed-secrets.pem` (`git check-ignore` na hoście).
   - `infra/k8s` ma własny `Makefile` (potrzebuje Dockera, a `check` także gita): `make -C infra/k8s check`; `make -C infra/k8s smoke`
     (test dymny: chart z profilem `ci` na pustym klastrze k3d z obrazami produkcyjnymi zbudowanymi lokalnie, kilka minut;
+    sprawdza m.in. nagłówki bezpieczeństwa panelu i jego załadowanie w przeglądarce bez naruszeń CSP;
     `SMOKE_BREAK=migration|image` psuje go celowo); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
     samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje);
     `make -C infra/k8s create-admin LOGIN=<login> EMAIL=<e-mail>` (pierwszy administrator panelu: wypisuje, co zrobi,
