@@ -270,6 +270,10 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   pominięcie na baterii, przy oknie limitu ≥ 80% albo przy odmowie `/sweep`), a użytkownik może go uruchomić ręcznie (`/sweep [epik]`):
   agenci `tester` i `ux-reviewer` przechodzą sklep na świeżym stosie z `main`. Wynik to propozycje zgłoszeń do triage
   użytkownika (etykiety `bug`/`ux` i `agent`), nie issues.
+- `/retro` (po merge'u epiku w kolejce `/ao-run` po `/sweep`, ręcznie `/retro [epik]`): `retro.py` zbiera incydenty
+  z przebiegów AO, agent `retro-analyst` szuka ich przyczyn w instrukcjach procesu. Wynik to PR do `main` z poprawkami
+  procesu i sekcją „Status” planu Agentic Software House, który merguje użytkownik; issues i komentarze powstają
+  dopiero po „tak” użytkownika.
 - `/groom` (codziennie o 8:00 z zadania zaplanowanego w aplikacji Claude albo ręcznie): agent `backlog-groomer`
   proponuje duplikaty, nieaktualne zgłoszenia, braki, etykiety i jeden epik poprawek (`-FIXES`), a `groom.py` sprawdza
   listę i wykonuje w GitHubie tylko pozycje zatwierdzone przez użytkownika w rozmowie. Zatwierdzony epik poprawek ta
