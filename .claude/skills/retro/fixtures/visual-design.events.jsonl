@@ -1,0 +1,22 @@
+{"type": "host_on_battery", "task_id": null, "epic_id": null, "data": {"percent": 100}, "at": 1794224417.979479}
+{"type": "status_changed", "task_id": "VISUAL-DESIGN-4", "epic_id": "visual-design", "data": {"from": "RUNNING", "to": "BLOCKED", "reason": "executor", "blockers": ["Który kierunek wdrażamy i z jakimi poprawkami?"]}, "at": 1794229662.368156}
+{"type": "human_action", "task_id": "VISUAL-DESIGN-4", "epic_id": null, "data": {"action": "answer"}, "at": 1794234322.630906}
+{"type": "host_on_battery", "task_id": null, "epic_id": null, "data": {"percent": 47}, "at": 1794234329.9559429}
+{"type": "status_changed", "task_id": "VISUAL-DESIGN-4", "epic_id": "visual-design", "data": {"from": "RUNNING", "to": "BLOCKED", "reason": "executor", "blockers": ["Czy potwierdzasz makietę kierunek.html (A „Granit” z Twoimi czterema poprawkami) jako wybrany kierunek? Przy potwierdzeniu: czy sklep ma naprawdę pokazywać osobne zdjęcie każdego modelu i galerię „cały sprzęt, detal, w użyciu” (poprawka 1)? Dziś dane demo dają każdemu produktowi jedno zdjęcie wspóln"]}, "at": 1794236083.2905118}
+{"type": "human_action", "task_id": "VISUAL-DESIGN-4", "epic_id": null, "data": {"action": "answer"}, "at": 1794236326.207904}
+{"type": "host_on_battery", "task_id": null, "epic_id": null, "data": {"percent": 34}, "at": 1794236334.31741}
+{"type": "host_on_battery", "task_id": null, "epic_id": null, "data": {"percent": 17, "low": true}, "at": 1794238735.700298}
+{"type": "status_changed", "task_id": "VISUAL-DESIGN-5", "epic_id": "visual-design", "data": {"from": "RUNNING", "to": "BLOCKED", "reason": "policy", "blockers": ["/delivery zwrócił READY_FOR_INTEGRATION zgodny z kontraktem, ale niezgodny z polityką orkiestratora. Jak postąpić?"]}, "at": 1794242091.015794}
+{"type": "human_action", "task_id": "VISUAL-DESIGN-5", "epic_id": null, "data": {"action": "answer"}, "at": 1794242697.820693}
+{"type": "host_on_battery", "task_id": null, "epic_id": null, "data": {"percent": 98}, "at": 1794246910.026719}
+{"type": "host_on_battery", "task_id": null, "epic_id": null, "data": {"percent": 19, "low": true}, "at": 1794258925.548836}
+{"type": "status_changed", "task_id": "VISUAL-DESIGN-INTEGRATION-1", "epic_id": "visual-design", "data": {"from": "RUNNING", "to": "BLOCKED", "reason": "executor", "blockers": ["Czy akceptujesz, że w Firefoksie i Safari na desktopie (≥1024 px) fokus w nagłówku idzie znak, działy, koszyk, konto, pole wyszukiwania, czyli niezgodnie z kolejnością wizualną, którą specyfikacja wymaga „na każdej szerokości”?"]}, "at": 1794260001.738689}
+{"type": "epic_blocked", "task_id": null, "epic_id": "visual-design", "data": {"epic_id": "visual-design", "from": "INTEGRATING", "reason": "integration_blocked: B1 (VISUAL-DESIGN-INTEGRATION-1)"}, "at": 1794260001.77498}
+{"type": "human_action", "task_id": "VISUAL-DESIGN-INTEGRATION-1", "epic_id": null, "data": {"action": "answer"}, "at": 1794260978.035472}
+{"type": "human_action", "task_id": null, "epic_id": null, "data": {"action": "epic-resume"}, "at": 1794261013.838642}
+{"type": "epic_blocked", "task_id": null, "epic_id": "visual-design", "data": {"epic_id": "visual-design", "from": "ACTIVE", "reason": "max_qa_rounds: rundy: 3"}, "at": 1794272499.059548}
+{"type": "human_action", "task_id": null, "epic_id": null, "data": {"action": "epic-resume"}, "at": 1794272521.485892}
+{"type": "final_pr_created", "task_id": null, "epic_id": "visual-design", "data": {"epic_id": "visual-design", "pr_number": 366, "url": "https://github.com/piotrp321/shop/pull/366", "head_sha": "5c814cab1bb36f82691261841d87b7298368acce"}, "at": 1794275252.699629}
+{"type": "epic_blocked", "task_id": null, "epic_id": "visual-design", "data": {"epic_id": "visual-design", "from": "ACTIVE", "reason": "max_qa_rounds: rundy: 4"}, "at": 1794276256.984482}
+{"type": "human_action", "task_id": null, "epic_id": null, "data": {"action": "epic-resume"}, "at": 1794276271.898272}
+{"type": "epic_done", "task_id": null, "epic_id": "visual-design", "data": {"epic_id": "visual-design", "why": "CI of the final PR is green"}, "at": 1794277000.991363}

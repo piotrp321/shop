@@ -1,0 +1,360 @@
+"""Tests of retro.py: python3 -m unittest discover -s .claude/skills/retro -p 'test_*.py'
+
+The AO run data in fixtures/ are cut from real runs (VISUAL-DESIGN, DISCOUNT-CODES, CART and the older AO schema of
+PRICING): the real table schemas and values, paths and payloads blanked. The tests build temporary state directories
+from them; nothing outside the temporary directories is read or written, and no network is used.
+"""
+import hashlib
+import importlib.util
+import json
+import os
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+FIXTURES = os.path.join(HERE, 'fixtures')
+spec = importlib.util.spec_from_file_location('retro', os.path.join(HERE, 'retro.py'))
+retro = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(retro)
+
+
+def setUpModule():
+    # night-decisions.log has the local time of the system without a zone
+    os.environ['TZ'] = 'Europe/Warsaw'
+    time.tzset()
+
+
+def fixture(name):
+    with open(os.path.join(FIXTURES, name), encoding='utf-8') as f:
+        return f.read()
+
+
+def build_run(ao_home, epic, sql=None, events=None, night=None, report=None, extra_sql=None):
+    """An AO run directory ao-<epic> in ao_home from fixture files (names relative to fixtures/) or texts."""
+    run_dir = os.path.join(ao_home, 'ao-' + epic)
+    os.makedirs(run_dir, exist_ok=True)
+    if sql:
+        con = sqlite3.connect(os.path.join(run_dir, 'orchestrator.db'))
+        con.executescript(fixture(sql))
+        if extra_sql:
+            con.executescript(extra_sql)
+        con.commit()
+        con.close()
+    for name, text in (('events.jsonl', events), ('night-decisions.log', night)):
+        if text is not None:
+            with open(os.path.join(run_dir, name), 'w', encoding='utf-8') as f:
+                f.write(text)
+    if report is not None:
+        os.makedirs(os.path.join(run_dir, 'epics', epic), exist_ok=True)
+        with open(os.path.join(run_dir, 'epics', epic, 'report.md'), 'w', encoding='utf-8') as f:
+            f.write(report)
+    return run_dir
+
+
+def snapshot(path):
+    """{relative path: sha256} of every file under path, plus the empty directories."""
+    result = {}
+    for root, dirs, files in os.walk(path):
+        for name in files:
+            full = os.path.join(root, name)
+            with open(full, 'rb') as f:
+                result[os.path.relpath(full, path)] = hashlib.sha256(f.read()).hexdigest()
+    return result
+
+
+class TempDirCase(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='retro-test-')
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.ao_home = os.path.join(self.tmp, 'ao')
+        os.makedirs(self.ao_home)
+
+    def real_home(self):
+        """VISUAL-DESIGN and DISCOUNT-CODES (with their events), CART (an AO without events), ao-night, a run in
+        progress, a DONE epic without a final PR, the older AO schema, a directory without a database."""
+        build_run(self.ao_home, 'visual-design', 'visual-design.sql', fixture('visual-design.events.jsonl'),
+                  fixture('visual-design.night-decisions.log'), fixture('visual-design.report.md'))
+        build_run(self.ao_home, 'discount-codes', 'discount-codes.sql', fixture('discount-codes.events.jsonl'),
+                  None, fixture('discount-codes.report.md'))
+        build_run(self.ao_home, 'cart', 'cart.sql', report=fixture('cart.report.md'))
+        night = os.path.join(self.ao_home, 'ao-night')
+        os.makedirs(night)
+        with open(os.path.join(night, 'measurements.jsonl'), 'w') as f:
+            f.write('{"event": "start", "epic": "product-page"}\n')
+        # an epic still running: ACTIVE, no final PR
+        build_run(self.ao_home, 'hardening', 'cart.sql', extra_sql=(
+            "INSERT INTO epics (epic_id,repo,repo_slug,plan_path,plan_sha,branch,base_sha,status,round,"
+            "created_at,updated_at) VALUES ('hardening','','','','','epic/hardening','','ACTIVE',0,1.0,2.0);"
+            "DELETE FROM epics WHERE epic_id='cart';"))
+        # a DONE row without a final PR does not count
+        build_run(self.ao_home, 'no-pr', 'cart.sql', extra_sql=(
+            "UPDATE epics SET epic_id='no-pr', final_pr_number=NULL;"))
+        build_run(self.ao_home, 'pricing', 'pricing-old-schema.sql')
+        os.makedirs(os.path.join(self.ao_home, 'ao-empty'))
+        # the directory is named after another epic than its row
+        build_run(self.ao_home, 'other', 'cart.sql')
+        return self.ao_home
+
+
+class SourcesTest(TempDirCase):
+    def test_only_done_epics_with_a_final_pr_are_epics(self):
+        epics = retro.discover_epics(self.real_home())
+        self.assertEqual([e['id'] for e in epics], ['cart', 'discount-codes', 'visual-design'])
+        by_id = {e['id']: e for e in epics}
+        self.assertEqual(by_id['visual-design']['final_pr_number'], 366)
+        self.assertEqual(by_id['discount-codes']['final_pr_number'], 329)
+        self.assertEqual(by_id['cart']['final_pr_number'], 79)
+        self.assertAlmostEqual(by_id['visual-design']['created_at'], 1794223198.570775, places=3)
+
+    def test_night_in_progress_old_schema_and_broken_runs_are_not_epics(self):
+        home = self.real_home()
+        with open(os.path.join(home, 'ao-empty', 'orchestrator.db'), 'w') as f:
+            f.write('this is not a database')
+        ids = [e['id'] for e in retro.discover_epics(home)]
+        for name in ('night', 'hardening', 'no-pr', 'pricing', 'empty', 'other'):
+            self.assertNotIn(name, ids)
+
+    def test_missing_ao_home_has_no_epics(self):
+        self.assertEqual(retro.discover_epics(os.path.join(self.tmp, 'nothing')), [])
+
+    def test_runs_lists_unfinished_epics_for_the_status(self):
+        runs = {r['id']: r for r in retro.discover_runs(self.real_home())}
+        self.assertEqual(runs['hardening']['status'], 'ACTIVE')
+        self.assertEqual(runs['visual-design']['status'], 'DONE')
+        self.assertNotIn('night', runs)
+        self.assertNotIn('pricing', runs)
+
+    def test_databases_are_opened_read_only_and_files_stay_unchanged(self):
+        home = self.real_home()
+        before = snapshot(home)
+        epics = retro.discover_epics(home)
+        for epic in epics:
+            retro.ao_incidents(epic)
+        retro.discover_runs(home)
+        self.assertEqual(snapshot(home), before)
+        for root, _, files in os.walk(home):
+            self.assertFalse([f for f in files if f.endswith(('-wal', '-shm', '-journal'))], root)
+
+    def test_a_read_only_database_cannot_be_written_through_the_connection(self):
+        db = os.path.join(self.real_home(), 'ao-cart', 'orchestrator.db')
+        con = retro.open_readonly(db)
+        with self.assertRaises(sqlite3.OperationalError):
+            con.execute("UPDATE epics SET status='X'")
+        con.close()
+
+    def test_epic_without_needed_columns_gets_a_no_ao_data_fact(self):
+        # an epics table with the older tasks table (no kind, no fix_count) and attempts without outcome data
+        run = build_run(self.ao_home, 'old', 'pricing-old-schema.sql')
+        con = sqlite3.connect(os.path.join(run, 'orchestrator.db'))
+        con.executescript(
+            "CREATE TABLE epics (epic_id TEXT PRIMARY KEY, status TEXT NOT NULL, final_pr_number INTEGER,"
+            " created_at REAL NOT NULL);"
+            "INSERT INTO epics VALUES ('old','DONE',5,1000.0);"
+            "INSERT INTO tasks (task_id,spec_path,base_sha,workdir,state_file,status,created_at,updated_at)"
+            " VALUES ('OLD-1','','','','','MERGED',1.0,2.0);")
+        con.commit()
+        con.close()
+        epics = retro.discover_epics(self.ao_home)
+        self.assertEqual([e['id'] for e in epics], ['old'])
+        incidents, facts = retro.ao_incidents(epics[0])
+        self.assertEqual(incidents, [])
+        ids = [f['id'] for f in facts]
+        self.assertIn('old/missing/ao-data', ids)
+        text = [f for f in facts if f['id'] == 'old/missing/ao-data'][0]['text']
+        self.assertIn('tasks', text)
+        self.assertIn('kind', text)
+
+    def test_epic_row_without_created_at_column_is_still_an_epic_with_a_gap(self):
+        run = build_run(self.ao_home, 'gap')
+        con = sqlite3.connect(os.path.join(run, 'orchestrator.db'))
+        con.executescript("CREATE TABLE epics (epic_id TEXT PRIMARY KEY, status TEXT NOT NULL,"
+                          " final_pr_number INTEGER);INSERT INTO epics VALUES ('gap','DONE',9);")
+        con.commit()
+        con.close()
+        epics = retro.discover_epics(self.ao_home)
+        self.assertEqual([(e['id'], e['final_pr_number'], e['created_at']) for e in epics], [('gap', 9, None)])
+        incidents, facts = retro.ao_incidents(epics[0])
+        self.assertEqual(incidents, [])
+        self.assertIn('gap/missing/ao-data', [f['id'] for f in facts])
+
+    def test_ao_is_never_run(self):
+        # the module only imports sqlite3, never subprocess or os.system, and opens no file for writing
+        with open(os.path.join(HERE, 'retro.py'), encoding='utf-8') as f:
+            source = f.read()
+        self.assertNotIn('subprocess', source)
+        self.assertNotIn('os.system', source)
+        self.assertNotIn("'ao'", source)
+
+
+class AoIncidentsTest(TempDirCase):
+    def epic(self, home, name):
+        return [e for e in retro.discover_epics(home) if e['id'] == name][0]
+
+    def incidents(self, name):
+        return retro.ao_incidents(self.epic(self.real_home(), name))
+
+    def test_visual_design_has_seven_waits_with_epoch_second_keys(self):
+        incidents, _ = self.incidents('visual-design')
+        waits = [i for i in incidents if i['kind'] == 'wait']
+        self.assertEqual(sorted(i['id'] for i in waits), sorted([
+            'visual-design/wait/VISUAL-DESIGN-4@1794229662',
+            'visual-design/wait/VISUAL-DESIGN-4@1794236083',
+            'visual-design/wait/VISUAL-DESIGN-5@1794242091',
+            'visual-design/wait/VISUAL-DESIGN-INTEGRATION-1@1794260001',
+            'visual-design/wait/visual-design@1794260001',
+            'visual-design/wait/visual-design@1794272499',
+            'visual-design/wait/visual-design@1794276256',
+        ]))
+
+    def test_a_wait_carries_reason_question_and_the_closing_action(self):
+        incidents, _ = self.incidents('visual-design')
+        wait = {i['id']: i for i in incidents}['visual-design/wait/VISUAL-DESIGN-5@1794242091']
+        self.assertEqual(wait['epic'], 'visual-design')
+        self.assertEqual(wait['key'], 'VISUAL-DESIGN-5@1794242091')
+        self.assertEqual(wait['data']['reason'], 'policy')
+        self.assertEqual(wait['data']['action'], 'answer')
+        self.assertEqual(wait['data']['start'], 1794242091)
+        self.assertEqual(wait['data']['end'], 1794242697)
+        self.assertFalse(wait['data']['open'])
+        self.assertTrue(wait['data']['human_action'])
+        self.assertIn('polityką orkiestratora', wait['data']['blockers'][0])
+        sources = {f['source'] for f in wait['facts']}
+        self.assertIn('events.jsonl', sources)
+
+    def test_night_decision_in_a_closed_window_joins_that_wait_only(self):
+        incidents, facts = self.incidents('visual-design')
+        by_id = {i['id']: i for i in incidents}
+        first = by_id['visual-design/wait/visual-design@1794272499']
+        second = by_id['visual-design/wait/visual-design@1794276256']
+        self.assertEqual(first['data']['reason'], 'max_qa_rounds: rundy: 3')
+        self.assertEqual(first['data']['action'], 'epic-resume')
+        nights = [f for f in first['facts'] if f['source'] == 'night-decisions.log']
+        self.assertEqual(len(nights), 1)
+        self.assertIn('FINALIZE PR #365', nights[0]['text'])
+        nights2 = [f for f in second['facts'] if f['source'] == 'night-decisions.log']
+        self.assertEqual(len(nights2), 1)
+        self.assertIn('REPAIR-1', nights2[0]['text'])
+        # one decision, one incident: nothing left over for the epic and no incident of its own
+        self.assertFalse([f for f in facts if f['id'].startswith('visual-design/night/')])
+        self.assertEqual(len([i for i in incidents if i['kind'] == 'wait']), 7)
+        self.assertEqual({i['kind'] for i in incidents}, {'wait', 'repair'})
+
+    def test_failed_attempt_ending_just_before_the_block_belongs_to_the_wait(self):
+        incidents, _ = self.incidents('visual-design')
+        by_id = {i['id']: i for i in incidents}
+        wait = by_id['visual-design/wait/VISUAL-DESIGN-5@1794242091']
+        attempts = [f for f in wait['facts'] if f['source'] == 'orchestrator.db']
+        self.assertEqual(len(attempts), 1)
+        self.assertIn('policy_blocked', attempts[0]['text'])
+        self.assertIn('VISUAL-DESIGN-5#1', attempts[0]['text'])
+        self.assertFalse([i for i in incidents if i['kind'] == 'failed_attempt'])
+
+    def test_failed_attempt_far_before_the_block_is_its_own_incident(self):
+        home = self.real_home()
+        con = sqlite3.connect(os.path.join(home, 'ao-visual-design', 'orchestrator.db'))
+        con.execute("UPDATE attempts SET ended_at = ended_at - 4000 WHERE task_id='VISUAL-DESIGN-5' AND number=1")
+        con.commit()
+        con.close()
+        incidents, _ = retro.ao_incidents(self.epic(home, 'visual-design'))
+        failed = [i for i in incidents if i['kind'] == 'failed_attempt']
+        self.assertEqual([i['id'] for i in failed], ['visual-design/failed_attempt/VISUAL-DESIGN-5#1'])
+        self.assertEqual(failed[0]['data']['outcome'], 'policy_blocked')
+        wait = {i['id']: i for i in incidents}['visual-design/wait/VISUAL-DESIGN-5@1794242091']
+        self.assertFalse([f for f in wait['facts'] if f['source'] == 'orchestrator.db'])
+
+    def test_failed_attempt_without_a_wait_has_outcome_and_exit_code(self):
+        incidents, _ = self.incidents('discount-codes')
+        failed = [i for i in incidents if i['kind'] == 'failed_attempt']
+        self.assertEqual([i['id'] for i in failed], ['discount-codes/failed_attempt/DISCOUNT-CODES-1#1'])
+        self.assertEqual((failed[0]['data']['outcome'], failed[0]['data']['exit_code']), ('invalid_output', 0))
+        self.assertFalse(failed[0]['data']['can_be_corrective'])
+
+    def test_queue_held_wait_is_keyed_by_the_epic_and_closed_by_release(self):
+        incidents, _ = self.incidents('discount-codes')
+        waits = {i['id']: i for i in incidents if i['kind'] == 'wait'}
+        self.assertEqual(sorted(waits), ['discount-codes/wait/discount-codes@1794190226',
+                                         'discount-codes/wait/discount-codes@1794210958'])
+        held = waits['discount-codes/wait/discount-codes@1794190226']
+        self.assertEqual(held['data']['action'], 'release')
+        self.assertEqual(held['data']['event'], 'queue_held')
+        self.assertEqual(held['data']['task_id'], 'DISCOUNT-CODES-INTEGRATION-3')
+        self.assertIn('EnvironmentFailure', held['data']['reasons'][0])
+        self.assertEqual(waits['discount-codes/wait/discount-codes@1794210958']['data']['action'], 'epic-resume')
+
+    def test_repair_task_is_an_incident_with_its_pr(self):
+        incidents, _ = self.incidents('visual-design')
+        repair = [i for i in incidents if i['kind'] == 'repair']
+        self.assertEqual([i['id'] for i in repair], ['visual-design/repair/VISUAL-DESIGN-REPAIR-1'])
+        self.assertEqual(repair[0]['data']['pr'], 367)
+        self.assertEqual(repair[0]['data']['task_kind'], 'repair')
+        self.assertTrue(repair[0]['data']['can_be_corrective'])
+
+    def test_task_with_pr_fix_rounds_is_a_repair_incident(self):
+        home = self.real_home()
+        con = sqlite3.connect(os.path.join(home, 'ao-cart', 'orchestrator.db'))
+        con.execute("UPDATE tasks SET fix_count = 2 WHERE task_id = 'CART-3'")
+        con.commit()
+        con.close()
+        incidents, _ = retro.ao_incidents(self.epic(home, 'cart'))
+        repair = [i for i in incidents if i['kind'] == 'repair']
+        self.assertEqual([(i['id'], i['data']['fix_count'], i['data']['pr']) for i in repair],
+                         [('cart/repair/CART-3', 2, 75)])
+
+    def test_plain_qa_fix_tasks_are_not_repairs(self):
+        incidents, _ = self.incidents('discount-codes')
+        self.assertFalse([i for i in incidents if i['kind'] == 'repair'])
+
+    def test_without_events_the_epic_has_a_fact_and_no_waits(self):
+        incidents, facts = self.incidents('cart')
+        self.assertEqual(incidents, [])
+        self.assertEqual([f['id'] for f in facts], ['cart/missing/events'])
+        self.assertIn('brak zdarzeń', facts[0]['text'])
+
+    def test_ids_are_the_same_on_a_second_run(self):
+        home = self.real_home()
+        first = retro.ao_incidents(self.epic(home, 'visual-design'))
+        second = retro.ao_incidents(self.epic(home, 'visual-design'))
+        self.assertEqual(first, second)
+
+    def test_open_wait_has_no_end_and_takes_no_night_decision(self):
+        events = [{'type': 'status_changed', 'task_id': 'T-1', 'epic_id': 'open', 'at': 1794000000.5,
+                   'data': {'from': 'RUNNING', 'to': 'BLOCKED', 'reason': 'executor', 'blockers': ['Q?']}}]
+        # 1794000100 in Europe/Warsaw
+        night = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(1794000100)) + ' epic resume: x\n'
+        build_run(self.ao_home, 'open', 'cart.sql', '\n'.join(json.dumps(e) for e in events) + '\n', night,
+                  extra_sql="UPDATE epics SET epic_id='open';")
+        epic = self.epic(self.ao_home, 'open')
+        incidents, facts = retro.ao_incidents(epic)
+        wait = [i for i in incidents if i['kind'] == 'wait'][0]
+        self.assertEqual(wait['id'], 'open/wait/T-1@1794000000')
+        self.assertTrue(wait['data']['open'])
+        self.assertIsNone(wait['data']['end'])
+        self.assertFalse(wait['data']['human_action'])
+        self.assertFalse(wait['data']['can_be_corrective'])
+        self.assertFalse([f for f in wait['facts'] if f['source'] == 'night-decisions.log'])
+        self.assertEqual([f['id'] for f in facts if '/night/' in f['id']], ['open/night/1794000100'])
+
+    def test_night_decision_on_the_end_second_belongs_to_the_wait(self):
+        # the log has whole seconds: the human_action at ...521.48 and the decision at ...521 are one moment
+        incidents, _ = self.incidents('visual-design')
+        first = {i['id']: i for i in incidents}['visual-design/wait/visual-design@1794272499']
+        self.assertEqual(first['data']['end'], 1794272521)
+
+    def test_garbage_lines_in_events_and_night_log_are_skipped(self):
+        home = self.real_home()
+        path = os.path.join(home, 'ao-visual-design', 'events.jsonl')
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write('not json\n[1, 2]\n{"type": "status_changed", "at": "x"}\n')
+        with open(os.path.join(home, 'ao-visual-design', 'night-decisions.log'), 'a', encoding='utf-8') as f:
+            f.write('garbage line\n2026-13-45 99:99:99 not a time\n')
+        incidents, facts = retro.ao_incidents(self.epic(home, 'visual-design'))
+        self.assertEqual(len([i for i in incidents if i['kind'] == 'wait']), 7)
+
+
+if __name__ == '__main__':
+    unittest.main()
