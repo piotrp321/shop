@@ -6,16 +6,23 @@ namespace App\Catalog\Domain\Product;
 
 final readonly class ProductName
 {
-    private const int MAX_LENGTH = 200;
+    public const int MAX_LENGTH = 200;
 
-    public function __construct(private string $value)
+    private string $value;
+
+    public function __construct(string $value)
     {
-        if ('' === trim($value)) {
+        if (ProductText::hasForbiddenCharacters($value)) {
+            throw new \InvalidArgumentException('ProductName must not contain forbidden characters.');
+        }
+        $value = ProductText::trim($value);
+        if ('' === $value) {
             throw new \InvalidArgumentException('ProductName must not be empty.');
         }
         if (mb_strlen($value) > self::MAX_LENGTH) {
             throw new \InvalidArgumentException('ProductName must have at most '.self::MAX_LENGTH.' characters.');
         }
+        $this->value = $value;
     }
 
     public function value(): string

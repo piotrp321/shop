@@ -6,7 +6,7 @@ namespace App\Catalog\Domain\Product;
 
 final readonly class Slug
 {
-    private const int MAX_LENGTH = 200;
+    public const int MAX_LENGTH = 200;
     private const string PATTERN = '/^[a-z0-9]+(-[a-z0-9]+)*$/D';
     private const array TRANSLITERATION = [
         'ą' => 'a', 'ć' => 'c', 'ę' => 'e', 'ł' => 'l', 'ń' => 'n', 'ó' => 'o', 'ś' => 's', 'ź' => 'z', 'ż' => 'z',

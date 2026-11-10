@@ -13,7 +13,7 @@ final class VariantValuesTest extends TestCase
 {
     public function testValuesAreTrimmedAndKeepTheirOrder(): void
     {
-        $values = VariantValues::fromList([' czarny ', "42\n"]);
+        $values = VariantValues::fromList([' czarny ', "42\u{00A0}"]);
 
         self::assertSame(['czarny', '42'], $values->toList());
         self::assertSame(2, $values->count());

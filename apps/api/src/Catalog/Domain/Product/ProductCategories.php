@@ -8,7 +8,7 @@ use App\Catalog\Domain\Category\CategoryId;
 
 final readonly class ProductCategories
 {
-    private const int MAX_ADDITIONAL = 10;
+    public const int MAX_ADDITIONAL = 10;
 
     /**
      * @param list<CategoryId> $additional
