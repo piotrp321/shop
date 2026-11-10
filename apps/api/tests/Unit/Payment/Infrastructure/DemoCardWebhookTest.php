@@ -136,7 +136,7 @@ final class DemoCardWebhookTest extends TestCase
      */
     public static function webhooksForAnEmptySecret(): iterable
     {
-        yield 'signed with the empty key' => [['card-signature' => 't='.Vector::CARD_TIMESTAMP.',v1='.hash_hmac('sha256', Vector::CARD_TIMESTAMP.'.'.Vector::CARD_BODY, 'dummy')], Vector::CARD_BODY];
+        yield 'signed with the empty key' => [['card-signature' => 't='.Vector::CARD_TIMESTAMP.',v1='.hash_hmac('sha256', Vector::CARD_TIMESTAMP.'.'.Vector::CARD_BODY, '')], Vector::CARD_BODY];
         yield 'signed with the key of the shared vector' => [['card-signature' => Vector::CARD_HEADER], Vector::CARD_BODY];
         yield 'no header' => [[], Vector::CARD_BODY];
         yield 'a body that is no JSON' => [[], 'not json'];
