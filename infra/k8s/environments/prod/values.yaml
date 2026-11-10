@@ -27,6 +27,10 @@ orderMail: mailpit
 brevo:
   secretName: shop-brevo-smtp
 
+# The address of the client for the rate limits of the API: Cloudflare sets CF-Connecting-IP on every request, and
+# nothing but Cloudflare reaches the origin (ipAllowList below).
+clientIpHeader: CF-Connecting-IP
+
 # The origin takes HTTP(S) only from Cloudflare (https://www.cloudflare.com/ips/, to be refreshed when they change).
 ipAllowList:
   enabled: true
