@@ -587,6 +587,16 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `GET /auth/session` zwraca `{ name, email }` zalogowanego klienta (z `GET /api/v1/me`; `name` to e-mail, gdy konto
   nie ma imienia) albo `null`. Korzystają z niego konto w nagłówku i kasa (e-mail klienta, imię i nazwisko).
 - `returnTo` przechodzi zawsze przez `sanitizeReturnTo`.
+- Limit `GET /auth/login` (`src/auth/login-rate-limit.ts`): licznik w Redisie sklepu (`login-rate:<klucz>`: `INCR` z `EXPIRE … NX`
+  i `TTL` w jednej transakcji, okno stałe 10 min od pierwszego trafienia), sprawdzany na początku trasy, przed OIDC
+  i zapisem transakcji logowania. Powyżej `STORE_LOGIN_RATE_LIMIT` (domyślnie 30 na klucz; dodatnia liczba całkowita,
+  inna wartość to błąd konfiguracji, czyli 503; compose ustawia 100000, bo w stosie deweloperskim i E2E wszystkie
+  żądania mają jeden adres; chart jej nie ustawia) trasa odpowiada 429 z `Retry-After` (sekundy do końca okna) i tekstem
+  „Zbyt wiele prób logowania. Spróbuj ponownie za kilka minut.”, `private, no-store`, bez ciasteczka i bez zapisu
+  w Redisie poza licznikiem. Klucz: adres z nagłówka nazwanego w `CLIENT_IP_HEADER`, gdy jest jednym poprawnym adresem
+  IP (IPv6 po prefiksie /64, IPv4-mapped jak IPv4); bez zmiennej, bez nagłówka albo z niepoprawną wartością (kilka
+  adresów, śmieci) klucz jest wspólny dla wszystkich takich żądań. Licznik jest w `AuthDeps` (`loginRateLimiter`,
+  w testach `memoryLoginRateLimiter`); jego błąd (Redis niedostępny) daje to samo 503 co reszta trasy.
 - Odpowiedzi `/auth/*` mają `Cache-Control: private, no-store`.
 
 ## Przełączniki wdrożenia (`GET /api/site`)

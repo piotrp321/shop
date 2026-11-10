@@ -1,5 +1,6 @@
 import { type ApiClient, createApiClient } from "@/api/client";
 import { type AuthConfig, readAuthConfig } from "./config";
+import { createRedisLoginRateLimiter, type LoginRateLimiter } from "./login-rate-limit";
 import { fetchMe, type MeResult } from "./me";
 import { createOidcClient, discoverOidc, type OidcClient } from "./oidc";
 import { createRedisClient, type RedisClient } from "./redis";
@@ -18,6 +19,8 @@ export type AuthDeps = {
   config: AuthConfig;
   sessions: SessionStore;
   transactions: LoginTransactionStore;
+  /** Counts login starts per client address; the route compares the count with `config.loginRateLimit`. */
+  loginRateLimiter: LoginRateLimiter;
   /** Discovered on first use; a failed discovery is retried on the next call. */
   oidc: () => Promise<OidcClient>;
   freshAccessToken: (sessionId: string) => Promise<string | null>;
@@ -55,6 +58,7 @@ function createAuthDeps(): AuthDeps {
 
   const sessions = createRedisSessionStore(redis);
   const transactions = createRedisLoginTransactionStore(redis);
+  const loginRateLimiter = createRedisLoginRateLimiter(redis);
   const withRedis =
     <A extends unknown[], R>(operation: (...args: A) => Promise<R>) =>
     async (...args: A) => {
@@ -83,6 +87,7 @@ function createAuthDeps(): AuthDeps {
       delete: withRedis(sessions.delete),
     },
     transactions: { create: withRedis(transactions.create), take: withRedis(transactions.take) },
+    loginRateLimiter: { hit: withRedis(loginRateLimiter.hit) },
     oidc: getOidc,
     freshAccessToken: withRedis((sessionId: string) =>
       getFreshAccessToken(sessionId, {
