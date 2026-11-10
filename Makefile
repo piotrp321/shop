@@ -1,4 +1,4 @@
-.PHONY: up down logs ps seed check test init-env-test varnish-test e2e e2e-check e2e-agent load-smoke api-client keycloak-reset
+.PHONY: up down logs ps seed check test init-env-test varnish-test e2e e2e-check e2e-agent lighthouse load-smoke api-client keycloak-reset
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -68,10 +68,27 @@ e2e:
 	mkdir -p e2e/test-results
 	docker compose --profile e2e run --rm $(E2E_BUILD) $(E2E_FLAGS) e2e
 
-# Type-checks the e2e package. Needs no running services, only the e2e image (not part of `check`, which would pull
-# the Playwright image for every developer; CI runs it in the e2e job).
+# Type-checks the e2e package and runs the tests of the Lighthouse median script (e2e/lighthouse/summary.test.mjs). Needs
+# no running services, only the e2e image (not part of `check`, which would pull the Playwright image for every
+# developer; CI runs it in the e2e job).
 e2e-check:
 	docker compose --profile e2e run --rm $(E2E_BUILD) --no-deps $(E2E_FLAGS) --entrypoint npx e2e tsc --noEmit
+	docker compose --profile e2e run --rm $(E2E_BUILD) --no-deps $(E2E_FLAGS) --entrypoint node e2e --test lighthouse/summary.test.mjs
+
+# Lighthouse measurement of three store pages (home, category, product; 3 runs each) in the e2e container, against the
+# running stack with the store in production mode (`STORE_MODE=production make up` and `make seed` first). The mode is
+# read from the running store container, not from the environment of make. Reports, manifest.json and medians.md go to
+# e2e/lighthouse-results. Only the SEO score fails the target; the other thresholds warn.
+lighthouse:
+	@if ! docker compose exec -T store true >/dev/null 2>&1; then \
+		echo "lighthouse: the store container is not running. Start the stack first: STORE_MODE=production make up && make seed" >&2; exit 1; \
+	fi; \
+	mode="$$(docker compose exec -T store printenv STORE_MODE || true)"; \
+	if [ "$$mode" != production ]; then \
+		echo "lighthouse: the store runs in '$$mode' mode, the measurement needs the production build. Restart it with: STORE_MODE=production make up" >&2; exit 1; \
+	fi
+	mkdir -p e2e/lighthouse-results
+	docker compose --profile e2e run --rm $(E2E_BUILD) $(E2E_FLAGS) e2e lighthouse
 
 # Playwright scripts written by an agent, outside the repo (see docs/features/agent-tester-ux/spec.md). AGENT_DIR is the
 # absolute path of an existing directory: scripts are read from $(AGENT_DIR)/tests, results go to $(AGENT_DIR)/results.

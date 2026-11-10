@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Forwards the public ports of the stack (localhost:<port>) to the services, then runs Playwright.
+# Forwards the public ports of the stack (localhost:<port>) to the services, then runs Playwright (or, for the argument
+# `lighthouse`, the Lighthouse measurement of lighthouse/run.sh).
 # Public ports come from the same variables as in Compose (defaults match the Compose defaults).
 set -euo pipefail
 
@@ -41,5 +42,10 @@ for entry in "${SERVICES[@]}"; do
   echo "e2e: the forwarder for $name did not start listening on port $public" >&2
   exit 1
 done
+
+if [ "${1:-}" = "lighthouse" ]; then
+  shift
+  exec bash /app/lighthouse/run.sh "$@"
+fi
 
 exec npx playwright test "$@"

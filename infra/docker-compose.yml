@@ -456,7 +456,7 @@ services:
       # `npm ci` runs on first start before the dev server is up.
       start_period: 180s
 
-  # End-to-end tests (Playwright). Started only by `make e2e`, against an already running stack. It joins the
+  # End-to-end tests (Playwright) and the Lighthouse measurement. Started only by `make e2e` and `make lighthouse`, against an already running stack. It joins the
   # default network and forwards localhost:<public port> to the services (see e2e/entrypoint.sh), so the test
   # browser uses the same addresses as a browser on the host.
   e2e:
@@ -482,6 +482,9 @@ services:
       - ./e2e/playwright.agent.config.ts:/app/playwright.agent.config.ts:ro
       - ./e2e/tsconfig.json:/app/tsconfig.json:ro
       - ./e2e/test-results:/app/test-results
+      # The Lighthouse measurement (`make lighthouse`): its script and configuration are read-only, results go to the host.
+      - ./e2e/lighthouse:/app/lighthouse:ro
+      - ./e2e/lighthouse-results:/app/lighthouse-results
 
 volumes:
   api-vendor:
