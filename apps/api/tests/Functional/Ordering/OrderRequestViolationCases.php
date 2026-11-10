@@ -58,6 +58,14 @@ trait OrderRequestViolationCases
         yield 'fullName with a line break' => [['fullName' => "Anna\nNowak"], [['fullName', self::NAME_CONTROL]]];
         yield 'fullName with a trailing tab' => [['fullName' => "Anna Nowak\t"], [['fullName', self::NAME_CONTROL]]];
         yield 'fullName with DEL' => [['fullName' => "Anna\x7FNowak"], [['fullName', self::NAME_CONTROL]]];
+        yield 'fullName with U+0085' => [['fullName' => "Anna\u{0085}Nowak"], [['fullName', self::NAME_CONTROL]]];
+        yield 'fullName with U+2028' => [['fullName' => "Anna\u{2028}Nowak"], [['fullName', self::NAME_CONTROL]]];
+        yield 'fullName with a trailing U+2029' => [['fullName' => "Anna Nowak\u{2029}"], [['fullName', self::NAME_CONTROL]]];
+        yield 'street with U+2028' => [['street' => "ul. Długa\u{2028}5"], [['street', self::STREET_CONTROL]]];
+        yield 'street with a leading U+0085' => [['street' => "\u{0085}ul. Długa 5"], [['street', self::STREET_CONTROL]]];
+        yield 'city with U+2029' => [['city' => "War\u{2029}szawa"], [['city', self::CITY_CONTROL]]];
+        yield 'city with a trailing U+2028' => [['city' => "Warszawa\u{2028}"], [['city', self::CITY_CONTROL]]];
+        yield 'postalCode with U+2028' => [['postalCode' => "00-950\u{2028}"], [['postalCode', self::POSTAL_CODE_INVALID]]];
         yield 'street with a NUL' => [['street' => "ul. Długa\0 5"], [['street', self::STREET_CONTROL]]];
         yield 'street with a leading line break' => [['street' => "\nul. Długa 5"], [['street', self::STREET_CONTROL]]];
         yield 'city with a NUL' => [['city' => "War\0szawa"], [['city', self::CITY_CONTROL]]];
@@ -139,6 +147,9 @@ trait OrderRequestViolationCases
         yield 'email with a trailing dot before the @' => [['email' => 'a.@example.com'], [['email', self::EMAIL_INVALID]]];
         yield 'email with a NUL' => [['email' => "anna\0@example.com"], [['email', self::EMAIL_INVALID]]];
         yield 'email with a trailing line break' => [['email' => "anna@example.com\n"], [['email', self::EMAIL_INVALID]]];
+        yield 'email with U+2028' => [['email' => "anna\u{2028}@example.com"], [['email', self::EMAIL_INVALID]]];
+        yield 'email with a trailing U+0085' => [['email' => "anna@example.com\u{0085}"], [['email', self::EMAIL_INVALID]]];
+        yield 'email with a leading U+2029' => [['email' => "\u{2029}anna@example.com"], [['email', self::EMAIL_INVALID]]];
         yield 'email of 255 characters' => [['email' => str_repeat('a', 243).'@example.com'], [['email', self::EMAIL_INVALID]]];
         yield 'email a number' => [['email' => 5], [['email', self::EMAIL_INVALID]]];
         yield 'email an array' => [['email' => ['anna@example.com']], [['email', self::EMAIL_INVALID]]];
