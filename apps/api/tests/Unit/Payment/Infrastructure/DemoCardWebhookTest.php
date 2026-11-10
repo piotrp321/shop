@@ -132,6 +132,32 @@ final class DemoCardWebhookTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{array<string, string>, string}>
+     */
+    public static function webhooksForAnEmptySecret(): iterable
+    {
+        yield 'signed with the empty key' => [['card-signature' => 't='.Vector::CARD_TIMESTAMP.',v1='.hash_hmac('sha256', Vector::CARD_TIMESTAMP.'.'.Vector::CARD_BODY, 'dummy')], Vector::CARD_BODY];
+        yield 'signed with the key of the shared vector' => [['card-signature' => Vector::CARD_HEADER], Vector::CARD_BODY];
+        yield 'no header' => [[], Vector::CARD_BODY];
+        yield 'a body that is no JSON' => [[], 'not json'];
+    }
+
+    /**
+     * @param array<string, string> $headers
+     */
+    #[DataProvider('webhooksForAnEmptySecret')]
+    public function testAnEmptyWebhookSecretRefusesEveryWebhookBeforeTheSignatureIsChecked(array $headers, string $body): void
+    {
+        try {
+            $this->parse($headers, $body, secret: '');
+            self::fail('A webhook was accepted with an empty webhook secret.');
+        } catch (InvalidWebhook $invalid) {
+            self::assertStringContainsString('empty webhook secret', $invalid->getMessage());
+            self::assertStringNotContainsString('signature', $invalid->getMessage());
+        }
+    }
+
+    /**
      * @return iterable<string, array{string}>
      */
     public static function badBodies(): iterable
@@ -166,9 +192,9 @@ final class DemoCardWebhookTest extends TestCase
     /**
      * @param array<string, string> $headers
      */
-    private function parse(array $headers, string $body, int $now = Vector::CARD_TIMESTAMP): ?ProviderEvent
+    private function parse(array $headers, string $body, int $now = Vector::CARD_TIMESTAMP, string $secret = Vector::CARD_SECRET): ?ProviderEvent
     {
-        $adapter = new DemoCardProvider(new ProviderCalls()->client, 'http://api', 'card-api-key', Vector::CARD_SECRET);
+        $adapter = new DemoCardProvider(new ProviderCalls()->client, 'http://api', 'card-api-key', $secret);
 
         return $adapter->parseWebhook($headers, $body, new \DateTimeImmutable('@'.$now));
     }
