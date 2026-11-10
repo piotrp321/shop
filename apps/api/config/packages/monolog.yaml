@@ -31,8 +31,17 @@ when@prod:
                 action_level: error
                 handler: stderr_json
                 excluded_http_codes: [404, 405]
-                channels: ['!event']
+                channels: ['!event', '!cache']
                 buffer_size: 50
+            # A failing cache pool (Redis of the rate limits down: the limits are off, spec docs/features/hardening/
+            # spec.md, D7) is logged by the pool as a warning and the request goes on; outside the buffer above, so
+            # the warning is written also when the request succeeds.
+            cache_stderr:
+                type: stream
+                path: php://stderr
+                level: warning
+                formatter: monolog.formatter.json
+                channels: ['cache']
             stderr_json:
                 type: stream
                 path: php://stderr

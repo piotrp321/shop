@@ -36,7 +36,7 @@ Skrypty wywołuj zawsze jako `python3 "$R" …` i `python3 "$NQ" …`. `SHOP` to
 komendy `retro.py` dostają `--repo "$SHOP"` (wyjątek: `validate`, sekcja „Przebieg”, krok 4). Przed wyborem epiku
 (bez argumentu) użyj tylko pierwszych pięciu linii.
 
-Powiadomienie push to `PushNotification` (do 200 znaków). Zasilanie, limit i procesy sprawdzasz na komputerze sesji.
+Powiadomienie push to `PushNotification` (do 200 znaków). Limit i procesy sprawdzasz na komputerze sesji.
 
 ## Uruchamianie
 
@@ -83,8 +83,9 @@ Sprawdzaj po kolei. Pierwsze niespełnione kończy skill: bez worktree i bez zmi
 - nazwa `<epik>` nie pasuje do `^[a-z0-9][a-z0-9-]*$`;
 - `"$RETRO_HOME/<epik>/state.json"` ma `state` `done` albo `skipped` (brak pliku: dalej);
 - epik nie jest zmergowany: brak końcowego PR, PR `OPEN` albo epik w toku (nie `DONE`);
-- brak katalogu `ao-<epik>` albo `orchestrator.db` (wynik `absent` niżej): „epik nie jest przebiegiem AO albo jeszcze nie
-  ruszył”. To odmowa, nie `skip`: `skipped` jest nieodwracalne, a epik przygotowany, ale nieuruchomiony, straciłby retro.
+- brak katalogu `ao-<epik>`, `orchestrator.db` albo wiersza epiku w bazie (wyniki `absent` i `none` niżej): „epik nie
+  jest przebiegiem AO albo jeszcze nie ruszył”. To odmowa, nie `skip`: `skipped` jest nieodwracalne, a epik
+  przygotowany, ale nieuruchomiony, straciłby retro.
 
 Przebieg epiku rozpoznaj krótkim fragmentem tylko do odczytu; nigdy nie uruchamiaj `ao` (każda komenda `ao` w
 katalogu bez bazy zakłada nową, a `ao report` nadpisuje raport). Nazwa epiku jest porównywana dokładnie jak w
@@ -116,24 +117,29 @@ PY
 
 - `absent` (brak katalogu `ao-<epik>` albo bazy): odmowa bez zapisu (punkt 1);
 - `none` (baza istnieje, ale bez tabeli `epics`, bez kolumny `epic_id` albo `status`, albo bez wiersza tego epiku, np.
-  `ao-night`; tak samo jak `discover_runs` w `retro.py`): trwałe pominięcie (punkt 2);
+  `ao-night`; tak samo jak `discover_runs` w `retro.py`): odmowa bez zapisu jak przy `absent` (punkt 1): epik nie jest
+  przebiegiem AO albo jeszcze nie ruszył, więc jego retro nie może przepaść;
 - `in_progress` (wiersz z `status` nie `DONE`, w tym NULL, albo bez `final_pr_number`): odmowa „epik w toku”;
 - `error` (baza nieczytelna): odmowa z komunikatem, bez zapisu;
 - `done`: `cd "$SHOP" && gh pr view <pr> --json state,mergedAt` (`gh` zawiedzie: odroczenie, punkt 3):
   `OPEN` odmowa; `CLOSED` trwałe pominięcie; `MERGED` dalej.
 
 **2. Trwałe pominięcie:** `python3 "$R" skip <epik> --reason "<powód>" --repo "$SHOP"` i push „Retro `<epik>`
-pominięte trwale: <powód>”. Powody: istniejąca baza `ao-<epik>` nie jest przebiegiem epiku (wynik `none`; brak katalogu albo bazy to
-odmowa, nie `skip`), końcowy PR
-`CLOSED` bez merge'u albo decyzja użytkownika w rozmowie („pomiń retro X: <powód>”). Nic innego nie pomija retro
-trwale. Komenda odmówi (kod 2) dla stanu `done` albo `skipped`.
+pominięte trwale: <powód>”. Powody: końcowy PR `CLOSED` bez merge'u albo decyzja użytkownika w rozmowie („pomiń retro X: <powód>”). Nic
+innego nie pomija retro trwale (brak przebiegu AO w katalogu `ao-<epik>` to odmowa, nie `skip`). Komenda odmówi (kod 2) dla stanu `done` albo `skipped`.
 
 **3. Odroczenie:** `python3 "$R" defer <epik> --reason "<powód>" --repo "$SHOP"` (powód do 200 znaków: próba i
 powód zapisują się w state.json, epik zostaje w `pending`) i push „Retro `<epik>` odroczone: <powód>”. Powody:
-- zasilanie: `pmset -g batt` nie zawiera `'AC Power'` (powód „bateria”; błąd `pmset` też jest powodem);
-- limit: wywołaj `mcp__ccd_session_mgmt__get_usage` i wklej obiekt `plan` dosłownie:
+- limit (zasilania nie sprawdzasz): wywołaj `mcp__ccd_session_mgmt__get_usage` i wklej obiekt `plan` dosłownie.
+  Próg zależy od wejścia: z `/ao-run` (kolejka przeglądów, jedne zasady z `/sweep`) 95%, przy przebiegu ręcznym
+  (`/retro` wywołane przez użytkownika) 80%, czyli domyślny próg `room`:
 
   ```bash
+  # z /ao-run
+  python3 "$NQ" room --hours 2 --max-percent 95 <<'USAGE'
+  <obiekt plan z get_usage>
+  USAGE
+  # przebieg ręczny
   python3 "$NQ" room --hours 2 <<'USAGE'
   <obiekt plan z get_usage>
   USAGE

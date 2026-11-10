@@ -25,6 +25,8 @@ env:
     value: {{ .Values.demoNotice | quote }}
   - name: STORE_CUSTOMER_ACCOUNTS
     value: {{ .Values.customerAccounts | quote }}
+  # The checkout copies this header of the browser's request to the API (docs/features/hardening/spec.md, D2).
+  {{- include "shop.clientIpHeaderEnv" . | nindent 2 }}
 {{ include "shop.envFromSecret" . }}
 ports:
   - name: http

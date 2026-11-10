@@ -9,6 +9,7 @@ import io
 import importlib.util
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -2422,6 +2423,134 @@ class CorruptStateTest(RunDirCase):
     def test_collect_still_reads_an_unreadable_state_as_empty(self):
         self.corrupt('visual-design')
         self.assertEqual(retro.read_state(self.retro_home, 'visual-design'), {})
+
+
+REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
+
+
+def repo_text(*parts):
+    with open(os.path.join(REPO, *parts), encoding='utf-8') as f:
+        return f.read()
+
+
+def section(text, start, end):
+    """The part of text from the first start marker to the next end marker after it."""
+    begin = text.index(start)
+    return text[begin:text.index(end, begin + len(start))]
+
+
+def bullet(text, start):
+    """One list item: from its start marker to the next top-level item."""
+    begin = text.index(start)
+    end = text.find('\n- **', begin + len(start))
+    return text[begin:] if end < 0 else text[begin:end]
+
+
+def power_mentions(text):
+    """Every mention of the power source in text that is not a negation ("zasilania nie sprawdzasz", "bez sprawdzania
+    zasilania"): a battery, pmset or AC Power at all, and a power word without a negation in its sentence."""
+    flat = ' '.join(text.split())
+    found = [m.group(0) for m in re.finditer(r'bateri\w*|pmset|AC Power', flat, re.IGNORECASE)]
+    for m in re.finditer(r'zasilan\w*', flat, re.IGNORECASE):
+        window = flat[max(0, m.start() - 40):m.end() + 40].lower()
+        if 'nie sprawdza' not in window and 'bez sprawdzania' not in window:
+            found.append(flat[max(0, m.start() - 40):m.end() + 40])
+    return found
+
+
+class RetroProcessDocumentsTest(unittest.TestCase):
+    """The process documents state one set of rules: the conditions to start a review, the date of the first retro
+    and what a missing run means. Regression tests of the findings F1, F2 and F3 of the integration of the epic."""
+
+    def setUp(self):
+        self.skill = repo_text('.claude', 'skills', 'retro', 'SKILL.md')
+        self.ao_run = repo_text('.claude', 'skills', 'ao-run', 'SKILL.md')
+        self.retro_spec = repo_text('docs', 'features', 'retro', 'spec.md')
+        self.ao_run_spec = repo_text('docs', 'features', 'ao-run', 'spec.md')
+
+    # F2: the first date of the automatic retro
+
+    def test_retro_since_is_the_fixed_date_that_takes_the_first_three_epics(self):
+        # a guard of the production value: it passes before the fix too
+        self.assertEqual(retro.RETRO_SINCE, '2026-11-10T00:00:00+00:00')
+
+    def test_retro_since_is_described_as_a_fixed_date_not_as_a_merge_time(self):
+        with open(os.path.join(HERE, 'retro.py'), encoding='utf-8') as f:
+            code = f.read()
+        comment = section(code, '# `pending` takes epics', 'RETRO_SINCE = ')
+        spec_text = section(self.retro_spec, 'po dacie `RETRO_SINCE`', '- **Warunki przed startem**')
+        for where, text in (('retro.py', comment), ('spec', spec_text)):
+            self.assertNotIn('merge time', text, where)
+            self.assertNotRegex(text, r"merge'u PR", where)
+            self.assertNotIn('with that PR', text, where)
+            self.assertIn('2026-11-10', text, where)
+            self.assertIn('00:00 UTC', text, where)
+
+    # F1: one set of rules for the automatic reviews, without the power check
+
+    def test_the_retro_skill_mentions_the_power_source_only_to_deny_checking_it(self):
+        self.assertEqual(power_mentions(self.skill), [])
+
+    def test_the_retro_skill_defers_at_95_percent_from_ao_run_and_at_the_default_threshold_by_hand(self):
+        deferral = section(self.skill, '**3. Odroczenie:**', '## Przebieg')
+        self.assertIn('--max-percent 95', section(deferral, '# z /ao-run', '# przebieg ręczny'))
+        manual = section(deferral, '# przebieg ręczny', 'USAGE\n  ```')
+        self.assertIn('room --hours 2', manual)
+        self.assertNotIn('--max-percent', manual)
+
+    def test_the_review_queue_of_ao_run_has_no_power_check(self):
+        queue = section(self.ao_run, '- **Warunki tuż przed startem każdego przeglądu**', '- **Przebieg przeglądu.**')
+        self.assertEqual(power_mentions(queue), [])
+        self.assertIn('--max-percent 95', section(queue, '1. Limit', '- **Retro.**'))
+
+    def test_the_retro_item_of_ao_run_has_the_95_percent_limit_and_no_power_check(self):
+        for where, text in (('SKILL', self.ao_run), ('spec', self.ao_run_spec)):
+            item = bullet(text, '- **Retro.**')
+            self.assertEqual(power_mentions(item), [], where)
+            self.assertIn('--max-percent 95', item, where)
+
+    def test_the_deferred_retro_item_of_the_ao_run_spec_has_no_power_check(self):
+        for where, text in (('SKILL', self.ao_run), ('spec', self.ao_run_spec)):
+            item = bullet(text, '- **Ponowienie odroczonych retro.**')
+            self.assertEqual(power_mentions(item), [], where)
+
+    def test_the_specifications_have_no_power_check_for_a_review_or_retro(self):
+        self.assertNotIn('pmset', self.retro_spec)
+        self.assertNotIn('pmset', self.ao_run_spec)
+        self.assertEqual(power_mentions(section(self.retro_spec, '- **Warunki przed startem**', '## ')), [])
+        self.assertIn('--max-percent 95', self.retro_spec)
+
+    # F3: a run that has not started is a refusal, not a permanent skip
+
+    def test_the_skill_refuses_without_a_write_when_the_run_is_none_like_when_it_is_absent(self):
+        conditions = section(self.skill, '## Warunki przed startem', '**2. Trwałe pominięcie:**')
+        refusals = section(conditions, '**1. Odmowa bez zapisu**', 'Przebieg epiku rozpoznaj')
+        self.assertIn('none', refusals)
+        outcomes = section(conditions, '- `absent`', '- `in_progress`')
+        none_line = next(line for line in outcomes.split('\n- ') if line.startswith('`none`'))
+        self.assertNotIn('skip', none_line.lower())
+        self.assertNotIn('pominięcie', none_line)
+        self.assertIn('odmowa', none_line)
+
+    def test_the_permanent_skip_does_not_name_none_as_a_reason(self):
+        skip = section(self.skill, '**2. Trwałe pominięcie:**', '**3. Odroczenie:**')
+        self.assertNotIn('none', skip)
+        self.assertNotIn('nie jest przebiegiem', skip)
+        self.assertIn('CLOSED', skip)
+        self.assertIn('decyzja użytkownika', skip)
+
+    def test_the_specifications_name_only_a_closed_pull_request_and_the_user_as_reasons_to_skip(self):
+        point = section(self.retro_spec, '  2. Trwałe pominięcie', '  3. Odroczenie')
+        self.assertNotIn('nie jest przebiegiem', point)
+        self.assertIn('CLOSED', point)
+        self.assertIn('decyzja użytkownika', point)
+
+    def test_ao_run_does_not_name_a_missing_run_row_as_a_reason_to_skip(self):
+        for where, text in (('SKILL', self.ao_run), ('spec', self.ao_run_spec)):
+            item = bullet(text, '- **Retro.**')
+            self.assertNotIn('baza bez wiersza epiku', item, where)
+            self.assertNotRegex(item, r'wiersza epiku[^,;]*(to|jest) `?skip', where)
+            self.assertIn('CLOSED', item, where)
 
 
 if __name__ == '__main__':

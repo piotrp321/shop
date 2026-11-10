@@ -1,13 +1,28 @@
 import { LOGIN_COOKIE, loginCookieOptions, signValue } from "@/auth/cookies";
 import { logFailure, noStore, redirectTo, withAuthDeps } from "@/auth/responses";
+import { loginRateLimitKey } from "@/auth/login-rate-limit";
 import { sanitizeReturnTo } from "@/auth/return-to";
 
+const TOO_MANY_LOGINS = "Zbyt wiele prób logowania. Spróbuj ponownie za kilka minut.";
+
 /**
- * Starts the login: state, nonce and PKCE verifier go into a single-use Redis transaction (10 min), its signed id
- * into a short cookie for the callback, and the browser to Keycloak's public authorization endpoint.
+ * Starts the login after the rate limit of the client address (429 with Retry-After above it): state, nonce and PKCE
+ * verifier go into a single-use Redis transaction (10 min), its signed id into a short cookie for the callback, and
+ * the browser to Keycloak's public authorization endpoint.
  */
-export const GET = withAuthDeps(async (request, { config, oidc, transactions }) => {
+export const GET = withAuthDeps(async (request, { config, oidc, transactions, loginRateLimiter }) => {
   try {
+    // First, before anything is written: a flood of starts must not fill Redis with login transactions.
+    const hit = await loginRateLimiter.hit(loginRateLimitKey(request.headers));
+    if (hit.count > config.loginRateLimit) {
+      return noStore(
+        new Response(TOO_MANY_LOGINS, {
+          status: 429,
+          headers: { "Content-Type": "text/plain; charset=utf-8", "Retry-After": String(hit.retryAfterSeconds) },
+        }),
+      );
+    }
+
     const login = await (await oidc()).startLogin();
     const returnTo = sanitizeReturnTo(request.nextUrl.searchParams.get("returnTo"), config.storeUrl);
     const id = await transactions.create({

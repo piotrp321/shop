@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "@/api/schema";
 import { SESSION_COOKIE, signValue } from "@/auth/cookies";
 import { sessionData, testConfig } from "@/auth/test-support";
@@ -59,7 +59,14 @@ const statusView = (overrides: Partial<components["schemas"]["PaymentStatusView"
   ...overrides,
 });
 
-type Options = { cookie?: string; origin?: string | null; contentType?: string | null; key?: string | null; body?: unknown };
+type Options = {
+  cookie?: string;
+  origin?: string | null;
+  contentType?: string | null;
+  key?: string | null;
+  body?: unknown;
+  headers?: Record<string, string>;
+};
 
 function pay(options: Options = {}) {
   const request = cartRequest("POST", "/api/checkout/payment", {
@@ -70,6 +77,7 @@ function pay(options: Options = {}) {
   });
   const key = options.key === undefined ? KEY : options.key;
   if (key !== null) request.headers.set("idempotency-key", key);
+  for (const [name, value] of Object.entries(options.headers ?? {})) request.headers.set(name, value);
   return POST(request);
 }
 
@@ -406,5 +414,64 @@ describe("GET /api/checkout/payment", () => {
     const response = await status(confirmationCookie());
 
     expect(response.status).toBe(503);
+  });
+});
+
+describe("POST /api/checkout/payment: the rate limit of the API", () => {
+  const tooManyRequests = () =>
+    Response.json(
+      { type: "about:blank", title: "Too Many Requests", status: 429, detail: "Zbyt wiele prób. Spróbuj ponownie za kilka minut." },
+      { status: 429, headers: { "Content-Type": "application/problem+json", "Retry-After": "120" } },
+    );
+
+  it("passes a 429 of a guest's start with its detail and Retry-After", async () => {
+    setup.answer("POST", GUEST_PAY, tooManyRequests);
+    const response = await pay({ cookie: confirmationCookie(guestConfirmation) });
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ detail: "Zbyt wiele prób. Spróbuj ponownie za kilka minut." });
+    expect(response.headers.get("retry-after")).toBe("120");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("passes a 429 of a customer's start and keeps the session", async () => {
+    const { id, cookie } = await signedIn();
+    setup.answer("POST", CUSTOMER_PAY, tooManyRequests);
+    const response = await pay({ cookie: `${cookie}; ${confirmationCookie(customerConfirmation)}` });
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("120");
+    expect(await setup.deps.sessions.get(id)).not.toBeNull();
+    expect(setCookie(response, SESSION_COOKIE)).toBeUndefined();
+  });
+});
+
+describe("POST /api/checkout/payment: the address of the client", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("copies the header named by CLIENT_IP_HEADER from the request of the browser to the API", async () => {
+    vi.stubEnv("CLIENT_IP_HEADER", "CF-Connecting-IP");
+    setup.answer("POST", GUEST_PAY, () => Response.json(paymentView(), { status: 201 }));
+    await pay({ cookie: confirmationCookie(guestConfirmation), headers: { "CF-Connecting-IP": "203.0.113.7" } });
+
+    expect(setup.calls.map((call) => [call.path, call.clientIp])).toEqual([[GUEST_PAY, "203.0.113.7"]]);
+  });
+
+  it("copies it for a customer too", async () => {
+    vi.stubEnv("CLIENT_IP_HEADER", "CF-Connecting-IP");
+    const { cookie } = await signedIn();
+    setup.answer("POST", CUSTOMER_PAY, () => Response.json(paymentView(), { status: 201 }));
+    await pay({ cookie: `${cookie}; ${confirmationCookie(customerConfirmation)}`, headers: { "CF-Connecting-IP": "203.0.113.7" } });
+
+    expect(setup.calls.map((call) => [call.path, call.clientIp])).toEqual([[CUSTOMER_PAY, "203.0.113.7"]]);
+  });
+
+  it("sends no address of the client without CLIENT_IP_HEADER", async () => {
+    setup.answer("POST", GUEST_PAY, () => Response.json(paymentView(), { status: 201 }));
+    await pay({ cookie: confirmationCookie(guestConfirmation), headers: { "CF-Connecting-IP": "203.0.113.7" } });
+
+    expect(setup.calls.map((call) => call.clientIp)).toEqual([undefined]);
   });
 });
