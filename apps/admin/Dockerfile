@@ -20,6 +20,7 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.30.6-alpine AS prod
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/security-headers.conf /etc/nginx/security-headers.conf
 COPY --chmod=755 docker/40-admin-config.sh /docker-entrypoint.d/40-admin-config.sh
 COPY --from=build /app/dist /usr/share/nginx/html
 

@@ -194,7 +194,9 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   initContainery. Pozostałe pody i kontenery nie montują tokenu (`automountServiceAccountToken: false`). Deploymenty
   mają `progressDeadlineSeconds` nie krótszy niż czas oczekiwania Jobów (1500 s).
 - Middleware Traefika: `ipAllowList` (D6) na wszystkich ingressach; `X-Robots-Tag: noindex` na wszystkich hostach,
-  gdy `noindex: true`.
+  gdy `noindex: true`; `hsts` (`Strict-Transport-Security: max-age=31536000`, bez `includeSubDomains` i `preload`)
+  na wszystkich hostach, tylko gdy `ingress.tls` (`prod`; profil `ci` jest bez TLS i bez HSTS). Pozostałe nagłówki
+  bezpieczeństwa wysyłają aplikacje (`docs/features/hardening/spec.md`, D10).
 - `clientIpHeader` (domyślnie puste) trafia jako `CLIENT_IP_HEADER` do `api` i `store`: nagłówek z adresem klienta,
   po którym liczą się limity API (`docs/features/hardening/spec.md`, D2 i D3). `prod` ma `CF-Connecting-IP`, który
   Cloudflare zawsze nadpisuje, a `ipAllowList` nie wpuszcza nikogo poza Cloudflare na żaden host (także `api.`
@@ -347,7 +349,7 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   z oryginałami przez symlinki, sekrety (każdy klucz `init-env.sh` w szablonie, SealedSecrety), przełączniki D10,
   utwardzenie (tokeny API tylko w initContainerach `kubectl`, `progressDeadlineSeconds`), zasoby `prod` na serwer,
   workflow `deploy.yml`, generator pliku digestów, skrypty `keycloak-config`, `initialize`, `create-admin`,
-  `seal-secrets`, `cloudflare-ips` i skrypty serwera na atrapach, CronJoby, ścieżki ingressu `auth`, middleware, fale (każdy Job i Deployment ma zależności we
+  `seal-secrets`, `cloudflare-ips` i skrypty serwera na atrapach, CronJoby, ścieżki ingressu `auth`, middleware (w tym HSTS tylko przy TLS), fale (każdy Job i Deployment ma zależności we
   wcześniejszych falach), nazwy Jobów D11, obrazy (własne z rejestru, z digestem w `prod`; pozostałe z tagiem jak
   w compose i digestem; Elasticsearch z `infra/elasticsearch/Dockerfile`, bez `elasticsearch-plugin` w kontenerach).
   Render (z wersją Kubernetes klastra smoke testu, `--kube-version`), który musi się nie udać: `prod` bez digestów,

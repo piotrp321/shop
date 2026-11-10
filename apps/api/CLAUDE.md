@@ -574,6 +574,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `tests/Integration/Shared/RateLimit/RedisRateLimitTest.php` (kernel `RedisPoolKernel` z pulą produkcji), wartości
   `prod` i `dev` oraz Monolog `prod` z kontenera zbudowanego z `config/` (`RateLimitConfigurationTest`). Kontener
   testów ma `APP_DEBUG=0`, więc po zmianie konfiguracji lokalnie usuń `var/cache/test*`.
+- `SecurityHeadersSubscriber` (`Shared\Infrastructure\Http`, `kernel.response`) ustawia `X-Content-Type-Options: nosniff`
+  na każdej odpowiedzi API: sukces, błędy, 404, 429 i preflight CORS (`tests/Functional/Shared/SecurityHeadersTest.php`).
+  Reszta nagłówków bezpieczeństwa (HSTS) należy do ingressu (`docs/features/hardening/spec.md`, D10).
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
 
 ## Infrastruktura
