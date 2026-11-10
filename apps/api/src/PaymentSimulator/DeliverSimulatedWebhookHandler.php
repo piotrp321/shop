@@ -13,8 +13,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Delivers the signed webhook of a decided transaction to the shop (PAYMENT_WEBHOOK_BASE_URL + the webhook path of the
- * provider). Any 2xx and any 4xx end the delivery (a 4xx is logged: the shop refused the webhook and a retry would be
- * refused again). A 5xx, any other status and a network error throw, so the transport retries the message: the event
+ * provider). Any 2xx and any 4xx but 429 end the delivery (a 4xx is logged: the shop refused the webhook and a retry
+ * would be refused again). A 429 (the rate limit of the webhooks of the shop: nothing was checked yet), a 5xx, any
+ * other status and a network error throw, so the transport retries the message: the event
  * id is the same each time, the receiver deduplicates, and a demo-card signature is made again with the time of the
  * attempt. A request waits 5 seconds at most for the shop (a timeout is a network error). A transaction that is gone
  * (the demo data was reset) or has no decision needs no delivery.
@@ -56,7 +57,7 @@ final readonly class DeliverSimulatedWebhookHandler
         if ($status >= 200 && $status < 300) {
             return;
         }
-        if ($status >= 400 && $status < 500) {
+        if ($status >= 400 && $status < 500 && 429 !== $status) {
             $this->logger->warning('Payment simulator: the shop refused the webhook, the delivery ends.', [
                 'transactionId' => $transaction->id,
                 'provider' => $transaction->provider->value,

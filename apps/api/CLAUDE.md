@@ -363,8 +363,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
     `/api/v1/payments/webhooks/<dostawca>`. `demo-transfer`: `X-Signature` = hex HMAC-SHA256 surowej treści;
     `demo-card`: `Card-Signature: t=<unix>,v1=<hex HMAC-SHA256("<t>.<treść>")>` z `t` z chwili każdej próby. Identyfikator
     zdarzenia (`evt_<id transakcji bez myślników>`) jest stały, więc ponowienie trafia na deduplikację sklepu. 2xx i 4xx
-    kończą dostawę (4xx z logiem). Żądanie czeka na sklep najwyżej 5 s (`timeout`), żeby milczący sklep nie blokował
-    workera, który obsługuje kolejki po kolei. 5xx i inny status rzucają `WebhookDeliveryFailed`, a błąd sieci (także
+    poza 429 kończą dostawę (4xx z logiem). Żądanie czeka na sklep najwyżej 5 s (`timeout`), żeby milczący sklep nie
+    blokował workera, który obsługuje kolejki po kolei. 429 (limit webhooków sklepu, sprawdzany przed podpisem), 5xx
+    i inny status rzucają `WebhookDeliveryFailed`, a błąd sieci (także
     przekroczenie czasu) wyjątek `TransportExceptionInterface` klienta HTTP, który handler przepuszcza; w obu
     przypadkach transport ponawia. Transakcja, której już nie ma (po `make seed`), kończy dostawę bez żądania.
   - Klucze API i sekrety webhooków (`PAYMENT_DEMO_TRANSFER_API_KEY`, `…_WEBHOOK_SECRET`, `PAYMENT_DEMO_CARD_API_KEY`,
