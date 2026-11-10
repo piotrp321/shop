@@ -1158,5 +1158,282 @@ class CommandLineTest(TempDirCase):
         self.assertEqual(self.run_cli('collect').returncode, 2)
         self.assertEqual(self.run_cli('nothing').returncode, 2)
 
+
+class RegistersCase(TempDirCase):
+    """A retro home in a temporary directory and the command line of retro.py with a fake runner."""
+
+    def setUp(self):
+        super().setUp()
+        self.retro_home = os.path.join(self.tmp, 'retro')
+        self.runner = FakeRunner()
+
+    def cli(self, *args, runner=None, repo=None):
+        out, err = io.StringIO(), io.StringIO()
+        argv = list(args) + ['--retro-home', self.retro_home, '--ao-home', self.ao_home, '--repo', repo or self.tmp]
+        with redirect_stdout(out), redirect_stderr(err):
+            try:
+                code = retro.main(argv, run=runner or self.runner)
+            except SystemExit as e:
+                code = e.code
+        return code, out.getvalue(), err.getvalue()
+
+    def state(self, epic):
+        with open(os.path.join(self.retro_home, epic, 'state.json'), encoding='utf-8') as f:
+            return json.load(f)
+
+    def write_state(self, epic, value):
+        retro.write_json(os.path.join(self.retro_home, epic), 'state.json', value)
+
+    def lock_path(self):
+        return os.path.join(self.retro_home, 'lock')
+
+    def write_lock(self, run_id, epic, age_s):
+        os.makedirs(self.retro_home, exist_ok=True)
+        with open(self.lock_path(), 'w') as f:
+            json.dump({'run_id': run_id, 'epic': epic, 'at': int(time.time()) - age_s}, f)
+
+    def rows(self, name):
+        return retro.read_jsonl(os.path.join(self.retro_home, name + '.jsonl'))
+
+    def write_rows(self, name, rows):
+        os.makedirs(self.retro_home, exist_ok=True)
+        with open(os.path.join(self.retro_home, name + '.jsonl'), 'w', encoding='utf-8') as f:
+            for row in rows:
+                f.write(json.dumps(row) + '\n')
+
+
+class LockTest(RegistersCase):
+    def test_lock_creates_the_lock_with_the_run_id_and_marks_the_epic_running(self):
+        code, out, err = self.cli('lock', 'visual-design', '--run-id', 'r1')
+        self.assertEqual(code, 0, err)
+        result = json.loads(out)
+        self.assertEqual((result['run_id'], result['epic']), ('r1', 'visual-design'))
+        with open(self.lock_path()) as f:
+            lock = json.load(f)
+        self.assertEqual((lock['run_id'], lock['epic']), ('r1', 'visual-design'))
+        self.assertAlmostEqual(lock['at'], time.time(), delta=5)
+        self.assertEqual(self.state('visual-design')['state'], 'running')
+
+    def test_lock_without_a_run_id_generates_and_prints_one(self):
+        code, out, _ = self.cli('lock', 'cart')
+        self.assertEqual(code, 0)
+        run_id = json.loads(out)['run_id']
+        self.assertTrue(run_id)
+        with open(self.lock_path()) as f:
+            self.assertEqual(json.load(f)['run_id'], run_id)
+
+    def test_run_id_may_come_from_the_environment(self):
+        with mock.patch.dict(os.environ, {'RETRO_RUN_ID': 'from-env'}):
+            code, out, _ = self.cli('lock', 'cart')
+        self.assertEqual((code, json.loads(out)['run_id']), (0, 'from-env'))
+
+    def test_a_fresh_lock_of_another_run_is_refused_with_code_2_and_stays(self):
+        self.write_lock('other', 'discount-codes', 3600)
+        code, out, err = self.cli('lock', 'visual-design', '--run-id', 'mine')
+        self.assertEqual(code, 2)
+        self.assertIn('other', err)
+        with open(self.lock_path()) as f:
+            self.assertEqual(json.load(f)['run_id'], 'other')
+        self.assertFalse(os.path.exists(os.path.join(self.retro_home, 'visual-design', 'state.json')))
+
+    def test_a_lock_older_than_six_hours_is_taken_over_with_a_warning(self):
+        self.write_lock('other', 'discount-codes', 6 * 3600 + 60)
+        code, out, err = self.cli('lock', 'visual-design', '--run-id', 'mine')
+        self.assertEqual(code, 0, err)
+        result = json.loads(out)
+        self.assertIn('other', result['warning'])
+        self.assertIn('discount-codes', result['warning'])
+        with open(self.lock_path()) as f:
+            self.assertEqual(json.load(f)['run_id'], 'mine')
+
+    def test_a_lock_just_under_six_hours_is_still_fresh(self):
+        self.write_lock('other', 'x', 6 * 3600 - 60)
+        self.assertEqual(self.cli('lock', 'cart', '--run-id', 'mine')[0], 2)
+
+    def test_the_same_run_may_lock_again_without_a_warning(self):
+        self.cli('lock', 'cart', '--run-id', 'mine')
+        code, out, _ = self.cli('lock', 'cart', '--run-id', 'mine')
+        self.assertEqual(code, 0)
+        self.assertIsNone(json.loads(out).get('warning'))
+
+    def test_an_unreadable_lock_is_taken_over_with_a_warning(self):
+        os.makedirs(self.retro_home)
+        with open(self.lock_path(), 'w') as f:
+            f.write('not json')
+        code, out, _ = self.cli('lock', 'cart', '--run-id', 'mine')
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(out)['warning'])
+
+    def test_lock_refuses_a_bad_epic_name_and_a_finished_retro_without_writing(self):
+        for name in ('Bad', 'a b', '../x'):
+            self.assertEqual(self.cli('lock', name)[0], 2, name)
+        self.write_state('cart', {'state': 'done'})
+        self.write_state('seo', {'state': 'skipped', 'reason': 'x'})
+        for name in ('cart', 'seo'):
+            self.assertEqual(self.cli('lock', name)[0], 2, name)
+        self.assertFalse(os.path.exists(self.lock_path()))
+        self.assertEqual(self.state('cart')['state'], 'done')
+
+    def test_lock_keeps_the_other_fields_of_the_state(self):
+        self.write_state('cart', {'deferrals': [{'at': 1, 'reason': 'bateria'}], 'pr': {'number': 5}})
+        self.cli('lock', 'cart', '--run-id', 'mine')
+        state = self.state('cart')
+        self.assertEqual(state['state'], 'running')
+        self.assertEqual(state['deferrals'], [{'at': 1, 'reason': 'bateria'}])
+        self.assertEqual(state['pr'], {'number': 5})
+
+    def test_unlock_removes_only_its_own_lock(self):
+        self.cli('lock', 'cart', '--run-id', 'mine')
+        code, _, err = self.cli('unlock', '--run-id', 'someone-else')
+        self.assertEqual(code, 2)
+        self.assertTrue(os.path.exists(self.lock_path()))
+        self.assertEqual(self.cli('unlock', '--run-id', 'mine')[0], 0)
+        self.assertFalse(os.path.exists(self.lock_path()))
+
+    def test_unlock_without_a_lock_is_not_an_error(self):
+        self.assertEqual(self.cli('unlock', '--run-id', 'mine')[0], 0)
+
+    def test_unlock_needs_a_run_id(self):
+        self.cli('lock', 'cart', '--run-id', 'mine')
+        self.assertEqual(self.cli('unlock')[0], 2)
+        self.assertTrue(os.path.exists(self.lock_path()))
+
+    def test_unlock_done_marks_the_epic_done_and_without_it_a_running_state_is_cleared(self):
+        self.cli('lock', 'cart', '--run-id', 'mine')
+        self.write_state('cart', dict(self.state('cart'), decisions_open=[{'n': 1}]))
+        self.assertEqual(self.cli('unlock', '--run-id', 'mine', '--done')[0], 0)
+        state = self.state('cart')
+        self.assertEqual(state['state'], 'done')
+        self.assertEqual(state['decisions_open'], [{'n': 1}])
+        self.cli('lock', 'discount-codes', '--run-id', 'mine')
+        self.assertEqual(self.cli('unlock', '--run-id', 'mine')[0], 0)
+        self.assertNotIn('state', self.state('discount-codes'))
+
+    def test_unlock_done_of_a_foreign_lock_changes_nothing(self):
+        self.write_lock('other', 'cart', 60)
+        self.assertEqual(self.cli('unlock', '--run-id', 'mine', '--done')[0], 2)
+        self.assertFalse(os.path.exists(os.path.join(self.retro_home, 'cart', 'state.json')))
+
+    def test_unwritable_retro_home_is_exit_code_1(self):
+        blocker = os.path.join(self.tmp, 'file')
+        with open(blocker, 'w') as f:
+            f.write('x')
+        self.retro_home = os.path.join(blocker, 'sub')
+        self.assertEqual(self.cli('lock', 'cart', '--run-id', 'mine')[0], 1)
+
+
+class DeferSkipTest(RegistersCase):
+    def test_defer_records_the_attempt_and_the_reason_and_keeps_other_fields(self):
+        self.write_state('visual-design', {'pr': {'number': 9, 'items': []}, 'decisions_open': [{'n': 1}]})
+        code, _, err = self.cli('defer', 'visual-design', '--reason', 'bateria')
+        self.assertEqual(code, 0, err)
+        self.cli('defer', 'visual-design', '--reason', 'limit 85%')
+        state = self.state('visual-design')
+        self.assertEqual([d['reason'] for d in state['deferrals']], ['bateria', 'limit 85%'])
+        self.assertAlmostEqual(state['deferrals'][0]['at'], time.time(), delta=5)
+        self.assertEqual(state['pr'], {'number': 9, 'items': []})
+        self.assertEqual(state['decisions_open'], [{'n': 1}])
+        self.assertNotIn(state.get('state'), ('done', 'skipped'))
+
+    def test_defer_cuts_the_reason_to_200_characters(self):
+        self.cli('defer', 'cart', '--reason', 'x' * 500)
+        self.assertEqual(len(self.state('cart')['deferrals'][0]['reason']), 200)
+
+    def test_defer_and_skip_need_a_reason(self):
+        for command in ('defer', 'skip'):
+            self.assertEqual(self.cli(command, 'cart')[0], 2)
+            self.assertEqual(self.cli(command, 'cart', '--reason', '   ')[0], 2)
+        self.assertFalse(os.path.exists(os.path.join(self.retro_home, 'cart')))
+
+    def test_skip_marks_the_epic_skipped_with_the_reason(self):
+        self.write_state('cart', {'deferrals': [{'at': 1, 'reason': 'bateria'}]})
+        code, _, err = self.cli('skip', 'cart', '--reason', 'katalog nie jest epikiem')
+        self.assertEqual(code, 0, err)
+        state = self.state('cart')
+        self.assertEqual((state['state'], state['reason']), ('skipped', 'katalog nie jest epikiem'))
+        self.assertAlmostEqual(state['skipped_at'], time.time(), delta=5)
+        self.assertEqual(len(state['deferrals']), 1)
+
+    def test_defer_and_skip_are_refused_for_done_and_skipped_without_changes(self):
+        self.write_state('a', {'state': 'done'})
+        self.write_state('b', {'state': 'skipped', 'reason': 'x'})
+        for epic in ('a', 'b'):
+            for command in ('defer', 'skip'):
+                before = self.state(epic)
+                code, _, err = self.cli(command, epic, '--reason', 'powód')
+                self.assertEqual(code, 2, (epic, command))
+                self.assertIn(epic, err)
+                self.assertEqual(self.state(epic), before)
+
+    def test_bad_epic_names_are_refused_without_writing(self):
+        for command in ('defer', 'skip'):
+            for name in ('Bad', '-x', 'a b', '../x'):
+                code = self.cli(command, name, '--reason', 'powód')[0]
+                self.assertEqual(code, 2, (command, name))
+        self.assertFalse(os.path.exists(self.retro_home))
+
+
+class PendingTest(RegistersCase):
+    def setUp(self):
+        super().setUp()
+        self.real_home()
+        build_run(self.ao_home, 'lighthouse', 'cart.sql', extra_sql="UPDATE epics SET epic_id='lighthouse',"
+                                                                    " final_pr_number=384;")
+
+    def pending(self, *args, runner=None):
+        code, out, err = self.cli('pending', *args, runner=runner)
+        self.assertEqual(code, 0, err)
+        return json.loads(out)
+
+    def test_pending_lists_epics_merged_after_retro_since_from_the_oldest_merge(self):
+        with mock.patch.object(retro, 'RETRO_SINCE', '2026-11-01T00:00:00+00:00'):
+            result = self.pending()
+        self.assertEqual([e['epic'] for e in result], ['cart', 'discount-codes', 'lighthouse', 'visual-design'])
+        self.assertEqual(result[0]['merged_at'], 1793761200)   # 2026-11-04T03:00:00Z
+        self.assertEqual((result[0]['attempts'], result[0]['reason']), (0, None))
+
+    def test_the_default_since_leaves_only_the_epics_merged_after_it(self):
+        self.assertEqual([e['epic'] for e in self.pending()], ['lighthouse', 'visual-design'])
+
+    def test_an_epic_merged_exactly_at_since_is_not_pending(self):
+        with mock.patch.object(retro, 'RETRO_SINCE', '2026-11-10T07:00:00+00:00'):
+            self.assertEqual([e['epic'] for e in self.pending()], ['visual-design'])
+
+    def test_done_and_skipped_epics_are_not_pending_and_a_deferred_one_stays_with_attempts_and_reason(self):
+        self.write_state('lighthouse', {'state': 'done'})
+        self.cli('defer', 'visual-design', '--reason', 'bateria')
+        self.cli('defer', 'visual-design', '--reason', 'limit 85%')
+        result = self.pending()
+        self.assertEqual([(e['epic'], e['attempts'], e['reason']) for e in result],
+                         [('visual-design', 2, 'limit 85%')])
+        self.cli('skip', 'visual-design', '--reason', 'decyzja użytkownika')
+        self.assertEqual(self.pending(), [])
+
+    def test_running_epic_is_still_pending(self):
+        self.cli('lock', 'visual-design', '--run-id', 'r')
+        self.assertIn('visual-design', [e['epic'] for e in self.pending()])
+
+    def test_an_unmerged_final_pr_is_not_pending(self):
+        self.runner.prs[366] = {'state': 'OPEN', 'mergedAt': None}
+        self.assertEqual([e['epic'] for e in self.pending(runner=self.runner)], ['lighthouse'])
+
+    def test_epics_with_done_or_skipped_retro_cost_no_gh_call(self):
+        self.write_state('lighthouse', {'state': 'done'})
+        self.write_state('visual-design', {'state': 'skipped', 'reason': 'x'})
+        self.pending()
+        views = [c for c in self.runner.calls if c[:3] == ['gh', 'pr', 'view']]
+        self.assertEqual([c[3] for c in views], ['79', '329'])
+
+    def test_a_failing_gh_is_exit_code_1_and_prints_nothing(self):
+        code, out, err = self.cli('pending', runner=FakeRunner(fail='gh pr view'))
+        self.assertEqual((code, out), (1, ''))
+        self.assertIn('retro:', err)
+
+    def test_no_epics_is_an_empty_list(self):
+        shutil.rmtree(self.ao_home)
+        os.makedirs(self.ao_home)
+        self.assertEqual(self.pending(), [])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -34,6 +34,7 @@ import sqlite3
 import sys
 import time
 import urllib.request
+import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -941,6 +942,192 @@ def write_json(directory, name, value):
     return path
 
 
+# -------------------------------------------------------------------------------------------- registers and state
+
+class Refusal(Exception):
+    """A refusal that ends the command with exit code 2: bad arguments, a retro in a state that forbids the command,
+    another run's lock, a proposal that does not pass `validate`."""
+
+
+LOCK_MAX_AGE_S = 6 * 3600
+DEFER_REASON_LIMIT = 200
+FINISHED_STATES = ('done', 'skipped')
+
+
+def now():
+    return int(time.time())
+
+
+def check_epic_name(name):
+    if not isinstance(name, str) or not EPIC_NAME.match(name):
+        raise Refusal('invalid epic name %r (allowed: ^[a-z0-9][a-z0-9-]*$)' % (name,))
+    return name
+
+
+def state_dir(retro_home, epic_id):
+    return os.path.join(retro_home, epic_id)
+
+
+def save_state(retro_home, epic_id, state):
+    write_json(state_dir(retro_home, epic_id), 'state.json', state)
+
+
+def open_epic_state(retro_home, epic_id, command):
+    """The state.json of an epic for a command that changes it; a finished retro (`done`, `skipped`) is refused."""
+    check_epic_name(epic_id)
+    state = read_state(retro_home, epic_id)
+    if state.get('state') in FINISHED_STATES:
+        raise Refusal('retro of %s is %s: `%s` refused' % (epic_id, state['state'], command))
+    return state
+
+
+def clean_reason(reason, limit=None):
+    reason = ' '.join((reason or '').split())
+    if not reason:
+        raise Refusal('a non-empty --reason is required')
+    return cut(reason, limit) if limit else reason
+
+
+def write_jsonl(path, rows):
+    """The whole file again, atomically."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temporary = path + '.tmp'
+    with open(temporary, 'w', encoding='utf-8') as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + '\n')
+    os.replace(temporary, path)
+
+
+def append_jsonl(path, rows):
+    """One write per row, so a row is never split."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'a', encoding='utf-8') as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + '\n')
+
+
+def register_path(retro_home, name):
+    return os.path.join(retro_home, name + '.jsonl')
+
+
+def cmd_defer(args):
+    state = open_epic_state(args.retro_home, args.epic, 'defer')
+    reason = clean_reason(args.reason, DEFER_REASON_LIMIT)
+    state['deferrals'] = list(state.get('deferrals') or []) + [{'at': now(), 'reason': reason}]
+    save_state(args.retro_home, args.epic, state)
+    return {'epic': args.epic, 'attempts': len(state['deferrals']), 'reason': reason}
+
+
+def cmd_skip(args):
+    state = open_epic_state(args.retro_home, args.epic, 'skip')
+    reason = clean_reason(args.reason)
+    state.update({'state': 'skipped', 'reason': reason, 'skipped_at': now()})
+    save_state(args.retro_home, args.epic, state)
+    return {'epic': args.epic, 'state': 'skipped', 'reason': reason}
+
+
+def cmd_pending(args, run):
+    """[{epic, merged_at, attempts, reason}] from the oldest merge: the epics of `pending_epics`, with the number of
+    deferrals and the last reason. Epics with a finished retro cost no `gh` call."""
+    entries = []
+    for epic in discover_epics(args.ao_home):
+        if read_state(args.retro_home, epic['id']).get('state') in FINISHED_STATES:
+            continue
+        entries.append({'id': epic['id'], 'merged_at': final_pr(run, epic['final_pr_number'])[1]})
+    merged = {e['id']: e['merged_at'] for e in entries}
+    result = []
+    for epic_id in pending_epics(entries, args.retro_home):
+        deferrals = read_state(args.retro_home, epic_id).get('deferrals') or []
+        result.append({'epic': epic_id, 'merged_at': int(merged[epic_id]), 'attempts': len(deferrals),
+                       'reason': deferrals[-1].get('reason') if deferrals else None})
+    return result
+
+
+# ------------------------------------------------------------------------------------------------------------ lock
+
+def lock_path(retro_home):
+    return os.path.join(retro_home, 'lock')
+
+
+def read_lock(retro_home):
+    """The lock as a dict, None when there is none, {} when it cannot be read (a stale one)."""
+    try:
+        with open(lock_path(retro_home), encoding='utf-8') as f:
+            lock = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return {}
+    return lock if isinstance(lock, dict) else {}
+
+
+def run_id_of(args):
+    return args.run_id or os.environ.get('RETRO_RUN_ID') or ''
+
+
+def cmd_lock(args):
+    """Takes the lock for the epic and marks its state `running`. Returns {run_id, epic, at, warning}; another run's
+    lock younger than 6 h is a refusal, an older or unreadable one is taken over with a `warning`."""
+    state = open_epic_state(args.retro_home, args.epic, 'lock')
+    run_id = run_id_of(args) or uuid.uuid4().hex[:12]
+    lock = {'run_id': run_id, 'epic': args.epic, 'at': now()}
+    warning = None
+    os.makedirs(args.retro_home, exist_ok=True)
+    for _ in range(2):
+        try:
+            descriptor = os.open(lock_path(args.retro_home), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            other = read_lock(args.retro_home)
+            if other is None:
+                continue   # removed between the two calls
+            age = now() - other['at'] if isinstance(other.get('at'), (int, float)) else None
+            if other.get('run_id') != run_id:
+                if age is not None and age < LOCK_MAX_AGE_S:
+                    raise Refusal('the lock of run %s (epic %s) is %d min old, younger than 6 h'
+                                  % (other.get('run_id'), other.get('epic'), age // 60))
+                warning = ('took over the lock of run %s (epic %s), %s'
+                           % (other.get('run_id'), other.get('epic'),
+                              'older than 6 h' if age is not None else 'unreadable'))
+            write_json(args.retro_home, 'lock', lock)
+            break
+        else:
+            with os.fdopen(descriptor, 'w', encoding='utf-8') as f:
+                json.dump(lock, f)
+                f.write('\n')
+            break
+    else:
+        raise RetroError('could not take the lock in %s' % args.retro_home)
+    state.update({'state': 'running', 'started_at': lock['at']})
+    save_state(args.retro_home, args.epic, state)
+    return dict(lock, warning=warning)
+
+
+def cmd_unlock(args):
+    """Removes the lock of the run (`--run-id`); `--done` first marks the epic of the lock `done`, without it a
+    `running` state is cleared. Another run's lock stays and is a refusal."""
+    run_id = run_id_of(args)
+    if not run_id:
+        raise Refusal('--run-id (or RETRO_RUN_ID) is required')
+    lock = read_lock(args.retro_home)
+    if lock is None:
+        if args.done:
+            raise Refusal('there is no lock to mark the epic done for')
+        return {'unlocked': False}
+    if lock.get('run_id') != run_id:
+        raise Refusal('the lock belongs to run %s, not %s' % (lock.get('run_id'), run_id))
+    epic_id = lock.get('epic')
+    if isinstance(epic_id, str) and EPIC_NAME.match(epic_id):
+        state = read_state(args.retro_home, epic_id)
+        if args.done:
+            state.update({'state': 'done', 'done_at': now()})
+            save_state(args.retro_home, epic_id, state)
+        elif state.get('state') == 'running':
+            del state['state']
+            save_state(args.retro_home, epic_id, state)
+    os.remove(lock_path(args.retro_home))
+    return {'unlocked': True, 'epic': epic_id}
+
+
 # ------------------------------------------------------------------------------------------------------------ CLI
 
 EPIC_NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')
@@ -953,30 +1140,54 @@ def build_parser():
     common.add_argument('--ao-home', default=paths['ao_home'], help='directory with the ao-<epic> runs')
     common.add_argument('--retro-home', default=paths['retro_home'], help='registers and per-epic state of /retro')
     common.add_argument('--sweep-home', default=paths['sweep_home'], help='reports of /sweep')
-    parser = argparse.ArgumentParser(description='Facts for the /retro skill')
+    parser = argparse.ArgumentParser(description='Facts and registers for the /retro skill')
     commands = parser.add_subparsers(dest='command', required=True)
     collecting = commands.add_parser('collect', parents=[common], help='write input.json for an epic')
     collecting.add_argument('epic')
     collecting.add_argument('--out', help='directory for input.json (default: <retro-home>/<epic>)')
+    commands.add_parser('pending', parents=[common], help='epics whose retro is still to do')
+    for name, text in (('defer', 'defer the retro of an epic (it stays pending)'),
+                       ('skip', 'skip the retro of an epic for good')):
+        sub = commands.add_parser(name, parents=[common], help=text)
+        sub.add_argument('epic')
+        sub.add_argument('--reason', default='', help='why')
+    locking = commands.add_parser('lock', parents=[common], help='take the lock of the retro of an epic')
+    locking.add_argument('epic')
+    locking.add_argument('--run-id', default='', help='run identifier (default: $RETRO_RUN_ID, else generated)')
+    unlocking = commands.add_parser('unlock', parents=[common], help='release the lock of this run')
+    unlocking.add_argument('--run-id', default='', help='run identifier of `lock` (default: $RETRO_RUN_ID)')
+    unlocking.add_argument('--done', action='store_true', help='mark the epic of the lock done')
     return parser
+
+
+def print_json(value):
+    print(json.dumps(value, ensure_ascii=False))
 
 
 def main(argv=None, run=None):
     args = build_parser().parse_args(argv)
-    if args.command == 'collect':
-        if not EPIC_NAME.match(args.epic):
-            print('retro: invalid epic name %r (allowed: ^[a-z0-9][a-z0-9-]*$)' % args.epic, file=sys.stderr)
-            return 2
-        paths = {'ao_home': args.ao_home, 'retro_home': args.retro_home, 'sweep_home': args.sweep_home}
-        try:
+    try:
+        if args.command == 'collect':
+            check_epic_name(args.epic)
+            paths = {'ao_home': args.ao_home, 'retro_home': args.retro_home, 'sweep_home': args.sweep_home}
             data = collect(args.epic, paths, run or next_epic.make_runner(args.repo))
             print(write_json(args.out or os.path.join(args.retro_home, args.epic), 'input.json', data))
-        except ValueError as e:
-            print('retro: %s' % e, file=sys.stderr)
-            return 2
-        except (next_epic.CommandError, OSError) as e:
-            print('retro: %s' % e, file=sys.stderr)
-            return 1
+        elif args.command == 'pending':
+            print_json(cmd_pending(args, run or next_epic.make_runner(args.repo)))
+        elif args.command == 'defer':
+            print_json(cmd_defer(args))
+        elif args.command == 'skip':
+            print_json(cmd_skip(args))
+        elif args.command == 'lock':
+            print_json(cmd_lock(args))
+        elif args.command == 'unlock':
+            print_json(cmd_unlock(args))
+    except (Refusal, ValueError) as e:
+        print('retro: %s' % e, file=sys.stderr)
+        return 2
+    except (next_epic.CommandError, RetroError, OSError) as e:
+        print('retro: %s' % e, file=sys.stderr)
+        return 1
     return 0
 
 
