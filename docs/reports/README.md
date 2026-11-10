@@ -7,3 +7,4 @@ Surowe wyniki pomiarów zostają poza repozytorium.
 | Raport | Zakres | Rewizja |
 |---|---|---|
 | [load-test-2026-11-10](load-test-2026-11-10.md) | pomiar obciążeniowy na klastrze k3d z obrazami produkcyjnymi (`make -C infra/k8s load`): przepustowość odczytu i koszyka do nasycenia oraz checkout przy ograniczonej równoległości | `43f2b15` |
+| [security-review-2026-11-10](security-review-2026-11-10.md) | przegląd bezpieczeństwa sklepu, API i panelu według listy 11 punktów (limity i adres klienta, walidacja, CORS, uprawnienia, upload, nagłówki i CSRF, sekrety, ekspozycja `prod`, zależności, błędy i przekierowania, nadużycia stanów i koszyków), z blokerami publicznego demo i propozycjami zgłoszeń | `5f2d553` |
