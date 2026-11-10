@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "@/api/schema";
 import { SESSION_COOKIE, signValue } from "@/auth/cookies";
 import { sessionData, testConfig } from "@/auth/test-support";
@@ -95,10 +95,17 @@ const orderView = (overrides: Partial<components["schemas"]["OrderView"]> = {}):
   ...overrides,
 });
 
-type Options = { cookie?: string; origin?: string | null; contentType?: string | null; key?: string | null; body?: unknown };
+type Options = {
+  cookie?: string;
+  origin?: string | null;
+  contentType?: string | null;
+  key?: string | null;
+  body?: unknown;
+  headers?: Record<string, string>;
+};
 
 function checkout(options: Options = {}) {
-  const headers = new Headers();
+  const headers = new Headers(options.headers);
   if (options.cookie) headers.set("cookie", options.cookie);
   const origin = options.origin === undefined ? testConfig.storeUrl : options.origin;
   if (origin !== null) headers.set("origin", origin);
@@ -611,5 +618,96 @@ describe("POST /api/checkout: starting the payment of the placed order", () => {
     await checkout({ cookie: signedCartCookie(GUEST_CART_ID) });
 
     expect(orderCalls().map((call) => call.path)).toEqual([GUEST_ORDERS]);
+  });
+});
+
+/** A 429 of the API: the rate limit of the placement or of the payment start. */
+const tooManyRequests = () =>
+  Response.json(
+    { type: "about:blank", title: "Too Many Requests", status: 429, detail: "Zbyt wiele prób. Spróbuj ponownie za kilka minut." },
+    { status: 429, headers: { "Content-Type": "application/problem+json", "Retry-After": "600" } },
+  );
+
+describe("POST /api/checkout: the rate limits of the API", () => {
+  it("passes a 429 of the placement with its detail and Retry-After, keeps store_cart and starts no payment", async () => {
+    setup.answer("POST", GUEST_ORDERS, tooManyRequests);
+    const response = await checkout({ cookie: signedCartCookie(GUEST_CART_ID) });
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ detail: "Zbyt wiele prób. Spróbuj ponownie za kilka minut." });
+    expect(response.headers.get("retry-after")).toBe("600");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(setCookie(response, CART_COOKIE)).toBeUndefined();
+    expect(setCookie(response, CONFIRMATION_COOKIE)).toBeUndefined();
+    expect(orderCalls().map((call) => call.path)).toEqual([GUEST_ORDERS]);
+  });
+
+  it("passes a 429 of the placement of a customer and keeps the session", async () => {
+    const { id, cookie } = await signedIn();
+    setup.answer("POST", CUSTOMER_ORDERS, tooManyRequests);
+    const response = await checkout({ cookie, body: CUSTOMER_FORM });
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("600");
+    expect(await setup.deps.sessions.get(id)).not.toBeNull();
+    expect(setCookie(response, SESSION_COOKIE)).toBeUndefined();
+  });
+
+  it("answers the order without an address when the payment start is over the limit (429), so it is paid from the confirmation page", async () => {
+    setup.answer("POST", GUEST_ORDERS, () => Response.json(orderView(), { status: 201 }));
+    setup.answer("POST", GUEST_PAYMENTS, tooManyRequests);
+    const response = await checkout({ cookie: signedCartCookie(GUEST_CART_ID) });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ number: "R-100001", redirectUrl: null });
+    expect(confirmationOf(response)).toEqual(GUEST_CONFIRMATION);
+  });
+});
+
+describe("POST /api/checkout: the address of the client", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("copies the header named by CLIENT_IP_HEADER from the request of the browser to every call of the API of a guest", async () => {
+    vi.stubEnv("CLIENT_IP_HEADER", "CF-Connecting-IP");
+    setup.answer("POST", GUEST_ORDERS, () => Response.json(orderView(), { status: 201 }));
+    setup.answer("POST", GUEST_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie: signedCartCookie(GUEST_CART_ID), headers: { "CF-Connecting-IP": "203.0.113.7" } });
+
+    expect(setup.calls.map((call) => [call.path, call.clientIp])).toEqual([
+      [PROVIDERS, "203.0.113.7"],
+      [GUEST_ORDERS, "203.0.113.7"],
+      [GUEST_PAYMENTS, "203.0.113.7"],
+    ]);
+  });
+
+  it("copies it to every call of the API of a customer", async () => {
+    vi.stubEnv("CLIENT_IP_HEADER", "CF-Connecting-IP");
+    const { cookie } = await signedIn();
+    setup.answer("POST", MERGE, () => mergeAnswer("merged"));
+    setup.answer("POST", CUSTOMER_ORDERS, () => Response.json(orderView({ accessToken: null }), { status: 201 }));
+    setup.answer("POST", CUSTOMER_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie: `${cookie}; ${signedCartCookie(GUEST_CART_ID)}`, body: CUSTOMER_FORM, headers: { "CF-Connecting-IP": "2001:db8::7" } });
+
+    expect(setup.calls.map((call) => [call.path, call.clientIp])).toEqual([
+      [PROVIDERS, "2001:db8::7"],
+      [MERGE, "2001:db8::7"],
+      [CUSTOMER_ORDERS, "2001:db8::7"],
+      [CUSTOMER_PAYMENTS, "2001:db8::7"],
+    ]);
+  });
+
+  it.each([
+    ["without CLIENT_IP_HEADER", undefined, { "CF-Connecting-IP": "203.0.113.7" }],
+    ["with an empty CLIENT_IP_HEADER", "", { "CF-Connecting-IP": "203.0.113.7" }],
+    ["when the request has no such header", "CF-Connecting-IP", {}],
+  ])("sends no address of the client %s", async (_name, variable, headers) => {
+    if (variable !== undefined) vi.stubEnv("CLIENT_IP_HEADER", variable);
+    setup.answer("POST", GUEST_ORDERS, () => Response.json(orderView(), { status: 201 }));
+    setup.answer("POST", GUEST_PAYMENTS, () => Response.json(paymentView(), { status: 201 }));
+    await checkout({ cookie: signedCartCookie(GUEST_CART_ID), headers });
+
+    expect(setup.calls.map((call) => call.clientIp)).toEqual([undefined, undefined, undefined]);
   });
 });

@@ -4,7 +4,8 @@ import { readSignedValue, SESSION_COOKIE } from "@/auth/cookies";
 import { clearSessionCookie, json, logFailure, noStore } from "@/auth/responses";
 import { invalidBody, readJsonObject, refuseForeignWrite } from "@/cart/bff";
 import type { CartDeps } from "@/cart/deps";
-import { pickFields } from "./api";
+import { pickFields, rateLimited, withRetryAfter } from "./api";
+import { forwardingClientIp } from "./client-ip";
 import { CONFIRMATION_COOKIE, type OrderConfirmation, readOrderConfirmation } from "./cookies";
 import {
   type PaymentStatusAnswer,
@@ -46,10 +47,10 @@ function confirmationOf(request: NextRequest, deps: CartDeps): OrderConfirmation
   return readOrderConfirmation(request.cookies.get(CONFIRMATION_COOKIE)?.value, deps.config.sessionSecret);
 }
 
-type Outcome = { status: number; body: unknown; endSession?: string };
+type Outcome = { status: number; body: unknown; endSession?: string; retryAfter?: string };
 
 async function finish(outcome: Outcome, deps: CartDeps): Promise<Response> {
-  const response = json(outcome.body, outcome.status);
+  const response = withRetryAfter(json(outcome.body, outcome.status), outcome.retryAfter);
   if (outcome.endSession === undefined) {
     return noStore(response);
   }
@@ -70,6 +71,8 @@ function toStartOutcome(result: PaymentStartAnswer, channel: Channel): Outcome {
     case 404:
     case 422:
       return { status: result.status, body: { detail: result.detail, violations: result.violations } };
+    case 429:
+      return rateLimited(result);
     case 401:
       // Only the customer's endpoint asks for a token: its 401 means the session is over.
       if (channel.kind === "customer") {
@@ -85,10 +88,12 @@ function toStartOutcome(result: PaymentStartAnswer, channel: Channel): Outcome {
  * `POST /api/checkout/payment`: starts a payment of the order of the confirmation cookie at the provider of the body
  * (`{ provider }`), for a retry or a second attempt from the confirmation page. The browser chooses the
  * `Idempotency-Key` as at the checkout. Answers 200 `{ redirectUrl }`; 404 (no or forged cookie, or the API does not
- * know the order), 409 with the `type` of its cause and 422 of the API with their `detail` and `violations`; 401 when a
- * customer's session ended and 503 for the rest.
+ * know the order), 409 with the `type` of its cause and 422 of the API with their `detail` and `violations`, 429 of the
+ * rate limit of the API with its `detail` and `Retry-After`; 401 when a customer's session ended and 503 for the rest.
+ * The call of the API carries the address of the client (`forwardingClientIp`).
  */
-export async function runPaymentStart(request: NextRequest, deps: CartDeps): Promise<Response> {
+export async function runPaymentStart(request: NextRequest, cartDeps: CartDeps): Promise<Response> {
+  const deps: CartDeps = { ...cartDeps, api: (accessToken) => forwardingClientIp(cartDeps.api(accessToken), request) };
   const refused = refuseForeignWrite(request, deps.config.storeUrl, true);
   if (refused) {
     return refused;
@@ -180,9 +185,10 @@ export async function readPaymentStatus(confirmation: OrderConfirmation, session
 /**
  * `GET /api/checkout/payment`: the `PaymentStatusView` of the API for the order of the confirmation cookie. 404 without
  * the cookie or when the API does not know the order, 401 when a customer's order has no session (a 401 of the API also
- * ends it), 503 for the rest.
+ * ends it), 503 for the rest. The call of the API carries the address of the client, as the start does.
  */
-export async function runPaymentStatus(request: NextRequest, deps: CartDeps): Promise<Response> {
+export async function runPaymentStatus(request: NextRequest, cartDeps: CartDeps): Promise<Response> {
+  const deps: CartDeps = { ...cartDeps, api: (accessToken) => forwardingClientIp(cartDeps.api(accessToken), request) };
   const confirmation = confirmationOf(request, deps);
   if (confirmation === null) {
     return finish(notFound(), deps);

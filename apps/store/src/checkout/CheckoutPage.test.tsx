@@ -505,6 +505,27 @@ describe("CheckoutPage placing the order", () => {
     expect(within(alert).getByRole("link", { name: "Zaloguj się" }).getAttribute("href")).toBe("/auth/login?returnTo=%2Fcheckout");
   });
 
+  it("on a 429 says there were too many attempts, keeps the form and orders with the same key on the next click", async () => {
+    await renderCheckout();
+    fillGuestForm();
+    const formKey = key(keys);
+    await submit({ status: "rate_limited" });
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Zbyt wiele prób złożenia zamówienia. Spróbuj ponownie za kilka minut.");
+    expect(document.activeElement).toBe(alert);
+    expect(field("E-mail").value).toBe("anna.nowak@example.com");
+    expect(field("Telefon").value).toBe("600 100 200");
+    expect((screen.getByRole("radio", { name: "Szybki przelew (demo)" }) as HTMLInputElement).checked).toBe(true);
+    expect(submitButton().disabled).toBe(false);
+    expect(push).not.toHaveBeenCalled();
+    expect(announced).toEqual([]);
+
+    await submit({ status: "ok", number: "R-100001", redirectUrl: REDIRECT_URL });
+    expect(vi.mocked(placeOrder).mock.calls.map((call) => call[1])).toEqual([formKey, formKey]);
+    expect(vi.mocked(placeOrder).mock.calls[1][0]).toEqual(GUEST_INPUT);
+  });
+
   it("on a 403, 503, 5xx or network error asks to try again", async () => {
     await renderCheckout();
     fillGuestForm();

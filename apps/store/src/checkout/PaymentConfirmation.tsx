@@ -27,6 +27,7 @@ const CONFIRMATION_PATH = "/checkout/confirmation";
 
 const CHOOSE_PROVIDER = "Wybierz sposób płatności.";
 const START_FAILED = "Nie udało się rozpocząć płatności. Spróbuj ponownie.";
+const RATE_LIMITED = "Zbyt wiele prób płatności. Spróbuj ponownie za kilka minut.";
 const READ_FAILED = "Nie udało się sprawdzić statusu płatności.";
 const NOT_FOUND = "Nie znaleźliśmy zamówienia.";
 const PROVIDER_PREFIX = "payment-provider-";
@@ -200,6 +201,10 @@ export function PaymentConfirmation({ order, initial, providers }: { order: Plac
         }
         break;
       }
+      case "rate_limited":
+        // Nothing was started: the same key and provider go again on the next click.
+        setMessage(RATE_LIMITED);
+        break;
       case "failed":
         setMessage(START_FAILED);
         break;
