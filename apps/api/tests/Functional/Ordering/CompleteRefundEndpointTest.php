@@ -48,6 +48,28 @@ final class CompleteRefundEndpointTest extends WebTestCase
         self::assertNull($order['refund']['note']);
     }
 
+    public function testANoteOfNonBreakingSpacesIsNoNote(): void
+    {
+        $orderId = $this->cancelledOrder();
+
+        $order = $this->complete($orderId, ['version' => 3, 'note' => "\u{00A0} \u{00A0}"], self::staff(['admin']));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertIsArray($order['refund']);
+        self::assertNull($order['refund']['note']);
+    }
+
+    public function testANoteIsTrimmedOfNonBreakingSpaces(): void
+    {
+        $orderId = $this->cancelledOrder();
+
+        $order = $this->complete($orderId, ['version' => 3, 'note' => "\u{00A0}Przelew wysłany\u{00A0}"], self::staff(['admin']));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertIsArray($order['refund']);
+        self::assertSame('Przelew wysłany', $order['refund']['note']);
+    }
+
     /**
      * @return iterable<string, array{list<string>}>
      */
@@ -131,6 +153,11 @@ final class CompleteRefundEndpointTest extends WebTestCase
         yield 'a note that is no string' => [['version' => 3, 'note' => false], 'note'];
         yield 'a note over 500 characters' => [['version' => 3, 'note' => str_repeat('a', 501)], 'note'];
         yield 'a note of two lines' => [['version' => 3, 'note' => "Przelew\r\nwysłany"], 'note'];
+        yield 'a note with U+0085' => [['version' => 3, 'note' => "Przelew\u{0085}wysłany"], 'note'];
+        yield 'a note with U+2028' => [['version' => 3, 'note' => "Przelew\u{2028}wysłany"], 'note'];
+        yield 'a note with a trailing U+2029' => [['version' => 3, 'note' => "Przelew wysłany\u{2029}"], 'note'];
+        yield 'a note of U+2028 alone' => [['version' => 3, 'note' => "\u{2028}"], 'note'];
+        yield 'a note over 500 characters once trimmed of non-breaking spaces' => [['version' => 3, 'note' => "\u{00A0}".str_repeat('a', 501)."\u{00A0}"], 'note'];
     }
 
     /**

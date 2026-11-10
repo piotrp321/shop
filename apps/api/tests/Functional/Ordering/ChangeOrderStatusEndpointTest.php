@@ -223,6 +223,13 @@ final class ChangeOrderStatusEndpointTest extends WebTestCase
         yield 'a note over 500 characters' => [['note' => str_repeat('a', 501)] + $valid, 'note'];
         yield 'a note of two lines' => [['note' => "Kurier\nDPD"] + $valid, 'note'];
         yield 'a note with a control character' => [['note' => "Kurier\x07"] + $valid, 'note'];
+        yield 'a note with U+0085' => [['note' => "Kurier\u{0085}DPD"] + $valid, 'note'];
+        yield 'a note with U+2028' => [['note' => "Kurier\u{2028}DPD"] + $valid, 'note'];
+        yield 'a note with a trailing U+2029' => [['note' => "Kurier DPD\u{2029}"] + $valid, 'note'];
+        yield 'a cancellation with a note of U+2028' => [['transition' => 'cancel', 'note' => "\u{2028}"] + $valid, 'note'];
+        yield 'a note over 500 characters once trimmed of non-breaking spaces' => [['note' => "\u{00A0}".str_repeat('a', 501)."\u{00A0}"] + $valid, 'note'];
+        yield 'a cancellation with a note of non-breaking spaces' => [['transition' => 'cancel', 'note' => "\u{00A0}\u{00A0}"] + $valid, 'note'];
+        yield 'a return with a note of Unicode white space' => [['transition' => 'return', 'note' => " \u{3000}\u{2003}"] + $valid, 'note'];
         yield 'a cancellation without a note' => [['transition' => 'cancel'] + $valid, 'note'];
         yield 'a cancellation with a blank note' => [['transition' => 'cancel', 'note' => '  '] + $valid, 'note'];
         yield 'a return without a note' => [['transition' => 'return'] + $valid, 'note'];
@@ -239,6 +246,57 @@ final class ChangeOrderStatusEndpointTest extends WebTestCase
         self::assertSame([$path], $this->violationPaths(422, $this->change($orderId, $body, self::staff(['admin']))));
 
         self::assertSame(['paid', 2], $this->stored($orderId));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}> the note and the message at `note`
+     */
+    public static function notesWithTheirMessages(): iterable
+    {
+        yield 'only non-breaking spaces' => ["\u{00A0}\u{00A0}", 'Notatka jest wymagana.'];
+        yield 'only Unicode white space' => [" \u{3000}\u{2003}\u{202F}", 'Notatka jest wymagana.'];
+        yield 'U+2028' => ["Brak\u{2028}kuriera", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'U+2029' => ["Brak\u{2029}kuriera", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'U+0085' => ["Brak\u{0085}kuriera", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'U+2028 alone' => ["\u{2028}", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'over 500 characters once trimmed' => ["\u{00A0}".str_repeat('ą', 501)."\u{00A0}", 'Notatka może mieć najwyżej 500 znaków.'];
+    }
+
+    #[DataProvider('notesWithTheirMessages')]
+    public function testACancellationWithAnUnacceptableNoteGivesOneMessageAtTheNote(string $note, string $message): void
+    {
+        [$orderId] = $this->paidOrder();
+
+        $problem = $this->change($orderId, ['transition' => 'cancel', 'version' => 2, 'note' => $note], self::staff(['support']));
+
+        self::assertSame(['note'], $this->violationPaths(422, $problem));
+        self::assertIsArray($problem['violations']);
+        self::assertCount(1, $problem['violations']);
+        self::assertIsArray($problem['violations'][0]);
+        self::assertSame($message, $problem['violations'][0]['title'] ?? null);
+        self::assertSame(['paid', 2], $this->stored($orderId));
+    }
+
+    public function testANoteOfNonBreakingSpacesIsNoNoteForAShipment(): void
+    {
+        [$orderId] = $this->paidOrder();
+
+        $order = $this->change($orderId, ['transition' => 'ship', 'version' => 2, 'note' => "\u{00A0}\u{00A0}"], self::staff(['warehouse']));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertIsArray($order['history']);
+        self::assertNull(((array) end($order['history']))['note']);
+    }
+
+    public function testANoteIsTrimmedOfNonBreakingSpaces(): void
+    {
+        [$orderId] = $this->paidOrder();
+
+        $order = $this->change($orderId, ['transition' => 'cancel', 'version' => 2, 'note' => "\u{00A0}Klient zrezygnował\u{00A0}"], self::staff(['support']));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertIsArray($order['history']);
+        self::assertSame('Klient zrezygnował', ((array) end($order['history']))['note']);
     }
 
     public function testTheLongestNoteIsAccepted(): void

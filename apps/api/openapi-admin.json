@@ -4483,9 +4483,8 @@
                         "exclusiveMinimum": true
                     },
                     "note": {
-                        "description": "One line, at most 500 characters once trimmed, without control characters; required for `cancel` and `return`, otherwise null or blank for none.",
+                        "description": "One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; required for `cancel` and `return`, otherwise null or blank for none.",
                         "type": "string",
-                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "Kurier DPD",
                         "nullable": true,
                         "maxLength": 500
@@ -4508,9 +4507,8 @@
                         "exclusiveMinimum": true
                     },
                     "note": {
-                        "description": "One line, at most 500 characters once trimmed, without control characters; null or blank for none.",
+                        "description": "One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; null or blank for none.",
                         "type": "string",
-                        "pattern": "((?![\\x00-\\x1F\\x7F]).)*",
                         "example": "Przelew wys\u0142any",
                         "nullable": true,
                         "maxLength": 500

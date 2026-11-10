@@ -101,9 +101,14 @@ Decyzje użytkownika:
   historia (bez osobnych pól).
 - Agregat nie ma pól znaczników e-maili: są w tabeli powiadomień (A4, „E-maile”).
 - Metody pracownika: `ship(StaffActor, ?note, now)`, `deliver(StaffActor, ?note, now)`, `cancel(StaffActor, note,
-  now)`, `registerReturn(StaffActor, note, now)`, `completeRefund(StaffActor, ?note, now)`. Notatka: przycięta,
-  1–500 znaków bez znaków sterujących (także nowej linii); wymagana przy `cancel` i `registerReturn` (P7); pusta po
-  przycięciu przy pozostałych to brak notatki; naruszenie to `InvalidOrderInput` (422).
+  now)`, `registerReturn(StaffActor, note, now)`, `completeRefund(StaffActor, ?note, now)`. Notatka (`StaffNote`):
+  przycięta z białych znaków Unicode (`\s` i `\p{Z}`, także NBSP; `trim()` zna tylko ASCII), 1–500 znaków po
+  przycięciu, bez znaków sterujących `\x00-\x1F` i `\x7F` (także nowej linii), U+0085, U+2028 i U+2029, i tylko
+  poprawny UTF-8 (niepoprawny tekst to znak niedozwolony); znaki te są szukane w notatce w takiej postaci, w jakiej
+  przyszła. Wymagana przy `cancel` i `registerReturn` (P7); notatka z samych białych znaków (także NBSP) to brak
+  notatki: przy `cancel` i `registerReturn` „Notatka jest wymagana.”, przy pozostałych `null`; naruszenie to
+  `InvalidOrderInput` (422). Żądania `ChangeOrderStatusRequest` i `CompleteRefundRequest` stosują tę samą regułę (limit
+  długości liczony po tym samym przycięciu, „Notatka zawiera niedozwolone znaki.” przy `note`).
 
 ### Zwrot pieniędzy (P3)
 

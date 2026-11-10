@@ -230,6 +230,15 @@ final class OrderLifecycleTest extends TestCase
         self::assertEquals($now, $order->refund()?->completedAt(), 'the first completion stays');
     }
 
+    public function testACompletedRefundWithANoteOfNonBreakingSpacesHasNone(): void
+    {
+        $order = self::orderIn('returned');
+
+        $order->completeRefund(self::staff(), "\u{00A0}\u{00A0}", new \DateTimeImmutable(self::NOW));
+
+        self::assertNull($order->refund()?->note());
+    }
+
     public function testACompletedRefundWithAnEmptyNoteHasNone(): void
     {
         $order = self::orderIn('returned');
@@ -368,6 +377,8 @@ final class OrderLifecycleTest extends TestCase
         yield 'none' => [null];
         yield 'empty' => [''];
         yield 'only white space' => ['   '];
+        yield 'only non-breaking spaces' => ["\u{00A0}\u{00A0}"];
+        yield 'only Unicode white space and ASCII spaces' => [" \u{2003}\u{3000}\u{202F} "];
     }
 
     #[DataProvider('missingRequiredNotes')]
@@ -398,6 +409,15 @@ final class OrderLifecycleTest extends TestCase
         yield 'a tab' => ["Paczka\twróciła", 'Notatka zawiera niedozwolone znaki.'];
         yield 'NUL' => ["Paczka\0", 'Notatka zawiera niedozwolone znaki.'];
         yield 'DEL' => ["Paczka\x7F", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'next line U+0085' => ["Paczka\u{0085}wróciła", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'line separator U+2028' => ["Paczka\u{2028}wróciła", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'paragraph separator U+2029' => ["Paczka\u{2029}wróciła", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'line separator U+2028 at the end' => ["Paczka wróciła\u{2028}", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'only a line separator' => ["\u{2028}", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'lone continuation byte' => ["Paczka\x80wróciła", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'truncated UTF-8 sequence at the end' => ["Paczka\xC3", 'Notatka zawiera niedozwolone znaki.'];
+        yield 'only invalid UTF-8' => ["\xFF", 'Notatka zawiera niedozwolone znaki.'];
+        yield '501 characters after a trim of non-breaking spaces' => ["\u{00A0}".str_repeat('ż', 501)."\u{00A0}", 'Notatka może mieć najwyżej 500 znaków.'];
     }
 
     #[DataProvider('invalidNotes')]
@@ -423,6 +443,15 @@ final class OrderLifecycleTest extends TestCase
         }
     }
 
+    public function testANoteIsTrimmedOfUnicodeWhiteSpace(): void
+    {
+        $order = self::orderIn('paid');
+
+        $order->cancel(self::staff(), "\u{00A0} ".str_repeat('ż', 500)."\u{3000}", new \DateTimeImmutable(self::NOW));
+
+        self::assertSame(str_repeat('ż', 500), self::lastChange($order)->note());
+    }
+
     public function testANoteOfFiveHundredCharactersIsKept(): void
     {
         $order = self::orderIn('paid');
@@ -441,6 +470,7 @@ final class OrderLifecycleTest extends TestCase
         yield 'none' => [null];
         yield 'empty' => [''];
         yield 'only spaces' => ['    '];
+        yield 'only non-breaking spaces' => ["\u{00A0}\u{00A0}"];
     }
 
     #[DataProvider('emptyOptionalNotes')]

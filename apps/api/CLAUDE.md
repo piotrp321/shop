@@ -192,8 +192,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `returned` i anulowanie opłaconego przez pracownika (`cancellationReason` `staff`). Przejścia pracownika to metody
   agregatu `Order` (`ship`, `deliver`, `cancel`, `registerReturn`; bez Symfony Workflow), a tabela dozwolonych przejść
   jest tylko w `OrderStatus::allowedStaffTransitions()` (enum `StaffTransition`); inne przejście to
-  `OrderTransitionNotAllowed` (409, `TypedProblem`). Notatka pracownika (`StaffNote`): przycięta, 1–500 znaków, bez
-  znaków sterujących (także nowej linii), wymagana przy anulowaniu i zwrocie, pusta przy pozostałych to brak notatki.
+  `OrderTransitionNotAllowed` (409, `TypedProblem`). Notatka pracownika (`StaffNote`): przycięta z białych
+  znaków Unicode (także NBSP), 1–500 znaków, bez znaków sterujących (także nowej linii), U+0085, U+2028, U+2029 i bez
+  niepoprawnego UTF-8 (`ControlCharacters`, wzorzec z flagą `u`), wymagana przy anulowaniu i zwrocie, pusta przy pozostałych to brak notatki.
   `markPaid` traktuje `shipped`, `delivered` i `returned` jak `paid` (`alreadyPaid`, `paidByAnotherPayment`).
   - Zwrot pieniędzy (`Refund`, value object w zamówieniu): `cancel` i `registerReturn` zakładają zwrot brutto zamówienia
     z terminem `Order::REFUND_TIME` (14 dni); `completeRefund` oznacza go jako wykonany (data, pracownik, notatka), drugi
