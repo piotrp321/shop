@@ -79,11 +79,12 @@ Zakres: .claude/skills/retro, .claude/agents/retro-analyst.md, .claude/skills/ao
   merge'u. Wpisu nie da się zgubić, bo nie ma czego zgubić.
 - **Warunki przed startem**, po kolei:
   1. Odmowa bez zapisu (komunikat w rozmowie): nazwa epiku nie pasuje do `^[a-z0-9][a-z0-9-]*$`; retro tego epiku ma
-     stan `done` albo `skipped`; epik nie jest jeszcze zmergowany (brak końcowego PR, PR `OPEN`, epik w toku).
+     stan `done` albo `skipped`; epik nie jest jeszcze zmergowany (brak końcowego PR, PR `OPEN`, epik w toku); epik nie jest przebiegiem AO albo
+     jeszcze nie ruszył (brak katalogu `ao-<epik>`, bazy `orchestrator.db` albo wiersza epiku): `skipped` jest
+     nieodwracalne, więc retro takiego epiku nie może przepaść.
   2. Trwałe pominięcie (`retro.py skip <epik> --reason …`: stan `skipped` z przyczyną, push „Retro `<epik>`
-     pominięte trwale: <powód>”): katalog `ao-<epik>` nie jest przebiegiem epiku według „Źródeł”, końcowy PR jest
-     `CLOSED` bez merge'u, albo decyzja użytkownika w rozmowie („pomiń retro X: <powód>”). Nic innego nie pomija
-     retro trwale.
+     pominięte trwale: <powód>”): końcowy PR jest `CLOSED` bez merge'u albo jest decyzja użytkownika w rozmowie
+     („pomiń retro X: <powód>”). Nic innego nie pomija retro trwale.
   3. Odroczenie (`retro.py defer <epik> --reason …`: próba i powód w `state.json`, push „Retro `<epik>` odroczone:
      <powód>”, do 200 znaków; epik zostaje w `pending`):
      - zasilanie sieciowe (`pmset -g batt` z `'AC Power'`; błąd `pmset` też jest powodem);
