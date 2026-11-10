@@ -93,14 +93,18 @@ Reguły Deptrac (nowe warstwy `Ordering_Domain`, `Ordering_Application`, `Orderi
 - `IdempotencyKey`: 1–100 znaków `[A-Za-z0-9._:-]` (ten sam format co klucze Inventory).
 - `EmailAddress`: przycięty, do 254 znaków, poprawny adres (walidacja formatu w DTO: `Assert\Email` i ograniczenie
   `MailerAcceptsEmail`, które buduje `Symfony\Component\Mime\Address` jak Mailer, więc `a..b@…`, `.a@…` i `a.@…`
-  dają 422 zamiast zamówienia bez e-maila; domena sprawdza długość, obecność `@` i brak znaków sterujących).
-- Znaki sterujące `\x00-\x1F` i `\x7F` są odrzucane w `email`, `fullName`, `phone`, `street`, `postalCode` i `city`,
-  sprawdzane w wartości w takiej postaci, w jakiej przyszła (`trim` usuwa NUL, tabulator i końce linii z brzegów, więc
-  sprawdzenie po przycięciu wpuściłoby je i zmieniło wartość po cichu). Stała wzorca jest w `ControlCharacters`
-  (Ordering Domain); DTO używa jej w `Assert\Regex(match: false)`, VO rzucają `InvalidOrderInput`.
-- `Contact {email, fullName, phone}`: `fullName` 1–100 znaków po przycięciu, bez znaków sterujących; `phone`: 9 cyfr, opcjonalnie poprzedzone
+  dają 422 zamiast zamówienia bez e-maila; domena sprawdza długość, obecność `@` i brak znaków niedozwolonych).
+- Znaki sterujące `\x00-\x1F` i `\x7F`, U+0085, U+2028 i U+2029 (separatory linii i akapitu) oraz tekst, który nie
+  jest poprawnym UTF-8, są odrzucane w `email`, `fullName`, `phone`, `street`, `postalCode` i `city`, sprawdzane w
+  wartości w takiej postaci, w jakiej przyszła (`trim` usuwa NUL, tabulator i końce linii z brzegów, więc sprawdzenie po
+  przycięciu wpuściłoby je i zmieniło wartość po cichu). Wzorzec (z flagą `u`) jest w `ControlCharacters` (Ordering
+  Domain); DTO używa go w `Assert\Regex(match: false)` (niepoprawny UTF-8 też daje naruszenie, a `Length` przed nim
+  ma ten sam komunikat w `charsetMessage`), VO rzucają `InvalidOrderInput` (`ControlCharacters::in()` uznaje
+  niepoprawny UTF-8 za znak niedozwolony). Przycinanie tych pól zostaje `trim()` (tylko ASCII); jedynie notatka
+  pracownika przycina białe znaki Unicode (spec zarządzania zamówieniami, `StaffNote`).
+- `Contact {email, fullName, phone}`: `fullName` 1–100 znaków po przycięciu, bez znaków niedozwolonych; `phone`: 9 cyfr, opcjonalnie poprzedzone
   `+48`; spacje i myślniki są usuwane, zapis w postaci `+48NNNNNNNNN`.
-- `ShippingAddress {street, postalCode, city, country}`: `street` 1–100, `city` 1–60 znaków po przycięciu, oba bez znaków sterujących,
+- `ShippingAddress {street, postalCode, city, country}`: `street` 1–100, `city` 1–60 znaków po przycięciu, oba bez znaków niedozwolonych,
   `postalCode` `NN-NNN`, `country` zawsze `PL`.
 - `Money`: nieujemne grosze (`int`) i `Currency` (tylko `PLN`).
 - `PriceCopy {net, vat, gross, vatRateBp, taxClass}`: cena jednostkowa skopiowana z wyceny Pricing; `net + vat = gross`.
@@ -386,15 +390,15 @@ mają `Cache-Control: private, no-store`. `security.yaml`: `^/api/v1/orders$` �
 | `cartId` | brak, `null` | Identyfikator koszyka jest wymagany. |
 | `cartId` | nie UUID | Identyfikator koszyka musi być UUID. |
 | `email` | brak, `null`, pusty | Adres e-mail jest wymagany. |
-| `email` | zły format (także taki, jakiego nie przyjmie Mailer), znak sterujący albo > 254 znaki | Podaj poprawny adres e-mail. |
+| `email` | zły format (także taki, jakiego nie przyjmie Mailer), znak niedozwolony (sterujący, U+0085, U+2028, U+2029, niepoprawny UTF-8) albo > 254 znaki | Podaj poprawny adres e-mail. |
 | `fullName` | brak, pusty po przycięciu | Imię i nazwisko są wymagane. |
 | `fullName` | > 100 znaków | Imię i nazwisko mogą mieć najwyżej 100 znaków. |
-| `fullName` | znak sterujący | Imię i nazwisko zawierają niedozwolone znaki. |
+| `fullName` | znak niedozwolony (jak wyżej) | Imię i nazwisko zawierają niedozwolone znaki. |
 | `phone` | brak, pusty | Numer telefonu jest wymagany. |
-| `phone` | inny format (także ze znakiem sterującym) | Podaj 9-cyfrowy numer telefonu. |
-| `street` | brak, pusty / > 100 / znak sterujący | Ulica i numer są wymagane. / Ulica i numer mogą mieć najwyżej 100 znaków. / Ulica i numer zawierają niedozwolone znaki. |
-| `postalCode` | brak, pusty / zły format (także ze znakiem sterującym) | Kod pocztowy jest wymagany. / Podaj kod pocztowy w formacie 00-000. |
-| `city` | brak, pusty / > 60 / znak sterujący | Miejscowość jest wymagana. / Miejscowość może mieć najwyżej 60 znaków. / Miejscowość zawiera niedozwolone znaki. |
+| `phone` | inny format (także ze znakiem niedozwolonym) | Podaj 9-cyfrowy numer telefonu. |
+| `street` | brak, pusty / > 100 / znak niedozwolony | Ulica i numer są wymagane. / Ulica i numer mogą mieć najwyżej 100 znaków. / Ulica i numer zawierają niedozwolone znaki. |
+| `postalCode` | brak, pusty / zły format (także ze znakiem niedozwolonym) | Kod pocztowy jest wymagany. / Podaj kod pocztowy w formacie 00-000. |
+| `city` | brak, pusty / > 60 / znak niedozwolony | Miejscowość jest wymagana. / Miejscowość może mieć najwyżej 60 znaków. / Miejscowość zawiera niedozwolone znaki. |
 | `expectedTotalGross` | brak, `null` / nie liczba całkowita / ujemna | Kwota zamówienia jest wymagana. / Kwota zamówienia musi być liczbą całkowitą. / Kwota zamówienia nie może być ujemna. |
 | `discountCode` | nie tekst (liczba, tablica, `true`) / > 64 znaki | Kod rabatowy musi być tekstem. / Kod rabatowy może mieć najwyżej 64 znaki. |
 
