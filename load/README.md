@@ -35,7 +35,7 @@ k6 działa w kontenerze, obraz jest przypięty tagiem i digestem w `k6.sh` (jedy
   dostawcą płatności. Zamówienie z rozpoczętą płatnością (`redirectUrl`) to sukces.
 - Dane wejściowe (ścieżki kategorii, slugi, frazy z nazw produktów, filtry z facetów, warianty z `product-offers`, dostawcy
   płatności) czyta `setup()` z publicznego API; pusty katalog przerywa przebieg.
-- Każda iteracja ma nowy adres w `CF-Connecting-IP` z puli `198.18.0.0/15` (osobne połowy dla odczytu i checkoutu), własny
+- Każda iteracja ma nowy adres w `CF-Connecting-IP` z puli `2001:db8::/32` (zakres dokumentacyjny RFC 3849; API i sklep liczą adres IPv6 po prefiksie /64, więc adresy różnią się prefiksem; osobne pule dla odczytu i checkoutu, bez powtórzeń w 16 milionach iteracji scenariusza), własny
   słoik ciasteczek (nowa przeglądarka) i tagi `flow`, `kind`, w przebiegu rosnącym `step`.
 - Wyniki: 409 (`conflicts_409`) i 429 (`rate_limited_429`) są liczone osobno i nie wchodzą do `http_req_failed`; błędem
   (`server_errors`) jest status 5xx albo błąd sieci; inne 4xx liczy `other_4xx`.

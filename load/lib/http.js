@@ -17,11 +17,14 @@ export function expectBusinessStatuses() {
   http.setResponseCallback(http.expectedStatuses({ min: 200, max: 399 }, 409, 429));
 }
 
-// A pool of test addresses (198.18.0.0/15, the range of RFC 2544 for tests): a new one for every iteration of a
-// scenario, so that the limits count by client address as in production and the test does not hit the limit of one.
+// A pool of test addresses (2001:db8::/32, the range of RFC 3849 for documentation): a new one for every iteration of a
+// scenario, so that the limits count by client address as in production and the test does not hit the limit of one. The
+// API and the store count an IPv6 address by its /64 prefix, so the address differs in the prefix: the pool (18 for reads,
+// 19 for the checkout) and the number of the iteration fill the third and the fourth hextet, and no address repeats
+// within 16 million iterations of a scenario.
 export function nextIp(pool) {
-  const n = exec.scenario.iterationInTest % 65536;
-  return `198.${pool}.${n >> 8}.${n & 255}`;
+  const n = exec.scenario.iterationInTest;
+  return `2001:db8:${(pool * 256 + ((n >> 16) & 255)).toString(16)}:${(n & 65535).toString(16)}::1`;
 }
 
 // The state of one iteration: the address of the client, a cookie jar of its own (a new browser) and the step of the ramp.
