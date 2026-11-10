@@ -46,14 +46,14 @@ Wagę oceniam dla publicznego demo (płatności symulowane, `customerAccounts: f
 
 ## Podsumowanie
 
-Critical: 0. High: 1 (SR-16). Medium: 5 (SR-7, SR-8, SR-14, SR-17, SR-18). Low: 12.
+Critical: 0. High: 1 (SR-16). Medium: 6 (SR-4, SR-7, SR-8, SR-14, SR-17, SR-18). Low: 11.
 
 | # | Punkt | Wynik | Najwyższa waga | Znaleziska |
 |---|---|---|---|---|
 | 1 | Rate limiting, klucz i odporność adresu IP | OK dla zakresu D5 i odporności na podrobienie; znaleziska poza zakresem; próba ominięcia Cloudflare na serwerze niezweryfikowana (bloker D19) | Low | SR-1 (patrz też SR-17, SR-18) |
 | 2 | Walidacja wejścia na granicy API | OK (33 trasy zapisu, 0 odpowiedzi 5xx), drobne znaleziska | Low | SR-2, SR-3 |
 | 3 | CORS | OK | brak | brak |
-| 4 | Uprawnienia panelu | OK dla zapisów i odczytów z voterem; znalezisko: odczyty tylko z `ROLE_STAFF` | Low | SR-4 |
+| 4 | Uprawnienia panelu | znalezisko: 11 tras GET bez `#[IsGranted]`, token bez roli personelu dostaje 200 na 14 odczytach; zapisy i rozdzielenie realmów OK | Medium | SR-4 |
 | 5 | Upload zdjęć | OK, drobne znalezisko | Low | SR-5 |
 | 6 | Nagłówki i ciasteczka sklepu, CSRF BFF | OK, drobne znalezisko | Low | SR-6 |
 | 7 | Sekrety | znalezisko | Medium | SR-7 |
@@ -202,8 +202,11 @@ Testy: `make -C apps/api test PHPUNIT_ARGS="--filter 'CorsTest|SecurityHeadersTe
   dla użytkownika mają być po polsku (lista kontrolna). Nie wyciekają danych, więc Low.
 - **SR-3 (Low): brak limitu rozmiaru treści JSON.** Publiczne endpointy JSON przyjmują treść do `post_max_size` = 70 MB (wspólny
   limit z uploadem; `docker compose exec api php -r 'echo ini_get("post_max_size");'` → `70M`). 30 MB tekstu w `cartId` kończy się 422
-  w 0,23 s, więc skutek to przepustowość i pamięć, nie awaria; limit liczby żądań (punkt 1) mają tylko trzy endpointy. Low;
-  limit rozmiaru na ścieżkach innych niż upload (Caddy `request_body`) zamknąłby to jedną linią.
+  w 0,23 s i kontener pozostaje zdrowy, więc przy pojedynczym żądaniu skutek to przepustowość i pamięć, nie awaria. Nie sprawdzano żądań
+  równoległych: `memory_limit` PHP to 256M na żądanie (`apps/api/docker/php/conf.d/app.ini:2`), limit poda `api` w `prod` to 2Gi
+  (`infra/k8s/environments/prod/values.yaml:77`), więc skutek wielu równoczesnych dużych treści (pamięć poda, kolejka procesów) pozostaje
+  niezmierzony; limit liczby żądań (punkt 1) mają tylko trzy endpointy. Low; limit rozmiaru na ścieżkach innych niż upload (Caddy
+  `request_body`) zamknąłby to jedną linią.
 
 ## 3. CORS
 
@@ -248,7 +251,18 @@ GET /admin/categories, /me, /prices, /products, /products/{id}, /promotions, /pr
     /discount-codes, /stock, /tax-classes, /variants/{id}/price-history, /variants/{id}/stock-history, /dashboard
       401 401 200 200 200 200 200
 GET /admin/orders       401 401 403 403 200 200 200
+GET /admin/discount-codes/{id}, /admin/orders/{orderId}   (powtórka na tym samym stosie, trzy kolumny: bez tokenu / bez roli / admin)
+      /discount-codes/{id}  401 200 200
+      /orders/{orderId}     401 403 200
 ```
+
+Dwa ostatnie odczyty (`/discount-codes/{id}`, `/orders/{orderId}`) sprawdzono w drugim podejściu, tym samym sposobem: ten sam realm
+`backoffice`, tymczasowy klient `sr7probe` (`directAccessGrants`, mapper audience `backoffice-api`) i konta `sr7-norole` (bez roli) oraz `sr7-admin`
+(rola `admin`) założone `kcadm`, z wyczyszczonym wymaganym działaniem `CONFIGURE_TOTP` (bez TOTP nie da się pobrać tokenu hasłem); po próbie
+konta i klient zostały usunięte (`kcadm get users -q search=sr7` i `get clients -q clientId=sr7probe` → `[ ]`). Kolumn marketing, support
+i warehouse dla tych dwóch tras nie sprawdzano na stosie: z kodu wynika to samo co dla list (`/orders/{orderId}` ma
+`#[IsGranted(VIEW_ORDERS)]`, `BackofficeOrderController.php:56`, ten sam atrybut co lista, `BackofficeOrdersController.php:64`, więc marketing 403,
+support, warehouse i admin 200; `/discount-codes/{id}` nie ma `#[IsGranted]`, `DiscountCodeController.php:19`, więc każdy pracownik 200).
 
 Zapisy (treść `{}`; 403 przed walidacją, 422 po przejściu autoryzacji):
 
@@ -267,20 +281,37 @@ Dodatkowe: token `backoffice` na `/api/v1/me` i `/api/v1/me/orders` → 401, tok
 admin 200 (tak samo jak `GET`); `/index.php/api/v1/admin/me` → 401, `//api/v1/admin/me` → 404. Odpowiedź 401 ma
 `WWW-Authenticate: Bearer`, `application/problem+json`.
 
-**Wynik: OK** dla zapisów (każdy ma `#[IsGranted]` albo sprawdzenie w kontrolerze i zachowuje się zgodnie z macierzą ról) oraz dla
-rozdzielenia realmów (token klienta i token bez roli nie dostają danych: pierwszy 401, drugi tylko to, co zdefiniowano jako
-„czyta każdy pracownik”).
+**Wynik: znalezisko.** Kryterium ze specyfikacji („każdy endpoint `/api/v1/admin` ma voter; token klienta i token bez roli dostają 401/403”)
+nie jest spełnione dla odczytów. Spełnione dla: zapisów (każdy ma `#[IsGranted]` albo sprawdzenie w kontrolerze i zachowuje się zgodnie z macierzą
+ról), zamówień (voter `VIEW_ORDERS`: konto bez roli 403) i tokenu klienta (401 na każdej trasie panelu). Niespełnione dla tokenu bez roli
+personelu: dostaje 200 na 14 odczytach (lista wyżej: 13 z pierwszej macierzy plus `/discount-codes/{id}`), a 11 tras GET panelu nie ma żadnego
+`#[IsGranted]` (`grep` po `apps/api/src/**/UI/Http` na `/api/v1/admin` i `IsGranted`; wszystkie z `ROLE_STAFF` z `access_control` jako jedyną ochroną):
+
+- `Backoffice/UI/Http/DashboardController.php:36` (`isGranted` na `:68` tylko wyłącza część „system” dla ról innych niż `admin`, niczego nie odmawia),
+- `Backoffice/UI/Http/StaffMeController.php:17`,
+- `Catalog/UI/Http/BackofficeCategoryTreeController.php:30`,
+- `Inventory/UI/Http/BackofficeStockController.php:34`, `Inventory/UI/Http/StockHistoryController.php:37`,
+- `Pricing/UI/Http/BackofficePricesController.php:34`, `Pricing/UI/Http/PriceHistoryController.php:37`,
+- `Pricing/UI/Http/DiscountCode/ListDiscountCodesController.php:37`, `Pricing/UI/Http/DiscountCode/DiscountCodeController.php:19`,
+- `Pricing/UI/Http/Promotion/ListPromotionsController.php:35`, `Pricing/UI/Http/Promotion/PromotionController.php:19`.
+
+Trzy dalsze odczyty (`/products`, `/products/{id}`, `/tax-classes`) mają `#[IsGranted(VIEW_PRODUCTS)]`, ale voter przepuszcza każdego
+`AuthenticatedStaffMember`, więc dla tokenu bez roli też kończą się 200. Rozdzielenie realmów jest w porządku: token klienta na `/api/v1/admin/*` to 401.
 
 **Znalezisko.**
 
-- **SR-4 (Low): token realmu `backoffice` bez żadnej roli personelu dostaje `ROLE_STAFF`.** `StaffUser::getRoles()` zawsze zwraca
-  `['ROLE_STAFF']` (`apps/api/src/Backoffice/Infrastructure/Security/StaffUser.php:44-47`), a 13 odczytów (lista wyżej) ma tylko wymaganie
-  `ROLE_STAFF` albo voter `VIEW_PRODUCTS`, który przepuszcza każdego `AuthenticatedStaffMember`
-  (`ProductVoter.php`: `VIEW_PRODUCTS === $attribute || …`). Konto `sr7-norole` odczytało katalog, ceny, stany, promocje i **wszystkie kody
-  rabatowe** (200). Jest to zgodne z komentarzem w voterach („every staff member reads”), ale konto bez roli nie jest pracownikiem.
-  Waga Low: konta w realmie zakłada administrator (rejestracja wyłączona), a bez roli personelu nie ma zapisów ani zamówień (403).
-  Tak samo rola `support` i `warehouse` czytają kody rabatowe (`DiscountCodeVoter`: „every staff member reads them”), co jest decyzją
-  produktową, nie błędem.
+- **SR-4 (Medium): token realmu `backoffice` bez żadnej roli personelu czyta dane panelu (11 tras GET bez `#[IsGranted]`, reszta odczytów z voterem
+  przepuszczającym każdego pracownika).** `StaffUser::getRoles()` zawsze zwraca `['ROLE_STAFF']`
+  (`apps/api/src/Backoffice/Infrastructure/Security/StaffUser.php:44-47`), a 14 odczytów (lista wyżej) ma tylko wymaganie `ROLE_STAFF` albo
+  voter `VIEW_PRODUCTS`, który przepuszcza każdego `AuthenticatedStaffMember` (`ProductVoter.php`: `VIEW_PRODUCTS === $attribute || …`). Konto
+  `sr7-norole` odczytało katalog, ceny, historię cen i stanów, stany magazynowe, promocje i **wszystkie kody rabatowe** (200). Jest to
+  zgodne z komentarzem w voterach („every staff member reads”), ale konto bez roli nie jest pracownikiem, a kryterium specyfikacji tego
+  wprost nie dopuszcza. Skutek bezpośredni: ujawnienie kodów rabatowych (każdy, kto je zna, użyje ich w sklepie; kody procentowe do 90%),
+  cen i ich historii, stanów oraz zaplanowanych promocji. Warunek: konto w realmie `backoffice` bez roli, czyli nowe konto przed nadaniem
+  roli albo pracownik, któremu rolę odebrano (z kodu: `getRoles()` nie zależy od ról w tokenie, więc takie konto nadal czyta; na stosie sprawdzono tylko konto założone bez roli). Konta w realmie zakłada administrator (rejestracja wyłączona),
+  stąd Medium, nie High: bez takiego konta nie ma dostępu, a zapisy i zamówienia są niedostępne (403). Odczyty roli `support` i `warehouse`
+  (np. kody rabatowe, `DiscountCodeVoter`: „every staff member reads them”) to decyzja produktowa, nie błąd; błędem jest brak sprawdzenia
+  jakiejkolwiek roli.
 
 ## 5. Upload zdjęć
 
@@ -369,7 +400,7 @@ POST /api/revalidate bez sekretu 401, z błędnym 401, GET 405
 ```
 
 Odczyty BFF (`GET /api/cart`, `/api/account/orders`) nie zmieniają stanu. `GET /auth/login` zapisuje stan logowania, ale ma limit (punkt 1).
-Brak `dangerouslySetInnerHTML` poza `<script type="application/ld+json">` z `serializeJsonLd` (zamienia `<` na `<`,
+Brak `dangerouslySetInnerHTML` poza `<script type="application/ld+json">` z `serializeJsonLd` (zamienia każde `<` na `\u003c`,
 `apps/store/src/catalog/product-json-ld.ts:67-69`); w panelu brak `v-html` i `innerHTML`.
 
 **Wynik: OK** (nagłówki, ciasteczka, CSRF).
@@ -419,7 +450,7 @@ GET /api/v1/admin/me przez Varnish bez tokenu 401
 ```
 
 **Render `prod`.** Żadna zmienna o nazwie sekretu nie ma `value:` w podach; sekrety idą przez `envFrom: secretRef: shop-secrets`
-(`infra/k8s/charts/shop/templates/api.yaml:103`, `store.yaml:30`) i `shop-brevo-smtp`; `Secret` nie jest renderowany w `prod`
+(`infra/k8s/charts/shop/templates/api.yaml:114` kontener `api`, `:134` worker, `:103` initContainer `wait-for-migrate`; `store.yaml:30`) i `shop-brevo-smtp`; `Secret` nie jest renderowany w `prod`
 (tworzy go SealedSecret poza chartem).
 
 **Wynik: znalezisko.** Sekrety nie wyciekają do repo, obrazów ani logów; chronione operacje wymagają sekretu.
@@ -499,8 +530,9 @@ Chart odwzorowuje te ustawienia, a w renderze `prod` nie ma żadnego `NetworkPol
 ## 9. Zależności
 
 **`composer audit` (api, Composer z obrazu API, `composer.lock` rewizji, stan na 2026-11-10):** 18 advisories w 11 pakietach, **wszystkie w
-zależnościach produkcyjnych** (`composer audit --locked --no-dev`: też 18 w 11). Wszystkie to pakiety Symfony 8.1.9 / 8.1.10; według
-zakresów w advisories wszystkie poprawia wersja 8.1.11 (`>=8.1.0,<8.1.11`). Composer nie podaje wagi (pole `severity` puste), więc waga
+zależnościach produkcyjnych** (`composer audit --locked --no-dev`: też 18 w 11). Zainstalowane wersje (`apps/api/composer.lock`): 8.1.9
+(`http-foundation`, `http-kernel`, `routing`, `validator`, `filesystem`, `yaml`, `framework-bundle`), 8.1.10 (`security-http`, `serializer`, `http-client`)
+i 8.1.5 (`config`); w każdym advisory zakres dla gałęzi 8.1 to `>=8.1.0,<8.1.11`, więc wszystkie poprawia 8.1.11. Composer nie podaje wagi (pole `severity` puste), więc waga
 poniżej jest moja.
 
 | Pakiet (zainstalowana) | Advisory | Dotyczy nas? |
@@ -513,7 +545,7 @@ poniżej jest moja.
 | `symfony/serializer` 8.1.10 (3) | `DataUriNormalizer`, `UploadedFile` z danych żądania (CVE-2026-118515), `#[Ignore]` przy kluczach z kropką | nie ustalono w kodzie: DTO mają typy `mixed`/skalarne, brak `UploadedFile` w DTO, brak `#[Ignore]` |
 | `symfony/validator` 8.1.9 | `Ip` public/private przyjmuje IPv4 w IPv6 | nie: brak `Assert\Ip` |
 | `symfony/http-client` 8.1.10 (2) | `ScopingHttpClient`, `NoPrivateNetworkHttpClient` | nie: brak użycia (`grep`) |
-| `symfony/http-kernel` 8.1.9, `config`, `filesystem`, `yaml` | fragmenty inline, XXE w `XmlUtils`, ścieżki `://`, parser YAML | nie: nie używamy; `yaml` czyta tylko własne pliki |
+| `symfony/http-kernel` 8.1.9, `config` 8.1.5, `filesystem` 8.1.9, `yaml` 8.1.9, `framework-bundle` 8.1.9 | fragmenty inline, XXE w `XmlUtils`, ścieżki `://`, parser YAML, `private_ranges` trusted proxies | nie: nie używamy; `yaml` czyta tylko własne pliki; brak `trusted_proxies` |
 
 `grep -rn "Assert\\Ip\|ScopingHttpClient\|NoPrivateNetwork\|#\[Ignore\]\|DataUriNormalizer\|trusted_proxies\|trusted_hosts\|XmlUtils" apps/api/src apps/api/config`
 trafia tylko w `config/reference.php` (wygenerowany opis).
@@ -646,38 +678,40 @@ jest znaną pozycją „przed publicznym demo” (`docs/features/discount-codes/
 
 Tryb publicznego demo (#179, D19) nie powinien się zaczynać, dopóki:
 
-1. **SR-16 (High): limit rezerwowanego towaru na zamówienie gościa** (blokada stanów całego katalogu jednym adresem; D16, D19, osobne
-   zgłoszenie z publikacji specyfikacji ma to pokrywać: do zweryfikowania, czy istnieje, i dopisania SR-16 jako dowodu).
+1. **SR-16 (High): limit rezerwowanego towaru na zamówienie gościa** (blokada stanów całego katalogu jednym adresem; D16, D19):
+   zgłoszenie już istnieje, #332 „Limit rezerwowanego towaru na zamówienie gościa” (otwarte), i jest na liście blokerów w #179. Dowód SR-16
+   ma trafić komentarzem do #332 (propozycja nr 1), bez nowego zgłoszenia.
 2. **Weryfikacja na serwerze, że origin odrzuca ruch z pominięciem Cloudflare (niezweryfikowana, D19).** Bez niej limity z punktu 1
    opierają się na założeniu, że `CF-Connecting-IP` nie da się podrobić; krok 5 runbooka `infra/k8s/README.md:155-176` nie był wykonany
    (brak serwera). Wynik próby ma trafić do komentarza w #179.
 
-Znalezisk **Critical** nie ma. Inne blokery z D19 (RODO dla danych gości #119) są poza zakresem tego przeglądu. Znaleziska Medium (SR-7,
-SR-8, SR-14, SR-17, SR-18) nie są blokerami według D12; SR-7 i SR-8 warto jednak poprawić przed pierwszym wdrożeniem, bo wchodzą w grę
+Znalezisk **Critical** nie ma. Inne blokery z D19 (RODO dla danych gości #119) są poza zakresem tego przeglądu. Znaleziska Medium (SR-4,
+SR-7, SR-8, SR-14, SR-17, SR-18) nie są blokerami według D12; SR-4 warto poprawić przed pierwszym wdrożeniem (voter na 11 trasach to mała zmiana), podobnie SR-7 i SR-8: wchodzą w grę
 dopiero razem i kosztują dużo mniej przed produkcją niż po niej.
 
 ## Propozycje zgłoszeń
 
-Do triage użytkownika; niczego nie założono w GitHubie. Etykiety: typ (`bug` albo `tech-debt`) i `agent`. Kolejność według wagi.
+Do triage użytkownika; niczego nie założono ani nie dopisano w GitHubie. Pozycje 2–11 to nowe zgłoszenia z etykietami: typ (`bug` albo `tech-debt`)
+i `agent`; pozycja 1 to komentarz do istniejącego #332, nie nowe zgłoszenie. Kolejność według wagi.
 
 | # | Tytuł | Etykiety | Waga | Znaleziska |
 |---|---|---|---|---|
-| 1 | Limit rezerwowanego towaru na zamówienie gościa (blokada stanów całego katalogu) | `bug`, `agent` | High | SR-16 |
+| 1 | Dopisać dowód SR-16 komentarzem do #332 „Limit rezerwowanego towaru na zamówienie gościa” (blokada stanów całego katalogu) | komentarz do istniejącego zgłoszenia (bez nowych etykiet) | High | SR-16 |
 | 2 | Limit na zakładaniu i zapisach koszyków gościa | `bug`, `agent` | Medium | SR-17 |
 | 3 | Limit na sprawdzaniu kodów rabatowych | `bug`, `agent` | Medium | SR-18 |
 | 4 | Osobne sekrety dla każdej usługi zamiast jednego `envFrom` | `tech-debt`, `agent` | Medium | SR-7 |
 | 5 | `NetworkPolicy`, hasło Redisa i uwierzytelnianie usług wewnętrznych | `tech-debt`, `agent` | Medium | SR-8 |
 | 6 | Aktualizacja Symfony do 8.1.11 | `tech-debt`, `agent` | Medium | SR-14 |
-| 7 | `securityContext` podów i obraz `api` bez roota | `tech-debt`, `agent` | Low | SR-9 |
-| 8 | Zawężenie ekspozycji: `/realms/<realm>/`, API poza Varnishem, symulator, `6443` | `tech-debt`, `agent` | Low | SR-10, SR-11, SR-12 |
-| 9 | `ROLE_STAFF` tylko z rolą personelu | `bug`, `agent` | Low | SR-4 |
-| 10 | Polskie komunikaty błędów frameworka i limit rozmiaru treści JSON | `tech-debt`, `agent` | Low | SR-2, SR-3 |
+| 7 | Odczyty panelu tylko dla pracownika z rolą (`#[IsGranted]` na 11 trasach GET, `ROLE_STAFF` tylko z rolą personelu) | `bug`, `agent` | Medium | SR-4 |
+| 8 | `securityContext` podów i obraz `api` bez roota | `tech-debt`, `agent` | Low | SR-9 |
+| 9 | Zawężenie ekspozycji: `/realms/<realm>/`, API poza Varnishem, symulator, `6443` | `tech-debt`, `agent` | Low | SR-10, SR-11, SR-12 |
+| 10 | Polskie komunikaty błędów frameworka i limit rozmiaru treści JSON | `bug`, `agent` | Low | SR-2, SR-3 |
 | 11 | Drobne utwardzenie: `X-Powered-By`, dane za obrazem, polityka haseł Keycloaka, klucz IPv6, `npm audit` dev | `tech-debt`, `agent` | Low | SR-1, SR-5, SR-6, SR-13, SR-15 |
 
-**1. Limit rezerwowanego towaru na zamówienie gościa** (`bug`, `agent`; High; SR-16).
-Opis: jedno zamówienie gościa rezerwuje do 50 linii po 99 szt. na 35 min, a limit 10 zamówień na 15 min z adresu nie ogranicza ilości. Zaproponować
-limit sztuk (albo linii) na zamówienie gościa albo na adres w oknie; zmienia reguły `Cart` i `Ordering` (D16), więc najpierw decyzja produktowa.
-Możliwe, że pokrywa to zgłoszenie założone przy publikacji specyfikacji (D16), wtedy dopisać ten dowód.
+**1. Dopisać dowód SR-16 komentarzem do #332** (komentarz do istniejącego zgłoszenia „Limit rezerwowanego towaru na zamówienie gościa”, otwarte, jest na liście blokerów #179; High; SR-16).
+Opis: jedno zamówienie gościa rezerwuje do 50 linii po 99 szt. na 35 min, a limit 10 zamówień na 15 min z adresu nie ogranicza ilości. #332 ma wprowadzić limit
+sztuk (albo linii) na zamówienie gościa albo na adres w oknie; zmienia reguły `Cart` i `Ordering` (D16), więc najpierw decyzja produktowa. Do komentarza: wyliczenie, że bez limitu ilości
+jeden adres blokuje cały katalog demo w około 30–35 min.
 Dowód: 10 zamówień po 50 linii z ilością równą dostępnej → 500 z 1006 wariantów w pełni zarezerwowanych, 17 771 sztuk (stos dev, skrypt `python3` poza repo opisany w punkcie 11).
 
 **2. Limit na zakładaniu i zapisach koszyków gościa** (`bug`, `agent`; Medium; SR-17).
@@ -693,7 +727,7 @@ Dowód: 400 prób w 10,6 s (~38/s), `applied` dla istniejącego, `rejected/inval
 **4. Osobne sekrety dla każdej usługi** (`tech-debt`, `agent`; Medium; SR-7).
 Opis: `shop-secrets` w `envFrom` trafia do `store` i `api` razem z hasłem administratora Keycloaka, hasłem Postgresa, sekretami Garage i RabbitMQ.
 Rozdzielić `Secret` (lub `secretKeyRef` tylko dla potrzebnych kluczy) i zmienić `infra/scripts/init-env.sh`/chart/`seal-secrets.sh` w jednym PR (zasada chartu w `CLAUDE.md`).
-Dowód: render `prod`, `envFrom: secretRef: shop-secrets` w 15 z 19 kontenerów głównych (`store.yaml:30`, `api.yaml:103`); lista w punkcie 7.
+Dowód: render `prod`, `envFrom: secretRef: shop-secrets` w 15 z 19 kontenerów głównych (`store.yaml:30`, `api.yaml:114` i `:134`); lista w punkcie 7.
 
 **5. `NetworkPolicy`, hasło Redisa i uwierzytelnianie usług wewnętrznych** (`tech-debt`, `agent`; Medium; SR-8).
 Opis: domyślne `deny` w przestrzeni nazw i polityki zezwalające tylko na potrzebne połączenia (store→api, varnish, redis; api→postgres, redis, es,
@@ -704,23 +738,24 @@ Dowód: 0 `NetworkPolicy` w 47 dokumentach renderu `prod`; z kontenera `api`: Re
 Opis: `composer update "symfony/*" --with-all-dependencies` w obrębie 8.1, ponowne `composer audit`, testy `api`.
 Dowód: `composer audit` → 18 advisories w 11 pakietach, wszystkie `<8.1.11` (punkt 9).
 
-**7. `securityContext` podów i obraz `api` bez roota** (`tech-debt`, `agent`; Low; SR-9).
+**7. Odczyty panelu tylko dla pracownika z rolą** (`bug`, `agent`; Medium; SR-4).
+Opis: dodać `#[IsGranted]` z voterem „czyta pracownik z rolą `admin`/`support`/`warehouse`/`marketing`” na 11 trasach GET bez ochrony (lista w punkcie 4) i/albo
+zwracać z `StaffUser::getRoles()` `ROLE_STAFF` tylko dla konta z rolą personelu (zmiana `VIEW_PRODUCTS`, który dziś przepuszcza każdego); dodać test
+funkcjonalny po wszystkich trasach GET `/api/v1/admin/*` z routera: token bez roli → 403, token klienta → 401, żeby nowa trasa bez ochrony go łamała.
+Dowód: konto bez roli: 200 na 14 odczytach (m.in. `/admin/products`, `/stock`, `/prices`, `/promotions`, `/discount-codes`, `/discount-codes/{id}`, `/dashboard`); 11 tras GET bez `#[IsGranted]` (punkt 4).
+
+**8. `securityContext` podów i obraz `api` bez roota** (`tech-debt`, `agent`; Low; SR-9).
 Opis: `runAsNonRoot`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`, tam gdzie się da `readOnlyRootFilesystem`;
 `USER` w obrazie `api` (FrankenPHP na porcie 80 wymaga `setcap` albo portu > 1024).
 Dowód: `docker inspect` obrazu `prod` zbudowanego z rewizji → `User=` puste (uid 0); render `prod` bez `securityContext` w żadnym kontenerze (punkt 8).
 
-**8. Zawężenie ekspozycji** (`tech-debt`, `agent`; Low; SR-10, SR-11, SR-12).
+**9. Zawężenie ekspozycji** (`tech-debt`, `agent`; Low; SR-10, SR-11, SR-12).
 Opis: (a) ingress `auth` tylko do ścieżek potrzebnych przeglądarce zamiast całego `/realms/<realm>/` (wyłączyć `clients-registrations`);
 (b) `api.<domena>`: odczyty katalogu przez Varnisha albo reguła Cloudflare, symulator poza `api.<domena>` albo za wyłącznikiem w profilu `prod`
 (D14); (c) `6443` w `ufw` tylko z adresu operatora, jeśli jest stały.
 Dowód: render `prod` (ingress `auth`, `api`), `server-bootstrap.sh:141`, `clients-registrations` → 403 Trusted Hosts (punkt 8).
 
-**9. `ROLE_STAFF` tylko z rolą personelu** (`bug`, `agent`; Low; SR-4).
-Opis: `StaffUser::getRoles()` zwraca `ROLE_STAFF` także bez `admin`/`support`/`warehouse`/`marketing`; zwracać `[]` albo odrzucać token bez roli (401/403)
-i dopisać test funkcjonalny na konto bez roli dla odczytów `/api/v1/admin/*`.
-Dowód: konto bez roli: 200 na `/admin/products`, `/stock`, `/prices`, `/promotions`, `/discount-codes`, `/dashboard` (punkt 4).
-
-**10. Polskie komunikaty błędów frameworka i limit rozmiaru JSON** (`tech-debt`, `agent`; Low; SR-2, SR-3).
+**10. Polskie komunikaty błędów frameworka i limit rozmiaru JSON** (`bug`, `agent`; Low; SR-2, SR-3).
 Opis: `ProblemDetailsSubscriber` mapuje `detail` 400/401/404/405/415 i `violations[].title` z deserializacji/`MapQueryString` na polskie; Caddy `request_body max_size`
 (np. 1 MB) dla tras innych niż upload.
 Dowód: `The request is invalid.`, `Resource not found.`, `Authentication is required.`, `This value should be of type null|string.`; JSON 30 MB → 422 (punkty 2 i 10).
