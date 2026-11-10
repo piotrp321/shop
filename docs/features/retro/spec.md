@@ -149,10 +149,10 @@ deterministyczne i stabilne między przebiegami; czasy w kluczach to pełne seku
 
 | Rodzaj | Kotwica i klucz | Fakty dołączane do incydentu |
 |---|---|---|
-| `wait` | czekanie z `ao_events.waits()`: początek `status_changed` do `BLOCKED`/`FAILED` (zadanie) albo `epic_blocked`/`queue_held` (epik), koniec następny `human_action` z tym samym kluczem albo brak (czekanie otwarte); klucz `<zadanie albo epik>@<początek>` | pytania blokera, powód (`executor`, `policy`, `max_qa_rounds`…), `human_action` zamykający, wpisy `night-decisions.log` z czasem w oknie domkniętym z obu stron, nieudana próba tego zadania, która skończyła się jako ostatnia przed początkiem okna |
+| `wait` | czekanie z `ao_events.waits()`: początek `status_changed` do `BLOCKED`/`FAILED` (zadanie) albo `epic_blocked`/`queue_held` (epik), koniec następny `human_action` z tym samym kluczem albo brak (czekanie otwarte); klucz `<zadanie albo epik>@<początek>` | pytania blokera, powód (`executor`, `policy`, `max_qa_rounds`…), `human_action` zamykający, wpisy `night-decisions.log` z czasem w oknie domkniętym z obu stron, nieudana próba tego zadania, która skończyła się jako ostatnia przed początkiem okna, najwyżej 10 minut przed nim |
 | `failed_attempt` | próba z `outcome` innym niż `result`, niedołączona do `wait`; klucz `<zadanie>#<numer próby>` | `outcome`, `exit_code` |
 | `finding` | znalezisko `Critical` albo `Important` z raportu AO; klucz to skrót odcisku (waga, tytuł małymi literami bez znaków `` ` `` i ze zwiniętymi spacjami, posortowane pliki), jak odcisk w `.claude/skills/integration/integration_result.py`; ten sam odcisk w kilku rundach to jeden incydent | rundy, pliki, zadanie |
-| `repair` | zadanie `kind` `repair` albo `fix` z `fix_count` > 0 poprawek PR; klucz `<zadanie>` | PR, liczba poprawek |
+| `repair` | zadanie `kind` `repair` albo dowolne zadanie z `fix_count` > 0 poprawek PR; klucz `<zadanie>` | PR, liczba poprawek |
 | `manual_fix` | komentarz z pomiarem: numer PR z linii „Ręczne poprawki” (klucz `pr<numer>`); pozycje bez numeru PR to jeden incydent z kluczem `other` | tekst linii; liczba N niezgodna z liczbą pozycji: fakt „niezgodna liczba”, bez błędu |
 | `escaped` | propozycja z raportu `/sweep` tego epiku; klucz `<numer propozycji>` | tytuł, waga, wynik triage, jeśli był |
 | `no_sweep` | brak raportu `/sweep` z nazwą epiku; klucz `sweep` | data merge'u |
@@ -162,7 +162,7 @@ deterministyczne i stabilne między przebiegami; czasy w kluczach to pełne seku
   blokadą), jest dołączany do niego, a nie tworzy nowego.
 - `escaped` i `no_sweep` powstają tylko dla epików zmergowanych po wejściu kroku 12 na `main` (commit `fc208156`,
   2026-11-09 13:51 CET): starsze przeglądy nie miały nazwy epiku.
-- `ao_events.py` dostaje funkcję `waits()` (lista okien czekania); `summarize` liczy sumy z niej, bez zmiany wyniku.
+- `ao_events.py` ma funkcję `waits()` (lista okien czekania); `summarize` liczy sumy z jej wyniku.
 
 ## Interwencje naprawcze
 
@@ -182,7 +182,9 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
 
 `retro.py validate <katalog przebiegu>` sprawdza `proposals.json`:
 
-- schemat, rodzaje (`fix`, `issue`, `status`), limity 5 `fix` i 3 `issue`;
+- schemat (`schema` równe 1, `epic` i `commit` jak w `input.json`, listy `observations` i `overflow`, unikalne `n`
+  i `key`), rodzaje (`fix`, `issue`, `status`), limity 5 `fix` i 3 `issue`, brak znaków sterujących w tekstach
+  pozycji (dozwolone: nowa linia i tabulator);
 - każde ID incydentu w `evidence` istnieje w `input.json`; incydent `wait` z `human_action`, `manual_fix` albo
   `repair` bez klasy w `classes` to błąd; klasa `corrective` na incydencie, który nie spełnia warunku skryptu, to
   błąd;
@@ -190,7 +192,7 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
   incydent `corrective`;
 - pola obowiązkowe `fix` i `issue`: `key`, `title`, `evidence`, `cause` (przyczyna źródłowa), `why_prevents`,
   `verify` (co zobaczymy w kolejnych epikach); dla `fix` także `files` i `change`; dla `issue` `repo` (`ao` albo
-  `shop`), `duplicate_check` (numery sprawdzonych issues) i `body` albo `existing_issue` (numer otwartego issue
+  `shop`), `duplicate_check` (numery sprawdzonych issues) i `body` albo `existing_issue` (nie oba; numer otwartego issue
   w danych wejścia: po „tak” komentarz z nowymi incydentami zamiast nowego issue);
 - `files` tylko z listy dozwolonej: `CLAUDE.md` i `apps/*/CLAUDE.md`, `.claude/skills/*/SKILL.md`,
   `.claude/agents/*.md`, `docs/features/{ao-run,prepare-epic,groom,agent-tester-ux,retro}/spec.md`; zmiana
@@ -235,12 +237,14 @@ błędzie stosu, ręczny PR, bo AO nie zarejestrował zadania dopisanego do plan
 `~/.local/state/shop-retro/` (poza repo, jak stan `/groom` i `/sweep`):
 
 - `<epik>/`: `state.json` (stan `running`, `done`, `skipped`; próby i powody odroczeń; PR retro i jego pozycje;
-  `decisions_open`), `input.json`, `proposals.json`, `report.md`, worktree w trakcie przebiegu;
+  `decisions_open`), `input.json`, `proposals.json`, `report.md`, `usage-start.json` (stan limitów na starcie),
+  `issues.json` (co `retro.py issues` już zrobił, po `key` pozycji), worktree w trakcie przebiegu;
 - `observations.jsonl`: trwała historia problemów `{key, title, incidents, epic, at}` z każdego przebiegu, także
   poniżej progu i pozycje `fix` i `issue`;
 - `rejected.jsonl`: `{key, incidents, reason, rejected_at, pr}`;
 - `applied.jsonl`: `{key, incidents, pr, merged_at}`;
-- `carried.jsonl`: pozycje z PR zamkniętych bez świadomego odrzucenia, do ponownego zgłoszenia;
+- `carried.jsonl`: `{key, title, incidents, pr, closed_at}`: pozycje z PR zamkniętych bez świadomego odrzucenia, do
+  ponownego zgłoszenia;
 - `lock`: `{run_id, epic, at}`. `retro.py lock` odmawia (kod 2), gdy blokada należy do innego przebiegu i jest młodsza
   niż 6 h; starszą przejmuje z ostrzeżeniem w raporcie. `unlock` usuwa tylko własną blokadę.
 
@@ -258,8 +262,7 @@ Retro przepisuje sekcję „Status” planu `docs/features/agentic-software-hous
 Status kroku w tabeli zmienia się tylko pozycją `status` z dowodem (np. krok 12 zweryfikowany dopiero przy raporcie
 `/sweep` z nazwą epiku po merge'u; po VISUAL-DESIGN go nie ma, bo jego sesja `/ao-run` ruszyła przed wejściem
 kroku 12 na `main`: incydent `no_sweep`). Plany z manifestem AO (`"schema_version"`) nie są zmieniane. Szablon
-`/planner` mówi zamiast „Kolumnę Status uzupełnia użytkownik”: „Stan epiku prowadzonego przez AO jest w `ao status`,
-a plan usuwa `FINALIZE`”.
+`/planner` mówi: „Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`”.
 
 ## `proposals.json`
 
@@ -292,10 +295,10 @@ Klucze i ID w przykładzie są ilustracją.
 - `.claude/agents/retro-analyst.md`: agent.
 - `.claude/skills/retro/retro.py` (Python 3.9+, bez zależności) i `test_retro.py`: `pending`, `defer`, `skip`,
   `lock`, `unlock`, `sync`, `collect`, `validate`, `observe`, `reject`, `issues`. Komendy `gh` i `git` przez
-  wstrzykiwany runner `next_epic.make_runner`; `retro.py` importuje `next_epic` (tablica), `night_queue` (`room`)
-  i `ao_events` (`waits`) bez kopii ich kodu.
-- `.claude/skills/ao-run/ao_events.py` i `test_ao_events.py`: funkcja `waits()`, `summarize` na niej (bez zmiany
-  wyniku `summary`).
+  wstrzykiwany runner `next_epic.make_runner`; `retro.py` importuje `next_epic` (tablica) i `ao_events` (`waits`)
+  bez kopii ich kodu; `night_queue.py room` (limit) uruchamia sesja, a wynik podaje jako powód `defer`.
+- `.claude/skills/ao-run/ao_events.py` i `test_ao_events.py`: funkcja `waits()` i `summarize` liczące z niej sumy
+  (`summary`).
 - `.claude/skills/ao-run/SKILL.md` i `docs/features/ao-run/spec.md`: retro w kolejce przeglądów po `/sweep`
   (sekcja 7a), ponowienie odroczonych (`pending` przy kolejnym merge'u, po końcu procesu AO i na starcie przebiegu),
   liczba epików w `pending` w pushu sekcji 8; komentarz z pomiarem (sekcja 7) podaje ręczne poprawki jako
