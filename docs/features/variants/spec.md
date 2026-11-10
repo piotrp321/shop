@@ -127,12 +127,13 @@ produktu zachowuje go, wiersz bez identyfikatora dostaje nowy UUIDv7, identyfika
   `position int`, `option_values jsonb NOT NULL` (lista napisów, zapisanych po przycięciu przez domenę),
   `values_key text` (dopuszcza `NULL`); unikalne `(product_id, position)` i `(product_id, values_key)`. Klucz
   porównania liczy domena: `DoctrineProductRepository` zapisuje przy każdym wariancie
-  `json_encode(VariantValues::comparisonKey(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)` (wartości po
-  `mb_strtolower`, np. `["żółty","xl"]`), więc indeks odrzuca tylko to, co domena uznaje za tę samą kombinację.
-  `lower()` PostgreSQL nie jest używany, bo dla niektórych liter różni się od `mb_strtolower` („İ” i „i”, końcowe „Σ”
-  i „σ”): kombinacje różne w domenie dawały naruszenie indeksu i 500. Wiersz bez `values_key` (`NULL`, np. wstawiony
-  bezpośrednim SQL) indeks pomija, więc bezpośredni SQL z pominięciem domeny nie jest sprawdzany. Zgodność schematu
-  z mapowaniem sprawdza `CatalogSchemaTest`.
+  `json_encode(VariantValues::comparisonKey(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES |
+  JSON_THROW_ON_ERROR)` (wartości po `mb_strtolower`, np. `["żółty","xl"]`), więc indeks odrzuca tylko to, co domena
+  uznaje za tę samą kombinację. `lower()` PostgreSQL nie jest używany, bo dla niektórych liter różni się od
+  `mb_strtolower` („İ” i „i”, końcowe „Σ” i „σ”), więc indeks liczony przez `lower()` odrzucałby kombinacje, które
+  domena uznaje za różne. Wiersz bez `values_key` (`NULL`, np. wstawiony bezpośrednim SQL) indeks pomija, więc
+  bezpośredni SQL z pominięciem domeny nie jest sprawdzany. Zgodność schematu z mapowaniem sprawdza
+  `CatalogSchemaTest`.
 - Zgodność wersji (`apps/api/CLAUDE.md`): migracja `Version20261110090000StopGeneratingVariantValuesKey` zdejmuje
   z kolumny wyrażenie (`DROP EXPRESSION`, wartości zostają, tabela nie jest przepisywana) i `NOT NULL`. W oknie
   wdrożenia poprzednia wersja kodu nie zapisuje kolumny, więc jej warianty mają `NULL`, którego indeks nie pilnuje;
