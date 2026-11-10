@@ -166,7 +166,7 @@ do_shellcheck() {
   step "shellcheck"
   # shellcheck disable=SC2046 # the file names have no spaces
   shellcheck -x -P SCRIPTDIR $(cd "$TOOLS_REPO/infra/k8s" && ls scripts/*.sh charts/shop/files/scripts/*.sh tests/bootstrap/*.sh) \
-    ../../.github/scripts/deploy-ref.sh
+    ../../.github/scripts/deploy-ref.sh ../../load/k6.sh ../../load/smoke.sh
 }
 
 # The workflows of the repository (deploy.yml among them), with shellcheck on their run: scripts.

@@ -471,6 +471,13 @@ jobs:
         if: env.FULL_CI == 'true'
         run: make e2e E2E_FLAGS=-T E2E_BUILD=
 
+      # The k6 scripts of load/ keep working: one user, one iteration of every scenario, a guest checkout of one unit. After
+      # the E2E tests, so that the unit it buys is not taken from them. No measurement and no thresholds of speed. The k6
+      # image (pinned in load/k6.sh) is pulled by docker run.
+      - name: make load-smoke
+        if: env.FULL_CI == 'true'
+        run: make load-smoke
+
       # Shell tests of infra/scripts/init-env.sh in a temporary copy of the layout (infra/scripts/test-init-env.sh);
       # no services needed.
       - name: init-env.sh tests
