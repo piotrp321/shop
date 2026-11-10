@@ -128,8 +128,10 @@ class FormatEventTest(unittest.TestCase):
         self.assertIn('5h', usage)
         self.assertIn('120', self.fmt(event('attempt_stalled', {'idle_s': 120.4})))
         self.assertIn('usage_limit', self.fmt(event('cooldown_set', {'until': 1.0, 'reason': 'usage_limit'})))
-        battery = self.fmt(event('host_on_battery', {'percent': 15, 'low': True}))
-        self.assertIn('15%', battery)
+
+    def test_battery_is_not_pushed(self):
+        # The user decides about power alone: AO records host_on_battery, the session does not push it.
+        self.assertIsNone(self.fmt(event('host_on_battery', {'percent': 15, 'low': True})))
 
     def test_invalid_event(self):
         self.assertEqual(self.fmt({'type': 'invalid_event', 'raw': 'x'}), 'CART: niepoprawne zdarzenie AO')
