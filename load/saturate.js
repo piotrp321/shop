@@ -33,8 +33,8 @@ const thresholds = {};
 const selectors = ['kind:read', 'kind:cart', 'scenario:ramp'];
 for (let step = 0; step < steps; step++) {
   const delayAbortEval = `${step * stepSeconds + Math.min(10, Math.ceil(stepSeconds / 2))}s`;
-  thresholds[`http_req_duration{step:${step}}`] = [{ threshold: `p(95)<${SATURATION_P95_MS}`, abortOnFail: true, delayAbortEval }];
-  thresholds[`server_errors{step:${step}}`] = [{ threshold: `rate<${SATURATION_ERRORS}`, abortOnFail: true, delayAbortEval }];
+  thresholds[`http_req_duration{step:${step}}`] = [{ threshold: `p(95)<=${SATURATION_P95_MS}`, abortOnFail: true, delayAbortEval }];
+  thresholds[`server_errors{step:${step}}`] = [{ threshold: `rate<=${SATURATION_ERRORS}`, abortOnFail: true, delayAbortEval }];
   selectors.push(`step:${step}`);
   thresholds[`iterations_done{step:${step}}`] = [];
 }
