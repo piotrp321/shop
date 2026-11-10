@@ -6,19 +6,17 @@ namespace App\Pricing\UI\Http\Promotion;
 
 use App\Backoffice\Application\Security\AuthenticatedStaffMember;
 use App\Pricing\Application\Command\RevisePromotion;
+use App\Shared\UI\Http\RequiredKeysBody;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use Nelmio\ApiDocBundle\Attribute\Security;
 use OpenApi\Attributes as OA;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
-use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 
 final readonly class RevisePromotionController
 {
@@ -60,12 +58,7 @@ final readonly class RevisePromotionController
     public function __invoke(
         string $id,
         #[CurrentUser] AuthenticatedStaffMember $staffMember,
-        #[MapRequestPayload(
-            acceptFormat: 'json',
-            serializationContext: [AbstractNormalizer::REQUIRE_ALL_PROPERTIES => true],
-            validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY,
-            mapWhenEmpty: true,
-        )]
+        #[RequiredKeysBody]
         RevisePromotionRequest $promotion,
     ): JsonResponse {
         // Validated by the payload mapping.

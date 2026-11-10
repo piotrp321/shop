@@ -7,19 +7,17 @@ namespace App\Pricing\UI\Http;
 use App\Backoffice\Application\Security\AuthenticatedStaffMember;
 use App\Pricing\Application\Command\SetVariantPrice;
 use App\Pricing\Application\Query\ListedPrice;
+use App\Shared\UI\Http\RequiredKeysBody;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use Nelmio\ApiDocBundle\Attribute\Security;
 use OpenApi\Attributes as OA;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Messenger\HandleTrait;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
-use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 
 final class ChangePriceController
 {
@@ -104,12 +102,7 @@ final class ChangePriceController
     public function __invoke(
         string $variantId,
         #[CurrentUser] AuthenticatedStaffMember $staffMember,
-        #[MapRequestPayload(
-            acceptFormat: 'json',
-            serializationContext: [AbstractNormalizer::REQUIRE_ALL_PROPERTIES => true],
-            validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY,
-            mapWhenEmpty: true,
-        )]
+        #[RequiredKeysBody]
         ChangePriceRequest $change,
     ): JsonResponse {
         // Validated by the payload mapping: an integer, and an integer or null.

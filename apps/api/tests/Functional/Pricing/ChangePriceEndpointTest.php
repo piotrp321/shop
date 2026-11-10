@@ -18,6 +18,7 @@ use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrineVariantPriceReposito
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
+use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
 use App\Tests\Integration\Pricing\InterleavingVariantPriceRepository;
 use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use App\Tests\Support\Security\TestTokenFactory;
@@ -35,6 +36,7 @@ use Zenstruck\Foundry\Test\Factories;
 final class ChangePriceEndpointTest extends WebTestCase
 {
     use Factories;
+    use RequiredKeyViolationsTrait;
 
     private const string UNKNOWN_VARIANT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
 
@@ -376,6 +378,32 @@ final class ChangePriceEndpointTest extends WebTestCase
         $problem = $this->assertProblem(422);
         self::assertIsArray($problem['violations']);
         self::assertNotEmpty($problem['violations']);
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
+        self::assertSame([], $this->history($variantId));
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function omittedBodyKeys(): iterable
+    {
+        return self::omittedKeys(['gross', 'version']);
+    }
+
+    /**
+     * Also `version`, which accepts null: a missing one is no variant without a price.
+     *
+     * @param list<string> $omitted
+     */
+    #[DataProvider('omittedBodyKeys')]
+    public function testAnOmittedKeyIsOnePolishRequiredViolationAtThatKey(array $omitted): void
+    {
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
+
+        $problem = $this->request($variantId, json_encode(self::bodyWithout(['gross' => 5990, 'version' => 1], $omitted), \JSON_THROW_ON_ERROR), 'Bearer '.TestTokenFactory::staff(['admin']));
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertRequiredAt($omitted, $problem['violations'] ?? null);
         self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
         self::assertSame([], $this->history($variantId));
     }

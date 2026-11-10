@@ -15,6 +15,7 @@ use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrinePromotionRepository;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
+use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -30,6 +31,7 @@ use Zenstruck\Foundry\Test\Factories;
 final class PromotionsEndpointTest extends WebTestCase
 {
     use Factories;
+    use RequiredKeyViolationsTrait;
 
     private const string TYPE_OVERLAP = 'tag:piotrp321.github.io,2026:shop/problems/promotion-overlap';
     private const string TYPE_NOT_EDITABLE = 'tag:piotrp321.github.io,2026:shop/problems/promotion-not-editable';
@@ -501,6 +503,55 @@ final class PromotionsEndpointTest extends WebTestCase
 
         $this->send('GET', '/api/v1/admin/promotions');
         self::assertResponseIsSuccessful();
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function omittedPlanKeys(): iterable
+    {
+        return self::omittedKeys(['name', 'percentOff', 'startsAt', 'endsAt', 'variantIds']);
+    }
+
+    /**
+     * Also `startsAt`, which accepts null: a missing one does not start the promotion now.
+     *
+     * @param list<string> $omitted
+     */
+    #[DataProvider('omittedPlanKeys')]
+    public function testAPlanWithAnOmittedKeyIsOnePolishRequiredViolationAtThatKey(array $omitted): void
+    {
+        $a = $this->pricedVariant(5999);
+
+        $problem = $this->request('POST', '/api/v1/admin/promotions', json_encode(self::bodyWithout($this->body([$a]), $omitted), \JSON_THROW_ON_ERROR), TestTokenFactory::staff(['marketing']));
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertRequiredAt($omitted, $problem['violations'] ?? null);
+        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM pricing_promotion'));
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function omittedReviseKeys(): iterable
+    {
+        return self::omittedKeys(['name', 'percentOff', 'startsAt', 'endsAt', 'variantIds', 'version']);
+    }
+
+    /**
+     * @param list<string> $omitted
+     */
+    #[DataProvider('omittedReviseKeys')]
+    public function testARevisionWithAnOmittedKeyIsOnePolishRequiredViolationAtThatKey(array $omitted): void
+    {
+        $a = $this->pricedVariant(5999);
+        $id = $this->storedPromotion('+1 day', '+5 days', [$a]);
+
+        $problem = $this->request('PUT', '/api/v1/admin/promotions/'.$id, json_encode(self::bodyWithout([...$this->body([$a]), 'version' => 1], $omitted), \JSON_THROW_ON_ERROR), TestTokenFactory::staff(['marketing']));
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertRequiredAt($omitted, $problem['violations'] ?? null);
+        self::assertSame(1, $this->connection->fetchOne('SELECT version FROM pricing_promotion WHERE id = ?', [$id]));
     }
 
     public function testAReviseWithAnInvalidBodyIsUnprocessable(): void
