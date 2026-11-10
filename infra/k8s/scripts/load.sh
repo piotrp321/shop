@@ -12,11 +12,13 @@
 #
 # Exit code: 0 the measurement was done (it has no thresholds of speed; a ramp that ended on saturation is the normal
 # end), 2 the environment is not fit (LOAD_OUT missing or wrong, no Docker, too few CPUs or too little memory in the Docker
-# VM, pods not ready, the warm-up failed) with a message, 1 anything else that went wrong.
+# VM, pods not ready, the data of the demo or the stocks not prepared, the warm-up failed) with a message, 1 anything else
+# that went wrong (a failed run of k6 in the ramp or the steady run, a failed build).
 #
 #   LOAD_BUILD=0          use the images shop-load-<cluster>/<app>:r1 that are already there
 #   LOAD_TIMEOUT=1200     seconds to wait for the cluster to settle
-#   LOAD_MIN_CPUS=10, LOAD_MIN_MEM_GIB=20   what the Docker VM must have (the pods of prod ask for about 5 vCPU and 8.5 GiB)
+#   LOAD_MIN_CPUS=10, LOAD_MIN_MEM_GIB=20   what the Docker VM must have (the pods of prod ask for about 5 vCPU and 8.5 GiB);
+#                         the memory counts with a tolerance of 5% (docker info reports a little less than is set)
 #   LOAD_CHECKOUT_VUS     virtual users of the checkout of the steady run; by default a quarter of the threads of
 #                         FrankenPHP in the API (below half of them, D18)
 #   LOAD_STEADY_RATE      iterations per second of the steady run; by default 70% of what the ramp held
@@ -82,7 +84,8 @@ case "$docker_cpus$docker_mem" in
   "" | *[!0-9]*) fail "cannot read the CPUs and the memory of the Docker VM (docker info answered '$docker_info')" ;;
 esac
 [ "$docker_cpus" -ge "$LOAD_MIN_CPUS" ] || fail "the Docker VM has $docker_cpus CPUs, the measurement needs at least $LOAD_MIN_CPUS (the pods of prod ask for about 5 vCPU; give Docker more CPUs, or lower LOAD_MIN_CPUS knowingly)"
-[ "$docker_mem" -ge $(( LOAD_MIN_MEM_GIB * 1073741824 )) ] || fail "the Docker VM has $(( docker_mem / 1073741824 )) GiB of memory, the measurement needs at least $LOAD_MIN_MEM_GIB GiB (the pods of prod ask for about 8.5 GiB; give Docker more memory, or lower LOAD_MIN_MEM_GIB knowingly)"
+# MemTotal of the Docker VM is a little below what is set (Docker Desktop: 32 GiB gives 31.3 GiB), so 95% of the limit counts.
+[ "$docker_mem" -ge $(( LOAD_MIN_MEM_GIB * 1073741824 * 95 / 100 )) ] || fail "the Docker VM has $(( docker_mem / 1073741824 )) GiB of memory, the measurement needs at least $LOAD_MIN_MEM_GIB GiB (the pods of prod ask for about 8.5 GiB; give Docker more memory, or lower LOAD_MIN_MEM_GIB knowingly)"
 
 # The name of the cluster: from COMPOSE_PROJECT_NAME (or the .env of the worktree), at most 32 characters.
 project="${COMPOSE_PROJECT_NAME:-}"
@@ -281,8 +284,13 @@ products="$(kc exec statefulset/postgres -- psql -U shop -d shop -tAc 'SELECT co
 [ "${products:-0}" -gt 0 ] || fail "the demo data is not there (0 products)"
 # The stocks: every variant with a physical stock above 0 gets 100 000 more, so that the checkout does not use them up. A
 # direct write for the data of this throwaway cluster only (the exception of the spec to writing through Inventory).
-raised="$(kc exec statefulset/postgres -- psql -U shop -d shop -v ON_ERROR_STOP=1 -tAc \
-  'UPDATE inventory_stock_item SET physical = physical + 100000, version = version + 1, updated_at = now() WHERE physical > 0' | tr -d '\r')"
+# Not a pipe into tr: the exit code of a pipe is the last one, and a failed psql must end the measurement (a checkout on
+# the stocks of the demo data would use them up and skew the share of 409 in the results).
+update_answer="$(kc exec statefulset/postgres -- psql -U shop -d shop -v ON_ERROR_STOP=1 -tAc \
+  'UPDATE inventory_stock_item SET physical = physical + 100000, version = version + 1, updated_at = now() WHERE physical > 0')" \
+  || fail "the stocks could not be raised (the UPDATE failed; above)"
+raised="$(printf '%s' "$update_answer" | tr -d '\r')"
+printf '%s\n' "$raised" | grep -Eqx 'UPDATE [1-9][0-9]*' || fail "the stocks were not raised (the UPDATE answered '$raised', expected UPDATE <n> with n of at least 1)"
 echo "load: $products products; stocks raised: $raised"
 
 # The threads of FrankenPHP in the API decide how many checkouts run at once (D18): the log of the server names them.

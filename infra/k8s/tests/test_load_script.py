@@ -16,7 +16,9 @@ from support import REPO
 SCRIPT = REPO / "infra/k8s/scripts/load.sh"
 
 # One line of arguments per call in $STUB_LOG. Answers by the command: the resources of the Docker VM, k3d (a kubeconfig),
-# kubectl (nothing exists in the cluster: no jobs, no deployments), everything else succeeds silently.
+# kubectl (nothing exists in the cluster: no jobs, no deployments; with STUB_READY=1 the cluster is settled, has STUB_PRODUCTS
+# products and answers the UPDATE of the stocks with STUB_UPDATE_OUT and the exit code STUB_UPDATE_STATUS), everything else
+# succeeds silently.
 DOCKER = r"""#!/bin/sh
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1" in
@@ -26,7 +28,20 @@ case "$1" in
   run)
     case "$*" in
       *k3d-io/k3d*"kubeconfig get"*) printf 'apiVersion: v1\nclusters:\n- cluster:\n    server: https://0.0.0.0:6443\n' ;;
-      *registry.k8s.io/kubectl*) ;;
+      *registry.k8s.io/kubectl*)
+        [ -n "${STUB_READY:-}" ] || exit 0
+        case "$*" in
+          *"get crd"*) ;;
+          *"get jobs"*succeeded*) printf '1\n1\n1\n1\n1\n' ;;
+          *"get deployments"*) printf '1 1 1 1 1 1\n' ;;
+          *"get statefulsets"*) printf '1 1\n' ;;
+          *"get service traefik"*) printf '30080' ;;
+          *"exec statefulset/postgres"*"UPDATE "*)
+            [ -z "${STUB_UPDATE_OUT:-}" ] || printf '%s\r\n' "$STUB_UPDATE_OUT"
+            echo "psql: stub error" >&2
+            exit "${STUB_UPDATE_STATUS:-0}" ;;
+          *"exec statefulset/postgres"*"count(*)"*) printf '%s\r\n' "${STUB_PRODUCTS:-5}" ;;
+        esac ;;
     esac ;;
 esac
 exit 0
@@ -108,6 +123,22 @@ class LoadScript(unittest.TestCase):
         self.assertIn("memory", result.stderr)
         self.assertEqual([], self.cluster_calls("create"))
 
+    def test_the_memory_that_docker_reports_a_little_below_the_set_one_is_enough(self):
+        """Docker Desktop reports 31.3 GiB for 32 GiB set: a VM set to the 20 GiB of the spec must pass (95% of the limit)."""
+        for gib in (19.5, 20, 32):
+            with self.subTest(gib=gib):
+                self.log.write_text("")
+                result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0", STUB_MEM_BYTES=str(int(gib * 1024**3)))
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertNotIn("memory", result.stderr)
+                self.assertEqual(1, len(self.cluster_calls("create")))
+
+    def test_memory_well_below_the_limit_is_refused_with_the_limit_in_the_message(self):
+        result = self.run_load(LOAD_OUT=str(self.out), STUB_MEM_BYTES=str(int(18.5 * 1024**3)))
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("at least 20 GiB", result.stderr)
+        self.assertEqual([], self.cluster_calls("create"))
+
     def test_pods_that_do_not_become_ready_end_with_2_and_the_cluster_is_deleted(self):
         result = self.run_load(LOAD_OUT=str(self.out), LOAD_TIMEOUT="2", LOAD_BUILD="0")
         self.assertEqual(2, result.returncode, result.stderr)
@@ -119,6 +150,27 @@ class LoadScript(unittest.TestCase):
         # The cluster is deleted last of all (after the failure), and no k6 ran.
         self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
         self.assertEqual([], [call for call in self.calls() if "grafana/k6" in call])
+
+    def assert_ends_with_2_after_the_stocks_failed(self, result):
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertIn("stocks", result.stderr)
+        self.assertEqual(1, len(self.cluster_calls("create")))
+        # No k6 ran, and the cluster is deleted last of all.
+        self.assertEqual([], [call for call in self.calls() if "grafana/k6" in call])
+        self.assertIn("cluster delete", [call for call in self.calls() if "k3d-io/k3d" in call][-1])
+        self.assertIn("ld-loadtest", self.cluster_calls("delete")[-1])
+
+    def test_a_failing_update_of_the_stocks_ends_with_2_and_the_cluster_is_deleted(self):
+        """The exit code of the pipe must not hide a failed psql: the checkout would use up the stocks of the demo data."""
+        result = self.run_load(LOAD_OUT=str(self.out), LOAD_BUILD="0", STUB_READY="1", STUB_UPDATE_STATUS="1")
+        self.assert_ends_with_2_after_the_stocks_failed(result)
+
+    def test_an_update_that_raised_no_stock_ends_with_2_and_the_cluster_is_deleted(self):
+        for answer in ("UPDATE 0", "something else"):
+            with self.subTest(answer=answer):
+                self.log.write_text("")
+                result = self.run_load(LOAD_OUT=str(self.out), LOAD_BUILD="0", STUB_READY="1", STUB_UPDATE_OUT=answer)
+                self.assert_ends_with_2_after_the_stocks_failed(result)
 
 
 if __name__ == "__main__":

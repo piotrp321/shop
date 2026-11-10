@@ -71,7 +71,7 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
     podniesione o 100 000 bezpośrednim SQL, rozgrzanie, przebieg rosnący do nasycenia z k6 (odczyt i koszyk) i przebieg
     stały na 70% nasycenia z checkoutem o ograniczonej równoległości, wyniki do `LOAD_OUT`; kilkadziesiąt minut, VM
     Dockera co najmniej 10 vCPU i 20 GiB; kod 0 – pomiar wykonany, bez progów, 2 – błąd środowiska: brak `LOAD_OUT`,
-    za mało zasobów, pody niegotowe; klaster jest usuwany przy każdym wyjściu); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
+    za mało zasobów, pody niegotowe, dane demo albo stany niegotowe, nieudane rozgrzanie; 1 – inny błąd (nieudany przebieg k6, build); klaster jest usuwany przy każdym wyjściu); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
     samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje);
     `make -C infra/k8s create-admin LOGIN=<login> EMAIL=<e-mail>` (pierwszy administrator panelu: wypisuje, co zrobi,
     i działa dopiero po słowie `tak`; zakłada użytkownika w realmie `backoffice` z rolą `admin` bez hasła i wysyła mu
