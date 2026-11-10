@@ -545,7 +545,34 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   Rozpoczęcie płatności z tym samym kluczem dla tego samego zamówienia i dostawcy zwraca 200 z tą płatnością w bieżącym
   stanie zamiast 201; ten sam klucz dla innego zamówienia albo dostawcy to 409 `PaymentIdempotencyKeyReused`, a bez
   dostępu do zamówienia (inny token, inny klient) 404. Klucze płatności są w `payment_payment` na zawsze.
-- Rate limiting (Symfony RateLimiter na Redis) na logowaniu, checkout i webhookach.
+- Rate limiting (`docs/features/hardening/spec.md`, D1–D8): Symfony RateLimiter (`symfony/rate-limiter`), okno
+  przesuwne, bez `symfony/lock` (`lock_factory: null`: równoległe żądania mogą przekroczyć limit o liczbę żądań
+  w locie). Limitery w `config/packages/rate_limiter.yaml`: `order_placement` (`POST /api/v1/orders` i
+  `/api/v1/me/orders`, 10 na 15 min), `payment_start` (`POST …/orders/{id}/payments` gościa i klienta, 20 na 15 min),
+  `payment_webhook` (`POST /api/v1/payments/webhooks/{provider}`, 300 na minutę); `when@dev` po 10 000 (stos compose
+  i E2E: wszystkie żądania sklepu mają tam jeden adres kontenera), `when@test` po 10 w pamięci (`InMemoryStorage`,
+  stan żyje tyle co kernel jednego testu; pula `cache.adapter.array` odpada, bo kernel czyści ją po każdym żądaniu).
+  Trasa wskazuje limiter domyślną wartością `RateLimit::ROUTE_DEFAULT`, a klucz `RateLimit::KEY_ROUTE_DEFAULT`
+  (`Shared\Infrastructure\Http\RateLimit`): `guest:<adres>`, `customer:<sub>` (konto z tokena, niezależnie od adresu)
+  albo `<provider>:<adres>`. `RateLimitSubscriber` (`kernel.request`, priorytet 4, po firewallu) zużywa limit przy
+  każdym żądaniu trasy (także powtórzonym `Idempotency-Key` i odrzuconym walidacją), a przekroczenie to 429 przed
+  kontrolerem (bez odczytu treści, podpisu webhooka i komendy): problem z `type` `about:blank`, `title` „Too Many
+  Requests”, `detail` „Zbyt wiele prób. Spróbuj ponownie za kilka minut.”, `Retry-After` w sekundach (najwyżej okno
+  plus 1 s zaokrąglenia) i `Cache-Control: private, no-store`; OpenAPI opisuje 429 na tych pięciu trasach.
+- Adres klienta (`ClientIp::of(Request)`, `Shared\Infrastructure\Http`, używa go tylko rate limiting): nagłówek
+  nazwany w `CLIENT_IP_HEADER` (`%env(default::CLIENT_IP_HEADER)%`; compose jej nie ustawia, chart w `prod`:
+  `CF-Connecting-IP`), gdy jest jedną wartością z jednym poprawnym adresem IP (odstępy ASCII wokół są dozwolone);
+  inaczej `Request::getClientIp()` (adres połączenia, bez `trusted_proxies`). IPv6 liczy się prefiksem /64, adres IPv4
+  zapisany jako IPv6 (`::ffff:a.b.c.d`) jako IPv4, żądanie bez adresu ma wspólny klucz `unknown`.
+- Stan limitów jest w puli `cache.rate_limiter` na Redisie (`framework.cache.default_redis_provider`:
+  `redis://%env(REDIS_HOST)%:6379?timeout=1&read_timeout=1`, połączenie leniwe). Redis niedostępny: pula zwraca brak
+  wpisu i loguje `warning` w kanale `cache`, więc żądanie przechodzi bez limitu (fail open, D7), wolniej najwyżej
+  o limity czasu trzech wywołań puli (dwa odczyty, zapis). W `prod` Monolog kieruje kanał `cache` od `warning` osobnym
+  handlerem JSON na stderr, poza `fingers_crossed`, więc wpis jest także przy udanym żądaniu. Testy: funkcjonalne
+  `tests/Functional/Shared/RateLimitEndpointTest.php`, na prawdziwym Redisie i z Redisem niedostępnym
+  `tests/Integration/Shared/RateLimit/RedisRateLimitTest.php` (kernel `RedisPoolKernel` z pulą produkcji), wartości
+  `prod` i `dev` oraz Monolog `prod` z kontenera zbudowanego z `config/` (`RateLimitConfigurationTest`). Kontener
+  testów ma `APP_DEBUG=0`, więc po zmianie konfiguracji lokalnie usuń `var/cache/test*`.
 - Webhooki zewnętrzne: weryfikacja podpisu i deduplikacja po identyfikatorze zdarzenia.
 
 ## Infrastruktura

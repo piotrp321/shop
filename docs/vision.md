@@ -247,7 +247,9 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
   przez trace'y (Grafana Cloud) i Sentry Performance.
 
 **Bezpieczeństwo**
-- Rate limiting (Symfony RateLimiter, Redis) na logowaniu, checkout i webhookach.
+- Rate limiting (Symfony RateLimiter, Redis) na logowaniu, składaniu zamówień, rozpoczęciu płatności i webhookach
+  dostawców. Za Cloudflare adres klienta pochodzi z nagłówka `CF-Connecting-IP`, którego nie da się podrobić, bo origin
+  przyjmuje ruch tylko z adresów Cloudflare (`docs/features/hardening/spec.md`).
 - Walidacja wejścia na granicy API (DTO + Symfony Validator). Domena dodatkowo pilnuje swoich niezmienników.
 - CORS tylko dla domeny panelu (`admin`). Sklep woła API wyłącznie z serwera, więc nie potrzebuje CORS.
 - Uprawnienia w panelu sprawdzane w API (votery), nie tylko ukrywane w UI.
