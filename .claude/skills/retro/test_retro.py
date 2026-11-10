@@ -5,6 +5,7 @@ PRICING): the real table schemas and values, paths and payloads blanked. The tes
 from them; nothing outside the temporary directories is read or written, and no network is used.
 """
 import hashlib
+import io
 import importlib.util
 import json
 import os
@@ -15,6 +16,8 @@ import sys
 import tempfile
 import time
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, 'fixtures')
@@ -27,6 +30,10 @@ def setUpModule():
     # night-decisions.log has the local time of the system without a zone
     os.environ['TZ'] = 'Europe/Warsaw'
     time.tzset()
+
+
+def unittest_mock_patch(obj, name, value):
+    return mock.patch.object(obj, name, value)
 
 
 def fixture(name):
@@ -188,7 +195,7 @@ class SourcesTest(TempDirCase):
             source = f.read()
         self.assertNotIn('subprocess', source)
         self.assertNotIn('os.system', source)
-        self.assertNotIn("'ao'", source)
+        self.assertNotIn("['ao'", source)   # no command line starting with `ao`
 
 
 class AoIncidentsTest(TempDirCase):
@@ -595,6 +602,390 @@ class UnaskedTest(unittest.TestCase):
     def test_heading_level_and_case_do_not_matter(self):
         body = '### decyzje bez pytania\n1. jedyna\n'
         self.assertEqual([i['key'] for i in retro.unasked_incidents('e', [{'number': 9, 'body': body}])], ['pr9#1'])
+
+
+class FakeRunner:
+    """Stands in for next_epic.make_runner(cwd): answers `gh` and `git` from prepared data and records the calls."""
+
+    def __init__(self, fail=None, bad_json=None):
+        self.calls = []
+        self.fail = fail
+        self.bad_json = bad_json
+        self.prs = {
+            366: {'state': 'MERGED', 'mergedAt': '2026-11-10T09:00:00Z'},
+            329: {'state': 'MERGED', 'mergedAt': '2026-11-09T09:00:00Z'},
+            79: {'state': 'MERGED', 'mergedAt': '2026-11-04T03:00:00Z'},
+            384: {'state': 'MERGED', 'mergedAt': '2026-11-10T07:00:00Z'},
+        }
+        self.epic_issues = [
+            {'number': 97, 'title': 'VISUAL-DESIGN: projekt wizualny sklepu',
+             'comments': [{'body': 'inny komentarz'}, {'body': fixture('visual-design.measurement.md')}]},
+            {'number': 225, 'title': 'DISCOUNT-CODES: kody rabatowe w kasie',
+             'comments': [{'body': fixture('discount-codes.measurement.md')}]},
+            {'number': 88, 'title': 'CART: koszyk', 'comments': []},
+            {'number': 289, 'title': 'LIGHTHOUSE: pomiar Core Web Vitals w CI', 'comments': []},
+        ]
+        self.task_prs = [{'number': 356, 'title': 'VD-5',
+                          'body': '## Decyzje bez pytania\n\n1. **Pierwsza**.\n2. **Druga**.\n'},
+                         {'number': 357, 'title': 'VD-11', 'body': '## Decyzje bez pytania\n\nBrak.\n'}]
+        self.open_prs = []
+        self.ao_issues = [{'number': 46, 'title': 'ao epic resume --add-qa-rounds po FINALIZE', 'body': 'x',
+                           'labels': []}]
+        self.shop_issues = [{'number': 380, 'title': 'tech-debt agent issue', 'body': 'y',
+                             'labels': [{'name': 'tech-debt'}, {'name': 'agent'}]}]
+        self.agent_issues = [{'number': 1, 'state': 'OPEN'}, {'number': 2, 'state': 'OPEN'},
+                             {'number': 3, 'state': 'CLOSED'}, {'number': 4, 'state': 'CLOSED'},
+                             {'number': 5, 'state': 'CLOSED'}]
+
+    def __call__(self, args):
+        self.calls.append(list(args))
+        text = ' '.join(args)
+        if self.fail and self.fail in text:
+            raise next_epic_module().CommandError(args, 'simulated failure')
+        if self.bad_json and self.bad_json in text:
+            return 'this is not json'
+        if args[:2] == ['git', 'fetch']:
+            return ''
+        if args[:2] == ['git', 'rev-parse']:
+            return 'c0ffee1234567890\n'
+        if args[:2] == ['git', 'ls-remote']:
+            return 'abc\trefs/heads/epic/hardening\n'
+        if args[:2] == ['git', 'ls-tree']:
+            return 'docs/features/retro/spec.md\ndocs/features/retro/plan.md\n'
+        if args[:2] == ['git', 'show']:
+            return '{"schema_version": 1}'
+        if args[:3] == ['gh', 'project', 'item-list']:
+            return json.dumps({'items': [
+                {'content': {'type': 'Issue', 'number': 267, 'title': 'HARDENING: bezpieczeństwo',
+                             'repository': 'piotrp321/shop'}, 'labels': ['epic']},
+                {'content': {'type': 'Issue', 'number': 400, 'title': 'RETRO: retrospektywa',
+                             'repository': 'piotrp321/shop'}, 'labels': ['epic']}]})
+        if args[:3] == ['gh', 'issue', 'list']:
+            if '--label' in args and 'epic' in args and '--state' in args and args[args.index('--state') + 1] == 'open':
+                return json.dumps([{'number': 267, 'title': 'HARDENING: bezpieczeństwo', 'body': ''},
+                                   {'number': 400, 'title': 'RETRO: retrospektywa', 'body': ''}])
+            if '--label' in args and 'epic' in args:
+                return json.dumps(self.epic_issues)
+            if 'piotrp321/agentic-orchestrator' in args:
+                return json.dumps(self.ao_issues)
+            if 'tech-debt' in args:
+                return json.dumps(self.shop_issues)
+            if 'agent' in args:
+                return json.dumps(self.agent_issues)
+        if args[:3] == ['gh', 'pr', 'view']:
+            return json.dumps(self.prs[int(args[3])])
+        if args[:3] == ['gh', 'pr', 'list']:
+            if '--base' in args:
+                return json.dumps(self.task_prs)
+            return json.dumps(self.open_prs)
+        raise AssertionError('unexpected command: %s' % text)
+
+
+def next_epic_module():
+    return retro.next_epic
+
+
+class CollectTest(TempDirCase):
+    def setUp(self):
+        super().setUp()
+        self.out = os.path.join(self.tmp, 'out')
+        self.retro_home = os.path.join(self.tmp, 'retro')
+        self.sweep_home = os.path.join(self.tmp, 'sweep')
+        os.makedirs(self.sweep_home)
+        self.home = self.real_home()
+        # a finished epic with no report and no events
+        build_run(self.ao_home, 'lighthouse', 'cart.sql', extra_sql="UPDATE epics SET epic_id='lighthouse',"
+                                                                    " final_pr_number=384;")
+        sweep = os.path.join(self.sweep_home, '2026-11-10-3c06149-lighthouse')
+        os.makedirs(sweep)
+        with open(os.path.join(sweep, 'report.md'), 'w', encoding='utf-8') as f:
+            f.write(fixture('lighthouse.sweep.md'))
+        self.runner = FakeRunner()
+
+    def argv(self, epic='visual-design', *extra):
+        return ['collect', epic, '--out', self.out, '--ao-home', self.ao_home, '--retro-home', self.retro_home,
+                '--sweep-home', self.sweep_home, '--repo', self.tmp, *extra]
+
+    def collect(self, epic='visual-design', runner=None, *extra):
+        with redirect_stdout(io.StringIO()):
+            return retro.main(self.argv(epic, *extra), run=runner or self.runner)
+
+    def load(self):
+        with open(os.path.join(self.out, 'input.json'), encoding='utf-8') as f:
+            return json.load(f)
+
+    def kinds(self, data, epic):
+        counts = {}
+        for incident in data['incidents']:
+            if incident['epic'] == epic:
+                counts[incident['kind']] = counts.get(incident['kind'], 0) + 1
+        return counts
+
+    def test_collect_writes_input_json_with_every_incident_kind_of_the_history(self):
+        self.assertEqual(self.collect(), 0)
+        data = self.load()
+        self.assertEqual((data['schema'], data['epic'], data['commit']), (1, 'visual-design', 'c0ffee1234567890'))
+        self.assertEqual(self.kinds(data, 'visual-design'), {'wait': 7, 'repair': 1, 'finding': 4, 'manual_fix': 1,
+                                                             'no_sweep': 1, 'unasked': 2})
+        self.assertEqual(self.kinds(data, 'discount-codes'), {'wait': 2, 'failed_attempt': 1, 'finding': 3,
+                                                              'manual_fix': 2})
+        self.assertEqual(self.kinds(data, 'lighthouse'), {'escaped': 4})
+        self.assertEqual(self.kinds(data, 'cart'), {})
+        for incident in data['incidents']:
+            self.assertEqual(incident['id'], '%s/%s/%s' % (incident['epic'], incident['kind'], incident['key']))
+            self.assertTrue(incident['facts'])
+
+    def test_events_night_log_and_report_of_one_event_are_one_incident(self):
+        self.collect()
+        data = self.load()
+        ids = [i['id'] for i in data['incidents']]
+        self.assertEqual(len(ids), len(set(ids)))
+        wait = [i for i in data['incidents'] if i['id'] == 'visual-design/wait/visual-design@1794272499']
+        self.assertEqual(len(wait), 1)
+        self.assertEqual({f['source'] for f in wait[0]['facts']}, {'events.jsonl', 'night-decisions.log'})
+
+    def test_two_runs_give_the_same_ids(self):
+        self.collect()
+        first = self.load()
+        self.collect()
+        second = self.load()
+        self.assertEqual([i['id'] for i in first['incidents']], [i['id'] for i in second['incidents']])
+        for data in (first, second):
+            data.pop('generated_at')
+        self.assertEqual(first, second)
+
+    def test_missing_sources_are_facts_not_errors(self):
+        self.assertEqual(self.collect(), 0)
+        facts = {f['id'] for f in self.load()['facts']}
+        self.assertIn('cart/missing/events', facts)
+        self.assertIn('cart/missing/measurement', facts)
+        self.assertIn('cart/missing/sweep', facts)
+        self.assertIn('lighthouse/missing/report', facts)
+        self.assertIn('lighthouse/missing/events', facts)
+        self.assertIn('discount-codes/missing/sweep', facts)
+        self.assertNotIn('visual-design/missing/report', facts)   # it has a report
+        self.assertNotIn('visual-design/missing/events', facts)
+        self.assertIn('visual-design/missing/sweep', facts)
+        self.assertNotIn('lighthouse/missing/sweep', facts)
+
+    def test_escaped_and_no_sweep_only_for_epics_merged_after_step_12(self):
+        self.collect()
+        data = self.load()
+        self.assertEqual(self.kinds(data, 'discount-codes').get('no_sweep'), None)   # merged before step 12
+        self.assertEqual(self.kinds(data, 'cart').get('no_sweep'), None)
+        self.assertEqual(self.kinds(data, 'visual-design')['no_sweep'], 1)
+
+    def test_epic_without_a_measurement_comment_has_no_manual_fix_incidents(self):
+        self.collect()
+        self.assertEqual(self.kinds(self.load(), 'cart').get('manual_fix'), None)
+
+    def test_unasked_decisions_only_for_the_collected_epic(self):
+        self.collect('discount-codes')
+        data = self.load()
+        self.assertEqual(self.kinds(data, 'discount-codes').get('unasked'), 2)
+        self.assertEqual(self.kinds(data, 'visual-design').get('unasked'), None)
+        base = [c for c in self.runner.calls if c[:3] == ['gh', 'pr', 'list'] and '--base' in c]
+        self.assertEqual(base[-1][base[-1].index('--base') + 1], 'epic/discount-codes')
+
+    def test_status_facts_have_ids(self):
+        with unittest_mock_patch(retro, 'RETRO_SINCE', '2026-11-09T00:00:00+00:00'):
+            os.makedirs(os.path.join(self.retro_home, 'lighthouse'))
+            with open(os.path.join(self.retro_home, 'lighthouse', 'state.json'), 'w') as f:
+                json.dump({'state': 'done'}, f)
+            # a blocked task in the epic that is running
+            con = sqlite3.connect(os.path.join(self.ao_home, 'ao-hardening', 'orchestrator.db'))
+            con.execute("UPDATE tasks SET status='BLOCKED', blockers='[\"Pytanie?\"]' WHERE task_id='CART-2'")
+            con.commit()
+            con.close()
+            self.collect()
+        status = {f['id']: f for f in self.load()['status']}
+        self.assertEqual(sorted(status), ['status/agent-issues', 'status/in-progress', 'status/last-epic',
+                                          'status/pending-retro'])
+        progress = status['status/in-progress']
+        self.assertEqual([(e['id'], e['state']) for e in progress['epics']],
+                         [('HARDENING', 'in_progress'), ('RETRO', 'prepared')])
+        self.assertEqual(progress['blocked'], [{'epic': 'hardening', 'epic_status': 'ACTIVE', 'tasks': [
+            {'task_id': 'CART-2', 'status': 'BLOCKED', 'blockers': ['Pytanie?']}]}])
+        last = status['status/last-epic']
+        self.assertEqual((last['epic'], last['pr'], last['interventions'], last['waits'], last['wait_min'],
+                          last['manual_fixes']), ('visual-design', 366, 7, 7, 109, 1))
+        self.assertEqual({k: status['status/agent-issues'][k] for k in ('open', 'closed')}, {'open': 2, 'closed': 3})
+        self.assertEqual(status['status/pending-retro']['epics'], ['discount-codes', 'visual-design'])
+
+    def test_pending_retro_without_a_state_and_the_default_since(self):
+        with unittest_mock_patch(retro, 'RETRO_SINCE', '2026-11-10T08:00:00+00:00'):
+            self.collect()
+        status = {f['id']: f for f in self.load()['status']}
+        self.assertEqual(status['status/pending-retro']['epics'], ['visual-design'])   # merged 09:00, after 08:00
+        with unittest_mock_patch(retro, 'RETRO_SINCE', '2026-11-11T00:00:00+00:00'):
+            self.collect()
+        status = {f['id']: f for f in self.load()['status']}
+        self.assertEqual(status['status/pending-retro']['epics'], [])
+
+    def test_last_epic_without_a_measurement_has_no_numbers(self):
+        self.runner.prs[366]['mergedAt'] = '2026-11-01T00:00:00Z'   # now lighthouse (07:00 on the 10th) is the last
+        self.collect()
+        last = {f['id']: f for f in self.load()['status']}['status/last-epic']
+        self.assertEqual(last['epic'], 'lighthouse')
+        self.assertIsNone(last['interventions'])
+        self.assertIsNone(last['manual_fixes'])
+
+    def test_empty_state_gives_empty_registers_and_no_open_pr(self):
+        self.collect()
+        data = self.load()
+        self.assertEqual(data['registers'], {'observations': [], 'rejected': [], 'applied': [], 'carried': []})
+        self.assertIsNone(data['open_retro_pr'])
+        self.assertEqual([i['number'] for i in data['open_issues']['ao']], [46])
+        self.assertEqual([i['number'] for i in data['open_issues']['shop']], [380])
+
+    def test_registers_and_the_items_of_the_open_retro_pr_are_read(self):
+        os.makedirs(os.path.join(self.retro_home, 'cart'))
+        for name, rows in (('observations.jsonl', [{'key': 'a', 'title': 'A', 'incidents': ['x'], 'epic': 'cart'}]),
+                           ('rejected.jsonl', [{'key': 'b', 'incidents': ['y'], 'reason': 'celowe'}]),
+                           ('applied.jsonl', [{'key': 'c', 'incidents': ['z'], 'pr': 5}]),
+                           ('carried.jsonl', [{'key': 'd'}])):
+            with open(os.path.join(self.retro_home, name), 'w') as f:
+                f.write('\n'.join(json.dumps(r) for r in rows) + '\nnot json\n')
+        with open(os.path.join(self.retro_home, 'cart', 'state.json'), 'w') as f:
+            json.dump({'state': 'done', 'pr': {'number': 77, 'branch': 'retro/cart', 'items': [{'n': 1, 'key': 'a'}]}}, f)
+        self.runner.open_prs = [{'number': 77, 'headRefName': 'retro/cart'}, {'number': 8, 'headRefName': 'task/x'}]
+        self.collect()
+        data = self.load()
+        self.assertEqual([r['key'] for r in data['registers']['observations']], ['a'])
+        self.assertEqual([r['key'] for r in data['registers']['rejected']], ['b'])
+        self.assertEqual([r['key'] for r in data['registers']['applied']], ['c'])
+        self.assertEqual([r['key'] for r in data['registers']['carried']], ['d'])
+        self.assertEqual(data['open_retro_pr'], {'number': 77, 'branch': 'retro/cart',
+                                                 'items': [{'n': 1, 'key': 'a', 'epic': 'cart'}]})
+
+    def test_open_retro_pr_without_a_state_has_no_items(self):
+        self.runner.open_prs = [{'number': 77, 'headRefName': 'retro/visual-design'}]
+        self.collect()
+        self.assertEqual(self.load()['open_retro_pr'], {'number': 77, 'branch': 'retro/visual-design', 'items': []})
+
+    def test_only_git_and_gh_are_run_and_ao_files_do_not_change(self):
+        before = snapshot(self.ao_home)
+        self.collect()
+        self.assertTrue(self.runner.calls)
+        self.assertEqual({c[0] for c in self.runner.calls}, {'git', 'gh'})
+        self.assertEqual(snapshot(self.ao_home), before)
+
+    def test_output_goes_to_the_retro_home_by_default_and_the_path_is_printed(self):
+        out = self.out
+        argv = ['collect', 'visual-design', '--ao-home', self.ao_home, '--retro-home', self.retro_home,
+                '--sweep-home', self.sweep_home]
+        printed = io.StringIO()
+        with redirect_stdout(printed):
+            self.assertEqual(retro.main(argv, run=self.runner), 0)
+        self.assertEqual(printed.getvalue().strip(), os.path.join(self.retro_home, 'visual-design', 'input.json'))
+        self.assertTrue(os.path.isfile(os.path.join(self.retro_home, 'visual-design', 'input.json')))
+        self.assertFalse(os.path.exists(out))
+
+    def test_failing_gh_or_git_command_is_exit_code_1_and_nothing_is_written(self):
+        for fail in ('git fetch', 'git rev-parse', 'gh pr view', 'gh pr list', 'gh issue list --repo piotrp321/shop --label epic --state all',
+                     'piotrp321/agentic-orchestrator', 'tech-debt', 'gh project item-list', 'git ls-remote',
+                     '--label agent --state all'):
+            runner = FakeRunner(fail=fail)
+            with self.subTest(fail=fail):
+                stderr = io.StringIO()
+                with redirect_stderr(stderr):
+                    code = retro.main(self.argv(), run=runner)
+                self.assertEqual(code, 1)
+                self.assertIn('retro:', stderr.getvalue())
+                self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
+
+    def test_output_that_is_not_json_is_exit_code_1(self):
+        for bad in ('gh pr view', 'gh issue list', 'gh pr list'):
+            with self.subTest(bad=bad):
+                with redirect_stderr(io.StringIO()):
+                    self.assertEqual(retro.main(self.argv(), run=FakeRunner(bad_json=bad)), 1)
+
+    def test_unwritable_output_directory_is_exit_code_1(self):
+        blocker = os.path.join(self.tmp, 'file')
+        with open(blocker, 'w') as f:
+            f.write('x')
+        argv = self.argv()
+        argv[argv.index('--out') + 1] = os.path.join(blocker, 'sub')
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(retro.main(argv, run=self.runner), 1)
+
+    def test_bad_epic_names_and_unknown_epics_are_exit_code_2_before_any_command(self):
+        for name in ('Bad', '-x', 'a b', '../x', ''):
+            with self.subTest(name=name), redirect_stderr(io.StringIO()):
+                runner = FakeRunner()
+                try:
+                    code = retro.main(self.argv(name), run=runner)
+                except SystemExit as e:   # argparse refuses a name that looks like an option
+                    code = e.code
+                self.assertEqual(code, 2)
+                self.assertEqual(runner.calls, [])
+        for name in ('night', 'hardening', 'nothing'):
+            with self.subTest(name=name), redirect_stderr(io.StringIO()):
+                runner = FakeRunner()
+                self.assertEqual(retro.main(self.argv(name), run=runner), 2)
+                self.assertEqual(runner.calls, [])
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'input.json')))
+
+    def test_epic_with_an_unmerged_final_pr_is_collected_without_a_merge_date(self):
+        self.runner.prs[366] = {'state': 'OPEN', 'mergedAt': None}
+        self.assertEqual(self.collect(), 0)
+        data = self.load()
+        by_id = {e['id']: e for e in data['epics']}
+        self.assertIsNone(by_id['visual-design']['merged_at'])
+        self.assertEqual(by_id['visual-design']['pr_state'], 'OPEN')
+        self.assertEqual(self.kinds(data, 'visual-design').get('no_sweep'), None)
+        self.assertIn('visual-design/missing/merge', {f['id'] for f in data['facts']})
+
+    def test_epics_list_has_dates_and_the_final_pr(self):
+        self.collect()
+        by_id = {e['id']: e for e in self.load()['epics']}
+        self.assertEqual(sorted(by_id), ['cart', 'discount-codes', 'lighthouse', 'visual-design'])
+        self.assertEqual(by_id['visual-design']['final_pr'], 366)
+        self.assertEqual(by_id['visual-design']['pr_state'], 'MERGED')
+        self.assertEqual(by_id['visual-design']['merged_at'], 1794301200)   # 2026-11-10T09:00:00Z
+        self.assertAlmostEqual(by_id['visual-design']['created_at'], 1794223198.57, places=1)
+
+
+class CommandLineTest(TempDirCase):
+    """The script as a process, with the real runner, on a directory that is not a repository and a fake `gh`."""
+
+    def run_cli(self, *args, env=None):
+        return subprocess.run([sys.executable, '-I', os.path.join(HERE, 'retro.py'), *args], capture_output=True,
+                              text=True, env=env)
+
+    def test_git_failure_is_exit_code_1_with_a_message_and_no_file(self):
+        build_run(self.ao_home, 'cart', 'cart.sql')
+        out = os.path.join(self.tmp, 'out')
+        env = dict(os.environ, PATH=os.path.dirname(shutil.which('git')))
+        result = self.run_cli('collect', 'cart', '--out', out, '--ao-home', self.ao_home, '--retro-home',
+                              os.path.join(self.tmp, 'r'), '--sweep-home', os.path.join(self.tmp, 's'), '--repo',
+                              self.tmp, env=env)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn('retro:', result.stderr)
+        self.assertEqual(result.stdout, '')
+        self.assertFalse(os.path.exists(os.path.join(out, 'input.json')))
+
+    def test_gh_failure_is_exit_code_1(self):
+        build_run(self.ao_home, 'cart', 'cart.sql')
+        bin_dir = os.path.join(self.tmp, 'bin')
+        os.makedirs(bin_dir)
+        for name, body in (('git', 'echo c0ffee\n'), ('gh', 'echo "gh: not logged in" >&2\nexit 4\n')):
+            path = os.path.join(bin_dir, name)
+            with open(path, 'w') as f:
+                f.write('#!/bin/sh\n' + body)
+            os.chmod(path, 0o755)
+        out = os.path.join(self.tmp, 'out')
+        result = self.run_cli('collect', 'cart', '--out', out, '--ao-home', self.ao_home, '--retro-home',
+                              os.path.join(self.tmp, 'r'), '--sweep-home', os.path.join(self.tmp, 's'), '--repo',
+                              self.tmp, env=dict(os.environ, PATH=bin_dir))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn('not logged in', result.stderr)
+        self.assertFalse(os.path.exists(os.path.join(out, 'input.json')))
+
+    def test_no_command_and_bad_arguments_are_exit_code_2(self):
+        self.assertEqual(self.run_cli().returncode, 2)
+        self.assertEqual(self.run_cli('collect').returncode, 2)
+        self.assertEqual(self.run_cli('nothing').returncode, 2)
 
 if __name__ == '__main__':
     unittest.main()

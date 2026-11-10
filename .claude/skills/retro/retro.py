@@ -610,3 +610,291 @@ def unasked_incidents(epic_id, prs):
                 {'pr': number, 'position': position, 'text': cut(text, 500), 'title': pr.get('title')},
                 [{'source': 'pr %s' % number, 'text': cut(text, 500)}]))
     return incidents
+
+
+# ---------------------------------------------------------------------------------------------- GitHub and registers
+
+def gh_json(run, args):
+    out = run(args)
+    try:
+        return json.loads(out)
+    except ValueError:
+        raise next_epic.CommandError(args, 'output is not valid JSON')
+
+
+def gh_list(run, args):
+    value = gh_json(run, args)
+    if not isinstance(value, list):
+        raise next_epic.CommandError(args, 'unexpected JSON shape')
+    return [item for item in value if isinstance(item, dict)]
+
+
+def parse_time(value):
+    """An ISO 8601 time of `gh` (`2026-11-10T09:00:00Z`) as epoch seconds, or None."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp()
+    except ValueError:
+        return None
+
+
+def final_pr(run, number):
+    """(state, merged_at epoch or None) of a final PR; the merge date counts only in the state MERGED."""
+    args = ['gh', 'pr', 'view', str(number), '--repo', SHOP, '--json', 'state,mergedAt']
+    data = gh_json(run, args)
+    if not isinstance(data, dict):
+        raise next_epic.CommandError(args, 'unexpected JSON shape')
+    state = data.get('state')
+    return state, parse_time(data.get('mergedAt')) if state == 'MERGED' else None
+
+
+def read_jsonl(path):
+    rows = []
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+    except OSError:
+        return rows
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def read_state(retro_home, epic_id):
+    """The state.json of /retro for an epic ({} when there is none or it cannot be read)."""
+    try:
+        with open(os.path.join(retro_home, epic_id, 'state.json'), encoding='utf-8') as f:
+            state = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def read_registers(retro_home):
+    return {name: read_jsonl(os.path.join(retro_home, name + '.jsonl'))
+            for name in ('observations', 'rejected', 'applied', 'carried')}
+
+
+def pending_epics(epics, retro_home):
+    """The epics whose final PR was merged after RETRO_SINCE and whose retro is neither `done` nor `skipped`, from
+    the oldest merge. `epics` are the entries of input.json (`id`, `merged_at`)."""
+    since = parse_time(RETRO_SINCE)
+    waiting = []
+    for epic in epics:
+        if epic['merged_at'] is None or since is None or epic['merged_at'] <= since:
+            continue
+        if read_state(retro_home, epic['id']).get('state') in ('done', 'skipped'):
+            continue
+        waiting.append(epic)
+    return [e['id'] for e in sorted(waiting, key=lambda e: (e['merged_at'], e['id']))]
+
+
+def open_retro_pr(run, retro_home):
+    """{number, branch, items} of the open pull request whose branch starts with `retro/`, else None. The items are
+    those of the `pr.items` of every state.json whose `pr.number` is that PR."""
+    prs = gh_list(run, ['gh', 'pr', 'list', '--repo', SHOP, '--state', 'open', '--json', 'number,headRefName',
+                        '--limit', '100'])
+    found = next((p for p in prs if str(p.get('headRefName', '')).startswith('retro/')), None)
+    if found is None:
+        return None
+    items = []
+    try:
+        names = sorted(os.listdir(retro_home))
+    except OSError:
+        names = []
+    for name in names:
+        pr = read_state(retro_home, name).get('pr')
+        if isinstance(pr, dict) and pr.get('number') == found['number'] and isinstance(pr.get('items'), list):
+            for item in pr['items']:
+                if isinstance(item, dict):
+                    items.append(dict(item, epic=item.get('epic', name)))
+    return {'number': found['number'], 'branch': found['headRefName'], 'items': items}
+
+
+def blocked_in_runs(ao_home, in_progress):
+    """The epics in progress with a BLOCKED epic or tasks in their AO database: [{epic, epic_status, tasks}]."""
+    blocked = []
+    for run in discover_runs(ao_home):
+        if run['status'] == 'DONE' or run['id'] not in in_progress:
+            continue
+        tasks = []
+        try:
+            con = open_readonly(os.path.join(run['run_dir'], 'orchestrator.db'))
+            try:
+                rows, missing = _select(con, 'tasks', ['task_id', 'status', 'blockers'])
+            finally:
+                con.close()
+        except sqlite3.Error:
+            rows, missing = [], ['tasks']
+        for row in rows:
+            if row.get('status') != 'BLOCKED':
+                continue
+            try:
+                questions = json.loads(row.get('blockers') or '[]')
+            except ValueError:
+                questions = [row.get('blockers')]
+            if not isinstance(questions, list):
+                questions = [questions]
+            tasks.append({'task_id': row['task_id'], 'status': 'BLOCKED',
+                          'blockers': [cut(q) for q in questions if isinstance(q, str)]})
+        if run['status'] == 'BLOCKED' or tasks:
+            blocked.append({'epic': run['id'], 'epic_status': run['status'], 'tasks': tasks})
+    return blocked
+
+
+KIND_ORDER = ('wait', 'failed_attempt', 'finding', 'repair', 'manual_fix', 'escaped', 'no_sweep', 'unasked')
+
+
+def epic_title_id(title):
+    return (title or '').partition(':')[0].strip().lower()
+
+
+def collect(epic_id, paths, run):
+    """The contents of input.json for the retrospective of epic_id (see the module docstring)."""
+    epics = discover_epics(paths['ao_home'])
+    if epic_id not in [e['id'] for e in epics]:
+        raise ValueError('ao-%s is not the run of a finished epic (DONE with a final PR) in %s'
+                         % (epic_id, paths['ao_home']))
+    commit = run(['git', 'rev-parse', 'origin/main']).strip()
+    issues = {}
+    for issue in gh_list(run, ['gh', 'issue', 'list', '--repo', SHOP, '--label', 'epic', '--state', 'all', '--json',
+                               'number,title,comments', '--limit', '200']):
+        comments = [c.get('body') for c in issue.get('comments') or [] if isinstance(c, dict)]
+        issues.setdefault(epic_title_id(issue.get('title')), {'number': issue.get('number'), 'comments': comments})
+
+    entries, incidents, facts, measurements = [], [], [], {}
+    for epic in epics:
+        name = epic['id']
+        state, merged_at = final_pr(run, epic['final_pr_number'])
+        entries.append({'id': name, 'final_pr': epic['final_pr_number'], 'pr_state': state, 'merged_at': merged_at,
+                        'created_at': epic['created_at'], 'issue': (issues.get(name) or {}).get('number')})
+        if state != 'MERGED':
+            facts.append({'id': '%s/missing/merge' % name,
+                          'text': 'końcowy PR #%s nie jest zmergowany (stan %s)' % (epic['final_pr_number'], state)})
+        found, missing = ao_incidents(epic)
+        found += finding_incidents(name, report_text(epic, facts))
+        facts += missing
+        issue = issues.get(name)
+        measurement = pick_measurement(issue['comments']) if issue else None
+        measurements[name] = measurement
+        manual, manual_facts = manual_incidents(name, measurement)
+        found += manual
+        facts += manual_facts
+        sweep, sweep_facts = sweep_incidents(name, merged_at, find_sweep_report(paths['sweep_home'], name))
+        found += sweep
+        facts += sweep_facts
+        if name == epic_id:
+            task_prs = gh_list(run, ['gh', 'pr', 'list', '--repo', SHOP, '--base', 'epic/%s' % name, '--state',
+                                     'merged', '--json', 'number,title,body', '--limit', '200'])
+            found += unasked_incidents(name, task_prs)
+        incidents += sorted(found, key=lambda i: (KIND_ORDER.index(i['kind']), i['at'] or 0, i['key']))
+    entries.sort(key=lambda e: (e['merged_at'] is None, e['merged_at'] or 0, e['created_at'] or 0, e['id']))
+    order = {e['id']: n for n, e in enumerate(entries)}
+    incidents.sort(key=lambda i: order[i['epic']])   # stable: keeps the order inside an epic
+
+    board = next_epic.board_epics(run)
+    running = [e for e in board if e['state'] in ('in_progress', 'prepared')]
+    merged = [e for e in entries if e['merged_at'] is not None]
+    last = max(merged, key=lambda e: (e['merged_at'], e['id'])) if merged else None
+    last_numbers = (measurements.get(last['id']) or {}) if last else {}
+    status = [
+        {'id': 'status/in-progress',
+         'epics': [{'id': e['id'], 'issue': e['number'], 'title': e['title'], 'state': e['state']} for e in running],
+         'blocked': blocked_in_runs(paths['ao_home'], {e['dir'] for e in running if e['state'] == 'in_progress'})},
+        {'id': 'status/last-epic', 'epic': last['id'] if last else None, 'pr': last['final_pr'] if last else None,
+         'merged_at': last['merged_at'] if last else None, 'issue': last['issue'] if last else None,
+         'interventions': last_numbers.get('interventions'), 'waits': last_numbers.get('waits'),
+         'wait_min': last_numbers.get('wait_min'), 'manual_fixes': last_numbers.get('manual_count'),
+         'measurement': bool(last_numbers)},
+    ]
+    agent = gh_list(run, ['gh', 'issue', 'list', '--repo', SHOP, '--label', 'agent', '--state', 'all', '--json',
+                          'number,state', '--limit', '1000'])
+    status.append({'id': 'status/agent-issues', 'open': sum(1 for i in agent if i.get('state') == 'OPEN'),
+                   'closed': sum(1 for i in agent if i.get('state') == 'CLOSED')})
+    status.append({'id': 'status/pending-retro', 'epics': pending_epics(entries, paths['retro_home'])})
+
+    registers = read_registers(paths['retro_home'])
+    retro_pr = open_retro_pr(run, paths['retro_home'])
+    open_issues = {
+        'ao': gh_list(run, ['gh', 'issue', 'list', '--repo', AO_REPOSITORY, '--state', 'open', '--json',
+                            'number,title,body,labels', '--limit', '200']),
+        'shop': gh_list(run, ['gh', 'issue', 'list', '--repo', SHOP, '--state', 'open', '--label', 'tech-debt',
+                              '--label', 'agent', '--json', 'number,title,body,labels', '--limit', '200']),
+    }
+    for items in open_issues.values():
+        for item in items:
+            item['body'] = cut(item.get('body') or '', 2000)
+    return {'schema': 1, 'epic': epic_id, 'generated_at': int(time.time()), 'commit': commit, 'epics': entries,
+            'incidents': incidents, 'facts': facts, 'status': status, 'registers': registers,
+            'open_retro_pr': retro_pr, 'open_issues': open_issues}
+
+
+def report_text(epic, facts):
+    """The text of the saved AO report of the epic; a missing file adds the fact `<epic>/missing/report`."""
+    path = os.path.join(epic['run_dir'], 'epics', epic['id'], 'report.md')
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        facts.append({'id': '%s/missing/report' % epic['id'], 'text': 'brak raportu AO (epics/%s/report.md)' % epic['id']})
+        return ''
+
+
+def write_json(directory, name, value):
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, name)
+    temporary = path + '.tmp'
+    with open(temporary, 'w', encoding='utf-8') as f:
+        json.dump(value, f, ensure_ascii=False, indent=2)
+        f.write('\n')
+    os.replace(temporary, path)
+    return path
+
+
+# ------------------------------------------------------------------------------------------------------------ CLI
+
+EPIC_NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')
+
+
+def build_parser():
+    paths = default_paths()
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument('--repo', default='.', help='directory `gh` and `git` run in (default: the current one)')
+    common.add_argument('--ao-home', default=paths['ao_home'], help='directory with the ao-<epic> runs')
+    common.add_argument('--retro-home', default=paths['retro_home'], help='registers and per-epic state of /retro')
+    common.add_argument('--sweep-home', default=paths['sweep_home'], help='reports of /sweep')
+    parser = argparse.ArgumentParser(description='Facts for the /retro skill')
+    commands = parser.add_subparsers(dest='command', required=True)
+    collecting = commands.add_parser('collect', parents=[common], help='write input.json for an epic')
+    collecting.add_argument('epic')
+    collecting.add_argument('--out', help='directory for input.json (default: <retro-home>/<epic>)')
+    return parser
+
+
+def main(argv=None, run=None):
+    args = build_parser().parse_args(argv)
+    if args.command == 'collect':
+        if not EPIC_NAME.match(args.epic):
+            print('retro: invalid epic name %r (allowed: ^[a-z0-9][a-z0-9-]*$)' % args.epic, file=sys.stderr)
+            return 2
+        paths = {'ao_home': args.ao_home, 'retro_home': args.retro_home, 'sweep_home': args.sweep_home}
+        try:
+            data = collect(args.epic, paths, run or next_epic.make_runner(args.repo))
+            print(write_json(args.out or os.path.join(args.retro_home, args.epic), 'input.json', data))
+        except ValueError as e:
+            print('retro: %s' % e, file=sys.stderr)
+            return 2
+        except (next_epic.CommandError, OSError) as e:
+            print('retro: %s' % e, file=sys.stderr)
+            return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
