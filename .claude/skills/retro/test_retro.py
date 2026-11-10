@@ -9,6 +9,7 @@ import io
 import importlib.util
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -2438,6 +2439,25 @@ def section(text, start, end):
     return text[begin:text.index(end, begin + len(start))]
 
 
+def bullet(text, start):
+    """One list item: from its start marker to the next top-level item."""
+    begin = text.index(start)
+    end = text.find('\n- **', begin + len(start))
+    return text[begin:] if end < 0 else text[begin:end]
+
+
+def power_mentions(text):
+    """Every mention of the power source in text that is not a negation ("zasilania nie sprawdzasz", "bez sprawdzania
+    zasilania"): a battery, pmset or AC Power at all, and a power word without a negation in its sentence."""
+    flat = ' '.join(text.split())
+    found = [m.group(0) for m in re.finditer(r'bateri\w*|pmset|AC Power', flat, re.IGNORECASE)]
+    for m in re.finditer(r'zasilan\w*', flat, re.IGNORECASE):
+        window = flat[max(0, m.start() - 40):m.end() + 40].lower()
+        if 'nie sprawdza' not in window and 'bez sprawdzania' not in window:
+            found.append(flat[max(0, m.start() - 40):m.end() + 40])
+    return found
+
+
 class RetroProcessDocumentsTest(unittest.TestCase):
     """The process documents state one set of rules: the conditions to start a review, the date of the first retro
     and what a missing run means. Regression tests of the findings F1, F2 and F3 of the integration of the epic."""
@@ -2468,23 +2488,36 @@ class RetroProcessDocumentsTest(unittest.TestCase):
 
     # F1: one set of rules for the automatic reviews, without the power check
 
-    def test_the_retro_skill_has_no_power_check_and_both_limit_thresholds(self):
-        self.assertNotIn('pmset', self.skill)
-        deferral = section(self.skill, '**3. Odroczenie:**', '## Przebieg')
-        self.assertIn('--max-percent 95', deferral)
-        self.assertIn('room --hours 2', deferral)
-        self.assertIn('80%', deferral)
-        self.assertIn('/ao-run', deferral)
+    def test_the_retro_skill_mentions_the_power_source_only_to_deny_checking_it(self):
+        self.assertEqual(power_mentions(self.skill), [])
 
-    def test_the_review_queue_of_ao_run_has_no_power_check_for_retro(self):
+    def test_the_retro_skill_defers_at_95_percent_from_ao_run_and_at_the_default_threshold_by_hand(self):
+        deferral = section(self.skill, '**3. Odroczenie:**', '## Przebieg')
+        self.assertIn('--max-percent 95', section(deferral, '# z /ao-run', '# przebieg ręczny'))
+        manual = section(deferral, '# przebieg ręczny', 'USAGE\n  ```')
+        self.assertIn('room --hours 2', manual)
+        self.assertNotIn('--max-percent', manual)
+
+    def test_the_review_queue_of_ao_run_has_no_power_check(self):
         queue = section(self.ao_run, '- **Warunki tuż przed startem każdego przeglądu**', '- **Przebieg przeglądu.**')
-        self.assertNotIn('pmset', queue)
-        self.assertNotIn('bateri', queue.lower())
-        self.assertIn('--max-percent 95', queue)
+        self.assertEqual(power_mentions(queue), [])
+        self.assertIn('--max-percent 95', section(queue, '1. Limit', '- **Retro.**'))
+
+    def test_the_retro_item_of_ao_run_has_the_95_percent_limit_and_no_power_check(self):
+        for where, text in (('SKILL', self.ao_run), ('spec', self.ao_run_spec)):
+            item = bullet(text, '- **Retro.**')
+            self.assertEqual(power_mentions(item), [], where)
+            self.assertIn('--max-percent 95', item, where)
+
+    def test_the_deferred_retro_item_of_the_ao_run_spec_has_no_power_check(self):
+        for where, text in (('SKILL', self.ao_run), ('spec', self.ao_run_spec)):
+            item = bullet(text, '- **Ponowienie odroczonych retro.**')
+            self.assertEqual(power_mentions(item), [], where)
 
     def test_the_specifications_have_no_power_check_for_a_review_or_retro(self):
         self.assertNotIn('pmset', self.retro_spec)
         self.assertNotIn('pmset', self.ao_run_spec)
+        self.assertEqual(power_mentions(section(self.retro_spec, '- **Warunki przed startem**', '## ')), [])
         self.assertIn('--max-percent 95', self.retro_spec)
 
     # F3: a run that has not started is a refusal, not a permanent skip
@@ -2511,8 +2544,13 @@ class RetroProcessDocumentsTest(unittest.TestCase):
         self.assertNotIn('nie jest przebiegiem', point)
         self.assertIn('CLOSED', point)
         self.assertIn('decyzja użytkownika', point)
-        queue = section(self.ao_run, '- **Retro.**', '- **Przebieg przeglądu.**')
-        self.assertNotIn('baza bez wiersza epiku', queue)
+
+    def test_ao_run_does_not_name_a_missing_run_row_as_a_reason_to_skip(self):
+        for where, text in (('SKILL', self.ao_run), ('spec', self.ao_run_spec)):
+            item = bullet(text, '- **Retro.**')
+            self.assertNotIn('baza bez wiersza epiku', item, where)
+            self.assertNotRegex(item, r'wiersza epiku[^,;]*(to|jest) `?skip', where)
+            self.assertIn('CLOSED', item, where)
 
 
 if __name__ == '__main__':
