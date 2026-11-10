@@ -1128,6 +1128,307 @@ def cmd_unlock(args):
     return {'unlocked': True, 'epic': epic_id}
 
 
+# -------------------------------------------------------------------------------------------------------- validate
+
+PLAN_PATH = 'docs/features/agentic-software-house/plan.md'
+ITEM_KINDS = ('fix', 'issue', 'status')
+LIMITS = {'fix': 5, 'issue': 3}
+CLASSES = ('corrective', 'planned', 'product')
+ALLOWED_FILES = [re.compile(pattern) for pattern in (
+    r'CLAUDE\.md', r'apps/[^/]+/CLAUDE\.md', r'\.claude/skills/[^/]+/SKILL\.md', r'\.claude/agents/[^/]+\.md',
+    r'docs/features/(?:ao-run|prepare-epic|groom|agent-tester-ux|retro)/spec\.md')]
+
+
+def allowed_file(path):
+    """A file a process fix may change: the list of docs/features/retro/spec.md, "Walidacja"."""
+    if not isinstance(path, str) or any(ord(c) < 32 for c in path):
+        return False
+    if any(part in ('', '.', '..') for part in path.split('/')):
+        return False
+    return any(pattern.fullmatch(path) for pattern in ALLOWED_FILES)
+
+
+def filled(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def id_list(value):
+    """The list of non-empty strings without repeats, or None when the value is not such a list."""
+    if not isinstance(value, list) or not value or not all(filled(v) for v in value):
+        return None
+    return list(dict.fromkeys(value))
+
+
+def can_be_corrective(incident):
+    """The condition of the script for a corrective incident: `wait` with a human action, `manual_fix`, `repair`."""
+    data = incident.get('data') if isinstance(incident.get('data'), dict) else {}
+    if incident.get('kind') in ('manual_fix', 'repair'):
+        return True
+    return incident.get('kind') == 'wait' and bool(data.get('human_action') or data.get('can_be_corrective'))
+
+
+class Validation:
+    def __init__(self, data, repo):
+        self.errors = []
+        self.incidents = {i['id']: i for i in data.get('incidents') or [] if isinstance(i, dict) and 'id' in i}
+        self.epics = {e['id']: e for e in data.get('epics') or [] if isinstance(e, dict) and 'id' in e}
+        self.status_ids = {s['id'] for s in data.get('status') or [] if isinstance(s, dict) and 'id' in s}
+        registers = data.get('registers') if isinstance(data.get('registers'), dict) else {}
+        self.rejected = [r for r in registers.get('rejected') or [] if isinstance(r, dict)]
+        self.applied = [r for r in registers.get('applied') or [] if isinstance(r, dict)]
+        pr = data.get('open_retro_pr') if isinstance(data.get('open_retro_pr'), dict) else {}
+        self.open_items = [i for i in pr.get('items') or [] if isinstance(i, dict)]
+        issues = data.get('open_issues') if isinstance(data.get('open_issues'), dict) else {}
+        self.open_issues = {repo_name: {i.get('number') for i in issues.get(repo_name) or [] if isinstance(i, dict)}
+                            for repo_name in ('ao', 'shop')}
+        self.repo = repo
+        self.input = data
+
+    def add(self, item, code, message):
+        self.errors.append({'item': item, 'code': code, 'message': message})
+
+    # -- the file
+    def check(self, proposals):
+        if not isinstance(proposals, dict):
+            self.add(None, 'proposals', 'proposals.json must be a JSON object')
+            return
+        if proposals.get('schema') != 1:
+            self.add(None, 'schema', 'schema must be 1')
+        if proposals.get('epic') != self.input.get('epic'):
+            self.add(None, 'schema', 'epic %r differs from the epic of input.json (%r)'
+                     % (proposals.get('epic'), self.input.get('epic')))
+        if proposals.get('commit') != self.input.get('commit'):
+            self.add(None, 'schema', 'commit %r differs from the commit of input.json (%r)'
+                     % (proposals.get('commit'), self.input.get('commit')))
+        for name in ('observations', 'overflow'):
+            if not isinstance(proposals.get(name), list):
+                self.add(None, 'schema', '%s must be a list' % name)
+        for observation in proposals.get('observations') if isinstance(proposals.get('observations'), list) else []:
+            if not (isinstance(observation, dict) and filled(observation.get('key'))
+                    and isinstance(observation.get('incidents'), list)):
+                self.add(None, 'schema', 'an observation needs a key and a list of incidents: %r' % (observation,))
+        items = proposals.get('items')
+        if not isinstance(items, list):
+            self.add(None, 'schema', 'items must be a list')
+            return
+        numbers, keys, counts = set(), {}, {kind: 0 for kind in ITEM_KINDS}
+        for position, item in enumerate(items, 1):
+            if not isinstance(item, dict):
+                self.add(None, 'schema', 'item %d is not an object' % position)
+                continue
+            n = item.get('n')
+            if isinstance(n, bool) or not isinstance(n, int) or n < 1 or n in numbers:
+                self.add(None, 'schema', 'item %d: n must be a unique positive integer (got %r)' % (position, n))
+            if isinstance(n, int):
+                numbers.add(n)
+            kind = item.get('kind')
+            if kind not in ITEM_KINDS:
+                self.add(n, 'schema', 'item %s: kind must be one of %s (got %r)' % (n, ', '.join(ITEM_KINDS), kind))
+                continue
+            counts[kind] += 1
+            if kind == 'status':
+                self.check_status(item)
+                continue
+            if filled(item.get('key')):
+                if item['key'] in keys:
+                    self.add(n, 'schema', 'item %s: key %r repeats item %s' % (n, item['key'], keys[item['key']]))
+                keys[item['key']] = n
+            self.check_proposal(item)
+        for kind, limit in LIMITS.items():
+            if counts[kind] > limit:
+                self.add(None, 'limit', 'at most %d items of kind %s, got %d' % (limit, kind, counts[kind]))
+
+    # -- fix and issue
+    def check_proposal(self, item):
+        n, kind = item['n'], item['kind']
+        for field in ('key', 'title', 'cause', 'why_prevents', 'verify'):
+            if not filled(item.get(field)):
+                self.add(n, 'field', 'item %s: %s is required (a non-empty text)' % (n, field))
+        if kind == 'fix':
+            if not filled(item.get('change')):
+                self.add(n, 'field', 'item %s: change is required (a non-empty text)' % n)
+            files = item.get('files')
+            if not isinstance(files, list) or not files:
+                self.add(n, 'field', 'item %s: files is required (a non-empty list)' % n)
+            else:
+                for path in files:
+                    if not allowed_file(path):
+                        self.add(n, 'file', 'item %s: %r is not a file a process fix may change; a change of other '
+                                            'files is an issue with repo shop' % (n, path))
+        else:
+            self.check_issue(item)
+        evidence = id_list(item.get('evidence'))
+        if evidence is None:
+            self.add(n, 'field', 'item %s: evidence is required (a non-empty list of incident IDs)' % n)
+            return
+        known = [e for e in evidence if e in self.incidents]
+        for missing in (e for e in evidence if e not in self.incidents):
+            self.add(n, 'unknown_incident', 'item %s: incident %s is not in input.json' % (n, missing))
+        self.check_threshold(item, known)
+        self.check_open_pr(item)
+        if filled(item.get('key')):
+            self.check_rejected(item, known)
+            self.check_applied(item, known)
+
+    def check_issue(self, item):
+        n = item['n']
+        if item.get('repo') not in ('ao', 'shop'):
+            self.add(n, 'field', 'item %s: repo must be ao or shop' % n)
+        duplicates = item.get('duplicate_check')
+        if not isinstance(duplicates, list) or not all(isinstance(d, int) and not isinstance(d, bool)
+                                                       for d in duplicates):
+            self.add(n, 'field', 'item %s: duplicate_check is required (a list of issue numbers)' % n)
+        existing, body = item.get('existing_issue'), item.get('body')
+        if existing is not None and filled(body):
+            self.add(n, 'field', 'item %s: give body or existing_issue, not both' % n)
+        elif existing is None and not filled(body):
+            self.add(n, 'field', 'item %s: body (a new issue) or existing_issue (a comment) is required' % n)
+        elif existing is not None:
+            known = self.open_issues[item['repo']] if item.get('repo') in ('ao', 'shop') else set()
+            if isinstance(existing, bool) or not isinstance(existing, int) or existing not in known:
+                self.add(n, 'existing_issue', 'item %s: existing_issue %r is not an open issue of the input data '
+                                              '(repo %s)' % (n, existing, item.get('repo')))
+
+    def check_threshold(self, item, known):
+        n = item['n']
+        classes = item.get('classes') if isinstance(item.get('classes'), dict) else {}
+        counted, corrective = 0, False
+        for incident_id in known:
+            entry = classes.get(incident_id)
+            label = entry.get('class') if isinstance(entry, dict) else None
+            eligible = can_be_corrective(self.incidents[incident_id])
+            if eligible and label is None:
+                self.add(n, 'class', 'item %s: incident %s has a human action and needs a class in classes '
+                                     '(corrective, planned or product)' % (n, incident_id))
+                continue
+            if label is not None and label not in CLASSES:
+                self.add(n, 'class', 'item %s: incident %s has an unknown class %r' % (n, incident_id, label))
+                continue
+            if label == 'corrective':
+                if not eligible:
+                    self.add(n, 'class', 'item %s: incident %s cannot be corrective (it is not a wait with a human '
+                                         'action, a manual fix or a repair)' % (n, incident_id))
+                    continue
+                if not filled(entry.get('corrective_reason')):
+                    self.add(n, 'class', 'item %s: corrective incident %s needs a corrective_reason' % (n, incident_id))
+                    continue
+                corrective = True
+            if eligible and label == 'planned':
+                continue
+            counted += 1
+        if not corrective and counted < 2:
+            self.add(n, 'threshold', 'item %s: needs two incidents (planned ones do not count) or one corrective '
+                                     'incident, has %d' % (n, counted))
+
+    def check_open_pr(self, item):
+        n, key, updates = item['n'], item.get('key'), item.get('updates')
+        in_pr = [i for i in self.open_items if i.get('key') == key]
+        if in_pr and not any(i.get('n') == updates for i in in_pr):
+            self.add(n, 'open_pr', 'item %s: key %r is in the open retro PR (item %s); give updates: %s'
+                     % (n, key, in_pr[0].get('n'), in_pr[0].get('n')))
+        elif not in_pr and updates is not None:
+            self.add(n, 'open_pr', 'item %s: updates %r points at no item of the open retro PR with key %r'
+                     % (n, updates, key))
+
+    def epic_of(self, incident_id):
+        return self.epics.get(self.incidents[incident_id].get('epic')) or {}
+
+    def check_rejected(self, item, known):
+        n, key = item['n'], item['key']
+        for row in self.rejected:
+            shared = [i for i in known if i in (row.get('incidents') or [])]
+            if row.get('key') != key:
+                if shared:
+                    self.add(n, 'rejected', 'item %s: incident %s was rejected under key %r' % (n, shared[0], row.get('key')))
+                continue
+            moment = row.get('rejected_at')
+            fresh = [i for i in known if i not in (row.get('incidents') or []) and moment is not None
+                     and (self.epic_of(i).get('merged_at') or 0) > moment]
+            if not fresh:
+                self.add(n, 'rejected', 'item %s: key %r was rejected; it needs a new incident from an epic merged '
+                                        'after the rejection' % (n, key))
+            reason = item.get('previously_rejected')
+            if not (isinstance(reason, dict) and reason.get('at') not in (None, '') and filled(reason.get('reason'))):
+                self.add(n, 'rejected', 'item %s: key %r was rejected; previously_rejected {at, reason} is required'
+                         % (n, key))
+
+    def check_applied(self, item, known):
+        n, key = item['n'], item['key']
+        for row in self.applied:
+            shared = [i for i in known if i in (row.get('incidents') or [])]
+            if row.get('key') != key:
+                if shared:
+                    self.add(n, 'applied', 'item %s: incident %s belongs to the fix %r applied in PR %s'
+                             % (n, shared[0], row.get('key'), row.get('pr')))
+                continue
+            moment = row.get('merged_at')
+            fresh = [i for i in known if i not in (row.get('incidents') or []) and moment is not None
+                     and (self.epic_of(i).get('created_at') or 0) > moment]
+            if not fresh:
+                self.add(n, 'applied', 'item %s: key %r was fixed in PR %s; it needs an incident from an epic that '
+                                       'started after that merge' % (n, key, row.get('pr')))
+            previous = item.get('previous_fix')
+            if isinstance(previous, bool) or not isinstance(previous, int) or previous != row.get('pr'):
+                self.add(n, 'applied', 'item %s: key %r was fixed in PR %s; previous_fix must be %s (the PR number)'
+                         % (n, key, row.get('pr'), row.get('pr')))
+
+    # -- status
+    def check_status(self, item):
+        n = item['n']
+        for field in ('target', 'change'):
+            if not filled(item.get(field)):
+                self.add(n, 'status', 'item %s: %s is required (a non-empty text)' % (n, field))
+        evidence = id_list(item.get('evidence'))
+        if evidence is None:
+            verified = 'zweryfikowan' in str(item.get('change') or '').lower()
+            self.add(n, 'status', 'item %s: evidence is required%s' % (
+                n, ' (a step marked zweryfikowany needs evidence)' if verified else ''))
+        else:
+            for ref in evidence:
+                if ref not in self.incidents and ref not in self.status_ids:
+                    self.add(n, 'status', 'item %s: evidence %s is neither an incident nor a status/* fact of '
+                                          'input.json' % (n, ref))
+        try:
+            with open(os.path.join(self.repo, PLAN_PATH), encoding='utf-8') as f:
+                plan = f.read()
+        except OSError:
+            self.add(n, 'status', 'item %s: there is no plan without a manifest (%s)' % (n, PLAN_PATH))
+            return
+        if '"schema_version"' in plan:
+            self.add(n, 'status', 'item %s: %s has an AO manifest ("schema_version"); its Status is not changed'
+                     % (n, PLAN_PATH))
+
+
+def validate_run(directory, repo):
+    """[{item, code, message}] of proposals.json in a run directory against its input.json; raises Refusal when
+    input.json cannot be read."""
+    try:
+        with open(os.path.join(directory, 'input.json'), encoding='utf-8') as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        raise Refusal('cannot read input.json in %s: %s' % (directory, e))
+    if not isinstance(data, dict):
+        raise Refusal('input.json in %s is not a JSON object' % directory)
+    validation = Validation(data, repo)
+    try:
+        with open(os.path.join(directory, 'proposals.json'), encoding='utf-8') as f:
+            proposals = json.load(f)
+    except OSError as e:
+        validation.add(None, 'proposals', 'cannot read proposals.json: %s' % e.strerror)
+    except ValueError as e:
+        validation.add(None, 'proposals', 'proposals.json is not valid JSON: %s' % e)
+    else:
+        validation.check(proposals)
+    return validation.errors
+
+
+def cmd_validate(args):
+    """Prints {ok, errors} as JSON; the exit code is 0 when the proposals are valid and 2 when they are not."""
+    errors = validate_run(args.directory, args.repo)
+    print_json({'ok': not errors, 'errors': errors})
+    return 2 if errors else 0
+
+
 # ------------------------------------------------------------------------------------------------------------ CLI
 
 EPIC_NAME = re.compile(r'^[a-z0-9][a-z0-9-]*$')
@@ -1157,6 +1458,8 @@ def build_parser():
     unlocking = commands.add_parser('unlock', parents=[common], help='release the lock of this run')
     unlocking.add_argument('--run-id', default='', help='run identifier of `lock` (default: $RETRO_RUN_ID)')
     unlocking.add_argument('--done', action='store_true', help='mark the epic of the lock done')
+    validating = commands.add_parser('validate', parents=[common], help='check proposals.json of a run directory')
+    validating.add_argument('directory')
     return parser
 
 
@@ -1182,6 +1485,8 @@ def main(argv=None, run=None):
             print_json(cmd_lock(args))
         elif args.command == 'unlock':
             print_json(cmd_unlock(args))
+        elif args.command == 'validate':
+            return cmd_validate(args)
     except (Refusal, ValueError) as e:
         print('retro: %s' % e, file=sys.stderr)
         return 2

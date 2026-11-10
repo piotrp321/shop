@@ -1435,5 +1435,339 @@ class PendingTest(RegistersCase):
         self.assertEqual(self.pending(), [])
 
 
+
+PLAN_WITHOUT_MANIFEST = '# Plan\n\n## Status\n\n| Krok | Status |\n|---|---|\n| 12 | w toku |\n'
+PLAN_WITH_MANIFEST = '# Plan\n\n```json\n{"schema_version": 1, "tasks": []}\n```\n'
+
+
+def valid_input():
+    """input.json of a run on epic e3: three epics, incidents of every sort, the registers and an open retro PR."""
+    def incident(epic, kind, key, can=False, human=None):
+        data = {'can_be_corrective': can}
+        if human is not None:
+            data['human_action'] = human
+        return {'id': '%s/%s/%s' % (epic, kind, key), 'epic': epic, 'kind': kind, 'key': key, 'at': None,
+                'data': data, 'facts': [{'source': 'x', 'text': 'fact 1'}, {'source': 'y', 'text': 'fact 2'}]}
+    return {
+        'schema': 1, 'epic': 'e3', 'commit': 'c0ffee',
+        'epics': [{'id': 'e1', 'merged_at': 1000, 'created_at': 500.0},
+                  {'id': 'e2', 'merged_at': 2000, 'created_at': 1500.0},
+                  {'id': 'e3', 'merged_at': 3000, 'created_at': 2500.0}],
+        'incidents': [
+            incident('e1', 'wait', 'e1@100', True, True), incident('e1', 'wait', 't1@200', True, True),
+            incident('e1', 'wait', 't2@300', False, False),
+            incident('e1', 'finding', 'aaa'), incident('e1', 'finding', 'bbb'),
+            incident('e2', 'repair', 'T1', True), incident('e2', 'finding', 'ccc'), incident('e2', 'finding', 'ddd'),
+            incident('e3', 'manual_fix', 'pr9', True), incident('e3', 'finding', 'eee'),
+            incident('e3', 'no_sweep', 'sweep'),
+        ],
+        'facts': [], 'status': [{'id': 'status/in-progress'}, {'id': 'status/last-epic'}],
+        'registers': {
+            'observations': [],
+            'rejected': [{'key': 'rej', 'incidents': ['e1/finding/aaa'], 'reason': 'celowo', 'rejected_at': 1500,
+                          'pr': 5}],
+            'applied': [{'key': 'app', 'incidents': ['e1/finding/bbb'], 'pr': 7, 'merged_at': 1200}],
+            'carried': [{'key': 'car', 'incidents': ['e1/wait/e1@100'], 'pr': 4}]},
+        'open_retro_pr': {'number': 11, 'branch': 'retro/e1', 'items': [{'n': 1, 'key': 'open', 'epic': 'e1'}]},
+        'open_issues': {'ao': [{'number': 46}], 'shop': [{'number': 380}]},
+    }
+
+
+F1, F2, F3 = 'e1/finding/aaa', 'e2/finding/ccc', 'e3/finding/eee'
+W1, W2, W3 = 'e1/wait/e1@100', 'e1/wait/t1@200', 'e1/wait/t2@300'
+
+
+def fix(n=1, key='k', evidence=(F2, F3), **extra):
+    item = {'n': n, 'kind': 'fix', 'key': key, 'title': 'Title',
+            'evidence': list(evidence) if isinstance(evidence, tuple) else evidence, 'classes': {},
+            'cause': 'cause', 'files': ['.claude/skills/ao-run/SKILL.md'], 'change': 'change',
+            'why_prevents': 'why', 'verify': 'verify', 'previously_rejected': None, 'previous_fix': None,
+            'updates': None}
+    item.update(extra)
+    return item
+
+
+def issue_item(n=1, key='i', evidence=(F2, F3), **extra):
+    item = {'n': n, 'kind': 'issue', 'key': key, 'repo': 'ao', 'title': 'Title', 'existing_issue': None,
+            'body': 'body', 'evidence': list(evidence) if isinstance(evidence, tuple) else evidence, 'classes': {}, 'cause': 'cause', 'why_prevents': 'why',
+            'verify': 'verify', 'duplicate_check': [45, 46]}
+    item.update(extra)
+    return item
+
+
+def proposals_of(*items, **extra):
+    value = {'schema': 1, 'epic': 'e3', 'commit': 'c0ffee', 'items': list(items), 'observations': [],
+             'overflow': []}
+    value.update(extra)
+    return value
+
+
+class ValidateTest(RegistersCase):
+    def setUp(self):
+        super().setUp()
+        self.run_dir = os.path.join(self.tmp, 'run')
+        self.repo = os.path.join(self.tmp, 'repo')
+        os.makedirs(os.path.join(self.repo, 'docs', 'features', 'agentic-software-house'))
+        self.plan(PLAN_WITHOUT_MANIFEST)
+        self.input = valid_input()
+
+    def plan(self, text):
+        path = os.path.join(self.repo, 'docs', 'features', 'agentic-software-house', 'plan.md')
+        if text is None:
+            if os.path.exists(path):
+                os.remove(path)
+            return
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(text)
+
+    def validate(self, proposals, raw=None):
+        retro.write_json(self.run_dir, 'input.json', self.input)
+        if raw is not None:
+            with open(os.path.join(self.run_dir, 'proposals.json'), 'w', encoding='utf-8') as f:
+                f.write(raw)
+        elif proposals is not None:
+            retro.write_json(self.run_dir, 'proposals.json', proposals)
+        code, out, err = self.cli('validate', self.run_dir, repo=self.repo)
+        result = json.loads(out)
+        self.assertEqual(code, 0 if result['ok'] else 2, (code, err))
+        self.assertEqual(result['ok'], not result['errors'])
+        return result['errors']
+
+    def codes(self, proposals, **kw):
+        return [e['code'] for e in self.validate(proposals, **kw)]
+
+    def assertValid(self, proposals):
+        self.assertEqual(self.validate(proposals), [])
+
+    def assertError(self, proposals, code, text=''):
+        errors = self.validate(proposals)
+        self.assertTrue([e for e in errors if e['code'] == code and text in e['message']], (code, text, errors))
+        return errors
+
+    # threshold
+    def test_a_fix_and_an_issue_with_two_incidents_pass(self):
+        self.assertValid(proposals_of(fix(1), issue_item(2)))
+
+    def test_no_items_is_a_valid_result(self):
+        self.assertValid(proposals_of())
+
+    def test_one_incident_cited_twice_is_one_incident_and_does_not_pass(self):
+        self.assertError(proposals_of(fix(evidence=[F2, F2])), 'threshold')
+        self.assertError(proposals_of(issue_item(evidence=[F2])), 'threshold')
+
+    def test_one_corrective_incident_is_enough(self):
+        item = fix(evidence=[W1], classes={W1: {'class': 'corrective', 'corrective_reason': 'AO nie zarejestrowało'}})
+        self.assertValid(proposals_of(item))
+
+    def test_corrective_needs_a_reason(self):
+        item = fix(evidence=[W1], classes={W1: {'class': 'corrective', 'corrective_reason': ' '}})
+        self.assertError(proposals_of(item), 'class', 'corrective_reason')
+
+    def test_corrective_on_an_incident_without_a_human_action_is_an_error(self):
+        for incident in (F2, W3, 'e3/no_sweep/sweep'):
+            item = fix(evidence=[incident, F3], classes={incident: {'class': 'corrective', 'corrective_reason': 'x'}})
+            self.assertError(proposals_of(item), 'class', incident)
+
+    def test_a_human_action_incident_without_a_class_is_an_error(self):
+        for incident in (W1, 'e2/repair/T1', 'e3/manual_fix/pr9'):
+            self.assertError(proposals_of(fix(evidence=[incident, F3])), 'class', incident)
+
+    def test_a_planned_incident_does_not_count(self):
+        planned = {W1: {'class': 'planned'}}
+        self.assertError(proposals_of(fix(evidence=[W1, F3], classes=planned)), 'threshold')
+        self.assertValid(proposals_of(fix(evidence=[W1, F2, F3], classes=planned)))
+
+    def test_a_product_incident_counts_towards_two_but_does_not_qualify_alone(self):
+        product = {W1: {'class': 'product'}}
+        self.assertValid(proposals_of(fix(evidence=[W1, F3], classes=product)))
+        self.assertError(proposals_of(fix(evidence=[W1], classes=product)), 'threshold')
+
+    def test_a_planned_incident_next_to_a_corrective_one_still_qualifies(self):
+        classes = {W1: {'class': 'planned'}, W2: {'class': 'corrective', 'corrective_reason': 'x'}}
+        self.assertValid(proposals_of(fix(evidence=[W1, W2], classes=classes)))
+
+    def test_an_unknown_class_is_an_error(self):
+        self.assertError(proposals_of(fix(evidence=[W1, F3], classes={W1: {'class': 'maybe'}})), 'class', 'maybe')
+
+    def test_classes_of_incidents_that_cannot_be_corrective_do_not_change_the_count(self):
+        self.assertError(proposals_of(fix(evidence=[F2], classes={F2: {'class': 'planned'}})), 'threshold')
+
+    # shape
+    def test_required_fields_of_a_fix(self):
+        for field in ('key', 'title', 'evidence', 'cause', 'why_prevents', 'verify', 'files', 'change'):
+            item = fix()
+            del item[field]
+            self.assertError(proposals_of(item), 'field', field)
+            item[field] = '  ' if field not in ('evidence', 'files') else []
+            self.assertError(proposals_of(item), 'field', field)
+
+    def test_required_fields_of_an_issue(self):
+        for field in ('key', 'title', 'evidence', 'cause', 'why_prevents', 'verify', 'repo', 'duplicate_check'):
+            item = issue_item()
+            del item[field]
+            self.assertError(proposals_of(item), 'field', field)
+        self.assertError(proposals_of(issue_item(repo='other')), 'field', 'repo')
+        self.assertError(proposals_of(issue_item(body=None)), 'field', 'body')
+        self.assertError(proposals_of(issue_item(body='x', existing_issue=46)), 'field', 'existing_issue')
+
+    def test_fields_of_a_wrong_type_are_errors_not_crashes(self):
+        for value in (5, None, [], {}):
+            self.assertIn('field', self.codes(proposals_of(fix(title=value))))
+        for value in ('x', 5, {}, [1], None):
+            self.assertIn('field', self.codes(proposals_of(fix(evidence=value))))
+        self.assertIn('field', self.codes(proposals_of(fix(files='x'))))
+        self.assertIn('field', self.codes(proposals_of(issue_item(duplicate_check='46'))))
+
+    def test_files_only_from_the_allowed_list(self):
+        for path in ('CLAUDE.md', 'apps/api/CLAUDE.md', '.claude/skills/retro/SKILL.md', '.claude/agents/retro-analyst.md',
+                     'docs/features/ao-run/spec.md', 'docs/features/prepare-epic/spec.md',
+                     'docs/features/groom/spec.md', 'docs/features/agent-tester-ux/spec.md',
+                     'docs/features/retro/spec.md'):
+            self.assertValid(proposals_of(fix(files=[path])))
+        for path in ('apps/api/src/Kernel.php', 'docs/features/cart/spec.md', 'docs/vision.md',
+                     '.claude/skills/ao-run/ao_events.py', '.claude/skills/retro/retro.py',
+                     'apps/api/x/CLAUDE.md', '.claude/agents/sub/x.md', '../CLAUDE.md', '/CLAUDE.md',
+                     'docs/features/../../CLAUDE.md', '.claude/skills/../SKILL.md', 'infra/k8s/README.md',
+                     'CLAUDE.md\n', 'docs/features/retro/plan.md', 5):
+            self.assertError(proposals_of(fix(files=[path])), 'file')
+
+    def test_unknown_incidents_in_evidence_are_errors(self):
+        self.assertError(proposals_of(fix(evidence=[F2, 'e9/finding/zzz'])), 'unknown_incident', 'e9/finding/zzz')
+
+    def test_limits_five_fixes_and_three_issues(self):
+        fixes = [fix(n, key='k%d' % n) for n in range(1, 6)]
+        self.assertValid(proposals_of(*fixes))
+        self.assertError(proposals_of(*fixes, fix(6, key='k6')), 'limit', 'fix')
+        issues = [issue_item(n, key='i%d' % n) for n in range(1, 4)]
+        self.assertValid(proposals_of(*issues))
+        self.assertError(proposals_of(*issues, issue_item(4, key='i4')), 'limit', 'issue')
+
+    def test_comments_on_existing_issues_count_towards_the_issue_limit(self):
+        items = [issue_item(n, key='i%d' % n, existing_issue=46, body=None) for n in range(1, 5)]
+        self.assertError(proposals_of(*items), 'limit', 'issue')
+
+    def test_status_items_are_not_limited(self):
+        statuses = [{'n': n, 'kind': 'status', 'target': 'krok 12', 'change': 'x', 'evidence': ['e3/no_sweep/sweep']}
+                    for n in range(1, 9)]
+        self.assertValid(proposals_of(*statuses))
+
+    def test_numbers_and_keys_are_unique_and_the_kind_is_known(self):
+        self.assertError(proposals_of(fix(1, key='a'), fix(1, key='b')), 'schema', 'n')
+        self.assertError(proposals_of(fix(1, key='a'), fix(2, key='a')), 'schema', 'key')
+        self.assertError(proposals_of(fix(1, kind='other')), 'schema', 'kind')
+        self.assertError(proposals_of('x'), 'schema')
+
+    def test_a_missing_proposals_file_and_invalid_json_are_errors(self):
+        self.assertIn('proposals', self.codes(None))
+        self.assertIn('proposals', self.codes(None, raw='{not json'))
+        self.assertIn('proposals', self.codes(None, raw='[]'))
+
+    def test_wrong_schema_epic_and_commit_are_errors(self):
+        self.assertIn('schema', self.codes(proposals_of(schema=2)))
+        self.assertIn('schema', self.codes(proposals_of(epic='e1')))
+        self.assertIn('schema', self.codes(proposals_of(commit='deadbeef')))
+        self.assertIn('schema', self.codes(proposals_of(observations='x')))
+
+    def test_observations_need_a_key_and_a_list_of_incidents(self):
+        self.assertValid(proposals_of(observations=[{'key': 'o', 'title': 'T', 'incidents': [F2]}]))
+        self.assertIn('schema', self.codes(proposals_of(observations=[{'key': 'o', 'title': 'T'}])))
+        self.assertIn('schema', self.codes(proposals_of(observations=['x'])))
+
+    def test_a_missing_input_is_exit_code_2_with_a_message(self):
+        code, out, err = self.cli('validate', os.path.join(self.tmp, 'empty'), repo=self.repo)
+        self.assertEqual((code, out), (2, ''))
+        self.assertIn('input.json', err)
+
+    # open retro PR
+    def test_a_key_from_the_open_pr_needs_updates_with_the_number_of_that_item(self):
+        self.assertError(proposals_of(fix(key='open')), 'open_pr', 'updates')
+        self.assertValid(proposals_of(fix(key='open', updates=1)))
+        self.assertError(proposals_of(fix(key='open', updates=2)), 'open_pr', 'updates')
+        self.assertError(proposals_of(fix(key='new', updates=1)), 'open_pr', 'updates')
+
+    # rejections
+    def test_a_rejected_key_needs_a_new_incident_and_previously_rejected(self):
+        why = {'at': 1500, 'reason': 'celowo'}
+        self.assertError(proposals_of(fix(key='rej', evidence=[F1, W1, W2],
+                                          classes={W1: {'class': 'product'}, W2: {'class': 'product'}},
+                                          previously_rejected=why)), 'rejected', 'new incident')
+        self.assertError(proposals_of(fix(key='rej', previously_rejected=None)), 'rejected', 'previously_rejected')
+        self.assertError(proposals_of(fix(key='rej', previously_rejected={'at': 1500})), 'rejected',
+                         'previously_rejected')
+        self.assertValid(proposals_of(fix(key='rej', previously_rejected=why)))
+
+    def test_an_incident_rejected_under_another_key_is_an_error(self):
+        self.assertError(proposals_of(fix(key='other', evidence=[F1, F2])), 'rejected', 'rej')
+        self.assertError(proposals_of(fix(key='other', evidence=[F1, F2], previously_rejected={'at': 1, 'reason': 'x'})),
+                         'rejected', 'rej')
+        self.assertValid(proposals_of(fix(key='other', evidence=[F2, F3])))
+
+    def test_an_incident_from_an_epic_merged_before_the_rejection_is_not_new(self):
+        self.input['registers']['rejected'][0]['rejected_at'] = 2500   # e2 (merged 2000) is older than that
+        self.assertError(proposals_of(fix(key='rej', evidence=[F2, 'e2/finding/ddd'],
+                                          previously_rejected={'at': 2500, 'reason': 'x'})), 'rejected', 'new incident')
+        self.assertValid(proposals_of(fix(key='rej', evidence=[F2, F3], previously_rejected={'at': 2500, 'reason': 'x'})))
+
+    # applied fixes
+    def test_an_applied_key_needs_a_new_incident_after_the_merge_and_previous_fix(self):
+        self.assertError(proposals_of(fix(key='app', evidence=[F2, F3])), 'applied', 'previous_fix')
+        self.assertError(proposals_of(fix(key='app', evidence=['e1/finding/bbb', W1, W2],
+                                          classes={W1: {'class': 'product'}, W2: {'class': 'product'}},
+                                          previous_fix=7)), 'applied', 'started after')
+        self.assertValid(proposals_of(fix(key='app', evidence=[F2, F3], previous_fix=7)))
+
+    def test_previous_fix_must_be_the_pr_of_the_applied_fix(self):
+        self.assertError(proposals_of(fix(key='app', previous_fix=8)), 'applied', '7')
+        self.assertError(proposals_of(fix(key='app', previous_fix='7')), 'applied', 'previous_fix')
+
+    def test_an_incident_of_an_applied_fix_under_another_key_is_an_error(self):
+        self.assertError(proposals_of(fix(key='other', evidence=['e1/finding/bbb', F3])), 'applied', 'app')
+
+    def test_an_epic_started_before_the_merge_of_the_fix_is_not_new(self):
+        self.input['registers']['applied'][0]['merged_at'] = 1600   # e2 started at 1500
+        self.assertError(proposals_of(fix(key='app', evidence=[F2, 'e2/finding/ddd'], previous_fix=7)), 'applied',
+                         'started after')
+        self.assertValid(proposals_of(fix(key='app', evidence=[F2, F3], previous_fix=7)))
+
+    # carried
+    def test_a_carried_item_returns_without_a_new_incident_but_passes_like_a_new_one(self):
+        self.assertValid(proposals_of(fix(key='car', evidence=[W1, W2],
+                                          classes={W1: {'class': 'corrective', 'corrective_reason': 'x'},
+                                                   W2: {'class': 'planned'}})))
+        self.assertError(proposals_of(fix(key='car', evidence=[W1], classes={W1: {'class': 'planned'}})), 'threshold')
+        self.assertError(proposals_of(fix(key='car', evidence=[W1])), 'class')
+
+    # issues
+    def test_existing_issue_must_be_an_open_issue_of_the_input(self):
+        ao = issue_item(existing_issue=46, body=None)
+        self.assertValid(proposals_of(ao))
+        self.assertError(proposals_of(issue_item(existing_issue=99, body=None)), 'existing_issue', '99')
+        self.assertError(proposals_of(issue_item(existing_issue=380, body=None)), 'existing_issue', '380')
+        self.assertValid(proposals_of(issue_item(repo='shop', existing_issue=380, body=None)))
+        self.assertError(proposals_of(issue_item(existing_issue='46', body=None)), 'existing_issue')
+
+    # status
+    def test_status_needs_evidence_that_exists(self):
+        ok = {'n': 1, 'kind': 'status', 'target': 'krok 12', 'change': 'x', 'evidence': ['e3/no_sweep/sweep']}
+        self.assertValid(proposals_of(ok))
+        self.assertValid(proposals_of(dict(ok, evidence=['status/last-epic'])))
+        self.assertError(proposals_of(dict(ok, evidence=[])), 'status', 'evidence')
+        self.assertError(proposals_of(dict(ok, change='krok 12 zweryfikowany', evidence=[])), 'status', 'zweryfikowan')
+        bad = dict(ok)
+        del bad['evidence']
+        self.assertError(proposals_of(bad), 'status', 'evidence')
+        self.assertError(proposals_of(dict(ok, evidence=['status/nothing'])), 'status', 'status/nothing')
+        self.assertError(proposals_of(dict(ok, evidence=['e9/wait/x'])), 'status', 'e9/wait/x')
+        self.assertError(proposals_of(dict(ok, target='')), 'status', 'target')
+
+    def test_status_needs_a_plan_without_a_manifest(self):
+        ok = {'n': 1, 'kind': 'status', 'target': 'krok 12', 'change': 'x', 'evidence': ['e3/no_sweep/sweep']}
+        self.plan(PLAN_WITH_MANIFEST)
+        self.assertError(proposals_of(ok), 'status', 'manifest')
+        self.plan(None)
+        self.assertError(proposals_of(ok), 'status', 'plan')
+        self.assertValid(proposals_of(fix()))   # no status item: the plan does not matter
+
+
 if __name__ == '__main__':
     unittest.main()
