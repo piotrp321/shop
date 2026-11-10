@@ -80,8 +80,8 @@ Spełnij je od razu; to sprawdza skrypt, nie ty, a błąd kosztuje poprawkę:
   (numer `n` tej pozycji w tamtym PR): nowa pozycja zastępuje jej commit.
 - **Odrzucone** (`rejected.jsonl`): pozycja z `key` odrzuconym albo z incydentem odrzuconym przy innym `key` jest
   dopuszczalna tylko z incydentem z epiku zmergowanego po dacie odrzucenia, pod tym samym `key` i z polem
-  `previously_rejected` (`{"date": …, "reason": …}`). Bez nowego incydentu nie proponuj jej wcale (zostaje w
-  `observations` albo nic).
+  `previously_rejected` (`{"at": <rejected_at z wiersza rejected.jsonl>, "reason": …}`; klucz to `at`, nie `date`).
+  Bez nowego incydentu nie proponuj jej wcale (zostaje w `observations` albo nic).
 - **Skuteczność** (`applied.jsonl`): pozycja z `key` zastosowanej poprawki albo z jej incydentem przy innym `key` jest
   dopuszczalna tylko z incydentem z epiku rozpoczętego po merge'u tej poprawki, pod tym samym `key` i z polem
   `previous_fix` (numer PR). PR mówi wtedy wprost, że poprzednia poprawka nie zadziałała: wpisz w `cause`, dlaczego.
