@@ -401,6 +401,9 @@ services:
       STORE_URL: http://localhost:${STORE_PORT:-3000}
       # Login sessions; the store's integration tests use database 1 of the same Redis.
       REDIS_URL: redis://redis:6379
+      # Login starts per client address per 10 minutes. High here: in the development stack and in the E2E run all
+      # requests come from one address. The chart does not set it, so production uses the default (30).
+      STORE_LOGIN_RATE_LIMIT: "100000"
       # Keycloak: the browser is sent to the public URL (also the token issuer), the server
       # fetches discovery, keys and tokens through the internal one.
       KEYCLOAK_PUBLIC_URL: http://localhost:${KEYCLOAK_PORT:-8080}
