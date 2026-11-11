@@ -13,10 +13,12 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 /**
  * The order (with the same access rule as StartPayment) and its newest payment, read without a lock.
  *
- * The payment is read before the order, never after: a webhook succeeds the payment and pays the order in one
- * transaction, so a payment read as succeeded means an order read as paid. The other way round, a webhook committed
- * between the two reads would show an unpaid order with a succeeded payment, which the confirmation page takes for a
- * settled state and stops refreshing.
+ * The payment is read before the order, never after: a webhook changes the payment and the order in one transaction,
+ * so the order, read after the payment, already reflects every webhook that changed that payment, and the response
+ * never pairs a succeeded payment with an order state from before that webhook. The other way round, a webhook
+ * committed between the two reads would show an unpaid order with a succeeded payment, which the confirmation page
+ * takes for a settled state and stops refreshing. (A succeeded payment does not always mean a paid order: the
+ * refund-required results of the webhook leave the order as it was.)
  */
 #[AsMessageHandler(bus: 'query.bus')]
 final readonly class GetPaymentStatusHandler

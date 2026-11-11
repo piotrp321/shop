@@ -313,9 +313,12 @@ paymentDeadline, totalGross, currency, canStartPayment, latestPayment: {provider
 przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`StartPayment` krok 4). `resumeUrl` =
 `Payment::resumeUrl(payable)`.
 Odczyty idą bez transakcji, więc najpierw czytana jest najnowsza płatność, dopiero potem zamówienie: webhook zmienia
-płatność i zamówienie w jednej transakcji, więc płatność odczytana jako `succeeded` oznacza zamówienie `paid`. Odwrotna
-kolejność mogłaby zwrócić zamówienie `new` z płatnością `succeeded`, a strona potwierdzenia uznaje taki stan za
-ustalony (pokazuje formularz płatności i przestaje odświeżać).
+płatność i zamówienie w jednej transakcji, więc zamówienie odczytane po płatności uwzględnia już każdy webhook, który tę
+płatność zmienił, i odpowiedź nigdy nie łączy płatności `succeeded` ze stanem zamówienia sprzed tego webhooka. Płatność
+`succeeded` nie zawsze oznacza zamówienie `paid`: wyniki webhooka ze zwrotem (`orderCancelled`, `paidAfterDeadline`,
+`paidByAnotherPayment`) zostawiają zamówienie bez zmian. Odwrotna kolejność mogłaby zwrócić zamówienie `new` z płatnością
+`succeeded` mimo webhooka, który opłacił zamówienie, a strona potwierdzenia uznaje taki stan za ustalony (pokazuje
+formularz płatności i przestaje odświeżać).
 
 ### Persystencja
 

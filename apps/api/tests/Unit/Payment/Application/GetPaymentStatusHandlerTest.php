@@ -134,6 +134,11 @@ final class GetPaymentStatusHandlerTest extends TestCase
             'new' === $status->orderStatus && 'succeeded' === $status->latestPayment?->status,
             'the order is read as unpaid, the payment as succeeded: the two reads saw different moments',
         );
+        // The payment was read before the webhook and the order after it: paid order, payment still pending, and
+        // nothing to resume or start.
+        self::assertSame('paid', $status->orderStatus);
+        self::assertFalse($status->canStartPayment);
+        self::assertEquals(new LatestPaymentView('demo-transfer', 'pending', null), $status->latestPayment);
     }
 
     /**
