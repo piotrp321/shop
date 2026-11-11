@@ -18,6 +18,8 @@ final class InMemoryPayableOrders implements PayableOrders
     /** @var array<string, array{OrderToPay, PaymentAccess}> */
     private array $orders = [];
     public int $asked = 0;
+    /** What a concurrent transaction commits right after a read (e.g. a webhook that pays the order). */
+    public ?\Closure $afterRead = null;
 
     public function add(OrderToPay $order, PaymentAccess $access): void
     {
@@ -28,7 +30,11 @@ final class InMemoryPayableOrders implements PayableOrders
     {
         ++$this->asked;
         [$order, $granted] = $this->orders[$orderId->toString()] ?? [null, null];
+        $found = null !== $granted && $granted->token === $access->token && $granted->customerId === $access->customerId ? $order : null;
+        if (null !== $this->afterRead) {
+            ($this->afterRead)();
+        }
 
-        return null !== $granted && $granted->token === $access->token && $granted->customerId === $access->customerId ? $order : null;
+        return $found;
     }
 }

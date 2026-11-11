@@ -30,6 +30,8 @@ final class InMemoryPayments implements PaymentRepository
     public array $webhookEvents = [];
     /** What a concurrent transaction commits while lockPendingOfOrder waits for the lock (e.g. a webhook). */
     public ?\Closure $whileWaitingForTheLock = null;
+    /** What a concurrent transaction commits right after latestOfOrder read (e.g. a webhook). */
+    public ?\Closure $afterLatestRead = null;
 
     public function add(Payment $payment): void
     {
@@ -110,7 +112,12 @@ final class InMemoryPayments implements PaymentRepository
             }
         }
 
-        return null === $latest ? null : clone $latest;
+        $read = null === $latest ? null : clone $latest;
+        if (null !== $this->afterLatestRead) {
+            ($this->afterLatestRead)();
+        }
+
+        return $read;
     }
 
     public function get(string $id): Payment
