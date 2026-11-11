@@ -219,6 +219,11 @@ interface PaymentProvider {
 `executedAt` jest wymagany przy `succeeded` (brak: treść niepoprawna, 400).
 
 `PaymentProviders` (rejestr adapterów po kodzie). `parseWebhook` weryfikuje podpis przed parsowaniem treści.
+Adapter z pustym sekretem webhooka (pusta zmienna środowiska) odrzuca każdy webhook wyjątkiem `InvalidWebhook` z osobną
+przyczyną „empty webhook secret” (fabryka `InvalidWebhook::emptySecret()`), zanim sprawdzi nagłówek i podpis, więc
+webhook podpisany pustym kluczem też jest odrzucony. Start kontenera nie zmienia się (adapter nie rzuca w konstruktorze):
+odmowa następuje dopiero przy webhooku. Kontroler zapisuje przyczynę w logu (`warning`) i odpowiada 400 jak na zły podpis;
+płatność bez zmian.
 
 | | `demo-transfer` (Szybki przelew) | `demo-card` (Karta płatnicza) |
 |---|---|---|
