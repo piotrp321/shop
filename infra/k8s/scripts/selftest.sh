@@ -169,7 +169,7 @@ bootstrap_applies_root_whatever_the_certificate() { replace infra/k8s/scripts/se
 certificate_ignored_by_git() { replace .gitignore '!infra/k8s/environments/prod/sealed-secrets.pem' '# no exception'; }
 # The backup (docs/features/deploy-ops/spec.md): a repository without its password, a CronJob that may run twice at once, a
 # script that goes on after an error, an access error taken for a missing repository, the backup password asked for twice.
-backup_repository_without_password() { replace infra/k8s/charts/shop/templates/backup.yaml '- name: RESTIC_PASSWORD' '- name: RESTIC_PASSWORD_UNUSED'; }
+backup_repository_without_password() { replace infra/k8s/charts/shop/templates/_helpers.tpl '- name: RESTIC_PASSWORD' '- name: RESTIC_PASSWORD_UNUSED'; }
 backup_cronjob_without_forbid() { replace infra/k8s/charts/shop/templates/backup.yaml 'concurrencyPolicy: Forbid' 'concurrencyPolicy: Allow'; }
 backup_script_ignores_errors() { replace infra/k8s/charts/shop/files/scripts/backup.sh 'set -eu' 'set -u'; }
 backup_inits_after_any_error() { replace infra/k8s/charts/shop/files/scripts/backup.sh '    10)' '    10 | 1)'; }
