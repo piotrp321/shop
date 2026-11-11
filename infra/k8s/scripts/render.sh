@@ -39,6 +39,7 @@ render() {
   render prod-domain prod --set image.tag=$rev1 $digests --set global.domain=other.example.net
   render prod-indexable prod --set image.tag=$rev1 $digests --set noindex=false
   render prod-noinit prod --set image.tag=$rev1 $digests --set initialize.enabled=false
+  render prod-nobackup prod --set image.tag=$rev1 $digests --set backup.enabled=false
   # The switches of D10, one at a time against the profile (tests/test_switches.py).
   render prod-accounts prod --set image.tag=$rev1 $digests --set customerAccounts=true
   render prod-nodemo prod --set image.tag=$rev1 $digests --set demoNotice=false

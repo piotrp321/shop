@@ -73,6 +73,9 @@ class WorkloadsTest(unittest.TestCase):
         for image in compose_images() - {"curlimages/curl:8.18.0"}:
             self.assertIn(image, tags)
         self.assertIn("alpine:3.22", tags)
+        # The images of the tools of the backup have no counterpart in compose (the backup is a function of the server).
+        self.assertIn("restic/restic:0.19.1", tags)
+        self.assertIn("rclone/rclone:1.75.2", tags)
         # Elasticsearch is the image of its Dockerfile, which compose builds too: the official image is not in the chart.
         self.assertRegex(compose_service("elasticsearch"), r"\n    build:\n      context: \./infra/elasticsearch\n")
         self.assertEqual([], [image for image in used if "docker.elastic.co" in image])

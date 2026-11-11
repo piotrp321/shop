@@ -19,6 +19,7 @@
     "brevo",
     "initialize",
     "jobs",
+    "backup",
     "cartPurge",
     "storage",
     "elasticsearch",
@@ -155,7 +156,9 @@
         "mailpit",
         "varnish",
         "alpine",
-        "kubectl"
+        "kubectl",
+        "restic",
+        "rclone"
       ]
     },
     "ingress": {
@@ -370,6 +373,75 @@
         }
       }
     },
+    "backup": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "schedule",
+        "timeZone",
+        "retention",
+        "repository",
+        "s3Region",
+        "secretName"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "schedule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeZone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retention": {
+          "type": "string",
+          "pattern": "^([0-9]+[ymdh])+$",
+          "description": "restic duration for forget --keep-within, e.g. 7d."
+        },
+        "repository": {
+          "type": "string",
+          "description": "The restic repository (s3:https://<host>/<bucket>); required when enabled."
+        },
+        "s3Region": {
+          "type": "string"
+        },
+        "secretName": {
+          "type": "string",
+          "description": "The Secret with RESTIC_PASSWORD, BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY; required when enabled."
+        },
+        "secretValues": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "if": {
+        "properties": {
+          "enabled": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "repository": {
+            "type": "string",
+            "minLength": 1
+          },
+          "secretName": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "cartPurge": {
       "type": "object",
       "required": [
@@ -396,7 +468,8 @@
         "rabbitmq",
         "redis",
         "garageMeta",
-        "garageData"
+        "garageData",
+        "backupWork"
       ]
     },
     "elasticsearch": {
@@ -457,6 +530,7 @@
         "admin",
         "imgproxy",
         "varnish",
+        "backup",
         "job"
       ],
       "properties": {
@@ -677,6 +751,24 @@
           }
         },
         "varnish": {
+          "type": "object",
+          "required": [
+            "requests"
+          ],
+          "properties": {
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object"
+            }
+          }
+        },
+        "backup": {
           "type": "object",
           "required": [
             "requests"

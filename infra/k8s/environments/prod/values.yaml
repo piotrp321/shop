@@ -58,6 +58,15 @@ ipAllowList:
     - 2a06:98c0::/29
     - 2c0f:f248::/32
 
+# The nightly backup into a restic repository in a Cloudflare R2 bucket (docs/features/deploy-ops/spec.md, O2). Replace the
+# repository with the address of the bucket (s3:https://<account id>.r2.cloudflarestorage.com/<bucket>) before the first
+# deployment with the backups; the secret is the SealedSecret shop-backup (make -C infra/k8s seal-secrets WHAT=backup).
+backup:
+  enabled: true
+  repository: s3:https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/shop-backups
+  s3Region: auto
+  secretName: shop-backup
+
 elasticsearch:
   javaOpts: -Xms2g -Xmx2g
 
@@ -80,4 +89,5 @@ resources:
   admin: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 128Mi } }
   imgproxy: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
   varnish: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
+  backup: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
   job: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }

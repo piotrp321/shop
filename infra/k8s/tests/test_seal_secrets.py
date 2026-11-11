@@ -33,6 +33,10 @@ ORIGIN_CERT = "-----BEGIN CERTIFICATE-----\nMIIOriginCaCertificateBody\nZm9v\n--
 ORIGIN_KEY = "-----BEGIN PRIVATE KEY-----\nMIIOriginCaPrivateKeyBodyDoNotPrint\nYmFy\n-----END PRIVATE KEY-----\n"
 BREVO_LOGIN = "a1b2c3@smtp-brevo.com"
 BREVO_KEY = "xsmtpsib-0123456789abcdef-SECRETKEYVALUE"
+RESTIC_PASSWORD = "correct horse battery staple, restic"
+S3_KEY_ID = "0123456789abcdef0123456789abcdef"
+S3_SECRET = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+BACKUP_TTY = f"{RESTIC_PASSWORD}\n{S3_KEY_ID}\n{S3_SECRET}\n"
 
 
 class SealSecretsTest(unittest.TestCase):
@@ -265,16 +269,79 @@ class SealSecretsTest(unittest.TestCase):
                 result = self.run_script("tls", tty=tty)
                 self.assert_nothing_written(result)
 
-    def test_all_three_in_one_run_write_all_three_files_after_everything_worked(self):
-        result = self.run_script(tty=f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}")
+    def test_all_four_in_one_run_write_all_four_files_after_everything_worked(self):
+        result = self.run_script(tty=f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{BACKUP_TTY}")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(["shop-brevo-smtp.yaml", "shop-origin-tls.yaml", "shop-secrets.yaml"], self.files())
-        self.assert_no_secret_anywhere(result, BREVO_KEY, ORIGIN_KEY)
+        self.assertEqual(["shop-backup.yaml", "shop-brevo-smtp.yaml", "shop-origin-tls.yaml", "shop-secrets.yaml"], self.files())
+        self.assert_no_secret_anywhere(result, BREVO_KEY, ORIGIN_KEY, RESTIC_PASSWORD, S3_SECRET)
 
-    def test_a_failing_kubeseal_at_the_end_of_all_three_writes_none(self):
-        total = len(init_env_keys()) + 2 + 2
-        result = self.run_script(tty=f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}", STUB_FAIL_ON=str(total))
+    def test_a_failing_kubeseal_at_the_end_of_all_four_writes_none(self):
+        total = len(init_env_keys()) + 2 + 2 + 3
+        result = self.run_script(tty=f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{BACKUP_TTY}", STUB_FAIL_ON=str(total))
         self.assert_nothing_written(result)
+
+    # --- the backup: the password of the restic repository and the key of its S3 bucket ------------------------------
+
+    def test_the_backup_values_come_from_the_terminal_and_are_never_printed_or_passed_on(self):
+        result = self.run_script("backup", tty=BACKUP_TTY, RESTIC_PASSWORD="from-the-environment-123")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["shop-backup.yaml"], self.files())
+        self.assertEqual(["RESTIC_PASSWORD", "BACKUP_S3_ACCESS_KEY_ID", "BACKUP_S3_SECRET_ACCESS_KEY"], self.keys_of("shop-backup.yaml"))
+        self.assertEqual([RESTIC_PASSWORD, S3_KEY_ID, S3_SECRET], self.sent())
+        self.assert_no_secret_anywhere(result, RESTIC_PASSWORD, S3_SECRET, "from-the-environment-123")
+        text = (self.secrets_dir() / "shop-backup.yaml").read_text()
+        self.assertIn("  name: shop-backup\n  namespace: shop\n", text)
+        self.assertIn("    type: Opaque\n", text)
+        for call in self.calls():
+            self.assertIn("--name shop-backup --namespace shop", call)
+
+    def test_the_backup_is_created_once_then_nothing_is_asked(self):
+        self.run_script("backup", tty=BACKUP_TTY)
+        before = (self.secrets_dir() / "shop-backup.yaml").read_bytes()
+        self.log.write_text("")
+        self.tty.unlink()
+        result = self.run_script("backup")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(before, (self.secrets_dir() / "shop-backup.yaml").read_bytes())
+        self.assertEqual([], self.calls())
+        self.assertIn("nothing changes", result.stdout)
+
+    def test_the_second_run_of_all_asks_nothing_for_the_backup(self):
+        self.run_script(tty=f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{BACKUP_TTY}")
+        self.log.write_text("")
+        self.tty.unlink()
+        result = self.run_script()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([], self.calls())
+
+    def test_an_empty_or_a_bad_backup_value_writes_nothing(self):
+        for tty in (
+            f"\n{S3_KEY_ID}\n{S3_SECRET}\n",
+            f"{RESTIC_PASSWORD}\n\n{S3_SECRET}\n",
+            f"{RESTIC_PASSWORD}\n{S3_KEY_ID}\n\n",
+            f"{RESTIC_PASSWORD}\nid with space\n{S3_SECRET}\n",
+            f"{RESTIC_PASSWORD}\n{S3_KEY_ID}\nsecret with space\n",
+            f"{RESTIC_PASSWORD}\n{S3_KEY_ID}\n",
+            "",
+        ):
+            with self.subTest(tty=tty):
+                result = self.run_script("backup", tty=tty)
+                self.assert_nothing_written(result)
+
+    def test_a_failing_kubeseal_for_the_backup_writes_nothing(self):
+        result = self.run_script("backup", tty=BACKUP_TTY, STUB_FAIL_ON="3")
+        self.assert_nothing_written(result)
+        self.assertIn("kubeseal failed", result.stderr)
+
+    def test_without_a_terminal_the_backup_is_refused_instead_of_reading_the_environment(self):
+        result = self.run_script("backup", SEAL_TTY=str(self.root / "no-such-tty"), RESTIC_PASSWORD="x")
+        self.assert_nothing_written(result)
+        self.assertIn("no terminal", result.stderr)
+
+    def test_the_password_of_the_repository_may_have_spaces(self):
+        result = self.run_script("backup", tty=BACKUP_TTY)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(RESTIC_PASSWORD, self.sent()[0])
 
 
 class Listing(unittest.TestCase):
