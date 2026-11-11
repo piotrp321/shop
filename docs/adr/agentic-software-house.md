@@ -72,7 +72,7 @@ w [planie](../features/agentic-software-house/plan.md).
 | Budżet i limity | Limity subskrypcji, budżet na funkcję, priorytety kolejki |
 | Pula środowisk | Worktree i stos Docker na zadanie, wolne porty, sprzątanie |
 | Metryki i evale | Pomiar przepływu i jakości, benchmark zmian w skillach |
-| Pętla uczenia | Retro po funkcji → zmiany w skillach i `CLAUDE.md` po evalach i akceptacji |
+| Pętla uczenia | `/retro` po merge'u epiku: poprawki procesu w skillach, agentach i `CLAUDE.md` w PR z dowodami z przebiegów, który merguje człowiek |
 
 Zasady:
 

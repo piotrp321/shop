@@ -6,7 +6,8 @@ przyjmuje odpowiedzi na blokery i kończy raportem odbioru. Po merge'u końcoweg
 z tablicy backlogu (kolejka epików). Krok 8 planu dodaje noc: listę kilku epików zatwierdzoną jednym „tak”, które
 ruszają po kolei, każdy po `epic_done` poprzedniego, bez czekania na merge (sekcja „Noc”). Krok 12 planu dodaje
 przegląd po merge'u: sesja sama uruchamia `/sweep <epik>` po merge'u końcowego PR (sekcja „Przegląd po merge'u”).
-Kod AO się nie zmienia.
+Krok 15 planu dodaje do tej kolejki retrospektywę `/retro <epik>` po przeglądzie
+([spec](../retro/spec.md), sekcja „Uruchamianie”). Kod AO się nie zmienia.
 
 ## Wejście i warunki startu
 
@@ -121,21 +122,24 @@ Remote Control skill nie sprawdza.
    Użytkownik może też napisać w sesji, że zmergował: po potwierdzeniu `MERGED` sesja zatrzymuje pętlę. Po merge'u
    sesja pokazuje komentarz do issue epiku i po zgodzie go dopisuje: liczba interwencji z `ao report`, czekanie na
    użytkownika z `ao_events.py summary` (liczba czekań, suma, czekania otwarte osobno, przy błędzie „brak danych”),
-   liczba ręcznych poprawek. Minut pracy użytkownika sesja nie pyta i nie szacuje. PR zamknięty bez merge'u: sesja mówi o tym i nie przechodzi do punktu 7.
-   Po merge'u, przed punktem 7, sesja dopisuje epik do kolejki przeglądów (sekcja „Przegląd po merge'u”). Pytanie
-   z punktu 7 nie czeka na przegląd.
+   ręczne poprawki: linia `Ręczne poprawki: N` i pod nią po jednej linii `- PR #<nr>: <opis>` (albo `- <opis>` bez
+   PR; `N` równa się liczbie linii), format czytany przez `retro.py collect`. Minut pracy użytkownika sesja nie pyta
+   i nie szacuje. PR zamknięty bez merge'u: sesja mówi o tym i nie przechodzi do punktu 7.
+   Po merge'u, przed punktem 7, sesja dopisuje `/sweep <epik>` i `/retro <epik>` do kolejki przeglądów (sekcja
+   „Przegląd po merge'u”). Pytanie z punktu 7 nie czeka na przegląd ani na retro.
 7. **Następny epik.** Po merge'u końcowego PR albo na prośbę użytkownika (`/ao-run` bez argumentu) sesja uruchamia
    `next_epic.py`:
    - `epic` jest: push „Zacząć epik `<ID>` (#`<nr>`)?”, a w rozmowie także pozycje `skipped` (np. epik wyżej na
      tablicy bez planu). Start dopiero po „tak” użytkownika w sesji: przebieg od punktu 1 dla nowego `<epik>`, z
-     wszystkimi warunkami startu. Gdy kolejka przeglądów nie jest pusta, „tak” czeka na jej koniec, a sesja mówi to
-     w rozmowie i w pushu („Epik X ruszy po przeglądzie Y”). Inna odpowiedź albo brak odpowiedzi: sesja niczego nie
-     uruchamia.
+     wszystkimi warunkami startu. Gdy trwa przegląd albo retro albo kolejka przeglądów nie jest pusta, „tak” czeka na jej
+     koniec, a sesja mówi to w rozmowie
+     i w pushu („Epik X ruszy po kolejce przeglądów”). Inna odpowiedź albo brak odpowiedzi: sesja niczego nie uruchamia.
    - `epic` jest `null`: push (krótszy niż 200 znaków) z powodem: pierwsza pozycja `in_progress` albo pierwsza
      `skipped` z liczbą pozostałych, np. „Brak przygotowanego epiku: VARIANTS (#89) bez spec.md i plan.md na main,
      następny krok `/prepare-epic` (+2 inne)”; pełna lista w rozmowie. Jeśli `in_progress` to epik właśnie
      zmergowanego PR, issue epiku jest nadal otwarte (zwykle brak jego `Closes #N`): sesja mówi to, prosi o zamknięcie issue
-     i o ponowne `/ao-run`.
+     i o ponowne `/ao-run`. Gdy `retro.py pending` zwraca niepustą listę, push podaje też liczbę jej epików („; retro
+     do zrobienia: 2”).
 
 **Konflikt końcowego PR poza AO.** Gdy końcowy PR ma konflikt z `main`, a AO go nie naprawi (epik `DONE` przed
 zmianą `main`, epik `BLOCKED`, konflikt wrócił po REPAIR), sesja opisuje stan i po „tak” użytkownika: zakłada
@@ -153,28 +157,42 @@ limitów inny niż `ok` nie daje pomiaru tego okna. Epik zakończony bez `DONE` 
 
 ## Przegląd po merge'u
 
-Krok 12 planu: `/sweep` po merge'u epiku uruchamia sesja `/ao-run`, nie użytkownik. Skill `/sweep` zmienia się tylko
+Krok 12 planu: `/sweep` po merge'u epiku uruchamia sesja `/ao-run`, nie użytkownik. Krok 15 planu: po przeglądzie ta
+sama kolejka prowadzi `/retro <epik>`; retro nie czeka na triage przeglądu (czyta jego raport), a pominięty przegląd
+nie pomija retro. Skill `/sweep` zmienia się tylko
 w nazwie katalogu przebiegu i projektu Compose (`<data>-<sha7>-<epik>`, `sweep-<sha7>-<epik>`, żeby dwa przeglądy na tym samym commicie się nie wykluczały;
 spec: `docs/features/agent-tester-ux/spec.md`). Sesja czyta jego `.claude/skills/sweep/SKILL.md` i wykonuje kroki 1–6
 z argumentem `<epik>` (flaga `disable-model-invocation` zostaje, więc model nie wywoła go narzędziem Skill sam z
 siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
 
 - **Kolejka.** Każdy końcowy PR, który sesja zobaczy jako `MERGED` (punkt 6, także każdy epik nocy osobno), dopisuje
-  swój epik na koniec kolejki przeglądów. Przeglądy idą po kolei, jeden naraz, w kolejności merge'ów, każdy na
-  `origin/main` z chwili swojego startu. Epik zamknięty bez merge'u nie ma przeglądu. Kolejka żyje w sesji: gdy
-  sesja się kończy, nieuruchomione przeglądy przepadają, a push przy końcu sesji je wymienia (użytkownik może
-  uruchomić `/sweep <epik>` sam).
-- **Przegląd i epik nie działają naraz.** Przegląd nie startuje, gdy działa proces AO tej sesji albo procedura
-  „Konflikt końcowego PR poza AO” (własny stos). Nowy epik („tak” z punktu 7, pierwszy i kolejny epik listy nocy),
-  ponowne `ao run` po decyzji użytkownika i ta procedura czekają na koniec trwającego przeglądu (przy nocy sesja
-  wywołuje `next` dopiero po kolejce, żeby prognoza dotyczyła chwili startu), a nowy epik także na
-  pustą kolejkę. Pytanie „Zacząć epik?” i lista nocy nie czekają na przegląd: po merge'u sesja najpierw dopisuje epik
-  do kolejki i wysyła pytanie z punktu 7 (przy nocy według jej reguły), dopiero potem zaczyna przegląd.
-- **Kiedy kolejka rusza.** Sesja sprawdza kolejkę po dopisaniu epiku, po końcu przeglądu i po końcu procesu AO tej
-  sesji (także gdy epik nocy kończy noc). Gdy nic nie trwa, zaczyna pierwszy przegląd z kolejki; przy pustej kolejce
-  zaczyna epik czekający na nią.
+  na koniec kolejki przeglądów `/sweep <epik>` i zaraz po nim `/retro <epik>`. Pozycje idą po kolei, jedna naraz,
+  w kolejności merge'ów, każda na `origin/main` z chwili swojego startu. Epik zamknięty bez merge'u nie ma przeglądu
+  ani retro. Kolejka żyje w sesji: gdy sesja się kończy, nieuruchomione pozycje przepadają z kolejki, a push przy
+  końcu sesji je wymienia (użytkownik może uruchomić `/sweep <epik>` i `/retro <epik>` sam; retro nie przepada,
+  bo zostaje w `retro.py pending`).
+- **Przegląd, retro i epik nie działają naraz.** Przegląd ani retro nie startuje, gdy działa proces AO tej sesji,
+  procedura „Konflikt końcowego PR poza AO” (własny stos) albo inna pozycja kolejki. Nowy epik („tak” z punktu 7,
+  pierwszy i kolejny epik listy nocy), ponowne `ao run` po decyzji użytkownika i ta procedura czekają na koniec
+  trwającego przeglądu albo retro (przy nocy sesja wywołuje `next` dopiero po kolejce, żeby prognoza dotyczyła chwili
+  startu), a nowy epik także na pustą kolejkę. Pytanie „Zacząć epik?” i lista nocy
+  nie czekają na przegląd ani na retro: po merge'u sesja najpierw dopisuje pozycje do kolejki i wysyła pytanie
+  z punktu 7 (przy nocy według jej reguły), dopiero potem zaczyna przegląd.
+- **Kiedy kolejka rusza.** Sesja sprawdza kolejkę po dopisaniu pozycji, po dopisaniu pozycji z `pending` (na starcie
+  przebiegu bez argumentu po pushu z punktu 7, z `--noc` po pokazaniu listy, przed `approve`), po końcu przeglądu
+  albo retro (wynik, pominięcie, odroczenie, odmowa) i po końcu procesu AO tej sesji (także gdy epik nocy kończy noc). Gdy nic nie trwa, zaczyna
+  pierwszą pozycję z kolejki; przy pustej kolejce zaczyna epik czekający na nią.
+- **Ponowienie odroczonych retro.** Retro odroczone (`retro.py defer`: limit, `gh`, `git`, cudza
+  blokada) wraca z `retro.py pending`, listy wyliczanej z danych, a nie z kolejki. Sesja wykonuje `pending` przy
+  kolejnym merge'u epiku (po dopisaniu jego pozycji), po końcu procesu AO tej sesji i na starcie każdego przebiegu
+  `/ao-run` (także w nowej sesji) i dopisuje na koniec kolejki jako `/retro <epik>` każdy epik z listy, którego nie
+  ma w kolejce i którego retro nie trwa. Taka pozycja jest zwykłą pozycją kolejki, więc czekający epik czeka na nią jak na
+  każdą inną. Odroczone retro nie czeka w kolejce między tymi zdarzeniami, więc nie blokuje startu epiku (nowy epik
+  czeka tylko na pozycje w kolejce); po kolejnym odroczeniu wypada z niej do następnego z nich. Start z argumentem
+  `<epik>` (punkt 1) nie czeka na kolejkę: retro dopisane na jego starcie idzie po końcu procesu AO. Błąd `pending` sesja
+  opisuje w rozmowie i prowadzi dalej: retro zostaje na liście.
 - **Warunki przed każdym przeglądem**, sprawdzane tuż przed startem. Niespełniony warunek pomija ten przegląd
-  (następny w kolejce sprawdza je od nowa), a sesja wysyła push „Przegląd `<epik>` pominięty: <powód>; ręcznie:
+  (następna pozycja w kolejce sprawdza je od nowa), a sesja wysyła push „Przegląd `<epik>` pominięty: <powód>; ręcznie:
   `/sweep <epik>`” (do 200 znaków):
   - limit: `night_queue.py room --hours 2 --max-percent 95` (stdin: obiekt `plan` z `get_usage`) zwraca `ok`: stan
     limitów `ok` i każde okno, które nie odnowi się w ciągu 2 h, poniżej 95% (zasilania sesja nie sprawdza). Inaczej powód z wyjścia (np. „Weekly · all models
@@ -186,9 +204,18 @@ siebie). Triage (krok 7 `/sweep`) zostaje u użytkownika, w tej samej sesji.
   kilku otwartych triage sesja dopytuje.
   Błąd stosu kończy ten przegląd jak w `/sweep` (sprzątanie, push), kolejka idzie dalej. Bez odpowiedzi użytkownika
   sesja niczego nie zakłada.
-- **Pomiar.** Przed startem i po końcu przeglądu sesja wywołuje `get_usage`. Czas i przyrost procentu każdego okna
+- **Retro.** Sesja czyta `.claude/skills/retro/SKILL.md` i wykonuje go od „Warunków przed startem” z argumentem
+  `<epik>`. Jego warunki zastępują dwa powyższe, bez sprawdzania zasilania: limit (z kolejki
+  `room --hours 2 --max-percent 95`, jak dla przeglądu), `gh`, `git` i cudza blokada odraczają przez
+  `retro.py defer` (push „Retro `<epik>` odroczone: <powód>”, epik zostaje w `pending`), odmowę bez zapisu i trwałe
+  pominięcie `retro.py skip` rozróżniają „Warunki przed startem” `/retro` (punkty 1 i 2: brak katalogu `ao-<epik>`,
+  brak wiersza epiku w bazie albo epik w toku to odmowa, a `skip` to tylko końcowy PR `CLOSED` i decyzja użytkownika),
+  a po odmowie pozycja wypada z kolejki. Kontrola procesu AO (`pgrep`) pomijana, bo sesja pilnuje go sama.
+  Zużycie (`## Zużycie` raportu retro) mierzy `/retro`. Decyzje użytkownika po retro (issues, poprawki w PR) sesja
+  przyjmuje w rozmowie, bez blokowania kolejki; PR retro merguje użytkownik.
+- **Pomiar przeglądu.** Przed startem i po końcu przeglądu sesja wywołuje `get_usage`. Czas i przyrost procentu każdego okna
   (bez okien odnowionych w trakcie) trafiają do nowej sekcji `## Zużycie` raportu przeglądu (`report.md`, poza repo) i do
-  skrótu w rozmowie. Przeglądy nie wchodzą do `measurements.jsonl` ani do szacunków nocy.
+  skrótu w rozmowie. Przeglądy i retro nie wchodzą do `measurements.jsonl` ani do szacunków nocy.
 
 `night_queue.py room --hours <h>` (Python 3.9+, bez zależności, kod w `night_queue.py`): stdin to obiekt `plan`
 z `get_usage`. Wypisuje jedną linię JSON `{"ok": true}` albo `{"ok": false, "reason": "..."}`, kod 0. Kod 1 przy
@@ -260,7 +287,7 @@ przestaje obowiązywać (następna noc to nowa lista). Epik nocy, który kończy
 też kończy noc: następny nie rusza. Sesja zapisuje koniec nocy przez `night_queue.py close`, a `next` zapisuje go sam,
 gdy zwraca `null`, więc późniejszy `next` odmawia.
 
-Rano użytkownik odbiera każdy epik osobno (punkt 5 i 6). Każdy merge dopisuje epik do kolejki przeglądów, więc
+Rano użytkownik odbiera każdy epik osobno (punkt 5 i 6). Każdy merge dopisuje przegląd i retro epiku do kolejki, więc
 przegląd pierwszego zmergowanego epiku może działać, gdy użytkownik odbiera następny. Punkt 7 („Następny epik”) sesja
 wykonuje dopiero wtedy, gdy końcowy PR każdego epiku nocy jest zamknięty albo zmergowany.
 
@@ -285,8 +312,8 @@ wykonuje dopiero wtedy, gdy końcowy PR każdego epiku nocy jest zamknięty albo
 ## Czego skill nie robi
 
 Nie zmienia kodu ani konfiguracji AO, nie merguje do `main` bez polecenia użytkownika w rozmowie (merge'e sesji:
-końcowy PR epiku na polecenie, squash, i PR `sync/<epik>-main` do `epic/<epik>` merge commitem, po zgodzie użytkownika), nie zakłada issues z przeglądu bez triage użytkownika, nie uruchamia
-przeglądu równolegle z epikiem, nie odpowiada na blokery sam, nie uruchamia kilku epików
+końcowy PR epiku na polecenie, squash, i PR `sync/<epik>-main` do `epic/<epik>` merge commitem, po zgodzie użytkownika), nie zakłada issues z przeglądu ani z retro bez decyzji użytkownika, nie uruchamia
+przeglądu ani retro równolegle z epikiem, nie merguje PR retro, nie odpowiada na blokery sam, nie uruchamia kilku epików
 naraz (epiki nocy idą jeden po drugim), nie zaczyna epiku bez „tak” użytkownika (na pytanie „Zacząć epik?” albo na
 listę nocy), nie przygotowuje epiku (`/prepare-epic`) i nie zmienia tablicy.
 

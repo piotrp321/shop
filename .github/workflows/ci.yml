@@ -105,6 +105,7 @@ jobs:
           python3 -m unittest discover -s .claude/skills/planner -p "test_*.py";
           python3 -m unittest discover -s .claude/skills/integration -p "test_*.py";
           python3 -m unittest discover -s .claude/skills/ao-run -p "test_*.py";
+          python3 -m unittest discover -s .claude/skills/retro -p "test_*.py";
           python3 -m unittest discover -s .claude/skills/groom -p "test_*.py"'
 
       # The CI images come prebuilt from GitHub Container Registry, tagged by the content of the files they are built

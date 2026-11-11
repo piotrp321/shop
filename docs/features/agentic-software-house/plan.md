@@ -33,7 +33,7 @@ Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykiet�
 | 12 | `/sweep` uruchamiany przez `/ao-run` po merge'u epiku | zrobione, niezweryfikowane (VISUAL-DESIGN szedł w sesji sprzed tego kroku; kryteria 7–9 sprawdza merge HARDENING albo LIGHTHOUSE) |
 | 13 | Agent porządkujący backlog (`/groom`) | zrobione (zadanie zaplanowane o 8:00 w aplikacji Claude; pierwsza lista z 2026-11-09 wykonana po decyzji użytkownika) |
 | 14 | Epik poprawek przygotowany bez użytkownika aż do pytań | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy epik `-FIXES` po QUALITY-FIXES) |
-| 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | do zrobienia |
+| 15 | Retrospektywa po epiku (`/retro`) i aktualny „Status” | zrobione, niezweryfikowane na prawdziwym epiku (sprawdza pierwszy merge epiku po merge'u RETRO i pierwszy przebieg `/retro visual-design`) |
 
 ## Role
 
@@ -56,7 +56,7 @@ Testerów i projektantów UX nie zatrudniamy: obie role pełnią agenci. Człowi
 | | Tester całego sklepu | `tester` w `/sweep`, uruchamiany przez `/ao-run` po merge'u | działa |
 | | Bezpieczeństwo i wydajność | ustalane w kroku 10 | krok 10 |
 | Backlog i proces | Porządkowanie backlogu: duplikaty, nieaktualne zgłoszenia, propozycje epików poprawek | `/groom` z agentem `backlog-groomer`, codziennie o 8:00 | działa |
-| | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` | krok 15 |
+| | Retrospektywa epiku: poprawki procesu i „Status” planów | `/retro` z agentem `retro-analyst`, uruchamiany przez `/ao-run` po `/sweep` | działa, niezweryfikowane na prawdziwym epiku |
 | Wydanie i utrzymanie | Release na publiczne demo, rollback | k3s i Argo CD z `docs/vision.md` | krok 11 |
 | | Monitoring → issues | Sentry i Grafana Cloud z `docs/vision.md` | krok 11 |
 
@@ -197,13 +197,25 @@ flowchart TB
    Agent tester i agent UX przechodzą cały sklep na świeżym stosie z `main`: krytyczne ścieżki z sekcji „Testy”
    w `docs/vision.md` i nową funkcję ze specyfikacji, jako klient i jako pracownik. Przed zaproponowaniem zgłoszenia
    sprawdzają otwarte issues, żeby nie dublować. Propozycje trafiają do triage (punkt 1).
-7. **Retrospektywa (15, `/retro [epik]`).** Po merge'u epiku agent czyta `ao report`, `events.jsonl`, interwencje,
-   rundy `/integration` i ręczne poprawki. Wynik to jeden PR do `main` (merguje użytkownik):
-   - poprawki procesu w `shop` (`CLAUDE.md`, skille, prompty agentów), każda z dowodem: epik, zdarzenie i powód,
-     tylko dla problemu, który wystąpił co najmniej dwa razy albo kosztował interwencję;
-   - aktualna sekcja „Status” tego planu i planów funkcji w toku.
+7. **Retrospektywa (15, `/retro [epik]`).** Sesja `/ao-run` uruchamia ją sama po `/sweep` (ta sama kolejka, jeden
+   naraz, nigdy razem z epikiem), a ręcznie `/retro [epik]`. Skrypt `retro.py` zbiera z całej historii przebiegów AO
+   (`ao-<epik>/`, tylko do odczytu) **incydenty**: czekania na użytkownika, nieudane próby, znaleziska
+   `/integration`, REPAIR, ręczne poprawki z komentarza z pomiarem, propozycje `/sweep` i decyzje bez pytania z PR
+   zadań. Agent `retro-analyst` grupuje je w problemy i szuka przyczyny w instrukcjach procesu. Wynik:
+   - jeden wspólny PR do `main` z gałęzi `retro/*` (merguje użytkownik): poprawki procesu w `shop` (`CLAUDE.md`,
+     skille, agenci, specyfikacje skilli), każda w osobnym commicie z dowodami, przyczyną i sposobem sprawdzenia;
+     kolejne retro dopisują do otwartego PR. Próg: co najmniej dwa różne incydenty albo jeden naprawczy (wymagał
+     działania człowieka z powodu nieprzewidzianej awarii); poprawka, po której problem wrócił, jest oznaczona jako
+     nieskuteczna;
+   - aktualna sekcja „Status” tego planu (plany epików prowadzonych przez AO nie są zmieniane);
+   - propozycje issues (najwyżej 3): problem w AO jako issue w `piotrp321/agentic-orchestrator` (AO jest zamrożone),
+     poprawka wymagająca kodu w `shop` jako `tech-debt` z etykietą `agent`, problem z otwartym issue jako komentarz do
+     niego. Issues i komentarze powstają po „tak” użytkownika; problem odrzucony świadomie nie wraca bez nowego
+     incydentu.
 
-   Problem w AO staje się issue w `piotrp321/agentic-orchestrator`, a nie zmianą AO (AO jest zamrożone).
+   Retro do zrobienia to lista wyliczana z danych (`retro.py pending`: zmergowane epiki bez stanu `done` albo
+   `skipped`), więc odroczone (limit, brak `gh`) wraca przy następnym merge'u, po końcu procesu AO i na
+   starcie `/ao-run`. Opis: `docs/features/retro/spec.md`.
 
 ## Kroki wdrożenia
 
@@ -272,9 +284,10 @@ równolegle z przebiegiem AO, a jego czas i zużycie limitu są mierzone jak prz
    zwykłego przebiegu. Ręczne `/prepare-epic <nr>` wznawia przerwane przygotowanie bez powtarzania ukończonych
    etapów. Opis: sekcja „Tryb po `/groom`” w `docs/features/prepare-epic/spec.md`. Prawdziwy przebieg sprawdza
    pierwszy epik `-FIXES` po QUALITY-FIXES.
-15. **`/retro` i „Status”.** Nowy skill uruchamiany po merge'u epiku (po `/sweep`, punkt 7 procesu). Zastępuje
-   ręczne aktualizowanie sekcji „Status” i ręczne zbieranie wniosków z przebiegów. Nowa specyfikacja:
-   `docs/features/retro/spec.md`.
+15. **`/retro` i „Status”.** Skill `/retro` i agent `retro-analyst` (Opus) oraz skrypt `retro.py`: `/ao-run` uruchamia
+   go po merge'u epiku w kolejce po `/sweep` (punkt 7 procesu). Zastępuje ręczne aktualizowanie sekcji „Status”
+   i ręczne zbieranie wniosków z przebiegów. Opis: `docs/features/retro/spec.md`. Prawdziwy przebieg sprawdza
+   pierwszy merge epiku po merge'u RETRO.
 
 Proces i kontrakt trafiają do ADR, gdy krok 7 potwierdzi, że działają. Plan usuwamy po ostatnim kroku.
 
