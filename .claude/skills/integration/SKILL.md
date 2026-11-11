@@ -239,6 +239,11 @@ JSON i AO powtarza rundę. Dlatego:
      Decyzja sprzeczna ze specyfikacją to znalezisko albo bloker według kroku 5. Gdy `gh` nie działa, napisz to w
      liście; to nie jest bloker.
    - **Odstępstwa od specyfikacji:** potwierdzone w kroku 5.
+   - **Synchronizacja z `main`:** `git merge-tree --write-tree HEAD origin/main`. Konflikt to pozycja „Sprawdź:” z listą
+     plików, nie znalezisko ani bloker. Usuwa go zadanie REPAIR w AO (konflikt końcowego PR, prawdziwy
+     `git merge origin/main` zmergowany do `epic/<epik>` merge commitem) albo PR `sync/<epik>-main` z sekcji 6a
+     `/ao-run`. Zadanie poprawek QA jest mergowane squashem, więc nie przesunie punktu wspólnego z `main` i konflikt
+     wróci. Treść rozwiązania konfliktu oceniasz dopiero w rundzie DELTA po syncu (krok 3a).
    Każda pozycja ma wynik „OK” albo „Sprawdź:” z plikiem lub PR i jednym zdaniem, dlaczego.
 7. **Stabilność znalezisk.** AO liczy odcisk znaleziska z `severity`, znormalizowanego `title` i posortowanych
    `files`, i przerywa pętlę napraw, gdy ten sam odcisk wraca po rundzie naprawczej. Dlatego: `title` opisuje problem,
