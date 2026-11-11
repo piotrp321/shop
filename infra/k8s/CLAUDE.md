@@ -30,7 +30,9 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   aktywnym Jobie w przestrzeni, trwającej synchronizacji `shop` w Argo CD albo snapshocie z migracją spoza klas migracji
   obrazu `api` odmawia bez zmian; wypisuje snapshot i skutki, działa dopiero po słowie `tak`; najpierw kopia `pre-restore`
   (Job z CronJoba `backup`; jej błąd kończy bez zmian, `PRE_RESTORE=skip` ją pomija), potem wyłącza synchronizację `root`
-  i `shop`, wstrzymuje `cart-purge-expired` i `backup`, skaluje do zera `api`, `worker`, `store` i `keycloak`, Job z
+  i `shop` (merge patchem: przejdzie też bez `automated`), wstrzymuje `cart-purge-expired` i `backup`, czeka na Job, który
+  wystartował po pierwszym sprawdzeniu (`RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, domyślnie 7200 s; potem błąd bez zmiany
+  aplikacji), skaluje do zera `api`, `worker`, `store` i `keycloak`, Job z
   CronJoba `restore` odtwarza dane, ponawia `migrate`, `keycloak-config` (jak `rerun`), reindeks i `purge-caches`, przywraca
   repliki, CronJoby i synchronizację `root`; błąd po pierwszej zmianie zostawia aplikacje wyłączone i wypisuje krok oraz
   snapshot `pre-restore`; kod 0, 1 odmowa albo błąd, 2 złe argumenty) i `make -C infra/k8s backups` (snapshoty repozytorium:
@@ -79,7 +81,8 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   `kubectl` (bez `tak`, bez `SNAPSHOT`, przy aktywnym Jobie, trwającej synchronizacji `shop` i snapshocie nowszym niż kod
   nic się nie zmienia; nieudana kopia `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; kolejność kroków z Argo CD
   (`root`, potem `shop`, na końcu `root`) i bez niego (zapamiętane repliki); błąd Joba odtworzenia zostawia aplikacje
-  wyłączone i wypisuje krok oraz snapshot `pre-restore`; czekanie najwyżej `activeDeadlineSeconds` Joba). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
+  wyłączone i wypisuje krok oraz snapshot `pre-restore`; aplikacje bez `automated` w Argo CD; Job aktywny, który pojawił się po
+  pierwszym sprawdzeniu, jest czekany i po limicie kończy odtworzenie przed tym, co rusza dane; czekanie najwyżej `activeDeadlineSeconds` Joba). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
   i historii), PVC `backup-work`, token API tylko w kontenerze identyfikatora klastra (bez sekretu), sekret `shop-backup`
   tylko w kontenerze restic (z hasłem repozytorium zawsze razem z adresem), obrazy z digestem; CronJob
   `backup-verify` (05:00, limity jak `backup`, tymczasowy Postgres jako natywny sidecar na `emptyDir`, bez sekretów i

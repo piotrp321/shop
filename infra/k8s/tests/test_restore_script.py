@@ -111,6 +111,14 @@ if verb == "get":
                 doc["operation"] = {"sync": {}}
             print(json.dumps(doc))
     elif kind in ("jobs", "job"):
+        if not names:
+            # A Job that finishes after n listings of the Jobs of the namespace.
+            for job in state["jobs"].values():
+                if job["state"] == "Running" and job.get("complete_after_lists") is not None:
+                    job["complete_after_lists"] -= 1
+                    if job["complete_after_lists"] <= 0:
+                        job["state"] = "Complete"
+            save()
         if names:
             if names[0] not in state["jobs"]:
                 fail(f'Error from server (NotFound): jobs.batch "{names[0]}" not found')
@@ -160,6 +168,9 @@ elif verb == "create":
 elif verb == "delete":
     state["jobs"].pop(rest[2], None)
     state["deleted"].append(rest[2])
+    if rest[2].startswith("restore-check-"):
+        # The end of the checks of the step 1: the Jobs that start from now on (a nightly backup).
+        state["jobs"].update(state.get("late_jobs", {}))
     save()
 elif verb == "logs":
     name = rest[1].split("/", 1)[1]
@@ -175,8 +186,14 @@ elif verb == "patch":
     if kind == "cronjob":
         state["cronjobs"][name]["suspend"] = patch["spec"]["suspend"]
     elif option("--type") == "json":
+        # As the apiserver: `remove` of a path that is not there is an error, and nothing changes.
+        assert patch == [{"op": "remove", "path": "/spec/syncPolicy/automated"}], patch
+        if state["apps"][name]["automated"] is None:
+            fail(f'The request is invalid: the server rejected our request due to an error in our request: remove operation does not apply: '
+                 f'doc is missing path: "/spec/syncPolicy/automated" (application {name})')
         state["apps"][name]["automated"] = None
     else:
+        # A merge patch: automated null removes the key, a missing key stays missing.
         state["apps"][name]["automated"] = patch["spec"]["syncPolicy"]["automated"]
     save()
 elif verb == "rollout":
@@ -485,7 +502,7 @@ class RestoreScriptTest(unittest.TestCase):
         result = self.restore(cluster)
         self.assertEqual(0, result.returncode, result.stderr)
         patches = [(c[4], c[c.index("--type") + 1]) for c in cluster.calls() if c[:2] == ["-n", "argocd"] and c[2] == "patch"]
-        self.assertEqual([("root", "json"), ("shop", "json"), ("root", "merge")], patches)
+        self.assertEqual([("root", "merge"), ("shop", "merge"), ("root", "merge")], patches)
         changes = self.changing_calls(cluster)
         self.assertEqual("patch application root", changes[0])
         self.assertEqual("patch application shop", changes[1])
@@ -493,6 +510,50 @@ class RestoreScriptTest(unittest.TestCase):
         self.assertEqual(AUTOMATED, cluster.state()["apps"]["root"]["automated"])
         # shop is brought back by root (selfHeal restores its syncPolicy from git), not by the script.
         self.assertIsNone(cluster.state()["apps"]["shop"]["automated"])
+
+    def test_without_automated_in_the_applications_the_restore_goes_through_and_root_stays_off(self):
+        # A rollback of several versions or a second restore after a failed one: the applications have no automated already.
+        cluster = self.stub(argocd=True, apps={"root": {"automated": None}, "shop": {"automated": None}})
+        result = self.restore(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("stays off", result.stdout)
+        self.assertIsNone(cluster.state()["apps"]["root"]["automated"])
+        self.assertIsNone(cluster.state()["apps"]["shop"]["automated"])
+        self.assertEqual(1, cluster.state()["deployments"]["api"])
+
+    @staticmethod
+    def late_job(**changes):
+        return {"backup-29341234": dict({"labels": {"app.kubernetes.io/name": "backup"}, "state": "Running", "log": "", "env": {},
+                                         "deadline": 7200}, **changes)}
+
+    def test_a_job_that_starts_after_the_first_check_is_waited_for_before_the_data_is_touched(self):
+        cluster = self.stub(argocd=True, late_jobs=self.late_job(complete_after_lists=3))
+        result = self.restore(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("backup-29341234", result.stdout)
+        calls = list(map(strip_namespace, cluster.calls()))
+        suspend = next(i for i, c in enumerate(calls) if c[:3] == ["patch", "cronjob", "backup"])
+        lists = [i for i, c in enumerate(calls) if c[:2] == ["get", "jobs"] and i > suspend]
+        # After the suspension of the CronJobs the Jobs are read until the late one ends, and only then are the applications scaled.
+        self.assertGreaterEqual(len(lists), 3)
+        scale = next(i for i, c in enumerate(calls) if c[0] == "scale")
+        self.assertLess(max(lists), scale)
+
+    def test_a_job_still_active_after_the_wait_stops_the_restore_before_the_data_and_the_applications(self):
+        for argocd in (False, True):
+            cluster = self.stub(argocd=argocd, late_jobs=self.late_job())
+            result = self.restore(cluster, RESTORE_ACTIVE_JOBS_WAIT_SECONDS="0")
+            self.assertEqual(1, result.returncode, argocd)
+            self.assertIn("backup-29341234", result.stderr)
+            self.assertIn("step 4", result.stderr)
+            self.assertIn(PRE_RESTORE, result.stderr)
+            self.assertIn("README.md", result.stderr)
+            self.assertNotIn("scaled to zero", result.stderr)
+            state = cluster.state()
+            self.assertEqual([], [n for n in state["created"] if n.startswith(("restore-run-", "restore-reindex-", "migrate"))], argocd)
+            self.assertEqual(initial_state()["deployments"], state["deployments"], argocd)
+            self.assertTrue(state["cronjobs"]["backup"]["suspend"])
+            self.assertEqual([], [c for c in map(strip_namespace, cluster.calls()) if c[0] == "scale"])
 
     def test_it_prints_the_snapshot_pre_restore_at_the_end(self):
         cluster = self.stub()

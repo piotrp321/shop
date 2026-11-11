@@ -10,7 +10,8 @@
 #   3. a backup of the current state with the tag pre-restore (a Job of the CronJob backup); its failure stops the restore
 #      without changes, unless PRE_RESTORE=skip (then no backup is made);
 #   4. with Argo CD: the automatic synchronization of root off, then of shop; the CronJobs cart-purge-expired and backup
-#      suspended; api, worker, store and keycloak scaled to zero (the replicas are remembered);
+#      suspended; a Job that started since step 1 is waited for (RESTORE_ACTIVE_JOBS_WAIT_SECONDS, 7200 by default, then an
+#      error with the applications still running); api, worker, store and keycloak scaled to zero (the replicas are remembered);
 #   5. a Job of the CronJob restore in the mode restore: the data of the snapshot (the databases, the objects; Redis flushed,
 #      the queues of RabbitMQ purged);
 #   6. migrate again (rerun), keycloak back and keycloak-config again, a Job of the CronJob restore in the mode reindex, api,
@@ -23,7 +24,7 @@
 # Environment: SNAPSHOT (required: the identifier of a snapshot from make -C infra/k8s backups), PRE_RESTORE (empty or skip),
 # KUBE_DIR (required: the directory with the kubeconfig `config` of the cluster; no default, so that nothing is restored in
 # whatever cluster ~/.kube points at), KUBE_NETWORK (the Docker network kubectl runs on, default host), KUBE_NAMESPACE (default
-# shop), ARGOCD_NAMESPACE (default argocd).
+# shop), ARGOCD_NAMESPACE (default argocd), RESTORE_ACTIVE_JOBS_WAIT_SECONDS (the wait for a Job that started after the check, 7200).
 # Exit codes: 0 restored; 1 refused, not confirmed or failed; 2 bad arguments or no KUBE_DIR.
 set -eu
 
@@ -70,6 +71,9 @@ cronjobs="cart-purge-expired backup"
 step=0
 pre_restore_snapshot=""
 argocd=0
+scaled=0
+# The longest wait, in step 4, for a Job that started after the check of step 1 (a nightly backup: its deadline is two hours).
+active_wait="${RESTORE_ACTIVE_JOBS_WAIT_SECONDS:-7200}"
 
 refuse() {
   printf '%s\n' "restore: $*" >&2
@@ -84,7 +88,11 @@ on_exit() {
   if [ "$status" -ne 0 ] && [ "$step" -ge 4 ]; then
     {
       echo "restore: FAILED at step $step ($step_name), restoring the snapshot $snapshot"
-      echo "restore: api, worker, store and keycloak may stay scaled to zero and the CronJobs cart-purge-expired and backup suspended: no shop runs on partly restored data"
+      if [ "$scaled" -eq 1 ]; then
+        echo "restore: api, worker, store and keycloak may stay scaled to zero and the CronJobs cart-purge-expired and backup suspended: no shop runs on partly restored data"
+      else
+        echo "restore: the CronJobs cart-purge-expired and backup may stay suspended; api, worker, store and keycloak were not scaled down yet, nothing was restored"
+      fi
       [ "$argocd" -eq 0 ] || echo "restore: the automatic synchronization of the applications root and shop of Argo CD stays off"
       if [ -n "$pre_restore_snapshot" ]; then
         echo "restore: the state before the restore is the pre-restore snapshot $pre_restore_snapshot"
@@ -97,6 +105,8 @@ on_exit() {
   exit "$status"
 }
 trap on_exit EXIT
+# A signal ends the script through the trap EXIT too (sh runs it only on a normal exit), so the message of the step is printed.
+trap 'exit 130' INT TERM
 
 # py_json <python expression of d, the JSON document on the standard input>: prints the value (a string).
 py_json() {
@@ -113,8 +123,13 @@ job_log() {
 # ---------------------------------------------------------------------------------------------------------------
 # 1. Checks, without changes
 # ---------------------------------------------------------------------------------------------------------------
-active="$(kubectl -n "$namespace" get jobs -o json | py_json '" ".join(j["metadata"]["name"] for j in d["items"]
-  if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"})')" ||
+# active_jobs: the names of the Jobs of the namespace that run (neither Complete nor Failed), separated by spaces.
+active_jobs() {
+  kubectl -n "$namespace" get jobs -o json | py_json '" ".join(j["metadata"]["name"] for j in d["items"]
+    if not {c.get("type") for c in (j.get("status", {}).get("conditions") or []) if c.get("status") == "True"} & {"Complete", "Failed"})'
+}
+
+active="$(active_jobs)" ||
   refuse "cannot read the Jobs of the namespace $namespace"
 [ -z "$active" ] || refuse "Jobs are active in the namespace $namespace: $active (wait for them to finish)"
 
@@ -204,7 +219,9 @@ step=4 step_name="stopping the applications"
 if [ "$argocd" -eq 1 ]; then
   # root first: with selfHeal it would bring back the synchronization of shop from git.
   for app in root shop; do
-    kubectl -n "$argocd_namespace" patch application "$app" --type json -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]' > /dev/null
+    # A merge patch with null: it also goes through for an application that has no automated (a rollback of several versions,
+    # a second restore after a failed one), where a JSON patch remove would be an error.
+    kubectl -n "$argocd_namespace" patch application "$app" --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}' > /dev/null
   done
   echo "restore: the automatic synchronization of root and shop is off"
 fi
@@ -215,6 +232,22 @@ replicas="$(kubectl -n "$namespace" get deployment $deployments -o json | py_jso
 for cronjob in $cronjobs; do
   kubectl -n "$namespace" patch cronjob "$cronjob" --type merge -p '{"spec":{"suspend":true}}' > /dev/null
 done
+# A Job that started since the check of step 1 (the CronJobs could fire until now) works on the same data: wait for it. The CronJobs
+# are suspended, so no new one comes.
+step_name="waiting for the Jobs that started since the check"
+wait_until=$(($(date +%s) + active_wait))
+while :; do
+  active="$(active_jobs)"
+  [ -n "$active" ] || break
+  if [ "$(date +%s)" -ge "$wait_until" ]; then
+    echo "restore: Jobs are still active in the namespace $namespace after $active_wait s: $active (nothing was restored, the applications run)" >&2
+    exit 1
+  fi
+  echo "restore: waiting for the Jobs $active (they started after the check)"
+  sleep "${RESTORE_POLL_SECONDS:-5}"
+done
+step_name="stopping the applications"
+scaled=1
 for deployment in $deployments; do
   kubectl -n "$namespace" scale deployment "$deployment" --replicas=0 > /dev/null
 done

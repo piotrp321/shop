@@ -44,8 +44,9 @@ odtwarzalna na pustym klastrze. Specyfikacja: `docs/features/deploy-ops/spec.md`
   odmawia snapshotu nowszego niż wdrożony kod przed jakąkolwiek zmianą; starszy snapshot doprowadzają do bieżącej wersji
   ponowione Joby `migrate` i `keycloak-config`. Przed odtworzeniem powstaje snapshot `pre-restore` stanu bieżącego (jego
   błąd zatrzymuje odtworzenie, chyba że `PRE_RESTORE=skip`), a na czas odtworzenia wyłączona jest automatyczna
-  synchronizacja Argo CD (`root`, potem `shop`), wstrzymane CronJoby `cart-purge-expired` i `backup`, a `api`, `worker`,
-  `store` i `keycloak` zeskalowane do zera. Odtworzenie danych: `restic restore` na wolumen `backup-work` (`--delete`: lustro
+  synchronizacja Argo CD (`root`, potem `shop`), wstrzymane CronJoby `cart-purge-expired` i `backup` (potem odtworzenie czeka na Job, który zdążył wystartować po
+  pierwszym sprawdzeniu, bo działałby na tym samym wolumenie `backup-work`), a `api`, `worker`, `store` i `keycloak`
+  zeskalowane do zera. Odtworzenie danych: `restic restore` na wolumen `backup-work` (`--delete`: lustro
   obiektów staje się stanem snapshotu), `DROP DATABASE … WITH (FORCE)` i `CREATE DATABASE` z właścicielami jak w
   `10-create-databases.sh`, `pg_restore --role=<właściciel>`, `rclone sync` do bucketu (obiekty spoza snapshotu znikają),
   `FLUSHALL` Redisa (sesje sklepu) i opróżnienie kolejek RabbitMQ (wiadomości sprzed odtworzenia), potem `catalog:reindex`
