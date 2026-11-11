@@ -408,6 +408,43 @@ final class ChangePriceEndpointTest extends WebTestCase
         self::assertSame([], $this->history($variantId));
     }
 
+    /**
+     * @return iterable<string, array{string, list<array{string, string}>}>
+     */
+    public static function oneViolationPerField(): iterable
+    {
+        $range = 'Cena brutto musi wynosić od 0,01 zł do 999 999,99 zł.';
+        $integer = 'Cena brutto musi być liczbą całkowitą w groszach.';
+        $version = 'Wersja ceny musi być liczbą całkowitą albo null.';
+        yield 'null gross' => ['{"gross": null, "version": 1}', [['gross', 'Cena brutto jest wymagana.']]];
+        yield 'gross in a string' => ['{"gross": "x", "version": 1}', [['gross', $integer]]];
+        yield 'gross in a numeric string' => ['{"gross": "100", "version": 1}', [['gross', $integer]]];
+        yield 'gross a fraction' => ['{"gross": 12.5, "version": 1}', [['gross', $integer]]];
+        yield 'gross a boolean' => ['{"gross": true, "version": 1}', [['gross', $integer]]];
+        yield 'gross an array' => ['{"gross": [100], "version": 1}', [['gross', $integer]]];
+        yield 'gross zero' => ['{"gross": 0, "version": 1}', [['gross', $range]]];
+        yield 'gross a string and a null version' => ['{"gross": "x", "version": null}', [['gross', $integer]]];
+        yield 'version in a string' => ['{"gross": 5990, "version": "1"}', [['version', $version]]];
+        yield 'version a fraction' => ['{"gross": 5990, "version": 1.5}', [['version', $version]]];
+        yield 'version a boolean' => ['{"gross": 5990, "version": false}', [['version', $version]]];
+        yield 'both wrong' => ['{"gross": null, "version": "1"}', [['gross', 'Cena brutto jest wymagana.'], ['version', $version]]];
+    }
+
+    /**
+     * @param list<array{string, string}> $expected
+     */
+    #[DataProvider('oneViolationPerField')]
+    public function testEveryFieldGivesAtMostOnePolishViolation(string $body, array $expected): void
+    {
+        $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
+
+        $problem = $this->request($variantId, $body, 'Bearer '.TestTokenFactory::staff(['admin']));
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertSame($expected, self::pathsWithTitles($problem['violations'] ?? null));
+        self::assertSame(['gross_amount' => 5490, 'version' => 1], $this->storedPrice($variantId));
+    }
+
     public function testTheViolationOfTheAmountNamesTheField(): void
     {
         $variantId = $this->pricedVariant(TaxClassCode::PrintedBook, 5490, 500);
