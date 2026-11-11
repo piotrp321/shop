@@ -303,7 +303,7 @@ Klucze i ID w przykładzie są ilustracją.
   (sekcja 7a), ponowienie odroczonych (`pending` przy kolejnym merge'u, po końcu procesu AO i na starcie przebiegu),
   liczba epików w `pending` w pushu sekcji 8; komentarz z pomiarem (sekcja 7) podaje ręczne poprawki jako
   „Ręczne poprawki: N” i po jednej linii `- PR #<nr>: <opis>` (albo `- <opis>` bez PR).
-- `.github/workflows/ci.yml`: linia `python3 -m unittest discover -s .claude/skills/retro -p "test_*.py"`.
+- Testy `.claude/skills/retro` uruchamia w CI `.github/scripts/script-tests.sh`, który znajduje je po położeniu (bez zmiany `ci.yml`).
 
 ## Wymagane przed startem
 

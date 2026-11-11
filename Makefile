@@ -1,4 +1,20 @@
-.PHONY: up down logs ps seed check test init-env-test varnish-test e2e e2e-check e2e-agent lighthouse load-smoke api-client keycloak-reset
+.PHONY: up down logs ps seed check test api-client ci-after-e2e
+
+# Targets of one area live in make/<area>.mk with their own .PHONY line. A fragment adds its target to `check` with
+# CHECK_TARGETS += <target>, to `test` with TEST_TARGETS += <target> and to the CI stack checks after the E2E tests with
+# CI_AFTER_E2E += <target>. Fragments are read in file name order, which is the order of each list; no target may depend
+# on that order. The include is at the end of this file, so `up` stays the default target.
+CHECK_TARGETS :=
+TEST_TARGETS :=
+CI_AFTER_E2E :=
+
+# One recipe line per target of a list: the first failing one stops the target. The `+` marks each line as a recursive
+# make (run by `make -n` too, like a line that names $(MAKE) itself).
+define newline
+
+
+endef
+run_each = $(foreach t,$(1),+$(MAKE) $(t)$(newline))
 
 # Override RUN to run outside Docker Compose, e.g. inside CI.
 RUN ?= docker compose exec
@@ -37,87 +53,25 @@ check:
 	$(MAKE) -C apps/store check
 	$(MAKE) -C apps/admin check
 	$(MAKE) -C infra/k8s check
+	$(call run_each,$(CHECK_TARGETS))
 
 test:
 	$(MAKE) -C apps/api test
 	$(MAKE) -C apps/store test
 	$(MAKE) -C apps/admin test
-	$(MAKE) varnish-test
-
-# Tests of infra/scripts/init-env.sh in a temporary copy (a real .env.local is never touched); runs on the host, like
-# the script itself, and needs only sh and openssl. Not part of `test`; CI runs it in its Tests step, next to the api suite.
-init-env-test:
-	sh infra/scripts/test-init-env.sh
-
-# VCL tests (infra/varnish/tests/*.vtc) with varnishtest from the image of the varnish service; no running stack and
-# no network. The backend of default.vcl is api:80: in the test container api is 127.0.0.1, where the .vtc servers listen.
-varnish-test:
-	image="$$(docker compose config --images varnish | grep -m1 '^varnish:')" && \
-	docker run --rm --network none --add-host api:127.0.0.1 -v "$(CURDIR)/infra/varnish:/etc/varnish:ro" \
-		--entrypoint sh "$$image" -c 'varnishtest -j1 -k /etc/varnish/tests/*.vtc'
-
-# Extra `docker compose run` flags for the e2e targets; CI passes -T (no terminal).
-E2E_FLAGS ?=
-# `--build` keeps the e2e image in step with e2e/package-lock.json (cached when nothing changed). CI builds the image
-# with the GitHub Actions cache before and passes E2E_BUILD= to use it as it is.
-E2E_BUILD ?= --build
-
-# Playwright tests against the running stack (`make up` and `make seed` first). A failing test or an unreachable service
-# fails the target.
-e2e:
-	mkdir -p e2e/test-results
-	docker compose --profile e2e run --rm $(E2E_BUILD) $(E2E_FLAGS) e2e
-
-# Type-checks the e2e package and runs the tests of the Lighthouse median script (e2e/lighthouse/summary.test.mjs). Needs
-# no running services, only the e2e image (not part of `check`, which would pull the Playwright image for every
-# developer; CI runs it in the e2e job).
-e2e-check:
-	docker compose --profile e2e run --rm $(E2E_BUILD) --no-deps $(E2E_FLAGS) --entrypoint npx e2e tsc --noEmit
-	docker compose --profile e2e run --rm $(E2E_BUILD) --no-deps $(E2E_FLAGS) --entrypoint node e2e --test lighthouse/summary.test.mjs
-
-# Lighthouse measurement of three store pages (home, category, product; 3 runs each) in the e2e container, against the
-# running stack with the store in production mode (`STORE_MODE=production make up` and `make seed` first). The mode is
-# read from the running store container, not from the environment of make. Reports, manifest.json and medians.md go to
-# e2e/lighthouse-results. Only the SEO score fails the target; the other thresholds warn.
-lighthouse:
-	@if ! docker compose exec -T store true >/dev/null 2>&1; then \
-		echo "lighthouse: the store container is not running. Start the stack first: STORE_MODE=production make up && make seed" >&2; exit 1; \
-	fi; \
-	mode="$$(docker compose exec -T store printenv STORE_MODE || true)"; \
-	if [ "$$mode" != production ]; then \
-		echo "lighthouse: the store runs in '$$mode' mode, the measurement needs the production build. Restart it with: STORE_MODE=production make up" >&2; exit 1; \
-	fi
-	mkdir -p e2e/lighthouse-results
-	docker compose --profile e2e run --rm $(E2E_BUILD) $(E2E_FLAGS) e2e lighthouse
-
-# Playwright scripts written by an agent, outside the repo (see docs/features/agent-tester-ux/spec.md). AGENT_DIR is the
-# absolute path of an existing directory: scripts are read from $(AGENT_DIR)/tests, results go to $(AGENT_DIR)/results.
-# Extra Playwright arguments go in E2E_ARGS, e.g. E2E_ARGS="--project mobile". Needs the running stack.
-e2e-agent:
-	@case "$(AGENT_DIR)" in \
-		/*) ;; \
-		*) echo "e2e-agent: AGENT_DIR must be the absolute path of an existing directory, got '$(AGENT_DIR)'" >&2; exit 2 ;; \
-	esac; \
-	if [ ! -d "$(AGENT_DIR)" ]; then echo "e2e-agent: AGENT_DIR '$(AGENT_DIR)' is not an existing directory" >&2; exit 2; fi
-	mkdir -p "$(AGENT_DIR)/results"
-	docker compose --profile e2e run --rm $(E2E_BUILD) $(E2E_FLAGS) -v "$(AGENT_DIR):/app/agent" e2e --config playwright.agent.config.ts $(E2E_ARGS)
-
-# The k6 scripts of load/ against the running stack (`make up` and `make seed` first): one user, one iteration of every
-# scenario, a guest checkout of one unit included, in a container on the network of the stack. Keeps the scripts working;
-# measures nothing and has no limits of speed, but any scenario that fails is a non-zero exit code. The measurement is
-# `make -C infra/k8s load`.
-load-smoke:
-	sh load/smoke.sh
+	$(call run_each,$(TEST_TARGETS))
 
 # Generates the TypeScript API client types of the store and of the admin panel from the committed OpenAPI files.
 api-client:
 	$(RUN) store npx openapi-typescript /contract/openapi.json -o src/api/schema.d.ts
 	$(RUN) admin npx openapi-typescript /contract/openapi-admin.json -o src/api/schema.d.ts
 
-# Drops the Keycloak database and restarts Keycloak, which imports the realms from infra/keycloak/realms anew.
-# Every Keycloak session, user and change made in the admin console is lost.
-keycloak-reset:
-	docker compose stop keycloak
-	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres \
-		-c 'DROP DATABASE IF EXISTS keycloak WITH (FORCE)' -c 'CREATE DATABASE keycloak OWNER keycloak'
-	docker compose up -d --wait keycloak
+# The CI checks on the running stack after `make e2e` (the e2e job): every target of CI_AFTER_E2E runs, also after one
+# of them failed (a failed Lighthouse assertion must not hide the other checks), and the failed ones are listed at the
+# end. An empty list is an error, so missing fragments cannot pass for green.
+ci-after-e2e:
+	@[ -n "$(strip $(CI_AFTER_E2E))" ] || { echo "ci-after-e2e: CI_AFTER_E2E is empty (no make/*.mk fragment adds to it)" >&2; exit 2; }
+	+@failed=""; for t in $(CI_AFTER_E2E); do $(MAKE) $$t || failed="$$failed $$t"; done; \
+	if [ -n "$$failed" ]; then echo "ci-after-e2e: failed:$$failed" >&2; exit 1; fi
+
+include $(sort $(wildcard make/*.mk))
