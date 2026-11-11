@@ -183,10 +183,10 @@ do_tests() {
   tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests
 }
 
-# scripts/server-bootstrap.sh in a container with Ubuntu 24.04 (root, no k3s, no systemd): the refusals before any change, then
+# scripts/server-bootstrap.sh in a container with Ubuntu 26.04 (root, no k3s, no systemd): the refusals before any change, then
 # two runs; see tests/bootstrap/test.sh for what is real and what is stubbed.
 do_bootstrap() {
-  step "server-bootstrap.sh in Ubuntu 24.04 without k3s: refusals and two runs"
+  step "server-bootstrap.sh in Ubuntu 26.04 without k3s: refusals and two runs"
   docker run --rm -v "$TOOLS_REPO:/repo:ro" "$UBUNTU_IMAGE" sh /repo/infra/k8s/tests/bootstrap/test.sh
 }
 
