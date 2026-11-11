@@ -26,6 +26,8 @@ const FOCUSABLE = "input, textarea, select, button, a[href], [tabindex]";
 
 const route = useRoute();
 const router = useRouter();
+// The route of an existing record carries its id: a failed or pending load must not look like a new record.
+const isExisting = computed(() => typeof route.params.id === "string");
 const auth = useAuthStore();
 
 const {
@@ -148,7 +150,7 @@ const statusLabels = { draft: "Szkic", published: "Opublikowany" } as const;
     class="product"
   >
     <div class="header">
-      <h1>{{ view ? data.name || "Produkt" : "Nowy produkt" }}</h1>
+      <h1>{{ view ? data.name || "Produkt" : isExisting ? "Produkt" : "Nowy produkt" }}</h1>
       <Tag
         v-if="view"
         data-testid="product-status"
