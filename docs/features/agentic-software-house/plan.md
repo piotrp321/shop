@@ -11,7 +11,7 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 7), nie 
 
 W toku przez `/ao-run`: QUALITY-FIXES (#342). Przygotowane na `main`: DEPLOY-OPS (#178). Kolejność epików jest na
 tablicy „Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: RETRO (końcowy PR #425, bez issue epiku, więc bez
-komentarza z pomiarem). Retro do zrobienia: VISUAL-DESIGN, LIGHTHOUSE, HARDENING. Krok 7: CART-FIXES (#88)
+komentarza z pomiarem). Retro do zrobienia: LIGHTHOUSE, HARDENING. Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
 Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 83, zamkniętych 17.
