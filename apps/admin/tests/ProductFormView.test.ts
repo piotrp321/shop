@@ -207,6 +207,7 @@ describe("ProductFormView", () => {
 
     it("creates a new product with the default variant and moves to its page", async () => {
       mounted = await mountForm("/products/new");
+      expect(mounted.wrapper.get("h1").text()).toBe("Nowy produkt");
       mocks.post.mockResolvedValue({ data: view({ id: "p-9", variantAxes: [], variants: [{ variantId: "v-9", values: [] }] }), response: { status: 201 } });
 
       await mounted.wrapper.get("[data-testid=name]").setValue("Buty biegowe");
@@ -217,6 +218,7 @@ describe("ProductFormView", () => {
       expect(mounted.router.currentRoute.value.name).toBe("product");
       expect(mounted.router.currentRoute.value.params.id).toBe("p-9");
       expect(mounted.wrapper.get("[data-testid=success-message]").text()).toBe("Produkt zapisany.");
+      expect(mounted.wrapper.get("h1").text()).toBe("Buty biegowe");
     });
 
     it("offers publication for a draft, only after the changes are saved, and withdrawal for a published product", async () => {
@@ -548,6 +550,22 @@ describe("ProductFormView", () => {
 
       expect(mounted.wrapper.get("[data-testid=load-error]").text()).toContain("nie istnieje");
       expect(mounted.wrapper.find("[data-testid=name]").exists()).toBe(false);
+      expect(mounted.wrapper.get("h1").text()).toBe("Produkt");
+    });
+
+    it("keeps the heading of an existing product when it fails to load", async () => {
+      serve(500);
+      mounted = await mountForm("/products/p-1");
+
+      expect(mounted.wrapper.find("[data-testid=load-error]").exists()).toBe(true);
+      expect(mounted.wrapper.get("h1").text()).toBe("Produkt");
+    });
+
+    it("keeps the heading of an existing product until it is loaded", async () => {
+      mocks.get.mockReturnValue(new Promise(() => {}));
+      mounted = await mountForm("/products/p-1");
+
+      expect(mounted.wrapper.get("h1").text()).toBe("Produkt");
     });
   });
 

@@ -15,6 +15,8 @@ import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const router = useRouter();
+// The route of an existing record carries its id: a failed or pending load must not look like a new record.
+const isExisting = computed(() => typeof route.params.id === "string");
 const auth = useAuthStore();
 
 const {
@@ -75,7 +77,7 @@ async function submit(): Promise<void> {
 <template>
   <div class="discount-code">
     <div class="header">
-      <h1>{{ view ? view.code : "Nowy kod rabatowy" }}</h1>
+      <h1>{{ view ? view.code : isExisting ? "Kod rabatowy" : "Nowy kod rabatowy" }}</h1>
       <Tag
         v-if="view"
         data-testid="code-status"
