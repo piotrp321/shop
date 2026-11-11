@@ -197,6 +197,12 @@ class VolumeTest(unittest.TestCase):
             mounted = {c["name"] for c in all_containers(case) if {"name": "work", "mountPath": "/work"} in c.get("volumeMounts", [])}
             self.assertEqual({"dump", "objects", "backup"}, mounted, case)
 
+    def test_argo_cd_does_not_wait_for_the_claim_to_be_bound(self):
+        """local-path binds a claim only when a pod uses it (WaitForFirstConsumer): until the first run the claim is Pending, and
+        Argo CD would take that for an application that is not healthy (and hold back the waves after it)."""
+        (claim,) = [d for d in of_kind("prod", "PersistentVolumeClaim") if name(d) == "backup-work"]
+        self.assertEqual("true", claim["metadata"]["annotations"]["argocd.argoproj.io/ignore-healthcheck"])
+
     def test_the_work_volume_is_bigger_than_the_data_of_the_images(self):
         from support import quantity_bytes
 

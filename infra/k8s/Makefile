@@ -12,12 +12,16 @@ check:
 # smoke test before deploy, images pushed for every event, runs for main cancelled, steps of deploy.yml without pipefail,
 # the two deploy branches pushed without --atomic, no check of the render before the push, a short digest accepted by
 # the images values generator, a workflow that deletes package versions, the certificate of Sealed Secrets ignored by git,
-# or deploy.yml missing).
+# deploy.yml missing, a backup repository without its password, the backup CronJob without concurrencyPolicy Forbid, the
+# backup script that goes on after an error or takes any access error for a missing repository, or seal-secrets that asks
+# for the backup password again).
 selftest:
 	sh scripts/selftest.sh
 
 # The smoke test on an empty k3d cluster with the production images built here (a few minutes; the first run pulls
-# the images of the services). SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
+# the images of the services). After create-admin it makes a backup: a Garage of its own in the namespace smoke-backup holds the
+# restic repository, a Job from the CronJob backup runs, and the snapshot nightly (both dumps, the objects, the manifest) is
+# checked; the time of that phase is printed. SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
 smoke:
 	sh scripts/smoke.sh
 
@@ -44,9 +48,10 @@ create-admin:
 	sh scripts/create-admin.sh "$(LOGIN)" "$(EMAIL)"
 
 # Encrypts the secrets of the environment with the certificate of the controller (environments/prod/sealed-secrets.pem) into
-# environments/prod/secrets: make -C infra/k8s seal-secrets [WHAT="shop brevo tls"]. shop: the missing keys of
-# infra/scripts/init-env.sh with random values, existing ones are never changed. brevo and tls: asked for in the terminal
-# without echo, once. An error writes nothing. Needs only Docker.
+# environments/prod/secrets: make -C infra/k8s seal-secrets [WHAT="shop brevo tls backup"]. shop: the missing keys of
+# infra/scripts/init-env.sh with random values, existing ones are never changed. brevo, tls and backup (the password of the
+# restic repository and the S3 key of its bucket: RESTIC_PASSWORD, BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY):
+# asked for in the terminal without echo, once. An error writes nothing. Needs only Docker.
 seal-secrets:
 	sh scripts/seal-secrets.sh $(WHAT)
 

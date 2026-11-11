@@ -174,6 +174,10 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   (klucz w `infra/scripts/init-env.sh`) trafia do szablonu sekretu chartu i, gdy w repo jest certyfikat Sealed Secrets,
   zaszyfrowany `make -C infra/k8s seal-secrets` do `environments/prod/secrets/` w tym samym PR (pilnuje tego `check`). Zmiana wersji
   obrazu w compose wymaga nowego digestu w chartcie (`docker buildx imagetools inspect <obraz:tag>`).
+- Nocne kopie zapasowe (CronJob `backup`: restic do Cloudflare R2) to funkcja tylko środowiska wdrożeniowego: compose się
+  nie zmienia, a obrazy `restic/restic` i `rclone/rclone` w `images.*` chartu nie mają w nim odpowiednika (digest jak
+  wyżej). Sekret `shop-backup` tworzy raz `make -C infra/k8s seal-secrets WHAT=backup`; hasło restic użytkownik trzyma
+  też poza serwerem, bo bez niego kopie są nie do odczytania. Opis: `docs/adr/backups-observability.md`.
 - Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (pliki realmów z repo bez `users`, z adresami domeny;
   nazwa Joba zależy od tych plików, `customerAccounts` i poczty Keycloaka). Brakujący realm zakłada; w istniejącym
   `partialImport` z `ifResourceExists=SKIP` dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem

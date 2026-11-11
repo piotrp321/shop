@@ -17,7 +17,9 @@
 #   SMOKE_REUSE=1 smoke.sh         go on with the later phases on the cluster that SMOKE_KEEP=1 left (a debugging aid)
 #   SMOKE_TIMEOUT=900              seconds to wait for the cluster to settle after each install or upgrade
 #
-# Phases: install and checks (also the store and the panel in a browser, and create-admin); upgrade with a new revision (initialize
+# Phases: install and checks (also the store and the panel in a browser, and create-admin); the backup (an S3 of its own in the
+# namespace smoke-backup, a Job from the CronJob backup, the snapshot it leaves; the time of the phase is printed);
+# upgrade with a new revision (initialize
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
 # the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
@@ -447,6 +449,212 @@ check_create_admin() {
   echo "ok: the output of create-admin contains no secret"
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+# The backup (docs/features/deploy-ops/spec.md, "Smoke test i check", steps 1 and 2)
+# ---------------------------------------------------------------------------------------------------------------
+backup_namespace=smoke-backup
+bkc() { kubectl -n "$backup_namespace" "$@"; }
+
+# The S3 of the repository of the backups: a Garage of its own (the image of the chart) in the namespace smoke-backup, outside
+# the namespace of the shop, with the bucket `restic` and the key of the profile ci. The configuration and the script of
+# the bootstrap are those of compose (infra/garage), as in the chart; only the bucket differs.
+start_backup_repository() {
+  garage_image="$(yq '.images.garage' charts/shop/values.yaml)"
+  alpine_image="$(yq '.images.alpine' charts/shop/values.yaml)"
+  key_id="$(yq '.backup.secretValues.BACKUP_S3_ACCESS_KEY_ID' environments/ci/values.yaml)"
+  key_secret="$(yq '.backup.secretValues.BACKUP_S3_SECRET_ACCESS_KEY' environments/ci/values.yaml)"
+  rpc_secret="$(yq '.secrets.values.GARAGE_RPC_SECRET' environments/ci/values.yaml)"
+  kubectl create namespace "$backup_namespace" > /dev/null
+  {
+    echo "apiVersion: v1"
+    echo "kind: ConfigMap"
+    echo "metadata: { name: garage-config }"
+    echo "data:"
+    echo "  garage.toml: |"
+    sed 's/^/    /' "$TOOLS_REPO/infra/garage/garage.toml"
+    echo "  init.sh: |"
+    sed 's/^BUCKETS=.*/BUCKETS="restic"/' "$TOOLS_REPO/infra/garage/init.sh" | sed 's/^/    /'
+    cat <<YAML
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: garage-secrets }
+stringData:
+  GARAGE_RPC_SECRET: "$rpc_secret"
+  GARAGE_ADMIN_TOKEN: smoke-backup-admin-token
+  GARAGE_ACCESS_KEY_ID: "$key_id"
+  GARAGE_SECRET_ACCESS_KEY: "$key_secret"
+---
+apiVersion: v1
+kind: Service
+metadata: { name: garage }
+spec:
+  selector: { app: garage }
+  publishNotReadyAddresses: true
+  ports:
+    - { name: s3, port: 3900 }
+    - { name: rpc, port: 3901 }
+    - { name: admin, port: 3903 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: garage }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: garage } }
+  template:
+    metadata: { labels: { app: garage } }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: garage
+          image: $garage_image
+          envFrom: [{ secretRef: { name: garage-secrets } }]
+          volumeMounts:
+            - { name: config, mountPath: /etc/garage.toml, subPath: garage.toml, readOnly: true }
+            - { name: meta, mountPath: /var/lib/garage/meta }
+            - { name: data, mountPath: /var/lib/garage/data }
+      volumes:
+        - { name: config, configMap: { name: garage-config } }
+        - { name: meta, emptyDir: {} }
+        - { name: data, emptyDir: {} }
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: garage-init }
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      containers:
+        - name: garage-init
+          image: $alpine_image
+          command: ["/bin/sh", "/config/init.sh"]
+          env: [{ name: PATH, value: "/garage-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" }]
+          envFrom: [{ secretRef: { name: garage-secrets } }]
+          volumeMounts:
+            - { name: garage-bin, mountPath: /garage-bin, readOnly: true }
+            - { name: config, mountPath: /etc/garage.toml, subPath: garage.toml, readOnly: true }
+            - { name: config, mountPath: /config, readOnly: true }
+      volumes:
+        - { name: garage-bin, image: { reference: $garage_image, pullPolicy: IfNotPresent } }
+        - { name: config, configMap: { name: garage-config } }
+YAML
+  } | bkc apply -f - > /dev/null
+  bkc wait --for=condition=complete job/garage-init --timeout=300s > /dev/null || {
+    echo "smoke: the Garage of the backup repository did not start:" >&2
+    bkc get pods >&2 || true
+    bkc logs job/garage-init --all-containers --tail=30 >&2 || true
+    return 1
+  }
+  echo "ok: the S3 of the backup repository is up in the namespace $backup_namespace (bucket restic)"
+}
+
+# A pod with restic (the repository of the profile ci, as the CronJob reads it) and rclone (the Garage of the shop), to put an
+# object into the bucket of the images and to look into the repository. They only sleep; kc exec -c <tool> uses them.
+create_backup_tools_pod() {
+  restic_image="$(yq '.images.restic' charts/shop/values.yaml)"
+  rclone_image="$(yq '.images.rclone' charts/shop/values.yaml)"
+  repository="$(yq '.backup.repository' environments/ci/values.yaml)"
+  region="$(yq '.backup.s3Region' environments/ci/values.yaml)"
+  secret="$(yq '.backup.secretName' environments/ci/values.yaml)"
+  kc apply -f - > /dev/null <<YAML
+apiVersion: v1
+kind: Pod
+metadata: { name: smoke-backup-tools }
+spec:
+  terminationGracePeriodSeconds: 0
+  enableServiceLinks: false
+  containers:
+    - name: restic
+      image: $restic_image
+      command: ["sleep", "infinity"]
+      env:
+        - { name: RESTIC_REPOSITORY, value: "$repository" }
+        - { name: AWS_DEFAULT_REGION, value: "$region" }
+        - { name: RESTIC_CACHE_DIR, value: /tmp/restic-cache }
+        - { name: RESTIC_PASSWORD, valueFrom: { secretKeyRef: { name: $secret, key: RESTIC_PASSWORD } } }
+        - { name: AWS_ACCESS_KEY_ID, valueFrom: { secretKeyRef: { name: $secret, key: BACKUP_S3_ACCESS_KEY_ID } } }
+        - { name: AWS_SECRET_ACCESS_KEY, valueFrom: { secretKeyRef: { name: $secret, key: BACKUP_S3_SECRET_ACCESS_KEY } } }
+    - name: rclone
+      image: $rclone_image
+      command: ["sleep", "infinity"]
+      env:
+        - { name: RCLONE_CONFIG_GARAGE_TYPE, value: s3 }
+        - { name: RCLONE_CONFIG_GARAGE_PROVIDER, value: Other }
+        - { name: RCLONE_CONFIG_GARAGE_ENDPOINT, value: "http://garage:3900" }
+        - { name: RCLONE_CONFIG_GARAGE_REGION, value: garage }
+        - { name: RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID, valueFrom: { secretKeyRef: { name: shop-secrets, key: GARAGE_ACCESS_KEY_ID } } }
+        - { name: RCLONE_CONFIG_GARAGE_SECRET_ACCESS_KEY, valueFrom: { secretKeyRef: { name: shop-secrets, key: GARAGE_SECRET_ACCESS_KEY } } }
+YAML
+  kc wait --for=condition=Ready pod/smoke-backup-tools --timeout=300s > /dev/null
+}
+
+# A Job from the CronJob backup, waited for up to its deadline; a failure prints the logs of all its containers.
+run_backup_job() {
+  kc create job backup-smoke --from=cronjob/backup > /dev/null
+  deadline=$(( $(date +%s) + 900 ))
+  while :; do
+    state="$(kc get job backup-smoke -o jsonpath='{.status.succeeded}{" "}{.status.conditions[?(@.type=="Failed")].status}')"
+    case "$state" in
+      "1 "*) return 0 ;;
+      *" True")
+        echo "smoke: the backup Job failed:" >&2
+        kc logs "job/backup-smoke" --all-containers --prefix --tail=40 >&2 || true
+        return 1 ;;
+    esac
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "smoke: the backup Job did not finish in 900 s" >&2
+      kc get pods >&2 || true
+      kc logs "job/backup-smoke" --all-containers --prefix --tail=40 >&2 || true
+      return 1
+    fi
+    sleep 5
+  done
+}
+
+# The snapshot of the backup: the tag nightly, the host of the cluster, the dumps of both databases, the object put into the
+# bucket and a manifest with the revision, the migrations and the objects.
+check_backup_snapshot() {
+  cluster_uid="$(kubectl get namespace kube-system -o jsonpath='{.metadata.uid}')"
+  snapshots="$(kc exec -c restic smoke-backup-tools -- restic snapshots --json --tag nightly)"
+  case "$snapshots" in
+    *"\"hostname\":\"$cluster_uid\""*) ;;
+    *) echo "smoke: no snapshot with the host $cluster_uid and the tag nightly in the repository:" >&2; printf '%s\n' "$snapshots" >&2; return 1 ;;
+  esac
+  [ "$(printf '%s' "$snapshots" | grep -o '"tags":\["nightly"\]' | wc -l | tr -d ' ')" = 1 ] \
+    || { echo "smoke: not exactly one snapshot with the tag nightly:" >&2; printf '%s\n' "$snapshots" >&2; return 1; }
+  files="$(kc exec -c restic smoke-backup-tools -- restic ls --tag nightly latest)"
+  for path in /work/dumps/shop.dump /work/dumps/keycloak.dump /work/objects/smoke-backup/object.txt /work/manifest.json; do
+    printf '%s\n' "$files" | grep -qx "$path" || { echo "smoke: the snapshot lacks $path; it has:" >&2; printf '%s\n' "$files" >&2; return 1; }
+  done
+  manifest="$(kc exec -c restic smoke-backup-tools -- restic dump --tag nightly latest /work/manifest.json)"
+  # The seed has put the demo images into the bucket too: the manifest counts what the bucket has.
+  size="$(kc exec -c rclone smoke-backup-tools -- rclone size --json garage:product-images | tr -d ' \n')"
+  objects="$(printf '%s' "$size" | sed -n 's/.*"count":\([0-9][0-9]*\),"bytes":\([0-9][0-9]*\).*/\1 \2/p')"
+  [ -n "$objects" ] || { echo "smoke: cannot read the size of the bucket from: $size" >&2; return 1; }
+  revision="$(kc get cronjob backup -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name=="REVISION")].value}')"
+  for expected in "\"revision\": \"$revision\"" "\"cluster\": \"$cluster_uid\"" '"databases": ["shop","keycloak"]' \
+    "\"objects\": {\"count\": ${objects% *}, \"bytes\": ${objects#* }}" 'DoctrineMigrations\\Version'; do
+    printf '%s\n' "$manifest" | grep -qF -- "$expected" || { echo "smoke: the manifest lacks $expected:" >&2; printf '%s\n' "$manifest" >&2; return 1; }
+  done
+  echo "ok: the snapshot nightly of the host $cluster_uid has the dumps of shop and keycloak, the object and a manifest of the revision $revision"
+}
+
+# The phase: the repository, one object in the bucket of the images, the Job of the CronJob and what it left in the repository.
+check_backup() {
+  backup_started="$(date +%s)"
+  start_backup_repository
+  create_backup_tools_pod
+  kc exec -c rclone smoke-backup-tools -- sh -c 'printf "smoke object\n" | rclone rcat garage:product-images/smoke-backup/object.txt'
+  run_backup_job
+  check_backup_snapshot
+  sample_once
+  echo "smoke: the backup phase took $(( $(date +%s) - backup_started )) s, the disk of the cluster after it: $(tail -n 1 "$work/samples" | cut -d' ' -f2) MiB"
+}
+
 # A copy of the chart whose realm file of shop has one more client (smoke-extra), in <work>/chart-extra.
 add_realm_client() {
   rm -rf "$work/chart-extra"
@@ -542,6 +750,9 @@ else
 
   log "create-admin"
   check_create_admin
+
+  log "backup"
+  check_backup
 
   log "upgrade r2: the same code, a new revision"
   snapshot_before="$(checks snapshot | tail -n 1)"
