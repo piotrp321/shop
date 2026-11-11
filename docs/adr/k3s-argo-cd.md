@@ -59,6 +59,7 @@ użytkownika. Szczegóły: `docs/features/deploy/spec.md`, uruchomienie: `infra/
   a potem `shop`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu.
 - Żadna retencja GHCR ani workflow nie usuwa wersji pakietów (test w `make check`).
 - Klucz prywatny Sealed Secrets jest jedyną rzeczą, której nie da się odtworzyć z repo; jego utrata oznacza nowy
-  certyfikat i ponowne zaszyfrowanie sekretów oraz ponowne wczytanie danych albo odtworzenie z kopii (DEPLOY-OPS).
-- Do czasu DEPLOY-OPS kopie poza serwerem to tylko backup VPS-a od OVH; prawdziwe dane i publiczny start dopiero po
-  DEPLOY-OPS.
+  certyfikat i ponowne zaszyfrowanie sekretów (w tym `shop-backup` z tym samym hasłem restic, bo inaczej kopie są nie do odczytania) oraz ponowne wczytanie danych albo odtworzenie z kopii.
+- Dane sklepu mają nocną, szyfrowaną kopię poza serwerem (CronJob `backup`, restic do Cloudflare R2;
+  `docs/adr/backups-observability.md`) oraz backup VPS-a od OVH. Do czasu weryfikacji i ćwiczonego odtworzenia
+  (reszta DEPLOY-OPS) prawdziwe dane i publiczny start nie wchodzą w grę.

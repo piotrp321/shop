@@ -8,7 +8,9 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
 - `infra/k8s` ma własny `Makefile` (potrzebuje Dockera, a `check` także gita): `make -C infra/k8s check`; `make -C infra/k8s smoke`
   (test dymny: chart z profilem `ci` na pustym klastrze k3d z obrazami produkcyjnymi zbudowanymi lokalnie, kilka minut;
   sprawdza m.in. nagłówki bezpieczeństwa panelu i jego załadowanie w przeglądarce bez naruszeń CSP;
-  `SMOKE_BREAK=migration|image` psuje go celowo); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
+  `SMOKE_BREAK=migration|image` psuje go celowo; po `create-admin` robi kopię zapasową: osobna instancja S3 w przestrzeni
+  `smoke-backup`, Job z CronJoba `backup`, snapshot `nightly` z dumpami obu baz, obiektem i manifestem; wypisuje czas
+  tej fazy i zajęty dysk); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
   obciążenia: klaster k3d z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `load`, dane demo, stany
   podniesione o 100 000 bezpośrednim SQL, rozgrzanie, przebieg rosnący do nasycenia z k6 (odczyt i koszyk) i przebieg
   stały na 70% nasycenia z checkoutem o ograniczonej równoległości, wyniki do `LOAD_OUT`; kilkadziesiąt minut, VM
@@ -27,9 +29,10 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   zapisuje certyfikat kontrolera do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma, a rozbieżny
   certyfikat to błąd), `kubeconfig HOST=… KUBE_DIR=…` (kubeconfig klastra poza repo, dla `rerun` i `create-admin`),
   `status HOST=…` (tylko odczyt: aplikacje Argo, pody, Joby), `reinitialize HOST=…` (kasuje dane sklepu i wczytuje dane
-  demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls"]` (szyfruje
+  demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls backup"]` (szyfruje
   sekrety certyfikatem z repo do `environments/prod/secrets/`: brakujące klucze `init-env.sh` z losowymi wartościami,
-  Brevo SMTP i certyfikat Origin CA czytane z terminala bez echa, błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
+  Brevo SMTP, certyfikat Origin CA oraz hasło restic i klucz S3 kopii zapasowych (`shop-backup`) czytane z terminala bez
+  echa (hasło restic dwa razy, różne wartości to błąd), każdy z nich tylko raz, błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
   (zakresy Cloudflare w `ipAllowList` produkcji). Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki
   runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone
   „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset i deploy key, backup VPS-a)
@@ -47,7 +50,12 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   jako `CLIENT_IP_HEADER` tylko w api i sklepie, w `prod` `CF-Connecting-IP` przy `ipAllowList` na każdym ingressie,
   w `ci` brak; `clientIpHeader` bez `ipAllowList` i bez `clientIpHeaderWithoutAllowList: true` oraz to potwierdzenie
   razem z `image.requireDigests` kończą render błędem) oraz testy
-  skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker`. Sprawdza też: render `prod` z plikiem
+  skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker` oraz skryptu kopii `backup.sh` na atrapach
+  `pg_dump`, `psql`, `rclone` i `restic` (błąd każdego narzędzia kończy go błędem i nie robi snapshotu; tag, host i
+  manifest snapshotu; `forget --keep-within`). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
+  i historii), PVC `backup-work`, token API tylko w kontenerze identyfikatora klastra (bez sekretu), sekret `shop-backup`
+  tylko w kontenerze restic (z hasłem repozytorium zawsze razem z adresem), obrazy z digestem; schemat: `backup.enabled`
+  bez `backup.repository` albo `backup.secretName` kończy render błędem z nazwą wartości. Sprawdza też: render `prod` z plikiem
   digestów jak z `deploy-images` (bez `--set`; plik bez digestu albo z `latest` nie renderuje się), manifesty Argo CD
   (`kubeconform`; testy: jedno źródło `shop` na gałęzi `deploy-images`, kolejność fal `sealed-secrets`, `secrets`, `shop`),
   sekrety zaszyfrowane (po dodaniu certyfikatu `environments/prod/sealed-secrets.pem` każdy klucz z `init-env.sh` ma

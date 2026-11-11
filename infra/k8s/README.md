@@ -103,20 +103,28 @@ Wymaga certyfikatu w repo (2.5).
 1. **agent** – `make -C infra/k8s seal-secrets WHAT=shop`: klucze z `infra/scripts/init-env.sh` z losowymi wartościami do
    `infra/k8s/environments/prod/secrets/shop-secrets.yaml`. Istniejących kluczy nie zmienia (wartości są już w bazach).
 2. **użytkownik** – w Brevo (SMTP & API) tworzy klucz SMTP; w Cloudflare (SSL/TLS → Origin Server) wystawia certyfikat Origin CA
-   dla `<domena>` i `*.<domena>` (PEM certyfikatu i klucza).
-3. **użytkownik** – wpisuje wartości w terminalu (bez echa, nigdy w argumentach, zmiennych ani rozmowie z agentem):
+   dla `<domena>` i `*.<domena>` (PEM certyfikatu i klucza). Na koncie Cloudflare zakłada bucket R2 na kopie zapasowe i token
+   API R2 z dostępem tylko do tego bucketu (klucz i sekret S3); wymyśla hasło repozytorium restic i zapisuje je w menedżerze
+   haseł (poza serwerem: bez niego kopie są nie do odczytania, także po utracie klucza Sealed Secrets).
+3. **agent** – wpisuje adres repozytorium (`s3:https://<id konta>.r2.cloudflarestorage.com/<bucket>`, id konta podaje
+   użytkownik) w `backup.repository` i region `auto` w `environments/prod/values.yaml` (PR).
+4. **użytkownik** – wpisuje wartości w terminalu (bez echa, nigdy w argumentach, zmiennych ani rozmowie z agentem):
 
    ```sh
-   make -C infra/k8s seal-secrets WHAT="brevo tls"
+   make -C infra/k8s seal-secrets WHAT="brevo tls backup"
    ```
 
-   Login i klucz SMTP Brevo, potem certyfikat i klucz Origin CA wklejone w całości (do wiersza `END`). Plik już istniejący nie
-   jest ponownie pytany ani zmieniany. Błąd (pusta wartość, zły PEM, nieudany `kubeseal`) niczego nie zapisuje.
-4. **agent** – PR z plikami z `environments/prod/secrets/` (są zaszyfrowane, bezpieczne do commitu); `make -C infra/k8s check`
+   Login i klucz SMTP Brevo, certyfikat i klucz Origin CA wklejone w całości (do wiersza `END`), potem hasło restic (dwa razy: różne
+   wartości to błąd), klucz i sekret S3 bucketu kopii. Plik już istniejący nie jest ponownie pytany ani zmieniany (nowe hasło restic uczyniłoby
+   dotychczasowe kopie nieczytelnymi). Błąd (pusta wartość, zły PEM, nieudany `kubeseal`) niczego nie zapisuje.
+5. **agent** – PR z plikami z `environments/prod/secrets/` (są zaszyfrowane, bezpieczne do commitu); `make -C infra/k8s check`
    wymaga od tego momentu zaszyfrowanej wartości dla każdego klucza `init-env.sh`. Merge robi **użytkownik**.
 
 Nowy sekret w przyszłości: klucz w `infra/scripts/init-env.sh`, szablon sekretu chartu i `make -C infra/k8s seal-secrets WHAT=shop`
 w tym samym PR.
+
+Po pierwszym wdrożeniu z kopiami **agent** sprawdza następnego dnia `make -C infra/k8s status HOST=<user>@<adres>`: Job `backup-<id>`
+z CronJoba `backup` jest `Complete`, a jego log kończy się wierszem `backup: done`. Przed pierwszą udaną kopią repozytorium nie istnieje: pierwsza kopia zakłada je sama.
 
 ## 4. Cloudflare i poczta
 
@@ -134,7 +142,7 @@ Wszystko **użytkownik**.
 
 ## 5. Pierwsze wdrożenie
 
-1. Po merge'ach z 2.5 i 3.4 workflow publikuje snapshot `deploy-images`, a Argo CD synchronizuje `root`, `sealed-secrets`,
+1. Po merge'ach z 2.5 i 3.5 workflow publikuje snapshot `deploy-images`, a Argo CD synchronizuje `root`, `sealed-secrets`,
    `secrets` i `shop` (fale: kontroler, sekrety, sklep). Pierwsza synchronizacja na pustym klastrze trwa kilkanaście minut
    (Elasticsearch, migracje, wczytanie danych demo).
 2. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`/`Healthy`, pody `Running`, Joby `Complete`.
@@ -150,8 +158,8 @@ Wszystko **użytkownik**.
    Wypisuje, co zrobi, i działa dopiero po słowie `tak`. Zakłada użytkownika z rolą `admin` bez hasła i wysyła mu e-mail
    (Brevo) z akcjami „ustaw hasło” i „skonfiguruj TOTP” (link ważny 12 h). Hasło i TOTP ustawia **użytkownik** w
    przeglądarce.
-4. **użytkownik** – włącza automatyczny backup VPS-a w panelu OVH. To jedyna kopia do czasu DEPLOY-OPS (#178); prawdziwe dane i
-   publiczny sklep dopiero po nim.
+4. **użytkownik** – włącza automatyczny backup VPS-a w panelu OVH. To dodatkowa kopia całego serwera (obok nocnych kopii
+   restic w R2: dane sklepu i obrazy produktów); prawdziwe dane i publiczny sklep dopiero po obu.
 5. **zgoda użytkownika** – weryfikacja originu (`docs/features/hardening/spec.md`, „Weryfikacja originu na serwerze”):
    limity API liczą się po `CF-Connecting-IP`, któremu można ufać tylko wtedy, gdy nic poza Cloudflare nie dociera do
    originu. Agent opisuje żądania i po zgodzie wysyła je z komputera spoza Cloudflare (`<IP>` – adres serwera):

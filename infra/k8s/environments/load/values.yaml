@@ -34,4 +34,5 @@ resources:
   admin: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 128Mi } }
   imgproxy: { requests: { cpu: 250m, memory: 256Mi }, limits: { memory: 1Gi } }
   varnish: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
+  backup: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
   job: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }

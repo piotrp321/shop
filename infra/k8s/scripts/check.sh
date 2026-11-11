@@ -93,6 +93,16 @@ do_schema() {
     expect_failure "customerAccounts that is not a boolean" "/customerAccounts" $prod --set image.tag=$rev $digests \
       --set-string customerAccounts=false
     expect_failure "demoNotice that is not a boolean" "/demoNotice" $prod --set image.tag=$rev $digests --set-string demoNotice=true
+    # The backup (docs/features/deploy-ops/spec.md, O2): enabled, it needs the repository and the name of the Secret with its keys.
+    expect_failure "backup without the repository" "/backup/repository" $prod --set image.tag=$rev $digests --set backup.repository=
+    expect_failure "backup without the name of its secret" "/backup/secretName" $prod --set image.tag=$rev $digests --set backup.secretName=
+    expect_failure "backup without the repository (ci)" "/backup/repository" -f environments/ci/values.yaml --set image.tag=$rev \
+      --set backup.repository=
+    expect_failure "backup secret created without one key" "backup.secretValues.RESTIC_PASSWORD" -f environments/ci/values.yaml \
+      --set image.tag=$rev --set backup.secretValues.RESTIC_PASSWORD=
+    expect_failure "backup retention that restic does not read" "/backup/retention" $prod --set image.tag=$rev $digests \
+      --set backup.retention=week
+    expect_failure "backup that is not a boolean" "/backup/enabled" $prod --set image.tag=$rev $digests --set-string backup.enabled=true
     # D3 (docs/features/hardening/spec.md): the header of the client address is trusted only behind the allow list,
     # and going without it is a confirmed choice that no deployment with the images of a release may make.
     expect_failure "clientIpHeader without ipAllowList and without the confirmation" "/clientIpHeaderWithoutAllowList" \

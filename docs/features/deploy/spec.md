@@ -4,8 +4,9 @@ Pierwsze wdrożenie sklepu i panelu poza komputerem dewelopera: jeden serwer, je
 GitOps przez Argo CD. Na start działa jako demonstracja (sklep publiczny z informacją o symulowanych płatnościach,
 `noindex`, panel za Cloudflare Access, rejestracja wyłączona, potwierdzenia zamówień nie wychodzą na zewnątrz). Te
 ograniczenia są wartościami konfiguracji, więc przejście na publiczny sklep nie wymaga przebudowy obrazów ani
-architektury. Kopie zapasowe i monitoring są w DEPLOY-OPS (#178), które musi być skończone przed przełączeniem na
-publiczny sklep albo przed pierwszymi prawdziwymi danymi.
+architektury. Nocne kopie zapasowe są częścią chartu (sekcja „Kopie zapasowe”); ich weryfikacja, odtwarzanie
+i monitoring to dalsze zadania DEPLOY-OPS (#178), które musi być skończone przed przełączeniem na publiczny sklep albo
+przed pierwszymi prawdziwymi danymi.
 
 Issues: #175
 Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.github/workflows/ci.yml`, `.github/scripts`, `.gitignore`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.dockerignore`, `apps/api/bin`, `apps/store/Dockerfile`, `apps/store/.dockerignore`, `apps/store/next.config.ts`, `apps/store/app/layout.tsx`, `apps/store/app/api/site`, `apps/store/src/api/client.ts`, `apps/store/src/components`, `apps/store/src/account`, `apps/admin/Dockerfile`, `apps/admin/.dockerignore`, `apps/admin/docker`, `apps/admin/index.html`, `apps/admin/public`, `apps/admin/src/auth`, `apps/admin/src/api/client.ts`, `apps/admin/src/config`, `Makefile`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `apps/admin/CLAUDE.md`, `docs/vision.md`, `docs/adr`, `tools/rulesets`
@@ -32,7 +33,7 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 
 ## Poza zakresem
 
-- Kopie zapasowe (restic, weryfikacja, odtwarzanie), Grafana Alloy i alerty – DEPLOY-OPS (#178). Tu tylko włączenie
+- Weryfikacja kopii, odtwarzanie, Grafana Alloy i alerty – DEPLOY-OPS (#178). Tu nocna kopia (restic) i włączenie
   backupu VPS-a od OVH (runbook).
 - Osobne środowiska demo i produkcji, wiele węzłów, autoskalowanie, Rancher, własny Prometheus i Loki.
 - Tryb publicznego demo (nocny reset danych, publiczne konta demo, limity uploadów) – #179.
@@ -293,8 +294,29 @@ w chartcie w tym samym PR.
 
 ## Kopie zapasowe
 
-Tu tylko automatyczny backup VPS-a od OVH (runbook: włączenie). Kopie baz i obiektów poza serwerem,
-weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
+Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2); decyzja: `docs/adr/backups-observability.md`.
+
+- CronJob `backup` (wartości `backup.*`, `enabled: true` w `prod` i `ci`) robi codziennie o 03:00 (`Europe/Warsaw`) jedną
+  kopię: `pg_dump` baz `shop` i `keycloak` (format custom, `--no-owner --no-privileges`, użytkownik `postgres`), lustro
+  bucketu `product-images` z Garage (`rclone sync`, klucz S3 sklepu) i `manifest.json` (rewizja, czas, identyfikator
+  klastra, wersje migracji Doctrine z bazy `shop`, liczba i rozmiar obiektów). Całość trafia jako jeden snapshot (tag
+  `nightly`, host równy identyfikatorowi klastra) do zaszyfrowanego repozytorium restic w S3 (Cloudflare R2 w `prod`);
+  repozytorium zakłada się samo przy pierwszej kopii, a `restic forget --keep-within 7d --prune` przycina tylko
+  snapshoty tego klastra (nowy serwer po awarii nie usuwa kopii starego).
+- Pod ma kontenery po kolei na PVC `backup-work` (`storage.backupWork`, 25 Gi: lustro obiektów i cache restic): `cluster-id`
+  (UID przestrzeni `kube-system`; jedyny z tokenem API, ClusterRole z samym `get` na `namespaces/kube-system`, bez
+  sekretu), `dump`, `objects` i `backup` (restic; jedyny z sekretem `shop-backup`, bez tokenu). Błąd dowolnego kroku
+  przed `restic backup` kończy Job i nie zostawia snapshotu. `concurrencyPolicy: Forbid`, `startingDeadlineSeconds: 3600`,
+  `backoffLimit: 1`, `activeDeadlineSeconds: 7200`.
+- Repozytorium i region to wartości (`backup.repository`, `backup.s3Region`); `backup.enabled` bez repozytorium albo
+  `backup.secretName` kończy render błędem. Sekret `shop-backup` (`RESTIC_PASSWORD`, `BACKUP_S3_ACCESS_KEY_ID`,
+  `BACKUP_S3_SECRET_ACCESS_KEY`) tworzy w `prod` jednorazowo `make -C infra/k8s seal-secrets WHAT=backup`; w profilu `ci`
+  chart renderuje go z `backup.secretValues`. Hasło restic użytkownik trzyma też poza serwerem: bez niego kopie są nie do
+  odczytania, także po utracie klucza Sealed Secrets.
+- Obrazy `restic/restic` i `rclone/rclone` są w `images.*` z tagiem i digestem (bez odpowiednika w compose, który się nie
+  zmienia). Smoke test uruchamia kopię na osobnej instancji S3 (przestrzeń `smoke-backup`) i sprawdza snapshot.
+- Automatyczny backup VPS-a od OVH (runbook: włączenie) zostaje dodatkową kopią całego serwera. Weryfikacja kopii,
+  odtwarzanie i alerty są w DEPLOY-OPS (#178).
 
 ## Sekrety
 
@@ -453,5 +475,7 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   checkout gościa bez limitów pozwala blokować stany fikcyjnymi zamówieniami; rate limiting jest w osobnym
   zgłoszeniu.
 - **Klucz Sealed Secrets** jest jedyną rzeczą, której nie da się odtworzyć z repo; trzyma go użytkownik.
-- **Brak kopii poza serwerem do czasu DEPLOY-OPS.** Dane da się odtworzyć z seedów, a backup VPS-a od OVH działa od
-  pierwszego dnia; prawdziwe dane i publiczny start dopiero po DEPLOY-OPS.
+- **Kopie bez weryfikacji i odtworzenia do czasu reszty DEPLOY-OPS.** Nocna kopia do R2 jest, ale nikt jej jeszcze nie
+  weryfikuje ani nie ćwiczył odtworzenia; dane da się odtworzyć z seedów, a backup VPS-a od OVH działa od pierwszego dnia.
+  Prawdziwe dane i publiczny start dopiero po DEPLOY-OPS. Klucz R2 w klastrze pozwala usunąć kopie (token tylko do jednego
+  bucketu; kopie niezmienne poza zakresem demo).

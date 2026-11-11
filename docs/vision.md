@@ -327,13 +327,15 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
   wczytuje idempotentny Job.
 - **Brzeg sieci**: Cloudflare (proxy, „Full (strict)” z certyfikatem Origin CA, cache obrazów z imgproxy, Access przed
   panelem); serwer przyjmuje HTTP(S) tylko od Cloudflare.
+- **Kopie zapasowe**: codzienna, szyfrowana (restic) kopia baz PostgreSQL i obiektów Garage do bucketu Cloudflare R2,
+  poza serwerem; retencja 7 dni; hasło restic u właściciela.
 - **Poczta**: Brevo SMTP dla Keycloaka i (za przełącznikiem) potwierdzeń zamówień; SPF, DKIM, DMARC w Cloudflare.
 - **Świadomie bez Ranchera**: przy jednym klastrze to narzut bez korzyści.
 
 Kolejne kroki, osobne zgłoszenia:
 
-- **DEPLOY-OPS** (#178): kopie zapasowe poza serwerem, ich weryfikacja i odtwarzanie, monitoring. Obserwowalność przez
-  Grafana Cloud (darmowy plan) – metryki, logi i trace'y przez agenta Grafana Alloy w klastrze, bez własnego Prometheusa
+- **DEPLOY-OPS** (#178): weryfikacja kopii zapasowych i ich odtwarzanie, monitoring (nocna kopia do Cloudflare R2 już jest).
+  Obserwowalność przez Grafana Cloud (darmowy plan) – metryki, logi i trace'y przez agenta Grafana Alloy w klastrze, bez własnego Prometheusa
   i Lokiego. Musi być skończone przed przełączeniem na publiczny sklep albo przed pierwszymi prawdziwymi danymi.
 - **Tryb publicznego demo** (#179): dane resetowane co noc z danych demo, konta demo podane na stronie logowania, limity
   uploadów.
