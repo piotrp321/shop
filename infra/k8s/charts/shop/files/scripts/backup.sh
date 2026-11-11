@@ -27,7 +27,7 @@ databases="shop keycloak"
 bucket=product-images
 
 fail() {
-  echo "backup: $*" >&2
+  printf '%s\n' "backup: $*" >&2
   exit 1
 }
 
@@ -88,14 +88,14 @@ write_manifest() {
   migrations="$(sed '/^$/d' "$work/meta/migrations" | while IFS= read -r version; do printf '%s,' "$(json_string "$version")"; done)"
   databases_json="$(for database in $databases; do printf '%s,' "$(json_string "$database")"; done)"
   {
-    echo "{"
-    echo "  \"revision\": $(json_string "$REVISION"),"
-    echo "  \"time\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
-    echo "  \"cluster\": $(json_string "$host"),"
-    echo "  \"databases\": [${databases_json%,}],"
-    echo "  \"migrations\": [${migrations%,}],"
-    echo "  \"objects\": {\"count\": $count, \"bytes\": $bytes}"
-    echo "}"
+    printf '%s\n' "{"
+    printf '%s\n' "  \"revision\": $(json_string "$REVISION"),"
+    printf '%s\n' "  \"time\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+    printf '%s\n' "  \"cluster\": $(json_string "$host"),"
+    printf '%s\n' "  \"databases\": [${databases_json%,}],"
+    printf '%s\n' "  \"migrations\": [${migrations%,}],"
+    printf '%s\n' "  \"objects\": {\"count\": $count, \"bytes\": $bytes}"
+    printf '%s\n' "}"
   } > "$work/manifest.json.partial"
   mv "$work/manifest.json.partial" "$work/manifest.json"
 }
