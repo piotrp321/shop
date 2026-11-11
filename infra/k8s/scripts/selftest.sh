@@ -24,6 +24,11 @@ fresh_copy() {
   # The tests compare the browser image of the smoke test with the image of the E2E tests.
   mkdir -p "$base/tree/e2e"
   cp "$TOOLS_REPO/e2e/Dockerfile" "$base/tree/e2e/Dockerfile"
+  # The step shellcheck reads the scripts of the load measurement (load/k6.sh and load/smoke.sh are sourced by the scripts of infra/k8s).
+  cp -R "$TOOLS_REPO/load" "$base/tree/load"
+  # The tests of the load files read the Makefile and its fragments.
+  cp "$TOOLS_REPO/Makefile" "$base/tree/Makefile"
+  cp -R "$TOOLS_REPO/make" "$base/tree/make"
   # actionlint checks the workflows.
   mkdir -p "$base/tree/.github"
   cp -R "$TOOLS_REPO/.github/workflows" "$base/tree/.github/workflows"
@@ -162,6 +167,13 @@ bootstrap_accepts_only_a_secret_backup() { replace infra/k8s/scripts/server-boot
 bootstrap_applies_root_whatever_the_certificate() { replace infra/k8s/scripts/server-bootstrap.sh 'if [ -f "$payload/sealed-secrets.pem" ] && ! cmp' 'if false && ! cmp'; }
 # The rule *.pem without the exception for the certificate: it could not be committed.
 certificate_ignored_by_git() { replace .gitignore '!infra/k8s/environments/prod/sealed-secrets.pem' '# no exception'; }
+# The backup (docs/features/deploy-ops/spec.md): a repository without its password, a CronJob that may run twice at once, a
+# script that goes on after an error, an access error taken for a missing repository, the backup password asked for twice.
+backup_repository_without_password() { replace infra/k8s/charts/shop/templates/backup.yaml '- name: RESTIC_PASSWORD' '- name: RESTIC_PASSWORD_UNUSED'; }
+backup_cronjob_without_forbid() { replace infra/k8s/charts/shop/templates/backup.yaml 'concurrencyPolicy: Forbid' 'concurrencyPolicy: Allow'; }
+backup_script_ignores_errors() { replace infra/k8s/charts/shop/files/scripts/backup.sh 'set -eu' 'set -u'; }
+backup_inits_after_any_error() { replace infra/k8s/charts/shop/files/scripts/backup.sh '    10)' '    10 | 1)'; }
+seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
 nothing_broken() { :; }
 
@@ -212,6 +224,11 @@ run_case "Argo CD without the health of applications" "test_the_root_waits_for_t
 run_case "bootstrap never restarting k3s" "FAIL restart" bootstrap_never_restarts_k3s
 run_case "bootstrap accepting only a plain Secret backup" "FAIL list backup" bootstrap_accepts_only_a_secret_backup
 run_case "bootstrap applying root whatever the certificate" "FAIL other cert" bootstrap_applies_root_whatever_the_certificate
+run_case "backup repository without its password" "test_the_repository_always_comes_with_its_password" backup_repository_without_password
+run_case "backup CronJob without concurrencyPolicy Forbid" "test_it_runs_every_night_at_three_in_warsaw_and_never_twice_at_once" backup_cronjob_without_forbid
+run_case "backup script that goes on after an error" "test_the_script_is_posix_sh_and_stops_at_the_first_error" backup_script_ignores_errors
+run_case "backup initializing a repository after any error" "test_another_error_of_access_is_an_error_and_not_an_init" backup_inits_after_any_error
+run_case "seal-secrets looking for the existing backup secret in another file (it asks for the password again)" "test_the_backup_is_created_once_then_nothing_is_asked" seal_secrets_looks_for_the_backup_in_another_file
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then
