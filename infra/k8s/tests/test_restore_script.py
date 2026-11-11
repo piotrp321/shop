@@ -163,6 +163,9 @@ elif verb == "delete":
     save()
 elif verb == "logs":
     name = rest[1].split("/", 1)[1]
+    # A failed stage leaves the later containers of the pod never started: kubectl logs --all-containers then fails on them.
+    if "--all-containers" in rest and state["jobs"][name]["state"] == "Failed" and name.startswith("restore-"):
+        fail(f'Error from server (BadRequest): container "redis" in pod "{name}-x1" is waiting to start: PodInitializing')
     print(state["jobs"][name]["log"], end="")
 elif verb == "scale":
     state["deployments"][rest[2]] = int(option("--replicas"))

@@ -63,6 +63,9 @@ exec 3<&0 < /dev/null
 
 stamp="$(date -u +%Y%m%d%H%M%S)"
 deployments="api worker store keycloak"
+# The containers of the pods of the CronJobs restore and backup, in the order they run.
+restore_containers="migrations restic databases objects redis rabbitmq api"
+backup_containers="cluster-id dump objects backup"
 cronjobs="cart-purge-expired backup"
 step=0
 pre_restore_snapshot=""
@@ -143,7 +146,8 @@ job_purge_caches="$(version_job purge-caches)"
 check_job="restore-check-$stamp"
 cronjob_job restore "$check_job" RESTORE_MODE=check "RESTORE_SNAPSHOT=$snapshot" || refuse "cannot create the Job of the check from the CronJob restore"
 if ! wait_job "$check_job"; then
-  log="$(job_log "$check_job")"
+  # shellcheck disable=SC2086 # a list of names
+  log="$(job_logs "$check_job" $restore_containers)"
   kubectl -n "$namespace" delete job "$check_job" --wait=true > /dev/null || echo "restore: could not delete the Job $check_job" >&2
   printf '%s\n' "$log" >&2
   refuse "the snapshot $snapshot cannot be restored on the deployed version (the check above)"
@@ -184,7 +188,8 @@ if [ "$pre_restore" != skip ]; then
   echo "restore: the backup pre-restore (Job $backup_job)"
   cronjob_job backup "$backup_job" BACKUP_TAG=pre-restore || refuse "cannot create the Job of the backup pre-restore (PRE_RESTORE=skip goes on without it)"
   if ! wait_job "$backup_job"; then
-    job_log "$backup_job" >&2
+    # shellcheck disable=SC2086 # a list of names
+    job_logs "$backup_job" $backup_containers >&2
     refuse "the backup pre-restore failed (PRE_RESTORE=skip goes on without it)"
   fi
   pre_restore_snapshot="$(job_log "$backup_job" --container=backup | sed -n 's/^snapshot \([0-9a-f]*\) saved$/\1/p' | tail -n 1)"
@@ -240,7 +245,8 @@ run_job="restore-run-$stamp"
 echo "restore: the data of the snapshot $snapshot (Job $run_job)"
 cronjob_job restore "$run_job" RESTORE_MODE=restore "RESTORE_SNAPSHOT=$snapshot"
 if ! wait_job "$run_job"; then
-  job_log "$run_job" >&2
+  # shellcheck disable=SC2086 # a list of names
+  job_logs "$run_job" $restore_containers >&2
   exit 1
 fi
 
@@ -263,7 +269,8 @@ step_name="the search index (catalog:reindex)"
 reindex_job="restore-reindex-$stamp"
 echo "restore: the search index (Job $reindex_job)"
 cronjob_job restore "$reindex_job" RESTORE_MODE=reindex
-wait_job "$reindex_job" || { job_log "$reindex_job" >&2; exit 1; }
+# shellcheck disable=SC2086 # a list of names
+wait_job "$reindex_job" || { job_logs "$reindex_job" $restore_containers >&2; exit 1; }
 
 step_name="api, worker, store and the CronJobs back"
 for deployment in api worker store; do

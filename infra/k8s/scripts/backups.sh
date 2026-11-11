@@ -34,7 +34,7 @@ wait_job "$job" || status=$?
 if [ "$status" -eq 0 ]; then
   kubectl -n "$namespace" logs "job/$job" --container=restic
 else
-  kubectl -n "$namespace" logs "job/$job" --all-containers >&2 || echo "backups: no log of the Job $job" >&2
+  job_logs "$job" migrations restic databases objects redis rabbitmq api >&2
 fi
 kubectl -n "$namespace" delete job "$job" --wait=true > /dev/null || { echo "backups: could not delete the Job $job" >&2; status=1; }
 exit "$status"

@@ -7,6 +7,9 @@
 #   cronjob_job <cronjob> <job> [VAR=value...]
 #                                          creates the Job <job> from the template of a CronJob (kubectl create job --from,
 #                                          the variables set in every container by kubectl set env --local); no other object
+#   job_logs <job> <container>...          the logs of the containers of its pod that ran, in this order, each line prefixed
+#                                          with [<container>] (kubectl logs --all-containers fails on a container that never
+#                                          started, which a failed stage of a sequence of init containers leaves)
 #   wait_job <job>                         waits until the Job completes (status 0) or fails (status 1), at most its
 #                                          activeDeadlineSeconds (after it Kubernetes fails the Job anyway)
 #
@@ -43,6 +46,16 @@ cronjob_job() {
     [ -z "$cronjob_changed" ] || cronjob_manifest="$cronjob_changed"
   fi
   printf '%s' "$cronjob_manifest" | kubectl -n "$namespace" create -f - > /dev/null
+}
+
+job_logs() {
+  job_logs_job="$1"
+  shift
+  for job_logs_container in "$@"; do
+    if job_logs_output="$(kubectl -n "$namespace" logs "job/$job_logs_job" "--container=$job_logs_container" 2>/dev/null)"; then
+      [ -z "$job_logs_output" ] || printf '%s\n' "$job_logs_output" | tail -n 40 | sed "s/^/[$job_logs_container] /"
+    fi
+  done
 }
 
 # job_state: a Job (JSON) on the standard input; prints its state (Complete, Failed or Running) and its activeDeadlineSeconds.
