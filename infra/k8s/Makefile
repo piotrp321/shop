@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke load rerun create-admin seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
+.PHONY: check selftest smoke load rerun create-admin restore backups seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). Needs Docker, and git for that last step.
@@ -15,14 +15,18 @@ check:
 # deploy.yml missing, a backup repository without its password, the backup CronJob without concurrencyPolicy Forbid, the
 # backup script that goes on after an error or takes any access error for a missing repository, the verification of the
 # backups that goes on after an error, takes a snapshot of any age, runs a temporary Postgres that is not a sidecar or
-# reaches the production Postgres, runs restic without CA certificates, or seal-secrets that asks for the backup password again).
+# reaches the production Postgres, runs restic without CA certificates, seal-secrets that asks for the backup password again, or restore
+# going on without tak).
 selftest:
 	sh scripts/selftest.sh
 
 # The smoke test on an empty k3d cluster with the production images built here (a few minutes; the first run pulls
 # the images of the services). After create-admin it makes a backup: a Garage of its own in the namespace smoke-backup holds the
 # restic repository, a Job from the CronJob backup runs, and the snapshot nightly (both dumps, the objects, the manifest) is
-# checked; the time of that phase is printed. SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
+# checked; the time of that phase is printed. Then the restore on an empty cluster: the namespace shop is deleted with its volumes,
+# the chart installed again and make restore brings the snapshot back (checked: the administrator, the customer, the numbers of
+# products and orders, an image, the search, the snapshot pre-restore), and refuses a snapshot newer than the code; the later
+# phases run on the restored cluster. SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
 smoke:
 	sh scripts/smoke.sh
 
@@ -47,6 +51,21 @@ rerun:
 # KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
 create-admin:
 	sh scripts/create-admin.sh "$(LOGIN)" "$(EMAIL)"
+
+# Restores a snapshot of the backups (docs/features/deploy-ops/spec.md, O4): make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip].
+# SNAPSHOT is an identifier from make backups (never latest). Refuses without changes when a Job of the namespace is active, Argo CD
+# is synchronizing shop, or the snapshot has a migration that the deployed code does not know; says what it will do and asks for
+# the word tak; makes a backup pre-restore first (its failure stops it without changes; PRE_RESTORE=skip makes none), stops
+# Argo CD (root, then shop), the CronJobs and api, worker, store and keycloak, restores the data, runs migrate, keycloak-config,
+# the reindex and purge-caches again and brings everything back. A failure leaves the applications off and says at which step
+# and which pre-restore snapshot (infra/k8s/README.md). KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
+restore:
+	SNAPSHOT="$(SNAPSHOT)" PRE_RESTORE="$(PRE_RESTORE)" sh scripts/restore.sh
+
+# The snapshots of the repository of the backups (identifier, time, host, tags, revision), the oldest first; only reads:
+# make -C infra/k8s backups. KUBE_DIR (required), KUBE_NETWORK and KUBE_NAMESPACE as for rerun.
+backups:
+	sh scripts/backups.sh
 
 # Encrypts the secrets of the environment with the certificate of the controller (environments/prod/sealed-secrets.pem) into
 # environments/prod/secrets: make -C infra/k8s seal-secrets [WHAT="shop brevo tls backup"]. shop: the missing keys of

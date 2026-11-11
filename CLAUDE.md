@@ -47,8 +47,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc). Główny
     `make check` woła też `make -C infra/k8s check` (co sprawdza: `infra/k8s/CLAUDE.md`).
   - `infra/k8s` ma własny `Makefile`: test dymny, pomiar obciążenia, Joby i cele serwera (opis: `infra/k8s/CLAUDE.md`).
-    Agent wykonuje operacje na serwerze wyłącznie tymi celami. `create-admin` uruchamia tylko po zgodzie
-    użytkownika w rozmowie. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po
+    Agent wykonuje operacje na serwerze wyłącznie tymi celami. `create-admin` i `restore` uruchamia tylko po
+    zgodzie użytkownika w rozmowie. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po
     zgodzie w rozmowie, a oznaczone „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access,
     ruleset i deploy key, backup VPS-a) nie są jego decyzją ani czynnością.
 - `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.

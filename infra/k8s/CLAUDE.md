@@ -10,7 +10,12 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   sprawdza m.in. nagłówki bezpieczeństwa panelu i jego załadowanie w przeglądarce bez naruszeń CSP;
   `SMOKE_BREAK=migration|image` psuje go celowo; po `create-admin` robi kopię zapasową: osobna instancja S3 w przestrzeni
   `smoke-backup`, Job z CronJoba `backup`, snapshot `nightly` z dumpami obu baz, obiektem i manifestem, potem Job z CronJoba
-  `backup-verify` (profil `ci`: `verifyReadData: all`); wypisuje czas tej fazy, czas weryfikacji i zajęty dysk); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
+  `backup-verify` (profil `ci`: `verifyReadData: all`); wypisuje czas tej fazy, czas weryfikacji i zajęty dysk; potem
+  odtworzenie na pustym klastrze: `backups`, usunięcie przestrzeni `shop` z wolumenami, instalacja od nowa, `restore` snapshotu
+  `nightly` (bez Argo CD): administrator z `create-admin`, klient i jego logowanie, liczby produktów i zamówień jak przy kopii,
+  realmy bez zmian, obiekt w buckecie, zdjęcie przez imgproxy, produkt w wyszukiwarce po słowie, które ma tylko odtworzona
+  baza, strona główna, snapshot `pre-restore`; `restore` snapshotu z migracją nieznaną kodowi kończy się odmową bez pytania,
+  bez kopii `pre-restore` i bez zmian; wypisuje czas fazy i szczytowy dysk; dalsze fazy działają na odtworzonym klastrze); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
   obciążenia: klaster k3d z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `load`, dane demo, stany
   podniesione o 100 000 bezpośrednim SQL, rozgrzanie, przebieg rosnący do nasycenia z k6 (odczyt i koszyk) i przebieg
   stały na 70% nasycenia z checkoutem o ograniczonej równoległości, wyniki do `LOAD_OUT`; kilkadziesiąt minut, VM
@@ -20,14 +25,27 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   `make -C infra/k8s create-admin LOGIN=<login> EMAIL=<e-mail>` (pierwszy administrator panelu: wypisuje, co zrobi,
   i działa dopiero po słowie `tak`; zakłada użytkownika w realmie `backoffice` z rolą `admin` bez hasła i wysyła mu
   e-mail z akcjami `UPDATE_PASSWORD` i `CONFIGURE_TOTP`, link ważny 12 h; istniejący login albo e-mail: błąd, kod 3,
-  bez zmian; niczego tajnego nie wypisuje). `rerun` i `create-admin` łączą się z klastrem przez kubeconfig z `KUBE_DIR`
-  (wymagany), w kontenerze w sieci Dockera `KUBE_NETWORK` (domyślnie `host`), w przestrzeni `KUBE_NAMESPACE`
-  (domyślnie `shop`). Agent uruchamia `create-admin` tylko po zgodzie użytkownika w rozmowie.
+  bez zmian; niczego tajnego nie wypisuje); `make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip]` (odtworzenie
+  snapshotu kopii, `docs/features/deploy-ops/spec.md`, O4: bez `SNAPSHOT` (identyfikator z `backups`, nigdy `latest`), przy
+  aktywnym Jobie w przestrzeni, trwającej synchronizacji `shop` w Argo CD albo snapshocie z migracją spoza klas migracji
+  obrazu `api` odmawia bez zmian; wypisuje snapshot i skutki, działa dopiero po słowie `tak`; najpierw kopia `pre-restore`
+  (Job z CronJoba `backup`; jej błąd kończy bez zmian, `PRE_RESTORE=skip` ją pomija), potem wyłącza synchronizację `root`
+  i `shop` (merge patchem: przejdzie też bez `automated`), wstrzymuje `cart-purge-expired` i `backup`, czeka na Job, który
+  wystartował po pierwszym sprawdzeniu (`RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, domyślnie 7200 s; potem błąd bez zmiany
+  aplikacji), skaluje do zera `api`, `worker`, `store` i `keycloak`, Job z
+  CronJoba `restore` odtwarza dane, ponawia `migrate`, `keycloak-config` (jak `rerun`), reindeks i `purge-caches`, przywraca
+  repliki, CronJoby i synchronizację `root`; błąd po pierwszej zmianie zostawia aplikacje wyłączone i wypisuje krok oraz
+  snapshot `pre-restore`; kod 0, 1 odmowa albo błąd, 2 złe argumenty) i `make -C infra/k8s backups` (snapshoty repozytorium:
+  identyfikator, czas, host, tagi, rewizja; tylko odczyt). `rerun`, `create-admin`, `restore` i `backups` łączą się z
+  klastrem przez kubeconfig z `KUBE_DIR` (wymagany), w kontenerze w sieci Dockera `KUBE_NETWORK` (domyślnie `host`), w
+  przestrzeni `KUBE_NAMESPACE` (domyślnie `shop`). Agent uruchamia `create-admin` i `restore` tylko po zgodzie użytkownika
+  w rozmowie; `backups` sam.
   Serwer obsługują cele (po SSH, `HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `make -C infra/k8s bootstrap HOST=…
   [SEALED_KEY_FILE=<kopia klucza>]` (czysty Ubuntu 24.04: k3s w przypiętej wersji, ufw, aktualizacje bezpieczeństwa, Argo CD,
   Sealed Secrets, aplikacja `root`; idempotentny; bez roota albo na innym systemie kończy się błędem przed zmianami;
   zapisuje certyfikat kontrolera do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma, a rozbieżny
-  certyfikat to błąd), `kubeconfig HOST=… KUBE_DIR=…` (kubeconfig klastra poza repo, dla `rerun` i `create-admin`),
+  certyfikat to błąd), `kubeconfig HOST=… KUBE_DIR=…` (kubeconfig klastra poza repo, dla `rerun`, `create-admin`, `restore`
+  i `backups`),
   `status HOST=…` (tylko odczyt: aplikacje Argo, pody, Joby), `reinitialize HOST=…` (kasuje dane sklepu i wczytuje dane
   demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls backup"]` (szyfruje
   sekrety certyfikatem z repo do `environments/prod/secrets/`: brakujące klucze `init-env.sh` z losowymi wartościami,
@@ -56,12 +74,22 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   starszy niż 26 h albo brak snapshotu, błąd `restic check`, `n` w `--read-data-subset=n/7` z `date +%u` i `--read-data`
   przy `verifyReadData: all`, dumpy strumieniem z `restic dump` do `pg_restore`, błąd `pg_restore` albo `restic dump`,
   pusta tabela migracji, brak realmu `shop` albo `backoffice`, liczba obiektów inna niż w manifeście: błąd z opisem,
-  zdrowy przypadek przechodzi). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
+  zdrowy przypadek przechodzi) oraz skryptu poda odtworzenia `restore-job.sh` na atrapach `restic`, `psql`, `pg_restore`, `rclone`,
+  `redis-cli`, `rabbitmqadmin` i `bin/console` (tryby `list`, `check`, `restore`, `reindex`; snapshot z migracją spoza klas
+  migracji obrazu `api` odrzucony przed odtworzeniem; kolejność `DROP`/`CREATE`/`pg_restore` z rolą właściciela; błąd każdego
+  narzędzia kończy etap błędem), skryptów `restore.sh`, `backups.sh` i `rerun.sh` na atrapie `docker` grającej klaster dla
+  `kubectl` (bez `tak`, bez `SNAPSHOT`, przy aktywnym Jobie, trwającej synchronizacji `shop` i snapshocie nowszym niż kod
+  nic się nie zmienia; nieudana kopia `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; kolejność kroków z Argo CD
+  (`root`, potem `shop`, na końcu `root`) i bez niego (zapamiętane repliki); błąd Joba odtworzenia zostawia aplikacje
+  wyłączone i wypisuje krok oraz snapshot `pre-restore`; aplikacje bez `automated` w Argo CD; Job aktywny, który pojawił się po
+  pierwszym sprawdzeniu, jest czekany i po limicie kończy odtworzenie przed tym, co rusza dane; czekanie najwyżej `activeDeadlineSeconds` Joba). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
   i historii), PVC `backup-work`, token API tylko w kontenerze identyfikatora klastra (bez sekretu), sekret `shop-backup`
   tylko w kontenerze restic (z hasłem repozytorium zawsze razem z adresem), obrazy z digestem; CronJob
   `backup-verify` (05:00, limity jak `backup`, tymczasowy Postgres jako natywny sidecar na `emptyDir`, bez sekretów i
   połączeń produkcyjnej bazy, sekret `shop-backup` tylko w kontenerze skryptu, token tylko w identyfikatorze klastra,
-  `restic` jako wolumen obrazu z jego certyfikatami CA w `SSL_CERT_FILE`, `emptyDir` z limitem `storage.postgres`); schemat: `backup.enabled`
+  `restic` jako wolumen obrazu z jego certyfikatami CA w `SSL_CERT_FILE`, `emptyDir` z limitem `storage.postgres`); CronJob `restore` (`suspend: true`, `activeDeadlineSeconds: 10800`,
+  `backoffLimit: 0`, etapy w kontenerach obrazów narzędzi i `api` rewizji, tryb `list` domyślnie, bez tokenu API, sekret
+  `shop-backup` tylko w kontenerze restic, cache restic poza wolumenem `backup-work`); schemat: `backup.enabled`
   bez `backup.repository` albo `backup.secretName` oraz `backup.verifyReadData` inne niż `subset` i `all` kończą render błędem
   z nazwą wartości. Sprawdza też: render `prod` z plikiem
   digestów jak z `deploy-images` (bez `--set`; plik bez digestu albo z `latest` nie renderuje się), manifesty Argo CD

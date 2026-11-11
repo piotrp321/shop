@@ -12,6 +12,9 @@ the host is involved. Usage: python - <command> [argument]
                 and their credentials are those of the argument (the output of `users`), the customer logs in again
   admin-absent  <login> <email>: no user <login> in backoffice and no e-mail to <email> (create-admin without `tak`)
   admin-mail    <login> <email>: the user of create-admin and its one e-mail with the actions in Mailpit
+  restored      <login> <slug> <phrase>: after make restore on a reinstalled cluster: the administrator <login> of create-admin is
+                in backoffice, the customer of `basic` is there and logs in to the store, the home page lists products, imgproxy
+                serves an image, and the search finds the product <slug> by the <phrase> that only the restored database has
 
 Every failed check raises with a message that says what was expected; the exit code is then not zero.
 """
@@ -498,6 +501,27 @@ def check_order_mail():
     expect("Potwierdzenie zamówienia" in messages[0]["Subject"], f"Mailpit has the confirmation of the order {number}")
 
 
+def check_restored(login, slug, phrase):
+    token = admin_token()
+    users = backoffice_user(token, login)
+    expect(len(users) == 1 and users[0]["enabled"], f"the administrator {login} of create-admin is in the realm backoffice")
+    roles = [role["name"] for role in admin_get(f"/backoffice/users/{users[0]['id']}/role-mappings/realm", token)]
+    expect("admin" in roles, f"the administrator {login} has the role admin ({roles})")
+    customers = admin_get(f"/shop/users?username={urllib.parse.quote(CUSTOMER)}&exact=true", token)
+    expect(len(customers) == 1, f"the customer {CUSTOMER} of the backup is in the realm shop")
+    check_store_client_secret()
+    store_login()
+    check_api_and_store()
+    check_image()
+
+    def found():
+        status, _, text = through_ingress(f"/api/v1/products?q={urllib.parse.quote(phrase)}&perPage=5", "api")
+        return status == 200 and slug in [item["slug"] for item in json.loads(text)["items"]]
+
+    retry(f"the search finds {slug} by '{phrase}'", found)
+    expect(True, f"the search finds the product {slug} by '{phrase}', which only the restored database has (the index was rebuilt)")
+
+
 def canonical(value):
     """The value with every list in a fixed order: Keycloak returns sets (scopes, locales, ...) in no particular order."""
     if isinstance(value, dict):
@@ -566,6 +590,8 @@ def main():
         check_admin_absent(sys.argv[2], sys.argv[3])
     elif command == "admin-mail":
         check_admin_mail(sys.argv[2], sys.argv[3])
+    elif command == "restored":
+        check_restored(sys.argv[2], sys.argv[3], sys.argv[4])
     elif command == "compare":
         before = json.loads(sys.argv[2])
         after = snapshot()

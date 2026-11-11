@@ -1,0 +1,203 @@
+{{- /*
+The restore (docs/features/deploy-ops/spec.md, O4): a CronJob that never runs by itself (suspend: true). Its pod is the template of
+the Jobs that make -C infra/k8s restore and backups create from it (kubectl create job --from=cronjob/restore, the mode and the
+snapshot set by kubectl set env), so a restore runs the images and the secrets of the deployed revision. Every container runs a
+stage of files/scripts/restore-job.sh, which does nothing in the modes that do not need it:
+  migrations  (image api)      the list of the migration classes of the deployed code, into the emptyDir meta.
+  restic      (image restic)   list: the snapshots; check and restore: the manifest of the snapshot against that list (a newer
+                               snapshot is refused); restore: restic restore onto the volume backup-work. The only container
+                               with the secret shop-backup.
+  databases   (image postgres) restore: DROP and CREATE of shop and keycloak, pg_restore of the dumps.
+  objects     (image rclone)   restore: rclone sync of the objects back into the bucket product-images (what is not in the
+                               snapshot is deleted).
+  redis       (image redis)    restore: FLUSHALL (the sessions of the store).
+  rabbitmq    (image rabbitmq) restore: the queues purged (the messages from before the restore).
+  api         (image api)      reindex: catalog:reindex.
+No container has a token of the Kubernetes API.
+*/ -}}
+{{- /* The mode and the snapshot of every container: the template lists; make restore sets both in a Job. */ -}}
+{{- define "shop.restore.modeEnv" -}}
+- name: RESTORE_MODE
+  value: list
+- name: RESTORE_SNAPSHOT
+  value: ""
+{{- end }}
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: restore
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "restore") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "1" | nindent 4 }}
+spec:
+  # Never by itself: make -C infra/k8s restore and backups create its Jobs. The schedule is required, not used.
+  schedule: "0 0 1 1 *"
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # A failed restore is reported, never repeated: the script of make restore says where it stopped.
+      backoffLimit: 0
+      activeDeadlineSeconds: 10800
+      template:
+        metadata:
+          labels:
+            {{- include "shop.labels" (dict "root" . "name" "restore") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          initContainers:
+            - name: migrations
+              image: {{ include "shop.appImage" (dict "root" . "app" "api") }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["sh", "/scripts/restore-job.sh", "migrations"]
+              env:
+                {{- include "shop.restore.modeEnv" . | nindent 16 }}
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: meta
+                  mountPath: /meta
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+            - name: restic
+              image: {{ .Values.images.restic }}
+              command: ["sh", "/scripts/restore-job.sh", "restic"]
+              env:
+                {{- include "shop.restore.modeEnv" . | nindent 16 }}
+                {{- include "shop.resticRepositoryEnv" . | nindent 16 }}
+                - name: RESTIC_CACHE_DIR
+                  value: /meta/restic-cache
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+                - name: meta
+                  mountPath: /meta
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+            - name: databases
+              image: {{ .Values.images.postgres }}
+              command: ["sh", "/scripts/restore-job.sh", "databases"]
+              env:
+                {{- include "shop.restore.modeEnv" . | nindent 16 }}
+                - name: PGHOST
+                  value: postgres
+                - name: PGUSER
+                  value: postgres
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.name }}
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+            - name: objects
+              image: {{ .Values.images.rclone }}
+              command: ["sh", "/scripts/restore-job.sh", "objects"]
+              env:
+                {{- include "shop.restore.modeEnv" . | nindent 16 }}
+                # The remote `garage` of the script, as in the backup: the S3 API of Garage, the key of the shop.
+                - name: RCLONE_CONFIG_GARAGE_TYPE
+                  value: s3
+                - name: RCLONE_CONFIG_GARAGE_PROVIDER
+                  value: Other
+                - name: RCLONE_CONFIG_GARAGE_ENDPOINT
+                  value: http://garage:3900
+                - name: RCLONE_CONFIG_GARAGE_REGION
+                  value: garage
+                - name: RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.name }}
+                      key: GARAGE_ACCESS_KEY_ID
+                - name: RCLONE_CONFIG_GARAGE_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.name }}
+                      key: GARAGE_SECRET_ACCESS_KEY
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+            - name: redis
+              image: {{ .Values.images.redis }}
+              command: ["sh", "/scripts/restore-job.sh", "redis"]
+              env:
+                {{- include "shop.restore.modeEnv" . | nindent 16 }}
+                - name: REDIS_HOST
+                  value: redis
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+            - name: rabbitmq
+              image: {{ .Values.images.rabbitmq }}
+              command: ["sh", "/scripts/restore-job.sh", "rabbitmq"]
+              env:
+                {{- include "shop.restore.modeEnv" . | nindent 16 }}
+                # rabbitmqadmin (the client of the HTTP API of the management plugin) with the user of the shop.
+                - name: RABBITMQADMIN_TARGET_HOST
+                  value: rabbitmq
+                - name: RABBITMQADMIN_TARGET_PORT
+                  value: "15672"
+                - name: RABBITMQADMIN_TARGET_VHOST
+                  value: /
+                - name: RABBITMQADMIN_USERNAME
+                  value: shop
+                - name: RABBITMQADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.name }}
+                      key: RABBITMQ_DEFAULT_PASS
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+          containers:
+            - name: api
+              image: {{ include "shop.appImage" (dict "root" . "app" "api") }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["sh", "/scripts/restore-job.sh", "api"]
+              env:
+                {{- include "shop.restore.modeEnv" . | nindent 16 }}
+                {{- include "shop.apiEnv" . | nindent 16 }}
+              {{- include "shop.envFromSecret" . | nindent 14 }}
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "job") | nindent 16 }}
+          volumes:
+            - name: scripts
+              configMap:
+                name: shop-scripts
+            - name: work
+              persistentVolumeClaim:
+                claimName: backup-work
+            - name: meta
+              emptyDir: {}
+{{- end }}
