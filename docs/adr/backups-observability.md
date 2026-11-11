@@ -1,11 +1,13 @@
-# Kopie zapasowe poza serwerem (restic do Cloudflare R2)
+# Kopie zapasowe poza serwerem (restic do Cloudflare R2) i obserwowalność (Grafana Cloud)
 
 ## Kontekst
 
 Sklep działa na jednym serwerze (`docs/adr/k3s-argo-cd.md`): dane (bazy PostgreSQL `shop` i `keycloak`, obiekty Garage ze
 zdjęciami produktów) leżą na wolumenach tego serwera. Backup VPS-a od OVH jest tylko dodatkiem: leży u tego samego
 dostawcy, a jego przywrócenie cofa cały serwer. Potrzebna jest kopia danych sklepu poza serwerem, szyfrowana, tania i
-odtwarzalna na pustym klastrze. Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4).
+odtwarzalna na pustym klastrze. Logi i metryki klastra muszą być poza nim: serwer, który padł, nie opowie o sobie. Własny
+Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie pomagają przy jego awarii. Specyfikacja:
+`docs/features/deploy-ops/spec.md` (O1, O2, O3, O4, O5, O7).
 
 ## Decyzja
 
@@ -55,6 +57,28 @@ odtwarzalna na pustym klastrze. Specyfikacja: `docs/features/deploy-ops/spec.md`
 - **Dostęp: jeden sekret `shop-backup`** (`RESTIC_PASSWORD`, klucz i sekret S3), SealedSecret tworzony raz przez
   `make -C infra/k8s seal-secrets WHAT=backup`; adres repozytorium i region to wartości `environments/prod`.
 
+- **Obserwowalność: Grafana Cloud (darmowy plan, stos w UE, logi 14 dni) z Grafana Alloy zamiast własnego Prometheusa i
+  Lokiego.** Alloy (chart `k8s-monitoring` 4.x przypięty wersją, aplikacja Argo CD `monitoring` w ostatniej fali, po `shop`)
+  wysyła logi podów wszystkich przestrzeni (przez API Kubernetesa), zdarzenia klastra i metryki z listy dozwolonych (lista
+  domyślna chartu dla pulpitów Kubernetes plus metryki alertów), żeby zmieścić się w 10 tys. serii planu. CRD Prometheusa
+  (`prometheus-operator-crds`) to osobna aplikacja w pierwszej fali, tylko CRD bez operatora, `ServerSideApply`. Chart
+  instaluje Alloy Operator, a kolektor jest zasobem `Alloy` (jedna replika: klaster ma jeden węzeł). Obraz Alloy jest
+  przypięty tagiem, który wskazuje chart, więc działa ten, na którym biegnie test maskowania. Brak konta albo zły token
+  zostawia `Degraded` tylko `monitoring`; sklep się wdraża.
+- **Alloy czyta z klastra jeden sekret: `grafana-cloud` w przestrzeni `shop`** (SealedSecret z `seal-secrets WHAT=grafana`,
+  klucz `GRAFANA_CLOUD_TOKEN`, `secret.create: false`). Domyślne reguły Alloy (`get/list/watch` na wszystkie sekrety i
+  ConfigMapy klastra) są zastąpione węższymi, bez sekretów, a osobna Role w `shop` daje dostęp tylko do tego sekretu
+  (`resourceNames`); kube-state-metrics nie zbiera metryk sekretów. Nie da się tego zawęzić dla samego Alloy Operatora: jego
+  ClusterRole ma pełny dostęp do sekretów (przechowuje w nich wydania Helm kolektorów, a chart nie daje przełącznika);
+  `check` zna ten jeden wyjątek z nazwy.
+- **Logi są maskowane w Alloy przed wysłaniem, jedną listą etapów** (`extraLogProcessingStages`, blok w manifeście
+  `monitoring` użyty dla logów podów i zdarzeń klastra): hasła, tokeny, JWT, `Bearer`, nagłówki `Authorization` i ciasteczka,
+  klucze z listy (JSON, logfmt, zapytania URL), adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i
+  `STATEMENT` Postgresa są odrzucane. Źródła, których nie da się zagwarantować zamaskować, nie są zbierane (Mailpit:
+  `extraDiscoveryRules`). Wzorce nie znają każdego formatu, więc po wdrożeniu przegląd próbki logów (runbook) jest częścią
+  decyzji: znalezisko to nowa reguła albo wyłączenie źródła. Test w `check` uruchamia prawdziwy Alloy (przypięty tagiem i
+  digestem) na korpusie próbek logów każdego źródła z podłożonymi sekretami i danymi klientów.
+
 ## Konsekwencje
 
 - Hasło restic jest jedyną rzeczą, bez której kopie są nie do odczytania; użytkownik trzyma je też w menedżerze haseł,
@@ -77,3 +101,12 @@ odtwarzalna na pustym klastrze. Specyfikacja: `docs/features/deploy-ops/spec.md`
   Przy tych samych sekretach (ten sam serwer albo nowy z kopią klucza Sealed Secrets) to jest `KC_BOOTSTRAP_ADMIN_PASSWORD`
   sekretu; po utracie klucza Sealed Secrets (nowe sekrety) `keycloak-config` po odtworzeniu nie zaloguje się do `master` i
   odtworzenie stanie na kroku 6 (runbook).
+- Grafana Cloud dostaje logi i metryki klastra: dane klientów w nieprzewidzianym formacie (np. imię i adres w treści wyjątku
+  poza parametrami Doctrine) mogą przejść maskowanie; ograniczają to korpus testowy, przegląd próbki po wdrożeniu i zasada
+  wyłączania źródła do czasu poprawki. Przekroczenie darmowego planu Grafana Cloud odrzuca nadmiar; lista dozwolonych metryk
+  i pomiar po wdrożeniu.
+- Interfejs chartu `k8s-monitoring` zmienia się między głównymi wersjami (operator od 3.x, `destinations` w 4.x), a obraz
+  Alloy zależy od wersji chartu: aktualizacja to osobna zmiana (wersje i digesty archiwów chartów są w
+  `infra/k8s/scripts/monitoring-render.sh`, obraz Alloy w `infra/k8s/scripts/tools.sh`).
+- Alloy Operator ma szerokie uprawnienia klastra (zarządza ClusterRolami kolektorów, `bind` i `escalate`, sekrety z wydaniami
+  Helm): to cena operatora w chartcie 4.x, jedyny wyjątek od zasady „tylko `grafana-cloud`”.

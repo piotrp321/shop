@@ -247,7 +247,7 @@ Wymagania obowiązują cały projekt. Wdrażamy je razem z funkcjami, których d
 - Health checki dla API i wszystkich usług w docker-compose.
 - Profilowanie PHP lokalnie przez SPX (php-spx): rozszerzenie tylko w obrazie deweloperskim API,
   włączane na żądanie, z podglądem flame graph w przeglądarce. W środowisku demo wydajność śledzimy
-  przez trace'y (Grafana Cloud) i Sentry Performance.
+  przez Sentry Performance (#180); logi i metryki klastra są w Grafana Cloud (niżej, środowisko wdrożeniowe).
 
 **Bezpieczeństwo**
 - Rate limiting (Symfony RateLimiter, Redis) na składaniu zamówień, rozpoczęciu płatności i webhookach dostawców;
@@ -314,7 +314,7 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
 - **Serwer**: jeden VPS (8 vCore, 24 GB RAM, OVH) z Ubuntu 24.04, przygotowany po SSH przez `make -C infra/k8s bootstrap`.
 - **Kubernetes**: k3s na jednym węźle (Traefik z k3s jako ingress, `local-path` jako storage). Własny chart
   `infra/k8s/charts/shop` na tych samych obrazach usług co `infra/docker-compose.yml`; gotowe charty tylko dla
-  platformy (Argo CD, Sealed Secrets).
+  platformy (Argo CD, Sealed Secrets, `k8s-monitoring` z Grafana Alloy, `prometheus-operator-crds`).
 - **GitOps**: Argo CD (app-of-apps w `infra/k8s/argocd/`) śledzi gałąź `deploy-images`. Zmiana w repo → Argo
   synchronizuje klaster, bez ręcznego `kubectl apply`.
 - **CI**: GitHub Actions z każdego commita na `main` buduje cztery obrazy produkcyjne (api, store, admin,
@@ -329,14 +329,20 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
   panelem); serwer przyjmuje HTTP(S) tylko od Cloudflare.
 - **Kopie zapasowe**: codzienna, szyfrowana (restic) kopia baz PostgreSQL i obiektów Garage do bucketu Cloudflare R2,
   poza serwerem; retencja 7 dni; hasło restic u właściciela.
+- **Logi i metryki**: Grafana Cloud (darmowy plan, stos w regionie UE, logi 14 dni), bez własnego Prometheusa i Lokiego.
+  Grafana Alloy (chart `k8s-monitoring`, aplikacja Argo CD `monitoring` po `shop`) wysyła logi podów wszystkich przestrzeni,
+  zdarzenia klastra i metryki z listy dozwolonych. Logi są maskowane w Alloy przed wysłaniem (hasła, tokeny, nagłówki
+  `Authorization` i ciasteczka, adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i `STATEMENT` Postgresa
+  odrzucone), a Mailpit nie jest zbierany. Alloy czyta z klastra tylko sekret z tokenem Grafana Cloud.
 - **Poczta**: Brevo SMTP dla Keycloaka i (za przełącznikiem) potwierdzeń zamówień; SPF, DKIM, DMARC w Cloudflare.
 - **Świadomie bez Ranchera**: przy jednym klastrze to narzut bez korzyści.
 
 Kolejne kroki, osobne zgłoszenia:
 
 - **DEPLOY-OPS** (#178): weryfikacja kopii zapasowych i ich odtwarzanie, monitoring (nocna kopia do Cloudflare R2 już jest).
-  Obserwowalność przez Grafana Cloud (darmowy plan) – metryki, logi i trace'y przez agenta Grafana Alloy w klastrze, bez własnego Prometheusa
-  i Lokiego. Musi być skończone przed przełączeniem na publiczny sklep albo przed pierwszymi prawdziwymi danymi.
+  Obserwowalność przez Grafana Cloud (darmowy plan) – logi i metryki przez agenta Grafana Alloy w klastrze, bez własnego Prometheusa
+  i Lokiego (trace'y przez Sentry: #180). Musi być skończone przed przełączeniem na publiczny sklep albo przed pierwszymi
+  prawdziwymi danymi.
 - **Tryb publicznego demo** (#179): dane resetowane co noc z danych demo, konta demo podane na stronie logowania, limity
   uploadów.
 - **Sentry** (#180): Sentry SaaS (darmowy plan) dla API, store i admin, także Sentry Performance.

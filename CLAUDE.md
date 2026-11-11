@@ -16,7 +16,7 @@ Monorepo e-commerce. Przed planowaniem jakiejkolwiek funkcji przeczytaj `docs/vi
 - `infra` – Docker Compose i konfiguracja usług
   (Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Varnish, Mailpit).
 - `infra/k8s` – chart Helm całego stosu (`charts/shop`, te same usługi i wersje obrazów co compose), profile wartości
-  (`environments/prod`, `environments/ci`, `environments/load`: nakładka na `ci` dla pomiaru obciążenia), app-of-apps Argo CD (`argocd`), zaszyfrowane sekrety
+  (`environments/prod`, `environments/ci`, `environments/load`: nakładka na `ci` dla pomiaru obciążenia), app-of-apps Argo CD (`argocd`: `shop`, jego sekrety i aplikacje platformy `sealed-secrets`, `prometheus-crds`, `monitoring` w falach −3…1), zaszyfrowane sekrety
   (`environments/prod/secrets`), skrypty serwera i sprawdzeń oraz runbook (`README.md`). Narzędzia (helm, kubeconform, shellcheck, k3d, kubectl)
   działają w kontenerach z przypiętymi wersjami, bez instalacji na hoście.
 - `e2e` – testy end-to-end (Playwright) na pełnym stosie, uruchamiane przez `make e2e`, i pomiar Lighthouse
@@ -178,6 +178,12 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   nie zmienia, a obrazy `restic/restic` i `rclone/rclone` w `images.*` chartu nie mają w nim odpowiednika (digest jak
   wyżej). Sekret `shop-backup` tworzy raz `make -C infra/k8s seal-secrets WHAT=backup`; hasło restic użytkownik trzyma
   też poza serwerem, bo bez niego kopie są nie do odczytania. Opis: `docs/adr/backups-observability.md`.
+- Logi i metryki klastra trafiają do Grafana Cloud przez Alloy (aplikacja Argo CD `monitoring`, fala 1, po `shop`; chart
+  `k8s-monitoring` przypięty wersją, adresy i identyfikatory instancji w `argocd/apps/monitoring.yaml`, token w sekrecie
+  `grafana-cloud` z `seal-secrets WHAT=grafana`). Logi są maskowane w Alloy (jeden blok etapów dla logów podów i zdarzeń),
+  a źródło, którego nie da się zamaskować, nie jest zbierane (Mailpit: `extraDiscoveryRules`); nowa usługa z danymi klientów
+  albo sekretami w logach dostaje regułę maskowania i wiersz w korpusie `infra/k8s/tests/log-corpus` w tym samym PR. Alloy
+  czyta z klastra tylko sekret `grafana-cloud` (opis i test: `infra/k8s/CLAUDE.md`, `docs/adr/backups-observability.md`).
 - Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (pliki realmów z repo bez `users`, z adresami domeny;
   nazwa Joba zależy od tych plików, `customerAccounts` i poczty Keycloaka). Brakujący realm zakłada; w istniejącym
   `partialImport` z `ifResourceExists=SKIP` dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem

@@ -13,9 +13,10 @@ użytkownika. Szczegóły: `docs/features/deploy/spec.md`, uruchomienie: `infra/
 - **k3s na jednym węźle**, Traefik z k3s jako ingress (z `externalTrafficPolicy: Local`, żeby widział prawdziwy adres
   klienta), `local-path` jako storage. Bez Ranchera.
 - **Własny chart `infra/k8s/charts/shop`** na tych samych obrazach i wersjach co `infra/docker-compose.yml`. Gotowe charty
-  tylko dla platformy: Argo CD i Sealed Secrets (wersje przypięte).
+  tylko dla platformy: Argo CD, Sealed Secrets, `k8s-monitoring` (Grafana Alloy) i `prometheus-operator-crds` (wersje
+  przypięte).
 - **Argo CD z app-of-apps** (`infra/k8s/argocd/`): aplikacja `root` (jedyna, którą stosuje bootstrap) tworzy aplikacje
-  `sealed-secrets`, `secrets` i `shop` w falach, w tej kolejności. Argo CD śledzi gałąź **`deploy-images`**.
+  `prometheus-crds`, `sealed-secrets`, `secrets`, `shop` i `monitoring` w falach −3, −2, −1, 0 i 1. Argo CD śledzi gałąź **`deploy-images`**.
 - **Dwie gałęzie wdrożeniowe.** `deploy` przesuwa się wyłącznie fast-forwardem na zatwierdzony commit z `main`.
   `deploy-images` to kolejne snapshoty: drzewo commita z `deploy` plus wygenerowany plik
   `infra/k8s/environments/prod/values-images.yaml` (`image.tag` i cztery digesty obrazów). Snapshot ma rodziców: poprzedni

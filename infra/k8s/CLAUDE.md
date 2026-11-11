@@ -15,7 +15,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   `nightly` (bez Argo CD): administrator z `create-admin`, klient i jego logowanie, liczby produktów i zamówień jak przy kopii,
   realmy bez zmian, obiekt w buckecie, zdjęcie przez imgproxy, produkt w wyszukiwarce po słowie, które ma tylko odtworzona
   baza, strona główna, snapshot `pre-restore`; `restore` snapshotu z migracją nieznaną kodowi kończy się odmową bez pytania,
-  bez kopii `pre-restore` i bez zmian; wypisuje czas fazy i szczytowy dysk; dalsze fazy działają na odtworzonym klastrze); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
+  bez kopii `pre-restore` i bez zmian; wypisuje czas fazy i szczytowy dysk; dalsze fazy działają na odtworzonym klastrze; Alloy i Grafana Cloud w nim nie działają, bo CI nie ma kont: sprawdza je `check` i runbook); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
   obciążenia: klaster k3d z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `load`, dane demo, stany
   podniesione o 100 000 bezpośrednim SQL, rozgrzanie, przebieg rosnący do nasycenia z k6 (odczyt i koszyk) i przebieg
   stały na 70% nasycenia z checkoutem o ograniczonej równoległości, wyniki do `LOAD_OUT`; kilkadziesiąt minut, VM
@@ -47,10 +47,11 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   certyfikat to błąd), `kubeconfig HOST=… KUBE_DIR=…` (kubeconfig klastra poza repo, dla `rerun`, `create-admin`, `restore`
   i `backups`),
   `status HOST=…` (tylko odczyt: aplikacje Argo, pody, Joby), `reinitialize HOST=…` (kasuje dane sklepu i wczytuje dane
-  demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls backup"]` (szyfruje
+  demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls backup grafana"]` (szyfruje
   sekrety certyfikatem z repo do `environments/prod/secrets/`: brakujące klucze `init-env.sh` z losowymi wartościami,
-  Brevo SMTP, certyfikat Origin CA oraz hasło restic i klucz S3 kopii zapasowych (`shop-backup`) czytane z terminala bez
-  echa (hasło restic dwa razy, różne wartości to błąd), każdy z nich tylko raz, błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
+  Brevo SMTP, certyfikat Origin CA, hasło restic i klucz S3 kopii zapasowych (`shop-backup`) oraz token Grafana Cloud
+  (`grafana-cloud`, klucz `GRAFANA_CLOUD_TOKEN`) czytane z terminala bez echa (hasło restic dwa razy, różne wartości to
+  błąd), każdy z nich tylko raz, błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
   (zakresy Cloudflare w `ipAllowList` produkcji). Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki
   runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone
   „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset i deploy key, backup VPS-a)
@@ -93,7 +94,22 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   bez `backup.repository` albo `backup.secretName` oraz `backup.verifyReadData` inne niż `subset` i `all` kończą render błędem
   z nazwą wartości. Sprawdza też: render `prod` z plikiem
   digestów jak z `deploy-images` (bez `--set`; plik bez digestu albo z `latest` nie renderuje się), manifesty Argo CD
-  (`kubeconform`; testy: jedno źródło `shop` na gałęzi `deploy-images`, kolejność fal `sealed-secrets`, `secrets`, `shop`),
+  (`kubeconform`; testy: jedno źródło `shop` na gałęzi `deploy-images`, kolejność fal `prometheus-crds` −3, `sealed-secrets` −2,
+  `secrets` −1, `shop` 0, `monitoring` 1, `ServerSideApply` przy CRD, `SkipDryRunOnMissingResource` i `CreateNamespace` przy
+  `monitoring`, charty innych przypięte wersją), render chartu `k8s-monitoring` z wartościami z manifestu `monitoring`
+  (`scripts/monitoring-render.sh`: archiwum chartu pobrane raz do cache narzędzi, sprawdzone sha256 zapisanym w skrypcie;
+  `kubeconform` ze schematem `Alloy`; żadna ClusterRole ani Role renderu poza Role na sekret `grafana-cloud` w `shop` nie daje
+  dostępu do sekretów, także przez `*`, z jednym wyjątkiem z nazwy: ClusterRole samego Alloy Operatora, którego chart nie
+  zawęża; reguły Alloy w zasobie `Alloy` bez sekretów; lista dozwolonych metryk niepusta i z metrykami alertów, widoczna w
+  konfiguracji Alloy; budżet węzła: `shop` i `monitoring` razem do 7 vCPU requestów i 20 GiB limitów, z jawnymi zasobami Alloy,
+  jego reloadera, operatora, kube-state-metrics i node-exportera; obraz Alloy w `tools.sh` to tag z chartu i z manifestu),
+  test maskowania logów (`scripts/masking.sh`: prawdziwy Alloy, przypięty tagiem i digestem, uruchamia etapy
+  `extraLogProcessingStages` wyciągnięte z manifestu na korpusie `tests/log-corpus`, jeden plik na źródło w jego formacie, z
+  podłożonymi hasłami, tokenami, JWT, nagłówkami, ciasteczkami, e-mailami, adresami IP, parametrami Doctrine i `DETAIL`
+  Postgresa; korpus idzie przez potok logów podów (linie CRI) i zdarzeń; test sprawdza, że żadna podłożona wartość nie wyszła,
+  linie `DETAIL` i `STATEMENT` zniknęły, a poziom, komunikat, kanał i kod odpowiedzi zostały, że oba miejsca konfiguracji mają
+  ten sam blok etapów i że reguły `extraDiscoveryRules` odrzucają dokładnie źródła z listy wyłączonych, czyli Mailpit; ta sama
+  konfiguracja z renderu przechodzi `alloy validate`),
   sekrety zaszyfrowane (po dodaniu certyfikatu `environments/prod/sealed-secrets.pem` każdy klucz z `init-env.sh` ma
   zaszyfrowaną wartość w `environments/prod/secrets/`; jawny Secret w tym katalogu to błąd), `seal-secrets.sh`
   i skrypty serwera na atrapach `docker` i `ssh`, `server-bootstrap.sh` dwa razy w kontenerze Ubuntu 24.04 bez k3s

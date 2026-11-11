@@ -1,7 +1,11 @@
 .PHONY: check selftest smoke load rerun create-admin restore backups seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
-# render; git does not ignore the certificate of Sealed Secrets). Needs Docker, and git for that last step.
+# render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
+# k8s-monitoring of the pinned version (downloaded once, its sha256 checked) with the values of argocd/apps/monitoring.yaml
+# (kubeconform with the schema of Alloy, the access to Secrets, the metrics of the alerts, the budget of the node) and the log
+# masking in a real Alloy (the stages of the manifest on tests/log-corpus). Needs Docker and the network once for the charts,
+# and git for the last step.
 check:
 	sh scripts/check.sh
 
@@ -15,8 +19,10 @@ check:
 # deploy.yml missing, a backup repository without its password, the backup CronJob without concurrencyPolicy Forbid, the
 # backup script that goes on after an error or takes any access error for a missing repository, the verification of the
 # backups that goes on after an error, takes a snapshot of any age, runs a temporary Postgres that is not a sidecar or
-# reaches the production Postgres, runs restic without CA certificates, seal-secrets that asks for the backup password again, or restore
-# going on without tak).
+# reaches the production Postgres, runs restic without CA certificates, seal-secrets that asks for the backup password again, restore
+# going on without tak, the monitoring (Alloy) with no masking of e-mail addresses in the logs, with rules of Alloy or a Role that read all
+# Secrets, with the cluster events not masked like the logs of the pods, collecting the logs of Mailpit, a chart of the monitoring
+# without a digest in monitoring-render.sh or with another one, or stages that Alloy rejects).
 selftest:
 	sh scripts/selftest.sh
 

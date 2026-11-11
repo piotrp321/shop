@@ -5,8 +5,9 @@ GitOps przez Argo CD. Na start działa jako demonstracja (sklep publiczny z info
 `noindex`, panel za Cloudflare Access, rejestracja wyłączona, potwierdzenia zamówień nie wychodzą na zewnątrz). Te
 ograniczenia są wartościami konfiguracji, więc przejście na publiczny sklep nie wymaga przebudowy obrazów ani
 architektury. Nocne kopie zapasowe, ich weryfikacja i odtwarzanie (`make -C infra/k8s restore`) są częścią chartu (sekcja
-„Kopie zapasowe”); monitoring i alerty to dalsze zadania DEPLOY-OPS (#178), które musi być skończone przed przełączeniem na
-publiczny sklep albo przed pierwszymi prawdziwymi danymi.
+„Kopie zapasowe”); logi i metryki klastra trafiają do Grafana Cloud przez Grafana Alloy (aplikacja Argo CD `monitoring`,
+`docs/features/deploy-ops/spec.md`, O5 i O7); alerty to dalsze zadanie DEPLOY-OPS (#178), które musi być skończone przed
+przełączeniem na publiczny sklep albo przed pierwszymi prawdziwymi danymi.
 
 Issues: #175
 Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.github/workflows/ci.yml`, `.github/scripts`, `.gitignore`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.dockerignore`, `apps/api/bin`, `apps/store/Dockerfile`, `apps/store/.dockerignore`, `apps/store/next.config.ts`, `apps/store/app/layout.tsx`, `apps/store/app/api/site`, `apps/store/src/api/client.ts`, `apps/store/src/components`, `apps/store/src/account`, `apps/admin/Dockerfile`, `apps/admin/.dockerignore`, `apps/admin/docker`, `apps/admin/index.html`, `apps/admin/public`, `apps/admin/src/auth`, `apps/admin/src/api/client.ts`, `apps/admin/src/config`, `Makefile`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `apps/admin/CLAUDE.md`, `docs/vision.md`, `docs/adr`, `tools/rulesets`
@@ -33,8 +34,8 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 
 ## Poza zakresem
 
-- Grafana Alloy i alerty – DEPLOY-OPS (#178). Tu nocna kopia (restic), jej weryfikacja, odtwarzanie i włączenie
-  backupu VPS-a od OVH (runbook).
+- Alerty – DEPLOY-OPS (#178). Tu nocna kopia (restic), jej weryfikacja, odtwarzanie, logi i metryki do Grafana Cloud (Alloy) i
+  włączenie backupu VPS-a od OVH (runbook).
 - Osobne środowiska demo i produkcji, wiele węzłów, autoskalowanie, Rancher, własny Prometheus i Loki.
 - Tryb publicznego demo (nocny reset danych, publiczne konta demo, limity uploadów) – #179.
 - Sentry (SDK w api, store i admin) oraz trace'y i Sentry Performance – #180.
@@ -53,7 +54,8 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 - **D2. Własny chart zamiast gotowych chartów usług.** Jeden chart `infra/k8s/charts/shop` z szablonami dla każdej
   usługi compose, na tych samych obrazach i wersjach co `infra/docker-compose.yml`. Elasticsearch działa na obrazie
   budowanym z tego samego Dockerfile co w compose (`infra/elasticsearch/Dockerfile`). Gotowe charty tylko dla
-  platformy: Argo CD i Sealed Secrets.
+  platformy: Argo CD, Sealed Secrets, `k8s-monitoring` (Grafana Alloy) i `prometheus-operator-crds` (CRD, m.in.
+  `PrometheusRule`), każdy przypięty wersją jako osobna aplikacja Argo CD.
 - **D3. Nazwy usług w klastrze takie jak w compose**; wewnętrzne adresy i VCL (`api:80`) bez zmian.
 - **D4. Gałęzie `deploy` i `deploy-images`, przesuwane jednym atomowym pushem.** `deploy` przesuwa się wyłącznie
   fast-forwardem na zatwierdzony commit z `main` (historia `main` jest liniowa, więc `deploy` jest zawsze jej przodkiem).
@@ -230,8 +232,10 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
    `ghcr.io/piotrp321/shop/<app>:<sha>@<digest>` z pliku) i jednym atomowym pushem przesuwa `deploy` fast-forwardem na ten
    commit oraz dodaje snapshot do `deploy-images` (D4). Bez sekretu z deploy keyem (przed krokiem runbooka) workflow
    kończy się po smoke teście z ostrzeżeniem, bez błędu.
-5. Argo CD synchronizuje `root`, a przez niego `sealed-secrets`, `secrets` i `shop` (fale −2, −1, 0) z `deploy-images`;
-   chart rozkłada zasoby w falach.
+5. Argo CD synchronizuje `root`, a przez niego `prometheus-crds`, `sealed-secrets`, `secrets`, `shop` i `monitoring` (fale
+   −3, −2, −1, 0 i 1) z `deploy-images` (charty `sealed-secrets`, `prometheus-crds` i `monitoring` z ich repozytoriów Helm, w
+   przypiętych wersjach); chart `shop` rozkłada zasoby w falach. `monitoring` jest ostatni: brak konta Grafana Cloud albo
+   zły token zostawia `Degraded` tylko tę aplikację, a sklep działa i się wdraża.
 6. Wycofanie wersji: revert na `main` (nowe wdrożenie). Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
    `deploy-images` (jego obrazy zostają w GHCR), po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona
    `syncPolicy` aplikacji `shop`), a potem `shop`; po revercie automatyczną synchronizację włącza się z powrotem, najpierw
@@ -355,11 +359,13 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   sekrety są w `infra/k8s/environments/prod/secrets/` (SealedSecrety dla przestrzeni `shop`): `shop-secrets.yaml` (klucze
   `init-env.sh`), `shop-brevo-smtp.yaml` (`BREVO_SMTP_LOGIN`, `BREVO_SMTP_PASSWORD`), `shop-origin-tls.yaml` (typ
   `kubernetes.io/tls`; `ingress.tlsSecretName` w wartościach `prod` wskazuje go na wszystkich ingressach). Kontroler i
-  sekrety stawiają aplikacje Argo `sealed-secrets` i `secrets` w falach przed `shop`.
+  sekrety stawiają aplikacje Argo `sealed-secrets` i `secrets` w falach przed `shop`. Token Grafana Cloud to
+  `grafana-cloud.yaml` (klucz `GRAFANA_CLOUD_TOKEN`), który czyta Alloy (aplikacja `monitoring`) z przestrzeni `shop` przez Role
+  tylko na ten sekret.
 - `infra/k8s/scripts/seal-secrets.sh` (`make -C infra/k8s seal-secrets`, w kontenerze z `kubeseal` przypiętym wersją i
   digestem) szyfruje certyfikatem z repo (`environments/prod/sealed-secrets.pem`). Klucze z listy `init-env.sh` (czytanej z
   pliku) dopisuje tylko brakujące, z losową wartością; istniejących nie zmienia. Wartości zewnętrzne (login i klucz Brevo,
-  certyfikat i klucz Origin CA) czyta interaktywnie z terminala (bez echa), nie z argumentów ani zmiennych, i nie
+  certyfikat i klucz Origin CA, hasło restic i klucz S3 kopii, token Grafana Cloud) czyta interaktywnie z terminala (bez echa), nie z argumentów ani zmiennych, i nie
   wypisuje ich; tworzy je raz (gdy plik istnieje, niczego nie pyta); krok runbooka „użytkownik”. Brak certyfikatu, pusta
   wartość, zły format albo nieudany `kubeseal` kończą skrypt błędem bez zapisu (pliki powstają dopiero, gdy wszystko się
   udało), a plik w innym formacie niż zapisuje skrypt nie jest ruszany.
@@ -409,8 +415,12 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   `image.tag=latest`, digest w złym formacie, obraz usługi bez digestu, klaster Kubernetes 1.35 (`kubeVersion`), plik
   `values-images.yaml` bez digestu `elasticsearch`, z digestem będącym tagiem albo z `latest`. Render `prod` z samym
   wygenerowanym plikiem (bez `--set`) ma dokładnie obrazy z pliku. Manifesty Argo CD (`argocd/`) przechodzą
-  `kubeconform` (schematy CRD z katalogu CRDs-catalog), a testy sprawdzają: `root` obejmuje `shop`, `sealed-secrets` i
-  `secrets`, `shop` ma jedno źródło na `deploy-images`, aplikacje czytają tę samą gałąź, fale. `server-bootstrap.sh`
+  `kubeconform` (schematy CRD z katalogu CRDs-catalog), a testy sprawdzają: `root` obejmuje `shop`, `secrets`,
+  `sealed-secrets`, `prometheus-crds` i `monitoring`, `shop` ma jedno źródło na `deploy-images`, aplikacje z gita czytają tę
+  samą gałąź, charty innych (`sealed-secrets`, `prometheus-crds`, `monitoring`) są przypięte wersją, fale (−3, −2, −1, 0, 1).
+  Chart `k8s-monitoring` renderuje się z wartościami z manifestu `monitoring` (`kubeconform` ze schematem `Alloy`; dostęp do
+  sekretów, lista metryk, budżet węzła z `shop`, maskowanie logów w prawdziwym Alloy: `docs/features/deploy-ops/spec.md`,
+  „Smoke test i check”). `server-bootstrap.sh`
   przechodzi `shellcheck` i dwa przebiegi w kontenerze Ubuntu 24.04 bez k3s (atrapy `k3s`, `apt-get`, `ufw`, `sysctl` i
   instalatora; prawdziwe są sprawdzenia, zapisy plików i idempotencja), z odmową bez roota i na innym systemie przed
   zmianami. Ostatni krok sprawdza gitem na hoście, że `.gitignore` nie ignoruje certyfikatu

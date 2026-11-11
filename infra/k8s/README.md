@@ -105,17 +105,19 @@ Wymaga certyfikatu w repo (2.5).
 2. **użytkownik** – w Brevo (SMTP & API) tworzy klucz SMTP; w Cloudflare (SSL/TLS → Origin Server) wystawia certyfikat Origin CA
    dla `<domena>` i `*.<domena>` (PEM certyfikatu i klucza). Na koncie Cloudflare zakłada bucket R2 na kopie zapasowe i token
    API R2 z dostępem tylko do tego bucketu (klucz i sekret S3); wymyśla hasło repozytorium restic i zapisuje je w menedżerze
-   haseł (poza serwerem: bez niego kopie są nie do odczytania, także po utracie klucza Sealed Secrets).
+   haseł (poza serwerem: bez niego kopie są nie do odczytania, także po utracie klucza Sealed Secrets). W Grafana Cloud zakłada
+   stos i token dla Alloy (9.).
 3. **agent** – wpisuje adres repozytorium (`s3:https://<id konta>.r2.cloudflarestorage.com/<bucket>`, id konta podaje
-   użytkownik) w `backup.repository` i region `auto` w `environments/prod/values.yaml` (PR).
+   użytkownik) w `backup.repository` i region `auto` w `environments/prod/values.yaml` (PR) oraz adresy i identyfikatory instancji
+   Grafana Cloud w `argocd/apps/monitoring.yaml` (9.).
 4. **użytkownik** – wpisuje wartości w terminalu (bez echa, nigdy w argumentach, zmiennych ani rozmowie z agentem):
 
    ```sh
-   make -C infra/k8s seal-secrets WHAT="brevo tls backup"
+   make -C infra/k8s seal-secrets WHAT="brevo tls backup grafana"
    ```
 
    Login i klucz SMTP Brevo, certyfikat i klucz Origin CA wklejone w całości (do wiersza `END`), potem hasło restic (dwa razy: różne
-   wartości to błąd), klucz i sekret S3 bucketu kopii. Plik już istniejący nie jest ponownie pytany ani zmieniany (nowe hasło restic uczyniłoby
+   wartości to błąd), klucz i sekret S3 bucketu kopii, na końcu token Grafana Cloud. Plik już istniejący nie jest ponownie pytany ani zmieniany (nowe hasło restic uczyniłoby
    dotychczasowe kopie nieczytelnymi). Błąd (pusta wartość, zły PEM, nieudany `kubeseal`) niczego nie zapisuje.
 5. **agent** – PR z plikami z `environments/prod/secrets/` (są zaszyfrowane, bezpieczne do commitu); `make -C infra/k8s check`
    wymaga od tego momentu zaszyfrowanej wartości dla każdego klucza `init-env.sh`. Merge robi **użytkownik**.
@@ -197,6 +199,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 | `https://auth.<domena>/realms/master/` | użytkownik | niedostępny (404); dostępne tylko `/realms/shop/`, `/realms/backoffice/`, `/resources/` |
 | Próby rulesetów (1.5) | użytkownik | zgodnie z tabelą |
 | `make -C infra/k8s status HOST=…` | agent | wszystko `Synced`, `Healthy`, Joby `Complete` |
+| Grafana Cloud (9.) | agent | metryki klastra i logi `namespace="shop"` są, logów `mailpit` nie ma, przegląd próbki logów bez sekretów i danych klientów |
 
 ## 7. Eksploatacja
 
@@ -267,3 +270,36 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
 - **Snapshoty starego serwera** po odtworzeniu na nowym nie wygasają same (`forget` każdego klastra dotyczy tylko jego
   hosta): zostają w R2, dopóki **użytkownik** nie zdecyduje o ich usunięciu (`restic forget --host <stary host> --prune`
   z hasłem restic, poza celami agenta).
+
+## 9. Logi i metryki: Grafana Cloud i Alloy
+
+Aplikacje Argo CD `prometheus-crds` (fala −3) i `monitoring` (fala 1, po `shop`) stawiają CRD Prometheusa oraz Grafana Alloy
+(chart `k8s-monitoring`), który wysyła do Grafana Cloud logi podów wszystkich przestrzeni, zdarzenia klastra i metryki z listy
+dozwolonych (`docs/features/deploy-ops/spec.md`, O5 i O7). Logi są maskowane w Alloy przed wysłaniem, a Mailpit nie jest zbierany.
+Alloy czyta z klastra tylko sekret `grafana-cloud` z przestrzeni `shop`.
+
+1. **użytkownik** – zakłada konto Grafana Cloud (darmowy plan) ze stosem w regionie UE i retencją logów 14 dni oraz jeden token
+   access policy dla metryk i logów z zakresami `metrics:write`, `logs:write`, `rules:read` i `rules:write`. Podaje agentowi (bez
+   tokenu) z portalu stosu: adres zapisu metryk (Prometheus, kończy się `/api/prom/push`) i bazowy adres rulera (ten sam host bez
+   `/api/prom/push`), adres zapisu logów (Loki) i identyfikatory instancji (nazwa użytkownika Prometheusa i Lokiego).
+2. **agent** – wpisuje je w `argocd/apps/monitoring.yaml` (`destinations.grafana-metrics`: `url`, `rules.address`,
+   `auth.usernameFrom` i `tenantIdFrom`; `destinations.grafana-logs`: `url`, `auth.usernameFrom` i `tenantIdFrom`; wartości w
+   pliku to przykłady) i, jeśli ruler stosu ma inny prefiks niż `/api/prom`, `rules.prometheusHttpPrefix` (PR). Merge robi
+   **użytkownik**.
+3. **użytkownik** – token wpisuje w terminalu: `make -C infra/k8s seal-secrets WHAT=grafana` (3.4); **agent** dodaje powstały
+   `grafana-cloud.yaml` do PR z sekretami.
+4. **agent** – po wdrożeniu `make -C infra/k8s status HOST=<user>@<adres>`: `prometheus-crds` i `monitoring` są `Synced` i
+   `Healthy`. Brak konta albo zły token zostawia `Degraded` tylko `monitoring` (log Alloy w przestrzeni `monitoring`); sklep działa i
+   się wdraża. W Grafana Cloud widać metryki klastra (np. `up`, `kube_node_info`) i logi (`namespace="shop"`), a logów podów
+   `mailpit` nie ma.
+5. **agent** – po wdrożeniu przegląd próbki logów w Grafana Cloud (Explore, logi każdego źródła: `api`, `worker`, `store`, `admin`,
+   `keycloak`, `postgres`, `imgproxy` i zdarzenia klastra) pod kątem sekretów i danych klientów: haseł, tokenów, nagłówków,
+   ciasteczek, adresów e-mail i IP, imion i adresów w treści wyjątków. Znalezisko to nowa reguła maskowania w
+   `extraLogProcessingStages` manifestu `monitoring` z wierszem w korpusie `infra/k8s/tests/log-corpus` albo wyłączenie źródła w
+   `extraDiscoveryRules` (PR); do czasu poprawki źródło jest wyłączone.
+6. **agent** – po wdrożeniu sprawdza w Grafana Cloud liczbę aktywnych serii (darmowy plan: 10 tys.); przy przekroczeniu Grafana Cloud
+   odrzuca nadmiar, a agent zawęża listę metryk w manifeście.
+
+Aktualizacja chartu `k8s-monitoring` to osobna zmiana: nowa wersja w `argocd/apps/monitoring.yaml`, sha256 archiwum w
+`infra/k8s/scripts/monitoring-render.sh` oraz tag i digest obrazu Alloy z chartu w `infra/k8s/scripts/tools.sh` (i tag w
+manifeście); `make -C infra/k8s check` pilnuje zgodności.
