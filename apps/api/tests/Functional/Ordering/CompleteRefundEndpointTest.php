@@ -6,6 +6,7 @@ namespace App\Tests\Functional\Ordering;
 
 use App\Ordering\Application\Command\ChangeOrderStatus;
 use App\Ordering\Domain\StaffTransition;
+use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -17,6 +18,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class CompleteRefundEndpointTest extends WebTestCase
 {
     use BackofficeOrderEndpointTestTrait;
+    use RequiredKeyViolationsTrait;
 
     private const string UNKNOWN_ORDER = '0192f0c4-7c1a-7c4e-9a6e-0000000000ff';
     private const string CONFLICT_PREFIX = 'tag:piotrp321.github.io,2026:shop/problems/';
@@ -158,6 +160,29 @@ final class CompleteRefundEndpointTest extends WebTestCase
         yield 'a note with a trailing U+2029' => [['version' => 3, 'note' => "Przelew wysłany\u{2029}"], 'note'];
         yield 'a note of U+2028 alone' => [['version' => 3, 'note' => "\u{2028}"], 'note'];
         yield 'a note over 500 characters once trimmed of non-breaking spaces' => [['version' => 3, 'note' => "\u{00A0}".str_repeat('a', 501)."\u{00A0}"], 'note'];
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function omittedBodyKeys(): iterable
+    {
+        return self::omittedKeys(['version', 'note']);
+    }
+
+    /**
+     * @param list<string> $omitted
+     */
+    #[DataProvider('omittedBodyKeys')]
+    public function testAnOmittedKeyIsOnePolishRequiredViolationAtThatKey(array $omitted): void
+    {
+        $orderId = $this->cancelledOrder();
+
+        $problem = $this->complete($orderId, self::bodyWithout(['version' => 3, 'note' => null], $omitted), self::staff(['support']));
+
+        $this->assertProblem(422, $problem);
+        self::assertRequiredAt($omitted, $problem['violations'] ?? null);
+        self::assertSame([3, null], $this->connection->fetchNumeric('SELECT version, refund_completed_at FROM ordering_order WHERE id = ?', [$orderId]));
     }
 
     /**

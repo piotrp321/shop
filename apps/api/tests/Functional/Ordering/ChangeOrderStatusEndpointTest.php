@@ -6,6 +6,7 @@ namespace App\Tests\Functional\Ordering;
 
 use App\Ordering\Application\Command\ChangeOrderStatus;
 use App\Ordering\Domain\StaffTransition;
+use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
 use App\Tests\Integration\Ordering\OrderingFixture;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -19,6 +20,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ChangeOrderStatusEndpointTest extends WebTestCase
 {
     use BackofficeOrderEndpointTestTrait;
+    use RequiredKeyViolationsTrait;
 
     private const string UNKNOWN_ORDER = '0192f0c4-7c1a-7c4e-9a6e-0000000000ff';
     private const string CONFLICT_PREFIX = 'tag:piotrp321.github.io,2026:shop/problems/';
@@ -233,6 +235,39 @@ final class ChangeOrderStatusEndpointTest extends WebTestCase
         yield 'a cancellation without a note' => [['transition' => 'cancel'] + $valid, 'note'];
         yield 'a cancellation with a blank note' => [['transition' => 'cancel', 'note' => '  '] + $valid, 'note'];
         yield 'a return without a note' => [['transition' => 'return'] + $valid, 'note'];
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function omittedBodyKeys(): iterable
+    {
+        return self::omittedKeys(['transition', 'version', 'note']);
+    }
+
+    /**
+     * @param list<string> $omitted
+     */
+    #[DataProvider('omittedBodyKeys')]
+    public function testAnOmittedKeyIsOnePolishRequiredViolationAtThatKey(array $omitted): void
+    {
+        [$orderId] = $this->paidOrder();
+
+        $problem = $this->change($orderId, self::bodyWithout(['transition' => 'ship', 'version' => 2, 'note' => null], $omitted), self::staff(['admin']));
+
+        $this->assertProblem(422, $problem);
+        self::assertRequiredAt($omitted, $problem['violations'] ?? null);
+        self::assertSame(['paid', 2], $this->stored($orderId));
+    }
+
+    public function testACancellationWithoutANoteKeyIsRequiredAtTheNoteOnly(): void
+    {
+        [$orderId] = $this->paidOrder();
+
+        $problem = $this->change($orderId, ['transition' => 'cancel', 'version' => 2], self::staff(['admin']));
+
+        $this->assertProblem(422, $problem);
+        self::assertRequiredAt(['note'], $problem['violations'] ?? null);
     }
 
     /**

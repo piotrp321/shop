@@ -9,6 +9,7 @@ use App\Inventory\Application\Command\ReceiveStock;
 use App\Inventory\Application\Command\ReceiveStockResult;
 use App\Inventory\Domain\Stock\InvalidReceiptKey;
 use App\Inventory\Domain\Stock\ReceiptKey;
+use App\Shared\UI\Http\RequiredKeysBody;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use Nelmio\ApiDocBundle\Attribute\Security;
 use OpenApi\Attributes as OA;
@@ -16,14 +17,12 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\Messenger\HandleTrait;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
-use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Validator\ConstraintViolation;
 use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Component\Validator\Exception\ValidationFailedException;
@@ -117,12 +116,7 @@ final class ReceiveStockController
         string $variantId,
         Request $request,
         #[CurrentUser] AuthenticatedStaffMember $staffMember,
-        #[MapRequestPayload(
-            acceptFormat: 'json',
-            serializationContext: [AbstractNormalizer::REQUIRE_ALL_PROPERTIES => true],
-            validationFailedStatusCode: Response::HTTP_UNPROCESSABLE_ENTITY,
-            mapWhenEmpty: true,
-        )]
+        #[RequiredKeysBody]
         ReceiveStockRequest $receipt,
     ): JsonResponse {
         // Validated by the payload mapping: an integer, and a string or null.

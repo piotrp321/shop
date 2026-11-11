@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Inventory;
 
+use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
 use App\Tests\Integration\Inventory\StockFixture;
 use App\Tests\Support\Security\TestTokenFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -16,6 +17,7 @@ use Zenstruck\Foundry\Test\Factories;
 final class CorrectStockEndpointTest extends WebTestCase
 {
     use Factories;
+    use RequiredKeyViolationsTrait;
     use StockEndpointTestTrait;
 
     private const string UNKNOWN_VARIANT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
@@ -340,6 +342,80 @@ final class CorrectStockEndpointTest extends WebTestCase
         self::assertEqualsCanonicalizing($paths, $this->violationPaths());
         self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
         self::assertSame([], $this->movements($variantId));
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function omittedBodyKeys(): iterable
+    {
+        return self::omittedKeys(['physical', 'version', 'reason', 'note']);
+    }
+
+    /**
+     * Also for the keys that accept null: a missing `version` is no variant without a stock record.
+     *
+     * @param list<string> $omitted
+     */
+    #[DataProvider('omittedBodyKeys')]
+    public function testAnOmittedKeyIsOnePolishRequiredViolationAtThatKey(array $omitted): void
+    {
+        $variantId = $this->stockedVariant(10, 0, 1);
+
+        $problem = $this->post($this->path($variantId), json_encode(self::bodyWithout(['physical' => 5, 'version' => 1, 'reason' => 'loss', 'note' => null], $omitted), \JSON_THROW_ON_ERROR), TestTokenFactory::staff(['admin']));
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertRequiredAt($omitted, $problem['violations'] ?? null);
+        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
+        self::assertSame([], $this->movements($variantId));
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string}> the changed keys, the key of the violation and its message
+     */
+    public static function nullsAndWrongTypes(): iterable
+    {
+        $physical = 'Stan policzony musi być liczbą całkowitą.';
+        $version = 'Wersja stanu musi być liczbą całkowitą albo null.';
+        $reason = 'Wybierz powód korekty: inwentaryzacja, uszkodzenie, zaginięcie albo inne.';
+        $note = 'Notatka musi być tekstem.';
+
+        yield 'a null count' => [['physical' => null], 'physical', 'Stan policzony jest wymagany.'];
+        yield 'a count in a string' => [['physical' => '5'], 'physical', $physical];
+        yield 'a fractional count' => [['physical' => 5.5], 'physical', $physical];
+        yield 'a boolean count' => [['physical' => true], 'physical', $physical];
+        yield 'a count that is a list' => [['physical' => [5]], 'physical', $physical];
+        yield 'a count that is an object' => [['physical' => new \stdClass()], 'physical', $physical];
+        yield 'a version in a string' => [['version' => '1'], 'version', $version];
+        yield 'a fractional version' => [['version' => 1.5], 'version', $version];
+        yield 'a boolean version' => [['version' => false], 'version', $version];
+        yield 'a version that is a list' => [['version' => [1]], 'version', $version];
+        yield 'a null reason' => [['reason' => null], 'reason', $reason];
+        yield 'a reason that is a number' => [['reason' => 1], 'reason', $reason];
+        yield 'a reason that is a boolean' => [['reason' => true], 'reason', $reason];
+        yield 'a reason that is a list' => [['reason' => ['loss']], 'reason', $reason];
+        yield 'an unknown reason' => [['reason' => 'theft'], 'reason', $reason];
+        yield 'a note that is a number' => [['note' => 5], 'note', $note];
+        yield 'a note that is a boolean' => [['note' => true], 'note', $note];
+        yield 'a note that is a list' => [['note' => ['a']], 'note', $note];
+        yield 'a note that is an object' => [['note' => new \stdClass()], 'note', $note];
+        yield 'another reason with a note that is a number' => [['reason' => 'other', 'note' => 5], 'note', $note];
+        yield 'another reason with a null note' => [['reason' => 'other', 'note' => null], 'note', 'Przy powodzie „inne” notatka jest wymagana.'];
+    }
+
+    /**
+     * @param array<string, mixed> $changed
+     */
+    #[DataProvider('nullsAndWrongTypes')]
+    public function testANullOrAWrongTypeIsExactlyOnePolishViolationAtItsKey(array $changed, string $key, string $message): void
+    {
+        $variantId = $this->stockedVariant(10, 0, 1);
+
+        $problem = $this->correct($variantId, [...['physical' => 5, 'version' => 1, 'reason' => 'loss', 'note' => null], ...$changed]);
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertSame([[$key, $message]], self::pathsWithTitles($problem['violations'] ?? null));
+        self::assertSame(['physical' => 10, 'reserved' => 0, 'version' => 1], $this->storedStock($variantId));
     }
 
     public function testTheViolationsShownAtTheFieldsAreInPolish(): void

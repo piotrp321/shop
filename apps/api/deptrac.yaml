@@ -273,6 +273,8 @@ deptrac:
       - Pricing_Domain
       - Shared_Domain
       - Shared_Infrastructure
+      # The panel's controllers read their body with RequiredKeysBody (Shared_UI), see CLAUDE.md.
+      - Shared_UI
       - Vendor
       # The controller of a price change takes the actor from AuthenticatedStaffMember, the security contract of
       # Backoffice. Pricing_Domain and Pricing_Application stay free of Backoffice.
@@ -305,6 +307,8 @@ deptrac:
       - Inventory_Domain
       - Shared_Domain
       - Shared_Infrastructure
+      # The panel's controllers read their body with RequiredKeysBody (Shared_UI), see CLAUDE.md.
+      - Shared_UI
       - Vendor
       # The controllers of receipts and corrections take the actor from AuthenticatedStaffMember, the security
       # contract of Backoffice. Inventory_Domain and Inventory_Application stay free of Backoffice.
@@ -379,6 +383,8 @@ deptrac:
       - Ordering_Domain
       - Shared_Domain
       - Shared_Infrastructure
+      # The panel's controllers read their body with RequiredKeysBody (Shared_UI), see CLAUDE.md.
+      - Shared_UI
       - Vendor
       # The controller of a customer's order takes the customer from AuthenticatedCustomer, the security contract of
       # Customer, never CustomerUser of Customer_Infrastructure.
