@@ -19,14 +19,16 @@ final readonly class ChangePriceRequest
 {
     public function __construct(
         #[OA\Property(type: 'integer', description: 'Gross price (VAT included) in grosze, from 1 (0,01 zł) to 99 999 999 (999 999,99 zł).', minimum: GrossPrice::MIN, maximum: GrossPrice::MAX, example: 5990)]
-        #[Assert\NotNull]
-        #[Assert\Type('integer')]
-        // Shown to a staff member as it is: in Polish and in złoty, as GrossPrice::MIN and MAX read in złoty (a functional
-        // test keeps them in step). The default message would give the range in grosze.
-        #[Assert\Range(notInRangeMessage: 'Cena brutto musi wynosić od 0,01 zł do 999 999,99 zł.', min: GrossPrice::MIN, max: GrossPrice::MAX)]
+        // In order up to the first violation, so the field gives one, in Polish and in złoty as GrossPrice::MIN and MAX read
+        // in złoty (a functional test keeps them in step). The default range message would give the range in grosze.
+        #[Assert\Sequentially([
+            new Assert\NotNull(message: 'Cena brutto jest wymagana.'),
+            new Assert\Type('integer', message: 'Cena brutto musi być liczbą całkowitą w groszach.'),
+            new Assert\Range(notInRangeMessage: 'Cena brutto musi wynosić od 0,01 zł do 999 999,99 zł.', min: GrossPrice::MIN, max: GrossPrice::MAX),
+        ])]
         public mixed $gross,
         #[OA\Property(type: 'integer', description: 'The `version` of the price the change is based on; null when the variant has no price yet.', nullable: true, example: 1)]
-        #[Assert\Type('integer')]
+        #[Assert\Type('integer', message: 'Wersja ceny musi być liczbą całkowitą albo null.')]
         public mixed $version,
     ) {
     }

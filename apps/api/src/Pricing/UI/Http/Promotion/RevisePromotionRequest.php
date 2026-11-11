@@ -19,24 +19,30 @@ final readonly class RevisePromotionRequest
 {
     public function __construct(
         #[OA\Property(type: 'string', description: '1 to 100 characters once trimmed, without control characters.', maxLength: Promotion::MAX_NAME_LENGTH, example: 'Jesień w górach')]
-        #[Assert\NotNull]
-        #[Assert\Type('string')]
+        #[Assert\Sequentially([
+            new Assert\NotNull(message: 'Nazwa promocji jest wymagana.'),
+            new Assert\Type('string', message: 'Nazwa promocji musi być tekstem.'),
+        ])]
         public mixed $name,
         #[OA\Property(type: 'integer', description: 'The discount of every variant, in percent. Fixed once the promotion started.', minimum: PercentOff::MIN, maximum: PercentOff::MAX, example: 20)]
-        #[Assert\NotNull]
-        #[Assert\Type('integer')]
+        #[Assert\Sequentially([
+            new Assert\NotNull(message: 'Rabat jest wymagany.'),
+            new Assert\Type('integer', message: 'Rabat musi być liczbą całkowitą.'),
+        ])]
         public mixed $percentOff,
         #[OA\Property(type: 'string', format: 'date-time', description: 'RFC 3339 with a time zone; null, now or before now starts a planned promotion now. Fixed once the promotion started (send the stored one).', nullable: true, example: '2026-11-11T00:00:00+01:00')]
         public mixed $startsAt,
         #[OA\Property(type: 'string', format: 'date-time', description: 'RFC 3339 with a time zone, at most 90 days after the start. For an active promotion, now or before now ends it at once ("end now": the next whole second).', example: '2026-11-21T00:00:00+01:00')]
-        #[Assert\NotNull]
+        #[Assert\NotNull(message: PromotionBodyRules::MOMENT)]
         public mixed $endsAt,
         #[OA\Property(type: 'array', description: '1 to 1000 variants, each once. Fixed once the promotion started; an added one must exist in the catalog and have a current price.', items: new OA\Items(type: 'string', format: 'uuid'), maxItems: Promotion::MAX_VARIANTS, minItems: Promotion::MIN_VARIANTS)]
-        #[Assert\NotNull]
+        #[Assert\NotNull(message: PromotionBodyRules::VARIANT_LIST)]
         public mixed $variantIds,
         #[OA\Property(type: 'integer', description: 'The `version` of the promotion the change is based on.', example: 1)]
-        #[Assert\NotNull]
-        #[Assert\Type('integer')]
+        #[Assert\Sequentially([
+            new Assert\NotNull(message: 'Wersja promocji jest wymagana.'),
+            new Assert\Type('integer', message: 'Wersja promocji musi być liczbą całkowitą.'),
+        ])]
         public mixed $version,
     ) {
     }
