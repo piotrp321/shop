@@ -56,12 +56,17 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   starszy niż 26 h albo brak snapshotu, błąd `restic check`, `n` w `--read-data-subset=n/7` z `date +%u` i `--read-data`
   przy `verifyReadData: all`, dumpy strumieniem z `restic dump` do `pg_restore`, błąd `pg_restore` albo `restic dump`,
   pusta tabela migracji, brak realmu `shop` albo `backoffice`, liczba obiektów inna niż w manifeście: błąd z opisem,
-  zdrowy przypadek przechodzi). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
+  zdrowy przypadek przechodzi) oraz skryptu poda odtworzenia `restore-job.sh` na atrapach `restic`, `psql`, `pg_restore`, `rclone`,
+  `redis-cli`, `rabbitmqadmin` i `bin/console` (tryby `list`, `check`, `restore`, `reindex`; snapshot z migracją spoza klas
+  migracji obrazu `api` odrzucony przed odtworzeniem; kolejność `DROP`/`CREATE`/`pg_restore` z rolą właściciela; błąd każdego
+  narzędzia kończy etap błędem). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
   i historii), PVC `backup-work`, token API tylko w kontenerze identyfikatora klastra (bez sekretu), sekret `shop-backup`
   tylko w kontenerze restic (z hasłem repozytorium zawsze razem z adresem), obrazy z digestem; CronJob
   `backup-verify` (05:00, limity jak `backup`, tymczasowy Postgres jako natywny sidecar na `emptyDir`, bez sekretów i
   połączeń produkcyjnej bazy, sekret `shop-backup` tylko w kontenerze skryptu, token tylko w identyfikatorze klastra,
-  `restic` jako wolumen obrazu z jego certyfikatami CA w `SSL_CERT_FILE`, `emptyDir` z limitem `storage.postgres`); schemat: `backup.enabled`
+  `restic` jako wolumen obrazu z jego certyfikatami CA w `SSL_CERT_FILE`, `emptyDir` z limitem `storage.postgres`); CronJob `restore` (`suspend: true`, `activeDeadlineSeconds: 10800`,
+  `backoffLimit: 0`, etapy w kontenerach obrazów narzędzi i `api` rewizji, tryb `list` domyślnie, bez tokenu API, sekret
+  `shop-backup` tylko w kontenerze restic, cache restic poza wolumenem `backup-work`); schemat: `backup.enabled`
   bez `backup.repository` albo `backup.secretName` oraz `backup.verifyReadData` inne niż `subset` i `all` kończą render błędem
   z nazwą wartości. Sprawdza też: render `prod` z plikiem
   digestów jak z `deploy-images` (bez `--set`; plik bez digestu albo z `latest` nie renderuje się), manifesty Argo CD
