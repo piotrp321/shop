@@ -102,6 +102,8 @@ do_schema() {
       --set image.tag=$rev --set backup.secretValues.RESTIC_PASSWORD=
     expect_failure "backup retention that restic does not read" "/backup/retention" $prod --set image.tag=$rev $digests \
       --set backup.retention=week
+    expect_failure "verification that reads neither a subset nor all of the data" "/backup/verifyReadData" $prod --set image.tag=$rev $digests \
+      --set backup.verifyReadData=most
     expect_failure "backup that is not a boolean" "/backup/enabled" $prod --set image.tag=$rev $digests --set-string backup.enabled=true
     # D3 (docs/features/hardening/spec.md): the header of the client address is trusted only behind the allow list,
     # and going without it is a confirmed choice that no deployment with the images of a release may make.

@@ -378,6 +378,8 @@
       "required": [
         "enabled",
         "schedule",
+        "verifySchedule",
+        "verifyReadData",
         "timeZone",
         "retention",
         "repository",
@@ -391,6 +393,17 @@
         "schedule": {
           "type": "string",
           "minLength": 1
+        },
+        "verifySchedule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verifyReadData": {
+          "enum": [
+            "subset",
+            "all"
+          ],
+          "description": "What restic check reads in the verification: subset (the seventh of the data numbered by the day of the week) or all."
         },
         "timeZone": {
           "type": "string",

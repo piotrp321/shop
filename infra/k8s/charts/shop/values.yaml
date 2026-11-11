@@ -117,6 +117,11 @@ cartPurge:
 backup:
   enabled: false
   schedule: "0 3 * * *"
+  # The daily verification of the backups (CronJob backup-verify, O3), two hours after the backup.
+  verifySchedule: "0 5 * * *"
+  # What restic check reads of the data of the repository: subset (a seventh of it, the one numbered by the day of the week, so every
+  # byte is read within a week) or all (the profile ci).
+  verifyReadData: subset
   timeZone: Europe/Warsaw
   # restic forget --keep-within: how long the snapshots of this cluster are kept (restic durations: 7d, 2y5m7d3h).
   retention: 7d

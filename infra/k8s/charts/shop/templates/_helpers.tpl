@@ -128,6 +128,64 @@ Parameters: root, name (the Deployment).
 {{- end }}
 
 {{/*
+The initContainer of the backup pods that writes the identifier of the cluster (the UID of the namespace kube-system, the host
+of the snapshots) to the volume `cluster`: the only container of those pods with the token of the API, and with no secret.
+kube-log-runner (in the image of kubectl, which has no shell) runs kubectl and writes its output to a file.
+Parameter: the root context.
+*/}}
+{{- define "shop.clusterIdInit" -}}
+- name: cluster-id
+  image: {{ .Values.images.kubectl }}
+  command: ["/bin/kube-log-runner"]
+  args:
+    - -log-file=/cluster/id
+    - -redirect-stderr=false
+    - /bin/kubectl
+    - get
+    - namespace
+    - kube-system
+    - -o
+    - jsonpath={.metadata.uid}
+  volumeMounts:
+    - name: kube-api-access
+      mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      readOnly: true
+    - name: cluster
+      mountPath: /cluster
+  resources:
+    {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 4 }}
+{{- end }}
+
+{{/*
+The access of restic to the repository of the backups: the variables of a container of the backup pods that runs restic. The
+password and the keys come from the secret backup.secretName, which only that container reads.
+Parameter: the root context.
+*/}}
+{{- define "shop.resticRepositoryEnv" -}}
+- name: RESTIC_REPOSITORY
+  value: {{ required "backup.repository is required" .Values.backup.repository | quote }}
+- name: RESTIC_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ required "backup.secretName is required" .Values.backup.secretName }}
+      key: RESTIC_PASSWORD
+- name: AWS_ACCESS_KEY_ID
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.backup.secretName }}
+      key: BACKUP_S3_ACCESS_KEY_ID
+- name: AWS_SECRET_ACCESS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.backup.secretName }}
+      key: BACKUP_S3_SECRET_ACCESS_KEY
+{{- if .Values.backup.s3Region }}
+- name: AWS_DEFAULT_REGION
+  value: {{ .Values.backup.s3Region | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
 A ClusterIP service. Parameters: root, name, ports (a list of dicts with name, port and optional targetPort); optional:
 publishNotReady (true: the service routes to the pod before it is ready, for a service whose own probe connects to it).
 */}}
