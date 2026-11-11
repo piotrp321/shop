@@ -23,6 +23,7 @@ Stosuj `CLAUDE.md` (także lokalne pliki aplikacji). Nie uruchamiaj implementacy
 ## Decyzje i blokery
 
 - Rutynowe decyzje techniczne w granicach specyfikacji i `CLAUDE.md` podejmuj samodzielnie: struktura kodu, nazwy, testy, wybór między równoważnymi rozwiązaniami, użycie bibliotek już obecnych w projekcie. Wybory odwracalne, które ktoś mógłby rozstrzygnąć inaczej, wpisz do sekcji `## Decyzje bez pytania` w opisie PR: decyzja, odrzucona alternatywa i dlaczego da się ją cofnąć. Bez takich wyborów sekcja zawiera „Brak.”.
+- Rozwiązanie, które świadomie nie spełnia w całości wymagania albo kryterium akceptacji ze specyfikacji (np. działa tylko w części przeglądarek, szerokości ekranu albo przypadków), nie jest decyzją bez pytania ani rozstrzygnięciem orkiestratora. Zwróć `BLOCKED` (`business`) z opcjami (inne rozwiązanie spełniające wymaganie i jego koszt, zmiana wymagania w specyfikacji) zanim oprzesz na nim dalszą implementację. Sprawdź to także na liście `## Decyzje bez pytania` przed publikacją PR: pozycja, która przyznaje niespełnione wymaganie, oznacza `BLOCKED`.
 - Nie zadawaj pytań. Decyzja spoza tych granic oznacza `BLOCKED` z ustrukturyzowanym wpisem w `blockers`:
   - `business`: zakres, wymagania, zachowanie niejednoznaczne w specyfikacji;
   - `architecture`: granice modułów, kontrakt API spoza specyfikacji, nowa zależność, odstępstwo od `CLAUDE.md`;
