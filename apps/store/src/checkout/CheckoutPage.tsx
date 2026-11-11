@@ -157,6 +157,9 @@ export function CheckoutPage({ providers, pendingOrderNumber }: { providers: Pay
     setLoaded({ status: "ready", cart: preview.cart, session });
     setAppliedCode(preview.appliedCode);
     setCodeError(preview.codeError);
+    // A code that came off the order other than by „Usuń kod” must not stay announced as applied; the message at the
+    // field (role="alert") tells why. A read that failed returns above and leaves the announcement: the code is still on.
+    if (preview.appliedCode === null && appliedCode !== null) setCodeStatus("");
     announceCartChange(preview.cart.totals.itemCount);
     return "ok";
   }
