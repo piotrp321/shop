@@ -180,6 +180,18 @@ backup_verify_accepts_any_age() { replace infra/k8s/charts/shop/files/scripts/ba
 backup_verify_postgres_not_a_sidecar() { replace infra/k8s/charts/shop/templates/backup-verify.yaml 'restartPolicy: Always' 'imagePullPolicy: IfNotPresent'; }
 backup_verify_without_the_ca_certificates() { replace infra/k8s/charts/shop/templates/backup-verify.yaml '- name: SSL_CERT_FILE' '- name: SSL_CERT_FILE_UNUSED'; }
 backup_verify_reads_the_production_postgres() { replace infra/k8s/charts/shop/templates/backup-verify.yaml 'value: 127.0.0.1' 'value: postgres'; }
+# The monitoring (spec O5, O7): the stage that masks e-mail addresses made to match nothing, the rules of Alloy with the Secrets of the
+# cluster, the Role of the token with no name of a Secret, the events without the stages, a rule that no longer drops Mailpit.
+monitoring_without_the_email_rule() { replace infra/k8s/argocd/apps/monitoring.yaml ']+@[' ']+Q['; }
+monitoring_alloy_rules_with_secrets() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [pods, pods/log, namespaces, events]' 'resources: [pods, pods/log, namespaces, events, secrets]'; }
+monitoring_role_on_all_secrets_of_the_shop() { replace infra/k8s/argocd/apps/monitoring.yaml 'resourceNames: [grafana-cloud]' 'resourceNames: []'; }
+monitoring_events_without_the_stages() { replace infra/k8s/argocd/apps/monitoring.yaml 'extraLogProcessingStages: *logStages' 'extraLogProcessingStages: ""'; }
+monitoring_collecting_mailpit() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex         = "shop;mailpit"' 'regex         = "shop;mailpit-other"'; }
+# The render of the monitoring: a chart version that has no digest in monitoring-render.sh, an archive with another digest, stages
+# that Alloy does not accept.
+monitoring_chart_version_without_a_digest() { replace infra/k8s/argocd/apps/monitoring.yaml 'targetRevision: 4.6.0' 'targetRevision: 4.5.0'; }
+monitoring_chart_digest_differs() { replace infra/k8s/scripts/monitoring-render.sh 'k8s-monitoring-4.6.0) echo 082ecdce' 'k8s-monitoring-4.6.0) echo 082ecdcf'; }
+monitoring_stages_alloy_rejects() { replace infra/k8s/argocd/apps/monitoring.yaml 'drop_counter_reason = "postgres_detail_statement"' 'drop_counter_reason ='; }
 seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
 restore_without_confirmation() { replace infra/k8s/scripts/restore.sh '[ "$answer" = tak ] || refuse' '[ "$answer" = never ] && refuse'; }
@@ -243,6 +255,14 @@ run_case "verification with the temporary Postgres that is not a sidecar" "test_
 run_case "verify without the CA certificates of restic" "test_restic_trusts_the_certificates_of_its_own_image" backup_verify_without_the_ca_certificates
 run_case "verification that reads the production Postgres" "test_nothing_of_the_production_database_is_reachable" backup_verify_reads_the_production_postgres
 run_case "seal-secrets looking for the existing backup secret in another file (it asks for the password again)" "test_the_backup_is_created_once_then_nothing_is_asked" seal_secrets_looks_for_the_backup_in_another_file
+run_case "monitoring masking no e-mail address" "e-mail 'jan.kowalski' came out of Alloy" monitoring_without_the_email_rule
+run_case "Alloy with the rules that read all Secrets" "gives access to Secrets" monitoring_alloy_rules_with_secrets
+run_case "Role of Alloy on all Secrets of the shop" "the Role does not name the one Secret" monitoring_role_on_all_secrets_of_the_shop
+run_case "cluster events without the stages that mask" "do not get the same stages" monitoring_events_without_the_stages
+run_case "monitoring collecting Mailpit" "test_the_rules_drop_exactly_the_disabled_sources_of_the_shop" monitoring_collecting_mailpit
+run_case "monitoring chart version without a pinned digest" "has no sha256 in scripts/monitoring-render.sh" monitoring_chart_version_without_a_digest
+run_case "monitoring chart archive with another digest" "of scripts/monitoring-render.sh" monitoring_chart_digest_differs
+run_case "monitoring stages that Alloy rejects" "Alloy rejects the rendered configuration" monitoring_stages_alloy_rejects
 run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" restore_without_confirmation
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
