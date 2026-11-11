@@ -51,7 +51,8 @@ create-admin:
 # environments/prod/secrets: make -C infra/k8s seal-secrets [WHAT="shop brevo tls backup"]. shop: the missing keys of
 # infra/scripts/init-env.sh with random values, existing ones are never changed. brevo, tls and backup (the password of the
 # restic repository and the S3 key of its bucket: RESTIC_PASSWORD, BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY):
-# asked for in the terminal without echo, once. An error writes nothing. Needs only Docker.
+# asked for in the terminal without echo, once (the restic password twice: different values are an error). An error writes
+# nothing. Needs only Docker.
 seal-secrets:
 	sh scripts/seal-secrets.sh $(WHAT)
 

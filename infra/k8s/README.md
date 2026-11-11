@@ -114,8 +114,8 @@ Wymaga certyfikatu w repo (2.5).
    make -C infra/k8s seal-secrets WHAT="brevo tls backup"
    ```
 
-   Login i klucz SMTP Brevo, certyfikat i klucz Origin CA wklejone w całości (do wiersza `END`), potem hasło restic, klucz
-   i sekret S3 bucketu kopii. Plik już istniejący nie jest ponownie pytany ani zmieniany (nowe hasło restic uczyniłoby
+   Login i klucz SMTP Brevo, certyfikat i klucz Origin CA wklejone w całości (do wiersza `END`), potem hasło restic (dwa razy: różne
+   wartości to błąd), klucz i sekret S3 bucketu kopii. Plik już istniejący nie jest ponownie pytany ani zmieniany (nowe hasło restic uczyniłoby
    dotychczasowe kopie nieczytelnymi). Błąd (pusta wartość, zły PEM, nieudany `kubeseal`) niczego nie zapisuje.
 5. **agent** – PR z plikami z `environments/prod/secrets/` (są zaszyfrowane, bezpieczne do commitu); `make -C infra/k8s check`
    wymaga od tego momentu zaszyfrowanej wartości dla każdego klucza `init-env.sh`. Merge robi **użytkownik**.

@@ -36,7 +36,7 @@ BREVO_KEY = "xsmtpsib-0123456789abcdef-SECRETKEYVALUE"
 RESTIC_PASSWORD = "correct horse battery staple, restic"
 S3_KEY_ID = "0123456789abcdef0123456789abcdef"
 S3_SECRET = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
-BACKUP_TTY = f"{RESTIC_PASSWORD}\n{S3_KEY_ID}\n{S3_SECRET}\n"
+BACKUP_TTY = f"{RESTIC_PASSWORD}\n{RESTIC_PASSWORD}\n{S3_KEY_ID}\n{S3_SECRET}\n"
 
 
 class SealSecretsTest(unittest.TestCase):
@@ -316,17 +316,32 @@ class SealSecretsTest(unittest.TestCase):
 
     def test_an_empty_or_a_bad_backup_value_writes_nothing(self):
         for tty in (
-            f"\n{S3_KEY_ID}\n{S3_SECRET}\n",
-            f"{RESTIC_PASSWORD}\n\n{S3_SECRET}\n",
-            f"{RESTIC_PASSWORD}\n{S3_KEY_ID}\n\n",
-            f"{RESTIC_PASSWORD}\nid with space\n{S3_SECRET}\n",
-            f"{RESTIC_PASSWORD}\n{S3_KEY_ID}\nsecret with space\n",
-            f"{RESTIC_PASSWORD}\n{S3_KEY_ID}\n",
+            f"\n\n{S3_KEY_ID}\n{S3_SECRET}\n",
+            f"{RESTIC_PASSWORD}\n{RESTIC_PASSWORD}\n\n{S3_SECRET}\n",
+            f"{RESTIC_PASSWORD}\n{RESTIC_PASSWORD}\n{S3_KEY_ID}\n\n",
+            f"{RESTIC_PASSWORD}\n{RESTIC_PASSWORD}\nid with space\n{S3_SECRET}\n",
+            f"{RESTIC_PASSWORD}\n{RESTIC_PASSWORD}\n{S3_KEY_ID}\nsecret with space\n",
+            f"{RESTIC_PASSWORD}\n{RESTIC_PASSWORD}\n{S3_KEY_ID}\n",
+            f"{RESTIC_PASSWORD}\n",
             "",
         ):
             with self.subTest(tty=tty):
                 result = self.run_script("backup", tty=tty)
                 self.assert_nothing_written(result)
+
+    def test_a_different_confirmation_of_the_restic_password_writes_nothing(self):
+        for confirmation in (RESTIC_PASSWORD[:-1], RESTIC_PASSWORD + " ", RESTIC_PASSWORD.upper(), S3_KEY_ID, ""):
+            with self.subTest(confirmation=confirmation):
+                result = self.run_script("backup", tty=f"{RESTIC_PASSWORD}\n{confirmation}\n{S3_KEY_ID}\n{S3_SECRET}\n")
+                self.assert_nothing_written(result)
+                self.assertIn("do not match", result.stderr)
+                self.assertEqual([], self.calls(), "something was sealed before the passwords were compared")
+                self.assert_no_secret_anywhere(result, RESTIC_PASSWORD, S3_SECRET)
+
+    def test_a_different_confirmation_in_all_four_writes_none_of_them(self):
+        tty = f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{RESTIC_PASSWORD}\nother\n{S3_KEY_ID}\n{S3_SECRET}\n"
+        result = self.run_script(tty=tty)
+        self.assert_nothing_written(result)
 
     def test_a_failing_kubeseal_for_the_backup_writes_nothing(self):
         result = self.run_script("backup", tty=BACKUP_TTY, STUB_FAIL_ON="3")

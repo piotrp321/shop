@@ -32,7 +32,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls backup"]` (szyfruje
   sekrety certyfikatem z repo do `environments/prod/secrets/`: brakujące klucze `init-env.sh` z losowymi wartościami,
   Brevo SMTP, certyfikat Origin CA oraz hasło restic i klucz S3 kopii zapasowych (`shop-backup`) czytane z terminala bez
-  echa, każdy z nich tylko raz, błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
+  echa (hasło restic dwa razy, różne wartości to błąd), każdy z nich tylko raz, błąd nic nie zapisuje) i `cloudflare-ips [CHECK=1]`
   (zakresy Cloudflare w `ipAllowList` produkcji). Agent wykonuje operacje na serwerze wyłącznie tymi celami. Kroki
   runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po zgodzie w rozmowie, a oznaczone
   „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access, ruleset i deploy key, backup VPS-a)

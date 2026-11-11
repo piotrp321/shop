@@ -10,8 +10,9 @@
 #   brevo  shop-brevo-smtp.yaml: BREVO_SMTP_LOGIN and BREVO_SMTP_PASSWORD of Brevo SMTP, asked for on the terminal.
 #   tls    shop-origin-tls.yaml (kubernetes.io/tls): the Cloudflare Origin CA certificate and private key, pasted on
 #          the terminal.
-#   backup shop-backup.yaml: RESTIC_PASSWORD (the password of the restic repository of the backups), BACKUP_S3_ACCESS_KEY_ID
-#          and BACKUP_S3_SECRET_ACCESS_KEY (the key of its S3 bucket), asked for on the terminal.
+#   backup shop-backup.yaml: RESTIC_PASSWORD (the password of the restic repository of the backups, asked for twice: a
+#          different second value is an error), BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY (the key of its S3
+#          bucket), asked for on the terminal.
 # Without arguments (WHAT) all four are processed. brevo, tls and backup are created once: when their file exists nothing
 # is asked and nothing changes (a new password would make the earlier backups unreadable).
 #
@@ -286,6 +287,9 @@ seal_backup() {
   fi
   ask "Password of the restic repository (keep a copy in the password manager: without it the backups cannot be read)"
   password="$secret_value"
+  # A typo would seal a password that is not the one in the password manager, and the backups could not be read.
+  read_secret "The password of the restic repository once more: "
+  [ "$secret_value" = "$password" ] || fail "the two passwords of the restic repository do not match; nothing was written"
   ask "Access key id of the S3 bucket of the backups (Cloudflare R2 API token)"
   key_id="$secret_value"
   ask "Secret access key of the S3 bucket of the backups"
