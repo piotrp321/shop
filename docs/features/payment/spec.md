@@ -312,6 +312,10 @@ paymentDeadline, totalGross, currency, canStartPayment, latestPayment: {provider
 `PayableOrders` jak w `StartPayment` krok 1. `canStartPayment` = zamówienie płatne (`payable`);
 przy oczekującej płatności nowa próba najpierw anuluje ją u dostawcy (`StartPayment` krok 4). `resumeUrl` =
 `Payment::resumeUrl(payable)`.
+Odczyty idą bez transakcji, więc najpierw czytana jest najnowsza płatność, dopiero potem zamówienie: webhook zmienia
+płatność i zamówienie w jednej transakcji, więc płatność odczytana jako `succeeded` oznacza zamówienie `paid`. Odwrotna
+kolejność mogłaby zwrócić zamówienie `new` z płatnością `succeeded`, a strona potwierdzenia uznaje taki stan za
+ustalony (pokazuje formularz płatności i przestaje odświeżać).
 
 ### Persystencja
 
