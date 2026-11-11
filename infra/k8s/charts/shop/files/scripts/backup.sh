@@ -40,13 +40,14 @@ stage_dump() {
   # Nothing of a previous run may be taken for a result of this one.
   rm -rf "$work/dumps" "$work/dumps.partial" "$work/meta" "$work/manifest.json"
   mkdir -p "$work/dumps.partial" "$work/meta"
-  echo "backup: reading the migrations of shop"
-  psql -h "$pg_host" -U postgres -d shop -tAc "SELECT version FROM doctrine_migration_versions ORDER BY version" > "$work/meta/migrations"
-  [ -s "$work/meta/migrations" ] || fail "doctrine_migration_versions of shop is empty"
   for database in $databases; do
     echo "backup: dumping $database"
     pg_dump -h "$pg_host" -U postgres -Fc --no-owner --no-privileges -f "$work/dumps.partial/$database.dump" "$database"
   done
+  # After the dump: a migration run in between would leave the manifest with fewer migrations than the dump has.
+  echo "backup: reading the migrations of shop"
+  psql -h "$pg_host" -U postgres -d shop -tAc "SELECT version FROM doctrine_migration_versions ORDER BY version" > "$work/meta/migrations"
+  [ -s "$work/meta/migrations" ] || fail "doctrine_migration_versions of shop is empty"
   # The directory appears only when every dump is there.
   mv "$work/dumps.partial" "$work/dumps"
 }

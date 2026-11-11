@@ -233,6 +233,20 @@ class BackupScriptTest(unittest.TestCase):
         self.assertRegex(query, r"-U postgres\b")
         self.assertRegex(query, r"-d shop\b")
 
+    def test_the_migrations_are_read_after_the_dump_of_shop(self):
+        # A migration between the two would give a manifest with fewer migrations than the dump has.
+        result = self.run_script()
+        self.assertEqual(0, result.returncode, result.stderr)
+        calls = self.calls()
+        dump_of_shop = next(i for i, line in enumerate(calls) if line.startswith("pg_dump") and line.endswith(" shop"))
+        migrations = next(i for i, line in enumerate(calls) if line.startswith("psql") and "doctrine_migration_versions" in line)
+        self.assertLess(dump_of_shop, migrations)
+
+    def test_a_failing_read_of_the_migrations_leaves_no_dumps_to_be_taken_for_good_ones(self):
+        result = self.run_script("dump", STUB_FAIL="psql")
+        self.assertNotEqual(0, result.returncode)
+        self.assertFalse((self.work / "dumps").exists())
+
     def test_an_empty_bucket_gives_an_empty_mirror_and_zero_objects(self):
         result = self.run_script(STUB_OBJECTS="0")
         self.assertEqual(0, result.returncode, result.stderr)
