@@ -76,8 +76,7 @@ dokumentem roboczym: po ukończeniu epica usuń go.
 | 1 | <ID>, <ID> | |
 | 2 | <ID> | |
 
-Stan prób zadań zgłoszonych do AO: `ao status`. Kolumnę „Status” (PR, zmergowane) uzupełnia użytkownik przy
-integracji zadań fali.
+Stan epiku prowadzonego przez AO jest w `ao status`, a plan usuwa `FINALIZE`.
 
 ## Zadania
 

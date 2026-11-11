@@ -363,6 +363,87 @@ class SummarizeTest(unittest.TestCase):
         self.assertEqual((got['interventions'], got['waits'], got['wait_s']), (2, 1, 60.0))
 
 
+class WaitsTest(unittest.TestCase):
+    """The windows of waiting for the user behind `summary`: same pairing rules, one entry per wait."""
+
+    def waits(self, events):
+        return ao_events.waits(events)
+
+    def test_no_events_is_no_windows(self):
+        self.assertEqual(self.waits([]), [])
+
+    def test_blocker_answered_is_a_closed_window_with_the_answer(self):
+        got = self.waits([blocked('T-1', 100.0), human('answer', 700.0, 'T-1')])
+        self.assertEqual(len(got), 1)
+        window = got[0]
+        self.assertEqual((window['key'], window['task_id'], window['start'], window['end'], window['action']),
+                         ('T-1', 'T-1', 100.0, 700.0, 'answer'))
+        self.assertEqual(window['type'], 'status_changed')
+        self.assertEqual(window['data']['reason'], 'executor')
+
+    def test_windows_are_paired_per_task(self):
+        got = self.waits([blocked('A', 0.0), blocked('B', 100.0), human('answer', 400.0, 'B'),
+                          human('answer', 1000.0, 'A')])
+        self.assertEqual([(w['key'], w['start'], w['end']) for w in got], [('A', 0.0, 1000.0), ('B', 100.0, 400.0)])
+
+    def test_failed_task_ends_with_resume(self):
+        failed = at(event('status_changed', {'to': 'FAILED', 'reason': 'executor_reported'}, task_id='T-2'), 50.0)
+        got = self.waits([failed, human('resume', 150.0, 'T-2')])
+        self.assertEqual([(w['key'], w['start'], w['end'], w['action']) for w in got], [('T-2', 50.0, 150.0, 'resume')])
+
+    def test_epic_windows_have_no_key_and_end_with_an_action_without_task(self):
+        got = self.waits([at(event('epic_blocked', {'reason': 'epic_timeout'}, task_id=None), 0.0),
+                          human('epic-resume', 300.0),
+                          at(event('queue_held', {'kind': 'environment', 'task_id': 'T-3'}, task_id=None), 400.0),
+                          human('release', 500.0)])
+        self.assertEqual([(w['type'], w['key'], w['start'], w['end'], w['action']) for w in got],
+                         [('epic_blocked', None, 0.0, 300.0, 'epic-resume'),
+                          ('queue_held', None, 400.0, 500.0, 'release')])
+        self.assertEqual(got[1]['data']['task_id'], 'T-3')
+
+    def test_repeated_block_before_answer_is_one_window_from_the_first(self):
+        got = self.waits([blocked('T-1', 0.0), blocked('T-1', 50.0), human('answer', 200.0, 'T-1')])
+        self.assertEqual([(w['start'], w['end']) for w in got], [(0.0, 200.0)])
+
+    def test_unanswered_blocker_is_an_open_window(self):
+        got = self.waits([blocked('T-1', 100.0)])
+        self.assertEqual([(w['key'], w['start'], w['end'], w['action']) for w in got], [('T-1', 100.0, None, None)])
+
+    def test_action_without_a_wait_makes_no_window(self):
+        self.assertEqual(self.waits([human('resume', 10.0, 'T-1')]), [])
+
+    def test_other_events_and_bad_times_are_ignored(self):
+        got = self.waits([event('epic_done'), at(event('host_on_battery', {'percent': 10}), 5.0),
+                          at(event('status_changed', {'to': 'PENDING'}), 6.0),
+                          blocked('T-1', 'x'), {'type': 'invalid_event', 'raw': ''}, 'not a dict'])
+        self.assertEqual(got, [])
+
+    def test_overlapping_waits_are_separate_windows(self):
+        got = self.waits([blocked('T-1', 0.0), at(event('epic_blocked', {'reason': 'x'}, task_id=None), 0.04),
+                          human('answer', 600.0, 'T-1'), human('epic-resume', 700.0),
+                          blocked('A', 1000.0), blocked('B', 1100.0), human('answer', 1200.0, 'A'),
+                          human('answer', 1500.0, 'B')])
+        self.assertEqual([(w['key'], w['start'], w['end']) for w in got],
+                         [('T-1', 0.0, 600.0), (None, 0.04, 700.0), ('A', 1000.0, 1200.0), ('B', 1100.0, 1500.0)])
+
+    def test_answer_before_block_does_not_go_negative(self):
+        got = self.waits([human('answer', 100.0, 'T-1'), blocked('T-1', 200.0), human('answer', 260.0, 'T-1')])
+        self.assertEqual([(w['start'], w['end']) for w in got], [(200.0, 260.0)])
+
+    def test_an_action_earlier_than_the_start_closes_at_the_start(self):
+        # events out of order: the window is never negative
+        got = self.waits([blocked('T-1', 300.0), human('answer', 200.0, 'T-1')])
+        self.assertEqual([(w['start'], w['end']) for w in got], [(300.0, 300.0)])
+
+    def test_summary_totals_come_from_the_same_windows(self):
+        events = [blocked('A', 0.0), blocked('B', 100.0), human('answer', 400.0, 'B'), human('answer', 1000.0, 'A'),
+                  blocked('C', 2000.0)]
+        windows = self.waits(events)
+        closed = [w for w in windows if w['end'] is not None]
+        got = ao_events.summarize(events, 5000.0)
+        self.assertEqual((got['waits'], got['wait_s'], len(got['open'])), (len(windows), 1000.0, len(windows) - len(closed)))
+
+
 class SummaryCliTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
