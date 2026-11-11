@@ -20,14 +20,25 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   `make -C infra/k8s create-admin LOGIN=<login> EMAIL=<e-mail>` (pierwszy administrator panelu: wypisuje, co zrobi,
   i działa dopiero po słowie `tak`; zakłada użytkownika w realmie `backoffice` z rolą `admin` bez hasła i wysyła mu
   e-mail z akcjami `UPDATE_PASSWORD` i `CONFIGURE_TOTP`, link ważny 12 h; istniejący login albo e-mail: błąd, kod 3,
-  bez zmian; niczego tajnego nie wypisuje). `rerun` i `create-admin` łączą się z klastrem przez kubeconfig z `KUBE_DIR`
-  (wymagany), w kontenerze w sieci Dockera `KUBE_NETWORK` (domyślnie `host`), w przestrzeni `KUBE_NAMESPACE`
-  (domyślnie `shop`). Agent uruchamia `create-admin` tylko po zgodzie użytkownika w rozmowie.
+  bez zmian; niczego tajnego nie wypisuje); `make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip]` (odtworzenie
+  snapshotu kopii, `docs/features/deploy-ops/spec.md`, O4: bez `SNAPSHOT` (identyfikator z `backups`, nigdy `latest`), przy
+  aktywnym Jobie w przestrzeni, trwającej synchronizacji `shop` w Argo CD albo snapshocie z migracją spoza klas migracji
+  obrazu `api` odmawia bez zmian; wypisuje snapshot i skutki, działa dopiero po słowie `tak`; najpierw kopia `pre-restore`
+  (Job z CronJoba `backup`; jej błąd kończy bez zmian, `PRE_RESTORE=skip` ją pomija), potem wyłącza synchronizację `root`
+  i `shop`, wstrzymuje `cart-purge-expired` i `backup`, skaluje do zera `api`, `worker`, `store` i `keycloak`, Job z
+  CronJoba `restore` odtwarza dane, ponawia `migrate`, `keycloak-config` (jak `rerun`), reindeks i `purge-caches`, przywraca
+  repliki, CronJoby i synchronizację `root`; błąd po pierwszej zmianie zostawia aplikacje wyłączone i wypisuje krok oraz
+  snapshot `pre-restore`; kod 0, 1 odmowa albo błąd, 2 złe argumenty) i `make -C infra/k8s backups` (snapshoty repozytorium:
+  identyfikator, czas, host, tagi, rewizja; tylko odczyt). `rerun`, `create-admin`, `restore` i `backups` łączą się z
+  klastrem przez kubeconfig z `KUBE_DIR` (wymagany), w kontenerze w sieci Dockera `KUBE_NETWORK` (domyślnie `host`), w
+  przestrzeni `KUBE_NAMESPACE` (domyślnie `shop`). Agent uruchamia `create-admin` i `restore` tylko po zgodzie użytkownika
+  w rozmowie; `backups` sam.
   Serwer obsługują cele (po SSH, `HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `make -C infra/k8s bootstrap HOST=…
   [SEALED_KEY_FILE=<kopia klucza>]` (czysty Ubuntu 24.04: k3s w przypiętej wersji, ufw, aktualizacje bezpieczeństwa, Argo CD,
   Sealed Secrets, aplikacja `root`; idempotentny; bez roota albo na innym systemie kończy się błędem przed zmianami;
   zapisuje certyfikat kontrolera do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma, a rozbieżny
-  certyfikat to błąd), `kubeconfig HOST=… KUBE_DIR=…` (kubeconfig klastra poza repo, dla `rerun` i `create-admin`),
+  certyfikat to błąd), `kubeconfig HOST=… KUBE_DIR=…` (kubeconfig klastra poza repo, dla `rerun`, `create-admin`, `restore`
+  i `backups`),
   `status HOST=…` (tylko odczyt: aplikacje Argo, pody, Joby), `reinitialize HOST=…` (kasuje dane sklepu i wczytuje dane
   demo od nowa; wypisuje, co zrobi, i działa dopiero po słowie `tak`), `seal-secrets [WHAT="shop brevo tls backup"]` (szyfruje
   sekrety certyfikatem z repo do `environments/prod/secrets/`: brakujące klucze `init-env.sh` z losowymi wartościami,
@@ -59,7 +70,11 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   zdrowy przypadek przechodzi) oraz skryptu poda odtworzenia `restore-job.sh` na atrapach `restic`, `psql`, `pg_restore`, `rclone`,
   `redis-cli`, `rabbitmqadmin` i `bin/console` (tryby `list`, `check`, `restore`, `reindex`; snapshot z migracją spoza klas
   migracji obrazu `api` odrzucony przed odtworzeniem; kolejność `DROP`/`CREATE`/`pg_restore` z rolą właściciela; błąd każdego
-  narzędzia kończy etap błędem). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
+  narzędzia kończy etap błędem), skryptów `restore.sh`, `backups.sh` i `rerun.sh` na atrapie `docker` grającej klaster dla
+  `kubectl` (bez `tak`, bez `SNAPSHOT`, przy aktywnym Jobie, trwającej synchronizacji `shop` i snapshocie nowszym niż kod
+  nic się nie zmienia; nieudana kopia `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; kolejność kroków z Argo CD
+  (`root`, potem `shop`, na końcu `root`) i bez niego (zapamiętane repliki); błąd Joba odtworzenia zostawia aplikacje
+  wyłączone i wypisuje krok oraz snapshot `pre-restore`; czekanie najwyżej `activeDeadlineSeconds` Joba). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
   i historii), PVC `backup-work`, token API tylko w kontenerze identyfikatora klastra (bez sekretu), sekret `shop-backup`
   tylko w kontenerze restic (z hasłem repozytorium zawsze razem z adresem), obrazy z digestem; CronJob
   `backup-verify` (05:00, limity jak `backup`, tymczasowy Postgres jako natywny sidecar na `emptyDir`, bez sekretów i
