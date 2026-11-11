@@ -30,7 +30,8 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
  * is no object (or an empty body) has none of the keys.
  *
  * The body is read late, like #[MapRequestPayload] does: resolving the argument only leaves a marker, and the
- * `kernel.controller_arguments` listener below (after the one of #[IsGranted], which runs at priority 20) replaces it
+ * `kernel.controller_arguments` listener below (after ControllerAttributesListener, which runs the
+ * checks of attributes such as #[IsGranted] at priority -10000) replaces it
  * with the request class. So the 403 of the attribute still comes before the 400, 415 and 422 of the body.
  */
 #[AsTargetedValueResolver]

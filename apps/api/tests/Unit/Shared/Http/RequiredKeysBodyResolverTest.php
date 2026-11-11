@@ -12,6 +12,7 @@ use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\ControllerMetadata\ArgumentMetadata;
 use Symfony\Component\HttpKernel\Event\ControllerArgumentsEvent;
+use Symfony\Component\HttpKernel\EventListener\ControllerAttributesListener;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Symfony\Component\HttpKernel\Exception\UnsupportedMediaTypeHttpException;
@@ -126,7 +127,9 @@ final class RequiredKeysBodyResolverTest extends TestCase
         self::assertEquals([new PendingBody(RequiredKeysBodyFixture::class)], $resolved, 'resolving reads nothing, so a 403 of #[IsGranted] comes before the body');
         $listeners = RequiredKeysBodyResolver::getSubscribedEvents()[KernelEvents::CONTROLLER_ARGUMENTS];
         self::assertIsArray($listeners);
-        self::assertLessThan(20, $listeners[1], 'after the listener of #[IsGranted] (priority 20)');
+        $attributes = ControllerAttributesListener::getSubscribedEvents()[KernelEvents::CONTROLLER_ARGUMENTS];
+        self::assertIsArray($attributes);
+        self::assertLessThan($attributes[1], $listeners[1], 'after the checks of attributes such as #[IsGranted]');
     }
 
     public function testAnArgumentWithoutTheAttributeIsLeftToOtherResolvers(): void
