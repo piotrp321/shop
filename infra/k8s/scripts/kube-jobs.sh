@@ -38,7 +38,9 @@ cronjob_job() {
   shift 2
   cronjob_manifest="$(kubectl -n "$namespace" create job "$cronjob_name" "--from=cronjob/$cronjob_source" --dry-run=client -o json)" || return 1
   if [ "$#" -gt 0 ]; then
-    cronjob_manifest="$(printf '%s' "$cronjob_manifest" | kubectl set env --local -f - -o json "$@")" || return 1
+    # kubectl set env prints nothing for an object the variables do not change (the template has them already).
+    cronjob_changed="$(printf '%s' "$cronjob_manifest" | kubectl set env --local -f - -o json "$@")" || return 1
+    [ -z "$cronjob_changed" ] || cronjob_manifest="$cronjob_changed"
   fi
   printf '%s' "$cronjob_manifest" | kubectl -n "$namespace" create -f - > /dev/null
 }

@@ -88,7 +88,7 @@ on_exit() {
       else
         echo "restore: there is no pre-restore snapshot (PRE_RESTORE=skip)"
       fi
-      echo "restore: to finish, see infra/k8s/README.md (Ćwiczenie odtworzenia, Odtworzenie przerwane w trakcie)"
+      echo "restore: to finish, see infra/k8s/README.md, section 8 (Odtworzenie przerwane w trakcie)"
     } >&2
   fi
   exit "$status"
@@ -220,10 +220,14 @@ while [ -n "$(kubectl -n "$namespace" get pods -l 'app.kubernetes.io/name in (ap
 done
 echo "restore: $deployments are stopped (replicas were: $replicas), the CronJobs $cronjobs suspended"
 
-# replicas_of <deployment>: the number of replicas it had.
+# replicas_of <deployment>: the number of replicas it had; one (as in the chart) for one that was at zero, which only a restore
+# that stopped before leaves.
 replicas_of() {
   for pair in $replicas; do
-    [ "${pair%%=*}" != "$1" ] || { printf '%s' "${pair#*=}"; return 0; }
+    if [ "${pair%%=*}" = "$1" ] && [ "${pair#*=}" -gt 0 ]; then
+      printf '%s' "${pair#*=}"
+      return 0
+    fi
   done
   printf 1
 }

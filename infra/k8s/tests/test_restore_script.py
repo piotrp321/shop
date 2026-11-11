@@ -137,11 +137,15 @@ elif verb == "create" and rest[1] == "job":
                                "template": {"spec": {"containers": [{"name": "c", "env": [{"name": k, "value": v} for k, v in cron["env"].items()]}]}}}}))
 elif verb == "set":
     doc = json.load(sys.stdin)
+    changed = False
     for pair in [a for a in rest if "=" in a and not a.startswith("-")]:
         key, value = pair.split("=", 1)
         for container in doc["spec"]["template"]["spec"]["containers"]:
+            changed = changed or {"name": key, "value": value} not in container["env"]
             container["env"] = [e for e in container["env"] if e["name"] != key] + [{"name": key, "value": value}]
-    print(json.dumps(doc))
+    # As kubectl: an object that the variables do not change is not printed at all.
+    if changed:
+        print(json.dumps(doc))
 elif verb == "create":
     doc = json.load(sys.stdin)
     name = doc["metadata"]["name"]
@@ -445,6 +449,13 @@ class RestoreScriptTest(unittest.TestCase):
             "rollout status deployment/api", "rollout status deployment/worker", "rollout status deployment/store",
         ], self.changing_calls(cluster))
         self.assertEqual([], [c for c in cluster.calls() if "argocd" in c and c[2] == "patch"])
+
+    def test_after_a_restore_that_stopped_the_applications_at_zero_come_back_with_one_replica(self):
+        """A restore run again after one that failed finds the applications at zero: they come back as the chart has them."""
+        cluster = self.stub(deployments={"api": 0, "worker": 0, "store": 0, "keycloak": 0})
+        result = self.restore(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual({"api": 1, "worker": 1, "store": 1, "keycloak": 1}, cluster.state()["deployments"])
 
     def test_the_jobs_run_in_order_and_the_jobs_of_the_version_under_their_names(self):
         cluster = self.stub()
