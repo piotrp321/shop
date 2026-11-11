@@ -53,7 +53,7 @@ class RealmsTest(unittest.TestCase):
         return document
 
     def test_realms_are_rendered_without_users_and_with_the_addresses(self):
-        for case, store, admin in (("prod", "https://shop.example.org", "https://admin.shop.example.org"),
+        for case, store, admin in (("prod", "https://worf.pl", "https://admin.worf.pl"),
                                    ("ci", "http://localhost", "http://admin.localhost")):
             data = config_map(case, "keycloak-realms")["data"]
             for realm in ("shop", "backoffice"):
