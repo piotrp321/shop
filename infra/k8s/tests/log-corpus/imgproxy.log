@@ -1,0 +1,2 @@
+INFO[0012] Completed in 12.3ms request_id=8d1f method=GET status=200 path=/img/rs:fit:300:300/plain/s3://product-images/a.jpg ip=203.0.113.45
+WARN[0013] Request failed request_id=8d20 method=GET status=403 url="/img/x.jpg?api_key=v-api-key-img&token=v-token-img" ip=2001:db8:85a3::8a2e:370:7334

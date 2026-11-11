@@ -1,0 +1,34 @@
+# The CRDs of the Prometheus Operator (PrometheusRule among them: the alert rules of the shop chart, which Alloy synchronizes
+# to the ruler of Grafana Cloud), from the published chart pinned by version; only CRDs, no operator. The first application
+# of the root (wave -3), before the sealed secrets controller and the shop, so that the CRD exists when a chart renders a
+# PrometheusRule. ServerSideApply: the CRDs are larger than the limit of the annotation that a plain apply keeps.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus-crds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: prometheus-operator-crds
+    targetRevision: 33.0.2
+    helm:
+      releaseName: prometheus-crds
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 10m

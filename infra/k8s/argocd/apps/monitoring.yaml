@@ -1,0 +1,299 @@
+# Grafana Alloy for Grafana Cloud (docs/features/deploy-ops/spec.md, O5 and O7): the chart k8s-monitoring of the version
+# pinned below installs the Alloy Operator, kube-state-metrics and node-exporter, and one Alloy (kind Alloy, a Deployment of one
+# replica, the cluster is one node) that sends the logs of every pod (read through the Kubernetes API), the cluster events and the
+# metrics to Grafana Cloud, and synchronizes the PrometheusRule objects of the cluster to the ruler there. The last wave (1), after
+# the shop: no account or a wrong token leaves this application Degraded and does not stop the shop. The interface of the chart
+# changes between major versions (destinations are a map since 4.x): the version is pinned, an upgrade is a change of its own.
+#
+# To fill in (runbook, infra/k8s/README.md): the addresses and the instance ids of the two destinations (Grafana Cloud portal,
+# the stack in the EU region); the values below are examples. The token is not here: it is the Secret grafana-cloud
+# (GRAFANA_CLOUD_TOKEN) of the namespace shop, written by seal-secrets.sh.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: k8s-monitoring
+    targetRevision: 4.6.0
+    helm:
+      releaseName: monitoring
+      valuesObject:
+        cluster:
+          name: shop
+        destinations:
+          grafana-metrics:
+            type: prometheus
+            url: https://prometheus-prod-24-prod-eu-west-2.grafana.net/api/prom/push
+            auth:
+              type: basic
+              # An Alloy expression: the instance id of the metrics (not a secret; the same value is the tenant). The chart reads
+              # every other credential from the Secret, where there is only the token (a key missing there is empty).
+              usernameFrom: &metricsInstance '"1234567"'
+              passwordKey: GRAFANA_CLOUD_TOKEN
+            tenantIdFrom: *metricsInstance
+            secret:
+              create: false
+              name: grafana-cloud
+              namespace: shop
+            # The PrometheusRule objects of the cluster go to the ruler of the same stack: the base address, not the push path.
+            rules:
+              enabled: true
+              address: https://prometheus-prod-24-prod-eu-west-2.grafana.net
+              prometheusHttpPrefix: /api/prom
+          grafana-logs:
+            type: loki
+            url: https://logs-prod-eu-west-2.grafana.net/loki/api/v1/push
+            auth:
+              type: basic
+              usernameFrom: &logsInstance '"7654321"'
+              passwordKey: GRAFANA_CLOUD_TOKEN
+            tenantIdFrom: *logsInstance
+            secret:
+              create: false
+              name: grafana-cloud
+              namespace: shop
+        clusterMetrics:
+          enabled: true
+          destinations: [grafana-metrics]
+          # The allowed metrics (the free plan of Grafana Cloud holds 10 thousand active series): the default list of the chart
+          # (what the Kubernetes dashboards of Grafana Cloud need) plus the metrics of the alerts (spec, O6), named here so that
+          # a change of the default list in a new version of the chart cannot take them away.
+          kube-state-metrics:
+            metricsTuning:
+              useDefaultAllowList: true
+              includeMetrics:
+                - kube_cronjob_status_last_successful_time
+                - kube_job_status_condition
+                - kube_job_owner
+                - kube_node_info
+                - kube_deployment_status_replicas_available
+                - kube_deployment_spec_replicas
+                - kube_statefulset_status_replicas_ready
+                - kube_statefulset_replicas
+        hostMetrics:
+          enabled: true
+          destinations: [grafana-metrics]
+          linuxHosts:
+            enabled: true
+            metricsTuning:
+              useDefaultAllowList: true
+              includeMetrics:
+                - node_filesystem_avail_bytes
+                - node_filesystem_size_bytes
+        # The logs of the pods of every namespace, read through the Kubernetes API. The stages mask them before they leave the
+        # cluster, and the discovery rules leave out the sources that cannot be masked (spec, O7; the test runs both in Alloy).
+        podLogsViaKubernetesApi:
+          enabled: true
+          destinations: [grafana-logs]
+          # Mailpit (the addressees and the subjects of the mail) is not collected. The list of such sources is here and in
+          # tests/test_log_masking.py; a new one is a new rule, a rule per source.
+          extraDiscoveryRules: |
+            rule {
+              source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+              regex         = "shop;mailpit"
+              action        = "drop"
+            }
+          # One block of stages for the pods and for the events (the alias below).
+          extraLogProcessingStages: &logStages |
+              // Stages of every log line before it leaves the cluster (docs/features/deploy-ops/spec.md, O7). The same text is used for the logs
+              // of the pods and for the cluster events. A value is replaced by [REDACTED]; only the capture groups of a stage are replaced.
+              // A rule of the same shape is added for a new key or format, and a source that cannot be masked is dropped in extraDiscoveryRules.
+              // The names of the keys: password, passwd, secret, token (access_token, refresh_token, id_token, token_id, ...), session, api_key,
+              // client_secret, authorization, cookie (Set-Cookie, Proxy-Authorization, ...) and their compounds, code, code_id and code_verifier (exactly: status_code
+              // stays), username.
+
+              // The lines DETAIL: and STATEMENT: of Postgres hold the values of the keys and the text of the queries.
+              stage.drop {
+                expression          = `(?:^|\]\s)\s*(?:DETAIL|STATEMENT):`
+                drop_counter_reason = "postgres_detail_statement"
+              }
+
+              // JWT.
+              stage.replace {
+                expression = `(eyJ[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]*)+)`
+                replace    = "[REDACTED]"
+              }
+
+              // Bearer tokens.
+              stage.replace {
+                expression = `(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{16,})`
+                replace    = "[REDACTED]"
+              }
+
+              // Headers written as lines: Authorization: ..., Cookie: ..., Set-Cookie: ... (the rest of the value).
+              stage.replace {
+                expression = `(?i)\b(?:proxy-authorization|authorization|set-cookie|cookie)\s*:\s*([^\r\n"]+)`
+                replace    = "[REDACTED]"
+              }
+
+              // The value of a key in JSON ("key":"value", also a list with one value) and in logfmt (key="value").
+              stage.replace {
+                expression = `(?i)(?:^|[^a-z0-9_-])"?(?:(?:[a-z0-9]+[_-])*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)(?:[_-][a-z0-9]+)*|code(?:_id|_verifier)?|username)"?\s*[:=]\s*\[?\s*"((?:[^"\\]|\\.)*)"`
+                replace    = "[REDACTED]"
+              }
+
+              // The same inside a string of JSON (the quotes are escaped).
+              stage.replace {
+                expression = `(?i)(?:^|[^a-z0-9_-])\\"(?:(?:[a-z0-9]+[_-])*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)(?:[_-][a-z0-9]+)*|code(?:_id|_verifier)?|username)\\"\s*:\s*\\"([^"\\]*)\\"`
+                replace    = "[REDACTED]"
+              }
+
+              // The value of a key in a query string, a form and logfmt without quotes (key=value).
+              stage.replace {
+                expression = `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)(?:[_-][a-z0-9]+)*|code(?:_id|_verifier)?|username)=([^&\s"';,)}\]\\]+)`
+                replace    = "[REDACTED]"
+              }
+
+              // The password of an address (scheme://user:password@host).
+              stage.replace {
+                expression = `://[^/\s:@"]*:([^@/\s"]+)@`
+                replace    = "[REDACTED]"
+              }
+
+              // The parameters of a query in the message of Doctrine (with params [...]): the data of orders and addresses.
+              stage.replace {
+                expression = `with params \[((?:[^\]\\]|\\.)*)\]`
+                replace    = "[REDACTED]"
+              }
+
+              // The values of the keys in DETAIL of Postgres inside another message.
+              stage.replace {
+                expression = `(?:Failing row contains |Key \([^)]*\)=)\(([^)]*)\)`
+                replace    = "[REDACTED]"
+              }
+
+              // E-mail addresses, also with the @ written as %40 in a URL.
+              stage.replace {
+                expression = `([^\s"'<>(),;:\[\]\\=@/%&?]+@[^\s"'<>(),;\[\]\\@/:]+\.[^\s"'<>(),;\[\]\\@/:.&?]{2,})`
+                replace    = "[REDACTED]"
+              }
+              stage.replace {
+                expression = `([^\s"'<>(),;:\[\]\\=@/&?]+%40[^\s"'<>(),;\[\]\\&]+)`
+                replace    = "[REDACTED]"
+              }
+
+              // IPv6 addresses: the full form, the compressed form with :: and the loopback.
+              stage.replace {
+                expression = `(?i)(?:^|[^0-9a-z:])((?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4})`
+                replace    = "[REDACTED]"
+              }
+              stage.replace {
+                expression = `(?i)(?:^|[^0-9a-z:])((?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?)`
+                replace    = "[REDACTED]"
+              }
+              stage.replace {
+                expression = `(?:^|[^0-9a-zA-Z:])(::1)\b`
+                replace    = "[REDACTED]"
+              }
+
+              // IPv4 addresses.
+              stage.replace {
+                expression = `\b([0-9]{1,3}(?:\.[0-9]{1,3}){3})\b`
+                replace    = "[REDACTED]"
+              }
+        clusterEvents:
+          enabled: true
+          destinations: [grafana-logs]
+          extraLogProcessingStages: *logStages
+        telemetryServices:
+          kube-state-metrics:
+            deploy: true
+            # No metrics of Secrets and ConfigMaps: the ClusterRole of kube-state-metrics then has no access to Secrets.
+            collectorsExclude: [secrets, configmaps]
+            resources:
+              requests: {cpu: 50m, memory: 128Mi}
+              limits: {cpu: 250m, memory: 256Mi}
+          node-exporter:
+            deploy: true
+            resources:
+              requests: {cpu: 50m, memory: 64Mi}
+              limits: {cpu: 250m, memory: 128Mi}
+        collectors:
+          alloy:
+            presets: [deployment]
+            # The image the chart expects (its pinnedImageTag), so that what runs is what the test of the masking ran: without it
+            # the operator picks the Alloy of its own chart.
+            image:
+              tag: v1.21.3
+            alloy:
+              resources:
+                requests: {cpu: 200m, memory: 384Mi}
+                limits: {cpu: "1", memory: 768Mi}
+            configReloader:
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {cpu: 100m, memory: 64Mi}
+            # The ClusterRole that the operator makes for Alloy comes from these rules; the default of the Alloy chart reads all
+            # Secrets of the cluster. These do not: the discovery of the pods, their logs, the events and the PrometheusRule
+            # objects. The token is read through the Role of extraObjects below.
+            rbac:
+              rules:
+                - apiGroups: ["", "discovery.k8s.io", "networking.k8s.io"]
+                  resources: [endpoints, endpointslices, ingresses, pods, services]
+                  verbs: [get, list, watch]
+                - apiGroups: [""]
+                  resources: [pods, pods/log, namespaces, events]
+                  verbs: [get, list, watch]
+                - apiGroups: [monitoring.coreos.com]
+                  resources: [prometheusrules]
+                  verbs: [get, list, watch]
+            # The name that the operator gives the service account (the name of the Alloy resource), written out because the
+            # RoleBinding below names it.
+            serviceAccount:
+              name: monitoring-alloy
+        alloy-operator:
+          # The hooks that wait for the removal of the Alloy resources are Helm pre-delete hooks, which Argo CD does not run.
+          waitForAlloyRemoval:
+            enabled: false
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 192Mi}
+        # Alloy reads the token from the Secret grafana-cloud of the namespace shop and from no other Secret of the cluster.
+        extraObjects:
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: Role
+            metadata:
+              name: alloy-grafana-cloud
+              namespace: shop
+            rules:
+              - apiGroups: [""]
+                resources: [secrets]
+                resourceNames: [grafana-cloud]
+                verbs: [get, list, watch]
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: RoleBinding
+            metadata:
+              name: alloy-grafana-cloud
+              namespace: shop
+            roleRef:
+              apiGroup: rbac.authorization.k8s.io
+              kind: Role
+              name: alloy-grafana-cloud
+            subjects:
+              - kind: ServiceAccount
+                name: monitoring-alloy
+                namespace: monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The Alloy resource comes in the same synchronization as its CRD (the chart of the operator): the first dry run does
+      # not know the kind yet.
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 10m

@@ -1,0 +1,7 @@
+2026-11-11 10:00:00.123 UTC [87] ERROR:  duplicate key value violates unique constraint "uniq_customer_email"
+2026-11-11 10:00:00.123 UTC [87] DETAIL:  Key (email)=(jan.kowalski@example.pl) already exists.
+2026-11-11 10:00:00.123 UTC [87] STATEMENT:  INSERT INTO customer (email, name) VALUES ('jan.kowalski@example.pl', 'Jan Kowalski')
+2026-11-11 10:00:01.000 UTC [88] LOG:  connection received: host=203.0.113.45 port=51234
+2026-11-11 10:00:02.000 UTC [89] LOG:  connection received: host=2001:db8:85a3::8a2e:370:7334 port=51235
+2026-11-11 10:00:03.000 UTC [90] FATAL:  password authentication failed for user "shop"
+DETAIL:  Key (sku)=(PL-SECRET-SKU-9) is not present in table "product".

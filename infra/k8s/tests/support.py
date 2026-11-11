@@ -94,3 +94,29 @@ def quantity_bytes(value):
 def quantity_cpu(value):
     value = str(value)
     return float(value[:-1]) / 1000 if value.endswith("m") else float(value)
+
+
+def alloy_resources(alloy):
+    """The (container name, resources) of the pod that the Alloy Operator makes of an Alloy resource: Alloy itself and the reloader."""
+    return [("alloy", alloy["spec"].get("alloy", {}).get("resources")), ("config-reloader", alloy["spec"].get("configReloader", {}).get("resources"))]
+
+
+def monitoring_budget(nodes=1):
+    """(CPU requests in vCPU, memory limits in bytes) of what the application monitoring runs: the pods of the Alloy resources (the
+    resources of Alloy and of its reloader, times the replicas), the Deployments (the operator, kube-state-metrics) and the DaemonSets
+    (node-exporter, one pod per node). A container without requests of CPU or a limit of memory is an error."""
+    cpu = memory = 0
+    for alloy in of_kind("monitoring", "Alloy"):
+        replicas = alloy["spec"]["controller"].get("replicas", 1)
+        for container, resources in alloy_resources(alloy):
+            assert resources and "cpu" in resources.get("requests", {}) and "memory" in resources.get("limits", {}), f"Alloy {container} has no explicit resources"
+            cpu += quantity_cpu(resources["requests"]["cpu"]) * replicas
+            memory += quantity_bytes(resources["limits"]["memory"]) * replicas
+    for workload in of_kind("monitoring", "Deployment", "StatefulSet", "DaemonSet"):
+        replicas = nodes if workload["kind"] == "DaemonSet" else workload["spec"].get("replicas", 1)
+        for container in containers(workload):
+            resources = container.get("resources", {})
+            assert "cpu" in resources.get("requests", {}) and "memory" in resources.get("limits", {}), f"{name(workload)}/{container['name']} has no explicit resources"
+            cpu += quantity_cpu(resources["requests"]["cpu"]) * replicas
+            memory += quantity_bytes(resources["limits"]["memory"]) * replicas
+    return cpu, memory

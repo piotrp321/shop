@@ -85,3 +85,8 @@ fi
 # The deployment workflow as JSON, for tests/test_deploy_workflow.py.
 [ -f "$TOOLS_REPO/.github/workflows/deploy.yml" ] || { echo "render: .github/workflows/deploy.yml is missing" >&2; exit 1; }
 yq -o=json '.' < "$TOOLS_REPO/.github/workflows/deploy.yml" > "$out/deploy-workflow.json"
+# The charts of the applications prometheus-crds and monitoring with the values of their manifests (monitoring.yaml,
+# monitoring.ndjson, prometheus-crds.yaml, ... for kubeconform and tests/test_monitoring.py) and the log masking run in a real
+# Alloy (masking-output.log for tests/test_log_masking.py).
+sh "$here/monitoring-render.sh" "$out"
+sh "$here/masking.sh" "$out"
