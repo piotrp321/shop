@@ -68,11 +68,12 @@ backups:
 	sh scripts/backups.sh
 
 # Encrypts the secrets of the environment with the certificate of the controller (environments/prod/sealed-secrets.pem) into
-# environments/prod/secrets: make -C infra/k8s seal-secrets [WHAT="shop brevo tls backup"]. shop: the missing keys of
-# infra/scripts/init-env.sh with random values, existing ones are never changed. brevo, tls and backup (the password of the
-# restic repository and the S3 key of its bucket: RESTIC_PASSWORD, BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY):
-# asked for in the terminal without echo, once (the restic password twice: different values are an error). An error writes
-# nothing. Needs only Docker.
+# environments/prod/secrets: make -C infra/k8s seal-secrets [WHAT="shop brevo tls backup grafana"]. shop: the missing keys
+# of infra/scripts/init-env.sh with random values, existing ones are never changed. brevo, tls, backup (the password of the
+# restic repository and the S3 key of its bucket: RESTIC_PASSWORD, BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY) and
+# grafana (the access policy token of Grafana Cloud for Alloy: GRAFANA_CLOUD_TOKEN, the Secret grafana-cloud): asked for in the
+# terminal without echo, once (the restic password twice: different values are an error). An error writes nothing. Needs
+# only Docker.
 seal-secrets:
 	sh scripts/seal-secrets.sh $(WHAT)
 

@@ -37,6 +37,9 @@ RESTIC_PASSWORD = "correct horse battery staple, restic"
 S3_KEY_ID = "0123456789abcdef0123456789abcdef"
 S3_SECRET = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
 BACKUP_TTY = f"{RESTIC_PASSWORD}\n{RESTIC_PASSWORD}\n{S3_KEY_ID}\n{S3_SECRET}\n"
+GRAFANA_TOKEN = "glc_eyJvIjoiMTIzNDU2IiwibiI6InNob3AiLCJrIjoiU0VDUkVUVE9LRU5WQUxVRSIsIm0iOnsiciI6InByb2QtZXUifX0="
+GRAFANA_TTY = f"{GRAFANA_TOKEN}\n"
+ALL_TTY = f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{BACKUP_TTY}{GRAFANA_TTY}"
 
 
 class SealSecretsTest(unittest.TestCase):
@@ -269,15 +272,17 @@ class SealSecretsTest(unittest.TestCase):
                 result = self.run_script("tls", tty=tty)
                 self.assert_nothing_written(result)
 
-    def test_all_four_in_one_run_write_all_four_files_after_everything_worked(self):
-        result = self.run_script(tty=f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{BACKUP_TTY}")
+    def test_all_five_in_one_run_write_all_five_files_after_everything_worked(self):
+        result = self.run_script(tty=ALL_TTY)
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(["shop-backup.yaml", "shop-brevo-smtp.yaml", "shop-origin-tls.yaml", "shop-secrets.yaml"], self.files())
-        self.assert_no_secret_anywhere(result, BREVO_KEY, ORIGIN_KEY, RESTIC_PASSWORD, S3_SECRET)
+        self.assertEqual(
+            ["grafana-cloud.yaml", "shop-backup.yaml", "shop-brevo-smtp.yaml", "shop-origin-tls.yaml", "shop-secrets.yaml"], self.files()
+        )
+        self.assert_no_secret_anywhere(result, BREVO_KEY, ORIGIN_KEY, RESTIC_PASSWORD, S3_SECRET, GRAFANA_TOKEN)
 
-    def test_a_failing_kubeseal_at_the_end_of_all_four_writes_none(self):
-        total = len(init_env_keys()) + 2 + 2 + 3
-        result = self.run_script(tty=f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{BACKUP_TTY}", STUB_FAIL_ON=str(total))
+    def test_a_failing_kubeseal_at_the_end_of_all_five_writes_none(self):
+        total = len(init_env_keys()) + 2 + 2 + 3 + 1
+        result = self.run_script(tty=ALL_TTY, STUB_FAIL_ON=str(total))
         self.assert_nothing_written(result)
 
     # --- the backup: the password of the restic repository and the key of its S3 bucket ------------------------------
@@ -307,7 +312,7 @@ class SealSecretsTest(unittest.TestCase):
         self.assertIn("nothing changes", result.stdout)
 
     def test_the_second_run_of_all_asks_nothing_for_the_backup(self):
-        self.run_script(tty=f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{BACKUP_TTY}")
+        self.run_script(tty=ALL_TTY)
         self.log.write_text("")
         self.tty.unlink()
         result = self.run_script()
@@ -338,8 +343,8 @@ class SealSecretsTest(unittest.TestCase):
                 self.assertEqual([], self.calls(), "something was sealed before the passwords were compared")
                 self.assert_no_secret_anywhere(result, RESTIC_PASSWORD, S3_SECRET)
 
-    def test_a_different_confirmation_in_all_four_writes_none_of_them(self):
-        tty = f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{RESTIC_PASSWORD}\nother\n{S3_KEY_ID}\n{S3_SECRET}\n"
+    def test_a_different_confirmation_in_all_five_writes_none_of_them(self):
+        tty = f"{BREVO_LOGIN}\n{BREVO_KEY}\n{ORIGIN_CERT}{ORIGIN_KEY}{RESTIC_PASSWORD}\nother\n{S3_KEY_ID}\n{S3_SECRET}\n{GRAFANA_TTY}"
         result = self.run_script(tty=tty)
         self.assert_nothing_written(result)
 
@@ -357,6 +362,54 @@ class SealSecretsTest(unittest.TestCase):
         result = self.run_script("backup", tty=BACKUP_TTY)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(RESTIC_PASSWORD, self.sent()[0])
+
+    # --- Grafana Cloud: one token for the metrics and the logs --------------------------------------------------------
+
+    def test_the_grafana_token_comes_from_the_terminal_and_is_never_printed_or_passed_on(self):
+        result = self.run_script("grafana", tty=GRAFANA_TTY, GRAFANA_CLOUD_TOKEN="from-the-environment-123")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["grafana-cloud.yaml"], self.files())
+        self.assertEqual(["GRAFANA_CLOUD_TOKEN"], self.keys_of("grafana-cloud.yaml"))
+        self.assertEqual([GRAFANA_TOKEN], self.sent())
+        self.assert_no_secret_anywhere(result, GRAFANA_TOKEN, "from-the-environment-123")
+        text = (self.secrets_dir() / "grafana-cloud.yaml").read_text()
+        self.assertIn("  name: grafana-cloud\n  namespace: shop\n", text)
+        self.assertIn("    type: Opaque\n", text)
+        for call in self.calls():
+            self.assertIn("--name grafana-cloud --namespace shop", call)
+
+    def test_grafana_is_created_once_then_nothing_is_asked(self):
+        self.run_script("grafana", tty=GRAFANA_TTY)
+        before = (self.secrets_dir() / "grafana-cloud.yaml").read_bytes()
+        self.log.write_text("")
+        self.tty.unlink()
+        result = self.run_script("grafana")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(before, (self.secrets_dir() / "grafana-cloud.yaml").read_bytes())
+        self.assertEqual([], self.calls())
+        self.assertIn("nothing changes", result.stdout)
+
+    def test_an_empty_or_a_bad_grafana_token_writes_nothing(self):
+        for tty in ("\n", "token with space\n", ""):
+            with self.subTest(tty=tty):
+                result = self.run_script("grafana", tty=tty)
+                self.assert_nothing_written(result)
+
+    def test_a_failing_kubeseal_for_grafana_writes_nothing(self):
+        result = self.run_script("grafana", tty=GRAFANA_TTY, STUB_FAIL_ON="1")
+        self.assert_nothing_written(result)
+        self.assertIn("kubeseal failed", result.stderr)
+
+    def test_without_a_terminal_grafana_is_refused_instead_of_reading_the_environment(self):
+        result = self.run_script("grafana", SEAL_TTY=str(self.root / "no-such-tty"), GRAFANA_CLOUD_TOKEN="x")
+        self.assert_nothing_written(result)
+        self.assertIn("no terminal", result.stderr)
+
+    def test_without_arguments_grafana_is_among_what_is_sealed(self):
+        result = self.run_script(tty=ALL_TTY)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("grafana-cloud.yaml", self.files())
+        self.assertIn(GRAFANA_TOKEN, self.sent())
 
 
 class Listing(unittest.TestCase):
