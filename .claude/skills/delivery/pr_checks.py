@@ -5,8 +5,8 @@ library only, calls `gh` in the current repository.
   pr_checks.py PR --base BRANCH
 
 Prints JSON:
-  required         names of the status checks the rulesets of BRANCH require (not `gh pr checks --required`, which
-                   sees branch protection only, not rulesets);
+  required         names of the status checks the rulesets of BRANCH require, read from the rules API, so that a
+                   required check the PR has not reported yet is still listed (as pending);
   contract_checks  one {name, status} per required check, in ruleset order: the `checks` field of the /delivery
                    result; a required check the PR has not reported yet is pending, a name reported twice takes the
                    worst result;

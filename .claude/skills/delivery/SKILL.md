@@ -61,7 +61,7 @@ Nigdy nie kończ tury, gdy działa zadanie w tle (subagent, Bash w tle, Monitor)
 
 ## Checki CI
 
-Stan checków PR odczytuj skryptem `python3 .claude/skills/delivery/pr_checks.py <nr PR> --base <docelowa>`. Wymagane checki bierze on z rulesetu gałęzi docelowej, bo `gh pr checks --required` rulesetów nie widzi. Kod wyjścia 2 (brak `gh`, błąd API, gałąź bez wymaganych checków) oznacza, że nie wiesz, które checki są wymagane: ponów raz, a gdy błąd się powtórzy, zwróć `BLOCKED` (`technical`) i nie zgaduj listy.
+Stan checków PR odczytuj skryptem `python3 .claude/skills/delivery/pr_checks.py <nr PR> --base <docelowa>`. Wymagane checki bierze on z rulesetu gałęzi docelowej, więc wymagany check, którego PR jeszcze nie zgłosił, też jest na liście (jako `pending`), a przy czerwonym checku podaje numer próby runu. Kod wyjścia 2 (brak `gh`, błąd API, gałąź bez wymaganych checków) oznacza, że nie wiesz, które checki są wymagane: ponów raz, a gdy błąd się powtórzy, zwróć `BLOCKED` (`technical`) i nie zgaduj listy.
 
 - **Pole `checks` wyniku** to `contract_checks` ze skryptu, czyli tylko checki wymagane. Checki niewymagane opisujesz w `integration_notes` i w PR (niżej).
 - **Czekanie.** Gdy wymagany check ma status `pending`, czekaj (`gh pr checks <nr> --watch`) albo zwróć `CI_PENDING`. `READY_FOR_INTEGRATION` zwracasz dopiero przy `all_finished: true`: czerwony check niewymagany też trzeba zobaczyć, zanim PR trafi do merge'a.
