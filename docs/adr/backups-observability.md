@@ -28,7 +28,7 @@ odtwarzalna na pustym klastrze. Specyfikacja: `docs/features/deploy-ops/spec.md`
   której nikt nie sprawdził, jest nadzieją. Sprawdza wiek najnowszego snapshotu `nightly` tego klastra (poniżej 26 h),
   `restic check` z odczytem podzbioru danych (`--read-data-subset=n/7`, n to dzień tygodnia, więc w tygodniu odczytuje
   każde dane raz; `all` w profilu `ci`), odtworzenie obu dumpów do tymczasowego Postgresa w tym samym podzie
-  (`restic dump` strumieniowo do `pg_restore`, nic nie trafia na dysk; tabela migracji `shop` niepusta, realmy `shop`
+  (`restic dump` strumieniowo do `pg_restore`: dumpy i obiekty nie trafiają na dysk, a odtworzone bazy leżą na `emptyDir` z limitem równym wolumenowi produkcyjnego Postgresa; tabela migracji `shop` niepusta, realmy `shop`
   i `backoffice` w `keycloak`) i zgodność liczby obiektów (`restic ls`) z manifestem. Osobny CronJob zamiast kroku
   kopii: czyta repozytorium tak, jak odczyta je odtworzenie, a jego wynik i brak można alertować niezależnie od kopii. Tymczasowy
   Postgres to natywny sidecar poda (`initContainers` z `restartPolicy: Always`, dane na `emptyDir`, tylko pętla zwrotna),

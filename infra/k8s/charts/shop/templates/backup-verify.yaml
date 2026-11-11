@@ -20,7 +20,7 @@ metadata:
 spec:
   schedule: {{ .Values.backup.verifySchedule | quote }}
   timeZone: {{ .Values.backup.timeZone | quote }}
-  # One verification at a time; a run that could not start within an hour of its time is skipped (the alert BackupVerifyMissing).
+  # One verification at a time; a run that could not start within an hour of its time is skipped.
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600
   successfulJobsHistoryLimit: 1
@@ -66,6 +66,9 @@ spec:
                 {{- include "shop.resticRepositoryEnv" . | nindent 16 }}
                 - name: RESTIC_BIN
                   value: /restic/usr/bin/restic
+                # The image of postgres has no bundle of CA certificates where restic (Go) looks: the one of the image of restic.
+                - name: SSL_CERT_FILE
+                  value: /restic/etc/ssl/certs/ca-certificates.crt
                 - name: RESTIC_CACHE_DIR
                   value: /work/restic-cache
                 - name: VERIFY_READ_DATA
@@ -98,7 +101,9 @@ spec:
                 reference: {{ .Values.images.restic }}
                 pullPolicy: IfNotPresent
             - name: data
-              emptyDir: {}
+              # As much as the production Postgres has: a pod whose restored databases outgrow it is evicted instead of filling the disk.
+              emptyDir:
+                sizeLimit: {{ .Values.storage.postgres }}
             - name: work
               emptyDir: {}
             - name: cluster

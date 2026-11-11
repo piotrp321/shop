@@ -72,7 +72,7 @@ case "$1" in
       *) echo "Fatal: no such path $path" >&2; exit 1 ;;
     esac ;;
   ls)
-    if fails ls; then echo "Fatal: ls failed" >&2; exit 1; fi
+    if fails ls && [ -z "${STUB_LS_PARTIAL:-}" ]; then echo "Fatal: ls failed" >&2; exit 1; fi
     echo '{"time":"2026-11-11T03:00:00Z","tree":"aaaa","struct_type":"snapshot"}'
     echo '{"name":"objects","type":"dir","path":"/work/objects","struct_type":"node"}'
     case " $* " in *" --recursive "*) ;; *) echo '{"name":"sub","type":"dir","path":"/work/objects/sub","struct_type":"node"}'; exit 0 ;; esac
@@ -81,7 +81,8 @@ case "$1" in
       echo "{\"name\":\"object-$i.webp\",\"type\":\"file\",\"path\":\"/work/objects/object-$i.webp\",\"size\":9,\"struct_type\":\"node\"}"
       i=$((i + 1))
     done
-    echo '{"name":"sub","type":"dir","path":"/work/objects/sub","struct_type":"node"}' ;;
+    echo '{"name":"sub","type":"dir","path":"/work/objects/sub","struct_type":"node"}'
+    if fails ls; then echo "Fatal: ls failed" >&2; exit 1; fi ;;
   *) echo "Fatal: unexpected restic command $*" >&2; exit 1 ;;
 esac
 """
@@ -345,6 +346,12 @@ class BackupVerifyScriptTest(unittest.TestCase):
         result = self.run_script(STUB_FAIL="restic:dump", STUB_DUMP_PARTIAL="1")
         self.assert_fails(result, "restic dump", "shop")
 
+    def test_an_unreadable_repository_is_not_reported_as_a_dump_that_does_not_restore(self):
+        """restic dump dies halfway and pg_restore chokes on what is left: the cause is the first."""
+        result = self.run_script(STUB_FAIL="restic:dump pg_restore:shop", STUB_DUMP_PARTIAL="1")
+        self.assert_fails(result, "restic dump of shop.dump failed")
+        self.assertNotIn("pg_restore of the dump", result.stderr)
+
     def test_a_failing_restic_dump_without_output_is_an_error(self):
         result = self.run_script(STUB_FAIL="restic:dump")
         self.assert_fails(result, "shop")
@@ -391,6 +398,10 @@ class BackupVerifyScriptTest(unittest.TestCase):
             with self.subTest(manifest=manifest, snapshot=snapshot):
                 result = self.run_script(STUB_MANIFEST_OBJECTS=manifest, STUB_SNAPSHOT_OBJECTS=snapshot)
                 self.assert_fails(result, f"{snapshot} objects", f"{manifest} in the manifest")
+
+    def test_a_failing_listing_is_an_error_even_when_it_listed_the_right_number_of_files(self):
+        result = self.run_script(STUB_FAIL="restic:ls", STUB_LS_PARTIAL="1")
+        self.assert_fails(result, "restic ls", "objects")
 
     def test_the_listing_is_recursive_because_the_objects_are_in_directories(self):
         """Without --recursive restic ls lists one level only: the files of the subdirectories would not be counted (found by the smoke test)."""

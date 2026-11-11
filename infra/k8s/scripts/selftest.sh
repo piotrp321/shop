@@ -174,10 +174,11 @@ backup_cronjob_without_forbid() { replace infra/k8s/charts/shop/templates/backup
 backup_script_ignores_errors() { replace infra/k8s/charts/shop/files/scripts/backup.sh 'set -eu' 'set -u'; }
 backup_inits_after_any_error() { replace infra/k8s/charts/shop/files/scripts/backup.sh '    10)' '    10 | 1)'; }
 # The verification of the backups (spec O3): a script that goes on after an error, a script that takes a stale snapshot for good,
-# a temporary Postgres that is not a sidecar (the Job would never complete), a verification that reads the production Postgres.
+# a temporary Postgres that is not a sidecar (the Job would never complete), a verification that reads the production Postgres, restic without CA certificates (https).
 backup_verify_script_ignores_errors() { replace infra/k8s/charts/shop/files/scripts/backup-verify.sh 'set -eu' 'set -u'; }
 backup_verify_accepts_any_age() { replace infra/k8s/charts/shop/files/scripts/backup-verify.sh 'max_age_hours=26' 'max_age_hours=99999'; }
 backup_verify_postgres_not_a_sidecar() { replace infra/k8s/charts/shop/templates/backup-verify.yaml 'restartPolicy: Always' 'imagePullPolicy: IfNotPresent'; }
+backup_verify_without_the_ca_certificates() { replace infra/k8s/charts/shop/templates/backup-verify.yaml '- name: SSL_CERT_FILE' '- name: SSL_CERT_FILE_UNUSED'; }
 backup_verify_reads_the_production_postgres() { replace infra/k8s/charts/shop/templates/backup-verify.yaml 'value: 127.0.0.1' 'value: postgres'; }
 seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
@@ -237,6 +238,7 @@ run_case "backup initializing a repository after any error" "test_another_error_
 run_case "verification script that goes on after an error" "test_the_script_is_posix_sh_and_stops_at_the_first_error" backup_verify_script_ignores_errors
 run_case "verification accepting a snapshot of any age" "test_a_snapshot_older_than_26_hours_is_an_error_that_says_so" backup_verify_accepts_any_age
 run_case "verification with the temporary Postgres that is not a sidecar" "test_the_postgres_is_a_sidecar_that_the_end_of_the_verification_stops" backup_verify_postgres_not_a_sidecar
+run_case "verify without the CA certificates of restic" "test_restic_trusts_the_certificates_of_its_own_image" backup_verify_without_the_ca_certificates
 run_case "verification that reads the production Postgres" "test_nothing_of_the_production_database_is_reachable" backup_verify_reads_the_production_postgres
 run_case "seal-secrets looking for the existing backup secret in another file (it asks for the password again)" "test_the_backup_is_created_once_then_nothing_is_asked" seal_secrets_looks_for_the_backup_in_another_file
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing

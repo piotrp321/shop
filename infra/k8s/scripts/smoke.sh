@@ -652,9 +652,9 @@ check_backup_verification() {
   verify_started="$(date +%s)"
   run_cronjob_job backup-verify backup-verify-smoke
   log="$(kc logs job/backup-verify-smoke -c verify)"
-  for step in "restic check --read-data" "the dump of shop restored" "the dump of keycloak restored" "the realms shop and backoffice are in keycloak" \
+  for step in "backup-verify: restic check --read-data$" "the dump of shop restored" "the dump of keycloak restored" "the realms shop and backoffice are in keycloak" \
     "as in the manifest" "backup-verify: ok"; do
-    printf '%s\n' "$log" | grep -qF -- "$step" || { echo "smoke: the log of the verification lacks '$step':" >&2; printf '%s\n' "$log" >&2; return 1; }
+    printf '%s\n' "$log" | grep -q -- "$step" || { echo "smoke: the log of the verification lacks '$step':" >&2; printf '%s\n' "$log" >&2; return 1; }
   done
   echo "ok: the verification of the backups passed"
   echo "smoke: the verification phase took $(( $(date +%s) - verify_started )) s"

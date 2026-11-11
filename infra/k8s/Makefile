@@ -15,7 +15,7 @@ check:
 # deploy.yml missing, a backup repository without its password, the backup CronJob without concurrencyPolicy Forbid, the
 # backup script that goes on after an error or takes any access error for a missing repository, the verification of the
 # backups that goes on after an error, takes a snapshot of any age, runs a temporary Postgres that is not a sidecar or
-# reaches the production Postgres, or seal-secrets that asks for the backup password again).
+# reaches the production Postgres, runs restic without CA certificates, or seal-secrets that asks for the backup password again).
 selftest:
 	sh scripts/selftest.sh
 

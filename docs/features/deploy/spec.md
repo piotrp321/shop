@@ -321,7 +321,9 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3); decyzja: `docs/ad
   tabela migracji `shop`, realmy `shop` i `backoffice` w `keycloak`) i zgodność liczby obiektów snapshotu (`restic ls`)
   z `manifest.json`. Każdy niespełniony warunek, także błąd narzędzia, kończy Job błędem z opisem w logu. Pod: `cluster-id`
   (jak w kopii), `postgres` (natywny sidecar, tylko pętla zwrotna, bez sekretów) i `verify` (jedyny z sekretem
-  `shop-backup`, bez tokenu; `restic` z obrazu `restic/restic` zamontowanego jako wolumen obrazu). Alerty weryfikacji
+  `shop-backup`, bez tokenu; `restic` z obrazu `restic/restic` zamontowanego jako wolumen obrazu, razem z jego certyfikatami CA w `SSL_CERT_FILE`:
+  obraz `postgres` ich nie ma, a repozytorium w `prod` jest po HTTPS). Dane tymczasowego Postgresa leżą na `emptyDir` z limitem
+  równym `storage.postgres`: pod, którego odtworzone bazy go przerosną, jest wyrzucany, a nie zapełnia dysku węzła. Alerty weryfikacji
   i odtwarzanie są w DEPLOY-OPS (#178).
 - Obrazy `restic/restic` i `rclone/rclone` są w `images.*` z tagiem i digestem (bez odpowiednika w compose, który się nie
   zmienia). Smoke test uruchamia kopię i jej weryfikację na osobnej instancji S3 (przestrzeń `smoke-backup`) i sprawdza snapshot.

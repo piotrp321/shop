@@ -61,7 +61,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   tylko w kontenerze restic (z hasłem repozytorium zawsze razem z adresem), obrazy z digestem; CronJob
   `backup-verify` (05:00, limity jak `backup`, tymczasowy Postgres jako natywny sidecar na `emptyDir`, bez sekretów i
   połączeń produkcyjnej bazy, sekret `shop-backup` tylko w kontenerze skryptu, token tylko w identyfikatorze klastra,
-  `restic` jako wolumen obrazu); schemat: `backup.enabled`
+  `restic` jako wolumen obrazu z jego certyfikatami CA w `SSL_CERT_FILE`, `emptyDir` z limitem `storage.postgres`); schemat: `backup.enabled`
   bez `backup.repository` albo `backup.secretName` oraz `backup.verifyReadData` inne niż `subset` i `all` kończą render błędem
   z nazwą wartości. Sprawdza też: render `prod` z plikiem
   digestów jak z `deploy-images` (bez `--set`; plik bez digestu albo z `latest` nie renderuje się), manifesty Argo CD

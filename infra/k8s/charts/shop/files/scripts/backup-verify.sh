@@ -126,8 +126,9 @@ restore_database() {
       echo "$?" > "$work/dump-status"
     fi
   } | pg_restore --no-owner --no-privileges -d "$database" || restore_status=$?
-  [ "$restore_status" -eq 0 ] || fail "pg_restore of the dump of $database failed (exit code $restore_status): the dump does not restore"
+  # The repository first: a dump that restic could not read to the end makes pg_restore fail too, and the cause is restic's.
   [ "$(cat "$work/dump-status")" = 0 ] || fail "restic dump of $database.dump failed (exit code $(cat "$work/dump-status")): the dump is not readable"
+  [ "$restore_status" -eq 0 ] || fail "pg_restore of the dump of $database failed (exit code $restore_status): the dump does not restore"
   echo "backup-verify: the dump of $database restored"
 }
 
@@ -157,8 +158,16 @@ check_objects() {
   manifest="$("$restic_bin" dump "$snapshot" /work/manifest.json)" || fail "cannot read manifest.json of the snapshot"
   expected="$(printf '%s' "$manifest" | tr -d ' \n' | sed -n 's/.*"objects":{"count":\([0-9][0-9]*\).*/\1/p')"
   [ -n "$expected" ] || fail "no count of the objects in manifest.json of the snapshot"
-  listing="$("$restic_bin" ls --json --recursive "$snapshot" /work/objects)" || fail "cannot list the objects of the snapshot"
-  found="$(printf '%s\n' "$listing" | sed -n '/"type":"file"/p' | wc -l | tr -d ' ')"
+  # The listing goes through a pipe (it has a line per object); the status of restic ls is kept in a file.
+  rm -f "$work/ls-status"
+  found="$({
+    if "$restic_bin" ls --json --recursive "$snapshot" /work/objects; then
+      echo 0 > "$work/ls-status"
+    else
+      echo "$?" > "$work/ls-status"
+    fi
+  } | sed -n '/"type":"file"/p' | wc -l | tr -d ' ')"
+  [ "$(cat "$work/ls-status")" = 0 ] || fail "restic ls of the objects of the snapshot failed (exit code $(cat "$work/ls-status")): cannot list the objects"
   [ "$found" -eq "$expected" ] || fail "the snapshot has $found objects, $expected in the manifest"
   echo "backup-verify: $found objects, as in the manifest"
 }

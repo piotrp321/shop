@@ -57,7 +57,8 @@ class CronJobTest(unittest.TestCase):
             self.assertEqual("Never", job["template"]["spec"]["restartPolicy"], case)
 
     def test_the_schedule_comes_from_the_values(self):
-        self.assertEqual(verify("prod")["spec"]["schedule"], verify("ci")["spec"]["schedule"])
+        self.assertEqual("30 6 * * 1", verify("prod-verify-schedule")["spec"]["schedule"])
+        self.assertEqual("0 3 * * *", by_logical("prod-verify-schedule", "CronJob")["backup"]["spec"]["schedule"])
 
     def test_it_is_in_the_wave_of_the_backup(self):
         self.assertEqual(wave(by_logical("prod", "CronJob")["backup"]), wave(verify()))
@@ -137,6 +138,19 @@ class PodTest(unittest.TestCase):
         self.assertIn("backup-verify.sh", configs[0]["data"])
 
 
+class CertificatesTest(unittest.TestCase):
+    def test_restic_trusts_the_certificates_of_its_own_image(self):
+        """The image of postgres has no bundle of CA certificates in the place restic looks at, and the repository in prod is
+        https (R2): the bundle comes from the same volume as the binary."""
+        for case in ("prod", "ci"):
+            verifying = pod_spec(verify(case))["containers"][0]
+            env = env_of(verifying)
+            mount = next(path for path, volume in mounts(verifying).items() if env["RESTIC_BIN"].startswith(path + "/"))
+            self.assertEqual("/restic", mount)
+            self.assertEqual("/restic/etc/ssl/certs/ca-certificates.crt", env["SSL_CERT_FILE"], case)
+            self.assertTrue(env["SSL_CERT_FILE"].startswith(mount + "/"), case)
+
+
 class AccessTest(unittest.TestCase):
     def test_only_the_container_that_reads_the_id_of_the_cluster_has_the_token(self):
         for case in ("prod", "ci"):
@@ -186,6 +200,16 @@ class AccessTest(unittest.TestCase):
     def test_the_postgres_has_no_secret_at_all(self):
         postgres = next(c for c in all_containers() if c["name"] == "postgres")
         self.assertEqual([], secret_refs(postgres))
+
+
+class DiskTest(unittest.TestCase):
+    def test_the_restored_databases_may_not_fill_the_disk_of_the_node(self):
+        """The data of the temporary Postgres is limited to the size of the production one: a pod that outgrows it is evicted."""
+        for case in ("prod", "ci"):
+            volumes = {v["name"]: v for v in pod_spec(verify(case))["volumes"]}
+            claims = by_logical(case, "StatefulSet")["postgres"]["spec"]["volumeClaimTemplates"]
+            data = next(c for c in claims if c["metadata"]["name"] == "data")
+            self.assertEqual(data["spec"]["resources"]["requests"]["storage"], volumes["data"]["emptyDir"]["sizeLimit"], case)
 
 
 class ReadDataTest(unittest.TestCase):
