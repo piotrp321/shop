@@ -5,7 +5,7 @@
 Sklep działa na jednym serwerze (`docs/adr/k3s-argo-cd.md`): dane (bazy PostgreSQL `shop` i `keycloak`, obiekty Garage ze
 zdjęciami produktów) leżą na wolumenach tego serwera. Backup VPS-a od OVH jest tylko dodatkiem: leży u tego samego
 dostawcy, a jego przywrócenie cofa cały serwer. Potrzebna jest kopia danych sklepu poza serwerem, szyfrowana, tania i
-odtwarzalna na pustym klastrze. Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2).
+odtwarzalna na pustym klastrze. Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3).
 
 ## Decyzja
 
@@ -24,6 +24,17 @@ odtwarzalna na pustym klastrze. Specyfikacja: `docs/features/deploy-ops/spec.md`
   ClusterRole z samym `get` na `namespaces/kube-system`); kontenery z sekretem repozytorium nie mają tokenu.
 - **Błąd dowolnego kroku przed `restic backup` kończy Job bez snapshotu**; repozytorium zakłada się samo przy pierwszej
   kopii, a każdy inny błąd dostępu do niego jest błędem.
+- **Weryfikacja to osobny CronJob `backup-verify`** (codziennie o 05:00), który czyta z S3, nie z produkcyjnej bazy: kopia,
+  której nikt nie sprawdził, jest nadzieją. Sprawdza wiek najnowszego snapshotu `nightly` tego klastra (poniżej 26 h),
+  `restic check` z odczytem podzbioru danych (`--read-data-subset=n/7`, n to dzień tygodnia, więc w tygodniu odczytuje
+  każde dane raz; `all` w profilu `ci`), odtworzenie obu dumpów do tymczasowego Postgresa w tym samym podzie
+  (`restic dump` strumieniowo do `pg_restore`, nic nie trafia na dysk; tabela migracji `shop` niepusta, realmy `shop`
+  i `backoffice` w `keycloak`) i zgodność liczby obiektów (`restic ls`) z manifestem. Osobny CronJob zamiast kroku
+  kopii: czyta repozytorium tak, jak odczyta je odtworzenie, a jego wynik i brak można alertować niezależnie od kopii. Tymczasowy
+  Postgres to natywny sidecar poda (`initContainers` z `restartPolicy: Always`, dane na `emptyDir`, tylko pętla zwrotna),
+  więc Job kończy się razem ze skryptem; `restic` pochodzi z obrazu `restic/restic` zamontowanego jako wolumen obrazu
+  w kontenerze z obrazem `postgres`, który ma `pg_restore`. Pod używa konta usługi i roli kopii (identyfikator klastra);
+  sekret `shop-backup` czyta tylko kontener skryptu, bez tokenu, a sekretów produkcyjnej bazy nie ma żaden.
 - **Dostęp: jeden sekret `shop-backup`** (`RESTIC_PASSWORD`, klucz i sekret S3), SealedSecret tworzony raz przez
   `make -C infra/k8s seal-secrets WHAT=backup`; adres repozytorium i region to wartości `environments/prod`.
 
@@ -36,4 +47,7 @@ odtwarzalna na pustym klastrze. Specyfikacja: `docs/features/deploy-ops/spec.md`
 - Dump i lustro obiektów powstają w różnych chwilach (sekundy–minuty), więc nie są ściśle spójne; odtworzenie tego nie
   wymaga.
 - Dump logiczny rośnie z bazą; przy docelowej skali (`docs/vision.md`) potrzebne będą kopie fizyczne z WAL.
-- Smoke test sprawdza kopię na osobnej instancji S3 (przestrzeń `smoke-backup`), bez kont zewnętrznych.
+- Weryfikacja odczytuje w tygodniu całe repozytorium, ale tylko raz w tygodniu każdy jego fragment: uszkodzenie danych
+  wychodzi najwyżej po 7 dniach (retencja kopii to 7 dni, więc uszkodzony snapshot może wygasnąć, zanim go odczyta). Dump
+  odtwarza się w pustej bazie, więc nie wyłapie błędów widocznych dopiero przy pracy aplikacji.
+- Smoke test sprawdza kopię i jej weryfikację na osobnej instancji S3 (przestrzeń `smoke-backup`), bez kont zewnętrznych.

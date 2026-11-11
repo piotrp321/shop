@@ -125,6 +125,7 @@ w tym samym PR.
 
 Po pierwszym wdrożeniu z kopiami **agent** sprawdza następnego dnia `make -C infra/k8s status HOST=<user>@<adres>`: Job `backup-<id>`
 z CronJoba `backup` jest `Complete`, a jego log kończy się wierszem `backup: done`. Przed pierwszą udaną kopią repozytorium nie istnieje: pierwsza kopia zakłada je sama.
+Po niej (05:00) Job `backup-verify-<id>` z CronJoba `backup-verify` czyta repozytorium z R2 i odtwarza oba dumpy do tymczasowej bazy: jest `Complete`, a jego log (kontener `verify`) kończy się wierszem `backup-verify: ok`; błąd kończy Job z opisem w logu.
 
 ## 4. Cloudflare i poczta
 

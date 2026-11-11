@@ -89,7 +89,7 @@ class CronJobTest(unittest.TestCase):
     def test_cart_purge(self):
         for case in ("prod", "ci"):
             crons = by_logical(case, "CronJob")
-            self.assertEqual({"cart-purge-expired", "backup"}, set(crons), case)
+            self.assertEqual({"cart-purge-expired", "backup", "backup-verify"}, set(crons), case)
             cron = crons["cart-purge-expired"]
             self.assertEqual("0 * * * *", cron["spec"]["schedule"])
             self.assertEqual("Forbid", cron["spec"]["concurrencyPolicy"])

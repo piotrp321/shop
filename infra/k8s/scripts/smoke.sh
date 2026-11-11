@@ -18,7 +18,8 @@
 #   SMOKE_TIMEOUT=900              seconds to wait for the cluster to settle after each install or upgrade
 #
 # Phases: install and checks (also the store and the panel in a browser, and create-admin); the backup (an S3 of its own in the
-# namespace smoke-backup, a Job from the CronJob backup, the snapshot it leaves; the time of the phase is printed);
+# namespace smoke-backup, a Job from the CronJob backup, the snapshot it leaves, a Job from the CronJob backup-verify; the time of the
+# phase and of the verification is printed);
 # upgrade with a new revision (initialize
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
 # the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
@@ -593,23 +594,24 @@ YAML
   kc wait --for=condition=Ready pod/smoke-backup-tools --timeout=300s > /dev/null
 }
 
-# A Job from the CronJob backup, waited for up to its deadline; a failure prints the logs of all its containers.
-run_backup_job() {
-  kc create job backup-smoke --from=cronjob/backup > /dev/null
+# run_cronjob_job <cronjob> <job>: a Job from a CronJob of the backups, waited for up to 900 s; a failure prints the logs of all
+# its containers.
+run_cronjob_job() {
+  kc create job "$2" --from="cronjob/$1" > /dev/null
   deadline=$(( $(date +%s) + 900 ))
   while :; do
-    state="$(kc get job backup-smoke -o jsonpath='{.status.succeeded}{" "}{.status.conditions[?(@.type=="Failed")].status}')"
+    state="$(kc get job "$2" -o jsonpath='{.status.succeeded}{" "}{.status.conditions[?(@.type=="Failed")].status}')"
     case "$state" in
       "1 "*) return 0 ;;
       *" True")
-        echo "smoke: the backup Job failed:" >&2
-        kc logs "job/backup-smoke" --all-containers --prefix --tail=40 >&2 || true
+        echo "smoke: the Job $2 of the CronJob $1 failed:" >&2
+        kc logs "job/$2" --all-containers --prefix --tail=40 >&2 || true
         return 1 ;;
     esac
     if [ "$(date +%s)" -ge "$deadline" ]; then
-      echo "smoke: the backup Job did not finish in 900 s" >&2
+      echo "smoke: the Job $2 of the CronJob $1 did not finish in 900 s" >&2
       kc get pods >&2 || true
-      kc logs "job/backup-smoke" --all-containers --prefix --tail=40 >&2 || true
+      kc logs "job/$2" --all-containers --prefix --tail=40 >&2 || true
       return 1
     fi
     sleep 5
@@ -644,14 +646,30 @@ check_backup_snapshot() {
   echo "ok: the snapshot nightly of the host $cluster_uid has the dumps of shop and keycloak, the object and a manifest of the revision $revision"
 }
 
-# The phase: the repository, one object in the bucket of the images, the Job of the CronJob and what it left in the repository.
+# The verification of that snapshot (the CronJob backup-verify, which the profile ci has read all the data): the Job succeeds, and
+# its log shows the steps it took. The time of the verification is printed.
+check_backup_verification() {
+  verify_started="$(date +%s)"
+  run_cronjob_job backup-verify backup-verify-smoke
+  log="$(kc logs job/backup-verify-smoke -c verify)"
+  for step in "restic check --read-data" "the dump of shop restored" "the dump of keycloak restored" "the realms shop and backoffice are in keycloak" \
+    "as in the manifest" "backup-verify: ok"; do
+    printf '%s\n' "$log" | grep -qF -- "$step" || { echo "smoke: the log of the verification lacks '$step':" >&2; printf '%s\n' "$log" >&2; return 1; }
+  done
+  echo "ok: the verification of the backups passed"
+  echo "smoke: the verification phase took $(( $(date +%s) - verify_started )) s"
+}
+
+# The phase: the repository, one object in the bucket of the images, the Job of the CronJob, what it left in the repository and the
+# verification of it.
 check_backup() {
   backup_started="$(date +%s)"
   start_backup_repository
   create_backup_tools_pod
   kc exec -c rclone smoke-backup-tools -- sh -c 'printf "smoke object\n" | rclone rcat garage:product-images/smoke-backup/object.txt'
-  run_backup_job
+  run_cronjob_job backup backup-smoke
   check_backup_snapshot
+  check_backup_verification
   # It holds the secrets of the repository and of the shop: gone as soon as nothing needs it.
   kc delete pod smoke-backup-tools --now > /dev/null
   sample_once

@@ -55,6 +55,8 @@ backup:
   repository: s3:http://garage.smoke-backup.svc.cluster.local:3900/restic
   s3Region: garage
   secretName: shop-backup
+  # The verification reads all the data of the repository (a subset is for the nightly run of prod).
+  verifyReadData: all
   secretValues:
     RESTIC_PASSWORD: smoke-restic-password
     BACKUP_S3_ACCESS_KEY_ID: GK89abcdef0123456789abcdef

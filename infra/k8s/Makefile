@@ -13,8 +13,9 @@ check:
 # the two deploy branches pushed without --atomic, no check of the render before the push, a short digest accepted by
 # the images values generator, a workflow that deletes package versions, the certificate of Sealed Secrets ignored by git,
 # deploy.yml missing, a backup repository without its password, the backup CronJob without concurrencyPolicy Forbid, the
-# backup script that goes on after an error or takes any access error for a missing repository, or seal-secrets that asks
-# for the backup password again).
+# backup script that goes on after an error or takes any access error for a missing repository, the verification of the
+# backups that goes on after an error, takes a snapshot of any age, runs a temporary Postgres that is not a sidecar or
+# reaches the production Postgres, or seal-secrets that asks for the backup password again).
 selftest:
 	sh scripts/selftest.sh
 

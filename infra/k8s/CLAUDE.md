@@ -9,8 +9,8 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   (test dymny: chart z profilem `ci` na pustym klastrze k3d z obrazami produkcyjnymi zbudowanymi lokalnie, kilka minut;
   sprawdza m.in. nagłówki bezpieczeństwa panelu i jego załadowanie w przeglądarce bez naruszeń CSP;
   `SMOKE_BREAK=migration|image` psuje go celowo; po `create-admin` robi kopię zapasową: osobna instancja S3 w przestrzeni
-  `smoke-backup`, Job z CronJoba `backup`, snapshot `nightly` z dumpami obu baz, obiektem i manifestem; wypisuje czas
-  tej fazy i zajęty dysk); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
+  `smoke-backup`, Job z CronJoba `backup`, snapshot `nightly` z dumpami obu baz, obiektem i manifestem, potem Job z CronJoba
+  `backup-verify` (profil `ci`: `verifyReadData: all`); wypisuje czas tej fazy, czas weryfikacji i zajęty dysk); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
   obciążenia: klaster k3d z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `load`, dane demo, stany
   podniesione o 100 000 bezpośrednim SQL, rozgrzanie, przebieg rosnący do nasycenia z k6 (odczyt i koszyk) i przebieg
   stały na 70% nasycenia z checkoutem o ograniczonej równoległości, wyniki do `LOAD_OUT`; kilkadziesiąt minut, VM
@@ -50,12 +50,20 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   jako `CLIENT_IP_HEADER` tylko w api i sklepie, w `prod` `CF-Connecting-IP` przy `ipAllowList` na każdym ingressie,
   w `ci` brak; `clientIpHeader` bez `ipAllowList` i bez `clientIpHeaderWithoutAllowList: true` oraz to potwierdzenie
   razem z `image.requireDigests` kończą render błędem) oraz testy
-  skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker` oraz skryptu kopii `backup.sh` na atrapach
-  `pg_dump`, `psql`, `rclone` i `restic` (błąd każdego narzędzia kończy go błędem i nie robi snapshotu; tag, host i
-  manifest snapshotu; `forget --keep-within`). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
+  skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker` oraz skryptów kopii `backup.sh` i weryfikacji `backup-verify.sh` na atrapach
+  `pg_dump`, `psql`, `rclone`, `restic`, `pg_restore` i `date` (błąd każdego narzędzia kończy je błędem i `backup.sh` nie
+  robi snapshotu; tag, host i manifest snapshotu; `forget --keep-within`; weryfikacja: snapshot `nightly` tego klastra
+  starszy niż 26 h albo brak snapshotu, błąd `restic check`, `n` w `--read-data-subset=n/7` z `date +%u` i `--read-data`
+  przy `verifyReadData: all`, dumpy strumieniem z `restic dump` do `pg_restore`, błąd `pg_restore` albo `restic dump`,
+  pusta tabela migracji, brak realmu `shop` albo `backoffice`, liczba obiektów inna niż w manifeście: błąd z opisem,
+  zdrowy przypadek przechodzi). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
   i historii), PVC `backup-work`, token API tylko w kontenerze identyfikatora klastra (bez sekretu), sekret `shop-backup`
-  tylko w kontenerze restic (z hasłem repozytorium zawsze razem z adresem), obrazy z digestem; schemat: `backup.enabled`
-  bez `backup.repository` albo `backup.secretName` kończy render błędem z nazwą wartości. Sprawdza też: render `prod` z plikiem
+  tylko w kontenerze restic (z hasłem repozytorium zawsze razem z adresem), obrazy z digestem; CronJob
+  `backup-verify` (05:00, limity jak `backup`, tymczasowy Postgres jako natywny sidecar na `emptyDir`, bez sekretów i
+  połączeń produkcyjnej bazy, sekret `shop-backup` tylko w kontenerze skryptu, token tylko w identyfikatorze klastra,
+  `restic` jako wolumen obrazu); schemat: `backup.enabled`
+  bez `backup.repository` albo `backup.secretName` oraz `backup.verifyReadData` inne niż `subset` i `all` kończą render błędem
+  z nazwą wartości. Sprawdza też: render `prod` z plikiem
   digestów jak z `deploy-images` (bez `--set`; plik bez digestu albo z `latest` nie renderuje się), manifesty Argo CD
   (`kubeconform`; testy: jedno źródło `shop` na gałęzi `deploy-images`, kolejność fal `sealed-secrets`, `secrets`, `shop`),
   sekrety zaszyfrowane (po dodaniu certyfikatu `environments/prod/sealed-secrets.pem` każdy klucz z `init-env.sh` ma
