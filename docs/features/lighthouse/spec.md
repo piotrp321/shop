@@ -68,10 +68,11 @@ i `entrypoint.sh`, a nie od `e2e/lighthouse`.
 
 ## CI
 
-- Krok `make lighthouse` (`make lighthouse E2E_FLAGS=-T E2E_BUILD=`) w jobie `e2e` z `if: env.FULL_CI == 'true'`, po
-  krokach `make e2e` i `init-env.sh tests`, żeby niespełniona asercja nie pomijała testów `init-env.sh`. Bez nowego joba i bez nowego
-  wymaganego checka: blokujący wynik SEO zatrzymuje job `e2e`. Gdy wcześniejszy krok się nie udał, pomiar nie rusza
-  (domyślne zachowanie kroków).
+- Cel `lighthouse` jest na liście `CI_AFTER_E2E` (`make/e2e.mk`). Job `e2e` uruchamia go krokiem `make ci-after-e2e`
+  (`RUN="docker compose exec -T" E2E_FLAGS=-T E2E_BUILD=`, `if: env.FULL_CI == 'true'`) po kroku `make e2e`. Cele tej
+  listy działają także po błędzie jednego z nich, więc niespełniona asercja nie pomija testów `init-env.sh` ani
+  pozostałych sprawdzeń. Bez nowego joba i bez nowego wymaganego checka: blokujący wynik SEO robi czerwony job `e2e`.
+  Gdy `make e2e` się nie udał, pomiar nie rusza (domyślne zachowanie kroków).
 - Krok „Lighthouse medians in the step summary” z `if: always() && env.FULL_CI == 'true'` dopisuje `medians.md` do
   `$GITHUB_STEP_SUMMARY` (gdy plik istnieje, także po błędzie asercji), żeby mediany były widoczne w podsumowaniu
   runu bez pobierania artefaktu.

@@ -137,7 +137,8 @@ Sitemap: <STORE_URL>/sitemap.xml
   `.next/prerender-manifest.json`) kończy się kodem 1, gdy `/robots.txt`, `/sitemap.xml` albo trasa
   `/sitemaps/…` jest prerenderowana, i kodem 2 bez manifestu albo gdy `STORE_MODE` kontenera nie jest `production`
   (manifest po wcześniejszym buildzie zostaje na bind moucie także w trybie `dev`). CI uruchamia go w jobie
-  `e2e` po starcie stosu (`STORE_MODE=production`). Testy skryptu: `apps/store/tests/check-dynamic-routes.test.ts`.
+  `e2e` (`STORE_MODE=production`) jako cel `store-dynamic-routes` z listy `CI_AFTER_E2E` (`make/store.mk`), krokiem
+  `make ci-after-e2e` po `make e2e`. Testy skryptu: `apps/store/tests/check-dynamic-routes.test.ts`.
 
 ## Dane strukturalne strony głównej
 
@@ -205,7 +206,7 @@ znak słowny w `src/catalog/SiteHeader.tsx` i JSON-LD strony głównej (`src/seo
   `urlset`, 404 porcji, 503 przy błędzie), reguły `robots.txt`, JSON-LD `Organization` i `WebSite` na `/`.
 - **E2E**: `/robots.txt`, `/sitemap.xml` → mapa listingu i porcja produktów po `make seed` (adres produktu demo jest
   w porcji i otwiera stronę 200), JSON-LD na `/`.
-- **Build produkcyjny**: `check-dynamic-routes` w CI (krok w jobie `e2e`); testy skryptu pokrywają kod 0, kod 1
+- **Build produkcyjny**: `check-dynamic-routes` w CI (krok `make ci-after-e2e` w jobie `e2e`); testy skryptu pokrywają kod 0, kod 1
   (każda z tras, trasa z parametrami pod `/sitemaps/`, lista wszystkich) oraz kod 2 bez manifestu, przy manifeście bez
   JSON albo bez `routes` i przy `STORE_MODE` innym niż `production`.
 
