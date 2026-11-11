@@ -311,7 +311,7 @@ klientów wyłączona, potwierdzenia zamówień nie wychodzą na zewnątrz). Te 
 (`infra/k8s/environments/prod/values.yaml`), więc przejście na publiczny sklep nie wymaga przebudowy obrazów.
 Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra/k8s/README.md`.
 
-- **Serwer**: jeden VPS (8 vCore, 24 GB RAM, OVH) z Ubuntu 24.04, przygotowany po SSH przez `make -C infra/k8s bootstrap`.
+- **Serwer**: jeden VPS (8 vCore, 24 GB RAM, OVH) z Ubuntu 26.04 LTS, przygotowany po SSH przez `make -C infra/k8s bootstrap`.
 - **Kubernetes**: k3s na jednym węźle (Traefik z k3s jako ingress, `local-path` jako storage). Własny chart
   `infra/k8s/charts/shop` na tych samych obrazach usług co `infra/docker-compose.yml`; gotowe charty tylko dla
   platformy (Argo CD, Sealed Secrets).

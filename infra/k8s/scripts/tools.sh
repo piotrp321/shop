@@ -25,8 +25,8 @@ KUBERNETES_VERSION="${KUBERNETES_VERSION#v}"
 KUBECTL_IMAGE="${KUBECTL_IMAGE:-registry.k8s.io/kubectl:v$KUBERNETES_VERSION}"
 # kubeseal, the client of Sealed Secrets, of the version of the controller chart pinned in argocd/apps/sealed-secrets.yaml.
 KUBESEAL_IMAGE="${KUBESEAL_IMAGE:-ghcr.io/bitnami/sealed-secrets-kubeseal:0.41.2@sha256:6697225a70537d94061b56e6a138ba9ca26307a702f827dac0a77b0a007bc84f}"
-# Ubuntu 24.04, the system bootstrap.sh supports: the image the test of the bootstrap runs it in (infra/k8s/tests/bootstrap).
-UBUNTU_IMAGE="${UBUNTU_IMAGE:-ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852}"
+# Ubuntu 26.04, the system bootstrap.sh supports: the image the test of the bootstrap runs it in (infra/k8s/tests/bootstrap).
+UBUNTU_IMAGE="${UBUNTU_IMAGE:-ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c}"
 CURL_IMAGE="${CURL_IMAGE:-curlimages/curl:8.18.0}"
 # The browser of the smoke test: the Chromium of the image the E2E tests are built on (e2e/Dockerfile, the same tag).
 PLAYWRIGHT_IMAGE="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.64.1-noble}"

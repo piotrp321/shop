@@ -318,7 +318,7 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 
 - Cele `infra/k8s/Makefile` działają z komputera użytkownika (narzędzia w kontenerach) i łączą się z serwerem po SSH
   (`HOST=user@adres`):
-  - `bootstrap` (`SEALED_KEY_FILE=<kopia klucza>` opcjonalnie): na czystym Ubuntu 24.04 LTS przypięta wersja k3s (≥ v1.36,
+  - `bootstrap` (`SEALED_KEY_FILE=<kopia klucza>` opcjonalnie): na czystym Ubuntu 26.04 LTS przypięta wersja k3s (≥ v1.36,
     wymaganie chartu; instalator z tagu wydania), `vm.max_map_count=262144`, ufw (SSH i API k3s oraz sieci podów i usług;
     D6), automatyczne poprawki bezpieczeństwa, Traefik z `externalTrafficPolicy: Local` (`HelmChartConfig`), Argo CD
     (przypięty chart instalowany przez kontroler Helma k3s), Sealed Secrets (z kluczem z kopii, jeśli jest, stosowanym
@@ -358,7 +358,7 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   wygenerowanym plikiem (bez `--set`) ma dokładnie obrazy z pliku. Manifesty Argo CD (`argocd/`) przechodzą
   `kubeconform` (schematy CRD z katalogu CRDs-catalog), a testy sprawdzają: `root` obejmuje `shop`, `sealed-secrets` i
   `secrets`, `shop` ma jedno źródło na `deploy-images`, aplikacje czytają tę samą gałąź, fale. `server-bootstrap.sh`
-  przechodzi `shellcheck` i dwa przebiegi w kontenerze Ubuntu 24.04 bez k3s (atrapy `k3s`, `apt-get`, `ufw`, `sysctl` i
+  przechodzi `shellcheck` i dwa przebiegi w kontenerze Ubuntu 26.04 bez k3s (atrapy `k3s`, `apt-get`, `ufw`, `sysctl` i
   instalatora; prawdziwe są sprawdzenia, zapisy plików i idempotencja), z odmową bez roota i na innym systemie przed
   zmianami. Ostatni krok sprawdza gitem na hoście, że `.gitignore` nie ignoruje certyfikatu
   `environments/prod/sealed-secrets.pem`. Główny `make check` woła `check` chartu, więc działa on w wymaganym jobie
@@ -435,7 +435,7 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
    bez użytkowników demo); `initialize` przy mieszanym stanie kończy się błędem bez zmian (test w smoke).
 8. `seal-secrets.sh` na ścieżce błędu nie zapisuje plików, a ponowne uruchomienie nie zmienia istniejących sekretów;
    po dodaniu certyfikatu do repo `check` wymaga zaszyfrowanej wartości dla każdego klucza `init-env.sh`.
-9. `bootstrap` przechodzi `shellcheck`, uruchomiony dwa razy w kontenerze z Ubuntu 24.04 (bez k3s) nie psuje
+9. `bootstrap` przechodzi `shellcheck`, uruchomiony dwa razy w kontenerze z Ubuntu 26.04 (bez k3s) nie psuje
    konfiguracji; cele z potwierdzeniem bez `tak` niczego nie zmieniają.
 10. Runbook prowadzi od pustego serwera do działającego środowiska (z próbami rulesetów, Access, poczty
     i `ipAllowList`); wykonuje się go na serwerze, poza AO, z dostępami od użytkownika.
@@ -455,3 +455,9 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 - **Klucz Sealed Secrets** jest jedyną rzeczą, której nie da się odtworzyć z repo; trzyma go użytkownik.
 - **Brak kopii poza serwerem do czasu DEPLOY-OPS.** Dane da się odtworzyć z seedów, a backup VPS-a od OVH działa od
   pierwszego dnia; prawdziwe dane i publiczny start dopiero po DEPLOY-OPS.
+- **AppArmor containerd na Ubuntu 26.04.** k3s v1.36 oficjalnie wspiera Ubuntu 26.04 (matryca SUSE), ale przy nakładaniu
+  profili (profile stacking) profil `cri-containerd.apparmor.d` blokuje sygnały między
+  procesami uruchomionymi przez exec (containerd/containerd#12886, otwarte). Dotyczy exec probe usług
+  i `kubectl exec` w `reinitialize` i `create-admin`: oczekiwany jest szum `DENIED` w logach jądra, a zgłoszone awarie
+  dotyczą procesu zabijającego własne dziecko w sesji exec. Runbook (sekcja 6) sprawdza to na serwerze. Gdyby coś
+  przestało działać, obejściem jest `securityContext.appArmorProfile: Unconfined` dla dotkniętego podu.
