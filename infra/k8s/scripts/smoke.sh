@@ -567,6 +567,7 @@ metadata: { name: smoke-backup-tools }
 spec:
   terminationGracePeriodSeconds: 0
   enableServiceLinks: false
+  automountServiceAccountToken: false
   containers:
     - name: restic
       image: $restic_image
@@ -651,6 +652,8 @@ check_backup() {
   kc exec -c rclone smoke-backup-tools -- sh -c 'printf "smoke object\n" | rclone rcat garage:product-images/smoke-backup/object.txt'
   run_backup_job
   check_backup_snapshot
+  # It holds the secrets of the repository and of the shop: gone as soon as nothing needs it.
+  kc delete pod smoke-backup-tools --now > /dev/null
   sample_once
   echo "smoke: the backup phase took $(( $(date +%s) - backup_started )) s, the disk of the cluster after it: $(tail -n 1 "$work/samples" | cut -d' ' -f2) MiB"
 }

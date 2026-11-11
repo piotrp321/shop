@@ -142,7 +142,7 @@ Wszystko **użytkownik**.
 
 ## 5. Pierwsze wdrożenie
 
-1. Po merge'ach z 2.5 i 3.4 workflow publikuje snapshot `deploy-images`, a Argo CD synchronizuje `root`, `sealed-secrets`,
+1. Po merge'ach z 2.5 i 3.5 workflow publikuje snapshot `deploy-images`, a Argo CD synchronizuje `root`, `sealed-secrets`,
    `secrets` i `shop` (fale: kontroler, sekrety, sklep). Pierwsza synchronizacja na pustym klastrze trwa kilkanaście minut
    (Elasticsearch, migracje, wczytanie danych demo).
 2. **agent** – `make -C infra/k8s status HOST=<user>@<adres>`: aplikacje `Synced`/`Healthy`, pody `Running`, Joby `Complete`.
@@ -158,8 +158,8 @@ Wszystko **użytkownik**.
    Wypisuje, co zrobi, i działa dopiero po słowie `tak`. Zakłada użytkownika z rolą `admin` bez hasła i wysyła mu e-mail
    (Brevo) z akcjami „ustaw hasło” i „skonfiguruj TOTP” (link ważny 12 h). Hasło i TOTP ustawia **użytkownik** w
    przeglądarce.
-4. **użytkownik** – włącza automatyczny backup VPS-a w panelu OVH. To jedyna kopia do czasu DEPLOY-OPS (#178); prawdziwe dane i
-   publiczny sklep dopiero po nim.
+4. **użytkownik** – włącza automatyczny backup VPS-a w panelu OVH. To dodatkowa kopia całego serwera (obok nocnych kopii
+   restic w R2: dane sklepu i obrazy produktów); prawdziwe dane i publiczny sklep dopiero po obu.
 5. **zgoda użytkownika** – weryfikacja originu (`docs/features/hardening/spec.md`, „Weryfikacja originu na serwerze”):
    limity API liczą się po `CF-Connecting-IP`, któremu można ufać tylko wtedy, gdy nic poza Cloudflare nie dociera do
    originu. Agent opisuje żądania i po zgodzie wysyła je z komputera spoza Cloudflare (`<IP>` – adres serwera):
