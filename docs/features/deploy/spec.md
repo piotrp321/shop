@@ -4,9 +4,9 @@ Pierwsze wdrożenie sklepu i panelu poza komputerem dewelopera: jeden serwer, je
 GitOps przez Argo CD. Na start działa jako demonstracja (sklep publiczny z informacją o symulowanych płatnościach,
 `noindex`, panel za Cloudflare Access, rejestracja wyłączona, potwierdzenia zamówień nie wychodzą na zewnątrz). Te
 ograniczenia są wartościami konfiguracji, więc przejście na publiczny sklep nie wymaga przebudowy obrazów ani
-architektury. Nocne kopie zapasowe i ich weryfikacja są częścią chartu (sekcja „Kopie zapasowe”); odtwarzanie
-i monitoring to dalsze zadania DEPLOY-OPS (#178), które musi być skończone przed przełączeniem na publiczny sklep albo
-przed pierwszymi prawdziwymi danymi.
+architektury. Nocne kopie zapasowe, ich weryfikacja i odtwarzanie (`make -C infra/k8s restore`) są częścią chartu (sekcja
+„Kopie zapasowe”); monitoring i alerty to dalsze zadania DEPLOY-OPS (#178), które musi być skończone przed przełączeniem na
+publiczny sklep albo przed pierwszymi prawdziwymi danymi.
 
 Issues: #175
 Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.github/workflows/ci.yml`, `.github/scripts`, `.gitignore`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.dockerignore`, `apps/api/bin`, `apps/store/Dockerfile`, `apps/store/.dockerignore`, `apps/store/next.config.ts`, `apps/store/app/layout.tsx`, `apps/store/app/api/site`, `apps/store/src/api/client.ts`, `apps/store/src/components`, `apps/store/src/account`, `apps/admin/Dockerfile`, `apps/admin/.dockerignore`, `apps/admin/docker`, `apps/admin/index.html`, `apps/admin/public`, `apps/admin/src/auth`, `apps/admin/src/api/client.ts`, `apps/admin/src/config`, `Makefile`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `apps/admin/CLAUDE.md`, `docs/vision.md`, `docs/adr`, `tools/rulesets`
@@ -33,7 +33,7 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 
 ## Poza zakresem
 
-- Odtwarzanie, Grafana Alloy i alerty – DEPLOY-OPS (#178). Tu nocna kopia (restic), jej weryfikacja i włączenie
+- Grafana Alloy i alerty – DEPLOY-OPS (#178). Tu nocna kopia (restic), jej weryfikacja, odtwarzanie i włączenie
   backupu VPS-a od OVH (runbook).
 - Osobne środowiska demo i produkcji, wiele węzłów, autoskalowanie, Rancher, własny Prometheus i Loki.
 - Tryb publicznego demo (nocny reset danych, publiczne konta demo, limity uploadów) – #179.
@@ -235,8 +235,9 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
 6. Wycofanie wersji: revert na `main` (nowe wdrożenie). Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
    `deploy-images` (jego obrazy zostają w GHCR), po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona
    `syncPolicy` aplikacji `shop`), a potem `shop`; po revercie automatyczną synchronizację włącza się z powrotem, najpierw
-   `root`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją; cofnięcie o więcej wersji
-   wymaga odtworzenia kopii (DEPLOY-OPS) albo pełnego ponownego wczytania danych (`reinitialize`, zgoda użytkownika).
+   `root`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją; cofnięcie o więcej wersji to starszy snapshot
+   `deploy-images` i odtworzenie kopii z czasu tej wersji (`make -C infra/k8s restore`, zgoda użytkownika; kopii nowszej
+   niż wdrożony kod odtworzenie odmawia) albo pełne ponowne wczytanie danych (`reinitialize`, zgoda użytkownika).
 
 Zasady dla zmian w repo (dokumentacja w `apps/api/CLAUDE.md` i `CLAUDE.md`): migracje zgodne wstecz z poprzednią
 wersją kodu; wiadomości Messengera zgodne w obie strony między kolejnymi wersjami; zmiana usług, zmiennych,
@@ -254,7 +255,8 @@ w chartcie w tym samym PR.
   - są produkty, ceny i stany – sukces bez zmian, niezależnie od zamówień;
   - każdy inny stan jest mieszany – błąd z liczbami i bez zmian, np. pusty katalog z zamówieniami albo cenami (reset
     seeda by je skasował) albo produkty bez cen lub stanów (przerwana inicjalizacja, wymaga decyzji człowieka).
-- Wyłączany wartością `initialize.enabled: false` (na potrzeby odtwarzania kopii w DEPLOY-OPS).
+- Wyłączany wartością `initialize.enabled: false`. Odtworzenie kopii go nie potrzebuje: na nowym klastrze `initialize`
+  wczytuje dane demo, a `make -C infra/k8s restore` zastępuje je danymi snapshotu.
 - Inicjalizacja przerwana w połowie: kolejne uruchomienie kończy się błędem stanu mieszanego; runbook opisuje ponowne
   wymuszone wczytanie (`make -C infra/k8s reinitialize`), które kasuje dane i wymaga zgody użytkownika.
 
@@ -294,7 +296,7 @@ w chartcie w tym samym PR.
 
 ## Kopie zapasowe
 
-Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3); decyzja: `docs/adr/backups-observability.md`.
+Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `docs/adr/backups-observability.md`.
 
 - CronJob `backup` (wartości `backup.*`, `enabled: true` w `prod` i `ci`) robi codziennie o 03:00 (`Europe/Warsaw`) jedną
   kopię: `pg_dump` baz `shop` i `keycloak` (format custom, `--no-owner --no-privileges`, użytkownik `postgres`), lustro
@@ -324,11 +326,28 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3); decyzja: `docs/ad
   `shop-backup`, bez tokenu; `restic` z obrazu `restic/restic` zamontowanego jako wolumen obrazu, razem z jego certyfikatami CA w `SSL_CERT_FILE`:
   obraz `postgres` ich nie ma, a repozytorium w `prod` jest po HTTPS). Dane tymczasowego Postgresa leżą na `emptyDir` z limitem
   równym `storage.postgres`: pod, którego odtworzone bazy go przerosną, jest wyrzucany, a nie zapełnia dysku węzła. Alerty weryfikacji
-  i odtwarzanie są w DEPLOY-OPS (#178).
+  są w DEPLOY-OPS (#178).
+- Odtworzenie: `make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip]` (zgoda użytkownika) tworzy Joby z wstrzymanego
+  CronJoba `restore` (`suspend: true`, `activeDeadlineSeconds: 10800`, `backoffLimit: 0`; obrazy i sekrety wdrożonej
+  rewizji, bez tokenu API, sekret `shop-backup` tylko w kontenerze restic) i z Jobów wersji. Odmawia bez zmian: bez
+  `SNAPSHOT` (identyfikator, nigdy `latest`), przy aktywnym Jobie w przestrzeni `shop`, trwającej synchronizacji `shop` w
+  Argo CD i snapshocie z migracją spoza klas migracji obrazu `api` (Job w trybie `check`, przed pytaniem). Po słowie `tak`:
+  kopia `pre-restore` (Job z CronJoba `backup` z `BACKUP_TAG=pre-restore`; jej błąd kończy odtworzenie bez zmian, chyba że
+  `PRE_RESTORE=skip`, który ją pomija), przy Argo CD wyłączenie automatycznej synchronizacji `root`, potem `shop`,
+  wstrzymanie CronJobów `cart-purge-expired` i `backup`, `api`, `worker`, `store` i `keycloak` do zera, Job w trybie
+  `restore` (`restic restore` na `backup-work`, `DROP`/`CREATE` i `pg_restore` obu baz z właścicielami jak w
+  `10-create-databases.sh`, `rclone sync` z usuwaniem do `product-images`, `FLUSHALL` Redisa, opróżnienie kolejek
+  RabbitMQ), ponowienie `migrate`, `keycloak` i `keycloak-config`, Job w trybie `reindex` (`catalog:reindex`), powrót
+  replik i CronJobów, `purge-caches` i włączenie synchronizacji `root`. Skrypt czeka na każdy Job najwyżej jego
+  `activeDeadlineSeconds`; błąd po pierwszej zmianie zostawia aplikacje wyłączone i wypisuje krok oraz snapshot
+  `pre-restore` (runbook opisuje dokończenie). `make -C infra/k8s backups` wypisuje snapshoty (identyfikator, czas, host,
+  tagi, rewizja) Jobem w trybie `list`, tylko do odczytu. Ten sam cel odtwarza dane na nowym serwerze po `bootstrap` z
+  kopią klucza Sealed Secrets (snapshoty starego serwera mają inny host).
 - Obrazy `restic/restic` i `rclone/rclone` są w `images.*` z tagiem i digestem (bez odpowiednika w compose, który się nie
-  zmienia). Smoke test uruchamia kopię i jej weryfikację na osobnej instancji S3 (przestrzeń `smoke-backup`) i sprawdza snapshot.
-- Automatyczny backup VPS-a od OVH (runbook: włączenie) zostaje dodatkową kopią całego serwera. Odtwarzanie i alerty są
-  w DEPLOY-OPS (#178).
+  zmienia). Smoke test uruchamia kopię i jej weryfikację na osobnej instancji S3 (przestrzeń `smoke-backup`), sprawdza snapshot,
+  a potem odtwarza go na pustym klastrze (przestrzeń `shop` usunięta z wolumenami, chart zainstalowany od nowa) i sprawdza
+  odmowę snapshotu nowszego niż kod.
+- Automatyczny backup VPS-a od OVH (runbook: włączenie) zostaje dodatkową kopią całego serwera. Alerty są w DEPLOY-OPS (#178).
 
 ## Sekrety
 
@@ -446,7 +465,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3); decyzja: `docs/ad
 | Push do `deploy` albo `deploy-images` spoza workflowu, force push, usunięcie | odrzucone przez ruleset |
 | Certyfikat kontrolera Sealed Secrets inny niż w repo (bootstrap bez kopii klucza) | `bootstrap` kończy się błędem, niczego nie nadpisuje; kopia klucza albo nowy certyfikat i ponowne zaszyfrowanie (runbook) |
 | Restart serwera | k3s i usługi wstają same; dane na PVC zostają |
-| Utrata klucza Sealed Secrets | nowy certyfikat w repo, nowe sekrety skryptem (runbook); wymaga ponownego wczytania danych albo odtworzenia z kopii (DEPLOY-OPS) |
+| Utrata klucza Sealed Secrets | nowy certyfikat w repo, nowe sekrety skryptem (runbook); wymaga ponownego wczytania danych albo odtworzenia z kopii (`make restore`; realm `master` z kopii ma stare hasło administratora Keycloaka, więc odtworzenie staje na `keycloak-config`: runbook) |
 
 ## Kryteria akceptacji
 
@@ -487,7 +506,8 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3); decyzja: `docs/ad
   checkout gościa bez limitów pozwala blokować stany fikcyjnymi zamówieniami; rate limiting jest w osobnym
   zgłoszeniu.
 - **Klucz Sealed Secrets** jest jedyną rzeczą, której nie da się odtworzyć z repo; trzyma go użytkownik.
-- **Kopie bez ćwiczonego odtworzenia do czasu reszty DEPLOY-OPS.** Nocna kopia do R2 jest i jest codziennie weryfikowana
-  (bez alertu na jej wynik), ale nikt jeszcze nie ćwiczył odtworzenia; dane da się odtworzyć z seedów, a backup VPS-a od OVH działa od pierwszego dnia.
-  Prawdziwe dane i publiczny start dopiero po DEPLOY-OPS. Klucz R2 w klastrze pozwala usunąć kopie (token tylko do jednego
+- **Odtworzenie ćwiczone przed serwerem tylko w smoke teście.** Nocna kopia do R2 jest codziennie weryfikowana
+  (bez alertu na jej wynik), a smoke test odtwarza ją na pustym klastrze, ale bez Argo CD: wyłączanie synchronizacji
+  sprawdzają testy na atrapie `kubectl`, a serwer dopiero ćwiczenie odtworzenia z runbooka (zgoda użytkownika). Backup VPS-a
+  od OVH działa od pierwszego dnia. Prawdziwe dane i publiczny start dopiero po DEPLOY-OPS. Klucz R2 w klastrze pozwala usunąć kopie (token tylko do jednego
   bucketu; kopie niezmienne poza zakresem demo).

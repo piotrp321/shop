@@ -203,7 +203,8 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 - **Nowa wersja**: merge PR do `main`; pipeline sam publikuje snapshot, a Argo CD synchronizuje klaster. Błąd renderu albo
   migracji zatrzymuje wdrożenie, a poprzednia wersja działa dalej (aplikacja `Degraded`).
 - **Cofnięcie wersji**: revert na `main` (nowe wdrożenie). Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu;
-  cofnięcie o więcej wersji wymaga kopii (DEPLOY-OPS) albo `reinitialize`. Awaryjnie **użytkownik** wyłącza w Argo CD
+  cofnięcie o więcej wersji to synchronizacja `shop` ze starszym snapshotem `deploy-images` (jak niżej) i odtworzenie kopii
+  z czasu tej wersji (8.; `restore` odmawia kopii nowszej niż wdrożony kod) albo `reinitialize`. Awaryjnie **użytkownik** wyłącza w Argo CD
   automatyczną synchronizację aplikacji `root`, a potem aplikacji `shop` (kolejność ma znaczenie: `root` z `selfHeal`
   przywraca z gita `syncPolicy` aplikacji `shop`, a Argo CD nie synchronizuje do innej rewizji aplikacji z automatyczną
   synchronizacją) i synchronizuje `shop` z poprzednim snapshotem `deploy-images` (jego obrazy są w GHCR). Potem robi revert
@@ -214,5 +215,53 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 - **Utrata klucza Sealed Secrets**: bez kopii (2.4) sekretów z repo nie da się odszyfrować. Nowy certyfikat: usuń
   `environments/prod/sealed-secrets.pem` i pliki z `environments/prod/secrets/`, `bootstrap` bez kopii klucza (zapisze nowy
   certyfikat), ponownie sekrety (3.), a bazy zainicjowane starymi hasłami wymagają ponownego wczytania danych albo
-  odtworzenia z kopii (DEPLOY-OPS). Wymaga **zgody użytkownika**.
+  odtworzenia z kopii (8.; hasło restic jest u użytkownika). Realm `master` Keycloaka wraca z kopii ze starym hasłem
+  administratora, więc `restore` stanie na kroku 6 (`keycloak-config` nie zaloguje się nowym `KC_BOOTSTRAP_ADMIN_PASSWORD`):
+  **użytkownik** ustawia w Keycloaku (konsola `master` z hasłem z kopii, jeśli je ma, albo tymczasowy administrator z
+  `kc.sh bootstrap-admin`) hasło administratora `admin` na wartość z nowego sekretu, a potem agent kończy jak przy
+  „Odtworzenie przerwane w trakcie” (8.). Wymaga **zgody użytkownika**.
 - **Restart serwera**: k3s i usługi wstają same, dane na wolumenach zostają.
+
+## 8. Kopie zapasowe: lista, ćwiczenie odtworzenia, utrata serwera
+
+Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs/features/deploy-ops/spec.md` (O4). Cele
+łączą się z klastrem przez kubeconfig z `KUBE_DIR` (2.6), jak `rerun` i `create-admin`.
+
+- **Lista snapshotów** – **agent**: `make -C infra/k8s backups KUBE_DIR=<katalog z kubeconfigiem>` wypisuje snapshoty
+  repozytorium (identyfikator, czas, host, tagi `nightly` albo `pre-restore`, rewizja kodu), najstarsze pierwsze; tylko odczyt.
+  Host to identyfikator klastra (UID przestrzeni `kube-system`): snapshoty innego serwera mają inny host.
+- **Ćwiczenie odtworzenia** – **zgoda użytkownika** (raz po pierwszym wdrożeniu z kopiami i po większych zmianach chartu):
+  agent opisuje skutki (dane wracają do chwili snapshotu, klienci są wylogowani, kolejki opróżnione, sklep jest wyłączony na
+  czas odtworzenia, przed nim powstaje snapshot `pre-restore`), a po zgodzie:
+
+  ```sh
+  make -C infra/k8s backups KUBE_DIR=<katalog>
+  make -C infra/k8s restore SNAPSHOT=<identyfikator świeżego snapshotu nightly tego serwera> KUBE_DIR=<katalog>
+  ```
+
+  `restore` sprawdza (bez zmian) brak aktywnych Jobów, brak trwającej synchronizacji `shop` w Argo CD i zgodność migracji
+  snapshotu z wdrożonym kodem, wypisuje snapshot i skutki i czeka na słowo `tak` (wpisuje je agent dopiero po zgodzie). Potem:
+  kopia `pre-restore`, wyłączenie automatycznej synchronizacji `root`, potem `shop`, wstrzymanie CronJobów, `api`, `worker`,
+  `store` i `keycloak` do zera, odtworzenie danych, `migrate`, `keycloak-config`, reindeks, powrót aplikacji, `purge-caches` i
+  włączenie synchronizacji `root` (ten przywraca `shop`). Kończy się wierszem `restore: done` z identyfikatorem snapshotu
+  `pre-restore`. Sprawdzenie: `make -C infra/k8s status HOST=…` (aplikacje `Synced`/`Healthy`, pody `Running`), sklep i
+  panel w przeglądarce (**użytkownik**: logowanie do panelu). Wynik (czas, snapshot, `pre-restore`) w komentarzu do #178.
+- **Odmowa** (kod 1, „nothing changed”): aktywny Job (poczekaj na koniec, np. nocnej kopii), synchronizacja `shop` w toku,
+  snapshot nowszy niż kod (migracja, której kod nie zna: odtwórz go dopiero na wersji, która ją ma), nieudana kopia
+  `pre-restore` (log w komunikacie; `PRE_RESTORE=skip` pomija kopię, tylko po zgodzie użytkownika, bo stanu sprzed
+  odtworzenia nie da się wtedy przywrócić).
+- **Odtworzenie przerwane w trakcie** (kod 1, „FAILED at step N”): aplikacje zostają wyłączone (bez sklepu na częściowo
+  odtworzonych danych), przy Argo CD synchronizacja `root` i `shop` zostaje wyłączona; komunikat podaje krok, log Joba i
+  snapshot `pre-restore`. Agent czyta przyczynę (komunikat, `status`), po usunięciu jej (np. poprawka w repo, dostęp do R2) i
+  po **zgodzie użytkownika** uruchamia `restore` ponownie z tym samym `SNAPSHOT` i `PRE_RESTORE=skip` (kopia stanu sprzed
+  pierwszej próby już jest; aplikacje na zerze wracają z jedną repliką) albo wraca do stanu sprzed odtworzenia:
+  `restore SNAPSHOT=<pre-restore>`. Ponowne uruchomienie przy wyłączonej synchronizacji `root` jej nie włącza: włącza ją
+  **użytkownik** w Argo CD (z `prune` i `selfHeal`, jak w `argocd/root.yaml`).
+- **Utrata serwera** – **zgoda użytkownika** przy każdym kroku z niej: nowy VPS (**użytkownik**, 0.), `bootstrap` z kopią
+  klucza Sealed Secrets (`SEALED_KEY_FILE`, 2.: te same sekrety i hasła baz), pierwsza synchronizacja wczytuje dane demo
+  (`initialize`), `kubeconfig`, `make backups` (snapshoty starego serwera mają inny host niż nowy), `restore
+  SNAPSHOT=<ostatni snapshot nightly starego hosta> PRE_RESTORE=skip` (na nowym serwerze są tylko dane demo), potem `create-admin` niepotrzebne (administratorzy wracają z kopii).
+  Nowy serwer robi od tej nocy własne kopie i przycina tylko je.
+- **Snapshoty starego serwera** po odtworzeniu na nowym nie wygasają same (`forget` każdego klastra dotyczy tylko jego
+  hosta): zostają w R2, dopóki **użytkownik** nie zdecyduje o ich usunięciu (`restic forget --host <stary host> --prune`
+  z hasłem restic, poza celami agenta).

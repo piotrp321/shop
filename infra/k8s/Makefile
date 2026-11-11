@@ -23,7 +23,10 @@ selftest:
 # The smoke test on an empty k3d cluster with the production images built here (a few minutes; the first run pulls
 # the images of the services). After create-admin it makes a backup: a Garage of its own in the namespace smoke-backup holds the
 # restic repository, a Job from the CronJob backup runs, and the snapshot nightly (both dumps, the objects, the manifest) is
-# checked; the time of that phase is printed. SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
+# checked; the time of that phase is printed. Then the restore on an empty cluster: the namespace shop is deleted with its volumes,
+# the chart installed again and make restore brings the snapshot back (checked: the administrator, the customer, the numbers of
+# products and orders, an image, the search, the snapshot pre-restore), and refuses a snapshot newer than the code; the later
+# phases run on the restored cluster. SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
 smoke:
 	sh scripts/smoke.sh
 

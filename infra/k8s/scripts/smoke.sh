@@ -19,8 +19,11 @@
 #
 # Phases: install and checks (also the store and the panel in a browser, and create-admin); the backup (an S3 of its own in the
 # namespace smoke-backup, a Job from the CronJob backup, the snapshot it leaves, a Job from the CronJob backup-verify; the time of the
-# phase and of the verification is printed);
-# upgrade with a new revision (initialize
+# phase and of the verification is printed); the restore on an empty cluster (make backups lists the snapshots, the namespace shop
+# is deleted with its volumes and the chart installed again, make restore brings back the snapshot nightly: the administrator, the
+# customer and its login, the numbers of products and orders, an image, the search, the home page, the snapshot pre-restore;
+# make restore refuses a snapshot with a migration the code does not know and the shop goes on; the time of the phase and the
+# peak disk are printed); the later phases run on the restored cluster: upgrade with a new revision (initialize
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
 # the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
@@ -676,6 +679,116 @@ check_backup() {
   echo "smoke: the backup phase took $(( $(date +%s) - backup_started )) s, the disk of the cluster after it: $(tail -n 1 "$work/samples" | cut -d' ' -f2) MiB"
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+# The restore on an empty cluster (docs/features/deploy-ops/spec.md, "Smoke test i check", steps 4 and 5)
+# ---------------------------------------------------------------------------------------------------------------
+# A word that only the database of the backup has in the name of a product (the index is not told): after the restore the search
+# finds the product by it only if the index was rebuilt from the restored database.
+restore_phrase=Smokerestore
+mark_product_for_the_search() {
+  restore_slug="$(kc exec statefulset/postgres -- psql -U shop -d shop -tAc 'SELECT slug FROM catalog_product ORDER BY slug LIMIT 1' | tr -d '[:space:]')"
+  [ -n "$restore_slug" ] || { echo "smoke: no product to mark for the search" >&2; return 1; }
+  kc exec statefulset/postgres -- psql -U shop -d shop -v ON_ERROR_STOP=1 -qc \
+    "UPDATE catalog_product SET name = name || ' $restore_phrase' WHERE slug = '$restore_slug'" > /dev/null
+}
+
+# restore_with <answer> <snapshot> <name of the log>: make -C infra/k8s restore with the answer on the standard input.
+restore_with() {
+  printf '%s\n' "$1" | KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" SNAPSHOT="$2" RESTORE_POLL_SECONDS=3 \
+    sh "$here/restore.sh" > "$work/restore-$3.log" 2>&1
+}
+
+# make -C infra/k8s backups, and the newest snapshot with a tag in its list.
+list_backups() { KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" sh "$here/backups.sh"; }
+snapshot_with_tag() { printf '%s\n' "$1" | awk -v tag="$2" '$4 == tag { id = $1 } END { print id }'; }
+
+peak_disk() { awk '{ if ($2 > d) d = $2 } END { printf "%d", d }' "$work/samples"; }
+
+check_restore() {
+  restore_phase_started="$(date +%s)"
+  backups="$(list_backups)" || { echo "smoke: make backups failed" >&2; return 1; }
+  printf '%s\n' "$backups"
+  nightly="$(snapshot_with_tag "$backups" nightly)"
+  [ -n "$nightly" ] || { echo "smoke: make backups lists no snapshot nightly" >&2; return 1; }
+  # Read first: a kubectl in the pipeline would take its standard input (docker run -i).
+  cluster_uid="$(kubectl get namespace kube-system -o jsonpath='{.metadata.uid}')"
+  printf '%s\n' "$backups" | grep -q "^$nightly  .*  $cluster_uid  nightly  [^ ?][^ ]*$" \
+    || { echo "smoke: make backups does not give the time, the host, the tag and the revision of $nightly" >&2; return 1; }
+  echo "ok: make backups lists the snapshot nightly $nightly with its time, host, tag and revision"
+
+  echo "smoke: the namespace $namespace with its volumes deleted, the chart installed again"
+  helm_cluster uninstall shop --namespace "$namespace" --wait > /dev/null
+  kubectl delete namespace "$namespace" --wait=true --timeout=600s > /dev/null
+  install r1
+  create_tools_pod
+  wait_ready "installed again"
+  kc wait --for=condition=Ready pod/smoke-tools --timeout=180s > /dev/null
+  read_secrets
+  checks admin-absent "$admin_login" "$admin_email"
+  [ "$(count ordering_order)" = 0 ] || { echo "smoke: the cluster installed again has orders" >&2; return 1; }
+  echo "ok: the cluster installed again has the demo data only (no administrator, no orders)"
+
+  restore_started="$(date +%s)"
+  restore_with tak "$nightly" restored || { echo "smoke: make restore SNAPSHOT=$nightly failed:" >&2; cat "$work/restore-restored.log" >&2; dump_state; return 1; }
+  restore_seconds=$(( $(date +%s) - restore_started ))
+  grep '^restore: ' "$work/restore-restored.log"
+  wait_ready "restored"
+  checks restored "$admin_login" "$restore_slug" "$restore_phrase"
+  [ "$(count catalog_product)" = "$products_at_backup" ] || { echo "smoke: $(count catalog_product) products after the restore, $products_at_backup in the backup" >&2; return 1; }
+  [ "$(count ordering_order)" = "$orders_at_backup" ] || { echo "smoke: $(count ordering_order) orders after the restore, $orders_at_backup in the backup" >&2; return 1; }
+  echo "ok: $products_at_backup products and $orders_at_backup orders, as in the backup"
+  checks compare "$snapshot_at_backup"
+  create_backup_tools_pod
+  kc exec -c rclone smoke-backup-tools -- rclone lsf garage:product-images/smoke-backup/ | grep -qx object.txt \
+    || { echo "smoke: the object of the backup is not in the bucket after the restore" >&2; return 1; }
+  echo "ok: the object of the backup is in the bucket again"
+  backups="$(list_backups)"
+  pre_restore="$(snapshot_with_tag "$backups" pre-restore)"
+  if [ -z "$pre_restore" ] || ! grep -q "pre-restore snapshot $pre_restore" "$work/restore-restored.log"; then
+    echo "smoke: no snapshot pre-restore in the repository after the restore:" >&2; printf '%s\n' "$backups" >&2; return 1
+  fi
+  echo "ok: the snapshot pre-restore $pre_restore is in the repository"
+  check_restore_refuses_a_newer_snapshot
+  kc delete pod smoke-backup-tools --now > /dev/null
+  sample_once
+  echo "smoke: the restore phase took $(( $(date +%s) - restore_phase_started )) s (make restore itself $restore_seconds s), the peak disk of the cluster so far: $(peak_disk) MiB"
+}
+
+# A copy of the snapshot nightly whose manifest has one more migration (one the code does not know): make restore refuses it
+# before the question, the backup pre-restore and any scaling, and the shop goes on as it was.
+check_restore_refuses_a_newer_snapshot() {
+  newer="$(kc exec -i -c restic smoke-backup-tools -- sh -s -- "$nightly" <<'SH'
+set -eu
+restic restore "$1:/work" --target /work > /dev/null
+sed -i 's/"migrations": \[/"migrations": ["DoctrineMigrations\\\\Version29990101000000",/' /work/manifest.json
+grep -q 'Version29990101000000' /work/manifest.json
+restic backup --tag smoke-newer --host smoke-newer /work/dumps /work/objects /work/manifest.json | sed -n 's/^snapshot \([0-9a-f]*\) saved$/\1/p'
+SH
+)"
+  [ -n "$newer" ] || { echo "smoke: could not make the snapshot with a newer migration" >&2; return 1; }
+  pods_before="$(kc get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')"
+  pre_restore_before="$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')"
+  if restore_with tak "$newer" newer; then
+    echo "smoke: make restore accepted a snapshot newer than the code:" >&2; cat "$work/restore-newer.log" >&2; return 1
+  fi
+  if ! grep -q 'newer than the deployed code' "$work/restore-newer.log" || ! grep -q 'nothing changed' "$work/restore-newer.log"; then
+    echo "smoke: make restore of a newer snapshot failed for another reason:" >&2; cat "$work/restore-newer.log" >&2; return 1
+  fi
+  if grep -q 'type tak' "$work/restore-newer.log"; then echo "smoke: make restore asked before it refused the newer snapshot" >&2; return 1; fi
+  all_ready || { echo "smoke: the shop is not running after the refused restore" >&2; dump_state; return 1; }
+  [ "$(kc get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')" = "$pods_before" ] \
+    || { echo "smoke: the refused restore restarted the applications" >&2; return 1; }
+  if [ "$(count catalog_product)" != "$products_at_backup" ] || [ "$(count ordering_order)" != "$orders_at_backup" ]; then
+    echo "smoke: the refused restore changed the data" >&2; return 1
+  fi
+  [ "$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')" = "$pre_restore_before" ] \
+    || { echo "smoke: the refused restore made a backup pre-restore" >&2; return 1; }
+  for cronjob in backup cart-purge-expired; do
+    [ "$(kc get cronjob "$cronjob" -o jsonpath='{.spec.suspend}')" != true ] || { echo "smoke: the refused restore suspended $cronjob" >&2; return 1; }
+  done
+  echo "ok: make restore refused the snapshot $newer with a migration the code does not know; the shop runs, the data is unchanged"
+}
+
 # A copy of the chart whose realm file of shop has one more client (smoke-extra), in <work>/chart-extra.
 add_realm_client() {
   rm -rf "$work/chart-extra"
@@ -773,7 +886,14 @@ else
   check_create_admin
 
   log "backup"
+  mark_product_for_the_search
+  products_at_backup="$(count catalog_product)"
+  orders_at_backup="$(count ordering_order)"
+  snapshot_at_backup="$(checks snapshot | tail -n 1)"
   check_backup
+
+  log "restore on an empty cluster"
+  check_restore
 
   log "upgrade r2: the same code, a new revision"
   snapshot_before="$(checks snapshot | tail -n 1)"

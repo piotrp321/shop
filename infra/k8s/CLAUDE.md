@@ -10,7 +10,12 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   sprawdza m.in. nagłówki bezpieczeństwa panelu i jego załadowanie w przeglądarce bez naruszeń CSP;
   `SMOKE_BREAK=migration|image` psuje go celowo; po `create-admin` robi kopię zapasową: osobna instancja S3 w przestrzeni
   `smoke-backup`, Job z CronJoba `backup`, snapshot `nightly` z dumpami obu baz, obiektem i manifestem, potem Job z CronJoba
-  `backup-verify` (profil `ci`: `verifyReadData: all`); wypisuje czas tej fazy, czas weryfikacji i zajęty dysk); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
+  `backup-verify` (profil `ci`: `verifyReadData: all`); wypisuje czas tej fazy, czas weryfikacji i zajęty dysk; potem
+  odtworzenie na pustym klastrze: `backups`, usunięcie przestrzeni `shop` z wolumenami, instalacja od nowa, `restore` snapshotu
+  `nightly` (bez Argo CD): administrator z `create-admin`, klient i jego logowanie, liczby produktów i zamówień jak przy kopii,
+  realmy bez zmian, obiekt w buckecie, zdjęcie przez imgproxy, produkt w wyszukiwarce po słowie, które ma tylko odtworzona
+  baza, strona główna, snapshot `pre-restore`; `restore` snapshotu z migracją nieznaną kodowi kończy się odmową bez pytania,
+  bez kopii `pre-restore` i bez zmian; wypisuje czas fazy i szczytowy dysk; dalsze fazy działają na odtworzonym klastrze); `make -C infra/k8s load LOAD_OUT=<katalog poza repo>` (pomiar
   obciążenia: klaster k3d z obrazami produkcyjnymi zbudowanymi lokalnie i profilem `load`, dane demo, stany
   podniesione o 100 000 bezpośrednim SQL, rozgrzanie, przebieg rosnący do nasycenia z k6 (odczyt i koszyk) i przebieg
   stały na 70% nasycenia z checkoutem o ograniczonej równoległości, wyniki do `LOAD_OUT`; kilkadziesiąt minut, VM
