@@ -15,4 +15,9 @@ final class InvalidVariantValues extends \DomainException implements InvalidInpu
     {
         return new self(\sprintf('A variant value must have between 1 and %d characters.', VariantValues::MAX_VALUE_LENGTH));
     }
+
+    public static function forbiddenCharacters(): self
+    {
+        return new self('A variant value must not contain forbidden characters.');
+    }
 }

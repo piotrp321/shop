@@ -537,7 +537,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   kodu (`discount-code-invalid`, `-used-up`, `-below-minimum`; powód `discount_code_rejected` w `problems.ts`): `detail`
   przy polu, kod zdjęty, podsumowanie wczytane bez kodu, nowy klucz; zamówienie składa dopiero następne kliknięcie.
   409 `OrderTotalChanged` (i pozostałe wczytujące podsumowanie) czyta je ponownie z tym samym kodem; kod, który API
-  odrzuci przy tym odczycie, pokazuje `detail` przy polu. Pusty koszyk albo linie wykluczone zastępują formularz razem z polem kodu.
+  odrzuci przy tym odczycie, pokazuje `detail` przy polu. Gdy kod schodzi z zamówienia inaczej niż przez „Usuń kod”
+  i podsumowanie jest wczytane bez niego (oba przypadki wyżej), region `role="status"` jest pusty (komunikat przy polu
+  ogłasza jego `role="alert"`); gdy podsumowania nie da się wczytać, kod zostaje i region dalej mówi „Zastosowano kod”. Pusty koszyk albo linie wykluczone zastępują formularz razem z polem kodu.
 - `Idempotency-Key` (`crypto.randomUUID`, więc kasa wymaga bezpiecznego kontekstu: HTTPS albo `localhost`) to klucz
   jednej logicznej próby. Powstaje przy wejściu na stronę i wraca przy ponowieniu niepewnego wyniku (błąd sieci, 403,
   5xx), po 429 (limit złożenia zamówienia: nic nie zostało złożone) oraz po 409 `CartEmpty`, `CartNotOrderable`,

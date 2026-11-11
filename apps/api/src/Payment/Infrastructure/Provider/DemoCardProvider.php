@@ -23,7 +23,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * expired}` or, once decided, 409 `{status: complete | failed}`.
  * Its webhooks carry `Card-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">` (one or more `v1`), valid
  * within 300 s of now either way, and `{id, type, data: {sessionId, reference, amount, currency, completedAt (Unix,
- * with checkout.completed)}}`; a type other than checkout.completed and checkout.failed is ignored.
+ * with checkout.completed)}}`; a type other than checkout.completed and checkout.failed is ignored. An empty webhook
+ * secret refuses every webhook before the signature is read.
  */
 final readonly class DemoCardProvider implements PaymentProvider
 {
@@ -112,6 +113,9 @@ final readonly class DemoCardProvider implements PaymentProvider
      */
     private function verify(string $header, string $rawBody, \DateTimeImmutable $now): void
     {
+        if ('' === $this->webhookSecret) {
+            throw InvalidWebhook::emptySecret();
+        }
         if ('' === $header) {
             throw InvalidWebhook::signature('no Card-Signature header');
         }

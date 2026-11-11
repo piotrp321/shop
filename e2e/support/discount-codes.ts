@@ -45,3 +45,30 @@ export async function createDiscountCode(request: APIRequestContext, token: stri
   const created = (await response.json()) as { code: string };
   return created.code;
 }
+
+type StoredDiscountCode = {
+  id: string;
+  code: string;
+  kind: "percent" | "amount";
+  value: number;
+  minimumOrderGross: number | null;
+  startsAt: string;
+  endsAt: string | null;
+  usageLimit: number | null;
+  version: number;
+};
+
+/** Disables a started code through the API of the panel (it sends the code as stored, only `enabled` differs). */
+export async function disableDiscountCode(request: APIRequestContext, token: string, code: string): Promise<void> {
+  const headers = { Authorization: `Bearer ${token}` };
+  const found = await request.get(`${urls.api}/api/v1/admin/discount-codes`, { headers, params: { q: code } });
+  expect(found.status(), `finding the discount code ${code}: ${await found.text()}`).toBe(200);
+  const stored = ((await found.json()) as { items: StoredDiscountCode[] }).items.find((item) => item.code === code);
+  expect(stored, `the discount code ${code} is on the list of the panel`).toBeDefined();
+  const { id, kind, value, minimumOrderGross, startsAt, endsAt, usageLimit, version } = stored as StoredDiscountCode;
+  const response = await request.put(`${urls.api}/api/v1/admin/discount-codes/${id}`, {
+    headers,
+    data: { kind, value, minimumOrderGross, startsAt, endsAt, usageLimit, enabled: false, version },
+  });
+  expect(response.status(), `disabling the discount code ${code}: ${await response.text()}`).toBe(200);
+}

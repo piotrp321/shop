@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Catalog\Domain\Product;
 
 /**
- * The values of one variant, one per axis in the order of the axes; each 1 to 40 characters after trimming.
- * A default variant (a product without axes) has none.
+ * The values of one variant, one per axis in the order of the axes; each 1 to 40 characters after trimming Unicode
+ * whitespace, without control characters (see ProductText). A default variant (a product without axes) has none.
  */
 final readonly class VariantValues
 {
@@ -28,7 +28,10 @@ final readonly class VariantValues
     {
         $trimmed = [];
         foreach ($values as $value) {
-            $value = trim($value);
+            if (ProductText::hasForbiddenCharacters($value)) {
+                throw InvalidVariantValues::forbiddenCharacters();
+            }
+            $value = ProductText::trim($value);
             $length = mb_strlen($value);
             if ($length < 1 || $length > self::MAX_VALUE_LENGTH) {
                 throw InvalidVariantValues::lengthOutOfRange();
@@ -53,8 +56,9 @@ final readonly class VariantValues
     }
 
     /**
-     * What makes two combinations the same: the values without regard to case. mb_strtolower agrees with the
-     * lower() of PostgreSQL that computes the unique index of the table, also for Polish letters.
+     * What makes two combinations the same: the values without regard to case (mb_strtolower, also for Polish
+     * letters). The unique index of the variants table is built from this key too, not from lower() of PostgreSQL,
+     * which treats some letters differently (e.g. "İ" and a final "Σ").
      *
      * @return list<string>
      */

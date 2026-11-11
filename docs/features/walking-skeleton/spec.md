@@ -262,7 +262,9 @@ Persystencja:
   (NOT NULL, FK do `catalog_category`, indeks), `tax_category`, `images` (JSONB), `variant_axes` (JSONB), `version`
   (BIGINT NOT NULL).
 - `catalog_product_variant`: warianty produktu (`id`, `product_id` FK `ON DELETE CASCADE`, `position`, `option_values`
-  JSONB, `values_key` liczona przez PostgreSQL; unikalne `(product_id, position)` i `(product_id, values_key)`).
+  JSONB, `values_key`: klucz porównania kombinacji liczony przez domenę i zapisywany przez repozytorium, `NULL`
+  w wierszu zapisanym bez niego, którego indeks nie sprawdza; unikalne `(product_id, position)` i
+  `(product_id, values_key)`; szczegóły i okno zgodności wersji: `docs/features/variants/spec.md`, „Persystencja”).
 - `catalog_product_category`: dodatkowe kategorie produktu. `product_id` (FK do `catalog_product`, `ON DELETE
   CASCADE`) i `category_id` (FK do `catalog_category`), klucz główny (`product_id`, `category_id`) i indeks na
   `category_id` do wyszukiwania produktów po kategorii. Kategoria główna nie trafia do tej tabeli (niezmiennik

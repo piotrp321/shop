@@ -21,7 +21,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * <key>`, amounts in minor units, times in RFC 3339 (UTC). A transaction is created with 201 `{transactionId,
  * paymentUrl}`; its cancellation answers 200 `{status: CANCELLED}` or, once decided, 409 `{status: PAID | REJECTED}`.
  * Its webhooks carry `X-Signature`, the hex HMAC-SHA256 of the raw body with the webhook secret, and `{eventId,
- * transactionId, merchantRef, status: PAID | REJECTED, amount, currency, paidAt (RFC 3339, with PAID)}`.
+ * transactionId, merchantRef, status: PAID | REJECTED, amount, currency, paidAt (RFC 3339, with PAID)}`. An empty webhook
+ * secret refuses every webhook before the signature is read.
  */
 final readonly class DemoTransferProvider implements PaymentProvider
 {
@@ -84,6 +85,9 @@ final readonly class DemoTransferProvider implements PaymentProvider
 
     public function parseWebhook(array $headers, string $rawBody, \DateTimeImmutable $now): ProviderEvent
     {
+        if ('' === $this->webhookSecret) {
+            throw InvalidWebhook::emptySecret();
+        }
         $signature = $headers[self::SIGNATURE_HEADER] ?? '';
         if ('' === $signature) {
             throw InvalidWebhook::signature('no X-Signature header');

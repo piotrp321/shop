@@ -108,6 +108,39 @@ final class GetPaymentStatusHandlerTest extends TestCase
         self::assertEquals(new LatestPaymentView('demo-transfer', 'succeeded', null), $status->latestPayment);
     }
 
+    public function testAWebhookCommittedBetweenTheTwoReadsNeverShowsASucceededPaymentOfAnUnpaidOrder(): void
+    {
+        $payment = PaymentExamples::withSession();
+        $this->payments->add($payment);
+        // The webhook pays the order and succeeds the payment in one transaction, so a reader sees both or neither;
+        // here it commits once, right after whichever read comes first.
+        $committed = false;
+        $webhook = function () use (&$committed, $payment): void {
+            if ($committed) {
+                return;
+            }
+            $committed = true;
+            $this->orders->add(self::order(OrderState::Paid, payable: false), PaymentAccess::guest(self::TOKEN));
+            $payment->succeed(PaymentExamples::amount(), new \DateTimeImmutable('2026-11-05 12:09:00+00:00'), new \DateTimeImmutable('2026-11-05 12:09:05+00:00'));
+            $this->payments->save($payment);
+        };
+        $this->orders->afterRead = $webhook;
+        $this->payments->afterLatestRead = $webhook;
+
+        $status = $this->paymentStatus();
+
+        self::assertTrue($committed, 'the webhook committed during the read');
+        self::assertFalse(
+            'new' === $status->orderStatus && 'succeeded' === $status->latestPayment?->status,
+            'the order is read as unpaid, the payment as succeeded: the two reads saw different moments',
+        );
+        // The payment was read before the webhook and the order after it: paid order, payment still pending, and
+        // nothing to resume or start.
+        self::assertSame('paid', $status->orderStatus);
+        self::assertFalse($status->canStartPayment);
+        self::assertEquals(new LatestPaymentView('demo-transfer', 'pending', null), $status->latestPayment);
+    }
+
     /**
      * @return iterable<string, array{string, PaymentAccess}>
      */

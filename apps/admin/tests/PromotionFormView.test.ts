@@ -191,6 +191,22 @@ describe("PromotionFormView", () => {
 
       expect(wrapper.get("[data-testid=load-error]").text()).toBe("Ta promocja nie istnieje.");
       expect(wrapper.find("[data-testid=name-input]").exists()).toBe(false);
+      expect(wrapper.get("h1").text()).toBe("Promocja");
+    });
+
+    it("keeps the heading of an existing promotion when it fails to load", async () => {
+      mocks.get.mockResolvedValue({ data: undefined, error: {}, response: { status: 500 } });
+      const wrapper = await open("/promotions/promo-1");
+
+      expect(wrapper.find("[data-testid=load-error]").exists()).toBe(true);
+      expect(wrapper.get("h1").text()).toBe("Promocja");
+    });
+
+    it("keeps the heading of an existing promotion until it is loaded", async () => {
+      mocks.get.mockReturnValue(new Promise(() => {}));
+      const wrapper = await open("/promotions/promo-1");
+
+      expect(wrapper.get("h1").text()).toBe("Promocja");
     });
 
     it("saves a changed name and percent with the version and shows the saved promotion", async () => {

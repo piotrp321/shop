@@ -192,8 +192,9 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
   `returned` i anulowanie opłaconego przez pracownika (`cancellationReason` `staff`). Przejścia pracownika to metody
   agregatu `Order` (`ship`, `deliver`, `cancel`, `registerReturn`; bez Symfony Workflow), a tabela dozwolonych przejść
   jest tylko w `OrderStatus::allowedStaffTransitions()` (enum `StaffTransition`); inne przejście to
-  `OrderTransitionNotAllowed` (409, `TypedProblem`). Notatka pracownika (`StaffNote`): przycięta, 1–500 znaków, bez
-  znaków sterujących (także nowej linii), wymagana przy anulowaniu i zwrocie, pusta przy pozostałych to brak notatki.
+  `OrderTransitionNotAllowed` (409, `TypedProblem`). Notatka pracownika (`StaffNote`): przycięta z białych
+  znaków Unicode (także NBSP), 1–500 znaków, bez znaków sterujących (także nowej linii), U+0085, U+2028, U+2029 i bez
+  niepoprawnego UTF-8 (`ControlCharacters`, wzorzec z flagą `u`), wymagana przy anulowaniu i zwrocie, pusta przy pozostałych to brak notatki.
   `markPaid` traktuje `shipped`, `delivered` i `returned` jak `paid` (`alreadyPaid`, `paidByAnotherPayment`).
   - Zwrot pieniędzy (`Refund`, value object w zamówieniu): `cancel` i `registerReturn` zakładają zwrot brutto zamówienia
     z terminem `Order::REFUND_TIME` (14 dni); `completeRefund` oznacza go jako wykonany (data, pracownik, notatka), drugi
@@ -498,6 +499,21 @@ Uruchamiaj z katalogu głównego przez `make -C apps/api <cel>`:
 - Wejście przez DTO z Symfony Validator. Domena dodatkowo pilnuje swoich niezmienników. Złe parametry zapytania
   (`#[MapQueryString]`) to 400, zła treść żądania (`#[MapRequestPayload]`, tylko JSON, typy bez rzutowania) to 422;
   oba z listą `violations`.
+- Treść żądań panelu, w których wszystkie klucze są wymagane (zmiana statusu i wykonanie zwrotu w Ordering, korekta
+  i przyjęcie stanu w Inventory, zmiana ceny oraz zaplanowanie i zmiana promocji w Pricing), czyta `#[RequiredKeysBody]`
+  (`Shared\UI\Http`, `RequiredKeysBodyResolver`) zamiast `#[MapRequestPayload]` z `REQUIRE_ALL_PROPERTIES`: argumentem
+  kontrolera jest klasa żądania, a jej parametry konstruktora to klucze. Brak dowolnego klucza, także takiego, który
+  dopuszcza `null` (`version` korekty stanu i ceny, `note`, `startsAt`), to jedno naruszenie „To pole jest wymagane.”
+  przy kluczu (`propertyPath` = nazwa klucza), a `{}`, pusta treść i JSON niebędący obiektem to takie naruszenie dla
+  każdego klucza. Klasa żądania nie powstaje, więc brak klucza nie dociera do niej jako `null` (nie uruchamia też reguł
+  ani `Assert\Callback` klasy); raportowane są wtedy tylko brakujące klucze, wartości dopiero gdy są wszystkie.
+  `null` przekazany jawnie, nieznane klucze i typy (bez rzutowania) zachowują się jak w `#[MapRequestPayload]`: ocenia je
+  walidacja klasy żądania, a w niej każde pole z `Assert\Sequentially`, żeby dawało najwyżej jedno polskie naruszenie.
+  Zły JSON to 400, inny format niż JSON (także brak `Content-Type`) 415. Treść jest czytana późno, tak jak robi to
+  `#[MapRequestPayload]` (nasłuch `kernel.controller_arguments` o priorytecie -10100, po `#[IsGranted]`), więc 403
+  atrybutu nadal poprzedza 400, 415 i 422 treści. Wyjątek: kody rabatowe (`DiscountCodeBodyReader`, niżej), bo
+  kontroler czyta tam treść sam, po sprawdzeniu 404. Deptrac pozwala `Ordering_UI`, `Inventory_UI` i `Pricing_UI` na
+  `Shared_UI`.
 - Dokumentacja OpenAPI z kodu (NelmioApiDocBundle). Każdy endpoint ma opisane żądanie, odpowiedzi i błędy.
 - Autoryzacja: JWT z Keycloak, walidowany w authenticatorze Symfony. Dwa firewalle:
   `/api/v1/admin/...` przyjmuje tylko tokeny z realmu `backoffice` (pracownicy, `Staff`),

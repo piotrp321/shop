@@ -448,6 +448,22 @@ describe("DiscountCodeFormView", () => {
 
       expect(wrapper.get("[data-testid=load-error]").text()).toBe("Ten kod rabatowy nie istnieje.");
       expect(wrapper.find("[data-testid=value-input]").exists()).toBe(false);
+      expect(wrapper.get("h1").text()).toBe("Kod rabatowy");
+    });
+
+    it("keeps the heading of an existing code when it fails to load", async () => {
+      mocks.get.mockResolvedValue({ data: undefined, error: {}, response: { status: 500 } });
+      const wrapper = await open("/discount-codes/code-1");
+
+      expect(wrapper.find("[data-testid=load-error]").exists()).toBe(true);
+      expect(wrapper.get("h1").text()).toBe("Kod rabatowy");
+    });
+
+    it("keeps the heading of an existing code until it is loaded", async () => {
+      mocks.get.mockReturnValue(new Promise(() => {}));
+      const wrapper = await open("/discount-codes/code-1");
+
+      expect(wrapper.get("h1").text()).toBe("Kod rabatowy");
     });
 
     it.each([["support"], ["warehouse"]] as StaffMe["roles"][])("shows the code read-only to %s, without a save button", async (...roles) => {

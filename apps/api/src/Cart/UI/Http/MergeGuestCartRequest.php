@@ -10,7 +10,10 @@ use Symfony\Component\Validator\Constraints as Assert;
 /**
  * Body of POST /me/cart/merge. The key is required by `Assert\NotNull`, not by the serializer: it gives `null` for
  * a missing key (the property is `mixed`). The value is taken as JSON gives it and validated, never cast. The
- * constraints run in order up to the first violation, so the field gives at most one, in Polish.
+ * constraints run in order up to the first violation, so the field gives at most one, in Polish. `Assert\Uuid` alone
+ * reports several violations for one value (nil, max, a wrong version and variant, an overlong text), so it sits in
+ * `Assert\AtLeastOneOf` without internal messages, which reports the one message of the field. `Assert\Uuid` skips an
+ * empty string, so `Assert\NotBlank` (with the UUID message, not "required") refuses it first.
  */
 #[OA\Schema(description: 'The guest cart to merge into the cart of the customer.', required: ['guestCartId'])]
 final readonly class MergeGuestCartRequest
@@ -20,7 +23,12 @@ final readonly class MergeGuestCartRequest
         #[Assert\Sequentially([
             new Assert\NotNull(message: 'Identyfikator koszyka jest wymagany.'),
             new Assert\Type('string', message: 'Identyfikator koszyka musi być UUID.'),
-            new Assert\Uuid(message: 'Identyfikator koszyka musi być UUID.'),
+            new Assert\NotBlank(message: 'Identyfikator koszyka musi być UUID.'),
+            new Assert\AtLeastOneOf(
+                constraints: [new Assert\Uuid()],
+                message: 'Identyfikator koszyka musi być UUID.',
+                includeInternalMessages: false,
+            ),
         ])]
         public mixed $guestCartId,
     ) {

@@ -8,6 +8,7 @@ use App\Inventory\Domain\Stock\ReceiptKey;
 use App\Inventory\Domain\Stock\StockItemRepository;
 use App\Inventory\Domain\Stock\StockMovement;
 use App\Inventory\Infrastructure\Persistence\Doctrine\DoctrineStockItemRepository;
+use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
 use App\Tests\Integration\Inventory\StockFixture;
 use App\Tests\Support\InMemory\RecordingDomainEventPublisher;
 use App\Tests\Support\Security\TestTokenFactory;
@@ -21,6 +22,7 @@ use Zenstruck\Foundry\Test\Factories;
 final class ReceiveStockEndpointTest extends WebTestCase
 {
     use Factories;
+    use RequiredKeyViolationsTrait;
     use StockEndpointTestTrait;
 
     private const string UNKNOWN_VARIANT = '0192f0c4-7c1a-7c4e-9a6e-3f1d2b4c5a60';
@@ -397,6 +399,64 @@ final class ReceiveStockEndpointTest extends WebTestCase
         $this->post($this->path($variantId), $body, TestTokenFactory::staff(['admin']), ['HTTP_IDEMPOTENCY_KEY' => self::KEY]);
 
         self::assertEqualsCanonicalizing($paths, $this->violationPaths());
+        self::assertNull($this->storedStock($variantId));
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function omittedBodyKeys(): iterable
+    {
+        return self::omittedKeys(['quantity', 'note']);
+    }
+
+    /**
+     * @param list<string> $omitted
+     */
+    #[DataProvider('omittedBodyKeys')]
+    public function testAnOmittedKeyIsOnePolishRequiredViolationAtThatKey(array $omitted): void
+    {
+        $variantId = $this->variant();
+
+        $problem = $this->post($this->path($variantId), json_encode(self::bodyWithout(['quantity' => 5, 'note' => null], $omitted), \JSON_THROW_ON_ERROR), TestTokenFactory::staff(['admin']), ['HTTP_IDEMPOTENCY_KEY' => self::KEY]);
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertRequiredAt($omitted, $problem['violations'] ?? null);
+        self::assertNull($this->storedStock($variantId));
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string}> the changed keys, the key of the violation and its message
+     */
+    public static function nullsAndWrongTypes(): iterable
+    {
+        $quantity = 'Ilość musi być liczbą całkowitą.';
+        $note = 'Notatka musi być tekstem.';
+
+        yield 'a null quantity' => [['quantity' => null], 'quantity', 'Ilość jest wymagana.'];
+        yield 'a quantity in a string' => [['quantity' => '5'], 'quantity', $quantity];
+        yield 'a fractional quantity' => [['quantity' => 5.5], 'quantity', $quantity];
+        yield 'a boolean quantity' => [['quantity' => true], 'quantity', $quantity];
+        yield 'a quantity that is a list' => [['quantity' => [5]], 'quantity', $quantity];
+        yield 'a quantity that is an object' => [['quantity' => new \stdClass()], 'quantity', $quantity];
+        yield 'a note that is a number' => [['note' => 12], 'note', $note];
+        yield 'a note that is a boolean' => [['note' => false], 'note', $note];
+        yield 'a note that is a list' => [['note' => ['a']], 'note', $note];
+        yield 'a note that is an object' => [['note' => new \stdClass()], 'note', $note];
+    }
+
+    /**
+     * @param array<string, mixed> $changed
+     */
+    #[DataProvider('nullsAndWrongTypes')]
+    public function testANullOrAWrongTypeIsExactlyOnePolishViolationAtItsKey(array $changed, string $key, string $message): void
+    {
+        $variantId = $this->variant();
+
+        $problem = $this->receive($variantId, [...['quantity' => 5, 'note' => null], ...$changed]);
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertSame([[$key, $message]], self::pathsWithTitles($problem['violations'] ?? null));
         self::assertNull($this->storedStock($variantId));
     }
 

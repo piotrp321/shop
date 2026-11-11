@@ -21,6 +21,11 @@ final class InvalidVariantAxes extends \DomainException implements InvalidInput
         return new self(\sprintf('The name of a variant axis must have between 1 and %d characters.', VariantAxes::MAX_NAME_LENGTH));
     }
 
+    public static function nameWithForbiddenCharacters(): self
+    {
+        return new self('The name of a variant axis must not contain forbidden characters.');
+    }
+
     public static function nameWithColon(): self
     {
         return new self('The name of a variant axis must not contain a colon.');

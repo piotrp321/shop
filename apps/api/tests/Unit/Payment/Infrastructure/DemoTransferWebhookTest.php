@@ -98,6 +98,32 @@ final class DemoTransferWebhookTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{array<string, string>, string}>
+     */
+    public static function webhooksForAnEmptySecret(): iterable
+    {
+        yield 'signed with the empty key' => [['x-signature' => hash_hmac('sha256', Vector::TRANSFER_BODY, '')], Vector::TRANSFER_BODY];
+        yield 'signed with the key of the shared vector' => [['x-signature' => Vector::TRANSFER_SIGNATURE], Vector::TRANSFER_BODY];
+        yield 'no header' => [[], Vector::TRANSFER_BODY];
+        yield 'a body that is no JSON' => [[], 'not json'];
+    }
+
+    /**
+     * @param array<string, string> $headers
+     */
+    #[DataProvider('webhooksForAnEmptySecret')]
+    public function testAnEmptyWebhookSecretRefusesEveryWebhookBeforeTheSignatureIsChecked(array $headers, string $body): void
+    {
+        try {
+            $this->parse($headers, $body, secret: '');
+            self::fail('A webhook was accepted with an empty webhook secret.');
+        } catch (InvalidWebhook $invalid) {
+            self::assertStringContainsString('empty webhook secret', $invalid->getMessage());
+            self::assertStringNotContainsString('signature', $invalid->getMessage());
+        }
+    }
+
+    /**
      * @return iterable<string, array{string}>
      */
     public static function badBodies(): iterable
@@ -135,9 +161,9 @@ final class DemoTransferWebhookTest extends TestCase
     /**
      * @param array<string, string> $headers
      */
-    private function parse(array $headers, string $body): ProviderEvent
+    private function parse(array $headers, string $body, string $secret = Vector::TRANSFER_SECRET): ProviderEvent
     {
-        $adapter = new DemoTransferProvider(new ProviderCalls()->client, 'http://api', 'transfer-api-key', Vector::TRANSFER_SECRET);
+        $adapter = new DemoTransferProvider(new ProviderCalls()->client, 'http://api', 'transfer-api-key', $secret);
 
         return $adapter->parseWebhook($headers, $body, new \DateTimeImmutable(self::NOW));
     }

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { staff } from "../support/accounts";
-import { apiAmount, createDiscountCode } from "../support/discount-codes";
+import { apiAmount, createDiscountCode, disableDiscountCode } from "../support/discount-codes";
 import { waitForOrderEmail } from "../support/mailpit";
 import { decideAtSimulator, expectSimulatorPage, WEBHOOK_TIMEOUT_MS } from "../support/payment";
 import { PanelToken } from "../support/promotions";
@@ -87,4 +87,63 @@ test("a guest sees that the cart is below the minimum of a code, applies it with
   expect(confirmation.text).toContain(PRODUCT);
   expect(confirmation.text).toContain(`Kod ${code}: −${apiAmount(discount)}`);
   expect(confirmation.text).toContain(`Suma brutto: ${apiAmount(total)}`);
+});
+
+test("a code that stops working between the preview and the order leaves the live region empty and is announced at the field (below the minimum, then disabled)", async ({ page, context, request }) => {
+  await page.goto("/");
+  const tile = tileNamed(page, PRODUCT);
+  await expect(tile).toBeVisible();
+  const label = await addVariantOf(page, tile, 2);
+  await page.getByRole("link", { name: /^Koszyk/ }).click();
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect(cartLineOf(page, PRODUCT, label).getByRole("spinbutton")).toHaveValue("2");
+  const twoUnits = groszeOf(await page.getByTestId("cart-total").innerText());
+
+  // Two codes of marketing: one that needs the two units, one without a minimum.
+  const staffPage = await context.newPage();
+  const pendingToken = waitForBearerToken(staffPage);
+  await loginStaff(staffPage, staff.marketing);
+  const token = await PanelToken.from(pendingToken);
+  const minimumCode = await createDiscountCode(request, await token.fresh(staffPage), { kind: "percent", value: PERCENT, minimumOrderGross: twoUnits });
+  const plainCode = await createDiscountCode(request, await token.fresh(staffPage), { kind: "percent", value: PERCENT, minimumOrderGross: null });
+
+  await page.getByRole("link", { name: "Przejdź do kasy" }).click();
+  await expect(page).toHaveURL(/\/checkout$/);
+  const codeField = page.getByLabel("Kod rabatowy");
+  const status = page.getByTestId("checkout-code-status");
+  await codeField.fill(minimumCode);
+  await page.getByRole("button", { name: "Zastosuj" }).click();
+  await expect(status).toHaveText(`Zastosowano kod ${minimumCode}.`);
+
+  // Another tab takes one unit out, so the cart falls below the minimum before the order is placed.
+  const cartTab = await context.newPage();
+  await cartTab.goto("/cart");
+  const quantity = cartLineOf(cartTab, PRODUCT, label).getByRole("spinbutton");
+  await quantity.fill("1");
+  await quantity.press("Enter");
+  await expect.poll(async () => groszeOf(await cartTab.getByTestId("cart-total").innerText())).toBeLessThan(twoUnits);
+  await cartTab.close();
+
+  await page.getByLabel("E-mail").fill(`e2e-kod+${Date.now()}@example.com`);
+  await page.getByLabel("Imię i nazwisko").fill("Anna Testowa");
+  await fillAddress(page);
+  await chooseProvider(page, "Szybki przelew (demo)");
+  await page.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Ten kod działa przy zamówieniu od" })).toHaveText(`Ten kod działa przy zamówieniu od ${apiAmount(twoUnits)}.`);
+  await expect(page.getByTestId("checkout-discount")).toHaveCount(0);
+  await expect(status).toHaveText("");
+  await expect(status).not.toContainText("Zastosowano");
+
+  // A code with no minimum applies, then the panel disables it before the next order.
+  await codeField.fill(plainCode);
+  await page.getByRole("button", { name: "Zastosuj" }).click();
+  await expect(status).toHaveText(`Zastosowano kod ${plainCode}.`);
+  await disableDiscountCode(request, await token.fresh(staffPage), plainCode);
+  await page.getByRole("button", { name: "Zamawiam z obowiązkiem zapłaty" }).click();
+  await expect(page.getByLabel("Kod rabatowy")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("alert").filter({ hasText: "nieprawidłowy albo nieaktywny" })).toBeVisible();
+  await expect(page.getByTestId("checkout-discount")).toHaveCount(0);
+  await expect(status).toHaveText("");
+  await expect(status).not.toContainText("Zastosowano");
+  await staffPage.close();
 });

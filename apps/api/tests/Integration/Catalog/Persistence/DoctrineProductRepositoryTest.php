@@ -22,6 +22,7 @@ use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Contracts\Service\ResetInterface;
 use Zenstruck\Foundry\Test\Factories;
@@ -455,40 +456,106 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         }
     }
 
-    public function testDatabaseRejectsACombinationThatDiffersOnlyInCase(): void
+    /**
+     * Pairs that lower() of PostgreSQL maps to the same text, but mb_strtolower of the domain does not.
+     *
+     * @return iterable<string, array{string, string}>
+     */
+    public static function valuesTheDomainTellsApart(): iterable
+    {
+        yield 'capital I with dot above and i' => ['İ', 'i'];
+        yield 'capital sigma at the end of a word and small sigma' => ['ΑΣ', 'ασ'];
+    }
+
+    #[DataProvider('valuesTheDomainTellsApart')]
+    public function testCombinationsTheDomainTellsApartAreSaved(string $first, string $second): void
+    {
+        [$main] = $this->savedCategories(1);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Wzór'], 'variants' => [
+            ['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => [$first]],
+            ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => [$second]],
+        ]]);
+
+        $this->products->save($product, null, null, new \DateTimeImmutable());
+        $this->entityManager->clear();
+
+        self::assertSame([$first, $second], array_map(static fn (ProductVariant $v): string => $v->label(), $this->products->get($product->id())->variants()->toList()));
+    }
+
+    #[DataProvider('valuesTheDomainTellsApart')]
+    public function testReplacingVariantsWithCombinationsTheDomainTellsApartIsSaved(string $first, string $second): void
+    {
+        [$main] = $this->savedCategories(1);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Wzór'], 'variants' => [
+            ['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => [$second]],
+        ]]);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
+        $this->entityManager->clear();
+
+        $this->products->save(ProductFactory::createOne([
+            'id' => $product->id()->toString(),
+            'slug' => $product->slug()->value(),
+            'mainCategory' => $main,
+            'variantAxes' => ['Wzór'],
+            'variants' => [
+                ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => [$first]],
+                ['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => [$second]],
+            ],
+        ]), null, null, new \DateTimeImmutable());
+        $this->entityManager->clear();
+
+        self::assertSame([$first, $second], array_map(static fn (ProductVariant $v): string => $v->label(), $this->products->get($product->id())->variants()->toList()));
+    }
+
+    public function testValuesKeyIsTheComparisonKeyOfTheDomain(): void
+    {
+        [$main] = $this->savedCategories(1);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Kolor', 'Rozmiar'], 'variants' => [
+            ['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['Żółty', 'XL']],
+            ['id' => 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'values' => ['İ', '1/2']],
+        ]]);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
+
+        self::assertSame(
+            ['["żółty","xl"]', "[\"i\u{307}\",\"1/2\"]"],
+            $this->connection->fetchFirstColumn('SELECT values_key FROM catalog_product_variant WHERE product_id = ? ORDER BY position', [$product->id()->toString()]),
+        );
+    }
+
+    public function testDatabaseRejectsARepeatedValuesKeyInOneProduct(): void
     {
         [$main] = $this->savedCategories(1);
         $product = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Kolor'], 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['Czarny']]]]);
         $this->products->save($product, null, null, new \DateTimeImmutable());
 
-        $this->expectException(UniqueConstraintViolationException::class);
-
-        $this->insertVariantRow($product, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 1, '["czARny"]');
-    }
-
-    public function testDatabaseRejectsACombinationThatDiffersOnlyInCaseOfPolishLetters(): void
-    {
-        [$main] = $this->savedCategories(1);
-        $product = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Kolor', 'Rozmiar'], 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['Żółty', 'ŚWIT']]]]);
-        $this->products->save($product, null, null, new \DateTimeImmutable());
-
         try {
-            $this->insertVariantRow($product, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 1, '["żółty", "świt"]');
+            $this->connection->executeStatement(
+                'INSERT INTO catalog_product_variant (id, product_id, position, option_values, values_key) VALUES (?, ?, 1, CAST(? AS jsonb), ?)',
+                ['bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', $product->id()->toString(), '["CZARNY"]', '["czarny"]'],
+            );
             self::fail('Expected a unique violation.');
         } catch (UniqueConstraintViolationException $e) {
             self::assertStringContainsString('catalog_product_variant_values_key', $e->getMessage());
         }
     }
 
-    public function testDatabaseLowerCaseAgreesWithTheDomainComparison(): void
+    /**
+     * What the previous version of the code writes while a deployment replaces it: the index does not check rows
+     * without a key, the domain does (under the version of the aggregate).
+     */
+    public function testVariantRowsWithoutAValuesKeyAreNotCheckedByTheIndex(): void
     {
-        foreach (['Żółty', 'ŻÓŁTY', 'żółty', 'ŚWIT', 'Ćma', 'Ąę', 'Łódź', 'Ń', 'Źdźbło', 'XL', 'ÄÖÜ', 'Ünal'] as $value) {
-            self::assertSame(
-                json_encode([mb_strtolower($value)], \JSON_UNESCAPED_UNICODE),
-                $this->connection->fetchOne('SELECT lower(CAST(CAST(? AS jsonb) AS text))', [json_encode([$value], \JSON_UNESCAPED_UNICODE)]),
-                $value,
-            );
-        }
+        [$main] = $this->savedCategories(1);
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Kolor'], 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['Czarny']]]]);
+        $this->products->save($product, null, null, new \DateTimeImmutable());
+
+        $this->insertVariantRow($product, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 1, '["biały"]');
+        $this->insertVariantRow($product, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 2, '["biały"]');
+
+        self::assertSame(
+            ['["czarny"]', null, null],
+            $this->connection->fetchFirstColumn('SELECT values_key FROM catalog_product_variant WHERE product_id = ? ORDER BY position', [$product->id()->toString()]),
+        );
     }
 
     public function testDatabaseAcceptsTheSameCombinationInAnotherProductButNotTheSamePosition(): void
@@ -502,15 +569,6 @@ final class DoctrineProductRepositoryTest extends KernelTestCase
         $this->expectException(UniqueConstraintViolationException::class);
 
         $this->insertVariantRow($first, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 0, '["biały"]');
-    }
-
-    public function testValuesKeyIsComputedByTheDatabase(): void
-    {
-        [$main] = $this->savedCategories(1);
-        $product = ProductFactory::createOne(['mainCategory' => $main, 'variantAxes' => ['Kolor', 'Rozmiar'], 'variants' => [['id' => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'values' => ['Żółty', 'XL']]]]);
-        $this->products->save($product, null, null, new \DateTimeImmutable());
-
-        self::assertSame('["żółty", "xl"]', $this->connection->fetchOne('SELECT values_key FROM catalog_product_variant WHERE product_id = ?', [$product->id()->toString()]));
     }
 
     private function insertVariantRow(Product $product, string $id, int $position, string $optionValues): void

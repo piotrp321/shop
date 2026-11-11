@@ -961,6 +961,13 @@ describe("CheckoutPage discount code", () => {
       expect(submitButton().disabled).toBe(false);
     });
 
+    it("empties the live region, so it does not claim a code that is no longer on the order; the alert at the field announces the refusal", async () => {
+      await refuse();
+
+      expect(screen.getByTestId("checkout-code-status").textContent).toBe("");
+      expect(screen.getByRole("alert").textContent).toBe(detail);
+    });
+
     it("orders nothing by itself; the next click orders without the code, the new total and a new key", async () => {
       const used = await refuse();
 
@@ -996,6 +1003,12 @@ describe("CheckoutPage discount code", () => {
       expect(screen.getByRole("alert").textContent).toContain("Ten kod został już wykorzystany.");
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "Usuń kod" }));
       expect(placeOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps saying the code is applied in the live region, which is true", async () => {
+      await refuseUnread({ status: "failed" });
+
+      expect(screen.getByTestId("checkout-code-status").textContent).toBe("Zastosowano kod WITAJ10.");
     });
 
     it("says the session expired when the summary answers 401", async () => {
@@ -1043,6 +1056,37 @@ describe("CheckoutPage discount code", () => {
     expect(total()).toBe(price(39998));
     await submit({ status: "ok", number: "R-100001", redirectUrl: null });
     expect(vi.mocked(placeOrder).mock.calls[1][0]).toEqual(GUEST_INPUT);
+  });
+
+  it("empties the live region when the code stops working by the time the summary is read again after a 409 OrderTotalChanged", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    expect(screen.getByTestId("checkout-code-status").textContent).toBe("Zastosowano kod WITAJ10.");
+    fillGuestForm();
+    vi.mocked(loadCart).mockResolvedValueOnce({
+      status: "ok",
+      data: { ...cart(), discount: rejected("WITAJ10", "below_minimum", "Ten kod działa przy zamówieniu od 300,00 zł.", 30000) },
+    });
+    await submit({ status: "conflict", reason: "total_changed", detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
+    await act(async () => {});
+
+    expect(screen.getByTestId("checkout-code-status").textContent).toBe("");
+    expect(screen.getAllByRole("alert").map((alert) => alert.textContent)).toContain("Ten kod działa przy zamówieniu od 300,00 zł.");
+  });
+
+  it("keeps the announcement of the removal when a later 409 reads the summary without a code", async () => {
+    await renderCheckout();
+    await applyOk("witaj10", discounted("WITAJ10", 39998, 4000));
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+    await act(async () => {
+      fireEvent.click(removeButton());
+    });
+    fillGuestForm();
+    vi.mocked(loadCart).mockResolvedValueOnce({ status: "ok", data: cart() });
+    await submit({ status: "conflict", reason: "total_changed", detail: "Kwota zamówienia się zmieniła. Sprawdź podsumowanie." });
+    await act(async () => {});
+
+    expect(screen.getByTestId("checkout-code-status").textContent).toBe("Usunięto kod rabatowy.");
   });
 
   it("does not keep the code over a reload of the page: a new checkout starts without one", async () => {

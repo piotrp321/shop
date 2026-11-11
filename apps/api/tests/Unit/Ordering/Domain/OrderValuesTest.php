@@ -114,6 +114,14 @@ final class OrderValuesTest extends TestCase
         yield 'carriage return inside' => ["A\rB"];
         yield 'unit separator' => ["A\x1FB"];
         yield 'DEL' => ["A\x7FB"];
+        yield 'next line U+0085' => ["A\u{0085}B"];
+        yield 'line separator U+2028' => ["A\u{2028}B"];
+        yield 'paragraph separator U+2029' => ["A\u{2029}B"];
+        yield 'line separator U+2028 at the end' => ["AB\u{2028}"];
+        yield 'paragraph separator U+2029 at the start' => ["\u{2029}AB"];
+        yield 'lone continuation byte, not valid UTF-8' => ["A\x80B"];
+        yield 'truncated sequence at the end, not valid UTF-8' => ["AB\xC3"];
+        yield 'overlong sequence, not valid UTF-8' => ["A\xC0\xAFB"];
     }
 
     #[DataProvider('withControlCharacters')]
@@ -164,6 +172,10 @@ final class OrderValuesTest extends TestCase
         yield 'line feed' => ["\n"];
         yield 'carriage return' => ["\r"];
         yield 'DEL' => ["\x7F"];
+        yield 'U+0085' => ["\u{0085}"];
+        yield 'U+2028' => ["\u{2028}"];
+        yield 'U+2029' => ["\u{2029}"];
+        yield 'not valid UTF-8' => ["\xC3"];
     }
 
     #[DataProvider('controlCharactersAlone')]

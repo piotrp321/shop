@@ -190,7 +190,7 @@ final readonly class DoctrineProductRepository implements ProductRepository
         }
 
         if (null === $existing) {
-            $this->addVariants($record, $variants);
+            $this->addVariants($record, $product->variants()->toList());
         }
 
         $this->entityManager->persist($record);
@@ -200,7 +200,7 @@ final readonly class DoctrineProductRepository implements ProductRepository
             // The old rows go first: the new ones may reuse a position, a combination or an id.
             $record->variants->clear();
             $this->entityManager->flush();
-            $this->addVariants($record, $variants);
+            $this->addVariants($record, $product->variants()->toList());
             $this->entityManager->flush();
         }
     }
@@ -216,13 +216,17 @@ final readonly class DoctrineProductRepository implements ProductRepository
     }
 
     /**
-     * @param list<array{id: string, values: list<string>}> $variants
+     * The key of the unique index is the comparison key of the domain, so the database never rejects a combination
+     * the domain accepts (lower() of PostgreSQL maps e.g. "İ" and "i" to the same text, mb_strtolower does not).
+     *
+     * @param list<ProductVariant> $variants
      */
     private function addVariants(ProductRecord $record, array $variants): void
     {
         foreach ($variants as $position => $variant) {
-            $variantRecord = new ProductVariantRecord($variant['id'], $record, $position);
-            $variantRecord->optionValues = $variant['values'];
+            $variantRecord = new ProductVariantRecord($variant->id()->toString(), $record, $position);
+            $variantRecord->optionValues = $variant->values()->toList();
+            $variantRecord->valuesKey = json_encode($variant->values()->comparisonKey(), \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR);
             $record->variants->add($variantRecord);
         }
     }

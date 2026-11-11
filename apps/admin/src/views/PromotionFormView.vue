@@ -18,6 +18,8 @@ import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const router = useRouter();
+// The route of an existing record carries its id: a failed or pending load must not look like a new record.
+const isExisting = computed(() => typeof route.params.id === "string");
 const auth = useAuthStore();
 
 const {
@@ -84,7 +86,7 @@ const startDisabled = computed(() => variantsLocked.value || data.value.startNow
 <template>
   <div class="promotion">
     <div class="header">
-      <h1>{{ view ? data.name || "Promocja" : "Nowa promocja" }}</h1>
+      <h1>{{ view ? data.name || "Promocja" : isExisting ? "Promocja" : "Nowa promocja" }}</h1>
       <Tag
         v-if="view"
         data-testid="promotion-status"

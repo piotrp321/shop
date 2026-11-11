@@ -51,7 +51,7 @@ final readonly class PlaceGuestOrderRequest
             new Assert\NotNull(message: 'Adres e-mail jest wymagany.'),
             new Assert\Type('string', message: 'Podaj poprawny adres e-mail.'),
             new Assert\NotBlank(message: 'Adres e-mail jest wymagany.', normalizer: 'trim'),
-            new Assert\Length(max: EmailAddress::MAX_LENGTH, maxMessage: 'Podaj poprawny adres e-mail.', normalizer: 'trim'),
+            new Assert\Length(max: EmailAddress::MAX_LENGTH, maxMessage: 'Podaj poprawny adres e-mail.', charsetMessage: 'Podaj poprawny adres e-mail.', normalizer: 'trim'),
             new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Podaj poprawny adres e-mail.'),
             new Assert\Email(message: 'Podaj poprawny adres e-mail.', normalizer: 'trim'),
             new MailerAcceptsEmail(),
@@ -62,7 +62,7 @@ final readonly class PlaceGuestOrderRequest
             new Assert\NotNull(message: 'Imię i nazwisko są wymagane.'),
             new Assert\Type('string', message: 'Imię i nazwisko są wymagane.'),
             new Assert\NotBlank(message: 'Imię i nazwisko są wymagane.', normalizer: 'trim'),
-            new Assert\Length(max: Contact::MAX_FULL_NAME_LENGTH, maxMessage: 'Imię i nazwisko mogą mieć najwyżej 100 znaków.', normalizer: 'trim'),
+            new Assert\Length(max: Contact::MAX_FULL_NAME_LENGTH, maxMessage: 'Imię i nazwisko mogą mieć najwyżej 100 znaków.', charsetMessage: 'Imię i nazwisko zawierają niedozwolone znaki.', normalizer: 'trim'),
             new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Imię i nazwisko zawierają niedozwolone znaki.'),
         ])]
         public mixed $fullName,
@@ -79,7 +79,7 @@ final readonly class PlaceGuestOrderRequest
             new Assert\NotNull(message: 'Ulica i numer są wymagane.'),
             new Assert\Type('string', message: 'Ulica i numer są wymagane.'),
             new Assert\NotBlank(message: 'Ulica i numer są wymagane.', normalizer: 'trim'),
-            new Assert\Length(max: ShippingAddress::MAX_STREET_LENGTH, maxMessage: 'Ulica i numer mogą mieć najwyżej 100 znaków.', normalizer: 'trim'),
+            new Assert\Length(max: ShippingAddress::MAX_STREET_LENGTH, maxMessage: 'Ulica i numer mogą mieć najwyżej 100 znaków.', charsetMessage: 'Ulica i numer zawierają niedozwolone znaki.', normalizer: 'trim'),
             new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Ulica i numer zawierają niedozwolone znaki.'),
         ])]
         public mixed $street,
@@ -97,7 +97,7 @@ final readonly class PlaceGuestOrderRequest
             new Assert\NotNull(message: 'Miejscowość jest wymagana.'),
             new Assert\Type('string', message: 'Miejscowość jest wymagana.'),
             new Assert\NotBlank(message: 'Miejscowość jest wymagana.', normalizer: 'trim'),
-            new Assert\Length(max: ShippingAddress::MAX_CITY_LENGTH, maxMessage: 'Miejscowość może mieć najwyżej 60 znaków.', normalizer: 'trim'),
+            new Assert\Length(max: ShippingAddress::MAX_CITY_LENGTH, maxMessage: 'Miejscowość może mieć najwyżej 60 znaków.', charsetMessage: 'Miejscowość zawiera niedozwolone znaki.', normalizer: 'trim'),
             new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Miejscowość zawiera niedozwolone znaki.'),
         ])]
         public mixed $city,

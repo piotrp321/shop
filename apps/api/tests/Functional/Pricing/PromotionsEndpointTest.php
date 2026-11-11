@@ -12,9 +12,11 @@ use App\Pricing\Domain\Promotion\PercentOff;
 use App\Pricing\Domain\Promotion\Promotion;
 use App\Pricing\Domain\Promotion\PromotionId;
 use App\Pricing\Infrastructure\Persistence\Doctrine\DoctrinePromotionRepository;
+use App\Pricing\UI\Http\Promotion\PromotionBodyRules;
 use App\Tests\Factory\CategoryFactory;
 use App\Tests\Factory\ProductFactory;
 use App\Tests\Factory\VariantPriceRecordFactory;
+use App\Tests\Functional\Shared\RequiredKeyViolationsTrait;
 use App\Tests\Support\Security\TestTokenFactory;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -30,6 +32,7 @@ use Zenstruck\Foundry\Test\Factories;
 final class PromotionsEndpointTest extends WebTestCase
 {
     use Factories;
+    use RequiredKeyViolationsTrait;
 
     private const string TYPE_OVERLAP = 'tag:piotrp321.github.io,2026:shop/problems/promotion-overlap';
     private const string TYPE_NOT_EDITABLE = 'tag:piotrp321.github.io,2026:shop/problems/promotion-not-editable';
@@ -501,6 +504,132 @@ final class PromotionsEndpointTest extends WebTestCase
 
         $this->send('GET', '/api/v1/admin/promotions');
         self::assertResponseIsSuccessful();
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function omittedPlanKeys(): iterable
+    {
+        return self::omittedKeys(['name', 'percentOff', 'startsAt', 'endsAt', 'variantIds']);
+    }
+
+    /**
+     * Also `startsAt`, which accepts null: a missing one does not start the promotion now.
+     *
+     * @param list<string> $omitted
+     */
+    #[DataProvider('omittedPlanKeys')]
+    public function testAPlanWithAnOmittedKeyIsOnePolishRequiredViolationAtThatKey(array $omitted): void
+    {
+        $a = $this->pricedVariant(5999);
+
+        $problem = $this->request('POST', '/api/v1/admin/promotions', json_encode(self::bodyWithout($this->body([$a]), $omitted), \JSON_THROW_ON_ERROR), TestTokenFactory::staff(['marketing']));
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertRequiredAt($omitted, $problem['violations'] ?? null);
+        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM pricing_promotion'));
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function omittedReviseKeys(): iterable
+    {
+        return self::omittedKeys(['name', 'percentOff', 'startsAt', 'endsAt', 'variantIds', 'version']);
+    }
+
+    /**
+     * @param list<string> $omitted
+     */
+    #[DataProvider('omittedReviseKeys')]
+    public function testARevisionWithAnOmittedKeyIsOnePolishRequiredViolationAtThatKey(array $omitted): void
+    {
+        $a = $this->pricedVariant(5999);
+        $id = $this->storedPromotion('+1 day', '+5 days', [$a]);
+
+        $problem = $this->request('PUT', '/api/v1/admin/promotions/'.$id, json_encode(self::bodyWithout([...$this->body([$a]), 'version' => 1], $omitted), \JSON_THROW_ON_ERROR), TestTokenFactory::staff(['marketing']));
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertRequiredAt($omitted, $problem['violations'] ?? null);
+        self::assertSame(1, $this->connection->fetchOne('SELECT version FROM pricing_promotion WHERE id = ?', [$id]));
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, list<array{string, string}>}>
+     */
+    public static function oneViolationPerField(): iterable
+    {
+        $moment = PromotionBodyRules::MOMENT;
+        $list = PromotionBodyRules::VARIANT_LIST;
+        yield 'null name' => [['name' => null], [['name', 'Nazwa promocji jest wymagana.']]];
+        yield 'name a number' => [['name' => 5], [['name', 'Nazwa promocji musi być tekstem.']]];
+        yield 'name an array' => [['name' => ['a']], [['name', 'Nazwa promocji musi być tekstem.']]];
+        yield 'null percent' => [['percentOff' => null], [['percentOff', 'Rabat jest wymagany.']]];
+        yield 'percent in a string' => [['percentOff' => '20'], [['percentOff', 'Rabat musi być liczbą całkowitą.']]];
+        yield 'percent a fraction' => [['percentOff' => 20.5], [['percentOff', 'Rabat musi być liczbą całkowitą.']]];
+        yield 'null end' => [['endsAt' => null], [['endsAt', $moment]]];
+        yield 'end a number' => [['endsAt' => 5], [['endsAt', $moment]]];
+        yield 'null variants' => [['variantIds' => null], [['variantIds', $list]]];
+        yield 'variants a string' => [['variantIds' => 'x'], [['variantIds', $list]]];
+        yield 'name and percent wrong' => [['name' => null, 'percentOff' => 'x'], [['name', 'Nazwa promocji jest wymagana.'], ['percentOff', 'Rabat musi być liczbą całkowitą.']]];
+    }
+
+    /**
+     * @param array<string, mixed>        $change
+     * @param list<array{string, string}> $expected
+     */
+    #[DataProvider('oneViolationPerField')]
+    public function testEveryFieldOfAPlanGivesAtMostOnePolishViolation(array $change, array $expected): void
+    {
+        $a = $this->pricedVariant(5999);
+
+        $problem = $this->send('POST', '/api/v1/admin/promotions', [...$this->body([$a]), ...$change]);
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertSame($expected, self::pathsWithTitles($problem['violations'] ?? null));
+        self::assertSame(0, $this->connection->fetchOne('SELECT count(*) FROM pricing_promotion'));
+    }
+
+    /**
+     * @param array<string, mixed>        $change
+     * @param list<array{string, string}> $expected
+     */
+    #[DataProvider('oneViolationPerField')]
+    public function testEveryFieldOfARevisionGivesAtMostOnePolishViolation(array $change, array $expected): void
+    {
+        $a = $this->pricedVariant(5999);
+        $id = $this->storedPromotion('+1 day', '+5 days', [$a]);
+
+        $problem = $this->send('PUT', '/api/v1/admin/promotions/'.$id, [...$this->body([$a]), 'version' => 1, ...$change]);
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertSame($expected, self::pathsWithTitles($problem['violations'] ?? null));
+        self::assertSame(1, $this->connection->fetchOne('SELECT version FROM pricing_promotion WHERE id = ?', [$id]));
+    }
+
+    /**
+     * @return iterable<string, array{mixed, string}>
+     */
+    public static function wrongVersions(): iterable
+    {
+        yield 'null' => [null, 'Wersja promocji jest wymagana.'];
+        yield 'a string' => ['1', 'Wersja promocji musi być liczbą całkowitą.'];
+        yield 'a fraction' => [1.5, 'Wersja promocji musi być liczbą całkowitą.'];
+        yield 'a boolean' => [true, 'Wersja promocji musi być liczbą całkowitą.'];
+    }
+
+    #[DataProvider('wrongVersions')]
+    public function testTheVersionOfARevisionGivesOnePolishViolation(mixed $version, string $title): void
+    {
+        $a = $this->pricedVariant(5999);
+        $id = $this->storedPromotion('+1 day', '+5 days', [$a]);
+
+        $problem = $this->send('PUT', '/api/v1/admin/promotions/'.$id, [...$this->body([$a]), 'version' => $version]);
+
+        self::assertSame(422, $problem['status'] ?? null);
+        self::assertSame([['version', $title]], self::pathsWithTitles($problem['violations'] ?? null));
+        self::assertSame(1, $this->connection->fetchOne('SELECT version FROM pricing_promotion WHERE id = ?', [$id]));
     }
 
     public function testAReviseWithAnInvalidBodyIsUnprocessable(): void

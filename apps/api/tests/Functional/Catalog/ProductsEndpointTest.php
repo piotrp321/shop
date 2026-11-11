@@ -123,6 +123,31 @@ final class ProductsEndpointTest extends WebTestCase
         self::assertSame(['Leaf'], array_column($this->items($this->get('/api/v1/products?category='.self::LEAF)), 'name'));
     }
 
+    public function testCategoryFilterGivesTheSameResultForAnUpperCaseUuid(): void
+    {
+        $this->index(
+            $this->document('Child', self::CHILD, [self::ROOT, self::CHILD]),
+            $this->document('Leaf', self::LEAF, [self::ROOT, self::CHILD, self::LEAF]),
+            $this->document('Bidon', self::CHILD_B, [self::ROOT, self::CHILD_B]),
+            $this->document('Other', self::OTHER, [self::OTHER]),
+        );
+
+        $lower = $this->get('/api/v1/products?category='.self::ROOT);
+        $upper = $this->get('/api/v1/products?category='.strtoupper(self::ROOT));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(3, $lower['total']);
+        self::assertSame($lower, $upper);
+        self::assertNotSame([], self::object($upper['facets'])['categories']);
+    }
+
+    public function testAnUnknownCategoryInUpperCaseIsNotFound(): void
+    {
+        $this->get('/api/v1/products?category='.strtoupper(self::UNKNOWN));
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
     public function testUnknownCategoryGivesProblemDetailsNotFound(): void
     {
         $this->index($this->document('Buty', self::LEAF, [self::LEAF]));

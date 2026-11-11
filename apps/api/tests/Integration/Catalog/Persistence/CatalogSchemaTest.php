@@ -10,7 +10,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * The migrated test database and the Doctrine mapping describe the same schema (what `doctrine:schema:validate`
- * and an empty `doctrine:migrations:diff` check), including the variant tables and the column PostgreSQL generates.
+ * and an empty `doctrine:migrations:diff` check), including the variant tables and their nullable values_key.
  */
 final class CatalogSchemaTest extends KernelTestCase
 {

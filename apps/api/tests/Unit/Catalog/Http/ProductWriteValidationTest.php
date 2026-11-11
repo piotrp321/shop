@@ -77,7 +77,7 @@ final class ProductWriteValidationTest extends TestCase
         ]), []];
 
         yield 'a missing name' => [self::with(['name' => null]), ['name' => 'Podaj nazwę produktu.']];
-        yield 'a blank name' => [self::with(['name' => "  \t "]), ['name' => 'Podaj nazwę produktu.']];
+        yield 'a blank name' => [self::with(['name' => " \u{00A0} "]), ['name' => 'Podaj nazwę produktu.']];
         yield 'a name that is no text' => [self::with(['name' => 7]), ['name' => 'Podaj nazwę produktu.']];
         yield 'a name over 200 characters' => [self::with(['name' => str_repeat('a', 201)]), ['name' => 'Nazwa może mieć najwyżej 200 znaków.']];
         yield 'a slug that is no text' => [self::with(['slug' => null]), ['slug' => 'Slug musi być tekstem.']];
@@ -127,12 +127,36 @@ final class ProductWriteValidationTest extends TestCase
         yield 'values that are no list' => [self::with(['variants' => [['variantId' => null, 'values' => 'a']]]), ['variants[0].values' => 'Wartości wariantu muszą być listą.']];
         yield 'fewer values than axes' => [self::with(['variants' => [['variantId' => null, 'values' => ['a']]]]), ['variants[0].values' => 'Wariant musi mieć jedną wartość dla każdej osi.']];
         yield 'values for a product without axes' => [self::with(['variantAxes' => [], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variants[0].values' => 'Wariant musi mieć jedną wartość dla każdej osi.']];
-        yield 'an empty value' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', 'b']], ['variantId' => null, 'values' => ['a', " \t"]]]]), ['variants[1].values[1]' => 'Wartość musi mieć od 1 do 40 znaków.']];
+        yield 'an empty value' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', 'b']], ['variantId' => null, 'values' => ['a', " \u{00A0}"]]]]), ['variants[1].values[1]' => 'Wartość musi mieć od 1 do 40 znaków.']];
         yield 'a value over 40 characters' => [self::with(['variants' => [['variantId' => null, 'values' => [str_repeat('a', 41), 'b']]]]), ['variants[0].values[0]' => 'Wartość musi mieć od 1 do 40 znaków.']];
         yield 'a value that is no text' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', 4]]]]), ['variants[0].values[1]' => 'Wartość musi mieć od 1 do 40 znaków.']];
         yield 'a repeated combination' => [self::with(['variants' => [['variantId' => null, 'values' => ['czarne', '40']], ['variantId' => null, 'values' => ['Czarne ', '41']], ['variantId' => null, 'values' => [' CZARNE', '40 ']]]]), ['variants[2].values' => 'Taki wariant już istnieje.']];
         yield 'the same combination written in Polish capitals' => [self::with(['variantAxes' => ['Kolor'], 'variants' => [['variantId' => null, 'values' => ['żółte']], ['variantId' => null, 'values' => ['ŻÓŁTE']]]]), ['variants[1].values' => 'Taki wariant już istnieje.']];
         yield 'more than one row without axes' => [self::with(['variantAxes' => [], 'variants' => [['variantId' => null, 'values' => []], ['variantId' => null, 'values' => []]]]), ['variants' => 'Produkt bez osi ma tylko jeden wariant.']];
+
+        // Forbidden characters and Unicode whitespace (#247); an invalid UTF-8 byte cannot arrive in a JSON body (the
+        // decoder answers 400 first), so only this test shows how the validator treats it.
+        $forbidden = ['NUL' => "a\x00b", 'BEL' => "a\x07b", 'line separator' => "a\u{2028}b", 'invalid UTF-8' => "a\xC3\x28b", 'tab at the end' => "ab\t"];
+        foreach ($forbidden as $label => $text) {
+            yield "a name with $label" => [self::with(['name' => $text]), ['name' => 'Nazwa produktu zawiera niedozwolone znaki.']];
+            yield "a short description with $label" => [self::with(['shortDescription' => $text]), ['shortDescription' => 'Krótki opis zawiera niedozwolone znaki.']];
+            yield "an alt with $label" => [self::with(['images' => [['key' => $key, 'alt' => $text]]]), ['images[0].alt' => 'Tekst alternatywny zawiera niedozwolone znaki.']];
+            yield "an axis name with $label" => [self::with(['variantAxes' => [$text], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variantAxes[0]' => 'Nazwa osi zawiera niedozwolone znaki.']];
+            yield "a value with $label" => [self::with(['variants' => [['variantId' => null, 'values' => ['a', $text]]]]), ['variants[0].values[1]' => 'Wartość wariantu zawiera niedozwolone znaki.']];
+        }
+        yield 'a short description with a line feed' => [self::with(['shortDescription' => "Linia 1\nLinia 2"]), []];
+        yield 'a short description of only whitespace' => [self::with(['shortDescription' => "\u{00A0}\n\u{3000}"]), []];
+        yield 'a name with a line feed' => [self::with(['name' => "a\nb"]), ['name' => 'Nazwa produktu zawiera niedozwolone znaki.']];
+        yield 'an alt with a line feed' => [self::with(['images' => [['key' => $key, 'alt' => "a\nb"]]]), ['images[0].alt' => 'Tekst alternatywny zawiera niedozwolone znaki.']];
+        yield 'an axis name with a line feed' => [self::with(['variantAxes' => ["a\nb"], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variantAxes[0]' => 'Nazwa osi zawiera niedozwolone znaki.']];
+        yield 'a value with a line feed' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', "a\nb"]]]]), ['variants[0].values[1]' => 'Wartość wariantu zawiera niedozwolone znaki.']];
+        yield 'a name of only non-breaking spaces' => [self::with(['name' => "\u{00A0}\u{00A0}"]), ['name' => 'Podaj nazwę produktu.']];
+        yield 'an alt of only ideographic spaces' => [self::with(['images' => [['key' => $key, 'alt' => "\u{3000}"]]]), ['images[0].alt' => 'Podaj tekst alternatywny zdjęcia.']];
+        yield 'an axis name of only non-breaking spaces' => [self::with(['variantAxes' => ["\u{00A0}"], 'variants' => [['variantId' => null, 'values' => ['a']]]]), ['variantAxes[0]' => 'Nazwa osi musi mieć od 1 do 30 znaków.']];
+        yield 'a value of only non-breaking spaces' => [self::with(['variants' => [['variantId' => null, 'values' => ['a', "\u{00A0}"]]]]), ['variants[0].values[1]' => 'Wartość musi mieć od 1 do 40 znaków.']];
+        yield 'a name of 200 characters with non-breaking spaces around' => [self::with(['name' => "\u{00A0}".str_repeat('ż', 200)."\u{00A0}"]), []];
+        yield 'a repeated combination with non-breaking spaces' => [self::with(['variantAxes' => ['Kolor'], 'variants' => [['variantId' => null, 'values' => ['czarne']], ['variantId' => null, 'values' => ["\u{00A0}Czarne\u{00A0}"]]]]), ['variants[1].values' => 'Taki wariant już istnieje.']];
+        yield 'a repeated axis name with non-breaking spaces' => [self::with(['variantAxes' => ['Kolor', "\u{00A0}kolor"]]), ['variantAxes[1]' => 'Nazwa osi już jest użyta.']];
 
         yield 'several mistakes at once, in the order of the body' => [
             self::with(['name' => '', 'taxClass' => 'x', 'images' => [['key' => 'k', 'alt' => '']], 'variants' => [['variantId' => 'z', 'values' => []]]]),

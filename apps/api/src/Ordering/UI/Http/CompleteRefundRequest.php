@@ -25,11 +25,11 @@ final readonly class CompleteRefundRequest
             new Assert\Positive(message: 'Wersja zamówienia musi być liczbą całkowitą od 1.'),
         ])]
         public mixed $version,
-        #[OA\Property(type: 'string', description: 'One line, at most 500 characters once trimmed, without control characters; null or blank for none.', maxLength: StaffNote::MAX_LENGTH, nullable: true, example: 'Przelew wysłany')]
+        #[OA\Property(type: 'string', description: 'One line, at most 500 characters once trimmed of white space, without control characters, U+0085, U+2028 and U+2029; null or blank for none.', maxLength: StaffNote::MAX_LENGTH, nullable: true, example: 'Przelew wysłany')]
         #[Assert\Sequentially([
             new Assert\Type('string', message: 'Notatka musi być tekstem.'),
             new Assert\Regex(pattern: ControlCharacters::PATTERN, match: false, message: 'Notatka zawiera niedozwolone znaki.'),
-            new Assert\Length(max: StaffNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', normalizer: 'trim'),
+            new Assert\Length(max: StaffNote::MAX_LENGTH, maxMessage: 'Notatka może mieć najwyżej 500 znaków.', charsetMessage: 'Notatka zawiera niedozwolone znaki.', normalizer: StaffNote::class.'::trim'),
         ])]
         public mixed $note,
     ) {
