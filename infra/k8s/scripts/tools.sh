@@ -4,6 +4,7 @@
 #
 #   helm, kubeconform, shellcheck, actionlint, yq, py, kubeseal: tools working on files of the repository (cwd = /repo/infra/k8s)
 #   k3d, kubectl: tools talking to Docker (k3d) and to a k3d cluster over its Docker network (kubectl)
+#   ALLOY_IMAGE: Grafana Alloy, for the test of the log masking (scripts/masking.sh), run there with docker run
 #   browser_dom: the DOM of a page after its scripts ran, in headless Chromium on the Docker network of a cluster
 #   browser_console: the console messages of the same page load (the CSP violations among them)
 
@@ -27,6 +28,11 @@ KUBECTL_IMAGE="${KUBECTL_IMAGE:-registry.k8s.io/kubectl:v$KUBERNETES_VERSION}"
 KUBESEAL_IMAGE="${KUBESEAL_IMAGE:-ghcr.io/bitnami/sealed-secrets-kubeseal:0.41.2@sha256:6697225a70537d94061b56e6a138ba9ca26307a702f827dac0a77b0a007bc84f}"
 # Ubuntu 24.04, the system bootstrap.sh supports: the image the test of the bootstrap runs it in (infra/k8s/tests/bootstrap).
 UBUNTU_IMAGE="${UBUNTU_IMAGE:-ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852}"
+# Grafana Alloy of the version that the chart k8s-monitoring pinned in argocd/apps/monitoring.yaml installs (the tag it pins in
+# templates/collectors/_collector_version.tpl, "collector.alloy.pinnedImageTag"); the test of the log masking runs the stages of
+# that application in it. A new chart version with another Alloy needs a new tag and digest here
+# (docker buildx imagetools inspect grafana/alloy:<tag>); tests/test_log_masking.py compares the tag with the chart.
+ALLOY_IMAGE="${ALLOY_IMAGE:-grafana/alloy:v1.21.3@sha256:8ab871206bd2d8f89277f53abffee5f452a293980788d52f85fa183a87a505a4}"
 CURL_IMAGE="${CURL_IMAGE:-curlimages/curl:8.18.0}"
 # The browser of the smoke test: the Chromium of the image the E2E tests are built on (e2e/Dockerfile, the same tag).
 PLAYWRIGHT_IMAGE="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.64.1-noble}"

@@ -1,6 +1,7 @@
-"""The Argo CD manifests of argocd/ (spec: D4, D5, "Serwer, bootstrap i wdrożenie przez Claude Code"): the root creates
-the three applications; the shop has one source, the branch deploy-images, with the profile and the images file; the
-sealed secrets and the controller come in the waves before the shop; everything is pinned and tracks one revision."""
+"""The Argo CD manifests of argocd/ (spec: D4, D5, "Serwer, bootstrap i wdrożenie przez Claude Code"; DEPLOY-OPS, O5): the root creates
+the five applications; the shop has one source, the branch deploy-images, with the profile and the images file; the CRDs of
+Prometheus, the sealed secrets and their controller come in the waves before the shop, the monitoring (Alloy) after it; everything
+is pinned (the charts of others by version) or tracks one revision (what is in git)."""
 
 import re
 import unittest
@@ -28,13 +29,13 @@ class Root(unittest.TestCase):
         self.assertEqual("argocd", root["spec"]["destination"]["namespace"])
         self.assertTrue((REPO / source["path"]).is_dir())
 
-    def test_the_directory_it_reads_has_only_the_shop_the_sealed_secrets_and_their_controller(self):
-        self.assertEqual({"shop", "secrets", "sealed-secrets"}, set(apps))
+    def test_the_directory_it_reads_has_only_the_shop_its_secrets_and_the_platform_applications(self):
+        self.assertEqual({"shop", "secrets", "sealed-secrets", "prometheus-crds", "monitoring"}, set(apps))
         for application in apps.values():
             self.assertEqual("Application", application["kind"])
             self.assertEqual("argocd", application["metadata"]["namespace"])
         files = sorted(p.name for p in (REPO / "infra/k8s/argocd/apps").iterdir())
-        self.assertEqual(["sealed-secrets.yaml", "secrets.yaml", "shop.yaml"], files)
+        self.assertEqual(["monitoring.yaml", "prometheus-crds.yaml", "sealed-secrets.yaml", "secrets.yaml", "shop.yaml"], files)
 
     def test_it_synchronizes_by_itself_and_prunes(self):
         self.assertEqual({"prune": True, "selfHeal": True}, root["spec"]["syncPolicy"]["automated"])
@@ -88,9 +89,9 @@ class Shop(unittest.TestCase):
         # The images file exists only on the branch deploy-images (CI adds it to the snapshot).
         self.assertFalse((chart / "../../environments/prod/values-images.yaml").exists())
 
-    def test_it_is_the_last_wave(self):
+    def test_it_comes_after_the_secrets_and_before_the_monitoring(self):
         waves = {name: int(a["metadata"]["annotations"][WAVE]) for name, a in apps.items()}
-        self.assertEqual({"sealed-secrets": -2, "secrets": -1, "shop": 0}, waves)
+        self.assertEqual({"prometheus-crds": -3, "sealed-secrets": -2, "secrets": -1, "shop": 0, "monitoring": 1}, waves)
 
     def test_creating_the_namespace_and_synchronizing_by_itself(self):
         policy = self.shop["spec"]["syncPolicy"]
@@ -122,12 +123,66 @@ class Secrets(unittest.TestCase):
         self.assertEqual("0", apps["sealed-secrets"]["spec"]["source"]["helm"]["valuesObject"]["keyrenewperiod"])
 
 
+class Observability(unittest.TestCase):
+    """DEPLOY-OPS, O5: the CRDs of Prometheus in the first wave, Alloy (the chart k8s-monitoring) in the last."""
+
+    crds = apps["prometheus-crds"]
+    monitoring = apps["monitoring"]
+
+    def test_the_crds_are_a_published_chart_pinned_by_version_and_applied_on_the_server_side(self):
+        source = self.crds["spec"]["source"]
+        self.assertEqual("prometheus-operator-crds", source["chart"])
+        self.assertTrue(source["repoURL"].startswith("https://"))
+        self.assertRegex(source["targetRevision"], r"^\d+\.\d+\.\d+$")
+        # The CRDs are larger than the annotation of a client-side apply can hold.
+        self.assertIn("ServerSideApply=true", self.crds["spec"]["syncPolicy"]["syncOptions"])
+        self.assertEqual("-3", self.crds["metadata"]["annotations"][WAVE])
+
+    def test_alloy_is_the_chart_k8s_monitoring_4_pinned_in_the_last_wave_after_the_shop(self):
+        source = self.monitoring["spec"]["source"]
+        self.assertEqual("k8s-monitoring", source["chart"])
+        self.assertTrue(source["repoURL"].startswith("https://"))
+        self.assertRegex(source["targetRevision"], r"^4\.\d+\.\d+$")
+        self.assertEqual("monitoring", self.monitoring["spec"]["destination"]["namespace"])
+        self.assertEqual("monitoring", source["helm"]["releaseName"])
+        self.assertGreater(int(self.monitoring["metadata"]["annotations"][WAVE]), int(apps["shop"]["metadata"]["annotations"][WAVE]))
+        self.assertEqual("1", self.monitoring["metadata"]["annotations"][WAVE])
+
+    def test_the_namespace_is_created_and_the_resource_of_a_crd_of_the_same_sync_is_not_a_dry_run_error(self):
+        options = self.monitoring["spec"]["syncPolicy"]["syncOptions"]
+        self.assertIn("CreateNamespace=true", options)
+        self.assertIn("SkipDryRunOnMissingResource=true", options)
+        self.assertEqual({"prune": True, "selfHeal": True}, self.monitoring["spec"]["syncPolicy"]["automated"])
+
+    def test_the_values_are_in_the_manifest_not_in_the_chart_of_the_shop(self):
+        values = self.monitoring["spec"]["source"]["helm"]["valuesObject"]
+        self.assertEqual({"grafana-metrics": "prometheus", "grafana-logs": "loki"}, {n: d["type"] for n, d in values["destinations"].items()})
+        self.assertTrue(values["destinations"]["grafana-metrics"]["rules"]["enabled"])
+        # The address of the ruler is the base address of the stack, not the one that metrics are pushed to.
+        metrics = values["destinations"]["grafana-metrics"]
+        self.assertFalse(metrics["rules"]["address"].endswith("/push"))
+        self.assertTrue(metrics["url"].endswith("/api/prom/push"))
+        text = (REPO / "infra/k8s/environments/prod/values.yaml").read_text()
+        self.assertNotIn("grafana", text.lower())
+
+    def test_the_two_new_applications_are_in_their_own_files_and_the_root_directory_is_not_recursive(self):
+        for file in ("prometheus-crds.yaml", "monitoring.yaml"):
+            self.assertTrue((REPO / "infra/k8s/argocd/apps" / file).is_file())
+        self.assertFalse(root["spec"]["source"]["directory"]["recurse"])
+
+
 class AllApplications(unittest.TestCase):
     def test_everything_from_git_tracks_the_same_branch_of_the_same_repository(self):
         sources = [a["spec"]["source"] for a in (root, *apps.values())]
         git = [s for s in sources if "chart" not in s]
         self.assertEqual(3, len(git))
         self.assertEqual({(REPO_URL, BRANCH)}, {(s["repoURL"], s["targetRevision"]) for s in git})
+        # The published charts (of others) are pinned by their version: Argo CD takes them from their repositories, so they
+        # are not on the branch, and nothing of them floats.
+        published = {a["metadata"]["name"]: a["spec"]["source"] for a in apps.values() if "chart" in a["spec"]["source"]}
+        self.assertEqual({"sealed-secrets", "prometheus-crds", "monitoring"}, set(published))
+        for source in published.values():
+            self.assertRegex(source["targetRevision"], r"^\d+\.\d+\.\d+$")
 
     def test_nothing_floats(self):
         for application in (root, *apps.values()):

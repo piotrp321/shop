@@ -3,7 +3,8 @@ import re
 import unittest
 
 from support import (
-    DIGEST, DIGESTS, REPO, REVISION, by_logical, containers, env_of, images, of_kind, pod_spec, quantity_bytes, quantity_cpu
+    DIGEST, DIGESTS, REPO, REVISION, by_logical, containers, env_of, images, monitoring_budget, of_kind, pod_spec,
+    quantity_bytes, quantity_cpu,
 )
 
 STATEFUL = {"postgres", "elasticsearch", "rabbitmq", "redis", "garage"}
@@ -167,16 +168,20 @@ class WorkloadsTest(unittest.TestCase):
         self.assertEqual("http://admin.localhost", env["VITE_ADMIN_URL"])
 
     def test_prod_fits_the_server(self):
-        """8 vCore and 24 GB: CPU requests up to 7 vCPU, memory limits up to 20 GB (steady state)."""
+        """8 vCore and 24 GB: CPU requests up to 7 vCPU, memory limits up to 20 GB (steady state), the shop and the application
+        monitoring (Alloy, its operator, kube-state-metrics, node-exporter) together."""
         cpu = memory = 0
         for workload in of_kind("prod", "Deployment", "StatefulSet"):
             for container in containers(workload):
                 resources = container["resources"]
                 cpu += quantity_cpu(resources["requests"]["cpu"]) * workload["spec"]["replicas"]
                 memory += quantity_bytes(resources["limits"]["memory"]) * workload["spec"]["replicas"]
-        self.assertLessEqual(cpu, 7)
-        self.assertLessEqual(memory, 20 * 2**30)
         self.assertGreater(memory, 4 * 2**30)
+        monitoring_cpu, monitoring_memory = monitoring_budget()
+        self.assertGreater(monitoring_cpu, 0)
+        self.assertGreater(monitoring_memory, 0)
+        self.assertLessEqual(cpu + monitoring_cpu, 7, f"shop {cpu} + monitoring {monitoring_cpu} vCPU of requests")
+        self.assertLessEqual(memory + monitoring_memory, 20 * 2**30, f"shop {memory / 2**30} + monitoring {monitoring_memory / 2**30} GiB of limits")
 
     def test_ci_profile_is_light(self):
         es = env_of(containers(by_logical("ci", "StatefulSet")["elasticsearch"])[0])

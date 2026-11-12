@@ -146,19 +146,53 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
     tokenem nie blokuje wdrożenia sklepu.
 
   Fale: `prometheus-crds` −3, `sealed-secrets` −2, `secrets` −1, `shop` 0, `monitoring` 1. Chart 4.x instaluje Alloy
-  Operator (Deployment i CRD `collectors.grafana.com`), a kolektory są zasobami `kind: Alloy`; operator tworzy z nich
-  DaemonSet i Deployment Alloy, więc nie ma ich w renderze. Funkcje: `clusterMetrics` (kube-state-metrics,
+  Operator (Deployment i CRD `collectors.grafana.com`), a kolektor jest zasobem `kind: Alloy`; operator tworzy z niego
+  Deployment Alloy (`presets: [deployment]`), więc nie ma go w renderze. Funkcje: `clusterMetrics` (kube-state-metrics,
   node-exporter, kubelet, cAdvisor), `clusterEvents`, logi podów wszystkich przestrzeni (`podLogsViaKubernetesApi`). Cele
   `prometheus` (z `rules.enabled` i `rules.address` wskazującym bazowy adres rulera, nie adres zapisu) i `loki` w
   Grafana Cloud mają adresy i identyfikatory instancji w `valuesObject` manifestu `monitoring` (nie w wartościach
   `prod` chartu `shop`). Token jest w sekrecie `grafana-cloud` (klucz `GRAFANA_CLOUD_TOKEN`, jeden token access policy
   dla obu celów; SealedSecret w przestrzeni `shop` w `environments/prod/secrets/`, `seal-secrets WHAT=grafana`), który
-  Alloy czyta z tej przestrzeni (`secret.create: false`, `secret.namespace: shop`, klucz hasła wskazany w celu). Domyślne
-  uprawnienia Alloy (`get/list/watch` na wszystkie `secrets` klastra) są zawężone: reguły kolektorów bez `secrets`,
-  osobna Role w `shop` z `get/list/watch` tylko na `resourceNames: [grafana-cloud]`; Alloy nie czyta `shop-backup` ani
-  `shop-secrets`. Metryki ograniczone listą dozwolonych, żeby zmieścić się w darmowym planie (10 tys. serii aktywnych).
-  `check`: lista nie jest pusta i ma metryki alertów; żadna ClusterRole ani Role renderu `monitoring` poza tą jedną nie
-  daje dostępu do `secrets`; budżet węzła liczy razem `shop` i `monitoring` (`spec.resources` zasobów `Alloy`,
+  Alloy czyta z tej przestrzeni (`secret.create: false`, `secret.namespace: shop`, klucz hasła wskazany w celu). RBAC
+  i polityki dopuszczania monitoringu są w manifeście (`extraObjects`), nie w chartach:
+  - Alloy Operator działa tylko w przestrzeni `monitoring` (`ownNamespaceOnly: true`, `rbac.create: false`): bez ClusterRoli,
+    z jedną Role w `monitoring` i bez uprawnień do obiektów RBAC; nie czyta ani nie zmienia sekretów żadnej innej przestrzeni.
+    Role: zasób `Alloy` bez tworzenia i usuwania (zakłada go Argo CD; operator czyta go, zmienia, ustawia finalizer i status),
+    Deployment, konto usługi i Service, które robi z niego chart Alloy (tworzenie dowolnych, zmiana i usuwanie tylko obiektów
+    `monitoring-alloy` przez `resourceNames`, więc nie podmieni obrazu kube-state-metrics, node-exportera ani swojego), sekrety
+    z wydaniami Helm, dzierżawa lidera i zdarzenia; bez DaemonSetów, StatefulSetów, ConfigMap i podów;
+  - polityki dopuszczania (`ValidatingAdmissionPolicy` z powiązaniem na przestrzeń `monitoring` przez etykietę
+    `kubernetes.io/metadata.name`, którą nadaje serwer API; `validationActions: [Deny]`, `failurePolicy: Fail`; fala −1
+    w aplikacji, więc powstają przed operatorem i podami) obowiązują każdego, także Argo CD i administratora:
+    `monitoring-no-host-access` odrzuca przy tworzeniu i zmianie pod (z kontenerami init i efemerycznymi) oraz szablon
+    poda w Deployment, ReplicaSet, StatefulSet, DaemonSet, Job i CronJob z `hostNetwork`, `hostPID`, `hostIPC`,
+    wolumenem `hostPath`, `hostPort`, kontenerem `privileged` albo dodaną capability spoza listy profilu baseline Pod
+    Security Standards, a także z `priorityClassName` zaczynającym się od `system-` (`system-cluster-critical`
+    i `system-node-critical` są dozwolone w każdej przestrzeni i wywłaszczałyby pody sklepu; bez wyjątku, node-exporter
+    ich nie używa). Wyjątek od dostępu do hosta ma tylko node-exporter: DaemonSet `monitoring-node-exporter`, jeśli nie zmienia go konto
+    usługi z `monitoring`, i jego pody, jeśli tworzy je kontroler DaemonSetów (w k3s własne konto
+    `system:serviceaccount:kube-system:daemon-set-controller`, którym nikt w `monitoring` nie działa) z `ownerReference`
+    na ten DaemonSet; etykiety nie są wyróżnikiem. Zmiana poda bez zmiany `spec` (metadane) przechodzi.
+    `monitoring-cluster-ip-services` odrzuca przy tworzeniu i zmianie Service typu innego niż `ClusterIP` (`NodePort`,
+    `LoadBalancer` przez ServiceLB k3s otwierają port węzła z pominięciem ufw i zakazu `hostPort`; `ExternalName`) oraz
+    Service z `externalIPs` (przejęcie ruchu podów klastra do tych adresów, CVE-2020-8554); wszystkie Service chartów
+    (operator, kube-state-metrics, node-exporter, `monitoring-alloy`) są `ClusterIP`.
+    `monitoring-no-service-account-tokens` odrzuca sekret typu `kubernetes.io/service-account-token` (operator zapisuje
+    sekrety w `monitoring` i tak dostałby token dowolnego konta tej przestrzeni);
+  - kolektor (zasób `Alloy` z `rbac.create: false`, konto usługi `monitoring-alloy`) ma własną ClusterRole tylko do odczytu
+    (`get/list/watch`: węzły i `nodes/metrics`, usługi, endpointy, pody i `pods/log`, przestrzenie, zdarzenia,
+    `PrometheusRule`), bez `secrets` i ConfigMap, oraz osobną Role w `shop` z `get/list/watch` tylko na
+    `resourceNames: [grafana-cloud]`; Alloy nie czyta `shop-backup` ani `shop-secrets`;
+  - żadna rola monitoringu nie ma `bind`, `escalate`, `impersonate`, zmian obiektów RBAC ani podzasobów `pods/exec`,
+    `pods/attach`, `pods/portforward`, `pods/ephemeralcontainers`, `serviceaccounts/token` i `nodes/proxy`.
+
+  Metryki ograniczone listą dozwolonych, żeby zmieścić się w darmowym planie (10 tys. serii aktywnych).
+  `check`: lista nie jest pusta i ma metryki alertów; RBAC renderu `monitoring` jak wyżej (dostęp do `secrets` daje tylko
+  Role na `grafana-cloud` w `shop`, związana tylko z kontem Alloy, i Role operatora w `monitoring`, związana tylko z jego
+  kontem; podmiot powiązania to także grupa kont usług i nazwa użytkownika konta; dokładny kształt Role operatora);
+  polityki dopuszczania jak wyżej (trzy, przestrzeń, `Deny`, `Fail`, zasoby i operacje, fala przed resztą aplikacji, wyjątek
+  tylko dla node-exportera, w renderze dostęp do hosta ma tylko jego DaemonSet, żaden workload nie ma klasy priorytetu
+  systemu, a każdy Service jest `ClusterIP` bez `externalIPs`; polityka Service dopuszcza tylko typ `ClusterIP`); budżet węzła liczy razem `shop` i `monitoring` (`spec.resources` zasobów `Alloy`,
   Deployment operatora, kube-state-metrics, DaemonSet node-exportera); `kubeconform` zna schemat `Alloy` (CRDs-catalog).
 - **O6. Alerty jako kod.** Reguły to `PrometheusRule` w chartcie `shop` (`templates/alerts.yaml`), renderowane, gdy
   `alerts.enabled` (`prod: true`, `ci: false`, bo smoke test nie ma CRD); brak CRD w klastrze z `alerts.enabled` daje
@@ -251,7 +285,31 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; kolejność kroków z Argo CD i bez; błąd w kroku 5 nie
   włącza aplikacji). `selftest` wstrzykuje: repozytorium bez hasła, CronJob kopii bez `concurrencyPolicy: Forbid`,
   `BackupMissing` bez `absent`, `restore` bez potwierdzenia, usunięcie reguły maskowania e-maili, Role Alloy na wszystkie
-  sekrety.
+  sekrety, przywrócony RBAC chartu operatora (ClusterRole), Role operatora ze zmianą obiektów RBAC, operator obserwujący cały
+  klaster, zasób `Alloy` z własnym RBAC, usunięcie polityki dostępu do hosta albo powiązania polityki tokenów, polityka tylko
+  ostrzegająca (`Warn`) albo przepuszczająca przy błędzie (`Ignore`), polityki w fali workloadów, wyjątek node-exportera po
+  etykietach, Role operatora z DaemonSetami albo ze zmianą Deploymentu kube-state-metrics, ClusterRole Alloy z `nodes/proxy`,
+  sekret `grafana-cloud` dla grupy kont usług, usunięcie polityki Service, polityka Service dopuszczająca `NodePort`
+  albo bez sprawdzenia `externalIPs`, polityka podów bez sprawdzenia klasy priorytetu.
+- `make -C infra/k8s monitoring-smoke` (poza `check` i CI): chart `k8s-monitoring` z wartościami manifestu na pustym klastrze
+  k3d, z jedyną nakładką na adresy celów (odbiornik Alloy poza klastrem); operator i Alloy gotowe, odbiornik dostaje
+  zamaskowaną linię poda w `shop`, zdarzenie klastra i metryki kube-state-metrics, node-exportera, kubeleta i cAdvisora, logi
+  bez `forbidden`; `kubectl auth can-i` dla kont usług operatora, Alloy, kube-state-metrics i node-exportera potwierdza RBAC
+  z O5 (brak sekretów `shop` i `kube-system`, `bind`, `escalate`, `impersonate`, `exec`, `attach`, `portforward`, kontenerów
+  efemerycznych i tokenów kont w `shop` i `kube-system`, `nodes/proxy`; Alloy czyta `grafana-cloud`; operator bez DaemonSetów,
+  StatefulSetów, podów i tworzenia zasobów `Alloy`, zmienia tylko obiekty `monitoring-alloy`). Polityki dopuszczania:
+  żądania `--dry-run=server` jako konto operatora (Deployment z `hostPath` `/`, `hostNetwork`, `hostPID`, `hostIPC`,
+  `hostPort`, `privileged`, dodaną capability, uprzywilejowanym kontenerem init, klasą priorytetu `system-cluster-critical`
+  albo `system-node-critical`, etykietami node-exportera, szablonem z `ownerReference` na jego DaemonSet; Service `NodePort`,
+  `LoadBalancer`, `ExternalName` i `ClusterIP` z `externalIPs`, zmiana Service `monitoring-alloy` na `NodePort` albo
+  z `externalIPs`; sekret z tokenem konta) i jako administrator (pod z etykietami albo podrobionym `ownerReference`
+  node-exportera, inne rodzaje workloadów, kontener efemeryczny i inny obraz w podzie node-exportera, pod i CronJob z klasą
+  priorytetu systemu, Service `NodePort`, `LoadBalancer` i z `externalIPs`, zmiana Service kube-state-metrics na
+  `LoadBalancer`, sekret z tokenem) odrzuca polityka (jej nazwa w błędzie, nie RBAC), a zwykły Deployment, Service `ClusterIP`
+  i headless operatora, zwykły kontener efemeryczny, sekret `Opaque` oraz w `shop` pod z `hostPath`, pod z klasą
+  `system-cluster-critical` i Service `NodePort` przechodzą; potem wszystkie pody `monitoring` powstają od nowa pod politykami
+  i są gotowe (w tym node-exporter), a metryki przychodzą po tym. `MONITORING_SMOKE_BREAK=operator-cluster-role` (RBAC chartu
+  operatora) i `MONITORING_SMOKE_BREAK=no-admission-policy` (bez polityk) muszą się nie udać.
 - `make -C infra/k8s smoke` dodatkowo, po sprawdzeniach i `create-admin` w fazie r1 (baza ma produkty, zamówienia z
   `checks` i klienta z hasłem), przed fazą r2:
   1. osobna instancja S3 (Garage z obrazu chartu) w przestrzeni `smoke-backup`, z bucketem na repozytorium;
@@ -396,5 +454,18 @@ Helm), a smoke test ma własną instancję S3. Konta R2 i Grafana Cloud oraz war
 - **Spójność między bazami i obiektami.** Dumpy `shop` i `keycloak` oraz kopia obiektów powstają w różnych chwilach
   (sekundy–minuty); zdjęcie dodane w tym czasie może nie mieć wiersza albo odwrotnie. Nocna pora i krótki czas kopii
   ograniczają to; odtworzenie nie wymaga ścisłej spójności.
+- **Operator to obcy obraz z prawem tworzenia Deploymentów i Service w `monitoring`.** Polityki dopuszczania odcinają go od
+  hosta, portów węzła, `externalIPs`, klas priorytetu systemu i tokenów kont w sekretach, a RBAC od sekretów `shop-secrets`
+  i `shop-backup`, ale przejęty operator nadal może
+  uruchomić w `monitoring` dowolny obraz z kontem usługi tej przestrzeni: z kontem Alloy czyta logi podów i zdarzenia całego
+  klastra oraz token `grafana-cloud`, z kontem kube-state-metrics listę obiektów klastra (bez sekretów i ConfigMap); może też
+  zatrzymać zbieranie (zmienić albo usunąć Alloy) i bez limitów przestrzeni zająć zasoby węzła. Istniejących Deploymentów
+  kube-state-metrics i swojego ani DaemonSetu `monitoring-node-exporter` nie zmieni.
+- **Sieć klastra jest otwarta.** Klaster nie ma żadnej NetworkPolicy, Redis działa bez hasła i trzyma sesje sklepu z tokenami
+  OIDC klientów, a Elasticsearch działa bez security. Każdy pod w `monitoring`, także przejęty operator bez tworzenia
+  czegokolwiek, sięga po sieci do `redis.shop:6379` (sesje klientów, podszycie się pod klienta) i do Elasticsearcha, tak samo
+  jak każdy pod w `shop` i każdy obcy obraz tam (Keycloak, Varnish, imgproxy, Elasticsearch). Polityki dopuszczania i RBAC
+  monitoringu tego nie ograniczają; zamknięcie wymaga NetworkPolicy z domyślną odmową, hasła Redisa i security
+  Elasticsearcha.
 - **Zależności w ruchu.** Interfejs chartu `k8s-monitoring` zmienia się między głównymi wersjami (operator od 3.x,
   `destinations` w 4.x); wersja przypięta, aktualizacja to osobna zmiana.

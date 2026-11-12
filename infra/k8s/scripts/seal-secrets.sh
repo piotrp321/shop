@@ -1,6 +1,6 @@
 #!/bin/sh
 # Encrypts the secrets of the environment with the certificate of the Sealed Secrets controller, so that they can be
-# committed (D5 of docs/features/deploy): `make -C infra/k8s seal-secrets [WHAT="shop brevo tls backup"]`. kubeseal runs in a
+# committed (D5 of docs/features/deploy): `make -C infra/k8s seal-secrets [WHAT="shop brevo tls backup grafana"]`. kubeseal runs in a
 # container (tools.sh); no cluster is needed, only the certificate in the repository.
 #
 #   shop   environments/prod/secrets/shop-secrets.yaml: the keys of infra/scripts/init-env.sh (the lists `secrets` and
@@ -13,7 +13,9 @@
 #   backup shop-backup.yaml: RESTIC_PASSWORD (the password of the restic repository of the backups, asked for twice: a
 #          different second value is an error), BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY (the key of its S3
 #          bucket), asked for on the terminal.
-# Without arguments (WHAT) all four are processed. brevo, tls and backup are created once: when their file exists nothing
+#   grafana grafana-cloud.yaml: GRAFANA_CLOUD_TOKEN, the one access policy token of Grafana Cloud that Alloy (the application
+#          `monitoring`) reads from the namespace shop for the metrics, the logs and the alert rules, asked for on the terminal.
+# Without arguments (WHAT) all five are processed. brevo, tls, backup and grafana are created once: when their file exists nothing
 # is asked and nothing changes (a new password would make the earlier backups unreadable).
 #
 # External values are read from the terminal (/dev/tty) with the echo off: never from arguments or from the environment,
@@ -44,11 +46,11 @@ fail() {
 }
 
 what="$*"
-[ -n "$what" ] || what="shop brevo tls backup"
+[ -n "$what" ] || what="shop brevo tls backup grafana"
 for item in $what; do
   case "$item" in
-    shop | brevo | tls | backup) ;;
-    *) fail "unknown secret '$item' (shop, brevo, tls or backup)" 2 ;;
+    shop | brevo | tls | backup | grafana) ;;
+    *) fail "unknown secret '$item' (shop, brevo, tls, backup or grafana)" 2 ;;
   esac
 done
 
@@ -222,7 +224,7 @@ seal_shop() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
-# brevo, tls and backup: created once, from values typed in the terminal.
+# brevo, tls, backup and grafana: created once, from values typed in the terminal.
 # ---------------------------------------------------------------------------------------------------------------
 seal_brevo() {
   name=shop-brevo-smtp
@@ -307,12 +309,33 @@ seal_backup() {
   echo "seal-secrets: $name.yaml gets the keys: RESTIC_PASSWORD BACKUP_S3_ACCESS_KEY_ID BACKUP_S3_SECRET_ACCESS_KEY"
 }
 
+seal_grafana() {
+  name=grafana-cloud
+  path="$out_dir/$name.yaml"
+  if [ -f "$path" ]; then
+    echo "seal-secrets: $name.yaml exists, nothing is asked and nothing changes"
+    return 0
+  fi
+  ask "Grafana Cloud access policy token (metrics:write, logs:write, rules:read, rules:write)"
+  token="$secret_value"
+  case "$token" in
+    *[[:space:]]*) fail "the Grafana Cloud token must not contain spaces; nothing was written" ;;
+  esac
+  : > "$work/$name.pairs"
+  add_pair "$work/$name.pairs" GRAFANA_CLOUD_TOKEN "$name" "$token"
+  secret_value="" token=""
+  write_file "$name" Opaque "$work/$name.yaml" "$work/$name.pairs"
+  stage "$name"
+  echo "seal-secrets: $name.yaml gets the keys: GRAFANA_CLOUD_TOKEN"
+}
+
 for item in $what; do
   case "$item" in
     shop) seal_shop ;;
     brevo) seal_brevo ;;
     tls) seal_tls ;;
     backup) seal_backup ;;
+    grafana) seal_grafana ;;
   esac
 done
 

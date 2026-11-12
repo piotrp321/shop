@@ -1,0 +1,3 @@
+name=api-7d9f6c-x2k4p kind=Pod level=Warning reason=Unhealthy msg="Readiness probe failed: Get \"http://10.42.0.15:8080/health?token=v-token-event\": dial tcp 10.42.0.15:8080: connect: connection refused" component=kubelet node=shop
+name=send-mail kind=Job level=Normal reason=Created msg="Created pod for jan.kowalski@example.pl with Authorization: Bearer abc123DEF456ghi789" component=job-controller
+name=worker-5c8d kind=Pod level=Warning reason=BackOff msg="Back-off restarting failed container worker password=Hunter2-S3cretPw" component=kubelet node=shop
