@@ -17,7 +17,7 @@ Aplikacje Argo CD, Jobów, fale i reszta mechanizmu: `docs/features/deploy/spec.
 
 ## 0. Przygotowanie
 
-1. **użytkownik** – kupuje VPS (docelowo 8 vCore, 24 GB RAM, Ubuntu 24.04 LTS, OVH) i domenę; domena jest w Cloudflare
+1. **użytkownik** – kupuje VPS (docelowo 8 vCore, 24 GB RAM, Ubuntu 26.04 LTS, OVH) i domenę; domena jest w Cloudflare
    (DNS). Zakłada konto Brevo. Powiadamia agenta o domenie i adresie IP serwera.
 2. **użytkownik** – zapisuje odcisk klucza hosta SSH z panelu OVH, łączy się raz ręcznie (`ssh <user>@<adres>`) i porównuje
    odcisk (bootstrap odmawia nieznanego klucza hosta, bo przez SSH przesyła m.in. kopię klucza Sealed Secrets). Użytkownik
@@ -77,13 +77,23 @@ Wszystko **użytkownik** (wymaga uprawnień administratora repo).
    make -C infra/k8s bootstrap HOST=<user>@<adres> [SEALED_KEY_FILE=<kopia klucza>]
    ```
 
-   Idempotentny: można go uruchomić ponownie. Bez roota (i bez `sudo -n`) albo na innym systemie niż Ubuntu 24.04
+   Idempotentny: można go uruchomić ponownie. Bez roota (i bez `sudo -n`) albo na innym systemie niż Ubuntu 26.04
    kończy się błędem przed zmianami. Zapisuje certyfikat kontrolera do `infra/k8s/environments/prod/sealed-secrets.pem`,
    gdy repo go nie ma. Gdy repo ma certyfikat, serwer porównuje go z certyfikatem kontrolera **przed** zastosowaniem aplikacji
    `root`: inny certyfikat to błąd (root nie jest zastosowany, nic nie jest nadpisywane: użyj kopii klucza albo zaszyfruj
    sekrety od nowa, zob. „Utrata klucza”). Kontroler nie rotuje klucza (`keyrenewperiod: "0"` w aplikacji `sealed-secrets`),
    więc certyfikat w repo i jedna kopia klucza zostają aktualne. Aplikacja `root` czeka na gałąź `deploy-images` (krok 1.4).
    Zmiana adresu serwera (`tls-san`) przy tej samej wersji k3s restartuje k3s.
+
+   AppArmor na Ubuntu 26.04: profil `cri-containerd.apparmor.d` blokuje sygnały między procesami uruchomionymi przez
+   exec (otwarty błąd containerd/containerd#12886). Spodziewane są wpisy `apparmor="DENIED"` z `cri-containerd`
+   (zwykle `signal`) w `sudo dmesg` przy exec probe usług i przy `kubectl exec` (`reinitialize`, `create-admin`); same
+   wpisy to szum. Sprawdzenie jest w sekcji 6. Gdy sonda podu faktycznie zawodzi (pod `NotReady` albo restartuje się,
+   a `kubectl describe` pokazuje nieudaną sondę) albo `reinitialize` lub `create-admin` kończą się błędem z takimi
+   wpisami, obejściem jest `securityContext.appArmorProfile: { type: Unconfined }` dla kontenera tej usługi w chartcie
+   (zmiana przez PR). Obejście jest włączone dla RabbitMQ: jego sonda (`gosu` i CLI Erlanga) na pierwszym serwerze
+   przekraczała limit czasu przy wpisach `DENIED … comm="gosu"`, a pod nie stawał się gotowy. Lista kontenerów bez
+   profilu jest w teście `AppArmorTest` (`infra/k8s/tests/test_workloads.py`); po poprawce containerd w k3s wraca pusta.
 4. **użytkownik** – robi kopię klucza prywatnego kontrolera Sealed Secrets i trzyma ją poza repo i poza serwerem
    (menedżer haseł). Jest jedyną rzeczą, której nie da się odtworzyć z repo. Plik (`kind: List` z Secretami) jest podawany
    bootstrapowi jako `SEALED_KEY_FILE`:
@@ -152,6 +162,8 @@ Wszystko **użytkownik**.
    Nieudany Job wersji: log (`status`), poprawka w repo (nowa rewizja) albo `make -C infra/k8s rerun JOB=<nazwa>`. Job
    `initialize` z błędem „mixed state” (przerwane wczytanie): **zgoda użytkownika**, potem
    `make -C infra/k8s reinitialize HOST=<user>@<adres>` (kasuje dane sklepu i wczytuje dane demo od nowa; wymaga słowa `tak`).
+   Pod usługi stale `0/1` mimo działającej usługi: sonda (np. AppArmor, sekcja 2, krok 3), poprawka przez PR; po niej
+   zwykle trzeba przerwać zawieszoną synchronizację i usunąć stary pod (sekcja 7, dwa ostatnie punkty).
 3. **zgoda użytkownika** – pierwszy administrator panelu (Keycloak, realm `backoffice`):
 
    ```sh
@@ -173,16 +185,21 @@ Wszystko **użytkownik**.
      host="${url%%/*}"
      curl -sk -o /dev/null -w "$url %{http_code}\n" --resolve "$host:443:<IP>" "https://$url"
    done
-   # Przez Cloudflare z własnym CF-Connecting-IP, za każdym razem innym: Cloudflare go nadpisuje, więc limit
-   # złożenia zamówienia (10 na 15 min) liczy się na adres nadawcy i 11. żądanie to 429, a nie kolejne 422.
+   # Przez Cloudflare z własnym CF-Connecting-IP: Cloudflare odrzuca takie żądanie sam (403, "error code: 1000",
+   # nagłówek server: cloudflare), więc podrobiony adres nie dociera do originu.
+   curl -s -w "\n%{http_code}\n" -X POST -H 'Content-Type: application/json' -H "Idempotency-Key: origin-check-spoof" \
+     -H "CF-Connecting-IP: 203.0.113.1" -d '{}' "https://api.<domena>/api/v1/orders"
+   # Bez podrabiania: limit złożenia zamówienia (10 na 15 min) liczy się na prawdziwy adres nadawcy, więc 11. żądanie
+   # to 429, a nie kolejne 422.
    for n in $(seq 1 11); do
      curl -s -o /dev/null -w "%{http_code}\n" -X POST -H 'Content-Type: application/json' \
-       -H "Idempotency-Key: origin-check-$n" -H "CF-Connecting-IP: 203.0.113.$n" -d '{}' "https://api.<domena>/api/v1/orders"
+       -H "Idempotency-Key: origin-check-$n" -d '{}' "https://api.<domena>/api/v1/orders"
    done
    ```
 
-   Oczekiwane: pierwsza pętla tylko `403` albo `000`; druga dziesięć razy `422`, potem `429`. Inny wynik
-   (origin odpowiada z pominięciem Cloudflare albo 11. żądanie przechodzi) to błąd do naprawy przed publicznym demo:
+   Oczekiwane: pierwsza pętla tylko `403` albo `000`; żądanie z podrobionym nagłówkiem `403` z `error code: 1000`;
+   ostatnia pętla dziesięć razy `422`, potem `429`. Inny wynik (origin odpowiada z pominięciem Cloudflare, podrobiony
+   nagłówek dociera do API albo 11. żądanie przechodzi) to błąd do naprawy przed publicznym demo:
    do tego czasu ten krok jest blokerem trybu publicznego demo (#179). Wynik zapisz w komentarzu do #179. Po teście adres
    nadawcy ma wyczerpany limit zamówień na 15 minut.
 
@@ -201,6 +218,7 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
 | `make -C infra/k8s status HOST=…` | agent | wszystko `Synced`, `Healthy`, Joby `Complete` |
 | Reguły alertów w Grafana Cloud i punkt kontaktowy e-mail (9.) | agent, punkt kontaktowy: użytkownik | siedem reguł w rulerze; `BackupMissing` i `BackupVerifyMissing` odpalają do pierwszej kopii i weryfikacji (oczekiwane) |
 | Grafana Cloud (9.) | agent | metryki klastra i logi `namespace="shop"` są, logów `mailpit` nie ma, przegląd próbki logów bez sekretów i danych klientów |
+| AppArmor (sekcja 2, krok 3): na serwerze `sudo dmesg \| grep 'apparmor="DENIED"' \| grep -c cri-containerd` po `reinitialize` i `create-admin` | użytkownik | wpisy `signal` są oczekiwane (szum); oba cele kończą się sukcesem, a pody nie restartują się przez sondy |
 
 ## 7. Eksploatacja
 
@@ -240,6 +258,33 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   `WorkloadNotReady` (Deployment albo StatefulSet w `shop`, w tym Redis, ma mniej gotowych replik niż oczekiwane albo go nie ma
   przez 10 minut; etykieta `deployment` albo `statefulset` mówi który: `status`, zdarzenia i log poda).
 - **Restart serwera**: k3s i usługi wstają same, dane na wolumenach zostają.
+- **Poprawka nie wchodzi, bo synchronizacja wisi** (**użytkownik**, po wskazaniu przez agenta; agent nie uruchamia `kubectl` na
+  serwerze). Argo CD nie zaczyna nowej synchronizacji aplikacji, dopóki trwa poprzednia, a ta czeka bez końca na zdrowie
+  zasobu, którego stara wersja nigdy nie będzie zdrowa. Objaw: `status` pokazuje `shop` jako `OutOfSync`/`Progressing`
+  mimo nowego snapshotu `deploy-images`. Sprawdzenie:
+
+  ```sh
+  ssh <user>@<adres> 'sudo k3s kubectl -n argocd get application shop -o jsonpath="{.status.operationState.phase} {.status.operationState.syncResult.revision} | sync={.status.sync.revision} | {.status.operationState.message}{\"\n\"}"'
+  ```
+
+  `Running` ze starą rewizją, inną niż `sync=`, i komunikatem `waiting for healthy state of …` oznacza zawieszoną operację.
+  Przerwanie (to samo co `argocd app terminate-op shop`; CRD aplikacji nie ma podzasobu `status`, więc bez `--subresource`):
+
+  ```sh
+  ssh <user>@<adres> 'sudo k3s kubectl -n argocd patch application shop --type merge -p "{\"status\":{\"operationState\":{\"phase\":\"Terminating\"}}}"'
+  ```
+
+  Automatyczna synchronizacja zaczyna od razu nową operację na bieżącej rewizji; to samo sprawdzenie pokazuje ją z nową
+  datą startu. Dane, wolumeny i sekrety zostają.
+- **Pod StatefulSetu, który nigdy nie był gotowy, nie dostaje nowej wersji** (**użytkownik**). Kontroler StatefulSetu
+  czeka na gotowość starego poda przed jego wymianą (w Kubernetes „forced rollback”), więc poprawka sondy albo obrazu nie
+  dociera do niego sama, nawet po udanej synchronizacji. Gdy nowy szablon jest już w StatefulSecie
+  (`sudo k3s kubectl -n shop get statefulset <nazwa> -o yaml`), pod usuwa się ręcznie, a StatefulSet zakłada go od razu
+  z nowym szablonem; wolumen z danymi zostaje:
+
+  ```sh
+  ssh <user>@<adres> 'sudo k3s kubectl -n shop delete pod <nazwa>-0'
+  ```
 
 ## 8. Kopie zapasowe: lista, ćwiczenie odtworzenia, utrata serwera
 

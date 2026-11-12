@@ -1,5 +1,5 @@
 #!/bin/sh
-# Prepares a clean Ubuntu 24.04 server over SSH: `make -C infra/k8s bootstrap HOST=<user>@<address> [SEALED_KEY_FILE=<file>]`.
+# Prepares a clean Ubuntu 26.04 server over SSH: `make -C infra/k8s bootstrap HOST=<user>@<address> [SEALED_KEY_FILE=<file>]`.
 # Copies scripts/server-bootstrap.sh and argocd/ to the server and runs it there as root (sudo -n when the user is not
 # root): k3s, vm.max_map_count, the firewall, automatic security updates, Argo CD, the Sealed Secrets controller and the
 # root application. It can be run again: what is already right is left alone.

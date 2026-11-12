@@ -162,7 +162,8 @@ final class ProductVersionTest extends KernelTestCase
     public function testSavingUnchangedProductKeepsVersionAndAssignments(): void
     {
         [$main, $a, $b] = $this->savedCategories(3);
-        $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$b, $a], 'imageAlts' => ['front']]);
+        // Published in an earlier second than the saves below, so the copies must carry the stored firstPublishedAt.
+        $product = ProductFactory::createOne(['mainCategory' => $main, 'additionalCategories' => [$b, $a], 'imageAlts' => ['front'], 'createdAt' => new \DateTimeImmutable('-1 hour')]);
         $this->products->save($product, null, null, new \DateTimeImmutable());
         $this->entityManager->clear();
 
@@ -556,6 +557,8 @@ final class ProductVersionTest extends KernelTestCase
                 static fn (ProductVariant $variant): array => ['id' => $variant->id()->toString(), 'values' => $variant->values()->toList()],
                 $product->variants()->toList(),
             ),
+            // A published copy takes firstPublishedAt from createdAt; a fresh "now" differs once a second boundary passes.
+            'createdAt' => $product->firstPublishedAt() ?? new \DateTimeImmutable(),
             ...$overrides,
         ]);
     }

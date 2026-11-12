@@ -105,7 +105,7 @@ backups:
 seal-secrets:
 	sh scripts/seal-secrets.sh $(WHAT)
 
-# Prepares a clean Ubuntu 24.04 server over SSH (k3s, firewall, security updates, Argo CD, Sealed Secrets):
+# Prepares a clean Ubuntu 26.04 server over SSH (k3s, firewall, security updates, Argo CD, Sealed Secrets):
 # make -C infra/k8s bootstrap HOST=<user>@<address> [SEALED_KEY_FILE=<backup of the key of the controller>].
 # Idempotent; refuses without root and on another system before any change. Writes the certificate of the controller to
 # environments/prod/sealed-secrets.pem when the repository has none. SSH_OPTS adds options for ssh.

@@ -1,6 +1,6 @@
 #!/bin/sh
-# The test of scripts/server-bootstrap.sh in a container with Ubuntu 24.04, as root, without k3s and without systemd
-# (`make -C infra/k8s check`, step bootstrap, runs it: docker run ... ubuntu:24.04 sh /repo/infra/k8s/tests/bootstrap/test.sh).
+# The test of scripts/server-bootstrap.sh in a container with Ubuntu 26.04, as root, without k3s and without systemd
+# (`make -C infra/k8s check`, step bootstrap, runs it: docker run ... ubuntu:26.04 sh /repo/infra/k8s/tests/bootstrap/test.sh).
 #
 # Real in the container: the checks (root, os-release, versions), every file the script writes (/etc/apt/apt.conf.d,
 # /etc/sysctl.d, /etc/rancher/k3s, /var/lib/shop-bootstrap), the ordering and the idempotence of the steps.
@@ -120,10 +120,10 @@ if [ "$status" -eq 2 ] && grep -q 'must run as root' "$fake/out" && nothing_chan
   fail "no root" "status $status: $(cat "$fake/out")"; fi
 
 cp /etc/os-release "$fake/os-release.orig"
-for system in 'ID=debian\nVERSION_ID="12"' 'ID=ubuntu\nVERSION_ID="22.04"' 'ID=ubuntu\nVERSION_ID="25.04"'; do
+for system in 'ID=debian\nVERSION_ID="12"' 'ID=ubuntu\nVERSION_ID="22.04"' 'ID=ubuntu\nVERSION_ID="24.04"' 'ID=ubuntu\nVERSION_ID="25.10"'; do
   printf '%b\n' "$system" > /etc/os-release
   run "$payload"
-  if [ "$status" -eq 2 ] && grep -q 'supports only Ubuntu 24.04' "$fake/out" && nothing_changed; then ok "another system ($(printf '%b' "$system" | tr '\n' ' ')): refused with exit 2, nothing changed"; else
+  if [ "$status" -eq 2 ] && grep -q 'supports only Ubuntu 26.04' "$fake/out" && nothing_changed; then ok "another system ($(printf '%b' "$system" | tr '\n' ' ')): refused with exit 2, nothing changed"; else
     fail "other system" "status $status: $(cat "$fake/out")"; fi
 done
 cp "$fake/os-release.orig" /etc/os-release

@@ -161,7 +161,8 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   skille, hooki AO, rulesety) `.github/scripts/script-tests.sh` znajduje po położeniu, więc nowy skill nie zmienia
   `ci.yml`. Wyjątki dotyczą tylko PR (`.github/scripts/scope.sh`): PR zmieniający wyłącznie
   dokumentację niczego nie uruchamia, a PR zmieniający wyłącznie narzędzia repo (`.claude/**`, `.ao/**`, `tools/**`,
-  ewentualnie z dokumentacją) uruchamia tylko testy skryptów. Testy na usługach stosu trafiają do CI w tym samym PR
+  ewentualnie z dokumentacją) uruchamia tylko testy skryptów, a PR zmieniający wyłącznie wdrożenie Kubernetes
+  (`infra/k8s/**`, ewentualnie z dokumentacją) uruchamia tylko `make -C infra/k8s check`. Testy na usługach stosu trafiają do CI w tym samym PR
   co kod, razem z uruchomieniem usług, których potrzebują.
 - Zadania ustawiające reguły (lint, Deptrac, CORS i podobne) sprawdzają też próby obejścia, nie tylko
   przypadek podstawowy.

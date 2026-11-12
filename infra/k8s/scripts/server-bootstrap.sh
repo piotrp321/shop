@@ -1,5 +1,5 @@
 #!/bin/sh
-# Prepares a clean Ubuntu 24.04 server for the shop (runs ON the server, as root; `make -C infra/k8s bootstrap HOST=...`
+# Prepares a clean Ubuntu 26.04 server for the shop (runs ON the server, as root; `make -C infra/k8s bootstrap HOST=...`
 # copies it there with argocd/ and runs it). Idempotent: a second run changes nothing that is already right.
 #
 #   server-bootstrap.sh <payload directory>
@@ -12,7 +12,7 @@
 # certificate in the repository stays valid) and, when the repository has it, sealed-secrets.pem (that certificate: when the
 # controller's differs, the script stops before it applies the root application).
 #
-# Before any change it checks: root, Ubuntu 24.04, the k3s version, the payload. Then: packages, automatic security
+# Before any change it checks: root, Ubuntu 26.04, the k3s version, the payload. Then: packages, automatic security
 # updates, vm.max_map_count, the firewall (ufw: SSH and the API of k3s), k3s, Argo CD (the Helm controller of k3s installs
 # the pinned chart), the key of Sealed Secrets (from the backup, when given), the Sealed Secrets controller (the same
 # Application the root adopts later), the certificate of the controller written to /var/lib/shop-bootstrap/ for
@@ -35,13 +35,13 @@ payload="${1:-}"
 [ "$(id -u)" -eq 0 ] || fail "must run as root (the user is $(id -un)); nothing was changed" 2
 
 os_release=/etc/os-release
-[ -r "$os_release" ] || fail "no $os_release: this is not Ubuntu 24.04; nothing was changed" 2
+[ -r "$os_release" ] || fail "no $os_release: this is not Ubuntu 26.04; nothing was changed" 2
 # Read as text, not sourced: the file is data of the system, not a script to run as root.
 os_field() { sed -n "s/^$1=//p" "$os_release" | head -n 1 | tr -d '"'; }
 os_id="$(os_field ID)"
 os_version="$(os_field VERSION_ID)"
-if [ "$os_id" != ubuntu ] || [ "$os_version" != 24.04 ]; then
-  fail "supports only Ubuntu 24.04, this is '$os_id $os_version'; nothing was changed" 2
+if [ "$os_id" != ubuntu ] || [ "$os_version" != 26.04 ]; then
+  fail "supports only Ubuntu 26.04, this is '$os_id $os_version'; nothing was changed" 2
 fi
 
 k3s_version="${K3S_VERSION:-}"
