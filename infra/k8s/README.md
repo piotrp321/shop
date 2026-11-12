@@ -174,16 +174,21 @@ Wszystko **użytkownik**.
      host="${url%%/*}"
      curl -sk -o /dev/null -w "$url %{http_code}\n" --resolve "$host:443:<IP>" "https://$url"
    done
-   # Przez Cloudflare z własnym CF-Connecting-IP, za każdym razem innym: Cloudflare go nadpisuje, więc limit
-   # złożenia zamówienia (10 na 15 min) liczy się na adres nadawcy i 11. żądanie to 429, a nie kolejne 422.
+   # Przez Cloudflare z własnym CF-Connecting-IP: Cloudflare odrzuca takie żądanie sam (403, "error code: 1000",
+   # nagłówek server: cloudflare), więc podrobiony adres nie dociera do originu.
+   curl -s -w "\n%{http_code}\n" -X POST -H 'Content-Type: application/json' -H "Idempotency-Key: origin-check-spoof" \
+     -H "CF-Connecting-IP: 203.0.113.1" -d '{}' "https://api.<domena>/api/v1/orders"
+   # Bez podrabiania: limit złożenia zamówienia (10 na 15 min) liczy się na prawdziwy adres nadawcy, więc 11. żądanie
+   # to 429, a nie kolejne 422.
    for n in $(seq 1 11); do
      curl -s -o /dev/null -w "%{http_code}\n" -X POST -H 'Content-Type: application/json' \
-       -H "Idempotency-Key: origin-check-$n" -H "CF-Connecting-IP: 203.0.113.$n" -d '{}' "https://api.<domena>/api/v1/orders"
+       -H "Idempotency-Key: origin-check-$n" -d '{}' "https://api.<domena>/api/v1/orders"
    done
    ```
 
-   Oczekiwane: pierwsza pętla tylko `403` albo `000`; druga dziesięć razy `422`, potem `429`. Inny wynik
-   (origin odpowiada z pominięciem Cloudflare albo 11. żądanie przechodzi) to błąd do naprawy przed publicznym demo:
+   Oczekiwane: pierwsza pętla tylko `403` albo `000`; żądanie z podrobionym nagłówkiem `403` z `error code: 1000`;
+   ostatnia pętla dziesięć razy `422`, potem `429`. Inny wynik (origin odpowiada z pominięciem Cloudflare, podrobiony
+   nagłówek dociera do API albo 11. żądanie przechodzi) to błąd do naprawy przed publicznym demo:
    do tego czasu ten krok jest blokerem trybu publicznego demo (#179). Wynik zapisz w komentarzu do #179. Po teście adres
    nadawcy ma wyczerpany limit zamówień na 15 minut.
 
