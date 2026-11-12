@@ -187,7 +187,7 @@ niezweryfikowana próba ominięcia Cloudflare) i propozycje zgłoszeń.
   rosnącego obciążenia do nasycenia (p95 powyżej 2 s albo błędy 5xx i sieci powyżej 1%) i przebieg stały na 70%
   nasycenia, zbiór wyników do katalogu poza repo (`LOAD_OUT`, wymagany), usunięcie klastra przy każdym wyjściu. Kod
   wyjścia: 0 – pomiar wykonany (bez progów zaliczenia), 2 – błąd środowiska z komunikatem (brak `LOAD_OUT`, za mało
-  zasobów VM Dockera, pody niegotowe, dane demo albo stany niegotowe, nieudane rozgrzanie), 1 – inny błąd (nieudany
+  zasobów VM Dockera, obrazy nieobecne w węźle po trzech importach, pody niegotowe, dane demo albo stany niegotowe, nieudane rozgrzanie), 1 – inny błąd (nieudany
   przebieg k6, budowa obrazów). VM Dockera ma mieć co najmniej 10 vCPU i 20 GiB RAM (`LOAD_MIN_CPUS`,
   `LOAD_MIN_MEM_GIB`; pody `prod` żądają około 5 vCPU i 8,5 GiB).
 - Przebieg rosnący do nasycenia obejmuje scenariusze odczytu i koszyka, bez checkoutu: to jest maksymalna zmierzona

@@ -198,9 +198,11 @@ break_image() {
   printf 'FROM %s/store:r1\nENTRYPOINT ["/bin/false"]\n' "$registry" | docker build -q -t "$registry/store:$1" - >/dev/null
 }
 
+# import_images <revision>: the images of that revision into the node, checked there before any helm upgrade uses them
+# (import-images.sh: k3d may end with 0 without importing them).
 import_images() {
   # shellcheck disable=SC2046 # the names have no spaces
-  k3d image import -c "$cluster" $(for app in $apps; do echo "$registry/$app:$1"; done) >/dev/null
+  sh "$here/import-images.sh" "$cluster" "$node" $(for app in $apps; do echo "$registry/$app:$1"; done)
 }
 
 # ---------------------------------------------------------------------------------------------------------------
