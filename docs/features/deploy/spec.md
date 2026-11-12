@@ -6,8 +6,10 @@ GitOps przez Argo CD. Na start działa jako demonstracja (sklep publiczny z info
 ograniczenia są wartościami konfiguracji, więc przejście na publiczny sklep nie wymaga przebudowy obrazów ani
 architektury. Nocne kopie zapasowe, ich weryfikacja i odtwarzanie (`make -C infra/k8s restore`) są częścią chartu (sekcja
 „Kopie zapasowe”); logi i metryki klastra trafiają do Grafana Cloud przez Grafana Alloy (aplikacja Argo CD `monitoring`,
-`docs/features/deploy-ops/spec.md`, O5 i O7); alerty to dalsze zadanie DEPLOY-OPS (#178), które musi być skończone przed
-przełączeniem na publiczny sklep albo przed pierwszymi prawdziwymi danymi.
+`docs/features/deploy-ops/spec.md`, O5 i O7); alerty (nieudana albo brakująca kopia i weryfikacja, zajęty dysk węzła, brak
+sygnału z klastra, niegotowy workload) to `PrometheusRule` w chartcie, synchronizowany do Grafana Cloud
+(`docs/features/deploy-ops/spec.md`, O6). Prawdziwe dane i publiczny start wymagają jeszcze ćwiczenia odtworzenia z
+runbooka na serwerze (zgoda użytkownika).
 
 Issues: #175
 Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.github/workflows/ci.yml`, `.github/scripts`, `.gitignore`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.dockerignore`, `apps/api/bin`, `apps/store/Dockerfile`, `apps/store/.dockerignore`, `apps/store/next.config.ts`, `apps/store/app/layout.tsx`, `apps/store/app/api/site`, `apps/store/src/api/client.ts`, `apps/store/src/components`, `apps/store/src/account`, `apps/admin/Dockerfile`, `apps/admin/.dockerignore`, `apps/admin/docker`, `apps/admin/index.html`, `apps/admin/public`, `apps/admin/src/auth`, `apps/admin/src/api/client.ts`, `apps/admin/src/config`, `Makefile`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `apps/admin/CLAUDE.md`, `docs/vision.md`, `docs/adr`, `tools/rulesets`
@@ -34,8 +36,8 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 
 ## Poza zakresem
 
-- Alerty – DEPLOY-OPS (#178). Tu nocna kopia (restic), jej weryfikacja, odtwarzanie, logi i metryki do Grafana Cloud (Alloy) i
-  włączenie backupu VPS-a od OVH (runbook).
+- Alerty z treści logów i automatyczne wyciszanie alertów. Tu nocna kopia (restic), jej weryfikacja, odtwarzanie, logi,
+  metryki i alerty w Grafana Cloud (Alloy, `PrometheusRule`) i włączenie backupu VPS-a od OVH (runbook).
 - Osobne środowiska demo i produkcji, wiele węzłów, autoskalowanie, Rancher, własny Prometheus i Loki.
 - Tryb publicznego demo (nocny reset danych, publiczne konta demo, limity uploadów) – #179.
 - Sentry (SDK w api, store i admin) oraz trace'y i Sentry Performance – #180.
@@ -307,7 +309,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   bucketu `product-images` z Garage (`rclone sync`, klucz S3 sklepu) i `manifest.json` (rewizja, czas, identyfikator
   klastra, wersje migracji Doctrine z bazy `shop`, liczba i rozmiar obiektów). Całość trafia jako jeden snapshot (tag
   `nightly`, host równy identyfikatorowi klastra) do zaszyfrowanego repozytorium restic w S3 (Cloudflare R2 w `prod`);
-  repozytorium zakłada się samo przy pierwszej kopii, a `restic forget --keep-within 7d --prune` przycina tylko
+  repozytorium zakłada się samo przy pierwszej kopii, a `restic forget --keep-within 7d --prune` po kopii `nightly` przycina tylko
   snapshoty tego klastra (nowy serwer po awarii nie usuwa kopii starego).
 - Pod ma kontenery po kolei na PVC `backup-work` (`storage.backupWork`, 25 Gi: lustro obiektów i cache restic): `cluster-id`
   (UID przestrzeni `kube-system`; jedyny z tokenem API, ClusterRole z samym `get` na `namespaces/kube-system`, bez
@@ -329,8 +331,8 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   (jak w kopii), `postgres` (natywny sidecar, tylko pętla zwrotna, bez sekretów) i `verify` (jedyny z sekretem
   `shop-backup`, bez tokenu; `restic` z obrazu `restic/restic` zamontowanego jako wolumen obrazu, razem z jego certyfikatami CA w `SSL_CERT_FILE`:
   obraz `postgres` ich nie ma, a repozytorium w `prod` jest po HTTPS). Dane tymczasowego Postgresa leżą na `emptyDir` z limitem
-  równym `storage.postgres`: pod, którego odtworzone bazy go przerosną, jest wyrzucany, a nie zapełnia dysku węzła. Alerty weryfikacji
-  są w DEPLOY-OPS (#178).
+  równym `storage.postgres`: pod, którego odtworzone bazy go przerosną, jest wyrzucany, a nie zapełnia dysku węzła. Brak weryfikacji albo jej
+  błąd to alerty `BackupVerifyMissing` i `BackupVerifyFailed` (`docs/features/deploy-ops/spec.md`, O6).
 - Odtworzenie: `make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip]` (zgoda użytkownika) tworzy Joby z wstrzymanego
   CronJoba `restore` (`suspend: true`, `activeDeadlineSeconds: 10800`, `backoffLimit: 0`; obrazy i sekrety wdrożonej
   rewizji, bez tokenu API, sekret `shop-backup` tylko w kontenerze restic) i z Jobów wersji. Odmawia bez zmian: bez
@@ -351,7 +353,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   zmienia). Smoke test uruchamia kopię i jej weryfikację na osobnej instancji S3 (przestrzeń `smoke-backup`), sprawdza snapshot,
   a potem odtwarza go na pustym klastrze (przestrzeń `shop` usunięta z wolumenami, chart zainstalowany od nowa) i sprawdza
   odmowę snapshotu nowszego niż kod.
-- Automatyczny backup VPS-a od OVH (runbook: włączenie) zostaje dodatkową kopią całego serwera. Alerty są w DEPLOY-OPS (#178).
+- Automatyczny backup VPS-a od OVH (runbook: włączenie) zostaje dodatkową kopią całego serwera. Alerty kopii (`BackupFailed`, `BackupMissing`) są w Grafana Cloud (`docs/features/deploy-ops/spec.md`, O6).
 
 ## Sekrety
 
@@ -517,9 +519,9 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   zgłoszeniu.
 - **Klucz Sealed Secrets** jest jedyną rzeczą, której nie da się odtworzyć z repo; trzyma go użytkownik.
 - **Odtworzenie ćwiczone przed serwerem tylko w smoke teście.** Nocna kopia do R2 jest codziennie weryfikowana
-  (bez alertu na jej wynik), a smoke test odtwarza ją na pustym klastrze, ale bez Argo CD: wyłączanie synchronizacji
+  (alerty na jej wynik i brak), a smoke test odtwarza ją na pustym klastrze, ale bez Argo CD: wyłączanie synchronizacji
   sprawdzają testy na atrapie `kubectl`, a serwer dopiero ćwiczenie odtworzenia z runbooka (zgoda użytkownika). Backup VPS-a
-  od OVH działa od pierwszego dnia. Prawdziwe dane i publiczny start dopiero po DEPLOY-OPS. Klucz R2 w klastrze pozwala usunąć kopie (token tylko do jednego
+  od OVH działa od pierwszego dnia. Prawdziwe dane i publiczny start dopiero po ćwiczeniu odtworzenia z runbooka na serwerze (zgoda użytkownika). Klucz R2 w klastrze pozwala usunąć kopie (token tylko do jednego
   bucketu; kopie niezmienne poza zakresem demo).
 - **AppArmor containerd na Ubuntu 26.04.** k3s v1.36 oficjalnie wspiera Ubuntu 26.04 (matryca SUSE), ale przy nakładaniu
   profili (profile stacking) profil `cri-containerd.apparmor.d` blokuje sygnały między

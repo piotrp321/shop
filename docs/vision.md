@@ -334,14 +334,15 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
   zdarzenia klastra i metryki z listy dozwolonych. Logi są maskowane w Alloy przed wysłaniem (hasła, tokeny, nagłówki
   `Authorization` i ciasteczka, adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i `STATEMENT` Postgresa
   odrzucone), a Mailpit nie jest zbierany. Alloy czyta z klastra tylko sekret z tokenem Grafana Cloud.
+- **Alerty**: siedem reguł `PrometheusRule` w chartcie (tylko `prod`), które Alloy synchronizuje do rulera Grafana Cloud:
+  nieudana albo brakująca kopia, nieudana albo brakująca weryfikacja kopii, zajęty dysk węzła, brak sygnału z klastra i
+  niegotowy workload sklepu. Kopie są codziennie weryfikowane, a odtworzenie sprawdza test dymny; prawdziwe dane
+  i publiczny start dopiero po ćwiczeniu odtworzenia z runbooka na serwerze.
 - **Poczta**: Brevo SMTP dla Keycloaka i (za przełącznikiem) potwierdzeń zamówień; SPF, DKIM, DMARC w Cloudflare.
 - **Świadomie bez Ranchera**: przy jednym klastrze to narzut bez korzyści.
 
 Kolejne kroki, osobne zgłoszenia:
 
-- **DEPLOY-OPS** (#178): alerty w Grafana Cloud (nieudana albo brakująca kopia i weryfikacja, zajęty dysk węzła, brak sygnału
-  z klastra, niegotowy workload sklepu). Kopie, ich weryfikacja, odtwarzanie oraz logi i metryki klastra w Grafana Cloud już są.
-  Musi być skończone przed przełączeniem na publiczny sklep albo przed pierwszymi prawdziwymi danymi.
 - **Tryb publicznego demo** (#179): dane resetowane co noc z danych demo, konta demo podane na stronie logowania, limity
   uploadów.
 - **Sentry** (#180): Sentry SaaS (darmowy plan) dla API, store i admin, także Sentry Performance.

@@ -429,6 +429,17 @@ class RestoreScriptTest(unittest.TestCase):
         self.assertLess(backup_create, first_change)
         self.assertIn(PRE_RESTORE, result.stdout)
 
+    def test_the_snapshot_pre_restore_is_found_in_a_long_log_of_the_backup(self):
+        """The line `snapshot <id> saved` is not the last of the log: kubectl logs is read whole, not its last lines."""
+        outcomes = initial_state()["outcomes"]
+        long_log = f"backup: snapshot with the tag pre-restore\nsnapshot {PRE_RESTORE} saved\n" + "".join(f"backup: line {i}\n" for i in range(100))
+        outcomes[2] = ["backup-pre-restore-", "Complete", long_log]
+        cluster = self.stub(outcomes=outcomes)
+        result = self.restore(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn(f"restore: the pre-restore snapshot is {PRE_RESTORE}", result.stdout)
+        self.assertIn(f"the state before it is the pre-restore snapshot {PRE_RESTORE}", result.stdout)
+
     def test_a_failed_backup_pre_restore_stops_it_without_changes(self):
         outcomes = initial_state()["outcomes"]
         outcomes[2] = ["backup-pre-restore-", "Failed", "backup: cannot open the repository\n"]
@@ -476,6 +487,19 @@ class RestoreScriptTest(unittest.TestCase):
         result = self.restore(cluster)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual({"api": 1, "worker": 1, "store": 1, "keycloak": 1}, cluster.state()["deployments"])
+
+    def test_after_a_restore_that_failed_the_cronjobs_it_left_suspended_come_back_as_the_chart_has_them(self):
+        """The rerun with PRE_RESTORE=skip that README recommends finds cart-purge-expired and backup suspended: the chart never
+        suspends them (Argo CD would not undo it), so they must not stay suspended for good."""
+        cluster = self.stub(deployments={"api": 0, "worker": 0, "store": 0, "keycloak": 0})
+        state = cluster.state()
+        state["cronjobs"]["backup"]["suspend"] = True
+        state["cronjobs"]["cart-purge-expired"]["suspend"] = True
+        (cluster.root / "state.json").write_text(json.dumps(state))
+        result = self.restore(cluster, PRE_RESTORE="skip")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual({"restore": True, "backup": False, "cart-purge-expired": False},
+                         {n: c["suspend"] for n, c in cluster.state()["cronjobs"].items()})
 
     def test_the_jobs_run_in_order_and_the_jobs_of_the_version_under_their_names(self):
         cluster = self.stub()

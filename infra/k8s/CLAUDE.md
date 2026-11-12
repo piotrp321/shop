@@ -34,7 +34,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   wystartował po pierwszym sprawdzeniu (`RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, domyślnie 7200 s; potem błąd bez zmiany
   aplikacji), skaluje do zera `api`, `worker`, `store` i `keycloak`, Job z
   CronJoba `restore` odtwarza dane, ponawia `migrate`, `keycloak-config` (jak `rerun`), reindeks i `purge-caches`, przywraca
-  repliki, CronJoby i synchronizację `root`; błąd po pierwszej zmianie zostawia aplikacje wyłączone i wypisuje krok oraz
+  repliki, CronJoby (`suspend: false` jak w chartcie, także po przerwanej próbie) i synchronizację `root`; błąd po pierwszej zmianie zostawia aplikacje wyłączone i wypisuje krok oraz
   snapshot `pre-restore`; kod 0, 1 odmowa albo błąd, 2 złe argumenty) i `make -C infra/k8s backups` (snapshoty repozytorium:
   identyfikator, czas, host, tagi, rewizja; tylko odczyt). `rerun`, `create-admin`, `restore` i `backups` łączą się z
   klastrem przez kubeconfig z `KUBE_DIR` (wymagany), w kontenerze w sieci Dockera `KUBE_NETWORK` (domyślnie `host`), w
@@ -71,7 +71,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   razem z `image.requireDigests` kończą render błędem) oraz testy
   skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker` oraz skryptów kopii `backup.sh` i weryfikacji `backup-verify.sh` na atrapach
   `pg_dump`, `psql`, `rclone`, `restic`, `pg_restore` i `date` (błąd każdego narzędzia kończy je błędem i `backup.sh` nie
-  robi snapshotu; tag, host i manifest snapshotu; `forget --keep-within`; weryfikacja: snapshot `nightly` tego klastra
+  robi snapshotu; tag, host i manifest snapshotu; `forget --keep-within` tylko po kopii `nightly` (kopia `pre-restore` niczego nie przycina); weryfikacja: snapshot `nightly` tego klastra
   starszy niż 26 h albo brak snapshotu, błąd `restic check`, `n` w `--read-data-subset=n/7` z `date +%u` i `--read-data`
   przy `verifyReadData: all`, dumpy strumieniem z `restic dump` do `pg_restore`, błąd `pg_restore` albo `restic dump`,
   pusta tabela migracji, brak realmu `shop` albo `backoffice`, liczba obiektów inna niż w manifeście: błąd z opisem,
@@ -80,8 +80,8 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   migracji obrazu `api` odrzucony przed odtworzeniem; kolejność `DROP`/`CREATE`/`pg_restore` z rolą właściciela; błąd każdego
   narzędzia kończy etap błędem), skryptów `restore.sh`, `backups.sh` i `rerun.sh` na atrapie `docker` grającej klaster dla
   `kubectl` (bez `tak`, bez `SNAPSHOT`, przy aktywnym Jobie, trwającej synchronizacji `shop` i snapshocie nowszym niż kod
-  nic się nie zmienia; nieudana kopia `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; kolejność kroków z Argo CD
-  (`root`, potem `shop`, na końcu `root`) i bez niego (zapamiętane repliki); błąd Joba odtworzenia zostawia aplikacje
+  nic się nie zmienia; nieudana kopia `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; identyfikator snapshotu `pre-restore` jest czytany z pełnego logu Joba, także przy długim; kolejność kroków z Argo CD
+  (`root`, potem `shop`, na końcu `root`) i bez niego (zapamiętane repliki; CronJoby wstrzymane po przerwanej próbie wracają do `suspend: false`); błąd Joba odtworzenia zostawia aplikacje
   wyłączone i wypisuje krok oraz snapshot `pre-restore`; aplikacje bez `automated` w Argo CD; Job aktywny, który pojawił się po
   pierwszym sprawdzeniu, jest czekany i po limicie kończy odtworzenie przed tym, co rusza dane; czekanie najwyżej `activeDeadlineSeconds` Joba). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
   i historii), PVC `backup-work`, token API tylko w kontenerze identyfikatora klastra (bez sekretu), sekret `shop-backup`

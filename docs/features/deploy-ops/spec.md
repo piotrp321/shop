@@ -66,9 +66,12 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   4. `manifest.json`: rewizja (tag obrazu `api`), czas, wersje migracji Doctrine z bazy `shop` (tabela
      `doctrine_migration_versions`), liczba obiektów i bajtów;
   5. `restic unlock` (tylko nieaktualne blokady), `restic backup --retry-lock 30m` katalogów `dumps/`, `objects/`
-     i manifestu z tagiem `BACKUP_TAG` (domyślnie `nightly`) i `--host` równym identyfikatorowi klastra, potem `restic
-     forget --keep-within 7d --prune --retry-lock 30m` (restic grupuje po hoście, więc klaster przycina tylko własne
-     snapshoty: nowy serwer po awarii nie usunie kopii starego); repozytorium inicjuje się samo przy pierwszej kopii
+     i manifestu z tagiem `BACKUP_TAG` (domyślnie `nightly`) i `--host` równym identyfikatorowi klastra, a po kopii
+     `nightly` także `restic forget --keep-within 7d --prune --retry-lock 30m` (restic grupuje po hoście, więc klaster
+     przycina tylko własne snapshoty: nowy serwer po awarii nie usunie kopii starego). Kopia z innym tagiem
+     (`pre-restore` z O4) niczego nie przycina: `--keep-within` liczy od najnowszego snapshotu hosta, więc kopia tuż przed
+     odtworzeniem mogłaby usunąć najstarsze snapshoty `nightly`, w tym ten do odtworzenia; nocna kopia przycina ją po
+     7 dniach jak inne snapshoty hosta; repozytorium inicjuje się samo przy pierwszej kopii
      (`restic init`, gdy go nie ma; każdy inny błąd dostępu to błąd).
 
   Błąd dowolnego kroku przed `restic backup` kończy Job bez snapshotu. Obrazy `restic/restic` i `rclone/rclone` są
@@ -127,7 +130,8 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   6. ponawia istniejące Joby bieżącej rewizji tym samym mechanizmem co `rerun`: `migrate` (snapshot starszy niż kod),
      przywraca `keycloak` i ponawia `keycloak-config` (odtworzona baza cofa sekret klienta `store`, adresy, rejestrację,
      `verifyEmail` i SMTP do stanu snapshotu), potem `catalog:reindex` (Job z CronJoba `restore` w trybie `reindex`,
-     obraz `api`); przywraca `api`, `worker`, `store` i CronJoby, czeka na rollout, ponawia `purge-caches`, a przy Argo CD
+     obraz `api`); przywraca `api`, `worker`, `store` i CronJoby (`suspend: false` jak w chartcie, który ich nie wstrzymuje, także po
+     poprzedniej próbie, która je zostawiła wstrzymane), czeka na rollout, ponawia `purge-caches`, a przy Argo CD
      włącza automatyczną synchronizację `root` (ten przywraca `shop`);
   7. błąd w krokach 4–6: wypisuje, na którym kroku stanął i jaki snapshot `pre-restore` powstał; nie włącza aplikacji
      z częściowo odtworzonymi danymi; runbook opisuje dokończenie.
