@@ -185,6 +185,12 @@ class Crds(unittest.TestCase):
         names = {name(d) for d in docs("prometheus-crds") if d["kind"] == "CustomResourceDefinition"}
         self.assertIn("prometheusrules.monitoring.coreos.com", names)
 
+    def test_the_crds_are_not_deleted_with_the_application(self):
+        crds = [d for d in docs("prometheus-crds") if d["kind"] == "CustomResourceDefinition"]
+        self.assertTrue(crds)
+        for crd in crds:
+            self.assertEqual("Delete=false", crd["metadata"].get("annotations", {}).get("argocd.argoproj.io/sync-options"), name(crd))
+
 
 class AllowedMetrics(unittest.TestCase):
     def keep_expressions(self, component):

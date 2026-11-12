@@ -17,6 +17,12 @@ spec:
     targetRevision: 33.0.2
     helm:
       releaseName: prometheus-crds
+      valuesObject:
+        # Deleting this application (or pruning it) does not delete the CRDs: that would delete every object of these kinds in
+        # the cluster, the PrometheusRule objects of the shop among them.
+        crds:
+          annotations:
+            argocd.argoproj.io/sync-options: Delete=false
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system

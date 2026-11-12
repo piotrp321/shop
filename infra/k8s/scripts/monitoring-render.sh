@@ -86,8 +86,9 @@ if ! helm template "$release" "/cache/charts/$monitoring_chart-$monitoring_versi
   echo "monitoring-render: helm template failed for the application monitoring" >&2
   exit 1
 fi
+yq '.spec.source.helm.valuesObject // {}' < "$TOOLS_REPO/infra/k8s/argocd/apps/prometheus-crds.yaml" > "$out/prometheus-crds-values.yaml"
 if ! helm template prometheus-crds "/cache/charts/$crds_chart-$crds_version.tgz" --namespace kube-system --include-crds \
-  --kube-version "$KUBERNETES_VERSION" > "$out/prometheus-crds.yaml"; then
+  --kube-version "$KUBERNETES_VERSION" -f "$in_cache/prometheus-crds-values.yaml" > "$out/prometheus-crds.yaml"; then
   echo "monitoring-render: helm template failed for the application prometheus-crds" >&2
   exit 1
 fi
