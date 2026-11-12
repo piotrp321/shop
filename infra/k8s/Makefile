@@ -23,7 +23,10 @@ check:
 # going on without tak, the monitoring (Alloy) with no masking of e-mail addresses in the logs, with a ClusterRole of Alloy or a Role that read all
 # Secrets, with the RBAC of the chart of the operator, a Role of the operator that changes RBAC objects, the operator watching the whole
 # cluster, the Alloy resource making its own RBAC, with the cluster events not masked like the logs of the pods, collecting the logs of Mailpit, a chart of the monitoring
-# without a digest in monitoring-render.sh or with another one, or stages that Alloy rejects).
+# without a digest in monitoring-render.sh or with another one, stages that Alloy rejects, without the admission policy on the access to the
+# host or the binding of the policy on the tokens, a policy that only warns or fails open, the policies in the wave of the workloads,
+# node-exporter known by its labels, the operator with DaemonSets or changing the Deployment of kube-state-metrics, Alloy with the proxy
+# of the nodes, the token of Alloy given to a group of service accounts).
 selftest:
 	sh scripts/selftest.sh
 

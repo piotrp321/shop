@@ -65,6 +65,32 @@ replace_after() {
   mv "$file.new" "$file"
 }
 
+# drop_extra_object <kind> <name>: removes from the extraObjects of the manifest monitoring of the copy the entry of that kind
+# and name (its lines from "- apiVersion:" to the next line that is not deeper); fails if there is no such entry.
+drop_extra_object() {
+  file="$tree/infra/k8s/argocd/apps/monitoring.yaml"
+  DROP_KIND="$1" DROP_NAME="$2" awk '
+    { line[NR] = $0 }
+    END {
+      for (i = 2; i <= NR - 2; i++) {
+        if (line[i] ~ ("^ *kind: " ENVIRON["DROP_KIND"] "$") && line[i + 2] ~ ("^ *name: " ENVIRON["DROP_NAME"] "$") && line[i - 1] ~ /^ *- apiVersion:/) {
+          start = i - 1
+          break
+        }
+      }
+      if (!start) exit 3
+      match(line[start], /^ */)
+      depth = RLENGTH
+      for (end = start + 1; end <= NR; end++) {
+        match(line[end], /^ */)
+        if (line[end] != "" && RLENGTH <= depth) break
+      }
+      for (i = 1; i <= NR; i++) if (i < start || i >= end) print line[i]
+    }' "$file" > "$file.new" \
+    || { echo "selftest: no $1 $2 in the extraObjects of monitoring.yaml: the case is out of date" >&2; exit 1; }
+  mv "$file.new" "$file"
+}
+
 # case <name> <expected text in the output> <command that injects the error>
 run_case() {
   name="$1" expected="$2"
@@ -200,10 +226,10 @@ backup_verify_reads_the_production_postgres() { replace infra/k8s/charts/shop/te
 monitoring_without_the_email_rule() { replace infra/k8s/argocd/apps/monitoring.yaml ']+@[' ']+Q['; }
 monitoring_alloy_rules_with_secrets() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [nodes, services, endpoints, pods, namespaces, events]' 'resources: [nodes, services, endpoints, pods, namespaces, events, secrets]'; }
 monitoring_operator_with_the_rbac_of_its_chart() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'ownNamespaceOnly: true' 'create: false' 'create: true'; }
-monitoring_operator_changing_rbac() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [configmaps, secrets, serviceaccounts, services]' 'resources: [configmaps, secrets, serviceaccounts, services]
-                verbs: [get, list, watch, create, update, patch, delete]
+monitoring_operator_changing_rbac() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'resources: [serviceaccounts, services]' 'verbs: [get, list, watch, create]' 'verbs: [get, list, watch, create]
               - apiGroups: [rbac.authorization.k8s.io]
-                resources: [roles, rolebindings]'; }
+                resources: [roles, rolebindings]
+                verbs: [get, list, watch, create]'; }
 monitoring_operator_on_the_whole_cluster() { replace infra/k8s/argocd/apps/monitoring.yaml 'ownNamespaceOnly: true' 'ownNamespaceOnly: false'; }
 monitoring_alloy_making_its_own_rbac() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'presets: [deployment]' 'create: false' 'create: true'; }
 monitoring_role_on_all_secrets_of_the_shop() { replace infra/k8s/argocd/apps/monitoring.yaml 'resourceNames: [grafana-cloud]' 'resourceNames: []'; }
@@ -213,6 +239,23 @@ monitoring_collecting_mailpit() { replace infra/k8s/argocd/apps/monitoring.yaml 
 # that Alloy does not accept.
 monitoring_chart_version_without_a_digest() { replace infra/k8s/argocd/apps/monitoring.yaml 'targetRevision: 4.6.0' 'targetRevision: 4.5.0'; }
 monitoring_chart_digest_differs() { replace infra/k8s/scripts/monitoring-render.sh 'k8s-monitoring-4.6.0) echo 082ecdce' 'k8s-monitoring-4.6.0) echo 082ecdcf'; }
+# The admission policies of monitoring (spec O5): the policy on the access to the host or the binding of the policy on the tokens
+# removed, a policy that only warns or lets a request pass when it fails, the policies in the same wave as the workloads, the
+# exception of node-exporter by its labels; the operator with a Role on DaemonSets or changing every Deployment; Alloy with the
+# proxy of the nodes; the Secret of the token given to a group of service accounts.
+monitoring_without_the_host_policy() { drop_extra_object ValidatingAdmissionPolicy monitoring-no-host-access; }
+monitoring_without_the_token_binding() { drop_extra_object ValidatingAdmissionPolicyBinding monitoring-no-service-account-tokens; }
+monitoring_policy_that_warns() { replace infra/k8s/argocd/apps/monitoring.yaml 'validationActions: [Deny]' 'validationActions: [Warn]'; }
+monitoring_policy_that_fails_open() { replace infra/k8s/argocd/apps/monitoring.yaml 'failurePolicy: Fail' 'failurePolicy: Ignore'; }
+monitoring_policy_with_the_workloads() { replace infra/k8s/argocd/apps/monitoring.yaml 'argocd.argoproj.io/sync-wave: "-1"' 'argocd.argoproj.io/sync-wave: "0"'; }
+monitoring_node_exporter_by_its_labels() { replace infra/k8s/argocd/apps/monitoring.yaml "request.userInfo.username == 'system:serviceaccount:kube-system:daemon-set-controller'" "object.metadata.labels['app.kubernetes.io/name'] == 'node-exporter'"; }
+monitoring_operator_with_daemon_sets() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [deployments]' 'resources: [deployments, daemonsets]'; }
+monitoring_operator_changing_every_deployment() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'resources: [deployments]' 'resourceNames: [monitoring-alloy]' 'resourceNames: [monitoring-alloy, monitoring-kube-state-metrics]'; }
+monitoring_alloy_with_the_proxy_of_the_nodes() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [nodes/metrics, pods/log]' 'resources: [nodes/metrics, nodes/proxy, pods/log]'; }
+monitoring_token_for_a_group() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'name: alloy-grafana-cloud' '- kind: ServiceAccount' '- kind: Group
+                name: system:serviceaccounts:monitoring
+                apiGroup: rbac.authorization.k8s.io
+              - kind: ServiceAccount'; }
 monitoring_stages_alloy_rejects() { replace infra/k8s/argocd/apps/monitoring.yaml 'drop_counter_reason = "postgres_detail_statement"' 'drop_counter_reason ='; }
 seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
@@ -280,7 +323,7 @@ run_case "seal-secrets looking for the existing backup secret in another file (i
 run_case "monitoring masking no e-mail address" "e-mail 'jan.kowalski' came out of Alloy" monitoring_without_the_email_rule
 run_case "Alloy with a ClusterRole that reads all Secrets" "with access to Secrets outside monitoring" monitoring_alloy_rules_with_secrets
 run_case "Alloy Operator with the RBAC of its chart" "gives the operator rights outside the namespace monitoring" monitoring_operator_with_the_rbac_of_its_chart
-run_case "Alloy Operator with a Role that changes RBAC objects" "can bind, escalate, impersonate or change RBAC objects" monitoring_operator_changing_rbac
+run_case "Alloy Operator with a Role that changes RBAC objects" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" monitoring_operator_changing_rbac
 run_case "Alloy Operator watching the whole cluster" "test_the_operator_watches_only_its_own_namespace" monitoring_operator_on_the_whole_cluster
 run_case "Alloy resource making its own RBAC" "the Alloy resource makes its own RBAC" monitoring_alloy_making_its_own_rbac
 run_case "Role of Alloy on all Secrets of the shop" "the Role does not name the one Secret" monitoring_role_on_all_secrets_of_the_shop
@@ -289,6 +332,16 @@ run_case "monitoring collecting Mailpit" "test_the_rules_drop_exactly_the_disabl
 run_case "monitoring chart version without a pinned digest" "has no sha256 in scripts/monitoring-render.sh" monitoring_chart_version_without_a_digest
 run_case "monitoring chart archive with another digest" "of scripts/monitoring-render.sh" monitoring_chart_digest_differs
 run_case "monitoring stages that Alloy rejects" "Alloy rejects the rendered configuration" monitoring_stages_alloy_rejects
+run_case "monitoring without the policy on the access to the host" "test_two_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_host_policy
+run_case "monitoring without the binding of the policy on the tokens" "test_two_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_token_binding
+run_case "monitoring admission policy that only warns" "test_two_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_policy_that_warns
+run_case "monitoring admission policy that fails open" "test_two_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_policy_that_fails_open
+run_case "monitoring admission policy in the wave of the workloads" "test_the_policies_and_their_bindings_come_before_everything_else_of_the_application" monitoring_policy_with_the_workloads
+run_case "monitoring admission policy that knows node-exporter by its labels" "test_the_only_exception_is_node_exporter_which_the_operator_cannot_forge" monitoring_node_exporter_by_its_labels
+run_case "Alloy Operator with a Role on DaemonSets" "test_the_operator_changes_only_its_alloy_and_makes_only_deployments" monitoring_operator_with_daemon_sets
+run_case "Alloy Operator changing the Deployment of kube-state-metrics" "test_the_operator_changes_only_its_alloy_and_makes_only_deployments" monitoring_operator_changing_every_deployment
+run_case "Alloy with the proxy of the nodes" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" monitoring_alloy_with_the_proxy_of_the_nodes
+run_case "the token of Alloy given to a group of service accounts" "not to Alloy only" monitoring_token_for_a_group
 run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" restore_without_confirmation
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 

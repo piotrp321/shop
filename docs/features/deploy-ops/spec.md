@@ -278,7 +278,11 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; kolejność kroków z Argo CD i bez; błąd w kroku 5 nie
   włącza aplikacji). `selftest` wstrzykuje: repozytorium bez hasła, CronJob kopii bez `concurrencyPolicy: Forbid`,
   `BackupMissing` bez `absent`, `restore` bez potwierdzenia, usunięcie reguły maskowania e-maili, Role Alloy na wszystkie
-  sekrety, przywrócony RBAC chartu operatora (ClusterRole).
+  sekrety, przywrócony RBAC chartu operatora (ClusterRole), Role operatora ze zmianą obiektów RBAC, operator obserwujący cały
+  klaster, zasób `Alloy` z własnym RBAC, usunięcie polityki dostępu do hosta albo powiązania polityki tokenów, polityka tylko
+  ostrzegająca (`Warn`) albo przepuszczająca przy błędzie (`Ignore`), polityki w fali workloadów, wyjątek node-exportera po
+  etykietach, Role operatora z DaemonSetami albo ze zmianą Deploymentu kube-state-metrics, ClusterRole Alloy z `nodes/proxy`,
+  sekret `grafana-cloud` dla grupy kont usług.
 - `make -C infra/k8s monitoring-smoke` (poza `check` i CI): chart `k8s-monitoring` z wartościami manifestu na pustym klastrze
   k3d, z jedyną nakładką na adresy celów (odbiornik Alloy poza klastrem); operator i Alloy gotowe, odbiornik dostaje
   zamaskowaną linię poda w `shop`, zdarzenie klastra i metryki kube-state-metrics, node-exportera, kubeleta i cAdvisora, logi
