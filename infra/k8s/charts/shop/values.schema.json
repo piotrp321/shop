@@ -20,6 +20,7 @@
     "initialize",
     "jobs",
     "backup",
+    "alerts",
     "cartPurge",
     "storage",
     "elasticsearch",
@@ -370,6 +371,18 @@
         "activeDeadlineSeconds": {
           "type": "integer",
           "minimum": 60
+        }
+      }
+    },
+    "alerts": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Render the PrometheusRule with the alert rules (needs the CRD of the Prometheus Operator in the cluster)."
         }
       }
     },

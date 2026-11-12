@@ -213,12 +213,25 @@ spec:
 {{- end }}
 
 {{/*
+Records a workload of this render for the alert WorkloadNotReady (00-alerts.yaml), which looks for each of them: every Deployment and
+StatefulSet is made by shop.deployment or shop.statefulset, so a new workload gets its rule without anyone listing it. Helm renders the
+templates in the reverse order of their names, so the file with the rule is named to be rendered after all the others
+(tests/test_alerts.py fails when a workload of the render is missing from the rule). Parameters: root, name, kind.
+*/}}
+{{- define "shop.recordWorkload" -}}
+{{- $alerts := .root.Values.alerts -}}
+{{- if not (hasKey $alerts "workloads") }}{{- $_ := set $alerts "workloads" (dict) -}}{{- end -}}
+{{- $_ := set (index $alerts "workloads") .name .kind -}}
+{{- end }}
+
+{{/*
 A Deployment with one replica that never loses capacity during an update (maxUnavailable 0): a new pod that does not
 become ready leaves the old one serving.
 Parameters: root, name, wave, resources, container (YAML of the container without name, image and resources),
 image; optional: initContainers, volumes (YAML lists), podAnnotations (YAML map).
 */}}
 {{- define "shop.deployment" -}}
+{{- $_ := include "shop.recordWorkload" (dict "root" .root "name" .name "kind" "Deployment") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -274,6 +287,7 @@ Parameters: root, name, wave, image, container, claims (a list of dicts with nam
 volumes, podAnnotations, serviceName.
 */}}
 {{- define "shop.statefulset" -}}
+{{- $_ := include "shop.recordWorkload" (dict "root" .root "name" .name "kind" "StatefulSet") -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

@@ -135,6 +135,12 @@ backup:
   # The values of that Secret when secrets.create is true (the profile ci); a Secret of the chart is created from them.
   secretValues: {}
 
+# The alert rules (docs/features/deploy-ops/spec.md, O6): a PrometheusRule that Alloy synchronizes to Grafana Cloud. Needs the CRD of the
+# Prometheus Operator (the application prometheus-crds); without it the synchronization of the shop fails, which is wanted. Off where
+# the cluster has no CRD (the smoke test), on in prod.
+alerts:
+  enabled: false
+
 storage:
   className: local-path
   postgres: 10Gi

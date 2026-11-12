@@ -1,0 +1,154 @@
+{{- /*
+The alert rules (docs/features/deploy-ops/spec.md, O6): a PrometheusRule that Alloy synchronizes to the ruler of Grafana Cloud. The
+metrics are those of kube-state-metrics and node-exporter that argocd/apps/monitoring.yaml lets through. Only where `alerts.enabled`:
+the CRD of the Prometheus Operator is installed by the application prometheus-crds, and a cluster without it must fail the
+synchronization (a visible error), not lose the rules quietly, so there is no test of the API versions of the cluster here.
+
+The file is named to be rendered last (Helm renders in the reverse order of the names): WorkloadNotReady has an `absent` for every
+Deployment and StatefulSet that the other templates made (shop.recordWorkload in _helpers.tpl).
+The annotations are plain text: the labels of an alert (cronjob, job_name, deployment, statefulset, ...) say which object it is.
+*/ -}}
+{{- /* A failed Job of the CronJob, newer than the last success of the CronJob (or when there is none): the Job is Failed when
+its retries are used up; a pod that failed and a retry that succeeded leave a Complete Job. The condition is the only metric of a Job we
+have, so "newer" is the first time the series of the failed Job was there (a subquery of a week, in steps of 5 minutes), compared with
+the time of the last success. */}}
+{{- define "shop.alerts.cronjobFailed" -}}
+min_over_time(
+  timestamp(
+    max by (namespace, job_name) (
+      kube_job_status_condition{namespace="{{ .ns }}", condition="Failed", status="true"} == 1
+      and on(namespace, job_name)
+      kube_job_owner{namespace="{{ .ns }}", owner_kind="CronJob", owner_name="{{ .cronjob }}"}
+    )
+  )[7d:5m]
+)
+> on(namespace) group_left()
+(
+  kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"}
+  or on(namespace)
+  label_replace(vector(0), "namespace", "{{ .ns }}", "", "")
+)
+{{- end }}
+{{- /* The last success of the CronJob is older than 26 hours, or its metric has not been there for 30 minutes. */}}
+{{- define "shop.alerts.cronjobMissing" -}}
+(
+  time() - kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"} > 26 * 3600
+)
+or
+absent_over_time(kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"}[30m])
+{{- end }}
+{{- if .Values.alerts.enabled }}
+{{- $ns := .Release.Namespace }}
+{{- $workloads := .Values.alerts.workloads | default dict }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shop-alerts
+  namespace: {{ $ns }}
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "alerts") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "1" | nindent 4 }}
+spec:
+  groups:
+    {{- if .Values.backup.enabled }}
+    - name: shop-backup
+      rules:
+        - alert: BackupFailed
+          expr: |-
+            {{- include "shop.alerts.cronjobFailed" (dict "ns" $ns "cronjob" "backup") | nindent 12 }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kopia zapasowa nie powiodła się"
+            description: "Job z CronJoba backup zakończył się błędem i po nim nie ma udanej kopii. Sprawdź log Joba (make -C infra/k8s status) i ponów kopię według runbooka (Eksploatacja)."
+        - alert: BackupMissing
+          expr: |-
+            {{- include "shop.alerts.cronjobMissing" (dict "ns" $ns "cronjob" "backup") | nindent 12 }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "Brak świeżej kopii zapasowej"
+            description: "Ostatnia udana kopia jest starsza niż 26 godzin albo brak jej metryki od 30 minut (serwer albo Alloy nie działa). Przed pierwszą kopią alert jest oczekiwany. Runbook: Eksploatacja."
+        - alert: BackupVerifyFailed
+          expr: |-
+            {{- include "shop.alerts.cronjobFailed" (dict "ns" $ns "cronjob" "backup-verify") | nindent 12 }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "Weryfikacja kopii zapasowej nie powiodła się"
+            description: "Job z CronJoba backup-verify zakończył się błędem i po nim nie ma udanej weryfikacji: repozytorium kopii może być uszkodzone albo dump nie odtwarza się. Sprawdź log Joba (make -C infra/k8s status) i ponów weryfikację według runbooka (Eksploatacja)."
+        - alert: BackupVerifyMissing
+          expr: |-
+            {{- include "shop.alerts.cronjobMissing" (dict "ns" $ns "cronjob" "backup-verify") | nindent 12 }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "Brak świeżej weryfikacji kopii zapasowej"
+            description: "Ostatnia udana weryfikacja jest starsza niż 26 godzin albo brak jej metryki od 30 minut (serwer albo Alloy nie działa). Runbook: Eksploatacja."
+    {{- end }}
+    - name: shop-cluster
+      rules:
+        # A used file system of the node: more than 85% (less than 15% available) for 10 minutes; the temporary and virtual file
+        # systems (tmpfs, the overlays of the containers, ...) do not count.
+        - alert: NodeDiskFull
+          expr: |-
+            node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|devtmpfs|overlay|squashfs|fuse.*|nsfs|iso9660|autofs|tracefs|cgroup2?|proc|sysfs"}
+            / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|devtmpfs|overlay|squashfs|fuse.*|nsfs|iso9660|autofs|tracefs|cgroup2?|proc|sysfs"}
+            < 0.15
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Dysk węzła jest zajęty w ponad 85%"
+            description: "System plików węzła jest zajęty w ponad 85% od 10 minut. Zwolnij miejsce albo powiększ dysk, zanim baza i kopie przestaną się zapisywać."
+        # kube-state-metrics sends kube_node_info whenever it works: without it neither the server, k3s nor Alloy delivers.
+        - alert: ClusterSilent
+          expr: absent(kube_node_info)
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Brak metryk z klastra"
+            description: "Od 15 minut nie ma metryk klastra (serwer, k3s albo Alloy nie działa). Sprawdź serwer i aplikację monitoring w Argo CD."
+        # Fewer available (Deployment) or ready (StatefulSet) replicas than wanted, or a workload that the chart renders is gone.
+        # A workload scaled to zero (restore) wants none, so it is not reported; the absence counts only while the cluster reports
+        # (kube_node_info), so that the silence of the whole cluster is only ClusterSilent.
+        - alert: WorkloadNotReady
+          expr: |-
+            (
+              kube_deployment_status_replicas_available{namespace="{{ $ns }}"}
+              < on(namespace, deployment)
+              kube_deployment_spec_replicas{namespace="{{ $ns }}"}
+            )
+            or
+            (
+              kube_statefulset_status_replicas_ready{namespace="{{ $ns }}"}
+              < on(namespace, statefulset)
+              kube_statefulset_replicas{namespace="{{ $ns }}"}
+            )
+            or
+            (
+              (
+                {{- range $index, $name := keys $workloads | sortAlpha }}
+                {{- $kind := index $workloads $name }}
+                {{- if $index }}
+                or
+                {{- end }}
+                {{- if eq $kind "Deployment" }}
+                absent(kube_deployment_spec_replicas{namespace="{{ $ns }}", deployment="{{ $name }}"})
+                {{- else }}
+                absent(kube_statefulset_replicas{namespace="{{ $ns }}", statefulset="{{ $name }}"})
+                {{- end }}
+                {{- end }}
+              )
+              and on()
+              kube_node_info
+            )
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Workload sklepu jest niegotowy albo go brakuje"
+            description: "Deployment albo StatefulSet w przestrzeni shop ma mniej gotowych replik niż oczekiwane albo go nie ma od 10 minut. Sprawdź make -C infra/k8s status. Przy świadomym restore i pracach wycisz alert (runbook)."
+{{- end }}

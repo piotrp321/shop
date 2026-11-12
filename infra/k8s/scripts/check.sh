@@ -2,8 +2,8 @@
 # Static checks of the chart, without a cluster and without a server. Every step runs in a container (tools.sh).
 #
 #   check.sh            all steps
-#   check.sh <step>...  only the given steps: lint, render, schema, images, kubeconform, shellcheck, actionlint, tests, bootstrap,
-#                       gitignore
+#   check.sh <step>...  only the given steps: lint, render, schema, images, kubeconform, shellcheck, actionlint, tests, alerts,
+#                       bootstrap, gitignore
 #
 # The first failing step stops the script. REPO_ROOT (default: this repository) selects the tree to check; the
 # self-test (selftest.sh) points it at a copy with an injected error.
@@ -13,7 +13,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
 
-steps="${*:-lint render schema images kubeconform shellcheck actionlint tests bootstrap gitignore}"
+steps="${*:-lint render schema images kubeconform shellcheck actionlint tests alerts bootstrap gitignore}"
 
 rev=0123456789abcdef0123456789abcdef01234567
 # The digests of the images built by us, which the profile prod requires.
@@ -105,6 +105,7 @@ do_schema() {
     expect_failure "verification that reads neither a subset nor all of the data" "/backup/verifyReadData" $prod --set image.tag=$rev $digests \
       --set backup.verifyReadData=most
     expect_failure "backup that is not a boolean" "/backup/enabled" $prod --set image.tag=$rev $digests --set-string backup.enabled=true
+    expect_failure "alerts that are not a boolean" "/alerts/enabled" $prod --set image.tag=$rev $digests --set-string alerts.enabled=true
     # D3 (docs/features/hardening/spec.md): the header of the client address is trusted only behind the allow list,
     # and going without it is a confirmed choice that no deployment with the images of a release may make.
     expect_failure "clientIpHeader without ipAllowList and without the confirmation" "/clientIpHeaderWithoutAllowList" \
@@ -194,6 +195,17 @@ do_tests() {
   [ -f "$work/prod.ndjson" ] || do_render
   step "tests of the rendered chart and of the scripts"
   tools_run -e RENDER_DIR="/cache/render-$$" "$PYTHON_IMAGE" python -I -m unittest discover -s tests
+}
+
+# The alert rules (docs/features/deploy-ops/spec.md, O6): promtool checks and tests the groups of the PrometheusRule of the prod render,
+# which tests/alerts/prepare.py takes from the render (no copy of the rules) and puts next to the scenarios of tests/alerts/alerts.test.yml.
+do_alerts() {
+  [ -f "$work/prod.ndjson" ] || do_render
+  step "promtool check rules and promtool test rules on the alert rules of the prod render"
+  in_cache="/cache/${work##*/}"
+  py tests/alerts/prepare.py "$in_cache/prod.ndjson" "$in_cache/alerts"
+  promtool check rules "$in_cache/alerts/rules.yaml"
+  promtool test rules "$in_cache/alerts/alerts.test.yml"
 }
 
 # scripts/server-bootstrap.sh in a container with Ubuntu 24.04 (root, no k3s, no systemd): the refusals before any change, then
