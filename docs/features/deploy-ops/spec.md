@@ -167,10 +167,16 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
     `monitoring-no-host-access` odrzuca przy tworzeniu i zmianie pod (z kontenerami init i efemerycznymi) oraz szablon
     poda w Deployment, ReplicaSet, StatefulSet, DaemonSet, Job i CronJob z `hostNetwork`, `hostPID`, `hostIPC`,
     wolumenem `hostPath`, `hostPort`, kontenerem `privileged` albo dodaną capability spoza listy profilu baseline Pod
-    Security Standards. Wyjątek ma tylko node-exporter: DaemonSet `monitoring-node-exporter`, jeśli nie zmienia go konto
+    Security Standards, a także z `priorityClassName` zaczynającym się od `system-` (`system-cluster-critical`
+    i `system-node-critical` są dozwolone w każdej przestrzeni i wywłaszczałyby pody sklepu; bez wyjątku, node-exporter
+    ich nie używa). Wyjątek od dostępu do hosta ma tylko node-exporter: DaemonSet `monitoring-node-exporter`, jeśli nie zmienia go konto
     usługi z `monitoring`, i jego pody, jeśli tworzy je kontroler DaemonSetów (w k3s własne konto
     `system:serviceaccount:kube-system:daemon-set-controller`, którym nikt w `monitoring` nie działa) z `ownerReference`
     na ten DaemonSet; etykiety nie są wyróżnikiem. Zmiana poda bez zmiany `spec` (metadane) przechodzi.
+    `monitoring-cluster-ip-services` odrzuca przy tworzeniu i zmianie Service typu innego niż `ClusterIP` (`NodePort`,
+    `LoadBalancer` przez ServiceLB k3s otwierają port węzła z pominięciem ufw i zakazu `hostPort`; `ExternalName`) oraz
+    Service z `externalIPs` (przejęcie ruchu podów klastra do tych adresów, CVE-2020-8554); wszystkie Service chartów
+    (operator, kube-state-metrics, node-exporter, `monitoring-alloy`) są `ClusterIP`.
     `monitoring-no-service-account-tokens` odrzuca sekret typu `kubernetes.io/service-account-token` (operator zapisuje
     sekrety w `monitoring` i tak dostałby token dowolnego konta tej przestrzeni);
   - kolektor (zasób `Alloy` z `rbac.create: false`, konto usługi `monitoring-alloy`) ma własną ClusterRole tylko do odczytu
@@ -184,8 +190,9 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   `check`: lista nie jest pusta i ma metryki alertów; RBAC renderu `monitoring` jak wyżej (dostęp do `secrets` daje tylko
   Role na `grafana-cloud` w `shop`, związana tylko z kontem Alloy, i Role operatora w `monitoring`, związana tylko z jego
   kontem; podmiot powiązania to także grupa kont usług i nazwa użytkownika konta; dokładny kształt Role operatora);
-  polityki dopuszczania jak wyżej (przestrzeń, `Deny`, `Fail`, zasoby i operacje, fala przed resztą aplikacji, wyjątek tylko
-  dla node-exportera, w renderze dostęp do hosta ma tylko jego DaemonSet); budżet węzła liczy razem `shop` i `monitoring` (`spec.resources` zasobów `Alloy`,
+  polityki dopuszczania jak wyżej (trzy, przestrzeń, `Deny`, `Fail`, zasoby i operacje, fala przed resztą aplikacji, wyjątek
+  tylko dla node-exportera, w renderze dostęp do hosta ma tylko jego DaemonSet, żaden workload nie ma klasy priorytetu
+  systemu, a każdy Service jest `ClusterIP` bez `externalIPs`; polityka Service dopuszcza tylko typ `ClusterIP`); budżet węzła liczy razem `shop` i `monitoring` (`spec.resources` zasobów `Alloy`,
   Deployment operatora, kube-state-metrics, DaemonSet node-exportera); `kubeconform` zna schemat `Alloy` (CRDs-catalog).
 - **O6. Alerty jako kod.** Reguły to `PrometheusRule` w chartcie `shop` (`templates/alerts.yaml`), renderowane, gdy
   `alerts.enabled` (`prod: true`, `ci: false`, bo smoke test nie ma CRD); brak CRD w klastrze z `alerts.enabled` daje
@@ -282,7 +289,8 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   klaster, zasób `Alloy` z własnym RBAC, usunięcie polityki dostępu do hosta albo powiązania polityki tokenów, polityka tylko
   ostrzegająca (`Warn`) albo przepuszczająca przy błędzie (`Ignore`), polityki w fali workloadów, wyjątek node-exportera po
   etykietach, Role operatora z DaemonSetami albo ze zmianą Deploymentu kube-state-metrics, ClusterRole Alloy z `nodes/proxy`,
-  sekret `grafana-cloud` dla grupy kont usług.
+  sekret `grafana-cloud` dla grupy kont usług, usunięcie polityki Service, polityka Service dopuszczająca `NodePort`
+  albo bez sprawdzenia `externalIPs`, polityka podów bez sprawdzenia klasy priorytetu.
 - `make -C infra/k8s monitoring-smoke` (poza `check` i CI): chart `k8s-monitoring` z wartościami manifestu na pustym klastrze
   k3d, z jedyną nakładką na adresy celów (odbiornik Alloy poza klastrem); operator i Alloy gotowe, odbiornik dostaje
   zamaskowaną linię poda w `shop`, zdarzenie klastra i metryki kube-state-metrics, node-exportera, kubeleta i cAdvisora, logi
@@ -291,11 +299,15 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   efemerycznych i tokenów kont w `shop` i `kube-system`, `nodes/proxy`; Alloy czyta `grafana-cloud`; operator bez DaemonSetów,
   StatefulSetów, podów i tworzenia zasobów `Alloy`, zmienia tylko obiekty `monitoring-alloy`). Polityki dopuszczania:
   żądania `--dry-run=server` jako konto operatora (Deployment z `hostPath` `/`, `hostNetwork`, `hostPID`, `hostIPC`,
-  `hostPort`, `privileged`, dodaną capability, uprzywilejowanym kontenerem init, etykietami node-exportera, szablonem
-  z `ownerReference` na jego DaemonSet; sekret z tokenem konta) i jako administrator (pod z etykietami albo podrobionym
-  `ownerReference` node-exportera, inne rodzaje workloadów, kontener efemeryczny i inny obraz w podzie node-exportera,
-  sekret z tokenem) odrzuca polityka (jej nazwa w błędzie, nie RBAC), a zwykły Deployment, zwykły kontener efemeryczny,
-  sekret `Opaque` i pod z `hostPath` w `shop` przechodzą; potem wszystkie pody `monitoring` powstają od nowa pod politykami
+  `hostPort`, `privileged`, dodaną capability, uprzywilejowanym kontenerem init, klasą priorytetu `system-cluster-critical`
+  albo `system-node-critical`, etykietami node-exportera, szablonem z `ownerReference` na jego DaemonSet; Service `NodePort`,
+  `LoadBalancer`, `ExternalName` i `ClusterIP` z `externalIPs`, zmiana Service `monitoring-alloy` na `NodePort` albo
+  z `externalIPs`; sekret z tokenem konta) i jako administrator (pod z etykietami albo podrobionym `ownerReference`
+  node-exportera, inne rodzaje workloadów, kontener efemeryczny i inny obraz w podzie node-exportera, pod i CronJob z klasą
+  priorytetu systemu, Service `NodePort`, `LoadBalancer` i z `externalIPs`, zmiana Service kube-state-metrics na
+  `LoadBalancer`, sekret z tokenem) odrzuca polityka (jej nazwa w błędzie, nie RBAC), a zwykły Deployment, Service `ClusterIP`
+  i headless operatora, zwykły kontener efemeryczny, sekret `Opaque` oraz w `shop` pod z `hostPath`, pod z klasą
+  `system-cluster-critical` i Service `NodePort` przechodzą; potem wszystkie pody `monitoring` powstają od nowa pod politykami
   i są gotowe (w tym node-exporter), a metryki przychodzą po tym. `MONITORING_SMOKE_BREAK=operator-cluster-role` (RBAC chartu
   operatora) i `MONITORING_SMOKE_BREAK=no-admission-policy` (bez polityk) muszą się nie udać.
 - `make -C infra/k8s smoke` dodatkowo, po sprawdzeniach i `create-admin` w fazie r1 (baza ma produkty, zamówienia z
@@ -442,11 +454,12 @@ Helm), a smoke test ma własną instancję S3. Konta R2 i Grafana Cloud oraz war
 - **Spójność między bazami i obiektami.** Dumpy `shop` i `keycloak` oraz kopia obiektów powstają w różnych chwilach
   (sekundy–minuty); zdjęcie dodane w tym czasie może nie mieć wiersza albo odwrotnie. Nocna pora i krótki czas kopii
   ograniczają to; odtworzenie nie wymaga ścisłej spójności.
-- **Operator to obcy obraz z prawem tworzenia Deploymentów w `monitoring`.** Polityki dopuszczania odcinają go od hosta
-  i od tokenów kont w sekretach, a RBAC od sekretów `shop-secrets` i `shop-backup`, ale przejęty operator nadal może
+- **Operator to obcy obraz z prawem tworzenia Deploymentów i Service w `monitoring`.** Polityki dopuszczania odcinają go od
+  hosta, portów węzła, `externalIPs`, klas priorytetu systemu i tokenów kont w sekretach, a RBAC od sekretów `shop-secrets`
+  i `shop-backup`, ale przejęty operator nadal może
   uruchomić w `monitoring` dowolny obraz z kontem usługi tej przestrzeni: z kontem Alloy czyta logi podów i zdarzenia całego
   klastra oraz token `grafana-cloud`, z kontem kube-state-metrics listę obiektów klastra (bez sekretów i ConfigMap); może też
   zatrzymać zbieranie (zmienić albo usunąć Alloy) i bez limitów przestrzeni zająć zasoby węzła. Istniejących Deploymentów
-  kube-state-metrics, node-exportera i swojego nie zmieni.
+  kube-state-metrics i swojego ani DaemonSetu `monitoring-node-exporter` nie zmieni.
 - **Zależności w ruchu.** Interfejs chartu `k8s-monitoring` zmienia się między głównymi wersjami (operator od 3.x,
   `destinations` w 4.x); wersja przypięta, aktualizacja to osobna zmiana.

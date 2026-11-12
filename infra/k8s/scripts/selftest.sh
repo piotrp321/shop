@@ -242,7 +242,8 @@ monitoring_chart_digest_differs() { replace infra/k8s/scripts/monitoring-render.
 # The admission policies of monitoring (spec O5): the policy on the access to the host or the binding of the policy on the tokens
 # removed, a policy that only warns or lets a request pass when it fails, the policies in the same wave as the workloads, the
 # exception of node-exporter by its labels; the operator with a Role on DaemonSets or changing every Deployment; Alloy with the
-# proxy of the nodes; the Secret of the token given to a group of service accounts.
+# proxy of the nodes; the Secret of the token given to a group of service accounts; the policy on Services removed, letting a
+# NodePort through or not looking at the external IPs; the policy on pods not looking at the priority class.
 monitoring_without_the_host_policy() { drop_extra_object ValidatingAdmissionPolicy monitoring-no-host-access; }
 monitoring_without_the_token_binding() { drop_extra_object ValidatingAdmissionPolicyBinding monitoring-no-service-account-tokens; }
 monitoring_policy_that_warns() { replace infra/k8s/argocd/apps/monitoring.yaml 'validationActions: [Deny]' 'validationActions: [Warn]'; }
@@ -256,6 +257,10 @@ monitoring_token_for_a_group() { replace_after infra/k8s/argocd/apps/monitoring.
                 name: system:serviceaccounts:monitoring
                 apiGroup: rbac.authorization.k8s.io
               - kind: ServiceAccount'; }
+monitoring_without_the_service_policy() { drop_extra_object ValidatingAdmissionPolicy monitoring-cluster-ip-services; }
+monitoring_service_policy_with_node_ports() { replace infra/k8s/argocd/apps/monitoring.yaml "object.spec.type == 'ClusterIP')" "object.spec.type in ['ClusterIP', 'NodePort'])"; }
+monitoring_service_policy_without_external_ips() { replace infra/k8s/argocd/apps/monitoring.yaml '&& (!has(object.spec.externalIPs) || object.spec.externalIPs.size() == 0)' '&& true'; }
+monitoring_pods_with_priority_classes_of_the_system() { replace infra/k8s/argocd/apps/monitoring.yaml "!variables.podSpec.priorityClassName.startsWith('system-')" "variables.podSpec.priorityClassName != ''"; }
 monitoring_stages_alloy_rejects() { replace infra/k8s/argocd/apps/monitoring.yaml 'drop_counter_reason = "postgres_detail_statement"' 'drop_counter_reason ='; }
 seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
@@ -332,16 +337,20 @@ run_case "monitoring collecting Mailpit" "test_the_rules_drop_exactly_the_disabl
 run_case "monitoring chart version without a pinned digest" "has no sha256 in scripts/monitoring-render.sh" monitoring_chart_version_without_a_digest
 run_case "monitoring chart archive with another digest" "of scripts/monitoring-render.sh" monitoring_chart_digest_differs
 run_case "monitoring stages that Alloy rejects" "Alloy rejects the rendered configuration" monitoring_stages_alloy_rejects
-run_case "monitoring without the policy on the access to the host" "test_two_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_host_policy
-run_case "monitoring without the binding of the policy on the tokens" "test_two_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_token_binding
-run_case "monitoring admission policy that only warns" "test_two_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_policy_that_warns
-run_case "monitoring admission policy that fails open" "test_two_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_policy_that_fails_open
+run_case "monitoring without the policy on the access to the host" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_host_policy
+run_case "monitoring without the binding of the policy on the tokens" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_token_binding
+run_case "monitoring admission policy that only warns" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_policy_that_warns
+run_case "monitoring admission policy that fails open" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_policy_that_fails_open
 run_case "monitoring admission policy in the wave of the workloads" "test_the_policies_and_their_bindings_come_before_everything_else_of_the_application" monitoring_policy_with_the_workloads
 run_case "monitoring admission policy that knows node-exporter by its labels" "test_the_only_exception_is_node_exporter_which_the_operator_cannot_forge" monitoring_node_exporter_by_its_labels
 run_case "Alloy Operator with a Role on DaemonSets" "test_the_operator_changes_only_its_alloy_and_makes_only_deployments" monitoring_operator_with_daemon_sets
 run_case "Alloy Operator changing the Deployment of kube-state-metrics" "test_the_operator_changes_only_its_alloy_and_makes_only_deployments" monitoring_operator_changing_every_deployment
 run_case "Alloy with the proxy of the nodes" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" monitoring_alloy_with_the_proxy_of_the_nodes
 run_case "the token of Alloy given to a group of service accounts" "not to Alloy only" monitoring_token_for_a_group
+run_case "monitoring without the policy on Services" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_service_policy
+run_case "monitoring Service policy letting NodePort through" "test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through" monitoring_service_policy_with_node_ports
+run_case "monitoring Service policy without the external IPs" "test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through" monitoring_service_policy_without_external_ips
+run_case "monitoring pod policy without the priority classes of the system" "test_no_pod_and_no_template_of_a_pod_gets_a_priority_class_of_the_system" monitoring_pods_with_priority_classes_of_the_system
 run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" restore_without_confirmation
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 

@@ -266,9 +266,11 @@ spec:
         # in k3d, sends them the requests they must refuse and asks the cluster what each service account may do). No role here binds,
         # escalates, impersonates or changes RBAC objects.
         extraObjects:
-          # The operator is an image of a third party that makes workloads and Secrets in monitoring. Whoever asks (the operator, Argo
-          # CD, an administrator), the namespace monitoring has no pod with access to the host (one would read the kubeconfig of k3s
-          # on the node, an administrator of the cluster) but those of node-exporter, and no Secret with a token of a service account.
+          # The operator is an image of a third party that makes workloads, Services and Secrets in monitoring. Whoever asks (the
+          # operator, Argo CD, an administrator), the namespace monitoring has no pod with access to the host (one would read the
+          # kubeconfig of k3s on the node, an administrator of the cluster) but those of node-exporter, no pod with a priority class
+          # of the system (it would preempt the pods of the shop), no Service but a ClusterIP without external IPs and no Secret with
+          # a token of a service account.
           # The pods of node-exporter are known by who makes them: the controller of DaemonSets (in k3s it has its own service account,
           # which nobody in monitoring can act as) for the DaemonSet monitoring-node-exporter, which no service account of monitoring
           # may make or change. Labels are no proof. The templates of the workloads are checked too, so that a refusal comes at once
@@ -340,6 +342,15 @@ spec:
                   messageExpression: >-
                     request.kind.kind + ' asks for access to the host (' + variables.hostAccess.join(', ') + '): in the
                     namespace monitoring only the DaemonSet monitoring-node-exporter and its pods may'
+                # system-cluster-critical and system-node-critical are allowed in every namespace, and a pod with one preempts the
+                # pods of the shop. Nobody in monitoring needs them, node-exporter neither.
+                - expression: >-
+                    !has(variables.podSpec.priorityClassName) || !variables.podSpec.priorityClassName.startsWith('system-')
+                    || variables.specUnchanged
+                  reason: Forbidden
+                  messageExpression: >-
+                    request.kind.kind + ' asks for the priority class ' + variables.podSpec.priorityClassName + ': in the
+                    namespace monitoring no pod may have a priority class of the system'
           - apiVersion: admissionregistration.k8s.io/v1
             kind: ValidatingAdmissionPolicyBinding
             metadata:
@@ -382,6 +393,46 @@ spec:
                 argocd.argoproj.io/sync-wave: "-1"
             spec:
               policyName: monitoring-no-service-account-tokens
+              validationActions: [Deny]
+              matchResources:
+                namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: monitoring
+          # The operator creates Services in monitoring (create takes no resourceNames) and changes the one of its Alloy. A NodePort
+          # or a LoadBalancer (ServiceLB of k3s) would open a port of the node past ufw and the policy on hostPort, and external IPs
+          # would take over the traffic of every pod of the cluster to those addresses (CVE-2020-8554). Every Service of the charts is
+          # a ClusterIP; ExternalName is a type of its own and so refused too.
+          - apiVersion: admissionregistration.k8s.io/v1
+            kind: ValidatingAdmissionPolicy
+            metadata:
+              name: monitoring-cluster-ip-services
+              annotations:
+                argocd.argoproj.io/sync-wave: "-1"
+            spec:
+              failurePolicy: Fail
+              matchConstraints:
+                resourceRules:
+                  - apiGroups: [""]
+                    apiVersions: ["*"]
+                    operations: [CREATE, UPDATE]
+                    resources: [services]
+              validations:
+                - expression: >-
+                    (!has(object.spec.type) || object.spec.type == 'ClusterIP')
+                    && (!has(object.spec.externalIPs) || object.spec.externalIPs.size() == 0)
+                  reason: Forbidden
+                  messageExpression: >-
+                    'Service of the type ' + (has(object.spec.type) ? object.spec.type : 'ClusterIP')
+                    + (has(object.spec.externalIPs) && object.spec.externalIPs.size() > 0 ? ' with external IPs' : '')
+                    + ': in the namespace monitoring only a Service of the type ClusterIP without external IPs may be'
+          - apiVersion: admissionregistration.k8s.io/v1
+            kind: ValidatingAdmissionPolicyBinding
+            metadata:
+              name: monitoring-cluster-ip-services
+              annotations:
+                argocd.argoproj.io/sync-wave: "-1"
+            spec:
+              policyName: monitoring-cluster-ip-services
               validationActions: [Deny]
               matchResources:
                 namespaceSelector:

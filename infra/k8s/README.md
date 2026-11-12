@@ -278,8 +278,9 @@ Aplikacje Argo CD `prometheus-crds` (fala −3) i `monitoring` (fala 1, po `shop
 dozwolonych (`docs/features/deploy-ops/spec.md`, O5 i O7). Logi są maskowane w Alloy przed wysłaniem, a Mailpit nie jest zbierany.
 Alloy czyta z klastra tylko sekret `grafana-cloud` z przestrzeni `shop`, a Alloy Operator działa tylko w przestrzeni `monitoring`,
 bez ClusterRoli; RBAC operatora i kolektora jest w `extraObjects` manifestu, nie w chartach. Polityki dopuszczania z tego samego
-manifestu odrzucają w `monitoring` pody z dostępem do hosta (poza node-exporterem) i sekrety z tokenami kont, także żądania
-administratora; `kubectl debug` poda node-exportera też jest odrzucany.
+manifestu odrzucają w `monitoring` pody z dostępem do hosta (poza node-exporterem) albo z klasą priorytetu `system-*`, Service
+inne niż `ClusterIP` albo z `externalIPs` i sekrety z tokenami kont, także żądania administratora; `kubectl debug` poda
+node-exportera też jest odrzucany.
 
 1. **użytkownik** – zakłada konto Grafana Cloud (darmowy plan) ze stosem w regionie UE i retencją logów 14 dni oraz jeden token
    access policy dla metryk i logów z zakresami `metrics:write`, `logs:write`, `rules:read` i `rules:write`. Podaje agentowi (bez

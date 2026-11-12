@@ -412,6 +412,8 @@ NODE_EXPORTER = "monitoring-node-exporter"
 DAEMON_SET_CONTROLLER = "system:serviceaccount:kube-system:daemon-set-controller"
 POLICY_HOST_ACCESS = "monitoring-no-host-access"
 POLICY_TOKENS = "monitoring-no-service-account-tokens"
+POLICY_SERVICES = "monitoring-cluster-ip-services"
+POLICIES = {POLICY_HOST_ACCESS, POLICY_TOKENS, POLICY_SERVICES}
 POD_TEMPLATES = {("", "pods"), ("", "pods/ephemeralcontainers"), ("apps", "deployments"), ("apps", "replicasets"), ("apps", "statefulsets"),
                  ("apps", "daemonsets"), ("batch", "jobs"), ("batch", "cronjobs")}
 
@@ -429,9 +431,10 @@ def host_access(spec):
 
 
 class AdmissionPolicies(unittest.TestCase):
-    """The operator (an image of a third party) makes workloads and Secrets in monitoring. The ValidatingAdmissionPolicies of the
-    render refuse there a pod or a template of a pod with access to the host (but node-exporter) and a Secret with a token of a
-    service account, whoever asks (spec, O5); make -C infra/k8s monitoring-smoke tries them in k3d."""
+    """The operator (an image of a third party) makes workloads, Services and Secrets in monitoring. The ValidatingAdmissionPolicies
+    of the render refuse there a pod or a template of a pod with access to the host (but node-exporter) or with a priority class of
+    the system, a Service that is not a ClusterIP or has external IPs, and a Secret with a token of a service account, whoever asks
+    (spec, O5); make -C infra/k8s monitoring-smoke tries them in k3d."""
 
     def objects(self, kind):
         return {name(d): d for d in of_kind("monitoring", kind)}
@@ -445,11 +448,11 @@ class AdmissionPolicies(unittest.TestCase):
                 for rule in policy["spec"]["matchConstraints"]["resourceRules"]
                 for group in rule["apiGroups"] for resource in rule["resources"] for version in rule["apiVersions"]}
 
-    def test_two_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed(self):
+    def test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed(self):
         policies, bindings = self.objects("ValidatingAdmissionPolicy"), self.objects("ValidatingAdmissionPolicyBinding")
-        self.assertEqual({POLICY_HOST_ACCESS, POLICY_TOKENS}, set(policies))
-        self.assertEqual({POLICY_HOST_ACCESS, POLICY_TOKENS}, {b["spec"]["policyName"] for b in bindings.values()})
-        self.assertEqual(2, len(bindings))
+        self.assertEqual(POLICIES, set(policies))
+        self.assertEqual(POLICIES, {b["spec"]["policyName"] for b in bindings.values()})
+        self.assertEqual(3, len(bindings))
         for policy in policies.values():
             with self.subTest(policy=name(policy)):
                 self.assertEqual("Fail", policy["spec"]["failurePolicy"])
@@ -467,7 +470,7 @@ class AdmissionPolicies(unittest.TestCase):
 
     def test_the_policies_and_their_bindings_come_before_everything_else_of_the_application(self):
         first = [d for d in docs("monitoring") if d["kind"] in ("ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding")]
-        self.assertEqual(4, len(first))
+        self.assertEqual(6, len(first))
         waves = {int((d["metadata"].get("annotations") or {}).get(WAVE, "0")) for d in first}
         self.assertEqual(1, len(waves), waves)
         others = [int((d["metadata"].get("annotations") or {}).get(WAVE, "0")) for d in docs("monitoring") if d not in first]
@@ -507,6 +510,45 @@ class AdmissionPolicies(unittest.TestCase):
                 self.assertLessEqual(added, BASELINE_CAPABILITIES, part)
             self.assertFalse(alloy["spec"].get("controller", {}).get("hostNetwork"))
             self.assertFalse(any("hostPath" in v for v in alloy["spec"].get("controller", {}).get("volumes", {}).get("extra", [])))
+
+    def test_no_pod_and_no_template_of_a_pod_gets_a_priority_class_of_the_system(self):
+        # system-cluster-critical and system-node-critical are allowed in every namespace: a pod of monitoring with one would
+        # preempt the pods of the shop. No exception, not even node-exporter.
+        policy = self.objects("ValidatingAdmissionPolicy")[POLICY_HOST_ACCESS]
+        priority = [v for v in policy["spec"]["validations"] if "priorityClassName" in v["expression"]]
+        self.assertEqual(1, len(priority), "the policy has no validation of the priority class")
+        expression = priority[0]["expression"]
+        self.assertIn("variables.podSpec.priorityClassName.startsWith('system-')", expression)
+        self.assertNotIn("nodeExporter", expression)
+        self.assertEqual("Forbidden", priority[0]["reason"])
+        for workload in of_kind("monitoring", "Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob"):
+            self.assertFalse(pod_spec(workload).get("priorityClassName", "").startswith("system-"), name(workload))
+        for alloy in of_kind("monitoring", "Alloy"):
+            self.assertFalse((alloy["spec"].get("controller") or {}).get("priorityClassName", "").startswith("system-"))
+
+    def test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through(self):
+        # A NodePort or a LoadBalancer (ServiceLB of k3s) opens a port of the node past ufw and the policy on hostPort; external
+        # IPs take over the traffic of the pods of the cluster to those addresses (CVE-2020-8554). ExternalName is a type too.
+        policy = self.objects("ValidatingAdmissionPolicy")[POLICY_SERVICES]
+        self.assertEqual({("", "services", "*", ("CREATE", "UPDATE"))}, self.rules(policy))
+        text = self.text(policy)
+        self.assertIn("object.spec.type == 'ClusterIP'", text)
+        self.assertIn("!has(object.spec.externalIPs) || object.spec.externalIPs.size() == 0", text)
+        # The only type the policy names is ClusterIP: no NodePort, LoadBalancer or ExternalName let through.
+        self.assertEqual({"ClusterIP"}, set(re.findall(r"'([A-Za-z]+)'", text)))
+        self.assertEqual(1, len(policy["spec"]["validations"]))
+        self.assertEqual("Forbidden", policy["spec"]["validations"][0]["reason"])
+
+    def test_every_service_of_the_render_is_a_cluster_ip_without_external_addresses(self):
+        services = of_kind("monitoring", "Service")
+        self.assertTrue(services)
+        for service in services:
+            self.assertIn(service["spec"].get("type", "ClusterIP"), ("ClusterIP",), name(service))
+            self.assertFalse(service["spec"].get("externalIPs"), name(service))
+        # The Service the operator makes of the Alloy resource: the default of the Alloy chart (ClusterIP).
+        for alloy in of_kind("monitoring", "Alloy"):
+            self.assertIn((alloy["spec"].get("service") or {}).get("type", "ClusterIP"), ("ClusterIP",))
+            self.assertFalse((alloy["spec"].get("service") or {}).get("externalIPs"))
 
     def test_the_token_policy_refuses_secrets_with_a_token_of_a_service_account(self):
         policy = self.objects("ValidatingAdmissionPolicy")[POLICY_TOKENS]
@@ -596,6 +638,14 @@ class MonitoringSmoke(unittest.TestCase):
                          re.findall(r'break_args="[^"]+"', script))
         self.assertIn('if [ "$MONITORING_SMOKE_BREAK" = operator-cluster-role ]; then', script)
         self.assertIn('elif [ "$MONITORING_SMOKE_BREAK" = no-admission-policy ]; then', script)
+
+    def test_the_requests_cover_the_services_and_the_priority_classes(self):
+        # The policies on Services and on the priority classes are tried in the cluster as the operator and as the administrator.
+        script = self.script()
+        self.assertIn("service_policy=monitoring-cluster-ip-services", script)
+        for request in ('"type":"NodePort"', '"type":"LoadBalancer"', '"type":"ExternalName"', '"externalIPs":', "system-cluster-critical",
+                        "system-node-critical"):
+            self.assertIn(request, script)
 
 
 if __name__ == "__main__":

@@ -81,13 +81,18 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   RBAC, a sekrety w `monitoring` ma tylko operator: sprawdza to `check` na renderze, a `make -C infra/k8s monitoring-smoke`
   uruchamia monitoring z tym RBAC w k3d i pyta klaster (`kubectl auth can-i`), co mogą konta usług operatora, Alloy,
   kube-state-metrics i node-exportera.
-- **Przestrzeń `monitoring` ma polityki dopuszczania** (`ValidatingAdmissionPolicy` w `extraObjects`, powiązane z przestrzenią
-  przez `kubernetes.io/metadata.name`, `Deny`, `failurePolicy: Fail`, fala −1 przed resztą aplikacji). Operator (obcy obraz)
-  tworzy tam Deploymenty i sekrety, a sam RBAC nie zabrania podowi dostępu do hosta (plik kubeconfig k3s na węźle to
-  administrator klastra) ani sekretu typu `kubernetes.io/service-account-token` (token dowolnego konta przestrzeni). Polityki
-  odrzucają, komukolwiek, pod i szablon poda (Deployment, ReplicaSet, StatefulSet, DaemonSet, Job, CronJob) z dostępem do
-  hosta (`hostNetwork`, `hostPID`, `hostIPC`, `hostPath`, `hostPort`, `privileged`, capability spoza profilu baseline) oraz
-  sekret z tokenem konta. Node-exporter potrzebuje hosta, więc ma jedyny wyjątek, rozpoznawany po tym, kto tworzy pody: kontroler
+- **Przestrzeń `monitoring` ma trzy polityki dopuszczania** (`ValidatingAdmissionPolicy` w `extraObjects`, powiązane
+  z przestrzenią przez `kubernetes.io/metadata.name`, `Deny`, `failurePolicy: Fail`, fala −1 przed resztą aplikacji). Operator
+  (obcy obraz) tworzy tam Deploymenty, Service i sekrety, a sam RBAC nie zabrania podowi dostępu do hosta (plik kubeconfig k3s na
+  węźle to administrator klastra) ani klasy priorytetu systemu (`system-cluster-critical` i `system-node-critical` są dozwolone
+  w każdej przestrzeni, a pod z nią wywłaszcza pody sklepu), Service otwierającego port węzła (`NodePort`, `LoadBalancer` przez
+  ServiceLB k3s, z pominięciem ufw) albo przejmującego ruch podów klastra do obcych adresów (`externalIPs`, CVE-2020-8554) ani
+  sekretu typu `kubernetes.io/service-account-token` (token dowolnego konta przestrzeni). Polityki odrzucają, komukolwiek:
+  `monitoring-no-host-access` pod i szablon poda (Deployment, ReplicaSet, StatefulSet, DaemonSet, Job, CronJob) z dostępem do
+  hosta (`hostNetwork`, `hostPID`, `hostIPC`, `hostPath`, `hostPort`, `privileged`, capability spoza profilu baseline) albo
+  z `priorityClassName` zaczynającym się od `system-`, `monitoring-cluster-ip-services` Service innego typu niż `ClusterIP`
+  (także `ExternalName`) albo z `externalIPs`, a `monitoring-no-service-account-tokens` sekret z tokenem konta. Wszystkie
+  Service chartów są `ClusterIP`. Node-exporter potrzebuje hosta, więc ma jedyny wyjątek, rozpoznawany po tym, kto tworzy pody: kontroler
   DaemonSetów (w k3s ma własne konto w `kube-system`) dla DaemonSetu `monitoring-node-exporter`, którego żadne konto
   `monitoring` nie może zmienić; etykiet ani `ownerReference` ustawionych przez kogoś innego polityka nie uznaje. Wbudowany
   Pod Security Admission nie wystarcza: poziom przestrzeni nie ma wyjątku dla jednego DaemonSetu, a wyjątki po użytkowniku są
@@ -134,9 +139,10 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   (tworzenia nie da się ograniczyć do nazw), więc pośrednio ma prawa kolektora (odczyt podów, ich logów i zdarzeń całego
   klastra, token `grafana-cloud`, którym wyśle dane dokądkolwiek) i kube-state-metrics (lista obiektów klastra bez sekretów
   i ConfigMap). Może zatrzymać zbieranie (zmienić albo usunąć Alloy) i, bez limitów zasobów przestrzeni, zająć węzeł.
-  Istniejących Deploymentów kube-state-metrics, node-exportera i swojego nie zmieni (`resourceNames`). Nie dostanie się do
-  hosta ani do tokenów kont przez sekrety (polityki dopuszczania) i nie czyta sekretów `shop-backup` ani `shop-secrets`
-  (RBAC); kolektor też nie.
+  Istniejących Deploymentów kube-state-metrics i swojego ani DaemonSetu `monitoring-node-exporter` nie zmieni (`resourceNames`,
+  bez uprawnień do DaemonSetów). Nie dostanie się do hosta ani do tokenów kont przez sekrety, nie otworzy portu węzła, nie
+  przejmie ruchu przez `externalIPs` i nie wywłaszczy podów sklepu klasą priorytetu systemu (polityki dopuszczania) i nie
+  czyta sekretów `shop-backup` ani `shop-secrets` (RBAC); kolektor też nie.
 - RBAC kolektora i operatora jest w manifeście, nie w chartcie: funkcja chartu, która potrzebuje innego zasobu (nowa wersja
   albo włączona opcja), kończy się błędem `forbidden` w logu Alloy albo operatora (wyłapuje go `monitoring-smoke`), a nie
   cichym poszerzeniem uprawnień; brakującą regułę dopisuje się w `extraObjects`.

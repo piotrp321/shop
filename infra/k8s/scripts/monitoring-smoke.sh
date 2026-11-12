@@ -1,7 +1,7 @@
 #!/bin/sh
 # The smoke test of the application monitoring (docs/features/deploy-ops/spec.md, O5 and O7): the chart k8s-monitoring of the
 # pinned version with the values of argocd/apps/monitoring.yaml, installed on an empty k3d cluster, runs, has no more rights
-# than the RBAC of the manifest gives it, and its admission policies refuse in monitoring what reaches the host.
+# than the RBAC of the manifest gives it, and its admission policies refuse in monitoring what reaches the host or the node.
 #
 #   monitoring-smoke.sh                                   the whole test (a few minutes; the first run pulls the images)
 #   MONITORING_SMOKE_KEEP=1 monitoring-smoke.sh           keep the cluster after a failure, to look at it (delete it by hand)
@@ -19,11 +19,15 @@
 # checks (sha256), installed with the valuesObject of the manifest and one overlay: the addresses of the destinations, pointed at
 # the receiver (never the RBAC). Then it waits for the operator and for the Alloy it makes. The admission policies: requests made
 # with --dry-run=server, as the service account of the operator (Deployments with hostPath /, hostNetwork, hostPID, hostIPC,
-# hostPort, privileged, an added capability, a privileged init container, the labels of node-exporter, a template with an
-# ownerReference to its DaemonSet, a Secret with a token of a service account) and as the administrator of the cluster (pods with
-# the labels or a forged ownerReference of node-exporter, the other kinds of workloads, an ephemeral or another image in the pod
-# of node-exporter) are refused by the policy (its name in the error, not RBAC), while a plain Deployment, a plain ephemeral
-# container, an Opaque Secret and a pod with hostPath in shop are not; then every pod of monitoring is deleted and must come back
+# hostPort, privileged, an added capability, a privileged init container, a priority class of the system, the labels of
+# node-exporter, a template with an ownerReference to its DaemonSet; Services of the types NodePort, LoadBalancer, ExternalName and
+# a ClusterIP with externalIPs, the Service of its Alloy changed to them; a Secret with a token of a service account) and as the
+# administrator of the cluster (pods with the labels or a forged ownerReference of node-exporter, the other kinds of workloads, an
+# ephemeral or another image in the pod of node-exporter, a pod and a CronJob with a priority class of the system, Services that
+# are not a ClusterIP or have externalIPs, the Service of kube-state-metrics changed to a LoadBalancer) are refused by the policy
+# (its name in the error, not RBAC), while a plain Deployment, a ClusterIP and a headless Service of the operator, a plain
+# ephemeral container, an Opaque Secret and, in shop, a pod with hostPath, a pod with system-cluster-critical and a NodePort
+# Service are not; then every pod of monitoring is deleted and must come back
 # ready under the policies (node-exporter among them). Then the receiver must get the line of the pod masked ([REDACTED], neither
 # the password nor the address), a cluster event and the metrics of kube-state-metrics, node-exporter, the kubelet and cAdvisor
 # (the metrics after the pods came back); no log of the operator, Alloy or kube-state-metrics, before and after, says forbidden.
@@ -279,6 +283,7 @@ alloy=monitoring-alloy
 log "the admission policies of monitoring (requests with --dry-run=server)"
 host_policy=monitoring-no-host-access
 token_policy=monitoring-no-service-account-tokens
+service_policy=monitoring-cluster-ip-services
 # admission <refused-by <policy>|allowed> <operator|admin> <namespace> <description> [<kubectl verb and arguments>]: sends the
 # manifest of the standard input (kubectl create -f -, or the given command) as that user; a refusal must name the policy.
 admission() {
@@ -334,11 +339,30 @@ on_root='{"containers":[{"name":"c","image":"busybox","volumeMounts":[{"name":"r
 node_exporter_labels="$(mkc get daemonset monitoring-node-exporter -o jsonpath='{.spec.template.metadata.labels}')"
 node_exporter_uid="$(mkc get daemonset monitoring-node-exporter -o jsonpath='{.metadata.uid}')"
 forged_owner="\"ownerReferences\":[{\"apiVersion\":\"apps/v1\",\"kind\":\"DaemonSet\",\"name\":\"monitoring-node-exporter\",\"uid\":\"$node_exporter_uid\",\"controller\":true}]"
+# service <name> [<JSON members of the spec>]: one line of JSON, a Service with one port and a selector (a ClusterIP unless the
+# members say otherwise).
+service() {
+  printf '{"apiVersion":"v1","kind":"Service","metadata":{"name":"%s"},"spec":{%s"selector":{"smoke":"%s"},"ports":[{"port":80}]}}\n' \
+    "$1" "${2:+$2,}" "$1"
+}
+# try_service <expected> <as> <namespace> <description> <arguments of service>: admission of that Service.
+try_service() {
+  t_expected="$1" t_as="$2" t_namespace="$3" t_what="$4"
+  shift 4
+  service "$@" > "$KUBE_DIR/request.json"
+  admission "$t_expected" "$t_as" "$t_namespace" "$t_what" < "$KUBE_DIR/request.json"
+}
 policy_active() { ! workload Deployment probe "$on_root" | kubectl -n monitoring create -f - --dry-run=server > /dev/null 2>&1; }
+service_policy_active() { ! service probe '"type":"NodePort"' | kubectl -n monitoring create -f - --dry-run=server > /dev/null 2>&1; }
 if mkc get validatingadmissionpolicy "$host_policy" > /dev/null 2>&1; then
   wait_for "the policy $host_policy refuses a Deployment with hostPath" policy_active
 else
   fail "there is no ValidatingAdmissionPolicy $host_policy"
+fi
+if mkc get validatingadmissionpolicy "$service_policy" > /dev/null 2>&1; then
+  wait_for "the policy $service_policy refuses a Service of the type NodePort" service_policy_active
+else
+  fail "there is no ValidatingAdmissionPolicy $service_policy"
 fi
 # What the operator makes (a Deployment) and could make otherwise (a Secret).
 try_workload allowed operator monitoring "a plain Deployment" \
@@ -359,6 +383,10 @@ try_workload "refused-by-$host_policy" operator monitoring "a Deployment with th
   Deployment sys-admin '{"containers":[{"name":"c","image":"busybox","securityContext":{"capabilities":{"add":["SYS_ADMIN"]}}}]}'
 try_workload "refused-by-$host_policy" operator monitoring "a Deployment with a privileged init container" \
   Deployment privileged-init '{"initContainers":[{"name":"i","image":"busybox","securityContext":{"privileged":true}}],"containers":[{"name":"c","image":"busybox"}]}'
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with the priority class system-cluster-critical" \
+  Deployment cluster-critical '{"priorityClassName":"system-cluster-critical","containers":[{"name":"c","image":"busybox"}]}'
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with the priority class system-node-critical" \
+  Deployment node-critical '{"priorityClassName":"system-node-critical","containers":[{"name":"c","image":"busybox"}]}'
 try_workload "refused-by-$host_policy" operator monitoring "a Deployment with hostPath / and the labels of node-exporter" \
   Deployment like-node-exporter "$on_root" "$node_exporter_labels"
 try_workload "refused-by-$host_policy" operator monitoring "a Deployment with hostPath / and a template owned by the DaemonSet of node-exporter" \
@@ -372,7 +400,32 @@ metadata:
     kubernetes.io/service-account.name: monitoring-alloy
 type: kubernetes.io/service-account-token
 YAML
+# The Services the operator may create and change (its Alloy): a port of the node (NodePort, LoadBalancer through ServiceLB of k3s)
+# or external IPs (CVE-2020-8554) would pass by ufw and the policy on hostPort.
+try_service allowed operator monitoring "a Service of the type ClusterIP" plain
+try_service allowed operator monitoring "a headless Service" headless '"clusterIP":"None"'
+try_service "refused-by-$service_policy" operator monitoring "a Service of the type NodePort" node-port '"type":"NodePort"'
+try_service "refused-by-$service_policy" operator monitoring "a Service of the type LoadBalancer" load-balancer '"type":"LoadBalancer"'
+try_service "refused-by-$service_policy" operator monitoring "a ClusterIP Service with externalIPs" external-ips '"externalIPs":["203.0.113.10"]'
+try_service "refused-by-$service_policy" operator monitoring "a Service of the type ExternalName" external-name \
+  '"type":"ExternalName","externalName":"example.com"'
+admission "refused-by-$service_policy" operator monitoring "the Service $alloy changed to the type NodePort" \
+  patch service "$alloy" -p '{"spec":{"type":"NodePort"}}'
+admission "refused-by-$service_policy" operator monitoring "the Service $alloy with externalIPs" \
+  patch service "$alloy" -p '{"spec":{"externalIPs":["203.0.113.10"]}}'
 # The administrator of the cluster: the policies hold for everybody, and node-exporter is known by who makes its pods, not by labels.
+try_service "refused-by-$service_policy" admin monitoring "a Service of the type NodePort" node-port '"type":"NodePort"'
+try_service "refused-by-$service_policy" admin monitoring "a Service of the type LoadBalancer" load-balancer '"type":"LoadBalancer"'
+try_service "refused-by-$service_policy" admin monitoring "a ClusterIP Service with externalIPs" external-ips '"externalIPs":["203.0.113.10"]'
+admission "refused-by-$service_policy" admin monitoring "the Service monitoring-kube-state-metrics changed to the type LoadBalancer" \
+  patch service monitoring-kube-state-metrics -p '{"spec":{"type":"LoadBalancer"}}'
+try_service allowed admin shop "a Service of the type NodePort in shop (the policies are of monitoring only)" node-port '"type":"NodePort"'
+try_workload "refused-by-$host_policy" admin monitoring "a pod with the priority class system-node-critical" \
+  Pod node-critical '{"priorityClassName":"system-node-critical","containers":[{"name":"c","image":"busybox"}]}'
+try_workload "refused-by-$host_policy" admin monitoring "a CronJob with the priority class system-cluster-critical" \
+  CronJob cluster-critical '{"restartPolicy":"Never","priorityClassName":"system-cluster-critical","containers":[{"name":"c","image":"busybox"}]}'
+try_workload allowed admin shop "a pod with the priority class system-cluster-critical in shop (the policies are of monitoring only)" \
+  Pod cluster-critical '{"priorityClassName":"system-cluster-critical","containers":[{"name":"c","image":"busybox"}]}'
 try_workload "refused-by-$host_policy" admin monitoring "a pod with hostPath / and the labels of node-exporter" \
   Pod like-node-exporter "$on_root" "$node_exporter_labels"
 try_workload "refused-by-$host_policy" admin monitoring "a pod with hostPath / owned by the DaemonSet of node-exporter (a forged ownerReference)" \
@@ -407,6 +460,15 @@ YAML
 admission allowed admin monitoring "an Opaque Secret" create secret generic smoke --from-literal=key=value
 try_workload allowed admin shop "a pod with hostPath / in shop (the policies are of monitoring only)" \
   Pod on-root "$on_root"
+# Every Service the charts and the operator made passes the policy on Services (a change goes through it with the whole object),
+# and the requests above, dry runs, changed none of them.
+services="$(mkc get services -o jsonpath='{.items[*].metadata.name}')"
+case " $services " in *" $alloy "*) ;; *) fail "the Service $alloy is not there (Services: $services)" ;; esac
+for service_name in $services; do
+  admission allowed admin monitoring "the Service $service_name of the charts, annotated" annotate service "$service_name" smoke=checked
+  service_type="$(mkc get service "$service_name" -o jsonpath='{.spec.type}/{.spec.externalIPs}')"
+  [ "$service_type" = ClusterIP/ ] || fail "the Service $service_name is $service_type, expected ClusterIP/ (no external IPs)"
+done
 
 log "every pod of monitoring again, made under the policies"
 logs_before="$KUBE_DIR/logs-before"
