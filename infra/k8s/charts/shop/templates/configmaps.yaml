@@ -50,6 +50,12 @@ data:
     {{- .Files.Get "files/scripts/initialize.sh" | nindent 4 }}
   keycloak-config.sh: |
     {{- .Files.Get "files/scripts/keycloak-config.sh" | nindent 4 }}
+  backup.sh: |
+    {{- .Files.Get "files/scripts/backup.sh" | nindent 4 }}
+  backup-verify.sh: |
+    {{- .Files.Get "files/scripts/backup-verify.sh" | nindent 4 }}
+  restore-job.sh: |
+    {{- .Files.Get "files/scripts/restore-job.sh" | nindent 4 }}
 ---
 apiVersion: v1
 kind: ConfigMap

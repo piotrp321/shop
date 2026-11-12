@@ -39,6 +39,9 @@ render() {
   render prod-domain prod --set image.tag=$rev1 $digests --set global.domain=other.example.net
   render prod-indexable prod --set image.tag=$rev1 $digests --set noindex=false
   render prod-noinit prod --set image.tag=$rev1 $digests --set initialize.enabled=false
+  render prod-nobackup prod --set image.tag=$rev1 $digests --set backup.enabled=false
+  render prod-noalerts prod --set image.tag=$rev1 $digests --set alerts.enabled=false
+  render prod-verify-schedule prod --set image.tag=$rev1 $digests --set backup.verifySchedule='30 6 * * 1'
   # The switches of D10, one at a time against the profile (tests/test_switches.py).
   render prod-accounts prod --set image.tag=$rev1 $digests --set customerAccounts=true
   render prod-nodemo prod --set image.tag=$rev1 $digests --set demoNotice=false
@@ -55,6 +58,8 @@ render ci ci --set image.tag=$rev1
 # shellcheck disable=SC2046 # smoke_pull_args prints options
 render ci-images-file ci -f "/cache/${out##*/}/values-images.yaml" $(smoke_pull_args)
 render ci-rev2 ci --set image.tag=$rev2
+# The alerts on a profile that has other workloads than prod (Mailpit): the rule follows the render (tests/test_alerts.py).
+render ci-alerts ci --set image.tag=$rev1 --set alerts.enabled=true
 render ci-accounts ci --set image.tag=$rev1 --set customerAccounts=true
 render ci-keycloak-brevo ci --set image.tag=$rev1 --set keycloak.mail=brevo --set brevo.secretName=smoke-brevo
 # The header of the client address without the allow list, confirmed (the profile of the measurement, tests/test_client_ip.py).
@@ -83,3 +88,8 @@ fi
 # The deployment workflow as JSON, for tests/test_deploy_workflow.py.
 [ -f "$TOOLS_REPO/.github/workflows/deploy.yml" ] || { echo "render: .github/workflows/deploy.yml is missing" >&2; exit 1; }
 yq -o=json '.' < "$TOOLS_REPO/.github/workflows/deploy.yml" > "$out/deploy-workflow.json"
+# The charts of the applications prometheus-crds and monitoring with the values of their manifests (monitoring.yaml,
+# monitoring.ndjson, prometheus-crds.yaml, ... for kubeconform and tests/test_monitoring.py) and the log masking run in a real
+# Alloy (masking-output.log for tests/test_log_masking.py).
+sh "$here/monitoring-render.sh" "$out"
+sh "$here/masking.sh" "$out"

@@ -1,0 +1,616 @@
+# promtool test rules for the PrometheusRule of the chart (templates/00-alerts.yaml, named so that it renders last, docs/features/deploy-ops/spec.md, O6). The rules are
+# the groups of the render of prod (prepare.py writes them to rules.yaml next to this file, scripts/check.sh runs promtool), so the
+# tests see exactly what the cluster gets. A line "# @healthy-workloads" becomes the series of the replicas of all the workloads of
+# the render (see prepare.py): a scenario names only what is wrong with one of them.
+rule_files:
+  - rules.yaml
+evaluation_interval: 1m
+
+tests:
+  # --- BackupFailed and BackupVerifyFailed: a Job of the CronJob with the condition Failed, newer than the last success.
+  # The failed Job of the backup does not trigger the alert of the verification and the other way round; a failed Job that no
+  # CronJob of ours owns (migrate) triggers none.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup"}'
+        values: '3600x400'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify"}'
+        values: '3600x400'
+      - series: 'kube_job_owner{namespace="shop",job_name="backup-1",owner_kind="CronJob",owner_name="backup",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-1",condition="Failed",status="true"}'
+        values: '_x120 1x280'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-1",condition="Failed",status="false"}'
+        values: '0x120 _x280'
+      - series: 'kube_job_owner{namespace="shop",job_name="backup-verify-1",owner_kind="CronJob",owner_name="backup-verify",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-verify-1",condition="Failed",status="true"}'
+        values: '_x200 1x200'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="migrate-1",condition="Failed",status="true"}'
+        values: '_x100 1x300'
+    alert_rule_test:
+      - eval_time: 119m
+        alertname: BackupFailed
+        exp_alerts: []
+      - eval_time: 125m
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              job_name: backup-1
+            exp_annotations: &backup_failed
+              summary: "Kopia zapasowa nie powiodła się"
+              description: "Job z CronJoba backup zakończył się błędem i po nim nie ma udanej kopii. Sprawdź log Joba (make -C infra/k8s status) i ponów kopię według runbooka (Eksploatacja)."
+      - eval_time: 125m
+        alertname: BackupVerifyFailed
+        exp_alerts: []
+      - eval_time: 205m
+        alertname: BackupVerifyFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              job_name: backup-verify-1
+            exp_annotations: &verify_failed
+              summary: "Weryfikacja kopii zapasowej nie powiodła się"
+              description: "Job z CronJoba backup-verify zakończył się błędem i po nim nie ma udanej weryfikacji: repozytorium kopii może być uszkodzone albo dump nie odtwarza się. Sprawdź log Joba (make -C infra/k8s status) i ponów weryfikację według runbooka (Eksploatacja)."
+      # The failed Job of the verification does not make the alert of the backup say more than its own Job does.
+      - eval_time: 205m
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              job_name: backup-1
+            exp_annotations: *backup_failed
+
+  # No success has ever been recorded and the first Job failed: the alert does not wait for a success to compare with.
+  - interval: 1m
+    input_series:
+      - series: 'kube_job_owner{namespace="shop",job_name="backup-1",owner_kind="CronJob",owner_name="backup",owner_is_controller="true"}'
+        values: '1x100'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-1",condition="Failed",status="true"}'
+        values: '_x20 1x80'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              job_name: backup-1
+            exp_annotations: *backup_failed
+      - eval_time: 30m
+        alertname: BackupVerifyFailed
+        exp_alerts: []
+
+  # A pod failed and the retry of the same Job succeeded: the Job is Complete, its condition Failed is false, and the last
+  # success is newer. Nothing fires.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup"}'
+        values: '3600x100 12000x300'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify"}'
+        values: '3600x100 12000x300'
+      - series: 'kube_job_owner{namespace="shop",job_name="backup-2",owner_kind="CronJob",owner_name="backup",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-2",condition="Failed",status="true"}'
+        values: '_x250 0x150'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-2",condition="Failed",status="false"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-2",condition="Complete",status="true"}'
+        values: '_x100 1x300'
+      - series: 'kube_job_owner{namespace="shop",job_name="backup-verify-2",owner_kind="CronJob",owner_name="backup-verify",owner_is_controller="true"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-verify-2",condition="Failed",status="true"}'
+        values: '0x400'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: BackupFailed
+        exp_alerts: []
+      - eval_time: 200m
+        alertname: BackupFailed
+        exp_alerts: []
+      - eval_time: 200m
+        alertname: BackupVerifyFailed
+        exp_alerts: []
+      # The series of a condition that is not true exists with the value 0 (status="true" is 0): it is no failure.
+      - eval_time: 300m
+        alertname: BackupFailed
+        exp_alerts: []
+
+  # Yesterday a Job failed, today the backup (and the verification) succeeded: the failed Job is still in the history of the
+  # CronJob, but the alert has gone out.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup"}'
+        values: '3600x1500 90000x1700'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify"}'
+        values: '3600x1500 90000x1700'
+      - series: 'kube_job_owner{namespace="shop",job_name="backup-1",owner_kind="CronJob",owner_name="backup",owner_is_controller="true"}'
+        values: '1x3200'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-1",condition="Failed",status="true"}'
+        values: '_x120 1x3080'
+      - series: 'kube_job_owner{namespace="shop",job_name="backup-verify-1",owner_kind="CronJob",owner_name="backup-verify",owner_is_controller="true"}'
+        values: '1x3200'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-verify-1",condition="Failed",status="true"}'
+        values: '_x120 1x3080'
+    alert_rule_test:
+      - eval_time: 1000m
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              job_name: backup-1
+            exp_annotations: *backup_failed
+      - eval_time: 1000m
+        alertname: BackupVerifyFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              job_name: backup-verify-1
+            exp_annotations: *verify_failed
+      - eval_time: 1510m
+        alertname: BackupFailed
+        exp_alerts: []
+      - eval_time: 1510m
+        alertname: BackupVerifyFailed
+        exp_alerts: []
+      # Two days later the failed Job is still in the history and the success is older than any window of the comparison.
+      - eval_time: 3000m
+        alertname: BackupFailed
+        exp_alerts: []
+      - eval_time: 3000m
+        alertname: BackupVerifyFailed
+        exp_alerts: []
+
+  # --- BackupMissing and BackupVerifyMissing: the last success older than 26 h, or the metric gone for 30 min.
+  # The backup is fresh and the verification stale: only the verification is reported (the filter is the name of the CronJob).
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup"}'
+        values: '3600x1000 60000x800'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify"}'
+        values: '3600x1800'
+    alert_rule_test:
+      - eval_time: 1500m
+        alertname: BackupMissing
+        exp_alerts: []
+      - eval_time: 1500m
+        alertname: BackupVerifyMissing
+        exp_alerts: []
+      - eval_time: 1700m
+        alertname: BackupMissing
+        exp_alerts: []
+      - eval_time: 1700m
+        alertname: BackupVerifyMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: backup-verify
+            exp_annotations: &verify_missing
+              summary: "Brak świeżej weryfikacji kopii zapasowej"
+              description: "Ostatnia udana weryfikacja jest starsza niż 26 godzin albo brak jej metryki od 30 minut (serwer albo Alloy nie działa). Runbook: Eksploatacja."
+
+  # The other way round: the backup is stale, the verification is fresh.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup"}'
+        values: '3600x1800'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify"}'
+        values: '3600x1000 60000x800'
+    alert_rule_test:
+      - eval_time: 1500m
+        alertname: BackupMissing
+        exp_alerts: []
+      - eval_time: 1700m
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: backup
+            exp_annotations: &backup_missing
+              summary: "Brak świeżej kopii zapasowej"
+              description: "Ostatnia udana kopia jest starsza niż 26 godzin albo brak jej metryki od 30 minut (serwer albo Alloy nie działa). Przed pierwszą kopią alert jest oczekiwany. Runbook: Eksploatacja."
+      - eval_time: 1700m
+        alertname: BackupVerifyMissing
+        exp_alerts: []
+
+  # Before the first backup there is no metric at all: the alert fires (expected, the runbook says so).
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x100'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: backup
+            exp_annotations: *backup_missing
+      - eval_time: 40m
+        alertname: BackupVerifyMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: backup-verify
+            exp_annotations: *verify_missing
+
+  # The metric disappears (the server or Alloy does not work): silent for the first 30 min, then it fires.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup"}'
+        values: '3600x60'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify"}'
+        values: '3600x300'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: BackupMissing
+        exp_alerts: []
+      - eval_time: 95m
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: backup
+            exp_annotations: *backup_missing
+      - eval_time: 95m
+        alertname: BackupVerifyMissing
+        exp_alerts: []
+
+  # --- NodeDiskFull: a file system of the node used in more than 85% for 10 min, temporary file systems left out.
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{instance="node1",device="/dev/sda1",fstype="ext4",mountpoint="/"}'
+        values: '10x60'
+      - series: 'node_filesystem_size_bytes{instance="node1",device="/dev/sda1",fstype="ext4",mountpoint="/"}'
+        values: '100x60'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: NodeDiskFull
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: NodeDiskFull
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: node1
+              device: /dev/sda1
+              fstype: ext4
+              mountpoint: /
+            exp_annotations:
+              summary: "Dysk węzła jest zajęty w ponad 85%"
+              description: "System plików węzła jest zajęty w ponad 85% od 10 minut. Zwolnij miejsce albo powiększ dysk, zanim baza i kopie przestaną się zapisywać."
+
+  # Exactly 85% used is not more than 85%.
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{instance="node1",device="/dev/sda1",fstype="ext4",mountpoint="/"}'
+        values: '15x60'
+      - series: 'node_filesystem_size_bytes{instance="node1",device="/dev/sda1",fstype="ext4",mountpoint="/"}'
+        values: '100x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: NodeDiskFull
+        exp_alerts: []
+
+  # A short spike (5 min) and temporary file systems nearly full: silent.
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{instance="node1",device="/dev/sda1",fstype="ext4",mountpoint="/"}'
+        values: '50x10 5x5 50x45'
+      - series: 'node_filesystem_size_bytes{instance="node1",device="/dev/sda1",fstype="ext4",mountpoint="/"}'
+        values: '100x60'
+      - series: 'node_filesystem_avail_bytes{instance="node1",device="tmpfs",fstype="tmpfs",mountpoint="/run"}'
+        values: '5x60'
+      - series: 'node_filesystem_size_bytes{instance="node1",device="tmpfs",fstype="tmpfs",mountpoint="/run"}'
+        values: '100x60'
+      - series: 'node_filesystem_avail_bytes{instance="node1",device="overlay",fstype="overlay",mountpoint="/var/lib/rancher/k3s/agent/containerd/x"}'
+        values: '5x60'
+      - series: 'node_filesystem_size_bytes{instance="node1",device="overlay",fstype="overlay",mountpoint="/var/lib/rancher/k3s/agent/containerd/x"}'
+        values: '100x60'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: NodeDiskFull
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: NodeDiskFull
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: NodeDiskFull
+        exp_alerts: []
+
+  # --- ClusterSilent: no kube_node_info (kube-state-metrics sends it always) for 15 min.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ClusterSilent
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: ClusterSilent
+        exp_alerts: []
+      - eval_time: 55m
+        alertname: ClusterSilent
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "Brak metryk z klastra"
+              description: "Od 15 minut nie ma metryk klastra (serwer, k3s albo Alloy nie działa). Sprawdź serwer i aplikację monitoring w Argo CD."
+
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: ClusterSilent
+        exp_alerts: []
+
+  # --- WorkloadNotReady: a Deployment or a StatefulSet of the namespace shop with fewer available (ready) replicas than wanted
+  # for 10 min, or missing for 10 min while the metrics of the cluster are there.
+  # Everything healthy.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+      # @healthy-workloads
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: WorkloadNotReady
+        exp_alerts: []
+
+  # A replica of a Deployment is not available.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+      # @healthy-workloads except=api
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="api"}'
+        values: '1x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="api"}'
+        values: '0x300'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: WorkloadNotReady
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: WorkloadNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              deployment: api
+            exp_annotations: &workload_not_ready
+              summary: "Workload sklepu jest niegotowy albo go brakuje"
+              description: "Deployment albo StatefulSet w przestrzeni shop ma mniej gotowych replik niż oczekiwane albo go nie ma od 10 minut. Sprawdź make -C infra/k8s status. Przy świadomym restore i pracach wycisz alert (runbook)."
+
+  # The replica of a StatefulSet (Redis) is not ready.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+      # @healthy-workloads except=redis
+      - series: 'kube_statefulset_replicas{namespace="shop",statefulset="redis"}'
+        values: '1x300'
+      - series: 'kube_statefulset_status_replicas_ready{namespace="shop",statefulset="redis"}'
+        values: '0x300'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: WorkloadNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              statefulset: redis
+            exp_annotations: *workload_not_ready
+
+  # Unavailable for less than 10 min (8 min): silent.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+      # @healthy-workloads except=api
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="api"}'
+        values: '1x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="api"}'
+        values: '1x5 0x8 1x300'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: WorkloadNotReady
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: WorkloadNotReady
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: WorkloadNotReady
+        exp_alerts: []
+
+  # Scaled down to zero on purpose (restore): the metrics are there, with zero replicas wanted and none available.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+      # @healthy-workloads except=api
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="api"}'
+        values: '0x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="api"}'
+        values: '0x300'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: WorkloadNotReady
+        exp_alerts: []
+
+  # A Deployment is gone (its metrics do not exist) while the cluster reports.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+      # @healthy-workloads except=api
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: WorkloadNotReady
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: WorkloadNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              deployment: api
+            exp_annotations: *workload_not_ready
+
+  # A StatefulSet is gone.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+      # @healthy-workloads except=postgres
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: WorkloadNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              statefulset: postgres
+            exp_annotations: *workload_not_ready
+
+  # A Deployment is gone for 8 min only (a new one is applied): silent.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+      # @healthy-workloads except=api
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="api"}'
+        values: '_x8 1x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="api"}'
+        values: '_x8 1x300'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: WorkloadNotReady
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: WorkloadNotReady
+        exp_alerts: []
+
+  # The whole cluster is silent (no metrics of kube-state-metrics at all): it is ClusterSilent's, not a gone workload.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="other"}'
+        values: '1x300'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: WorkloadNotReady
+        exp_alerts: []
+
+  # --- The same object reported by two series that differ only in the label instance (a new pod of kube-state-metrics next to the
+  # old one, or two scrapes): the rules must not fail with a many-to-many match and must not report an object twice.
+  # BackupFailed and BackupVerifyFailed: two series of the last success of the CronJob.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup",instance="ksm-a"}'
+        values: '3600x400'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup",instance="ksm-b"}'
+        values: '3600x400'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify",instance="ksm-a"}'
+        values: '3600x400'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify",instance="ksm-b"}'
+        values: '3600x400'
+      - series: 'kube_job_owner{namespace="shop",job_name="backup-1",owner_kind="CronJob",owner_name="backup"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-1",condition="Failed",status="true"}'
+        values: '_x120 1x280'
+    alert_rule_test:
+      - eval_time: 125m
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              job_name: backup-1
+            exp_annotations: *backup_failed
+      - eval_time: 125m
+        alertname: BackupVerifyFailed
+        exp_alerts: []
+
+  # BackupMissing: two stale series of one CronJob are one alert.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup",instance="ksm-a"}'
+        values: '3600x1800'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup",instance="ksm-b"}'
+        values: '3600x1800'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify",instance="ksm-a"}'
+        values: '3600x1800'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify",instance="ksm-b"}'
+        values: '3600x1800'
+    alert_rule_test:
+      - eval_time: 1700m
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: backup
+            exp_annotations:
+              summary: "Brak świeżej kopii zapasowej"
+              description: "Ostatnia udana kopia jest starsza niż 26 godzin albo brak jej metryki od 30 minut (serwer albo Alloy nie działa). Przed pierwszą kopią alert jest oczekiwany. Runbook: Eksploatacja."
+
+  # WorkloadNotReady: a Deployment and a StatefulSet that two series report each. The api has no replica available in both and is
+  # reported once; the store has one available in one of the two series (the other is stale) and is silent.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+      # @healthy-workloads except=api,store,redis
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="api",instance="ksm-a"}'
+        values: '1x300'
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="api",instance="ksm-b"}'
+        values: '1x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="api",instance="ksm-a"}'
+        values: '0x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="api",instance="ksm-b"}'
+        values: '0x300'
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="store",instance="ksm-a"}'
+        values: '1x300'
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="store",instance="ksm-b"}'
+        values: '1x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="store",instance="ksm-a"}'
+        values: '0x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="store",instance="ksm-b"}'
+        values: '1x300'
+      - series: 'kube_statefulset_replicas{namespace="shop",statefulset="redis",instance="ksm-a"}'
+        values: '1x300'
+      - series: 'kube_statefulset_replicas{namespace="shop",statefulset="redis",instance="ksm-b"}'
+        values: '1x300'
+      - series: 'kube_statefulset_status_replicas_ready{namespace="shop",statefulset="redis",instance="ksm-a"}'
+        values: '0x300'
+      - series: 'kube_statefulset_status_replicas_ready{namespace="shop",statefulset="redis",instance="ksm-b"}'
+        values: '0x300'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: WorkloadNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              deployment: api
+            exp_annotations: *workload_not_ready
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              statefulset: redis
+            exp_annotations: *workload_not_ready

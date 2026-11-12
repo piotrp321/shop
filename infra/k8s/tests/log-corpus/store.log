@@ -1,0 +1,4 @@
+GET /auth/callback?code=v-code-store&state=xyz 302 in 45ms
+⨯ Error: Request to the API failed with status 401 for jan.kowalski@example.pl from 203.0.113.45 (Authorization: Bearer abc123DEF456ghi789)
+Unhandled error for customer anna%40example.com: fetch failed {"cookie":"PHPSESSID=7c5d2e9f1a3b4c6d8e0f; shop_session=zzTOPSECRETsession","session":"v-session-store"}
+ready - started server on port 3000

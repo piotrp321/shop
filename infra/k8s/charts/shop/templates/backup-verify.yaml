@@ -1,0 +1,112 @@
+{{- /*
+The daily verification of the backups (docs/features/deploy-ops/spec.md, O3): a CronJob whose pod reads the repository in S3 and
+restores both dumps into a temporary Postgres of its own, with the script files/scripts/backup-verify.sh. It uses the service
+account and the role of the backup (the identifier of the cluster) and none of the production data:
+  cluster-id  as in the backup: the only container with the token of the API, and with no secret.
+  postgres    the temporary server of the pod (a sidecar of the init containers, so that the end of the verification stops it and
+              the Job completes): the data on an emptyDir, the loopback only, no secret, nothing of the production Postgres.
+  verify      the script: restic (the binary of the image of restic, mounted as a volume) and the tools of the image of
+              postgres. The only container with the secret shop-backup, and without the token.
+*/ -}}
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-verify
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "backup-verify") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "1" | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.verifySchedule | quote }}
+  timeZone: {{ .Values.backup.timeZone | quote }}
+  # One verification at a time; a run that could not start within an hour of its time is skipped.
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels:
+            {{- include "shop.labels" (dict "root" . "name" "backup-verify") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          serviceAccountName: shop-backup
+          initContainers:
+            {{- include "shop.clusterIdInit" . | nindent 12 }}
+            - name: postgres
+              image: {{ .Values.images.postgres }}
+              # Trust is safe here: the server listens on the loopback of the pod and holds nothing but the restored backup.
+              command: ["docker-entrypoint.sh", "postgres", "-c", "listen_addresses=127.0.0.1", "-c", "fsync=off", "-c", "full_page_writes=off"]
+              restartPolicy: Always
+              env:
+                - name: POSTGRES_HOST_AUTH_METHOD
+                  value: trust
+              startupProbe:
+                exec:
+                  command: ["pg_isready", "-h", "127.0.0.1", "-U", "postgres"]
+                periodSeconds: 2
+                failureThreshold: 60
+              volumeMounts:
+                - name: data
+                  mountPath: /var/lib/postgresql
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+          containers:
+            - name: verify
+              image: {{ .Values.images.postgres }}
+              command: ["sh", "/scripts/backup-verify.sh"]
+              env:
+                {{- include "shop.resticRepositoryEnv" . | nindent 16 }}
+                - name: RESTIC_BIN
+                  value: /restic/usr/bin/restic
+                # The image of postgres has no bundle of CA certificates where restic (Go) looks: the one of the image of restic.
+                - name: SSL_CERT_FILE
+                  value: /restic/etc/ssl/certs/ca-certificates.crt
+                - name: RESTIC_CACHE_DIR
+                  value: /work/restic-cache
+                - name: VERIFY_READ_DATA
+                  value: {{ .Values.backup.verifyReadData | quote }}
+                # The temporary Postgres of the pod.
+                - name: PGHOST
+                  value: 127.0.0.1
+                - name: PGUSER
+                  value: postgres
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: restic
+                  mountPath: /restic
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+                - name: cluster
+                  mountPath: /cluster
+                  readOnly: true
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+          volumes:
+            - name: scripts
+              configMap:
+                name: shop-scripts
+            - name: restic
+              image:
+                reference: {{ .Values.images.restic }}
+                pullPolicy: IfNotPresent
+            - name: data
+              # As much as the production Postgres has: a pod whose restored databases outgrow it is evicted instead of filling the disk.
+              emptyDir:
+                sizeLimit: {{ .Values.storage.postgres }}
+            - name: work
+              emptyDir: {}
+            - name: cluster
+              emptyDir: {}
+            {{- include "shop.kubeApiAccessVolume" . | nindent 12 }}
+{{- end }}

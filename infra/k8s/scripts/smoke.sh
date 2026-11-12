@@ -17,7 +17,13 @@
 #   SMOKE_REUSE=1 smoke.sh         go on with the later phases on the cluster that SMOKE_KEEP=1 left (a debugging aid)
 #   SMOKE_TIMEOUT=900              seconds to wait for the cluster to settle after each install or upgrade
 #
-# Phases: install and checks (also the store and the panel in a browser, and create-admin); upgrade with a new revision (initialize
+# Phases: install and checks (also the store and the panel in a browser, and create-admin); the backup (an S3 of its own in the
+# namespace smoke-backup, a Job from the CronJob backup, the snapshot it leaves, a Job from the CronJob backup-verify; the time of the
+# phase and of the verification is printed); the restore on an empty cluster (make backups lists the snapshots, the namespace shop
+# is deleted with its volumes and the chart installed again, make restore brings back the snapshot nightly: the administrator, the
+# customer and its login, the numbers of products and orders, an image, the search, the home page, the snapshot pre-restore;
+# make restore refuses a snapshot with a migration the code does not know and the shop goes on; the time of the phase and the
+# peak disk are printed); the later phases run on the restored cluster: upgrade with a new revision (initialize
 # and keycloak-config change nothing); upgrade with a client added to the realm file of shop (keycloak-config adds it,
 # the users and their passwords stay); upgrade with an image whose migration fails (the previous api and worker keep
 # serving); upgrade with a good image on a database that has orders and no products (initialize fails and changes
@@ -449,6 +455,342 @@ check_create_admin() {
   echo "ok: the output of create-admin contains no secret"
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+# The backup (docs/features/deploy-ops/spec.md, "Smoke test i check", steps 1 and 2)
+# ---------------------------------------------------------------------------------------------------------------
+backup_namespace=smoke-backup
+bkc() { kubectl -n "$backup_namespace" "$@"; }
+
+# The S3 of the repository of the backups: a Garage of its own (the image of the chart) in the namespace smoke-backup, outside
+# the namespace of the shop, with the bucket `restic` and the key of the profile ci. The configuration and the script of
+# the bootstrap are those of compose (infra/garage), as in the chart; only the bucket differs.
+start_backup_repository() {
+  garage_image="$(yq '.images.garage' charts/shop/values.yaml)"
+  alpine_image="$(yq '.images.alpine' charts/shop/values.yaml)"
+  key_id="$(yq '.backup.secretValues.BACKUP_S3_ACCESS_KEY_ID' environments/ci/values.yaml)"
+  key_secret="$(yq '.backup.secretValues.BACKUP_S3_SECRET_ACCESS_KEY' environments/ci/values.yaml)"
+  rpc_secret="$(yq '.secrets.values.GARAGE_RPC_SECRET' environments/ci/values.yaml)"
+  kubectl create namespace "$backup_namespace" > /dev/null
+  {
+    echo "apiVersion: v1"
+    echo "kind: ConfigMap"
+    echo "metadata: { name: garage-config }"
+    echo "data:"
+    echo "  garage.toml: |"
+    sed 's/^/    /' "$TOOLS_REPO/infra/garage/garage.toml"
+    echo "  init.sh: |"
+    sed 's/^BUCKETS=.*/BUCKETS="restic"/' "$TOOLS_REPO/infra/garage/init.sh" | sed 's/^/    /'
+    cat <<YAML
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: garage-secrets }
+stringData:
+  GARAGE_RPC_SECRET: "$rpc_secret"
+  GARAGE_ADMIN_TOKEN: smoke-backup-admin-token
+  GARAGE_ACCESS_KEY_ID: "$key_id"
+  GARAGE_SECRET_ACCESS_KEY: "$key_secret"
+---
+apiVersion: v1
+kind: Service
+metadata: { name: garage }
+spec:
+  selector: { app: garage }
+  publishNotReadyAddresses: true
+  ports:
+    - { name: s3, port: 3900 }
+    - { name: rpc, port: 3901 }
+    - { name: admin, port: 3903 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: garage }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: garage } }
+  template:
+    metadata: { labels: { app: garage } }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: garage
+          image: $garage_image
+          envFrom: [{ secretRef: { name: garage-secrets } }]
+          volumeMounts:
+            - { name: config, mountPath: /etc/garage.toml, subPath: garage.toml, readOnly: true }
+            - { name: meta, mountPath: /var/lib/garage/meta }
+            - { name: data, mountPath: /var/lib/garage/data }
+      volumes:
+        - { name: config, configMap: { name: garage-config } }
+        - { name: meta, emptyDir: {} }
+        - { name: data, emptyDir: {} }
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: garage-init }
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      containers:
+        - name: garage-init
+          image: $alpine_image
+          command: ["/bin/sh", "/config/init.sh"]
+          env: [{ name: PATH, value: "/garage-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" }]
+          envFrom: [{ secretRef: { name: garage-secrets } }]
+          volumeMounts:
+            - { name: garage-bin, mountPath: /garage-bin, readOnly: true }
+            - { name: config, mountPath: /etc/garage.toml, subPath: garage.toml, readOnly: true }
+            - { name: config, mountPath: /config, readOnly: true }
+      volumes:
+        - { name: garage-bin, image: { reference: $garage_image, pullPolicy: IfNotPresent } }
+        - { name: config, configMap: { name: garage-config } }
+YAML
+  } | bkc apply -f - > /dev/null
+  bkc wait --for=condition=complete job/garage-init --timeout=300s > /dev/null || {
+    echo "smoke: the Garage of the backup repository did not start:" >&2
+    bkc get pods >&2 || true
+    bkc logs job/garage-init --all-containers --tail=30 >&2 || true
+    return 1
+  }
+  echo "ok: the S3 of the backup repository is up in the namespace $backup_namespace (bucket restic)"
+}
+
+# A pod with restic (the repository of the profile ci, as the CronJob reads it) and rclone (the Garage of the shop), to put an
+# object into the bucket of the images and to look into the repository. They only sleep; kc exec -c <tool> uses them.
+create_backup_tools_pod() {
+  restic_image="$(yq '.images.restic' charts/shop/values.yaml)"
+  rclone_image="$(yq '.images.rclone' charts/shop/values.yaml)"
+  repository="$(yq '.backup.repository' environments/ci/values.yaml)"
+  region="$(yq '.backup.s3Region' environments/ci/values.yaml)"
+  secret="$(yq '.backup.secretName' environments/ci/values.yaml)"
+  kc apply -f - > /dev/null <<YAML
+apiVersion: v1
+kind: Pod
+metadata: { name: smoke-backup-tools }
+spec:
+  terminationGracePeriodSeconds: 0
+  enableServiceLinks: false
+  automountServiceAccountToken: false
+  containers:
+    - name: restic
+      image: $restic_image
+      command: ["sleep", "infinity"]
+      env:
+        - { name: RESTIC_REPOSITORY, value: "$repository" }
+        - { name: AWS_DEFAULT_REGION, value: "$region" }
+        - { name: RESTIC_CACHE_DIR, value: /tmp/restic-cache }
+        - { name: RESTIC_PASSWORD, valueFrom: { secretKeyRef: { name: $secret, key: RESTIC_PASSWORD } } }
+        - { name: AWS_ACCESS_KEY_ID, valueFrom: { secretKeyRef: { name: $secret, key: BACKUP_S3_ACCESS_KEY_ID } } }
+        - { name: AWS_SECRET_ACCESS_KEY, valueFrom: { secretKeyRef: { name: $secret, key: BACKUP_S3_SECRET_ACCESS_KEY } } }
+    - name: rclone
+      image: $rclone_image
+      command: ["sleep", "infinity"]
+      env:
+        - { name: RCLONE_CONFIG_GARAGE_TYPE, value: s3 }
+        - { name: RCLONE_CONFIG_GARAGE_PROVIDER, value: Other }
+        - { name: RCLONE_CONFIG_GARAGE_ENDPOINT, value: "http://garage:3900" }
+        - { name: RCLONE_CONFIG_GARAGE_REGION, value: garage }
+        - { name: RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID, valueFrom: { secretKeyRef: { name: shop-secrets, key: GARAGE_ACCESS_KEY_ID } } }
+        - { name: RCLONE_CONFIG_GARAGE_SECRET_ACCESS_KEY, valueFrom: { secretKeyRef: { name: shop-secrets, key: GARAGE_SECRET_ACCESS_KEY } } }
+YAML
+  kc wait --for=condition=Ready pod/smoke-backup-tools --timeout=300s > /dev/null
+}
+
+# run_cronjob_job <cronjob> <job>: a Job from a CronJob of the backups, waited for up to 900 s; a failure prints the logs of all
+# its containers.
+run_cronjob_job() {
+  kc create job "$2" --from="cronjob/$1" > /dev/null
+  deadline=$(( $(date +%s) + 900 ))
+  while :; do
+    state="$(kc get job "$2" -o jsonpath='{.status.succeeded}{" "}{.status.conditions[?(@.type=="Failed")].status}')"
+    case "$state" in
+      "1 "*) return 0 ;;
+      *" True")
+        echo "smoke: the Job $2 of the CronJob $1 failed:" >&2
+        kc logs "job/$2" --all-containers --prefix --tail=40 >&2 || true
+        return 1 ;;
+    esac
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "smoke: the Job $2 of the CronJob $1 did not finish in 900 s" >&2
+      kc get pods >&2 || true
+      kc logs "job/$2" --all-containers --prefix --tail=40 >&2 || true
+      return 1
+    fi
+    sleep 5
+  done
+}
+
+# The snapshot of the backup: the tag nightly, the host of the cluster, the dumps of both databases, the object put into the
+# bucket and a manifest with the revision, the migrations and the objects.
+check_backup_snapshot() {
+  cluster_uid="$(kubectl get namespace kube-system -o jsonpath='{.metadata.uid}')"
+  snapshots="$(kc exec -c restic smoke-backup-tools -- restic snapshots --json --tag nightly)"
+  case "$snapshots" in
+    *"\"hostname\":\"$cluster_uid\""*) ;;
+    *) echo "smoke: no snapshot with the host $cluster_uid and the tag nightly in the repository:" >&2; printf '%s\n' "$snapshots" >&2; return 1 ;;
+  esac
+  [ "$(printf '%s' "$snapshots" | grep -o '"tags":\["nightly"\]' | wc -l | tr -d ' ')" = 1 ] \
+    || { echo "smoke: not exactly one snapshot with the tag nightly:" >&2; printf '%s\n' "$snapshots" >&2; return 1; }
+  files="$(kc exec -c restic smoke-backup-tools -- restic ls --tag nightly latest)"
+  for path in /work/dumps/shop.dump /work/dumps/keycloak.dump /work/objects/smoke-backup/object.txt /work/manifest.json; do
+    printf '%s\n' "$files" | grep -qx "$path" || { echo "smoke: the snapshot lacks $path; it has:" >&2; printf '%s\n' "$files" >&2; return 1; }
+  done
+  manifest="$(kc exec -c restic smoke-backup-tools -- restic dump --tag nightly latest /work/manifest.json)"
+  # The seed has put the demo images into the bucket too: the manifest counts what the bucket has.
+  size="$(kc exec -c rclone smoke-backup-tools -- rclone size --json garage:product-images | tr -d ' \n')"
+  objects="$(printf '%s' "$size" | sed -n 's/.*"count":\([0-9][0-9]*\),"bytes":\([0-9][0-9]*\).*/\1 \2/p')"
+  [ -n "$objects" ] || { echo "smoke: cannot read the size of the bucket from: $size" >&2; return 1; }
+  revision="$(kc get cronjob backup -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name=="REVISION")].value}')"
+  for expected in "\"revision\": \"$revision\"" "\"cluster\": \"$cluster_uid\"" '"databases": ["shop","keycloak"]' \
+    "\"objects\": {\"count\": ${objects% *}, \"bytes\": ${objects#* }}" 'DoctrineMigrations\\Version'; do
+    printf '%s\n' "$manifest" | grep -qF -- "$expected" || { echo "smoke: the manifest lacks $expected:" >&2; printf '%s\n' "$manifest" >&2; return 1; }
+  done
+  echo "ok: the snapshot nightly of the host $cluster_uid has the dumps of shop and keycloak, the object and a manifest of the revision $revision"
+}
+
+# The verification of that snapshot (the CronJob backup-verify, which the profile ci has read all the data): the Job succeeds, and
+# its log shows the steps it took. The time of the verification is printed.
+check_backup_verification() {
+  verify_started="$(date +%s)"
+  run_cronjob_job backup-verify backup-verify-smoke
+  log="$(kc logs job/backup-verify-smoke -c verify)"
+  for step in "backup-verify: restic check --read-data$" "the dump of shop restored" "the dump of keycloak restored" "the realms shop and backoffice are in keycloak" \
+    "as in the manifest" "backup-verify: ok"; do
+    printf '%s\n' "$log" | grep -q -- "$step" || { echo "smoke: the log of the verification lacks '$step':" >&2; printf '%s\n' "$log" >&2; return 1; }
+  done
+  echo "ok: the verification of the backups passed"
+  echo "smoke: the verification phase took $(( $(date +%s) - verify_started )) s"
+}
+
+# The phase: the repository, one object in the bucket of the images, the Job of the CronJob, what it left in the repository and the
+# verification of it.
+check_backup() {
+  backup_started="$(date +%s)"
+  start_backup_repository
+  create_backup_tools_pod
+  kc exec -c rclone smoke-backup-tools -- sh -c 'printf "smoke object\n" | rclone rcat garage:product-images/smoke-backup/object.txt'
+  run_cronjob_job backup backup-smoke
+  check_backup_snapshot
+  check_backup_verification
+  # It holds the secrets of the repository and of the shop: gone as soon as nothing needs it.
+  kc delete pod smoke-backup-tools --now > /dev/null
+  sample_once
+  echo "smoke: the backup phase took $(( $(date +%s) - backup_started )) s, the disk of the cluster after it: $(tail -n 1 "$work/samples" | cut -d' ' -f2) MiB"
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+# The restore on an empty cluster (docs/features/deploy-ops/spec.md, "Smoke test i check", steps 4 and 5)
+# ---------------------------------------------------------------------------------------------------------------
+# A word that only the database of the backup has in the name of a product (the index is not told): after the restore the search
+# finds the product by it only if the index was rebuilt from the restored database.
+restore_phrase=Smokerestore
+mark_product_for_the_search() {
+  restore_slug="$(kc exec statefulset/postgres -- psql -U shop -d shop -tAc 'SELECT slug FROM catalog_product ORDER BY slug LIMIT 1' | tr -d '[:space:]')"
+  [ -n "$restore_slug" ] || { echo "smoke: no product to mark for the search" >&2; return 1; }
+  kc exec statefulset/postgres -- psql -U shop -d shop -v ON_ERROR_STOP=1 -qc \
+    "UPDATE catalog_product SET name = name || ' $restore_phrase' WHERE slug = '$restore_slug'" > /dev/null
+}
+
+# restore_with <answer> <snapshot> <name of the log>: make -C infra/k8s restore with the answer on the standard input.
+restore_with() {
+  printf '%s\n' "$1" | KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" SNAPSHOT="$2" RESTORE_POLL_SECONDS=3 \
+    sh "$here/restore.sh" > "$work/restore-$3.log" 2>&1
+}
+
+# make -C infra/k8s backups, and the newest snapshot with a tag in its list.
+list_backups() { KUBE_DIR="$KUBE_DIR" KUBE_NETWORK="$KUBE_NETWORK" KUBE_NAMESPACE="$namespace" sh "$here/backups.sh"; }
+snapshot_with_tag() { printf '%s\n' "$1" | awk -v tag="$2" '$4 == tag { id = $1 } END { print id }'; }
+
+peak_disk() { awk '{ if ($2 > d) d = $2 } END { printf "%d", d }' "$work/samples"; }
+
+check_restore() {
+  restore_phase_started="$(date +%s)"
+  backups="$(list_backups)" || { echo "smoke: make backups failed" >&2; return 1; }
+  printf '%s\n' "$backups"
+  nightly="$(snapshot_with_tag "$backups" nightly)"
+  [ -n "$nightly" ] || { echo "smoke: make backups lists no snapshot nightly" >&2; return 1; }
+  # Read first: a kubectl in the pipeline would take its standard input (docker run -i).
+  cluster_uid="$(kubectl get namespace kube-system -o jsonpath='{.metadata.uid}')"
+  printf '%s\n' "$backups" | grep -q "^$nightly  .*  $cluster_uid  nightly  [^ ?][^ ]*$" \
+    || { echo "smoke: make backups does not give the time, the host, the tag and the revision of $nightly" >&2; return 1; }
+  echo "ok: make backups lists the snapshot nightly $nightly with its time, host, tag and revision"
+
+  echo "smoke: the namespace $namespace with its volumes deleted, the chart installed again"
+  helm_cluster uninstall shop --namespace "$namespace" --wait > /dev/null
+  kubectl delete namespace "$namespace" --wait=true --timeout=600s > /dev/null
+  install r1
+  create_tools_pod
+  wait_ready "installed again"
+  kc wait --for=condition=Ready pod/smoke-tools --timeout=180s > /dev/null
+  read_secrets
+  checks admin-absent "$admin_login" "$admin_email"
+  [ "$(count ordering_order)" = 0 ] || { echo "smoke: the cluster installed again has orders" >&2; return 1; }
+  echo "ok: the cluster installed again has the demo data only (no administrator, no orders)"
+
+  restore_started="$(date +%s)"
+  restore_with tak "$nightly" restored || { echo "smoke: make restore SNAPSHOT=$nightly failed:" >&2; cat "$work/restore-restored.log" >&2; dump_state; return 1; }
+  restore_seconds=$(( $(date +%s) - restore_started ))
+  grep '^restore: ' "$work/restore-restored.log"
+  wait_ready "restored"
+  checks restored "$admin_login" "$restore_slug" "$restore_phrase"
+  [ "$(count catalog_product)" = "$products_at_backup" ] || { echo "smoke: $(count catalog_product) products after the restore, $products_at_backup in the backup" >&2; return 1; }
+  [ "$(count ordering_order)" = "$orders_at_backup" ] || { echo "smoke: $(count ordering_order) orders after the restore, $orders_at_backup in the backup" >&2; return 1; }
+  echo "ok: $products_at_backup products and $orders_at_backup orders, as in the backup"
+  checks compare "$snapshot_at_backup"
+  create_backup_tools_pod
+  kc exec -c rclone smoke-backup-tools -- rclone lsf garage:product-images/smoke-backup/ | grep -qx object.txt \
+    || { echo "smoke: the object of the backup is not in the bucket after the restore" >&2; return 1; }
+  echo "ok: the object of the backup is in the bucket again"
+  backups="$(list_backups)"
+  pre_restore="$(snapshot_with_tag "$backups" pre-restore)"
+  if [ -z "$pre_restore" ] || ! grep -q "pre-restore snapshot $pre_restore" "$work/restore-restored.log"; then
+    echo "smoke: no snapshot pre-restore in the repository after the restore:" >&2; printf '%s\n' "$backups" >&2; return 1
+  fi
+  echo "ok: the snapshot pre-restore $pre_restore is in the repository"
+  check_restore_refuses_a_newer_snapshot
+  kc delete pod smoke-backup-tools --now > /dev/null
+  sample_once
+  echo "smoke: the restore phase took $(( $(date +%s) - restore_phase_started )) s (make restore itself $restore_seconds s), the peak disk of the cluster so far: $(peak_disk) MiB"
+}
+
+# A copy of the snapshot nightly whose manifest has one more migration (one the code does not know): make restore refuses it
+# before the question, the backup pre-restore and any scaling, and the shop goes on as it was.
+check_restore_refuses_a_newer_snapshot() {
+  newer="$(kc exec -i -c restic smoke-backup-tools -- sh -s -- "$nightly" <<'SH'
+set -eu
+restic restore "$1:/work" --target /work > /dev/null
+sed -i 's/"migrations": \[/"migrations": ["DoctrineMigrations\\\\Version29990101000000",/' /work/manifest.json
+grep -q 'Version29990101000000' /work/manifest.json
+restic backup --tag smoke-newer --host smoke-newer /work/dumps /work/objects /work/manifest.json | sed -n 's/^snapshot \([0-9a-f]*\) saved$/\1/p'
+SH
+)"
+  [ -n "$newer" ] || { echo "smoke: could not make the snapshot with a newer migration" >&2; return 1; }
+  pods_before="$(kc get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')"
+  pre_restore_before="$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')"
+  if restore_with tak "$newer" newer; then
+    echo "smoke: make restore accepted a snapshot newer than the code:" >&2; cat "$work/restore-newer.log" >&2; return 1
+  fi
+  if ! grep -q 'newer than the deployed code' "$work/restore-newer.log" || ! grep -q 'nothing changed' "$work/restore-newer.log"; then
+    echo "smoke: make restore of a newer snapshot failed for another reason:" >&2; cat "$work/restore-newer.log" >&2; return 1
+  fi
+  if grep -q 'type tak' "$work/restore-newer.log"; then echo "smoke: make restore asked before it refused the newer snapshot" >&2; return 1; fi
+  all_ready || { echo "smoke: the shop is not running after the refused restore" >&2; dump_state; return 1; }
+  [ "$(kc get pods -l 'app.kubernetes.io/name in (api,worker,store,keycloak)' -o jsonpath='{.items[*].metadata.name}')" = "$pods_before" ] \
+    || { echo "smoke: the refused restore restarted the applications" >&2; return 1; }
+  if [ "$(count catalog_product)" != "$products_at_backup" ] || [ "$(count ordering_order)" != "$orders_at_backup" ]; then
+    echo "smoke: the refused restore changed the data" >&2; return 1
+  fi
+  [ "$(list_backups | awk '$4 == "pre-restore"' | wc -l | tr -d ' ')" = "$pre_restore_before" ] \
+    || { echo "smoke: the refused restore made a backup pre-restore" >&2; return 1; }
+  for cronjob in backup cart-purge-expired; do
+    [ "$(kc get cronjob "$cronjob" -o jsonpath='{.spec.suspend}')" != true ] || { echo "smoke: the refused restore suspended $cronjob" >&2; return 1; }
+  done
+  echo "ok: make restore refused the snapshot $newer with a migration the code does not know; the shop runs, the data is unchanged"
+}
+
 # A copy of the chart whose realm file of shop has one more client (smoke-extra), in <work>/chart-extra.
 add_realm_client() {
   rm -rf "$work/chart-extra"
@@ -544,6 +886,16 @@ else
 
   log "create-admin"
   check_create_admin
+
+  log "backup"
+  mark_product_for_the_search
+  products_at_backup="$(count catalog_product)"
+  orders_at_backup="$(count ordering_order)"
+  snapshot_at_backup="$(checks snapshot | tail -n 1)"
+  check_backup
+
+  log "restore on an empty cluster"
+  check_restore
 
   log "upgrade r2: the same code, a new revision"
   snapshot_before="$(checks snapshot | tail -n 1)"

@@ -9,7 +9,12 @@ from support import REPO, docs, init_env_keys
 CERT = REPO / "infra/k8s/environments/prod/sealed-secrets.pem"
 NAMESPACE = "shop"
 SECRETS_NAME = "shop-secrets"
-EXPECTED_KEYS = {"shop-brevo-smtp": {"BREVO_SMTP_LOGIN", "BREVO_SMTP_PASSWORD"}, "shop-origin-tls": {"tls.crt", "tls.key"}}
+EXPECTED_KEYS = {
+    "shop-brevo-smtp": {"BREVO_SMTP_LOGIN", "BREVO_SMTP_PASSWORD"},
+    "shop-origin-tls": {"tls.crt", "tls.key"},
+    "shop-backup": {"RESTIC_PASSWORD", "BACKUP_S3_ACCESS_KEY_ID", "BACKUP_S3_SECRET_ACCESS_KEY"},
+    "grafana-cloud": {"GRAFANA_CLOUD_TOKEN"},
+}
 
 
 def problems(sealed, certificate_present, keys):
@@ -121,6 +126,18 @@ class TheCheckItself(unittest.TestCase):
         self.assertTrue(problems([sealed_doc("shop-brevo-smtp", ["BREVO_SMTP_LOGIN"])], False, []))
         self.assertTrue(problems([sealed_doc("shop-origin-tls", ["tls.crt"])], False, []))
         self.assertEqual([], problems([sealed_doc("shop-origin-tls", ["tls.crt", "tls.key"])], False, []))
+
+    def test_the_backup_secret_needs_its_three_keys_when_present(self):
+        keys = ["RESTIC_PASSWORD", "BACKUP_S3_ACCESS_KEY_ID", "BACKUP_S3_SECRET_ACCESS_KEY"]
+        for missing in keys:
+            found = problems([sealed_doc("shop-backup", [k for k in keys if k != missing])], False, [])
+            self.assertTrue(any(missing in line for line in found), missing)
+        self.assertEqual([], problems([sealed_doc("shop-backup", keys)], False, []))
+
+    def test_the_grafana_secret_needs_its_token_when_present(self):
+        found = problems([sealed_doc("grafana-cloud", ["OTHER_KEY"])], False, [])
+        self.assertTrue(any("GRAFANA_CLOUD_TOKEN" in line for line in found))
+        self.assertEqual([], problems([sealed_doc("grafana-cloud", ["GRAFANA_CLOUD_TOKEN"])], False, []))
 
     def test_another_namespace_is_refused(self):
         doc = sealed_doc(SECRETS_NAME, self.keys)
