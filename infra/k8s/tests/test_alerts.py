@@ -101,8 +101,11 @@ class WorkloadNotReadyTest(unittest.TestCase):
 
     def test_it_compares_the_replicas_of_deployments_and_statefulsets_in_shop(self):
         expr = rules()["WorkloadNotReady"]["expr"]
-        self.assertRegex(expr, r'kube_deployment_status_replicas_available\{namespace="shop"\}\s*<')
-        self.assertRegex(expr, r'kube_statefulset_status_replicas_ready\{namespace="shop"\}\s*<')
+        # The maximum over the series of one object on both sides: a second series of it (another instance) is no many-to-many match.
+        self.assertRegex(expr, r'max by \(namespace, deployment\) \(kube_deployment_status_replicas_available\{namespace="shop"\}\)\s*'
+                               r'< on\(namespace, deployment\)\s*max by \(namespace, deployment\) \(kube_deployment_spec_replicas\{namespace="shop"\}\)')
+        self.assertRegex(expr, r'max by \(namespace, statefulset\) \(kube_statefulset_status_replicas_ready\{namespace="shop"\}\)\s*'
+                               r'< on\(namespace, statefulset\)\s*max by \(namespace, statefulset\) \(kube_statefulset_replicas\{namespace="shop"\}\)')
 
 
 class ValuesTest(unittest.TestCase):
