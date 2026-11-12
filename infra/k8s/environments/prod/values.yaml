@@ -66,6 +66,11 @@ backup:
   s3Region: auto
   secretName: shop-backup
 
+# The alert rules (docs/features/deploy-ops/spec.md, O6): a PrometheusRule that the application monitoring forwards to its ruler; the
+# CRD comes with the application prometheus-crds, which Argo CD applies before the shop.
+alerts:
+  enabled: true
+
 elasticsearch:
   javaOpts: -Xms2g -Xmx2g
 

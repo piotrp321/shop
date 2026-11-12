@@ -7,7 +7,7 @@ zdjęciami produktów) leżą na wolumenach tego serwera. Backup VPS-a od OVH je
 dostawcy, a jego przywrócenie cofa cały serwer. Potrzebna jest kopia danych sklepu poza serwerem, szyfrowana, tania i
 odtwarzalna na pustym klastrze. Logi i metryki klastra muszą być poza nim: serwer, który padł, nie opowie o sobie. Własny
 Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie pomagają przy jego awarii. Specyfikacja:
-`docs/features/deploy-ops/spec.md` (O1, O2, O3, O4, O5, O7).
+`docs/features/deploy-ops/spec.md` (O1, O2, O3, O4, O5, O6, O7).
 
 ## Decyzja
 
@@ -98,6 +98,18 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   Pod Security Admission nie wystarcza: poziom przestrzeni nie ma wyjątku dla jednego DaemonSetu, a wyjątki po użytkowniku są
   w konfiguracji serwera API, poza Helm i Argo CD. `check` pilnuje polityk w renderze, `monitoring-smoke` wysyła w k3d żądania,
   które muszą odrzucić, i odtwarza pody `monitoring` pod nimi.
+- **Alerty to `PrometheusRule` w chartcie `shop`** (`templates/00-alerts.yaml`, tylko przy `alerts.enabled`: `prod`), które Alloy
+  synchronizuje do rulera Grafana Cloud, więc alert przychodzi także wtedy, gdy serwer albo Alloy nie żyje (reguły z `absent`).
+  Siedem reguł: `BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`, `NodeDiskFull`, `ClusterSilent`,
+  `WorkloadNotReady`. Alerty kopii patrzą na Job z `kube_job_owner` o dokładnej nazwie CronJoba (`backup` nie łapie
+  `backup-verify`) i na `kube_cronjob_status_last_successful_time` (26 godzin); `BackupFailed` odpala dla Joba `Failed` nowszego niż
+  ostatnia udana kopia, więc nieudany pod z udanym ponowieniem go nie wywołuje, a sukces gasi alert. `WorkloadNotReady` ma `absent`
+  dla każdego Deploymentu i StatefulSetu renderu (lista z tego samego renderu, więc nowy workload dostaje regułę sam), tylko gdy
+  klaster raportuje, żeby cisza całego klastra była wyłącznie `ClusterSilent`; workload zeskalowany do zera (`restore`) nie odpala.
+  Reguły są testowane `promtool test rules` w `check` na regułach wyciągniętych z renderu, nie z ich kopii. Alternatywą były
+  reguły napisane w Grafana Cloud ręcznie: poza repo, bez testów i bez przeglądu. Brak CRD przy `alerts.enabled` daje błąd
+  synchronizacji, a nie ciche zniknięcie reguł. Powiadomienia to punkt kontaktowy e-mail w Grafana Cloud, a świadomy `restore` i
+  prace wyciszane są ręcznie (runbook); alerty z treści logów są poza zakresem.
 - **Logi są maskowane w Alloy przed wysłaniem, jedną listą etapów** (`extraLogProcessingStages`, blok w manifeście
   `monitoring` użyty dla logów podów i zdarzeń klastra): hasła, tokeny, JWT, `Bearer`, nagłówki `Authorization` i ciasteczka,
   klucze z listy (JSON, logfmt, zapytania URL), adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i
@@ -128,6 +140,9 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   Przy tych samych sekretach (ten sam serwer albo nowy z kopią klucza Sealed Secrets) to jest `KC_BOOTSTRAP_ADMIN_PASSWORD`
   sekretu; po utracie klucza Sealed Secrets (nowe sekrety) `keycloak-config` po odtworzeniu nie zaloguje się do `master` i
   odtworzenie stanie na kroku 6 (runbook).
+- Alerty zależą od działania Alloy i kube-state-metrics: bez nich nie ma metryk, a `absent` zamienia ciszę w alert (`BackupMissing`
+  po 30 minutach, `ClusterSilent` po 15). Przed pierwszą kopią `BackupMissing` odpala, bo metryki jeszcze nie ma. `NodeDiskFull`
+  patrzy na jeden węzeł; wyciszenie na czas prac jest ręczne i może zostać zapomniane.
 - Grafana Cloud dostaje logi i metryki klastra: dane klientów w nieprzewidzianym formacie (np. imię i adres w treści wyjątku
   poza parametrami Doctrine) mogą przejść maskowanie; ograniczają to korpus testowy, przegląd próbki po wdrożeniu i zasada
   wyłączania źródła do czasu poprawki. Przekroczenie darmowego planu Grafana Cloud odrzuca nadmiar; lista dozwolonych metryk

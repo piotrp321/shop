@@ -266,6 +266,11 @@ seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/
 # shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
 restore_without_confirmation() { replace infra/k8s/scripts/restore.sh '[ "$answer" = tak ] || refuse' '[ "$answer" = never ] && refuse'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
+# The alert rules (docs/features/deploy-ops/spec.md, O6): the render test sees the rule without its absent, promtool sees an
+# expression that does what the scenarios do not allow.
+backup_missing_without_absent() { replace infra/k8s/charts/shop/templates/00-alerts.yaml 'absent_over_time(kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"}[30m])' 'vector(0) > 1'; }
+node_disk_full_at_exactly_85_percent() { replace infra/k8s/charts/shop/templates/00-alerts.yaml '< 0.15' '<= 0.15'; }
+alert_rule_with_a_syntax_error() { replace infra/k8s/charts/shop/templates/00-alerts.yaml 'expr: absent(kube_node_info)' 'expr: absent(kube_node_info) and'; }
 nothing_broken() { :; }
 
 if [ -z "${SELFTEST_ONLY:-}" ]; then
@@ -352,6 +357,9 @@ run_case "monitoring Service policy letting NodePort through" "test_the_service_
 run_case "monitoring Service policy without the external IPs" "test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through" monitoring_service_policy_without_external_ips
 run_case "monitoring pod policy without the priority classes of the system" "test_no_pod_and_no_template_of_a_pod_gets_a_priority_class_of_the_system" monitoring_pods_with_priority_classes_of_the_system
 run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" restore_without_confirmation
+run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" backup_missing_without_absent
+run_case "NodeDiskFull firing at exactly 85 percent (promtool)" "alertname: NodeDiskFull" node_disk_full_at_exactly_85_percent
+run_case "alert rule with a PromQL syntax error" "parse error" alert_rule_with_a_syntax_error
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then

@@ -4,7 +4,8 @@
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
 # k8s-monitoring of the pinned version (downloaded once, its sha256 checked) with the values of argocd/apps/monitoring.yaml
 # (kubeconform with the schema of Alloy, the access to Secrets, the metrics of the alerts, the budget of the node) and the log
-# masking in a real Alloy (the stages of the manifest on tests/log-corpus). Needs Docker and the network once for the charts,
+# masking in a real Alloy (the stages of the manifest on tests/log-corpus). The alert rules of the prod render go through promtool
+# (check rules and the scenarios of tests/alerts). Needs Docker and the network once for the charts,
 # and git for the last step.
 check:
 	sh scripts/check.sh
@@ -26,7 +27,8 @@ check:
 # without a digest in monitoring-render.sh or with another one, stages that Alloy rejects, without the admission policy on the access to the
 # host or the binding of the policy on the tokens, a policy that only warns or fails open, the policies in the wave of the workloads,
 # node-exporter known by its labels, the operator with DaemonSets or changing the Deployment of kube-state-metrics, Alloy with the proxy
-# of the nodes, the token of Alloy given to a group of service accounts).
+# of the nodes, the token of Alloy given to a group of service accounts, BackupMissing without the absent for a metric that is gone, NodeDiskFull
+# firing at exactly 85 percent, an alert rule that PromQL cannot parse).
 selftest:
 	sh scripts/selftest.sh
 
@@ -115,7 +117,7 @@ bootstrap:
 kubeconfig:
 	sh scripts/kubeconfig.sh "$(HOST)"
 
-# The applications of Argo CD, the pods and the jobs of the shop, read over SSH: make -C infra/k8s status HOST=<user>@<address>.
+# The applications of Argo CD, the pods and the jobs of the shop, and the logs of the failed jobs, read over SSH: make -C infra/k8s status HOST=<user>@<address>.
 status:
 	sh scripts/status.sh "$(HOST)"
 
