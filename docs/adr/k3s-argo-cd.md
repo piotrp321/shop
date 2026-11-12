@@ -62,5 +62,6 @@ użytkownika. Szczegóły: `docs/features/deploy/spec.md`, uruchomienie: `infra/
 - Klucz prywatny Sealed Secrets jest jedyną rzeczą, której nie da się odtworzyć z repo; jego utrata oznacza nowy
   certyfikat i ponowne zaszyfrowanie sekretów (w tym `shop-backup` z tym samym hasłem restic, bo inaczej kopie są nie do odczytania) oraz ponowne wczytanie danych albo odtworzenie z kopii.
 - Dane sklepu mają nocną, szyfrowaną kopię poza serwerem (CronJob `backup`, restic do Cloudflare R2;
-  `docs/adr/backups-observability.md`) oraz backup VPS-a od OVH. Do czasu weryfikacji i ćwiczonego odtworzenia
-  (reszta DEPLOY-OPS) prawdziwe dane i publiczny start nie wchodzą w grę.
+  `docs/adr/backups-observability.md`) oraz backup VPS-a od OVH. Kopie są codziennie weryfikowane, a ich błąd i brak
+  wywołują alerty (`docs/adr/backups-observability.md`); prawdziwe dane i publiczny start dopiero po ćwiczeniu odtworzenia
+  z runbooka (`infra/k8s/README.md`).
