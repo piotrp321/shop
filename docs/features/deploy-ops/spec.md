@@ -461,5 +461,11 @@ Helm), a smoke test ma własną instancję S3. Konta R2 i Grafana Cloud oraz war
   klastra oraz token `grafana-cloud`, z kontem kube-state-metrics listę obiektów klastra (bez sekretów i ConfigMap); może też
   zatrzymać zbieranie (zmienić albo usunąć Alloy) i bez limitów przestrzeni zająć zasoby węzła. Istniejących Deploymentów
   kube-state-metrics i swojego ani DaemonSetu `monitoring-node-exporter` nie zmieni.
+- **Sieć klastra jest otwarta.** Klaster nie ma żadnej NetworkPolicy, Redis działa bez hasła i trzyma sesje sklepu z tokenami
+  OIDC klientów, a Elasticsearch działa bez security. Każdy pod w `monitoring`, także przejęty operator bez tworzenia
+  czegokolwiek, sięga po sieci do `redis.shop:6379` (sesje klientów, podszycie się pod klienta) i do Elasticsearcha, tak samo
+  jak każdy pod w `shop` i każdy obcy obraz tam (Keycloak, Varnish, imgproxy, Elasticsearch). Polityki dopuszczania i RBAC
+  monitoringu tego nie ograniczają; zamknięcie wymaga NetworkPolicy z domyślną odmową, hasła Redisa i security
+  Elasticsearcha.
 - **Zależności w ruchu.** Interfejs chartu `k8s-monitoring` zmienia się między głównymi wersjami (operator od 3.x,
   `destinations` w 4.x); wersja przypięta, aktualizacja to osobna zmiana.

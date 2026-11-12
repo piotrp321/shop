@@ -280,7 +280,9 @@ Alloy czyta z klastra tylko sekret `grafana-cloud` z przestrzeni `shop`, a Alloy
 bez ClusterRoli; RBAC operatora i kolektora jest w `extraObjects` manifestu, nie w chartach. Polityki dopuszczania z tego samego
 manifestu odrzucają w `monitoring` pody z dostępem do hosta (poza node-exporterem) albo z klasą priorytetu `system-*`, Service
 inne niż `ClusterIP` albo z `externalIPs` i sekrety z tokenami kont, także żądania administratora; `kubectl debug` poda
-node-exportera też jest odrzucany.
+node-exportera też jest odrzucany. Klaster nie ma NetworkPolicy, a Redis (sesje klientów) i Elasticsearch działają bez
+uwierzytelnienia: każdy pod klastra, także w `monitoring`, sięga do nich po sieci (ryzyko opisane w
+`docs/adr/backups-observability.md`).
 
 1. **użytkownik** – zakłada konto Grafana Cloud (darmowy plan) ze stosem w regionie UE i retencją logów 14 dni oraz jeden token
    access policy dla metryk i logów z zakresami `metrics:write`, `logs:write`, `rules:read` i `rules:write`. Podaje agentowi (bez

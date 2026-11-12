@@ -143,6 +143,12 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   bez uprawnień do DaemonSetów). Nie dostanie się do hosta ani do tokenów kont przez sekrety, nie otworzy portu węzła, nie
   przejmie ruchu przez `externalIPs` i nie wywłaszczy podów sklepu klasą priorytetu systemu (polityki dopuszczania) i nie
   czyta sekretów `shop-backup` ani `shop-secrets` (RBAC); kolektor też nie.
+- Klaster nie ma żadnej NetworkPolicy, więc każdy pod sięga po sieci do każdej usługi każdej przestrzeni. Redis działa bez
+  hasła i trzyma sesje sklepu z tokenami OIDC klientów, a Elasticsearch działa bez security (`xpack.security.enabled: false`).
+  Każdy pod w `monitoring`, także przejęty operator bez tworzenia czegokolwiek, czyta i zmienia sesje klientów przez
+  `redis.shop:6379` (podszycie się pod klienta) i indeks wyszukiwarki przez Elasticsearch, tak samo jak każdy pod w `shop` i każdy obcy obraz tam
+  (Keycloak, Varnish, imgproxy, Elasticsearch). Polityki dopuszczania i RBAC tego nie ograniczają; zamknięcie wymaga
+  NetworkPolicy z domyślną odmową, hasła Redisa i security Elasticsearcha.
 - RBAC kolektora i operatora jest w manifeście, nie w chartcie: funkcja chartu, która potrzebuje innego zasobu (nowa wersja
   albo włączona opcja), kończy się błędem `forbidden` w logu Alloy albo operatora (wyłapuje go `monitoring-smoke`), a nie
   cichym poszerzeniem uprawnień; brakującą regułę dopisuje się w `extraObjects`.
