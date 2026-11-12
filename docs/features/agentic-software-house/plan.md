@@ -9,12 +9,13 @@ z [wizji](../../vision.md). Godzina dziennie to cel do zmierzenia (krok 7), nie 
 
 ## Status
 
-W toku przez `/ao-run`: DEPLOY-OPS (#178). Kolejność epików jest na tablicy „Backlog sklepu”. Blokery:
-DEPLOY-OPS-4 (`BLOCKED`, czeka na decyzję użytkownika). Ostatni zmergowany epik: QUALITY-FIXES (końcowy PR #439,
-2 interwencje, 0 ręcznych poprawek). Retro do zrobienia: brak (retro QUALITY-FIXES w tym PR). Krok 7: CART-FIXES (#88)
+W toku przez `/ao-run`: brak; przygotowany do startu: ADMIN-DESIGN (#460). Kolejność epików jest na tablicy
+„Backlog sklepu”. Blokery: brak. Ostatni zmergowany epik: DEPLOY-OPS (końcowy PR #476; interwencje, czekanie
+i ręczne poprawki bez zapisanego pomiaru w issue epiku). Retro do zrobienia: brak (retro DEPLOY-OPS w tym PR).
+Krok 7: CART-FIXES (#88)
 przeszedł cały proces, od `/prepare-epic` do odbioru (końcowy PR #112): 30 minut użytkownika (szacunek użytkownika,
 nie pomiar), 0 interwencji, 0 ręcznych poprawek, 4 h przebiegu AO (5 zadań), koszt 14,45 USD według Claude CLI.
-Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 79, zamkniętych 28.
+Kroki 12–15 domykają pętlę zgłoszeń agentów: otwartych issues z etykietą `agent` jest 76, zamkniętych 33.
 
 | Krok | Zakres | Status |
 |---|---|---|
