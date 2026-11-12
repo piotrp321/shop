@@ -4,7 +4,9 @@
 # Both jobs run for every change, so they can be required status checks. For a pull request the `scope` job says
 # what it changes (.github/scripts/scope.sh): documentation only (docs/** and *.md outside .github/) skips every
 # step; repository tooling only (.claude/**, .ao/**, tools/**, possibly with documentation) runs just the script
-# tests in `checks`. Skipped steps let both jobs pass within seconds. Anything else, and every push, runs it all.
+# tests in `checks`; the Kubernetes deployment only (infra/k8s/**, possibly with documentation) runs just
+# `make -C infra/k8s check` in `checks`. Skipped steps let the other job pass within seconds. Anything else, and every
+# push, runs it all.
 name: CI
 
 on:
@@ -85,7 +87,13 @@ jobs:
         run: echo "Only .claude/**, .ao/**, tools/** and documentation changed"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling'
+        if: env.FULL_CI == 'true' || env.SCOPE == 'tooling' || env.SCOPE == 'k8s'
+
+      # The compose stack of the app tests and E2E does not use infra/k8s: a change limited to it needs only the
+      # checks of the chart, environments, sealed secrets and server scripts (in the full CI they run inside `make check`).
+      - name: Kubernetes-only change, running make -C infra/k8s check only
+        if: env.SCOPE == 'k8s'
+        run: make -C infra/k8s check
 
       # The script test suites (CI scripts, Claude Code skills, AO hooks, rulesets), found by location by
       # script-tests.sh, so a new skill needs no change here. They run in the background next to the steps below;
@@ -279,7 +287,7 @@ jobs:
         if: needs.scope.result != 'success'
         run: echo "::error::The scope job did not succeed" && exit 1
 
-      - name: Documentation or tooling only change, skipping the end-to-end tests
+      - name: Documentation, tooling or Kubernetes only change, skipping the end-to-end tests
         if: env.FULL_CI != 'true'
         run: echo "The change is $SCOPE only"
 
