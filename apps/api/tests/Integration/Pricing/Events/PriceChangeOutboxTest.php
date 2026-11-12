@@ -67,10 +67,10 @@ final class PriceChangeOutboxTest extends MessagingKernelTestCase
 
     public function testEveryChangeSavedIsOneEvent(): void
     {
-        $price = $this->newPrice(PriceChangeOrigin::seed());
+        $price = $this->newPrice(PriceChangeOrigin::seed(), new \DateTimeImmutable('-1 hour'));
         $this->prices->save($price);
-        $price->changeGross(GrossPrice::pln(7777), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'Anna Admin'));
-        $price->changeGross(GrossPrice::pln(8888), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'Anna Admin'));
+        $price->changeGross(GrossPrice::pln(7777), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'Anna Admin'), new \DateTimeImmutable('-30 minutes'));
+        $price->changeGross(GrossPrice::pln(8888), new PolishVatRates(), PriceChangeOrigin::staff('sub-1', 'Anna Admin'), new \DateTimeImmutable('-29 minutes'));
         $this->prices->save($price);
         // Unchanged: nothing is written, nothing published.
         $this->prices->save($price);
@@ -155,27 +155,29 @@ final class PriceChangeOutboxTest extends MessagingKernelTestCase
         self::assertSame([[$clean, PriceChangeSource::TaxReconciliation]], $this->outboxEvents());
     }
 
-    private function newPrice(PriceChangeOrigin $origin): VariantPrice
+    private function newPrice(PriceChangeOrigin $origin, ?\DateTimeImmutable $at = null): VariantPrice
     {
-        return VariantPrice::create(VariantId::fromString((string) Uuid::v7()), GrossPrice::pln(5490), TaxClass::fromString('standard'), new PolishVatRates(), $origin);
+        return VariantPrice::create(VariantId::fromString((string) Uuid::v7()), GrossPrice::pln(5490), TaxClass::fromString('standard'), new PolishVatRates(), $origin, $at);
     }
 
     /**
-     * @return list<array{string, PriceChangeSource}> the events in the outbox, oldest first
+     * @return list<array{string, PriceChangeSource}> the events in the outbox, oldest change first
      */
     private function outboxEvents(): array
     {
         $events = [];
-        // The Doctrine transport hands out the oldest message not taken yet: read until there is none.
+        // Read until the transport has no message left. It hands them out by `available_at`, which is stored to the
+        // second, so two saves within one second come out in no set order: sort by the moment of the change instead.
         while ([] !== $envelopes = [...$this->transport('outbox')->get()]) {
             foreach ($envelopes as $envelope) {
                 $event = $envelope->getMessage();
                 self::assertInstanceOf(VariantPriceChanged::class, $event);
-                $events[] = [$event->variantId, $event->source];
+                $events[] = $event;
             }
         }
+        usort($events, static fn (VariantPriceChanged $a, VariantPriceChanged $b): int => $a->occurredAt <=> $b->occurredAt);
 
-        return $events;
+        return array_map(static fn (VariantPriceChanged $event): array => [$event->variantId, $event->source], $events);
     }
 
     private function reconcileTax(VariantPriceRepository $prices): CommandTester
