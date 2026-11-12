@@ -108,6 +108,23 @@ sekcji „Poza zakresem” specyfikacji z powodem.
      z wtyczką `analysis-stempel`, którego nikt nie budował ani nie publikował. DEPLOY-6 zatrzymał się na pytaniu,
      jak digesty obrazów mają trafić do Argo CD, gdy CI nie ma dostępu do klastra. Obie pozycje należały do tej
      sekcji jako decyzje przed startem.
+   - Epik z kryterium bezpieczeństwa (uprawnienia, RBAC, izolacja, dostęp do sekretów i danych, granice zaufania)
+     ma sekcję `## Model zagrożeń` z zamkniętą listą:
+     - aktywa i strony: co chronimy i przed kim (np. sekrety `shop` przed kolektorem logów);
+     - drogi ataku w zakresie: każda z kryterium, które ją zamyka, i sprawdzeniem (test, przypadek selftestu,
+       `kubectl auth can-i`, scenariusz smoke), które zadanie dostarcza;
+     - poza zakresem: założenia (np. przejęty obraz zewnętrzny, przejęty węzeł) i drogi, których epik świadomie nie
+       zamyka, z powodem; każda z propozycją osobnego zgłoszenia, gdy warto ją zamknąć później.
+
+     Kryterium bezpieczeństwa jest jedną z dróg tej listy, nie ogólnym zakazem („żadnej drogi do X”): review zadania
+     ocenia zgodność z listą, a nowa droga spoza niej nie otwiera kolejnej rundy, chyba że to `BLOCKER`
+     (`/delivery`, krok 7). Komponent zewnętrzny (chart, operator, obraz) wyrenderuj albo przeczytaj jego manifesty
+     przed startem i sprawdź jego domyślne uprawnienia (ClusterRole, Role, ServiceAccount, CRD, które tworzy)
+     względem listy; rozbieżność to pytanie z kroku 4 albo pozycja „Wymagane przed startem”, nie odkrycie w trakcie
+     zadania. Przykład: DEPLOY-OPS-4 zgłosił bloker po 2 h 22 min w nocy, bo ClusterRole Alloy Operatora z chartu
+     k8s-monitoring dawała dostęp do sekretów wbrew kryterium spec, a kolejne rundy review DELTA znajdowały nowe
+     drogi pośrednie (hostPath, tokeny, Service), bo kryterium nie miało granic: 6 prób, 9,8 h, 3 odpowiedzi
+     użytkownika.
 2. **Review szkicu.** Uruchom `spec-critic` i `architecture-reviewer` (narzędzie Agent, `subagent_type`)
    równolegle, w jednej wiadomości, na pierwszym planie, i poczekaj na oba wyniki. Każdy dostaje tylko numery issues
    i ścieżkę szkicu, bez rozumowania analityka ani cudzych wniosków:

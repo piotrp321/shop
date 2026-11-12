@@ -217,6 +217,12 @@ JSON i AO powtarza rundę. Dlatego:
    zadania, także osobie korzystającej z klawiatury lub czytnika ekranu; należy tu element niedostępny z klawiatury,
    kontrolka bez etykiety i komunikat nie po polsku (utratę danych lub lukę opisaną przez agenta UX jako `Important`
    oceń według wag powyżej). Pozostałe odtworzone problemy na zmienionych ekranach to `Minor`. Problemy na niezmienionych ekranach i hipotezy idą do raportu jako uwagi, nie znaleziska.
+   Bezpieczeństwo przy specyfikacji z sekcją `## Model zagrożeń`: droga z listy w zakresie, której kryterium nie
+   działa, to co najmniej `Important`. Droga spoza listy to `Critical`, gdy jest poważną luką (realna, możliwa do
+   wykorzystania droga do danych, sekretów albo uprawnień bez założeń z listy „poza zakresem”); blokuje tak samo
+   jak każde `Critical`. Inna droga spoza listy, której epik nie wprowadza, to `Minor` z „Wpływ: …” i proponowanym
+   tytułem zgłoszenia (etykiety `agent`, `bug`), nie nowe kryterium. Tak samo oceniasz pozycje z sekcji
+   `## Poza modelem zagrożeń` opisów PR zadań (lista odbioru, „Decyzje bez pytania”).
    Kod (także kontrakt API i zachowanie frontu) niezgodny ze specyfikacją, która jednoznacznie określa oczekiwane
    zachowanie, to znalezisko `Important` do naprawy według specyfikacji, nie bloker: w opisie podaj fragment
    specyfikacji i zmiany, których wymaga naprawa (np. kontrakt API, eksport OpenAPI, klient TS, testy).
@@ -234,7 +240,8 @@ JSON i AO powtarza rundę. Dlatego:
    - **Pliki spoza zakresów zadań:** pliki, które nie pasują do `scope` żadnego zadania manifestu ani do specyfikacji. Pliki zadań poprawek i napraw (`<EPIK>-FIX-<n>`, `<EPIK>-REPAIR-<n>`) oceniasz względem ich zgłoszeń.
      Zmiana bez podstawy w specyfikacji to znalezisko: `Important`, gdy zmienia zachowanie, inaczej `Minor`.
    - **Decyzje bez pytania:** sekcje `## Decyzje bez pytania` z opisów zmergowanych PR zadań, tylko odczyt:
-     `gh pr list --base epic/<epic_id> --state merged --limit 200 --json number,title,body`. Przepisz je z numerem PR.
+     `gh pr list --base epic/<epic_id> --state merged --limit 200 --json number,title,body`. Przepisz je z numerem PR,
+     razem z pozycjami sekcji `## Poza modelem zagrożeń` (z wagą według kroku 5).
      Pusta lista przy zmergowanych zadaniach (np. inna nazwa gałęzi epiku) to pozycja „Sprawdź:”, nie „OK”.
      Decyzja sprzeczna ze specyfikacją to znalezisko albo bloker według kroku 5. Gdy `gh` nie działa, napisz to w
      liście; to nie jest bloker.
