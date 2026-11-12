@@ -24,7 +24,9 @@ final class ImageBucketIsolationTest extends KernelTestCase
         $storage->purge();
 
         try {
-            $key = $storage->store((string) file_get_contents(__DIR__.'/../../../Fixtures/images/sample.png'));
+            // The key is the hash of the content, so the fixture as it is may already be in the dev bucket (an
+            // upload by hand). Bytes after the end of the PNG are ignored by readers and make this image unique.
+            $key = $storage->store((string) file_get_contents(__DIR__.'/../../../Fixtures/images/sample.png').bin2hex(random_bytes(16)));
 
             self::assertTrue($this->bucket('product-images-test')->fileExists($key));
             self::assertFalse($this->bucket('product-images')->fileExists($key));

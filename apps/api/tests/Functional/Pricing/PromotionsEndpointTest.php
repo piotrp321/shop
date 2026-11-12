@@ -67,14 +67,17 @@ final class PromotionsEndpointTest extends WebTestCase
     {
         [$a, $b] = [$this->pricedVariant(5999), $this->pricedVariant(10000)];
 
-        $promotion = $this->send('POST', '/api/v1/admin/promotions', $this->body([$a, $b]), TestTokenFactory::staff([$role], ['preferred_username' => 'ola.'.$role]));
+        // The expected moments are the ones sent: computed again after the request, they move on when it ends in
+        // the next second.
+        $body = $this->body([$a, $b]);
+        $promotion = $this->send('POST', '/api/v1/admin/promotions', $body, TestTokenFactory::staff([$role], ['preferred_username' => 'ola.'.$role]));
 
         self::assertResponseStatusCodeSame(201);
         self::assertIsString($promotion['id']);
         self::assertSame('/api/v1/admin/promotions/'.$promotion['id'], $this->client->getResponse()->headers->get('Location'));
         self::assertSame(['Jesień', 20, 'planned', 2, 1, 'ola.'.$role], [$promotion['name'], $promotion['percentOff'], $promotion['status'], $promotion['variantCount'], $promotion['version'], $promotion['updatedByName']]);
-        self::assertSame($this->at('+1 day'), $promotion['startsAt']);
-        self::assertSame($this->at('+10 days'), $promotion['endsAt']);
+        self::assertSame($body['startsAt'], $promotion['startsAt']);
+        self::assertSame($body['endsAt'], $promotion['endsAt']);
         self::assertIsArray($promotion['variants']);
         self::assertSame([5999, 10000], array_column($promotion['variants'], 'regularGross'));
         self::assertSame([4800, 8000], array_column($promotion['variants'], 'promotionalGross'));
