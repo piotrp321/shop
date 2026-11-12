@@ -71,14 +71,28 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   i cAdvisora, usługi, endpointy, pody i ich logi, przestrzenie, zdarzenia, `PrometheusRule`), a osobna Role w `shop` daje
   dostęp tylko do tego sekretu (`resourceNames`); kube-state-metrics nie zbiera metryk sekretów.
 - **Alloy Operator działa tylko w przestrzeni `monitoring`** (`ownNamespaceOnly`, `WATCH_NAMESPACE`), bez ClusterRoli: jego
-  uprawnienia to jedna Role w `monitoring` (zasoby `Alloy`, Deployment, konto usługi, Service i ConfigMap, które robi z nich
-  chart Alloy, sekrety z wydaniami Helm kolektora, dzierżawa lidera, zdarzenia), bez żadnych uprawnień do obiektów RBAC.
+  uprawnienia to jedna Role w `monitoring` (zasób `Alloy` bez tworzenia i usuwania, bo zakłada go Argo CD; Deployment, konto
+  usługi i Service, które robi z niego chart Alloy, przy czym zmienia i usuwa tylko obiekty `monitoring-alloy`; sekrety
+  z wydaniami Helm kolektora, dzierżawa lidera, zdarzenia; bez DaemonSetów, StatefulSetów, ConfigMap i podów), bez żadnych
+  uprawnień do obiektów RBAC.
   Dlatego zasób `Alloy` nie tworzy RBAC (`rbac.create: false`), a ClusterRole kolektora i jej powiązanie są w `extraObjects`
   manifestu. Domyślny RBAC chartu operatora (ClusterRole z pełnym dostępem do sekretów klastra oraz `bind` i `escalate`, żeby
   tworzyć role kolektorów) jest wyłączony. Żadna rola renderu nie ma `bind`, `escalate`, `impersonate` ani zmian obiektów
   RBAC, a sekrety w `monitoring` ma tylko operator: sprawdza to `check` na renderze, a `make -C infra/k8s monitoring-smoke`
   uruchamia monitoring z tym RBAC w k3d i pyta klaster (`kubectl auth can-i`), co mogą konta usług operatora, Alloy,
   kube-state-metrics i node-exportera.
+- **Przestrzeń `monitoring` ma polityki dopuszczania** (`ValidatingAdmissionPolicy` w `extraObjects`, powiązane z przestrzenią
+  przez `kubernetes.io/metadata.name`, `Deny`, `failurePolicy: Fail`, fala −1 przed resztą aplikacji). Operator (obcy obraz)
+  tworzy tam Deploymenty i sekrety, a sam RBAC nie zabrania podowi dostępu do hosta (plik kubeconfig k3s na węźle to
+  administrator klastra) ani sekretu typu `kubernetes.io/service-account-token` (token dowolnego konta przestrzeni). Polityki
+  odrzucają, komukolwiek, pod i szablon poda (Deployment, ReplicaSet, StatefulSet, DaemonSet, Job, CronJob) z dostępem do
+  hosta (`hostNetwork`, `hostPID`, `hostIPC`, `hostPath`, `hostPort`, `privileged`, capability spoza profilu baseline) oraz
+  sekret z tokenem konta. Node-exporter potrzebuje hosta, więc ma jedyny wyjątek, rozpoznawany po tym, kto tworzy pody: kontroler
+  DaemonSetów (w k3s ma własne konto w `kube-system`) dla DaemonSetu `monitoring-node-exporter`, którego żadne konto
+  `monitoring` nie może zmienić; etykiet ani `ownerReference` ustawionych przez kogoś innego polityka nie uznaje. Wbudowany
+  Pod Security Admission nie wystarcza: poziom przestrzeni nie ma wyjątku dla jednego DaemonSetu, a wyjątki po użytkowniku są
+  w konfiguracji serwera API, poza Helm i Argo CD. `check` pilnuje polityk w renderze, `monitoring-smoke` wysyła w k3d żądania,
+  które muszą odrzucić, i odtwarza pody `monitoring` pod nimi.
 - **Logi są maskowane w Alloy przed wysłaniem, jedną listą etapów** (`extraLogProcessingStages`, blok w manifeście
   `monitoring` użyty dla logów podów i zdarzeń klastra): hasła, tokeny, JWT, `Bearer`, nagłówki `Authorization` i ciasteczka,
   klucze z listy (JSON, logfmt, zapytania URL), adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i
@@ -116,8 +130,13 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
 - Interfejs chartu `k8s-monitoring` zmienia się między głównymi wersjami (operator od 3.x, `destinations` w 4.x), a obraz
   Alloy zależy od wersji chartu: aktualizacja to osobna zmiana (wersje i digesty archiwów chartów są w
   `infra/k8s/scripts/monitoring-render.sh`, obraz Alloy w `infra/k8s/scripts/tools.sh`).
-- Operator tworzy w `monitoring` Deploymenty z kontem usługi Alloy, więc pośrednio ma prawa kolektora (odczyt podów, ich logów
-  i zdarzeń całego klastra, sekret `grafana-cloud`); sekretów `shop-backup` i `shop-secrets` nie czyta ani on, ani kolektor.
+- Ryzyko rezydualne operatora: przejęty operator może uruchomić w `monitoring` dowolny obraz z kontem usługi tej przestrzeni
+  (tworzenia nie da się ograniczyć do nazw), więc pośrednio ma prawa kolektora (odczyt podów, ich logów i zdarzeń całego
+  klastra, token `grafana-cloud`, którym wyśle dane dokądkolwiek) i kube-state-metrics (lista obiektów klastra bez sekretów
+  i ConfigMap). Może zatrzymać zbieranie (zmienić albo usunąć Alloy) i, bez limitów zasobów przestrzeni, zająć węzeł.
+  Istniejących Deploymentów kube-state-metrics, node-exportera i swojego nie zmieni (`resourceNames`). Nie dostanie się do
+  hosta ani do tokenów kont przez sekrety (polityki dopuszczania) i nie czyta sekretów `shop-backup` ani `shop-secrets`
+  (RBAC); kolektor też nie.
 - RBAC kolektora i operatora jest w manifeście, nie w chartcie: funkcja chartu, która potrzebuje innego zasobu (nowa wersja
   albo włączona opcja), kończy się błędem `forbidden` w logu Alloy albo operatora (wyłapuje go `monitoring-smoke`), a nie
   cichym poszerzeniem uprawnień; brakującą regułę dopisuje się w `extraObjects`.

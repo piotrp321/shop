@@ -6,7 +6,7 @@ test_log_masking.py, the budget of the node in test_workloads.py."""
 import re
 import unittest
 
-from support import RENDER, REPO, containers, docs, env_of, name, of_kind
+from support import RENDER, REPO, WAVE, containers, docs, env_of, name, of_kind, pod_spec
 
 # The metrics that the alerts of the spec (O6) use.
 ALERT_METRICS = [
@@ -48,22 +48,65 @@ class ReadsSecrets(unittest.TestCase):
         self.assertFalse(reads_secrets({"nonResourceURLs": ["/metrics"], "verbs": ["get"]}))
 
 
+# The subresources (of the core API group) that give more than the role says, whatever the verb: a shell or the network of a pod
+# (exec, attach, portforward, an ephemeral container), a token of any service account of the namespace, the API of the kubelet.
+ESCALATING_SUBRESOURCES = {"pods/exec", "pods/attach", "pods/portforward", "pods/ephemeralcontainers", "serviceaccounts/token", "nodes/proxy"}
+
+
+def covers(pattern, resource):
+    """Whether a resource of a rule (*, pods/*, */exec or a name) covers a resource."""
+    if pattern in ("*", resource):
+        return True
+    if pattern.endswith("/*"):
+        return resource.startswith(pattern[:-1])
+    if pattern.startswith("*/"):
+        return resource.endswith(pattern[1:])
+    return False
+
+
 def escalates(rule):
-    """Whether a rule lets its holder give itself more: bind, escalate or impersonate, any verb (*), or a change of RBAC objects
-    (Roles, ClusterRoles and their bindings)."""
+    """Whether a rule lets its holder give itself more: bind, escalate or impersonate, any verb (*), a change of RBAC objects
+    (Roles, ClusterRoles and their bindings), or any verb on a subresource of ESCALATING_SUBRESOURCES (also through a wildcard)."""
     verbs = set(rule.get("verbs", []))
     if verbs & {"bind", "escalate", "impersonate", "*"}:
         return True
     if "nonResourceURLs" in rule:
         return False
-    return bool({"rbac.authorization.k8s.io", "*"} & set(rule.get("apiGroups", [""]))) and bool(verbs - READ)
+    groups = set(rule.get("apiGroups", [""]))
+    if {"", "*"} & groups and verbs and any(covers(p, s) for p in rule.get("resources", []) for s in ESCALATING_SUBRESOURCES):
+        return True
+    return bool({"rbac.authorization.k8s.io", "*"} & groups) and bool(verbs - READ)
+
+
+# The groups every service account of a namespace is in (the last one with the name of the namespace appended).
+SERVICE_ACCOUNT_GROUPS = ("system:authenticated", "system:serviceaccounts")
+
+
+def subject_covers(subject, account, binding_namespace=None):
+    """Whether a subject of a binding gives its rights to a service account (OPERATOR, COLLECTOR): the account itself (kind, name and
+    namespace, a missing namespace being that of the binding; the apiGroup does not matter), its user name, or a group it is in."""
+    kind, subject_name = subject.get("kind"), subject.get("name")
+    if kind == "ServiceAccount":
+        return (subject_name, subject.get("namespace") or binding_namespace) == (account["name"], account["namespace"])
+    if kind == "User":
+        return subject_name == f"system:serviceaccount:{account['namespace']}:{account['name']}"
+    if kind == "Group":
+        return subject_name in SERVICE_ACCOUNT_GROUPS + (f"system:serviceaccounts:{account['namespace']}",)
+    return False
+
+
+def only(subjects, account, binding_namespace=None):
+    """Whether the subjects of a binding are exactly the one service account (no group, no other subject)."""
+    return (len(subjects) == 1 and subjects[0].get("kind") == "ServiceAccount"
+            and subject_covers(subjects[0], account, binding_namespace))
 
 
 def problems(render):
     """What is wrong with the RBAC of the documents of a render (a list of messages; empty: nothing). No role of the render can
     give more (escalates); a ClusterRole only reads, and never Secrets; a Role is in shop or monitoring; the one Role with Secrets
-    outside monitoring is the Role of Alloy on its token in shop; a Role with Secrets in monitoring (the releases of the operator)
-    is bound to the operator only; the operator has no ClusterRoleBinding and no binding outside monitoring."""
+    outside monitoring is the Role of Alloy on its token in shop, bound to Alloy only; a Role with Secrets in monitoring (the releases
+    of the operator) is bound to the operator only; the operator has no ClusterRoleBinding and no binding outside monitoring. A
+    subject is matched by subject_covers (groups of service accounts included)."""
     found = []
     roles = [d for d in render if d["kind"] in ("ClusterRole", "Role")]
     readers = []
@@ -76,7 +119,7 @@ def problems(render):
             found.append(f"Role/{role_name} is in the namespace {namespace}, not in shop or monitoring")
         for rule in role.get("rules") or []:
             if escalates(rule):
-                found.append(f"{kind}/{role_name} can bind, escalate, impersonate or change RBAC objects: {rule}")
+                found.append(f"{kind}/{role_name} can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes: {rule}")
             if kind == "ClusterRole" and not set(rule.get("verbs", [])) <= READ:
                 found.append(f"ClusterRole/{role_name} does more than read in the whole cluster: {rule}")
             if reads_secrets(rule):
@@ -86,7 +129,9 @@ def problems(render):
                     readers.append((kind, role_name, namespace, rule))
     if len(readers) != 1:
         found.append(f"roles of the render with access to Secrets outside monitoring: {readers}")
+    token_role = None
     for kind, role_name, namespace, rule in readers[:1]:
+        token_role = (role_name, namespace)
         if (kind, namespace) != ("Role", "shop"):
             found.append(f"the one role with access to Secrets is {kind}/{role_name} in {namespace}, not a Role in shop")
         if rule.get("resourceNames") != [SECRET_OF_ALLOY] or rule["resources"] != ["secrets"] or rule["apiGroups"] != [""]:
@@ -104,10 +149,12 @@ def problems(render):
         if (ref["kind"], ref["name"], namespace if ref["kind"] == "Role" else None) not in defined:
             found.append(f"{binding['kind']}/{name(binding)} binds {ref['kind']}/{ref['name']}, which the render does not define")
         subjects = binding.get("subjects") or []
-        if OPERATOR in subjects and (binding["kind"] != "RoleBinding" or namespace != "monitoring"):
+        if any(subject_covers(s, OPERATOR, namespace) for s in subjects) and (binding["kind"] != "RoleBinding" or namespace != "monitoring"):
             found.append(f"{binding['kind']}/{name(binding)} gives the operator rights outside the namespace monitoring")
-        if ref["kind"] == "Role" and namespace == "monitoring" and ref["name"] in monitoring_readers and subjects != [OPERATOR]:
+        if ref["kind"] == "Role" and namespace == "monitoring" and ref["name"] in monitoring_readers and not only(subjects, OPERATOR, namespace):
             found.append(f"RoleBinding/{name(binding)} gives the Secrets of monitoring to {subjects}, not to the operator only")
+        if ref["kind"] == "Role" and (ref["name"], namespace) == token_role and not only(subjects, COLLECTOR, namespace):
+            found.append(f"RoleBinding/{name(binding)} gives the Secret {SECRET_OF_ALLOY} to {subjects}, not to Alloy only")
     return found
 
 
@@ -199,6 +246,62 @@ class TheCheckOfRbac(unittest.TestCase):
             with self.subTest(binding=name(bad)):
                 self.assertTrue(problems(GOOD + [bad]))
 
+    def test_a_subject_is_matched_by_kind_name_and_namespace_and_by_the_groups_of_service_accounts(self):
+        for subject in (
+            OPERATOR | {"apiGroup": ""},
+            {"kind": "User", "name": "system:serviceaccount:monitoring:monitoring-alloy-operator", "apiGroup": "rbac.authorization.k8s.io"},
+            {"kind": "Group", "name": "system:serviceaccounts", "apiGroup": "rbac.authorization.k8s.io"},
+            {"kind": "Group", "name": "system:serviceaccounts:monitoring", "apiGroup": "rbac.authorization.k8s.io"},
+            {"kind": "Group", "name": "system:authenticated", "apiGroup": "rbac.authorization.k8s.io"},
+        ):
+            with self.subTest(subject=subject):
+                bad = binding("ClusterRoleBinding", "y", None, "ClusterRole", "collector", subject)
+                self.assertIn("ClusterRoleBinding/y gives the operator rights outside the namespace monitoring", problems(GOOD + [bad]))
+        for other in ({"kind": "Group", "name": "system:serviceaccounts:shop"}, {"kind": "ServiceAccount", "name": "monitoring-alloy-operator", "namespace": "shop"}):
+            with self.subTest(other=other):
+                self.assertFalse(subject_covers(other, OPERATOR))
+
+    def test_the_subjects_of_a_good_binding_may_name_their_api_group(self):
+        good = [d for d in GOOD if d["kind"] not in ("RoleBinding", "ClusterRoleBinding")] + [
+            binding("RoleBinding", "alloy-grafana-cloud", "shop", "Role", "alloy-grafana-cloud", COLLECTOR | {"apiGroup": ""}),
+            binding("RoleBinding", "operator", "monitoring", "Role", "operator", OPERATOR | {"apiGroup": ""}),
+            binding("ClusterRoleBinding", "collector", None, "ClusterRole", "collector", COLLECTOR | {"apiGroup": ""}),
+        ]
+        self.assertEqual([], problems(good))
+
+    def test_the_secrets_of_monitoring_and_the_token_are_not_for_a_group(self):
+        for group in ("system:serviceaccounts", "system:serviceaccounts:monitoring", "system:authenticated"):
+            subject = {"kind": "Group", "name": group, "apiGroup": "rbac.authorization.k8s.io"}
+            with self.subTest(group=group):
+                self.assertIn(f"RoleBinding/y gives the Secrets of monitoring to {[subject]}, not to the operator only",
+                              problems(GOOD + [binding("RoleBinding", "y", "monitoring", "Role", "operator", subject)]))
+                self.assertIn(f"RoleBinding/y gives the Secret {SECRET_OF_ALLOY} to {[subject]}, not to Alloy only",
+                              problems(GOOD + [binding("RoleBinding", "y", "shop", "Role", "alloy-grafana-cloud", subject)]))
+
+    def test_exec_attach_port_forward_tokens_and_the_proxy_of_the_node_are_an_escalation(self):
+        for rule in (
+            {"apiGroups": [""], "resources": ["pods/exec"], "verbs": ["create"]},
+            {"apiGroups": [""], "resources": ["pods/exec"], "verbs": ["get"]},
+            {"apiGroups": [""], "resources": ["pods/attach"], "verbs": ["create"]},
+            {"apiGroups": [""], "resources": ["pods/portforward"], "verbs": ["create"]},
+            {"apiGroups": [""], "resources": ["pods/ephemeralcontainers"], "verbs": ["patch"]},
+            {"apiGroups": [""], "resources": ["serviceaccounts/token"], "verbs": ["create"]},
+            {"apiGroups": [""], "resources": ["nodes/proxy"], "verbs": ["get"]},
+            {"apiGroups": [""], "resources": ["pods/*"], "verbs": ["get"]},
+            {"apiGroups": [""], "resources": ["*/proxy"], "verbs": ["get"]},
+            {"apiGroups": ["*"], "resources": ["*"], "verbs": ["get"]},
+        ):
+            with self.subTest(rule=rule):
+                self.assertTrue(escalates(rule))
+                self.assertTrue(problems(GOOD + [role("Role", "x", "monitoring", [rule])]))
+        for rule in (
+            {"apiGroups": [""], "resources": ["nodes/metrics", "pods/log", "pods", "nodes"], "verbs": ["get", "list"]},
+            {"apiGroups": ["apps"], "resources": ["deployments"], "verbs": ["create"]},
+            {"apiGroups": ["metrics.k8s.io"], "resources": ["pods/exec"], "verbs": ["get"]},
+        ):
+            with self.subTest(rule=rule):
+                self.assertFalse(escalates(rule))
+
 
 class Rbac(unittest.TestCase):
     def roles(self):
@@ -224,7 +327,7 @@ class Rbac(unittest.TestCase):
         self.assertEqual({"kind": "Role", "name": name(role), "apiGroup": "rbac.authorization.k8s.io"}, binding["roleRef"])
         alloy = of_kind("monitoring", "Alloy")[0]
         service_account = alloy["spec"].get("serviceAccount", {}).get("name") or name(alloy)
-        self.assertEqual([{"kind": "ServiceAccount", "name": service_account, "namespace": alloy["metadata"]["namespace"]}], binding["subjects"])
+        self.assertTrue(only(binding["subjects"], {"name": service_account, "namespace": alloy["metadata"]["namespace"]}, "shop"), binding["subjects"])
 
     def test_alloy_gets_its_cluster_role_from_the_render_not_from_the_operator(self):
         # The operator has no rights on RBAC objects, so the Alloy resource makes none (the default of the Alloy chart is a
@@ -234,7 +337,7 @@ class Rbac(unittest.TestCase):
         self.assertIs(False, (alloys[0]["spec"].get("rbac") or {}).get("create"), "the Alloy resource makes its own RBAC")
         service_account = alloys[0]["spec"].get("serviceAccount", {}).get("name") or name(alloys[0])
         self.assertEqual(COLLECTOR, {"kind": "ServiceAccount", "name": service_account, "namespace": alloys[0]["metadata"]["namespace"]})
-        bindings = [b for b in of_kind("monitoring", "ClusterRoleBinding") if COLLECTOR in b["subjects"]]
+        bindings = [b for b in of_kind("monitoring", "ClusterRoleBinding") if any(subject_covers(x, COLLECTOR) for x in b["subjects"])]
         self.assertEqual(1, len(bindings), "the collector has not exactly one ClusterRoleBinding")
         cluster_role = next(r for r in of_kind("monitoring", "ClusterRole") if name(r) == bindings[0]["roleRef"]["name"])
         have = {resource for rule in cluster_role["rules"] for resource in rule.get("resources", [])}
@@ -266,9 +369,149 @@ class Rbac(unittest.TestCase):
             namespace = doc["metadata"].get("namespace")
             if doc["kind"] in ("Role", "RoleBinding") and namespace == "shop":
                 continue
-            if doc["kind"] in ("ClusterRole", "ClusterRoleBinding", "CustomResourceDefinition"):
+            if doc["kind"] in CLUSTER_SCOPED:
                 continue
             self.assertEqual("monitoring", namespace, f"{doc['kind']}/{name(doc)}")
+
+    def test_the_operator_changes_only_its_alloy_and_makes_only_deployments(self):
+        # Argo CD makes the Alloy resource; the operator reads it, keeps its finalizer and status, and makes of it, through the Alloy
+        # chart (presets: deployment), a Deployment, its service account and its Service, all named like the resource, and keeps its
+        # Helm releases (Secrets of changing names). It may create other objects of those kinds (create cannot be limited to a name),
+        # but change and delete only those of its Alloy: not kube-state-metrics, node-exporter or itself. No DaemonSet, no
+        # StatefulSet, no ConfigMap, no pod.
+        alloy = name(of_kind("monitoring", "Alloy")[0])
+        operator_role = [r for r in of_kind("monitoring", "Role") if name(r) == OPERATOR["name"]]
+        self.assertEqual(1, len(operator_role))
+        self.assertEqual("monitoring", operator_role[0]["metadata"]["namespace"])
+        have = {(group, resource, verb, resource_name)
+                for rule in operator_role[0]["rules"] for group in rule.get("apiGroups", [""]) for resource in rule["resources"]
+                for verb in rule["verbs"] for resource_name in rule.get("resourceNames") or [None]}
+        wanted = set()
+        for group, resources, verbs, names in (
+            ("collectors.grafana.com", ["alloys"], ["get", "list", "watch", "update", "patch"], [None]),
+            ("collectors.grafana.com", ["alloys/status"], ["get", "update", "patch"], [None]),
+            ("collectors.grafana.com", ["alloys/finalizers"], ["update"], [None]),
+            ("", ["secrets"], ["get", "list", "watch", "create", "update", "patch", "delete"], [None]),
+            ("", ["serviceaccounts", "services"], ["get", "list", "watch", "create"], [None]),
+            ("", ["serviceaccounts", "services"], ["update", "patch", "delete"], [alloy]),
+            ("apps", ["deployments"], ["get", "list", "watch", "create"], [None]),
+            ("apps", ["deployments"], ["update", "patch", "delete"], [alloy]),
+            ("coordination.k8s.io", ["leases"], ["get", "list", "watch", "create", "update", "patch", "delete"], [None]),
+            ("", ["events"], ["create", "patch"], [None]),
+        ):
+            wanted |= {(group, resource, verb, n) for resource in resources for verb in verbs for n in names}
+        self.assertEqual(sorted(wanted, key=str), sorted(have, key=str))
+
+
+CLUSTER_SCOPED = ("ClusterRole", "ClusterRoleBinding", "CustomResourceDefinition", "ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding")
+# The capabilities that the baseline profile of the Pod Security Standards allows to add.
+BASELINE_CAPABILITIES = {"AUDIT_WRITE", "CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "KILL", "MKNOD", "NET_BIND_SERVICE", "SETFCAP",
+                         "SETGID", "SETPCAP", "SETUID", "SYS_CHROOT"}
+HOST_ACCESS = ("hostNetwork", "hostPID", "hostIPC", "hostPath", "hostPort", "privileged", "capabilities")
+NODE_EXPORTER = "monitoring-node-exporter"
+DAEMON_SET_CONTROLLER = "system:serviceaccount:kube-system:daemon-set-controller"
+POLICY_HOST_ACCESS = "monitoring-no-host-access"
+POLICY_TOKENS = "monitoring-no-service-account-tokens"
+POD_TEMPLATES = {("", "pods"), ("", "pods/ephemeralcontainers"), ("apps", "deployments"), ("apps", "replicasets"), ("apps", "statefulsets"),
+                 ("apps", "daemonsets"), ("batch", "jobs"), ("batch", "cronjobs")}
+
+
+def host_access(spec):
+    """What of HOST_ACCESS a pod spec asks for (the same as the policy monitoring-no-host-access, for the workloads of the render)."""
+    every = spec["containers"] + spec.get("initContainers", []) + spec.get("ephemeralContainers", [])
+    contexts = [c.get("securityContext") or {} for c in every]
+    found = [field for field in ("hostNetwork", "hostPID", "hostIPC") if spec.get(field)]
+    found += ["hostPath"] if any("hostPath" in v for v in spec.get("volumes", [])) else []
+    found += ["hostPort"] if any(p.get("hostPort") for c in every for p in c.get("ports", [])) else []
+    found += ["privileged"] if any(x.get("privileged") for x in contexts) else []
+    added = {a for x in contexts for a in (x.get("capabilities") or {}).get("add", [])}
+    return found + (["capabilities"] if added - BASELINE_CAPABILITIES else [])
+
+
+class AdmissionPolicies(unittest.TestCase):
+    """The operator (an image of a third party) makes workloads and Secrets in monitoring. The ValidatingAdmissionPolicies of the
+    render refuse there a pod or a template of a pod with access to the host (but node-exporter) and a Secret with a token of a
+    service account, whoever asks (spec, O5); make -C infra/k8s monitoring-smoke tries them in k3d."""
+
+    def objects(self, kind):
+        return {name(d): d for d in of_kind("monitoring", kind)}
+
+    def text(self, policy):
+        spec = policy["spec"]
+        return "\n".join([v["expression"] for v in spec.get("variables", [])] + [v["expression"] for v in spec["validations"]])
+
+    def rules(self, policy):
+        return {(group, resource, version, tuple(sorted(rule["operations"])))
+                for rule in policy["spec"]["matchConstraints"]["resourceRules"]
+                for group in rule["apiGroups"] for resource in rule["resources"] for version in rule["apiVersions"]}
+
+    def test_two_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed(self):
+        policies, bindings = self.objects("ValidatingAdmissionPolicy"), self.objects("ValidatingAdmissionPolicyBinding")
+        self.assertEqual({POLICY_HOST_ACCESS, POLICY_TOKENS}, set(policies))
+        self.assertEqual({POLICY_HOST_ACCESS, POLICY_TOKENS}, {b["spec"]["policyName"] for b in bindings.values()})
+        self.assertEqual(2, len(bindings))
+        for policy in policies.values():
+            with self.subTest(policy=name(policy)):
+                self.assertEqual("Fail", policy["spec"]["failurePolicy"])
+                self.assertNotIn("paramKind", policy["spec"])
+                # A match condition, an object or namespace selector of the policy would leave out what it does not match.
+                self.assertNotIn("matchConditions", policy["spec"])
+                self.assertEqual({"resourceRules"}, set(policy["spec"]["matchConstraints"]) - {"matchPolicy"})
+                self.assertIn(policy["spec"]["matchConstraints"].get("matchPolicy", "Equivalent"), ("Equivalent",))
+        for binding_ in bindings.values():
+            with self.subTest(binding=name(binding_)):
+                self.assertEqual(["Deny"], binding_["spec"]["validationActions"])
+                self.assertNotIn("paramRef", binding_["spec"])
+                # kubernetes.io/metadata.name is set by the API server to the name of the namespace: no other namespace has it.
+                self.assertEqual({"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "monitoring"}}}, binding_["spec"]["matchResources"])
+
+    def test_the_policies_and_their_bindings_come_before_everything_else_of_the_application(self):
+        first = [d for d in docs("monitoring") if d["kind"] in ("ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding")]
+        self.assertEqual(4, len(first))
+        waves = {int((d["metadata"].get("annotations") or {}).get(WAVE, "0")) for d in first}
+        self.assertEqual(1, len(waves), waves)
+        others = [int((d["metadata"].get("annotations") or {}).get(WAVE, "0")) for d in docs("monitoring") if d not in first]
+        self.assertLess(waves.pop(), min(others))
+
+    def test_the_host_policy_sees_every_pod_and_every_template_of_a_pod_on_create_and_update(self):
+        policy = self.objects("ValidatingAdmissionPolicy")[POLICY_HOST_ACCESS]
+        self.assertEqual({(g, r, "*", ("CREATE", "UPDATE")) for g, r in POD_TEMPLATES}, self.rules(policy))
+        text = self.text(policy)
+        for field in HOST_ACCESS + ("initContainers", "ephemeralContainers", "jobTemplate"):
+            self.assertIn(field, text)
+        allowed = re.search(r"\.add\.exists\(a, !\(a in \[([^\]]*)\]\)\)", text)
+        self.assertTrue(allowed, "the policy has no list of the allowed capabilities")
+        listed = set(re.findall(r"'([A-Z_]+)'", allowed.group(1)))
+        self.assertEqual(BASELINE_CAPABILITIES, listed, "the capabilities the policy allows")
+
+    def test_the_only_exception_is_node_exporter_which_the_operator_cannot_forge(self):
+        policy = self.objects("ValidatingAdmissionPolicy")[POLICY_HOST_ACCESS]
+        text = self.text(policy)
+        # The pods: made by the controller of DaemonSets (its own service account in k3s, which nobody in monitoring can act as) for
+        # the DaemonSet of node-exporter; the DaemonSet: by its name, from anybody but a service account of monitoring. Labels are no
+        # proof: whoever makes a pod chooses them.
+        self.assertIn(f"request.userInfo.username == '{DAEMON_SET_CONTROLLER}'", text)
+        self.assertIn("ownerReferences", text)
+        self.assertIn("!request.userInfo.username.startsWith('system:serviceaccount:monitoring:')", text)
+        self.assertNotIn("labels", text)
+        names = set(re.findall(r"'([a-z0-9-]+)'", text)) & {name(d) for d in docs("monitoring")}
+        self.assertEqual({NODE_EXPORTER}, names, "the policy names other objects of the render")
+        self.assertIn(NODE_EXPORTER, self.objects("DaemonSet"))
+
+    def test_only_node_exporter_of_the_render_needs_access_to_the_host(self):
+        needing = {f"{d['kind']}/{name(d)}": host_access(pod_spec(d)) for d in of_kind("monitoring", "Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob")}
+        self.assertEqual({f"DaemonSet/{NODE_EXPORTER}"}, {k for k, v in needing.items() if v}, needing)
+        for alloy in of_kind("monitoring", "Alloy"):
+            for part in ("alloy", "configReloader"):
+                added = set(((alloy["spec"].get(part) or {}).get("securityContext") or {}).get("capabilities", {}).get("add", []))
+                self.assertLessEqual(added, BASELINE_CAPABILITIES, part)
+            self.assertFalse(alloy["spec"].get("controller", {}).get("hostNetwork"))
+            self.assertFalse(any("hostPath" in v for v in alloy["spec"].get("controller", {}).get("volumes", {}).get("extra", [])))
+
+    def test_the_token_policy_refuses_secrets_with_a_token_of_a_service_account(self):
+        policy = self.objects("ValidatingAdmissionPolicy")[POLICY_TOKENS]
+        self.assertEqual({("", "secrets", "*", ("CREATE", "UPDATE"))}, self.rules(policy))
+        self.assertIn("object.type != 'kubernetes.io/service-account-token'", self.text(policy))
 
 
 class Crds(unittest.TestCase):
@@ -348,9 +591,11 @@ class MonitoringSmoke(unittest.TestCase):
         install = re.search(r'helm_cluster install "\$release" .*?(?<!\\)\n', script, re.S).group(0)
         self.assertIn('-f "$in_cache/monitoring-values.yaml" -f "$in_cache/overlay.yaml" $break_args', install)
         self.assertNotIn("--set", install)
-        # The only other values: the break of the test, set only when it is asked for.
-        self.assertEqual(['break_args="--set alloy-operator.rbac.create=true"'], re.findall(r'break_args="--set[^"]*"', script))
+        # The only other values: the breaks of the test, set only when they are asked for.
+        self.assertEqual(['break_args="--set alloy-operator.rbac.create=true"', 'break_args="-f $in_cache/break.yaml"'],
+                         re.findall(r'break_args="[^"]+"', script))
         self.assertIn('if [ "$MONITORING_SMOKE_BREAK" = operator-cluster-role ]; then', script)
+        self.assertIn('elif [ "$MONITORING_SMOKE_BREAK" = no-admission-policy ]; then', script)
 
 
 if __name__ == "__main__":

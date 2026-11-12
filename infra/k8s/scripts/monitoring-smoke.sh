@@ -1,12 +1,14 @@
 #!/bin/sh
 # The smoke test of the application monitoring (docs/features/deploy-ops/spec.md, O5 and O7): the chart k8s-monitoring of the
-# pinned version with the values of argocd/apps/monitoring.yaml, installed on an empty k3d cluster, runs and has no more rights
-# than the RBAC of the manifest gives it.
+# pinned version with the values of argocd/apps/monitoring.yaml, installed on an empty k3d cluster, runs, has no more rights
+# than the RBAC of the manifest gives it, and its admission policies refuse in monitoring what reaches the host.
 #
 #   monitoring-smoke.sh                                   the whole test (a few minutes; the first run pulls the images)
 #   MONITORING_SMOKE_KEEP=1 monitoring-smoke.sh           keep the cluster after a failure, to look at it (delete it by hand)
 #   MONITORING_SMOKE_BREAK=operator-cluster-role ...      installs the operator with the ClusterRole of its chart (rbac.create):
 #                                                         the test must fail on the rights of the operator
+#   MONITORING_SMOKE_BREAK=no-admission-policy ...        installs the extraObjects of the manifest without the
+#                                                         ValidatingAdmissionPolicies and their bindings: the test must fail
 #   MONITORING_SMOKE_TIMEOUT=600                          seconds to wait for each of the phases that wait
 #
 # Phases: the cluster (k3d, the k3s of tools.sh); the namespace shop with dummy Secrets grafana-cloud, shop-backup and
@@ -15,12 +17,21 @@
 # prometheus.echo; inside the cluster Alloy would collect the log of the receiver and send it to the receiver again); the
 # CRDs of prometheus-operator-crds and the chart k8s-monitoring from the archives that scripts/monitoring-render.sh downloads and
 # checks (sha256), installed with the valuesObject of the manifest and one overlay: the addresses of the destinations, pointed at
-# the receiver (never the RBAC). Then it waits for the operator and for the Alloy it makes, and for the receiver to get the line
-# of the pod masked ([REDACTED], neither the password nor the address), a cluster event and the metrics of kube-state-metrics,
-# node-exporter, the kubelet and cAdvisor; no log of the operator, Alloy or kube-state-metrics says forbidden. Last,
-# kubectl auth can-i for the service accounts of the operator, Alloy, kube-state-metrics and node-exporter: no Secret of shop
-# or kube-system, no bind, escalate or impersonate, no change of RBAC objects, no pod in shop; Alloy reads only the Secret
-# grafana-cloud, the operator works in monitoring. Every mismatch is listed and fails the test. The time of each phase is
+# the receiver (never the RBAC). Then it waits for the operator and for the Alloy it makes. The admission policies: requests made
+# with --dry-run=server, as the service account of the operator (Deployments with hostPath /, hostNetwork, hostPID, hostIPC,
+# hostPort, privileged, an added capability, a privileged init container, the labels of node-exporter, a template with an
+# ownerReference to its DaemonSet, a Secret with a token of a service account) and as the administrator of the cluster (pods with
+# the labels or a forged ownerReference of node-exporter, the other kinds of workloads, an ephemeral or another image in the pod
+# of node-exporter) are refused by the policy (its name in the error, not RBAC), while a plain Deployment, a plain ephemeral
+# container, an Opaque Secret and a pod with hostPath in shop are not; then every pod of monitoring is deleted and must come back
+# ready under the policies (node-exporter among them). Then the receiver must get the line of the pod masked ([REDACTED], neither
+# the password nor the address), a cluster event and the metrics of kube-state-metrics, node-exporter, the kubelet and cAdvisor
+# (the metrics after the pods came back); no log of the operator, Alloy or kube-state-metrics, before and after, says forbidden.
+# Last, kubectl auth can-i for the service accounts of the operator, Alloy, kube-state-metrics and node-exporter: no Secret of shop
+# or kube-system, no bind, escalate or impersonate, no change of RBAC objects, no pod in shop, no exec, attach, port-forward,
+# ephemeral container or token of a service account in shop and kube-system, no proxy of a node; Alloy reads only the Secret
+# grafana-cloud; the operator works in monitoring, makes Deployments but no DaemonSet, StatefulSet, pod or Alloy resource, and
+# changes only the objects of its Alloy. Every mismatch is listed and fails the test. The time of each phase is
 # printed; the cluster and the receiver are deleted on every exit. Needs only Docker (and the network for the images and, once, the charts).
 #
 # The tools run in containers on the Docker network of the cluster (scripts/tools.sh); the cluster is called
@@ -34,8 +45,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 MONITORING_SMOKE_BREAK="${MONITORING_SMOKE_BREAK:-}"
 MONITORING_SMOKE_TIMEOUT="${MONITORING_SMOKE_TIMEOUT:-600}"
 case "$MONITORING_SMOKE_BREAK" in
-  "" | operator-cluster-role) ;;
-  *) echo "monitoring-smoke: MONITORING_SMOKE_BREAK must be empty or operator-cluster-role, got '$MONITORING_SMOKE_BREAK'" >&2; exit 2 ;;
+  "" | operator-cluster-role | no-admission-policy) ;;
+  *) echo "monitoring-smoke: MONITORING_SMOKE_BREAK must be empty, operator-cluster-role or no-admission-policy, got '$MONITORING_SMOKE_BREAK'" >&2; exit 2 ;;
 esac
 docker info > /dev/null 2>&1 || { echo "monitoring-smoke: Docker does not answer (docker info failed): it is the only tool needed" >&2; exit 2; }
 
@@ -89,6 +100,8 @@ mkc() { kubectl -n monitoring "$@"; }
 dump_state() {
   echo "monitoring-smoke: the pods of the cluster:" >&2
   kubectl get pods -A -o wide >&2 || true
+  echo "monitoring-smoke: the refusals of the admission policies in monitoring:" >&2
+  mkc get events -o custom-columns=OBJECT:.involvedObject.name,MESSAGE:.message 2>&1 | grep -i 'denied' | tail -n 10 >&2 || true
   for target in deployment/monitoring-alloy-operator deployment/monitoring-alloy; do
     echo "monitoring-smoke: the end of the log of $target:" >&2
     mkc logs "$target" --all-containers --tail=30 >&2 2>&1 || true
@@ -112,6 +125,7 @@ wait_for() {
 }
 
 ready() { [ "$(mkc get deployment "$1" -o jsonpath='{.status.readyReplicas}' 2> /dev/null)" = 1 ]; }
+daemon_set_ready() { [ "$(mkc get daemonset "$1" -o jsonpath='{.status.numberReady}' 2> /dev/null)" = 1 ]; }
 api_ready() { kubectl get --raw /readyz > /dev/null 2>&1; }
 receiver_ready() { docker logs "$receiver_name" 2>&1 | grep -q 'now listening for http traffic'; }
 
@@ -241,6 +255,13 @@ if [ "$MONITORING_SMOKE_BREAK" = operator-cluster-role ]; then
   # The regression the test must catch: the RBAC of the chart of the operator (a ClusterRole with all Secrets, bind, escalate).
   break_args="--set alloy-operator.rbac.create=true"
   echo "monitoring-smoke: MONITORING_SMOKE_BREAK=operator-cluster-role: $break_args (the test must fail)"
+elif [ "$MONITORING_SMOKE_BREAK" = no-admission-policy ]; then
+  # The regression the test must catch: the namespace monitoring without the admission policies (a values file with the
+  # extraObjects of the manifest but them; Helm replaces a list as a whole).
+  yq '{"extraObjects": (.extraObjects | map(select(.kind != "ValidatingAdmissionPolicy" and .kind != "ValidatingAdmissionPolicyBinding")))}' \
+    < "$KUBE_DIR/monitoring-values.yaml" > "$KUBE_DIR/break.yaml"
+  break_args="-f $in_cache/break.yaml"
+  echo "monitoring-smoke: MONITORING_SMOKE_BREAK=no-admission-policy: no ValidatingAdmissionPolicy (the test must fail)"
 fi
 # shellcheck disable=SC2086 # $break_args is an option and its value
 helm_cluster install "$release" "/cache/charts/$monitoring_archive.tgz" --namespace monitoring --create-namespace \
@@ -250,28 +271,178 @@ log "the operator and the Alloy it makes"
 wait_for "the operator is ready" ready monitoring-alloy-operator
 wait_for "the Deployment monitoring-alloy is ready" ready monitoring-alloy
 
+failures=0
+fail() { echo "monitoring-smoke: FAIL $1" >&2; failures=$((failures + 1)); }
+operator=monitoring-alloy-operator
+alloy=monitoring-alloy
+
+log "the admission policies of monitoring (requests with --dry-run=server)"
+host_policy=monitoring-no-host-access
+token_policy=monitoring-no-service-account-tokens
+# admission <refused-by <policy>|allowed> <operator|admin> <namespace> <description> [<kubectl verb and arguments>]: sends the
+# manifest of the standard input (kubectl create -f -, or the given command) as that user; a refusal must name the policy.
+admission() {
+  expected="$1" as="$2" namespace="$3" what="$4"
+  shift 4
+  [ "$#" -gt 0 ] || set -- create -f -
+  as_args=""
+  [ "$as" = operator ] && as_args="--as=system:serviceaccount:monitoring:$operator"
+  # shellcheck disable=SC2086 # $as_args is one option or none
+  if output="$(kubectl -n "$namespace" $as_args "$@" --dry-run=server 2>&1)"; then got=allowed; else got=refused; fi
+  case "$expected" in
+    refused-by-*)
+      policy="${expected#refused-by-}"
+      if [ "$got" = refused ] && printf '%s' "$output" | grep -qF "ValidatingAdmissionPolicy '$policy'"; then
+        printf '  ok        %-8s refused by %s: %s\n' "$as" "$policy" "$what"
+      else
+        printf '  MISMATCH  %-8s %s, expected refused by %s: %s\n    %s\n' "$as" "$got" "$policy" "$what" "$output"
+        failures=$((failures + 1))
+      fi ;;
+    allowed)
+      if [ "$got" = allowed ]; then
+        printf '  ok        %-8s allowed: %s\n' "$as" "$what"
+      else
+        printf '  MISMATCH  %-8s refused, expected allowed: %s\n    %s\n' "$as" "$what" "$output"
+        failures=$((failures + 1))
+      fi ;;
+  esac
+}
+# workload <kind> <name> <JSON of the pod spec> [<JSON of the labels of the pod>] [<JSON of more metadata of the pod>]: one line of
+# JSON, a workload of that kind whose pods have that spec (a CronJob: in its job template).
+workload() {
+  labels="${4:-}" more="${5:-}"
+  [ -n "$labels" ] || labels="{\"smoke\":\"$2\"}"
+  template="{\"metadata\":{\"labels\":$labels${more:+,$more}},\"spec\":$3}"
+  case "$1" in
+    Job) printf '{"apiVersion":"batch/v1","kind":"Job","metadata":{"name":"%s"},"spec":{"template":%s}}\n' "$2" "$template" ;;
+    CronJob) printf '{"apiVersion":"batch/v1","kind":"CronJob","metadata":{"name":"%s"},"spec":{"schedule":"0 0 * * *","jobTemplate":{"spec":{"template":%s}}}}\n' "$2" "$template" ;;
+    Pod) printf '{"apiVersion":"v1","kind":"Pod","metadata":{"name":"%s","labels":%s%s},"spec":%s}\n' "$2" "$labels" "${more:+,$more}" "$3" ;;
+    *) printf '{"apiVersion":"apps/v1","kind":"%s","metadata":{"name":"%s"},"spec":{"selector":{"matchLabels":%s},%s"template":%s}}\n' \
+      "$1" "$2" "$labels" "$([ "$1" = StatefulSet ] && printf '"serviceName":"%s",' "$2")" "$template" ;;
+  esac
+}
+# try_workload <expected> <as> <namespace> <description> <arguments of workload>: admission of that workload (not in a pipeline:
+# admission counts the failures in this shell).
+try_workload() {
+  t_expected="$1" t_as="$2" t_namespace="$3" t_what="$4"
+  shift 4
+  workload "$@" > "$KUBE_DIR/request.json"
+  admission "$t_expected" "$t_as" "$t_namespace" "$t_what" < "$KUBE_DIR/request.json"
+}
+plain='{"containers":[{"name":"c","image":"busybox"}]}'
+on_root='{"containers":[{"name":"c","image":"busybox","volumeMounts":[{"name":"root","mountPath":"/host"}]}],"volumes":[{"name":"root","hostPath":{"path":"/"}}]}'
+node_exporter_labels="$(mkc get daemonset monitoring-node-exporter -o jsonpath='{.spec.template.metadata.labels}')"
+node_exporter_uid="$(mkc get daemonset monitoring-node-exporter -o jsonpath='{.metadata.uid}')"
+forged_owner="\"ownerReferences\":[{\"apiVersion\":\"apps/v1\",\"kind\":\"DaemonSet\",\"name\":\"monitoring-node-exporter\",\"uid\":\"$node_exporter_uid\",\"controller\":true}]"
+policy_active() { ! workload Deployment probe "$on_root" | kubectl -n monitoring create -f - --dry-run=server > /dev/null 2>&1; }
+if mkc get validatingadmissionpolicy "$host_policy" > /dev/null 2>&1; then
+  wait_for "the policy $host_policy refuses a Deployment with hostPath" policy_active
+else
+  fail "there is no ValidatingAdmissionPolicy $host_policy"
+fi
+# What the operator makes (a Deployment) and could make otherwise (a Secret).
+try_workload allowed operator monitoring "a plain Deployment" \
+  Deployment plain "$plain"
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with hostPath /" \
+  Deployment on-root "$on_root"
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with hostNetwork" \
+  Deployment host-network '{"hostNetwork":true,"containers":[{"name":"c","image":"busybox"}]}'
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with hostPID" \
+  Deployment host-pid '{"hostPID":true,"containers":[{"name":"c","image":"busybox"}]}'
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with hostIPC" \
+  Deployment host-ipc '{"hostIPC":true,"containers":[{"name":"c","image":"busybox"}]}'
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with a hostPort" \
+  Deployment host-port '{"containers":[{"name":"c","image":"busybox","ports":[{"containerPort":80,"hostPort":80}]}]}'
+try_workload "refused-by-$host_policy" operator monitoring "a privileged Deployment" \
+  Deployment privileged '{"containers":[{"name":"c","image":"busybox","securityContext":{"privileged":true}}]}'
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with the capability SYS_ADMIN" \
+  Deployment sys-admin '{"containers":[{"name":"c","image":"busybox","securityContext":{"capabilities":{"add":["SYS_ADMIN"]}}}]}'
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with a privileged init container" \
+  Deployment privileged-init '{"initContainers":[{"name":"i","image":"busybox","securityContext":{"privileged":true}}],"containers":[{"name":"c","image":"busybox"}]}'
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with hostPath / and the labels of node-exporter" \
+  Deployment like-node-exporter "$on_root" "$node_exporter_labels"
+try_workload "refused-by-$host_policy" operator monitoring "a Deployment with hostPath / and a template owned by the DaemonSet of node-exporter" \
+  Deployment owned-by-node-exporter "$on_root" '{"smoke":"owned"}' "$forged_owner"
+admission "refused-by-$token_policy" operator monitoring "a Secret with a token of the service account monitoring-alloy" <<'YAML'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alloy-token
+  annotations:
+    kubernetes.io/service-account.name: monitoring-alloy
+type: kubernetes.io/service-account-token
+YAML
+# The administrator of the cluster: the policies hold for everybody, and node-exporter is known by who makes its pods, not by labels.
+try_workload "refused-by-$host_policy" admin monitoring "a pod with hostPath / and the labels of node-exporter" \
+  Pod like-node-exporter "$on_root" "$node_exporter_labels"
+try_workload "refused-by-$host_policy" admin monitoring "a pod with hostPath / owned by the DaemonSet of node-exporter (a forged ownerReference)" \
+  Pod owned-by-node-exporter "$on_root" "$node_exporter_labels" "$forged_owner"
+try_workload "refused-by-$host_policy" admin monitoring "another DaemonSet with hostPath /" \
+  DaemonSet other-exporter "$on_root"
+try_workload "refused-by-$host_policy" admin monitoring "a StatefulSet with hostPath /" \
+  StatefulSet on-root "$on_root"
+try_workload "refused-by-$host_policy" admin monitoring "a ReplicaSet with hostPath /" \
+  ReplicaSet on-root "$on_root"
+try_workload "refused-by-$host_policy" admin monitoring "a Job with hostPath /" \
+  Job on-root "{\"restartPolicy\":\"Never\",${on_root#\{}"
+try_workload "refused-by-$host_policy" admin monitoring "a privileged CronJob" \
+  CronJob privileged '{"restartPolicy":"Never","containers":[{"name":"c","image":"busybox","securityContext":{"privileged":true}}]}'
+node_exporter_pod="$(mkc get pods -l app.kubernetes.io/name=node-exporter -o jsonpath='{.items[0].metadata.name}')"
+kube_state_metrics_pod="$(mkc get pods -l app.kubernetes.io/name=kube-state-metrics -o jsonpath='{.items[0].metadata.name}')"
+admission "refused-by-$host_policy" admin monitoring "a privileged ephemeral container in the pod of node-exporter" patch pod "$node_exporter_pod" \
+  --subresource=ephemeralcontainers --type=strategic \
+  -p '{"spec":{"ephemeralContainers":[{"name":"debug","image":"busybox","securityContext":{"privileged":true}}]}}'
+admission "refused-by-$host_policy" admin monitoring "another image in the pod of node-exporter" set image "pod/$node_exporter_pod" node-exporter=busybox
+admission allowed admin monitoring "a plain ephemeral container in the pod of kube-state-metrics" patch pod "$kube_state_metrics_pod" \
+  --subresource=ephemeralcontainers --type=strategic -p '{"spec":{"ephemeralContainers":[{"name":"debug","image":"busybox"}]}}'
+admission "refused-by-$token_policy" admin monitoring "a Secret with a token of a service account" <<'YAML'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: default-token
+  annotations:
+    kubernetes.io/service-account.name: default
+type: kubernetes.io/service-account-token
+YAML
+admission allowed admin monitoring "an Opaque Secret" create secret generic smoke --from-literal=key=value
+try_workload allowed admin shop "a pod with hostPath / in shop (the policies are of monitoring only)" \
+  Pod on-root "$on_root"
+
+log "every pod of monitoring again, made under the policies"
+logs_before="$KUBE_DIR/logs-before"
+mkdir -p "$logs_before"
+for target in monitoring-alloy-operator monitoring-alloy monitoring-kube-state-metrics; do
+  mkc logs "deployment/$target" --all-containers > "$logs_before/$target.log" 2>&1 || true
+done
+mkc delete pods --all --wait=true > /dev/null
+metrics_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+wait_for "the DaemonSet monitoring-node-exporter is ready" daemon_set_ready monitoring-node-exporter
+for deployment in monitoring-alloy-operator monitoring-kube-state-metrics monitoring-alloy; do
+  wait_for "the Deployment $deployment is ready" ready "$deployment"
+done
+
 log "what the receiver gets"
 receiver_log="$KUBE_DIR/receiver.log"
 fetch_receiver() { docker logs "$receiver_name" > "$receiver_log" 2>&1; }
 received() { fetch_receiver && grep -q -- "$1" "$receiver_log"; }
+# A metric sent after the pods of monitoring came back.
+received_again() { docker logs --since "$metrics_since" "$receiver_name" 2>&1 | grep -q -- "$1"; }
 masked_marker() { fetch_receiver && grep -- "$marker user logged in" "$receiver_log" | grep -q 'REDACTED'; }
 event() { fetch_receiver && grep 'integrations/kubernetes/eventhandler' "$receiver_log" | grep -q -- "$marker"; }
 wait_for "the line of the pod, masked" masked_marker
 wait_for "a cluster event of the pod" event
 for metric in kube_deployment_spec_replicas node_filesystem_avail_bytes kubelet_running_pods container_cpu_usage_seconds_total; do
-  wait_for "the metric $metric" received "$metric"
+  wait_for "the metric $metric" received_again "$metric"
 done
 fetch_receiver
 echo "monitoring-smoke: a line of the pod as received:"
 grep -m 1 -- "$marker user logged in" "$receiver_log"
 echo "monitoring-smoke: a cluster event as received:"
 grep 'integrations/kubernetes/eventhandler' "$receiver_log" | grep -m 1 -- "$marker"
-failures=0
-fail() { echo "monitoring-smoke: FAIL $1" >&2; failures=$((failures + 1)); }
 if grep -qF -- "$marker_password" "$receiver_log"; then fail "the password of the pod came out of Alloy"; fi
 if grep -qF -- "$marker_email" "$receiver_log"; then fail "the e-mail address of the pod came out of Alloy"; fi
-for target in deployment/monitoring-alloy-operator deployment/monitoring-alloy deployment/monitoring-kube-state-metrics; do
-  if forbidden="$(mkc logs "$target" --all-containers 2>&1 | grep -i 'forbidden')"; then
+for target in monitoring-alloy-operator monitoring-alloy monitoring-kube-state-metrics; do
+  if forbidden="$({ cat "$logs_before/$target.log"; mkc logs "deployment/$target" --all-containers 2>&1; } | grep -i 'forbidden')"; then
     fail "the log of $target says forbidden:"
     printf '%s\n' "$forbidden" | head -n 10 >&2
   fi
@@ -290,8 +461,6 @@ can() {
     failures=$((failures + 1))
   fi
 }
-operator=monitoring-alloy-operator
-alloy=monitoring-alloy
 for account in $operator $alloy monitoring-kube-state-metrics monitoring-node-exporter; do
   for namespace in shop kube-system; do
     for verb in get list watch create update patch delete; do can no "$account" "$verb" secrets -n "$namespace"; done
@@ -313,28 +482,45 @@ for account in $operator $alloy monitoring-kube-state-metrics monitoring-node-ex
   can no "$account" impersonate serviceaccounts
   can no "$account" impersonate users
   can no "$account" impersonate groups
-  can no "$account" create serviceaccounts/token -n shop
   can no "$account" create pods -n shop
-  can no "$account" create pods/exec -n shop
   can no "$account" list configmaps -n shop
+  # Subresources: --subresource, not TYPE/NAME (kubectl reads pods/exec as the pod named exec).
+  for namespace in shop kube-system; do
+    for subresource in exec attach portforward; do
+      can no "$account" create pods --subresource="$subresource" -n "$namespace"
+      can no "$account" get pods --subresource="$subresource" -n "$namespace"
+    done
+    can no "$account" patch pods --subresource=ephemeralcontainers -n "$namespace"
+    can no "$account" create serviceaccounts --subresource=token -n "$namespace"
+  done
+  can no "$account" get nodes --subresource=proxy
+  can no "$account" create nodes --subresource=proxy
 done
 # Alloy: its token and what it reads in the cluster, and nothing in monitoring it would not need.
 can yes $alloy get secret/grafana-cloud -n shop
-for check in "list nodes" "get nodes/metrics" "list pods --all-namespaces" "get pods/log -n shop" "list events --all-namespaces" \
+for check in "list nodes" "get nodes --subresource=metrics" "list pods --all-namespaces" "get pods --subresource=log -n shop" "list events --all-namespaces" \
   "list endpoints -n monitoring" "list prometheusrules.monitoring.coreos.com --all-namespaces"; do
   # shellcheck disable=SC2086 # the words of the check are arguments
   can yes $alloy $check
 done
 can no $alloy list secrets -n monitoring
 can no $alloy create deployments -n monitoring
-# The operator: in monitoring, what the Alloy chart makes and its Helm releases; nothing elsewhere.
-for check in "create alloys.collectors.grafana.com -n monitoring" "update alloys.collectors.grafana.com/status -n monitoring" \
-  "create deployments.apps -n monitoring" "create secrets -n monitoring" "create serviceaccounts -n monitoring" \
-  "create services -n monitoring" "create configmaps -n monitoring" "update leases.coordination.k8s.io -n monitoring" "create events -n monitoring"; do
+# The operator: in monitoring, its Alloy resource (made by Argo CD), what the Alloy chart makes of it (a Deployment, its service
+# account and Service, all named like the resource) and its Helm releases; nothing elsewhere.
+for check in "update alloys.collectors.grafana.com/$alloy -n monitoring" "update alloys.collectors.grafana.com --subresource=status -n monitoring" \
+  "update alloys.collectors.grafana.com --subresource=finalizers -n monitoring" \
+  "create deployments.apps -n monitoring" "patch deployments.apps/$alloy -n monitoring" "delete deployments.apps/$alloy -n monitoring" \
+  "create secrets -n monitoring" "create serviceaccounts -n monitoring" "patch serviceaccounts/$alloy -n monitoring" \
+  "create services -n monitoring" "patch services/$alloy -n monitoring" "update leases.coordination.k8s.io -n monitoring" "create events -n monitoring"; do
   # shellcheck disable=SC2086 # the words of the check are arguments
   can yes $operator $check
 done
-for check in "list alloys.collectors.grafana.com --all-namespaces" "create deployments.apps -n shop" "list deployments.apps -n shop" \
+for check in "list alloys.collectors.grafana.com --all-namespaces" "create alloys.collectors.grafana.com -n monitoring" \
+  "delete alloys.collectors.grafana.com/$alloy -n monitoring" "create daemonsets.apps -n monitoring" "create statefulsets.apps -n monitoring" \
+  "update daemonsets.apps/monitoring-node-exporter -n monitoring" "patch deployments.apps/monitoring-kube-state-metrics -n monitoring" \
+  "update deployments.apps/$operator -n monitoring" "patch services/monitoring-kube-state-metrics -n monitoring" \
+  "delete serviceaccounts/monitoring-node-exporter -n monitoring" "create configmaps -n monitoring" "create pods -n monitoring" \
+  "create replicasets.apps -n monitoring" "create jobs.batch -n monitoring" "create deployments.apps -n shop" "list deployments.apps -n shop" \
   "create serviceaccounts -n shop" "list pods -n monitoring" "list nodes"; do
   # shellcheck disable=SC2086 # the words of the check are arguments
   can no $operator $check

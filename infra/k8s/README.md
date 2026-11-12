@@ -277,7 +277,9 @@ Aplikacje Argo CD `prometheus-crds` (fala −3) i `monitoring` (fala 1, po `shop
 (chart `k8s-monitoring`), który wysyła do Grafana Cloud logi podów wszystkich przestrzeni, zdarzenia klastra i metryki z listy
 dozwolonych (`docs/features/deploy-ops/spec.md`, O5 i O7). Logi są maskowane w Alloy przed wysłaniem, a Mailpit nie jest zbierany.
 Alloy czyta z klastra tylko sekret `grafana-cloud` z przestrzeni `shop`, a Alloy Operator działa tylko w przestrzeni `monitoring`,
-bez ClusterRoli; RBAC operatora i kolektora jest w `extraObjects` manifestu, nie w chartach.
+bez ClusterRoli; RBAC operatora i kolektora jest w `extraObjects` manifestu, nie w chartach. Polityki dopuszczania z tego samego
+manifestu odrzucają w `monitoring` pody z dostępem do hosta (poza node-exporterem) i sekrety z tokenami kont, także żądania
+administratora; `kubectl debug` poda node-exportera też jest odrzucany.
 
 1. **użytkownik** – zakłada konto Grafana Cloud (darmowy plan) ze stosem w regionie UE i retencją logów 14 dni oraz jeden token
    access policy dla metryk i logów z zakresami `metrics:write`, `logs:write`, `rules:read` i `rules:write`. Podaje agentowi (bez
@@ -305,4 +307,6 @@ Aktualizacja chartu `k8s-monitoring` to osobna zmiana: nowa wersja w `argocd/app
 `infra/k8s/scripts/monitoring-render.sh` oraz tag i digest obrazu Alloy z chartu w `infra/k8s/scripts/tools.sh` (i tag w
 manifeście); `make -C infra/k8s check` pilnuje zgodności, a `make -C infra/k8s monitoring-smoke` uruchamia nową wersję w k3d z RBAC
 manifestu: błąd `forbidden` w logu operatora albo Alloy to reguła do dopisania w `extraObjects` (bez sekretów i bez uprawnień do
-obiektów RBAC), nie powrót do RBAC chartu.
+obiektów RBAC), nie powrót do RBAC chartu. Pod nowej wersji odrzucony przez politykę dopuszczania (zdarzenie `FailedCreate`
+z `ValidatingAdmissionPolicy` w przestrzeni `monitoring`, wypisuje je `monitoring-smoke`) to zmiana do przeglądu, nie powód do
+poszerzenia wyjątku node-exportera albo usunięcia polityki.

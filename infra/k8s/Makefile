@@ -37,13 +37,18 @@ selftest:
 smoke:
 	sh scripts/smoke.sh
 
-# The monitoring (argocd/apps/monitoring.yaml) running on a throwaway k3d cluster, with its RBAC as the manifest gives it: the
-# operator and its Alloy ready, a masked log line of a pod in shop, a cluster event and the metrics of kube-state-metrics,
-# node-exporter, the kubelet and cAdvisor at a receiver on the Docker network of the cluster (the addresses of the destinations are
-# the one overlay), no forbidden in the logs, and kubectl auth can-i for the service accounts of the operator, Alloy,
-# kube-state-metrics and node-exporter (no Secret of shop or kube-system, no bind, escalate, impersonate or change of RBAC
-# objects). A few minutes; not in check or CI. MONITORING_SMOKE_BREAK=operator-cluster-role installs the RBAC of the chart of the operator: the test must
-# fail. MONITORING_SMOKE_KEEP=1 keeps a failed cluster. Needs only Docker.
+# The monitoring (argocd/apps/monitoring.yaml) running on a throwaway k3d cluster, with its RBAC and admission policies as the
+# manifest gives them: the operator and its Alloy ready; requests with --dry-run=server, as the operator and as the administrator,
+# that the admission policies must refuse (pods and workloads with access to the host, also with the labels or a forged owner of
+# node-exporter, a Secret with a token of a service account) and plain ones they must let through; every pod of monitoring made again
+# under the policies; a masked log line of a pod in shop, a cluster event and the metrics of kube-state-metrics, node-exporter, the
+# kubelet and cAdvisor at a receiver on the Docker network of the cluster (the addresses of the destinations are the one overlay), no
+# forbidden in the logs, and kubectl auth can-i for the service accounts of the operator, Alloy, kube-state-metrics and node-exporter
+# (no Secret of shop or kube-system, no bind, escalate, impersonate or change of RBAC objects, no exec, attach, port-forward,
+# ephemeral container or token in shop and kube-system, no proxy of a node; the operator without DaemonSets, StatefulSets, pods and
+# new Alloy resources, changing only the objects of its Alloy). A few minutes; not in check or CI.
+# MONITORING_SMOKE_BREAK=operator-cluster-role installs the RBAC of the chart of the operator, MONITORING_SMOKE_BREAK=no-admission-policy
+# the extraObjects without the admission policies: the test must fail. MONITORING_SMOKE_KEEP=1 keeps a failed cluster. Needs only Docker.
 monitoring-smoke:
 	sh scripts/monitoring-smoke.sh
 

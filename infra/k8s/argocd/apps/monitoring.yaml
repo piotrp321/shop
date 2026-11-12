@@ -262,12 +262,137 @@ spec:
           resources:
             requests: {cpu: 50m, memory: 64Mi}
             limits: {cpu: 250m, memory: 192Mi}
-        # The RBAC of the monitoring (tests/test_monitoring.py; make -C infra/k8s monitoring-smoke runs it in k3d and asks the cluster
-        # what each service account may do). No role here binds, escalates, impersonates or changes RBAC objects.
+        # The admission policies and the RBAC of the monitoring (tests/test_monitoring.py; make -C infra/k8s monitoring-smoke runs them
+        # in k3d, sends them the requests they must refuse and asks the cluster what each service account may do). No role here binds,
+        # escalates, impersonates or changes RBAC objects.
         extraObjects:
-          # The operator, in the namespace monitoring only: the Alloy resources, what the Alloy chart makes of them (a Deployment,
-          # its service account, Service and ConfigMap), the Secrets of the Helm releases it keeps there, its leader election and
-          # its events. The namespace monitoring has no Secret of the shop.
+          # The operator is an image of a third party that makes workloads and Secrets in monitoring. Whoever asks (the operator, Argo
+          # CD, an administrator), the namespace monitoring has no pod with access to the host (one would read the kubeconfig of k3s
+          # on the node, an administrator of the cluster) but those of node-exporter, and no Secret with a token of a service account.
+          # The pods of node-exporter are known by who makes them: the controller of DaemonSets (in k3s it has its own service account,
+          # which nobody in monitoring can act as) for the DaemonSet monitoring-node-exporter, which no service account of monitoring
+          # may make or change. Labels are no proof. The templates of the workloads are checked too, so that a refusal comes at once
+          # to whoever makes the workload. The wave -1 puts the policies before everything else of the application.
+          - apiVersion: admissionregistration.k8s.io/v1
+            kind: ValidatingAdmissionPolicy
+            metadata:
+              name: monitoring-no-host-access
+              annotations:
+                argocd.argoproj.io/sync-wave: "-1"
+            spec:
+              failurePolicy: Fail
+              matchConstraints:
+                resourceRules:
+                  - apiGroups: [""]
+                    apiVersions: ["*"]
+                    operations: [CREATE, UPDATE]
+                    resources: [pods, pods/ephemeralcontainers]
+                  - apiGroups: [apps]
+                    apiVersions: ["*"]
+                    operations: [CREATE, UPDATE]
+                    resources: [deployments, replicasets, statefulsets, daemonsets]
+                  - apiGroups: [batch]
+                    apiVersions: ["*"]
+                    operations: [CREATE, UPDATE]
+                    resources: [jobs, cronjobs]
+              variables:
+                - name: podSpec
+                  expression: >-
+                    request.kind.kind == 'Pod' ? object.spec
+                    : request.kind.kind == 'CronJob' ? object.spec.jobTemplate.spec.template.spec
+                    : object.spec.template.spec
+                - name: containers
+                  expression: >-
+                    variables.podSpec.containers
+                    + (has(variables.podSpec.initContainers) ? variables.podSpec.initContainers : [])
+                    + (has(variables.podSpec.ephemeralContainers) ? variables.podSpec.ephemeralContainers : [])
+                # What reaches the host: its namespaces, its files, its ports, a privileged container and a capability beyond those
+                # the baseline profile of the Pod Security Standards allows.
+                - name: hostAccess
+                  expression: >-
+                    (has(variables.podSpec.hostNetwork) && variables.podSpec.hostNetwork ? ['hostNetwork'] : [])
+                    + (has(variables.podSpec.hostPID) && variables.podSpec.hostPID ? ['hostPID'] : [])
+                    + (has(variables.podSpec.hostIPC) && variables.podSpec.hostIPC ? ['hostIPC'] : [])
+                    + (has(variables.podSpec.volumes) && variables.podSpec.volumes.exists(v, has(v.hostPath)) ? ['hostPath'] : [])
+                    + (variables.containers.exists(c, has(c.ports) && c.ports.exists(p, has(p.hostPort) && p.hostPort != 0))
+                      ? ['hostPort'] : [])
+                    + (variables.containers.exists(c, has(c.securityContext) && has(c.securityContext.privileged)
+                      && c.securityContext.privileged) ? ['privileged'] : [])
+                    + (variables.containers.exists(c, has(c.securityContext) && has(c.securityContext.capabilities)
+                      && has(c.securityContext.capabilities.add) && c.securityContext.capabilities.add.exists(a, !(a in [
+                        'AUDIT_WRITE', 'CHOWN', 'DAC_OVERRIDE', 'FOWNER', 'FSETID', 'KILL', 'MKNOD', 'NET_BIND_SERVICE', 'SETFCAP',
+                        'SETGID', 'SETPCAP', 'SETUID', 'SYS_CHROOT']))) ? ['capabilities'] : [])
+                - name: nodeExporter
+                  expression: >-
+                    request.kind.kind == 'DaemonSet'
+                    ? object.metadata.name == 'monitoring-node-exporter'
+                      && !request.userInfo.username.startsWith('system:serviceaccount:monitoring:')
+                    : request.kind.kind == 'Pod'
+                      && request.userInfo.username == 'system:serviceaccount:kube-system:daemon-set-controller'
+                      && has(object.metadata.ownerReferences) && object.metadata.ownerReferences.exists(o, o.kind == 'DaemonSet'
+                        && o.name == 'monitoring-node-exporter' && has(o.controller) && o.controller)
+                # A change of a pod that leaves its spec as it was (its metadata: a finalizer, an owner, an annotation) adds nothing.
+                - name: specUnchanged
+                  expression: request.operation == 'UPDATE' && request.kind.kind == 'Pod' && object.spec == oldObject.spec
+              validations:
+                - expression: variables.hostAccess.size() == 0 || variables.nodeExporter || variables.specUnchanged
+                  reason: Forbidden
+                  messageExpression: >-
+                    request.kind.kind + ' asks for access to the host (' + variables.hostAccess.join(', ') + '): in the
+                    namespace monitoring only the DaemonSet monitoring-node-exporter and its pods may'
+          - apiVersion: admissionregistration.k8s.io/v1
+            kind: ValidatingAdmissionPolicyBinding
+            metadata:
+              name: monitoring-no-host-access
+              annotations:
+                argocd.argoproj.io/sync-wave: "-1"
+            spec:
+              policyName: monitoring-no-host-access
+              validationActions: [Deny]
+              matchResources:
+                # Set by the API server to the name of the namespace: no other namespace can have it.
+                namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: monitoring
+          # A Secret of this type gets from the cluster a token of the service account it names: the operator, which writes Secrets
+          # in monitoring (its Helm releases), would get the token of any service account there.
+          - apiVersion: admissionregistration.k8s.io/v1
+            kind: ValidatingAdmissionPolicy
+            metadata:
+              name: monitoring-no-service-account-tokens
+              annotations:
+                argocd.argoproj.io/sync-wave: "-1"
+            spec:
+              failurePolicy: Fail
+              matchConstraints:
+                resourceRules:
+                  - apiGroups: [""]
+                    apiVersions: ["*"]
+                    operations: [CREATE, UPDATE]
+                    resources: [secrets]
+              validations:
+                - expression: "!has(object.type) || object.type != 'kubernetes.io/service-account-token'"
+                  reason: Forbidden
+                  message: in the namespace monitoring no Secret may hold a token of a service account (type kubernetes.io/service-account-token)
+          - apiVersion: admissionregistration.k8s.io/v1
+            kind: ValidatingAdmissionPolicyBinding
+            metadata:
+              name: monitoring-no-service-account-tokens
+              annotations:
+                argocd.argoproj.io/sync-wave: "-1"
+            spec:
+              policyName: monitoring-no-service-account-tokens
+              validationActions: [Deny]
+              matchResources:
+                namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: monitoring
+          # The operator, in the namespace monitoring only. It reads its Alloy resource (Argo CD makes it), keeps its finalizer and
+          # status, and makes of it through the Alloy chart (presets: deployment) a Deployment, its service account and its Service,
+          # all named like the resource (monitoring-alloy); it keeps its Helm releases in Secrets (their names change with each
+          # release), its leader election and its events. It may create more objects of those kinds (create takes no resourceNames),
+          # but change and delete only those of its Alloy: not kube-state-metrics, node-exporter or itself. No DaemonSet,
+          # StatefulSet, ConfigMap or pod. The namespace monitoring has no Secret of the shop.
           - apiVersion: rbac.authorization.k8s.io/v1
             kind: Role
             metadata:
@@ -275,14 +400,31 @@ spec:
               namespace: monitoring
             rules:
               - apiGroups: [collectors.grafana.com]
-                resources: [alloys, alloys/status, alloys/finalizers]
+                resources: [alloys]
+                verbs: [get, list, watch, update, patch]
+              - apiGroups: [collectors.grafana.com]
+                resources: [alloys/status]
+                verbs: [get, update, patch]
+              - apiGroups: [collectors.grafana.com]
+                resources: [alloys/finalizers]
+                verbs: [update]
+              - apiGroups: [""]
+                resources: [secrets]
                 verbs: [get, list, watch, create, update, patch, delete]
               - apiGroups: [""]
-                resources: [configmaps, secrets, serviceaccounts, services]
-                verbs: [get, list, watch, create, update, patch, delete]
+                resources: [serviceaccounts, services]
+                verbs: [get, list, watch, create]
+              - apiGroups: [""]
+                resources: [serviceaccounts, services]
+                resourceNames: [monitoring-alloy]
+                verbs: [update, patch, delete]
               - apiGroups: [apps]
-                resources: [daemonsets, deployments, statefulsets]
-                verbs: [get, list, watch, create, update, patch, delete]
+                resources: [deployments]
+                verbs: [get, list, watch, create]
+              - apiGroups: [apps]
+                resources: [deployments]
+                resourceNames: [monitoring-alloy]
+                verbs: [update, patch, delete]
               - apiGroups: [coordination.k8s.io]
                 resources: [leases]
                 verbs: [get, list, watch, create, update, patch, delete]
