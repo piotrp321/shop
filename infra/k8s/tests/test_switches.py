@@ -20,7 +20,7 @@ SWITCHES = {
 BREVO_SECRET = {case: "shop-brevo-smtp" for case in SWITCHES if case.startswith("prod")} | {"ci-keycloak-brevo": "smoke-brevo"}
 BREVO_DSN = "smtp://$(BREVO_SMTP_LOGIN):$(BREVO_SMTP_PASSWORD)@smtp-relay.brevo.com:587?timeout=10"
 MAILPIT_DSN = "smtp://mailpit:1025?timeout=10"
-DOMAIN = {"prod": "shop.example.org", "ci": "localhost"}
+DOMAIN = {"prod": "worf.pl", "ci": "localhost"}
 
 
 def profile(case):
@@ -127,7 +127,7 @@ class RealmSettingsTest(unittest.TestCase):
 
     def test_the_clients_get_their_addresses_from_the_domain_and_the_store_its_secret(self):
         for case, store, admin in (
-            ("prod", "https://shop.example.org", "https://admin.shop.example.org"),
+            ("prod", "https://worf.pl", "https://admin.worf.pl"),
             ("prod-domain", "https://other.example.net", "https://admin.other.example.net"),
             ("ci", "http://localhost", "http://admin.localhost"),
         ):

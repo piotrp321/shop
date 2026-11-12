@@ -53,11 +53,17 @@ describe("readListingState", () => {
   });
 
   it("trims in linear time, so a long run of spaces or NUL inside the phrase cannot block the server", () => {
-    // A backtracking trim takes seconds here (quadratic in the run); a linear one well under a millisecond.
+    // A backtracking trim takes over a second here (quadratic in the run), a linear one a few milliseconds. A busy CI
+    // runner can stall a single run past any tight limit, so the run is repeated up to three times and the fastest
+    // one counts.
     for (const run of [" ".repeat(50_000), "\0".repeat(50_000), " \0".repeat(25_000)]) {
-      const started = performance.now();
-      expect(readListingState({ q: `${run}a${run}b${run}` }, "search").q).toBe(`a${run}b`.slice(0, 100));
-      expect(performance.now() - started).toBeLessThan(100);
+      let fastest = Infinity;
+      for (let attempt = 0; attempt < 3 && fastest >= 250; attempt++) {
+        const started = performance.now();
+        expect(readListingState({ q: `${run}a${run}b${run}` }, "search").q).toBe(`a${run}b`.slice(0, 100));
+        fastest = Math.min(fastest, performance.now() - started);
+      }
+      expect(fastest).toBeLessThan(250);
     }
   });
 

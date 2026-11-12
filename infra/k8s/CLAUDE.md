@@ -41,7 +41,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   przestrzeni `KUBE_NAMESPACE` (domyślnie `shop`). Agent uruchamia `create-admin` i `restore` tylko po zgodzie użytkownika
   w rozmowie; `backups` sam.
   Serwer obsługują cele (po SSH, `HOST=<user>@<adres>`, opcje ssh w `SSH_OPTS`): `make -C infra/k8s bootstrap HOST=…
-  [SEALED_KEY_FILE=<kopia klucza>]` (czysty Ubuntu 24.04: k3s w przypiętej wersji, ufw, aktualizacje bezpieczeństwa, Argo CD,
+  [SEALED_KEY_FILE=<kopia klucza>]` (czysty Ubuntu 26.04: k3s w przypiętej wersji, ufw, aktualizacje bezpieczeństwa, Argo CD,
   Sealed Secrets, aplikacja `root`; idempotentny; bez roota albo na innym systemie kończy się błędem przed zmianami;
   zapisuje certyfikat kontrolera do `environments/prod/sealed-secrets.pem`, gdy repo go nie ma, a rozbieżny
   certyfikat to błąd), `kubeconfig HOST=… KUBE_DIR=…` (kubeconfig klastra poza repo, dla `rerun`, `create-admin`, `restore`
@@ -127,7 +127,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   konfiguracja z renderu przechodzi `alloy validate`),
   sekrety zaszyfrowane (po dodaniu certyfikatu `environments/prod/sealed-secrets.pem` każdy klucz z `init-env.sh` ma
   zaszyfrowaną wartość w `environments/prod/secrets/`; jawny Secret w tym katalogu to błąd), `seal-secrets.sh`
-  i skrypty serwera na atrapach `docker` i `ssh`, `server-bootstrap.sh` dwa razy w kontenerze Ubuntu 24.04 bez k3s
+  i skrypty serwera na atrapach `docker` i `ssh`, `server-bootstrap.sh` dwa razy w kontenerze Ubuntu 26.04 bez k3s
   (atrapy `k3s`, `apt-get`, `ufw`, `sysctl`), brak workflowu usuwającego wersje pakietów GHCR oraz to, że `.gitignore`
   nie ignoruje certyfikatu `environments/prod/sealed-secrets.pem` (`git check-ignore` na hoście).
 
