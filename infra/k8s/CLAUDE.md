@@ -71,7 +71,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   razem z `image.requireDigests` kończą render błędem) oraz testy
   skryptów `keycloak-config` i `create-admin` na atrapach `kcadm` i `docker` oraz skryptów kopii `backup.sh` i weryfikacji `backup-verify.sh` na atrapach
   `pg_dump`, `psql`, `rclone`, `restic`, `pg_restore` i `date` (błąd każdego narzędzia kończy je błędem i `backup.sh` nie
-  robi snapshotu; tag, host i manifest snapshotu; `forget --keep-within`; weryfikacja: snapshot `nightly` tego klastra
+  robi snapshotu; tag, host i manifest snapshotu; `forget --keep-within` tylko po kopii `nightly` (kopia `pre-restore` niczego nie przycina); weryfikacja: snapshot `nightly` tego klastra
   starszy niż 26 h albo brak snapshotu, błąd `restic check`, `n` w `--read-data-subset=n/7` z `date +%u` i `--read-data`
   przy `verifyReadData: all`, dumpy strumieniem z `restic dump` do `pg_restore`, błąd `pg_restore` albo `restic dump`,
   pusta tabela migracji, brak realmu `shop` albo `backoffice`, liczba obiektów inna niż w manifeście: błąd z opisem,

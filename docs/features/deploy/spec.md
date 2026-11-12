@@ -307,7 +307,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   bucketu `product-images` z Garage (`rclone sync`, klucz S3 sklepu) i `manifest.json` (rewizja, czas, identyfikator
   klastra, wersje migracji Doctrine z bazy `shop`, liczba i rozmiar obiektów). Całość trafia jako jeden snapshot (tag
   `nightly`, host równy identyfikatorowi klastra) do zaszyfrowanego repozytorium restic w S3 (Cloudflare R2 w `prod`);
-  repozytorium zakłada się samo przy pierwszej kopii, a `restic forget --keep-within 7d --prune` przycina tylko
+  repozytorium zakłada się samo przy pierwszej kopii, a `restic forget --keep-within 7d --prune` po kopii `nightly` przycina tylko
   snapshoty tego klastra (nowy serwer po awarii nie usuwa kopii starego).
 - Pod ma kontenery po kolei na PVC `backup-work` (`storage.backupWork`, 25 Gi: lustro obiektów i cache restic): `cluster-id`
   (UID przestrzeni `kube-system`; jedyny z tokenem API, ClusterRole z samym `get` na `namespaces/kube-system`, bez

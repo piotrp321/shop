@@ -5,7 +5,8 @@
 #
 #   backup.sh dump       pg_dump of shop and keycloak into dumps/ and the migrations of shop into meta/    (image postgres)
 #   backup.sh objects    rclone sync of the bucket product-images into objects/, the count and size in meta/ (image rclone)
-#   backup.sh snapshot   manifest.json, then restic: init when there is no repository, unlock, backup, forget   (image restic)
+#   backup.sh snapshot   manifest.json, then restic: init when there is no repository, unlock, backup, forget (only for the
+#                        tag nightly: another tag, e.g. pre-restore, prunes nothing)                              (image restic)
 #   backup.sh all        the three stages in this process (the tests; the pod runs each in the container of its tool)
 #
 # Every stage stops at its first error (set -e), and the pod runs them one after another: an error in any step before
@@ -131,8 +132,15 @@ stage_snapshot() {
   restic unlock
   echo "backup: snapshot with the tag $tag for the host $host"
   restic backup --retry-lock 30m --tag "$tag" --host "$host" "$work/dumps" "$work/objects" "$work/manifest.json"
-  # Only the snapshots of this cluster are pruned: after the loss of a server the new one never removes its backups.
-  restic forget --keep-within "$retention" --prune --retry-lock 30m --host "$host"
+  # Only a nightly backup prunes. --keep-within counts from the newest snapshot of the host, so a backup made just before a
+  # restore (pre-restore) would push the oldest nightly ones out, the one to restore among them; the next nightly backup prunes
+  # it like any other snapshot of the host. Only the snapshots of this cluster are pruned: after the loss of a server the new
+  # one never removes its backups.
+  if [ "$tag" = nightly ]; then
+    restic forget --keep-within "$retention" --prune --retry-lock 30m --host "$host"
+  else
+    echo "backup: the tag $tag prunes nothing (only nightly does)"
+  fi
   echo "backup: done"
 }
 

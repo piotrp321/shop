@@ -20,7 +20,7 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   osobnej decyzji przy docelowej skali.
 - **Repozytorium restic w Cloudflare R2**: osobny dostawca niż VPS, 10 GB bez opłat, bez opłat za transfer wychodzący.
   Restic szyfruje i deduplikuje, więc nocny koszt rośnie ze zmianami, nie z rozmiarem danych. Retencja 7 dni
-  (`forget --keep-within 7d --prune`).
+  (`forget --keep-within 7d --prune` po każdej kopii `nightly`; kopia `pre-restore` przed odtworzeniem niczego nie przycina).
 - **Host snapshotów to identyfikator klastra** (UID przestrzeni `kube-system`), a `forget` działa tylko dla tego hosta:
   nowy serwer po awarii robi własne kopie i nie usuwa kopii starego. UID czyta pierwszy kontener poda (jedyny z tokenem API,
   ClusterRole z samym `get` na `namespaces/kube-system`); kontenery z sekretem repozytorium nie mają tokenu.

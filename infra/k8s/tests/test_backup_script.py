@@ -191,6 +191,16 @@ class BackupScriptTest(unittest.TestCase):
         words = self.calls_of("restic", "backup")[0].split()
         self.assertEqual("pre-restore", words[words.index("--tag") + 1])
 
+    def test_only_a_nightly_backup_prunes_so_a_pre_restore_one_cannot_remove_the_snapshot_to_restore(self):
+        # --keep-within counts from the newest snapshot of the host: a pre-restore snapshot made just before a restore of an old
+        # one would otherwise push the oldest nightly ones out, the one that is being restored among them.
+        result = self.run_script(BACKUP_TAG="pre-restore")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["cat", "unlock", "backup"], self.restic_subcommands())
+        self.assertIn("pre-restore", result.stdout)
+        self.assertIn("prunes nothing", result.stdout)
+        self.assertIn("backup: done", result.stdout)
+
     def test_the_order_is_check_the_repository_unlock_backup_forget(self):
         result = self.run_script()
         self.assertEqual(0, result.returncode, result.stderr)
