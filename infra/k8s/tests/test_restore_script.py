@@ -488,6 +488,19 @@ class RestoreScriptTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual({"api": 1, "worker": 1, "store": 1, "keycloak": 1}, cluster.state()["deployments"])
 
+    def test_after_a_restore_that_failed_the_cronjobs_it_left_suspended_come_back_as_the_chart_has_them(self):
+        """The rerun with PRE_RESTORE=skip that README recommends finds cart-purge-expired and backup suspended: the chart never
+        suspends them (Argo CD would not undo it), so they must not stay suspended for good."""
+        cluster = self.stub(deployments={"api": 0, "worker": 0, "store": 0, "keycloak": 0})
+        state = cluster.state()
+        state["cronjobs"]["backup"]["suspend"] = True
+        state["cronjobs"]["cart-purge-expired"]["suspend"] = True
+        (cluster.root / "state.json").write_text(json.dumps(state))
+        result = self.restore(cluster, PRE_RESTORE="skip")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual({"restore": True, "backup": False, "cart-purge-expired": False},
+                         {n: c["suspend"] for n, c in cluster.state()["cronjobs"].items()})
+
     def test_the_jobs_run_in_order_and_the_jobs_of_the_version_under_their_names(self):
         cluster = self.stub()
         self.restore(cluster)

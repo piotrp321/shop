@@ -11,11 +11,12 @@
 #      without changes, unless PRE_RESTORE=skip (then no backup is made);
 #   4. with Argo CD: the automatic synchronization of root off, then of shop; the CronJobs cart-purge-expired and backup
 #      suspended; a Job that started since step 1 is waited for (RESTORE_ACTIVE_JOBS_WAIT_SECONDS, 7200 by default, then an
-#      error with the applications still running); api, worker, store and keycloak scaled to zero (the replicas are remembered);
+#      error with the applications still running); api, worker, store and keycloak scaled to zero (the replicas are remembered, the CronJobs are not: see 6);
 #   5. a Job of the CronJob restore in the mode restore: the data of the snapshot (the databases, the objects; Redis flushed,
 #      the queues of RabbitMQ purged);
 #   6. migrate again (rerun), keycloak back and keycloak-config again, a Job of the CronJob restore in the mode reindex, api,
-#      worker, store and the CronJobs back, the rollouts, purge-caches again; with Argo CD the automatic synchronization of root
+#      worker, store and the CronJobs back (not suspended, as the chart has them, also after a restore that failed and
+#      left them suspended), the rollouts, purge-caches again; with Argo CD the automatic synchronization of root
 #      on (root brings back that of shop);
 #   7. a failure in the steps 4 to 6 says at which step it stopped and which snapshot pre-restore was made, and leaves the
 #      applications off (no shop on partly restored data); infra/k8s/README.md says how to finish.
@@ -227,8 +228,6 @@ if [ "$argocd" -eq 1 ]; then
   echo "restore: the automatic synchronization of root and shop is off"
 fi
 # shellcheck disable=SC2086 # lists of names
-suspended="$(kubectl -n "$namespace" get cronjob $cronjobs -o json | py_json '" ".join(c["metadata"]["name"] + "=" + str(bool(c["spec"].get("suspend"))).lower() for c in d["items"])')"
-# shellcheck disable=SC2086 # lists of names
 replicas="$(kubectl -n "$namespace" get deployment $deployments -o json | py_json '" ".join(x["metadata"]["name"] + "=" + str(x["spec"].get("replicas", 1)) for x in d["items"])')"
 for cronjob in $cronjobs; do
   kubectl -n "$namespace" patch cronjob "$cronjob" --type merge -p '{"spec":{"suspend":true}}' > /dev/null
@@ -310,8 +309,10 @@ step_name="api, worker, store and the CronJobs back"
 for deployment in api worker store; do
   kubectl -n "$namespace" scale deployment "$deployment" "--replicas=$(replicas_of "$deployment")" > /dev/null
 done
-for pair in $suspended; do
-  kubectl -n "$namespace" patch cronjob "${pair%%=*}" --type merge -p "{\"spec\":{\"suspend\":${pair#*=}}}" > /dev/null
+# As the chart has them: it never suspends these CronJobs, and a restore run again after a failed one finds them suspended, so the
+# state before this run is not remembered (Argo CD would not undo a suspension the chart does not have).
+for cronjob in $cronjobs; do
+  kubectl -n "$namespace" patch cronjob "$cronjob" --type merge -p '{"spec":{"suspend":false}}' > /dev/null
 done
 for deployment in api worker store; do
   kubectl -n "$namespace" rollout status "deployment/$deployment" --timeout=1500s > /dev/null

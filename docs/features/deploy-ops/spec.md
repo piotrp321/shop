@@ -130,7 +130,8 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   6. ponawia istniejące Joby bieżącej rewizji tym samym mechanizmem co `rerun`: `migrate` (snapshot starszy niż kod),
      przywraca `keycloak` i ponawia `keycloak-config` (odtworzona baza cofa sekret klienta `store`, adresy, rejestrację,
      `verifyEmail` i SMTP do stanu snapshotu), potem `catalog:reindex` (Job z CronJoba `restore` w trybie `reindex`,
-     obraz `api`); przywraca `api`, `worker`, `store` i CronJoby, czeka na rollout, ponawia `purge-caches`, a przy Argo CD
+     obraz `api`); przywraca `api`, `worker`, `store` i CronJoby (`suspend: false` jak w chartcie, który ich nie wstrzymuje, także po
+     poprzedniej próbie, która je zostawiła wstrzymane), czeka na rollout, ponawia `purge-caches`, a przy Argo CD
      włącza automatyczną synchronizację `root` (ten przywraca `shop`);
   7. błąd w krokach 4–6: wypisuje, na którym kroku stanął i jaki snapshot `pre-restore` powstał; nie włącza aplikacji
      z częściowo odtworzonymi danymi; runbook opisuje dokończenie.
