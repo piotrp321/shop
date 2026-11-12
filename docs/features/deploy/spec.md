@@ -521,8 +521,6 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   sprawdzają testy na atrapie `kubectl`, a serwer dopiero ćwiczenie odtworzenia z runbooka (zgoda użytkownika). Backup VPS-a
   od OVH działa od pierwszego dnia. Prawdziwe dane i publiczny start dopiero po DEPLOY-OPS. Klucz R2 w klastrze pozwala usunąć kopie (token tylko do jednego
   bucketu; kopie niezmienne poza zakresem demo).
-- **Brak kopii poza serwerem do czasu DEPLOY-OPS.** Dane da się odtworzyć z seedów, a backup VPS-a od OVH działa od
-  pierwszego dnia; prawdziwe dane i publiczny start dopiero po DEPLOY-OPS.
 - **AppArmor containerd na Ubuntu 26.04.** k3s v1.36 oficjalnie wspiera Ubuntu 26.04 (matryca SUSE), ale przy nakładaniu
   profili (profile stacking) profil `cri-containerd.apparmor.d` blokuje sygnały między
   procesami uruchomionymi przez exec (containerd/containerd#12886, otwarte). Dotyczy exec probe usług
