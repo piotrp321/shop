@@ -106,6 +106,8 @@ do_schema() {
       --set backup.verifyReadData=most
     expect_failure "backup that is not a boolean" "/backup/enabled" $prod --set image.tag=$rev $digests --set-string backup.enabled=true
     expect_failure "alerts that are not a boolean" "/alerts/enabled" $prod --set image.tag=$rev $digests --set-string alerts.enabled=true
+    # alerts.workloads is the registry that the templates fill while rendering (after the schema is validated), not a value to set.
+    expect_failure "a value of alerts that does not exist" "'workloads' not allowed" $prod --set image.tag=$rev $digests --set alerts.workloads.foo=Deployment
     # D3 (docs/features/hardening/spec.md): the header of the client address is trusted only behind the allow list,
     # and going without it is a confirmed choice that no deployment with the images of a release may make.
     expect_failure "clientIpHeader without ipAllowList and without the confirmation" "/clientIpHeaderWithoutAllowList" \

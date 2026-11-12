@@ -1,4 +1,4 @@
-# promtool test rules for the PrometheusRule of the chart (templates/alerts.yaml, docs/features/deploy-ops/spec.md, O6). The rules are
+# promtool test rules for the PrometheusRule of the chart (templates/00-alerts.yaml, named so that it renders last, docs/features/deploy-ops/spec.md, O6). The rules are
 # the groups of the render of prod (prepare.py writes them to rules.yaml next to this file, scripts/check.sh runs promtool), so the
 # tests see exactly what the cluster gets. A line "# @healthy-workloads" becomes the series of the replicas of all the workloads of
 # the render (see prepare.py): a scenario names only what is wrong with one of them.
@@ -515,3 +515,102 @@ tests:
       - eval_time: 30m
         alertname: WorkloadNotReady
         exp_alerts: []
+
+  # --- The same object reported by two series that differ only in the label instance (a new pod of kube-state-metrics next to the
+  # old one, or two scrapes): the rules must not fail with a many-to-many match and must not report an object twice.
+  # BackupFailed and BackupVerifyFailed: two series of the last success of the CronJob.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup",instance="ksm-a"}'
+        values: '3600x400'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup",instance="ksm-b"}'
+        values: '3600x400'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify",instance="ksm-a"}'
+        values: '3600x400'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify",instance="ksm-b"}'
+        values: '3600x400'
+      - series: 'kube_job_owner{namespace="shop",job_name="backup-1",owner_kind="CronJob",owner_name="backup"}'
+        values: '1x400'
+      - series: 'kube_job_status_condition{namespace="shop",job_name="backup-1",condition="Failed",status="true"}'
+        values: '_x120 1x280'
+    alert_rule_test:
+      - eval_time: 125m
+        alertname: BackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              job_name: backup-1
+            exp_annotations: *backup_failed
+      - eval_time: 125m
+        alertname: BackupVerifyFailed
+        exp_alerts: []
+
+  # BackupMissing: two stale series of one CronJob are one alert.
+  - interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup",instance="ksm-a"}'
+        values: '3600x1800'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup",instance="ksm-b"}'
+        values: '3600x1800'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify",instance="ksm-a"}'
+        values: '3600x1800'
+      - series: 'kube_cronjob_status_last_successful_time{namespace="shop",cronjob="backup-verify",instance="ksm-b"}'
+        values: '3600x1800'
+    alert_rule_test:
+      - eval_time: 1700m
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              cronjob: backup
+            exp_annotations:
+              summary: "Brak świeżej kopii zapasowej"
+              description: "Ostatnia udana kopia jest starsza niż 26 godzin albo brak jej metryki od 30 minut (serwer albo Alloy nie działa). Przed pierwszą kopią alert jest oczekiwany. Runbook: Eksploatacja."
+
+  # WorkloadNotReady: a Deployment and a StatefulSet that two series report each. The api has no replica available in both and is
+  # reported once; the store has one available in one of the two series (the other is stale) and is silent.
+  - interval: 1m
+    input_series:
+      - series: 'kube_node_info{node="node1"}'
+        values: '1x300'
+      # @healthy-workloads except=api,store,redis
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="api",instance="ksm-a"}'
+        values: '1x300'
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="api",instance="ksm-b"}'
+        values: '1x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="api",instance="ksm-a"}'
+        values: '0x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="api",instance="ksm-b"}'
+        values: '0x300'
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="store",instance="ksm-a"}'
+        values: '1x300'
+      - series: 'kube_deployment_spec_replicas{namespace="shop",deployment="store",instance="ksm-b"}'
+        values: '1x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="store",instance="ksm-a"}'
+        values: '0x300'
+      - series: 'kube_deployment_status_replicas_available{namespace="shop",deployment="store",instance="ksm-b"}'
+        values: '1x300'
+      - series: 'kube_statefulset_replicas{namespace="shop",statefulset="redis",instance="ksm-a"}'
+        values: '1x300'
+      - series: 'kube_statefulset_replicas{namespace="shop",statefulset="redis",instance="ksm-b"}'
+        values: '1x300'
+      - series: 'kube_statefulset_status_replicas_ready{namespace="shop",statefulset="redis",instance="ksm-a"}'
+        values: '0x300'
+      - series: 'kube_statefulset_status_replicas_ready{namespace="shop",statefulset="redis",instance="ksm-b"}'
+        values: '0x300'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: WorkloadNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              deployment: api
+            exp_annotations: *workload_not_ready
+          - exp_labels:
+              severity: critical
+              namespace: shop
+              statefulset: redis
+            exp_annotations: *workload_not_ready

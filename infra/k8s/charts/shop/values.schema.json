@@ -376,6 +376,7 @@
     },
     "alerts": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "enabled"
       ],
