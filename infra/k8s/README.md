@@ -276,7 +276,8 @@ Mechanizm: `docs/features/deploy/spec.md` („Kopie zapasowe”), decyzje: `docs
 Aplikacje Argo CD `prometheus-crds` (fala −3) i `monitoring` (fala 1, po `shop`) stawiają CRD Prometheusa oraz Grafana Alloy
 (chart `k8s-monitoring`), który wysyła do Grafana Cloud logi podów wszystkich przestrzeni, zdarzenia klastra i metryki z listy
 dozwolonych (`docs/features/deploy-ops/spec.md`, O5 i O7). Logi są maskowane w Alloy przed wysłaniem, a Mailpit nie jest zbierany.
-Alloy czyta z klastra tylko sekret `grafana-cloud` z przestrzeni `shop`.
+Alloy czyta z klastra tylko sekret `grafana-cloud` z przestrzeni `shop`, a Alloy Operator działa tylko w przestrzeni `monitoring`,
+bez ClusterRoli; RBAC operatora i kolektora jest w `extraObjects` manifestu, nie w chartach.
 
 1. **użytkownik** – zakłada konto Grafana Cloud (darmowy plan) ze stosem w regionie UE i retencją logów 14 dni oraz jeden token
    access policy dla metryk i logów z zakresami `metrics:write`, `logs:write`, `rules:read` i `rules:write`. Podaje agentowi (bez
@@ -302,4 +303,5 @@ Alloy czyta z klastra tylko sekret `grafana-cloud` z przestrzeni `shop`.
 
 Aktualizacja chartu `k8s-monitoring` to osobna zmiana: nowa wersja w `argocd/apps/monitoring.yaml`, sha256 archiwum w
 `infra/k8s/scripts/monitoring-render.sh` oraz tag i digest obrazu Alloy z chartu w `infra/k8s/scripts/tools.sh` (i tag w
-manifeście); `make -C infra/k8s check` pilnuje zgodności.
+manifeście); `make -C infra/k8s check` pilnuje zgodności. Błąd `forbidden` w logu operatora albo Alloy po aktualizacji to reguła do
+dopisania w `extraObjects` (bez sekretów i bez uprawnień do obiektów RBAC), nie powrót do RBAC chartu.

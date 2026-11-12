@@ -241,33 +241,96 @@ spec:
               resources:
                 requests: {cpu: 10m, memory: 32Mi}
                 limits: {cpu: 100m, memory: 64Mi}
-            # The ClusterRole that the operator makes for Alloy comes from these rules; the default of the Alloy chart reads all
-            # Secrets of the cluster. These do not: the discovery of the pods, their logs, the events and the PrometheusRule
-            # objects. The token is read through the Role of extraObjects below.
+            # The operator makes no RBAC objects (it has no rights on them, see alloy-operator below): the Alloy chart makes none, and
+            # the ClusterRole of Alloy and its binding are in extraObjects (monitoring-alloy-collector). The default of the Alloy chart
+            # would be a ClusterRole that reads all Secrets of the cluster.
             rbac:
-              rules:
-                - apiGroups: ["", "discovery.k8s.io", "networking.k8s.io"]
-                  resources: [endpoints, endpointslices, ingresses, pods, services]
-                  verbs: [get, list, watch]
-                - apiGroups: [""]
-                  resources: [pods, pods/log, namespaces, events]
-                  verbs: [get, list, watch]
-                - apiGroups: [monitoring.coreos.com]
-                  resources: [prometheusrules]
-                  verbs: [get, list, watch]
+              create: false
             # The name that the operator gives the service account (the name of the Alloy resource), written out because the
-            # RoleBinding below names it.
+            # bindings of extraObjects name it.
             serviceAccount:
               name: monitoring-alloy
         alloy-operator:
+          # The operator works in the namespace monitoring only (WATCH_NAMESPACE): no ClusterRole, and its RBAC is the Role of
+          # extraObjects (monitoring-alloy-operator) instead of the one of its chart, which has bind and escalate on Roles.
+          ownNamespaceOnly: true
+          rbac:
+            create: false
           # The hooks that wait for the removal of the Alloy resources are Helm pre-delete hooks, which Argo CD does not run.
           waitForAlloyRemoval:
             enabled: false
           resources:
             requests: {cpu: 50m, memory: 64Mi}
             limits: {cpu: 250m, memory: 192Mi}
-        # Alloy reads the token from the Secret grafana-cloud of the namespace shop and from no other Secret of the cluster.
+        # The RBAC of the monitoring (tests/test_monitoring.py). No role here binds, escalates, impersonates or changes RBAC objects.
         extraObjects:
+          # The operator, in the namespace monitoring only: the Alloy resources, what the Alloy chart makes of them (a Deployment,
+          # its service account, Service and ConfigMap), the Secrets of the Helm releases it keeps there, its leader election and
+          # its events. The namespace monitoring has no Secret of the shop.
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: Role
+            metadata:
+              name: monitoring-alloy-operator
+              namespace: monitoring
+            rules:
+              - apiGroups: [collectors.grafana.com]
+                resources: [alloys, alloys/status, alloys/finalizers]
+                verbs: [get, list, watch, create, update, patch, delete]
+              - apiGroups: [""]
+                resources: [configmaps, secrets, serviceaccounts, services]
+                verbs: [get, list, watch, create, update, patch, delete]
+              - apiGroups: [apps]
+                resources: [daemonsets, deployments, statefulsets]
+                verbs: [get, list, watch, create, update, patch, delete]
+              - apiGroups: [coordination.k8s.io]
+                resources: [leases]
+                verbs: [get, list, watch, create, update, patch, delete]
+              - apiGroups: [""]
+                resources: [events]
+                verbs: [create, patch]
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: RoleBinding
+            metadata:
+              name: monitoring-alloy-operator
+              namespace: monitoring
+            roleRef:
+              apiGroup: rbac.authorization.k8s.io
+              kind: Role
+              name: monitoring-alloy-operator
+            subjects:
+              - kind: ServiceAccount
+                name: monitoring-alloy-operator
+                namespace: monitoring
+          # Alloy reads, in the whole cluster: the nodes and the metrics of their kubelet and cAdvisor, the endpoints of
+          # kube-state-metrics, the pods of node-exporter and of every namespace with their logs, the events and the
+          # PrometheusRule objects. No Secret and no ConfigMap.
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: ClusterRole
+            metadata:
+              name: monitoring-alloy-collector
+            rules:
+              - apiGroups: [""]
+                resources: [nodes, services, endpoints, pods, namespaces, events]
+                verbs: [get, list, watch]
+              - apiGroups: [""]
+                resources: [nodes/metrics, pods/log]
+                verbs: [get]
+              - apiGroups: [monitoring.coreos.com]
+                resources: [prometheusrules]
+                verbs: [get, list, watch]
+          - apiVersion: rbac.authorization.k8s.io/v1
+            kind: ClusterRoleBinding
+            metadata:
+              name: monitoring-alloy-collector
+            roleRef:
+              apiGroup: rbac.authorization.k8s.io
+              kind: ClusterRole
+              name: monitoring-alloy-collector
+            subjects:
+              - kind: ServiceAccount
+                name: monitoring-alloy
+                namespace: monitoring
+          # Alloy reads the token from the Secret grafana-cloud of the namespace shop and from no other Secret of the cluster.
           - apiVersion: rbac.authorization.k8s.io/v1
             kind: Role
             metadata:

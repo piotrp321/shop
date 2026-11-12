@@ -52,6 +52,19 @@ replace() {
   mv "$file.new" "$file"
 }
 
+# replace_after <file of the copy> <anchor> <from> <to>: like replace, for the first <from> on a line after the first line with
+# <anchor> (a <from> that is on several lines of the file, e.g. "create: false").
+replace_after() {
+  file="$tree/$1"
+  REPLACE_ANCHOR="$2" REPLACE_FROM="$3" REPLACE_TO="$4" awk 'BEGIN { seen = 0; done = 0; anchor = ENVIRON["REPLACE_ANCHOR"]
+      from = ENVIRON["REPLACE_FROM"]; to = ENVIRON["REPLACE_TO"] } {
+    if (seen && !done && (i = index($0, from)) > 0) { $0 = substr($0, 1, i - 1) to substr($0, i + length(from)); done = 1 }
+    if (index($0, anchor) > 0) seen = 1
+    print } END { if (!done) exit 3 }' "$file" > "$file.new" \
+    || { echo "selftest: '$3' is not after '$2' in $1: the case is out of date" >&2; exit 1; }
+  mv "$file.new" "$file"
+}
+
 # case <name> <expected text in the output> <command that injects the error>
 run_case() {
   name="$1" expected="$2"
@@ -180,10 +193,19 @@ backup_verify_accepts_any_age() { replace infra/k8s/charts/shop/files/scripts/ba
 backup_verify_postgres_not_a_sidecar() { replace infra/k8s/charts/shop/templates/backup-verify.yaml 'restartPolicy: Always' 'imagePullPolicy: IfNotPresent'; }
 backup_verify_without_the_ca_certificates() { replace infra/k8s/charts/shop/templates/backup-verify.yaml '- name: SSL_CERT_FILE' '- name: SSL_CERT_FILE_UNUSED'; }
 backup_verify_reads_the_production_postgres() { replace infra/k8s/charts/shop/templates/backup-verify.yaml 'value: 127.0.0.1' 'value: postgres'; }
-# The monitoring (spec O5, O7): the stage that masks e-mail addresses made to match nothing, the rules of Alloy with the Secrets of the
-# cluster, the Role of the token with no name of a Secret, the events without the stages, a rule that no longer drops Mailpit.
+# The monitoring (spec O5, O7): the stage that masks e-mail addresses made to match nothing, the ClusterRole of Alloy with the Secrets
+# of the cluster, the Role of the token with no name of a Secret, the events without the stages, a rule that no longer drops Mailpit;
+# the operator with the RBAC of its chart (a ClusterRole with all Secrets, bind and escalate), the operator with a Role that changes
+# RBAC objects, the operator watching the whole cluster, the Alloy resource making its own RBAC.
 monitoring_without_the_email_rule() { replace infra/k8s/argocd/apps/monitoring.yaml ']+@[' ']+Q['; }
-monitoring_alloy_rules_with_secrets() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [pods, pods/log, namespaces, events]' 'resources: [pods, pods/log, namespaces, events, secrets]'; }
+monitoring_alloy_rules_with_secrets() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [nodes, services, endpoints, pods, namespaces, events]' 'resources: [nodes, services, endpoints, pods, namespaces, events, secrets]'; }
+monitoring_operator_with_the_rbac_of_its_chart() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'ownNamespaceOnly: true' 'create: false' 'create: true'; }
+monitoring_operator_changing_rbac() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [configmaps, secrets, serviceaccounts, services]' 'resources: [configmaps, secrets, serviceaccounts, services]
+                verbs: [get, list, watch, create, update, patch, delete]
+              - apiGroups: [rbac.authorization.k8s.io]
+                resources: [roles, rolebindings]'; }
+monitoring_operator_on_the_whole_cluster() { replace infra/k8s/argocd/apps/monitoring.yaml 'ownNamespaceOnly: true' 'ownNamespaceOnly: false'; }
+monitoring_alloy_making_its_own_rbac() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'presets: [deployment]' 'create: false' 'create: true'; }
 monitoring_role_on_all_secrets_of_the_shop() { replace infra/k8s/argocd/apps/monitoring.yaml 'resourceNames: [grafana-cloud]' 'resourceNames: []'; }
 monitoring_events_without_the_stages() { replace infra/k8s/argocd/apps/monitoring.yaml 'extraLogProcessingStages: *logStages' 'extraLogProcessingStages: ""'; }
 monitoring_collecting_mailpit() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex         = "shop;mailpit"' 'regex         = "shop;mailpit-other"'; }
@@ -256,7 +278,11 @@ run_case "verify without the CA certificates of restic" "test_restic_trusts_the_
 run_case "verification that reads the production Postgres" "test_nothing_of_the_production_database_is_reachable" backup_verify_reads_the_production_postgres
 run_case "seal-secrets looking for the existing backup secret in another file (it asks for the password again)" "test_the_backup_is_created_once_then_nothing_is_asked" seal_secrets_looks_for_the_backup_in_another_file
 run_case "monitoring masking no e-mail address" "e-mail 'jan.kowalski' came out of Alloy" monitoring_without_the_email_rule
-run_case "Alloy with the rules that read all Secrets" "gives access to Secrets" monitoring_alloy_rules_with_secrets
+run_case "Alloy with a ClusterRole that reads all Secrets" "with access to Secrets outside monitoring" monitoring_alloy_rules_with_secrets
+run_case "Alloy Operator with the RBAC of its chart" "gives the operator rights outside the namespace monitoring" monitoring_operator_with_the_rbac_of_its_chart
+run_case "Alloy Operator with a Role that changes RBAC objects" "can bind, escalate, impersonate or change RBAC objects" monitoring_operator_changing_rbac
+run_case "Alloy Operator watching the whole cluster" "test_the_operator_watches_only_its_own_namespace" monitoring_operator_on_the_whole_cluster
+run_case "Alloy resource making its own RBAC" "the Alloy resource makes its own RBAC" monitoring_alloy_making_its_own_rbac
 run_case "Role of Alloy on all Secrets of the shop" "the Role does not name the one Secret" monitoring_role_on_all_secrets_of_the_shop
 run_case "cluster events without the stages that mask" "do not get the same stages" monitoring_events_without_the_stages
 run_case "monitoring collecting Mailpit" "test_the_rules_drop_exactly_the_disabled_sources_of_the_shop" monitoring_collecting_mailpit

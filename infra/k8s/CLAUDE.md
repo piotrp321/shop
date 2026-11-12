@@ -98,9 +98,12 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   `secrets` −1, `shop` 0, `monitoring` 1, `ServerSideApply` przy CRD, `SkipDryRunOnMissingResource` i `CreateNamespace` przy
   `monitoring`, charty innych przypięte wersją), render chartu `k8s-monitoring` z wartościami z manifestu `monitoring`
   (`scripts/monitoring-render.sh`: archiwum chartu pobrane raz do cache narzędzi, sprawdzone sha256 zapisanym w skrypcie;
-  `kubeconform` ze schematem `Alloy`; żadna ClusterRole ani Role renderu poza Role na sekret `grafana-cloud` w `shop` nie daje
-  dostępu do sekretów, także przez `*`, z jednym wyjątkiem z nazwy: ClusterRole samego Alloy Operatora, którego chart nie
-  zawęża; reguły Alloy w zasobie `Alloy` bez sekretów; lista dozwolonych metryk niepusta i z metrykami alertów, widoczna w
+  `kubeconform` ze schematem `Alloy`; RBAC renderu: żadna rola nie ma `bind`, `escalate`, `impersonate`, `*` ani zmian obiektów
+  RBAC, ClusterRole tylko czyta i nigdy sekretów (także przez `*`), Role tylko w `shop` i `monitoring`, sekrety poza `monitoring`
+  daje tylko Role na `grafana-cloud` w `shop`, a sekrety w `monitoring` tylko Role operatora związana z jego kontem; operator
+  bez ClusterRoleBinding i bez powiązań poza `monitoring`, z `WATCH_NAMESPACE=monitoring`; powiązania tylko do ról renderu, bez
+  `aggregationRule`; zasób `Alloy` z `rbac.create: false`, a ClusterRole kolektora z `extraObjects` czyta dokładnie listę
+  zasobów z testu; lista dozwolonych metryk niepusta i z metrykami alertów, widoczna w
   konfiguracji Alloy; budżet węzła: `shop` i `monitoring` razem do 7 vCPU requestów i 20 GiB limitów, z jawnymi zasobami Alloy,
   jego reloadera, operatora, kube-state-metrics i node-exportera; obraz Alloy w `tools.sh` to tag z chartu i z manifestu),
   test maskowania logów (`scripts/masking.sh`: prawdziwy Alloy, przypięty tagiem i digestem, uruchamia etapy

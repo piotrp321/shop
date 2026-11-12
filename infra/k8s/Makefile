@@ -20,8 +20,9 @@ check:
 # backup script that goes on after an error or takes any access error for a missing repository, the verification of the
 # backups that goes on after an error, takes a snapshot of any age, runs a temporary Postgres that is not a sidecar or
 # reaches the production Postgres, runs restic without CA certificates, seal-secrets that asks for the backup password again, restore
-# going on without tak, the monitoring (Alloy) with no masking of e-mail addresses in the logs, with rules of Alloy or a Role that read all
-# Secrets, with the cluster events not masked like the logs of the pods, collecting the logs of Mailpit, a chart of the monitoring
+# going on without tak, the monitoring (Alloy) with no masking of e-mail addresses in the logs, with a ClusterRole of Alloy or a Role that read all
+# Secrets, with the RBAC of the chart of the operator, a Role of the operator that changes RBAC objects, the operator watching the whole
+# cluster, the Alloy resource making its own RBAC, with the cluster events not masked like the logs of the pods, collecting the logs of Mailpit, a chart of the monitoring
 # without a digest in monitoring-render.sh or with another one, or stages that Alloy rejects).
 selftest:
 	sh scripts/selftest.sh

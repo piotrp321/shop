@@ -6,7 +6,7 @@ test_log_masking.py, the budget of the node in test_workloads.py."""
 import re
 import unittest
 
-from support import RENDER, docs, name, of_kind
+from support import RENDER, containers, docs, env_of, name, of_kind
 
 # The metrics that the alerts of the spec (O6) use.
 ALERT_METRICS = [
@@ -15,9 +15,13 @@ ALERT_METRICS = [
     "kube_statefulset_status_replicas_ready", "kube_statefulset_replicas",
 ]
 SECRET_OF_ALLOY = "grafana-cloud"
-# The ClusterRole of the Alloy Operator itself (not of an Alloy it runs): it keeps the Helm releases of the Alloy resources it
-# manages in Secrets and the chart gives it no way to narrow that (values: rbac.create and rbac.createClusterRoles only).
-OPERATOR_ROLE = re.compile(r"^monitoring-alloy-operator$")
+# The service accounts of the Alloy Operator and of the Alloy it runs (the collector), in the namespace of the application.
+OPERATOR = {"kind": "ServiceAccount", "name": "monitoring-alloy-operator", "namespace": "monitoring"}
+COLLECTOR = {"kind": "ServiceAccount", "name": "monitoring-alloy", "namespace": "monitoring"}
+READ = {"get", "list", "watch"}
+# What the collector reads (spec, O5): the nodes and the metrics of their kubelet and cAdvisor, the endpoints of kube-state-metrics,
+# the pods of node-exporter and of every namespace with their logs, the events and the PrometheusRule objects.
+COLLECTOR_NEEDS = {"nodes", "nodes/metrics", "services", "endpoints", "pods", "pods/log", "namespaces", "events", "prometheusrules"}
 
 
 def values():
@@ -44,27 +48,50 @@ class ReadsSecrets(unittest.TestCase):
         self.assertFalse(reads_secrets({"nonResourceURLs": ["/metrics"], "verbs": ["get"]}))
 
 
+def escalates(rule):
+    """Whether a rule lets its holder give itself more: bind, escalate or impersonate, any verb (*), or a change of RBAC objects
+    (Roles, ClusterRoles and their bindings)."""
+    verbs = set(rule.get("verbs", []))
+    if verbs & {"bind", "escalate", "impersonate", "*"}:
+        return True
+    if "nonResourceURLs" in rule:
+        return False
+    return bool({"rbac.authorization.k8s.io", "*"} & set(rule.get("apiGroups", [""]))) and bool(verbs - READ)
+
+
 def problems(render):
-    """What is wrong with the access to Secrets in the documents of a render (a list of messages; empty: nothing)."""
+    """What is wrong with the RBAC of the documents of a render (a list of messages; empty: nothing). No role of the render can
+    give more (escalates); a ClusterRole only reads, and never Secrets; a Role is in shop or monitoring; the one Role with Secrets
+    outside monitoring is the Role of Alloy on its token in shop; a Role with Secrets in monitoring (the releases of the operator)
+    is bound to the operator only; the operator has no ClusterRoleBinding and no binding outside monitoring."""
     found = []
     roles = [d for d in render if d["kind"] in ("ClusterRole", "Role")]
     readers = []
+    monitoring_readers = set()
     for role in roles:
-        if OPERATOR_ROLE.match(name(role)):
-            continue
+        kind, role_name, namespace = role["kind"], name(role), role["metadata"].get("namespace")
         if role.get("aggregationRule"):
-            found.append(f"{role['kind']}/{name(role)} has an aggregationRule: it collects rules of other ClusterRoles, which this test cannot see")
+            found.append(f"{kind}/{role_name} has an aggregationRule: it collects rules of other ClusterRoles, which this test cannot see")
+        if kind == "Role" and namespace not in ("shop", "monitoring"):
+            found.append(f"Role/{role_name} is in the namespace {namespace}, not in shop or monitoring")
         for rule in role.get("rules") or []:
+            if escalates(rule):
+                found.append(f"{kind}/{role_name} can bind, escalate, impersonate or change RBAC objects: {rule}")
+            if kind == "ClusterRole" and not set(rule.get("verbs", [])) <= READ:
+                found.append(f"ClusterRole/{role_name} does more than read in the whole cluster: {rule}")
             if reads_secrets(rule):
-                readers.append((role["kind"], name(role), role["metadata"].get("namespace"), rule))
+                if kind == "Role" and namespace == "monitoring":
+                    monitoring_readers.add(role_name)
+                else:
+                    readers.append((kind, role_name, namespace, rule))
     if len(readers) != 1:
-        found.append(f"roles of the render with access to Secrets: {readers}")
+        found.append(f"roles of the render with access to Secrets outside monitoring: {readers}")
     for kind, role_name, namespace, rule in readers[:1]:
         if (kind, namespace) != ("Role", "shop"):
             found.append(f"the one role with access to Secrets is {kind}/{role_name} in {namespace}, not a Role in shop")
         if rule.get("resourceNames") != [SECRET_OF_ALLOY] or rule["resources"] != ["secrets"] or rule["apiGroups"] != [""]:
             found.append(f"the Role does not name the one Secret: {rule}")
-        if not set(rule["verbs"]) <= {"get", "list", "watch"}:
+        if not set(rule["verbs"]) <= READ:
             found.append(f"verbs of the Role on the Secret: {rule['verbs']}")
     # A binding to a role that the render does not have grants what that role grants elsewhere in the cluster (cluster-admin, any
     # role of another chart): every roleRef must be a role of this render, of the namespace of a RoleBinding.
@@ -73,9 +100,14 @@ def problems(render):
         if binding["kind"] not in ("RoleBinding", "ClusterRoleBinding"):
             continue
         ref = binding["roleRef"]
-        namespace = binding["metadata"].get("namespace") if ref["kind"] == "Role" else None
-        if (ref["kind"], ref["name"], namespace) not in defined:
+        namespace = binding["metadata"].get("namespace") if binding["kind"] == "RoleBinding" else None
+        if (ref["kind"], ref["name"], namespace if ref["kind"] == "Role" else None) not in defined:
             found.append(f"{binding['kind']}/{name(binding)} binds {ref['kind']}/{ref['name']}, which the render does not define")
+        subjects = binding.get("subjects") or []
+        if OPERATOR in subjects and (binding["kind"] != "RoleBinding" or namespace != "monitoring"):
+            found.append(f"{binding['kind']}/{name(binding)} gives the operator rights outside the namespace monitoring")
+        if ref["kind"] == "Role" and namespace == "monitoring" and ref["name"] in monitoring_readers and subjects != [OPERATOR]:
+            found.append(f"RoleBinding/{name(binding)} gives the Secrets of monitoring to {subjects}, not to the operator only")
     return found
 
 
@@ -84,45 +116,103 @@ def role(kind, role_name, namespace, rules, **extra):
     return {"apiVersion": "rbac.authorization.k8s.io/v1", "kind": kind, "metadata": metadata, "rules": rules} | extra
 
 
-def binding(kind, binding_name, namespace, ref_kind, ref_name):
+def binding(kind, binding_name, namespace, ref_kind, ref_name, subject=COLLECTOR):
     metadata = {"name": binding_name} | ({"namespace": namespace} if namespace else {})
     return {"kind": kind, "metadata": metadata, "roleRef": {"kind": ref_kind, "name": ref_name, "apiGroup": "rbac.authorization.k8s.io"},
-            "subjects": [{"kind": "ServiceAccount", "name": "monitoring-alloy", "namespace": "monitoring"}]}
+            "subjects": [subject]}
 
 
 GOOD_ROLE = role("Role", "alloy-grafana-cloud", "shop", [{"apiGroups": [""], "resources": ["secrets"], "resourceNames": [SECRET_OF_ALLOY], "verbs": ["get"]}])
+OPERATOR_RULES = [{"apiGroups": [""], "resources": ["configmaps", "secrets", "serviceaccounts", "services"], "verbs": ["get", "create", "delete"]},
+                  {"apiGroups": ["apps"], "resources": ["deployments"], "verbs": ["get", "create", "patch"]}]
+GOOD = [
+    GOOD_ROLE, binding("RoleBinding", "alloy-grafana-cloud", "shop", "Role", "alloy-grafana-cloud"),
+    role("Role", "operator", "monitoring", OPERATOR_RULES), binding("RoleBinding", "operator", "monitoring", "Role", "operator", OPERATOR),
+    role("ClusterRole", "collector", None, [{"apiGroups": [""], "resources": ["nodes", "nodes/metrics", "pods"], "verbs": ["get", "list"]},
+                                            {"nonResourceURLs": ["/metrics"], "verbs": ["get"]}]),
+    binding("ClusterRoleBinding", "collector", None, "ClusterRole", "collector"),
+]
 
 
 class TheCheckOfRbac(unittest.TestCase):
     def test_the_good_render_has_no_problem(self):
-        good = [GOOD_ROLE, binding("RoleBinding", "alloy-grafana-cloud", "shop", "Role", "alloy-grafana-cloud")]
-        self.assertEqual([], problems(good))
+        self.assertEqual([], problems(GOOD))
 
     def test_a_binding_to_a_role_the_render_does_not_define_is_a_problem(self):
         for ref_kind, ref_name in (("ClusterRole", "cluster-admin"), ("ClusterRole", "admin"), ("ClusterRole", "edit"), ("Role", "other")):
             with self.subTest(ref=ref_name):
-                bad = [GOOD_ROLE, binding("ClusterRoleBinding", "x", None, ref_kind, ref_name)]
+                bad = GOOD + [binding("ClusterRoleBinding", "x", None, ref_kind, ref_name)]
                 self.assertTrue(problems(bad), f"a ClusterRoleBinding to {ref_name} passes")
 
     def test_a_rolebinding_to_a_role_of_another_namespace_is_a_problem(self):
-        bad = [GOOD_ROLE, binding("RoleBinding", "x", "monitoring", "Role", "alloy-grafana-cloud")]
+        bad = GOOD + [binding("RoleBinding", "x", "monitoring", "Role", "alloy-grafana-cloud")]
         self.assertTrue(problems(bad))
 
     def test_a_cluster_role_with_an_aggregation_rule_is_a_problem(self):
         aggregate = role("ClusterRole", "collect", None, [], aggregationRule={"clusterRoleSelectors": [{"matchLabels": {"x": "y"}}]})
-        self.assertTrue(problems([GOOD_ROLE, aggregate]))
+        self.assertTrue(problems(GOOD + [aggregate]))
 
     def test_a_second_role_with_access_to_secrets_is_a_problem(self):
         wide = role("ClusterRole", "wide", None, [{"apiGroups": ["*"], "resources": ["*"], "verbs": ["*"]}])
-        self.assertTrue(problems([GOOD_ROLE, wide]))
+        self.assertTrue(problems(GOOD + [wide]))
+
+    def test_a_cluster_role_that_reads_secrets_is_a_problem_also_the_one_of_the_operator(self):
+        for verbs in (["get"], ["list", "watch"], ["get", "list", "watch", "create", "update", "patch", "delete"]):
+            with self.subTest(verbs=verbs):
+                operator = role("ClusterRole", "monitoring-alloy-operator", None, [{"apiGroups": [""], "resources": ["configmaps", "secrets"], "verbs": verbs}])
+                self.assertTrue(problems(GOOD + [operator, binding("ClusterRoleBinding", "o", None, "ClusterRole", "monitoring-alloy-operator", OPERATOR)]))
+
+    def test_bind_escalate_impersonate_and_changes_of_rbac_are_a_problem_in_any_role(self):
+        for kind, namespace in (("ClusterRole", None), ("Role", "monitoring"), ("Role", "shop")):
+            for rule in (
+                {"apiGroups": ["rbac.authorization.k8s.io"], "resources": ["clusterroles"], "verbs": ["bind"]},
+                {"apiGroups": ["rbac.authorization.k8s.io"], "resources": ["roles"], "verbs": ["escalate"]},
+                {"apiGroups": [""], "resources": ["serviceaccounts", "users"], "verbs": ["impersonate"]},
+                {"apiGroups": ["rbac.authorization.k8s.io"], "resources": ["rolebindings"], "verbs": ["create"]},
+                {"apiGroups": ["*"], "resources": ["roles"], "verbs": ["patch"]},
+                {"apiGroups": ["apps"], "resources": ["deployments"], "verbs": ["*"]},
+            ):
+                with self.subTest(kind=kind, namespace=namespace, rule=rule):
+                    self.assertTrue(problems(GOOD + [role(kind, "x", namespace, [rule])]))
+
+    def test_reading_rbac_objects_is_not_a_change(self):
+        reader = role("ClusterRole", "x", None, [{"apiGroups": ["rbac.authorization.k8s.io"], "resources": ["roles"], "verbs": ["get", "list"]}])
+        self.assertEqual([], problems(GOOD + [reader]))
+
+    def test_a_cluster_role_that_writes_anything_is_a_problem(self):
+        writer = role("ClusterRole", "x", None, [{"apiGroups": [""], "resources": ["pods"], "verbs": ["get", "create"]}])
+        self.assertTrue(problems(GOOD + [writer]))
+
+    def test_a_role_outside_shop_and_monitoring_is_a_problem(self):
+        for rules in ([{"apiGroups": [""], "resources": ["secrets"], "verbs": ["get"]}], [{"apiGroups": [""], "resources": ["pods"], "verbs": ["get"]}]):
+            with self.subTest(rules=rules):
+                self.assertTrue(problems(GOOD + [role("Role", "x", "kube-system", rules)]))
+
+    def test_the_secrets_of_monitoring_are_for_the_operator_only(self):
+        self.assertTrue(problems(GOOD + [binding("RoleBinding", "y", "monitoring", "Role", "operator", COLLECTOR)]))
+
+    def test_the_operator_has_no_rights_outside_monitoring(self):
+        for bad in (
+            binding("ClusterRoleBinding", "y", None, "ClusterRole", "collector", OPERATOR),
+            binding("RoleBinding", "y", "shop", "Role", "alloy-grafana-cloud", OPERATOR),
+        ):
+            with self.subTest(binding=name(bad)):
+                self.assertTrue(problems(GOOD + [bad]))
 
 
 class Rbac(unittest.TestCase):
     def roles(self):
         return [d for d in docs("monitoring") if d["kind"] in ("ClusterRole", "Role")]
 
-    def test_only_one_role_gives_access_to_secrets_the_one_of_alloy_on_its_own_token_in_the_shop(self):
-        self.assertEqual([], problems(docs("monitoring")))
+    def test_the_rbac_of_the_render_has_no_problem(self):
+        found = problems(docs("monitoring"))
+        self.assertFalse(found, "the RBAC of the render:\n" + "\n".join(found))
+
+    def test_the_operator_watches_only_its_own_namespace(self):
+        # Without WATCH_NAMESPACE the operator watches the Alloy resources of the whole cluster, for which it has no rights.
+        operator = [d for d in of_kind("monitoring", "Deployment") if name(d) == OPERATOR["name"]]
+        self.assertEqual(1, len(operator))
+        self.assertEqual({"WATCH_NAMESPACE": "monitoring"}, {k: v for k, v in env_of(containers(operator[0])[0]).items() if k == "WATCH_NAMESPACE"})
 
     def test_the_role_of_the_token_is_bound_to_the_service_account_of_alloy_only(self):
         shop_roles = [r for r in self.roles() if r["kind"] == "Role" and r["metadata"].get("namespace") == "shop"]
@@ -136,21 +226,22 @@ class Rbac(unittest.TestCase):
         service_account = alloy["spec"].get("serviceAccount", {}).get("name") or name(alloy)
         self.assertEqual([{"kind": "ServiceAccount", "name": service_account, "namespace": alloy["metadata"]["namespace"]}], binding["subjects"])
 
-    def test_the_rules_of_alloy_itself_have_no_secrets_the_default_of_its_chart_has_them(self):
-        # The ClusterRole of Alloy is made by the operator from spec.rbac of the Alloy resource: the default of the Alloy chart is
-        # get/list/watch on all Secrets and ConfigMaps of the cluster, so the rules must be given and be narrower.
+    def test_alloy_gets_its_cluster_role_from_the_render_not_from_the_operator(self):
+        # The operator has no rights on RBAC objects, so the Alloy resource makes none (the default of the Alloy chart is a
+        # ClusterRole that reads all Secrets and ConfigMaps of the cluster); its ClusterRole and binding are in the render.
         alloys = of_kind("monitoring", "Alloy")
         self.assertEqual(1, len(alloys))
-        rbac = alloys[0]["spec"].get("rbac")
-        self.assertTrue(rbac and rbac.get("rules"), "the Alloy resource has no rbac.rules: Alloy gets the default, which reads all Secrets")
-        for key in ("rules", "clusterRules"):
-            for rule in rbac.get(key) or []:
-                self.assertFalse(reads_secrets(rule), f"rbac.{key} of Alloy gives access to Secrets: {rule}")
-        # What Alloy needs: the discovery of the pods, their logs, the events and the PrometheusRule objects.
-        needed = {"pods", "pods/log", "events", "prometheusrules"}
-        have = {resource for rule in rbac["rules"] for resource in rule.get("resources", [])}
-        self.assertTrue(needed <= have, f"missing in rbac.rules: {sorted(needed - have)}")
-        self.assertFalse(rbac.get("namespaces"), "rbac.namespaces would make Roles of the ClusterRoles Alloy needs for the nodes")
+        self.assertIs(False, (alloys[0]["spec"].get("rbac") or {}).get("create"), "the Alloy resource makes its own RBAC")
+        service_account = alloys[0]["spec"].get("serviceAccount", {}).get("name") or name(alloys[0])
+        self.assertEqual(COLLECTOR, {"kind": "ServiceAccount", "name": service_account, "namespace": alloys[0]["metadata"]["namespace"]})
+        bindings = [b for b in of_kind("monitoring", "ClusterRoleBinding") if COLLECTOR in b["subjects"]]
+        self.assertEqual(1, len(bindings), "the collector has not exactly one ClusterRoleBinding")
+        cluster_role = next(r for r in of_kind("monitoring", "ClusterRole") if name(r) == bindings[0]["roleRef"]["name"])
+        have = {resource for rule in cluster_role["rules"] for resource in rule.get("resources", [])}
+        self.assertEqual(COLLECTOR_NEEDS, have, "the resources the collector reads")
+        for rule in cluster_role["rules"]:
+            self.assertFalse(reads_secrets(rule), rule)
+            self.assertLessEqual(set(rule["verbs"]), READ, rule)
 
     def test_kube_state_metrics_does_not_list_secrets(self):
         roles = [r for r in self.roles() if r["kind"] == "ClusterRole" and "kube-state-metrics" in name(r)]

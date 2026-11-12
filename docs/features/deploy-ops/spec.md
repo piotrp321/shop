@@ -153,12 +153,20 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   Grafana Cloud mają adresy i identyfikatory instancji w `valuesObject` manifestu `monitoring` (nie w wartościach
   `prod` chartu `shop`). Token jest w sekrecie `grafana-cloud` (klucz `GRAFANA_CLOUD_TOKEN`, jeden token access policy
   dla obu celów; SealedSecret w przestrzeni `shop` w `environments/prod/secrets/`, `seal-secrets WHAT=grafana`), który
-  Alloy czyta z tej przestrzeni (`secret.create: false`, `secret.namespace: shop`, klucz hasła wskazany w celu). Domyślne
-  uprawnienia Alloy (`get/list/watch` na wszystkie `secrets` klastra) są zawężone: reguły kolektorów bez `secrets`,
-  osobna Role w `shop` z `get/list/watch` tylko na `resourceNames: [grafana-cloud]`; Alloy nie czyta `shop-backup` ani
-  `shop-secrets`. Metryki ograniczone listą dozwolonych, żeby zmieścić się w darmowym planie (10 tys. serii aktywnych).
-  `check`: lista nie jest pusta i ma metryki alertów; żadna ClusterRole ani Role renderu `monitoring` poza tą jedną nie
-  daje dostępu do `secrets`; budżet węzła liczy razem `shop` i `monitoring` (`spec.resources` zasobów `Alloy`,
+  Alloy czyta z tej przestrzeni (`secret.create: false`, `secret.namespace: shop`, klucz hasła wskazany w celu). RBAC
+  monitoringu jest w manifeście (`extraObjects`), nie w chartach:
+  - Alloy Operator działa tylko w przestrzeni `monitoring` (`ownNamespaceOnly: true`, `rbac.create: false`): bez ClusterRoli,
+    z jedną Role w `monitoring` (zasoby `Alloy`, to, co chart Alloy z nich tworzy, sekrety z wydaniami Helm, dzierżawa
+    lidera, zdarzenia) i bez uprawnień do obiektów RBAC; nie czyta ani nie zmienia sekretów żadnej innej przestrzeni;
+  - kolektor (zasób `Alloy` z `rbac.create: false`, konto usługi `monitoring-alloy`) ma własną ClusterRole tylko do odczytu
+    (`get/list/watch`: węzły i `nodes/metrics`, usługi, endpointy, pody i `pods/log`, przestrzenie, zdarzenia,
+    `PrometheusRule`), bez `secrets` i ConfigMap, oraz osobną Role w `shop` z `get/list/watch` tylko na
+    `resourceNames: [grafana-cloud]`; Alloy nie czyta `shop-backup` ani `shop-secrets`;
+  - żadna rola monitoringu nie ma `bind`, `escalate`, `impersonate` ani zmian obiektów RBAC.
+
+  Metryki ograniczone listą dozwolonych, żeby zmieścić się w darmowym planie (10 tys. serii aktywnych).
+  `check`: lista nie jest pusta i ma metryki alertów; RBAC renderu `monitoring` jak wyżej (dostęp do `secrets` daje tylko
+  Role na `grafana-cloud` w `shop` i Role operatora w `monitoring`); budżet węzła liczy razem `shop` i `monitoring` (`spec.resources` zasobów `Alloy`,
   Deployment operatora, kube-state-metrics, DaemonSet node-exportera); `kubeconform` zna schemat `Alloy` (CRDs-catalog).
 - **O6. Alerty jako kod.** Reguły to `PrometheusRule` w chartcie `shop` (`templates/alerts.yaml`), renderowane, gdy
   `alerts.enabled` (`prod: true`, `ci: false`, bo smoke test nie ma CRD); brak CRD w klastrze z `alerts.enabled` daje
@@ -251,7 +259,7 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; kolejność kroków z Argo CD i bez; błąd w kroku 5 nie
   włącza aplikacji). `selftest` wstrzykuje: repozytorium bez hasła, CronJob kopii bez `concurrencyPolicy: Forbid`,
   `BackupMissing` bez `absent`, `restore` bez potwierdzenia, usunięcie reguły maskowania e-maili, Role Alloy na wszystkie
-  sekrety.
+  sekrety, przywrócony RBAC chartu operatora (ClusterRole).
 - `make -C infra/k8s smoke` dodatkowo, po sprawdzeniach i `create-admin` w fazie r1 (baza ma produkty, zamówienia z
   `checks` i klienta z hasłem), przed fazą r2:
   1. osobna instancja S3 (Garage z obrazu chartu) w przestrzeni `smoke-backup`, z bucketem na repozytorium;
