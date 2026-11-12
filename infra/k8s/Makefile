@@ -117,7 +117,7 @@ bootstrap:
 kubeconfig:
 	sh scripts/kubeconfig.sh "$(HOST)"
 
-# The applications of Argo CD, the pods and the jobs of the shop, read over SSH: make -C infra/k8s status HOST=<user>@<address>.
+# The applications of Argo CD, the pods and the jobs of the shop, and the logs of the failed jobs, read over SSH: make -C infra/k8s status HOST=<user>@<address>.
 status:
 	sh scripts/status.sh "$(HOST)"
 

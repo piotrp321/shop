@@ -22,7 +22,8 @@ KEY_BACKUP = "kind: Secret\nmetadata:\n  labels:\n    sealedsecrets.bitnami.com/
 KUBECONFIG = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0.1:6443\n  name: default\nusers:\n- user:\n    client-key-data: ADMINCREDENTIAL\n  name: default\n"
 
 # Stub of ssh: one line of arguments per call in $STUB_LOG, the standard input of the call in $STUB_DIR/stdin-<n>; answers
-# by the command: the bootstrap (status STUB_BOOTSTRAP_STATUS), the certificate, the kubeconfig, kubectl.
+# by the command: the bootstrap (status STUB_BOOTSTRAP_STATUS), the certificate, the kubeconfig, kubectl (the read of the jobs
+# with their Failed condition answers with STUB_JOBS, a call matching STUB_FAIL_MATCH fails).
 SSH = r"""#!/bin/sh
 printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$STUB_LOG"
 n="$(wc -l < "$STUB_LOG" | tr -d ' ')"
@@ -33,7 +34,11 @@ case "$*" in
   *"cat /etc/rancher/k3s/k3s.yaml"*) [ -z "${STUB_KUBECONFIG_FAIL:-}" ] || exit 1; cat "$STUB_DIR/kubeconfig" ;;
   *kubectl*)
     case "$*" in *"${STUB_FAIL_MATCH:-@@never@@}"*) echo "stub: failing" >&2; exit 1 ;; esac
-    echo "stub kubectl output" ;;
+    case "$*" in
+      *"get jobs -o jsonpath"*) printf '%s' "${STUB_JOBS:-}" ;;
+      *" logs "*) echo "stub log line of the failed job" ;;
+      *) echo "stub kubectl output" ;;
+    esac ;;
 esac
 """
 
@@ -217,13 +222,15 @@ class Kubeconfig(ServerScripts):
 
 
 class Status(ServerScripts):
+    FAILED_JOBS = "backup-29000000 True\nbackup-verify-29000001 \nbackup-verify-29000002 True\n"
+
     def test_it_only_reads(self):
-        result = self.run_script("status.sh", "deploy@203.0.113.7")
+        result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS=self.FAILED_JOBS)
         self.assertEqual(0, result.returncode, result.stderr)
         calls = self.calls()
-        self.assertEqual(3, len(calls))
+        self.assertEqual(6, len(calls))
         for call in calls:
-            self.assertIn(" get ", call)
+            self.assertRegex(call, r" (get|logs) ")
             call = call.split("k3s kubectl", 1)[1]
             for verb in ("apply", "delete", "create", "exec", "patch", "edit", "replace", "scale"):
                 self.assertNotRegex(call, rf"\b{verb}\b")
@@ -231,11 +238,46 @@ class Status(ServerScripts):
         self.assertIn("-n shop get pods", calls[1])
         self.assertIn("-n shop get jobs", calls[2])
 
+    def test_a_failed_job_has_its_log_printed(self):
+        result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS=self.FAILED_JOBS)
+        self.assertEqual(0, result.returncode, result.stderr)
+        logs = [call for call in self.calls() if " logs " in call]
+        self.assertEqual(2, len(logs), logs)
+        for call, name in zip(logs, ("backup-29000000", "backup-verify-29000002")):
+            self.assertIn(f"-n shop logs job/{name} --all-containers --prefix --tail=", call)
+        self.assertEqual(2, result.stdout.count("stub log line of the failed job"))
+        self.assertIn("log of the failed job backup-verify-29000002", result.stdout)
+        self.assertNotIn("backup-verify-29000001", "".join(logs))
+
+    def test_a_job_name_with_unusual_characters_is_not_put_on_a_command_line(self):
+        result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS="bad;name True\n$(id) True\n")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("unexpected name", result.stderr)
+        self.assertEqual(4, len(self.calls()))
+
+    def test_without_failed_jobs_it_says_so_and_reads_no_log(self):
+        result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS="backup-1 \nbackup-2 \n")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(4, len(self.calls()))
+        self.assertFalse([call for call in self.calls() if " logs " in call])
+        self.assertIn("no failed jobs", result.stdout)
+
     def test_a_failing_read_is_reported_and_the_others_still_run(self):
         result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_FAIL_MATCH="get pods")
         self.assertEqual(1, result.returncode)
-        self.assertEqual(3, len(self.calls()))
+        self.assertEqual(4, len(self.calls()))
         self.assertIn("could not read pods", result.stderr)
+
+    def test_a_failing_read_of_the_jobs_or_of_a_log_ends_with_exit_code_1(self):
+        result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS=self.FAILED_JOBS, STUB_FAIL_MATCH="get jobs -o jsonpath")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("could not read the failed jobs", result.stderr)
+        self.assertFalse([call for call in self.calls() if " logs " in call])
+        self.log.write_text("")
+        result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS=self.FAILED_JOBS, STUB_FAIL_MATCH=" logs job/backup-29000000 ")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("could not read log of the failed job backup-29000000", result.stderr)
+        self.assertIn("log of the failed job backup-verify-29000002", result.stdout)
 
     def test_bad_hosts_are_refused(self):
         for host in self.BAD_HOSTS:

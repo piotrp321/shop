@@ -225,8 +225,9 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   `kc.sh bootstrap-admin`) hasło administratora `admin` na wartość z nowego sekretu, a potem agent kończy jak przy
   „Odtworzenie przerwane w trakcie” (8.). Wymaga **zgody użytkownika**.
 - **Alerty kopii** (`BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`; punkt kontaktowy i wyciszanie: 9.):
-  **agent** czyta log nieudanego Joba przez `make -C infra/k8s status HOST=…` (nazwę Joba podaje etykieta `job_name` alertu
-  `*Failed`; kontener, który zawiódł, jest w logu) i usuwa przyczynę (dostęp do R2, miejsce na `backup-work`, uszkodzone
+  **agent** czyta log nieudanego Joba w sekcji „logs of the failed jobs” wyniku `make -C infra/k8s status HOST=…`
+  (ostatnie 100 linii każdego kontenera; nazwę Joba podaje też etykieta `job_name` alertu `*Failed`; kontener, który zawiódł,
+  jest w logu), a dłuższą historię ma Grafana Cloud (logi podów) i usuwa przyczynę (dostęp do R2, miejsce na `backup-work`, uszkodzone
   repozytorium, dump, który się nie odtwarza). Ponowienie to nowy Job z CronJoba, który robi **użytkownik** (agent nie uruchamia
   `kubectl` na serwerze): `ssh <user>@<adres> 'sudo k3s kubectl -n shop create job --from=cronjob/backup backup-reczny-$(date +%s)'`
   (dla weryfikacji `--from=cronjob/backup-verify`). Job z `--from` należy do CronJoba, więc jego sukces odświeża metrykę ostatniej
