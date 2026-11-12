@@ -303,5 +303,6 @@ bez ClusterRoli; RBAC operatora i kolektora jest w `extraObjects` manifestu, nie
 
 Aktualizacja chartu `k8s-monitoring` to osobna zmiana: nowa wersja w `argocd/apps/monitoring.yaml`, sha256 archiwum w
 `infra/k8s/scripts/monitoring-render.sh` oraz tag i digest obrazu Alloy z chartu w `infra/k8s/scripts/tools.sh` (i tag w
-manifeście); `make -C infra/k8s check` pilnuje zgodności. Błąd `forbidden` w logu operatora albo Alloy po aktualizacji to reguła do
-dopisania w `extraObjects` (bez sekretów i bez uprawnień do obiektów RBAC), nie powrót do RBAC chartu.
+manifeście); `make -C infra/k8s check` pilnuje zgodności, a `make -C infra/k8s monitoring-smoke` uruchamia nową wersję w k3d z RBAC
+manifestu: błąd `forbidden` w logu operatora albo Alloy to reguła do dopisania w `extraObjects` (bez sekretów i bez uprawnień do
+obiektów RBAC), nie powrót do RBAC chartu.

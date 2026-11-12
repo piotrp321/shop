@@ -6,7 +6,7 @@ test_log_masking.py, the budget of the node in test_workloads.py."""
 import re
 import unittest
 
-from support import RENDER, containers, docs, env_of, name, of_kind
+from support import RENDER, REPO, containers, docs, env_of, name, of_kind
 
 # The metrics that the alerts of the spec (O6) use.
 ALERT_METRICS = [
@@ -324,6 +324,33 @@ class AlloyResource(unittest.TestCase):
         self.assertTrue(spec["alloy"]["resources"]["limits"]["memory"])
         self.assertTrue(spec["configReloader"]["resources"]["limits"]["memory"])
         self.assertRegex(spec["image"]["tag"], r"^v\d+\.\d+\.\d+$")
+
+
+class MonitoringSmoke(unittest.TestCase):
+    """scripts/monitoring-smoke.sh runs what the manifest gives: its one overlay is the addresses of the destinations."""
+
+    def script(self):
+        return (REPO / "infra/k8s/scripts/monitoring-smoke.sh").read_text()
+
+    def test_the_overlay_has_only_the_addresses_of_the_destinations(self):
+        overlay = self.script().split('cat > "$KUBE_DIR/overlay.yaml" <<YAML\n', 1)[1].split("\nYAML\n", 1)[0]
+        paths, stack = set(), []
+        for line in overlay.splitlines():
+            indent = (len(line) - len(line.lstrip())) // 2
+            key, _, value = line.strip().partition(":")
+            stack[indent:] = [key]
+            if value.strip():
+                paths.add(".".join(stack))
+        self.assertEqual({"destinations.grafana-metrics.url", "destinations.grafana-metrics.rules.address", "destinations.grafana-logs.url"}, paths)
+
+    def test_the_chart_is_installed_with_the_values_of_the_manifest_and_the_overlay_only(self):
+        script = self.script()
+        install = re.search(r'helm_cluster install "\$release" .*?(?<!\\)\n', script, re.S).group(0)
+        self.assertIn('-f "$in_cache/monitoring-values.yaml" -f "$in_cache/overlay.yaml" $break_args', install)
+        self.assertNotIn("--set", install)
+        # The only other values: the break of the test, set only when it is asked for.
+        self.assertEqual(['break_args="--set alloy-operator.rbac.create=true"'], re.findall(r'break_args="--set[^"]*"', script))
+        self.assertIn('if [ "$MONITORING_SMOKE_BREAK" = operator-cluster-role ]; then', script)
 
 
 if __name__ == "__main__":

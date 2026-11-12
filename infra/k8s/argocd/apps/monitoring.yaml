@@ -262,7 +262,8 @@ spec:
           resources:
             requests: {cpu: 50m, memory: 64Mi}
             limits: {cpu: 250m, memory: 192Mi}
-        # The RBAC of the monitoring (tests/test_monitoring.py). No role here binds, escalates, impersonates or changes RBAC objects.
+        # The RBAC of the monitoring (tests/test_monitoring.py; make -C infra/k8s monitoring-smoke runs it in k3d and asks the cluster
+        # what each service account may do). No role here binds, escalates, impersonates or changes RBAC objects.
         extraObjects:
           # The operator, in the namespace monitoring only: the Alloy resources, what the Alloy chart makes of them (a Deployment,
           # its service account, Service and ConfigMap), the Secrets of the Helm releases it keeps there, its leader election and

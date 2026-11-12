@@ -76,7 +76,9 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
   Dlatego zasób `Alloy` nie tworzy RBAC (`rbac.create: false`), a ClusterRole kolektora i jej powiązanie są w `extraObjects`
   manifestu. Domyślny RBAC chartu operatora (ClusterRole z pełnym dostępem do sekretów klastra oraz `bind` i `escalate`, żeby
   tworzyć role kolektorów) jest wyłączony. Żadna rola renderu nie ma `bind`, `escalate`, `impersonate` ani zmian obiektów
-  RBAC, a sekrety w `monitoring` ma tylko operator: sprawdza to `check` na renderze.
+  RBAC, a sekrety w `monitoring` ma tylko operator: sprawdza to `check` na renderze, a `make -C infra/k8s monitoring-smoke`
+  uruchamia monitoring z tym RBAC w k3d i pyta klaster (`kubectl auth can-i`), co mogą konta usług operatora, Alloy,
+  kube-state-metrics i node-exportera.
 - **Logi są maskowane w Alloy przed wysłaniem, jedną listą etapów** (`extraLogProcessingStages`, blok w manifeście
   `monitoring` użyty dla logów podów i zdarzeń klastra): hasła, tokeny, JWT, `Bearer`, nagłówki `Authorization` i ciasteczka,
   klucze z listy (JSON, logfmt, zapytania URL), adresy e-mail i IP, parametry zapytań Doctrine; linie `DETAIL` i
@@ -117,5 +119,5 @@ Prometheus i Loki to usługi do utrzymania na tym samym serwerze, więc nie poma
 - Operator tworzy w `monitoring` Deploymenty z kontem usługi Alloy, więc pośrednio ma prawa kolektora (odczyt podów, ich logów
   i zdarzeń całego klastra, sekret `grafana-cloud`); sekretów `shop-backup` i `shop-secrets` nie czyta ani on, ani kolektor.
 - RBAC kolektora i operatora jest w manifeście, nie w chartcie: funkcja chartu, która potrzebuje innego zasobu (nowa wersja
-  albo włączona opcja), kończy się błędem `forbidden` w logu Alloy albo operatora, a nie
+  albo włączona opcja), kończy się błędem `forbidden` w logu Alloy albo operatora (wyłapuje go `monitoring-smoke`), a nie
   cichym poszerzeniem uprawnień; brakującą regułę dopisuje się w `extraObjects`.

@@ -1,4 +1,4 @@
-.PHONY: check selftest smoke load rerun create-admin restore backups seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
+.PHONY: check selftest smoke monitoring-smoke load rerun create-admin restore backups seal-secrets bootstrap kubeconfig status reinitialize cloudflare-ips
 
 # Static checks of the chart (lint, render, schema, kubeconform, shellcheck, actionlint of the workflows, tests of the
 # render; git does not ignore the certificate of Sealed Secrets). The render also covers the application monitoring: the chart
@@ -36,6 +36,16 @@ selftest:
 # phases run on the restored cluster. SMOKE_BREAK=migration|image makes it fail on purpose. Needs only Docker.
 smoke:
 	sh scripts/smoke.sh
+
+# The monitoring (argocd/apps/monitoring.yaml) running on a throwaway k3d cluster, with its RBAC as the manifest gives it: the
+# operator and its Alloy ready, a masked log line of a pod in shop, a cluster event and the metrics of kube-state-metrics,
+# node-exporter, the kubelet and cAdvisor at a receiver in the cluster (the addresses of the destinations are the one overlay),
+# no forbidden in the logs, and kubectl auth can-i for the service accounts of the operator, Alloy, kube-state-metrics and
+# node-exporter (no Secret of shop or kube-system, no bind, escalate, impersonate or change of RBAC objects). A few minutes; not
+# in check or CI. MONITORING_SMOKE_BREAK=operator-cluster-role installs the RBAC of the chart of the operator: the test must
+# fail. MONITORING_SMOKE_KEEP=1 keeps a failed cluster. Needs only Docker.
+monitoring-smoke:
+	sh scripts/monitoring-smoke.sh
 
 # The load measurement on a throwaway k3d cluster with the production images built here and the profile `load`: the demo
 # data, the stocks raised, a warm-up, the ramp to saturation and the steady run with a checkout (the k6 scripts of

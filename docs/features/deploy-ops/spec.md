@@ -260,6 +260,11 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   włącza aplikacji). `selftest` wstrzykuje: repozytorium bez hasła, CronJob kopii bez `concurrencyPolicy: Forbid`,
   `BackupMissing` bez `absent`, `restore` bez potwierdzenia, usunięcie reguły maskowania e-maili, Role Alloy na wszystkie
   sekrety, przywrócony RBAC chartu operatora (ClusterRole).
+- `make -C infra/k8s monitoring-smoke` (poza `check` i CI): chart `k8s-monitoring` z wartościami manifestu na pustym klastrze
+  k3d, z jedyną nakładką na adresy celów (odbiornik Alloy poza klastrem); operator i Alloy gotowe, odbiornik dostaje
+  zamaskowaną linię poda w `shop`, zdarzenie klastra i metryki kube-state-metrics, node-exportera, kubeleta i cAdvisora, logi
+  bez `forbidden`; `kubectl auth can-i` dla kont usług operatora, Alloy, kube-state-metrics i node-exportera potwierdza RBAC
+  z O5 (brak sekretów `shop` i `kube-system`, `bind`, `escalate`, `impersonate`; Alloy czyta `grafana-cloud`).
 - `make -C infra/k8s smoke` dodatkowo, po sprawdzeniach i `create-admin` w fazie r1 (baza ma produkty, zamówienia z
   `checks` i klienta z hasłem), przed fazą r2:
   1. osobna instancja S3 (Garage z obrazu chartu) w przestrzeni `smoke-backup`, z bucketem na repozytorium;
