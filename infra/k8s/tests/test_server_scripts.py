@@ -23,7 +23,8 @@ KUBECONFIG = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://127.0.0
 
 # Stub of ssh: one line of arguments per call in $STUB_LOG, the standard input of the call in $STUB_DIR/stdin-<n>; answers
 # by the command: the bootstrap (status STUB_BOOTSTRAP_STATUS), the certificate, the kubeconfig, kubectl (the read of the jobs
-# with their Failed condition answers with STUB_JOBS, a call matching STUB_FAIL_MATCH fails).
+# with their Failed condition answers with STUB_JOBS, the read of the logs of the pods of a job by its label prints a line per
+# pod of two, or nothing with STUB_NO_PODS, a call matching STUB_FAIL_MATCH fails).
 SSH = r"""#!/bin/sh
 printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$STUB_LOG"
 n="$(wc -l < "$STUB_LOG" | tr -d ' ')"
@@ -36,7 +37,8 @@ case "$*" in
     case "$*" in *"${STUB_FAIL_MATCH:-@@never@@}"*) echo "stub: failing" >&2; exit 1 ;; esac
     case "$*" in
       *"get jobs -o jsonpath"*) printf '%s' "${STUB_JOBS:-}" ;;
-      *" logs "*) echo "stub log line of the failed job" ;;
+      *" logs -l job-name="*)
+        [ -n "${STUB_NO_PODS:-}" ] || printf '%s\n' "[pod/first/main] stub log line of the failed job" "[pod/second/main] stub log line of the failed job" ;;
       *) echo "stub kubectl output" ;;
     esac ;;
 esac
@@ -244,10 +246,21 @@ class Status(ServerScripts):
         logs = [call for call in self.calls() if " logs " in call]
         self.assertEqual(2, len(logs), logs)
         for call, name in zip(logs, ("backup-29000000", "backup-verify-29000002")):
-            self.assertIn(f"-n shop logs job/{name} --all-containers --prefix --tail=", call)
-        self.assertEqual(2, result.stdout.count("stub log line of the failed job"))
+            self.assertIn(f"-n shop logs -l job-name={name} --all-containers --prefix --tail=", call)
+        self.assertEqual(4, result.stdout.count("stub log line of the failed job"))
+        self.assertIn("[pod/first/main]", result.stdout)
+        self.assertIn("[pod/second/main]", result.stdout)
         self.assertIn("log of the failed job backup-verify-29000002", result.stdout)
         self.assertNotIn("backup-verify-29000001", "".join(logs))
+
+    def test_a_failed_job_without_pods_says_so_and_points_to_grafana_cloud(self):
+        result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS="backup-29000000 True\n", STUB_NO_PODS="1")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(5, len(self.calls()))
+        self.assertIn("log of the failed job backup-29000000", result.stdout)
+        self.assertIn("no pods of the job backup-29000000 left", result.stdout)
+        self.assertIn("Grafana Cloud", result.stdout)
+        self.assertNotIn("stub log line", result.stdout)
 
     def test_a_job_name_with_unusual_characters_is_not_put_on_a_command_line(self):
         result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS="bad;name True\n$(id) True\n")
@@ -274,7 +287,7 @@ class Status(ServerScripts):
         self.assertIn("could not read the failed jobs", result.stderr)
         self.assertFalse([call for call in self.calls() if " logs " in call])
         self.log.write_text("")
-        result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS=self.FAILED_JOBS, STUB_FAIL_MATCH=" logs job/backup-29000000 ")
+        result = self.run_script("status.sh", "deploy@203.0.113.7", STUB_JOBS=self.FAILED_JOBS, STUB_FAIL_MATCH=" logs -l job-name=backup-29000000 ")
         self.assertEqual(1, result.returncode)
         self.assertIn("could not read log of the failed job backup-29000000", result.stderr)
         self.assertIn("log of the failed job backup-verify-29000002", result.stdout)
