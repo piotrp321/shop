@@ -56,8 +56,10 @@ Najnowszy katalog przebiegu `$GROOM_HOME/<data>-<sha7>-<n>/` z `proposals.json` 
 
 Przy pierwszym niespełnionym zakończ bez zmian i bez worktree, z pushem „Backlog: pominięty: <powód>”:
 
-1. Nie działa AO ani przegląd po merge'u: `pgrep -f 'ao run'` nic nie zwraca i `docker compose ls` (działające
-   projekty) nie ma projektu `sweep-*` (błąd `docker` też jest powodem).
+1. Nie działa AO ani przegląd po merge'u: `pgrep -f -- '-m orchestrator --home [^ ]+ run( |$)'` nic nie zwraca
+   i `docker compose ls` (działające projekty) nie ma projektu `sweep-*` (błąd `docker` też jest powodem). Wzorzec
+   trafia w `python3 -m orchestrator --home … run` i jego wrappery (`caffeinate`, `bash -c`), a nie w monitory
+   `watch` sesji `/ao-run`.
 2. Limit: wywołaj `mcp__ccd_session_mgmt__get_usage` i wklej obiekt `plan` dosłownie:
 
    ```bash
