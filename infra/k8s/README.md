@@ -225,9 +225,10 @@ Zapisz wyniki w komentarzu do zgłoszenia #175.
   `kc.sh bootstrap-admin`) hasło administratora `admin` na wartość z nowego sekretu, a potem agent kończy jak przy
   „Odtworzenie przerwane w trakcie” (8.). Wymaga **zgody użytkownika**.
 - **Alerty kopii** (`BackupFailed`, `BackupMissing`, `BackupVerifyFailed`, `BackupVerifyMissing`; punkt kontaktowy i wyciszanie: 9.):
-  **agent** czyta log nieudanego Joba w sekcji „logs of the failed jobs” wyniku `make -C infra/k8s status HOST=…`
-  (ostatnie 100 linii każdego kontenera; nazwę Joba podaje też etykieta `job_name` alertu `*Failed`; kontener, który zawiódł,
-  jest w logu), a dłuższą historię ma Grafana Cloud (logi podów) i usuwa przyczynę (dostęp do R2, miejsce na `backup-work`, uszkodzone
+  **agent** czyta logi nieudanego Joba w sekcji „logs of the failed jobs” wyniku `make -C infra/k8s status HOST=…`
+  (ostatnie 100 linii każdego kontenera każdego poda Joba, więc każdej próby, każda linia z nazwą poda i kontenera; nazwę Joba
+  podaje też etykieta `job_name` alertu `*Failed`; gdy podów Joba już nie ma, `status` mówi o tym i odsyła do Grafana Cloud),
+  a dłuższą historię ma Grafana Cloud (logi podów) i usuwa przyczynę (dostęp do R2, miejsce na `backup-work`, uszkodzone
   repozytorium, dump, który się nie odtwarza). Ponowienie to nowy Job z CronJoba, który robi **użytkownik** (agent nie uruchamia
   `kubectl` na serwerze): `ssh <user>@<adres> 'sudo k3s kubectl -n shop create job --from=cronjob/backup backup-reczny-$(date +%s)'`
   (dla weryfikacji `--from=cronjob/backup-verify`). Job z `--from` należy do CronJoba, więc jego sukces odświeża metrykę ostatniej
@@ -333,10 +334,14 @@ wtedy, gdy serwer albo Alloy nie żyje. Alerty z treści logów (np. ostrzeżeni
    (źródło: `PrometheusRule` `shop-alerts` w przestrzeni `shop`, synchronizowany przez Alloy do rulera). **`BackupMissing` i
    `BackupVerifyMissing` odpalają od startu aż do pierwszej udanej kopii i weryfikacji (metryki jeszcze nie ma, reguła ma
    `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną.
-   To też sprawdzenie od końca do końca: **użytkownik** potwierdza, że e-mail o `BackupMissing` przyszedł (po ok. 30 minutach
-   od synchronizacji reguły). Jeśli nie przyszedł, reguły z rulera mogą trafiać do Alertmanagera źródła danych, a nie do
-   Alertmanagera Grafany: punkt kontaktowy i drzewo powiadomień trzeba wtedy ustawić w tym Alertmanagerze (jego wybór jest na
-   stronie Contact points), a agent po zmianie sprawdza, że e-mail przychodzi.
+   To też sprawdzenie od końca do końca, które wykonuje **użytkownik** (agent nie ma dostępu do jego skrzynki): jeśli Grafana
+   Cloud powstała przed pierwszą udaną kopią, `BackupMissing` odpala zaraz po załadowaniu reguły (`absent_over_time` bez `for`),
+   więc e-mail o nim powinien przyjść wkrótce po synchronizacji reguły. Jeśli nie przyszedł, reguły z rulera mogą trafiać do Alertmanagera
+   źródła danych, a nie do Alertmanagera Grafany: punkt kontaktowy i drzewo powiadomień trzeba wtedy ustawić w tym Alertmanagerze
+   (jego wybór jest na stronie Contact points), a po zmianie użytkownik sprawdza, że e-mail przychodzi. Jeśli Grafana Cloud
+   powstała dopiero po pierwszej udanej kopii, `BackupMissing` nie odpala i brak e-maila niczego nie dowodzi: dostarczenie
+   sprawdza wtedy inny alert, który odpala (użytkownik wysyła w Grafana Cloud testowe powiadomienie punktu kontaktowego albo
+   czeka na najbliższy alert).
 9. **użytkownik** – przed świadomym `restore` i planowanymi pracami (restart serwera, aktualizacja k3s, ćwiczenie odtworzenia)
    wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*"`, dla
    innych prac `alertname="WorkloadNotReady"` (przy wyłączeniu całego serwera także `ClusterSilent`), na czas prac z zapasem.
