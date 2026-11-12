@@ -128,6 +128,64 @@ Parameters: root, name (the Deployment).
 {{- end }}
 
 {{/*
+The initContainer of the backup pods that writes the identifier of the cluster (the UID of the namespace kube-system, the host
+of the snapshots) to the volume `cluster`: the only container of those pods with the token of the API, and with no secret.
+kube-log-runner (in the image of kubectl, which has no shell) runs kubectl and writes its output to a file.
+Parameter: the root context.
+*/}}
+{{- define "shop.clusterIdInit" -}}
+- name: cluster-id
+  image: {{ .Values.images.kubectl }}
+  command: ["/bin/kube-log-runner"]
+  args:
+    - -log-file=/cluster/id
+    - -redirect-stderr=false
+    - /bin/kubectl
+    - get
+    - namespace
+    - kube-system
+    - -o
+    - jsonpath={.metadata.uid}
+  volumeMounts:
+    - name: kube-api-access
+      mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      readOnly: true
+    - name: cluster
+      mountPath: /cluster
+  resources:
+    {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 4 }}
+{{- end }}
+
+{{/*
+The access of restic to the repository of the backups: the variables of a container of the backup pods that runs restic. The
+password and the keys come from the secret backup.secretName, which only that container reads.
+Parameter: the root context.
+*/}}
+{{- define "shop.resticRepositoryEnv" -}}
+- name: RESTIC_REPOSITORY
+  value: {{ required "backup.repository is required" .Values.backup.repository | quote }}
+- name: RESTIC_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ required "backup.secretName is required" .Values.backup.secretName }}
+      key: RESTIC_PASSWORD
+- name: AWS_ACCESS_KEY_ID
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.backup.secretName }}
+      key: BACKUP_S3_ACCESS_KEY_ID
+- name: AWS_SECRET_ACCESS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.backup.secretName }}
+      key: BACKUP_S3_SECRET_ACCESS_KEY
+{{- if .Values.backup.s3Region }}
+- name: AWS_DEFAULT_REGION
+  value: {{ .Values.backup.s3Region | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
 A ClusterIP service. Parameters: root, name, ports (a list of dicts with name, port and optional targetPort); optional:
 publishNotReady (true: the service routes to the pod before it is ready, for a service whose own probe connects to it).
 */}}
@@ -155,12 +213,25 @@ spec:
 {{- end }}
 
 {{/*
+Records a workload of this render for the alert WorkloadNotReady (00-alerts.yaml), which looks for each of them: every Deployment and
+StatefulSet is made by shop.deployment or shop.statefulset, so a new workload gets its rule without anyone listing it. Helm renders the
+templates in the reverse order of their names, so the file with the rule is named to be rendered after all the others
+(tests/test_alerts.py fails when a workload of the render is missing from the rule). Parameters: root, name, kind.
+*/}}
+{{- define "shop.recordWorkload" -}}
+{{- $alerts := .root.Values.alerts -}}
+{{- if not (hasKey $alerts "workloads") }}{{- $_ := set $alerts "workloads" (dict) -}}{{- end -}}
+{{- $_ := set (index $alerts "workloads") .name .kind -}}
+{{- end }}
+
+{{/*
 A Deployment with one replica that never loses capacity during an update (maxUnavailable 0): a new pod that does not
 become ready leaves the old one serving.
 Parameters: root, name, wave, resources, container (YAML of the container without name, image and resources),
 image; optional: initContainers, volumes (YAML lists), podAnnotations (YAML map).
 */}}
 {{- define "shop.deployment" -}}
+{{- $_ := include "shop.recordWorkload" (dict "root" .root "name" .name "kind" "Deployment") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -216,6 +287,7 @@ Parameters: root, name, wave, image, container, claims (a list of dicts with nam
 volumes, podAnnotations, serviceName.
 */}}
 {{- define "shop.statefulset" -}}
+{{- $_ := include "shop.recordWorkload" (dict "root" .root "name" .name "kind" "StatefulSet") -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

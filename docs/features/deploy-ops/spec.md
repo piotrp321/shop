@@ -2,8 +2,7 @@
 
 Druga część środowiska wdrożeniowego (DEPLOY, `docs/features/deploy/spec.md`): codzienne, szyfrowane kopie danych
 sklepu poza serwerem, ich automatyczna weryfikacja, procedura odtworzenia sprawdzona na pustym klastrze oraz logi,
-metryki i alerty w Grafana Cloud. Musi być skończone przed przełączeniem na publiczny sklep albo przed pierwszymi
-prawdziwymi danymi.
+metryki i alerty w Grafana Cloud.
 
 Issues: #178
 Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/deploy/spec.md`, `docs/features/hardening/spec.md`
@@ -66,9 +65,12 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   4. `manifest.json`: rewizja (tag obrazu `api`), czas, wersje migracji Doctrine z bazy `shop` (tabela
      `doctrine_migration_versions`), liczba obiektów i bajtów;
   5. `restic unlock` (tylko nieaktualne blokady), `restic backup --retry-lock 30m` katalogów `dumps/`, `objects/`
-     i manifestu z tagiem `BACKUP_TAG` (domyślnie `nightly`) i `--host` równym identyfikatorowi klastra, potem `restic
-     forget --keep-within 7d --prune --retry-lock 30m` (restic grupuje po hoście, więc klaster przycina tylko własne
-     snapshoty: nowy serwer po awarii nie usunie kopii starego); repozytorium inicjuje się samo przy pierwszej kopii
+     i manifestu z tagiem `BACKUP_TAG` (domyślnie `nightly`) i `--host` równym identyfikatorowi klastra, a po kopii
+     `nightly` także `restic forget --keep-within 7d --prune --retry-lock 30m` (restic grupuje po hoście, więc klaster
+     przycina tylko własne snapshoty: nowy serwer po awarii nie usunie kopii starego). Kopia z innym tagiem
+     (`pre-restore` z O4) niczego nie przycina: `--keep-within` liczy od najnowszego snapshotu hosta, więc kopia tuż przed
+     odtworzeniem mogłaby usunąć najstarsze snapshoty `nightly`, w tym ten do odtworzenia; nocna kopia przycina ją po
+     7 dniach jak inne snapshoty hosta; repozytorium inicjuje się samo przy pierwszej kopii
      (`restic init`, gdy go nie ma; każdy inny błąd dostępu to błąd).
 
   Błąd dowolnego kroku przed `restic backup` kończy Job bez snapshotu. Obrazy `restic/restic` i `rclone/rclone` są
@@ -102,10 +104,10 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
 - **O4. Odtworzenie przez cel Makefile i Job z szablonu chartu.** Chart ma wstrzymany CronJob `restore` (`suspend:
   true`, nigdy nie uruchamia się sam, `activeDeadlineSeconds: 10800`) z pełną specyfikacją poda odtworzenia, więc
   odtworzenie używa obrazów i sekretów wdrożonej rewizji. Pod ma tryby: `list` (snapshoty), `check` (manifest snapshotu
-  i zgodność migracji) i `restore`. Cel `make -C infra/k8s restore SNAPSHOT=<id> KUBE_DIR=<katalog>` łączy się z
+  i zgodność migracji), `restore` i `reindex` (`catalog:reindex`). Cel `make -C infra/k8s restore SNAPSHOT=<id> KUBE_DIR=<katalog>` łączy się z
   klastrem jak `rerun` i `create-admin` (kubeconfig z `KUBE_DIR`, `KUBE_NETWORK`, `KUBE_NAMESPACE`), więc smoke test
   uruchamia ten sam skrypt co serwer. Joby z CronJobów tworzy `kubectl create job --from=cronjob/<nazwa> --dry-run=client
-  -o yaml`, parametry dodaje `kubectl set env --local` (`RESTORE_MODE`, `RESTORE_SNAPSHOT`, `BACKUP_TAG=pre-restore`),
+  -o json`, parametry dodaje `kubectl set env --local` (`RESTORE_MODE`, `RESTORE_SNAPSHOT`, `BACKUP_TAG=pre-restore`),
   bez dodatkowych obiektów. Skrypt czeka na każdy Job najwyżej tyle, ile jego `activeDeadlineSeconds`. Kroki:
   1. sprawdzenia bez zmian: `SNAPSHOT` jest wymagany (identyfikator z listy), bez `latest`; odmowa, gdy w przestrzeni
      `shop` jest aktywny dowolny Job (`backup`, `migrate`, `initialize`, `keycloak-config`, `purge-caches`, czyszczenie
@@ -117,8 +119,10 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   3. robi kopię bieżącego stanu z tagiem `pre-restore`; jej błąd zatrzymuje `restore` bez zmian, chyba że użytkownik
      podał `PRE_RESTORE=skip` (wypisane w kroku 2);
   4. gdy w klastrze jest Argo CD (CRD `Application` i aplikacja `shop`), wyłącza automatyczną synchronizację `root`,
-     potem `shop` (kolejność jak w runbooku cofnięcia wersji); zapamiętuje liczby replik, skaluje do zera `api`, `worker`,
-     `store`, `keycloak`, wstrzymuje CronJoby `cart-purge-expired` i `backup`;
+     potem `shop` (kolejność jak w runbooku cofnięcia wersji); zapamiętuje liczby replik, wstrzymuje CronJoby
+     `cart-purge-expired` i `backup`, czeka na Job, który wystartował po sprawdzeniu z kroku 1 (nocna kopia:
+     `RESTORE_ACTIVE_JOBS_WAIT_SECONDS`, domyślnie 7200 s; potem błąd, aplikacje działają), i skaluje do zera `api`, `worker`,
+     `store`, `keycloak`;
   5. Job w trybie `restore` (tylko operacje na danych): `restic restore` snapshotu na PVC `backup-work` (lustro obiektów
      staje się stanem snapshotu); `DROP DATABASE` i `CREATE DATABASE` `shop` i `keycloak` (zakończenie połączeń,
      właściciele jak w `10-create-databases.sh`), `pg_restore`; `rclone sync` z powrotem do bucketu `product-images`
@@ -127,8 +131,10 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   6. ponawia istniejące Joby bieżącej rewizji tym samym mechanizmem co `rerun`: `migrate` (snapshot starszy niż kod),
      przywraca `keycloak` i ponawia `keycloak-config` (odtworzona baza cofa sekret klienta `store`, adresy, rejestrację,
      `verifyEmail` i SMTP do stanu snapshotu), potem `catalog:reindex` (Job z CronJoba `restore` w trybie `reindex`,
-     obraz `api`); przywraca `api`, `worker`, `store` i CronJoby, czeka na rollout, ponawia `purge-caches`, a przy Argo CD
-     włącza automatyczną synchronizację `root` (ten przywraca `shop`);
+     obraz `api`); przywraca `api`, `worker`, `store` i CronJoby (`suspend: false` jak w chartcie, który ich nie wstrzymuje, także po
+     poprzedniej próbie, która je zostawiła wstrzymane), czeka na rollout, ponawia `purge-caches`, a przy Argo CD
+     przywraca automatyczną synchronizację `root` w postaci sprzed odtworzenia (ten przywraca `shop`; gdy `root` jej nie
+     miał, zostaje wyłączona);
   7. błąd w krokach 4–6: wypisuje, na którym kroku stanął i jaki snapshot `pre-restore` powstał; nie włącza aplikacji
      z częściowo odtworzonymi danymi; runbook opisuje dokończenie.
 
@@ -138,7 +144,8 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   w trybie `list`, tylko odczyt. Agent uruchamia `restore` wyłącznie po zgodzie użytkownika w rozmowie; `backups` sam.
 - **O5. Obserwowalność: chart `grafana/k8s-monitoring` 4.x jako aplikacja Argo CD.** Gotowe charty tylko dla platformy
   (DEPLOY, D2), jak Argo CD i Sealed Secrets: wersja chartu przypięta, obrazy z wartości domyślnych chartu (bez
-  digestów, jak w aplikacji `sealed-secrets`). Nowe aplikacje w `argocd/apps/`:
+  digestów, jak w aplikacji `sealed-secrets`; tag Alloy jest jawnie ten, którego oczekuje chart, żeby działał obraz
+  sprawdzony testem maskowania). Aplikacje w `argocd/apps/`:
   - `prometheus-crds` (chart `prometheus-operator-crds`, tylko CRD, m.in. `PrometheusRule`; `ServerSideApply=true`, bo
     CRD przekraczają limit adnotacji zwykłego apply), fala −3;
   - `monitoring` (chart `k8s-monitoring` przypięty wersją 4.x, `valuesObject` w manifeście, przestrzeń `monitoring` z
@@ -146,21 +153,55 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
     tokenem nie blokuje wdrożenia sklepu.
 
   Fale: `prometheus-crds` −3, `sealed-secrets` −2, `secrets` −1, `shop` 0, `monitoring` 1. Chart 4.x instaluje Alloy
-  Operator (Deployment i CRD `collectors.grafana.com`), a kolektory są zasobami `kind: Alloy`; operator tworzy z nich
-  DaemonSet i Deployment Alloy, więc nie ma ich w renderze. Funkcje: `clusterMetrics` (kube-state-metrics,
-  node-exporter, kubelet, cAdvisor), `clusterEvents`, logi podów wszystkich przestrzeni (`podLogsViaKubernetesApi`). Cele
+  Operator (Deployment i CRD `collectors.grafana.com`), a kolektor jest zasobem `kind: Alloy`; operator tworzy z niego
+  Deployment Alloy (`presets: [deployment]`), więc nie ma go w renderze. Funkcje: `clusterMetrics` (kube-state-metrics,
+  kubelet, cAdvisor), `hostMetrics` (node-exporter, `linuxHosts`), `clusterEvents`, logi podów wszystkich przestrzeni (`podLogsViaKubernetesApi`). Cele
   `prometheus` (z `rules.enabled` i `rules.address` wskazującym bazowy adres rulera, nie adres zapisu) i `loki` w
   Grafana Cloud mają adresy i identyfikatory instancji w `valuesObject` manifestu `monitoring` (nie w wartościach
   `prod` chartu `shop`). Token jest w sekrecie `grafana-cloud` (klucz `GRAFANA_CLOUD_TOKEN`, jeden token access policy
   dla obu celów; SealedSecret w przestrzeni `shop` w `environments/prod/secrets/`, `seal-secrets WHAT=grafana`), który
-  Alloy czyta z tej przestrzeni (`secret.create: false`, `secret.namespace: shop`, klucz hasła wskazany w celu). Domyślne
-  uprawnienia Alloy (`get/list/watch` na wszystkie `secrets` klastra) są zawężone: reguły kolektorów bez `secrets`,
-  osobna Role w `shop` z `get/list/watch` tylko na `resourceNames: [grafana-cloud]`; Alloy nie czyta `shop-backup` ani
-  `shop-secrets`. Metryki ograniczone listą dozwolonych, żeby zmieścić się w darmowym planie (10 tys. serii aktywnych).
-  `check`: lista nie jest pusta i ma metryki alertów; żadna ClusterRole ani Role renderu `monitoring` poza tą jedną nie
-  daje dostępu do `secrets`; budżet węzła liczy razem `shop` i `monitoring` (`spec.resources` zasobów `Alloy`,
+  Alloy czyta z tej przestrzeni (`secret.create: false`, `secret.namespace: shop`, klucz hasła wskazany w celu). RBAC
+  i polityki dopuszczania monitoringu są w manifeście (`extraObjects`), nie w chartach:
+  - Alloy Operator działa tylko w przestrzeni `monitoring` (`ownNamespaceOnly: true`, `rbac.create: false`): bez ClusterRoli,
+    z jedną Role w `monitoring` i bez uprawnień do obiektów RBAC; nie czyta ani nie zmienia sekretów żadnej innej przestrzeni.
+    Role: zasób `Alloy` bez tworzenia i usuwania (zakłada go Argo CD; operator czyta go, zmienia, ustawia finalizer i status),
+    Deployment, konto usługi i Service, które robi z niego chart Alloy (tworzenie dowolnych, zmiana i usuwanie tylko obiektów
+    `monitoring-alloy` przez `resourceNames`, więc nie podmieni obrazu kube-state-metrics, node-exportera ani swojego), sekrety
+    z wydaniami Helm, dzierżawa lidera i zdarzenia; bez DaemonSetów, StatefulSetów, ConfigMap i podów;
+  - polityki dopuszczania (`ValidatingAdmissionPolicy` z powiązaniem na przestrzeń `monitoring` przez etykietę
+    `kubernetes.io/metadata.name`, którą nadaje serwer API; `validationActions: [Deny]`, `failurePolicy: Fail`; fala −1
+    w aplikacji, więc powstają przed operatorem i podami) obowiązują każdego, także Argo CD i administratora:
+    `monitoring-no-host-access` odrzuca przy tworzeniu i zmianie pod (z kontenerami init i efemerycznymi) oraz szablon
+    poda w Deployment, ReplicaSet, StatefulSet, DaemonSet, Job i CronJob z `hostNetwork`, `hostPID`, `hostIPC`,
+    wolumenem `hostPath`, `hostPort`, kontenerem `privileged` albo dodaną capability spoza listy profilu baseline Pod
+    Security Standards, a także z `priorityClassName` zaczynającym się od `system-` (`system-cluster-critical`
+    i `system-node-critical` są dozwolone w każdej przestrzeni i wywłaszczałyby pody sklepu; bez wyjątku, node-exporter
+    ich nie używa). Wyjątek od dostępu do hosta ma tylko node-exporter: DaemonSet `monitoring-node-exporter`, jeśli nie zmienia go konto
+    usługi z `monitoring`, i jego pody, jeśli tworzy je kontroler DaemonSetów (w k3s własne konto
+    `system:serviceaccount:kube-system:daemon-set-controller`, którym nikt w `monitoring` nie działa) z `ownerReference`
+    na ten DaemonSet; etykiety nie są wyróżnikiem. Zmiana poda bez zmiany `spec` (metadane) przechodzi.
+    `monitoring-cluster-ip-services` odrzuca przy tworzeniu i zmianie Service typu innego niż `ClusterIP` (`NodePort`,
+    `LoadBalancer` przez ServiceLB k3s otwierają port węzła z pominięciem ufw i zakazu `hostPort`; `ExternalName`) oraz
+    Service z `externalIPs` (przejęcie ruchu podów klastra do tych adresów, CVE-2020-8554); wszystkie Service chartów
+    (operator, kube-state-metrics, node-exporter, `monitoring-alloy`) są `ClusterIP`.
+    `monitoring-no-service-account-tokens` odrzuca sekret typu `kubernetes.io/service-account-token` (operator zapisuje
+    sekrety w `monitoring` i tak dostałby token dowolnego konta tej przestrzeni);
+  - kolektor (zasób `Alloy` z `rbac.create: false`, konto usługi `monitoring-alloy`) ma własną ClusterRole tylko do odczytu
+    (`get/list/watch`: węzły i `nodes/metrics`, usługi, endpointy, pody i `pods/log`, przestrzenie, zdarzenia,
+    `PrometheusRule`), bez `secrets` i ConfigMap, oraz osobną Role w `shop` z `get/list/watch` tylko na
+    `resourceNames: [grafana-cloud]`; Alloy nie czyta `shop-backup` ani `shop-secrets`;
+  - żadna rola monitoringu nie ma `bind`, `escalate`, `impersonate`, zmian obiektów RBAC ani podzasobów `pods/exec`,
+    `pods/attach`, `pods/portforward`, `pods/ephemeralcontainers`, `serviceaccounts/token` i `nodes/proxy`.
+
+  Metryki ograniczone listą dozwolonych, żeby zmieścić się w darmowym planie (10 tys. serii aktywnych).
+  `check`: lista nie jest pusta i ma metryki alertów; RBAC renderu `monitoring` jak wyżej (dostęp do `secrets` daje tylko
+  Role na `grafana-cloud` w `shop`, związana tylko z kontem Alloy, i Role operatora w `monitoring`, związana tylko z jego
+  kontem; podmiot powiązania to także grupa kont usług i nazwa użytkownika konta; dokładny kształt Role operatora);
+  polityki dopuszczania jak wyżej (trzy, przestrzeń, `Deny`, `Fail`, zasoby i operacje, fala przed resztą aplikacji, wyjątek
+  tylko dla node-exportera, w renderze dostęp do hosta ma tylko jego DaemonSet, żaden workload nie ma klasy priorytetu
+  systemu, a każdy Service jest `ClusterIP` bez `externalIPs`; polityka Service dopuszcza tylko typ `ClusterIP`); budżet węzła liczy razem `shop` i `monitoring` (`spec.resources` zasobów `Alloy`,
   Deployment operatora, kube-state-metrics, DaemonSet node-exportera); `kubeconform` zna schemat `Alloy` (CRDs-catalog).
-- **O6. Alerty jako kod.** Reguły to `PrometheusRule` w chartcie `shop` (`templates/alerts.yaml`), renderowane, gdy
+- **O6. Alerty jako kod.** Reguły to `PrometheusRule` w chartcie `shop` (`templates/00-alerts.yaml`), renderowane, gdy
   `alerts.enabled` (`prod: true`, `ci: false`, bo smoke test nie ma CRD); brak CRD w klastrze z `alerts.enabled` daje
   widoczny błąd synchronizacji, nie ciche zniknięcie reguł. Alloy synchronizuje je do rulera Grafana Cloud. Metryki
   z kube-state-metrics: `kube_cronjob_status_last_successful_time`, `kube_job_status_condition` (warunek `Failed`)
@@ -193,9 +234,10 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   (`extraLogProcessingStages`) dla logów podów i zdarzeń klastra (`clusterEvents`), reguły odkrywania
   (`extraDiscoveryRules`) w `valuesObject` aplikacji `monitoring`, jedno źródło reguł. Zasady:
   - maskowanie we wszystkich źródłach (zamiana na `[REDACTED]`): wartości nagłówków `Authorization`, `Cookie`,
-    `Set-Cookie`; tokeny `Bearer` i JWT (`eyJ…`); wartości kluczy JSON i parametrów zapytań o nazwach z listy
-    (`password`, `passwd`, `secret`, `token`, `access_token`, `refresh_token`, `id_token`, `code`, `session`,
-    `client_secret`, `api_key`, `authorization`, `cookie`); adresy e-mail; adresy IPv4 i IPv6 (adres klienta to dana
+    `Set-Cookie`; tokeny `Bearer` i JWT (`eyJ…`); wartości kluczy JSON, logfmt i parametrów zapytań, których nazwa
+    zawiera `password`, `passwd`, `secret`, `token`, `session`, `api_key`, `authorization` albo `cookie` (m.in.
+    `access_token`, `refresh_token`, `id_token`, `client_secret`), oraz kluczy `code`, `code_id`, `code_verifier`
+    i `username`; hasła w adresach `schemat://użytkownik:hasło@host`; adresy e-mail; adresy IPv4 i IPv6 (adres klienta to dana
     osobowa; adresy podów też giną, to akceptowalny koszt); parametry zapytań SQL w komunikatach Doctrine (`with params
     […]`), bo zawierają dane zamówień i adresy;
   - linie Postgresa `DETAIL:` i `STATEMENT:` są odrzucane (wartości kluczy i treść zapytań z danymi klientów);
@@ -227,8 +269,9 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   *"`, `backup.timeZone: Europe/Warsaw`, `backup.retention: 7d`, `backup.repository: ""`, `backup.s3Region: ""`,
   `backup.secretName: ""`, `backup.secretValues: {}`, `backup.verifyReadData: subset`, `storage.backupWork: 25Gi`, zasoby
   `backup`, `alerts.enabled: false`.
-- `environments/prod/values.yaml`: `backup.enabled: true`, adres repozytorium i region (wypełnia użytkownik według
-  runbooka przed pierwszym wdrożeniem z kopiami; do tego czasu wartość przykładowa jak `global.domain`),
+- `environments/prod/values.yaml`: `backup.enabled: true`, adres repozytorium i region (wartość przykładowa jak
+  `global.domain`; przed pierwszym wdrożeniem z kopiami agent wpisuje adres bucketu według runbooka, identyfikator konta
+  podaje użytkownik),
   `backup.secretName: shop-backup`, `alerts.enabled: true`.
 - `environments/ci/values.yaml`: `backup.enabled: true`, repozytorium w osobnej instancji S3 smoke testu (poza
   przestrzenią `shop`), sekret z `backup.secretValues` (`secrets.create`), `backup.verifyReadData: all`, mniejsze
@@ -250,8 +293,36 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
   synchronizacji, przy snapshocie nowszym niż kod przed kopią `pre-restore` i przed skalowaniem; nieudana kopia
   `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; kolejność kroków z Argo CD i bez; błąd w kroku 5 nie
   włącza aplikacji). `selftest` wstrzykuje: repozytorium bez hasła, CronJob kopii bez `concurrencyPolicy: Forbid`,
-  `BackupMissing` bez `absent`, `restore` bez potwierdzenia, usunięcie reguły maskowania e-maili, Role Alloy na wszystkie
-  sekrety.
+  skrypt kopii idący dalej po błędzie albo inicjujący repozytorium po każdym błędzie dostępu, skrypt weryfikacji idący dalej po
+  błędzie, przyjmujący snapshot w dowolnym wieku, z tymczasowym Postgresem, który nie jest sidecarem, bez certyfikatów CA restic
+  albo czytający produkcyjny Postgres, `seal-secrets` pytający ponownie o hasło restic,
+  `BackupMissing` bez `absent`, `NodeDiskFull` odpalający przy dokładnie 85% i regułę ze składnią, której PromQL nie przyjmuje, `restore` bez potwierdzenia, usunięcie reguły maskowania e-maili, Role Alloy na wszystkie
+  sekrety, przywrócony RBAC chartu operatora (ClusterRole), Role operatora ze zmianą obiektów RBAC, operator obserwujący cały
+  klaster, zasób `Alloy` z własnym RBAC, usunięcie polityki dostępu do hosta albo powiązania polityki tokenów, polityka tylko
+  ostrzegająca (`Warn`) albo przepuszczająca przy błędzie (`Ignore`), polityki w fali workloadów, wyjątek node-exportera po
+  etykietach, Role operatora z DaemonSetami albo ze zmianą Deploymentu kube-state-metrics, ClusterRole Alloy z `nodes/proxy`,
+  sekret `grafana-cloud` dla grupy kont usług, usunięcie polityki Service, polityka Service dopuszczająca `NodePort`
+  albo bez sprawdzenia `externalIPs`, polityka podów bez sprawdzenia klasy priorytetu, zdarzenia klastra bez etapów maskowania, zbierany Mailpit, wersja chartu
+  `k8s-monitoring` bez przypiętego sha256 albo z innym, etapy, które Alloy odrzuca.
+- `make -C infra/k8s monitoring-smoke` (poza `check` i CI): chart `k8s-monitoring` z wartościami manifestu na pustym klastrze
+  k3d, z jedyną nakładką na adresy celów (odbiornik Alloy poza klastrem); operator i Alloy gotowe, odbiornik dostaje
+  zamaskowaną linię poda w `shop`, zdarzenie klastra i metryki kube-state-metrics, node-exportera, kubeleta i cAdvisora, logi
+  bez `forbidden`; `kubectl auth can-i` dla kont usług operatora, Alloy, kube-state-metrics i node-exportera potwierdza RBAC
+  z O5 (brak sekretów `shop` i `kube-system`, `bind`, `escalate`, `impersonate`, `exec`, `attach`, `portforward`, kontenerów
+  efemerycznych i tokenów kont w `shop` i `kube-system`, `nodes/proxy`; Alloy czyta `grafana-cloud`; operator bez DaemonSetów,
+  StatefulSetów, podów i tworzenia zasobów `Alloy`, zmienia tylko obiekty `monitoring-alloy`). Polityki dopuszczania:
+  żądania `--dry-run=server` jako konto operatora (Deployment z `hostPath` `/`, `hostNetwork`, `hostPID`, `hostIPC`,
+  `hostPort`, `privileged`, dodaną capability, uprzywilejowanym kontenerem init, klasą priorytetu `system-cluster-critical`
+  albo `system-node-critical`, etykietami node-exportera, szablonem z `ownerReference` na jego DaemonSet; Service `NodePort`,
+  `LoadBalancer`, `ExternalName` i `ClusterIP` z `externalIPs`, zmiana Service `monitoring-alloy` na `NodePort` albo
+  z `externalIPs`; sekret z tokenem konta) i jako administrator (pod z etykietami albo podrobionym `ownerReference`
+  node-exportera, inne rodzaje workloadów, kontener efemeryczny i inny obraz w podzie node-exportera, pod i CronJob z klasą
+  priorytetu systemu, Service `NodePort`, `LoadBalancer` i z `externalIPs`, zmiana Service kube-state-metrics na
+  `LoadBalancer`, sekret z tokenem) odrzuca polityka (jej nazwa w błędzie, nie RBAC), a zwykły Deployment, Service `ClusterIP`
+  i headless operatora, zwykły kontener efemeryczny, sekret `Opaque` oraz w `shop` pod z `hostPath`, pod z klasą
+  `system-cluster-critical` i Service `NodePort` przechodzą; potem wszystkie pody `monitoring` powstają od nowa pod politykami
+  i są gotowe (w tym node-exporter), a metryki przychodzą po tym. `MONITORING_SMOKE_BREAK=operator-cluster-role` (RBAC chartu
+  operatora) i `MONITORING_SMOKE_BREAK=no-admission-policy` (bez polityk) muszą się nie udać.
 - `make -C infra/k8s smoke` dodatkowo, po sprawdzeniach i `create-admin` w fazie r1 (baza ma produkty, zamówienia z
   `checks` i klienta z hasłem), przed fazą r2:
   1. osobna instancja S3 (Garage z obrazu chartu) w przestrzeni `smoke-backup`, z bucketem na repozytorium;
@@ -272,7 +343,7 @@ make restore SNAPSHOT=…       R2 --restic restore--> PVC backup-work --> Postg
 
 ## Runbook (`infra/k8s/README.md`)
 
-Nowe kroki, z oznaczeniami jak w DEPLOY:
+Kroki w sekcjach 3, 7, 8 i 9, z oznaczeniami jak w DEPLOY:
 
 - **użytkownik**: Cloudflare R2 na koncie Cloudflare (bucket, token API R2 z dostępem tylko do tego bucketu), hasło
   restic w menedżerze haseł; konto Grafana Cloud (stos w regionie UE, retencja logów 14 dni), token access policy
@@ -280,9 +351,9 @@ Nowe kroki, z oznaczeniami jak w DEPLOY:
 - **agent**: adres i region repozytorium w `environments/prod/values.yaml`, adresy i identyfikatory instancji Grafana
   Cloud w `argocd/apps/monitoring.yaml` (PR); `seal-secrets WHAT="backup grafana"` uruchamia **użytkownik** (wartości
   z terminala).
-- **agent**: po wdrożeniu: ręczna kopia (Job z CronJoba `backup`), `backup-verify`, `make backups`; w Grafana Cloud
-  widać logi i metryki klastra, reguły alertów są w rulerze. Do pierwszej udanej kopii `BackupMissing` odpala z
-  `absent` (oczekiwane).
+- **agent**: po wdrożeniu następnego dnia sprawdza `status`: Job z CronJoba `backup` kończy się wierszem `backup: done`,
+  a `backup-verify` wierszem `backup-verify: ok`; `make backups` wypisuje snapshoty; w Grafana Cloud widać logi i metryki
+  klastra, reguły alertów są w rulerze. Do pierwszej udanej kopii `BackupMissing` odpala z `absent` (oczekiwane).
 - **agent**: po wdrożeniu przegląd próbki logów w Grafana Cloud pod kątem sekretów i danych klientów; znalezisko to
   nowa reguła maskowania albo wyłączenie źródła (O7).
 - **użytkownik**: przed świadomym `restore` albo planowanymi pracami wycisza alerty w Grafana Cloud (silence z
@@ -291,10 +362,9 @@ Nowe kroki, z oznaczeniami jak w DEPLOY:
 - **zgoda użytkownika**: ćwiczenie odtworzenia na serwerze (`make restore` z identyfikatorem świeżego snapshotu), wynik
   w komentarzu do zgłoszenia; scenariusz utraty serwera: nowy VPS, `bootstrap` z kopią klucza Sealed Secrets,
   `make backups`, `restore` snapshotu starego serwera (inny host w liście).
-- Sekcja „Eksploatacja”: cofnięcie o więcej niż jedną wersję przez `restore`; reakcja na alerty kopii (log Joba przez
-  `status`, ponowienie Jobem z CronJoba); snapshoty starego serwera po odtworzeniu na nowym nie wygasają same
-  (`restic forget --host <stary>` po decyzji użytkownika); zamiana zdania „backup VPS-a od OVH to jedyna kopia” na stan
-  po DEPLOY-OPS.
+- Eksploatacja: cofnięcie o więcej niż jedną wersję przez `restore`; reakcja na alerty kopii (log Joba przez `status`,
+  ponowienie Jobem z CronJoba); snapshoty starego serwera po odtworzeniu na nowym nie wygasają same
+  (`restic forget --host <stary>` po decyzji użytkownika).
 
 ## Scenariusze błędów
 
@@ -344,36 +414,6 @@ Nowe kroki, z oznaczeniami jak w DEPLOY:
 6. Render z `backup.enabled` bez repozytorium albo sekretu kończy się błędem z nazwą wartości; `seal-secrets` dla
    `backup` i `grafana` nie zapisuje niczego po błędzie; Alloy ma dostęp tylko do sekretu `grafana-cloud`.
 7. Lokalny `make up`, `make check`, `make test` i `make e2e` działają bez zmian (compose nie ma kopii ani Alloy).
-8. Dokumentacja opisuje stan po epiku (sekcja „Zadania dokumentacji”).
-
-## Zadania dokumentacji (razem z implementacją)
-
-- `infra/k8s/README.md`: kroki z sekcji „Runbook”.
-- `CLAUDE.md`: cele `restore` i `backups` (agent uruchamia `restore` tylko po zgodzie), nowe aplikacje Argo i fale,
-  sprawdzenia `check` i smoke, `seal-secrets` z `backup` i `grafana`.
-- `docs/vision.md`: DEPLOY-OPS jako stan środowiska (kopie w R2, Grafana Cloud z logami i metrykami, bez punktu
-  w „Kolejne kroki”); trace'y przez Alloy przeniesione do #180 (zdanie o trace'ach w „Wymaganiach niefunkcjonalnych”
-  i opis DEPLOY-OPS); gotowe charty platformy poszerzone o `k8s-monitoring` i `prometheus-operator-crds`.
-- `docs/features/deploy/spec.md`: odwołania do DEPLOY-OPS zamienione na stan obecny (sekcje „Kopie zapasowe”, „Dane
-  startowe” bez zapowiedzi `initialize.enabled: false` dla odtwarzania, „Wdrożenie nowej wersji”, „Ryzyka”, fale
-  aplikacji Argo, D2 z nowymi chartami platformy).
-- `docs/features/hardening/spec.md`: D7 opisuje rzeczywisty sygnał awarii Redisa: alert `WorkloadNotReady`
-  (StatefulSet Redisa niegotowy przez 10 min) i ostrzeżenia kanału `cache` w logach Grafana Cloud bez alertu; alerty
-  z treści logów są poza zakresem.
-- `docs/adr/k3s-argo-cd.md`: konsekwencje o kopiach; nowy `docs/adr/backups-observability.md` (restic do Cloudflare R2
-  poza serwerem, Grafana Cloud z Alloy zamiast własnego Prometheusa i Lokiego, maskowanie logów w Alloy, alerty jako
-  `PrometheusRule`).
-
-## Wymagane przed startem
-
-- Epik HARDENING (#267) zmergowany do `main`: zmienia te same katalogi (`infra/k8s`, `docs/features/deploy/spec.md`),
-  a `docs/features/hardening/spec.md` musi opisywać stan po nim (źródło: lista nocy `/ao-run` z linii `Zakres:` nie
-  uruchomi obu epików naraz; kolejność na tablicy: HARDENING przed DEPLOY-OPS).
-
-Poza tym nic: zadania weryfikuje się bez serwera i bez kont zewnętrznych. Obrazy restic, rclone, Prometheusa (promtool)
-i Alloy oraz charty `k8s-monitoring` i `prometheus-operator-crds` są publiczne (istnieje: Docker Hub, GHCR, repozytoria
-Helm), a smoke test ma własną instancję S3. Konta R2 i Grafana Cloud oraz wartości sekretów to kroki runbooka
-„użytkownik” po merge'u epiku, razem z pierwszym wdrożeniem (#297).
 
 ## Ryzyka
 
@@ -396,5 +436,18 @@ Helm), a smoke test ma własną instancję S3. Konta R2 i Grafana Cloud oraz war
 - **Spójność między bazami i obiektami.** Dumpy `shop` i `keycloak` oraz kopia obiektów powstają w różnych chwilach
   (sekundy–minuty); zdjęcie dodane w tym czasie może nie mieć wiersza albo odwrotnie. Nocna pora i krótki czas kopii
   ograniczają to; odtworzenie nie wymaga ścisłej spójności.
+- **Operator to obcy obraz z prawem tworzenia Deploymentów i Service w `monitoring`.** Polityki dopuszczania odcinają go od
+  hosta, portów węzła, `externalIPs`, klas priorytetu systemu i tokenów kont w sekretach, a RBAC od sekretów `shop-secrets`
+  i `shop-backup`, ale przejęty operator nadal może
+  uruchomić w `monitoring` dowolny obraz z kontem usługi tej przestrzeni: z kontem Alloy czyta logi podów i zdarzenia całego
+  klastra oraz token `grafana-cloud`, z kontem kube-state-metrics listę obiektów klastra (bez sekretów i ConfigMap); może też
+  zatrzymać zbieranie (zmienić albo usunąć Alloy) i bez limitów przestrzeni zająć zasoby węzła. Istniejących Deploymentów
+  kube-state-metrics i swojego ani DaemonSetu `monitoring-node-exporter` nie zmieni.
+- **Sieć klastra jest otwarta.** Klaster nie ma żadnej NetworkPolicy, Redis działa bez hasła i trzyma sesje sklepu z tokenami
+  OIDC klientów, a Elasticsearch działa bez security. Każdy pod w `monitoring`, także przejęty operator bez tworzenia
+  czegokolwiek, sięga po sieci do `redis.shop:6379` (sesje klientów, podszycie się pod klienta) i do Elasticsearcha, tak samo
+  jak każdy pod w `shop` i każdy obcy obraz tam (Keycloak, Varnish, imgproxy, Elasticsearch). Polityki dopuszczania i RBAC
+  monitoringu tego nie ograniczają; zamknięcie wymaga NetworkPolicy z domyślną odmową, hasła Redisa i security
+  Elasticsearcha.
 - **Zależności w ruchu.** Interfejs chartu `k8s-monitoring` zmienia się między głównymi wersjami (operator od 3.x,
   `destinations` w 4.x); wersja przypięta, aktualizacja to osobna zmiana.

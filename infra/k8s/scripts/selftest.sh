@@ -24,6 +24,11 @@ fresh_copy() {
   # The tests compare the browser image of the smoke test with the image of the E2E tests.
   mkdir -p "$base/tree/e2e"
   cp "$TOOLS_REPO/e2e/Dockerfile" "$base/tree/e2e/Dockerfile"
+  # The step shellcheck reads the scripts of the load measurement (load/k6.sh and load/smoke.sh are sourced by the scripts of infra/k8s).
+  cp -R "$TOOLS_REPO/load" "$base/tree/load"
+  # The tests of the load files read the Makefile and its fragments.
+  cp "$TOOLS_REPO/Makefile" "$base/tree/Makefile"
+  cp -R "$TOOLS_REPO/make" "$base/tree/make"
   # actionlint checks the workflows.
   mkdir -p "$base/tree/.github"
   cp -R "$TOOLS_REPO/.github/workflows" "$base/tree/.github/workflows"
@@ -44,6 +49,45 @@ replace() {
   REPLACE_FROM="$2" REPLACE_TO="$3" awk 'BEGIN { done = 0; from = ENVIRON["REPLACE_FROM"]; to = ENVIRON["REPLACE_TO"] } {
     if (!done && (i = index($0, from)) > 0) { $0 = substr($0, 1, i - 1) to substr($0, i + length(from)); done = 1 }
     print }' "$file" > "$file.new"
+  mv "$file.new" "$file"
+}
+
+# replace_after <file of the copy> <anchor> <from> <to>: like replace, for the first <from> on a line after the first line with
+# <anchor> (a <from> that is on several lines of the file, e.g. "create: false").
+replace_after() {
+  file="$tree/$1"
+  REPLACE_ANCHOR="$2" REPLACE_FROM="$3" REPLACE_TO="$4" awk 'BEGIN { seen = 0; done = 0; anchor = ENVIRON["REPLACE_ANCHOR"]
+      from = ENVIRON["REPLACE_FROM"]; to = ENVIRON["REPLACE_TO"] } {
+    if (seen && !done && (i = index($0, from)) > 0) { $0 = substr($0, 1, i - 1) to substr($0, i + length(from)); done = 1 }
+    if (index($0, anchor) > 0) seen = 1
+    print } END { if (!done) exit 3 }' "$file" > "$file.new" \
+    || { echo "selftest: '$3' is not after '$2' in $1: the case is out of date" >&2; exit 1; }
+  mv "$file.new" "$file"
+}
+
+# drop_extra_object <kind> <name>: removes from the extraObjects of the manifest monitoring of the copy the entry of that kind
+# and name (its lines from "- apiVersion:" to the next line that is not deeper); fails if there is no such entry.
+drop_extra_object() {
+  file="$tree/infra/k8s/argocd/apps/monitoring.yaml"
+  DROP_KIND="$1" DROP_NAME="$2" awk '
+    { line[NR] = $0 }
+    END {
+      for (i = 2; i <= NR - 2; i++) {
+        if (line[i] ~ ("^ *kind: " ENVIRON["DROP_KIND"] "$") && line[i + 2] ~ ("^ *name: " ENVIRON["DROP_NAME"] "$") && line[i - 1] ~ /^ *- apiVersion:/) {
+          start = i - 1
+          break
+        }
+      }
+      if (!start) exit 3
+      match(line[start], /^ */)
+      depth = RLENGTH
+      for (end = start + 1; end <= NR; end++) {
+        match(line[end], /^ */)
+        if (line[end] != "" && RLENGTH <= depth) break
+      }
+      for (i = 1; i <= NR; i++) if (i < start || i >= end) print line[i]
+    }' "$file" > "$file.new" \
+    || { echo "selftest: no $1 $2 in the extraObjects of monitoring.yaml: the case is out of date" >&2; exit 1; }
   mv "$file.new" "$file"
 }
 
@@ -162,7 +206,71 @@ bootstrap_accepts_only_a_secret_backup() { replace infra/k8s/scripts/server-boot
 bootstrap_applies_root_whatever_the_certificate() { replace infra/k8s/scripts/server-bootstrap.sh 'if [ -f "$payload/sealed-secrets.pem" ] && ! cmp' 'if false && ! cmp'; }
 # The rule *.pem without the exception for the certificate: it could not be committed.
 certificate_ignored_by_git() { replace .gitignore '!infra/k8s/environments/prod/sealed-secrets.pem' '# no exception'; }
+# The backup (docs/features/deploy-ops/spec.md): a repository without its password, a CronJob that may run twice at once, a
+# script that goes on after an error, an access error taken for a missing repository, the backup password asked for twice.
+backup_repository_without_password() { replace infra/k8s/charts/shop/templates/_helpers.tpl '- name: RESTIC_PASSWORD' '- name: RESTIC_PASSWORD_UNUSED'; }
+backup_cronjob_without_forbid() { replace infra/k8s/charts/shop/templates/backup.yaml 'concurrencyPolicy: Forbid' 'concurrencyPolicy: Allow'; }
+backup_script_ignores_errors() { replace infra/k8s/charts/shop/files/scripts/backup.sh 'set -eu' 'set -u'; }
+backup_inits_after_any_error() { replace infra/k8s/charts/shop/files/scripts/backup.sh '    10)' '    10 | 1)'; }
+# The verification of the backups (spec O3): a script that goes on after an error, a script that takes a stale snapshot for good,
+# a temporary Postgres that is not a sidecar (the Job would never complete), a verification that reads the production Postgres, restic without CA certificates (https).
+backup_verify_script_ignores_errors() { replace infra/k8s/charts/shop/files/scripts/backup-verify.sh 'set -eu' 'set -u'; }
+backup_verify_accepts_any_age() { replace infra/k8s/charts/shop/files/scripts/backup-verify.sh 'max_age_hours=26' 'max_age_hours=99999'; }
+backup_verify_postgres_not_a_sidecar() { replace infra/k8s/charts/shop/templates/backup-verify.yaml 'restartPolicy: Always' 'imagePullPolicy: IfNotPresent'; }
+backup_verify_without_the_ca_certificates() { replace infra/k8s/charts/shop/templates/backup-verify.yaml '- name: SSL_CERT_FILE' '- name: SSL_CERT_FILE_UNUSED'; }
+backup_verify_reads_the_production_postgres() { replace infra/k8s/charts/shop/templates/backup-verify.yaml 'value: 127.0.0.1' 'value: postgres'; }
+# The monitoring (spec O5, O7): the stage that masks e-mail addresses made to match nothing, the ClusterRole of Alloy with the Secrets
+# of the cluster, the Role of the token with no name of a Secret, the events without the stages, a rule that no longer drops Mailpit;
+# the operator with the RBAC of its chart (a ClusterRole with all Secrets, bind and escalate), the operator with a Role that changes
+# RBAC objects, the operator watching the whole cluster, the Alloy resource making its own RBAC.
+monitoring_without_the_email_rule() { replace infra/k8s/argocd/apps/monitoring.yaml ']+@[' ']+Q['; }
+monitoring_alloy_rules_with_secrets() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [nodes, services, endpoints, pods, namespaces, events]' 'resources: [nodes, services, endpoints, pods, namespaces, events, secrets]'; }
+monitoring_operator_with_the_rbac_of_its_chart() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'ownNamespaceOnly: true' 'create: false' 'create: true'; }
+monitoring_operator_changing_rbac() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'resources: [serviceaccounts, services]' 'verbs: [get, list, watch, create]' 'verbs: [get, list, watch, create]
+              - apiGroups: [rbac.authorization.k8s.io]
+                resources: [roles, rolebindings]
+                verbs: [get, list, watch, create]'; }
+monitoring_operator_on_the_whole_cluster() { replace infra/k8s/argocd/apps/monitoring.yaml 'ownNamespaceOnly: true' 'ownNamespaceOnly: false'; }
+monitoring_alloy_making_its_own_rbac() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'presets: [deployment]' 'create: false' 'create: true'; }
+monitoring_role_on_all_secrets_of_the_shop() { replace infra/k8s/argocd/apps/monitoring.yaml 'resourceNames: [grafana-cloud]' 'resourceNames: []'; }
+monitoring_events_without_the_stages() { replace infra/k8s/argocd/apps/monitoring.yaml 'extraLogProcessingStages: *logStages' 'extraLogProcessingStages: ""'; }
+monitoring_collecting_mailpit() { replace infra/k8s/argocd/apps/monitoring.yaml 'regex         = "shop;mailpit"' 'regex         = "shop;mailpit-other"'; }
+# The render of the monitoring: a chart version that has no digest in monitoring-render.sh, an archive with another digest, stages
+# that Alloy does not accept.
+monitoring_chart_version_without_a_digest() { replace infra/k8s/argocd/apps/monitoring.yaml 'targetRevision: 4.6.0' 'targetRevision: 4.5.0'; }
+monitoring_chart_digest_differs() { replace infra/k8s/scripts/monitoring-render.sh 'k8s-monitoring-4.6.0) echo 082ecdce' 'k8s-monitoring-4.6.0) echo 082ecdcf'; }
+# The admission policies of monitoring (spec O5): the policy on the access to the host or the binding of the policy on the tokens
+# removed, a policy that only warns or lets a request pass when it fails, the policies in the same wave as the workloads, the
+# exception of node-exporter by its labels; the operator with a Role on DaemonSets or changing every Deployment; Alloy with the
+# proxy of the nodes; the Secret of the token given to a group of service accounts; the policy on Services removed, letting a
+# NodePort through or not looking at the external IPs; the policy on pods not looking at the priority class.
+monitoring_without_the_host_policy() { drop_extra_object ValidatingAdmissionPolicy monitoring-no-host-access; }
+monitoring_without_the_token_binding() { drop_extra_object ValidatingAdmissionPolicyBinding monitoring-no-service-account-tokens; }
+monitoring_policy_that_warns() { replace infra/k8s/argocd/apps/monitoring.yaml 'validationActions: [Deny]' 'validationActions: [Warn]'; }
+monitoring_policy_that_fails_open() { replace infra/k8s/argocd/apps/monitoring.yaml 'failurePolicy: Fail' 'failurePolicy: Ignore'; }
+monitoring_policy_with_the_workloads() { replace infra/k8s/argocd/apps/monitoring.yaml 'argocd.argoproj.io/sync-wave: "-1"' 'argocd.argoproj.io/sync-wave: "0"'; }
+monitoring_node_exporter_by_its_labels() { replace infra/k8s/argocd/apps/monitoring.yaml "request.userInfo.username == 'system:serviceaccount:kube-system:daemon-set-controller'" "object.metadata.labels['app.kubernetes.io/name'] == 'node-exporter'"; }
+monitoring_operator_with_daemon_sets() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [deployments]' 'resources: [deployments, daemonsets]'; }
+monitoring_operator_changing_every_deployment() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'resources: [deployments]' 'resourceNames: [monitoring-alloy]' 'resourceNames: [monitoring-alloy, monitoring-kube-state-metrics]'; }
+monitoring_alloy_with_the_proxy_of_the_nodes() { replace infra/k8s/argocd/apps/monitoring.yaml 'resources: [nodes/metrics, pods/log]' 'resources: [nodes/metrics, nodes/proxy, pods/log]'; }
+monitoring_token_for_a_group() { replace_after infra/k8s/argocd/apps/monitoring.yaml 'name: alloy-grafana-cloud' '- kind: ServiceAccount' '- kind: Group
+                name: system:serviceaccounts:monitoring
+                apiGroup: rbac.authorization.k8s.io
+              - kind: ServiceAccount'; }
+monitoring_without_the_service_policy() { drop_extra_object ValidatingAdmissionPolicy monitoring-cluster-ip-services; }
+monitoring_service_policy_with_node_ports() { replace infra/k8s/argocd/apps/monitoring.yaml "object.spec.type == 'ClusterIP')" "object.spec.type in ['ClusterIP', 'NodePort'])"; }
+monitoring_service_policy_without_external_ips() { replace infra/k8s/argocd/apps/monitoring.yaml '&& (!has(object.spec.externalIPs) || object.spec.externalIPs.size() == 0)' '&& true'; }
+monitoring_pods_with_priority_classes_of_the_system() { replace infra/k8s/argocd/apps/monitoring.yaml "!variables.podSpec.priorityClassName.startsWith('system-')" "variables.podSpec.priorityClassName != ''"; }
+monitoring_stages_alloy_rejects() { replace infra/k8s/argocd/apps/monitoring.yaml 'drop_counter_reason = "postgres_detail_statement"' 'drop_counter_reason ='; }
+seal_secrets_looks_for_the_backup_in_another_file() { replace infra/k8s/scripts/seal-secrets.sh '  name=shop-backup' '  name=shop-backup-other'; }
+# shellcheck disable=SC2016 # the texts are lines of the scripts, with their variables
+restore_without_confirmation() { replace infra/k8s/scripts/restore.sh '[ "$answer" = tak ] || refuse' '[ "$answer" = never ] && refuse'; }
 deploy_workflow_missing() { rm "$tree/.github/workflows/deploy.yml"; }
+# The alert rules (docs/features/deploy-ops/spec.md, O6): the render test sees the rule without its absent, promtool sees an
+# expression that does what the scenarios do not allow.
+backup_missing_without_absent() { replace infra/k8s/charts/shop/templates/00-alerts.yaml 'absent_over_time(kube_cronjob_status_last_successful_time{namespace="{{ .ns }}", cronjob="{{ .cronjob }}"}[30m])' 'vector(0) > 1'; }
+node_disk_full_at_exactly_85_percent() { replace infra/k8s/charts/shop/templates/00-alerts.yaml '< 0.15' '<= 0.15'; }
+alert_rule_with_a_syntax_error() { replace infra/k8s/charts/shop/templates/00-alerts.yaml 'expr: absent(kube_node_info)' 'expr: absent(kube_node_info) and'; }
 nothing_broken() { :; }
 
 if [ -z "${SELFTEST_ONLY:-}" ]; then
@@ -212,6 +320,46 @@ run_case "Argo CD without the health of applications" "test_the_root_waits_for_t
 run_case "bootstrap never restarting k3s" "FAIL restart" bootstrap_never_restarts_k3s
 run_case "bootstrap accepting only a plain Secret backup" "FAIL list backup" bootstrap_accepts_only_a_secret_backup
 run_case "bootstrap applying root whatever the certificate" "FAIL other cert" bootstrap_applies_root_whatever_the_certificate
+run_case "backup repository without its password" "test_the_repository_always_comes_with_its_password" backup_repository_without_password
+run_case "backup CronJob without concurrencyPolicy Forbid" "test_it_runs_every_night_at_three_in_warsaw_and_never_twice_at_once" backup_cronjob_without_forbid
+run_case "backup script that goes on after an error" "test_the_script_is_posix_sh_and_stops_at_the_first_error" backup_script_ignores_errors
+run_case "backup initializing a repository after any error" "test_another_error_of_access_is_an_error_and_not_an_init" backup_inits_after_any_error
+run_case "verification script that goes on after an error" "test_the_script_is_posix_sh_and_stops_at_the_first_error" backup_verify_script_ignores_errors
+run_case "verification accepting a snapshot of any age" "test_a_snapshot_older_than_26_hours_is_an_error_that_says_so" backup_verify_accepts_any_age
+run_case "verification with the temporary Postgres that is not a sidecar" "test_the_postgres_is_a_sidecar_that_the_end_of_the_verification_stops" backup_verify_postgres_not_a_sidecar
+run_case "verify without the CA certificates of restic" "test_restic_trusts_the_certificates_of_its_own_image" backup_verify_without_the_ca_certificates
+run_case "verification that reads the production Postgres" "test_nothing_of_the_production_database_is_reachable" backup_verify_reads_the_production_postgres
+run_case "seal-secrets looking for the existing backup secret in another file (it asks for the password again)" "test_the_backup_is_created_once_then_nothing_is_asked" seal_secrets_looks_for_the_backup_in_another_file
+run_case "monitoring masking no e-mail address" "e-mail 'jan.kowalski' came out of Alloy" monitoring_without_the_email_rule
+run_case "Alloy with a ClusterRole that reads all Secrets" "with access to Secrets outside monitoring" monitoring_alloy_rules_with_secrets
+run_case "Alloy Operator with the RBAC of its chart" "gives the operator rights outside the namespace monitoring" monitoring_operator_with_the_rbac_of_its_chart
+run_case "Alloy Operator with a Role that changes RBAC objects" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" monitoring_operator_changing_rbac
+run_case "Alloy Operator watching the whole cluster" "test_the_operator_watches_only_its_own_namespace" monitoring_operator_on_the_whole_cluster
+run_case "Alloy resource making its own RBAC" "the Alloy resource makes its own RBAC" monitoring_alloy_making_its_own_rbac
+run_case "Role of Alloy on all Secrets of the shop" "the Role does not name the one Secret" monitoring_role_on_all_secrets_of_the_shop
+run_case "cluster events without the stages that mask" "do not get the same stages" monitoring_events_without_the_stages
+run_case "monitoring collecting Mailpit" "test_the_rules_drop_exactly_the_disabled_sources_of_the_shop" monitoring_collecting_mailpit
+run_case "monitoring chart version without a pinned digest" "has no sha256 in scripts/monitoring-render.sh" monitoring_chart_version_without_a_digest
+run_case "monitoring chart archive with another digest" "of scripts/monitoring-render.sh" monitoring_chart_digest_differs
+run_case "monitoring stages that Alloy rejects" "Alloy rejects the rendered configuration" monitoring_stages_alloy_rejects
+run_case "monitoring without the policy on the access to the host" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_host_policy
+run_case "monitoring without the binding of the policy on the tokens" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_token_binding
+run_case "monitoring admission policy that only warns" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_policy_that_warns
+run_case "monitoring admission policy that fails open" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_policy_that_fails_open
+run_case "monitoring admission policy in the wave of the workloads" "test_the_policies_and_their_bindings_come_before_everything_else_of_the_application" monitoring_policy_with_the_workloads
+run_case "monitoring admission policy that knows node-exporter by its labels" "test_the_only_exception_is_node_exporter_which_the_operator_cannot_forge" monitoring_node_exporter_by_its_labels
+run_case "Alloy Operator with a Role on DaemonSets" "test_the_operator_changes_only_its_alloy_and_makes_only_deployments" monitoring_operator_with_daemon_sets
+run_case "Alloy Operator changing the Deployment of kube-state-metrics" "test_the_operator_changes_only_its_alloy_and_makes_only_deployments" monitoring_operator_changing_every_deployment
+run_case "Alloy with the proxy of the nodes" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" monitoring_alloy_with_the_proxy_of_the_nodes
+run_case "the token of Alloy given to a group of service accounts" "not to Alloy only" monitoring_token_for_a_group
+run_case "monitoring without the policy on Services" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_service_policy
+run_case "monitoring Service policy letting NodePort through" "test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through" monitoring_service_policy_with_node_ports
+run_case "monitoring Service policy without the external IPs" "test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through" monitoring_service_policy_without_external_ips
+run_case "monitoring pod policy without the priority classes of the system" "test_no_pod_and_no_template_of_a_pod_gets_a_priority_class_of_the_system" monitoring_pods_with_priority_classes_of_the_system
+run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" restore_without_confirmation
+run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" backup_missing_without_absent
+run_case "NodeDiskFull firing at exactly 85 percent (promtool)" "alertname: NodeDiskFull" node_disk_full_at_exactly_85_percent
+run_case "alert rule with a PromQL syntax error" "parse error" alert_rule_with_a_syntax_error
 run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then

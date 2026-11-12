@@ -47,6 +47,25 @@ secrets:
     PAYMENT_DEMO_CARD_API_KEY: smoke-card-api-key
     PAYMENT_DEMO_CARD_WEBHOOK_SECRET: smoke-card-webhook-secret
 
+# The backup into the restic repository in the bucket `restic` of a Garage of its own, which smoke.sh starts in the namespace
+# smoke-backup (not the Garage of the shop, so that a restore that empties the shop never empties the backups). The key is a
+# throwaway value shared with that Garage.
+backup:
+  enabled: true
+  repository: s3:http://garage.smoke-backup.svc.cluster.local:3900/restic
+  s3Region: garage
+  secretName: shop-backup
+  # The verification reads all the data of the repository (a subset is for the nightly run of prod).
+  verifyReadData: all
+  secretValues:
+    RESTIC_PASSWORD: smoke-restic-password
+    BACKUP_S3_ACCESS_KEY_ID: GK89abcdef0123456789abcdef
+    BACKUP_S3_SECRET_ACCESS_KEY: 1a2b3c4d5e6f70818293a4b5c6d7e8f91a2b3c4d5e6f70818293a4b5c6d7e8f9
+
+# The cluster of the smoke test has no CRD of the Prometheus Operator, so no PrometheusRule (the render is tested with promtool by check).
+alerts:
+  enabled: false
+
 jobs:
   backoffLimit: 1
 
@@ -72,4 +91,5 @@ resources:
   admin: { requests: { cpu: 10m, memory: 16Mi } }
   imgproxy: { requests: { cpu: 20m, memory: 64Mi } }
   varnish: { requests: { cpu: 10m, memory: 32Mi } }
+  backup: { requests: { cpu: 20m, memory: 64Mi } }
   job: { requests: { cpu: 20m, memory: 64Mi } }

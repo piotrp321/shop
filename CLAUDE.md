@@ -16,7 +16,7 @@ Monorepo e-commerce. Przed planowaniem jakiejkolwiek funkcji przeczytaj `docs/vi
 - `infra` – Docker Compose i konfiguracja usług
   (Postgres, Redis, Elasticsearch, RabbitMQ, Keycloak, Garage, imgproxy, Varnish, Mailpit).
 - `infra/k8s` – chart Helm całego stosu (`charts/shop`, te same usługi i wersje obrazów co compose), profile wartości
-  (`environments/prod`, `environments/ci`, `environments/load`: nakładka na `ci` dla pomiaru obciążenia), app-of-apps Argo CD (`argocd`), zaszyfrowane sekrety
+  (`environments/prod`, `environments/ci`, `environments/load`: nakładka na `ci` dla pomiaru obciążenia), app-of-apps Argo CD (`argocd`: `shop`, jego sekrety i aplikacje platformy `sealed-secrets`, `prometheus-crds`, `monitoring` w falach −3…1), zaszyfrowane sekrety
   (`environments/prod/secrets`), skrypty serwera i sprawdzeń oraz runbook (`README.md`). Narzędzia (helm, kubeconform, shellcheck, k3d, kubectl)
   działają w kontenerach z przypiętymi wersjami, bez instalacji na hoście.
 - `e2e` – testy end-to-end (Playwright) na pełnym stosie, uruchamiane przez `make e2e`, i pomiar Lighthouse
@@ -47,8 +47,8 @@ Przy generowaniu szkieletu aplikacji (`symfony new`, `create-next-app`, `npm cre
   - `check` = statyczna analiza i lint (api: PHPStan, Deptrac, PHP CS Fixer; store/admin: ESLint, tsc). Główny
     `make check` woła też `make -C infra/k8s check` (co sprawdza: `infra/k8s/CLAUDE.md`).
   - `infra/k8s` ma własny `Makefile`: test dymny, pomiar obciążenia, Joby i cele serwera (opis: `infra/k8s/CLAUDE.md`).
-    Agent wykonuje operacje na serwerze wyłącznie tymi celami. `create-admin` uruchamia tylko po zgodzie
-    użytkownika w rozmowie. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po
+    Agent wykonuje operacje na serwerze wyłącznie tymi celami. `create-admin` i `restore` uruchamia tylko po
+    zgodzie użytkownika w rozmowie. Kroki runbooka `infra/k8s/README.md` oznaczone „zgoda użytkownika” wykonuje dopiero po
     zgodzie w rozmowie, a oznaczone „użytkownik” (zakupy, konta zewnętrzne, wartości sekretów, Cloudflare Access,
     ruleset i deploy key, backup VPS-a) nie są jego decyzją ani czynnością.
 - `node_modules` i `vendor` są w wolumenach Dockera, nie na hoście.
@@ -175,6 +175,16 @@ Docelowa skala jest opisana w `docs/vision.md` (sekcja „Wymagania niefunkcjona
   (klucz w `infra/scripts/init-env.sh`) trafia do szablonu sekretu chartu i, gdy w repo jest certyfikat Sealed Secrets,
   zaszyfrowany `make -C infra/k8s seal-secrets` do `environments/prod/secrets/` w tym samym PR (pilnuje tego `check`). Zmiana wersji
   obrazu w compose wymaga nowego digestu w chartcie (`docker buildx imagetools inspect <obraz:tag>`).
+- Nocne kopie zapasowe (CronJob `backup`: restic do Cloudflare R2) to funkcja tylko środowiska wdrożeniowego: compose się
+  nie zmienia, a obrazy `restic/restic` i `rclone/rclone` w `images.*` chartu nie mają w nim odpowiednika (digest jak
+  wyżej). Sekret `shop-backup` tworzy raz `make -C infra/k8s seal-secrets WHAT=backup`; hasło restic użytkownik trzyma
+  też poza serwerem, bo bez niego kopie są nie do odczytania. Opis: `docs/adr/backups-observability.md`.
+- Logi i metryki klastra trafiają do Grafana Cloud przez Alloy (aplikacja Argo CD `monitoring`, fala 1, po `shop`; chart
+  `k8s-monitoring` przypięty wersją, adresy i identyfikatory instancji w `argocd/apps/monitoring.yaml`, token w sekrecie
+  `grafana-cloud` z `seal-secrets WHAT=grafana`). Logi są maskowane w Alloy (jeden blok etapów dla logów podów i zdarzeń),
+  a źródło, którego nie da się zamaskować, nie jest zbierane (Mailpit: `extraDiscoveryRules`); nowa usługa z danymi klientów
+  albo sekretami w logach dostaje regułę maskowania i wiersz w korpusie `infra/k8s/tests/log-corpus` w tym samym PR. Alloy
+  czyta z klastra tylko sekret `grafana-cloud` (opis i test: `infra/k8s/CLAUDE.md`, `docs/adr/backups-observability.md`).
 - Realmy w klastrze aktualizuje wyłącznie Job `keycloak-config` (pliki realmów z repo bez `users`, z adresami domeny;
   nazwa Joba zależy od tych plików, `customerAccounts` i poczty Keycloaka). Brakujący realm zakłada; w istniejącym
   `partialImport` z `ifResourceExists=SKIP` dodaje tylko brakujące klienty, role i grupy i niczego nie nadpisuje. Potem

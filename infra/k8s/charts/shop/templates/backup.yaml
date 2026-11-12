@@ -1,0 +1,183 @@
+{{- /*
+The nightly backup (docs/features/deploy-ops/spec.md, O1): a CronJob whose pod runs the stages of files/scripts/backup.sh one
+after another, each in the container of its tool, on the volume backup-work:
+  cluster-id  the UID of the namespace kube-system (the identifier of the cluster: the host of the snapshots), into an
+              emptyDir. The only container with the token of the API, and with no secret.
+  dump        pg_dump of both databases (the image of the server).
+  objects     rclone sync of the bucket product-images (the key of the shop).
+  backup      restic (the only container with the secret shop-backup, and without the token).
+An error in a stage fails the Job before `restic backup`, so no snapshot is made.
+*/ -}}
+{{- if .Values.backup.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shop-backup
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "backup") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+---
+{{- /* The identifier of the cluster: nothing but the namespace kube-system, nothing but reading it. */}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: shop-backup
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "backup") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    resourceNames: ["kube-system"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: shop-backup
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "backup") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: shop-backup
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: shop-backup
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-work
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "backup") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "-2" | nindent 4 }}
+    # The claim stays Pending until the first run (local-path binds it to the first pod that uses it): Argo CD must not take
+    # that for an unhealthy application.
+    argocd.argoproj.io/ignore-healthcheck: "true"
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ .Values.storage.className }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.backupWork }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+  labels:
+    {{- include "shop.labels" (dict "root" . "name" "backup") | nindent 4 }}
+  annotations:
+    {{- include "shop.wave" "1" | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  timeZone: {{ .Values.backup.timeZone | quote }}
+  # One backup at a time; a run that could not start within an hour of its time is skipped (the alert BackupMissing).
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels:
+            {{- include "shop.labels" (dict "root" . "name" "backup") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          automountServiceAccountToken: false
+          serviceAccountName: shop-backup
+          initContainers:
+            {{- include "shop.clusterIdInit" . | nindent 12 }}
+            - name: dump
+              image: {{ .Values.images.postgres }}
+              command: ["sh", "/scripts/backup.sh", "dump"]
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.name }}
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+            - name: objects
+              image: {{ .Values.images.rclone }}
+              command: ["sh", "/scripts/backup.sh", "objects"]
+              env:
+                # The remote `garage` of the script, configured by the environment: the S3 API of Garage, the key of the shop.
+                - name: RCLONE_CONFIG_GARAGE_TYPE
+                  value: s3
+                - name: RCLONE_CONFIG_GARAGE_PROVIDER
+                  value: Other
+                - name: RCLONE_CONFIG_GARAGE_ENDPOINT
+                  value: http://garage:3900
+                - name: RCLONE_CONFIG_GARAGE_REGION
+                  value: garage
+                - name: RCLONE_CONFIG_GARAGE_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.name }}
+                      key: GARAGE_ACCESS_KEY_ID
+                - name: RCLONE_CONFIG_GARAGE_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.secrets.name }}
+                      key: GARAGE_SECRET_ACCESS_KEY
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+          containers:
+            - name: backup
+              image: {{ .Values.images.restic }}
+              command: ["sh", "/scripts/backup.sh", "snapshot"]
+              env:
+                {{- include "shop.resticRepositoryEnv" . | nindent 16 }}
+                - name: RESTIC_CACHE_DIR
+                  value: /work/restic-cache
+                - name: REVISION
+                  value: {{ required "image.tag (the revision) is required" .Values.image.tag | quote }}
+                - name: BACKUP_RETENTION
+                  value: {{ .Values.backup.retention | quote }}
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+                - name: cluster
+                  mountPath: /cluster
+                  readOnly: true
+              resources:
+                {{- include "shop.resources" (dict "root" . "resources" "backup") | nindent 16 }}
+          volumes:
+            - name: scripts
+              configMap:
+                name: shop-scripts
+            - name: work
+              persistentVolumeClaim:
+                claimName: backup-work
+            - name: cluster
+              emptyDir: {}
+            {{- include "shop.kubeApiAccessVolume" . | nindent 12 }}
+{{- end }}

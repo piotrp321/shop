@@ -1,6 +1,6 @@
 #!/bin/sh
 # Encrypts the secrets of the environment with the certificate of the Sealed Secrets controller, so that they can be
-# committed (D5 of docs/features/deploy): `make -C infra/k8s seal-secrets [WHAT="shop brevo tls"]`. kubeseal runs in a
+# committed (D5 of docs/features/deploy): `make -C infra/k8s seal-secrets [WHAT="shop brevo tls backup grafana"]`. kubeseal runs in a
 # container (tools.sh); no cluster is needed, only the certificate in the repository.
 #
 #   shop   environments/prod/secrets/shop-secrets.yaml: the keys of infra/scripts/init-env.sh (the lists `secrets` and
@@ -10,8 +10,13 @@
 #   brevo  shop-brevo-smtp.yaml: BREVO_SMTP_LOGIN and BREVO_SMTP_PASSWORD of Brevo SMTP, asked for on the terminal.
 #   tls    shop-origin-tls.yaml (kubernetes.io/tls): the Cloudflare Origin CA certificate and private key, pasted on
 #          the terminal.
-# Without arguments (WHAT) all three are processed. brevo and tls are created once: when their file exists nothing is
-# asked and nothing changes.
+#   backup shop-backup.yaml: RESTIC_PASSWORD (the password of the restic repository of the backups, asked for twice: a
+#          different second value is an error), BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY (the key of its S3
+#          bucket), asked for on the terminal.
+#   grafana grafana-cloud.yaml: GRAFANA_CLOUD_TOKEN, the one access policy token of Grafana Cloud that Alloy (the application
+#          `monitoring`) reads from the namespace shop for the metrics, the logs and the alert rules, asked for on the terminal.
+# Without arguments (WHAT) all five are processed. brevo, tls, backup and grafana are created once: when their file exists nothing
+# is asked and nothing changes (a new password would make the earlier backups unreadable).
 #
 # External values are read from the terminal (/dev/tty) with the echo off: never from arguments or from the environment,
 # never written anywhere in plain text and never printed. Each value is passed to kubeseal on its standard input.
@@ -41,11 +46,11 @@ fail() {
 }
 
 what="$*"
-[ -n "$what" ] || what="shop brevo tls"
+[ -n "$what" ] || what="shop brevo tls backup grafana"
 for item in $what; do
   case "$item" in
-    shop | brevo | tls) ;;
-    *) fail "unknown secret '$item' (shop, brevo or tls)" 2 ;;
+    shop | brevo | tls | backup | grafana) ;;
+    *) fail "unknown secret '$item' (shop, brevo, tls, backup or grafana)" 2 ;;
   esac
 done
 
@@ -219,7 +224,7 @@ seal_shop() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
-# brevo and tls: created once, from values typed in the terminal.
+# brevo, tls, backup and grafana: created once, from values typed in the terminal.
 # ---------------------------------------------------------------------------------------------------------------
 seal_brevo() {
   name=shop-brevo-smtp
@@ -275,11 +280,62 @@ seal_tls() {
   echo "seal-secrets: $name.yaml gets the keys: tls.crt tls.key"
 }
 
+seal_backup() {
+  name=shop-backup
+  path="$out_dir/$name.yaml"
+  if [ -f "$path" ]; then
+    echo "seal-secrets: $name.yaml exists, nothing is asked and nothing changes"
+    return 0
+  fi
+  ask "Password of the restic repository (keep a copy in the password manager: without it the backups cannot be read)"
+  password="$secret_value"
+  # A typo would seal a password that is not the one in the password manager, and the backups could not be read.
+  read_secret "The password of the restic repository once more: "
+  [ "$secret_value" = "$password" ] || fail "the two passwords of the restic repository do not match; nothing was written"
+  ask "Access key id of the S3 bucket of the backups (Cloudflare R2 API token)"
+  key_id="$secret_value"
+  ask "Secret access key of the S3 bucket of the backups"
+  key="$secret_value"
+  case "$key_id$key" in
+    *[[:space:]]*) fail "the access key id and the secret access key must not contain spaces; nothing was written" ;;
+  esac
+  : > "$work/$name.pairs"
+  add_pair "$work/$name.pairs" RESTIC_PASSWORD "$name" "$password"
+  add_pair "$work/$name.pairs" BACKUP_S3_ACCESS_KEY_ID "$name" "$key_id"
+  add_pair "$work/$name.pairs" BACKUP_S3_SECRET_ACCESS_KEY "$name" "$key"
+  secret_value="" password="" key_id="" key=""
+  write_file "$name" Opaque "$work/$name.yaml" "$work/$name.pairs"
+  stage "$name"
+  echo "seal-secrets: $name.yaml gets the keys: RESTIC_PASSWORD BACKUP_S3_ACCESS_KEY_ID BACKUP_S3_SECRET_ACCESS_KEY"
+}
+
+seal_grafana() {
+  name=grafana-cloud
+  path="$out_dir/$name.yaml"
+  if [ -f "$path" ]; then
+    echo "seal-secrets: $name.yaml exists, nothing is asked and nothing changes"
+    return 0
+  fi
+  ask "Grafana Cloud access policy token (metrics:write, logs:write, rules:read, rules:write)"
+  token="$secret_value"
+  case "$token" in
+    *[[:space:]]*) fail "the Grafana Cloud token must not contain spaces; nothing was written" ;;
+  esac
+  : > "$work/$name.pairs"
+  add_pair "$work/$name.pairs" GRAFANA_CLOUD_TOKEN "$name" "$token"
+  secret_value="" token=""
+  write_file "$name" Opaque "$work/$name.yaml" "$work/$name.pairs"
+  stage "$name"
+  echo "seal-secrets: $name.yaml gets the keys: GRAFANA_CLOUD_TOKEN"
+}
+
 for item in $what; do
   case "$item" in
     shop) seal_shop ;;
     brevo) seal_brevo ;;
     tls) seal_tls ;;
+    backup) seal_backup ;;
+    grafana) seal_grafana ;;
   esac
 done
 

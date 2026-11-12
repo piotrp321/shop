@@ -4,8 +4,12 @@ Pierwsze wdrożenie sklepu i panelu poza komputerem dewelopera: jeden serwer, je
 GitOps przez Argo CD. Na start działa jako demonstracja (sklep publiczny z informacją o symulowanych płatnościach,
 `noindex`, panel za Cloudflare Access, rejestracja wyłączona, potwierdzenia zamówień nie wychodzą na zewnątrz). Te
 ograniczenia są wartościami konfiguracji, więc przejście na publiczny sklep nie wymaga przebudowy obrazów ani
-architektury. Kopie zapasowe i monitoring są w DEPLOY-OPS (#178), które musi być skończone przed przełączeniem na
-publiczny sklep albo przed pierwszymi prawdziwymi danymi.
+architektury. Nocne kopie zapasowe, ich weryfikacja i odtwarzanie (`make -C infra/k8s restore`) są częścią chartu (sekcja
+„Kopie zapasowe”); logi i metryki klastra trafiają do Grafana Cloud przez Grafana Alloy (aplikacja Argo CD `monitoring`,
+`docs/features/deploy-ops/spec.md`, O5 i O7); alerty (nieudana albo brakująca kopia i weryfikacja, zajęty dysk węzła, brak
+sygnału z klastra, niegotowy workload) to `PrometheusRule` w chartcie, synchronizowany do Grafana Cloud
+(`docs/features/deploy-ops/spec.md`, O6). Prawdziwe dane i publiczny start wymagają jeszcze ćwiczenia odtworzenia z
+runbooka na serwerze (zgoda użytkownika).
 
 Issues: #175
 Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.github/workflows/ci.yml`, `.github/scripts`, `.gitignore`, `apps/api/Dockerfile`, `apps/api/docker`, `apps/api/.dockerignore`, `apps/api/bin`, `apps/store/Dockerfile`, `apps/store/.dockerignore`, `apps/store/next.config.ts`, `apps/store/app/layout.tsx`, `apps/store/app/api/site`, `apps/store/src/api/client.ts`, `apps/store/src/components`, `apps/store/src/account`, `apps/admin/Dockerfile`, `apps/admin/.dockerignore`, `apps/admin/docker`, `apps/admin/index.html`, `apps/admin/public`, `apps/admin/src/auth`, `apps/admin/src/api/client.ts`, `apps/admin/src/config`, `Makefile`, `CLAUDE.md`, `apps/api/CLAUDE.md`, `apps/store/CLAUDE.md`, `apps/admin/CLAUDE.md`, `docs/vision.md`, `docs/adr`, `tools/rulesets`
@@ -32,8 +36,8 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 
 ## Poza zakresem
 
-- Kopie zapasowe (restic, weryfikacja, odtwarzanie), Grafana Alloy i alerty – DEPLOY-OPS (#178). Tu tylko włączenie
-  backupu VPS-a od OVH (runbook).
+- Alerty z treści logów i automatyczne wyciszanie alertów. Tu nocna kopia (restic), jej weryfikacja, odtwarzanie, logi,
+  metryki i alerty w Grafana Cloud (Alloy, `PrometheusRule`) i włączenie backupu VPS-a od OVH (runbook).
 - Osobne środowiska demo i produkcji, wiele węzłów, autoskalowanie, Rancher, własny Prometheus i Loki.
 - Tryb publicznego demo (nocny reset danych, publiczne konta demo, limity uploadów) – #179.
 - Sentry (SDK w api, store i admin) oraz trace'y i Sentry Performance – #180.
@@ -52,7 +56,8 @@ Zakres: `infra/k8s`, `infra/elasticsearch`, `.github/workflows/deploy.yml`, `.gi
 - **D2. Własny chart zamiast gotowych chartów usług.** Jeden chart `infra/k8s/charts/shop` z szablonami dla każdej
   usługi compose, na tych samych obrazach i wersjach co `infra/docker-compose.yml`. Elasticsearch działa na obrazie
   budowanym z tego samego Dockerfile co w compose (`infra/elasticsearch/Dockerfile`). Gotowe charty tylko dla
-  platformy: Argo CD i Sealed Secrets.
+  platformy: Argo CD, Sealed Secrets, `k8s-monitoring` (Grafana Alloy) i `prometheus-operator-crds` (CRD, m.in.
+  `PrometheusRule`), każdy przypięty wersją jako osobna aplikacja Argo CD.
 - **D3. Nazwy usług w klastrze takie jak w compose**; wewnętrzne adresy i VCL (`api:80`) bez zmian.
 - **D4. Gałęzie `deploy` i `deploy-images`, przesuwane jednym atomowym pushem.** `deploy` przesuwa się wyłącznie
   fast-forwardem na zatwierdzony commit z `main` (historia `main` jest liniowa, więc `deploy` jest zawsze jej przodkiem).
@@ -229,13 +234,16 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
    `ghcr.io/piotrp321/shop/<app>:<sha>@<digest>` z pliku) i jednym atomowym pushem przesuwa `deploy` fast-forwardem na ten
    commit oraz dodaje snapshot do `deploy-images` (D4). Bez sekretu z deploy keyem (przed krokiem runbooka) workflow
    kończy się po smoke teście z ostrzeżeniem, bez błędu.
-5. Argo CD synchronizuje `root`, a przez niego `sealed-secrets`, `secrets` i `shop` (fale −2, −1, 0) z `deploy-images`;
-   chart rozkłada zasoby w falach.
+5. Argo CD synchronizuje `root`, a przez niego `prometheus-crds`, `sealed-secrets`, `secrets`, `shop` i `monitoring` (fale
+   −3, −2, −1, 0 i 1) z `deploy-images` (charty `sealed-secrets`, `prometheus-crds` i `monitoring` z ich repozytoriów Helm, w
+   przypiętych wersjach); chart `shop` rozkłada zasoby w falach. `monitoring` jest ostatni: brak konta Grafana Cloud albo
+   zły token zostawia `Degraded` tylko tę aplikację, a sklep działa i się wdraża.
 6. Wycofanie wersji: revert na `main` (nowe wdrożenie). Awaryjnie można zsynchronizować `shop` z poprzednim snapshotem
    `deploy-images` (jego obrazy zostają w GHCR), po wyłączeniu automatycznej synchronizacji `root` (inaczej przywraca ona
    `syncPolicy` aplikacji `shop`), a potem `shop`; po revercie automatyczną synchronizację włącza się z powrotem, najpierw
-   `root`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją; cofnięcie o więcej wersji
-   wymaga odtworzenia kopii (DEPLOY-OPS) albo pełnego ponownego wczytania danych (`reinitialize`, zgoda użytkownika).
+   `root`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją; cofnięcie o więcej wersji to starszy snapshot
+   `deploy-images` i odtworzenie kopii z czasu tej wersji (`make -C infra/k8s restore`, zgoda użytkownika; kopii nowszej
+   niż wdrożony kod odtworzenie odmawia) albo pełne ponowne wczytanie danych (`reinitialize`, zgoda użytkownika).
 
 Zasady dla zmian w repo (dokumentacja w `apps/api/CLAUDE.md` i `CLAUDE.md`): migracje zgodne wstecz z poprzednią
 wersją kodu; wiadomości Messengera zgodne w obie strony między kolejnymi wersjami; zmiana usług, zmiennych,
@@ -253,7 +261,8 @@ w chartcie w tym samym PR.
   - są produkty, ceny i stany – sukces bez zmian, niezależnie od zamówień;
   - każdy inny stan jest mieszany – błąd z liczbami i bez zmian, np. pusty katalog z zamówieniami albo cenami (reset
     seeda by je skasował) albo produkty bez cen lub stanów (przerwana inicjalizacja, wymaga decyzji człowieka).
-- Wyłączany wartością `initialize.enabled: false` (na potrzeby odtwarzania kopii w DEPLOY-OPS).
+- Wyłączany wartością `initialize.enabled: false`. Odtworzenie kopii go nie potrzebuje: na nowym klastrze `initialize`
+  wczytuje dane demo, a `make -C infra/k8s restore` zastępuje je danymi snapshotu.
 - Inicjalizacja przerwana w połowie: kolejne uruchomienie kończy się błędem stanu mieszanego; runbook opisuje ponowne
   wymuszone wczytanie (`make -C infra/k8s reinitialize`), które kasuje dane i wymaga zgody użytkownika.
 
@@ -293,8 +302,58 @@ w chartcie w tym samym PR.
 
 ## Kopie zapasowe
 
-Tu tylko automatyczny backup VPS-a od OVH (runbook: włączenie). Kopie baz i obiektów poza serwerem,
-weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
+Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `docs/adr/backups-observability.md`.
+
+- CronJob `backup` (wartości `backup.*`, `enabled: true` w `prod` i `ci`) robi codziennie o 03:00 (`Europe/Warsaw`) jedną
+  kopię: `pg_dump` baz `shop` i `keycloak` (format custom, `--no-owner --no-privileges`, użytkownik `postgres`), lustro
+  bucketu `product-images` z Garage (`rclone sync`, klucz S3 sklepu) i `manifest.json` (rewizja, czas, identyfikator
+  klastra, wersje migracji Doctrine z bazy `shop`, liczba i rozmiar obiektów). Całość trafia jako jeden snapshot (tag
+  `nightly`, host równy identyfikatorowi klastra) do zaszyfrowanego repozytorium restic w S3 (Cloudflare R2 w `prod`);
+  repozytorium zakłada się samo przy pierwszej kopii, a `restic forget --keep-within 7d --prune` po kopii `nightly` przycina tylko
+  snapshoty tego klastra (nowy serwer po awarii nie usuwa kopii starego).
+- Pod ma kontenery po kolei na PVC `backup-work` (`storage.backupWork`, 25 Gi: lustro obiektów i cache restic): `cluster-id`
+  (UID przestrzeni `kube-system`; jedyny z tokenem API, ClusterRole z samym `get` na `namespaces/kube-system`, bez
+  sekretu), `dump`, `objects` i `backup` (restic; jedyny z sekretem `shop-backup`, bez tokenu). Błąd dowolnego kroku
+  przed `restic backup` kończy Job i nie zostawia snapshotu. `concurrencyPolicy: Forbid`, `startingDeadlineSeconds: 3600`,
+  `backoffLimit: 1`, `activeDeadlineSeconds: 7200`.
+- Repozytorium i region to wartości (`backup.repository`, `backup.s3Region`); `backup.enabled` bez repozytorium albo
+  `backup.secretName` kończy render błędem. Sekret `shop-backup` (`RESTIC_PASSWORD`, `BACKUP_S3_ACCESS_KEY_ID`,
+  `BACKUP_S3_SECRET_ACCESS_KEY`) tworzy w `prod` jednorazowo `make -C infra/k8s seal-secrets WHAT=backup`; w profilu `ci`
+  chart renderuje go z `backup.secretValues`. Hasło restic użytkownik trzyma też poza serwerem: bez niego kopie są nie do
+  odczytania, także po utracie klucza Sealed Secrets.
+- CronJob `backup-verify` (`backup.verifySchedule`, codziennie o 05:00 `Europe/Warsaw`; te same limity czasu i historii co
+  `backup`; konto usługi i rola kopii) czyta repozytorium w S3 i nie ma dostępu do produkcyjnej bazy. Sprawdza: wiek
+  najnowszego snapshotu `nightly` tego klastra (poniżej 26 h), `restic check` z odczytem podzbioru danych
+  (`--read-data-subset=n/7`, n to dzień tygodnia; `backup.verifyReadData: all`, profil `ci`, odczytuje wszystko),
+  odtworzenie obu dumpów (`restic dump` strumieniowo do `pg_restore` w tymczasowym Postgresie poda na `emptyDir`; niepusta
+  tabela migracji `shop`, realmy `shop` i `backoffice` w `keycloak`) i zgodność liczby obiektów snapshotu (`restic ls`)
+  z `manifest.json`. Każdy niespełniony warunek, także błąd narzędzia, kończy Job błędem z opisem w logu. Pod: `cluster-id`
+  (jak w kopii), `postgres` (natywny sidecar, tylko pętla zwrotna, bez sekretów) i `verify` (jedyny z sekretem
+  `shop-backup`, bez tokenu; `restic` z obrazu `restic/restic` zamontowanego jako wolumen obrazu, razem z jego certyfikatami CA w `SSL_CERT_FILE`:
+  obraz `postgres` ich nie ma, a repozytorium w `prod` jest po HTTPS). Dane tymczasowego Postgresa leżą na `emptyDir` z limitem
+  równym `storage.postgres`: pod, którego odtworzone bazy go przerosną, jest wyrzucany, a nie zapełnia dysku węzła. Brak weryfikacji albo jej
+  błąd to alerty `BackupVerifyMissing` i `BackupVerifyFailed` (`docs/features/deploy-ops/spec.md`, O6).
+- Odtworzenie: `make -C infra/k8s restore SNAPSHOT=<id> [PRE_RESTORE=skip]` (zgoda użytkownika) tworzy Joby z wstrzymanego
+  CronJoba `restore` (`suspend: true`, `activeDeadlineSeconds: 10800`, `backoffLimit: 0`; obrazy i sekrety wdrożonej
+  rewizji, bez tokenu API, sekret `shop-backup` tylko w kontenerze restic) i z Jobów wersji. Odmawia bez zmian: bez
+  `SNAPSHOT` (identyfikator, nigdy `latest`), przy aktywnym Jobie w przestrzeni `shop`, trwającej synchronizacji `shop` w
+  Argo CD i snapshocie z migracją spoza klas migracji obrazu `api` (Job w trybie `check`, przed pytaniem). Po słowie `tak`:
+  kopia `pre-restore` (Job z CronJoba `backup` z `BACKUP_TAG=pre-restore`; jej błąd kończy odtworzenie bez zmian, chyba że
+  `PRE_RESTORE=skip`, który ją pomija), przy Argo CD wyłączenie automatycznej synchronizacji `root`, potem `shop`,
+  wstrzymanie CronJobów `cart-purge-expired` i `backup`, `api`, `worker`, `store` i `keycloak` do zera, Job w trybie
+  `restore` (`restic restore` na `backup-work`, `DROP`/`CREATE` i `pg_restore` obu baz z właścicielami jak w
+  `10-create-databases.sh`, `rclone sync` z usuwaniem do `product-images`, `FLUSHALL` Redisa, opróżnienie kolejek
+  RabbitMQ), ponowienie `migrate`, `keycloak` i `keycloak-config`, Job w trybie `reindex` (`catalog:reindex`), powrót
+  replik i CronJobów, `purge-caches` i włączenie synchronizacji `root`. Skrypt czeka na każdy Job najwyżej jego
+  `activeDeadlineSeconds`; błąd po pierwszej zmianie zostawia aplikacje wyłączone i wypisuje krok oraz snapshot
+  `pre-restore` (runbook opisuje dokończenie). `make -C infra/k8s backups` wypisuje snapshoty (identyfikator, czas, host,
+  tagi, rewizja) Jobem w trybie `list`, tylko do odczytu. Ten sam cel odtwarza dane na nowym serwerze po `bootstrap` z
+  kopią klucza Sealed Secrets (snapshoty starego serwera mają inny host).
+- Obrazy `restic/restic` i `rclone/rclone` są w `images.*` z tagiem i digestem (bez odpowiednika w compose, który się nie
+  zmienia). Smoke test uruchamia kopię i jej weryfikację na osobnej instancji S3 (przestrzeń `smoke-backup`), sprawdza snapshot,
+  a potem odtwarza go na pustym klastrze (przestrzeń `shop` usunięta z wolumenami, chart zainstalowany od nowa) i sprawdza
+  odmowę snapshotu nowszego niż kod.
+- Automatyczny backup VPS-a od OVH (runbook: włączenie) zostaje dodatkową kopią całego serwera. Alerty kopii (`BackupFailed`, `BackupMissing`) są w Grafana Cloud (`docs/features/deploy-ops/spec.md`, O6).
 
 ## Sekrety
 
@@ -302,11 +361,13 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   sekrety są w `infra/k8s/environments/prod/secrets/` (SealedSecrety dla przestrzeni `shop`): `shop-secrets.yaml` (klucze
   `init-env.sh`), `shop-brevo-smtp.yaml` (`BREVO_SMTP_LOGIN`, `BREVO_SMTP_PASSWORD`), `shop-origin-tls.yaml` (typ
   `kubernetes.io/tls`; `ingress.tlsSecretName` w wartościach `prod` wskazuje go na wszystkich ingressach). Kontroler i
-  sekrety stawiają aplikacje Argo `sealed-secrets` i `secrets` w falach przed `shop`.
+  sekrety stawiają aplikacje Argo `sealed-secrets` i `secrets` w falach przed `shop`. Token Grafana Cloud to
+  `grafana-cloud.yaml` (klucz `GRAFANA_CLOUD_TOKEN`), który czyta Alloy (aplikacja `monitoring`) z przestrzeni `shop` przez Role
+  tylko na ten sekret.
 - `infra/k8s/scripts/seal-secrets.sh` (`make -C infra/k8s seal-secrets`, w kontenerze z `kubeseal` przypiętym wersją i
   digestem) szyfruje certyfikatem z repo (`environments/prod/sealed-secrets.pem`). Klucze z listy `init-env.sh` (czytanej z
   pliku) dopisuje tylko brakujące, z losową wartością; istniejących nie zmienia. Wartości zewnętrzne (login i klucz Brevo,
-  certyfikat i klucz Origin CA) czyta interaktywnie z terminala (bez echa), nie z argumentów ani zmiennych, i nie
+  certyfikat i klucz Origin CA, hasło restic i klucz S3 kopii, token Grafana Cloud) czyta interaktywnie z terminala (bez echa), nie z argumentów ani zmiennych, i nie
   wypisuje ich; tworzy je raz (gdy plik istnieje, niczego nie pyta); krok runbooka „użytkownik”. Brak certyfikatu, pusta
   wartość, zły format albo nieudany `kubeseal` kończą skrypt błędem bez zapisu (pliki powstają dopiero, gdy wszystko się
   udało), a plik w innym formacie niż zapisuje skrypt nie jest ruszany.
@@ -356,8 +417,12 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   `image.tag=latest`, digest w złym formacie, obraz usługi bez digestu, klaster Kubernetes 1.35 (`kubeVersion`), plik
   `values-images.yaml` bez digestu `elasticsearch`, z digestem będącym tagiem albo z `latest`. Render `prod` z samym
   wygenerowanym plikiem (bez `--set`) ma dokładnie obrazy z pliku. Manifesty Argo CD (`argocd/`) przechodzą
-  `kubeconform` (schematy CRD z katalogu CRDs-catalog), a testy sprawdzają: `root` obejmuje `shop`, `sealed-secrets` i
-  `secrets`, `shop` ma jedno źródło na `deploy-images`, aplikacje czytają tę samą gałąź, fale. `server-bootstrap.sh`
+  `kubeconform` (schematy CRD z katalogu CRDs-catalog), a testy sprawdzają: `root` obejmuje `shop`, `secrets`,
+  `sealed-secrets`, `prometheus-crds` i `monitoring`, `shop` ma jedno źródło na `deploy-images`, aplikacje z gita czytają tę
+  samą gałąź, charty innych (`sealed-secrets`, `prometheus-crds`, `monitoring`) są przypięte wersją, fale (−3, −2, −1, 0, 1).
+  Chart `k8s-monitoring` renderuje się z wartościami z manifestu `monitoring` (`kubeconform` ze schematem `Alloy`; dostęp do
+  sekretów, lista metryk, budżet węzła z `shop`, maskowanie logów w prawdziwym Alloy: `docs/features/deploy-ops/spec.md`,
+  „Smoke test i check”). `server-bootstrap.sh`
   przechodzi `shellcheck` i dwa przebiegi w kontenerze Ubuntu 26.04 bez k3s (atrapy `k3s`, `apt-get`, `ufw`, `sysctl` i
   instalatora; prawdziwe są sprawdzenia, zapisy plików i idempotencja), z odmową bez roota i na innym systemie przed
   zmianami. Ostatni krok sprawdza gitem na hoście, że `.gitignore` nie ignoruje certyfikatu
@@ -412,7 +477,7 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
 | Push do `deploy` albo `deploy-images` spoza workflowu, force push, usunięcie | odrzucone przez ruleset |
 | Certyfikat kontrolera Sealed Secrets inny niż w repo (bootstrap bez kopii klucza) | `bootstrap` kończy się błędem, niczego nie nadpisuje; kopia klucza albo nowy certyfikat i ponowne zaszyfrowanie (runbook) |
 | Restart serwera | k3s i usługi wstają same; dane na PVC zostają |
-| Utrata klucza Sealed Secrets | nowy certyfikat w repo, nowe sekrety skryptem (runbook); wymaga ponownego wczytania danych albo odtworzenia z kopii (DEPLOY-OPS) |
+| Utrata klucza Sealed Secrets | nowy certyfikat w repo, nowe sekrety skryptem (runbook); wymaga ponownego wczytania danych albo odtworzenia z kopii (`make restore`; realm `master` z kopii ma stare hasło administratora Keycloaka, więc odtworzenie staje na `keycloak-config`: runbook) |
 
 ## Kryteria akceptacji
 
@@ -453,8 +518,11 @@ weryfikacja, odtwarzanie i alerty są w DEPLOY-OPS (#178).
   checkout gościa bez limitów pozwala blokować stany fikcyjnymi zamówieniami; rate limiting jest w osobnym
   zgłoszeniu.
 - **Klucz Sealed Secrets** jest jedyną rzeczą, której nie da się odtworzyć z repo; trzyma go użytkownik.
-- **Brak kopii poza serwerem do czasu DEPLOY-OPS.** Dane da się odtworzyć z seedów, a backup VPS-a od OVH działa od
-  pierwszego dnia; prawdziwe dane i publiczny start dopiero po DEPLOY-OPS.
+- **Odtworzenie ćwiczone przed serwerem tylko w smoke teście.** Nocna kopia do R2 jest codziennie weryfikowana
+  (alerty na jej wynik i brak), a smoke test odtwarza ją na pustym klastrze, ale bez Argo CD: wyłączanie synchronizacji
+  sprawdzają testy na atrapie `kubectl`, a serwer dopiero ćwiczenie odtworzenia z runbooka (zgoda użytkownika). Backup VPS-a
+  od OVH działa od pierwszego dnia. Prawdziwe dane i publiczny start dopiero po ćwiczeniu odtworzenia z runbooka na serwerze (zgoda użytkownika). Klucz R2 w klastrze pozwala usunąć kopie (token tylko do jednego
+  bucketu; kopie niezmienne poza zakresem demo).
 - **AppArmor containerd na Ubuntu 26.04.** k3s v1.36 oficjalnie wspiera Ubuntu 26.04 (matryca SUSE), ale przy nakładaniu
   profili (profile stacking) profil `cri-containerd.apparmor.d` blokuje sygnały między
   procesami uruchomionymi przez exec (containerd/containerd#12886, otwarte). Dotyczy exec probe usług

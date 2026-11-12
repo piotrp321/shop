@@ -11,6 +11,8 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=tools.sh
 . "$here/tools.sh"
+# shellcheck source=kube-jobs.sh
+. "$here/kube-jobs.sh"
 
 job="${1:-}"
 if [ -z "$job" ]; then
@@ -28,24 +30,5 @@ if [ ! -f "$KUBE_DIR/config" ]; then
   exit 1
 fi
 
-manifest="$(kubectl -n "$namespace" get job "$job" -o json)" || { echo "rerun: no job '$job' in the namespace $namespace" >&2; exit 1; }
-
-# The manifest without what the cluster fills in, so that it can be created again.
-clean="$(printf '%s' "$manifest" | tools_run "$PYTHON_IMAGE" python -I -c '
-import json, sys
-job = json.load(sys.stdin)
-job.pop("status", None)
-meta = job["metadata"]
-for key in ("uid", "resourceVersion", "creationTimestamp", "generation", "ownerReferences", "managedFields", "selfLink"):
-    meta.pop(key, None)
-spec = job["spec"]
-spec.pop("selector", None)
-labels = spec["template"]["metadata"].get("labels", {})
-for key in [k for k in labels if "controller-uid" in k or k.endswith("job-name")]:
-    del labels[key]
-print(json.dumps(job))
-')"
-
-kubectl -n "$namespace" delete job "$job" --wait=true --cascade=foreground >/dev/null
-printf '%s' "$clean" | kubectl -n "$namespace" create -f - >/dev/null
+rerun_job "$job" || { echo "rerun: could not run the job '$job' again in the namespace $namespace" >&2; exit 1; }
 echo "rerun: job $job created again"

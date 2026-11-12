@@ -13,9 +13,10 @@ użytkownika. Szczegóły: `docs/features/deploy/spec.md`, uruchomienie: `infra/
 - **k3s na jednym węźle**, Traefik z k3s jako ingress (z `externalTrafficPolicy: Local`, żeby widział prawdziwy adres
   klienta), `local-path` jako storage. Bez Ranchera.
 - **Własny chart `infra/k8s/charts/shop`** na tych samych obrazach i wersjach co `infra/docker-compose.yml`. Gotowe charty
-  tylko dla platformy: Argo CD i Sealed Secrets (wersje przypięte).
+  tylko dla platformy: Argo CD, Sealed Secrets, `k8s-monitoring` (Grafana Alloy) i `prometheus-operator-crds` (wersje
+  przypięte).
 - **Argo CD z app-of-apps** (`infra/k8s/argocd/`): aplikacja `root` (jedyna, którą stosuje bootstrap) tworzy aplikacje
-  `sealed-secrets`, `secrets` i `shop` w falach, w tej kolejności. Argo CD śledzi gałąź **`deploy-images`**.
+  `prometheus-crds`, `sealed-secrets`, `secrets`, `shop` i `monitoring` w falach −3, −2, −1, 0 i 1. Argo CD śledzi gałąź **`deploy-images`**.
 - **Dwie gałęzie wdrożeniowe.** `deploy` przesuwa się wyłącznie fast-forwardem na zatwierdzony commit z `main`.
   `deploy-images` to kolejne snapshoty: drzewo commita z `deploy` plus wygenerowany plik
   `infra/k8s/environments/prod/values-images.yaml` (`image.tag` i cztery digesty obrazów). Snapshot ma rodziców: poprzedni
@@ -59,6 +60,8 @@ użytkownika. Szczegóły: `docs/features/deploy/spec.md`, uruchomienie: `infra/
   a potem `shop`. Schemat bazy jest zgodny wstecz tylko z poprzednią wersją kodu.
 - Żadna retencja GHCR ani workflow nie usuwa wersji pakietów (test w `make check`).
 - Klucz prywatny Sealed Secrets jest jedyną rzeczą, której nie da się odtworzyć z repo; jego utrata oznacza nowy
-  certyfikat i ponowne zaszyfrowanie sekretów oraz ponowne wczytanie danych albo odtworzenie z kopii (DEPLOY-OPS).
-- Do czasu DEPLOY-OPS kopie poza serwerem to tylko backup VPS-a od OVH; prawdziwe dane i publiczny start dopiero po
-  DEPLOY-OPS.
+  certyfikat i ponowne zaszyfrowanie sekretów (w tym `shop-backup` z tym samym hasłem restic, bo inaczej kopie są nie do odczytania) oraz ponowne wczytanie danych albo odtworzenie z kopii.
+- Dane sklepu mają nocną, szyfrowaną kopię poza serwerem (CronJob `backup`, restic do Cloudflare R2;
+  `docs/adr/backups-observability.md`) oraz backup VPS-a od OVH. Kopie są codziennie weryfikowane, a ich błąd i brak
+  wywołują alerty (`docs/adr/backups-observability.md`); prawdziwe dane i publiczny start dopiero po ćwiczeniu odtworzenia
+  z runbooka (`infra/k8s/README.md`).

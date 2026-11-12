@@ -46,8 +46,8 @@ class JobNamesTest(unittest.TestCase):
         for case in ("prod", "ci"):
             for job in of_kind(case, "Job"):
                 self.assertEqual("version", job["metadata"]["labels"]["shop/job-kind"], logical(job))
-            cron = of_kind(case, "CronJob")[0]
-            self.assertNotIn("shop/job-kind", cron["spec"]["jobTemplate"].get("metadata", {}).get("labels", {}))
+            for cron in of_kind(case, "CronJob"):
+                self.assertNotIn("shop/job-kind", cron["spec"]["jobTemplate"].get("metadata", {}).get("labels", {}))
 
     def test_no_ttl_so_that_the_finished_job_is_kept(self):
         for case in ("prod", "ci"):
@@ -88,16 +88,16 @@ class JobCommandsTest(unittest.TestCase):
 class CronJobTest(unittest.TestCase):
     def test_cart_purge(self):
         for case in ("prod", "ci"):
-            crons = of_kind(case, "CronJob")
-            self.assertEqual(1, len(crons), case)
-            cron = crons[0]
+            crons = by_logical(case, "CronJob")
+            self.assertEqual({"cart-purge-expired", "backup", "backup-verify", "restore"}, set(crons), case)
+            cron = crons["cart-purge-expired"]
             self.assertEqual("0 * * * *", cron["spec"]["schedule"])
             self.assertEqual("Forbid", cron["spec"]["concurrencyPolicy"])
             self.assertEqual("Europe/Warsaw", cron["spec"]["timeZone"])
             self.assertIn("cart:purge-expired", command_line(cron))
             self.assertEqual(1, wave(cron))
             self.assertIn(f":{REVISION}", containers(cron)[0]["image"])
-        self.assertTrue(containers(of_kind("prod", "CronJob")[0])[0]["image"].endswith(f":{REVISION}@{DIGESTS['api']}"))
+        self.assertTrue(containers(by_logical("prod", "CronJob")["cart-purge-expired"])[0]["image"].endswith(f":{REVISION}@{DIGESTS['api']}"))
 
 
 if __name__ == "__main__":
