@@ -268,7 +268,8 @@ k3d cluster create "$cluster" --no-lb --image "$K3S_IMAGE" --wait --timeout 300s
   || fail "the cluster $cluster could not be created (is the Docker VM out of resources?)"
 k3d kubeconfig get "$cluster" | sed -E "s#server: https://[^:]+:[0-9]+#server: https://$node:6443#" > "$KUBE_DIR/config"
 # shellcheck disable=SC2046 # the names have no spaces
-k3d image import -c "$cluster" $(for app in $apps; do echo "$registry/$app:r1"; done) >/dev/null
+sh "$here/import-images.sh" "$cluster" "$node" $(for app in $apps; do echo "$registry/$app:r1"; done) \
+  || fail "the images could not be imported into the node $node"
 
 log "install (profile load)"
 wait_for_traefik
