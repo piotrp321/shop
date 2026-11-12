@@ -429,6 +429,17 @@ class RestoreScriptTest(unittest.TestCase):
         self.assertLess(backup_create, first_change)
         self.assertIn(PRE_RESTORE, result.stdout)
 
+    def test_the_snapshot_pre_restore_is_found_in_a_long_log_of_the_backup(self):
+        """The line `snapshot <id> saved` is not the last of the log: kubectl logs is read whole, not its last lines."""
+        outcomes = initial_state()["outcomes"]
+        long_log = f"backup: snapshot with the tag pre-restore\nsnapshot {PRE_RESTORE} saved\n" + "".join(f"backup: line {i}\n" for i in range(100))
+        outcomes[2] = ["backup-pre-restore-", "Complete", long_log]
+        cluster = self.stub(outcomes=outcomes)
+        result = self.restore(cluster)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn(f"restore: the pre-restore snapshot is {PRE_RESTORE}", result.stdout)
+        self.assertIn(f"the state before it is the pre-restore snapshot {PRE_RESTORE}", result.stdout)
+
     def test_a_failed_backup_pre_restore_stops_it_without_changes(self):
         outcomes = initial_state()["outcomes"]
         outcomes[2] = ["backup-pre-restore-", "Failed", "backup: cannot open the repository\n"]

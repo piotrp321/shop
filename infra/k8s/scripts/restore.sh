@@ -207,7 +207,8 @@ if [ "$pre_restore" != skip ]; then
     job_logs "$backup_job" $backup_containers >&2
     refuse "the backup pre-restore failed (PRE_RESTORE=skip goes on without it)"
   fi
-  pre_restore_snapshot="$(job_log "$backup_job" --container=backup | sed -n 's/^snapshot \([0-9a-f]*\) saved$/\1/p' | tail -n 1)"
+  # The whole log, not job_log: restic prints the line after the files of the snapshot, and a long log pushes it out of the last 40 lines.
+  pre_restore_snapshot="$(kubectl -n "$namespace" logs "job/$backup_job" --container=backup 2>&1 | sed -n 's/^snapshot \([0-9a-f]*\) saved$/\1/p' | tail -n 1)"
   [ -n "$pre_restore_snapshot" ] || refuse "the backup pre-restore left no snapshot in its log"
   echo "restore: the pre-restore snapshot is $pre_restore_snapshot"
 fi

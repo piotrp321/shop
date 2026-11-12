@@ -80,7 +80,7 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   migracji obrazu `api` odrzucony przed odtworzeniem; kolejność `DROP`/`CREATE`/`pg_restore` z rolą właściciela; błąd każdego
   narzędzia kończy etap błędem), skryptów `restore.sh`, `backups.sh` i `rerun.sh` na atrapie `docker` grającej klaster dla
   `kubectl` (bez `tak`, bez `SNAPSHOT`, przy aktywnym Jobie, trwającej synchronizacji `shop` i snapshocie nowszym niż kod
-  nic się nie zmienia; nieudana kopia `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; kolejność kroków z Argo CD
+  nic się nie zmienia; nieudana kopia `pre-restore` bez `PRE_RESTORE=skip` niczego nie zmienia; identyfikator snapshotu `pre-restore` jest czytany z pełnego logu Joba, także przy długim; kolejność kroków z Argo CD
   (`root`, potem `shop`, na końcu `root`) i bez niego (zapamiętane repliki); błąd Joba odtworzenia zostawia aplikacje
   wyłączone i wypisuje krok oraz snapshot `pre-restore`; aplikacje bez `automated` w Argo CD; Job aktywny, który pojawił się po
   pierwszym sprawdzeniu, jest czekany i po limicie kończy odtworzenie przed tym, co rusza dane; czekanie najwyżej `activeDeadlineSeconds` Joba). Kopia w renderze: CronJob `backup` (harmonogram, `Forbid`, limity czasu
