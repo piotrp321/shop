@@ -327,16 +327,21 @@ wtedy, gdy serwer albo Alloy nie żyje. Alerty z treści logów (np. ostrzeżeni
 6. **agent** – po wdrożeniu sprawdza w Grafana Cloud liczbę aktywnych serii (darmowy plan: 10 tys.); przy przekroczeniu Grafana Cloud
    odrzuca nadmiar, a agent zawęża listę metryk w manifeście.
 7. **użytkownik** – w Grafana Cloud (Alerting → Contact points) dodaje punkt kontaktowy e-mail i ustawia go jako domyślny w drzewie
-   powiadomień. Alerty (`NodeDiskFull` ma `severity: warning`, reszta `critical`) idą tam bez dalszej konfiguracji.
+   powiadomień. Alerty to `NodeDiskFull` z `severity: warning` i reszta z `critical`; czy reguły z rulera trafiają do tego punktu
+   kontaktowego, potwierdza dopiero krok 8.
 8. **agent** – po wdrożeniu w Grafana Cloud (Alerting → Alert rules) widać siedem reguł grupy `shop-backup` i `shop-cluster`
    (źródło: `PrometheusRule` `shop-alerts` w przestrzeni `shop`, synchronizowany przez Alloy do rulera). **`BackupMissing` i
    `BackupVerifyMissing` odpalają od startu aż do pierwszej udanej kopii i weryfikacji (metryki jeszcze nie ma, reguła ma
    `absent`): to oczekiwane, nie awaria.** Po pierwszej nocnej kopii i weryfikacji gasną.
+   To też sprawdzenie od końca do końca: **użytkownik** potwierdza, że e-mail o `BackupMissing` przyszedł (po ok. 30 minutach
+   od synchronizacji reguły). Jeśli nie przyszedł, reguły z rulera mogą trafiać do Alertmanagera źródła danych, a nie do
+   Alertmanagera Grafany: punkt kontaktowy i drzewo powiadomień trzeba wtedy ustawić w tym Alertmanagerze (jego wybór jest na
+   stronie Contact points), a agent po zmianie sprawdza, że e-mail przychodzi.
 9. **użytkownik** – przed świadomym `restore` i planowanymi pracami (restart serwera, aktualizacja k3s, ćwiczenie odtworzenia)
    wycisza alerty w Grafana Cloud (Alerting → Silences): dla `restore` dopasowanie `alertname=~"WorkloadNotReady|Backup.*"`, dla
    innych prac `alertname="WorkloadNotReady"` (przy wyłączeniu całego serwera także `ClusterSilent`), na czas prac z zapasem.
    Wyciszenia nie zakłada automat. Po pracach sprawdza, że wyciszenie wygasło, albo je usuwa. Brak CRD `PrometheusRule`
-   (aplikacja `prometheus-crds` niezsynchronizowana) kończy synchronizację `shop` błędem, czyli widocznym `Degraded`, a nie
+   (aplikacja `prometheus-crds` niezsynchronizowana) kończy synchronizację `shop` błędem (operacja sync nieudana, aplikacja `OutOfSync`), a nie
    cichym brakiem reguł.
 
 Aktualizacja chartu `k8s-monitoring` to osobna zmiana: nowa wersja w `argocd/apps/monitoring.yaml`, sha256 archiwum w

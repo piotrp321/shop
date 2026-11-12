@@ -194,7 +194,7 @@ Zakres: `infra/k8s`, `docs/adr`, `CLAUDE.md`, `docs/vision.md`, `docs/features/d
   tylko dla node-exportera, w renderze dostęp do hosta ma tylko jego DaemonSet, żaden workload nie ma klasy priorytetu
   systemu, a każdy Service jest `ClusterIP` bez `externalIPs`; polityka Service dopuszcza tylko typ `ClusterIP`); budżet węzła liczy razem `shop` i `monitoring` (`spec.resources` zasobów `Alloy`,
   Deployment operatora, kube-state-metrics, DaemonSet node-exportera); `kubeconform` zna schemat `Alloy` (CRDs-catalog).
-- **O6. Alerty jako kod.** Reguły to `PrometheusRule` w chartcie `shop` (`templates/alerts.yaml`), renderowane, gdy
+- **O6. Alerty jako kod.** Reguły to `PrometheusRule` w chartcie `shop` (`templates/00-alerts.yaml`), renderowane, gdy
   `alerts.enabled` (`prod: true`, `ci: false`, bo smoke test nie ma CRD); brak CRD w klastrze z `alerts.enabled` daje
   widoczny błąd synchronizacji, nie ciche zniknięcie reguł. Alloy synchronizuje je do rulera Grafana Cloud. Metryki
   z kube-state-metrics: `kube_cronjob_status_last_successful_time`, `kube_job_status_condition` (warunek `Failed`)
