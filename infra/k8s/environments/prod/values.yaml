@@ -2,8 +2,7 @@
 # and of the memory limits up to 20 GB (checked by `make check`).
 
 global:
-  # Replace with the domain of the shop before the first deployment.
-  domain: shop.example.org
+  domain: worf.pl
   scheme: https
 
 # The images built by us are deployed by digest: image.digests.<app> is required for all four.

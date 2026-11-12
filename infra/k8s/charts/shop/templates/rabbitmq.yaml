@@ -11,6 +11,12 @@ ports:
 volumeMounts:
   - name: data
     mountPath: /var/lib/rabbitmq
+# Ubuntu 26.04 (containerd/containerd#12886): the AppArmor profile of containerd denies signals between the processes of
+# an exec, so the probe below (gosu + the Erlang CLI) hangs until its timeout and the pod never becomes ready. Unconfined
+# until the fix of containerd reaches k3s; the other containers keep the default profile (test_workloads AppArmorTest).
+securityContext:
+  appArmorProfile:
+    type: Unconfined
 readinessProbe:
   exec:
     # Runs as the server user: as root, an early probe on a fresh volume creates a root-owned .erlang.cookie.

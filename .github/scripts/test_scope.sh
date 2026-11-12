@@ -91,6 +91,36 @@ expect "a CI script" full
 new_repo infra; change infra/docker-compose.yml
 expect "infrastructure" full
 
+new_repo k8s-secrets; change infra/k8s/environments/prod/secrets/shop-origin-tls.yaml infra/k8s/environments/prod/sealed-secrets.pem
+expect "sealed secrets of the production environment" k8s
+
+new_repo k8s-chart; change infra/k8s/charts/shop/templates/api.yaml infra/k8s/scripts/status.sh infra/k8s/Makefile
+expect "the chart, the server scripts and the k8s Makefile" k8s
+
+new_repo k8s-docs; change infra/k8s/environments/prod/values.yaml infra/k8s/README.md docs/features/deploy/spec.md
+expect "k8s plus docs" k8s
+
+new_repo k8s-md; change infra/k8s/CLAUDE.md
+expect "markdown under infra/k8s only" docs
+
+new_repo k8s-compose; change infra/k8s/environments/prod/values.yaml infra/docker-compose.yml
+expect "k8s plus compose" full
+
+new_repo k8s-app; change infra/k8s/charts/shop/values.yaml apps/api/src/A.php
+expect "k8s plus app code" full
+
+new_repo k8s-tooling; change infra/k8s/charts/shop/values.yaml tools/rulesets/epic.json
+expect "k8s plus tooling" full
+
+new_repo k8s-ci; change infra/k8s/charts/shop/values.yaml .github/workflows/deploy.yml
+expect "k8s plus a workflow" full
+
+new_repo k8s-prefix; change infra/k8s-extra/run.sh
+expect "a directory named like infra/k8s" full
+
+new_repo k8s-rename; mkdir -p "$repo/infra/k8s"; git -C "$repo" mv apps/api/src/A.php infra/k8s/A.php; change
+expect "code file renamed into infra/k8s" full
+
 new_repo makefile; change Makefile
 expect "the root Makefile" full
 

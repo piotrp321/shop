@@ -202,7 +202,7 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   bezpieczeństwa wysyłają aplikacje (`docs/features/hardening/spec.md`, D10).
 - `clientIpHeader` (domyślnie puste) trafia jako `CLIENT_IP_HEADER` do `api` i `store`: nagłówek z adresem klienta,
   po którym liczą się limity API (`docs/features/hardening/spec.md`, D2 i D3). `prod` ma `CF-Connecting-IP`, który
-  Cloudflare zawsze nadpisuje, a `ipAllowList` nie wpuszcza nikogo poza Cloudflare na żaden host (także `api.`
+  ustawia Cloudflare (żądanie z nagłówkiem podanym przez klienta Cloudflare odrzuca, błąd 1000), a `ipAllowList` nie wpuszcza nikogo poza Cloudflare na żaden host (także `api.`
   i `auth.`). `clientIpHeader` przy `ipAllowList.enabled: false` kończy render błędem, chyba że profil potwierdza to
   wartością `clientIpHeaderWithoutAllowList: true` (tylko pomiar na lokalnym klastrze); to potwierdzenie razem
   z `image.requireDigests: true` (obrazy wydania) też kończy render błędem.
@@ -377,7 +377,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
 
 - Cele `infra/k8s/Makefile` działają z komputera użytkownika (narzędzia w kontenerach) i łączą się z serwerem po SSH
   (`HOST=user@adres`):
-  - `bootstrap` (`SEALED_KEY_FILE=<kopia klucza>` opcjonalnie): na czystym Ubuntu 24.04 LTS przypięta wersja k3s (≥ v1.36,
+  - `bootstrap` (`SEALED_KEY_FILE=<kopia klucza>` opcjonalnie): na czystym Ubuntu 26.04 LTS przypięta wersja k3s (≥ v1.36,
     wymaganie chartu; instalator z tagu wydania), `vm.max_map_count=262144`, ufw (SSH i API k3s oraz sieci podów i usług;
     D6), automatyczne poprawki bezpieczeństwa, Traefik z `externalTrafficPolicy: Local` (`HelmChartConfig`), Argo CD
     (przypięty chart instalowany przez kontroler Helma k3s), Sealed Secrets (z kluczem z kopii, jeśli jest, stosowanym
@@ -421,7 +421,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   Chart `k8s-monitoring` renderuje się z wartościami z manifestu `monitoring` (`kubeconform` ze schematem `Alloy`; dostęp do
   sekretów, lista metryk, budżet węzła z `shop`, maskowanie logów w prawdziwym Alloy: `docs/features/deploy-ops/spec.md`,
   „Smoke test i check”). `server-bootstrap.sh`
-  przechodzi `shellcheck` i dwa przebiegi w kontenerze Ubuntu 24.04 bez k3s (atrapy `k3s`, `apt-get`, `ufw`, `sysctl` i
+  przechodzi `shellcheck` i dwa przebiegi w kontenerze Ubuntu 26.04 bez k3s (atrapy `k3s`, `apt-get`, `ufw`, `sysctl` i
   instalatora; prawdziwe są sprawdzenia, zapisy plików i idempotencja), z odmową bez roota i na innym systemie przed
   zmianami. Ostatni krok sprawdza gitem na hoście, że `.gitignore` nie ignoruje certyfikatu
   `environments/prod/sealed-secrets.pem`. Główny `make check` woła `check` chartu, więc działa on w wymaganym jobie
@@ -498,7 +498,7 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
    bez użytkowników demo); `initialize` przy mieszanym stanie kończy się błędem bez zmian (test w smoke).
 8. `seal-secrets.sh` na ścieżce błędu nie zapisuje plików, a ponowne uruchomienie nie zmienia istniejących sekretów;
    po dodaniu certyfikatu do repo `check` wymaga zaszyfrowanej wartości dla każdego klucza `init-env.sh`.
-9. `bootstrap` przechodzi `shellcheck`, uruchomiony dwa razy w kontenerze z Ubuntu 24.04 (bez k3s) nie psuje
+9. `bootstrap` przechodzi `shellcheck`, uruchomiony dwa razy w kontenerze z Ubuntu 26.04 (bez k3s) nie psuje
    konfiguracji; cele z potwierdzeniem bez `tak` niczego nie zmieniają.
 10. Runbook prowadzi od pustego serwera do działającego środowiska (z próbami rulesetów, Access, poczty
     i `ipAllowList`); wykonuje się go na serwerze, poza AO, z dostępami od użytkownika.
@@ -521,3 +521,11 @@ Specyfikacja: `docs/features/deploy-ops/spec.md` (O1, O2, O3, O4); decyzja: `doc
   sprawdzają testy na atrapie `kubectl`, a serwer dopiero ćwiczenie odtworzenia z runbooka (zgoda użytkownika). Backup VPS-a
   od OVH działa od pierwszego dnia. Prawdziwe dane i publiczny start dopiero po DEPLOY-OPS. Klucz R2 w klastrze pozwala usunąć kopie (token tylko do jednego
   bucketu; kopie niezmienne poza zakresem demo).
+- **Brak kopii poza serwerem do czasu DEPLOY-OPS.** Dane da się odtworzyć z seedów, a backup VPS-a od OVH działa od
+  pierwszego dnia; prawdziwe dane i publiczny start dopiero po DEPLOY-OPS.
+- **AppArmor containerd na Ubuntu 26.04.** k3s v1.36 oficjalnie wspiera Ubuntu 26.04 (matryca SUSE), ale przy nakładaniu
+  profili (profile stacking) profil `cri-containerd.apparmor.d` blokuje sygnały między
+  procesami uruchomionymi przez exec (containerd/containerd#12886, otwarte). Dotyczy exec probe usług
+  i `kubectl exec` w `reinitialize` i `create-admin`: oczekiwany jest szum `DENIED` w logach jądra, a zgłoszone awarie
+  dotyczą procesu zabijającego własne dziecko w sesji exec. Runbook (sekcja 6) sprawdza to na serwerze. Gdyby coś
+  przestało działać, obejściem jest `securityContext.appArmorProfile: Unconfined` dla dotkniętego podu.
