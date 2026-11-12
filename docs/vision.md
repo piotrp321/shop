@@ -339,10 +339,9 @@ Specyfikacja: `docs/features/deploy/spec.md`, uruchomienie krok po kroku: `infra
 
 Kolejne kroki, osobne zgłoszenia:
 
-- **DEPLOY-OPS** (#178): weryfikacja kopii zapasowych i ich odtwarzanie, monitoring (nocna kopia do Cloudflare R2 już jest).
-  Obserwowalność przez Grafana Cloud (darmowy plan) – logi i metryki przez agenta Grafana Alloy w klastrze, bez własnego Prometheusa
-  i Lokiego (trace'y przez Sentry: #180). Musi być skończone przed przełączeniem na publiczny sklep albo przed pierwszymi
-  prawdziwymi danymi.
+- **DEPLOY-OPS** (#178): alerty w Grafana Cloud (nieudana albo brakująca kopia i weryfikacja, zajęty dysk węzła, brak sygnału
+  z klastra, niegotowy workload sklepu). Kopie, ich weryfikacja, odtwarzanie oraz logi i metryki klastra w Grafana Cloud już są.
+  Musi być skończone przed przełączeniem na publiczny sklep albo przed pierwszymi prawdziwymi danymi.
 - **Tryb publicznego demo** (#179): dane resetowane co noc z danych demo, konta demo podane na stronie logowania, limity
   uploadów.
 - **Sentry** (#180): Sentry SaaS (darmowy plan) dla API, store i admin, także Sentry Performance.
