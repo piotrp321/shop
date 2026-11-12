@@ -33,7 +33,8 @@ selftest:
 	sh scripts/selftest.sh
 
 # The smoke test on an empty k3d cluster with the production images built here (a few minutes; the first run pulls
-# the images of the services). After create-admin it makes a backup: a Garage of its own in the namespace smoke-backup holds the
+# the images of the services). The images of each revision are checked in the node after the import and imported again
+# when missing (scripts/import-images.sh). After create-admin it makes a backup: a Garage of its own in the namespace smoke-backup holds the
 # restic repository, a Job from the CronJob backup runs, and the snapshot nightly (both dumps, the objects, the manifest) is
 # checked; the time of that phase is printed. Then the restore on an empty cluster: the namespace shop is deleted with its volumes,
 # the chart installed again and make restore brings the snapshot back (checked: the administrator, the customer, the numbers of
@@ -62,7 +63,7 @@ monitoring-smoke:
 # data, the stocks raised, a warm-up, the ramp to saturation and the steady run with a checkout (the k6 scripts of
 # ../../load; tens of minutes). make -C infra/k8s load LOAD_OUT=<an existing directory outside the repository> (required).
 # Exit code 0: measured; 2: the environment is not fit (no LOAD_OUT, too few CPUs or too little memory in the Docker VM,
-# pods not ready), with a message. The cluster is deleted on every exit. Needs only Docker; see scripts/load.sh for the
+# images missing in the node after three imports, pods not ready), with a message. The cluster is deleted on every exit. Needs only Docker; see scripts/load.sh for the
 # settings (a short run: RAMP_STEPS=2 RAMP_STEP_SECONDS=10 STEADY_SECONDS=20 WARMUP_SECONDS=10 LOAD_COOLDOWN=5).
 load:
 	sh scripts/load.sh
