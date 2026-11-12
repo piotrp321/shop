@@ -70,8 +70,9 @@ na `-FIXES` (ID i jego wzorzec jak w `next_epic.py`). Na raz istnieje jeden epik
   repo (`~/.claude/scheduled-tasks/`).
 - **Warunki startu.** Przy pierwszym niespełnionym przebieg kończy się bez zmian i bez worktree, z pushem z powodem
   (przebieg ręczny: komunikat w rozmowie):
-  - nie działa proces AO (`pgrep -f 'ao run'` nic nie zwraca) ani przegląd po merge'u (brak projektu Compose
-    `sweep-*` w `docker compose ls`);
+  - nie działa proces AO (`pgrep -f -- '-m orchestrator --home [^ ]+ run( |$)'` nic nie zwraca; wzorzec trafia
+    w `python3 -m orchestrator --home … run` i jego wrappery, a nie w monitory `watch` sesji `/ao-run`) ani przegląd
+    po merge'u (brak projektu Compose `sweep-*` w `docker compose ls`);
   - `night_queue.py room --hours 2` ze stanem z `get_usage` zwraca `ok`. Brak narzędzia `get_usage` to powód
     „brak stanu limitów”;
   - `gh auth status` i `git fetch origin main` się udają.

@@ -213,7 +213,8 @@ w kolejności; pierwszy niespełniony kończy tryb bez worktree, gałęzi i zmia
 „Epik <ID> #<nr>: przygotowanie nie ruszyło (<powód>). Ręcznie: /prepare-epic <nr>” i tym samym w rozmowie:
 
 1. `python3 "$G" origin <nr>` ma kod 0 (wyjście `{run_dir, id, issues, prepare}`; zapamiętaj `run_dir`).
-2. `pgrep -f 'ao run'` nic nie zwraca i `docker compose ls` nie ma projektu `sweep-*` (sprawdzone od nowa).
+2. `pgrep -f -- '-m orchestrator --home [^ ]+ run( |$)'` nic nie zwraca i `docker compose ls` nie ma projektu
+   `sweep-*` (sprawdzone od nowa, ten sam wzorzec co krok 2 `/groom`).
 3. `get_usage` i `python3 "$NQ" room --hours 2` z obiektem `plan` (jak krok 2 `/groom`) zwraca `ok`; bez `get_usage`:
    „brak stanu limitów”. Obiekt `plan` i `date -Iseconds` zapiszesz w `state.json` jako `usage_start`.
 4. `python3 "$NQ" ahead` ma `full: false` (pełna noc: powód „noc pełna”, bez pytania o potwierdzenie).
