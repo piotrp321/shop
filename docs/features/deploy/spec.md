@@ -199,7 +199,7 @@ Cztery obrazy `ghcr.io/piotrp321/shop/<app>:<sha commita>` (`api`, `store`, `adm
   bezpieczeństwa wysyłają aplikacje (`docs/features/hardening/spec.md`, D10).
 - `clientIpHeader` (domyślnie puste) trafia jako `CLIENT_IP_HEADER` do `api` i `store`: nagłówek z adresem klienta,
   po którym liczą się limity API (`docs/features/hardening/spec.md`, D2 i D3). `prod` ma `CF-Connecting-IP`, który
-  Cloudflare zawsze nadpisuje, a `ipAllowList` nie wpuszcza nikogo poza Cloudflare na żaden host (także `api.`
+  ustawia Cloudflare (żądanie z nagłówkiem podanym przez klienta Cloudflare odrzuca, błąd 1000), a `ipAllowList` nie wpuszcza nikogo poza Cloudflare na żaden host (także `api.`
   i `auth.`). `clientIpHeader` przy `ipAllowList.enabled: false` kończy render błędem, chyba że profil potwierdza to
   wartością `clientIpHeaderWithoutAllowList: true` (tylko pomiar na lokalnym klastrze); to potwierdzenie razem
   z `image.requireDigests: true` (obrazy wydania) też kończy render błędem.
