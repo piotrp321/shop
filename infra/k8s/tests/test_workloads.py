@@ -195,3 +195,25 @@ class WorkloadsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AppArmorTest(unittest.TestCase):
+    """containerd/containerd#12886 on Ubuntu 26.04: the AppArmor profile of containerd denies signals between the
+    processes of an exec probe. The readiness probe of RabbitMQ (gosu + the Erlang CLI) then times out, so its container
+    runs unconfined; every other container keeps the default profile."""
+
+    UNCONFINED = {"rabbitmq"}
+
+    def test_only_the_listed_containers_run_without_the_apparmor_profile(self):
+        for case in ("prod", "ci"):
+            for kind in ("Deployment", "StatefulSet", "Job", "CronJob"):
+                for workload in of_kind(case, kind):
+                    spec = pod_spec(workload)
+                    for container in spec["containers"] + spec.get("initContainers", []):
+                        profile = container.get("securityContext", {}).get("appArmorProfile")
+                        where = f"{case} {kind} {workload['metadata']['name']} {container['name']}"
+                        if container["name"] in self.UNCONFINED and kind == "StatefulSet":
+                            self.assertEqual({"type": "Unconfined"}, profile, where)
+                        else:
+                            self.assertIsNone(profile, where)
+                    self.assertNotIn("appArmorProfile", spec.get("securityContext", {}), f"{case} {kind} pod")
