@@ -132,21 +132,33 @@ spec:
                 replace    = "[REDACTED]"
               }
 
-              // The value of a key in JSON ("key":"value", also a list with one value) and in logfmt (key="value").
+              // A list of two or more strings under a key (headers: "Set-Cookie":["a","b"]): all of them.
               stage.replace {
-                expression = `(?i)(?:^|[^a-z0-9_-])"?(?:(?:[a-z0-9]+[_-])*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)(?:[_-][a-z0-9]+)*|code(?:_id|_verifier)?|username)"?\s*[:=]\s*\[?\s*"((?:[^"\\]|\\.)*)"`
+                expression = `(?i)(?:^|[^a-z0-9_-])"?(?:[a-z0-9_-]*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)[a-z0-9_-]*|code(?:_id|_verifier)?|username)"?\s*[:=]\s*\[\s*("(?:[^"\\]|\\.)*"(?:\s*,\s*"(?:[^"\\]|\\.)*")+)\s*\]`
+                replace    = "\"[REDACTED]\""
+              }
+
+              // A number under a key of a secret ("password":12345; not code: the code of a response stays).
+              stage.replace {
+                expression = `(?i)(?:^|[^a-z0-9_-])"(?:[a-z0-9_-]*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)[a-z0-9_-]*)"\s*:\s*(-?[0-9][0-9.eE+-]*)`
+                replace    = "[REDACTED]"
+              }
+
+              // The value of a key in JSON ("key":"value", also a list with one value, as above for more) and in logfmt (key="value").
+              stage.replace {
+                expression = `(?i)(?:^|[^a-z0-9_-])"?(?:[a-z0-9_-]*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)[a-z0-9_-]*|code(?:_id|_verifier)?|username)"?\s*[:=]\s*\[?\s*"((?:[^"\\]|\\.)*)"`
                 replace    = "[REDACTED]"
               }
 
               // The same inside a string of JSON (the quotes are escaped).
               stage.replace {
-                expression = `(?i)(?:^|[^a-z0-9_-])\\"(?:(?:[a-z0-9]+[_-])*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)(?:[_-][a-z0-9]+)*|code(?:_id|_verifier)?|username)\\"\s*:\s*\\"([^"\\]*)\\"`
+                expression = `(?i)(?:^|[^a-z0-9_-])\\"(?:[a-z0-9_-]*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)[a-z0-9_-]*|code(?:_id|_verifier)?|username)\\"\s*:\s*\\"([^"\\]*)\\"`
                 replace    = "[REDACTED]"
               }
 
               // The value of a key in a query string, a form and logfmt without quotes (key=value).
               stage.replace {
-                expression = `(?i)(?:^|[^a-z0-9_-])(?:(?:[a-z0-9]+[_-])*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)(?:[_-][a-z0-9]+)*|code(?:_id|_verifier)?|username)=([^&\s"';,)}\]\\]+)`
+                expression = `(?i)(?:^|[^a-z0-9_-])(?:[a-z0-9_-]*(?:password|passwd|secret|token|session|api[_-]?key|authorization|cookie)[a-z0-9_-]*|code(?:_id|_verifier)?|username)=([^&\s"';,)}\]\\]+)`
                 replace    = "[REDACTED]"
               }
 
