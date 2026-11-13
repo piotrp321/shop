@@ -9,14 +9,16 @@
   night_queue.py [--repo DIR] [--state DIR] close [--reason TEXT]
   night_queue.py [--repo DIR] [--state DIR] next          (stdin: the `plan` object of get_usage)
   night_queue.py [--repo DIR] [--state DIR] ahead
-  night_queue.py [--repo DIR] [--state DIR] gate [--dir DIR] [--stack-gib N]  (stdin: the `plan` object of get_usage)
+  night_queue.py [--repo DIR] [--state DIR] gate [--dir DIR [--reserve] [--claim TOKEN] [--force] [--takeover]]
+                 [--stack-gib N] [--ao-root DIR]           (stdin: the `plan` object of get_usage)
+  night_queue.py [--repo DIR] [--state DIR] release <dir> --claim TOKEN
   night_queue.py room --hours H [--max-percent P]         (stdin: the `plan` object of get_usage)
 
 scope: reads the `Zakres:` line from the header of an epic spec (the lines before the first `## ` heading) and prints
 one JSON line `{"scope": [path, ...]}`, exit 0. A missing, doubled or unreadable line, or an unreadable file, prints
 the reason to stderr and exits 2.
 
-Shared state: start, done, approve, close, next and gate hold the lock <state>/gate.lock
+Shared state: start, done, approve, close, next, gate and release hold the lock <state>/gate.lock
 (parallel_gate.state_lock, at most 120 s; then exit 2 `blokada bramki zajęta` without a write) for their whole
 read-decide-write. night.json and claims.json are replaced atomically (temp file and os.replace).
 
@@ -60,13 +62,15 @@ ahead: reads the board and prints {"epics": [{dir, id, issue, title, tasks, minu
 "full": <bool>}: prepared epics not in progress. `full` is true when the sum reaches the night (540 minutes), or, when
 nothing is measured, when there is at least one epic.
 
-gate: the parallel epics gate (docs/features/parallel-work/spec.md, „Bramka”), read-only, under the lock
-<state>/gate.lock. Epics in progress: board epics with an `origin/epic/<dir>` branch whose final PR epic/<dir> -> main
-is not merged (merged ones go to `merged_open`), plus valid reservations in <state>/claims.json. Active: reservations
-and branch epics whose last measurements.jsonl event is `start` or that have none. Files of an epic: its `Zakres:` on
+gate: the parallel epics gate (docs/features/parallel-work/spec.md, „Bramka”, „Rezerwacja”). Epics in progress: board
+epics with an `origin/epic/<dir>` branch whose final PR epic/<dir> -> main is not merged (merged ones go to
+`merged_open`), plus valid reservations (30 minutes) in <state>/claims.json except the caller's own one (--dir with the
+--claim token), which is neither in progress, active nor listed for it. Active: reservations and branch epics whose
+last measurements.jsonl event is `start` or that have none. Files of an epic: its `Zakres:` on
 origin/main plus docs/features/<dir> plus, with a branch, `git diff --name-only origin/main...origin/epic/<dir>`.
 Without --dir the candidates are the prepared, unreserved board epics in board order; with --dir only that epic
-(off the board, merged, in progress or not prepared: `epic` null with the reason). Steps against the epics in progress
+(off the board, merged, not prepared: `epic` null with the reason; a valid reservation of another token, also without
+--claim: `epik X zarezerwowany albo w toku`). Steps against the epics in progress
 other than the candidate: none -> pass; two active -> wait; dependency on an open epic -> skip; no readable scope:
 candidate -> skip, epic in progress (also without spec.md on origin/main) -> wait; a common path that is not allowed (parallel_gate.is_allowed) -> skip with
 the blocking paths of all epics in progress; free Docker memory below one stack (--stack-gib, default 6) -> wait;
@@ -77,11 +81,25 @@ wait stops. Prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes
 "merged_open": [{dir, id, issue}], "skipped": [{issue, id, reason, paths}], "docker": {total_mib, other_mib, ao_mib,
 free_mib, required_mib} | null}, exit 0, and appends {at, dir_arg, epic, reason, skipped: [{id, reason, paths}]} to
 <state>/gate.jsonl.
+--reserve and --claim need --dir (else exit 2). Without --reserve the gate reserves nothing. --reserve: when the
+candidate passes, parallel_gate.reserve under the same lock (`reserved: true`, `claim`: the token; the --claim token
+renews its own reservation). With --force also after a wait or skip of the steps (`epic` set, the gate's `reason`
+kept); --force never overrides the refusals of the epic itself (off the board, merged, not prepared, reserved).
+Resume: --dir of an epic in progress from its branch runs no steps and reserves nothing. Refusals: the AO process of the
+epic runs (parallel_gate.orchestrator_running on <ao-root>/ao-<dir>, --ao-root default ~/.local/state):
+`epik X prowadzi działający proces AO`, whatever the flags; a recorded owner other than --claim: `epik X prowadzi
+inna sesja`, unless --takeover (a new owner token). Otherwise `resumed: true`, `epic` (tasks and minutes null without a
+readable plan.md on origin/main), `claim`: the owner token: --claim when it is the owner, else a new
+owner recorded in claims.json (the --claim token when it holds a valid reservation of the epic, else a fresh one).
+--takeover outside a resume is ignored.
+
+release: removes the reservation of <dir> with the --claim token and prints {"released": <bool>}, exit 0.
 
 Exit codes: 0 success; 1 a `git`/`gh` command failed or returned unexpected JSON, or a bad --hours of room; 2 usage
 and state errors (also an unreadable claims.json, a busy gate lock and a bad --stack-gib).
 """
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -673,13 +691,16 @@ class GateContext:
 
     in_progress: [{dir, id, issue, branch, active}]: board epics with an `origin/epic/<dir>` branch and no merged final
     PR (active when their last measurements.jsonl event is `start` or they have none), then valid claims of other
-    sessions (always active). Files and task counts are read lazily and cached; step 6 stores its Docker memory
-    state in `docker` (None when not measured or failed).
+    sessions (always active). `claims`: the valid claims of claims.json without the caller's own one, `own_claim`:
+    whether the caller's token holds a valid claim of its `--dir`, `owners`: {dir: token} of claims.json. Files and
+    task counts are read lazily and cached; step 6 stores its Docker memory state in `docker` (None when not measured
+    or failed).
     """
 
-    def __init__(self, run, now, board, measured, in_progress, merged_open):
+    def __init__(self, run, now, board, measured, in_progress, merged_open, claims=(), owners=None, own_claim=False):
         self.run, self.now, self.board, self.measured = run, now, board, measured
         self.in_progress, self.merged_open = in_progress, merged_open
+        self.claims, self.owners, self.own_claim = list(claims), dict(owners or {}), own_claim
         self.docker = None
         self._files, self._tasks, self._fetched, self._on_main = {}, {}, False, None
 
@@ -730,10 +751,16 @@ def _final_pr_merged(run, directory):
     return bool(found)
 
 
-def gate_context(run, state_dir, now):
-    """Reads the state (measurements, claims) and the board; the caller holds parallel_gate.state_lock."""
+def gate_context(run, state_dir, now, own=None):
+    """Reads the state (measurements, claims) and the board; the caller holds the gate lock.
+
+    own: (dir, token) of the caller; a valid claim with exactly that dir and token is its own reservation, which is
+    neither in progress nor active for it. Every other claim, also one of the same dir, belongs to another session.
+    """
     events = read_events(state_dir)
-    claims = parallel_gate.valid_claims(parallel_gate.read_claims(state_dir), now)
+    data = parallel_gate.read_claims(state_dir)
+    valid = parallel_gate.valid_claims(data, now)
+    claims = [c for c in valid if own is None or (c['dir'], c['claim']) != tuple(own)]
     board = next_epic.board_epics(run)
     in_progress, merged_open = [], []
     for e in board:
@@ -753,7 +780,8 @@ def gate_context(run, state_dir, now):
         entry = next((e for e in board if e['dir'] == c['dir']), None)
         in_progress.append({'dir': c['dir'], 'id': entry['id'] if entry else c['dir'].upper(),
                             'issue': entry['number'] if entry else None, 'branch': False, 'active': True})
-    return GateContext(run, now, board, measurements(events), in_progress, merged_open)
+    return GateContext(run, now, board, measurements(events), in_progress, merged_open, claims=claims,
+                       owners=data['owners'], own_claim=len(claims) < len(valid))
 
 
 def check_room(active):
@@ -826,6 +854,13 @@ def check_usage(ctx, forecast, active, usage_now):
     return None
 
 
+def _epic_of(ctx, entry):
+    """The `epic` of the gate output for a board entry: {dir, id, issue, title, tasks, minutes}."""
+    tasks = ctx.tasks(entry['dir'])
+    return {'dir': entry['dir'], 'id': entry['id'], 'issue': entry['number'], 'title': entry['title'],
+            'tasks': tasks, 'minutes': estimate(ctx.measured, tasks)['minutes']}
+
+
 def evaluate(ctx, entry, usage_now, stack_mib):
     """Gate steps 1-7 for one prepared board entry against the epics in progress.
 
@@ -838,14 +873,13 @@ def evaluate(ctx, entry, usage_now, stack_mib):
     def verdict(outcome, reason=None, paths=()):
         return {'outcome': outcome, 'reason': reason, 'paths': list(paths), 'epic': None}
 
-    def passed(forecast):
+    def passed():
         result = verdict(PASS)
-        result['epic'] = {'dir': entry['dir'], 'id': entry['id'], 'issue': entry['number'], 'title': entry['title'],
-                          'tasks': ctx.tasks(entry['dir']), 'minutes': forecast['minutes']}
+        result['epic'] = _epic_of(ctx, entry)
         return result
 
     if not others:
-        return passed(estimate(ctx.measured, ctx.tasks(entry['dir'])))
+        return passed()
     reason = check_room(active)
     if reason:
         return verdict(WAIT, reason)
@@ -862,32 +896,43 @@ def evaluate(ctx, entry, usage_now, stack_mib):
     reason = check_usage(ctx, forecast, active, usage_now)
     if reason:
         return verdict(WAIT, reason)
-    return passed(forecast)
+    return passed()
+
+
+def _conflict(name):
+    return 'epik %s zarezerwowany albo w toku' % name
 
 
 def _refusal(ctx, directory):
-    """(reason, None) when `--dir` names no candidate (off the board, merged, in progress, not prepared), else
-    (None, board entry)."""
+    """(reason, None) when `--dir` names neither a candidate nor an epic to resume (off the board, merged, reserved by
+    another session, not prepared), else (None, board entry): a prepared candidate or an epic in progress from its
+    branch (state `in_progress`, resumed by gate_resume)."""
     entry = next((e for e in ctx.board if e['dir'] == directory), None)
     if entry is None:
         return directory.upper() + ' nie ma na tablicy', None
     if any(m['dir'] == directory for m in ctx.merged_open):
         return '%s ma zmergowany końcowy PR' % entry['id'], None
-    if entry['state'] == 'in_progress':
-        return '%s jest w toku' % entry['id'], None
-    if entry['state'] != 'prepared':
+    if any(c['dir'] == directory for c in ctx.claims):
+        return _conflict(entry['id']), None
+    if entry['state'] not in ('prepared', 'in_progress'):
         return entry['reason'], None
     return None, entry
 
 
 def gate_decision(ctx, dir_arg, usage_now, stack_mib):
-    """The gate result for `--dir` (or the first board candidate that passes); writes nothing."""
+    """The gate result for `--dir` (or the first board candidate that passes); writes nothing.
+
+    Returns (result, entry). `entry` is the board entry of `--dir` when the gate steps ran on it (a prepared candidate)
+    or when it is in progress from its branch (no steps ran: the caller resumes it with gate_resume); otherwise None.
+    """
     result = {'epic': None, 'reason': None, 'reserved': False, 'claim': None, 'resumed': False, 'parallel_with': [],
               'active': [p['dir'] for p in ctx.in_progress if p['active']],
               'in_progress': [{k: p[k] for k in ('dir', 'id', 'issue')} for p in ctx.in_progress],
               'merged_open': ctx.merged_open, 'skipped': [], 'docker': None}
     if dir_arg is not None:
         result['reason'], entry = _refusal(ctx, dir_arg)
+        if entry is not None and entry['state'] == 'in_progress':
+            return result, entry
         candidates = [entry] if entry else []
     else:
         claimed = {p['dir'] for p in ctx.in_progress}
@@ -906,6 +951,44 @@ def gate_decision(ctx, dir_arg, usage_now, stack_mib):
             result['reason'] = found['reason']
         break
     result['docker'] = ctx.docker
+    return result, (candidates[0] if dir_arg is not None and candidates else None)
+
+
+def gate_resume(ctx, state_dir, result, entry, claim, takeover, ao_root):
+    """Resume of `entry`, in progress from its branch: no gate steps and no reservation, only the owner check
+    (spec parallel-work, „Wznowienie”). Records the owner token in claims.json when it changes."""
+    name = entry['id']
+    if parallel_gate.orchestrator_running(os.path.join(ao_root, 'ao-%s' % entry['dir'])):
+        result['reason'] = 'epik %s prowadzi działający proces AO' % name
+        return result
+    current = ctx.owners.get(entry['dir'])
+    if current is None or current != claim:
+        if current is not None and not takeover:
+            result['reason'] = 'epik %s prowadzi inna sesja' % name
+            return result
+        # A new owner: the caller's own valid reservation becomes the owner token, else a fresh token.
+        claim = parallel_gate.claim_to_owner(state_dir, entry['dir'], claim if ctx.own_claim else None, ctx.now)
+    epic_ = {'dir': entry['dir'], 'id': name, 'issue': entry['number'], 'title': entry['title'], 'tasks': None,
+             'minutes': None}
+    if ctx.on_main(entry['dir'], 'plan.md'):
+        with contextlib.suppress(StateError):
+            epic_ = _epic_of(ctx, entry)
+    result.update(epic=epic_, resumed=True, claim=claim, parallel_with=[p['dir'] for p in ctx.others(entry['dir'])])
+    return result
+
+
+def gate_reserve(ctx, state_dir, result, entry, claim, force):
+    """Reservation of the `--dir` candidate `entry` after the gate steps: when it passed, or with `force` despite a
+    wait or skip of the steps (the gate's reason stays in the result). A claim of another token is a conflict."""
+    if result['epic'] is None and not force:
+        return result
+    epic_ = result['epic'] or _epic_of(ctx, entry)
+    try:
+        token = parallel_gate.reserve(state_dir, entry['dir'], ctx.now, claim)
+    except parallel_gate.ClaimConflict:
+        result.update(epic=None, reason=_conflict(entry['id']))
+        return result
+    result.update(epic=epic_, reserved=True, claim=token, parallel_with=[p['dir'] for p in ctx.others(entry['dir'])])
     return result
 
 
@@ -928,12 +1011,25 @@ def cmd_gate(args, run, now, stdin):
         stack_gib = None
     if stack_gib is None or not 0 < stack_gib < float('inf'):
         raise StateError('--stack-gib musi być liczbą GiB większą od 0, jest %r' % args.stack_gib)
+    if args.dir is None and (args.reserve or args.claim is not None):
+        raise StateError('--reserve i --claim wymagają --dir')
     usage_now = _read_usage(stdin)
     with state_lock(args.state):
-        ctx = gate_context(run, args.state, now)
-        result = gate_decision(ctx, args.dir, usage_now, stack_gib * 1024)
+        ctx = gate_context(run, args.state, now, own=(args.dir, args.claim) if args.claim is not None else None)
+        result, entry = gate_decision(ctx, args.dir, usage_now, stack_gib * 1024)
+        if entry is not None and entry['state'] == 'in_progress':
+            result = gate_resume(ctx, args.state, result, entry, args.claim, args.takeover, args.ao_root)
+        elif entry is not None and args.reserve:
+            result = gate_reserve(ctx, args.state, result, entry, args.claim, args.force)
         append_gate_log(args.state, now, args.dir, result)
     print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
+def cmd_release(args, run, now, stdin):
+    with state_lock(args.state):
+        released = parallel_gate.release(args.state, args.dir, args.claim)
+    print(json.dumps({'released': released}))
     return 0
 
 
@@ -948,6 +1044,9 @@ def main(argv=None, run=None, now=None, stdin=None):
     start_parser.add_argument('dir')
     start_parser.add_argument('--claim')
     sub.add_parser('done', help='record the end of an epic and print its measurement').add_argument('dir')
+    release_parser = sub.add_parser('release', help='remove the own reservation of an epic')
+    release_parser.add_argument('dir')
+    release_parser.add_argument('--claim', required=True)
     propose_parser = sub.add_parser('propose', help='propose the list of epics for the night')
     approve_parser = sub.add_parser('approve', help='approve the list of epics for the night')
     for p in (propose_parser, approve_parser):
@@ -960,6 +1059,11 @@ def main(argv=None, run=None, now=None, stdin=None):
     gate_parser = sub.add_parser('gate', help='the epic that may start now next to the epics in progress')
     gate_parser.add_argument('--dir')
     gate_parser.add_argument('--stack-gib', default=str(DEFAULT_STACK_GIB))
+    gate_parser.add_argument('--reserve', action='store_true')
+    gate_parser.add_argument('--claim')
+    gate_parser.add_argument('--force', action='store_true')
+    gate_parser.add_argument('--takeover', action='store_true')
+    gate_parser.add_argument('--ao-root', default='~/.local/state')
     room_parser = sub.add_parser('room', help='room in the usage limits for a review after a merge')
     room_parser.add_argument('--hours')
     room_parser.add_argument('--max-percent', default='80')
@@ -976,7 +1080,7 @@ def main(argv=None, run=None, now=None, stdin=None):
     try:
         return {'start': cmd_start, 'done': cmd_done, 'propose': cmd_propose, 'approve': cmd_approve,
                 'close': cmd_close, 'next': cmd_next, 'ahead': cmd_ahead,
-                'gate': cmd_gate}[args.command](args, run, now, stdin)
+                'gate': cmd_gate, 'release': cmd_release}[args.command](args, run, now, stdin)
     except (StateError, parallel_gate.StateFileError, parallel_gate.LockTimeout) as e:
         print('night_queue: %s' % e, file=sys.stderr)
         return 2
