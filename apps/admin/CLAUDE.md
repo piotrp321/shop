@@ -21,7 +21,11 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - `src/auth/` – logowanie OIDC (`oidc-client-ts`): `config.ts` (adresy przez `readUrl`), `userManager.ts`
   (tokeny w pamięci).
 - `src/stores/` – store'y Pinia (`auth` z pracownikiem z `GET /api/v1/admin/me`).
-- `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania.
+- `src/router/` – trasy i guard: każda trasa poza `/auth/callback` wymaga zalogowania. `/orders` i `/orders/:orderId` mają
+  strażnika (`beforeEnter` na ścieżce `orders`, `canViewOrders` z `src/orders/permissions.ts`): rola bez dostępu trafia na
+  pulpit z `history.state.denied`, który pokazuje „Nie masz dostępu do tej strony.” (`useAccessDenied`: odczyt i czyszczenie
+  znacznika w tym samym wpisie historii, więc przeładowanie komunikatu nie powtarza); gdy `/me` się nie wczyta, trasa jest
+  przepuszczana (dostęp sprawdza API).
 - `src/layout/` – menu boczne (pozycje „Promocje” i „Kody rabatowe” widoczne dla każdego pracownika, pozycja „Zamówienia” tylko dla ról `admin`, `support` i `warehouse` z `/me`, do czasu
   wczytania `/me` ukryta; ukrywa tylko link, dostęp egzekwuje API), topbar i `AppLayout` (uruchamia `useIdleLogout`, 15 min).
 - `src/views/` – widoki przypisane do tras (m.in. `ProductsView`, `ProductFormView`, `PromotionsView`, `PromotionFormView`, `DiscountCodesView`, `DiscountCodeFormView`).
@@ -110,7 +114,9 @@ Klienta API generuje `make api-client` z katalogu głównego.
   wyłączone.
 - `src/orders/` – zamówienia (widoki `OrdersView` pod `/orders` i `OrderDetailView` pod `/orders/:orderId`, dwie trasy
   jednej ścieżki `orders`, więc pozycja menu zostaje aktywna na szczegółach). `useOrderList`: filtr statusu, przełącznik
-  „Zwroty do wykonania” (`refund=pending`: widok dodaje kolumny kwoty i terminu zwrotu oraz `Tag` „Po terminie” według
+  „Zwroty do wykonania” (oba też z adresu: `status` i `refund=pending` przy wejściu i przy zmianie `route.query` przy
+  otwartej liście, np. pozycja menu „Zwroty do wykonania”; ustawia oba filtry według adresu, wraca na pierwszą stronę,
+  zostawia wyszukiwanie, pomija nieznaną wartość i niczego nie zapisuje do adresu; `refund=pending`: widok dodaje kolumny kwoty i terminu zwrotu oraz `Tag` „Po terminie” według
   `overdue` z API), wyszukiwanie dokładnego numeru albo e-maila wysyłane dopiero po Enterze (`submitSearch`), stronicowanie
   po kursorach ze stosem kursorów w panelu (zmiana filtra albo wyszukiwania zaczyna od pierwszej strony i porzuca
   wiersze oraz kursory, bo należą do filtrów i sortowania, z których pochodzą: po nieudanym żądaniu nowego filtra tabela

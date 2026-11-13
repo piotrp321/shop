@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent } from "vue";
+import { createMemoryHistory, createRouter } from "vue-router";
 import type { components } from "@/api/schema";
 import { useOrderList } from "@/orders/useOrderList";
 
@@ -48,7 +49,17 @@ async function settle() {
   await flushPromises();
 }
 
-function mountList() {
+/** Mounts the composable on a router at `path` (the filters of the list are read from its query). */
+async function mountList(path = "/orders") {
+  const empty = { template: "<div />" };
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/orders", name: "orders", component: empty },
+      { path: "/products", name: "products", component: empty },
+    ],
+  });
+  await router.push(path);
   let list!: ReturnType<typeof useOrderList>;
   const wrapper = mount(
     defineComponent({
@@ -57,12 +68,13 @@ function mountList() {
         return () => null;
       },
     }),
+    { global: { plugins: [router] } },
   );
-  return { wrapper, list };
+  return { wrapper, list, router };
 }
 
 describe("useOrderList", () => {
-  let wrapper: ReturnType<typeof mountList>["wrapper"] | undefined;
+  let wrapper: Awaited<ReturnType<typeof mountList>>["wrapper"] | undefined;
 
   beforeEach(() => {
     mocks.get.mockReset();
@@ -73,9 +85,9 @@ describe("useOrderList", () => {
     wrapper = undefined;
   });
 
-  async function start(pages: Record<string, OrderList>, status?: number) {
+  async function start(pages: Record<string, OrderList>, status?: number, path?: string) {
     serve(pages, status);
-    const mounted = mountList();
+    const mounted = await mountList(path);
     wrapper = mounted.wrapper;
     await settle();
     return mounted.list;
@@ -292,7 +304,7 @@ describe("useOrderList", () => {
 
   it("explains a request that did not reach the API", async () => {
     mocks.get.mockRejectedValue(new TypeError("Failed to fetch"));
-    const mounted = mountList();
+    const mounted = await mountList();
     wrapper = mounted.wrapper;
     await settle();
 
@@ -326,7 +338,7 @@ describe("useOrderList", () => {
           releaseFirst = () => resolve({ data: page(["R-old"]), response: { status: 200 } });
         }),
     );
-    const mounted = mountList();
+    const mounted = await mountList();
     wrapper = mounted.wrapper;
     mocks.get.mockResolvedValue({ data: page(["R-new"]), response: { status: 200 } });
 
@@ -336,5 +348,139 @@ describe("useOrderList", () => {
     await settle();
 
     expect(mounted.list.items.value.map((item) => item.number)).toEqual(["R-new"]);
+  });
+  describe("filters from the address", () => {
+    /** Starts the list at `path` and keeps the router, to change the address of the open list. */
+    async function startAt(path: string) {
+      serve({ "": page(["R-1"]) });
+      const mounted = await mountList(path);
+      wrapper = mounted.wrapper;
+      await settle();
+      return mounted;
+    }
+
+    it("reads the status from the address with one request", async () => {
+      const { list } = await startAt("/orders?status=paid");
+
+      expect(queries()).toEqual([{ status: "paid" }]);
+      expect(list.status.value).toBe("paid");
+      expect(list.refundPending.value).toBe(false);
+    });
+
+    it("reads the refunds to do from the address with one request", async () => {
+      const { list } = await startAt("/orders?refund=pending");
+
+      expect(queries()).toEqual([{ refund: "pending" }]);
+      expect(list.refundPending.value).toBe(true);
+    });
+
+    it("reads both filters of the address", async () => {
+      await startAt("/orders?status=cancelled&refund=pending");
+
+      expect(queries()).toEqual([{ status: "cancelled", refund: "pending" }]);
+    });
+
+    it.each(["/orders?status=nope", "/orders?status=", "/orders?refund=done", "/orders?refund=", "/orders?status=paid&status=new", "/orders?status[]=paid"])(
+      "skips an unknown value of %s and lists all orders",
+      async (path) => {
+        const { list } = await startAt(path);
+
+        expect(queries()).toEqual([{}]);
+        expect(list.status.value).toBeNull();
+        expect(list.refundPending.value).toBe(false);
+      },
+    );
+
+    it("keeps the known value when the other one is unknown", async () => {
+      await startAt("/orders?status=nope&refund=pending");
+
+      expect(queries()).toEqual([{ refund: "pending" }]);
+    });
+
+    it("switches the open list to the refunds to do when the address changes, from the first page and without a reload", async () => {
+      serve({ "": page(["R-3"], "c1"), c1: page(["R-2"]) });
+      const mounted = await mountList("/orders");
+      wrapper = mounted.wrapper;
+      await settle();
+      mounted.list.goNext();
+      await settle();
+      expect(mounted.list.pageNumber.value).toBe(2);
+      mocks.get.mockClear();
+      serve({ "": page(["R-9"]) });
+
+      await mounted.router.push({ path: "/orders", query: { refund: "pending" } });
+      await settle();
+
+      expect(queries()).toEqual([{ refund: "pending" }]);
+      expect(mounted.list.refundPending.value).toBe(true);
+      expect(mounted.list.pageNumber.value).toBe(1);
+      expect(mounted.list.items.value.map((item) => item.number)).toEqual(["R-9"]);
+    });
+
+    it("returns to all orders when the address loses the filter", async () => {
+      const { list, router } = await startAt("/orders?refund=pending");
+      mocks.get.mockClear();
+
+      await router.push("/orders");
+      await settle();
+
+      expect(queries()).toEqual([{}]);
+      expect(list.refundPending.value).toBe(false);
+    });
+
+    it("sets the status of a changed address and drops the status chosen in the list", async () => {
+      const { list, router } = await startAt("/orders");
+      list.selectStatus("shipped");
+      await settle();
+      mocks.get.mockClear();
+
+      await router.push({ path: "/orders", query: { status: "paid" } });
+      await settle();
+
+      expect(queries()).toEqual([{ status: "paid" }]);
+      expect(list.status.value).toBe("paid");
+    });
+
+    it("does not ask again when the address changes without a known filter changing", async () => {
+      const { router } = await startAt("/orders?status=paid");
+      mocks.get.mockClear();
+
+      await router.push({ path: "/orders", query: { status: "paid", utm: "x" } });
+      await settle();
+
+      expect(mocks.get).not.toHaveBeenCalled();
+    });
+
+    it("keeps the search when the address changes", async () => {
+      const { list, router } = await startAt("/orders");
+      list.search.value = "anna.nowak@example.com";
+      await list.submitSearch();
+      mocks.get.mockClear();
+
+      await router.push({ path: "/orders", query: { refund: "pending" } });
+      await settle();
+
+      expect(queries()).toEqual([{ q: "anna.nowak@example.com", refund: "pending" }]);
+    });
+
+    it("does not write the filters it is given back to the address", async () => {
+      const { list, router } = await startAt("/orders");
+
+      list.selectStatus("paid");
+      list.setRefundPending(true);
+      await settle();
+
+      expect(router.currentRoute.value.fullPath).toBe("/orders");
+    });
+
+    it("does not ask for the list when the staff member leaves the page", async () => {
+      const { router } = await startAt("/orders?status=paid");
+      mocks.get.mockClear();
+
+      await router.push("/products");
+      await settle();
+
+      expect(mocks.get).not.toHaveBeenCalled();
+    });
   });
 });

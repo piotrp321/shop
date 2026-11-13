@@ -4,6 +4,7 @@ import { LOGIN_SERVER_MESSAGE, reportLoginProblem } from "@/auth/loginProblem";
 import { getUserManager } from "@/auth/userManager";
 import { canManageDiscountCodes } from "@/discount-codes/permissions";
 import AppLayout from "@/layout/AppLayout.vue";
+import { canViewOrders } from "@/orders/permissions";
 import { canManageProducts } from "@/products/permissions";
 import { canManagePromotions } from "@/promotions/permissions";
 import { useAuthStore } from "@/stores/auth";
@@ -95,6 +96,15 @@ export function createAppRouter(userManager: SessionManager = getUserManager(), 
           {
             // One path for the list and the detail, so the menu item of the orders stays active on a detail.
             path: "orders",
+            // Only the staff with access to the orders open them; the others land on the dashboard with a message. When
+            // /me cannot be read the route is let through: the API checks the access and the view shows the 403.
+            beforeEnter: async () => {
+              const auth = useAuthStore();
+              if (auth.staff === null) {
+                await auth.load();
+              }
+              return auth.staff === null || canViewOrders(auth.staff) ? true : { name: "dashboard", state: { denied: true } };
+            },
             children: [
               { path: "", name: "orders", component: OrdersView },
               { path: ":orderId", name: "order-detail", component: OrderDetailView },

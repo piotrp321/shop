@@ -2,15 +2,25 @@
 import Button from "primevue/button";
 import Message from "primevue/message";
 import Skeleton from "primevue/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import CatalogStats from "@/dashboard/CatalogStats.vue";
 import SystemStatus from "@/dashboard/SystemStatus.vue";
 import { formatTime, useDashboard } from "@/dashboard/useDashboard";
+import { useAccessDenied } from "@/layout/useAccessDenied";
 
+const accessDenied = useAccessDenied();
 const { data, error, loading, updatedAt, refresh } = useDashboard();
 </script>
 
 <template>
   <div class="dashboard">
+    <Alert
+      v-if="accessDenied"
+      data-testid="access-denied"
+      variant="destructive"
+    >
+      <AlertDescription>Nie masz dostępu do tej strony.</AlertDescription>
+    </Alert>
     <div class="heading">
       <h1>Dashboard</h1>
       <div class="actions">
