@@ -1,7 +1,6 @@
-import { mount } from "@vue/test-utils";
-import PrimeVue from "primevue/config";
-import { describe, expect, it } from "vitest";
-import { primeVueOptions } from "@/primevue";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { afterEach, describe, expect, it } from "vitest";
+import { defineComponent, ref } from "vue";
 import ProductVariants from "@/products/ProductVariants.vue";
 import type { VariantRow } from "@/products/useProductForm";
 
@@ -20,8 +19,16 @@ const TWO_ROWS: VariantRow[] = [
   { variantId: "v-2", values: ["białe"] },
 ];
 
+let mounted: VueWrapper | undefined;
+
+afterEach(() => {
+  mounted?.unmount();
+  mounted = undefined;
+  document.body.innerHTML = "";
+});
+
 function render(props: Partial<Props> = {}) {
-  return mount(ProductVariants, {
+  mounted = mount(ProductVariants, {
     props: {
       axes: ["Kolor"],
       rows: TWO_ROWS,
@@ -32,9 +39,33 @@ function render(props: Partial<Props> = {}) {
       errorsExactly: () => [],
       ...props,
     },
-    // The dialog is teleported to <body>; stubbed, it is rendered in place and can be found in the wrapper.
-    global: { plugins: [[PrimeVue, primeVueOptions]] as never[], stubs: { teleport: true } },
+    // The dialog is teleported to <body>.
+    attachTo: document.body,
   });
+  return mounted;
+}
+
+const dialog = () => document.body.querySelector<HTMLElement>("[role=alertdialog]");
+const dialogButton = (name: string) => [...(dialog()?.querySelectorAll("button") ?? [])].find((candidate) => candidate.textContent?.trim() === name);
+const pressEscape = () => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+const TWO_AXES_ROWS: VariantRow[] = [
+  { variantId: "v-1", values: ["czarny", "42"] },
+  { variantId: "v-2", values: ["biały", "43"] },
+];
+
+/** The form around the editor: removing a row changes the props, like `ProductFormView` does. */
+function renderInForm(initial: VariantRow[] = TWO_ROWS) {
+  const Host = defineComponent({
+    components: { ProductVariants },
+    setup() {
+      const rows = ref(initial.map((row) => ({ ...row, values: [...row.values] })));
+      return { rows, remove: (index: number) => rows.value.splice(index, 1) };
+    },
+    template: `<ProductVariants :axes="['Kolor']" :rows="rows" :errors="[]" :read-only="false" :axes-locked="false" :errors-at="() => []" :errors-exactly="() => []" @remove-variant="remove" />`,
+  });
+  mounted = mount(Host, { attachTo: document.body });
+  return mounted;
 }
 
 const DISABLED = (wrapper: ReturnType<typeof render>, id: string) => wrapper.findAll(`[data-testid=${id}]`).map((node) => node.attributes("disabled") !== undefined);
@@ -121,31 +152,81 @@ describe("ProductVariants", () => {
       await wrapper.findAll("[data-testid=variant-remove]")[1]!.trigger("click");
 
       expect(wrapper.emitted("removeVariant")).toEqual([[1]]);
-      expect(wrapper.find("[data-testid=remove-confirm]").exists()).toBe(false);
+      expect(dialog()).toBeNull();
     });
 
-    it("asks before removing an existing variant and removes it only after the confirmation", async () => {
+    it("#251 F12: asks with the name of the variant before removing an existing one, and removes it only after the confirmation", async () => {
+      const wrapper = render({ axes: ["Kolor", "Rozmiar"], rows: TWO_AXES_ROWS });
+
+      await wrapper.findAll("[data-testid=variant-remove]")[0]!.trigger("click");
+      await flushPromises();
+
+      expect(wrapper.emitted("removeVariant")).toBeUndefined();
+      const title = document.getElementById(dialog()?.getAttribute("aria-labelledby") ?? "");
+      const description = document.getElementById(dialog()?.getAttribute("aria-describedby") ?? "");
+      expect(title?.textContent).toBe("Usunąć wariant czarny / 42?");
+      expect(description?.textContent).toBe("Cena i stan wariantu przestaną być widoczne w panelu.");
+
+      dialogButton("Usuń wariant czarny / 42")?.click();
+      await flushPromises();
+
+      expect(wrapper.emitted("removeVariant")).toEqual([[0]]);
+      expect(dialog()).toBeNull();
+    });
+
+    it("#251 F12: the confirmation is red, has „Wróć” with the focus and a close button named „Zamknij”", async () => {
       const wrapper = render();
 
       await wrapper.findAll("[data-testid=variant-remove]")[1]!.trigger("click");
+      await flushPromises();
 
-      expect(wrapper.emitted("removeVariant")).toBeUndefined();
-      expect(wrapper.get("[data-testid=remove-confirm]").text()).toContain("Cena i stan wariantu przestaną być widoczne w panelu.");
-
-      await wrapper.get("[data-testid=remove-confirm-accept]").trigger("click");
-
-      expect(wrapper.emitted("removeVariant")).toEqual([[1]]);
-      expect(wrapper.find("[data-testid=remove-confirm]").exists()).toBe(false);
+      expect(dialogButton("Usuń wariant białe")?.className).toContain("destructive");
+      expect(document.activeElement).toBe(dialogButton("Wróć"));
+      expect(dialog()?.querySelector(".sr-only")?.textContent).toBe("Zamknij");
     });
 
-    it("keeps the variant when the confirmation is cancelled", async () => {
+    it("keeps the variant when the confirmation is cancelled with „Wróć” and gives the focus back to the button", async () => {
       const wrapper = render();
+      const trigger = wrapper.findAll("[data-testid=variant-remove]")[0]!.element as HTMLElement;
+      trigger.focus();
 
       await wrapper.findAll("[data-testid=variant-remove]")[0]!.trigger("click");
-      await wrapper.get("[data-testid=remove-confirm-cancel]").trigger("click");
+      await flushPromises();
+      dialogButton("Wróć")?.click();
+      await flushPromises();
 
       expect(wrapper.emitted("removeVariant")).toBeUndefined();
-      expect(wrapper.find("[data-testid=remove-confirm]").exists()).toBe(false);
+      expect(dialog()).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it("closes with Escape and gives the focus back to the button", async () => {
+      const wrapper = render();
+      const trigger = wrapper.findAll("[data-testid=variant-remove]")[1]!.element as HTMLElement;
+      trigger.focus();
+
+      await wrapper.findAll("[data-testid=variant-remove]")[1]!.trigger("click");
+      await flushPromises();
+      pressEscape();
+      await flushPromises();
+
+      expect(dialog()).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it("moves the focus to the heading „Warianty” when the removed row took its button with it", async () => {
+      const wrapper = renderInForm();
+      const trigger = wrapper.findAll("[data-testid=variant-remove]")[0]!.element as HTMLElement;
+      trigger.focus();
+
+      await wrapper.findAll("[data-testid=variant-remove]")[0]!.trigger("click");
+      await flushPromises();
+      dialogButton("Usuń wariant czarne")?.click();
+      await flushPromises();
+
+      expect(wrapper.findAll("[data-testid=variant-row]")).toHaveLength(1);
+      expect(document.activeElement).toBe(document.querySelector("h2"));
+      expect(document.activeElement?.textContent).toBe("Warianty");
     });
 
     it("does not offer removing the only row", () => {
@@ -158,9 +239,13 @@ describe("ProductVariants", () => {
       const wrapper = render();
 
       await wrapper.get("[data-testid=axis-remove]").trigger("click");
+      await flushPromises();
       expect(wrapper.emitted("removeAxis")).toBeUndefined();
-      expect(wrapper.get("[data-testid=remove-confirm]").text()).toContain("Cena i stan wariantu przestaną być widoczne w panelu.");
-      await wrapper.get("[data-testid=remove-confirm-accept]").trigger("click");
+      const title = document.getElementById(dialog()?.getAttribute("aria-labelledby") ?? "");
+      expect(title?.textContent).toBe("Usunąć oś Kolor?");
+      expect(dialog()?.textContent).toContain("Cena i stan wariantu przestaną być widoczne w panelu.");
+      dialogButton("Usuń oś Kolor")?.click();
+      await flushPromises();
       expect(wrapper.emitted("removeAxis")).toEqual([[0]]);
 
       const single = render({ rows: [{ variantId: "v-1", values: ["czarne"] }] });

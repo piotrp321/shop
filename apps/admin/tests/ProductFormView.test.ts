@@ -700,7 +700,7 @@ describe("ProductFormView", () => {
       // The dialog is teleported to <body>.
       expect(document.body.textContent).toContain("Cena i stan wariantu przestaną być widoczne w panelu.");
       expect(values(wrapper)).toEqual(["czarne", "białe"]);
-      document.querySelector<HTMLElement>("[data-testid=remove-confirm-accept]")!.click();
+      [...document.querySelectorAll<HTMLElement>("[role=alertdialog] button")].find((button) => button.textContent?.trim() === "Usuń wariant czarne")!.click();
       await flushPromises();
 
       expect(values(wrapper)).toEqual(["białe"]);
