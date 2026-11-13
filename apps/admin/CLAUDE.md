@@ -1,6 +1,7 @@
 # CLAUDE.md – apps/admin
 
-Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, PrimeVue 4 (preset Aura), PrimeIcons.
+Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, shadcn-vue (Reka UI), ikony Lucide;
+PrimeVue 4 (preset Aura) i PrimeIcons tylko na ekranach jeszcze niezmigrowanych (`LEGACY_FILES`, do ADMIN-SCREENS).
 Panel administracyjny dla pracowników. Zasady wspólne dla całego repo są w głównym `CLAUDE.md`,
 opis domeny w `docs/vision.md`.
 
@@ -196,6 +197,17 @@ Klienta API generuje `make api-client` z katalogu głównego.
   po utworzeniu kodu) na komunikat „Kod rabatowy zapisany.”. Odpowiedź żądania,
   które skończyło się po opuszczeniu formularza, jest ignorowana. Lista zamówień per kod jest poza panelem.
 - `src/primevue.ts` – konfiguracja PrimeVue i motywu Aura.
+- `src/components/ui/` – komponenty shadcn-vue na Reka UI (Button, Input, Label, Textarea, Select, Combobox, Switch,
+  Checkbox, Dialog, AlertDialog, Sheet, DropdownMenu, Tooltip, Badge, Card, Table, Skeleton, Alert, Sonner, Breadcrumb):
+  nasz kod, tylko na tokenach, z polskimi nazwami dostępnymi („Zamknij”). Nowy komponent shadcn-vue dodaje się CLI
+  w kontenerze i poprawia (klasy palety na tokeny, polskie teksty); `components.json` w `apps/admin`.
+- `src/components/` – własne komponenty, gdy `ui/` nie ma odpowiednika. `CategoryCombobox`: wybór kategorii z drzewa
+  `useCategoryTree` (prop `nodes`), jedna (`modelValue`: id albo null) albo wiele (`multiple`: lista id); etykieta
+  w prop `label` (z `hideLabel` tylko dla czytników), opcje w kolejności drzewa z pełną ścieżką jako nazwą dostępną
+  („Turystyka › Biwak › Namioty”) i wcięciem według poziomu, filtrowanie po nazwie i ścieżce bez względu na wielkość
+  liter, „Usuń: <nazwa>” przy wybranych w trybie wielokrotnym. Widoki jeszcze go nie używają (zadania ADMIN-DESIGN-4
+  i -5 oraz ADMIN-SCREENS).
+- `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
   semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,
   `@font-face` Nunito i pierścień fokusu. Importowany w `main.ts` przed `src/styles.css`.
@@ -224,7 +236,7 @@ Klienta API generuje `make api-client` z katalogu głównego.
   Wszystkie z `always` (także 404): `X-Content-Type-Options: nosniff`, `Referrer-Policy:
   strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, `Permissions-Policy: camera=(), microphone=(),
   geolocation=()` i `Content-Security-Policy: script-src 'self'; frame-ancestors 'none'; object-src 'none';
-  base-uri 'self'`. `style-src` nie jest ograniczony (PrimeVue ustawia style inline). `index.html` nie może mieć
+  base-uri 'self'`. `style-src` nie jest ograniczony (PrimeVue i komponenty Reka UI ustawiają style inline). `index.html` nie może mieć
   skryptów inline ani zewnętrznych: skrypt spoza własnego origin (poza `/config.js` i bundlem) zablokuje CSP.
   Nowa lokalizacja w `nginx.conf` musi dołączać ten plik. Obraz deweloperski (Vite) nagłówków nie ma; nagłówki
   i załadowanie panelu bez naruszeń CSP sprawdza test dymny chartu (`make -C infra/k8s smoke`, obraz produkcyjny).
@@ -250,9 +262,12 @@ Klienta API generuje `make api-client` z katalogu głównego.
 
 ## Wygląd
 
-- Komponenty PrimeVue zamiast własnych odpowiedników (`Button`, `DataTable`, `Tag`, `Message`, `Skeleton`
-  i pozostałe). Własny komponent powstaje tylko wtedy, gdy PrimeVue nie ma odpowiednika.
-- Ikony z PrimeIcons. Kolory i odstępy z motywu Aura, bez kolorów „na sztywno”.
+- Nowe i zmigrowane ekrany: najpierw komponent shadcn-vue z `src/components/ui/`, potem własny w `src/components/`,
+  na tokenach i klasach Tailwinda; ikony z Lucide (`lucide-vue-next`, dekoracyjne z `aria-hidden`). Ekrany z listy
+  `LEGACY_FILES` zostają na komponentach PrimeVue, PrimeIcons i motywie Aura do ADMIN-SCREENS; PrimeVue działa obok
+  Tailwinda (style PrimeVue są poza warstwami CSS, więc wygrywają z preflightem).
+- Wygląd, standard listy, formularza i okien: `docs/features/admin-design/spec.md`; biblioteka i licencje:
+  `docs/adr/admin-ui-library.md`.
 - Tokeny wyglądu są wyłącznie w `src/styles/tokens.css` (`--color-*: initial`: domyślnej palety Tailwinda nie ma).
   Nowy kolor to nowy token w tym pliku i para w `tests/tokens.test.ts` (kontrast WCAG 2.x: tekst ≥ 4,5:1, obramowania
   pól, fokus i ikony KPI ≥ 3:1).
@@ -282,5 +297,10 @@ Klienta API generuje `make api-client` z katalogu głównego.
 - Test reguły ESLint sprawdza identyfikator reguły i liczbę błędów, nie tylko to, że coś zostało zgłoszone.
 - `tests/lint/color-rules.test.ts` sprawdza regułę koloru (identyfikator i liczba błędów dla każdej ścieżki i prób
   obejścia, brak błędu dla klas z tokenów) i listę `LEGACY_FILES`; typy listy dla testu są w `eslint.config.d.ts`.
+- Komponenty z Reka UI (okna, menu, combobox) testuje się w jsdom z atrapami `ResizeObserver`, `scrollIntoView`
+  i przechwytywania wskaźnika w `tests/setup/jsdom-mocks.ts` (konfiguracja Vitest `setupFiles`); zawartość okien i list
+  rozwijanych trafia do `document.body`, więc testy montują z `attachTo: document.body` i czyszczą je po teście.
+  `tests/CategoryCombobox.test.ts` sprawdza rolę, nazwy dostępne i filtrowanie; `tests/ui-accessible-names.test.ts`
+  nazwę „Zamknij” okien i brak angielskich nazw dostępnych w `src/components/ui/`.
 - `tests/tokens.test.ts` czyta `tokens.css` i sprawdza kontrast każdej pary tokenów; `tests/fonts.test.ts` sprawdza
   pliki Nunito, ich deklaracje i sumy SHA-256 w `THIRD_PARTY_NOTICES.md`.
