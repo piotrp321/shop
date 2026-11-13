@@ -54,7 +54,9 @@ Nowy pakiet z innej licencji niż MIT, ISC albo Apache-2.0 wymaga zgody właści
 ## Konsekwencje
 
 - Do ADMIN-SCREENS w panelu żyją dwie biblioteki. Style PrimeVue są poza warstwami CSS Tailwinda, więc na starych ekranach
-  wygrywają z preflightem; ekrany niezmigrowane wyglądają jak dziś.
+  wygrywają z preflightem, ale preflight Tailwinda zmienia wygląd ich surowych elementów (nagłówki, listy), a globalny
+  pierścień `:focus-visible` z `tokens.css` zmienia fokus natywnych elementów; ekrany niezmigrowane wyglądają więc
+  inaczej niż przed migracją (docs/features/admin-design/spec.md, „Ryzyka”).
 - Komponenty Reka UI ustawiają style inline przy pozycjonowaniu, więc `style-src` w nagłówku CSP panelu dalej nie jest
   ograniczony (komentarz w `apps/admin/docker/security-headers.conf`).
 - Testy komponentów w jsdom potrzebują atrap API przeglądarki (`tests/setup/jsdom-mocks.ts`).
