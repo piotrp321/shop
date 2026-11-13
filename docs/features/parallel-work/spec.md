@@ -129,6 +129,10 @@ Dlatego decyzja o starcie i jej zapis są jedną operacją pod blokadą.
     to odmowa „epik X prowadzi inna sesja”, np. gdy tamta czeka na odpowiedź na bloker i jej `ao run` się zakończył.
     `--takeover` przejmuje epik (nowy token właściciela) tylko w dzień, po „tak” użytkownika na „Przejąć epik X od
     innej sesji?”. Epik bez zapisanego właściciela (uruchomiony poza `/ao-run`) wznawia się z nowym tokenem.
+  - Właściciela (nowy token, przejęcie) wznowienie zapisuje tylko z `--reserve`. `gate --dir` bez `--reserve` dla
+    epiku w toku tylko czyta: `resumed: true` z `claim: null` i z tymi samymi odmowami, bez zapisu w `claims.json`.
+  - Po `resumed: true` sesja nie uruchamia ponownie `night_queue.py start`: właściciel jest już zapisany, a epik
+    zachowuje swój pomiar (otwarty `start`).
   - Sesja, która prowadzi epik, przy ponownym `ao run` (sekcja 5 skilla) nie woła bramki: `ao run` sam odmawia, gdy
     na tym `AO_HOME` działa już inny proces.
 
@@ -362,7 +366,8 @@ z podstawionymi wynikami komend `gh`, `git` i `docker`, plikami stanu w katalogu
   po 30 minutach; `start` z tokenem usuwa rezerwację; `release` z rezerwacją i bez; nieczytelny `claims.json` → kod 2;
   zapis atomowy (przerwany zapis nie psuje pliku); wznowienie: działający proces AO innej sesji (zajęta
   `orchestrator.lock`, także z `--force` i `--takeover`) → odmowa, właściciel z innym tokenem → odmowa, `--takeover`
-  zmienia właściciela, ten sam token i epik bez właściciela → `resumed: true`.
+  zmienia właściciela, ten sam token i epik bez właściciela → `resumed: true`; bez `--reserve` wznowienie tylko czyta
+  (`claim: null`, bez zapisu właściciela, te same odmowy).
 - Limit komend: wolna komenda (podstawiony proces dłuższy niż limit) w `gate` i `start` → kod 1 bez wyjścia, blokada
   bramki wolna; `night_queue.py` przekazuje limit 60 s; `next_epic.make_runner` bez limitu działa jak dotąd.
 - `propose`: epik w toku nie opróżnia listy, reguła plików. `approve`: odmowa przy trwającej nocy, zgoda po

@@ -182,7 +182,8 @@ procedura, bez pytania, to sync spójności w parze epików równoległych i kon
 jako „sync automatyczny”, nie jako ręczna poprawka.
 
 Pomiar epiku (każdy przebieg, także poza nocą): zaraz po udanym `ao epic start` sesja wykonuje
-`night_queue.py start <epik> --claim <token>`, a na `epic_done` `night_queue.py done <epik>`. Oba dostają na stdin
+`night_queue.py start <epik> --claim <token>` (nie po wznowieniu z bramki, `resumed: true`: właściciel jest już
+zapisany, a epik zachowuje swój pomiar), a na `epic_done` `night_queue.py done <epik>`. Oba dostają na stdin
 stan limitów z narzędzia aplikacji `get_usage` (obiekt `plan`). Pomiar zapisuje liczbę zadań z manifestu, czas od
 startu do `epic_done`, przyrost procentu każdego okna limitu i przy starcie pamięć Dockera (`docker`). Okno, które
 odnowiło się w trakcie (inne `resetsAt`), albo stan limitów inny niż `ok` nie daje pomiaru tego okna. Epik zakończony

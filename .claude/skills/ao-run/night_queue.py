@@ -125,11 +125,12 @@ reservation was made; only the refusals of the epic itself apply) and renews it:
 Resume: --dir of an epic in progress from its branch runs no steps and reserves nothing. Refusals: the AO process of the
 epic runs (parallel_gate.orchestrator_running on <ao-root>/ao-<dir>, --ao-root default ~/.local/state):
 `epik X prowadzi działający proces AO`, whatever the flags; a recorded owner other than --claim: `epik X prowadzi
-inna sesja`, unless --takeover (a new owner token). Otherwise `resumed: true`, `epic` (tasks and minutes null without a
-readable plan.md on origin/main), `claim`: the owner token: --claim when it is the owner, else a new
-owner recorded in claims.json (the --claim token when it holds a valid reservation of the epic, else a fresh one).
---takeover outside a resume is ignored. The reservation or owner write is the gate's last step (after gate.jsonl),
-so a failure never leaves a token in claims.json that was not printed.
+inna sesja`, unless --takeover (a new owner token). Otherwise `resumed: true` and `epic` (tasks and minutes null
+without a readable plan.md on origin/main). Only with --reserve the resume records the owner: `claim` is the owner
+token: --claim when it is the owner, else a new owner recorded in claims.json (the --claim token when it holds a valid
+reservation of the epic, else a fresh one). Without --reserve it only reads: `claim` null, nothing written (--takeover
+changes nothing). --takeover outside a resume is ignored. The reservation or owner write is the gate's last step
+(after gate.jsonl), so a failure never leaves a token in claims.json that was not printed.
 
 release: removes the reservation of <dir> with the --claim token and prints {"released": <bool>}, exit 0.
 
@@ -1148,10 +1149,11 @@ def _new_token():
     return secrets.token_hex(8)
 
 
-def gate_resume(ctx, result, entry, claim, takeover, ao_root):
+def gate_resume(ctx, result, entry, claim, takeover, ao_root, reserve):
     """Resume of `entry`, in progress from its branch: no gate steps and no reservation, only the owner check
     (spec parallel-work, „Wznowienie”). Writes nothing; returns (result, owner): `owner` is the new owner token the
-    caller records in claims.json as the last step (None when the owner stays or on a refusal)."""
+    caller records in claims.json as the last step (None when the owner stays, on a refusal and without `reserve`:
+    then the resume only reads and `claim` is null)."""
     name = entry['id']
     if parallel_gate.orchestrator_running(os.path.join(ao_root, 'ao-%s' % entry['dir'])):
         result['reason'] = 'epik %s prowadzi działający proces AO' % name
@@ -1161,14 +1163,16 @@ def gate_resume(ctx, result, entry, claim, takeover, ao_root):
         if current is not None and not takeover:
             result['reason'] = 'epik %s prowadzi inna sesja' % name
             return result, None
-        # A new owner: the caller's own valid reservation becomes the owner token, else a fresh token.
-        owner = claim = claim if claim is not None and ctx.own_claim else _new_token()
+        if reserve:
+            # A new owner: the caller's own valid reservation becomes the owner token, else a fresh token.
+            owner = claim = claim if claim is not None and ctx.own_claim else _new_token()
     epic_ = {'dir': entry['dir'], 'id': name, 'issue': entry['number'], 'title': entry['title'], 'tasks': None,
              'minutes': None}
     if ctx.on_main(entry['dir'], 'plan.md'):
         with contextlib.suppress(StateError):
             epic_ = _epic_of(ctx, entry)
-    result.update(epic=epic_, resumed=True, claim=claim, parallel_with=[p['dir'] for p in ctx.others(entry['dir'])])
+    result.update(epic=epic_, resumed=True, claim=claim if reserve else None,
+                  parallel_with=[p['dir'] for p in ctx.others(entry['dir'])])
     return result, owner
 
 
@@ -1214,7 +1218,7 @@ def cmd_gate(args, run, now, stdin):
         result, entry, forceable = gate_decision(ctx, args.dir, usage_now, stack_gib * 1024, renewal)
         owner = token = None
         if entry is not None and entry['state'] == 'in_progress':
-            result, owner = gate_resume(ctx, result, entry, args.claim, args.takeover, args.ao_root)
+            result, owner = gate_resume(ctx, result, entry, args.claim, args.takeover, args.ao_root, args.reserve)
         elif entry is not None and args.reserve:
             # --force overrides steps 3-7 and the hold, never step 2 (room).
             result, token = gate_reserve(ctx, result, entry, args.claim, (args.force and forceable) or renewal)

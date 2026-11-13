@@ -2743,7 +2743,8 @@ class GateCliTest(unittest.TestCase):
         finally:
             release_child(proc)
         self.assertEqual(before, self.claims_json())
-        resumed = self.result([epic(1, 'X', 'apps/x')], branches=['x'], extra=['--dir', 'x', '--claim', 'tok'])
+        resumed = self.result([epic(1, 'X', 'apps/x')], branches=['x'],
+                              extra=['--dir', 'x', '--reserve', '--claim', 'tok'])
         self.assertEqual((True, 'tok'), (resumed['resumed'], resumed['claim']))
 
     def test_resume_refused_for_another_owner(self):
@@ -2757,7 +2758,7 @@ class GateCliTest(unittest.TestCase):
 
     def test_takeover_records_a_new_owner(self):
         self.owners({'a': 'theirs', 'b': 'other'})
-        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--takeover'])
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--reserve', '--takeover'])
         self.assertEqual(('a', True), (result['epic']['dir'], result['resumed']))
         self.assertNotIn(result['claim'], (None, 'theirs'))
         self.assertEqual({'claims': [], 'owners': {'a': result['claim'], 'b': 'other'}}, self.claims_json())
@@ -2765,7 +2766,8 @@ class GateCliTest(unittest.TestCase):
     def test_resume_with_the_owner_token(self):
         self.owners({'a': 'mine'})
         before = self.claims_json()
-        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--claim', 'mine'])
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'],
+                             extra=['--dir', 'a', '--reserve', '--claim', 'mine'])
         self.assertEqual(('a', True, 'mine', None), (result['epic']['dir'], result['resumed'], result['claim'],
                                                      result['reason']))
         self.assertEqual(before, self.claims_json())
@@ -2791,13 +2793,13 @@ class GateCliTest(unittest.TestCase):
 
     def test_resume_failing_before_its_output_records_no_owner(self):
         # A failed step after the decision must not leave an owner token nobody received.
-        code, out, err = self.gate([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'],
+        code, out, err = self.gate([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--reserve'],
                                    fail=('git', 'show', 'origin/main:docs/features/a/plan.md'))
         self.assertEqual((1, ''), (code, out))
         self.assertIn('boom', err)
         self.assertFalse(self.has_claims_file())
         os.makedirs(os.path.join(self.state, 'gate.jsonl'))
-        code, out, err = self.gate([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])
+        code, out, err = self.gate([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--reserve'])
         self.assertEqual((2, ''), (code, out))
         self.assertIn('gate.jsonl', err)
         self.assertFalse(self.has_claims_file())
@@ -2805,7 +2807,8 @@ class GateCliTest(unittest.TestCase):
     def test_takeover_failing_before_its_output_keeps_the_old_owner(self):
         self.owners({'a': 'theirs'})
         os.makedirs(os.path.join(self.state, 'gate.jsonl'))
-        code, out, _ = self.gate([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--takeover'])
+        code, out, _ = self.gate([epic(1, 'A', 'apps/a')], branches=['a'],
+                                 extra=['--dir', 'a', '--reserve', '--takeover'])
         self.assertEqual((2, ''), (code, out))
         self.assertEqual({'claims': [], 'owners': {'a': 'theirs'}}, self.claims_json())
 
@@ -2824,9 +2827,38 @@ class GateCliTest(unittest.TestCase):
 
     def test_resume_with_its_own_reservation_makes_the_token_the_owner(self):
         self.claims('a')
-        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a', '--claim', 'tok-a'])
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'],
+                             extra=['--dir', 'a', '--reserve', '--claim', 'tok-a'])
         self.assertEqual((True, 'tok-a'), (result['resumed'], result['claim']))
         self.assertEqual({'claims': [], 'owners': {'a': 'tok-a'}}, self.claims_json())
+
+    def test_resume_without_reserve_is_read_only(self):
+        # `gate --dir X` without --reserve only reads: no owner is recorded or changed and no token is printed.
+        cases = [({}, []), ({'a': 'theirs'}, ['--takeover']), ({'a': 'mine'}, ['--claim', 'mine']),
+                 ({}, ['--claim', 'tok-a'])]
+        for owners, extra in cases:
+            with self.subTest(owners=owners, extra=extra):
+                self.owners(owners)
+                if extra == ['--claim', 'tok-a']:
+                    self.claims('a')
+                before = self.claims_json()
+                result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'] + extra)
+                self.assertEqual(('a', None, True, False, None),
+                                 (result['epic']['dir'], result['reason'], result['resumed'], result['reserved'],
+                                  result['claim']))
+                self.assertEqual(before, self.claims_json())
+
+    def test_resume_without_reserve_keeps_the_refusals(self):
+        self.owners({'a': 'theirs'})
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])
+        self.assertEqual((None, 'epik A prowadzi inna sesja', False, None),
+                         (result['epic'], result['reason'], result['resumed'], result['claim']))
+        self.assertEqual({'claims': [], 'owners': {'a': 'theirs'}}, self.claims_json())
+
+    def test_resume_without_reserve_and_without_claims_file_writes_none(self):
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])
+        self.assertEqual((True, None), (result['resumed'], result['claim']))
+        self.assertFalse(self.has_claims_file())
 
     def test_ao_root_defaults_to_local_state(self):
         seen = []
