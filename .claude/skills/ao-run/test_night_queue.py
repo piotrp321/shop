@@ -1311,3 +1311,446 @@ class RoomCliTest(unittest.TestCase):
     def test_reads_no_board(self):
         # no_commands raises on any command: room must not call gh or git.
         self.assertEqual(0, self.room(usage(10))[0])
+
+
+GIB = 1024 ** 3
+FETCH_EPICS = ['git', 'fetch', 'origin', 'refs/heads/epic/*:refs/remotes/origin/epic/*']
+
+
+class GateRunner(BoardRunner):
+    """BoardRunner plus the final PR state, branch diffs and docker commands read by the gate."""
+
+    def __init__(self, epics, branches=(), fail=None, merged=(), diffs=None, docker=None):
+        super().__init__(epics, branches, fail)
+        self.merged, self.diffs = set(merged), diffs or {}
+        self.docker = docker or {'info': str(64 * GIB), 'ps': '', 'stats': ''}
+
+    def __call__(self, args):
+        if args[:3] == ['gh', 'pr', 'list']:
+            head = args[args.index('--head') + 1]
+            answer = json.dumps([{'number': 99}] if head[len('epic/'):] in self.merged else [])
+        elif args[:2] == ['git', 'diff']:
+            answer = ''.join(p + '\n' for p in self.diffs.get(args[-1].split('origin/epic/')[1], ()))
+        elif args[0] == 'docker':
+            answer = self.docker[args[1]]
+        else:
+            return super().__call__(args)
+        self.calls.append(list(args))
+        if self.fail and list(args[:len(self.fail)]) == list(self.fail):
+            raise night_queue.next_epic.CommandError(args, 'boom')
+        return answer
+
+
+class GateCliTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__('shutil').rmtree(self.dir, ignore_errors=True))
+        self.state = os.path.join(self.dir, 'state')
+        os.makedirs(self.state)
+
+    def events(self, *events):
+        with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
+            for e in events:
+                f.write(json.dumps(e) + '\n')
+
+    def start(self, epic_dir, at, tasks=2, usage_=None):
+        return {'event': 'start', 'epic': epic_dir, 'tasks': tasks, 'at': at.isoformat(), 'usage': usage_ or {}}
+
+    def done(self, epic_dir, at, usage_=None):
+        return {'event': 'done', 'epic': epic_dir, 'at': at.isoformat(), 'usage': usage_ or {}}
+
+    def old_measurement(self):
+        """30 min and 2 % of the weekly window per task."""
+        at = T0 - timedelta(hours=10)
+        return [self.start('old', at, 2, usage(10)), self.done('old', at + timedelta(minutes=60), usage(14))]
+
+    def claims(self, *dirs, expires=NOW + timedelta(minutes=20)):
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            json.dump({'claims': [{'dir': d, 'claim': 'tok-%s' % d, 'at': NOW.isoformat(),
+                                   'expires_at': expires.isoformat()} for d in dirs], 'owners': {}}, f)
+
+    def gate(self, epics, extra=(), stdin_text=None, **runner_kwargs):
+        out, err = io.StringIO(), io.StringIO()
+        self.runner = GateRunner(epics, **runner_kwargs)
+        stdin = io.StringIO(json.dumps(usage(10)) if stdin_text is None else stdin_text)
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = night_queue.main(['--state', self.state, 'gate'] + list(extra), run=self.runner, now=NOW,
+                                    stdin=stdin)
+        return code, out.getvalue(), err.getvalue()
+
+    def result(self, epics, **kwargs):
+        code, out, err = self.gate(epics, **kwargs)
+        self.assertEqual(0, code, err)
+        return json.loads(out)
+
+    def reason(self, epics, **kwargs):
+        result = self.result(epics, **kwargs)
+        self.assertIsNone(result['epic'])
+        return result['reason']
+
+    def commands(self, *prefix):
+        return [c for c in self.runner.calls if c[:len(prefix)] == list(prefix)]
+
+    def log(self):
+        with open(os.path.join(self.state, 'gate.jsonl'), encoding='utf-8') as f:
+            return [json.loads(line) for line in f]
+
+    # Step 1 and output
+
+    def test_nothing_in_progress_starts_serially(self):
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')])
+        self.assertEqual({'epic': {'dir': 'a', 'id': 'A', 'issue': 1, 'title': 'A: title', 'tasks': 2, 'minutes': None},
+                          'reason': None, 'reserved': False, 'claim': None, 'resumed': False, 'parallel_with': [],
+                          'active': [], 'in_progress': [], 'merged_open': [], 'skipped': [], 'docker': None}, result)
+        self.assertEqual([], self.commands('docker'))
+        self.assertEqual([], self.commands('gh', 'pr'))
+
+    def test_empty_board_gives_no_epic_and_no_reason(self):
+        result = self.result([])
+        self.assertEqual((None, None, []), (result['epic'], result['reason'], result['skipped']))
+
+    def test_candidate_next_to_an_epic_in_progress(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')], branches=['a'])
+        self.assertEqual({'dir': 'b', 'id': 'B', 'issue': 2, 'title': 'B: title', 'tasks': 2, 'minutes': 60.0},
+                         result['epic'])
+        self.assertIsNone(result['reason'])
+        self.assertEqual(['a'], result['parallel_with'])
+        self.assertEqual(['a'], result['active'])
+        self.assertEqual([{'dir': 'a', 'id': 'A', 'issue': 1}], result['in_progress'])
+        self.assertEqual({'total_mib': 65536.0, 'other_mib': 0.0, 'ao_mib': 0.0, 'free_mib': 59392.0,
+                          'required_mib': 6144.0}, result['docker'])
+        self.assertEqual([['gh', 'pr', 'list', '--repo', 'piotrp321/shop', '--head', 'epic/a', '--base', 'main',
+                           '--state', 'merged', '--json', 'number', '--limit', '1']], self.commands('gh', 'pr'))
+
+    # Step 2: room
+
+    def test_two_active_epics_wait(self):
+        # A has a start without done, B has no event at all (started outside /ao-run): both active.
+        self.events(*self.old_measurement(), self.start('a', NOW - timedelta(hours=1)))
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')],
+                             branches=['a', 'b'])
+        self.assertIsNone(result['epic'])
+        self.assertEqual('dwa epiki aktywne: A, B', result['reason'])
+        self.assertEqual(['a', 'b'], result['active'])
+        self.assertIsNone(result['docker'])
+
+    def test_epic_after_done_takes_no_room(self):
+        self.events(*self.old_measurement(), self.start('a', NOW - timedelta(hours=1)),
+                    self.done('a', NOW - timedelta(minutes=30)))
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')],
+                             branches=['a', 'b'])
+        self.assertEqual('c', result['epic']['dir'])
+        self.assertEqual(['b'], result['active'])
+        self.assertEqual(['a', 'b'], result['parallel_with'])
+
+    def test_merged_final_pr_is_merged_open_and_not_in_progress(self):
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/a')], branches=['a'], merged=['a'])
+        self.assertEqual('b', result['epic']['dir'])
+        self.assertEqual([], result['in_progress'])
+        self.assertEqual([], result['active'])
+        self.assertEqual([{'dir': 'a', 'id': 'A', 'issue': 1}], result['merged_open'])
+        self.assertIsNone(result['docker'])
+
+    # Claims of other sessions
+
+    def test_valid_claim_is_in_progress_and_active(self):
+        self.claims('b')
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')],
+                             branches=['a'])
+        self.assertEqual('dwa epiki aktywne: A, B', result['reason'])
+        self.assertEqual([{'dir': 'a', 'id': 'A', 'issue': 1}, {'dir': 'b', 'id': 'B', 'issue': 2}],
+                         result['in_progress'])
+        self.assertEqual(['a', 'b'], result['active'])
+
+    def test_claim_off_the_board_uses_directory_as_id(self):
+        self.claims('zzz')
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')], branches=['a'])
+        self.assertEqual('dwa epiki aktywne: A, ZZZ', result['reason'])
+        self.assertIn({'dir': 'zzz', 'id': 'ZZZ', 'issue': None}, result['in_progress'])
+
+    def test_claimed_epic_is_no_candidate_and_its_scope_counts(self):
+        self.events(*self.old_measurement())
+        self.claims('b')
+        result = self.result([epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/x'), epic(4, 'D', 'apps/d')])
+        self.assertEqual('d', result['epic']['dir'])
+        self.assertEqual([{'issue': 3, 'id': 'C', 'reason': 'wspólne pliki z B: apps/x', 'paths': ['apps/x']}],
+                         result['skipped'])
+        self.assertEqual(['b'], result['parallel_with'])
+        self.assertEqual([], self.commands('git', 'diff'))
+
+    def test_expired_claim_is_ignored(self):
+        self.claims('a', expires=NOW)
+        result = self.result([epic(1, 'A', 'apps/a')])
+        self.assertEqual(('a', []), (result['epic']['dir'], result['in_progress']))
+
+    def test_candidate_is_not_compared_with_its_own_claim(self):
+        self.events(*self.old_measurement())
+        self.claims('b')
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b')], branches=['a'], extra=['--dir', 'b'])
+        self.assertEqual('b', result['epic']['dir'])
+        self.assertEqual(['a'], result['parallel_with'])
+
+    # Step 3: dependencies
+
+    def test_dependency_on_open_epic_skips_to_the_next_candidate(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/b', body='## Zależności\n- A\n'),
+                              epic(3, 'C', 'apps/c')], branches=['a'])
+        self.assertEqual('c', result['epic']['dir'])
+        self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'zależy od A', 'paths': []}], result['skipped'])
+
+    # Step 4: scope
+
+    def test_candidate_without_scope_is_skipped(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', None), epic(3, 'C', 'apps/c')], branches=['a'])
+        self.assertEqual('c', result['epic']['dir'])
+        self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'brak linii Zakres', 'paths': []}], result['skipped'])
+
+    def test_epic_in_progress_without_scope_makes_every_candidate_wait(self):
+        result = self.result([epic(1, 'A', None), epic(2, 'B', 'apps/b'), epic(3, 'C', 'apps/c')], branches=['a'])
+        self.assertIsNone(result['epic'])
+        self.assertEqual('A w toku bez zakresu: brak linii Zakres', result['reason'])
+        self.assertEqual([], result['skipped'])
+
+    # Step 5: files
+
+    def test_common_generated_files_and_docs_pass(self):
+        self.events(*self.old_measurement())
+        shared = 'apps/api/openapi.json, apps/admin/src/api/schema.d.ts, README.md'
+        result = self.result([epic(1, 'A', 'apps/a, docs/adr, ' + shared), epic(2, 'B', 'apps/b, docs, ' + shared)],
+                             branches=['a'])
+        self.assertEqual('b', result['epic']['dir'])
+
+    def test_common_blocking_file_skips_the_candidate(self):
+        self.events(*self.old_measurement())
+        for path in ['CLAUDE.md', 'apps/api/CLAUDE.md', '.github/workflows/ci.yml', 'make/demo.mk', 'Makefile',
+                     'infra/k8s/README.md', 'apps/admin/src/layout/AppMenu.vue', 'apps/api/src/Cart']:
+            with self.subTest(path=path):
+                result = self.result([epic(1, 'A', 'apps/a, ' + path), epic(2, 'B', path + ', apps/b'),
+                                      epic(3, 'C', 'apps/c')], branches=['a'])
+                self.assertEqual('c', result['epic']['dir'])
+                self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'wspólne pliki z A: %s' % path,
+                                   'paths': [path]}], result['skipped'])
+
+    def test_narrower_path_of_the_common_part_is_reported(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/api/src'), epic(2, 'B', 'apps/api/src/Cart/Domain')],
+                             branches=['a'])
+        self.assertEqual(['apps/api/src/Cart/Domain'], result['skipped'][0]['paths'])
+
+    def test_paths_from_all_epics_in_progress(self):
+        self.events(*self.old_measurement(), self.start('b', NOW - timedelta(hours=1)),
+                    self.done('b', NOW - timedelta(minutes=30)))
+        result = self.result([epic(1, 'A', 'apps/x, Makefile'), epic(2, 'B', 'apps/y'),
+                              epic(3, 'C', 'apps/x, apps/y, Makefile')], branches=['a', 'b'])
+        self.assertIsNone(result['epic'])
+        self.assertIsNone(result['reason'])
+        self.assertEqual([{'issue': 3, 'id': 'C', 'reason': 'wspólne pliki z A: Makefile, apps/x',
+                           'paths': ['Makefile', 'apps/x', 'apps/y']}], result['skipped'])
+
+    def test_file_outside_scope_in_the_branch_diff_blocks(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/a'), epic(2, 'B', 'apps/shared')], branches=['a'],
+                             diffs={'a': ['apps/a/x.php', 'apps/shared/Kernel.php']})
+        self.assertEqual([{'issue': 2, 'id': 'B', 'reason': 'wspólne pliki z A: apps/shared/Kernel.php',
+                           'paths': ['apps/shared/Kernel.php']}], result['skipped'])
+        self.assertEqual([FETCH_EPICS], self.commands(*FETCH_EPICS))
+        self.assertEqual([['git', 'diff', '--name-only', 'origin/main...origin/epic/a']], self.commands('git', 'diff'))
+        fetch, diff = self.runner.calls.index(FETCH_EPICS), self.runner.calls.index(self.commands('git', 'diff')[0])
+        self.assertLess(fetch, diff)
+
+    def test_lower_candidate_starts_before_a_skipped_higher_one(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/c')],
+                             branches=['a'])
+        self.assertEqual('c', result['epic']['dir'])
+        self.assertEqual(['B'], [s['id'] for s in result['skipped']])
+
+    # --dir
+
+    def test_dir_not_on_the_board(self):
+        self.assertEqual('ZZZ nie ma na tablicy', self.reason([epic(1, 'A', 'apps/a')], extra=['--dir', 'zzz']))
+
+    def test_dir_not_prepared(self):
+        self.assertEqual('brak spec.md i plan.md z manifestem na origin/main',
+                         self.reason([epic(1, 'A', 'apps/a', tasks=None)], extra=['--dir', 'a']))
+
+    def test_dir_in_progress(self):
+        result = self.result([epic(1, 'A', 'apps/a')], branches=['a'], extra=['--dir', 'a'])
+        self.assertEqual((None, 'A jest w toku', False), (result['epic'], result['reason'], result['resumed']))
+
+    def test_dir_with_merged_final_pr(self):
+        self.assertEqual('A ma zmergowany końcowy PR',
+                         self.reason([epic(1, 'A', 'apps/a')], branches=['a'], merged=['a'], extra=['--dir', 'a']))
+
+    def test_dir_skip_stops_with_its_reason(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/c')],
+                             branches=['a'], extra=['--dir', 'b'])
+        self.assertIsNone(result['epic'])
+        self.assertEqual('wspólne pliki z A: apps/x', result['reason'])
+        self.assertEqual(['B'], [s['id'] for s in result['skipped']])
+
+    def test_dir_checks_a_lower_epic(self):
+        self.events(*self.old_measurement())
+        result = self.result([epic(1, 'A', 'apps/x'), epic(2, 'B', 'apps/x'), epic(3, 'C', 'apps/c')],
+                             branches=['a'], extra=['--dir', 'c'])
+        self.assertEqual(('c', []), (result['epic']['dir'], result['skipped']))
+
+    # Step 6: Docker memory
+
+    def ab(self):
+        return [epic(1, 'A', 'apps/a', tasks=3), epic(2, 'B', 'apps/b')]
+
+    def test_memory_too_small(self):
+        self.events(*self.old_measurement())
+        docker = {'info': str(12 * GIB), 'ps': 'web\tother\n', 'stats': 'web\t1GiB / 12GiB\n'}
+        result = self.result(self.ab(), branches=['a'], docker=docker)
+        self.assertEqual('pamięć Dockera: wolne 5120 MiB < 6144 MiB', result['reason'])
+        self.assertEqual({'total_mib': 12288.0, 'other_mib': 1024.0, 'ao_mib': 0.0, 'free_mib': 5120.0,
+                          'required_mib': 6144.0}, result['docker'])
+
+    def test_reserve_of_an_active_epic_without_a_stack(self):
+        self.events(*self.old_measurement())
+        docker = {'info': str(16 * GIB), 'ps': '', 'stats': ''}
+        result = self.result(self.ab(), branches=['a'], docker=docker, extra=['--stack-gib', '9'])
+        self.assertEqual('pamięć Dockera: wolne 7168 MiB < 9216 MiB', result['reason'])
+
+    def test_measured_ao_memory_above_the_reserve_counts(self):
+        self.events(*self.old_measurement())
+        docker = {'info': str(20 * GIB), 'ps': 'ao-a-api-1\tao-a-1\n', 'stats': 'ao-a-api-1\t10GiB / 20GiB\n'}
+        result = self.result(self.ab(), branches=['a'], docker=docker)
+        self.assertEqual('b', result['epic']['dir'])
+        self.assertEqual({'total_mib': 20480.0, 'other_mib': 0.0, 'ao_mib': 10240.0, 'free_mib': 10240.0,
+                          'required_mib': 6144.0}, result['docker'])
+
+    def test_docker_failure_waits(self):
+        self.events(*self.old_measurement())
+        result = self.result(self.ab(), branches=['a'], fail=('docker',))
+        self.assertIsNone(result['epic'])
+        self.assertIn('docker:', result['reason'])
+        self.assertIn('boom', result['reason'])
+        self.assertIsNone(result['docker'])
+
+    def test_unreadable_docker_output_waits(self):
+        self.events(*self.old_measurement())
+        result = self.result(self.ab(), branches=['a'], docker={'info': 'garbage', 'ps': '', 'stats': ''})
+        self.assertEqual(('docker: nieczytelne wyjście', None), (result['reason'], result['docker']))
+
+    # Step 7: usage limits
+
+    def test_no_measurement_waits(self):
+        self.assertEqual('brak pomiaru', self.reason(self.ab(), branches=['a']))
+
+    def test_usage_status_not_ok_waits(self):
+        self.events(*self.old_measurement())
+        self.assertEqual('stan limitów: stale', self.reason(self.ab(), branches=['a'],
+                                                             stdin_text=json.dumps(usage(10, status='stale'))))
+
+    def test_empty_and_invalid_stdin_wait(self):
+        self.events(*self.old_measurement())
+        for text in ['', '{oops', '[1]']:
+            with self.subTest(text=text):
+                self.assertEqual('stan limitów: unreadable', self.reason(self.ab(), branches=['a'], stdin_text=text))
+
+    def test_full_estimate_of_the_active_epic_counts(self):
+        # A has 3 tasks in its manifest: 6 %; candidate B 2 tasks: 4 %.
+        self.events(*self.old_measurement())
+        self.assertEqual('b', self.result(self.ab(), branches=['a'], stdin_text=json.dumps(usage(70)))['epic']['dir'])
+        self.assertEqual('okno Weekly · all models: 71.0% + 6.0% + 4.0% > 80%',
+                         self.reason(self.ab(), branches=['a'], stdin_text=json.dumps(usage(71))))
+
+    def test_epic_after_done_adds_no_usage(self):
+        self.events(*self.old_measurement(), self.start('a', NOW - timedelta(hours=1)),
+                    self.done('a', NOW - timedelta(minutes=30)))
+        result = self.result(self.ab(), branches=['a'], stdin_text=json.dumps(usage(76)))
+        self.assertEqual('b', result['epic']['dir'])
+
+    def test_window_resetting_before_the_end_is_ignored(self):
+        self.events(*self.old_measurement())
+        before = (NOW + timedelta(minutes=60)).isoformat()
+        after = (NOW + timedelta(minutes=61)).isoformat()
+        self.assertEqual('b', self.result(self.ab(), branches=['a'],
+                                          stdin_text=json.dumps(usage(95, reset=before)))['epic']['dir'])
+        self.assertIn('95.0%', self.reason(self.ab(), branches=['a'], stdin_text=json.dumps(usage(95, reset=after))))
+
+    def test_window_without_measurement_waits(self):
+        self.events(*self.old_measurement())
+        plan = usage(10, extra_windows=[{'label': '5h', 'percentUsed': 1, 'resetsAt': RESET}])
+        self.assertEqual('okno 5h bez pomiaru', self.reason(self.ab(), branches=['a'], stdin_text=json.dumps(plan)))
+
+    def test_usage_estimate_ignores_overlapping_measurements(self):
+        at = T0 - timedelta(hours=5)
+        overlapping = [self.start('p', at, 2, usage(10)), self.start('q', at + timedelta(minutes=10), 2, usage(10)),
+                       self.done('p', at + timedelta(minutes=60), usage(60)),
+                       self.done('q', at + timedelta(minutes=70), usage(60))]
+        self.events(*self.old_measurement(), *overlapping)
+        self.assertEqual('b', self.result(self.ab(), branches=['a'], stdin_text=json.dumps(usage(70)))['epic']['dir'])
+
+    # gate.jsonl
+
+    def test_every_call_appends_to_gate_log(self):
+        self.events(*self.old_measurement())
+        epics = [epic(1, 'A', 'apps/x', body='secret body'), epic(2, 'B', 'apps/x', body='secret body'),
+                 epic(3, 'C', 'apps/c')]
+        self.result(epics, branches=['a'])
+        self.result(epics, branches=['a'], extra=['--dir', 'b'])
+        self.assertEqual([
+            {'at': NOW.isoformat(), 'dir_arg': None, 'epic': 'c', 'reason': None,
+             'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: apps/x', 'paths': ['apps/x']}]},
+            {'at': NOW.isoformat(), 'dir_arg': 'b', 'epic': None, 'reason': 'wspólne pliki z A: apps/x',
+             'skipped': [{'id': 'B', 'reason': 'wspólne pliki z A: apps/x', 'paths': ['apps/x']}]},
+        ], self.log())
+
+    # Errors
+
+    def test_gh_failure_exits_1_without_log(self):
+        code, out, err = self.gate(self.ab(), branches=['a'], fail=('gh', 'pr', 'list'))
+        self.assertEqual((1, ''), (code, out))
+        self.assertIn('boom', err)
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'gate.jsonl')))
+
+    def test_git_failure_exits_1(self):
+        code, out, err = self.gate(self.ab(), branches=['a'], fail=('git', 'diff'))
+        self.assertEqual((1, ''), (code, out))
+        self.assertIn('boom', err)
+
+    def test_unreadable_measurements_exit_2(self):
+        with open(os.path.join(self.state, 'measurements.jsonl'), 'w') as f:
+            f.write('broken\n')
+        code, out, err = self.gate(self.ab(), branches=['a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('linia 1', err)
+
+    def test_unreadable_claims_exit_2(self):
+        with open(os.path.join(self.state, 'claims.json'), 'w') as f:
+            f.write('{oops')
+        code, out, err = self.gate(self.ab(), branches=['a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('claims.json', err)
+
+    def test_busy_lock_exits_2_without_log(self):
+        @contextlib.contextmanager
+        def busy(state_dir):
+            raise night_queue.parallel_gate.LockTimeout('blokada bramki zajęta')
+            yield
+
+        with mock.patch.object(night_queue.parallel_gate, 'state_lock', busy):
+            code, out, err = self.gate(self.ab(), branches=['a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('blokada bramki zajęta', err)
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'gate.jsonl')))
+
+    def test_gate_log_write_failure_exits_2(self):
+        os.makedirs(os.path.join(self.state, 'gate.jsonl'))
+        code, out, err = self.gate([epic(1, 'A', 'apps/a')])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('gate.jsonl', err)
+
+    def test_bad_stack_gib_exits_2(self):
+        for value in ['0', '-1', 'x']:
+            with self.subTest(value=value):
+                code, out, _ = self.gate([epic(1, 'A', 'apps/a')], extra=['--stack-gib', value])
+                self.assertEqual((2, ''), (code, out))
