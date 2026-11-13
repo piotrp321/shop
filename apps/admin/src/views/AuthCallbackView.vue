@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import Button from "primevue/button";
-import Message from "primevue/message";
-import ProgressSpinner from "primevue/progressspinner";
+import { Loader2, LogIn } from "lucide-vue-next";
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import BrandMark from "@/components/BrandMark.vue";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { getUserManager } from "@/auth/userManager";
 
 const router = useRouter();
@@ -31,31 +33,37 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="callback">
-    <Message
-      v-if="failed"
-      data-testid="callback-error"
-      severity="error"
-    >
-      Logowanie nie powiodło się.
-    </Message>
-    <Button
-      v-if="failed"
-      data-testid="retry"
-      label="Zaloguj ponownie"
-      icon="pi pi-sign-in"
-      @click="retry"
-    />
-    <ProgressSpinner v-else />
+  <main class="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+    <Card class="w-full max-w-md">
+      <CardContent class="flex flex-col items-center gap-5 text-center">
+        <BrandMark />
+        <template v-if="failed">
+          <Alert
+            data-testid="callback-error"
+            variant="destructive"
+          >
+            <AlertDescription>Logowanie nie powiodło się.</AlertDescription>
+          </Alert>
+          <Button
+            data-testid="retry"
+            @click="retry"
+          >
+            <LogIn aria-hidden="true" />
+            Zaloguj ponownie
+          </Button>
+        </template>
+        <p
+          v-else
+          role="status"
+          class="flex items-center gap-2 text-sm text-muted-foreground"
+        >
+          <Loader2
+            class="size-4 animate-spin"
+            aria-hidden="true"
+          />
+          Logowanie…
+        </p>
+      </CardContent>
+    </Card>
   </main>
 </template>
-
-<style scoped>
-.callback {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  padding: 4rem 1rem;
-}
-</style>

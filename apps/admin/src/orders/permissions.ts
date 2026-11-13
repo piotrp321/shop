@@ -7,3 +7,8 @@ import type { StaffMe } from "@/stores/auth";
 export function canViewOrders(staff: StaffMe | null): boolean {
   return staff?.roles.some((role) => role === "admin" || role === "support" || role === "warehouse") ?? false;
 }
+
+/** Whether the staff member may complete a refund (admin or support): the menu item „Zwroty do wykonania” is theirs. */
+export function canCompleteRefunds(staff: StaffMe | null): boolean {
+  return staff?.roles.some((role) => role === "admin" || role === "support") ?? false;
+}

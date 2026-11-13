@@ -26,8 +26,25 @@ Klienta API generuje `make api-client` z katalogu głównego.
   pulpit z `history.state.denied`, który pokazuje „Nie masz dostępu do tej strony.” (`useAccessDenied`: odczyt i czyszczenie
   znacznika w tym samym wpisie historii, więc przeładowanie komunikatu nie powtarza); gdy `/me` się nie wczyta, trasa jest
   przepuszczana (dostęp sprawdza API).
-- `src/layout/` – menu boczne (pozycje „Promocje” i „Kody rabatowe” widoczne dla każdego pracownika, pozycja „Zamówienia” tylko dla ról `admin`, `support` i `warehouse` z `/me`, do czasu
-  wczytania `/me` ukryta; ukrywa tylko link, dostęp egzekwuje API), topbar i `AppLayout` (uruchamia `useIdleLogout`, 15 min).
+- `src/layout/` – powłoka panelu (spec „Powłoka”). `AppLayout`: link „Przejdź do treści” (pierwszy w kolejności Tab,
+  przenosi fokus na `<main tabindex="-1">`), sidebar 260 px od 1024 px (`hidden lg:flex`), poniżej tej szerokości szuflada
+  (`Sheet` z lewej: pułapka fokusu, `Escape` i wybór pozycji zamykają, fokus wraca na „Menu” przez `close-auto-focus`,
+  powiększenie okna ≥ 1024 px ją zamyka), `AppTopbar`, `<main>` z komunikatem `staff-error` (`role="alert"`), stopka
+  („© rok Worf · Panel administracyjny” i „Sklep”), kontener toastów (`Toaster`, vue-sonner, region `aria-live="polite"`,
+  5 s) i `useIdleLogout` (15 min). `menu.ts` to jedyna definicja menu (sekcje Główne, Sklep, Marketing; grupy Katalog,
+  Produkty, Zamówienia; widoczność według ról z `/me`, do czasu jego wczytania ukryte są tylko pozycje wymagające roli;
+  ukrywa tylko link, dostęp egzekwuje API i strażnik trasy) i wybór bieżącej pozycji (`currentLeaf`: formularze i
+  szczegóły należą do pozycji listy, `/orders?refund=pending` do „Zwrotów do wykonania”, a dla roli bez tej pozycji do
+  „Listy zamówień”, „Pulpit” tylko na `/`). `AppMenu` i `AppMenuItem` renderują ją: grupa to przycisk z `aria-expanded`
+  i `aria-controls`, grupa bieżącej pozycji otwiera się przy wejściu i przy każdej zmianie trasy (zamyka ją tylko
+  przycisk), tylko bieżąca pozycja ma `aria-current="page"` (zwykły `<a>`, nie `aria-current` z RouterLink). Pozycja
+  „Stan systemu” dojdzie z ekranem (ADMIN-DESIGN-3). `AppTopbar`: przycisk „Menu” (`lg:hidden`), wyszukiwarka produktów
+  (`role="search"`; fraza po przycięciu 2–100 punktów kodowych idzie do `/products?q=`, znaki sterujące i separatory
+  wierszy liczą się jak spacje, pusta nic nie robi, za krótka i za długa pokazują „Wpisz od 2 do 100 znaków.” w stałym
+  regionie `role="status"` połączonym z polem przez `aria-describedby`, fokus zostaje w polu), link „Sklep” z
+  `VITE_STORE_URL` w nowej karcie (`rel="noopener"`), konto (inicjały, login, polskie role z `account.ts`, menu z
+  „Wyloguj”; bez wczytanego pracownika „Konto” i „Wyloguj” też są). `useAccessDenied` czyta i czyści
+  `history.state.denied` (komunikat na pulpicie po strażniku trasy).
 - `src/views/` – widoki przypisane do tras (m.in. `ProductsView`, `ProductFormView`, `PromotionsView`, `PromotionFormView`, `DiscountCodesView`, `DiscountCodeFormView`).
 - `src/dashboard/` – komponenty i ładowanie danych dashboardu (`useDashboard`).
 - `src/composables/` – współdzielona logika reaktywna (`useIdleLogout`, `useCategoryTree` – drzewo kategorii dla filtrów
@@ -207,14 +224,21 @@ Klienta API generuje `make api-client` z katalogu głównego.
   Checkbox, Dialog, AlertDialog, Sheet, DropdownMenu, Tooltip, Badge, Card, Table, Skeleton, Alert, Sonner, Breadcrumb):
   nasz kod, tylko na tokenach, z polskimi nazwami dostępnymi („Zamknij”). Nowy komponent shadcn-vue dodaje się CLI
   w kontenerze i poprawia (klasy palety na tokeny, polskie teksty); `components.json` w `apps/admin`.
-- `src/components/` – własne komponenty, gdy `ui/` nie ma odpowiednika. `CategoryCombobox`: wybór kategorii z drzewa
+- `src/components/` – własne komponenty, gdy `ui/` nie ma odpowiednika. `ConfirmDialog` (na `AlertDialog`): tytuł z nazwą
+  obiektu, opis skutku, przycisk skutku (`destructive`: czerwony, inaczej niebieski) i „Wróć” z domyślnym fokusem;
+  zamknięcie (`Escape`, „Wróć”, akcja) oddaje fokus elementowi, który go miał przy otwarciu, a gdy ten zniknął,
+  wskazanemu nagłówkowi (`fallback-focus`); zdarzenie `confirm`. `focusAfterAction(wyzwalacz, nagłówek)` z `src/lib/focus.ts`
+  to ta sama reguła dla akcji, które zmieniają zestaw przycisków (po odpowiedzi API ekran woła ją sam, gdy dialog
+  zamknął się wcześniej). `PageHeader`: H1 (`tabindex="-1"`, `focus()`) i okruszki (`<nav aria-label="Okruszki">`
+  zaczynają się od „Pulpit”, ostatnia pozycja bez linku z `aria-current="page"`; zwykłe `<a>`, bo RouterLink oznacza
+  `aria-current` każdy link do bieżącej trasy); używają go ekrany po migracji. `BrandMark`: znak Worf. `CategoryCombobox`: wybór kategorii z drzewa
   `useCategoryTree` (prop `nodes`), jedna (`modelValue`: id albo null) albo wiele (`multiple`: lista id); etykieta
   w prop `label` (z `hideLabel` tylko dla czytników), opcje w kolejności drzewa z pełną ścieżką jako nazwą dostępną
   („Turystyka › Biwak › Namioty”) i wcięciem według poziomu, filtrowanie po nazwie i ścieżce bez względu na wielkość
   liter, „Usuń: <nazwa>” przy wybranych w trybie wielokrotnym (po usunięciu fokus przechodzi na „Usuń” następnej
   etykiety, a bez niej poprzedniej albo na pole); `modelValue` w trybie pojedynczym to id albo `null`. Widoki jeszcze go nie używają (zadania ADMIN-DESIGN-4
   i -5 oraz ADMIN-SCREENS).
-- `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów.
+- `src/lib/utils.ts` – `cn` (łączenie klas) dla komponentów; `src/lib/focus.ts` – `focusAfterAction`.
 - `src/styles/tokens.css` – jedyne miejsce wyglądu: `@theme` Tailwinda z paletą (`--palette-*`, bez klas) i warstwą
   semantyczną (tokeny specyfikacji ADMIN-DESIGN i nazwy zmiennych shadcn-vue), promienie, cienie, skala tekstu,
   `@font-face` Nunito i pierścień fokusu. Importowany w `main.ts` przed `src/styles.css`.

@@ -38,8 +38,9 @@ describe("App", () => {
 
     const wrapper = mount(App, { global: { plugins: [createPinia(), router, [PrimeVue, primeVueOptions]] } });
 
-    expect(wrapper.find("[data-testid=login-problem] .p-message-error").exists()).toBe(true);
+    expect(wrapper.get("[data-testid=login-problem]").attributes("role")).toBe("alert");
     expect(wrapper.get("[data-testid=login-problem]").text()).toContain("Nie udało się potwierdzić sesji.");
+    expect(wrapper.get("[data-testid=login-problem-card]").text()).toContain("Worf");
     expect(userManager.signinRedirect).not.toHaveBeenCalled();
 
     await wrapper.get("[data-testid=login-retry]").trigger("click");
@@ -57,8 +58,8 @@ describe("App", () => {
 
     const wrapper = mount(App, { global: { plugins: [createPinia(), router, [PrimeVue, primeVueOptions]] } });
 
-    expect(wrapper.find("nav").text()).toContain("Dashboard");
-    expect(wrapper.find("header button").text()).toContain("Wyloguj");
+    expect(wrapper.find("nav").text()).toContain("Pulpit");
+    expect(wrapper.find("header [data-testid=account]").exists()).toBe(true);
     wrapper.unmount();
   });
 });

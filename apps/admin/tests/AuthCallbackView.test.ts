@@ -56,7 +56,9 @@ describe("AuthCallbackView", () => {
 
     const { wrapper } = await mountView();
 
-    expect(wrapper.find("[data-testid=callback-error] .p-message-error").exists()).toBe(true);
+    expect(wrapper.get("[data-testid=callback-error]").attributes("role")).toBe("alert");
+    expect(wrapper.get("[data-testid=callback-error]").text()).toBe("Logowanie nie powiodło się.");
+    expect(wrapper.get("main").text()).toContain("Worf");
     expect(wrapper.text()).not.toContain("No matching state");
     expect(mocks.signinRedirect).not.toHaveBeenCalled();
 

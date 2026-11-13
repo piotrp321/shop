@@ -10,17 +10,13 @@ import tseslint from "typescript-eslint";
  * imports PrimeVue. ADMIN-SCREENS removes the list together with PrimeVue.
  */
 export const LEGACY_FILES = [
-  "src/App.vue",
   "src/dashboard/CatalogStats.vue",
   "src/dashboard/SystemStatus.vue",
-  "src/layout/AppLayout.vue",
-  "src/layout/AppTopbar.vue",
   "src/main.ts",
   "src/primevue.ts",
   "src/products/ProductImages.vue",
   "src/products/ProductVariants.vue",
   "src/promotions/PromotionVariantPicker.vue",
-  "src/views/AuthCallbackView.vue",
   "src/views/DashboardView.vue",
   "src/views/DiscountCodeFormView.vue",
   "src/views/DiscountCodesView.vue",

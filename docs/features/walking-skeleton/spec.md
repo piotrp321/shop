@@ -854,8 +854,12 @@ Vue 3 (Composition API), Vite, TypeScript, Pinia, Vue Router, Tailwind CSS 4, ko
 
 ### Layout i dashboard
 
-- Layout: menu boczne (pozycja „Dashboard”), topbar z loginem pracownika, jego rolami (`Tag`) i przyciskiem
-  wylogowania.
+- Layout (szczegóły i testy: `docs/features/admin-design/spec.md`, „Powłoka”): ciemny sidebar 260 px z menu w sekcjach
+  i grupach (pozycje według ról z `/me`, bieżąca pozycja z `aria-current`), od 1024 px w dół szuflada otwierana
+  przyciskiem „Menu”, link „Przejdź do treści”, topbar z wyszukiwarką produktów, linkiem „Sklep” (adres z `VITE_STORE_URL`)
+  i kontem pracownika (login, polskie nazwy ról, menu z „Wyloguj”), stopka i kontener toastów. Trasy `/orders`
+  mają strażnika roli (pulpit z komunikatem „Nie masz dostępu do tej strony.”). Problem z logowaniem i powrót
+  z logowania to karta ze znakiem Worf i przyciskiem „Zaloguj ponownie”.
 - Sekcja „Katalog”: kafle z liczbą produktów, liczbą kategorii i liczbą produktów bez zdjęć (wyróżniona
   ostrzeżeniem, gdy jest większa od 0).
 - Sekcja „Stan systemu”, wyświetlana tylko gdy `system` nie jest `null`: usługi ze stanem (`Tag` up/down)
