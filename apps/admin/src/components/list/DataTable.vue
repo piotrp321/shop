@@ -61,7 +61,7 @@ const mainKey = computed(() => (props.columns.find((column) => column.main) ?? p
 const hiddenColumns = computed(() => props.columns.filter((column) => column.hideBelow !== undefined));
 
 const cellClass = (column: ListColumn<Row>) =>
-  cn("px-3 py-3", column.align === "right" && "text-right", column.hideBelow && HIDDEN_CELL[column.hideBelow], column.key === mainKey.value && "whitespace-normal");
+  cn("px-2.5 py-3", column.align === "right" && "text-right", column.hideBelow && HIDDEN_CELL[column.hideBelow], column.key === mainKey.value && "whitespace-normal");
 
 const alertElement = ref<HTMLElement | null>(null);
 const retryButton = ref<InstanceType<typeof Button> | null>(null);
@@ -152,7 +152,7 @@ onMounted(measure);
                   scope="col"
                   :class="
                     cn(
-                      'px-3 text-xs font-bold text-heading uppercase',
+                      'px-2.5 text-xs font-bold whitespace-normal text-heading uppercase',
                       column.align === 'right' && 'text-right',
                       column.hideBelow && HIDDEN_CELL[column.hideBelow],
                     )
