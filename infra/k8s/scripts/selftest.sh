@@ -1,10 +1,13 @@
 #!/bin/sh
 # The self-test of the checks: each case copies infra/ to a temporary tree, injects one error and runs the check of the
-# copy, which must fail and say why. The unbroken copy must pass (a check that always fails proves nothing).
+# copy, which must fail and say why. The unbroken copy must pass the whole check (a check that always fails proves nothing).
+# A case runs only the steps of check.sh that must catch its error, and in the step tests only the tests it must break:
+# the error makes the whole check fail as well, since the whole check runs these steps and these tests too.
 #
-# Usage: selftest.sh        (make -C infra/k8s selftest)
+# Usage: selftest.sh        (make -C infra/k8s selftest; CI runs it for a change of infra/k8s)
 #        SELFTEST_ONLY='<regex>' selftest.sh   only the cases whose name matches the regular expression (grep -E, case
 #                                              insensitive); the unbroken copy is then not run. For working on a case.
+#        SELFTEST_FULL=1 selftest.sh           every case runs the whole check (all steps, all tests).
 set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -91,16 +94,32 @@ drop_extra_object() {
   mv "$file.new" "$file"
 }
 
-# case <name> <expected text in the output> <command that injects the error>
+# case <name> <expected text in the output> <steps> <command that injects the error>
+# <steps> are the steps of check.sh that must catch the error. In it, tests=<pattern> runs only the tests whose name
+# contains the pattern; a bare tests runs only the test named by the expected text when it is a test name (test_...),
+# else all tests.
 run_case() {
-  name="$1" expected="$2"
-  shift 2
+  name="$1" expected="$2" case_steps="$3"
+  shift 3
   if [ -n "${SELFTEST_ONLY:-}" ] && ! printf '%s' "$name" | grep -Eqi "$SELFTEST_ONLY"; then
     return 0
   fi
+  [ -n "$case_steps" ] || { echo "selftest: the case '$name' names no step of check.sh" >&2; exit 1; }
+  check_steps="" tests_filter=""
+  for case_step in $case_steps; do
+    case "$case_step" in
+      tests=*) tests_filter="${case_step#tests=}"; check_steps="$check_steps tests" ;;
+      tests) case "$expected" in test_*) tests_filter="$expected" ;; esac; check_steps="$check_steps tests" ;;
+      *) check_steps="$check_steps $case_step" ;;
+    esac
+  done
+  if [ -n "${SELFTEST_FULL:-}" ]; then
+    check_steps="" tests_filter=""
+  fi
   fresh_copy
   "$@"
-  if output="$(sh "$tree/infra/k8s/scripts/check.sh" 2>&1)"; then
+  # shellcheck disable=SC2086 # $check_steps is a list of steps
+  if output="$(CHECK_TESTS_FILTER="$tests_filter" sh "$tree/infra/k8s/scripts/check.sh" $check_steps 2>&1)"; then
     echo "selftest: FAIL $name: the check passed with the injected error" >&2
     failures=$((failures + 1))
   elif printf '%s' "$output" | grep -qF -- "$expected"; then
@@ -277,91 +296,91 @@ nothing_broken() { :; }
 if [ -z "${SELFTEST_ONLY:-}" ]; then
   echo "selftest: the unbroken copy passes"
   fresh_copy
-  sh "$tree/infra/k8s/scripts/check.sh" >/dev/null 2>&1 || { echo "selftest: FAIL the unbroken copy does not pass the check" >&2; failures=$((failures + 1)); }
+  CHECK_TESTS_FILTER='' sh "$tree/infra/k8s/scripts/check.sh" >/dev/null 2>&1 || { echo "selftest: FAIL the unbroken copy does not pass the check" >&2; failures=$((failures + 1)); }
 fi
 
-run_case "broken template" "unexpected EOF" broken_template
-run_case "init-env.sh key missing from the secret template" "keys of infra/scripts/init-env.sh missing from the secret template" secret_key_missing
-run_case "key dropped from the secret template" "VARNISH_PURGE_SECRET" secret_key_dropped_from_template
-run_case "invalid manifest" "is invalid" invalid_manifest
-run_case "auth ingress exposing the master realm" "test_auth_exposes_only_the_realms_of_the_shop_and_the_resources" auth_exposes_master
-run_case "job in a wave before its dependency" "waits for postgres" job_before_dependency
-run_case "third-party image without a digest" "/images/redis" image_without_digest
-run_case "chart allowed on Kubernetes without stable image volumes" "Kubernetes 1.35: the render succeeded, it must fail" kube_version_lowered
-run_case "orderMail brevo allowed without the Brevo secret" "orderMail brevo without the Brevo secret: the render succeeded" brevo_without_secret_allowed
-run_case "keycloak-config printing a secret" "test_no_secret_is_in_the_arguments_or_in_the_output" keycloak_config_prints_a_secret
-run_case "create-admin going on without tak" "test_without_the_word_tak_nothing_runs" create_admin_without_confirmation
-run_case "deploy.yml needing a job that does not exist" "needs job \"smok\"" deploy_needs_a_missing_job
-run_case "unquoted variable in a run script of deploy.yml (shellcheck)" "SC2086" deploy_script_unquoted
-run_case "deploy without waiting for the smoke test" "test_it_needs_a_green_smoke_test_and_the_images" deploy_without_the_smoke_test
-run_case "images pushed for every event" "test_images_are_pushed_and_deploy_moves_only_for_a_push_to_main" deploy_images_pushed_for_every_event
-run_case "runs for main cancelled" "test_runs_for_main_are_never_cancelled_and_other_runs_are" runs_for_main_cancelled
-run_case "deploy.yml steps without pipefail (smoke test piped to tee)" "test_every_run_step_has_pipefail" deploy_without_pipefail
-run_case "deploy pushing the two branches without --atomic" "test_the_script_pushes_both_branches_in_one_atomic_push" deploy_push_not_atomic
-run_case "deploy without the check of the render of prod" "test_the_render_of_prod_is_checked_before_anything_is_published" deploy_without_the_render_check
-run_case "smoke test on the registry images for every event" "test_on_main_the_first_install_uses_the_values_file_and_the_registry" smoke_values_for_every_event
-run_case "images values generator accepting a short digest" "test_a_missing_or_malformed_digest_fails_and_writes_nothing" generator_accepts_short_digests
-run_case "a workflow that deletes package versions (retention)" "test_no_workflow_deletes_package_versions" package_cleanup_added
-run_case "Argo CD shop application on another branch than the rest" "test_everything_from_git_tracks_the_same_branch_of_the_same_repository" argocd_shop_on_another_branch
-run_case "Argo CD shop application ignoring a missing images file" "test_the_values_are_the_profile_and_the_images_file_in_this_order_and_nothing_else" argocd_shop_ignores_missing_images_file
-run_case "certificate of Sealed Secrets ignored by git" "is ignored by git" certificate_ignored_by_git
-run_case "certificate in the repository and no sealed secrets" "keys of infra/scripts/init-env.sh without a sealed value" certificate_without_sealed_secrets
-run_case "certificate in the repository and one key unsealed" "PAYMENT_DEMO_CARD_API_KEY" certificate_with_a_key_unsealed
-run_case "plain secret committed to environments/prod/secrets" "not a SealedSecret" plain_secret_committed
-run_case "bootstrap without the check for root" "FAIL no root" bootstrap_without_the_root_check
-run_case "bootstrap setting vm.max_map_count on every run" "FAIL sysctl again" bootstrap_sets_sysctl_every_time
-run_case "reinitialize going on without tak" "test_without_the_word_tak_nothing_runs" reinitialize_without_confirmation
-run_case "seal-secrets.sh sealing keys that are already there" "test_the_second_run_changes_nothing_and_does_not_call_kubeseal" seal_secrets_replaces_existing_keys
-run_case "smoke pull arguments that never pull" "test_the_images_are_those_of_the_registry_by_digest_and_may_be_pulled" smoke_pull_args_never_pull
-run_case "smoke installing without the pull arguments" "test_smoke_sh_uses_the_values_file_and_checks_the_digests_of_the_pods" smoke_installs_without_pull_args
-run_case "secrets application including every file" "test_the_application_includes_only_yaml" secrets_application_includes_everything
-run_case "secret in a yml file of the secrets directory" "test_the_directory_of_the_repository_has_only_yaml_files_and_the_two_documents" secret_in_a_yml_file
-run_case "sealed secrets key that rotates" "test_the_key_of_the_controller_is_not_rotated" sealed_secrets_key_rotates
-run_case "Argo CD without the health of applications" "test_the_root_waits_for_the_health_of_the_applications_of_the_waves" argocd_without_application_health
-run_case "bootstrap never restarting k3s" "FAIL restart" bootstrap_never_restarts_k3s
-run_case "bootstrap accepting only a plain Secret backup" "FAIL list backup" bootstrap_accepts_only_a_secret_backup
-run_case "bootstrap applying root whatever the certificate" "FAIL other cert" bootstrap_applies_root_whatever_the_certificate
-run_case "backup repository without its password" "test_the_repository_always_comes_with_its_password" backup_repository_without_password
-run_case "backup CronJob without concurrencyPolicy Forbid" "test_it_runs_every_night_at_three_in_warsaw_and_never_twice_at_once" backup_cronjob_without_forbid
-run_case "backup script that goes on after an error" "test_the_script_is_posix_sh_and_stops_at_the_first_error" backup_script_ignores_errors
-run_case "backup initializing a repository after any error" "test_another_error_of_access_is_an_error_and_not_an_init" backup_inits_after_any_error
-run_case "verification script that goes on after an error" "test_the_script_is_posix_sh_and_stops_at_the_first_error" backup_verify_script_ignores_errors
-run_case "verification accepting a snapshot of any age" "test_a_snapshot_older_than_26_hours_is_an_error_that_says_so" backup_verify_accepts_any_age
-run_case "verification with the temporary Postgres that is not a sidecar" "test_the_postgres_is_a_sidecar_that_the_end_of_the_verification_stops" backup_verify_postgres_not_a_sidecar
-run_case "verify without the CA certificates of restic" "test_restic_trusts_the_certificates_of_its_own_image" backup_verify_without_the_ca_certificates
-run_case "verification that reads the production Postgres" "test_nothing_of_the_production_database_is_reachable" backup_verify_reads_the_production_postgres
-run_case "seal-secrets looking for the existing backup secret in another file (it asks for the password again)" "test_the_backup_is_created_once_then_nothing_is_asked" seal_secrets_looks_for_the_backup_in_another_file
-run_case "monitoring masking no e-mail address" "e-mail 'jan.kowalski' came out of Alloy" monitoring_without_the_email_rule
-run_case "Alloy with a ClusterRole that reads all Secrets" "with access to Secrets outside monitoring" monitoring_alloy_rules_with_secrets
-run_case "Alloy Operator with the RBAC of its chart" "gives the operator rights outside the namespace monitoring" monitoring_operator_with_the_rbac_of_its_chart
-run_case "Alloy Operator with a Role that changes RBAC objects" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" monitoring_operator_changing_rbac
-run_case "Alloy Operator watching the whole cluster" "test_the_operator_watches_only_its_own_namespace" monitoring_operator_on_the_whole_cluster
-run_case "Alloy resource making its own RBAC" "the Alloy resource makes its own RBAC" monitoring_alloy_making_its_own_rbac
-run_case "Role of Alloy on all Secrets of the shop" "the Role does not name the one Secret" monitoring_role_on_all_secrets_of_the_shop
-run_case "cluster events without the stages that mask" "do not get the same stages" monitoring_events_without_the_stages
-run_case "monitoring collecting Mailpit" "test_the_rules_drop_exactly_the_disabled_sources_of_the_shop" monitoring_collecting_mailpit
-run_case "monitoring chart version without a pinned digest" "has no sha256 in scripts/monitoring-render.sh" monitoring_chart_version_without_a_digest
-run_case "monitoring chart archive with another digest" "of scripts/monitoring-render.sh" monitoring_chart_digest_differs
-run_case "monitoring stages that Alloy rejects" "Alloy rejects the rendered configuration" monitoring_stages_alloy_rejects
-run_case "monitoring without the policy on the access to the host" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_host_policy
-run_case "monitoring without the binding of the policy on the tokens" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_token_binding
-run_case "monitoring admission policy that only warns" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_policy_that_warns
-run_case "monitoring admission policy that fails open" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_policy_that_fails_open
-run_case "monitoring admission policy in the wave of the workloads" "test_the_policies_and_their_bindings_come_before_everything_else_of_the_application" monitoring_policy_with_the_workloads
-run_case "monitoring admission policy that knows node-exporter by its labels" "test_the_only_exception_is_node_exporter_which_the_operator_cannot_forge" monitoring_node_exporter_by_its_labels
-run_case "Alloy Operator with a Role on DaemonSets" "test_the_operator_changes_only_its_alloy_and_makes_only_deployments" monitoring_operator_with_daemon_sets
-run_case "Alloy Operator changing the Deployment of kube-state-metrics" "test_the_operator_changes_only_its_alloy_and_makes_only_deployments" monitoring_operator_changing_every_deployment
-run_case "Alloy with the proxy of the nodes" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" monitoring_alloy_with_the_proxy_of_the_nodes
-run_case "the token of Alloy given to a group of service accounts" "not to Alloy only" monitoring_token_for_a_group
-run_case "monitoring without the policy on Services" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" monitoring_without_the_service_policy
-run_case "monitoring Service policy letting NodePort through" "test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through" monitoring_service_policy_with_node_ports
-run_case "monitoring Service policy without the external IPs" "test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through" monitoring_service_policy_without_external_ips
-run_case "monitoring pod policy without the priority classes of the system" "test_no_pod_and_no_template_of_a_pod_gets_a_priority_class_of_the_system" monitoring_pods_with_priority_classes_of_the_system
-run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" restore_without_confirmation
-run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" backup_missing_without_absent
-run_case "NodeDiskFull firing at exactly 85 percent (promtool)" "alertname: NodeDiskFull" node_disk_full_at_exactly_85_percent
-run_case "alert rule with a PromQL syntax error" "parse error" alert_rule_with_a_syntax_error
-run_case "deploy.yml missing" "deploy.yml is missing" deploy_workflow_missing
+run_case "broken template" "unexpected EOF" "lint" broken_template
+run_case "init-env.sh key missing from the secret template" "keys of infra/scripts/init-env.sh missing from the secret template" "tests=test_secrets." secret_key_missing
+run_case "key dropped from the secret template" "VARNISH_PURGE_SECRET" "tests=test_secrets." secret_key_dropped_from_template
+run_case "invalid manifest" "is invalid" "render kubeconform" invalid_manifest
+run_case "auth ingress exposing the master realm" "test_auth_exposes_only_the_realms_of_the_shop_and_the_resources" "tests" auth_exposes_master
+run_case "job in a wave before its dependency" "waits for postgres" "tests=test_waves." job_before_dependency
+run_case "third-party image without a digest" "/images/redis" "lint" image_without_digest
+run_case "chart allowed on Kubernetes without stable image volumes" "Kubernetes 1.35: the render succeeded, it must fail" "schema" kube_version_lowered
+run_case "orderMail brevo allowed without the Brevo secret" "orderMail brevo without the Brevo secret: the render succeeded" "schema" brevo_without_secret_allowed
+run_case "keycloak-config printing a secret" "test_no_secret_is_in_the_arguments_or_in_the_output" "tests" keycloak_config_prints_a_secret
+run_case "create-admin going on without tak" "test_without_the_word_tak_nothing_runs" "tests" create_admin_without_confirmation
+run_case "deploy.yml needing a job that does not exist" "needs job \"smok\"" "actionlint" deploy_needs_a_missing_job
+run_case "unquoted variable in a run script of deploy.yml (shellcheck)" "SC2086" "actionlint" deploy_script_unquoted
+run_case "deploy without waiting for the smoke test" "test_it_needs_a_green_smoke_test_and_the_images" "tests" deploy_without_the_smoke_test
+run_case "images pushed for every event" "test_images_are_pushed_and_deploy_moves_only_for_a_push_to_main" "tests" deploy_images_pushed_for_every_event
+run_case "runs for main cancelled" "test_runs_for_main_are_never_cancelled_and_other_runs_are" "tests" runs_for_main_cancelled
+run_case "deploy.yml steps without pipefail (smoke test piped to tee)" "test_every_run_step_has_pipefail" "tests" deploy_without_pipefail
+run_case "deploy pushing the two branches without --atomic" "test_the_script_pushes_both_branches_in_one_atomic_push" "tests" deploy_push_not_atomic
+run_case "deploy without the check of the render of prod" "test_the_render_of_prod_is_checked_before_anything_is_published" "tests" deploy_without_the_render_check
+run_case "smoke test on the registry images for every event" "test_on_main_the_first_install_uses_the_values_file_and_the_registry" "tests" smoke_values_for_every_event
+run_case "images values generator accepting a short digest" "test_a_missing_or_malformed_digest_fails_and_writes_nothing" "tests" generator_accepts_short_digests
+run_case "a workflow that deletes package versions (retention)" "test_no_workflow_deletes_package_versions" "tests" package_cleanup_added
+run_case "Argo CD shop application on another branch than the rest" "test_everything_from_git_tracks_the_same_branch_of_the_same_repository" "tests" argocd_shop_on_another_branch
+run_case "Argo CD shop application ignoring a missing images file" "test_the_values_are_the_profile_and_the_images_file_in_this_order_and_nothing_else" "tests" argocd_shop_ignores_missing_images_file
+run_case "certificate of Sealed Secrets ignored by git" "is ignored by git" "gitignore" certificate_ignored_by_git
+run_case "certificate in the repository and no sealed secrets" "keys of infra/scripts/init-env.sh without a sealed value" "tests=test_sealed_secrets." certificate_without_sealed_secrets
+run_case "certificate in the repository and one key unsealed" "PAYMENT_DEMO_CARD_API_KEY" "tests=test_sealed_secrets." certificate_with_a_key_unsealed
+run_case "plain secret committed to environments/prod/secrets" "not a SealedSecret" "tests=test_sealed_secrets." plain_secret_committed
+run_case "bootstrap without the check for root" "FAIL no root" "bootstrap" bootstrap_without_the_root_check
+run_case "bootstrap setting vm.max_map_count on every run" "FAIL sysctl again" "bootstrap" bootstrap_sets_sysctl_every_time
+run_case "reinitialize going on without tak" "test_without_the_word_tak_nothing_runs" "tests" reinitialize_without_confirmation
+run_case "seal-secrets.sh sealing keys that are already there" "test_the_second_run_changes_nothing_and_does_not_call_kubeseal" "tests" seal_secrets_replaces_existing_keys
+run_case "smoke pull arguments that never pull" "test_the_images_are_those_of_the_registry_by_digest_and_may_be_pulled" "tests" smoke_pull_args_never_pull
+run_case "smoke installing without the pull arguments" "test_smoke_sh_uses_the_values_file_and_checks_the_digests_of_the_pods" "tests" smoke_installs_without_pull_args
+run_case "secrets application including every file" "test_the_application_includes_only_yaml" "tests" secrets_application_includes_everything
+run_case "secret in a yml file of the secrets directory" "test_the_directory_of_the_repository_has_only_yaml_files_and_the_two_documents" "tests" secret_in_a_yml_file
+run_case "sealed secrets key that rotates" "test_the_key_of_the_controller_is_not_rotated" "tests" sealed_secrets_key_rotates
+run_case "Argo CD without the health of applications" "test_the_root_waits_for_the_health_of_the_applications_of_the_waves" "tests" argocd_without_application_health
+run_case "bootstrap never restarting k3s" "FAIL restart" "bootstrap" bootstrap_never_restarts_k3s
+run_case "bootstrap accepting only a plain Secret backup" "FAIL list backup" "bootstrap" bootstrap_accepts_only_a_secret_backup
+run_case "bootstrap applying root whatever the certificate" "FAIL other cert" "bootstrap" bootstrap_applies_root_whatever_the_certificate
+run_case "backup repository without its password" "test_the_repository_always_comes_with_its_password" "tests" backup_repository_without_password
+run_case "backup CronJob without concurrencyPolicy Forbid" "test_it_runs_every_night_at_three_in_warsaw_and_never_twice_at_once" "tests" backup_cronjob_without_forbid
+run_case "backup script that goes on after an error" "test_the_script_is_posix_sh_and_stops_at_the_first_error" "tests" backup_script_ignores_errors
+run_case "backup initializing a repository after any error" "test_another_error_of_access_is_an_error_and_not_an_init" "tests" backup_inits_after_any_error
+run_case "verification script that goes on after an error" "test_the_script_is_posix_sh_and_stops_at_the_first_error" "tests" backup_verify_script_ignores_errors
+run_case "verification accepting a snapshot of any age" "test_a_snapshot_older_than_26_hours_is_an_error_that_says_so" "tests" backup_verify_accepts_any_age
+run_case "verification with the temporary Postgres that is not a sidecar" "test_the_postgres_is_a_sidecar_that_the_end_of_the_verification_stops" "tests" backup_verify_postgres_not_a_sidecar
+run_case "verify without the CA certificates of restic" "test_restic_trusts_the_certificates_of_its_own_image" "tests" backup_verify_without_the_ca_certificates
+run_case "verification that reads the production Postgres" "test_nothing_of_the_production_database_is_reachable" "tests" backup_verify_reads_the_production_postgres
+run_case "seal-secrets looking for the existing backup secret in another file (it asks for the password again)" "test_the_backup_is_created_once_then_nothing_is_asked" "tests" seal_secrets_looks_for_the_backup_in_another_file
+run_case "monitoring masking no e-mail address" "e-mail 'jan.kowalski' came out of Alloy" "tests=test_log_masking." monitoring_without_the_email_rule
+run_case "Alloy with a ClusterRole that reads all Secrets" "with access to Secrets outside monitoring" "tests=test_monitoring." monitoring_alloy_rules_with_secrets
+run_case "Alloy Operator with the RBAC of its chart" "gives the operator rights outside the namespace monitoring" "tests=test_monitoring." monitoring_operator_with_the_rbac_of_its_chart
+run_case "Alloy Operator with a Role that changes RBAC objects" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" "tests=test_monitoring." monitoring_operator_changing_rbac
+run_case "Alloy Operator watching the whole cluster" "test_the_operator_watches_only_its_own_namespace" "tests" monitoring_operator_on_the_whole_cluster
+run_case "Alloy resource making its own RBAC" "the Alloy resource makes its own RBAC" "tests=test_monitoring." monitoring_alloy_making_its_own_rbac
+run_case "Role of Alloy on all Secrets of the shop" "the Role does not name the one Secret" "tests=test_monitoring." monitoring_role_on_all_secrets_of_the_shop
+run_case "cluster events without the stages that mask" "do not get the same stages" "tests=test_log_masking." monitoring_events_without_the_stages
+run_case "monitoring collecting Mailpit" "test_the_rules_drop_exactly_the_disabled_sources_of_the_shop" "tests" monitoring_collecting_mailpit
+run_case "monitoring chart version without a pinned digest" "has no sha256 in scripts/monitoring-render.sh" "render" monitoring_chart_version_without_a_digest
+run_case "monitoring chart archive with another digest" "of scripts/monitoring-render.sh" "render" monitoring_chart_digest_differs
+run_case "monitoring stages that Alloy rejects" "Alloy rejects the rendered configuration" "render" monitoring_stages_alloy_rejects
+run_case "monitoring without the policy on the access to the host" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_without_the_host_policy
+run_case "monitoring without the binding of the policy on the tokens" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_without_the_token_binding
+run_case "monitoring admission policy that only warns" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_policy_that_warns
+run_case "monitoring admission policy that fails open" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_policy_that_fails_open
+run_case "monitoring admission policy in the wave of the workloads" "test_the_policies_and_their_bindings_come_before_everything_else_of_the_application" "tests" monitoring_policy_with_the_workloads
+run_case "monitoring admission policy that knows node-exporter by its labels" "test_the_only_exception_is_node_exporter_which_the_operator_cannot_forge" "tests" monitoring_node_exporter_by_its_labels
+run_case "Alloy Operator with a Role on DaemonSets" "test_the_operator_changes_only_its_alloy_and_makes_only_deployments" "tests" monitoring_operator_with_daemon_sets
+run_case "Alloy Operator changing the Deployment of kube-state-metrics" "test_the_operator_changes_only_its_alloy_and_makes_only_deployments" "tests" monitoring_operator_changing_every_deployment
+run_case "Alloy with the proxy of the nodes" "can bind, escalate, impersonate, change RBAC objects or reach into pods, tokens and nodes" "tests=test_monitoring." monitoring_alloy_with_the_proxy_of_the_nodes
+run_case "the token of Alloy given to a group of service accounts" "not to Alloy only" "tests=test_monitoring." monitoring_token_for_a_group
+run_case "monitoring without the policy on Services" "test_three_policies_each_bound_to_the_namespace_monitoring_that_deny_and_fail_closed" "tests" monitoring_without_the_service_policy
+run_case "monitoring Service policy letting NodePort through" "test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through" "tests" monitoring_service_policy_with_node_ports
+run_case "monitoring Service policy without the external IPs" "test_the_service_policy_lets_only_cluster_ips_without_external_addresses_through" "tests" monitoring_service_policy_without_external_ips
+run_case "monitoring pod policy without the priority classes of the system" "test_no_pod_and_no_template_of_a_pod_gets_a_priority_class_of_the_system" "tests" monitoring_pods_with_priority_classes_of_the_system
+run_case "restore going on without tak" "test_without_the_word_tak_nothing_changes" "tests" restore_without_confirmation
+run_case "BackupMissing without the absent for a metric that is gone" "test_the_alerts_of_missing_data_have_an_absent" "tests" backup_missing_without_absent
+run_case "NodeDiskFull firing at exactly 85 percent (promtool)" "alertname: NodeDiskFull" "alerts" node_disk_full_at_exactly_85_percent
+run_case "alert rule with a PromQL syntax error" "parse error" "alerts" alert_rule_with_a_syntax_error
+run_case "deploy.yml missing" "deploy.yml is missing" "actionlint" deploy_workflow_missing
 
 if [ "$failures" -ne 0 ]; then
   echo "selftest: $failures case(s) failed" >&2

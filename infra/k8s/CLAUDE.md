@@ -22,7 +22,11 @@ na operacje na serwerze) są w głównym `CLAUDE.md`. Runbook wdrożenia: `READM
   stały na 70% nasycenia z checkoutem o ograniczonej równoległości, wyniki do `LOAD_OUT`; kilkadziesiąt minut, VM
   Dockera co najmniej 10 vCPU i 20 GiB; kod 0 – pomiar wykonany, bez progów, 2 – błąd środowiska: brak `LOAD_OUT`,
   za mało zasobów, obrazy nieobecne w węźle po trzech importach, pody niegotowe, dane demo albo stany niegotowe, nieudane rozgrzanie; 1 – inny błąd (nieudany przebieg k6, build); klaster jest usuwany przy każdym wyjściu); `make -C infra/k8s rerun JOB=<nazwa>` (ponawia Job wersji pod tą
-  samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje);
+  samą nazwą); `make -C infra/k8s selftest` (wstrzykuje błędy i sprawdza, że `check` je wyłapuje: każdy przypadek uruchamia tylko krok
+  `check.sh`, który ma ten błąd wyłapać, a w kroku `tests` tylko test, który ma się nie udać (`CHECK_TESTS_FILTER`);
+  nieuszkodzona kopia przechodzi pełny `check`; `SELFTEST_FULL=1` uruchamia przy każdym przypadku pełny `check`;
+  `SELFTEST_ONLY='<regex>'` wybiera przypadki po nazwie; CI uruchamia wszystkie przypadki przy zmianie `infra/k8s`,
+  więc lokalnie agent uruchamia tylko przypadki, które dodał albo zmienił, i przypadki testów, które zmienił);
   `make -C infra/k8s create-admin LOGIN=<login> EMAIL=<e-mail>` (pierwszy administrator panelu: wypisuje, co zrobi,
   i działa dopiero po słowie `tak`; zakłada użytkownika w realmie `backoffice` z rolą `admin` bez hasła i wysyła mu
   e-mail z akcjami `UPDATE_PASSWORD` i `CONFIGURE_TOTP`, link ważny 12 h; istniejący login albo e-mail: błąd, kod 3,
