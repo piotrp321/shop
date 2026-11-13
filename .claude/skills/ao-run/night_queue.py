@@ -42,8 +42,10 @@ their files (scope plus branch diff). A candidate is skipped when it depends on 
 progress or on the list a path that is not allowed (parallel_gate.is_allowed; `zakres wspólny z X: <path>`), has no
 readable scope while anything is in progress or listed (an epic without scope enters only alone, with nothing in
 progress), or makes the serial sum of the estimates end after `until`. An epic in progress without a readable scope
-skips every candidate (`X w toku bez zakresu: <error>`). approve: recomputes the list and, when it equals
-the given dirs in order, writes <state>/night.json and prints it; otherwise exits 2.
+skips every candidate (`X w toku bez zakresu: <error>`). approve: one night at a time on the computer: a
+night.json without `ended_at` and now <= its `until` exits 2 `trwa noc zatwierdzona <approved_at> do <until>` (an
+unreadable night.json also exits 2); otherwise it recomputes the list and, when it equals the given dirs in order,
+writes <state>/night.json and prints it; otherwise exits 2.
 
 next: reads <state>/night.json and prints one JSON line {"epic": {dir, id, issue, title, tasks, minutes} | null,
 "reason": <str|null>, "started": [dirs], "left": [dirs]}, exit 0 also when `epic` is null. The candidate is the first
@@ -507,6 +509,9 @@ def write_night(state_dir, night):
 
 def cmd_approve(args, run, now, stdin):
     with state_lock(args.state):
+        current = read_night(args.state)
+        if current is not None and 'ended_at' not in current and now <= parse_time(current['until']):
+            raise StateError('trwa noc zatwierdzona %s do %s' % (current['approved_at'], current['until']))
         result = propose(run, args.state, args.until, now)
         listed = [e['dir'] for e in result['epics']]
         if not listed or listed != args.dirs:

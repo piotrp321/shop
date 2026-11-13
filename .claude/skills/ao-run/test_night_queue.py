@@ -891,6 +891,49 @@ class QueueCliTest(unittest.TestCase):
         code, out, _ = self.cli('approve', [epic(1, 'A', 'a')])
         self.assertEqual((2, ''), (code, out))
 
+    def write_night(self, **fields):
+        os.makedirs(self.state, exist_ok=True)
+        night = dict({'approved_at': (T0 - timedelta(hours=1)).isoformat(),
+                      'until': (T0 + timedelta(hours=8)).isoformat(), 'epics': ['old']}, **fields)
+        with open(os.path.join(self.state, 'night.json'), 'w') as f:
+            json.dump(night, f)
+        return night
+
+    def night_text(self):
+        with open(os.path.join(self.state, 'night.json'), encoding='utf-8') as f:
+            return f.read()
+
+    def test_approve_refused_while_a_night_runs(self):
+        night = self.write_night()
+        before = self.night_text()
+        for now in (T0, T0 + timedelta(hours=8)):
+            with self.subTest(now=now):
+                code, out, err = self.cli('approve', [epic(1, 'A', 'a')], ['a'], now=now)
+                self.assertEqual((2, ''), (code, out))
+                self.assertIn('trwa noc zatwierdzona %s do %s' % (night['approved_at'], night['until']), err)
+                self.assertEqual(before, self.night_text())
+
+    def test_approve_allowed_after_the_end_of_the_night(self):
+        self.write_night(ended_at=T0.isoformat(), reason='lista wykonana')
+        code, out, err = self.cli('approve', [epic(1, 'A', 'a')], ['a'])
+        self.assertEqual(0, code, err)
+        self.assertEqual(['a'], json.loads(self.night_text())['epics'])
+
+    def test_approve_allowed_after_until(self):
+        self.write_night(until=(T0 - timedelta(seconds=1)).isoformat())
+        code, out, err = self.cli('approve', [epic(1, 'A', 'a')], ['a'])
+        self.assertEqual(0, code, err)
+        self.assertNotIn('ended_at', json.loads(self.night_text()))
+
+    def test_approve_with_an_unreadable_night_exits_2(self):
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, 'night.json'), 'w') as f:
+            f.write('{')
+        code, out, err = self.cli('approve', [epic(1, 'A', 'a')], ['a'])
+        self.assertEqual((2, ''), (code, out))
+        self.assertIn('night.json', err)
+        self.assertEqual('{', self.night_text())
+
 
 APPROVED = T0
 UNTIL = T0 + timedelta(hours=9)
